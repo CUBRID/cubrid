@@ -90,7 +90,9 @@ static const char *css_Csect_name[CRITICAL_SECTION_COUNT] = {
   "HA_SERVER_STATE",
   "COMPACTDB_ONE_INSTANCE",
   "SESSION_STATE",
-  "ACL"
+  "ACL",
+  "LOG_RUN_POSTPONE",
+  "QPROC_FILTER_PRED_CACHE"
 };
 
 static int csect_initialize_entry (int cs_index);

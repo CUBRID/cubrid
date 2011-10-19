@@ -2832,6 +2832,8 @@ numeric_coerce_double_to_num (double adouble,
  *   result(out) : DB_VALUE of type numeric
  *
  * Note: This routine converts a string into a DB_VALUE.
+ *	 It is not localized in relation to fractional and digit
+ *	 grouping symbols.
  */
 int
 numeric_coerce_string_to_num (const char *astring, int astring_length,

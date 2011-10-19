@@ -179,6 +179,18 @@ install -c -m 755 contrib/rpm/cubrid.csh %{buildroot}%{_sysconfdir}/profile.d/cu
 #install -c -m 644 msg/en_US/esql.cat %{buildroot}%{_datadir}/cubrid/msg/en_US/esql.cat
 #install -c -m 644 msg/en_US/syntax.txt %{buildroot}%{_datadir}/cubrid/msg/en_US/syntax.txt
 
+# data-msg-en_US.utf8
+#install -d %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8
+#install -c -m 644 msg/en_US.utf8/cubrid.msg %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/cubrid.msg
+#install -c -m 644 msg/en_US.utf8/cubrid.cat %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/cubrid.cat
+#install -c -m 644 msg/en_US.utf8/csql.msg %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/csql.msg
+#install -c -m 644 msg/en_US.utf8/csql.cat %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/csql.cat
+#install -c -m 644 msg/en_US.utf8/utils.msg %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/utils.msg
+#install -c -m 644 msg/en_US.utf8/utils.cat %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/utils.cat
+#install -c -m 644 msg/en_US.utf8/esql.msg %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/esql.msg
+#install -c -m 644 msg/en_US.utf8/esql.cat %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/esql.cat
+#install -c -m 644 msg/en_US.utf8/syntax.txt %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8/syntax.txt
+
 # data-msg-ko_KR.euckr
 #install -d %{buildroot}%{_datadir}/cubrid/msg/ko_KR.euckr
 #install -c -m 644 msg/ko_KR.euckr/cubrid.msg %{buildroot}%{_datadir}/cubrid/msg/ko_KR.euckr/cubrid.msg
@@ -201,6 +213,18 @@ install -c -m 755 contrib/rpm/cubrid.csh %{buildroot}%{_sysconfdir}/profile.d/cu
 #install -c -m 644 msg/ko_KR.utf8/utils.cat %{buildroot}%{_datadir}/cubrid/msg/ko_KR.utf8/utils.cat
 #install -c -m 644 msg/ko_KR.utf8/esql.msg %{buildroot}%{_datadir}/cubrid/msg/ko_KR.utf8/esql.msg
 #install -c -m 644 msg/ko_KR.utf8/esql.cat %{buildroot}%{_datadir}/cubrid/msg/ko_KR.utf8/esql.cat
+
+# data-msg-tr_TR.utf8
+#install -d %{buildroot}%{_datadir}/cubrid/msg/en_US.utf8
+#install -c -m 644 msg/tr_TR.utf8/cubrid.msg %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/cubrid.msg
+#install -c -m 644 msg/tr_TR.utf8/cubrid.cat %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/cubrid.cat
+#install -c -m 644 msg/tr_TR.utf8/csql.msg %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/csql.msg
+#install -c -m 644 msg/tr_TR.utf8/csql.cat %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/csql.cat
+#install -c -m 644 msg/tr_TR.utf8/utils.msg %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/utils.msg
+#install -c -m 644 msg/tr_TR.utf8/utils.cat %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/utils.cat
+#install -c -m 644 msg/tr_TR.utf8/esql.msg %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/esql.msg
+#install -c -m 644 msg/tr_TR.utf8/esql.cat %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/esql.cat
+#install -c -m 644 msg/tr_TR.utf8/syntax.txt %{buildroot}%{_datadir}/cubrid/msg/tr_TR.utf8/syntax.txt
 
 # data-jdbc
 #install -d %{buildroot}%{_datadir}/cubrid/jdbc
@@ -344,8 +368,10 @@ rm -rf %{buildroot}
 
 # data
 #%{_datadir}/cubrid/msg/en_US
+#%{_datadir}/cubrid/msg/en_US.utf8
 #%{_datadir}/cubrid/msg/ko_KR.euckr
 #%{_datadir}/cubrid/msg/ko_KR.utf8
+#%{_datadir}/cubrid/msg/tr_TR.utf8
 #%{_datadir}/cubrid/jdbc
 #%{_datadir}/cubrid/java
 #%{_datadir}/cubrid/demo

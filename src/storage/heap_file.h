@@ -187,6 +187,15 @@ struct heap_cache_attrinfo
   HEAP_ATTRVALUE *values;	/* Value for the attributes              */
 };
 
+typedef struct function_index_info FUNCTION_INDEX_INFO;
+struct function_index_info
+{
+  char *expr_stream;
+  int expr_stream_size;
+  int col_id;
+  int attr_index_start;
+};
+
 #if 0				/* TODO: check not use - ksseo */
 typedef struct heap_spacecache HEAP_SPACECACHE;
 struct heap_spacecache
@@ -376,7 +385,9 @@ extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p,
 					     int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info,
 					     RECDES * recdes,
-					     DB_VALUE * dbvalue, char *buf);
+					     DB_VALUE * dbvalue, char *buf,
+					     FUNCTION_INDEX_INFO *
+					     func_index_info);
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p,
 					   OID * class_oid,
 					   RECDES * class_recdes,

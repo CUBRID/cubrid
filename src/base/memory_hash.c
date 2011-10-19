@@ -750,7 +750,8 @@ int
 mht_compare_strings_are_case_insensitively_equal (const void *key1,
 						  const void *key2)
 {
-  return ((intl_mbs_casecmp ((const char *) key1, (const char *) key2)) == 0);
+  return ((intl_identifier_casecmp ((const char *) key1,
+				    (const char *) key2)) == 0);
 }
 
 /*

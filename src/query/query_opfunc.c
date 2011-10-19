@@ -2298,6 +2298,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
   DB_VALUE arg_val, db_temp;
   int res_size = 0, val_size = 0;
   bool warning_size_exceeded = false;
+  int spare_bytes = 0;
 
   if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
       || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
@@ -2337,13 +2338,31 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 	{
 	  warning_size_exceeded = true;
 	  error = db_string_limit_size_string (dbval2_p, &db_temp,
-					       max_allowed_size - res_size);
+					       max_allowed_size - res_size,
+					       &spare_bytes);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
 
 	  error = qdata_add_chars_to_dbval (dbval1_p, &db_temp, result_p);
+
+	  if (spare_bytes > 0)
+	    {
+	      /* The adjusted 'db_temp' string was truncated to the last full
+	       * multibyte character.
+	       * Increase the 'result' with 'spare_bytes' remained from the
+	       * last truncated multibyte character.
+	       * This prevents GROUP_CONCAT to add other single-byte chars
+	       * (or char with fewer bytes than 'spare_bytes' to current
+	       * aggregate.
+	       */
+	      qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p),
+				      result_p, DB_VALUE_PRECISION (result_p),
+				      DB_PULL_STRING (result_p),
+				      DB_GET_STRING_SIZE (result_p) +
+				      spare_bytes);
+	    }
 	}
       else
 	{
@@ -2379,7 +2398,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 		warning_size_exceeded = true;
 		error = db_string_limit_size_string (&arg_val, &db_temp,
 						     max_allowed_size -
-						     res_size);
+						     res_size, &spare_bytes);
 		if (error != NO_ERROR)
 		  {
 		    break;
@@ -2387,6 +2406,16 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 
 		error = qdata_add_chars_to_dbval (dbval1_p, &db_temp,
 						  result_p);
+
+		if (spare_bytes > 0)
+		  {
+		    qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p),
+					    result_p,
+					    DB_VALUE_PRECISION (result_p),
+					    DB_PULL_STRING (result_p),
+					    DB_GET_STRING_SIZE (result_p) +
+					    spare_bytes);
+		  }
 	      }
 	    else
 	      {
@@ -6263,7 +6292,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
   DB_VALUE sqr_val;
   DB_VALUE dbval;
   DB_VALUE xavgval, xavg_1val, x2avgval;
-  DB_VALUE xavg2val, varval, stdevval;
+  DB_VALUE xavg2val, varval;
   DB_VALUE dval;
   double dtmp;
   QFILE_LIST_ID *list_id_p;
@@ -6283,7 +6312,6 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
   DB_MAKE_NULL (&x2avgval);
   DB_MAKE_NULL (&xavg2val);
   DB_MAKE_NULL (&varval);
-  DB_MAKE_NULL (&stdevval);
   DB_MAKE_NULL (&dval);
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
@@ -6340,7 +6368,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 
 	      list_id_p = agg_p->list_id =
 		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list,
-				 agg_p->option);
+				 agg_p->option, true);
 
 	      if (!list_id_p)
 		{
@@ -6557,6 +6585,10 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	  qfile_destroy_list (thread_p, agg_p->list_id);
 	}
 
+      if (agg_p->function == PT_GROUP_CONCAT && !DB_IS_NULL (agg_p->value))
+	{
+	  db_string_fix_string_size (agg_p->value);
+	}
       /* compute averages */
       if (agg_p->curr_cnt > 0
 	  && (agg_p->function == PT_AVG
@@ -9109,4 +9141,746 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name,
 
 exit:
   return error;
+}
+
+/*
+ * qdata_initialize_analytic_func () -
+ *   return: NO_ERROR, or ER_code
+ *   func_p(in): Analytic expression node
+ *   query_id(in): Associated query id
+ *
+ */
+int
+qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,
+				ANALYTIC_TYPE * func_p, QUERY_ID query_id)
+{
+  func_p->curr_cnt = 0;
+  if (db_value_domain_init (func_p->value,
+			    DB_VALUE_DOMAIN_TYPE (func_p->value),
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
+      != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (func_p->function == PT_COUNT_STAR || func_p->function == PT_COUNT
+      || func_p->function == PT_ROW_NUMBER || func_p->function == PT_RANK
+      || func_p->function == PT_DENSE_RANK)
+    {
+      DB_MAKE_INT (func_p->value, 0);
+    }
+
+  /* create temporary list file to handle distincts */
+  if (func_p->option == Q_DISTINCT)
+    {
+      QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+      QFILE_LIST_ID *list_id_p;
+
+      type_list.type_cnt = 1;
+      type_list.domp =
+	(TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
+      if (type_list.domp == NULL)
+	{
+	  return ER_FAILED;
+	}
+      type_list.domp[0] = func_p->operand.domain;
+
+      list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id,
+				   QFILE_FLAG_DISTINCT);
+      if (list_id_p == NULL)
+	{
+	  db_private_free_and_init (thread_p, type_list.domp);
+	  return ER_FAILED;
+	}
+
+      db_private_free_and_init (thread_p, type_list.domp);
+
+      if (qfile_copy_list_id (func_p->list_id, list_id_p, true) != NO_ERROR)
+	{
+	  qfile_free_list_id (list_id_p);
+	  return ER_FAILED;
+	}
+
+      qfile_free_list_id (list_id_p);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qdata_evaluate_analytic_func () -
+ *   return: NO_ERROR, or ER_code
+ *   func_p(in): Analytic expression node
+ *   vd(in): Value descriptor
+ *
+ */
+int
+qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
+			      ANALYTIC_TYPE * func_p, VAL_DESCR * val_desc_p)
+{
+  DB_VALUE dbval, sqr_val;
+  DB_VALUE *opr_dbval_p = NULL;
+  PR_TYPE *pr_type_p;
+  OR_BUF buf;
+  char *disk_repr_p = NULL;
+  int dbval_size;
+  int copy_opr;
+  TP_DOMAIN *tmp_domain_p = NULL;
+  DB_TYPE dbval_type;
+
+  PRIM_INIT_NULL (&dbval);
+  PRIM_INIT_NULL (&sqr_val);
+
+  /* fetch operand value, analytic regulator variable should only
+   * contain constants */
+  if (fetch_copy_dbval (thread_p, &func_p->operand, val_desc_p, NULL, NULL,
+			NULL, &dbval) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (func_p->opr_dbtype == DB_TYPE_VARIABLE && !DB_IS_NULL (&dbval))
+    {
+      /*update domain according to first instance of value */
+      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+      func_p->opr_dbtype = func_p->domain->type->id;
+      db_value_domain_init (func_p->value, func_p->opr_dbtype,
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+
+  if (DB_IS_NULL (&dbval) && func_p->function != PT_ROW_NUMBER
+      && func_p->function != PT_RANK && func_p->function != PT_DENSE_RANK)
+    {
+      func_p->curr_cnt++;
+      goto exit;
+    }
+
+  if (func_p->option == Q_DISTINCT)
+    {
+      /* handle distincts by adding to the temp list file */
+      dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
+      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+
+      if (pr_type_p == NULL)
+	{
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
+	}
+
+      dbval_size = pr_data_writeval_disk_size (&dbval);
+      if ((dbval_size != 0)
+	  && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
+	{
+	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
+	  if ((*(pr_type_p->data_writeval)) (&buf, &dbval) != NO_ERROR)
+	    {
+	      db_private_free_and_init (thread_p, disk_repr_p);
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
+	}
+
+      if (qfile_add_item_to_list (thread_p, disk_repr_p,
+				  dbval_size, func_p->list_id) != NO_ERROR)
+	{
+	  db_private_free_and_init (thread_p, disk_repr_p);
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
+	}
+      db_private_free_and_init (thread_p, disk_repr_p);
+
+      goto exit;
+    }
+
+  copy_opr = false;
+  switch (func_p->function)
+    {
+    case PT_MIN:
+      opr_dbval_p = &dbval;
+      if (func_p->curr_cnt < 1
+	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
+						NULL, 0, 1, 1, NULL) > 0)
+	{
+	  copy_opr = true;
+	}
+      break;
+
+    case PT_MAX:
+      opr_dbval_p = &dbval;
+      if (func_p->curr_cnt < 1
+	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
+						NULL, 0, 1, 1, NULL) < 0)
+	{
+	  copy_opr = true;
+	}
+      break;
+
+    case PT_AVG:
+    case PT_SUM:
+      if (func_p->curr_cnt < 1)
+	{
+	  opr_dbval_p = &dbval;
+	  copy_opr = true;
+
+	  /* this type setting is necessary, it ensures that for the case
+	   * average handling, which is treated like sum until final iteration,
+	   * starts with the initial data type */
+	  if (db_value_domain_init (func_p->value,
+				    DB_VALUE_DOMAIN_TYPE (opr_dbval_p),
+				    DB_DEFAULT_PRECISION,
+				    DB_DEFAULT_SCALE) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  TP_DOMAIN *result_domain;
+	  DB_TYPE type = ((func_p->function == PT_AVG) ?
+			  func_p->value->domain.general_info.type :
+			  func_p->domain->type->id);
+
+	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
+	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
+			       result_domain) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+	  copy_opr = false;
+	}
+      break;
+
+    case PT_COUNT_STAR:
+      break;
+
+    case PT_COUNT:
+    case PT_ROW_NUMBER:
+      if (func_p->curr_cnt < 1)
+	{
+	  DB_MAKE_INT (func_p->value, 1);
+	}
+      else
+	{
+	  DB_MAKE_INT (func_p->value, DB_GET_INT (func_p->value) + 1);
+	}
+      break;
+
+    case PT_RANK:
+      if (func_p->curr_cnt < 1)
+	{
+	  DB_MAKE_INT (func_p->value, 1);
+	}
+      else
+	{
+	  if (ANALYTIC_FUNC_IS_FLAGED (func_p, ANALYTIC_KEEP_RANK))
+	    {
+	      ANALYTIC_FUNC_CLEAR_FLAG (func_p, ANALYTIC_KEEP_RANK);
+	    }
+	  else
+	    {
+	      DB_MAKE_INT (func_p->value, func_p->curr_cnt + 1);
+	    }
+	}
+      break;
+
+    case PT_DENSE_RANK:
+      if (func_p->curr_cnt < 1)
+	{
+	  DB_MAKE_INT (func_p->value, 1);
+	}
+      else
+	{
+	  if (ANALYTIC_FUNC_IS_FLAGED (func_p, ANALYTIC_KEEP_RANK))
+	    {
+	      ANALYTIC_FUNC_CLEAR_FLAG (func_p, ANALYTIC_KEEP_RANK);
+	    }
+	  else
+	    {
+	      DB_MAKE_INT (func_p->value, DB_GET_INT (func_p->value) + 1);
+	    }
+	}
+      break;
+
+    case PT_STDDEV:
+    case PT_STDDEV_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VARIANCE:
+    case PT_VAR_POP:
+    case PT_VAR_SAMP:
+      copy_opr = false;
+      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+      if (tp_value_coerce (&dbval, &dbval, tmp_domain_p) != DOMAIN_COMPATIBLE)
+	{
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
+	}
+
+      if (func_p->curr_cnt < 1)
+	{
+	  opr_dbval_p = &dbval;
+	  /* func_p->value contains SUM(X) */
+	  if (db_value_domain_init (func_p->value,
+				    DB_VALUE_DOMAIN_TYPE (opr_dbval_p),
+				    DB_DEFAULT_PRECISION,
+				    DB_DEFAULT_SCALE) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+
+	  /* func_p->value contains SUM(X^2) */
+	  if (db_value_domain_init (func_p->value2,
+				    DB_VALUE_DOMAIN_TYPE (opr_dbval_p),
+				    DB_DEFAULT_PRECISION,
+				    DB_DEFAULT_SCALE) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+
+	  /* calculate X^2 */
+	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val,
+				    tmp_domain_p) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+
+	  pr_clear_value (func_p->value);
+	  pr_clear_value (func_p->value2);
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
+	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+	  if (pr_type_p == NULL)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+
+	  (*(pr_type_p->setval)) (func_p->value, &dbval, true);
+	  (*(pr_type_p->setval)) (func_p->value2, &sqr_val, true);
+	}
+      else
+	{
+	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val,
+				    tmp_domain_p) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+
+	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
+			       tmp_domain_p) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      pr_clear_value (&sqr_val);
+	      return ER_FAILED;
+	    }
+
+	  if (qdata_add_dbval (func_p->value2, &sqr_val, func_p->value2,
+			       tmp_domain_p) != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      pr_clear_value (&sqr_val);
+	      return ER_FAILED;
+	    }
+
+	  pr_clear_value (&sqr_val);
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      pr_clear_value (&dbval);
+      return ER_FAILED;
+    }
+
+  if (copy_opr)
+    {
+      /* copy resultant operand value to analytic node */
+      pr_clear_value (func_p->value);
+      dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
+      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+      if (pr_type_p == NULL)
+	{
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
+	}
+
+      (*(pr_type_p->setval)) (func_p->value, opr_dbval_p, true);
+    }
+
+  func_p->curr_cnt++;
+
+exit:
+  pr_clear_value (&dbval);
+
+  return NO_ERROR;
+}
+
+/*
+ * qdata_finalize_analytic_func () -
+ *   return: NO_ERROR, or ER_code
+ *   func_p(in): Analytic expression node
+ *   keep_list_file(in): Don't deallocate list file
+ *
+ */
+int
+qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
+			      bool keep_list_file)
+{
+  DB_VALUE dbval;
+  QFILE_LIST_ID *list_id_p;
+  char *tuple_p;
+  PR_TYPE *pr_type_p;
+  OR_BUF buf;
+  QFILE_LIST_SCAN_ID scan_id;
+  SCAN_CODE scan_code;
+  DB_VALUE xavgval, xavg_1val, x2avgval;
+  DB_VALUE xavg2val, varval, sqr_val, dval;
+  double dtmp;
+  QFILE_TUPLE_RECORD tuple_record = {
+    NULL, 0
+  };
+  TP_DOMAIN *tmp_domain_ptr = NULL;
+
+  DB_MAKE_NULL (&sqr_val);
+  DB_MAKE_NULL (&dbval);
+  DB_MAKE_NULL (&xavgval);
+  DB_MAKE_NULL (&xavg_1val);
+  DB_MAKE_NULL (&x2avgval);
+  DB_MAKE_NULL (&xavg2val);
+  DB_MAKE_NULL (&varval);
+  DB_MAKE_NULL (&dval);
+
+  if (func_p->function == PT_VARIANCE
+      || func_p->function == PT_VAR_POP
+      || func_p->function == PT_VAR_SAMP
+      || func_p->function == PT_STDDEV
+      || func_p->function == PT_STDDEV_POP
+      || func_p->function == PT_STDDEV_SAMP)
+    {
+      tmp_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+
+  /* set count-star aggregate values */
+  if (func_p->function == PT_COUNT_STAR)
+    {
+      DB_MAKE_INT (func_p->value, func_p->curr_cnt);
+    }
+
+  /* process list file for distinct */
+  if (func_p->option == Q_DISTINCT)
+    {
+      assert (func_p->list_id->sort_list != NULL);
+
+      list_id_p =
+	qfile_sort_list (thread_p, func_p->list_id, NULL, Q_DISTINCT, false);
+      if (!list_id_p)
+	{
+	  return ER_FAILED;
+	}
+      func_p->list_id = list_id_p;
+
+      if (func_p->function == PT_COUNT)
+	{
+	  DB_MAKE_INT (func_p->value, list_id_p->tuple_cnt);
+	}
+      else
+	{
+	  pr_type_p = list_id_p->type_list.domp[0]->type;
+
+	  /* scan list file, accumulating total for sum/avg */
+	  if (qfile_open_list_scan (list_id_p, &scan_id) != NO_ERROR)
+	    {
+	      qfile_close_list (thread_p, list_id_p);
+	      qfile_destroy_list (thread_p, list_id_p);
+	      return ER_FAILED;
+	    }
+
+	  DB_MAKE_NULL (func_p->value);
+
+	  while (true)
+	    {
+	      scan_code = qfile_scan_list_next (thread_p, &scan_id,
+						&tuple_record, PEEK);
+	      if (scan_code != S_SUCCESS)
+		{
+		  break;
+		}
+
+	      tuple_p = ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
+	      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
+		{
+		  continue;
+		}
+
+	      or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
+		       QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+	      if ((*(pr_type_p->data_readval)) (&buf, &dbval,
+						list_id_p->type_list.domp[0],
+						-1, true, NULL,
+						0) != NO_ERROR)
+		{
+		  qfile_close_scan (thread_p, &scan_id);
+		  qfile_close_list (thread_p, list_id_p);
+		  qfile_destroy_list (thread_p, list_id_p);
+		  return ER_FAILED;
+		}
+
+	      if (func_p->function == PT_VARIANCE
+		  || func_p->function == PT_VAR_POP
+		  || func_p->function == PT_VAR_SAMP
+		  || func_p->function == PT_STDDEV
+		  || func_p->function == PT_STDDEV_POP
+		  || func_p->function == PT_STDDEV_SAMP)
+		{
+		  if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
+		      != DOMAIN_COMPATIBLE)
+		    {
+		      pr_clear_value (&dbval);
+		      qfile_close_scan (thread_p, &scan_id);
+		      qfile_close_list (thread_p, list_id_p);
+		      qfile_destroy_list (thread_p, list_id_p);
+		      return ER_FAILED;
+		    }
+		}
+
+	      if (DB_IS_NULL (func_p->value))
+		{
+		  /* first iteration: can't add to a null agg_ptr->value */
+		  PR_TYPE *tmp_pr_type;
+		  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
+
+		  tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+		  if (tmp_pr_type == NULL)
+		    {
+		      qfile_close_scan (thread_p, &scan_id);
+		      qfile_close_list (thread_p, list_id_p);
+		      qfile_destroy_list (thread_p, list_id_p);
+		      return ER_FAILED;
+		    }
+
+		  if (func_p->function == PT_STDDEV
+		      || func_p->function == PT_STDDEV_POP
+		      || func_p->function == PT_STDDEV_SAMP
+		      || func_p->function == PT_VARIANCE
+		      || func_p->function == PT_VAR_POP
+		      || func_p->function == PT_VAR_SAMP)
+		    {
+		      if (qdata_multiply_dbval (&dbval, &dbval,
+						&sqr_val,
+						tmp_domain_ptr) != NO_ERROR)
+			{
+			  pr_clear_value (&dbval);
+			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
+			  return ER_FAILED;
+			}
+
+		      (*(tmp_pr_type->setval)) (func_p->value2, &sqr_val,
+						true);
+		    }
+
+		  (*(tmp_pr_type->setval)) (func_p->value, &dbval, true);
+		}
+	      else
+		{
+		  TP_DOMAIN *domain_ptr;
+
+		  if (func_p->function == PT_STDDEV
+		      || func_p->function == PT_STDDEV_POP
+		      || func_p->function == PT_STDDEV_SAMP
+		      || func_p->function == PT_VARIANCE
+		      || func_p->function == PT_VAR_POP
+		      || func_p->function == PT_VAR_SAMP)
+		    {
+		      if (qdata_multiply_dbval (&dbval, &dbval,
+						&sqr_val,
+						tmp_domain_ptr) != NO_ERROR)
+			{
+			  pr_clear_value (&dbval);
+			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
+			  return ER_FAILED;
+			}
+
+		      if (qdata_add_dbval (func_p->value2, &sqr_val,
+					   func_p->value2,
+					   tmp_domain_ptr) != NO_ERROR)
+			{
+			  pr_clear_value (&dbval);
+			  pr_clear_value (&sqr_val);
+			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
+			  return ER_FAILED;
+			}
+		    }
+
+		  domain_ptr =
+		    NOT_NULL_VALUE (tmp_domain_ptr, func_p->domain);
+		  if ((func_p->function == PT_AVG)
+		      && (dbval.domain.general_info.type == DB_TYPE_NUMERIC))
+		    {
+		      domain_ptr = NULL;
+		    }
+
+		  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
+				       domain_ptr) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &scan_id);
+		      qfile_close_list (thread_p, list_id_p);
+		      qfile_destroy_list (thread_p, list_id_p);
+		      return ER_FAILED;
+		    }
+		}
+	    }
+
+	  qfile_close_scan (thread_p, &scan_id);
+	  func_p->curr_cnt = list_id_p->tuple_cnt;
+	}
+    }
+
+  /* compute averages */
+  if (func_p->curr_cnt > 0
+      && (func_p->function == PT_AVG
+	  || func_p->function == PT_STDDEV
+	  || func_p->function == PT_STDDEV_POP
+	  || func_p->function == PT_STDDEV_SAMP
+	  || func_p->function == PT_VARIANCE
+	  || func_p->function == PT_VAR_POP
+	  || func_p->function == PT_VAR_SAMP))
+    {
+      TP_DOMAIN *double_domain_ptr =
+	tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+      /* compute AVG(X) = SUM(X)/COUNT(X) */
+      DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt);
+      if (qdata_divide_dbval (func_p->value, &dbval, &xavgval,
+			      double_domain_ptr) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (func_p->function == PT_AVG)
+	{
+	  if (tp_value_coerce (&xavgval, func_p->value, double_domain_ptr)
+	      != DOMAIN_COMPATIBLE)
+	    {
+	      goto error;
+	    }
+
+	  goto exit;
+	}
+
+      if (func_p->function == PT_STDDEV_SAMP
+	  || func_p->function == PT_VAR_SAMP)
+	{
+	  /* compute SUM(X^2) / (n-1) */
+	  if (func_p->curr_cnt > 1)
+	    {
+	      DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt - 1);
+	    }
+	  else
+	    {
+	      /* when not enough samples, return NULL */
+	      DB_MAKE_NULL (func_p->value);
+	      goto exit;
+	    }
+	}
+      else
+	{
+	  assert (func_p->function == PT_STDDEV
+		  || func_p->function == PT_STDDEV_POP
+		  || func_p->function == PT_VARIANCE
+		  || func_p->function == PT_VAR_POP);
+	  /* compute SUM(X^2) / n */
+	  DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt);
+	}
+
+      if (qdata_divide_dbval (func_p->value2, &dbval, &x2avgval,
+			      double_domain_ptr) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* compute {SUM(X) / (n)} OR  {SUM(X) / (n-1)} for xxx_SAMP agg */
+      if (qdata_divide_dbval (func_p->value, &dbval, &xavg_1val,
+			      double_domain_ptr) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for 
+       * xxx_SAMP agg*/
+      if (qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val,
+				double_domain_ptr) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR 
+       * VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}  for 
+       * xxx_SAMP aggregates */
+      if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval,
+				double_domain_ptr) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (func_p->function == PT_VARIANCE
+	  || func_p->function == PT_VAR_POP
+	  || func_p->function == PT_VAR_SAMP
+	  || func_p->function == PT_STDDEV
+	  || func_p->function == PT_STDDEV_POP
+	  || func_p->function == PT_STDDEV_SAMP)
+	{
+	  pr_clone_value (&varval, func_p->value);
+	}
+
+      if (func_p->function == PT_STDDEV
+	  || func_p->function == PT_STDDEV_POP
+	  || func_p->function == PT_STDDEV_SAMP)
+	{
+	  db_value_domain_init (&dval, DB_TYPE_DOUBLE,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  if (tp_value_coerce (&varval, &dval, double_domain_ptr)
+	      != DOMAIN_COMPATIBLE)
+	    {
+	      goto error;
+	    }
+
+	  dtmp = DB_GET_DOUBLE (&dval);
+	  dtmp = sqrt (dtmp);
+	  DB_MAKE_DOUBLE (&dval, dtmp);
+
+	  pr_clone_value (&dval, func_p->value);
+	}
+    }
+
+exit:
+  /* destroy distincts temp list file */
+  if (!keep_list_file)
+    {
+      qfile_close_list (thread_p, func_p->list_id);
+      qfile_destroy_list (thread_p, func_p->list_id);
+    }
+
+  return NO_ERROR;
+
+error:
+  qfile_close_list (thread_p, func_p->list_id);
+  qfile_destroy_list (thread_p, func_p->list_id);
+
+  return ER_FAILED;
 }

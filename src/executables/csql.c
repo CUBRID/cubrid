@@ -36,6 +36,7 @@
 #include <sys/errno.h>
 #include <signal.h>
 #include <wctype.h>
+#include <langinfo.h>
 #endif /* !WINDOWS */
 #if defined(GNU_Readline)
 #include <readline/readline.h>
@@ -88,6 +89,12 @@ static int csql_Keyword_num;
 static KEYWORD_RECORD *csql_Keyword_list;
 #endif /* !WINDOWS */
 #endif /* !GNU_Readline */
+
+int (*csql_text_utf8_to_console) (const char *, const int, char **,
+				  int *) = NULL;
+
+int (*csql_text_console_to_utf8) (const char *, const int, char **,
+				  int *) = NULL;
 
 int csql_Row_count;
 int csql_Num_failures;
@@ -371,6 +378,7 @@ static void
 start_csql (CSQL_ARGUMENT * csql_arg)
 {
   unsigned char line_buf[LINE_BUFFER_SIZE];
+  unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
   char *line_read = NULL;
 #if defined(GNU_Readline)
   char *t;
@@ -391,6 +399,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   bool flag_end_of_file = false;
   bool incomplete_prev_line = false;
   int line_no;
+  bool is_first_read_line = true;
 
   if (csql_arg->column_output && csql_arg->line_output)
     {
@@ -428,6 +437,55 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   /* Start interactive conversation or single line execution */
   if (csql_Is_interactive)
     {
+#if defined(WINDOWS)
+      UINT cp;
+
+      cp = GetConsoleCP ();
+      if (cp == 28599)		/* ISO 8859-9 (Turkish / Latin 5) */
+	{
+	  intl_init_conv_iso8859_9_to_utf8 ();
+	  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
+	  csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
+	}
+      else if (cp == 28591)	/* ISO 8859-1 Latin 1; Western European */
+	{
+	  intl_init_conv_iso8859_1_to_utf8 ();
+	  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
+	  csql_text_console_to_utf8 = intl_text_iso8859_1_to_utf8;
+	}
+      else
+	{
+	  assert (csql_text_utf8_to_console == NULL);
+	  assert (csql_text_console_to_utf8 == NULL);
+	}
+#else
+      if (setlocale (LC_CTYPE, "") != NULL)
+	{
+	  if (strcmp (nl_langinfo (CODESET), "iso88599") == 0 ||
+	      strcmp (nl_langinfo (CODESET), "ISO_8859-9") == 0 ||
+	      strcmp (nl_langinfo (CODESET), "ISO8859-9") == 0 ||
+	      strcmp (nl_langinfo (CODESET), "ISO-8859-9") == 0)
+	    {
+	      intl_init_conv_iso8859_9_to_utf8 ();
+	      csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
+	      csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
+	    }
+	  else if (strcmp (nl_langinfo (CODESET), "iso88591") == 0 ||
+		   strcmp (nl_langinfo (CODESET), "ISO_8859-1") == 0 ||
+		   strcmp (nl_langinfo (CODESET), "ISO8859-1") == 0 ||
+		   strcmp (nl_langinfo (CODESET), "ISO-8859-1") == 0)
+	    {
+	      intl_init_conv_iso8859_1_to_utf8 ();
+	      csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
+	      csql_text_console_to_utf8 = intl_text_iso8859_1_to_utf8;
+	    }
+	  else
+	    {
+	      assert (csql_text_utf8_to_console == NULL);
+	      assert (csql_text_console_to_utf8 == NULL);
+	    }
+	}
+#endif
       csql_Tty_fp = csql_Error_fp;
     }
 
@@ -468,6 +526,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       flag_append_new_line = false;
 
       memset (line_buf, 0, LINE_BUFFER_SIZE);
+      memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
 #if defined(GNU_Readline)
       if (csql_Is_interactive)
 	{
@@ -561,6 +620,39 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #endif /* GNU_Readline */
 
       line_length = strlen (line_read);
+
+      if (csql_Is_interactive)
+	{
+	  char *utf8_line_read = NULL;
+
+	  if (csql_text_console_to_utf8 != NULL)
+	    {
+	      int utf8_line_buf_size = sizeof (utf8_line_buf);
+
+	      utf8_line_read = (char *) utf8_line_buf;
+	      if ((*csql_text_console_to_utf8) (line_read, line_length,
+						&utf8_line_read,
+						&utf8_line_buf_size)
+		  != NO_ERROR)
+		{
+		  goto error_continue;
+		}
+	      if (utf8_line_read != NULL)
+		{
+		  line_read = utf8_line_read;
+		  line_length = strlen (line_read);
+		}
+	    }
+	}
+
+      /* skip UTF-8 BOM if present */
+      if (is_first_read_line && intl_is_bom_magic (line_read, line_length))
+	{
+	  line_read += 3;
+	  line_length -= 3;
+	}
+      is_first_read_line = false;
+
       for (ptr = line_read + line_length - 1; line_length > 0; ptr--)
 	{
 	  if (*ptr == '\n')
@@ -2289,14 +2381,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   if (utility_initialize () != NO_ERROR)
     {
       csql_exit (EXIT_FAILURE);
-    }
-
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
-    {
-      /* set interpreter processed flag -- to avoid redundant converting
-       * from two byte alphabet to ASCII alphabet
-       */
-      (void) sm_set_inhibit_identifier_check (1);
     }
 
   /* set up prompt and message fields. */

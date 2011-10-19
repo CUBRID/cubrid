@@ -374,6 +374,7 @@ struct db_objlist
 };
 
 typedef struct sm_class_constraint DB_CONSTRAINT;
+typedef struct sm_function_index_info DB_FUNCTION_INDEX_INFO;
 
 
 /* Types of constraints that may be applied to applibutes.  This type

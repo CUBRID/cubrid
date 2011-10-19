@@ -177,6 +177,7 @@
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
 typedef struct xasl_node XASL_NODE;
+typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 
 /*
  * Access specification information
@@ -310,6 +311,12 @@ struct buildlist_proc_node
   DB_VALUE *g_grbynum_val;	/* groupby_num() value result */
   AGGREGATE_TYPE *g_agg_list;	/* aggregate function list */
   ARITH_TYPE *g_outarith_list;	/* outside arithmetic list */
+  ANALYTIC_TYPE *a_func_list;	/* analytic functions list */
+  REGU_VARIABLE_LIST a_regu_list;	/* analytic regu list */
+  REGU_VARIABLE_LIST a_regu_list_ex;	/* analytic extended regu list */
+  OUTPTR_LIST *a_outptr_list;	/* analytic output ptr list */
+  OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */
+  VAL_LIST *a_val_list;		/* analytic value list */
   int g_grbynum_flag;		/* stop or continue grouping? */
   int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
 };
@@ -342,23 +349,43 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
+/* assignment details structure for server update execution */
+typedef struct update_assignment UPDATE_ASSIGNMENT;
+struct update_assignment
+{
+  int cls_idx;			/* index of the class that contains attribute
+				 * to be updated */
+  int att_idx;			/* index in the class attributes array */
+  DB_VALUE *constant;		/* constant to be assigned to an attribute or
+				 * NULL */
+};
+
+/* class info structure */
+typedef struct update_class_info UPDATE_CLASS_INFO;
+struct update_class_info
+{
+  int no_subclasses;		/* total number of subclasses */
+  OID *class_oid;		/* OID's of the classes                 */
+  HFID *class_hfid;		/* Heap file ID's of the classes        */
+  int no_attrs;			/* total number of attrs involved       */
+  int *att_id;			/* ID's of attributes (array)           */
+  struct xasl_partition_info **partition;	/* partition information */
+  int has_uniques;		/* whether there are unique constraints */
+};
+
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
   int no_classes;		/* total number of classes involved     */
-  OID *class_oid;		/* OID's of the classes                 */
-  HFID *class_hfid;		/* Heap file ID's of the classes        */
-  int no_vals;			/* total number of attrs involved       */
-  int no_consts;		/* number of constant values            */
-  int *att_id;			/* ID's of attributes (array)           */
-  DB_VALUE **consts;		/* constant values (array)              */
+  UPDATE_CLASS_INFO *classes;	/* details for each class in the update
+				 * list */
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
-  int has_uniques;		/* whether there are unique constraints */
+  int no_assigns;		/* total no. of assignments */
+  UPDATE_ASSIGNMENT *assigns;	/* assignments array */
   int waitsecs;			/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int no_orderby_keys;		/* no of keys for ORDER_BY */
-  struct xasl_partition_info **partition;	/* partition information */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;
@@ -378,7 +405,8 @@ struct insert_proc_node
   int dup_key_oid_var_index;	/* hostvariable index for the OID required by
 				 * ON DUPLICATE KEY UPDATE processing
 				 */
-  int is_first_value;		/* Indicates whether the first value of VALUES clause. */
+  int is_first_value;		/* Indicates whether the first value of VALUES
+				 * clause. */
   struct xasl_partition_info *partition;	/* partition information */
 };
 
@@ -400,11 +428,13 @@ struct connectby_proc_node
   PRED_EXPR *after_connect_by_pred;	/* after CONNECT BY predicate */
   QFILE_LIST_ID *input_list_id;	/* CONNECT BY input list file */
   QFILE_LIST_ID *start_with_list_id;	/* START WITH list file */
-  REGU_VARIABLE_LIST regu_list_pred;	/* positional regu list for fetching val list */
+  REGU_VARIABLE_LIST regu_list_pred;	/* positional regu list for fetching
+					 * val list */
   REGU_VARIABLE_LIST regu_list_rest;	/* rest of regu vars */
   VAL_LIST *prior_val_list;	/* val list for use with parent tuple */
   OUTPTR_LIST *prior_outptr_list;	/* out list for use with parent tuple */
-  REGU_VARIABLE_LIST prior_regu_list_pred;	/* positional regu list for parent tuple */
+  REGU_VARIABLE_LIST prior_regu_list_pred;	/* positional regu list for
+						 * parent tuple */
   REGU_VARIABLE_LIST prior_regu_list_rest;	/* rest of regu vars */
   REGU_VARIABLE_LIST after_cb_regu_list_pred;	/* regu list for after_cb pred */
   REGU_VARIABLE_LIST after_cb_regu_list_rest;	/* rest of regu vars */
@@ -550,6 +580,20 @@ struct xasl_node
   bool iscan_oid_order;
 };
 
+struct pred_expr_with_context
+{
+  PRED_EXPR *pred;		/* predicate expresion */
+  int num_attrs_pred;		/* number of atts from the predicate */
+  ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
+  HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
+};
+
+/* new type used by function index for cleaner code */
+typedef struct func_pred FUNC_PRED;
+struct func_pred
+{
+  REGU_VARIABLE *func_regu;	/* function expression regulator variable */
+};
 
 #define XASL_LINK_TO_REGU_VARIABLE 1	/* is linked to regu variable ? */
 #define XASL_SKIP_ORDERBY_LIST     2	/* skip sorting for orderby_list ? */
@@ -659,7 +703,7 @@ struct xasl_cache_clo
   XASL_CACHE_CLONE *LRU_prev;
   XASL_CACHE_CLONE *LRU_next;
   XASL_CACHE_ENTRY *ent_ptr;	/* cache entry pointer */
-  XASL_NODE *xasl;		/* XASL tree root pointer */
+  void *xasl;			/* XASL or PRED_EXPR_WITH_CONTEXT tree root pointer */
   void *xasl_buf_info;		/* XASL tree buffer info */
 };
 
@@ -674,6 +718,9 @@ extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p,
 					     XASL_STATE * xasl_state);
 extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			     bool final);
+extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p,
+				     PRED_EXPR_WITH_CONTEXT * pred_filter,
+				     bool dealloc_dbvalues);
 extern QFILE_LIST_ID *qexec_get_xasl_list_id (XASL_NODE * xasl);
 #if defined(CUBRID_DEBUG)
 extern void get_xasl_dumper_linked_in ();
@@ -681,9 +728,13 @@ extern void get_xasl_dumper_linked_in ();
 
 /* XASL cache entry manipulation functions */
 extern int qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p);
+extern int qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p);
 extern int qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p);
+extern int qexec_finalize_filter_pred_cache (THREAD_ENTRY * thread_p);
 extern int qexec_dump_xasl_cache_internal (THREAD_ENTRY * thread_p, FILE * fp,
 					   int mask);
+extern int qexec_dump_filter_pred_cache_internal (THREAD_ENTRY * thread_p,
+						  FILE * fp, int mask);
 #if defined(CUBRID_DEBUG)
 extern int qexec_dump_xasl_cache (THREAD_ENTRY * thread_p, const char *fname,
 				  int mask);
@@ -691,6 +742,11 @@ extern int qexec_dump_xasl_cache (THREAD_ENTRY * thread_p, const char *fname,
 extern XASL_CACHE_ENTRY *qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const char *qstr,
 						      const OID * user_oid);
+extern XASL_CACHE_ENTRY *qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY *
+							     thread_p,
+							     const char *qstr,
+							     const OID *
+							     user_oid);
 extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const char *qstr,
 						      XASL_ID * xasl_id,
@@ -699,9 +755,24 @@ extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const OID * class_oids,
 						      const int *repr_ids,
 						      int dbval_cnt);
+extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY *
+							     thread_p,
+							     const char *qstr,
+							     XASL_ID *
+							     xasl_id,
+							     const OID * oid,
+							     int n_oids,
+							     const OID *
+							     class_oids,
+							     const int
+							     *repr_ids,
+							     int dbval_cnt);
 extern int qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
 					    const XASL_ID * xasl_id,
 					    bool marker);
+extern int qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
+						   const XASL_ID * xasl_id,
+						   bool marker);
 extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     thread_p,
 							     const XASL_ID *
@@ -709,27 +780,44 @@ extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     int dbval_cnt,
 							     XASL_CACHE_CLONE
 							     ** clop);
+extern XASL_CACHE_ENTRY
+  * qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
+					       const XASL_ID * xasl_id,
+					       int dbval_cnt,
+					       XASL_CACHE_CLONE ** clop);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
 #endif /* ENABLE_UNUSED_FUNCTION */
+extern int qexec_free_filter_pred_cache_clo (XASL_CACHE_CLONE * clo);
 extern int xasl_id_hash_cmpeq (const void *key1, const void *key2);
 extern int qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
 						 const OID * class_oid);
+extern int qexec_remove_filter_pred_cache_ent_by_class (THREAD_ENTRY *
+							thread_p,
+							const OID *
+							class_oid);
 extern int qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p,
 						const char *qstr,
 						const OID * user_oid);
 extern int qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 						const XASL_ID * xasl_id);
 extern int qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
+extern int qexec_remove_all_filter_pred_cache_ent_by_xasl (THREAD_ENTRY *
+							   thread_p);
 extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p,
 					    const OID * class_oid);
-
+extern int qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
+						 const OID * class_oid);
 extern bool qdump_print_xasl (XASL_NODE * xasl);
 #if defined(CUBRID_DEBUG)
 extern bool qdump_check_xasl_tree (XASL_NODE * xasl);
 #endif /* CUBRID_DEBUG */
 extern int xts_map_xasl_to_stream (const XASL_NODE * xasl,
 				   char **stream, int *size);
+extern int xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred,
+					  char **stream, int *size);
+extern int xts_map_func_pred_to_stream (const FUNC_PRED * xasl,
+					char **stream, int *size);
 
 extern void xts_final (void);
 
@@ -737,7 +825,19 @@ extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p,
 				   XASL_NODE ** xasl_tree, char *xasl_stream,
 				   int xasl_stream_size,
 				   void **xasl_unpack_info_ptr);
+extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p,
+					  PRED_EXPR_WITH_CONTEXT **
+					  pred_expr_tree,
+					  char *pred_stream,
+					  int pred_stream_size,
+					  void **xasl_unpack_info_ptr);
+extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p,
+					FUNC_PRED ** xasl,
+					char *xasl_stream,
+					int xasl_stream_size,
+					void **xasl_unpack_info_ptr);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
+extern void stx_free_additional_buff (void *unpack_info_ptr);
 
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl,
 					 int index,

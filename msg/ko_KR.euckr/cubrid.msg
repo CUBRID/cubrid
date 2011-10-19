@@ -1143,8 +1143,12 @@ $ LOADDB
 1075 B+tree(vfid = (%1$d, %2$d), rt_pgid: %3$d)에 대한 내림차순 스캔이 우선순위에 의해 실패되었습니다.
 1076 시스템 설정을 읽을 수 없습니다.
 1077 '%3$s' 파일 %2$d 줄의 '%1$s' 파라미터 : 알수 없는 파라미터
-1078 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
-1079 마지막 에러
+1078 Character at offset %d is invalid with current codeset.
+1079 Codesets of database and server configuration are incompatible.
+1080 The maximum length of filter predicate string must be %1$s.
+1081 Cannot alter an attribute involved in a filter or function index.
+1082 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
+1083 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1503,6 +1507,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 224 INDEX NONE 절에서는 KEYLIMIT을 사용할 수 없습니다.
 225 이 구문에서는 세션 변수를 사용할 수 없습니다.
 226 '%s' function can not be used in DEFAULT clause.
+227 Updating derived tables is not allowed.
+228 Updating class attributes and instance attributes not allowed in the same statement.
+229 Updating virtual class hierarchies is not allowed.
+230 Host variables not allowed in DDL statement.
+231 Invalid filter expression for index.
+232 Multiple or nested functions are not allowed in a function index definition.
+233 Invalid index specification.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

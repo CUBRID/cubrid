@@ -698,14 +698,20 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
   SESSION_VARIABLE *var = NULL;
   SESSION_VARIABLE *current = NULL;
   DB_VALUE *val = NULL;
-  int len = 0, count = 0;
+  int len = 0, dummy, count = 0;
   const char *name_str;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_CHAR (name, &len);
+  name_str = DB_GET_CHAR (name, &dummy);
 
   assert (name_str != NULL);
+
+  len = DB_GET_STRING_SIZE (name);
+  if (len > strlen ("collect_exec_stats"))
+    {
+      len = strlen ("collect_exec_stats");
+    }
 
   if (strncasecmp (name_str, "collect_exec_stats", len) == 0)
     {
@@ -724,15 +730,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
     {
       assert (current->name != NULL);
 
-      if (len != strlen (current->name))
-	{
-	  /* not a match, go to the next variable */
-	  current = current->next;
-	  count++;
-	  continue;
-	}
-
-      if (strncasecmp (name_str, current->name, len) == 0)
+      if (intl_identifier_casecmp (name_str, current->name) == 0)
 	{
 	  /* if it already exists, just update the value */
 	  update_session_variable (current, value);
@@ -854,7 +852,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
 
   length = DB_GET_STRING_SIZE (src);
   scale = 0;
-  str = (char *) malloc (length);
+  str = (char *) malloc (length + 1);
   if (str == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -931,7 +929,7 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
 {
   SESSION_VARIABLE *current = NULL, *prev = NULL;
   DB_VALUE *val = NULL;
-  int len = 0, count = 0;
+  int dummy = 0, count = 0;
   const char *name_str;
 
   if (state_p->session_variables == NULL)
@@ -940,20 +938,14 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
     }
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
-  name_str = DB_GET_CHAR (name, &len);
+  name_str = DB_GET_CHAR (name, &dummy);
 
   current = state_p->session_variables;
   while (current)
     {
       assert (current->name != NULL);
-      if (len != strlen (current->name))
-	{
-	  prev = current;
-	  current = current->next;
-	  continue;
-	}
 
-      if (strncasecmp (name_str, current->name, len) == 0)
+      if (intl_identifier_casecmp (name_str, current->name) == 0)
 	{
 	  SESSION_VARIABLE *next = current->next;
 	  free_session_variable (current);
@@ -1353,7 +1345,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
       current = state_p->statements;
       while (current != NULL)
 	{
-	  if (strcasecmp (current->name, name) == 0)
+	  if (intl_identifier_casecmp (current->name, name) == 0)
 	    {
 	      /* we need to remove it */
 	      if (prev == NULL)
@@ -1479,7 +1471,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 
   for (stmt_p = state_p->statements; stmt_p != NULL; stmt_p = stmt_p->next)
     {
-      if (strcasecmp (stmt_p->name, name) == 0)
+      if (intl_identifier_casecmp (stmt_p->name, name) == 0)
 	{
 	  break;
 	}
@@ -1592,7 +1584,7 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
   for (stmt_p = state_p->statements, prev = NULL; stmt_p != NULL;
        prev = stmt_p, stmt_p = stmt_p->next)
     {
-      if (strcasecmp (stmt_p->name, name) == 0)
+      if (intl_identifier_casecmp (stmt_p->name, name) == 0)
 	{
 	  if (prev == NULL)
 	    {
@@ -1745,13 +1737,13 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 {
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
-  int name_len = 0;
+  int dummy = 0;
   const char *name_str;
   SESSION_VARIABLE *var;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_CHAR (name, &name_len);
+  name_str = DB_GET_CHAR (name, &dummy);
 
   if (session_get_session_id (thread_p, &id) != NO_ERROR)
     {
@@ -1783,12 +1775,7 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
     {
       assert (var->name != NULL);
 
-      if (name_len != strlen (var->name))
-	{
-	  var = var->next;
-	  continue;
-	}
-      if (strncasecmp (var->name, name_str, name_len) == 0)
+      if (intl_identifier_casecmp (var->name, name_str) == 0)
 	{
 	  pr_clone_value (var->value, result);
 	  break;
@@ -1800,6 +1787,7 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
     {
       /* we didn't find it, set error and exit */
       char *var_name = NULL;
+      int name_len = strlen (name_str);
 
       var_name = (char *) malloc (name_len + 1);
       if (var_name != NULL)
@@ -2136,6 +2124,7 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p,
   qentry_p->xasl_size = 0;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
+  qentry_p->repeat = false;
 }
 
 /*

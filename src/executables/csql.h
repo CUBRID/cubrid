@@ -285,6 +285,10 @@ extern int csql_Line_lwm;
 extern int csql_Row_count;
 extern int csql_Num_failures;
 
+extern int (*csql_text_utf8_to_console) (const char *, const int, char **,
+					 int *);
+extern int (*csql_text_console_to_utf8) (const char *, const int, char **,
+					 int *);
 
 extern void csql_display_msg (const char *string);
 extern void csql_exit (int exit_status);

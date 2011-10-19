@@ -29,6 +29,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "utility.h"
+#include "intl_support.h"
 
 /*#define LEXER_DEBUG*/
 
@@ -264,6 +265,11 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 \xa3\xdc {
     PRINT ("WON_SYMBOL %s\n", yytext);
     return WON_SYMBOL;
+}
+
+\\[T][L] {
+    PRINT ("TURKISH_LIRA_CURRENCY %s\n", yytext);
+    return TURKISH_LIRA_CURRENCY;
 }
 
 \\ {
@@ -602,6 +608,7 @@ static LDR_STRING *
 loader_make_string_by_yytext (void)
 {
   LDR_STRING *str;
+  char *invalid_pos = NULL;
 
   str = loader_get_string_container ();
   if (str == NULL)
@@ -637,6 +644,14 @@ loader_make_string_by_yytext (void)
       str->need_free_val = true;
     }
 
+  if (intl_check_string (str->val, str->size, &invalid_pos) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
+	      invalid_pos - str->val);
+      YY_FATAL_ERROR (er_msg());
+      return NULL;
+    }
+
   return str;
 }
 
@@ -644,6 +659,7 @@ static LDR_STRING *
 loader_make_string_by_buffer (void)
 {
   LDR_STRING *str;
+  char *invalid_pos = NULL;
 
   str = loader_get_string_container ();
   if (str == NULL)
@@ -689,6 +705,14 @@ loader_make_string_by_buffer (void)
 	  str->need_free_val = true;
 	}
     }
+    
+  if (intl_check_string (str->val, str->size, &invalid_pos) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
+	      invalid_pos - str->val);
+      YY_FATAL_ERROR (er_msg());
+      return NULL;
+    }    
 
   return str;
 }

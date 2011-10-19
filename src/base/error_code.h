@@ -1340,9 +1340,15 @@
 
 #define ER_PRM_UNKNOWN_SYSPRM                       -1077
 
-#define ER_PB_ALL_BUFFERS_DIRTY                     -1078
+#define ER_INVALID_CHAR				    -1078
+#define ER_INVALID_SERVER_CHARSET		    -1079
 
-#define ER_LAST_ERROR                               -1079
+#define ER_SM_INVALID_FILTER_PREDICATE_LENGTH       -1080
+#define ER_SM_ALTER_COLUMN_WITH_FILTER_PRED	    -1081
+
+#define ER_PB_ALL_BUFFERS_DIRTY                     -1082
+
+#define ER_LAST_ERROR                               -1083
 
 /*
  * CAUTION!

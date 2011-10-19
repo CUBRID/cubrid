@@ -163,7 +163,8 @@ static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt,
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 				   bool * indexal, TP_DOMAIN * btree_domainp,
 				   int num_term, REGU_VARIABLE * func,
-				   VAL_DESCR * vd, int key_minmax);
+				   VAL_DESCR * vd, int key_minmax,
+				   bool is_iss);
 static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 				       KEY_RANGE * key_ranges,
 				       KEY_VAL_RANGE * key_val_range,
@@ -383,6 +384,19 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  reverse_search = !reverse_search;
 	}
 
+      if (reverse_search)
+	{
+	  /* if we're doing a reverse search we can stop before searching
+	     for first_column < NULL since it won't produce any results */
+	  if (DB_IS_NULL (&isidp->iss.dbval)
+	      || btree_multicol_key_is_null (&isidp->iss.dbval))
+	    {
+	      pr_clear_value (&isidp->iss.dbval);
+	      db_make_null (&isidp->iss.dbval);
+	      return S_END;
+	    }
+	}
+
       /* reverse the search criterion if the first column is descending. */
       kr->range = reverse_search ? INF_LT : GT_INF;
 
@@ -443,7 +457,8 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* as soon as the scan returned, convert the midxkey dbvalue
    * to real db value */
-  if (db_value_is_null (&isidp->iss.dbval))
+  if (db_value_is_null (&isidp->iss.dbval)
+      || btree_multicol_key_is_null (&isidp->iss.dbval))
     {
       return S_END;
     }
@@ -466,9 +481,9 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       db_value_clone (&first_midxkey_val, &tmp);
       db_value_clear (&isidp->iss.dbval);
 
-      /* no need to clear first_midxkey_val, because it was obtain with
-       * pr_midxkey_get_element_nocopy() from iss.dbval, and we cleared
-       * that already. */
+      /* no need to clear first_midxkey_val, because it was obtained
+       * with pr_midxkey_get_element_nocopy() from iss.dbval, and we
+       * cleared that already. */
       db_value_clone (&tmp, &isidp->iss.dbval);
       db_value_clear (&tmp);
     }
@@ -1269,12 +1284,13 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt,
  *   func (in):
  *   vd (in):
  *   key_minmax (in):
+ *   is_iss (in)
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 			bool * indexable, TP_DOMAIN * btree_domainp,
 			int num_term, REGU_VARIABLE * func,
-			VAL_DESCR * vd, int key_minmax)
+			VAL_DESCR * vd, int key_minmax, bool is_iss)
 {
   int ret = NO_ERROR;
   DB_VALUE *val = NULL;
@@ -1361,8 +1377,17 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
       if (DB_IS_NULL (val))
 	{
-	  /* to fix multi-column index NULL problem */
-	  goto end;
+	  if (is_iss && i == 0)
+	    {
+	      /* If this is INDEX SKIP SCAN we allow the first column to be
+	         NULL and we don't need a new domain for it */
+	      continue;
+	    }
+	  else
+	    {
+	      /* to fix multi-column index NULL problem */
+	      goto end;
+	    }
 	}
 
       val_type_id = PRIM_TYPE (val);
@@ -1486,9 +1511,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
       if (DB_IS_NULL (val))
 	{
-	  /* impossible case */
-	  assert (false);
-	  goto end;
+	  if (is_iss && natts == 0)
+	    {
+	      /* We allow the first column to be NULL and we're not writing
+	         it in the MIDXKEY buffer */
+	      continue;
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert (false);
+	      goto end;
+	    }
 	}
 
       if (dom->type->index_lengthval == NULL)
@@ -1561,9 +1595,19 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
       if (DB_IS_NULL (val))
 	{
-	  /* impossible case */
-	  assert (false);
-	  goto end;
+	  if (is_iss && i == 0)
+	    {
+	      /* There is nothing to write for NULL. Just make sure the bit is
+	         not set */
+	      OR_CLEAR_BOUND_BIT (nullmap_ptr, i);
+	      continue;
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert (false);
+	      goto end;
+	    }
 	}
 
       (*((dom->type)->index_writeval)) (&buf, val);
@@ -1729,7 +1773,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	  ret = scan_dbvals_to_midxkey (thread_p, &key_val_range->key1,
 					&indexable, btree_domainp,
 					key_val_range->num_index_term,
-					key_ranges->key1, vd, key_minmax);
+					key_ranges->key1, vd, key_minmax,
+					iscan_id->iss.use);
 	}
       else
 	{
@@ -1781,7 +1826,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	  ret = scan_dbvals_to_midxkey (thread_p, &key_val_range->key2,
 					&indexable, btree_domainp,
 					key_val_range->num_index_term,
-					key_ranges->key2, vd, key_minmax);
+					key_ranges->key2, vd, key_minmax,
+					iscan_id->iss.use);
 	}
       else
 	{
@@ -1839,7 +1885,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	  ret = scan_dbvals_to_midxkey (thread_p, &key_val_range->key2,
 					&indexable, btree_domainp,
 					key_val_range->num_index_term,
-					key_ranges->key1, vd, key_minmax);
+					key_ranges->key1, vd, key_minmax,
+					iscan_id->iss.use);
 	}
       else
 	{

@@ -271,6 +271,7 @@ static int btree_prepare_next_search (THREAD_ENTRY * thread_p,
 				      BTREE_SCAN * bts);
 static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p,
 					     BTREE_SCAN * bts,
+					     bool is_iss,
 					     bool * key_range_satisfied,
 					     bool * key_filter_satisfied);
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p,
@@ -13473,7 +13474,8 @@ exit_on_error:
 /*
  * btree_apply_key_range_and_filter () - Apply key range and key filter condition
  *   return: NO_ERROR
- *   bts(in): pointer to B+-tree scan structure
+ *   bts(in)	: pointer to B+-tree scan structure
+ *   is_iss(in) : true if this is an index skip scan
  *   is_key_range_satisfied(out): true, or false
  *   is_key_filter_satisfied(out): true, or false
  *
@@ -13484,14 +13486,14 @@ exit_on_error:
  */
 static int
 btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
-				  bool * is_key_range_satisfied,
+				  bool is_iss, bool * is_key_range_satisfied,
 				  bool * is_key_filter_satisfied)
 {
   int c;			/* comparison result */
   DB_LOGICAL ev_res;		/* evaluation result */
   DB_MIDXKEY *mkey;		/* midxkey ptr */
   DB_VALUE ep;			/* element ptr */
-  bool is_empty_string;
+  bool allow_null_in_midxkey = false;
   DB_TYPE type;
   int ret = NO_ERROR;
 
@@ -13516,7 +13518,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
       if (DB_IS_NULL (&ep))
 	{
-	  is_empty_string = false;	/* init */
+	  allow_null_in_midxkey = false;	/* init */
 	  if (PRM_ORACLE_STYLE_EMPTY_STRING)
 	    {
 	      if (ep.need_clear)
@@ -13525,12 +13527,21 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		  if (QSTR_IS_ANY_CHAR_OR_BIT (type)
 		      && ep.data.ch.medium.buf != NULL)
 		    {
-		      is_empty_string = true;	/* is Empty-string */
+		      allow_null_in_midxkey = true;	/* is Empty-string */
 		    }
 		}
 	    }
-
-	  if (!is_empty_string)
+	  if (is_iss && bts->key_range.num_index_term == 1
+	      && bts->use_desc_index)
+	    {
+	      /* We're inside an INDEX SKIP SCAN doing a descending scan. We
+	       * allow the first term of a MIDXKEY to be NULL since ISS has
+	       * to return the results for which the first column of the index
+	       * is NULL.
+	       */
+	      allow_null_in_midxkey = true;
+	    }
+	  if (!allow_null_in_midxkey)
 	    {
 	      *is_key_filter_satisfied = false;
 	      goto end;		/* give up */
@@ -15401,6 +15412,7 @@ get_oidcnt_and_oidptr:
 
 	  /* apply key range and key filter to the new key value */
 	  if (btree_apply_key_range_and_filter (thread_p, bts,
+						index_scan_id_p->iss.use,
 						&is_key_range_satisfied,
 						&is_key_filter_satisfied)
 	      != NO_ERROR)

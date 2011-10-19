@@ -1060,7 +1060,6 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 					pt_short_print (parser, lhs));
 			  }
 		      }
-		    lhs->info.name.resolved = NULL;
 		  }
 	      }
 	  }
@@ -2514,6 +2513,25 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       bind_arg->scopes = bind_arg->scopes->next;
 
       /* don't revisit leaves */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_CREATE_INDEX:
+    case PT_ALTER_INDEX:
+    case PT_DROP_INDEX:
+      scopestack.specs = node->info.index.indexed_class;
+      bind_arg->scopes = &scopestack;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+      bind_arg->spec_frames = &spec_frame;
+      pt_bind_scope (parser, bind_arg);
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
+			  pt_bind_names_post, bind_arg);
+
+      bind_arg->spec_frames = bind_arg->spec_frames->next;
+      bind_arg->scopes = bind_arg->scopes->next;
+
       *continue_walk = PT_LIST_WALK;
       break;
 
@@ -5215,6 +5233,9 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 			}
 		      else if (spec_parent
 			       && spec_parent->node_type != PT_SELECT
+			       && spec_parent->node_type != PT_CREATE_INDEX
+			       && spec_parent->node_type != PT_DROP_INDEX
+			       && spec_parent->node_type != PT_ALTER_INDEX
 			       && (spec_parent->node_type != PT_UPDATE
 				   || !IS_UPDATE_OBJ (spec_parent)))
 			{
@@ -5956,11 +5977,11 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
 
   if (case_flag == CASE_INSENSITIVE)
     {
-      return intl_mbs_casecmp (p, q);
+      return intl_identifier_casecmp (p, q);
     }
   else
     {
-      return intl_mbs_cmp (p, q);
+      return intl_identifier_cmp (p, q);
     }
 }
 
@@ -6009,9 +6030,25 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
   /* resolve names in search conditions, assignments, and assignations */
   if (!parser->error_msgs)
     {
+      PT_NODE *idx_name = NULL;
+      if (statement->node_type == PT_CREATE_INDEX
+	  || statement->node_type == PT_ALTER_INDEX
+	  || statement->node_type == PT_DROP_INDEX)
+	{
+	  /* backup the name of the index because it is not part of the 
+	     table spec yet */
+	  idx_name = statement->info.index.index_name;
+	  statement->info.index.index_name = NULL;
+	}
       statement =
 	parser_walk_tree (parser, statement, pt_bind_names, &bind_arg,
 			  pt_bind_names_post, &bind_arg);
+      if (statement && (statement->node_type == PT_CREATE_INDEX
+			|| statement->node_type == PT_ALTER_INDEX
+			|| statement->node_type == PT_DROP_INDEX))
+	{
+	  statement->info.index.index_name = idx_name;
+	}
     }
 
   return statement;
@@ -6336,7 +6373,7 @@ pt_lookup_entity (PARSER_CONTEXT * parser,
 	  if (arg1_of_conj->node_type == PT_NAME)
 	    {
 	      cname = arg1_of_conj->info.name.original;
-	      if (name != NULL && intl_mbs_casecmp (name, cname) == 0)
+	      if (name != NULL && intl_identifier_casecmp (name, cname) == 0)
 		{
 		  found = true;
 		}

@@ -444,7 +444,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = INTL_CODESET_ISO88591;
+      value->data.ch.info.codeset = lang_charset ();
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->domain.general_info.is_null = 0;
@@ -586,7 +586,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = INTL_CODESET_ISO88591;
+      value->data.ch.info.codeset = lang_charset ();
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\377";	/* 255 */
       value->domain.general_info.is_null = 0;
@@ -691,7 +691,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = INTL_CODESET_ISO88591;
+      value->data.ch.info.codeset = lang_charset ();
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = (char *) "";
       value->domain.general_info.is_null = 0;
@@ -1628,7 +1628,7 @@ db_make_string (DB_VALUE * value, const char *str)
 	{
 	  size = 0;
 	}
-      error = db_make_db_char (value, INTL_CODESET_ISO88591, str, size);
+      error = db_make_db_char (value, lang_charset (), str, size);
     }
   return error;
 }
@@ -1652,7 +1652,7 @@ db_make_char (DB_VALUE * value, const int char_length,
   error = db_value_domain_init (value, DB_TYPE_CHAR, char_length, 0);
   if (error == NO_ERROR)
     {
-      error = db_make_db_char (value, INTL_CODESET_ISO88591, str,
+      error = db_make_db_char (value, lang_charset (), str,
 			       char_str_byte_size);
     }
 
@@ -1678,7 +1678,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length,
   error = db_value_domain_init (value, DB_TYPE_VARCHAR, max_char_length, 0);
   if (error == NO_ERROR)
     {
-      error = db_make_db_char (value, INTL_CODESET_ISO88591, str,
+      error = db_make_db_char (value, lang_charset (), str,
 			       char_str_byte_size);
     }
 
@@ -2125,6 +2125,7 @@ db_make_monetary (DB_VALUE * value,
     case DB_CURRENCY_YEN:
     case DB_CURRENCY_POUND:
     case DB_CURRENCY_WON:
+    case DB_CURRENCY_TL:
       error = NO_ERROR;		/* it's a type we expect */
       break;
     default:
@@ -2168,6 +2169,7 @@ db_value_put_monetary_currency (DB_VALUE * value, DB_CURRENCY const type)
     case DB_CURRENCY_YEN:
     case DB_CURRENCY_POUND:
     case DB_CURRENCY_WON:
+    case DB_CURRENCY_TL:
       error = NO_ERROR;		/* it's a type we expect */
       break;
     default:
@@ -3292,7 +3294,7 @@ transfer_string (char *dst, int *xflen, int *outlen,
 	{
 	  ptr = qstr_pad_string ((unsigned char *) &dst[srclen],
 				 (int) ((dstlen - srclen -
-					 1) / qstr_pad_size (codeset)),
+					 1) / intl_pad_size (codeset)),
 				 codeset);
 	  *xflen = CAST_STRLEN ((char *) ptr - (char *) dst);
 	}
@@ -3503,7 +3505,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	      sprintf (tmp, "%d", i);
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -3565,7 +3567,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	      sprintf (tmp, "%d", s);
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -3621,7 +3623,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	      sprintf (tmp, "%lld", (long long) bigint);
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -3683,7 +3685,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	      sprintf (tmp, "%f", (DB_C_DOUBLE) f);
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -3745,7 +3747,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	      sprintf (tmp, "%f", (DB_C_DOUBLE) d);
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -3819,7 +3821,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	      sprintf (tmp, "%4.2f", (DB_C_DOUBLE) d);
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -3926,14 +3928,12 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	  case DB_TYPE_C_CHAR:
 	  case DB_TYPE_C_VARCHAR:
 	    error_code = transfer_string ((char *) buf, xflen, outlen, buflen,
-					  s, n, c_type,
-					  INTL_CODESET_ISO88591);
+					  s, n, c_type, lang_charset ());
 	    break;
 	  case DB_TYPE_C_NCHAR:
 	  case DB_TYPE_C_VARNCHAR:
 	    error_code = transfer_string ((char *) buf, xflen, outlen, buflen,
-					  s, n, c_type,
-					  INTL_CODESET_ISO88591);
+					  s, n, c_type, lang_charset ());
 	    break;
 
 	  default:
@@ -3998,7 +3998,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 		}
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -4046,7 +4046,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 		}
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 
 	    }
 	    break;
@@ -4097,7 +4097,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 		}
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 
 	    }
 	    break;
@@ -4145,7 +4145,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 		}
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp,
-				 strlen (tmp), c_type, INTL_CODESET_ISO88591);
+				 strlen (tmp), c_type, lang_charset ());
 	    }
 	    break;
 	  case DB_TYPE_C_NCHAR:
@@ -4355,7 +4355,7 @@ unsupported_conversion:
  * value(in/out): DB_VALUE container for result.  This also contains the DB
  *                type to convert to.
  * buf(in)      : Pointer to character buffer
- * buflen(in)   : Length of character buffer
+ * buflen(in)   : Length of character buffer (size in bytes)
  *
  */
 static int
@@ -4451,7 +4451,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 
 	db_value_domain_init (&tmp_value, db_type,
 			      DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	if (db_string_value (buf, "%H", &tmp_value) == NULL)
+	if (db_string_value (buf, buflen, "%H", &tmp_value) == NULL)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
@@ -4490,7 +4490,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_DATETIME:
     case DB_TYPE_MONETARY:
-      if (db_string_value (buf, "", value) == NULL)
+      if (db_string_value (buf, buflen, "", value) == NULL)
 	{
 	  status = C_TO_VALUE_CONVERSION_ERROR;
 	}

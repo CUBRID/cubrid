@@ -62,6 +62,8 @@
 #include "xserver_interface.h"
 #include "boot_sr.h"
 #include "chartype.h"
+#include "query_executor.h"
+#include "fetch.h"
 
 /* For getting and dumping attributes */
 #include "language_support.h"
@@ -675,14 +677,25 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid,
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes,
 					 DB_MIDXKEY * midxkey,
 					 OR_INDEX * index,
-					 HEAP_CACHE_ATTRINFO * attrinfo);
+					 HEAP_CACHE_ATTRINFO * attrinfo,
+					 DB_VALUE * func_res);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p,
 					      RECDES * recdes,
 					      DB_MIDXKEY * midxkey,
 					      int *att_ids,
-					      HEAP_CACHE_ATTRINFO * attrinfo);
+					      HEAP_CACHE_ATTRINFO * attrinfo,
+					      DB_VALUE * func_res,
+					      int func_col_id,
+					      int func_attr_index_start);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
+
+static int heap_eval_function_index (THREAD_ENTRY * thread_p,
+				     FUNCTION_INDEX_INFO * func_index_info,
+				     int n_atts, int *att_ids,
+				     HEAP_CACHE_ATTRINFO * attr_info,
+				     RECDES * recdes, int btid_index,
+				     DB_VALUE * result);
 
 static DISK_ISVALID heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk);
 static DISK_ISVALID heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk);
@@ -711,6 +724,7 @@ static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 					     VPID * vpid_ptr, int new_page,
 					     LOCK lock,
 					     HEAP_SCANCACHE * scan_cache);
+
 /*
  * heap_scan_pb_lock_and_fetch () -
  *   return:
@@ -14917,33 +14931,54 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid,
  */
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
-		      OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo)
+		      OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
+		      DB_VALUE * func_res)
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
-  int num_atts, i;
+  int num_atts, i, k;
   DB_VALUE value;
   OR_BUF buf;
   int error = NO_ERROR;
 
   num_atts = index->n_atts;
   atts = index->atts;
-
+  if (func_res)
+    {
+      num_atts = index->func_index_info->attr_index_start + 1;
+    }
   assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
 
   or_init (&buf, midxkey->buf, -1);
 
   nullmap_ptr = midxkey->buf;
   or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_atts));
-
-  for (i = 0; i < num_atts; i++)
+  k = 0;
+  for (i = 0; i < num_atts && k < num_atts; i++)
     {
+      if (index->func_index_info && (i == index->func_index_info->col_id))
+	{
+	  if (!db_value_is_null (func_res))
+	    {
+	      TP_DOMAIN *domain =
+		tp_domain_resolve_default (func_res->domain.general_info.
+					   type);
+	      (*(domain->type->index_writeval)) (&buf, func_res);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	    }
+	  k++;
+	}
+      if (k == num_atts)
+	{
+	  break;
+	}
       error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
       if (error == NO_ERROR && !db_value_is_null (&value))
 	{
 	  (*(atts[i]->domain->type->index_writeval)) (&buf, &value);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
+	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
+      k++;
     }
 
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
@@ -14964,10 +14999,12 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
 			   DB_MIDXKEY * midxkey, int *att_ids,
-			   HEAP_CACHE_ATTRINFO * attrinfo)
+			   HEAP_CACHE_ATTRINFO * attrinfo,
+			   DB_VALUE * func_res, int func_col_id,
+			   int func_attr_index_start)
 {
   char *nullmap_ptr;
-  int num_vals, i, reprid;
+  int num_vals, i, reprid, k;
   OR_ATTRIBUTE *att;
   DB_VALUE value;
   OR_BUF buf;
@@ -15000,18 +15037,39 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
 
   /* On constructing index */
   num_vals = attrinfo->num_values;
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
-
-  for (i = 0; i < num_vals; i++)
+  if (func_res)
     {
+      num_vals = func_attr_index_start + 1;
+    }
+  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
+  k = 0;
+  for (i = 0; i < num_vals && k < num_vals; i++)
+    {
+      if (i == func_col_id)
+	{
+	  if (!db_value_is_null (func_res))
+	    {
+	      TP_DOMAIN *domain =
+		tp_domain_resolve_default (func_res->domain.general_info.
+					   type);
+	      (*(domain->type->index_writeval)) (&buf, func_res);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	    }
+	  k++;
+	}
+      if (k == num_vals)
+	{
+	  break;
+	}
       att = heap_locate_attribute (att_ids[i], attrinfo);
 
       error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
       if (error == NO_ERROR && !db_value_is_null (&value))
 	{
 	  (*(att->domain->type->index_writeval)) (&buf, &value);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
+	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
+      k++;
     }
 
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
@@ -15051,15 +15109,31 @@ DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 			    int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes,
-			    DB_VALUE * db_value, char *buf)
+			    DB_VALUE * db_value, char *buf,
+			    FUNCTION_INDEX_INFO * func_index_info)
 {
   DB_VALUE *ret_val;
-
+  DB_VALUE *fi_res = NULL;
+  int fi_attr_index_start = -1;
+  int fi_col_id = -1;
+  if (func_index_info)
+    {
+      fi_attr_index_start = func_index_info->attr_index_start;
+      fi_col_id = func_index_info->col_id;
+      if (heap_eval_function_index
+	  (thread_p, func_index_info, n_atts, att_ids, attr_info, recdes, -1,
+	   db_value) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      fi_res = db_value;
+    }
   /*
    *  Multi-column index.  The key is a sequence of the attribute values.
    *  Return a pointer to the attributes DB_VALUE.
    */
-  if (n_atts > 1)
+  if ((n_atts > 1 && func_index_info == NULL)
+      || (func_index_info && (func_index_info->attr_index_start + 1) > 1))
     {
       DB_MIDXKEY midxkey;
 
@@ -15078,7 +15152,8 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 	}
 
       if ((heap_midxkey_key_generate
-	   (thread_p, recdes, &midxkey, att_ids, attr_info)) == NULL)
+	   (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res,
+	    fi_col_id, fi_attr_index_start)) == NULL)
 	{
 	  return NULL;
 	}
@@ -15098,6 +15173,11 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
        *  Single-column index.  The key is simply the value of the attribute.
        *  Return a pointer to the attributes DB_VALUE.
        */
+      if (func_index_info)
+	{
+	  ret_val = db_value;
+	  return ret_val;
+	}
       ret_val = heap_attrinfo_access (att_ids[0], attr_info);
 
       if (ret_val != NULL && atts_prefix_length && n_atts == 1)
@@ -15153,7 +15233,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
   OR_INDEX *index;
   int n_atts, reprid;
   DB_VALUE *ret_val = NULL;
-
+  DB_VALUE *fi_res = NULL;
   /*
    *  check to make sure the idx_attrinfo has been used, it should
    *  never be empty.
@@ -15187,12 +15267,25 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
   n_atts = index->n_atts;
   *btid = index->btid;
 
+  /* is function index */
+  if (index->func_index_info)
+    {
+      if (heap_eval_function_index (thread_p, NULL, -1, NULL, idx_attrinfo,
+				    recdes, btid_index, db_value) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      fi_res = db_value;
+    }
+
   /*
    *  Multi-column index.  Construct the key as a sequence of attribute
    *  values.  The sequence is contained in the passed DB_VALUE.  A
    *  pointer to this DB_VALUE is returned.
    */
-  if (n_atts > 1 && recdes != NULL)
+  if ((n_atts > 1 && recdes != NULL && index->func_index_info == NULL)
+      || (index->func_index_info
+	  && (index->func_index_info->attr_index_start + 1) > 1))
     {
       DB_MIDXKEY midxkey;
 
@@ -15210,8 +15303,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	  midxkey.buf = buf;
 	}
 
-      if ((heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo)) ==
-	  NULL)
+      if ((heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo,
+				 fi_res)) == NULL)
 	{
 	  return NULL;
 	}
@@ -15233,6 +15326,11 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
        */
 
       /* Find the matching attribute identified by the attribute ID */
+      if (fi_res)
+	{
+	  ret_val = fi_res;
+	  return ret_val;
+	}
       ret_val = heap_attrinfo_access (index->atts[0]->id, idx_attrinfo);
 
       if (ret_val != NULL && index->attrs_prefix_length != NULL
@@ -18530,7 +18628,7 @@ heap_get_btid_from_index_name (THREAD_ENTRY * thread_p,
 	  goto exit_cleanup;
 	}
 
-      if (intl_mbs_casecmp (curr_index->btname, index_name) == 0)
+      if (intl_identifier_casecmp (curr_index->btname, index_name) == 0)
 	{
 	  BTID_COPY (p_found_btid, &(curr_index->btid));
 	  break;
@@ -18848,5 +18946,136 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 
 exit:
   pr_clear_value (&orig_value);
+  return error;
+}
+
+/*
+ * heap_eval_function_index - evaluate the result of the expression used in
+ *			      a function index.
+ *
+ *    thread_p(in) : thread context
+ *    func_index_info(in): function index information
+ *    n_atts(in): number of attributes involved
+ *    att_ids(in): attribute identifiers
+ *    attr_info(in): attribute info structure
+ *    recdes(in): record descriptor
+ *    btid_index: id of the function index used
+ *    return: error code
+ */
+static int
+heap_eval_function_index (THREAD_ENTRY * thread_p,
+			  FUNCTION_INDEX_INFO * func_index_info,
+			  int n_atts, int *att_ids,
+			  HEAP_CACHE_ATTRINFO * attr_info,
+			  RECDES * recdes, int btid_index, DB_VALUE * result)
+{
+  int error = NO_ERROR;
+  OR_INDEX *index = NULL;
+  char *expr_stream = NULL;
+  int expr_stream_size;
+  FUNC_PRED *func_pred;
+  void *fi_cache_context = NULL;
+  DB_VALUE *res;
+  REGU_VARIABLE *regu_var;
+  int nr_atts;
+  ATTR_ID *atts;
+  bool atts_free = false, attrinfo_end = false;
+
+  if (func_index_info == NULL && btid_index > -1 && n_atts == -1)
+    {
+      int i;
+      index = &(attr_info->last_classrepr->indexes[btid_index]);
+      expr_stream = index->func_index_info->expr_stream;
+      expr_stream_size = index->func_index_info->expr_stream_size;
+      nr_atts = index->n_atts;
+      atts = (ATTR_ID *) malloc (nr_atts * sizeof (ATTR_ID));
+      atts_free = true;
+      for (i = 0; i < nr_atts; i++)
+	{
+	  atts[i] = index->atts[i]->id;
+	}
+    }
+  else
+    {
+      expr_stream = func_index_info->expr_stream;
+      expr_stream_size = func_index_info->expr_stream_size;
+      nr_atts = n_atts;
+      atts = att_ids;
+    }
+  if (stx_map_stream_to_func_pred (NULL, (FUNC_PRED **) & func_pred,
+				   expr_stream, expr_stream_size,
+				   &fi_cache_context))
+    {
+      return ER_FAILED;
+    }
+
+  if ((attr_info->num_values == 0)
+      || (attr_info->values
+	  && (&attr_info->values[0])->state == HEAP_UNINIT_ATTRVALUE))
+    {
+      if (heap_attrinfo_start (thread_p, &attr_info->class_oid, n_atts,
+			       att_ids, attr_info) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes,
+				       attr_info) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      attrinfo_end = true;
+    }
+
+  regu_var = func_pred->func_regu;
+  regu_var->value.attr_descr.cache_attrinfo = attr_info;
+  if (regu_var->type == TYPE_INARITH)
+    {
+      ARITH_TYPE *arith = regu_var->value.arithptr;
+      if (arith->leftptr && arith->leftptr->type == TYPE_ATTR_ID)
+	{
+	  arith->leftptr->value.attr_descr.cache_attrinfo = attr_info;
+	}
+      if (arith->rightptr && arith->rightptr->type == TYPE_ATTR_ID)
+	{
+	  arith->rightptr->value.attr_descr.cache_attrinfo = attr_info;
+	}
+      if (arith->thirdptr && arith->thirdptr->type == TYPE_ATTR_ID)
+	{
+	  arith->thirdptr->value.attr_descr.cache_attrinfo = attr_info;
+	}
+    }
+  else
+    {
+      if (regu_var->type == TYPE_FUNC)
+	{
+	  FUNCTION_TYPE *funcp = regu_var->value.funcp;
+	  REGU_VARIABLE_LIST operand = funcp->operand;
+	  while (operand != NULL)
+	    {
+	      REGU_VARIABLE *rv = &operand->value;
+	      if (rv->type == TYPE_ATTR_ID)
+		{
+		  rv->value.attr_descr.cache_attrinfo = attr_info;
+		}
+	      operand = operand->next;
+	    }
+	}
+    }
+  error = fetch_peek_dbval (NULL, func_pred->func_regu, NULL,
+			    &attr_info->class_oid, &attr_info->inst_oid, NULL,
+			    &res);
+  if (error == NO_ERROR)
+    {
+      pr_clone_value (res, result);
+    }
+  if (attrinfo_end)
+    {
+      heap_attrinfo_clear_dbvalues (attr_info);
+    }
+  if (atts_free)
+    {
+      free_and_init (atts);
+    }
+
   return error;
 }

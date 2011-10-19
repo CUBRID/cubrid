@@ -117,12 +117,11 @@ static int rv;
 #define CATALOG_DISK_ATTR_TYPE_OFF       8
 #define CATALOG_DISK_ATTR_VAL_LENGTH_OFF 12
 #define CATALOG_DISK_ATTR_POSITION_OFF   16
-#define CATALOG_DISK_ATTR_DFLT_EXPR_OFF  20
-#define CATALOG_DISK_ATTR_CLASSOID_OFF   24
-#define CATALOG_DISK_ATTR_MIN_VALUE_OFF  32
-#define CATALOG_DISK_ATTR_MAX_VALUE_OFF  48
-#define CATALOG_DISK_ATTR_N_BTSTATS_OFF  64
-#define CATALOG_DISK_ATTR_SIZE           116
+#define CATALOG_DISK_ATTR_CLASSOID_OFF   20
+#define CATALOG_DISK_ATTR_MIN_VALUE_OFF  28
+#define CATALOG_DISK_ATTR_MAX_VALUE_OFF  44
+#define CATALOG_DISK_ATTR_N_BTSTATS_OFF  60
+#define CATALOG_DISK_ATTR_SIZE           112
 
 #define CATALOG_BT_STATS_BTID_OFF        0
 #define CATALOG_BT_STATS_LEAFS_OFF       OR_BTID_ALIGNED_SIZE
@@ -443,7 +442,7 @@ catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p)
   attr_p->value = NULL;
   attr_p->val_length = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_VAL_LENGTH_OFF);
   attr_p->position = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_POSITION_OFF);
-  attr_p->default_expr = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_DFLT_EXPR_OFF);
+  attr_p->default_expr = DB_DEFAULT_NONE;
 
   OR_GET_OID (rec_p + CATALOG_DISK_ATTR_CLASSOID_OFF, &attr_p->classoid);
   memcpy (&attr_p->min_value, rec_p + CATALOG_DISK_ATTR_MIN_VALUE_OFF,
@@ -488,7 +487,6 @@ catalog_put_disk_attribute (char *rec_p, DISK_ATTR * attr_p)
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_TYPE_OFF, attr_p->type);
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_VAL_LENGTH_OFF, attr_p->val_length);
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_POSITION_OFF, attr_p->position);
-  OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_DFLT_EXPR_OFF, attr_p->default_expr);
   OR_PUT_OID (rec_p + CATALOG_DISK_ATTR_CLASSOID_OFF, &attr_p->classoid);
 
   memcpy (rec_p + CATALOG_DISK_ATTR_MIN_VALUE_OFF, &attr_p->min_value,

@@ -44,11 +44,12 @@ extern PT_NODE *pt_semantic_check (PARSER_CONTEXT * parser,
 
 extern PT_NODE *pt_invert (PARSER_CONTEXT * parser,
 			   PT_NODE * name_expr, PT_NODE * result);
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern PT_NODE *pt_find_attr_def (const PT_NODE * attr_def_list,
 				  const PT_NODE * name);
 extern PT_NODE *pt_find_cnstr_def (const PT_NODE * cnstr_def_list,
 				   const PT_NODE * name);
+#endif
 
 extern PT_NODE *pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * node,
 				  PT_NODE * prev_entity,

@@ -82,12 +82,11 @@ enum pt_order_by_adjustment
   PT_TIMES_TWO
 };
 
-/* structure used for parser_walk_tree in pt_fix_lck_classes_for_delete */
-typedef struct pt_delete_locks_arg PT_DELETE_LOCKS_ARG;
-struct pt_delete_locks_arg
+typedef struct pt_prefetch_helper_arg PT_PREFETCH_HELPER_ARG;
+struct pt_prefetch_helper_arg
 {
-  PT_CLASS_LOCKS *lcks;		/* locks array */
-  PT_NODE *spec;		/* DELETE spec */
+  PT_CLASS_LOCKS *lcks;		/* prefetch locks array */
+  PT_NODE *spec;		/* specs to look in */
   PT_NODE *name;		/* name of class to look for */
 };
 
@@ -110,6 +109,15 @@ static PT_NODE *pt_find_lck_class_from_name (PARSER_CONTEXT * parser,
 static PT_NODE *pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser,
 					       PT_NODE * node, void *arg,
 					       int *continue_walk);
+static PT_NODE *pt_set_locks_for_parenthesized_entity_list (PARSER_CONTEXT *
+							    parser,
+							    PT_NODE * node,
+							    void *arg,
+							    int
+							    *continue_walk);
+static int pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser,
+					  PT_CLASS_LOCKS * lcks,
+					  PT_NODE * statement);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str);
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *arg,
@@ -434,6 +442,7 @@ PT_NODE *
 pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
+  int error = NO_ERROR;
   lcks.classes = NULL;
   lcks.only_all = NULL;
   lcks.locks = NULL;
@@ -475,6 +484,13 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       pt_count_names, &cnt, NULL, NULL);
       lcks.num_classes += cnt;
     }
+  else if (statement->node_type == PT_UPDATE)
+    {
+      /* We first set a DB_FETCH_CLREAD_INSTREAD lock for each encountered
+         spec and then a DB_FETCH_CLREAD_INSTWRITE lock for each spec that
+         will be updated, so, in the worst case we need a double space. */
+      lcks.num_classes *= 2;
+    }
 
   /* allocate the arrays */
   lcks.classes = (char **) malloc ((lcks.num_classes + 1) * sizeof (char *));
@@ -515,7 +531,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->node_type == PT_DELETE)
     {
       /* set DB_FETCH_CLREAD_INSTWRITE for classes subject to delete */
-      PT_DELETE_LOCKS_ARG delete_lcks_data;
+      PT_PREFETCH_HELPER_ARG delete_lcks_data;
 
       delete_lcks_data.lcks = &lcks;
       delete_lcks_data.spec = statement->info.delete_.spec;
@@ -524,6 +540,16 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       (void) parser_walk_tree (parser, statement->info.delete_.target_classes,
 			       pt_fix_lck_classes_for_delete,
 			       &delete_lcks_data, NULL, NULL);
+    }
+  else if (statement->node_type == PT_UPDATE)
+    {
+      /* Set DB_FETCH_CLREAD_INSTWRITE for each spec that will be updated */
+      lcks.lock_type = DB_FETCH_CLREAD_INSTWRITE;
+      error = pt_fix_lck_classes_for_update (parser, &lcks, statement);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
   if (!parser->error_msgs
@@ -661,13 +687,15 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
  *   continue_walk(in):
  *
  * Note :
- * When encountering a statment starting node (PT_UPDATE, PT_DELETE, PT_INSERT,
+ * When encountering a statement starting node (PT_INSERT,
  * PT_SELECT, PT_UNION, PT_DIFFERENCE, or PT_INTERSECTION) it will set
  * the correct lock mode for the first entity in the statement.
- * All other entities will be fetched in with a read lock mode.
+ * All other entities will be fetched in with a read lock mode. Also, for the
+ * PT_UPDATE and PT_DELETE all antities will be fetched in with a read lock
+ * mode.
  *
  * This will only work when the writable class is the first class encountered
- * during the walk on a PT_UPDATE, PT_DELETE, or a PT_INSERT tree.
+ * during the walk on a PT_INSERT tree.
  * If this is not the case, this routine will request the wrong locks and will
  * aggravate the deadlock situation, not help alleviate it
  */
@@ -682,20 +710,18 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
    * read only (see WARNING in function header of pt_find_lck_classes. */
   switch (node->node_type)
     {
-    case PT_DELETE:
-      lcks->lock_type = DB_FETCH_CLREAD_INSTREAD;
-      break;
     case PT_UPDATE:
       /* If this is actually an UPDATE OBJECT statement, we only want
        * to lock the actual instance being updated; getting a general
        * update lock inhibits concurrency.
        */
       lcks->lock_type = (node->info.update.object_parameter)
-	? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTWRITE;
+	? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTREAD;
       break;
     case PT_INSERT:
       lcks->lock_type = DB_FETCH_CLREAD_INSTWRITE;
       break;
+    case PT_DELETE:
     case PT_SELECT:
     case PT_UNION:
     case PT_DIFFERENCE:
@@ -753,7 +779,7 @@ static PT_NODE *
 pt_find_lck_class_from_name (PARSER_CONTEXT * parser, PT_NODE * node,
 			     void *arg, int *continue_walk)
 {
-  PT_DELETE_LOCKS_ARG *data = (PT_DELETE_LOCKS_ARG *) arg;
+  PT_PREFETCH_HELPER_ARG *data = (PT_PREFETCH_HELPER_ARG *) arg;
   PT_CLASS_LOCKS *lcks = data->lcks;
   const char *class_name = NULL;
   PT_NODE *found_spec = NULL;
@@ -795,7 +821,8 @@ pt_find_lck_class_from_name (PARSER_CONTEXT * parser, PT_NODE * node,
 	      break;
 	    }
 	}
-      else if (node->info.spec.entity_name != NULL)
+      else if (node->info.spec.entity_name != NULL
+	       && node->info.spec.entity_name->node_type == PT_NAME)
 	{
 	  if (pt_str_compare (node->info.spec.entity_name->info.name.original,
 			      class_name, CASE_INSENSITIVE) == 0)
@@ -810,21 +837,31 @@ pt_find_lck_class_from_name (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
     }
 
-  if (found_spec == NULL || found_spec->info.spec.entity_name == NULL
-      || found_spec->info.spec.entity_name->node_type != PT_NAME)
+  if (found_spec == NULL || found_spec->info.spec.entity_name == NULL)
     {
       return node;
     }
 
-  /* only add to the array, if not there already in this lock mode. */
-  if (!pt_in_lck_array (lcks,
-			found_spec->info.spec.entity_name->info.name.
-			original))
+  if (found_spec->info.spec.entity_name->node_type != PT_NAME)
     {
-      if (pt_add_lock_class (parser, lcks, found_spec) != NO_ERROR)
+      /* if this is a parenthesized entity list we need special
+       * treatment */
+      parser_walk_tree (parser, found_spec->info.spec.entity_name,
+			pt_set_locks_for_parenthesized_entity_list, lcks,
+			NULL, NULL);
+    }
+  else
+    {
+      /* only add to the array, if not there already in this lock mode. */
+      if (!pt_in_lck_array (lcks,
+			    found_spec->info.spec.entity_name->info.name.
+			    original))
 	{
-	  *continue_walk = PT_STOP_WALK;
-	  return node;
+	  if (pt_add_lock_class (parser, lcks, found_spec) != NO_ERROR)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	      return node;
+	    }
 	}
     }
 
@@ -844,7 +881,7 @@ static PT_NODE *
 pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser, PT_NODE * node,
 			       void *arg, int *continue_walk)
 {
-  PT_DELETE_LOCKS_ARG *data = (PT_DELETE_LOCKS_ARG *) arg;
+  PT_PREFETCH_HELPER_ARG *data = (PT_PREFETCH_HELPER_ARG *) arg;
   PT_NODE *found_spec = NULL;
 
   /* if its not a PT_NAME node, there's nothing left to do */
@@ -885,6 +922,238 @@ pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * pt_set_locks_for_parenthesized_entity_list () - add specs in the
+ *    parenthesized entity list to the prefetch structure with the correct
+ *    lock mode.
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check, returns node unchanged
+ *   arg(in/out): pointer to PT_CLASS_LOCKS structure
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_set_locks_for_parenthesized_entity_list (PARSER_CONTEXT * parser,
+					    PT_NODE * node, void *arg,
+					    int *continue_walk)
+{
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      *continue_walk = PT_LIST_WALK;
+      break;
+    case PT_SPEC:
+      if (node->info.spec.entity_name->node_type == PT_NAME)
+	{
+	  PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
+
+	  /* add lock for the spec if it is not already in the locks list */
+	  if (!pt_in_lck_array
+	      (lcks, node->info.spec.entity_name->info.name.original))
+	    {
+	      pt_add_lock_class (parser, lcks, node);
+	    }
+	}
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_fix_lck_classes_for_update () - add classes referenced in the left side
+ *	of assignments to the locks list with DB_FETCH_CLREAD_INSTWRITE.
+ *   return:
+ *   parser(in):
+ *   lcks(in/out): pointer to PT_CLASS_LOCKS structure
+ *   statement(in): update statement
+ */
+static int
+pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
+			       PT_NODE * statement)
+{
+  PT_NODE *found_spec = NULL;
+  int error = NO_ERROR;
+
+  /* check for spec null pointer */
+  if (statement->info.update.spec == NULL)
+    {
+      if (statement->info.update.object_parameter != NULL)
+	{
+	  return NO_ERROR;
+	}
+      PT_INTERNAL_ERROR (parser, "invalid spec");
+      return ER_GENERIC_ERROR;
+    }
+
+  /* If there is only one table in the UPDATE list, set the correct lock and
+   * exit */
+  if (statement->info.update.spec->next == NULL)
+    {
+      found_spec = statement->info.update.spec;
+      if (found_spec->info.spec.entity_name == NULL)
+	{
+	  return NO_ERROR;
+	}
+
+      /* check if this is a parenthesized entity list. If so then need special
+       * treatment */
+      if (found_spec->info.spec.entity_name->node_type != PT_NAME)
+	{
+	  parser_walk_tree (parser, found_spec->info.spec.entity_name,
+			    pt_set_locks_for_parenthesized_entity_list, lcks,
+			    NULL, NULL);
+	}
+      else
+	{
+	  /* add lock for the spec if it is not already in the locks list */
+	  if (!pt_in_lck_array (lcks,
+				found_spec->info.spec.entity_name->info.name.
+				original))
+	    {
+	      error = pt_add_lock_class (parser, lcks, found_spec);
+	    }
+	}
+
+      return error;
+    }
+
+  /* Search entity_name with PT_NAME type */
+  found_spec = statement->info.update.spec;
+  while (found_spec != NULL && found_spec->info.spec.entity_name
+	 && found_spec->info.spec.entity_name->node_type == PT_SPEC)
+    {
+      found_spec = found_spec->info.spec.entity_name;
+    }
+  /* if the first spec is resolved then we assume that all entities are
+     resolved. We iterate through assignments and we use spec id for search
+     of specs that will be updated. */
+  if (found_spec != NULL && pt_resolved (found_spec->info.spec.entity_name))
+    {
+      PT_ASSIGNMENTS_HELPER ea;
+      pt_init_assignments_helper (parser, &ea,
+				  statement->info.update.assignment);
+      while (pt_get_next_assignment (&ea))
+	{
+	  found_spec = pt_find_spec_in_from_list (parser, statement, ea.lhs);
+	  if (found_spec == NULL || found_spec->info.spec.entity_name == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "invalid spec");
+	      return ER_GENERIC_ERROR;
+	    }
+
+	  /* check if this is a parenthesized entity list. If so then need
+	   * special treatment */
+	  if (found_spec->info.spec.entity_name->node_type != PT_NAME)
+	    {
+	      parser_walk_tree (parser, found_spec->info.spec.entity_name,
+				pt_set_locks_for_parenthesized_entity_list,
+				lcks, NULL, NULL);
+	    }
+	  else
+	    {
+	      /* only add to the array, if not there already in this lock
+	       * mode. */
+	      if (!pt_in_lck_array
+		  (lcks,
+		   found_spec->info.spec.entity_name->info.name.original))
+		{
+		  error = pt_add_lock_class (parser, lcks, found_spec);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
+	}
+    }
+  else
+    {
+      /* here we don't have names resolved */
+      PT_PREFETCH_HELPER_ARG data;
+      PT_NODE *assign = statement->info.update.assignment, *node = NULL;
+
+      data.lcks = lcks;
+      data.name = node;
+      data.spec = statement->info.update.spec;
+
+      /* iterate through assignments */
+      while (assign)
+	{
+	  if (assign->node_type != PT_EXPR || assign->info.expr.arg1 == NULL)
+	    {
+	      /* because in this point we haven't checked yet semantics we can
+	       * have some invalid assignments */
+	      break;
+	    }
+	  node = assign->info.expr.arg1;
+	  if (node->node_type != PT_DOT_
+	      || node->info.dot.arg1->node_type != PT_NAME)
+	    {
+	      /* if the first argument of assignment is not a dot expression
+	         or the left argument a name we just ignore the updatable spec
+	         searching and assume that any spec can be updated */
+	      break;
+	    }
+
+	  /* search spec from name node */
+	  data.name = node->info.dot.arg1;
+	  (void) parser_walk_tree (parser, data.spec,
+				   pt_find_lck_class_from_name, &data, NULL,
+				   NULL);
+	  assign = assign->next;
+	}
+
+      if (assign)
+	{
+	  /* It seems that we cannot find the updatable specs so we assume
+	   * that any spec can be updated and we just lock all specs for write
+	   */
+	  found_spec = statement->info.update.spec;
+	  while (found_spec)
+	    {
+	      /* skip subqueries */
+	      if (found_spec->info.spec.entity_name == NULL)
+		{
+		  found_spec = found_spec->next;
+		  continue;
+		}
+	      if (found_spec->info.spec.entity_name->node_type == PT_NAME)
+		{
+		  /* ignore if this spec with this lock is already there */
+		  if (!pt_in_lck_array (lcks,
+					found_spec->info.spec.entity_name->
+					info.name.original))
+		    {
+		      error = pt_add_lock_class (parser, lcks, found_spec);
+		      if (error != NO_ERROR)
+			{
+			  return error;
+			}
+		    }
+		}
+	      else
+		{
+		  /* if this is a parenthesized entity list we need special
+		   * treatment */
+		  parser_walk_tree (parser, found_spec->info.spec.entity_name,
+				    pt_set_locks_for_parenthesized_entity_list,
+				    lcks, NULL, NULL);
+		}
+
+	      found_spec = found_spec->next;
+	    }
+
+	  return error;
+	}
+    }
+
+  return error;
+}
+
+/*
  * pt_in_lck_array () -
  *   return: true if string found in array with given lockmode, false otherwise
  *   lcks(in):
@@ -899,7 +1168,7 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str)
   chk_lock = locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
   for (i = 0; i < lcks->num_classes; i++)
     {
-      if (intl_mbs_casecmp (str, lcks->classes[i]) == 0
+      if (intl_identifier_casecmp (str, lcks->classes[i]) == 0
 	  && lcks->locks[i] == chk_lock)
 	{
 	  return true;

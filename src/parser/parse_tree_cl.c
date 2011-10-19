@@ -114,6 +114,7 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser,
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser,
 						PARSER_VARCHAR * buf,
 						const PT_NODE * value);
+static bool pt_is_function_indexable_op (PT_OP_TYPE op);
 
 static void pt_init_apply_f (void);
 static void pt_init_init_f (void);
@@ -204,6 +205,8 @@ static PT_NODE *pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p,
 					PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p,
 				   PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p,
+				       PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p,
 				      PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p,
@@ -343,6 +346,7 @@ static PT_NODE *pt_init_alter_user (PT_NODE * p);
 static PT_NODE *pt_init_attr_def (PT_NODE * p);
 static PT_NODE *pt_init_attr_ordering (PT_NODE * p);
 static PT_NODE *pt_init_auth_cmd (PT_NODE * p);
+static PT_NODE *pt_init_check_option (PT_NODE * p);
 static PT_NODE *pt_init_commit_work (PT_NODE * p);
 static PT_NODE *pt_init_constraint (PT_NODE * node);
 static PT_NODE *pt_init_create_entity (PT_NODE * p);
@@ -410,6 +414,8 @@ static PARSER_VARCHAR *pt_print_auth_cmd (PARSER_CONTEXT * parser,
 					  PT_NODE * p);
 static PARSER_VARCHAR *pt_print_auto_increment (PARSER_CONTEXT * parser,
 						PT_NODE * p);
+static PARSER_VARCHAR *pt_print_check_option (PARSER_CONTEXT * parser,
+					      PT_NODE * p);
 static PARSER_VARCHAR *pt_print_commit_work (PARSER_CONTEXT * parser,
 					     PT_NODE * p);
 static PARSER_VARCHAR *pt_print_constraint (PARSER_CONTEXT * parser,
@@ -1658,7 +1664,7 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
   if (LANG_VARIABLE_CHARSET (lang_charset ()))
     {
       parser->next_char = dbcs_get_next;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
   else
     {
@@ -1666,10 +1672,10 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
       /* It would be a nice optimization to use strcasecmp
        * if we are doing a Latin 8 bit character set. Unfortunately,
        * strcasesmp is braindamaged about 8 bit ascii, so this
-       * is not a safe optimization. Perhaps intl_mbs_casecmp can be
+       * is not a safe optimization. Perhaps intl_identifier_casecmp can be
        * further optimized for the single byte character case.
        */
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
 
   parser->strings_have_no_escapes = strings_have_no_escapes;
@@ -1714,12 +1720,12 @@ parser_parse_binary (PARSER_CONTEXT * parser, const char *buffer, size_t size)
   if (LANG_VARIABLE_CHARSET (lang_charset ()))
     {
       parser->next_char = dbcs_get_next;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
   else
     {
       parser->next_char = binarygetin;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
 
   parser->input_buffer_length = size;
@@ -1764,12 +1770,12 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
   if (LANG_VARIABLE_CHARSET (lang_charset ()))
     {
       parser->next_char = dbcs_get_next;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
   else
     {
       parser->next_char = fgetin;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
 
   parser->strings_have_no_escapes = false;
@@ -1813,12 +1819,12 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
   if (LANG_VARIABLE_CHARSET (lang_charset ()))
     {
       parser->next_char = dbcs_get_next;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
   else
     {
       parser->next_char = fgetin;
-      parser->casecmp = intl_mbs_casecmp;
+      parser->casecmp = intl_identifier_casecmp;
     }
 
   /* reset parser node stack and line/column info */
@@ -3354,6 +3360,12 @@ pt_show_function (FUNC_TYPE c)
       return "bit_xor";
     case PT_GROUP_CONCAT:
       return "group_concat";
+    case PT_ROW_NUMBER:
+      return "row_number";
+    case PT_RANK:
+      return "rank";
+    case PT_DENSE_RANK:
+      return "dense_rank";
 
     case F_SEQUENCE:
       return "sequence";
@@ -4310,6 +4322,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_ATTR_DEF] = pt_apply_attr_def;
   pt_apply_func_array[PT_ATTR_ORDERING] = pt_apply_attr_ordering;
   pt_apply_func_array[PT_AUTH_CMD] = pt_apply_auth_cmd;
+  pt_apply_func_array[PT_CHECK_OPTION] = pt_apply_check_option;
   pt_apply_func_array[PT_COMMIT_WORK] = pt_apply_commit_work;
   pt_apply_func_array[PT_CREATE_ENTITY] = pt_apply_create_entity;
   pt_apply_func_array[PT_CREATE_INDEX] = pt_apply_create_index;
@@ -4412,6 +4425,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_ATTR_DEF] = pt_init_attr_def;
   pt_init_func_array[PT_ATTR_ORDERING] = pt_init_attr_ordering;
   pt_init_func_array[PT_AUTH_CMD] = pt_init_auth_cmd;
+  pt_init_func_array[PT_CHECK_OPTION] = pt_init_check_option;
   pt_init_func_array[PT_COMMIT_WORK] = pt_init_commit_work;
   pt_init_func_array[PT_CREATE_ENTITY] = pt_init_create_entity;
   pt_init_func_array[PT_CREATE_INDEX] = pt_init_create_index;
@@ -4516,6 +4530,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_ATTR_DEF] = pt_print_attr_def;
   pt_print_func_array[PT_ATTR_ORDERING] = pt_print_attr_ordering;
   pt_print_func_array[PT_AUTH_CMD] = pt_print_auth_cmd;
+  pt_print_func_array[PT_CHECK_OPTION] = pt_print_check_option;
   pt_print_func_array[PT_COMMIT_WORK] = pt_print_commit_work;
   pt_print_func_array[PT_CREATE_ENTITY] = pt_print_create_entity;
   pt_print_func_array[PT_CREATE_INDEX] = pt_print_create_index;
@@ -4729,6 +4744,9 @@ pt_currency_to_db (const PT_CURRENCY t)
     case PT_CURRENCY_WON:
       return DB_CURRENCY_WON;
 
+    case PT_CURRENCY_TL:
+      return DB_CURRENCY_TL;
+
     default:
       return DB_CURRENCY_NULL;
     }
@@ -4868,6 +4886,7 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p,
     }
   p->info.alter.constraint_list =
     g (parser, p->info.alter.constraint_list, arg);
+  p->info.alter.create_index = g (parser, p->info.alter.create_index, arg);
   p->info.alter.internal_stmts =
     g (parser, p->info.alter.internal_stmts, arg);
   return p;
@@ -4882,6 +4901,7 @@ static PT_NODE *
 pt_init_alter (PT_NODE * p)
 {
   p->info.alter.constraint_list = NULL;
+  p->info.alter.create_index = NULL;
   return p;
 }
 
@@ -5422,6 +5442,8 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p,
 {
   p->info.index.indexed_class = g (parser, p->info.index.indexed_class, arg);
   p->info.index.column_names = g (parser, p->info.index.column_names, arg);
+  p->info.index.where = g (parser, p->info.index.where, arg);
+
   return p;
 }
 
@@ -5434,6 +5456,8 @@ static PT_NODE *
 pt_init_alter_index (PT_NODE * p)
 {
   p->info.index.indexed_class = p->info.index.column_names = NULL;
+  p->info.index.where = NULL;
+
   return p;
 }
 
@@ -5446,7 +5470,7 @@ pt_init_alter_index (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2;
+  PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
 
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
@@ -5471,6 +5495,14 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, " (");
   b = pt_append_varchar (parser, b, r2);
   b = pt_append_nulstring (parser, b, ") ");
+
+  if (p->info.index.where)
+    {
+      r3 = pt_print_and_list (parser, p->info.index.where);
+      b = pt_append_nulstring (parser, b, " where ");
+      b = pt_append_varchar (parser, b, r3);
+    }
+
   b = pt_append_nulstring (parser, b, "rebuild");
 
   return b;
@@ -5926,6 +5958,52 @@ pt_print_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
+/* CHECK_OPTION */
+/*
+ * pt_apply_check_option () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p,
+		       PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.check_option.expr = g (parser, p->info.check_option.expr, arg);
+
+  return p;
+}
+
+/*
+ * pt_init_check_option () -
+ *   return:
+ *   p(in):
+ */
+static PT_NODE *
+pt_init_check_option (PT_NODE * p)
+{
+  p->info.check_option.spec_id = 0;
+  p->info.check_option.expr = NULL;
+  return (p);
+}
+
+/*
+ * pt_print_check_option () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_check_option (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL;
+
+  q = pt_print_and_list (parser, p->info.check_option.expr);
+
+  return q;
+}
 
 /* COMMIT_WORK */
 /*
@@ -6300,6 +6378,8 @@ pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.index.column_names = g (parser, p->info.index.column_names, arg);
   p->info.index.index_name = g (parser, p->info.index.index_name, arg);
   p->info.index.prefix_length = g (parser, p->info.index.prefix_length, arg);
+  p->info.index.where = g (parser, p->info.index.where, arg);
+  p->info.index.function_expr = g (parser, p->info.index.function_expr, arg);
   return p;
 }
 
@@ -6311,7 +6391,12 @@ pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p,
 static PT_NODE *
 pt_init_create_index (PT_NODE * p)
 {
-  p->info.index.indexed_class = p->info.index.column_names = NULL;
+  p->info.index.indexed_class = NULL;
+  p->info.index.column_names = NULL;
+  p->info.index.function_expr = NULL;
+  p->info.index.func_no_args = 0;
+  p->info.index.func_pos = -1;
+  p->info.index.where = NULL;
   return p;
 }
 
@@ -6325,7 +6410,7 @@ pt_init_create_index (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1 = 0, *r2 = 0, *r3 = 0;
+  PARSER_VARCHAR *b = 0, *r1 = 0, *r2 = 0, *r3 = 0, *r4 = 0;
 
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
 
@@ -6377,6 +6462,13 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, ") ");
     }
   b = pt_append_nulstring (parser, b, ") ");
+
+  if (p->info.index.where)
+    {
+      r4 = pt_print_and_list (parser, p->info.index.where);
+      b = pt_append_nulstring (parser, b, " where ");
+      b = pt_append_varchar (parser, b, r4);
+    }
 
   return b;
 }
@@ -7823,6 +7915,8 @@ pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p,
 {
   p->info.index.indexed_class = g (parser, p->info.index.indexed_class, arg);
   p->info.index.column_names = g (parser, p->info.index.column_names, arg);
+  p->info.index.where = g (parser, p->info.index.where, arg);
+
   return p;
 }
 
@@ -7835,6 +7929,9 @@ static PT_NODE *
 pt_init_drop_index (PT_NODE * p)
 {
   p->info.index.indexed_class = p->info.index.column_names = NULL;
+  p->info.index.where = NULL;
+  p->info.index.function_expr = NULL;
+
   return p;
 }
 
@@ -7847,7 +7944,7 @@ pt_init_drop_index (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2;
+  PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
   const char *index_name = NULL;
 
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
@@ -7887,6 +7984,13 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_varchar (parser, b, r2);
 	  b = pt_append_nulstring (parser, b, ") ");
 	}
+    }
+
+  if (p->info.index.where)
+    {
+      r3 = pt_print_and_list (parser, p->info.index.where);
+      b = pt_append_nulstring (parser, b, " where ");
+      b = pt_append_varchar (parser, b, r3);
     }
 
   return b;
@@ -8947,129 +9051,58 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TO_DATE:
-      {
-	int flags;
-	q = pt_append_nulstring (parser, q, " to_date(");
-	r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	q = pt_append_varchar (parser, q, r1);
-
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	if (!(flags & 1))
-	  {
-	    q = pt_append_nulstring (parser, q, ", ");
-	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	    q = pt_append_varchar (parser, q, r1);
-	    if (flags & 2)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'en_US'");
-	      }
-	    else if (flags & 4)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-	      }
-	  }
-	q = pt_append_nulstring (parser, q, ")");
-      }
-      break;
-
     case PT_TO_TIME:
-      {
-	int flags;
-	q = pt_append_nulstring (parser, q, " to_time(");
-	r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	q = pt_append_varchar (parser, q, r1);
-
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	if (!(flags & 1))
-	  {
-	    q = pt_append_nulstring (parser, q, ", ");
-	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	    q = pt_append_varchar (parser, q, r1);
-	    if (flags & 2)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'en_US'");
-	      }
-	    else if (flags & 4)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-	      }
-	  }
-	q = pt_append_nulstring (parser, q, ")");
-      }
-      break;
-
     case PT_TO_TIMESTAMP:
-      {
-	int flags;
-	q = pt_append_nulstring (parser, q, " to_timestamp(");
-	r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	q = pt_append_varchar (parser, q, r1);
-
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	if (!(flags & 1))
-	  {
-	    q = pt_append_nulstring (parser, q, ", ");
-	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	    q = pt_append_varchar (parser, q, r1);
-	    if (flags & 2)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'en_US'");
-	      }
-	    else if (flags & 4)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-	      }
-	  }
-	q = pt_append_nulstring (parser, q, ")");
-      }
-      break;
-
     case PT_TO_DATETIME:
-      {
-	int flags;
-	q = pt_append_nulstring (parser, q, " to_datetime(");
-	r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	q = pt_append_varchar (parser, q, r1);
-
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	if (!(flags & 1))
-	  {
-	    q = pt_append_nulstring (parser, q, ", ");
-	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	    q = pt_append_varchar (parser, q, r1);
-	    if (flags & 2)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'en_US'");
-	      }
-	    else if (flags & 4)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-	      }
-	  }
-	q = pt_append_nulstring (parser, q, ")");
-      }
-      break;
-
     case PT_TO_CHAR:
       {
 	int flags;
-	q = pt_append_nulstring (parser, q, " to_char(");
+	bool is_user_format;
+	INTL_LANG lang_id;
+
+	if (p->info.expr.op == PT_TO_DATE)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_date(");
+	  }
+	else if (p->info.expr.op == PT_TO_TIME)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_time(");
+	  }
+	else if (p->info.expr.op == PT_TO_TIMESTAMP)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_timestamp(");
+	  }
+	else if (p->info.expr.op == PT_TO_DATETIME)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_datetime(");
+	  }
+	else if (p->info.expr.op == PT_TO_CHAR)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_char(");
+	  }
+	else
+	  {
+	    assert (false);
+	  }
+
 	r1 = pt_print_bytes (parser, p->info.expr.arg1);
 	q = pt_append_varchar (parser, q, r1);
 
 	flags = p->info.expr.arg3->info.value.data_value.i;
-	if (!(flags & 1))
+	lang_id = lang_get_lang_id_from_flag (flags, &is_user_format);
+	if (is_user_format)
 	  {
+	    const char *lang_name = lang_get_lang_name_from_id (lang_id);
+
 	    q = pt_append_nulstring (parser, q, ", ");
 	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	    q = pt_append_varchar (parser, q, r1);
-	    if (flags & 2)
+
+	    if (lang_name)
 	      {
-		q = pt_append_nulstring (parser, q, ", 'en_US'");
-	      }
-	    else if (flags & 4)
-	      {
-		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+		q = pt_append_nulstring (parser, q, ", '");
+		q = pt_append_nulstring (parser, q, lang_name);
+		q = pt_append_nulstring (parser, q, "'");
 	      }
 	  }
 	q = pt_append_nulstring (parser, q, ")");
@@ -10724,6 +10757,13 @@ pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p,
 {
   p->info.function.arg_list = g (parser, p->info.function.arg_list, arg);
   p->info.function.order_by = g (parser, p->info.function.order_by, arg);
+  if (p->info.function.analytic.is_analytic)
+    {
+      p->info.function.analytic.partition_by =
+	g (parser, p->info.function.analytic.partition_by, arg);
+      p->info.function.analytic.order_by =
+	g (parser, p->info.function.analytic.order_by, arg);
+    }
   return p;
 }
 
@@ -10740,6 +10780,9 @@ pt_init_function (PT_NODE * p)
   p->info.function.all_or_distinct = (PT_MISC_TYPE) 0;
   p->info.function.generic_name = 0;
   p->info.function.order_by = NULL;
+  p->info.function.analytic.is_analytic = false;
+  p->info.function.analytic.partition_by = NULL;
+  p->info.function.analytic.order_by = NULL;
   return p;
 }
 
@@ -10845,6 +10888,29 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, pt_show_function (code));
       q = pt_append_nulstring (parser, q, "(");
       q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
+  if (p->info.function.analytic.is_analytic)
+    {
+      q = pt_append_nulstring (parser, q, " over (");
+      if (p->info.function.analytic.partition_by)
+	{
+	  r1 =
+	    pt_print_bytes_l (parser, p->info.function.analytic.partition_by);
+	  q = pt_append_nulstring (parser, q, "partition by ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      if (p->info.function.analytic.order_by)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.function.analytic.order_by);
+	  if (p->info.function.analytic.partition_by)
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	  q = pt_append_nulstring (parser, q, "order by ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
       q = pt_append_nulstring (parser, q, ")");
     }
 
@@ -11868,11 +11934,12 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.name.original && p->info.name.original[0])
 	{
 	  char *lcase_name;
+	  int name_size;
 
-	  lcase_name = (char *) db_private_alloc (NULL,
-						  strlen (p->info.name.
-							  original));
-	  intl_mbs_lower (p->info.name.original, lcase_name);
+	  name_size =
+	    intl_identifier_lower_string_size (p->info.name.original);
+	  lcase_name = (char *) db_private_alloc (NULL, name_size + 1);
+	  intl_identifier_lower (p->info.name.original, lcase_name);
 	  q = pt_append_name (parser, q, lcase_name);
 	  db_private_free_and_init (NULL, lcase_name);
 	}
@@ -13677,7 +13744,8 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (!IS_UPDATE_OBJ (p))
     {
-      r1 = pt_print_bytes (parser, p->info.update.spec);
+      /* print the spec list */
+      r1 = pt_print_bytes_spec_list (parser, p->info.update.spec);
       b = pt_append_varchar (parser, b, r1);
     }
   else
@@ -14364,9 +14432,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	PT_MONETARY *val;
 
 	val = &(p->info.value.data_value.money);
+	/* this string may be used for replication, so it must be parsable */
 	sprintf (s, "%s%.2f",
-		 lang_currency_symbol (pt_currency_to_db (val->type)),
-		 val->amount);
+		 intl_get_money_symbol_grammar (pt_currency_to_db
+						(val->type)), val->amount);
 #if defined(HPUX)
 	/* workaround for HP's broken printf */
 	if (strstr (s, "++") || strstr (s, "--"))
@@ -14375,8 +14444,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 #endif /* HPUX */
 	  {
 	    sprintf (s, "%s%.2f",
-		     lang_currency_symbol (pt_currency_to_db
-					   (val->type)),
+		     intl_get_money_symbol_grammar (pt_currency_to_db
+						    (val->type)),
 		     (val->amount > 0 ? DBL_MAX : -DBL_MAX));
 	  }
 	q = pt_append_nulstring (parser, q, s);
@@ -15230,5 +15299,603 @@ pt_is_const_expr_node (PT_NODE * node)
       return false;
     }
 
+  return false;
+}
+
+/*
+ * pt_restore_assignment_links - restore assignments links after a call to
+ *  get_assignments_lists.
+ *   return: 
+ *   assigns(in): first node of original assignment list
+ *   links(in): The links array returned by get_assignment lists
+ *   count(in): count of links in links array. This is used in
+ *   get_assignments_lists if an error occurs. If this is -1 then just iterate
+ *   through assignments list while restoring it, until the next statement is
+ *   NULL.
+ *
+ * Note:
+ *  The links array is freed
+ */
+void
+pt_restore_assignment_links (PT_NODE * assigns, PT_NODE ** links, int count)
+{
+  PT_NODE *lhs = NULL, *rhs = NULL, *att = NULL;
+  int links_idx = 0;
+
+  while (assigns && (links_idx < count || count == -1))
+    {
+      lhs = assigns->info.expr.arg1;
+      rhs = assigns->info.expr.arg2;
+      if (lhs->node_type == PT_NAME)
+	{
+	  lhs->next = links[links_idx++];
+	  if (links_idx < count || count == -1)
+	    {
+	      rhs->next = links[links_idx++];
+	    }
+	}
+      else
+	{			/* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
+	  lhs = lhs->info.expr.arg1;
+	  for (att = lhs; att && (links_idx < count || count == -1);
+	       att = att->next)
+	    {
+	      att->next = links[links_idx++];
+	    }
+
+	  rhs->next = links[links_idx++];
+	}
+      assigns = assigns->next;
+    }
+
+  /* free links array */
+  if (links)
+    {
+      db_private_free (NULL, links);
+    }
+}
+
+/*
+ * pt_get_assignment_lists - Returns corresponding lists of names and
+ *			     expressions
+ *   return: Error code
+ *   parser(in): Parser context
+ *   select_names(out):
+ *   select_values(out):
+ *   const_names(out):
+ *   const_values(out):
+ *   assign(in): Parse tree of assignment lists
+ *
+ * Note:
+ */
+int
+pt_get_assignment_lists (PARSER_CONTEXT * parser, PT_NODE ** select_names,
+			 PT_NODE ** select_values, PT_NODE ** const_names,
+			 PT_NODE ** const_values, int *no_vals,
+			 int *no_consts, PT_NODE * assign,
+			 PT_NODE *** old_links)
+{
+  int error = NO_ERROR, links_chunk = 10, links_alloc =
+    links_chunk, links_idx = 0;
+  PT_NODE *lhs;
+  PT_NODE *rhs;
+  PT_NODE *att;
+  PT_NODE **links =
+    (PT_NODE **) db_private_alloc (NULL, links_alloc * sizeof (PT_NODE *));
+  PT_NODE **new_links = NULL;
+
+  if (!links)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit_on_error;
+    }
+
+  if (select_names)
+    {
+      *select_names = NULL;
+    }
+  if (select_values)
+    {
+      *select_values = NULL;
+    }
+  if (const_names)
+    {
+      *const_names = NULL;
+    }
+  if (const_values)
+    {
+      *const_values = NULL;
+    }
+  if (no_vals)
+    {
+      *no_vals = 0;
+    }
+  if (no_consts)
+    {
+      *no_consts = 0;
+    }
+
+  while (assign)
+    {
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN
+	  || !(lhs = assign->info.expr.arg1)
+	  || !(rhs = assign->info.expr.arg2)
+	  || !(lhs->node_type == PT_NAME || PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+	  || !select_values || !select_names || !const_values || !const_names
+	  || !no_vals || !no_consts)
+	{
+	  /* bullet proofing, should not get here */
+#if defined(CUBRID_DEBUG)
+	  fprintf (stdout, "system error detected in %s, line %d.\n",
+		   __FILE__, __LINE__);
+#endif
+	  error = ER_GENERIC_ERROR;
+	  goto exit_on_error;
+	}
+
+      if (lhs->node_type == PT_NAME)
+	{
+	  /* allocate more space if needed */
+	  if (links_idx >= links_alloc)
+	    {
+	      links_alloc += links_chunk;
+	      new_links =
+		(PT_NODE **) db_private_realloc (NULL, links,
+						 links_alloc *
+						 sizeof (PT_NODE *));
+	      if (new_links == NULL)
+		{
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto exit_on_error;
+		}
+	      links = new_links;
+	    }
+
+	  links[links_idx++] = lhs->next;
+	  links[links_idx++] = rhs->next;
+	  ++(*no_vals);
+	}
+      else
+	{			/* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
+	  lhs = lhs->info.expr.arg1;
+	  for (att = lhs; att; att = att->next)
+	    {
+	      if (att->node_type != PT_NAME)
+		{
+#if defined(CUBRID_DEBUG)
+		  fprintf (stdout, "system error detected in %s, line %d.\n",
+			   __FILE__, __LINE__);
+#endif
+		  error = ER_GENERIC_ERROR;
+		  goto exit_on_error;
+		}
+
+	      /* allocate more space if needed */
+	      if (links_idx >= links_alloc)
+		{
+		  links_alloc += links_chunk;
+		  new_links =
+		    (PT_NODE **) db_private_realloc (NULL, links,
+						     links_alloc *
+						     sizeof (PT_NODE *));
+		  if (new_links == NULL)
+		    {
+		      error = ER_OUT_OF_VIRTUAL_MEMORY;
+		      goto exit_on_error;
+		    }
+		  links = new_links;
+		}
+
+	      links[links_idx++] = att->next;
+	      ++(*no_vals);
+	    }
+
+	  /* allocate more space if needed */
+	  if (links_idx >= links_alloc)
+	    {
+	      links_alloc += links_chunk;
+	      new_links =
+		(PT_NODE **) db_private_realloc (NULL, links,
+						 links_alloc *
+						 sizeof (PT_NODE *));
+	      if (new_links == NULL)
+		{
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto exit_on_error;
+		}
+	      links = new_links;
+	    }
+
+	  links[links_idx++] = rhs->next;
+	}
+      if (!PT_IS_CONST (rhs)
+	  || (PT_IS_HOSTVAR (rhs) && parser->set_host_var == 0))
+	{
+	  /* assume evaluation needed. */
+	  if (*select_names == NULL)
+	    {
+	      *select_names = lhs;
+	      *select_values = rhs;
+	    }
+	  else
+	    {
+	      parser_append_node (lhs, *select_names);
+	      parser_append_node (rhs, *select_values);
+	    }
+	}
+      else
+	{
+	  ++(*no_consts);
+	  /* we already have a constant value */
+	  if (*const_names == NULL)
+	    {
+	      *const_names = lhs;
+	      *const_values = rhs;
+	    }
+	  else
+	    {
+	      parser_append_node (lhs, *const_names);
+	      parser_append_node (rhs, *const_values);
+	    }
+	}
+      assign = assign->next;
+    }
+  *old_links = links;
+  return error;
+
+exit_on_error:
+  if (links != NULL)
+    {
+      pt_restore_assignment_links (assign, links, links_idx);
+    }
+  *old_links = NULL;
+
+  return error;
+}
+
+/*
+ *   pt_is_nested_expr () : checks if the given PT_NODE is a complex 
+ *				expression, that contains at least one 
+ *				argument that is not a PT_VALUE or 
+ *				PT_NAME node
+ *   return:
+ *   node (in): PT_EXPR
+ */
+bool
+pt_is_nested_expr (PT_NODE * node)
+{
+  PT_NODE *func, *arg;
+  assert (node->node_type == PT_EXPR);
+
+  if (node->info.expr.op != PT_FUNCTION_HOLDER)
+    {
+      arg = node->info.expr.arg1;
+      if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
+	  && (PT_IS_VALUE_NODE (arg) == false))
+	{
+	  return true;
+	}
+      arg = node->info.expr.arg2;
+      if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
+	  && (PT_IS_VALUE_NODE (arg) == false))
+	{
+	  return true;
+	}
+      arg = node->info.expr.arg3;
+      if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
+	  && (PT_IS_VALUE_NODE (arg) == false))
+	{
+	  return true;
+	}
+      return false;
+    }
+  /* the given operator is not PT_FUNCTION_HOLDER */
+
+  func = node->info.expr.arg1;
+  for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
+    {
+      if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
+	  && (PT_IS_VALUE_NODE (arg) == false))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ *   pt_is_allowed_as_function_index () : checks if the given operator
+ *					  is allowed in the structure of a
+ *					  function index
+ *   return:
+ *   op (in): PT_OP_TYPE
+ */
+static bool
+pt_is_allowed_as_function_index (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_MOD:
+    case PT_LEFT:
+    case PT_RIGHT:
+    case PT_REPEAT:
+    case PT_SPACE:
+    case PT_MID:
+    case PT_STRCMP:
+    case PT_REVERSE:
+    case PT_BIT_COUNT:
+    case PT_MODULUS:
+    case PT_FLOOR:
+    case PT_CEIL:
+    case PT_ABS:
+    case PT_POWER:
+    case PT_ROUND:
+    case PT_LOG:
+    case PT_EXP:
+    case PT_SQRT:
+    case PT_SIN:
+    case PT_COS:
+    case PT_TAN:
+    case PT_COT:
+    case PT_ACOS:
+    case PT_ASIN:
+    case PT_ATAN:
+    case PT_ATAN2:
+    case PT_DEGREES:
+    case PT_DATEF:
+    case PT_TIMEF:
+    case PT_RADIANS:
+    case PT_LN:
+    case PT_LOG2:
+    case PT_LOG10:
+    case PT_TRUNC:
+    case PT_CHR:
+    case PT_INSTR:
+    case PT_LEAST:
+    case PT_GREATEST:
+    case PT_POSITION:
+    case PT_LOWER:
+    case PT_UPPER:
+    case PT_LTRIM:
+    case PT_RTRIM:
+    case PT_FROM_UNIXTIME:
+    case PT_SUBSTRING_INDEX:
+    case PT_MD5:
+    case PT_LPAD:
+    case PT_RPAD:
+    case PT_REPLACE:
+    case PT_TRANSLATE:
+    case PT_ADD_MONTHS:
+    case PT_LAST_DAY:
+    case PT_UNIX_TIMESTAMP:
+    case PT_STR_TO_DATE:
+    case PT_TIME_FORMAT:
+    case PT_TIMESTAMP:
+    case PT_YEARF:
+    case PT_MONTHF:
+    case PT_DAYF:
+    case PT_DAYOFMONTH:
+    case PT_HOURF:
+    case PT_MINUTEF:
+    case PT_SECONDF:
+    case PT_QUARTERF:
+    case PT_WEEKDAY:
+    case PT_DAYOFWEEK:
+    case PT_DAYOFYEAR:
+    case PT_TODAYS:
+    case PT_FROMDAYS:
+    case PT_TIMETOSEC:
+    case PT_SECTOTIME:
+    case PT_MAKEDATE:
+    case PT_MAKETIME:
+    case PT_WEEKF:
+    case PT_MONTHS_BETWEEN:
+    case PT_FORMAT:
+    case PT_DATE_FORMAT:
+    case PT_ADDDATE:
+    case PT_DATEDIFF:
+    case PT_TIMEDIFF:
+    case PT_SUBDATE:
+    case PT_FUNCTION_HOLDER:
+      return true;
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
+ *   pt_is_function_index_expr () : checks if the given PT_EXPR
+ *				    is allowed in the structure of a
+ *				    function index. This is true if the
+ *				    operator is allowed and the expression
+ *				    is a simple one, with at least one 
+ *				    attribute name as an argument
+ *   return:
+ *   expr (in): PT_EXPR
+ */
+bool
+pt_is_function_index_expr (PT_NODE * expr)
+{
+  PT_NODE *func = NULL;
+  PT_NODE *arg = NULL;
+  if (expr->node_type != PT_EXPR)
+    {
+      return false;
+    }
+  if (!pt_is_allowed_as_function_index (expr->info.expr.op)
+      || pt_is_const_expr_node (expr) || pt_is_nested_expr (expr))
+    {
+      return false;
+    }
+  return true;
+}
+
+/*
+ *   pt_expr_to_sort_spec () : creates a list of PT_SORT_SPEC nodes from
+ *			       the arguments of a given expression.
+ *   return: PT_NODE representing a list of PT_SORT_SPEC nodes
+ *   expr (in): PT_EXPR
+ *   parser (in):
+ */
+PT_NODE *
+pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *node = NULL;
+
+  if (!PT_IS_EXPR_NODE (expr))
+    {
+      return NULL;
+    }
+
+  if (expr->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      PT_NODE *func, *arg;
+      func = expr->info.expr.arg1;
+      for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  if (PT_IS_NAME_NODE (arg))
+	    {
+	      PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
+	      if (srt_spec == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return NULL;
+		}
+	      srt_spec->info.sort_spec.expr = parser_copy_tree (parser, arg);
+	      srt_spec->info.sort_spec.expr->next = NULL;
+	      srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
+	      node = parser_append_node (srt_spec, node);
+	    }
+	}
+    }
+  else
+    {
+      if (PT_IS_NAME_NODE (expr->info.expr.arg1))
+	{
+	  PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
+	  if (srt_spec == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  srt_spec->info.sort_spec.expr =
+	    parser_copy_tree (parser, expr->info.expr.arg1);
+	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
+	  node = parser_append_node (srt_spec, node);
+	}
+      if (PT_IS_NAME_NODE (expr->info.expr.arg2))
+	{
+	  PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
+	  if (srt_spec == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  srt_spec->info.sort_spec.expr =
+	    parser_copy_tree (parser, expr->info.expr.arg2);
+	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
+	  node = parser_append_node (srt_spec, node);
+	}
+      if (PT_IS_NAME_NODE (expr->info.expr.arg3))
+	{
+	  PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
+	  if (srt_spec == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  srt_spec->info.sort_spec.expr =
+	    parser_copy_tree (parser, expr->info.expr.arg3);
+	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
+	  node = parser_append_node (srt_spec, node);
+	}
+    }
+  return node;
+}
+
+/*
+ *   pt_is_join_expr () : checks if the given expression has non-constant 
+ *                        arguments from only one class
+ *   return: true if more than one classes are involved in the expression, 
+ *	     false otherwise
+ *   expr (in): PT_EXPR
+ *   spec_id (out): the spec id of the PT_SPEC used (if false is returned)
+ */
+bool
+pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id)
+{
+  PT_NODE *func = NULL;
+  PT_NODE *arg = NULL;
+
+  assert (expr != NULL && spec_id != NULL);
+  *spec_id = 0;
+
+  if (expr->info.expr.op != PT_FUNCTION_HOLDER)
+    {
+      if (PT_IS_NAME_NODE (expr->info.expr.arg1))
+	{
+	  if (*spec_id == 0)
+	    {
+	      *spec_id = expr->info.expr.arg1->info.name.spec_id;
+	    }
+	  else
+	    {
+	      if (*spec_id != expr->info.expr.arg1->info.name.spec_id)
+		{
+		  return true;
+		}
+	    }
+	}
+      if (PT_IS_NAME_NODE (expr->info.expr.arg2))
+	{
+	  if (*spec_id == 0)
+	    {
+	      *spec_id = expr->info.expr.arg2->info.name.spec_id;
+	    }
+	  else
+	    {
+	      if (*spec_id != expr->info.expr.arg2->info.name.spec_id)
+		{
+		  return true;
+		}
+	    }
+	}
+      if (PT_IS_NAME_NODE (expr->info.expr.arg3))
+	{
+	  if (*spec_id == 0)
+	    {
+	      *spec_id = expr->info.expr.arg3->info.name.spec_id;
+	    }
+	  else
+	    {
+	      if (*spec_id != expr->info.expr.arg3->info.name.spec_id)
+		{
+		  return true;
+		}
+	    }
+	}
+    }
+  else
+    {
+      func = expr->info.expr.arg1;
+      for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  if (PT_IS_NAME_NODE (arg))
+	    {
+	      if (*spec_id == 0)
+		{
+		  *spec_id = arg->info.name.spec_id;
+		}
+	      else
+		{
+		  if (*spec_id != arg->info.name.spec_id)
+		    {
+		      return true;
+		    }
+		}
+	    }
+	}
+    }
   return false;
 }

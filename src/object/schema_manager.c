@@ -96,7 +96,7 @@ typedef struct schema_def
 {
 
   /* This is the default qualifier for class/vclass names */
-  char name[DB_MAX_SCHEMA_LENGTH + 4];
+  char name[DB_MAX_SCHEMA_LENGTH * INTL_UTF8_MAX_CHAR_SIZE + 4];
 
   /* The only user who can delete this schema. */
   /* But, note that entry level doesn't support DROP SCHEMA anyway */
@@ -230,17 +230,6 @@ static const char *method_file_extension = ".o";
 
 
 
-
-/*
- *    This is used only in the internationalized version.
- *    If this flag is non-zero, it will cause sm_check_name to not perform
- *    any validation of the names supplied to the API.
- *    This is used when the API functions are called by the interpreter
- *    which has already performed the validation and character set
- *    conversion.  Since this is done by the interpreter, we don't need to
- *    duplicate it here.
-*/
-int sm_Inhibit_identifier_check = 0;
 
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
 
@@ -412,7 +401,9 @@ static void fixup_self_reference_domains (MOP classop, SM_TEMPLATE * flat);
 static TP_DOMAIN *construct_index_key_domain (int n_atts,
 					      SM_ATTRIBUTE ** atts,
 					      const int *asc_desc,
-					      const int *prefix_lengths);
+					      const int *prefix_lengths,
+					      int func_col_id,
+					      TP_DOMAIN * func_domain);
 static int collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 				    const char *constraint_name,
 				    int reverse,
@@ -426,7 +417,9 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   int unique, int reverse,
 			   const char *constraint_name, BTID * index,
 			   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-			   int cache_attr_id, const char *fk_name);
+			   int cache_attr_id, const char *fk_name,
+			   char *pred_stream, int pred_stream_size,
+			   SM_FUNCTION_INDEX_INFO * function_index);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
 static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
 static int build_fk_obj_cache (MOP classop, SM_CLASS * class_,
@@ -485,8 +478,8 @@ static int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
 					 const char **att_names,
-					 const int *asc_desc);
-
+					 const int *asc_desc,
+					 SM_FUNCTION_INDEX_INFO * func_info);
 
 static const char *sm_locate_method_file (SM_CLASS * class_,
 					  const char *function);
@@ -500,7 +493,8 @@ static int sm_check_index_exist (MOP classop,
 				 char **out_shared_cons_name,
 				 DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name,
-				 const char **att_names, const int *asc_desc);
+				 const char **att_names, const int *asc_desc,
+				 SM_FUNCTION_INDEX_INFO * func_info);
 
 static void sm_reset_descriptors (MOP class_);
 
@@ -573,11 +567,10 @@ sc_set_current_schema (MOP user)
   /* As near as I can tell, this is the most generalized  */
   /* case conversion function on our system.  If it's not */
   /* the most general, change this code accordingly.      */
-  if (intl_mbs_lower (wsp_user_name, Current_Schema.name) == 0)
+  if (intl_identifier_lower (wsp_user_name, Current_Schema.name) == 0)
     {
-      /* Last time I looked, intl_mbs_lower always returns 0.      */
-      /* However, it does malloc without checking result, so  */
-      /* perhaps someday it might return an error.            */
+      /* intl_identifier_lower always returns 0.      */
+      /* However, someday it might return an error.            */
       error = NO_ERROR;
     }
   ws_free_string (wsp_user_name);
@@ -2175,23 +2168,6 @@ sm_get_method_source_file (MOP obj, const char *name)
 
 
 /*
- * sm_set_inhibit_identifier_check()
- *   return:
- *   inhibit(in):
- */
-
-int
-sm_set_inhibit_identifier_check (int inhibit)
-{
-  int current;
-
-  current = sm_Inhibit_identifier_check;
-  sm_Inhibit_identifier_check = inhibit;
-
-  return current;
-}
-
-/*
  * sm_init() - Called during database restart.
  *    Setup the global variables that contain the root class OID and HFID.
  *    Also initialize the descriptor list
@@ -2349,7 +2325,14 @@ sm_check_name (const char *name)
 void
 sm_downcase_name (const char *name, char *buf, int maxlen)
 {
-  intl_mbs_nlower (buf, name, maxlen);
+  int name_size;
+
+  name_size = intl_identifier_lower_string_size (name);
+  /* the sizes of lower and upper version of an identifier are checked when
+   * entering the system */
+  assert (name_size < maxlen);
+
+  intl_identifier_lower (name, buf);
 }
 
 /*
@@ -6473,8 +6456,8 @@ sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all)
 	    {
 	      supers = db_get_superclasses (domain);
 	      if (supers && supers->op
-		  && (intl_mbs_casecmp (db_get_class_name (supers->op),
-					"db_text") == 0))
+		  && (intl_identifier_casecmp (db_get_class_name (supers->op),
+					       "db_text") == 0))
 		{
 		  return true;
 		}
@@ -8810,11 +8793,17 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			}
 		      else
 			{
-			  if (classobj_put_index (&(flat->properties),
-						  c->type, c->name, attrs,
-						  c->asc_desc, &c->index,
-						  c->fk_info,
-						  NULL) != NO_ERROR)
+			  if (classobj_put_index
+			      (&(flat->properties), c->type, c->name, attrs,
+			       c->asc_desc, &c->index,
+			       SM_GET_FILTER_PRED_STRING (c->
+							  filter_predicate),
+			       SM_GET_FILTER_PRED_STREAM (c->
+							  filter_predicate),
+			       SM_GET_FILTER_PRED_STREAM_SIZE (c->
+							       filter_predicate),
+			       c->fk_info, NULL,
+			       c->func_index_info) != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -9481,11 +9470,15 @@ fixup_self_reference_domains (MOP classop, SM_TEMPLATE * flat)
  *   n_atts(in):
  *   atts(in):
  *   asc_desc(in):
+ *   prefix_lengths(in):
+ *   func_col_id(in):
+ *   func_domain(in):
  */
 
 static TP_DOMAIN *
 construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
-			    const int *asc_desc, const int *prefix_lengths)
+			    const int *asc_desc, const int *prefix_lengths,
+			    int func_col_id, TP_DOMAIN * func_domain)
 {
   int i;
   TP_DOMAIN *head = NULL;
@@ -9494,7 +9487,7 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
   TP_DOMAIN *new_domain = NULL;
   TP_DOMAIN *cached_domain = NULL;
 
-  if (n_atts == 1)
+  if (n_atts == 1 && func_domain == NULL)
     {
       if ((asc_desc && asc_desc[0] == 1) ||
 	  (prefix_lengths && (*prefix_lengths != -1) &&
@@ -9530,10 +9523,32 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	  cached_domain = atts[0]->domain;
 	}
     }
-  else if (n_atts > 1)
+  else if ((n_atts > 1) || func_domain)
     {
+      /* If this is multi column index and a function index,  
+       * we must construct the domain  of the keys accordingly, 
+       * using the type returned by the function index expression.
+       * If it is just a multi column index, the position at 
+       * which the expression should be found is -1, so it will
+       * never be reached.
+       */
       for (i = 0; i < n_atts; i++)
 	{
+	  if (i == func_col_id)
+	    {
+	      new_domain = tp_domain_copy (func_domain, false);
+	      if (head == NULL)
+		{
+		  head = new_domain;
+		  current = new_domain;
+		}
+	      else
+		{
+		  current->next = new_domain;
+		  current = new_domain;
+		}
+	    }
+
 	  new_domain = tp_domain_new (DB_TYPE_NULL);
 	  if (new_domain == NULL)
 	    {
@@ -9566,8 +9581,23 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	    }
 	}
 
+      if (i == func_col_id)
+	{
+	  new_domain = tp_domain_copy (func_domain, false);
+	  if (head == NULL)
+	    {
+	      head = new_domain;
+	      current = new_domain;
+	    }
+	  else
+	    {
+	      current->next = new_domain;
+	      current = new_domain;
+	    }
+	}
       set_domain =
-	tp_domain_construct (DB_TYPE_MIDXKEY, NULL, n_atts, 0, head);
+	tp_domain_construct (DB_TYPE_MIDXKEY, NULL,
+			     n_atts + (func_domain ? 1 : 0), 0, head);
       if (set_domain == NULL)
 	{
 	  goto mem_error;
@@ -9741,11 +9771,12 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 static int
 allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		SM_ATTRIBUTE ** attrs, const int *asc_desc,
-		const int *attrs_prefix_length,
-		int unique,
-		int reverse, const char *constraint_name, BTID * index,
+		const int *attrs_prefix_length, int unique, int reverse,
+		const char *constraint_name, BTID * index,
 		OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		int cache_attr_id, const char *fk_name)
+		int cache_attr_id, const char *fk_name,
+		char *pred_stream, int pred_stream_size,
+		SM_FUNCTION_INDEX_INFO * function_index)
 {
   int error = NO_ERROR;
   DB_TYPE type;
@@ -9786,9 +9817,32 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
   if (error == NO_ERROR)
     {
       TP_DOMAIN *domain = NULL;
-
-      domain = construct_index_key_domain (n_attrs, attrs, asc_desc,
-					   attrs_prefix_length);
+      TP_DOMAIN *fi_domain = NULL;
+      if (function_index)
+	{
+	  fi_domain = tp_domain_resolve_default (function_index->type);
+	  if (function_index->attr_index_start == 0)
+	    {
+	      /* if this is a single column function index, the key domain 
+	       * is actually the domain of the function result
+	       */
+	      domain = fi_domain;
+	    }
+	  else
+	    {
+	      domain =
+		construct_index_key_domain (function_index->attr_index_start,
+					    attrs, asc_desc,
+					    attrs_prefix_length,
+					    function_index->col_id,
+					    fi_domain);
+	    }
+	}
+      else
+	{
+	  domain = construct_index_key_domain (n_attrs, attrs, asc_desc,
+					       attrs_prefix_length, -1, NULL);
+	}
       if (domain == NULL)
 	{
 	  error = er_errid ();
@@ -9896,12 +9950,33 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		  last_key_desc = false;
 		}
 
-	      error =
-		btree_load_index (index, domain, oids, n_classes, n_attrs,
-				  attr_ids, (int *) attrs_prefix_length,
-				  hfids, unique, reverse,
-				  last_key_desc, fk_refcls_oid,
-				  fk_refcls_pk_btid, cache_attr_id, fk_name);
+	      if (function_index)
+		{
+		  error =
+		    btree_load_index (index, domain, oids, n_classes, n_attrs,
+				      attr_ids, (int *) attrs_prefix_length,
+				      hfids, unique, reverse,
+				      last_key_desc, fk_refcls_oid,
+				      fk_refcls_pk_btid, cache_attr_id,
+				      fk_name,
+				      pred_stream, pred_stream_size,
+				      function_index->expr_stream,
+				      function_index->expr_stream_size,
+				      function_index->col_id,
+				      function_index->attr_index_start);
+		}
+	      else
+		{
+		  error =
+		    btree_load_index (index, domain, oids, n_classes, n_attrs,
+				      attr_ids, (int *) attrs_prefix_length,
+				      hfids, unique, reverse,
+				      last_key_desc, fk_refcls_oid,
+				      fk_refcls_pk_btid, cache_attr_id,
+				      fk_name,
+				      pred_stream, pred_stream_size,
+				      NULL, -1, -1, -1);
+		}
 	    }
 
 	  free_and_init (attr_ids);
@@ -10025,7 +10100,8 @@ build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
       domain =
-	construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL);
+	construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1,
+				    NULL);
       if (domain == NULL)
 	{
 	  return er_errid ();
@@ -10148,7 +10224,11 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 	  if (allocate_index (classop, class_, subclasses, con->attributes,
 			      asc_desc, con->attrs_prefix_length,
 			      unique, reverse, con->name,
-			      &con->index, NULL, NULL, -1, NULL))
+			      &con->index, NULL, NULL, -1, NULL,
+			      SM_GET_FILTER_PRED_STREAM
+			      (con->filter_predicate),
+			      SM_GET_FILTER_PRED_STREAM_SIZE
+			      (con->filter_predicate), con->func_index_info))
 	    {
 	      return er_errid ();
 	    }
@@ -10250,7 +10330,11 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 			  false, con->name, &con->index,
 			  &(con->fk_info->ref_class_oid),
 			  &(con->fk_info->ref_class_pk_btid),
-			  con->fk_info->cache_attr_id, con->fk_info->name))
+			  con->fk_info->cache_attr_id, con->fk_info->name,
+			  SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+			  SM_GET_FILTER_PRED_STREAM_SIZE (con->
+							  filter_predicate),
+			  con->func_index_info))
 	{
 	  return er_errid ();
 	}
@@ -10319,7 +10403,12 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 				  con->asc_desc,
 				  con->attrs_prefix_length,
 				  false, reverse, con->name,
-				  &con->index, NULL, NULL, -1, NULL);
+				  &con->index, NULL, NULL, -1, NULL,
+				  SM_GET_FILTER_PRED_STREAM
+				  (con->filter_predicate),
+				  SM_GET_FILTER_PRED_STREAM_SIZE
+				  (con->filter_predicate),
+				  con->func_index_info);
 	}
       else if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
@@ -10343,12 +10432,13 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
    * back out to the property list.  This is where the promotion of
    * attribute name references to ids references happens.
    */
-  error = classobj_put_index_id (&(class_->properties), con->type,
-				 con->name, con->attributes,
-				 con->asc_desc,
-				 con->attrs_prefix_length,
-				 &(con->index), con->fk_info, NULL);
-  if (error != NO_ERROR)
+  if (classobj_put_index_id
+      (&(class_->properties), con->type, con->name, con->attributes,
+       con->asc_desc, con->attrs_prefix_length, &(con->index),
+       SM_GET_FILTER_PRED_STRING (con->filter_predicate),
+       SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+       SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
+       con->fk_info, NULL, con->func_index_info) != NO_ERROR)
     {
       return error;
     }
@@ -10802,13 +10892,14 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type) ||
 	      con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      if (classobj_put_index_id (&(flat->properties), con->type,
-					 con->name, con->attributes,
-					 con->asc_desc,
-					 con->attrs_prefix_length,
-					 &(con->index),
-					 con->fk_info, con->shared_cons_name)
-		  != NO_ERROR)
+	      if (classobj_put_index_id
+		  (&(flat->properties), con->type, con->name, con->attributes,
+		   con->asc_desc, con->attrs_prefix_length, &(con->index),
+		   SM_GET_FILTER_PRED_STRING (con->filter_predicate),
+		   SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+		   SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
+		   con->fk_info, con->shared_cons_name,
+		   con->func_index_info) != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -10817,12 +10908,13 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  else if (con->type == SM_CONSTRAINT_INDEX ||
 		   con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
-	      if (classobj_put_index_id (&(flat->properties), con->type,
-					 con->name, con->attributes,
-					 con->asc_desc,
-					 con->attrs_prefix_length,
-					 &(con->index), NULL, NULL)
-		  != NO_ERROR)
+	      if (classobj_put_index_id
+		  (&(flat->properties), con->type, con->name, con->attributes,
+		   con->asc_desc, con->attrs_prefix_length, &(con->index),
+		   SM_GET_FILTER_PRED_STRING (con->filter_predicate),
+		   SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+		   SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
+		   NULL, NULL, con->func_index_info) != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -12421,12 +12513,16 @@ sm_exist_index (MOP classop, const char *idxname, BTID * btid)
  *   attname(in): attribute name
  *   asc_desc(in): asc/desc info list
  *   attrs_prefix_length(in): prefix length
+ *   filter_predicate(in): expression from
+ *   CREATE INDEX idx ON tbl(col1, ...) WHERE filter_predicate
  */
 
 int
 sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	      const char *constraint_name, const char **attnames,
-	      const int *asc_desc, const int *attrs_prefix_length)
+	      const int *asc_desc, const int *attrs_prefix_length,
+	      char *pred_string, char *pred_stream, int pred_stream_size,
+	      SM_FUNCTION_INDEX_INFO * function_index)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -12444,7 +12540,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	  || db_constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
   error = sm_check_index_exist (classop, NULL, db_constraint_type,
-				constraint_name, attnames, asc_desc);
+				constraint_name, attnames, asc_desc,
+				function_index);
   if (error != NO_ERROR)
     {
       return error;
@@ -12517,7 +12614,10 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	    }
 
 	  error = sm_add_index (sub_partitions[i], db_constraint_type,
-				constraint_name, attnames, asc_desc, NULL);
+				constraint_name, attnames, asc_desc, NULL,
+				pred_string, pred_stream, pred_stream_size,
+				function_index);
+
 	}
 
       if (error != NO_ERROR)
@@ -12606,7 +12706,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       error = allocate_index (classop, class_, NULL, attrs, asc_desc,
 			      attrs_prefix_length, false,
 			      reverse_index, constraint_name, &index, NULL,
-			      NULL, -1, NULL);
+			      NULL, -1, NULL, pred_stream, pred_stream_size,
+			      function_index);
 
       if (error == NO_ERROR)
 	{
@@ -12623,11 +12724,11 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	    }
 
 	  /* modify the class to point at the new index */
-	  if (classobj_put_index_id (&(class_->properties),
-				     constraint_type,
-				     constraint_name, attrs, asc_desc,
-				     attrs_prefix_length,
-				     &index, NULL, NULL) != NO_ERROR)
+	  if (classobj_put_index_id
+	      (&(class_->properties), constraint_type, constraint_name, attrs,
+	       asc_desc, attrs_prefix_length, &index, pred_string,
+	       pred_stream, pred_stream_size, NULL, NULL,
+	       function_index) != NO_ERROR)
 	    {
 	      error = er_errid ();
 	      goto general_error;
@@ -12973,19 +13074,21 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
  *   type(in): Constraint Type
  *   att_names(in): Attribute Names
  *   asc_desc(in): asc/desc info list
+ *   func_info(in): function info
  */
 
 static char *
 sm_default_constraint_name (const char *class_name,
 			    DB_CONSTRAINT_TYPE type,
-			    const char **att_names, const int *asc_desc)
+			    const char **att_names, const int *asc_desc,
+			    SM_FUNCTION_INDEX_INFO * func_info)
 {
   const char **ptr;
   char *name = NULL;
   int name_length = 0;
   bool do_desc;
   int error = NO_ERROR;
-
+  int n_attrs = 0;
   /*
    *  Construct the constraint name
    */
@@ -12996,7 +13099,7 @@ sm_default_constraint_name (const char *class_name,
   else
     {
       const char *prefix;
-      int i;
+      int i, k;
 
       /* Constraint Type */
       prefix = (type == DB_CONSTRAINT_INDEX) ? "i_" :
@@ -13014,9 +13117,25 @@ sm_default_constraint_name (const char *class_name,
       name_length = sizeof (prefix);
       name_length += strlen (class_name);	/* class name */
 
-      i = 0;
-      for (ptr = att_names; *ptr != NULL; ptr++, i++)
+      if (func_info)
 	{
+	  n_attrs = func_info->attr_index_start;
+	  name_length +=
+	    intl_identifier_lower_string_size (func_info->expr_str);
+	}
+      else
+	{
+	  for (ptr = att_names; *ptr != NULL; ptr++)
+	    {
+	      n_attrs++;
+	    }
+	}
+
+      i = 0;
+      for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
+	{
+	  int ptr_size = 0;
+
 	  do_desc = false;	/* init */
 	  if (asc_desc)
 	    {
@@ -13030,7 +13149,8 @@ sm_default_constraint_name (const char *class_name,
 		}
 	    }
 
-	  name_length += (1 + strlen (*ptr));	/* seprator and attr name */
+	  ptr_size = intl_identifier_lower_string_size (*ptr);
+	  name_length += (1 + ptr_size);	/* separator and attr name */
 	  if (do_desc)
 	    {
 	      name_length += 2;	/* '_d' for 'desc' */
@@ -13049,10 +13169,27 @@ sm_default_constraint_name (const char *class_name,
 	  /* Class name */
 	  strcat (name, class_name);
 
-	  /* separated list of attribute names */
-	  i = 0;
-	  for (ptr = att_names; *ptr != NULL; ptr++, i++)
+	  if (func_info)
 	    {
+	      n_attrs++;
+	    }
+	  /* separated list of attribute names */
+	  k = 0;
+	  i = 0;
+	  for (ptr = att_names; (*ptr != NULL) && (k < n_attrs); ptr++, i++)
+	    {
+	      if (func_info && (k == func_info->col_id))
+		{
+		  strcat (name, "_");
+
+		  intl_identifier_lower (func_info->expr_str + 1,
+					 &name[strlen (name)]);
+		  k++;
+		}
+	      if (k == n_attrs)
+		{
+		  break;
+		}
 	      do_desc = false;	/* init */
 	      if (asc_desc)
 		{
@@ -13068,16 +13205,16 @@ sm_default_constraint_name (const char *class_name,
 
 	      strcat (name, "_");
 
-	      intl_mbs_lower (*ptr, &name[strlen (name)]);
+	      intl_identifier_lower (*ptr, &name[strlen (name)]);
 
 	      /* attr is marked as 'desc' */
 	      if (do_desc)
 		{
 		  strcat (name, "_d");
 		}
-	    }			/* for (ptr = ...) */
-
-	  /* now, strcat already appended terminating NULL character */
+	      k++;
+	      /* now, strcat already appended terminating NULL character */
+	    }
 	}
       else
 	{
@@ -13115,7 +13252,8 @@ char *
 sm_produce_constraint_name (const char *class_name,
 			    DB_CONSTRAINT_TYPE constraint_type,
 			    const char **att_names,
-			    const int *asc_desc, const char *given_name)
+			    const int *asc_desc, const char *given_name,
+			    SM_FUNCTION_INDEX_INFO * func_info)
 {
   char *name = NULL;
   size_t name_size;
@@ -13123,15 +13261,15 @@ sm_produce_constraint_name (const char *class_name,
   if (given_name == NULL)
     {
       name = sm_default_constraint_name (class_name, constraint_type,
-					 att_names, asc_desc);
+					 att_names, asc_desc, func_info);
     }
   else
     {
-      name_size = (strlen (given_name) + 1) * sizeof (char);
-      name = (char *) malloc (name_size);
+      name_size = intl_identifier_lower_string_size (given_name);
+      name = (char *) malloc (name_size + 1);
       if (name != NULL)
 	{
-	  intl_mbs_lower (given_name, name);
+	  intl_identifier_lower (given_name, name);
 	}
       else
 	{
@@ -13162,7 +13300,7 @@ sm_produce_constraint_name_mop (MOP classop,
 				const int *asc_desc, const char *given_name)
 {
   return sm_produce_constraint_name (sm_class_name (classop), constraint_type,
-				     att_names, asc_desc, given_name);
+				     att_names, asc_desc, given_name, NULL);
 }
 
 /*
@@ -13183,7 +13321,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl,
 {
   return sm_produce_constraint_name (template_classname (tmpl),
 				     constraint_type, att_names, asc_desc,
-				     given_name);
+				     given_name, NULL);
 }
 
 /*
@@ -13210,13 +13348,15 @@ sm_free_constraint_name (char *constraint_name)
  *   constraint_name(in): Constraint name.
  *   att_names(in): array of attribute names
  *   asc_desc(in): asc/desc info list
+ *   func_info(in): function info pointer
  */
 static int
 sm_check_index_exist (MOP classop,
 		      char **out_shared_cons_name,
 		      DB_CONSTRAINT_TYPE constraint_type,
 		      const char *constraint_name,
-		      const char **att_names, const int *asc_desc)
+		      const char **att_names, const int *asc_desc,
+		      SM_FUNCTION_INDEX_INFO * func_info)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -13235,7 +13375,8 @@ sm_check_index_exist (MOP classop,
   return classobj_check_index_exist (class_->constraints,
 				     out_shared_cons_name,
 				     class_->header.name, constraint_type,
-				     constraint_name, att_names, asc_desc);
+				     constraint_name, att_names, asc_desc,
+				     func_info);
 }
 
 /*
@@ -13246,6 +13387,9 @@ sm_check_index_exist (MOP classop,
  *   constraint_name(in): What to call the new constraint
  *   att_names(in): Names of attributes to be constrained
  *   asc_desc(in): asc/desc info list
+ *   attrs_prefix_length(in): prefix length for each of the index attributes
+ *   filter_predicate(in): string with the WHERE expression from
+ *		CREATE INDEX idx ON tbl(...) WHERE filter_predicate
  *   class_attributes(in): Flag.  A true value indicates that the names refer to
  *     		class attributes. A false value indicates that the names
  *     		refer to instance attributes.
@@ -13256,9 +13400,11 @@ sm_check_index_exist (MOP classop,
  */
 int
 sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
-		   const char *constraint_name,
-		   const char **att_names, const int *asc_desc,
-		   const int *attrs_prefix_length, int class_attributes)
+		   const char *constraint_name, const char **att_names,
+		   const int *asc_desc, const int *attrs_prefix_length,
+		   int class_attributes, char *pred_string, char *pred_stream,
+		   int pred_stream_size,
+		   SM_FUNCTION_INDEX_INFO * function_index)
 {
   int error = NO_ERROR;
   char *shared_cons_name = NULL;
@@ -13274,8 +13420,10 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
     {
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
-      error = sm_add_index (classop, constraint_type, constraint_name,
-			    att_names, asc_desc, attrs_prefix_length);
+      error =
+	sm_add_index (classop, constraint_type, constraint_name, att_names,
+		      asc_desc, attrs_prefix_length, pred_string, pred_stream,
+		      pred_stream_size, function_index);
       break;
 
     case DB_CONSTRAINT_UNIQUE:
@@ -13541,8 +13689,32 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 	}
 
       free_and_init (info->name);
+      if (info->func_index_info)
+	{
+	  if (info->func_index_info->expr_str)
+	    {
+	      free_and_init (info->func_index_info->expr_str);
+	    }
+	  if (info->func_index_info->expr_stream)
+	    {
+	      free_and_init (info->func_index_info->expr_stream);
+	    }
+	  free_and_init (info->func_index_info);
+	}
       free_and_init (info->asc_desc);
       free_and_init (info->prefix_length);
+      if (info->filter_predicate)
+	{
+	  if (info->filter_predicate->pred_string)
+	    {
+	      free_and_init (info->filter_predicate->pred_string);
+	    }
+	  if (info->filter_predicate->pred_stream)
+	    {
+	      free_and_init (info->filter_predicate->pred_stream);
+	    }
+	  free_and_init (info->filter_predicate);
+	}
       free_and_init (info->ref_cls_name);
       free_and_init (info->fk_cache_attr);
 
@@ -13695,6 +13867,97 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	}
     }
 
+  if (c->filter_predicate != NULL)
+    {
+      int len = strlen (c->filter_predicate->pred_string);
+      new_constraint->filter_predicate =
+	(SM_PREDICATE *) calloc (1, sizeof (SM_PREDICATE));
+      if (new_constraint->filter_predicate == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  sizeof (SM_PREDICATE));
+	  goto error_exit;
+	}
+      new_constraint->filter_predicate->pred_string =
+	(char *) calloc (len + 1, sizeof (char));
+      if (new_constraint->filter_predicate->pred_string == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  (len + 1) * sizeof (char));
+	  goto error_exit;
+	}
+      memcpy (new_constraint->filter_predicate->pred_string,
+	      c->filter_predicate->pred_string, len);
+
+      new_constraint->filter_predicate->pred_stream =
+	(char *) calloc (c->filter_predicate->pred_stream_size,
+			 sizeof (char));
+      if (new_constraint->filter_predicate->pred_stream == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  c->filter_predicate->pred_stream_size * sizeof (char));
+	  goto error_exit;
+	}
+      memcpy (new_constraint->filter_predicate->pred_stream,
+	      c->filter_predicate->pred_stream,
+	      c->filter_predicate->pred_stream_size);
+
+      new_constraint->filter_predicate->pred_stream_size =
+	c->filter_predicate->pred_stream_size;
+    }
+  else
+    {
+      new_constraint->filter_predicate = NULL;
+    }
+
+  if (c->func_index_info != NULL)
+    {
+      int i = 0;
+      int len = strlen (c->func_index_info->expr_str);
+      new_constraint->func_index_info =
+	(SM_FUNCTION_INDEX_INFO *) calloc (1,
+					   sizeof (SM_FUNCTION_INDEX_INFO));
+      if (new_constraint->func_index_info == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  sizeof (SM_FUNCTION_INDEX_INFO));
+	  goto error_exit;
+	}
+      new_constraint->func_index_info->type = c->func_index_info->type;
+      new_constraint->func_index_info->expr_str =
+	(char *) calloc (len + 1, sizeof (char));
+      if (new_constraint->func_index_info->expr_str == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  (len + 1) * sizeof (char));
+	  goto error_exit;
+	}
+      memcpy (new_constraint->func_index_info->expr_str,
+	      c->func_index_info->expr_str, len);
+      new_constraint->func_index_info->expr_stream =
+	(char *) calloc (c->func_index_info->expr_stream_size, sizeof (char));
+      if (new_constraint->func_index_info->expr_stream == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  c->func_index_info->expr_stream_size * sizeof (char));
+	  goto error_exit;
+	}
+      memcpy (new_constraint->func_index_info->expr_stream,
+	      c->func_index_info->expr_stream,
+	      c->func_index_info->expr_stream_size);
+      new_constraint->func_index_info->expr_stream_size =
+	c->func_index_info->expr_stream_size;
+      new_constraint->func_index_info->col_id = c->func_index_info->col_id;
+      new_constraint->func_index_info->attr_index_start =
+	c->func_index_info->attr_index_start;
+      new_constraint->func_index_info->type = c->func_index_info->type;
+    }
   if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
     {
       MOP ref_clsop = NULL;
@@ -14117,9 +14380,15 @@ sm_truncate_class (MOP class_mop)
    * because of shared btree case. */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      error = sm_add_index (class_mop, saved->constraint_type,
-			    saved->name, (const char **) saved->att_names,
-			    saved->asc_desc, saved->prefix_length);
+      error =
+	sm_add_index (class_mop, saved->constraint_type, saved->name,
+		      (const char **) saved->att_names, saved->asc_desc,
+		      saved->prefix_length,
+		      SM_GET_FILTER_PRED_STRING (saved->filter_predicate),
+		      SM_GET_FILTER_PRED_STREAM (saved->filter_predicate),
+		      SM_GET_FILTER_PRED_STREAM_SIZE (saved->
+						      filter_predicate),
+		      saved->func_index_info);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -14129,10 +14398,17 @@ sm_truncate_class (MOP class_mop)
   /* PK must be created earlier than FK, because of self referencing case */
   for (saved = unique_save_info; saved != NULL; saved = saved->next)
     {
-      error = sm_add_constraint (class_mop, saved->constraint_type,
-				 saved->name,
-				 (const char **) saved->att_names,
-				 saved->asc_desc, saved->prefix_length, 0);
+      error =
+	sm_add_constraint (class_mop, saved->constraint_type, saved->name,
+			   (const char **) saved->att_names, saved->asc_desc,
+			   saved->prefix_length, 0,
+			   SM_GET_FILTER_PRED_STRING (saved->
+						      filter_predicate),
+			   SM_GET_FILTER_PRED_STREAM (saved->
+						      filter_predicate),
+			   SM_GET_FILTER_PRED_STREAM_SIZE (saved->
+							   filter_predicate),
+			   saved->func_index_info);
 
       if (error != NO_ERROR)
 	{

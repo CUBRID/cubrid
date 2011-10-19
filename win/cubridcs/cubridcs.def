@@ -446,6 +446,9 @@ EXPORTS
     envvar_root
     hashpjw
     intl_mbs_casecmp
+    intl_check_string
+    intl_char_count
+    intl_identifier_casecmp
     lang_charset
     msgcat_gets
     msgcat_open

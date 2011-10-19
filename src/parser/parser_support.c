@@ -575,8 +575,8 @@ pt_name_equal (PARSER_CONTEXT * parser, const PT_NODE * name1,
 	return false;
     }
 
-  if (intl_mbs_casecmp (name1->info.name.original, name2->info.name.original)
-      != 0)
+  if (intl_identifier_casecmp
+      (name1->info.name.original, name2->info.name.original) != 0)
     {
       return false;
     }
@@ -628,23 +628,24 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == PT_MIN
-	  || function_type == PT_MAX
-	  || function_type == PT_SUM
-	  || function_type == PT_AVG
-	  || function_type == PT_STDDEV
-	  || function_type == PT_STDDEV_POP
-	  || function_type == PT_STDDEV_SAMP
-	  || function_type == PT_VARIANCE
-	  || function_type == PT_VAR_POP
-	  || function_type == PT_VAR_SAMP
-	  || function_type == PT_GROUPBY_NUM
-	  || function_type == PT_COUNT
-	  || function_type == PT_COUNT_STAR
-	  || function_type == PT_AGG_BIT_AND
-	  || function_type == PT_AGG_BIT_OR
-	  || function_type == PT_AGG_BIT_XOR
-	  || function_type == PT_GROUP_CONCAT)
+      if (!node->info.function.analytic.is_analytic
+	  && (function_type == PT_MIN
+	      || function_type == PT_MAX
+	      || function_type == PT_SUM
+	      || function_type == PT_AVG
+	      || function_type == PT_STDDEV
+	      || function_type == PT_STDDEV_POP
+	      || function_type == PT_STDDEV_SAMP
+	      || function_type == PT_VARIANCE
+	      || function_type == PT_VAR_POP
+	      || function_type == PT_VAR_SAMP
+	      || function_type == PT_GROUPBY_NUM
+	      || function_type == PT_COUNT
+	      || function_type == PT_COUNT_STAR
+	      || function_type == PT_AGG_BIT_AND
+	      || function_type == PT_AGG_BIT_OR
+	      || function_type == PT_AGG_BIT_XOR
+	      || function_type == PT_GROUP_CONCAT))
 	{
 	  return true;
 	}
@@ -956,6 +957,56 @@ pt_is_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
     }
 
   if (info->agg_found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_analytic_node_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_analytic_node_post (PARSER_CONTEXT * parser, PT_NODE * tree,
+			  void *arg, int *continue_walk)
+{
+  bool *has_analytic = (bool *) arg;
+
+  if (*has_analytic)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_analytic_node () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an analytic function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
+		     void *arg, int *continue_walk)
+{
+  bool *has_analytic = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION
+      && tree->info.function.analytic.is_analytic)
+    {
+      *has_analytic = true;
+    }
+
+  if (*has_analytic)
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -2471,6 +2522,50 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_analytic () -
+ *   return: true if statement has an analytic function in its parse tree
+ *   parser(in):
+ *   node(in/out):
+ *
+ */
+bool
+pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_analytic = false;
+
+  if (!node)
+    {
+      return false;
+    }
+
+  if (node->node_type == PT_SELECT)
+    {
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_HAS_ANALYTIC))
+	{
+	  has_analytic = true;
+	}
+      else
+	{
+	  (void) parser_walk_tree (parser, node->info.query.q.select.list,
+				   pt_is_analytic_node, &has_analytic,
+				   pt_is_analytic_node_post, &has_analytic);
+	  if (has_analytic)
+	    {
+	      PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_HAS_ANALYTIC);
+	    }
+	}
+    }
+  else
+    {
+      (void) parser_walk_tree (parser, node,
+			       pt_is_analytic_node, &has_analytic,
+			       pt_is_analytic_node_post, &has_analytic);
+    }
+
+  return has_analytic;
+}
+
+/*
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes
@@ -3638,6 +3733,29 @@ regu_pred_init (PRED_EXPR * ptr)
 }
 
 /*
+ * regu_pred_with_context_alloc () -
+ *   return: PRED_EXPR_WITH_CONTEXT *
+ *
+ * Note: Memory allocation function for PRED_EXPR_WITH_CONTEXT.
+ */
+PRED_EXPR_WITH_CONTEXT *
+regu_pred_with_context_alloc ()
+{
+  PRED_EXPR_WITH_CONTEXT *ptr;
+
+  ptr = (PRED_EXPR_WITH_CONTEXT *)
+    pt_alloc_packing_buf (sizeof (PRED_EXPR_WITH_CONTEXT));
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+
+  memset ((char *) ptr, 0x00, sizeof (PRED_EXPR_WITH_CONTEXT));
+  return ptr;
+}
+
+/*
  * regu_arith_alloc () -
  *   return: ARITH_TYPE *
  *
@@ -3880,6 +3998,63 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   regu_var_init (&ptr->operand);
   ptr->list_id = NULL;
   ptr->sort_list = NULL;
+}
+
+/*
+ * regu_analytic_alloc () -
+ *   return: ANALYTIC_TYPE *
+ *
+ * Note: Memory allocation function for ANALYTIC_TYPE.
+ */
+ANALYTIC_TYPE *
+regu_analytic_alloc (void)
+{
+  ANALYTIC_TYPE *ptr;
+
+  ptr = (ANALYTIC_TYPE *) pt_alloc_packing_buf (sizeof (ANALYTIC_TYPE));
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+    }
+  else
+    {
+      regu_analytic_init (ptr);
+      ptr->list_id = regu_listid_alloc ();
+      if (ptr->list_id == NULL)
+	{
+	  return NULL;
+	}
+      ptr->value2 = regu_dbval_alloc ();
+      if (ptr->value2 == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  return ptr;
+}
+
+/*
+ * regu_analytic_init () -
+ *   return:
+ *   ptr(in)    : pointer to an analytic structure
+ *
+ * Note: Initialization function for ANALYTIC_TYPE.
+ */
+void
+regu_analytic_init (ANALYTIC_TYPE * ptr)
+{
+  ptr->next = NULL;
+  ptr->value = NULL;
+  ptr->value2 = NULL;
+  ptr->default_value = NULL;
+  ptr->curr_cnt = 0;
+  ptr->partition_cnt = 0;
+  ptr->function = (FUNC_TYPE) 0;
+  regu_var_init (&ptr->operand);
+  ptr->sort_list = NULL;
+  ptr->opr_dbtype = DB_TYPE_NULL;
+  ptr->flag = 0;
 }
 
 /*
@@ -4748,6 +4923,112 @@ regu_hfid_array_alloc (int size)
 }
 
 /*
+ * regu_update_class_info_init () -
+ *   return:
+ *   ptr(in)    : pointer to a UPDATE_CLASS_INFO
+ *
+ * Note: Initialization function for UPDATE_CLASS_INFO.
+ */
+void
+regu_update_class_info_init (UPDATE_CLASS_INFO * ptr)
+{
+  ptr->att_id = NULL;
+  ptr->class_hfid = NULL;
+  ptr->class_oid = NULL;
+  ptr->has_uniques = 0;
+  ptr->no_subclasses = 0;
+  ptr->no_attrs = 0;
+  ptr->partition = NULL;
+}
+
+/*
+ * regu_update_class_info_array_alloc () -
+ *   return: UPDATE_CLASS_INFO *
+ *   size(in): size of the array to be allocated
+ *
+ * Note: Memory allocation function for arrays of UPDATE_CLASS_INFO
+ */
+UPDATE_CLASS_INFO *
+regu_update_class_info_array_alloc (int size)
+{
+  UPDATE_CLASS_INFO *ptr;
+  int i;
+
+  if (size == 0)
+    {
+      return NULL;
+    }
+
+  ptr =
+    (UPDATE_CLASS_INFO *) pt_alloc_packing_buf (sizeof (UPDATE_CLASS_INFO) *
+						size);
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+  else
+    {
+      for (i = 0; i < size; i++)
+	{
+	  regu_update_class_info_init (&ptr[i]);
+	}
+      return ptr;
+    }
+}
+
+/*
+ * regu_update_assignment_init () -
+ *   return:
+ *   ptr(in)    : pointer to a UPDATE_ASSIGNMENT
+ *
+ * Note: Initialization function for UPDATE_ASSIGNMENT.
+ */
+void
+regu_update_assignment_init (UPDATE_ASSIGNMENT * ptr)
+{
+  ptr->att_idx = -1;
+  ptr->cls_idx = -1;
+  ptr->constant = NULL;
+}
+
+/*
+ * regu_update_assignment_array_alloc () -
+ *   return: UPDATE_ASSIGNMENT *
+ *   size(in): size of the array to be allocated
+ *
+ * Note: Memory allocation function for arrays of UPDATE_ASSIGNMENT
+ */
+UPDATE_ASSIGNMENT *
+regu_update_assignment_array_alloc (int size)
+{
+  UPDATE_ASSIGNMENT *ptr;
+  int i;
+
+  if (size == 0)
+    {
+      return NULL;
+    }
+
+  ptr =
+    (UPDATE_ASSIGNMENT *) pt_alloc_packing_buf (sizeof (UPDATE_ASSIGNMENT) *
+						size);
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+  else
+    {
+      for (i = 0; i < size; i++)
+	{
+	  regu_update_assignment_init (&ptr[i]);
+	}
+      return ptr;
+    }
+}
+
+/*
  * regu_method_sig_init () -
  *   return:
  *   ptr(in)    : pointer to a method_sig
@@ -5085,6 +5366,26 @@ regu_selupd_list_init (SELUPD_LIST * ptr)
   ptr->class_hfid.hpgid = NULL_PAGEID;
   ptr->select_list_size = 0;
   ptr->select_list = NULL;
+}
+
+/*
+ * regu_func_pred_alloc () - 
+ *   return:
+ */
+FUNC_PRED *
+regu_func_pred_alloc (void)
+{
+  FUNC_PRED *ptr;
+
+  ptr = (FUNC_PRED *) pt_alloc_packing_buf (sizeof (FUNC_PRED));
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+
+  memset ((char *) ptr, 0x00, sizeof (FUNC_PRED));
+  return ptr;
 }
 
 /* pt_enter_packing_buf() - mark the beginning of another level of packing
@@ -7535,6 +7836,8 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   PT_NODE *sub_query = NULL;
   PT_NODE *from_item = NULL;
   PT_NODE *sel_item = NULL;
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
+			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
@@ -7544,6 +7847,9 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     {
       return NULL;
     }
+
+  intl_identifier_lower (original_cls_id->info.name.original,
+			 lower_table_name);
 
   /* ------ SELECT list    ------- */
   /* Field */
@@ -7570,10 +7876,8 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     /* create the dummy query, and a condition that is never reached with OR */
     /* the dummy query from table is required to print an error when table
      * doens't exist, instead of 'no results' */
-    dummy_check_table_query = pt_make_dummy_query_check_table (parser,
-							       original_cls_id->
-							       info.name.
-							       original);
+    dummy_check_table_query =
+      pt_make_dummy_query_check_table (parser, lower_table_name);
     dummy_val = pt_make_integer_value (parser, -1);
     cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
 				    NULL);
@@ -7623,9 +7927,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
 
     /* make types subquery using class name in order to optimize the query */
     types_subsquery =
-      pt_make_collection_type_subquery_node (parser,
-					     original_cls_id->info.
-					     name.original);
+      pt_make_collection_type_subquery_node (parser, lower_table_name);
 
     /* JOIN condition :  ON Types_t.attr_name = A.attr_name */
     join_cond =
@@ -7674,7 +7976,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     /* C.class_name = class_identifier.original_name */
     where_item2 =
       pt_make_pred_name_string_val (parser, PT_EQ, "C.class_name",
-				    original_cls_id->info.name.original);
+				    lower_table_name);
 
     /* item1 = item2 AND item2 */
     where_item1 =
@@ -7784,6 +8086,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 {
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
+  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH *
+		       INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7793,6 +8097,9 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
     {
       return NULL;
     }
+
+  intl_identifier_lower (view_identifier->info.name.original,
+			 lower_view_name);
 
   /* ------ SELECT list    ------- */
   {
@@ -7806,9 +8113,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
     PT_NODE *pred = NULL;
     PT_NODE *view_field = NULL;
 
-    if_true_node =
-      pt_make_dummy_query_check_table (parser,
-				       view_identifier->info.name.original);
+    if_true_node = pt_make_dummy_query_check_table (parser, lower_view_name);
     if_false_node =
       pt_make_dotted_identifier (parser, "QS.class_of.class_name");
     pred =
@@ -7834,7 +8139,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 
     where_item =
       pt_make_pred_name_string_val (parser, PT_EQ, "QS.class_of.class_name",
-				    view_identifier->info.name.original);
+				    lower_view_name);
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
     node->info.query.q.select.where =
@@ -8114,7 +8419,8 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
   PT_NODE *where_expr = NULL;
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
-  char user_name[2 * SM_MAX_IDENTIFIER_LENGTH + 1] = { 0 };
+  char user_name[SM_MAX_IDENTIFIER_LENGTH *
+		 INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER + 1] = { 0 };
   int i = 0;
 
   assert (original_user_name != NULL);
@@ -8122,7 +8428,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
 
   /* conversion to uppercase can cause <original_user_name> to double size, if
    * internationalization is used : size <user_name> accordingly */
-  toupper_string (original_user_name, user_name);
+  intl_identifier_upper (original_user_name, user_name);
 
   node = parser_new_node (parser, PT_SELECT);
   if (node == NULL)
@@ -8364,10 +8670,13 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
       assert (att_id->node_type == PT_NAME);
       if (att_id->node_type == PT_NAME)
 	{
+	  char lower_att_name[DB_MAX_IDENTIFIER_LENGTH *
+			      INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
 	  /* build WHERE */
+	  intl_identifier_lower (att_id->info.name.original, lower_att_name);
 	  where_node =
 	    pt_make_pred_name_string_val (parser, PT_EQ, "Field",
-					  att_id->info.name.original);
+					  lower_att_name);
 	}
     }
 
@@ -8419,6 +8728,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *sub_query = NULL;
   PT_NODE *from_item = NULL;
   PT_NODE *sel_item = NULL;
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
+			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
@@ -8429,6 +8740,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
       return NULL;
     }
 
+  intl_identifier_lower (original_cls_id->info.name.original,
+			 lower_table_name);
   /* ------ SELECT list    ------- */
   /* I.class_of.class_name  AS Table */
   pt_add_name_col_to_sel_list (parser, sub_query, "I.class_of.class_name",
@@ -8531,10 +8844,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
     PT_NODE *dummy_check_table_query = NULL;
     PT_NODE *dummy_val = NULL;
 
-    dummy_check_table_query = pt_make_dummy_query_check_table (parser,
-							       original_cls_id->
-							       info.name.
-							       original);
+    dummy_check_table_query =
+      pt_make_dummy_query_check_table (parser, lower_table_name);
     dummy_val = pt_make_integer_value (parser, -1);
     cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
 				    NULL);
@@ -8630,7 +8941,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
     /* I.class_of.class_name= <class_name> */
     where_item2 =
       pt_make_pred_name_string_val (parser, PT_EQ, "I.class_of.class_name",
-				    original_cls_id->info.name.original);
+				    lower_table_name);
 
     /* item1 = item2 AND item2 */
     where_item1 =

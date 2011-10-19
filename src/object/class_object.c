@@ -88,7 +88,9 @@ static DB_SEQ *classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO *
 static DB_SEQ *classobj_make_index_attr_prefix_seq (int num_attrs,
 						    const int
 						    *attrs_prefix_length);
-
+static DB_SEQ *classobj_make_index_filter_pred_seq (char *pred_string,
+						    char *pred_stream,
+						    int pred_stream_size);
 static SM_CONSTRAINT *classobj_make_constraint (const char *name,
 						SM_CONSTRAINT_TYPE type,
 						BTID * id);
@@ -115,7 +117,7 @@ static SM_FOREIGN_KEY_INFO *classobj_make_foreign_key_ref_list (DB_SEQ *
 								fk_container);
 static int *classobj_make_index_prefix_info (DB_SEQ * prefix_seq,
 					     int num_attrs);
-
+static SM_PREDICATE *classobj_make_index_filter_pred_info (DB_SEQ * pred_seq);
 static int classobj_cache_not_null_constraints (const char *class_name,
 						SM_ATTRIBUTE * attributes,
 						SM_CLASS_CONSTRAINT **
@@ -161,7 +163,10 @@ static int classobj_copy_attribute_like (DB_CTMPL * ctemplate,
 static int classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 					  SM_CLASS_CONSTRAINT * constraint,
 					  const char *const like_class_name);
-
+static SM_FUNCTION_INDEX_INFO *classobj_make_function_index_info (DB_SEQ *
+								  func_seq);
+static DB_SEQ *classobj_make_function_index_info_seq (SM_FUNCTION_INDEX_INFO *
+						      func_index_info);
 
 void
 classobj_area_init (void)
@@ -587,12 +592,14 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
 	      (c->type == SM_CONSTRAINT_REVERSE_INDEX)
 	      || (c->attributes[0]->class_mop == filter_class))
 	    {
-	      if (classobj_put_index_id (new_properties, c->type, c->name,
-					 c->attributes, c->asc_desc,
-					 c->attrs_prefix_length,
-					 &(c->index),
-					 c->fk_info, c->shared_cons_name)
-		  == ER_FAILED)
+	      if (classobj_put_index_id
+		  (new_properties, c->type, c->name, c->attributes,
+		   c->asc_desc, c->attrs_prefix_length, &(c->index),
+		   SM_GET_FILTER_PRED_STRING (c->filter_predicate),
+		   SM_GET_FILTER_PRED_STREAM (c->filter_predicate),
+		   SM_GET_FILTER_PRED_STREAM_SIZE (c->filter_predicate),
+		   c->fk_info, c->shared_cons_name,
+		   c->func_index_info) == ER_FAILED)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -795,13 +802,57 @@ classobj_make_index_attr_prefix_seq (int num_attrs,
 }
 
 /*
+ * classobj_make_index_attr_prefix_seq() - Make sequence which contains
+ *                                         filter predicate
+ *   return: sequence
+ *   pred_string(in): filter predicate string
+ *   pred_stream(in): filter predicate stream
+ *   pred_stream_size: filter predicate stream length
+ */
+static DB_SEQ *
+classobj_make_index_filter_pred_seq (char *pred_string, char *pred_stream,
+				     int pred_stream_size)
+{
+  DB_SEQ *pred_seq = NULL;
+  DB_VALUE value;
+
+  pred_seq = set_create_sequence (2);
+  if (pred_seq == NULL)
+    {
+      return NULL;
+    }
+
+  if (pred_string)
+    {
+      db_make_string (&value, pred_string);
+    }
+  else
+    {
+      db_make_null (&value);
+    }
+  set_put_element (pred_seq, 0, &value);
+
+  if (pred_stream)
+    {
+      db_make_char (&value, pred_stream_size, pred_stream, pred_stream_size);
+    }
+  else
+    {
+      db_make_null (&value);
+    }
+  set_put_element (pred_seq, 1, &value);
+
+  return pred_seq;
+}
+
+/*
  * classobj_put_index() - This is used to put and update indexes on the property list.
  *    The property list is composed of name/value pairs.  For unique
  *    indexes, this will be SM_PROPERTY_UNIQUE/{uniques} where {uniques}
  *    are another property list of unique instances.  The general form
  *    is;
- *        {"*U", {"name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}},
- *                "name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}}}}
+ *        {"*U", {"name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}, "pred_expression"},
+ *                "name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}, "pred_expression"}}}
  *    Until we fully support named constraints, use the attribute name as
  *    the constraint name.  Each constraint instance must be uniquely named.
  *    An old value will be overwritten with a new value with the same name.
@@ -820,7 +871,10 @@ int
 classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 		    const char *constraint_name, SM_ATTRIBUTE ** atts,
 		    const int *asc_desc, const BTID * id,
-		    SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name)
+		    char *pred_string, char *pred_stream,
+		    int pred_stream_size, SM_FOREIGN_KEY_INFO * fk_info,
+		    char *shared_cons_name,
+		    SM_FUNCTION_INDEX_INFO * func_index_info)
 {
   int i;
   int ok = NO_ERROR;
@@ -876,11 +930,12 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
       char buf[128], *pbuf;
       DB_VALUE value;
       int e;
-      DB_SEQ *fk_seq, *prefix_seq;
+      DB_SEQ *fk_seq, *pred_seq;
       int num_attrs = 0;
 
       e = 0;			/* init */
 
+      /* Fill the BTID into the sequence */
       if (shared_cons_name)
 	{
 	  pbuf = (char *) malloc (strlen (shared_cons_name) + 10);
@@ -915,6 +970,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 	  free_and_init (pbuf);
 	}
 
+      /* Fill the indexed attributes into the sequence */
       for (i = 0; atts[i] != NULL; i++)
 	{
 	  /* name */
@@ -965,16 +1021,83 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 	}
       else
 	{
-	  prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, NULL);
-	  if (prefix_seq != NULL)
+	  if (pred_stream == NULL && func_index_info == NULL)
 	    {
-	      db_make_sequence (&value, prefix_seq);
-	      set_put_element (constraint, e++, &value);
-	      pr_clear_value (&value);
+	      /*prefix length */
+	      DB_SEQ *prefix_seq =
+		classobj_make_index_attr_prefix_seq (num_attrs, NULL);
+	      if (prefix_seq != NULL)
+		{
+		  db_make_sequence (&value, prefix_seq);
+		  set_put_element (constraint, e++, &value);
+		  pr_clear_value (&value);
+		}
+	      else
+		{
+		  ok = ER_FAILED;
+		}
 	    }
 	  else
 	    {
-	      ok = ER_FAILED;
+	      DB_SEQ *seq = set_create_sequence (0);
+	      DB_SEQ *seq_child = set_create_sequence (0);
+	      int i = 0;
+
+	      if (seq == NULL)
+		{
+		  ok = ER_FAILED;
+		}
+
+	      if (pred_stream)
+		{
+		  pred_seq =
+		    classobj_make_index_filter_pred_seq (pred_string,
+							 pred_stream,
+							 pred_stream_size);
+		  if (pred_seq == NULL)
+		    {
+		      ok = ER_FAILED;
+		    }
+		  else
+		    {
+		      db_make_string (&value, SM_FILTER_INDEX_ID);
+		      set_put_element (seq_child, 0, &value);
+
+		      db_make_sequence (&value, pred_seq);
+		      set_put_element (seq_child, 1, &value);
+		      pr_clear_value (&value);
+
+		      db_make_sequence (&value, seq_child);
+		      set_put_element (seq, i++, &value);
+		      pr_clear_value (&value);
+		    }
+		}
+
+	      if (func_index_info)
+		{
+		  pred_seq =
+		    classobj_make_function_index_info_seq (func_index_info);
+		  if (pred_seq == NULL)
+		    {
+		      ok = ER_FAILED;
+		    }
+		  else
+		    {
+		      db_make_string (&value, SM_FUNCTION_INDEX_ID);
+		      set_put_element (seq_child, 0, &value);
+
+		      db_make_sequence (&value, pred_seq);
+		      set_put_element (seq_child, 1, &value);
+		      pr_clear_value (&value);
+
+		      db_make_sequence (&value, seq_child);
+		      set_put_element (seq, i++, &value);
+		      pr_clear_value (&value);
+		    }
+		}
+	      db_make_sequence (&value, seq);
+	      set_put_element (constraint, e++, &value);
+	      pr_clear_value (&value);
 	    }
 	}
 
@@ -1004,8 +1127,8 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
  *    indexes, this will be SM_PROPERTY_UNIQUE/{uniques} where {uniques}
  *    are another property list of unique instances.  The general form
  *    is;
- *        {"*U", {"name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}},
- *                "name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}}}}
+ *        {"*U", {"name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}, "pred_expression"},
+ *                "name", {"volid|pageid|fileid", ["attr", asc_desc]+ {fk_info}, "pred_expression"}}}
  *    Until we fully support named constraints, use the attribute name as
  *    the constraint name.  Each constraint instance must be uniquely named.
  *    An old value will be overwritten with a new value with the same name.
@@ -1026,8 +1149,10 @@ classobj_put_index_id (DB_SEQ ** properties,
 		       SM_ATTRIBUTE ** atts,
 		       const int *asc_desc,
 		       const int *attrs_prefix_length,
-		       const BTID * id, SM_FOREIGN_KEY_INFO * fk_info,
-		       char *shared_cons_name)
+		       const BTID * id, char *pred_string, char *pred_stream,
+		       int pred_stream_size, SM_FOREIGN_KEY_INFO * fk_info,
+		       char *shared_cons_name,
+		       SM_FUNCTION_INDEX_INFO * func_index_info)
 {
   int i;
   int ok = NO_ERROR;
@@ -1083,7 +1208,7 @@ classobj_put_index_id (DB_SEQ ** properties,
       char buf[128], *pbuf;
       DB_VALUE value;
       int e;
-      DB_SEQ *fk_seq, *prefix_seq;
+      DB_SEQ *fk_seq, *prefix_seq, *pred_seq;
       int num_attrs = 0;
 
       e = 0;			/* init */
@@ -1186,17 +1311,85 @@ classobj_put_index_id (DB_SEQ ** properties,
 	}
       else
 	{
-	  prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs,
-							    attrs_prefix_length);
-	  if (prefix_seq != NULL)
+	  if (pred_stream == NULL && func_index_info == NULL)
 	    {
-	      db_make_sequence (&value, prefix_seq);
-	      set_put_element (constraint, e++, &value);
-	      pr_clear_value (&value);
+	      /*prefix length */
+	      prefix_seq =
+		classobj_make_index_attr_prefix_seq (num_attrs,
+						     attrs_prefix_length);
+	      if (prefix_seq != NULL)
+		{
+		  db_make_sequence (&value, prefix_seq);
+		  set_put_element (constraint, e++, &value);
+		  pr_clear_value (&value);
+		}
+	      else
+		{
+		  ok = ER_FAILED;
+		}
 	    }
 	  else
 	    {
-	      ok = ER_FAILED;
+	      DB_SEQ *seq = set_create_sequence (0);
+	      DB_SEQ *seq_child = set_create_sequence (0);
+	      int i = 0;
+
+	      if (seq == NULL)
+		{
+		  ok = ER_FAILED;
+		}
+
+	      if (pred_stream)
+		{
+		  pred_seq =
+		    classobj_make_index_filter_pred_seq (pred_string,
+							 pred_stream,
+							 pred_stream_size);
+		  if (pred_seq == NULL)
+		    {
+		      ok = ER_FAILED;
+		    }
+		  else
+		    {
+		      db_make_string (&value, SM_FILTER_INDEX_ID);
+		      set_put_element (seq_child, 0, &value);
+
+		      db_make_sequence (&value, pred_seq);
+		      set_put_element (seq_child, 1, &value);
+		      pr_clear_value (&value);
+
+		      db_make_sequence (&value, seq_child);
+		      set_put_element (seq, i++, &value);
+		      pr_clear_value (&value);
+		    }
+		}
+
+	      if (func_index_info)
+		{
+		  pred_seq =
+		    classobj_make_function_index_info_seq (func_index_info);
+		  if (pred_seq == NULL)
+		    {
+		      ok = ER_FAILED;
+		    }
+		  else
+		    {
+		      db_make_string (&value, SM_FUNCTION_INDEX_ID);
+		      set_put_element (seq_child, 0, &value);
+
+		      db_make_sequence (&value, pred_seq);
+		      set_put_element (seq_child, 1, &value);
+		      pr_clear_value (&value);
+
+		      db_make_sequence (&value, seq_child);
+		      set_put_element (seq, i++, &value);
+		      pr_clear_value (&value);
+		    }
+		}
+
+	      db_make_sequence (&value, seq);
+	      set_put_element (constraint, e++, &value);
+	      pr_clear_value (&value);
 	    }
 	}
 
@@ -1835,8 +2028,14 @@ classobj_constraint_size (SM_CONSTRAINT * constraint)
  *                               the associated attributes.
  *   return: true if constraint entry was cached
  *   name(in): Constraint name
- *   constraint_seq(in): Constraint entry.  This is a sequence of the form
- *                   {"B-tree ID", "att_name", "att_name", ...}
+ *   constraint_seq(in): Constraint entry.  This is a sequence of the form:
+ *      {
+ *	    "B-tree ID", 
+ *	    [ "att_name", "asc_dsc", ]
+ *	    [ "att_name", "asc_dsc", ]
+ *	    {fk_info | pk_info | prefix_length}
+ *	    "filter_predicate" 
+ *	}
  *   class(in): Class pointer.
  *   constraint_type(in):
  */
@@ -1942,7 +2141,13 @@ finish:
  *                              attribute caches
  *   return: non-zero if constraint list was cached
  *   seq(in): Unique constraint list.  This is a sequence of constraint
- *        name/ID pairs of the form {"name", {btid, att_nam(s)..}, ...}
+ *        name/ID pairs of the form:
+ *	{
+ *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
+ *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
+ *	    {fk_info | pk_info | prefix_length}
+ *	    "filter_predicate" 
+ *	}
  *   class(in): Class pointer
  *   constraint_type(in):
  */
@@ -2080,7 +2285,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name,
     {
       if (name != NULL)
 	{
-	  if (intl_mbs_casecmp (att->header.name, name) == 0)
+	  if (intl_identifier_casecmp (att->header.name, name) == 0)
 	    {
 	      break;
 	    }
@@ -2122,6 +2327,8 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   BTID_SET_NULL (&new_->index);
   new_->fk_info = NULL;
   new_->shared_cons_name = NULL;
+  new_->filter_predicate = NULL;
+  new_->func_index_info = NULL;
 
   return new_;
 }
@@ -2170,8 +2377,23 @@ classobj_free_class_constraints (SM_CLASS_CONSTRAINT * constraints)
 	{
 	  db_ws_free (c->attrs_prefix_length);
 	}
-
+      if (c->func_index_info)
+	{
+	  classobj_free_function_index_ref (c->func_index_info);
+	}
       free_and_init (c->shared_cons_name);
+      if (c->filter_predicate)
+	{
+	  if (c->filter_predicate->pred_stream)
+	    {
+	      db_ws_free (c->filter_predicate->pred_stream);
+	    }
+	  if (c->filter_predicate->pred_string)
+	    {
+	      db_ws_free (c->filter_predicate->pred_string);
+	    }
+	  db_ws_free (c->filter_predicate);
+	}
 
       if (c->fk_info)
 	{
@@ -2466,6 +2688,115 @@ classobj_make_index_prefix_info (DB_SEQ * prefix_seq, int num_attrs)
 }
 
 /*
+ * classobj_make_index_filter_pred_info() - Make index filter predicate
+ *					    from sequence
+ *   return: SM_PREDICATE *
+ *   pred_seq(in): sequence which contains filter predicate 
+ */
+static SM_PREDICATE *
+classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
+{
+  SM_PREDICATE *filter_predicate = NULL;
+  DB_VALUE fvalue;
+  char *val_str = NULL;
+  size_t val_str_len = 0;
+  char *buffer = NULL;
+  int buffer_len = 0;
+
+  assert (pred_seq != NULL && set_size (pred_seq) == 2);
+
+  if (set_get_element_nocopy (pred_seq, 0, &fvalue) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  if (DB_VALUE_TYPE (&fvalue) == DB_TYPE_NULL)
+    {
+      return NULL;
+    }
+  assert (DB_VALUE_TYPE (&fvalue) == DB_TYPE_STRING);
+  if (DB_VALUE_TYPE (&fvalue) != DB_TYPE_STRING)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
+  val_str = DB_GET_STRING (&fvalue);
+  val_str_len = DB_GET_STRING_SIZE (&fvalue);
+  assert (val_str != NULL);
+
+  filter_predicate = (SM_PREDICATE *) db_ws_alloc (sizeof (SM_PREDICATE));
+  if (filter_predicate == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (SM_PREDICATE));
+
+      goto error;
+    }
+  if (val_str_len > 0)
+    {
+      filter_predicate->pred_string = (char *) db_ws_alloc (val_str_len + 1);
+      if (filter_predicate->pred_string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, val_str_len + 1);
+	  goto error;
+	}
+      memset (filter_predicate->pred_string, 0, val_str_len + 1);
+      memcpy (filter_predicate->pred_string, (val_str), val_str_len);
+    }
+
+  if (set_get_element_nocopy (pred_seq, 1, &fvalue) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  /*since pred string is not null, pred stream should be not null, also */
+  if (DB_VALUE_TYPE (&fvalue) != DB_TYPE_CHAR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  buffer = DB_GET_STRING (&fvalue);
+  buffer_len = DB_GET_STRING_SIZE (&fvalue);
+  filter_predicate->pred_stream =
+    (char *) db_ws_alloc (buffer_len * sizeof (char));
+  if (filter_predicate->pred_stream == NULL)
+
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      buffer_len * sizeof (char));
+      goto error;
+    }
+
+  memcpy (filter_predicate->pred_stream, buffer, buffer_len);
+  filter_predicate->pred_stream_size = buffer_len;
+
+  return filter_predicate;
+error:
+
+  if (filter_predicate)
+    {
+      if (filter_predicate->pred_string)
+	{
+	  db_ws_free (filter_predicate->pred_string);
+	}
+
+      if (filter_predicate->pred_stream)
+	{
+	  db_ws_free (filter_predicate->pred_stream);
+	}
+
+      db_ws_free (filter_predicate);
+    }
+  return NULL;
+}
+
+/*
  * classobj_make_class_constraints() - Walk over a class property list extracting
  *    constraint information. Build up a list of SM_CLASS_CONSTRAINT structures
  *    and return it.
@@ -2484,7 +2815,7 @@ classobj_make_class_constraints (DB_SET * class_props,
   SM_ATTRIBUTE *att;
   SM_CLASS_CONSTRAINT *constraints, *last, *new_;
   DB_SET *props, *info, *fk;
-  DB_VALUE pvalue, uvalue, bvalue, avalue;
+  DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue;
   int i, j, k, e, len, info_len, att_cnt;
   int *asc_desc;
   int num_constraint_types = NUM_CONSTRAINT_TYPES;
@@ -2494,6 +2825,7 @@ classobj_make_class_constraints (DB_SET * class_props,
   db_make_null (&uvalue);
   db_make_null (&bvalue);
   db_make_null (&avalue);
+  db_make_null (&fvalue);
 
   constraints = last = NULL;
 
@@ -2519,7 +2851,14 @@ classobj_make_class_constraints (DB_SET * class_props,
 	  len = set_size (props);
 
 	  /* this sequence is an alternating pair of constraint
-	     name & info sequence */
+	   * name & info sequence, as by:
+	   * 
+	   * {
+	   *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate},
+	   *    name, { BTID, [att_name, asc_dsc],  {fk_info | pk_info | prefix_length, filter_predicate},
+	   *    ...
+	   * }
+	   */
 	  for (i = 0; i < len; i += 2)
 	    {
 
@@ -2732,19 +3071,131 @@ classobj_make_class_constraints (DB_SET * class_props,
 
 		  if (DB_VALUE_TYPE (&bvalue) == DB_TYPE_SEQUENCE)
 		    {
-		      new_->attrs_prefix_length =
-			classobj_make_index_prefix_info (DB_GET_SEQUENCE
-							 (&bvalue), att_cnt);
-		      if (new_->attrs_prefix_length == NULL)
+		      DB_SEQ *seq = DB_GET_SEQUENCE (&bvalue);
+		      if (set_get_element (seq, 0, &fvalue))
+			{
+			  pr_clear_value (&bvalue);
+			  goto structure_error;
+			}
+		      if (DB_VALUE_TYPE (&fvalue) == DB_TYPE_INTEGER)
+			{
+			  new_->attrs_prefix_length =
+			    classobj_make_index_prefix_info (seq, att_cnt);
+			  if (new_->attrs_prefix_length == NULL)
+			    {
+			      goto structure_error;
+			    }
+			}
+		      else if (DB_VALUE_TYPE (&fvalue) == DB_TYPE_SEQUENCE)
+			{
+			  DB_SET *seq = DB_GET_SEQUENCE (&bvalue);
+			  DB_SET *child_seq = DB_GET_SEQUENCE (&fvalue);
+			  int seq_size = set_size (seq);
+			  int flag = 0;
+
+			  j = 0;
+			  while (true)
+			    {
+			      if (set_get_element (child_seq, 0, &avalue) !=
+				  NO_ERROR)
+				{
+				  goto structure_error;
+				}
+
+			      if (DB_IS_NULL (&avalue) ||
+				  DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
+				{
+				  goto structure_error;
+				}
+
+			      if (strcmp (DB_GET_STRING (&avalue),
+					  SM_FILTER_INDEX_ID) == 0)
+				{
+				  flag = 0x01;
+				}
+			      if (strcmp (DB_GET_STRING (&avalue),
+					  SM_FUNCTION_INDEX_ID) == 0)
+				{
+				  flag = 0x02;
+				}
+
+			      pr_clear_value (&avalue);
+
+			      if (set_get_element (child_seq, 1, &avalue) !=
+				  NO_ERROR)
+				{
+				  goto structure_error;
+				}
+
+			      if (DB_VALUE_TYPE (&avalue) != DB_TYPE_SEQUENCE)
+				{
+				  goto structure_error;
+				}
+
+			      switch (flag)
+				{
+				case 0x01:
+				  new_->filter_predicate =
+				    classobj_make_index_filter_pred_info
+				    (DB_GET_SEQUENCE (&avalue));
+				  break;
+
+				case 0x02:
+				  new_->func_index_info =
+				    classobj_make_function_index_info
+				    (DB_GET_SEQUENCE (&avalue));
+				  break;
+
+				default:
+				  break;
+				}
+
+			      pr_clear_value (&avalue);
+
+			      j++;
+			      if (j >= seq_size)
+				{
+				  break;
+				}
+
+			      pr_clear_value (&fvalue);
+			      if (set_get_element (seq, j, &fvalue)
+				  != NO_ERROR)
+				{
+				  goto structure_error;
+				}
+
+			      if (DB_VALUE_TYPE (&fvalue) != DB_TYPE_SEQUENCE)
+				{
+				  goto structure_error;
+				}
+
+			      child_seq = DB_GET_SEQUENCE (&fvalue);
+			    }
+
+			  new_->attrs_prefix_length = (int *) db_ws_alloc
+			    (sizeof (int) * att_cnt);
+			  if (new_->attrs_prefix_length == NULL)
+			    {
+			      goto structure_error;
+			    }
+
+			  for (j = 0; j < att_cnt; j++)
+			    {
+			      new_->attrs_prefix_length[j] = -1;
+			    }
+			}
+		      else
 			{
 			  goto structure_error;
 			}
 
 		      pr_clear_value (&bvalue);
+		      pr_clear_value (&fvalue);
 		    }
 		  else
 		    {
-		      assert (DB_VALUE_TYPE (&bvalue) == DB_TYPE_INTEGER);
+		      goto structure_error;
 		    }
 		}
 
@@ -2778,6 +3229,7 @@ memory_error:
 other_error:
 
   /* clean up our values and return the error that has been set */
+  pr_clear_value (&fvalue);
   pr_clear_value (&avalue);
   pr_clear_value (&bvalue);
   pr_clear_value (&uvalue);
@@ -2861,7 +3313,7 @@ classobj_cache_not_null_constraints (const char *class_name,
 	  constraint_name = sm_produce_constraint_name (class_name,
 							DB_CONSTRAINT_NOT_NULL,
 							att_names, NULL,
-							NULL);
+							NULL, NULL);
 	  if (constraint_name == NULL)
 	    {
 	      goto memory_error;
@@ -3005,7 +3457,8 @@ classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
 
   for (con = constraints; con != NULL; con = con->next)
     {
-      if ((con->type == type) && (intl_mbs_casecmp (con->name, name) == 0))
+      if ((con->type == type)
+	  && (intl_identifier_casecmp (con->name, name) == 0))
 	{
 	  break;
 	}
@@ -3307,7 +3760,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 
 	  len = 0;		/* init */
 	  while (*attp && *namep
-		 && !intl_mbs_casecmp ((*attp)->header.name, *namep))
+		 && !intl_identifier_casecmp ((*attp)->header.name, *namep))
 	    {
 	      attp++;
 	      namep++;
@@ -3416,12 +3869,14 @@ classobj_populate_class_properties (DB_SET ** properties,
 	{
 	  continue;
 	}
-      if (classobj_put_index_id (properties, type,
-				 con->name, con->attributes,
-				 con->asc_desc,
-				 con->attrs_prefix_length,
-				 &(con->index), con->fk_info,
-				 con->shared_cons_name) == ER_FAILED)
+      if (classobj_put_index_id
+	  (properties, type, con->name, con->attributes, con->asc_desc,
+	   con->attrs_prefix_length, &(con->index),
+	   SM_GET_FILTER_PRED_STRING (con->filter_predicate),
+	   SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+	   SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
+	   con->fk_info, con->shared_cons_name,
+	   con->func_index_info) == ER_FAILED)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5625,7 +6080,8 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 
   auto_cons_name = sm_produce_constraint_name (like_class_name,
 					       constraint_type, att_names,
-					       constraint->asc_desc, NULL);
+					       constraint->asc_desc, NULL,
+					       NULL);
   /* check if constraint's name was generated automatically */
   if (auto_cons_name != NULL
       && strcmp (auto_cons_name, constraint->name) == 0)
@@ -6792,7 +7248,7 @@ classobj_find_attribute (SM_CLASS * class_, const char *name,
       for (att = class_->class_attributes; att != NULL;
 	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  if (intl_mbs_casecmp (att->header.name, name) == 0)
+	  if (intl_identifier_casecmp (att->header.name, name) == 0)
 	    {
 	      return (att);
 	    }
@@ -6803,7 +7259,7 @@ classobj_find_attribute (SM_CLASS * class_, const char *name,
       for (att = class_->attributes; att != NULL;
 	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  if (intl_mbs_casecmp (att->header.name, name) == 0)
+	  if (intl_identifier_casecmp (att->header.name, name) == 0)
 	    {
 	      return (att);
 	    }
@@ -6811,7 +7267,7 @@ classobj_find_attribute (SM_CLASS * class_, const char *name,
       for (att = class_->shared; att != NULL;
 	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  if (intl_mbs_casecmp (att->header.name, name) == 0)
+	  if (intl_identifier_casecmp (att->header.name, name) == 0)
 	    {
 	      return (att);
 	    }
@@ -6884,7 +7340,7 @@ classobj_find_method (SM_CLASS * class_, const char *name, int class_method)
       for (meth = class_->class_methods; meth != NULL;
 	   meth = (SM_METHOD *) meth->header.next)
 	{
-	  if (intl_mbs_casecmp (meth->header.name, name) == 0)
+	  if (intl_identifier_casecmp (meth->header.name, name) == 0)
 	    {
 	      return (meth);
 	    }
@@ -6895,7 +7351,7 @@ classobj_find_method (SM_CLASS * class_, const char *name, int class_method)
       for (meth = class_->methods; meth != NULL;
 	   meth = (SM_METHOD *) meth->header.next)
 	{
-	  if (intl_mbs_casecmp (meth->header.name, name) == 0)
+	  if (intl_identifier_casecmp (meth->header.name, name) == 0)
 	    {
 	      return (meth);
 	    }
@@ -6923,7 +7379,7 @@ classobj_find_component (SM_CLASS * class_, const char *name,
       for (comp = (SM_COMPONENT *) class_->class_attributes; comp != NULL;
 	   comp = comp->next)
 	{
-	  if (intl_mbs_casecmp (comp->name, name) == 0)
+	  if (intl_identifier_casecmp (comp->name, name) == 0)
 	    {
 	      return (comp);
 	    }
@@ -6931,7 +7387,7 @@ classobj_find_component (SM_CLASS * class_, const char *name,
       for (comp = (SM_COMPONENT *) class_->class_methods; comp != NULL;
 	   comp = comp->next)
 	{
-	  if (intl_mbs_casecmp (comp->name, name) == 0)
+	  if (intl_identifier_casecmp (comp->name, name) == 0)
 	    {
 	      return (comp);
 	    }
@@ -6942,7 +7398,7 @@ classobj_find_component (SM_CLASS * class_, const char *name,
       for (comp = (SM_COMPONENT *) class_->attributes; comp != NULL;
 	   comp = comp->next)
 	{
-	  if (intl_mbs_casecmp (comp->name, name) == 0)
+	  if (intl_identifier_casecmp (comp->name, name) == 0)
 	    {
 	      return (comp);
 	    }
@@ -6950,7 +7406,7 @@ classobj_find_component (SM_CLASS * class_, const char *name,
       for (comp = (SM_COMPONENT *) class_->shared; comp != NULL;
 	   comp = comp->next)
 	{
-	  if (intl_mbs_casecmp (comp->name, name) == 0)
+	  if (intl_identifier_casecmp (comp->name, name) == 0)
 	    {
 	      return (comp);
 	    }
@@ -6958,7 +7414,7 @@ classobj_find_component (SM_CLASS * class_, const char *name,
       for (comp = (SM_COMPONENT *) class_->methods; comp != NULL;
 	   comp = comp->next)
 	{
-	  if (intl_mbs_casecmp (comp->name, name) == 0)
+	  if (intl_identifier_casecmp (comp->name, name) == 0)
 	    {
 	      return (comp);
 	    }
@@ -6982,7 +7438,7 @@ classobj_complist_search (SM_COMPONENT * list, const char *name)
 
   for (comp = list; comp != NULL; comp = comp->next)
     {
-      if (intl_mbs_casecmp (comp->name, name) == 0)
+      if (intl_identifier_casecmp (comp->name, name) == 0)
 	{
 	  return (comp);
 	}
@@ -7183,6 +7639,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
  *   constraint_name(in): Constraint name.
  *   att_names(in): array of attribute names
  *   asc_desc(in): asc/desc info list
+ *   func_index_info (in): function index information
  */
 int
 classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
@@ -7190,7 +7647,8 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 			    const char *class_name,
 			    DB_CONSTRAINT_TYPE constraint_type,
 			    const char *constraint_name,
-			    const char **att_names, const int *asc_desc)
+			    const char **att_names, const int *asc_desc,
+			    SM_FUNCTION_INDEX_INFO * func_index_info)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *cons;
@@ -7230,6 +7688,31 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 	}
       else
 	{
+	  if (func_index_info && cons->func_index_info)
+	    {
+	      if (!intl_identifier_casecmp (func_index_info->expr_str,
+					    cons->func_index_info->expr_str)
+		  && (func_index_info->attr_index_start
+		      == cons->func_index_info->attr_index_start)
+		  && (func_index_info->col_id
+		      == cons->func_index_info->col_id))
+		{
+		  ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
+		  return error;
+		}
+	      else
+		{
+		  return NO_ERROR;
+		}
+	    }
+	  if ((func_index_info != NULL) && (cons->func_index_info == NULL))
+	    {
+	      return NO_ERROR;
+	    }
+	  if ((func_index_info == NULL) && (cons->func_index_info != NULL))
+	    {
+	      return NO_ERROR;
+	    }
 	  ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
 	  return error;
 	}
@@ -7246,4 +7729,150 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * classobj_make_function_index_info() -
+ *   return:
+ *   func_seq(in):
+ */
+static SM_FUNCTION_INDEX_INFO *
+classobj_make_function_index_info (DB_SEQ * func_seq)
+{
+  SM_FUNCTION_INDEX_INFO *fi_info;
+  DB_VALUE val;
+  char *buffer;
+  int size;
+
+  if (func_seq == NULL)
+    {
+      return NULL;
+    }
+
+  fi_info = (SM_FUNCTION_INDEX_INFO *)
+    db_ws_alloc (sizeof (SM_FUNCTION_INDEX_INFO));
+  if (fi_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (SM_FUNCTION_INDEX_INFO));
+      goto error;
+    }
+
+  if (set_get_element (func_seq, 0, &val))
+    {
+      goto error;
+    }
+  buffer = DB_GET_STRING (&val);
+  size = DB_GET_STRING_SIZE (&val);
+  fi_info->expr_str = (char *) db_ws_alloc (size + 1);
+  if (fi_info->expr_str == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      size * sizeof (char));
+      goto error;
+    }
+  memset (fi_info->expr_str, 0, size + 1);
+  memcpy (fi_info->expr_str, buffer, size);
+  pr_clear_value (&val);
+
+  if (set_get_element (func_seq, 1, &val))
+    {
+      goto error;
+    }
+  buffer = DB_GET_STRING (&val);
+  fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
+  fi_info->expr_stream = (char *) db_ws_alloc (fi_info->expr_stream_size);
+  if (fi_info->expr_stream == NULL)
+
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      fi_info->expr_stream_size * sizeof (char));
+      goto error;
+    }
+  memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);
+  pr_clear_value (&val);
+
+  if (set_get_element (func_seq, 2, &val))
+    {
+      goto error;
+    }
+  fi_info->col_id = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
+  if (set_get_element (func_seq, 3, &val))
+    {
+      goto error;
+    }
+  fi_info->attr_index_start = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
+  if (set_get_element (func_seq, 4, &val))
+    {
+      goto error;
+    }
+  fi_info->type = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
+  return fi_info;
+
+error:
+
+  if (fi_info)
+    {
+      db_ws_free (fi_info);
+    }
+  return NULL;
+}
+
+/*
+ * classobj_make_function_index_info_seq()
+ *   return:
+ *   func_index_info(in):
+ */
+static DB_SEQ *
+classobj_make_function_index_info_seq (SM_FUNCTION_INDEX_INFO *
+				       func_index_info)
+{
+  DB_SEQ *fi_seq;
+  DB_VALUE val;
+
+  if (func_index_info == NULL)
+    {
+      return NULL;
+    }
+
+  fi_seq = set_create_sequence (5);
+
+  db_make_string (&val, func_index_info->expr_str);
+  set_put_element (fi_seq, 0, &val);
+
+  db_make_char (&val, func_index_info->expr_stream_size,
+		func_index_info->expr_stream,
+		func_index_info->expr_stream_size);
+  set_put_element (fi_seq, 1, &val);
+
+  db_make_int (&val, func_index_info->col_id);
+  set_put_element (fi_seq, 2, &val);
+
+  db_make_int (&val, func_index_info->attr_index_start);
+  set_put_element (fi_seq, 3, &val);
+
+  db_make_int (&val, func_index_info->type);
+  set_put_element (fi_seq, 4, &val);
+
+  return fi_seq;
+}
+
+/*
+ * classobj_free_function_index_ref()
+ *   return: none
+ *   func_index_info(in):
+ */
+void
+classobj_free_function_index_ref (SM_FUNCTION_INDEX_INFO * func_index_info)
+{
+  ws_free_string (func_index_info->expr_str);
+  ws_free_string (func_index_info->expr_stream);
+  func_index_info->expr_str = NULL;
+  func_index_info->expr_stream = NULL;
 }

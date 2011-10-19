@@ -2441,6 +2441,7 @@ emit_index_def (DB_OBJECT * class_)
   DB_VALUE classobj, pclass;
   const int *asc_desc;
   const int *prefix_length;
+  int k, n_attrs = 0;
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -2517,10 +2518,42 @@ emit_index_def (DB_OBJECT * class_)
 	}
 
       atts = db_constraint_attributes (constraint);
-      for (att = atts; *att != NULL; att++)
+
+      if (constraint->func_index_info)
 	{
+	  n_attrs = constraint->func_index_info->attr_index_start + 1;
+	}
+      else
+	{
+	  n_attrs = 0;
+	  for (att = atts; *att != NULL; att++)
+	    {
+	      n_attrs++;
+	    }
+	}
+      k = 0;
+      for (att = atts; k < n_attrs; att++)
+	{
+	  if (constraint->func_index_info)
+	    {
+	      if (k == constraint->func_index_info->col_id)
+		{
+		  if (k > 0)
+		    {
+		      fprintf (output_file, ", ");
+		    }
+		  fprintf (output_file,
+			   constraint->func_index_info->expr_str);
+
+		  k++;
+		  if (k == n_attrs)
+		    {
+		      break;
+		    }
+		}
+	    }
 	  att_name = db_attribute_name (*att);
-	  if (att != atts)
+	  if (k > 0)
 	    {
 	      fprintf (output_file, ", ");
 	    }
@@ -2543,8 +2576,20 @@ emit_index_def (DB_OBJECT * class_)
 		}
 	      prefix_length++;
 	    }
+	  k++;
 	}
-      fprintf (output_file, ");\n");
+      if (constraint->filter_predicate)
+	{
+	  if (constraint->filter_predicate->pred_string)
+	    {
+	      fprintf (output_file, ") where %s;\n",
+		       constraint->filter_predicate->pred_string);
+	    }
+	}
+      else
+	{
+	  fprintf (output_file, ");\n");
+	}
     }
 }
 

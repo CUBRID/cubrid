@@ -62,6 +62,10 @@ typedef struct ampm_buf
   int len;
 } AMPM_BUF;
 
+/* should be regarded as const */
+static char local_am_str[10] = "am", local_pm_str[10] = "pm";
+static int local_am_strlen = 2, local_pm_strlen = 2;
+
 static void fill_local_ampm_str (char str[10], bool am);
 static void decode_time (int timeval, int *hourp, int *minutep, int *secondp);
 static int encode_time (int hour, int minute, int second);
@@ -111,6 +115,8 @@ static char const *parse_timedate_separated (char const *str,
 					     char const **syntax_check,
 					     bool * has_explicit_msec);
 static int get_end_of_week_one_of_year (int year, int mode);
+static bool is_local_am_str (const char *p, const char *p_end);
+static bool is_local_pm_str (const char *p, const char *p_end);
 
 /*
  * julian_encode() - Generic routine for calculating a julian date given
@@ -978,9 +984,6 @@ static const char *
 parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
 	     bool * is_msec, bool * is_explicit)
 {
-  static AMPM_BUF ampm[2];
-  static int initialized = 0;
-
   int part[4] = { 0, 0, 0, 0 };
   unsigned int i;
   int c;
@@ -1001,30 +1004,6 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
   if (is_explicit != NULL)
     {
       *is_explicit = true;
-    }
-
-  if (!initialized)
-    {
-      struct tm tm;
-      initialized = 1;
-      if (init_tm (&tm) == -1)
-	{
-	  strcpy (ampm[0].str, "am");
-	  strcpy (ampm[1].str, "pm");
-	}
-      else
-	{
-	  /*
-	   * Use strftime() to try to find out this locale's idea of
-	   * the am/pm designators.
-	   */
-	  tm.tm_hour = 0;
-	  strftime (ampm[0].str, sizeof (ampm[0].str), "%p", &tm);
-	  tm.tm_hour = 12;
-	  strftime (ampm[1].str, sizeof (ampm[1].str), "%p", &tm);
-	}
-      ampm[0].len = strlen (ampm[0].str);
-      ampm[1].len = strlen (ampm[1].str);
     }
 
   for (i = 0, p = buf; i < DIM (part); i++)
@@ -1083,10 +1062,9 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
 
   for (c = *p; p < strend && char_isspace (c); c = *++p)
     ;
-  if (p + ampm[0].len - 1 < strend
-      && intl_mbs_ncasecmp (p, ampm[0].str, ampm[0].len) == 0)
+  if (is_local_am_str (p, strend))
     {
-      p += ampm[0].len;
+      p += local_am_strlen;
       if (part[0] == 12)
 	{
 	  part[0] = 0;
@@ -1096,10 +1074,9 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
 	  part[0] = -1;
 	}
     }
-  else if (p + ampm[1].len - 1 < strend
-	   && intl_mbs_ncasecmp (p, ampm[1].str, ampm[1].len) == 0)
+  else if (is_local_pm_str (p, strend))
     {
-      p += ampm[1].len;
+      p += local_pm_strlen;
       if (part[0] < 12)
 	{
 	  part[0] += 12;
@@ -1175,11 +1152,6 @@ fill_local_ampm_str (char str[10], bool am)
     }
 }
 
-/* should be regarded as const */
-static char local_am_str[10], local_pm_str[10];
-static int local_am_strlen, local_pm_strlen;
-
-
 /*
  * db_date_locale_init() - Initializes the am/pm strings from the current
  *			    locale, to be used when parsing TIME values.
@@ -1193,6 +1165,32 @@ db_date_locale_init (void)
 
   fill_local_ampm_str (local_pm_str, false);
   local_pm_strlen = strlen (local_pm_str);
+}
+
+/*
+ * is_local_am_str() - checks if a string is the local "am" string
+ *
+ * returns : 0 if matches the local string, non-zero otherwise
+ * p(in):    null terminated string
+ */
+static bool
+is_local_am_str (const char *p, const char *p_end)
+{
+  return (p + local_am_strlen - 1 < p_end) &&
+    (intl_mbs_ncasecmp (p, local_am_str, local_am_strlen) == 0);
+}
+
+/*
+ * is_local_pm_str() - checks if a string is the local "pm" string
+ *
+ * returns : 0 if matches the local string, non-zero otherwise
+ * p(in):    null terminated string
+ */
+static bool
+is_local_pm_str (const char *p, const char *p_end)
+{
+  return (p + local_pm_strlen - 1 < p_end) &&
+    (intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen) == 0);
 }
 
 /*
@@ -1697,8 +1695,7 @@ parse_mtime_separated (char const *str, char const *strend,
     }
 
   /* look for either the local or the English am/pm strings */
-  if (p + local_am_strlen - 1 < strend
-      && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+  if (is_local_am_str (p, strend)
       && (p + local_am_strlen == strend
 	  || !char_isalpha (p[local_am_strlen])))
     {
@@ -1711,8 +1708,7 @@ parse_mtime_separated (char const *str, char const *strend,
     }
   else
     {
-      if (p + local_pm_strlen - 1 < strend
-	  && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+      if (is_local_pm_str (p, strend)
 	  && (p + local_pm_strlen == strend
 	      || !char_isalpha (p[local_pm_strlen])))
 	{
@@ -1725,11 +1721,11 @@ parse_mtime_separated (char const *str, char const *strend,
 	}
       else
 	{
-	  if (p + 1 < strend
-	      && !intl_mbs_ncasecmp (p, "am", 2) && (p + 2 == strend
-						     || !char_isalpha (p[2])))
+	  if (is_local_am_str (p, strend) &&
+	      (p + local_am_strlen == strend ||
+	       !char_isalpha (p[local_am_strlen])))
 	    {
-	      p += 2;
+	      p += local_am_strlen;
 	      if (h == 12)
 		{
 		  h = 0;
@@ -1737,11 +1733,11 @@ parse_mtime_separated (char const *str, char const *strend,
 	    }
 	  else
 	    {
-	      if (p + 1 < strend
-		  && !intl_mbs_ncasecmp (p, "pm", 2)
-		  && (p + 2 == strend || !char_isalpha (p[2])))
+	      if (is_local_pm_str (p, strend)
+		  && (p + local_pm_strlen == strend ||
+		      !char_isalpha (p[local_pm_strlen])))
 		{
-		  p += 2;
+		  p += local_pm_strlen;
 		  if (h < 12)
 		    {
 		      /* only a 12-hour clock uses the am/pm string */
@@ -1919,8 +1915,7 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
     }
 
   /* look for either the local or the English am/pm strings */
-  if (p + local_am_strlen - 1 < strend
-      && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+  if (is_local_am_str (p, strend)
       && (p + local_am_strlen == strend
 	  || !char_isalpha (p[local_am_strlen])))
     {
@@ -1932,8 +1927,7 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
     }
   else
     {
-      if (p + local_pm_strlen - 1 < strend
-	  && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+      if (is_local_pm_str (p, strend)
 	  && (p + local_pm_strlen == strend
 	      || !char_isalpha (p[local_pm_strlen])))
 	{
@@ -1946,11 +1940,11 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
 	}
       else
 	{
-	  if (p + 1 < strend
-	      && !intl_mbs_ncasecmp (p, "am", 2) && (p + 2 == strend
-						     || !char_isalpha (p[2])))
+	  if (is_local_am_str (p, strend) &&
+	      (p + local_am_strlen == strend ||
+	       !char_isalpha (p[local_am_strlen])))
 	    {
-	      p += 2;
+	      p += local_am_strlen;
 	      if (h == 12)
 		{
 		  h = 0;
@@ -1958,11 +1952,11 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
 	    }
 	  else
 	    {
-	      if (p + 1 < strend
-		  && !intl_mbs_ncasecmp (p, "pm", 2)
-		  && (p + 2 == strend || !char_isalpha (p[2])))
+	      if (is_local_pm_str (p, strend)
+		  && (p + local_pm_strlen == strend ||
+		      !char_isalpha (p[local_pm_strlen])))
 		{
-		  p += 2;
+		  p += local_pm_strlen;
 		  if (h < 12)
 		    {
 		      /* only a 12-hour clock uses the am/pm string */
@@ -2198,8 +2192,7 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
 	  p++;
 	}
 
-      if (p + local_am_strlen - 1 < strend
-	  && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+      if (is_local_am_str (p, strend)
 	  && (p + local_am_strlen == strend
 	      || !char_isalpha (p[local_am_strlen])))
 	{
@@ -2211,8 +2204,7 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
 	}
       else
 	{
-	  if (p + local_pm_strlen - 1 < strend
-	      && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+	  if (is_local_pm_str (p, strend)
 	      && (p + local_pm_strlen == strend
 		  || !char_isalpha (p[local_pm_strlen])))
 	    {
@@ -2225,11 +2217,11 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
 	    }
 	  else
 	    {
-	      if (p + 1 < strend
-		  && !intl_mbs_ncasecmp (p, "am", 2)
-		  && (p + 2 == strend || !char_isalpha (p[2])))
+	      if (is_local_am_str (p, strend) &&
+		  (p + local_am_strlen == strend ||
+		   !char_isalpha (p[local_am_strlen])))
 		{
-		  p += 2;
+		  p += local_am_strlen;
 
 		  if (h == 12)
 		    {
@@ -2238,11 +2230,11 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
 		}
 	      else
 		{
-		  if (p + 1 < strend
-		      && !intl_mbs_ncasecmp (p, "pm", 2)
-		      && (p + 2 == strend || !char_isalpha (p[2])))
+		  if (is_local_pm_str (p, strend)
+		      && (p + local_pm_strlen == strend ||
+			  !char_isalpha (p[local_pm_strlen])))
 		    {
-		      p += 2;
+		      p += local_pm_strlen;
 		      if (h < 12)
 			{
 			  /* only a 12-hour clock uses the am/pm string */
@@ -2496,8 +2488,7 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
 	  p++;
 	}
 
-      if (p + local_am_strlen - 1 < strend
-	  && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+      if (is_local_am_str (p, strend)
 	  && (p + local_am_strlen == strend
 	      || !char_isalpha (p[local_am_strlen])))
 	{
@@ -2509,8 +2500,7 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
 	}
       else
 	{
-	  if (p + local_pm_strlen - 1 < strend
-	      && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+	  if (is_local_pm_str (p, strend)
 	      && (p + local_pm_strlen == strend
 		  || !char_isalpha (p[local_pm_strlen])))
 	    {
@@ -2523,11 +2513,11 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
 	    }
 	  else
 	    {
-	      if (p + 1 < strend
-		  && !intl_mbs_ncasecmp (p, "am", 2)
-		  && (p + 2 == strend || !char_isalpha (p[2])))
+	      if (is_local_am_str (p, strend) &&
+		  (p + local_am_strlen == strend ||
+		   !char_isalpha (p[local_am_strlen])))
 		{
-		  p += 2;
+		  p += local_am_strlen;
 
 		  if (h == 12)
 		    {
@@ -2536,11 +2526,11 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
 		}
 	      else
 		{
-		  if (p + 1 < strend
-		      && !intl_mbs_ncasecmp (p, "pm", 2)
-		      && (p + 2 == strend || !char_isalpha (p[2])))
+		  if (is_local_pm_str (p, strend)
+		      && (p + local_pm_strlen == strend ||
+			  !char_isalpha (p[local_pm_strlen])))
 		    {
-		      p += 2;
+		      p += local_pm_strlen;
 		      if (h < 12)
 			{
 			  /* only a 12-hour clock uses the am/pm string */

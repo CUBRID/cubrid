@@ -673,6 +673,7 @@ enum pt_node_type
   PT_ATTR_DEF,
   PT_AUTH_CMD,
   PT_AUTO_INCREMENT,
+  PT_CHECK_OPTION,
   PT_CONSTRAINT,
   PT_DATA_DEFAULT,
   PT_DATA_TYPE,
@@ -1320,6 +1321,7 @@ typedef struct pt_do_info PT_DO_INFO;
 typedef union pt_statement_info PT_STATEMENT_INFO;
 typedef struct pt_node_list_info PT_NODE_LIST_INFO;
 typedef struct pt_table_option_info PT_TABLE_OPTION_INFO;
+typedef struct pt_check_option_info PT_CHECK_OPTION_INFO;
 
 typedef struct pt_agg_info PT_AGG_INFO;
 
@@ -1563,10 +1565,17 @@ struct pt_create_entity_info
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
-  PT_NODE *indexed_class;	/* PT_NAME */
+  PT_NODE *indexed_class;	/* PT_SPEC */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
   PT_NODE *prefix_length;	/* PT_NAME */
+  PT_NODE *where;		/* PT_EXPR */
+  PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a 
+				 * function index */
+  int func_pos;			/* the position of the expression in the 
+				 * function index's column list */
+  int func_no_args;		/* number of arguments in the function index
+				 * expression */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   PT_HINT_ENUM hint;		/* hint flag */
@@ -1851,9 +1860,14 @@ struct pt_function_info
   PT_MISC_TYPE all_or_distinct;	/* will be PT_ALL or PT_DISTINCT */
   const char *generic_name;	/* only for type PT_GENERIC */
   char hidden_column;		/* used for updates and deletes for
-				 * the class OID column.
-				 */
-  PT_NODE *order_by;		/* (PT_SORT_SPEC); needed by GROUP_CONCAT */
+				 * the class OID column */
+  PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
+  struct
+  {
+    bool is_analytic;		/* is analytic clause */
+    PT_NODE *partition_by;	/* partition PT_SORT_SPEC list */
+    PT_NODE *order_by;		/* ordering PT_SORT_SPEC list */
+  } analytic;
 };
 
 /* Info for Get Optimization Level statement */
@@ -2109,6 +2123,7 @@ struct pt_select_info
 #define PT_SELECT_INFO_ORACLE_OUTER 2	/* has Oracle's outer join operator? */
 #define PT_SELECT_INFO_DUMMY        4	/* is dummy (i.e., 'SELECT * FROM x') ? */
 #define PT_SELECT_INFO_HAS_AGG      8	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC 16	/* has analytic functions */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))
@@ -2294,6 +2309,7 @@ typedef enum pt_currency_types
   PT_CURRENCY_YEN,
   PT_CURRENCY_POUND,
   PT_CURRENCY_WON,
+  PT_CURRENCY_TL,
   PT_CURRENCY_NULL
 } PT_CURRENCY;
 
@@ -2446,6 +2462,14 @@ struct pt_set_session_variable_info
   PT_NODE *assignments;
 };
 
+/* Retains expressions for check when 'with check option' option is
+ * specified. Used in update statement */
+struct pt_check_option_info
+{
+  int spec_id;			/* id of spec for wich to check condition */
+  PT_NODE *expr;		/* condition to check */
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -2463,6 +2487,7 @@ union pt_statement_info
   PT_ATTR_ORDERING_INFO attr_ordering;
   PT_AUTH_CMD_INFO auth_cmd;
   PT_AUTO_INCREMENT_INFO auto_increment;
+  PT_CHECK_OPTION_INFO check_option;
   PT_COMMIT_WORK_INFO commit_work;
   PT_CONSTRAINT_INFO constraint;
   PT_CREATE_ENTITY_INFO create_entity;
@@ -2621,7 +2646,7 @@ typedef struct keyword_record KEYWORD_RECORD;
 struct keyword_record
 {
   short value;
-  char keyword[MAX_KEYWORD_SIZE];
+  char keyword[MAX_KEYWORD_SIZE * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
   short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as an identifier, nonzero means it can be  */
 };
 
@@ -2722,6 +2747,19 @@ struct parser_context
   bool dont_collect_exec_stats:1;
 };
 
+/* used in assignments enumeration */
+typedef struct pt_assignments_helper PT_ASSIGNMENTS_HELPER;
+struct pt_assignments_helper
+{
+  PARSER_CONTEXT *parser;	/* parser context */
+  PT_NODE *assignment;		/* current assignment node in the assignments
+				 * list */
+  PT_NODE *lhs;			/* left side of the assignment */
+  PT_NODE *rhs;			/* right side of the assignment */
+  bool is_rhs_const;		/* true if the right side is a constant */
+  bool is_n_column;		/* true if the assignment is a multi-column
+				 * assignment */
+};
 
 
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,

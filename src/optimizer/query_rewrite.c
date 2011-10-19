@@ -3136,9 +3136,9 @@ pt_free_escape_char (PARSER_CONTEXT * const parser, PT_NODE * const like,
  *  pattern(in): the pattern tree node
  *  pattern_str(in): a DB_VALUE of the string in the pattern argument
  *  has_escape_char(in): whether the LIKE pattern can use an escape character
- *  escape_char(in):if has_escape_char is true this is the escaping character
- *                  used in the pattern, otherwise the parameter has no
- *                  meaning and should have the value 0
+ *  escape_str(in):if has_escape_char is true this is the escaping character
+ *                 used in the pattern, otherwise the parameter has no
+ *                 meaning and should have the value NULL
  *  compute_lower_bound(in): whether to compute the lower or the upper bound
  *  last_safe_logical_pos(in): the value returned by a
  *                             db_get_info_for_like_optimization call
@@ -3148,7 +3148,7 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
 			    PT_NODE * const pattern,
 			    DB_VALUE * const pattern_str,
 			    const bool has_escape_char,
-			    const char escape_char,
+			    const char *escape_str,
 			    const bool compute_lower_bound,
 			    const int last_safe_logical_pos)
 {
@@ -3158,7 +3158,7 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
 
   DB_MAKE_NULL (&tmp_result);
 
-  assert (has_escape_char ^ (escape_char == 0));
+  assert (has_escape_char ^ (escape_str == NULL));
 
   if (bound == NULL)
     {
@@ -3167,7 +3167,7 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
     }
 
   error_code = db_get_like_optimization_bounds (pattern_str, &tmp_result,
-						has_escape_char, escape_char,
+						has_escape_char, escape_str,
 						compute_lower_bound,
 						last_safe_logical_pos);
   if (error_code != NO_ERROR)
@@ -3226,8 +3226,9 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 {
   int error_code = NO_ERROR;
   bool has_escape_char = false;
-  char escape_char = 0;
+  const char *escape_str = NULL;
   const char *pattern_str = NULL;
+  int pattern_size = 0;
   int pattern_length = 0;
   bool uses_escaping = false;
   int num_logical_chars = 0;
@@ -3245,19 +3246,26 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
       if (PT_IS_NULL_NODE (escape))
 	{
 	  has_escape_char = true;
-	  escape_char = '\\';
+	  escape_str = "\\";
 	}
       else
 	{
+	  int esc_char_len = 0;
+
 	  assert (pt_is_ascii_string_value_node (escape));
-	  if (escape->info.value.data_value.str->length != 1)
+
+	  escape_str =
+	    (const char *) escape->info.value.data_value.str->bytes;
+	  intl_char_count ((unsigned char *) escape_str,
+			   escape->info.value.data_value.str->length,
+			   lang_charset (), &esc_char_len);
+	  if (esc_char_len != 1)
 	    {
 	      PT_ERRORm (parser, escape, MSGCAT_SET_ERROR,
 			 -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
 	      goto error_exit;
 	    }
 	  has_escape_char = true;
-	  escape_char = escape->info.value.data_value.str->bytes[0];
 	}
     }
   else if (PRM_REQUIRE_LIKE_ESCAPE_CHARACTER)
@@ -3265,17 +3273,17 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
       assert (escape == NULL);
       assert (!PRM_NO_BACKSLASH_ESCAPES);
       has_escape_char = true;
-      escape_char = '\\';
+      escape_str = "\\";
     }
   else
     {
       has_escape_char = false;
-      escape_char = 0;
+      escape_str = NULL;
     }
 
   error_code = db_compress_like_pattern (&pattern->info.value.db_value,
 					 &compressed_pattern,
-					 has_escape_char, escape_char);
+					 has_escape_char, escape_str);
   if (error_code != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "db_compress_like_pattern");
@@ -3288,12 +3296,14 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 							DB_GET_STRING_SIZE
 							(&compressed_pattern));
   pattern_str = (char *) pattern->info.value.data_value.str->bytes;
-  pattern_length = pattern->info.value.data_value.str->length;
+  pattern_size = pattern->info.value.data_value.str->length;
+  intl_char_count ((unsigned char *) pattern_str, pattern_size,
+		   lang_charset (), &pattern_length);
   pattern->info.value.text = pattern_str;
 
   error_code = db_get_info_for_like_optimization (&compressed_pattern,
 						  has_escape_char,
-						  escape_char,
+						  escape_str,
 						  &num_logical_chars,
 						  &last_safe_logical_pos,
 						  &num_match_many,
@@ -3332,7 +3342,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 	  /* Rewrite this term as equal predicate. */
 	  like->info.expr.op = PT_EQ;
 	}
-      else if (pattern_str[pattern_length - 1] == ' ')
+      else if (pattern_str[pattern_size - 1] == ' ')
 	{
 	  /* If the rightmost character in the pattern is a space we cannot
 	     rewrite this term.
@@ -3385,7 +3395,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
       PT_NODE *between_and = NULL;
 
       assert (pattern_length >= 2
-	      && pattern_str[pattern_length - 1] == LIKE_WILDCARD_MATCH_MANY);
+	      && pattern_str[pattern_size - 1] == LIKE_WILDCARD_MATCH_MANY);
 
       between_and = pt_expression_2 (parser, PT_BETWEEN_GE_LT, NULL, NULL);
       if (between_and == NULL)
@@ -3399,7 +3409,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 
       lower =
 	qo_find_like_rewrite_bound (parser, pattern, &compressed_pattern,
-				    has_escape_char, escape_char, true,
+				    has_escape_char, escape_str, true,
 				    last_safe_logical_pos);
       if (lower == NULL)
 	{
@@ -3412,7 +3422,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 
       upper =
 	qo_find_like_rewrite_bound (parser, pattern, &compressed_pattern,
-				    has_escape_char, escape_char, false,
+				    has_escape_char, escape_str, false,
 				    last_safe_logical_pos);
       if (upper == NULL)
 	{

@@ -78,7 +78,6 @@ static META_ATTRIBUTE att_atts[] = {
   {"index_fileid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"index_root_pageid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"index_volid_key", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
-  {"default_expr", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"value", DB_TYPE_VARIABLE, 1, NULL, 0, 0, NULL},
   {"original_value", DB_TYPE_VARIABLE, 0, NULL, 0, 0, NULL},
@@ -373,7 +372,9 @@ static CT_ATTR ct_index_atts[] = {
   {"key_attrs", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"is_reverse", NULL_ATTRID, DB_TYPE_INTEGER},
   {"is_primary_key", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER}
+  {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"function", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 static CT_ATTR ct_indexkey_atts[] = {

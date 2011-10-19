@@ -68,6 +68,7 @@ static int constant_Pool_idx = 0;
 static LDR_STRING *loader_append_string_list(LDR_STRING *head, LDR_STRING *str);
 static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec(int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
 static LDR_CONSTANT* loader_make_constant(int type, void *val);
+static LDR_MONETARY_VALUE* loader_make_monetary_value (int currency_type, LDR_STRING * amount);
 static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
 
 %}
@@ -120,6 +121,7 @@ static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTAN
 %token WON_SYMBOL
 %token BACKSLASH
 %token DOLLAR_SYMBOL
+%token TURKISH_LIRA_CURRENCY
 %token <string> IDENTIFIER
 %token Quote
 %token DQuote
@@ -715,13 +717,40 @@ ref_type :
   REF_CLASS { $$ = LDR_SYS_CLASS; }
   ;
 
-currency :
-  DOLLAR_SYMBOL | YEN_SYMBOL | WON_SYMBOL | BACKSLASH;
-
 monetary :
-  currency REAL_LIT
+  DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = loader_make_constant (LDR_MONETARY, $2);
+    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DOLLAR, $2);
+    
+    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+  }
+  |
+  YEN_SYMBOL REAL_LIT
+  {
+    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_YEN, $2);
+    
+    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+  }
+  |
+  WON_SYMBOL REAL_LIT
+  {
+    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
+    
+    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+  }
+  |
+  TURKISH_LIRA_CURRENCY REAL_LIT
+  {
+    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_TL, $2);
+    
+    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+  }  
+  |
+  BACKSLASH REAL_LIT
+  {
+    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
+    
+    $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   ;
 %%
@@ -793,6 +822,25 @@ loader_make_constant (int type, void *val)
   con->val = val;
 
   return con;
+}
+
+static LDR_MONETARY_VALUE *
+loader_make_monetary_value (int currency_type, LDR_STRING * amount)
+{
+  LDR_MONETARY_VALUE * mon_value = NULL;
+
+  mon_value = (LDR_MONETARY_VALUE *) malloc (sizeof (LDR_MONETARY_VALUE));
+  if (mon_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_MONETARY_VALUE));
+      return NULL;
+    }
+
+  mon_value->amount = amount;
+  mon_value->currency_type = currency_type;
+
+  return mon_value;
 }
 
 static LDR_CONSTANT *

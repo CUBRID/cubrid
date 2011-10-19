@@ -142,6 +142,12 @@ typedef struct ldr_object_ref
   LDR_STRING *instance_number;
 } LDR_OBJECT_REF;
 
+typedef struct loader_monetary_value
+{
+  LDR_STRING *amount;
+  int currency_type;
+} LDR_MONETARY_VALUE;
+
 extern char **ignoreClasslist;
 extern int ignoreClassnum;
 extern bool skipCurrentclass;

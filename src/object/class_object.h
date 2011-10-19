@@ -39,7 +39,7 @@
  *    on the class or component names. Basically this will perform
  *    a case insensitive comparison
  */
-#define SM_COMPARE_NAMES intl_mbs_casecmp
+#define SM_COMPARE_NAMES intl_identifier_casecmp
 
 /*
  *    Shorthand macros for iterating over a component, attribute, method list
@@ -136,6 +136,14 @@
 	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? "FOREIGN KEY": \
 	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? "REVERSE_UNIQUE": \
 	 					"REVERSE_INDEX")
+#define SM_GET_FILTER_PRED_STRING(filter) \
+	((filter) == NULL ? NULL : (filter)->pred_string)
+
+#define SM_GET_FILTER_PRED_STREAM(filter) \
+	((filter) == NULL ? NULL : (filter)->pred_stream)
+
+#define SM_GET_FILTER_PRED_STREAM_SIZE(filter) \
+	((filter) == NULL ? 0 : (filter)->pred_stream_size)
 
 typedef void (*METHOD_FUNCTION) ();
 typedef void (*METHOD_FUNC_ARG4) (DB_OBJECT *, DB_VALUE *,
@@ -606,6 +614,26 @@ struct sm_foreign_key_info
   bool is_dropped;
 };
 
+typedef struct sm_predicate SM_PREDICATE;
+struct sm_predicate
+{
+  char *pred_string;
+  char *pred_stream;		/* CREATE INDEX ... WHERE filter_predicate */
+  int pred_stream_size;
+};
+
+typedef struct sm_function_index_info SM_FUNCTION_INDEX_INFO;
+
+struct sm_function_index_info
+{
+  DB_TYPE type;			/* the domain of the function's result */
+  char *expr_str;
+  char *expr_stream;
+  int expr_stream_size;
+  int col_id;
+  int attr_index_start;
+};
+
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
 struct sm_class_constraint
@@ -616,10 +644,12 @@ struct sm_class_constraint
   SM_ATTRIBUTE **attributes;
   int *asc_desc;		/* asc/desc info list */
   int *attrs_prefix_length;
+  SM_PREDICATE *filter_predicate;	/* CREATE INDEX ... WHERE filter_predicate */
   SM_FOREIGN_KEY_INFO *fk_info;
   char *shared_cons_name;
   BTID index;
   SM_CONSTRAINT_TYPE type;
+  SM_FUNCTION_INDEX_INFO *func_index_info;
 };
 
 /*
@@ -986,6 +1016,9 @@ extern const int SM_MAX_STRING_LENGTH;
 
 #define SM_PROPERTY_NUM_INDEX_FAMILY         6
 
+#define SM_FILTER_INDEX_ID "*FP*"
+#define SM_FUNCTION_INDEX_ID "*FI*"
+
 /* Allocation areas */
 extern void classobj_area_init (void);
 
@@ -1009,8 +1042,12 @@ extern int classobj_put_index (DB_SEQ ** properties,
 			       SM_ATTRIBUTE ** atts,
 			       const int *asc_desc,
 			       const BTID * id,
+			       char *pred_string,
+			       char *pred_stream,
+			       int pred_stream_size,
 			       SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name);
+			       char *shared_cons_name,
+			       SM_FUNCTION_INDEX_INFO * func_index_info);
 extern int classobj_put_index_id (DB_SEQ ** properties,
 				  SM_CONSTRAINT_TYPE type,
 				  const char *constraint_name,
@@ -1018,8 +1055,12 @@ extern int classobj_put_index_id (DB_SEQ ** properties,
 				  const int *asc_desc,
 				  const int *attrs_prefix_length,
 				  const BTID * id,
+				  char *pred_string,
+				  char *pred_stream,
+				  int pred_stream_size,
 				  SM_FOREIGN_KEY_INFO * fk_info,
-				  char *shared_cons_name);
+				  char *shared_cons_name,
+				  SM_FUNCTION_INDEX_INFO * func_index_info);
 extern int classobj_find_prop_constraint (DB_SEQ * properties,
 					  const char *prop_name,
 					  const char *cnstr_name,
@@ -1045,6 +1086,8 @@ extern void classobj_free_class_constraints (SM_CLASS_CONSTRAINT *
 					     constraints);
 extern void classobj_decache_class_constraints (SM_CLASS * class_);
 extern int classobj_cache_class_constraints (SM_CLASS * class_);
+extern void classobj_free_function_index_ref (SM_FUNCTION_INDEX_INFO *
+					      func_index_info);
 
 extern SM_CLASS_CONSTRAINT
   * classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
@@ -1227,5 +1270,7 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 				       DB_CONSTRAINT_TYPE constraint_type,
 				       const char *constraint_name,
 				       const char **att_names,
-				       const int *asc_desc);
+				       const int *asc_desc,
+				       SM_FUNCTION_INDEX_INFO *
+				       func_index_info);
 #endif /* _CLASS_OBJECT_H_ */

@@ -125,6 +125,8 @@ struct boot_dbparm
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table ();
+extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
+					   int *charset_id_p, int *lang_id_p);
 
 #if defined(SA_MODE)
 extern void boot_client_all_finalize (bool is_er_final);
@@ -3239,6 +3241,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       error_code = ER_FAILED;
       goto error;
     }
+  (void) qexec_initialize_filter_pred_cache (thread_p);
 
   /*
    * Since no logging is done on temporary volumes, we can not trust
@@ -3357,6 +3360,21 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	    }
 	}
     }
+
+  {
+    int db_charset, db_lang;
+
+    catcls_get_server_lang_charset (thread_p, &db_charset, &db_lang);
+
+    if (db_charset != lang_charset () || db_lang != lang_id ())
+      {
+	error_code = ER_INVALID_SERVER_CHARSET;
+	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		ER_INVALID_SERVER_CHARSET, 0);
+	goto error;
+      }
+  }
+
 
   /* if starting jvm fail, it would be ignored. */
   (void) jsp_start_server (db_name, db->pathname);
@@ -3537,6 +3555,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
       log_abort_all_active_transaction (thread_p);
       qfile_finalize_list_cache (thread_p);	/* before removing temp vols */
       (void) qexec_finalize_xasl_cache (thread_p);	/* before removing temp vols */
+      (void) qexec_finalize_filter_pred_cache (thread_p);
       (void) boot_remove_all_temp_volumes (thread_p);
       log_final (thread_p);
 

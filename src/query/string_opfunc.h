@@ -53,6 +53,15 @@
 
 #define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
 
+#define QSTR_CHAR_COMPARE(string1, size1, string2, size2) \
+  (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
+#define QSTR_NCHAR_COMPARE(string1, size1, string2, size2, codeset) \
+  (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
+#define QSTR_COMPARE(string1, size1, string2, size2) \
+  (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
+#define QSTR_NEXT_ALPHA_CHAR(cur_chr, next_chr) \
+  (lang_locale ())->next_alpha_char ((cur_chr), (next_chr))
+
 /*
  * These are the sizes for scratch buffers for formatting numbers, dates,
  * etc. inside db_value_get() and db_value_put().
@@ -173,7 +182,8 @@ extern int db_string_like (const DB_VALUE * src_string,
 			   const DB_VALUE * esc_char, int *result);
 extern int db_string_limit_size_string (DB_VALUE * src_string,
 					DB_VALUE * result,
-					const int new_size);
+					const int new_size, int *spare_bytes);
+extern int db_string_fix_string_size (DB_VALUE * src_string);
 extern int db_string_replace (const DB_VALUE * src_string,
 			      const DB_VALUE * srch_string,
 			      const DB_VALUE * repl_string,
@@ -203,7 +213,6 @@ extern int db_add_time (const DB_VALUE * left, const DB_VALUE * right,
 extern int db_string_convert (const DB_VALUE * src_string,
 			      DB_VALUE * dest_string);
 #endif
-extern int qstr_pad_size (INTL_CODESET codeset);
 extern unsigned char *qstr_pad_string (unsigned char *s, int length,
 				       INTL_CODESET codeset);
 extern int qstr_bin_to_hex (char *dest, int dest_size, const char *src,
@@ -332,11 +341,13 @@ extern int db_get_date_item (const DB_VALUE * src_date, const int item_type,
 			     DB_VALUE * result);
 extern int db_get_time_item (const DB_VALUE * src_date, const int item_type,
 			     DB_VALUE * result);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_null_terminate_string (const DB_VALUE * src_value, char **strp);
+#endif
 
 extern int db_get_info_for_like_optimization (const DB_VALUE * const pattern,
 					      const bool has_escape_char,
-					      const char escape_char,
+					      const char *escape_str,
 					      int *const num_logical_chars,
 					      int *const
 					      last_safe_logical_pos,
@@ -345,11 +356,11 @@ extern int db_get_info_for_like_optimization (const DB_VALUE * const pattern,
 extern int db_compress_like_pattern (const DB_VALUE * const pattern,
 				     DB_VALUE * compressed_pattern,
 				     const bool has_escape_char,
-				     const char escape_char);
+				     const char *escape_str);
 extern int db_get_like_optimization_bounds (const DB_VALUE * const pattern,
 					    DB_VALUE * bound,
 					    const bool has_escape_char,
-					    const char escape_char,
+					    const char *escape_str,
 					    const bool compute_lower_bound,
 					    const int last_safe_logical_pos);
 extern int db_like_bound (const DB_VALUE * const src_pattern,

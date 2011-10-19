@@ -147,11 +147,12 @@ extern QFILE_LIST_ID *qfile_sort_list_with_func (THREAD_ENTRY * thread_p,
 						 SORT_GET_FUNC * get_fn,
 						 SORT_PUT_FUNC * put_fn,
 						 SORT_CMP_FUNC * cmp_fn,
-						 void *extra_arg, int limit);
+						 void *extra_arg, int limit,
+						 bool do_close);
 extern QFILE_LIST_ID *qfile_sort_list (THREAD_ENTRY * thread_p,
 				       QFILE_LIST_ID * list_id,
 				       SORT_LIST * sort_list,
-				       QUERY_OPTIONS option);
+				       QUERY_OPTIONS option, bool do_close);
 
 /* Query result(list file) cache routines */
 extern int qfile_initialize_list_cache (THREAD_ENTRY * thread_p);

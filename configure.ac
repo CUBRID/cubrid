@@ -880,8 +880,10 @@ AC_CONFIG_FILES([Makefile
 	conf/Makefile
 	msg/Makefile
 	msg/en_US/Makefile
+	msg/en_US.utf8/Makefile
 	msg/ko_KR.euckr/Makefile
 	msg/ko_KR.utf8/Makefile
+	msg/tr_TR.utf8/Makefile
 	demo/Makefile
 	contrib/Makefile
 	jdbc/Makefile

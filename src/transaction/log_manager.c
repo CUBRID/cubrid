@@ -5056,6 +5056,19 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
 		    class->class_oid.pageid, class->class_oid.slotid,
 		    class->class_oid.volid);
     }
+  /* remove filter predicatecache entries which are relevant with this class */
+  if (PRM_FILTER_PRED_MAX_CACHE_ENTRIES > 0
+      && (qexec_remove_filter_pred_cache_ent_by_class (thread_p,
+						       &class->class_oid) !=
+	  NO_ERROR))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "log_cleanup_modified_class: "
+		    "xs_remove_filter_pred_cache_ent_by_class"
+		    " failed for class { %d %d %d }\n",
+		    class->class_oid.pageid, class->class_oid.slotid,
+		    class->class_oid.volid);
+    }
 }
 
 /*
@@ -5512,10 +5525,14 @@ xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator)
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   /* Remove entry that matches 'find' entry from the red-black tree.
      see base/rb_tree.h for more information */
-  entry = RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, &find);
+  entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
   if (entry != NULL)
     {
-      log_free_lob_locator (entry);
+      entry = RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
+      if (entry != NULL)
+	{
+	  log_free_lob_locator (entry);
+	}
     }
 
   return NO_ERROR;

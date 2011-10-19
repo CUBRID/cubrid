@@ -30,8 +30,8 @@
 #include "dbtype.h"
 #include "condition_handler.h"
 
-extern const char *db_string_value (const char *string, const char *format,
-				    DB_VALUE * value);
+extern const char *db_string_value (const char *string, int str_size,
+				    const char *format, DB_VALUE * value);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern DB_VALUE *db_string_to_value (const char *string, const char *format,
 				     DB_TYPE type, ...);

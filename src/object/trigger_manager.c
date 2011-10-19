@@ -70,7 +70,7 @@
  * we use for class names.
  */
 
-#define COMPARE_TRIGGER_NAMES intl_mbs_casecmp
+#define COMPARE_TRIGGER_NAMES intl_identifier_casecmp
 
 
 /* Should have something in ER for this */

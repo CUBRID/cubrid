@@ -4617,6 +4617,12 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *pred_stream = NULL;
+  int pred_stream_size = 0, size = 0;
+  int func_col_id = -1, expr_stream_size = 0, func_attr_index_start = -1;
+  int index_info_type;
+  char *expr_stream = NULL;
+  int csserror;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_domain (ptr, &key_type, 0);
@@ -4663,6 +4669,50 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (ptr, &fk_refcls_pk_btid);
   ptr = or_unpack_int (ptr, &cache_attr_id);
   ptr = or_unpack_string_nocopy (ptr, &fk_name);
+  ptr = or_unpack_int (ptr, &index_info_type);
+  switch (index_info_type)
+    {
+    case 0:
+      ptr = or_unpack_int (ptr, &pred_stream_size);
+      if (pred_stream_size > 0)
+	{
+	  csserror = css_receive_data_from_client (thread_p->conn_entry,
+						   rid,
+						   (char **) &pred_stream,
+						   &size);
+	  if (csserror)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NET_SERVER_DATA_RECEIVE, 0);
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto end;
+	    }
+	}
+      break;
+
+    case 1:
+      ptr = or_unpack_int (ptr, &expr_stream_size);
+      ptr = or_unpack_int (ptr, &func_col_id);
+      ptr = or_unpack_int (ptr, &func_attr_index_start);
+
+      if (expr_stream_size > 0)
+	{
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+						   (char **) &expr_stream,
+						   &size);
+	  if (csserror)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NET_SERVER_DATA_RECEIVE, 0);
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto end;
+	    }
+	}
+
+      break;
+    default:
+      break;
+    }
 
   return_btid = xbtree_load_index (thread_p, &btid, key_type, class_oids,
 				   n_classes, n_attrs, attr_ids,
@@ -4670,7 +4720,9 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
 				   hfids, unique_flag, reverse_flag,
 				   last_key_desc, &fk_refcls_oid,
 				   &fk_refcls_pk_btid, cache_attr_id,
-				   fk_name);
+				   fk_name, pred_stream, pred_stream_size,
+				   expr_stream, expr_stream_size,
+				   func_col_id, func_attr_index_start);
   if (return_btid == NULL)
     {
       return_error_to_client (thread_p, rid);
@@ -4701,6 +4753,16 @@ end:
   if (hfids != NULL)
     {
       db_private_free_and_init (thread_p, hfids);
+    }
+
+  if (expr_stream != NULL)
+    {
+      free_and_init (expr_stream);
+    }
+
+  if (pred_stream)
+    {
+      free_and_init (pred_stream);
     }
 }
 

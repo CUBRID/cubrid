@@ -755,7 +755,6 @@
 #define ORC_ATT_CLASS_OFFSET		16
 #define ORC_ATT_FLAG_OFFSET             24
 #define ORC_ATT_INDEX_OFFSET		28
-#define ORC_ATT_DEFAULT_EXPR_OFFSET	40
 
 #define ORC_ATT_VAR_ATT_COUNT           6
 #define ORC_ATT_NAME_INDEX              0

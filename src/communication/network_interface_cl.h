@@ -287,7 +287,10 @@ extern int btree_load_index (BTID * btid, TP_DOMAIN * key_type,
 			     HFID * hfids, int unique_flag,
 			     int reverse_flag, int last_key_desc,
 			     OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-			     int cache_attr_id, const char *fk_name);
+			     int cache_attr_id, const char *fk_name,
+			     char *pred_stream, int pred_stream_size,
+			     char *expr_stream, int expr_stream_size,
+			     int func_col_id, int func_attr_index_start);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid,

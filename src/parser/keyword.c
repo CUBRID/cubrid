@@ -143,6 +143,7 @@ static KEYWORD_RECORD keywords[] = {
   {DEFERRABLE, "DEFERRABLE", 0},
   {DEFERRED, "DEFERRED", 0},
   {DELETE_, "DELETE", 0},
+  {DENSE_RANK, "DENSE_RANK", 1},
   {DEPTH, "DEPTH", 0},
   {DESC, "DESC", 0},
   {DESCRIBE, "DESCRIBE", 0},
@@ -341,6 +342,7 @@ static KEYWORD_RECORD keywords[] = {
   {QUARTER, "QUARTER", 1},
   {QUERY, "QUERY", 0},
   {RANGE_, "RANGE", 1},
+  {RANK, "RANK", 1},
   {READ, "READ", 0},
   {RECURSIVE, "RECURSIVE", 0},
   {REF, "REF", 0},
@@ -366,6 +368,7 @@ static KEYWORD_RECORD keywords[] = {
   {ROLLUP, "ROLLUP", 0},
   {ROUTINE, "ROUTINE", 0},
   {ROW, "ROW", 0},
+  {ROW_NUMBER, "ROW_NUMBER", 1},
   {ROWNUM, "ROWNUM", 0},
   {ROWS, "ROWS", 0},
   {SAVEPOINT, "SAVEPOINT", 0},
@@ -539,7 +542,7 @@ pt_find_keyword (const char *text)
       return NULL;
     }
 
-  intl_mbs_upper (text, dummy.keyword);
+  intl_identifier_upper (text, dummy.keyword);
 
   result_key = (KEYWORD_RECORD *) bsearch
     (&dummy, keywords,

@@ -57,6 +57,8 @@
 
 #include "release_string.h"
 #include "perf_monitor.h"
+#include "intl_support.h"
+#include "language_support.h"
 
 #include "dbi.h"
 
@@ -3651,9 +3653,18 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
       {
-	char *value;
+	char *value, *invalid_pos = NULL;
 	int val_size;
 	net_arg_get_str (&value, &val_size, net_value);
+
+	if (intl_check_string (value, val_size, &invalid_pos) != 0)
+	  {
+	    char msg[12];
+	    snprintf (msg, sizeof (msg), "%d",
+		      (invalid_pos != NULL) ? (invalid_pos - value) : 0);
+	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
+					    DBMS_ERROR_INDICATOR, msg);
+	  }
 
 	if (desired_type == DB_TYPE_OBJECT)
 	  {
@@ -3677,11 +3688,26 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
       {
-	char *value;
+	char *value, *invalid_pos = NULL;
 	int val_size;
+	int val_length;
+
 	net_arg_get_str (&value, &val_size, net_value);
+
 	val_size--;
-	err_code = db_make_nchar (&db_val, val_size, value, val_size);
+
+	if (intl_check_string (value, val_size, &invalid_pos) != 0)
+	  {
+	    char msg[12];
+	    snprintf (msg, sizeof (msg), "%d",
+		      (invalid_pos != NULL) ? (invalid_pos - value) : 0);
+	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
+					    DBMS_ERROR_INDICATOR, msg);
+	  }
+
+	intl_char_count ((unsigned char *) value, val_size, lang_charset (),
+			 &val_length);
+	err_code = db_make_nchar (&db_val, val_length, value, val_size);
       }
       break;
     case CCI_U_TYPE_BIT:
@@ -4028,28 +4054,33 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
     case DB_TYPE_CHAR:
       {
 	DB_C_CHAR str;
-	int length = 0;
+	int dummy = 0;
+	int bytes_size = 0;
 
-	str = db_get_char (val, &length);
+	str = db_get_char (val, &dummy);
+	bytes_size = DB_GET_STRING_SIZE (val);
 	if (max_col_size > 0)
 	  {
-	    length = MIN (length, max_col_size);
+	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
-	add_res_data_string (net_buf, str, length, col_type, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, col_type, &data_size);
       }
       break;
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       {
 	DB_C_NCHAR nchar;
-	int length = 0;
+	int dummy = 0;
+	int bytes_size = 0;
 
-	nchar = db_get_nchar (val, &length);
+	nchar = db_get_nchar (val, &dummy);
+	bytes_size = DB_GET_STRING_SIZE (val);
 	if (max_col_size > 0)
 	  {
-	    length = MIN (length, max_col_size);
+	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
-	add_res_data_string (net_buf, nchar, length, col_type, &data_size);
+	add_res_data_string (net_buf, nchar, bytes_size, col_type,
+			     &data_size);
       }
       break;
     case DB_TYPE_SMALLINT:
@@ -7213,11 +7244,13 @@ add_fk_info_result (T_FK_INFO_RESULT * fk_res,
     {
       if (sort_by == FK_INFO_SORT_BY_PKTABLE_NAME)
 	{
-	  cmp = strcasecmp (t->pktable_name, new_res->pktable_name);
+	  cmp =
+	    intl_identifier_casecmp (t->pktable_name, new_res->pktable_name);
 	}
       else
 	{
-	  cmp = strcasecmp (t->fktable_name, new_res->fktable_name);
+	  cmp =
+	    intl_identifier_casecmp (t->fktable_name, new_res->fktable_name);
 	}
       if (cmp > 0 || (cmp == 0 && t->key_seq > new_res->key_seq))
 	{

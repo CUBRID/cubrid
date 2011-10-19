@@ -75,6 +75,32 @@ struct partition_select_info
   SM_CLASS *smclass;
 };
 
+typedef struct client_update_info CLIENT_UPDATE_INFO;
+typedef struct client_update_class_info CLIENT_UPDATE_CLASS_INFO;
+/* Class info structure used in update execution on client */
+struct client_update_class_info
+{
+  PT_NODE *spec;		/* PT_SPEC node of the class */
+  DB_VALUE *oid;		/* OID value of the current(last) tuple that
+				 * is updated */
+  PT_NODE *check_where;		/* check option expression or NULL */
+  SM_CLASS *smclass;		/* primary class structure */
+  DB_OBJECT *class_mop;		/* object associated with this class */
+  CLIENT_UPDATE_INFO *first_assign;	/* first assignment of this class */
+};
+
+/* Assignment info used in update execution on client */
+struct client_update_info
+{
+  PT_NODE *upd_col_name;	/* PT_NAME of attribute to be updated */
+  DB_VALUE *db_val;		/* value to be assigned */
+  bool is_const;		/* true if value to be assigned is constant
+				 * (at compilation) */
+  DB_ATTDESC *attr_desc;	/* description of attribute to be updated */
+  CLIENT_UPDATE_CLASS_INFO *cls_info;	/* attribute owner class info */
+  CLIENT_UPDATE_INFO *next;	/* next assignment from the same class */
+};
+
 extern int do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 				DB_OBJECT * class_obj, DB_CTMPL * clstmpl);
 extern void do_apply_partition_pruning (PARSER_CONTEXT * parser,
@@ -88,15 +114,12 @@ extern int do_init_partition_select (MOP classobj,
 extern int do_select_partition (PARTITION_SELECT_INFO * psi, DB_VALUE * val,
 				MOP * retobj);
 extern void do_clear_partition_select (PARTITION_SELECT_INFO * psi);
-extern int do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
-				    MOP class_obj, int idx);
+extern int do_build_partition_xasl (PARSER_CONTEXT * parser, MOP class_obj,
+				    XASL_PARTITION_INFO ** xasl_part_info);
 extern int do_drop_partition (MOP class_, int drop_sub_flag);
 extern MOP do_is_partition_changed (PARSER_CONTEXT * parser,
 				    SM_CLASS * smclass, MOP editobj,
-				    PT_NODE * list_column_names,
-				    DB_VALUE * list_values,
-				    PT_NODE * const_column_names,
-				    DB_VALUE * const_values);
+				    CLIENT_UPDATE_INFO * first_assign);
 extern int do_is_partitioned_subclass (int *is_partitioned,
 				       const char *classname, char *keyattr);
 extern int do_get_partition_parent (DB_OBJECT * const classop,

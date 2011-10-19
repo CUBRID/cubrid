@@ -95,7 +95,8 @@ extern int mq_evaluate_expression (PARSER_CONTEXT * parser, PT_NODE * expr,
 
 extern int mq_evaluate_expression_having_serial (PARSER_CONTEXT * parser,
 						 PT_NODE * expr,
-						 DB_VALUE * value,
+						 DB_VALUE * values,
+						 int values_count,
 						 DB_OBJECT * object,
 						 UINTPTR spec_id);
 

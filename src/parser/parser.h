@@ -294,10 +294,11 @@ extern "C"
   extern bool pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree,
 				 DB_VALUE * val);
   extern void pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
-				DB_VALUE * db_value);
+				DB_VALUE * db_values, int values_count);
   extern void pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser,
 					      PT_NODE * tree,
-					      DB_VALUE * db_value);
+					      DB_VALUE * db_value,
+					      int vals_cnt);
   extern int pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 					PT_NODE * expr,
 					PT_OP_TYPE op, DB_VALUE * arg1,
@@ -416,11 +417,12 @@ extern "C"
 					      PT_NODE * from);
   extern void pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
 					 PT_NODE * tree,
-					 DB_VALUE * db_value,
-					 bool set_insert);
+					 DB_VALUE * db_values,
+					 int values_count, bool set_insert);
   extern void pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT *
 						       parser, PT_NODE * tree,
-						       DB_VALUE * db_value,
+						       DB_VALUE * db_values,
+						       int values_count,
 						       bool set_insert);
   extern PT_NODE *pt_do_cnf (PARSER_CONTEXT * parser, PT_NODE * node,
 			     void *arg, int *continue_walk);
@@ -451,6 +453,8 @@ extern "C"
 					 const PT_NODE * s_class,
 					 const PT_NODE * d_class);
   extern void pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern void pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser,
+						PT_NODE * stmt);
   extern void *pt_internal_error (PARSER_CONTEXT * parser, const char *file,
 				  int line, const char *what);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -568,6 +572,12 @@ extern "C"
   extern PT_NODE *pt_is_aggregate_node_post (PARSER_CONTEXT * parser,
 					     PT_NODE * tree, void *arg,
 					     int *continue_walk);
+  extern PT_NODE *pt_is_analytic_node (PARSER_CONTEXT * parser,
+				       PT_NODE * tree, void *arg,
+				       int *continue_walk);
+  extern PT_NODE *pt_is_analytic_node_post (PARSER_CONTEXT * parser,
+					    PT_NODE * tree, void *arg,
+					    int *continue_walk);
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser,
 					   PT_NODE * tree, void *arg,
 					   int *continue_walk);
@@ -675,6 +685,7 @@ extern "C"
 				     PT_NODE * statement);
 
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
   extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);
@@ -777,6 +788,26 @@ extern "C"
 					    PT_NODE * update_statement);
   extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
 					    PT_NODE * delete_statement);
+  extern void pt_init_assignments_helper (PARSER_CONTEXT * parser,
+					  PT_ASSIGNMENTS_HELPER * helper,
+					  PT_NODE * assignment);
+  extern PT_NODE *pt_get_next_assignment (PT_ASSIGNMENTS_HELPER * helper);
+  extern int pt_count_assignments (PARSER_CONTEXT * parser,
+				   PT_NODE * assignments);
+  extern void pt_restore_assignment_links (PT_NODE * assigns,
+					   PT_NODE ** links, int count);
+  extern int pt_get_assignment_lists (PARSER_CONTEXT * parser,
+				      PT_NODE ** select_names,
+				      PT_NODE ** select_values,
+				      PT_NODE ** const_names,
+				      PT_NODE ** const_values, int *no_vals,
+				      int *no_consts, PT_NODE * assign,
+				      PT_NODE *** old_links);
+
+  extern bool pt_is_function_index_expr (PT_NODE * expr);
+  extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser,
+					PT_NODE * expr);
+  extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
 
 #ifdef __cplusplus
 }

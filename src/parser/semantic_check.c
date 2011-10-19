@@ -276,6 +276,8 @@ static DB_OBJECT *pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p);
 static void pt_check_unique_attr (PARSER_CONTEXT * parser,
 				  const char *entity_name, PT_NODE * att,
 				  PT_NODE_TYPE att_type);
+static void pt_check_function_index_expr (PARSER_CONTEXT * parser,
+					  PT_NODE * node);
 static void pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_coerce_insert_values (PARSER_CONTEXT * parser,
 					 PT_NODE * ins);
@@ -310,6 +312,13 @@ static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser,
 				      PT_NODE * node, void *arg,
 				      int *continue_walk);
+static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser,
+					    PT_NODE * node, void *arg,
+					    int *continue_walk);
+static PT_NODE *pt_check_filter_index_expr (PARSER_CONTEXT * parser,
+					    PT_NODE * node,
+					    void *arg, int *continue_walk);
+
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
  *   return: none
@@ -1311,7 +1320,7 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
        specs = db_query_spec_next (specs))
     {
       qs_clsnam = pt_get_proxy_spec_name (spec);
-      if (qs_clsnam && intl_mbs_casecmp (qs_clsnam, qcol_typnam) == 0)
+      if (qs_clsnam && intl_identifier_casecmp (qs_clsnam, qcol_typnam) == 0)
 	{
 	  return true;		/* att is vclass_compatible with qcol */
 	}
@@ -3227,7 +3236,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 			}
 		    }
 		  else if (self != NULL
-			   && intl_mbs_casecmp (self, styp_nam) == 0)
+			   && intl_identifier_casecmp (self, styp_nam) == 0)
 		    {
 		      if (reuse_oid)
 			{
@@ -3252,7 +3261,8 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	  cls = db_find_class (typ_nam);
 	  if (!cls)
 	    {
-	      if (self != NULL && intl_mbs_casecmp (self, typ_nam) == 0)
+	      if (self != NULL
+		  && intl_identifier_casecmp (self, typ_nam) == 0)
 		{
 		  if (reuse_oid)
 		    {
@@ -4432,7 +4442,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	{
 	  if ((pattr = attr->info.attr_def.attr_name) == NULL)
 	    continue;
-	  if (!intl_mbs_casecmp
+	  if (!intl_identifier_casecmp
 	      (pcol->info.name.original, pattr->info.name.original))
 	    {
 	      if (attr->info.attr_def.attr_type != PT_NORMAL)
@@ -4471,8 +4481,8 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  for (column = query_columns;
 	       column != NULL; column = db_query_format_next (column))
 	    {
-	      if (!intl_mbs_casecmp (column->original_name,
-				     pcol->info.name.original))
+	      if (!intl_identifier_casecmp (column->original_name,
+					    pcol->info.name.original))
 		{
 		  pcol->type_enum =
 		    (PT_TYPE_ENUM) pt_db_to_type_enum (column->db_type);
@@ -4669,7 +4679,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  for (fpart = parts->next;
 	       fpart && fpart->node_type == PT_PARTS; fpart = fpart->next)
 	    {
-	      if (!intl_mbs_casecmp
+	      if (!intl_identifier_casecmp
 		  (parts->info.parts.name->info.name.original,
 		   fpart->info.parts.name->info.name.original))
 		{
@@ -5227,7 +5237,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  for (names = name_list, chkflag = 0; names; names = names->next)
 	    {
 	      if (!names->partition_pruned
-		  && !intl_mbs_casecmp (names->info.name.original, part_name))
+		  && !intl_identifier_casecmp (names->info.name.original,
+					       part_name))
 		{
 		  chkflag = 1;
 		  names->partition_pruned = 1;	/* existence marking */
@@ -5342,8 +5353,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  for (parts = part_list; parts; parts = parts->next)
 	    {
 	      if (!parts->partition_pruned
-		  && !intl_mbs_casecmp (parts->info.parts.name->info.name.
-					original, part_name))
+		  && !intl_identifier_casecmp (parts->info.parts.name->info.
+					       name.original, part_name))
 		{
 		  parts->partition_pruned = 1;	/* existence marking */
 		}
@@ -5520,7 +5531,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		{
 		  for (names = name_list; names; names = names->next)
 		    {
-		      if (!intl_mbs_casecmp
+		      if (!intl_identifier_casecmp
 			  (part_name, names->info.name.original))
 			{
 			  names->partition_pruned = 0;
@@ -5742,7 +5753,7 @@ pt_attr_refers_to_self (PARSER_CONTEXT *
     {
       /* self is a string because in the create case,
        * self does not exist yet */
-      if (!intl_mbs_casecmp (self, type->info.name.original))
+      if (!intl_identifier_casecmp (self, type->info.name.original))
 	{
 	  return true;
 	}
@@ -6815,9 +6826,10 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *name, *prefix_length;
   DB_OBJECT *db_obj;
+  int cons_count;
 
   /* check that there trying to create an index on a class */
-  name = node->info.index.indexed_class;
+  name = node->info.index.indexed_class->info.spec.entity_name;
   db_obj = db_find_class (name->info.name.original);
 
   if (db_obj == NULL)
@@ -6825,6 +6837,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
       PT_ERRORmf (parser, name,
 		  MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
+      return;
     }
   else
     {
@@ -6834,6 +6847,34 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORm (parser, name,
 		     MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_NO_INDEX_ON_VCLASS);
+	  return;
+	}
+
+      /* make sure we don't mix up index types */
+      cons_count = 0;
+      if (node->info.index.prefix_length)
+	{
+	  cons_count++;
+	}
+      if (node->info.index.where)
+	{
+	  cons_count++;
+	}
+      if (node->info.index.function_expr)
+	{
+	  cons_count++;
+	}
+      if (cons_count > 1)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_CREATE_INDEX);
+	  return;
+	}
+
+      pt_check_function_index_expr (parser, node);
+      if (pt_has_error (parser))
+	{
+	  return;
 	}
 
       name->info.name.db_object = db_obj;
@@ -6841,7 +6882,15 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
       /* check that there is only one column to index on */
       pt_check_unique_attr (parser, NULL, node->info.index.column_names,
 			    PT_SORT_SPEC);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
       pt_check_user_owns_class (parser, name);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
 
       prefix_length = node->info.index.prefix_length;
       if (prefix_length)
@@ -6858,7 +6907,23 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 			  MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_INVALID_PREFIX_LENGTH,
 			  prefix_length->info.value.text);
+	      return;
 	    }
+	}
+    }
+
+  if (node->info.index.where != NULL)
+    {
+      /* if this is a filter index, check that the filter is a valid filter
+         expression. */
+      bool is_filter_valid = false;
+      (void) parser_walk_tree (parser, node->info.index.where,
+			       pt_check_filter_index_expr, &is_filter_valid,
+			       NULL, NULL);
+      if (!is_filter_valid)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
 	}
     }
 }
@@ -7553,6 +7618,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *orig = node;
   PT_NODE *t_node;
   PT_NODE *entity;
+  PT_ASSIGNMENTS_HELPER ea;
 
   assert (parser != NULL);
 
@@ -7834,6 +7900,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 				       &info);
 	    }
 	}
+      else if (pt_has_analytic (parser, node))
+	{
+	  (void) parser_walk_tree (parser, node->info.query.q.select.list,
+				   pt_check_analytic_function, (void *) node,
+				   NULL, NULL);
+	}
 
       node = pt_semantic_type (parser, node, info);
       break;
@@ -7868,6 +7940,39 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
       pt_check_assignments (parser, node);
       pt_no_double_updates (parser, node);
+
+      /* cannot update derived tables */
+      pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+      while (t_node = pt_get_next_assignment (&ea))
+	{
+	  entity = pt_find_spec_in_from_list (parser, node, t_node);
+
+	  if (entity == NULL)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_RESOLUTION_FAILED,
+			  t_node->info.name.original);
+	      break;
+	    }
+
+	  if (entity->info.spec.derived_table != NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+	      break;
+	    }
+
+	  /* Update of views hierarchies not allowed */
+	  if (db_is_vclass
+	      (entity->info.spec.flat_entity_list->info.name.db_object)
+	      && entity->info.spec.only_all == PT_ALL)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_UPDATE_SUBVCLASS_NOT_ALLOWED,
+			  t_node->info.name.original);
+	      break;
+	    }
+	}
 
       node = pt_semantic_type (parser, node, info);
 
@@ -8628,6 +8733,64 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		}
 	    }
 	}
+
+      break;
+
+    case PT_CREATE_INDEX:
+    case PT_ALTER_INDEX:
+    case PT_DROP_INDEX:
+      if (parser->host_var_count)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+	}
+      else
+	{
+	  sc_info_ptr->system_class = false;
+	  node = pt_resolve_names (parser, node, sc_info_ptr);
+	  if (node->node_type == PT_CREATE_INDEX)
+	    {
+	      pt_check_create_index (parser, node);
+	    }
+
+	  if (!pt_has_error (parser)
+	      && (node->node_type == PT_DROP_INDEX
+		  || node->node_type == PT_ALTER_INDEX))
+	    {
+	      pt_check_function_index_expr (parser, node);
+	    }
+
+	  if (!pt_has_error (parser))
+	    {
+	      node = pt_semantic_type (parser, node, info);
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      if (node->info.index.function_expr &&
+		  !pt_is_function_index_expr (node->info.index.function_expr))
+		{
+		  PT_ERRORm (parser, node,
+			     MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+		}
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      node = parser_walk_tree (parser, node, NULL, NULL,
+				       pt_semantic_check_local, sc_info_ptr);
+
+	      if (!pt_has_error (parser))
+		{
+		  /* This must be done before CNF since we are adding disjuncts
+		   * to the "IS NULL" expression. */
+		  node = parser_walk_tree (parser, node,
+					   pt_expand_isnull_preds,
+					   node, NULL, NULL);
+		}
+	    }
+	}
       break;
 
     case PT_SAVEPOINT:
@@ -8665,16 +8828,13 @@ pt_check_with_info (PARSER_CONTEXT * parser,
       break;
 
     case PT_ALTER:
-    case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
     case PT_ALTER_TRIGGER:
     case PT_ALTER_USER:
     case PT_CREATE_ENTITY:
-    case PT_CREATE_INDEX:
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
-    case PT_DROP_INDEX:
     case PT_DROP_SERIAL:
     case PT_DROP_TRIGGER:
     case PT_DROP_USER:
@@ -8685,14 +8845,74 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	{
 	case PT_ALTER:
 	  pt_check_alter (parser, node);
+
+	  if (node->info.alter.code == PT_ADD_ATTR_MTHD)
+	    {
+	      if (parser->host_var_count)
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+		}
+	      else
+		{
+		  /* apply typechecking on ALTER TABLE ADD INDEX 
+		     statements, to check the expression in the WHERE clause of a
+		     partial index */
+		  PT_NODE *p = node->info.alter.create_index;
+
+		  while (p)
+		    {
+		      sc_info_ptr->system_class = false;
+		      p = pt_resolve_names (parser, p, sc_info_ptr);
+		      if (p)
+			{
+			  pt_check_create_index (parser, p);
+			}
+
+		      if (!pt_has_error (parser))
+			{
+			  p = pt_semantic_type (parser, p, info);
+			}
+
+		      if (p && !pt_has_error (parser))
+			{
+			  p = parser_walk_tree (parser, p, NULL, NULL,
+						pt_semantic_check_local,
+						sc_info_ptr);
+
+			  if (p && !pt_has_error (parser))
+			    {
+			      /* This must be done before CNF since we are adding disjuncts
+			       * to the "IS NULL" expression. */
+			      p = parser_walk_tree (parser, p,
+						    pt_expand_isnull_preds,
+						    p, NULL, NULL);
+			    }
+			}
+
+		      if (p->info.index.function_expr
+			  && !pt_is_function_index_expr (p->info.index.
+							 function_expr))
+			{
+			  PT_ERRORm (parser, node,
+				     MSGCAT_SET_PARSER_SEMANTIC,
+				     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+			}
+		      if (p && !pt_has_error (parser))
+			{
+			  p = p->next;
+			}
+		      else
+			{
+			  break;
+			}
+		    }
+		}
+	    }
 	  break;
 
 	case PT_CREATE_ENTITY:
 	  pt_check_create_entity (parser, node);
-	  break;
-
-	case PT_CREATE_INDEX:
-	  pt_check_create_index (parser, node);
 	  break;
 
 	default:
@@ -9141,6 +9361,40 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 }
 
 /*
+ * pt_no_attr_and_meta_attr_updates () - check for mixed (class, non-class)
+ *    assignments in the same update statement
+ *   return:  none
+ *   parser(in): the parser context
+ *   stmt(in): an update statement
+ */
+void
+pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser,
+				  PT_NODE * update_statement)
+{
+  bool has_attrib = false, has_meta_attrib = false;
+  PT_ASSIGNMENTS_HELPER ea;
+
+  pt_init_assignments_helper (parser, &ea,
+			      update_statement->info.update.assignment);
+  while (pt_get_next_assignment (&ea) && (!has_attrib || !has_meta_attrib))
+    {
+      if (ea.lhs->info.name.meta_class == PT_META_ATTR)
+	{
+	  has_meta_attrib = true;
+	}
+      else
+	{
+	  has_attrib = true;
+	}
+    }
+  if (has_attrib && has_meta_attrib)
+    {
+      PT_ERRORm (parser, update_statement, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_UPDATE_MIX_CLASS_NON_CLASS);
+    }
+}
+
+/*
  * pt_no_double_updates () - assert that there are no multiple assignments to
  *      the same attribute in the given update statement
  *   return:  none
@@ -9188,9 +9442,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		{
 		  goto exit_on_error;
 		}
+	      /* for multi-table we must check name and spec id */
 	      if (!pt_str_compare (att_a->info.name.original,
 				   att_b->info.name.original,
-				   CASE_INSENSITIVE))
+				   CASE_INSENSITIVE)
+		  && att_a->info.name.spec_id == att_b->info.name.spec_id)
 		{
 		  PT_ERRORmf (parser, att_a,
 			      MSGCAT_SET_PARSER_SEMANTIC,
@@ -9229,9 +9485,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		    {
 		      goto exit_on_error;
 		    }
+		  /* for multi-table we must check name and spec id */
 		  if (!pt_str_compare (att_a->info.name.original,
 				       att_b->info.name.original,
-				       CASE_INSENSITIVE))
+				       CASE_INSENSITIVE)
+		      && att_a->info.name.spec_id == att_b->info.name.spec_id)
 		    {
 		      PT_ERRORmf (parser, att_a,
 				  MSGCAT_SET_PARSER_SEMANTIC,
@@ -11013,6 +11271,7 @@ pt_check_isolation_lvl (PARSER_CONTEXT * parser,
   return node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_find_attr_def () - Finds the PT_NODE in attr_def_list with the same
  *  			 original_name as the given name
@@ -11028,8 +11287,9 @@ pt_find_attr_def (const PT_NODE * attr_def_list, const PT_NODE * name)
 
   for (p = (PT_NODE *) attr_def_list; p; p = p->next)
     {
-      if (intl_mbs_casecmp (p->info.attr_def.attr_name->info.name.original,
-			    name->info.name.original) == 0)
+      if (intl_identifier_casecmp
+	  (p->info.attr_def.attr_name->info.name.original,
+	   name->info.name.original) == 0)
 	{
 	  break;
 	}
@@ -11052,8 +11312,8 @@ pt_find_cnstr_def (const PT_NODE * cnstr_def_list, const PT_NODE * name)
 
   for (p = (PT_NODE *) cnstr_def_list; p; p = p->next)
     {
-      if (intl_mbs_casecmp (p->info.name.original, name->info.name.original)
-	  == 0)
+      if (intl_identifier_casecmp
+	  (p->info.name.original, name->info.name.original) == 0)
 	{
 	  break;
 	}
@@ -11061,6 +11321,7 @@ pt_find_cnstr_def (const PT_NODE * cnstr_def_list, const PT_NODE * name)
 
   return p;
 }
+#endif
 
 /*
  * pt_check_constraint () - Checks the given constraint appears to be valid
@@ -11604,6 +11865,572 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  *is_parameter = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_check_analytic_function () -
+ *   return:
+ *   parser(in):
+ *   func(in): Function node
+ *   arg(in): SELECT node
+ *   continue_walk(in):
+ *
+ */
+static PT_NODE *
+pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
+			    void *arg, int *continue_walk)
+{
+  PT_NODE *arg_list, *partition_by, *order_by, *select_list;
+  PT_NODE *r, *col, *temp, *order, *query;
+  PT_NODE *link = NULL, *order_list = NULL, *match = NULL;
+  char *r_str = NULL;
+  int n, select_list_len;
+
+  if (func->node_type != PT_FUNCTION
+      || !func->info.function.analytic.is_analytic)
+    {
+      return func;
+    }
+
+  query = (PT_NODE *) arg;
+  if (query->node_type != PT_SELECT)
+    {
+      PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+		  pt_short_print (parser, func));
+      return func;
+    }
+
+  arg_list = func->info.function.arg_list;
+  if (arg_list == NULL
+      && func->info.function.function_type != PT_COUNT_STAR
+      && func->info.function.function_type != PT_ROW_NUMBER
+      && func->info.function.function_type != PT_RANK
+      && func->info.function.function_type != PT_DENSE_RANK)
+    {
+      PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
+		  pt_short_print (parser, func));
+      return func;
+    }
+
+  partition_by = func->info.function.analytic.partition_by;
+  order_by = func->info.function.analytic.order_by;
+  select_list = query->info.query.q.select.list;
+
+  /* link partition and order lists */
+  for (link = partition_by; link && link->next; link = link->next)
+    {
+      ;
+    }
+  if (link)
+    {
+      order_list = partition_by;
+      link->next = order_by;
+    }
+  else
+    {
+      order_list = order_by;
+    }
+
+  select_list_len =
+    pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS);
+
+  for (order = order_list; order; order = order->next)
+    {
+      /* get the EXPR */
+      r = order->info.sort_spec.expr;
+      if (r == NULL)
+	{			/* impossible case */
+	  continue;
+	}
+
+      if (r->node_type == PT_VALUE)
+	{
+	  if (r->type_enum == PT_TYPE_INTEGER)
+	    {
+	      n = r->info.value.data_value.i;
+	      /* check size of the integer */
+	      if (n > select_list_len || n < 1)
+		{
+		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR, n);
+		  goto error_exit;
+		}
+	    }
+	  else
+	    {
+	      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+	      goto error_exit;
+	    }
+	}
+
+      /* Try to match with something in the select list. */
+      n = 1;			/* a counter for position in select_list */
+      if (r->node_type != PT_NAME && r->node_type != PT_DOT_)
+	{
+	  r_str = parser_print_tree (parser, r);
+	}
+
+      for (col = select_list; col; col = col->next)
+	{
+	  /* if match, break; */
+	  if (r->node_type == col->node_type)
+	    {
+	      if (r->node_type == PT_NAME || r->node_type == PT_DOT_)
+		{
+		  if (pt_check_path_eq (parser, r, col) == 0)
+		    {
+		      break;	/* match */
+		    }
+		}
+	      else
+		{
+		  if (pt_str_compare (r_str, parser_print_tree (parser, col),
+				      CASE_INSENSITIVE) == 0)
+		    {
+		      break;	/* match */
+		    }
+		}
+	    }
+	  n++;
+	}
+
+      /* if end of list, no match create a hidden column node
+       * and append to select_list */
+      if (col == NULL)
+	{
+	  col = parser_copy_tree (parser, r);
+	  if (col == NULL)
+	    {
+	      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto error_exit;	/* give up */
+	    }
+	  else
+	    {
+	      /* mark as a hidden column */
+	      col->is_hidden_column = 1;
+	      parser_append_node (col, select_list);
+	    }
+	}
+
+      /* we got a match=n, Create a value node and replace expr with it */
+      temp = parser_new_node (parser, PT_VALUE);
+      if (temp == NULL)
+	{
+	  PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto error_exit;
+	}
+      else
+	{
+	  temp->type_enum = PT_TYPE_INTEGER;
+	  temp->info.value.data_value.i = n;
+	  pt_value_to_db (parser, temp);
+	  parser_free_tree (parser, r);
+	  order->info.sort_spec.expr = temp;
+	}
+
+      /* set order by position num */
+      order->info.sort_spec.pos_descr.pos_no = n;
+
+      if (col->type_enum != PT_TYPE_NONE && col->type_enum != PT_TYPE_MAYBE)
+	{			/* is resolved */
+	  order->info.sort_spec.pos_descr.dom =
+	    pt_xasl_node_to_domain (parser, col);
+	}
+    }
+
+  /* now check for duplicate entries.
+   *  - If they match on ascending/descending, remove the second.
+   *  - If they do not, generate an error. */
+  for (order = order_list; order; order = order->next)
+    {
+      while ((match = pt_find_order_value_in_list (parser,
+						   order->info.sort_spec.expr,
+						   order->next)))
+	{
+	  if (order->info.sort_spec.asc_or_desc !=
+	      match->info.sort_spec.asc_or_desc)
+	    {
+	      PT_ERRORmf (parser, match,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SORT_DIR_CONFLICT,
+			  pt_short_print (parser, match));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      if (link && match == link)
+		{
+		  temp = order_list;
+		  while (temp->next != match)
+		    {
+		      temp = temp->next;
+		    }
+		  link = temp;
+		}
+	      order->next = pt_remove_from_list (parser, match, order->next);
+	    }
+	}
+    }
+
+error_exit:
+  /* un-link partition and order lists */
+  if (link)
+    {
+      func->info.function.analytic.order_by = link->next;
+      link->next = NULL;
+    }
+
+  return func;
+}
+
+/* pt_check_function_index_expr () - check if there is at most one expression 
+ *				     in the index definition and , if one 
+ *				     expression does exist, it is checked to 
+ *				     see if it meets the constraints of being
+ *				     part of an index
+ * return :
+ * node (in) : node - PT_CREATE_INDEX
+ */
+static void
+pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *col, *rem = NULL;
+  int fnc_cnt = 0;
+  int i = 0;
+
+  for (col = node->info.index.column_names, i = 0; col != NULL;
+       col = col->next, i++)
+    {
+      if (col->info.sort_spec.expr->node_type != PT_NAME)
+	{
+	  if (pt_is_function_index_expr (col->info.sort_spec.expr))
+	    {
+	      node->info.index.function_expr =
+		parser_copy_tree (parser, col->info.sort_spec.expr);
+	      node->info.index.func_pos = i;
+	      rem = col;
+	    }
+	  else
+	    {
+	      PT_ERRORm (parser, node,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+	      return;
+	    }
+	  fnc_cnt++;
+	}
+    }
+  if (fnc_cnt > 1)
+    {
+      PT_ERRORm (parser, node,
+		 MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+    }
+  else if (fnc_cnt > 0 && rem)
+    {
+      PT_NODE *list, *arg, *n;
+      node->info.index.column_names =
+	pt_remove_from_list (parser, rem, node->info.index.column_names);
+      list = pt_expr_to_sort_spec (parser, node->info.index.function_expr);
+
+      for (arg = list; arg != NULL; arg = arg->next)
+	{
+	  for (n = node->info.index.column_names; n != NULL; n = n->next)
+	    {
+	      if (!pt_str_compare
+		  (arg->info.sort_spec.expr->info.name.original,
+		   n->info.sort_spec.expr->info.name.original,
+		   CASE_INSENSITIVE))
+		{
+		  break;
+		}
+	    }
+	  if (n == NULL)
+	    {
+	      PT_NODE *new_node = parser_copy_tree (parser, arg);
+	      new_node->next = NULL;
+	      node->info.index.column_names =
+		parser_append_node (new_node, node->info.index.column_names);
+	      node->info.index.func_no_args++;
+	    }
+	}
+    }
+}
+
+/*
+ * pt_check_filter_index_expr () - verify if a node is allowed to be used
+ *				   in the filter expression of an index
+ * return : current node
+ * parser (in)	: parser context
+ * node (in)	: node
+ * arg (in/out)	: boolean value which is true if a node may be used in a
+ *		  filter expression
+ * continue_walk (in) : continue walk
+ */
+static PT_NODE *
+pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
+			    void *arg, int *continue_walk)
+{
+  bool *is_valid = (bool *) arg;
+
+  if (node == NULL || *continue_walk == PT_STOP_WALK)
+    {
+      *is_valid = false;
+      return node;
+    }
+  *continue_walk = PT_CONTINUE_WALK;
+
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      /* only allow expressions that have a deterministic result */
+      switch (node->info.expr.op)
+	{
+	case PT_AND:
+	case PT_OR:
+	case PT_NOT:
+	case PT_BETWEEN:
+	case PT_NOT_BETWEEN:
+	case PT_LIKE:
+	case PT_NOT_LIKE:
+	case PT_IS_IN:
+	case PT_IS_NOT_IN:
+	case PT_IS_NULL:
+	case PT_IS_NOT_NULL:
+	case PT_IS:
+	case PT_IS_NOT:
+	case PT_EXISTS:
+	case PT_EQ_SOME:
+	case PT_NE_SOME:
+	case PT_GE_SOME:
+	case PT_GT_SOME:
+	case PT_LT_SOME:
+	case PT_LE_SOME:
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_EQ:
+	case PT_NE:
+	case PT_GE:
+	case PT_GT:
+	case PT_LT:
+	case PT_LE:
+	case PT_NULLSAFE_EQ:
+	case PT_GT_INF:
+	case PT_LT_INF:
+	case PT_SETEQ:
+	case PT_SETNEQ:
+	case PT_SUPERSETEQ:
+	case PT_SUPERSET:
+	case PT_SUBSET:
+	case PT_SUBSETEQ:
+	case PT_PLUS:
+	case PT_MINUS:
+	case PT_TIMES:
+	case PT_DIVIDE:
+	case PT_UNARY_MINUS:
+	case PT_BIT_NOT:
+	case PT_BIT_XOR:
+	case PT_BIT_AND:
+	case PT_BIT_OR:
+	case PT_BIT_COUNT:
+	case PT_BITSHIFT_LEFT:
+	case PT_BITSHIFT_RIGHT:
+	case PT_DIV:
+	case PT_MOD:
+	case PT_XOR:
+	case PT_BETWEEN_AND:
+	case PT_BETWEEN_GE_LE:
+	case PT_BETWEEN_GE_LT:
+	case PT_BETWEEN_GT_LE:
+	case PT_BETWEEN_GT_LT:
+	case PT_BETWEEN_EQ_NA:
+	case PT_BETWEEN_INF_LE:
+	case PT_BETWEEN_INF_LT:
+	case PT_BETWEEN_GE_INF:
+	case PT_BETWEEN_GT_INF:
+	case PT_RANGE:
+	case PT_MODULUS:
+	case PT_POSITION:
+	case PT_SUBSTRING:
+	case PT_OCTET_LENGTH:
+	case PT_BIT_LENGTH:
+	case PT_SUBSTRING_INDEX:
+	case PT_SPACE:
+	case PT_CHAR_LENGTH:
+	case PT_LOWER:
+	case PT_UPPER:
+	case PT_TRIM:
+	case PT_LTRIM:
+	case PT_RTRIM:
+	case PT_LPAD:
+	case PT_RPAD:
+	case PT_REPLACE:
+	case PT_TRANSLATE:
+	case PT_REPEAT:
+	case PT_ADD_MONTHS:
+	case PT_LAST_DAY:
+	case PT_MONTHS_BETWEEN:
+	case PT_TO_CHAR:
+	case PT_TO_DATE:
+	case PT_TO_NUMBER:
+	case PT_TO_TIME:
+	case PT_TO_TIMESTAMP:
+	case PT_TO_DATETIME:
+	case PT_EXTRACT:
+	case PT_LIKE_ESCAPE:
+	case PT_CAST:
+	case PT_FLOOR:
+	case PT_CEIL:
+	case PT_SIGN:
+	case PT_POWER:
+	case PT_ROUND:
+	case PT_ABS:
+	case PT_TRUNC:
+	case PT_CHR:
+	case PT_INSTR:
+	case PT_LEAST:
+	case PT_GREATEST:
+	case PT_STRCAT:
+	case PT_DECODE:
+	case PT_INCR:
+	case PT_DECR:
+	case PT_LOG:
+	case PT_EXP:
+	case PT_SQRT:
+	case PT_CONCAT:
+	case PT_CONCAT_WS:
+	case PT_FIELD:
+	case PT_LEFT:
+	case PT_RIGHT:
+	case PT_LOCATE:
+	case PT_MID:
+	case PT_STRCMP:
+	case PT_REVERSE:
+	case PT_ACOS:
+	case PT_ASIN:
+	case PT_ATAN:
+	case PT_ATAN2:
+	case PT_COS:
+	case PT_SIN:
+	case PT_COT:
+	case PT_TAN:
+	case PT_DEGREES:
+	case PT_RADIANS:
+	case PT_PI:
+	case PT_FORMAT:
+	case PT_LN:
+	case PT_LOG2:
+	case PT_LOG10:
+	case PT_TIME_FORMAT:
+	case PT_FROM_UNIXTIME:
+	case PT_ADDDATE:
+	case PT_DATE_ADD:
+	case PT_SUBDATE:
+	case PT_DATE_SUB:
+	case PT_DATE_FORMAT:
+	case PT_DATEF:
+	case PT_TIMEF:
+	case PT_YEARF:
+	case PT_MONTHF:
+	case PT_DAYF:
+	case PT_HOURF:
+	case PT_MINUTEF:
+	case PT_SECONDF:
+	case PT_DAYOFMONTH:
+	case PT_WEEKDAY:
+	case PT_DAYOFWEEK:
+	case PT_DAYOFYEAR:
+	case PT_QUARTERF:
+	case PT_TODAYS:
+	case PT_FROMDAYS:
+	case PT_TIMETOSEC:
+	case PT_SECTOTIME:
+	case PT_MAKEDATE:
+	case PT_MAKETIME:
+	case PT_WEEKF:
+	case PT_USER:
+	case PT_DATEDIFF:
+	case PT_TIMEDIFF:
+	case PT_STR_TO_DATE:
+	case PT_DEFAULTF:
+	case PT_LIKE_LOWER_BOUND:
+	case PT_LIKE_UPPER_BOUND:
+	case PT_BIT_TO_BLOB:
+	case PT_BLOB_FROM_FILE:
+	case PT_BLOB_LENGTH:
+	case PT_BLOB_TO_BIT:
+	case PT_CHAR_TO_BLOB:
+	case PT_CHAR_TO_CLOB:
+	case PT_CLOB_FROM_FILE:
+	case PT_CLOB_LENGTH:
+	case PT_CLOB_TO_CHAR:
+	  *is_valid = true;
+	  *continue_walk = PT_CONTINUE_WALK;
+	  break;
+	default:
+	  *is_valid = false;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+      break;
+
+    case PT_FUNCTION:
+      /* do not allow aggregates and analytic functions */
+      switch (node->info.function.function_type)
+	{
+	case F_SET:
+	case F_MULTISET:
+	case F_SEQUENCE:
+	  /* the functions above are used in the 
+	     argument IN (values list) expression */
+	case F_ELT:
+	case F_INSERT_SUBSTRING:
+	  *is_valid = true;
+	  *continue_walk = PT_CONTINUE_WALK;
+	default:
+	  *is_valid = false;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+      break;
+
+    case PT_NAME:
+      /* only allow attribute names */
+      if (node->info.name.meta_class == PT_META_ATTR
+	  || node->info.name.meta_class == PT_NORMAL)
+	{
+	  *is_valid = true;
+	  *continue_walk = PT_CONTINUE_WALK;
+	}
+      else
+	{
+	  *is_valid = false;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    case PT_VALUE:
+    case PT_DATA_TYPE:
+      *is_valid = true;
+      *continue_walk = PT_CONTINUE_WALK;
+      break;
+
+    default:
+      *is_valid = false;
+      *continue_walk = PT_STOP_WALK;
+      break;
     }
 
   return node;

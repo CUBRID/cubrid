@@ -841,7 +841,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 			      || pt_is_value_node (val->info.expr.arg3)))
 			{
 			  pt_evaluate_tree_having_serial (parser, val,
-							  &tmp_val);
+							  &tmp_val, 1);
 			  if (!parser->error_msgs)
 			    {
 			      insert_value = &tmp_val;

@@ -71,7 +71,7 @@ struct db_type_double_profile
   char format;			/* Use the following macros */
   int fieldwidth;		/* the width of the entire return string */
   int precision;		/* how many places after the decimal point */
-  char leadingsymbol;		/* the leading symbol to print */
+  bool leadingsign;		/* whether or not to print '+' for positive numbers */
   bool leadingzeros;		/* whether or not to print leading zeros */
   bool trailingzeros;		/* whether or not to print trailing zeros */
   bool commas;			/* whether or not to print commas */
@@ -82,15 +82,15 @@ struct db_type_double_profile
 #define DOUBLE_FORMAT_DECIMAL      'f'
 
 static DB_TYPE_DOUBLE_PROFILE default_double_profile = {
-  DOUBLE_FORMAT_SCIENTIFIC, 0, DBL_DIG, '\0', false, true, false
+  DOUBLE_FORMAT_SCIENTIFIC, 0, DBL_DIG, false, false, true, false
 };
 
 static DB_TYPE_FLOAT_PROFILE default_float_profile = {
-  DOUBLE_FORMAT_SCIENTIFIC, 0, FLT_DIG, '\0', false, true, false
+  DOUBLE_FORMAT_SCIENTIFIC, 0, FLT_DIG, false, false, true, false
 };
 
 static DB_TYPE_NUMERIC_PROFILE default_numeric_profile = {
-  DOUBLE_FORMAT_DECIMAL, -1, -1, 0, false, true, true
+  DOUBLE_FORMAT_DECIMAL, -1, -1, false, false, true, true
 };
 
 
@@ -138,14 +138,15 @@ typedef struct
 {
   int fieldwidth;		/* the width of the entire return string */
   int decimalplaces;		/* how many places after the decimal point */
-  bool leadingsymbol;		/* whether or not to print currency symbol */
+  bool leadingsign;		/* whether or not to print + symbol */
+  bool currency_symbol;		/* whether or not to print currency symbol */
   bool leadingzeros;		/* whether or not to print leading zeros */
   bool trailingzeros;		/* whether or not to print trailing zeros */
   bool commas;			/* whether or not to print commas */
 } DB_TYPE_MONETARY_PROFILE;
 
 static DB_TYPE_MONETARY_PROFILE default_monetary_profile = {
-  0, 2, true, false, true, true
+  0, 2, false, true, false, true, true
 };
 
 
@@ -257,19 +258,7 @@ static DB_TYPE_STRING_PROFILE default_string_profile = {
   '\''
 };
 
-
-static UX_CHAR moneysymbols[] = {
-  0x0024,			/* '$' */
-  0x005c,			/* '\\' */
-  0x0026,			/* '#' */
-  0xa1f0,			/* '?' *//* Japanses Money Symbols */
-  0xa1ef,			/* '?' */
-  0xa1f2,			/* '?' */
-  0xa3dc,			/* '?' *//* Korean money symbols */
-  0xa1cc,			/* '?' */
-  0xa1cd			/* '?' */
-};
-
+/* TODO: locale ?*/
 static const char *day_of_week_names[] = {
   "Sunday",
   "Monday",
@@ -298,7 +287,9 @@ static const char *month_of_year_names[] = {
 static void add_commas (char *string);
 static void strip_trailing_zeros (char *numeric_string);
 static char *double_to_string (double double_value, int field_width,
-			       int precision, UX_CHAR leading_symbol,
+			       int precision, const bool leading_sign,
+			       const char *leading_str,
+			       const char *trailing_str,
 			       bool leading_zeros, bool trailing_zeros,
 			       bool commas, char conversion);
 static char *time_as_string (DB_TIME * time_value, const char *conversion);
@@ -306,7 +297,6 @@ static char *date_as_string (DB_DATE * date_value, int format);
 static char *bigint_to_string (DB_BIGINT int_value, int field_width,
 			       bool leading_zeros, bool leading_symbol,
 			       bool commas, char conversion);
-static UX_CHAR money_symbol (DB_MONETARY * money);
 static char *object_to_string (DB_OBJECT * object, int format);
 static char *numeric_to_string (DB_VALUE * value, bool commas);
 static char *bit_to_string (DB_VALUE * value, char string_delimiter);
@@ -492,7 +482,9 @@ strip_trailing_zeros (char *numeric_string)
  *   double_value(in): double value to convert
  *   field_width(in): the overall fieldwidth
  *   precision(in): the number of places after the decimal point
- *   leading_symbol(in): the leading symbol to show, zero if none desired
+ *   leading_sign(in): true if leading sign '+' should be forced to show
+ *   leading_str(in): the leading symbols to show, NULL if none desired
+ *   trailing_str(in): the traling symbols to show, NULL if none desired
  *   leading_zeros(in): whether or not to show leading zeros
  *   trailing_zeros(in): whether or not to show trailing zeros
  *   commas(in): whether or not to show commas (every three digits)
@@ -500,7 +492,8 @@ strip_trailing_zeros (char *numeric_string)
  */
 static char *
 double_to_string (double double_value, int field_width,
-		  int precision, UX_CHAR leading_symbol,
+		  int precision, const bool leading_sign,
+		  const char *leading_str, const char *trailing_str,
 		  bool leading_zeros, bool trailing_zeros,
 		  bool commas, char conversion)
 {
@@ -526,38 +519,9 @@ double_to_string (double double_value, int field_width,
 
   i = 0;
 
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
-    {
-      if (leading_symbol != 0)
-	{
-	  if (leading_symbol & 0x8000)
-	    {
-	      format_string[i++] = (char) FORMERBYTE (leading_symbol);
-	      if (overall_fieldwidth)
-		{
-		  overall_fieldwidth++;
-		}
-	    }
-	  format_string[i++] = (char) LATTERBYTE (leading_symbol);
-	  if (overall_fieldwidth)
-	    {
-	      overall_fieldwidth++;
-	    }
-	}
-    }
-  else
-    {
-      if (leading_symbol > 1)
-	{			/* a kludge for now, to accommodate MediaMaster */
-	  format_string[i++] = (char) leading_symbol;
-	  if (overall_fieldwidth)
-	    overall_fieldwidth++;
-	}
-    }
-
   format_string[i++] = '%';
 
-  if ((double_value < (double) 0) || (leading_symbol == true))
+  if ((double_value < (double) 0) || (leading_sign == true))
     {
       format_string[i++] = '+';
       if (overall_fieldwidth)
@@ -598,7 +562,23 @@ double_to_string (double double_value, int field_width,
     {
       char *return_string;
       int actual_fieldwidth = strlen (numeric_conversion_string);
+      int leading_size = (leading_str != NULL) ? strlen (leading_str) : 0;
+      int trailing_size = (trailing_str != NULL) ? strlen (trailing_str) : 0;
 
+      if (leading_size + actual_fieldwidth + 1 >
+	  sizeof (numeric_conversion_string))
+	{
+	  return NULL;
+	}
+      if (leading_size > 0)
+	{
+	  memmove (numeric_conversion_string + leading_size,
+		   numeric_conversion_string, actual_fieldwidth);
+	  memcpy (numeric_conversion_string, leading_str, leading_size);
+
+	  numeric_conversion_string[actual_fieldwidth + leading_size] = '\0';
+	  actual_fieldwidth += leading_size;
+	}
 #if defined(HPUX)
       /* workaround for HP's broken printf */
       if (strstr (numeric_conversion_string, "+.+") ||
@@ -612,6 +592,21 @@ double_to_string (double double_value, int field_width,
       if (trailing_zeros == false)
 	{
 	  strip_trailing_zeros (numeric_conversion_string);
+	  actual_fieldwidth = strlen (numeric_conversion_string);
+	}
+
+      if (trailing_size + actual_fieldwidth + 1 >
+	  sizeof (numeric_conversion_string))
+	{
+	  return NULL;
+	}
+
+      if (trailing_size > 0)
+	{
+	  memcpy (numeric_conversion_string + actual_fieldwidth, trailing_str,
+		  trailing_size);
+	  numeric_conversion_string[actual_fieldwidth + trailing_size] = '\0';
+	  actual_fieldwidth += trailing_size;
 	}
 
       if (field_width == 0)
@@ -641,10 +636,6 @@ double_to_string (double double_value, int field_width,
 	    }
 	  else
 	    {
-	      if (leading_symbol)
-		{
-		  field_width++;
-		}
 	      return_string[overall_fieldwidth] =
 		numeric_conversion_string[actual_fieldwidth];
 	      while (overall_fieldwidth)
@@ -925,31 +916,6 @@ bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros,
 	}
       return (return_string);
     }
-}
-
-/*
- * money_symbol() - find money symbol
- *   return: money symbol character
- *   money(in): monetary value
- */
-static UX_CHAR
-money_symbol (DB_MONETARY * money)
-{
-  int symbol_num;
-
-  if (lang_id () == INTL_LANG_KOREAN)
-    {
-      symbol_num = 1;
-    }
-  else
-    {
-      symbol_num = money->type;	/* this is for all 8bit ascii languages */
-    }
-
-  if (symbol_num >= 0 && symbol_num < (int) DIM (moneysymbols))
-    return (moneysymbols[symbol_num]);
-  else
-    return ((UX_CHAR) 0);
 }
 
 /*
@@ -1237,6 +1203,8 @@ string_to_string (const char *string_value,
 {
   char *return_string;
   char *ptr;
+  char *con_buf_ptr = NULL;
+  int con_buf_size = 0;
 
   if (string_delimiter == '\0')
     {
@@ -1263,6 +1231,18 @@ string_to_string (const char *string_value,
   ptr[length] = string_delimiter;
   ptr = ptr + length + 1;
   *ptr = 0;
+
+  if (csql_text_utf8_to_console != NULL &&
+      (*csql_text_utf8_to_console) (return_string, strlen (return_string),
+				    &con_buf_ptr, &con_buf_size) == NO_ERROR)
+    {
+      if (con_buf_ptr != NULL)
+	{
+	  free (return_string);
+	  return_string = con_buf_ptr;
+	  ptr = con_buf_ptr + con_buf_size;
+	}
+    }
 
   if (result_length)
     {
@@ -1330,7 +1310,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       result = double_to_string ((double) DB_GET_FLOAT (value),
 				 default_float_profile.fieldwidth,
 				 default_float_profile.precision,
-				 default_float_profile.leadingsymbol,
+				 default_float_profile.leadingsign,
+				 NULL, NULL,
 				 default_float_profile.leadingzeros,
 				 default_float_profile.trailingzeros,
 				 default_float_profile.commas,
@@ -1344,7 +1325,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       result = double_to_string (DB_GET_DOUBLE (value),
 				 default_double_profile.fieldwidth,
 				 default_double_profile.precision,
-				 default_double_profile.leadingsymbol,
+				 default_double_profile.leadingsign,
+				 NULL, NULL,
 				 default_double_profile.leadingzeros,
 				 default_double_profile.trailingzeros,
 				 default_double_profile.commas,
@@ -1432,23 +1414,42 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	}
       break;
     case DB_TYPE_MONETARY:
-      result = (DB_GET_MONETARY (value) == NULL) ? NULL :
-	double_to_string ((DB_GET_MONETARY (value))->amount,
-			  default_monetary_profile.fieldwidth,
-			  default_monetary_profile.decimalplaces,
-			  default_monetary_profile.leadingsymbol ?
-			  money_symbol (DB_GET_MONETARY (value)) : (UX_CHAR)
-			  0, default_monetary_profile.leadingzeros,
-			  default_monetary_profile.trailingzeros,
-			  default_monetary_profile.commas,
-			  DOUBLE_FORMAT_DECIMAL);
+      {
+	char *leading_str = NULL;
+	char *trailing_str = NULL;
+	DB_CURRENCY currency = ((DB_GET_MONETARY (value))->type);
 
-      if (result)
-	{
-	  len = strlen (result);
-	}
+	if (default_monetary_profile.currency_symbol)
+	  {
+	    if (intl_get_currency_symbol_position (currency) == 1)
+	      {
+		trailing_str = intl_get_money_symbol_console (currency);
+	      }
+	    else
+	      {
+		leading_str = intl_get_money_symbol_console (currency);
+	      }
+	  }
+
+	result = (DB_GET_MONETARY (value) == NULL) ? NULL :
+	  double_to_string ((DB_GET_MONETARY (value))->amount,
+			    default_monetary_profile.fieldwidth,
+			    default_monetary_profile.decimalplaces,
+			    default_monetary_profile.leadingsign,
+			    leading_str, trailing_str,
+			    default_monetary_profile.leadingzeros,
+			    default_monetary_profile.trailingzeros,
+			    default_monetary_profile.commas,
+			    DOUBLE_FORMAT_DECIMAL);
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
       break;
     case DB_TYPE_DATE:
+      /* default format for all locales */
       result = date_as_string (DB_GET_DATE (value),
 			       default_date_profile.format);
       if (result)

@@ -133,6 +133,16 @@ struct xasl_id
 #define XASL_ID_COPY(X1, X2) \
     *(X1) = *(X2)
 
+#define MAKE_PSEUDO_XASL_ID_FROM_BTREE(X,B) \
+    do { \
+        (X)->first_vpid.pageid = (B)->root_pageid;\
+        (X)->first_vpid.volid  = 0x8000 | (B)->vfid.volid;\
+        (X)->temp_vfid.fileid = (B)->vfid.fileid;\
+        (X)->temp_vfid.volid = 0x8000 | (B)->vfid.volid;\
+        (X)->time_stored.sec = 0;\
+        (X)->time_stored.usec = 0;\
+    } while (0)
+
 /* do not compare with X.time_stored */
 #define XASL_ID_EQ(X1, X2) \
     ((X1) == (X2) || \

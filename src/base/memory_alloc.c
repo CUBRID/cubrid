@@ -130,7 +130,7 @@ ansisql_strcasecmp (const char *s, const char *t)
 
   min_length = s_length < t_length ? s_length : t_length;
 
-  cmp_val = intl_mbs_ncasecmp (s, t, min_length);
+  cmp_val = intl_identifier_ncasecmp (s, t, min_length);
 
   /* If not equal for shorter length, return */
   if (cmp_val)

@@ -1190,3 +1190,102 @@ parser_free_lcks_classes (PARSER_CONTEXT * parser)
 
   return;
 }
+
+/*
+ * pt_init_assignments_helper() - initialize enumeration of assignments
+ *   return: void
+ *   parser(in):
+ *   helper(in): address of assignments enumeration structure
+ *   assignment(in): assignments list to enumerate
+ */
+void
+pt_init_assignments_helper (PARSER_CONTEXT * parser,
+			    PT_ASSIGNMENTS_HELPER * helper,
+			    PT_NODE * assignment)
+{
+  helper->parser = parser;
+  helper->assignment = assignment;
+  helper->lhs = NULL;
+  helper->rhs = NULL;
+  helper->is_rhs_const = false;
+  helper->is_n_column = false;
+}
+
+/*
+ * pt_get_next_assignment() - get next assignment
+ *   return: returns left side of an assignment
+ *   ea(in/out): structure used in assignments enumeration.
+ *
+ * Note :
+ * The function fills the ENUM_ASSIGNMENT structure with details related to
+ * next assignment. In case there is a multiple assignment of form
+ * (i1, i2, i3)=(select * from t) then the left side of assignment is split
+ * and each element of it is returned as if there is a separate assignment and
+ * the right side is always returned the same. In this case the is_n_columns
+ * is set to true.
+ */
+PT_NODE *
+pt_get_next_assignment (PT_ASSIGNMENTS_HELPER * ea)
+{
+  PT_NODE *lhs = ea->lhs, *rhs = NULL;
+
+  ea->is_rhs_const = false;
+  if (lhs)
+    {
+      if (lhs->next)
+	{
+	  ea->is_n_column = true;
+	  return ea->lhs = lhs->next;
+	}
+      ea->assignment = ea->assignment->next;
+    }
+  if (ea->assignment)
+    {
+      lhs = ea->assignment->info.expr.arg1;
+      ea->rhs = rhs = ea->assignment->info.expr.arg2;
+      ea->is_rhs_const = PT_IS_CONST_NOT_HOSTVAR (rhs) ||
+	(PT_IS_HOSTVAR (rhs) && ea->parser->set_host_var != 0);
+      if (lhs->node_type == PT_NAME)
+	{
+	  ea->is_n_column = false;
+	  return ea->lhs = lhs;
+	}
+      else
+	{			/* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
+	  ea->is_n_column = true;
+	  return ea->lhs = lhs->info.expr.arg1;
+	}
+    }
+
+  ea->assignment = NULL;
+  ea->lhs = NULL;
+  ea->rhs = NULL;
+  ea->is_n_column = false;
+
+  return NULL;
+}
+
+/*
+ * pt_count_assignments() - count assignments
+ *   return: the number of assignments in the assignments list
+ *   parser(in):
+ *   assignments(in): assignments to count.
+ *
+ * Note :
+ * Multiple assignments are split and each component is counted.
+ */
+int
+pt_count_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments)
+{
+  PT_ASSIGNMENTS_HELPER ea;
+  int cnt = 0;
+
+  pt_init_assignments_helper (parser, &ea, assignments);
+
+  while (pt_get_next_assignment (&ea))
+    {
+      cnt++;
+    }
+
+  return cnt;
+}

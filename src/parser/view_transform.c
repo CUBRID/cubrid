@@ -1185,7 +1185,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  if (updatable)
 	    {
-	      updatable = !pt_has_aggregate (parser, statement);
+	      updatable = !pt_has_aggregate (parser, statement)
+		&& !pt_has_analytic (parser, statement);
 	    }
 	  if (updatable)
 	    {
@@ -2956,6 +2957,12 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
 
   copy_cnt = -1;
 
+  if (PT_IS_SELECT (new_query) && pt_has_analytic (parser, new_query))
+    {
+      /* don't copy push terms if target query has analytic functions */
+      return push_cnt;
+    }
+
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
       /* check for nullable-term */
@@ -3450,6 +3457,7 @@ static void
 mq_check_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 {
   pt_no_double_updates (parser, update_statement);
+  pt_no_attr_and_meta_attr_updates (parser, update_statement);
 }
 
 /*
@@ -5477,6 +5485,11 @@ mq_reset_all_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       /* fix up pseudo specs, although it probably does not matter */
       node->info.spec.id = (UINTPTR) spec;
     }
+  else if (node->node_type == PT_CHECK_OPTION
+	   && node->info.check_option.spec_id == spec->info.spec.id)
+    {
+      node->info.check_option.spec_id = (UINTPTR) spec;
+    }
 
   if (node->spec_ident == spec->info.spec.id)
     {
@@ -6708,9 +6721,9 @@ mq_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name,
     {
       if (spec->info.spec.range_var
 	  && spec->info.spec.range_var->info.name.original
-	  && (intl_mbs_casecmp (name,
-				spec->info.spec.range_var->info.name.
-				original) == 0))
+	  && (intl_identifier_casecmp (name,
+				       spec->info.spec.range_var->info.name.
+				       original) == 0))
 	{
 	  i++;
 	}
@@ -6789,8 +6802,8 @@ mq_generate_unique (PARSER_CONTEXT * parser, PT_NODE * name_list)
     {
       new_name->info.name.original = mq_generate_name (parser, "a", &i);
       temp = name_list;
-      while (temp && intl_mbs_casecmp (new_name->info.name.original,
-				       temp->info.name.original) != 0)
+      while (temp && intl_identifier_casecmp (new_name->info.name.original,
+					      temp->info.name.original) != 0)
 	{
 	  temp = temp->next;
 	}
@@ -7152,7 +7165,39 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
     case PT_UPDATE:
       specptr = &statement->info.update.spec;
       where_part = &statement->info.update.search_cond;
-      check_where_part = &statement->info.update.check_where;
+
+      /* Add to statement expressions to check if 'with check option'
+       * specified */
+      check_where_part = NULL;
+      spec = statement->info.update.spec;
+      while (spec != NULL && spec->info.spec.id != class_->info.name.spec_id)
+	{
+	  spec = spec->next;
+	}
+      if (spec != NULL)
+	{
+	  /* Verify if a check_option node already exists for current spec. If
+	   * so then append condition to existing */
+	  PT_NODE *cw = statement->info.update.check_where;
+	  while (cw != NULL
+		 && cw->info.check_option.spec_id != spec->info.spec.id)
+	    {
+	      cw = cw->next;
+	    }
+	  if (cw == NULL)
+	    {
+	      cw = parser_new_node (parser, PT_CHECK_OPTION);
+	      if (cw == NULL)
+		{
+		  goto exit_on_error;
+		}
+	      cw->info.check_option.spec_id =
+		corresponding_spec->info.spec.id;
+	      statement->info.update.check_where =
+		parser_append_node (cw, statement->info.update.check_where);
+	    }
+	  check_where_part = &cw->info.check_option.expr;
+	}
 
       for (assign = statement->info.update.assignment; assign != NULL;
 	   assign = assign->next)
@@ -7345,7 +7390,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
   /* handle is a where parts of view sub-querys */
   if (where_part)
     {
-      /* force sub expressions to be parenthesised for correct
+      /* force sub expressions to be parenthesized for correct
        * printing. Otherwise, the associativity may be wrong when
        * the statement is printed and sent to a local database
        */
@@ -7768,8 +7813,9 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 		       class_spec; class_spec = class_spec->next)
 		    {
 		      entity = class_spec->info.spec.entity_name;
-		      if (!intl_mbs_casecmp (entity->info.name.original,
-					     result->info.name.resolved))
+		      if (!intl_identifier_casecmp
+			  (entity->info.name.original,
+			   result->info.name.resolved))
 			{
 			  break;	/* found */
 			}
@@ -8066,6 +8112,22 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
 
     case PT_DELETE:
       spec = statement->info.delete_.spec;
+      while (spec && spec->info.spec.id != spec_id)
+	{
+	  spec = spec->next;
+	}
+      if (spec)
+	{
+	  statement = mq_fix_derived (parser, statement, spec);
+	}
+      else
+	{
+	  PT_INTERNAL_ERROR (parser, "translate");
+	}
+      break;
+
+    case PT_UPDATE:
+      spec = statement->info.update.spec;
       while (spec && spec->info.spec.id != spec_id)
 	{
 	  spec = spec->next;
@@ -8699,7 +8761,8 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser,
   for (; attr_list && select_list;
        attr_list = attr_list->next, select_list = select_list->next)
     {
-      if (intl_mbs_casecmp (attr_name, attr_list->info.name.original) == 0)
+      if (intl_identifier_casecmp (attr_name, attr_list->info.name.original)
+	  == 0)
 	{
 	  if (spec_id && (spec = select_statement->info.query.q.select.from))
 	    {
@@ -8935,7 +8998,7 @@ mq_evaluate_expression (PARSER_CONTEXT * parser, PT_NODE * expr,
       parser_walk_tree (parser, expr, mq_set_names_dbobject,
 			&info, pt_continue_walk, NULL);
 
-      pt_evaluate_tree (parser, expr, value);
+      pt_evaluate_tree (parser, expr, value, 1);
       if (pt_has_error (parser))
 	{
 	  error = PT_SEMANTIC;
@@ -8966,13 +9029,14 @@ mq_evaluate_expression (PARSER_CONTEXT * parser, PT_NODE * expr,
  *   parser(in):
  *   expr(in):
  *   value(in):
+ *   vals_cnt(in): number of values to return in 'value' parameter
  *   object(in):
  *   spec_id(in):
  */
 int
 mq_evaluate_expression_having_serial (PARSER_CONTEXT * parser, PT_NODE * expr,
-				      DB_VALUE * value, DB_OBJECT * object,
-				      UINTPTR spec_id)
+				      DB_VALUE * values, int values_count,
+				      DB_OBJECT * object, UINTPTR spec_id)
 {
   int error = NO_ERROR;
   SET_NAMES_INFO info;
@@ -8984,7 +9048,7 @@ mq_evaluate_expression_having_serial (PARSER_CONTEXT * parser, PT_NODE * expr,
       parser_walk_tree (parser, expr, mq_set_names_dbobject,
 			&info, pt_continue_walk, NULL);
 
-      pt_evaluate_tree_having_serial (parser, expr, value);
+      pt_evaluate_tree_having_serial (parser, expr, values, values_count);
       if (pt_has_error (parser))
 	{
 	  error = PT_SEMANTIC;
@@ -9196,7 +9260,7 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name,
 	  value_holder->info.value.data_value = value->info.value.data_value;
 	  value_holder->info.value.db_value = *virtual_value;
 	  value_holder->info.value.db_value_is_initialized = true;
-	  pt_evaluate_tree (parser, expr->info.expr.arg2, real_value);
+	  pt_evaluate_tree (parser, expr->info.expr.arg2, real_value, 1);
 	  parser_free_tree (parser, value);
 	  DB_MAKE_NULL (&value_holder->info.value.db_value);
 	  value_holder->info.value.db_value_is_initialized = false;
@@ -9575,13 +9639,13 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where,
   int error;
 
   /* evaluate check option */
-  if (check_where)
+  if (check_where != NULL)
     {
-      for (; check_where; check_where = check_where->next)
+      for (; check_where != NULL; check_where = check_where->next)
 	{
-	  error = mq_evaluate_expression (parser, check_where,
-					  &bool_val, object,
-					  view_class->info.name.spec_id);
+	  error =
+	    mq_evaluate_expression (parser, check_where, &bool_val, object,
+				    view_class->info.name.spec_id);
 	  if (error < 0)
 	    {
 	      return error;

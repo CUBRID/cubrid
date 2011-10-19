@@ -183,7 +183,7 @@ typedef enum
 #define MAX_LEN_LOB           MAX_CUBRID_CHAR_LEN
 
 /* Max Cubrid supported charsets */
-#define MAX_DB_CHARSETS 5
+#define MAX_DB_CHARSETS 6
 
 /* Max Cubrid unescaped string len */
 #define MAX_UNESCAPED_STR_LEN 4096
@@ -234,6 +234,7 @@ static const DB_CHARSET db_charsets[] = {
     {"raw-bytes", "Uninterpreted bytes - Raw encoding", "", 2, 0, 1},
     {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", "", 3, 0, 1},
     {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "", 4, 0, 2},
+    {"utf-8", "UNICODE charset - UTF-8 encoding", " ", 5, 0, 1},
     {"", "Unknown encoding", "", -1, 0, 0}
 };
 

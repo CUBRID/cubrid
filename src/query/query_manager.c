@@ -575,6 +575,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p)
   query_p->interrupt = false;
   query_p->propagate_interrupt = true;
   query_p->query_flag = 0;
+  query_p->is_holdable = false;
   VPID_SET_NULL (&query_p->save_vpid);	/* Setup default for save_vpid */
 
   return query_p;
@@ -2598,6 +2599,7 @@ void
 xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * out_fp)
 {
   (void) qexec_dump_xasl_cache_internal (thread_p, out_fp, 7);
+  (void) qexec_dump_filter_pred_cache_internal (thread_p, out_fp, 7);
 }
 
 /*
@@ -4734,6 +4736,13 @@ qmgr_is_async_executable (XASL_NODE * xasl_p, QMGR_QUERY_TYPE * query_type_p)
       return false;
     }
 
+  if (xasl_type == BUILDLIST_PROC
+      && xasl_p->proc.buildlist.a_func_list != NULL)
+    {
+      *query_type_p = ANALYTIC_QUERY;
+      return false;
+    }
+
   if (xasl_p->option == Q_DISTINCT)
     {
       *query_type_p = DISTINCT_QUERY;
@@ -4867,12 +4876,18 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	    }
 	}
       else if (query_type == VALUE_QUERY || query_type == GROUPBY_QUERY
-	       || query_type == ORDERBY_QUERY || query_type == DISTINCT_QUERY)
+	       || query_type == ORDERBY_QUERY || query_type == DISTINCT_QUERY
+	       || query_type == ANALYTIC_QUERY)
 	{
 	  if (xasl_p->type == BUILDLIST_PROC
 	      && xasl_p->proc.buildlist.groupby_list != NULL)
 	    {
 	      outptr_list_p = xasl_p->proc.buildlist.g_outptr_list;
+	    }
+	  else if (xasl_p->type == BUILDLIST_PROC
+		   && xasl_p->proc.buildlist.a_func_list != NULL)
+	    {
+	      outptr_list_p = xasl_p->proc.buildlist.a_outptr_list;
 	    }
 	  else
 	    {

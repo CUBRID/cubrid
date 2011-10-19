@@ -319,6 +319,7 @@ typedef struct
 #define YEN_SIGN_TEXT		"(\0xa1\0xef)"
 #define DOLLAR_SIGN_TEXT	"$"
 #define WON_SIGN_TEXT		"\\"
+#define TURKISH_LIRA_TEXT	"TL"
 
 typedef enum
 {
@@ -515,6 +516,8 @@ void pop_msg (void);
 %type <number> column_constraint_def
 %type <number> constraint_list
 %type <number> opt_full
+%type <number> of_analytic
+%type <number> of_analytic_no_args
 /*}}}*/
 
 /* define rule type (node) */
@@ -534,8 +537,6 @@ void pop_msg (void);
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
-%type <node> index_column_name_list_sub
-%type <node> index_column_name
 %type <node> update_statistics_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
@@ -783,6 +784,8 @@ void pop_msg (void);
 %type <node> session_variable_definition
 %type <node> session_variable_expression
 %type <node> session_variable_list
+%type <node> opt_analytic_partition_by
+%type <node> opt_analytic_order_by
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1058,6 +1061,7 @@ void pop_msg (void);
 %token OUT_
 %token OUTER
 %token OUTPUT
+%token OVER
 %token OVERLAPS
 %token PARAMETERS
 %token PARTIAL
@@ -1207,6 +1211,7 @@ void pop_msg (void);
 %token YEN_SIGN
 %token DOLLAR_SIGN
 %token WON_SIGN
+%token TURKISH_LIRA_SIGN
 
 %token RIGHT_ARROW
 %token STRCAT
@@ -1229,6 +1234,7 @@ void pop_msg (void);
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
 %token <cptr> DECREMENT
+%token <cptr> DENSE_RANK
 %token <cptr> ELT
 %token <cptr> EXPLAIN
 %token <cptr> GE_INF_
@@ -1272,6 +1278,7 @@ void pop_msg (void);
 %token <cptr> PRIORITY
 %token <cptr> QUARTER
 %token <cptr> RANGE_
+%token <cptr> RANK
 %token <cptr> REJECT_
 %token <cptr> REMOVE
 %token <cptr> REORGANIZE
@@ -1279,6 +1286,7 @@ void pop_msg (void);
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
 %token <cptr> REVERSE
+%token <cptr> ROW_NUMBER
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SHOW
@@ -2038,51 +2046,71 @@ create_stmt
 	  ON_						/* 8 */
 	  only_class_name				/* 9 */
 	  index_column_name_list			/* 10 */
+	  opt_where_clause				/* 11 */
 		{ pop_msg(); }
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
-
-			node->info.index.index_name = $7;
-			node->info.index.indexed_class = $9;
-			node->info.index.column_names = $10;
-
-			$$ = node;
-
-		DBG_PRINT}}
-	| CREATE					/* 1 */
-		{					/* 2 */
-			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
-			parser_push_hint_node (node);
-			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-		}
-	  opt_hint_list					/* 3 */
-	  INDEX						/* 4 */
-	  opt_identifier				/* 5 */
-	  ON_						/* 6 */
-	  only_class_name				/* 7 */
-	  '(' index_column_name				/* 8, 9 */
-	  '(' unsigned_integer ')' 		        /* 10, 11, 12 */
-	  opt_asc_or_desc ')'				/* 13, 14 */
-		{ pop_msg(); }
-		{{
-
-			PT_NODE *node = parser_pop_hint_node ();
-
-			node->info.index.index_name = $5;
-			node->info.index.indexed_class = $7;
-			node->info.index.column_names = $9;
-			node->info.index.prefix_length = $11;
-
-			if ($9 && $13)
+			if (node && ocs)
 			  {
-			    $9->info.sort_spec.asc_or_desc = $13;
-			  }
+			    PT_NODE *col;
 
-			$$ = node;
+			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = $5;
+			    node->info.index.index_name = $7;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    col = $10;
+			    if ((parser_count_list (col) == 1)
+				&& (col->info.sort_spec.expr->node_type == PT_FUNCTION))
+			      {
+				PT_NODE *expr = col->info.sort_spec.expr;
+				PT_NODE *arg_list = expr->info.function.arg_list;
+				if ((arg_list->next == NULL) 
+				    && (arg_list->node_type == PT_VALUE))
+				  {
+				    if (node->info.index.reverse
+					|| node->info.index.unique)
+				      {
+					PT_ERRORm (this_parser, node, 
+						   MSGCAT_SET_PARSER_SYNTAX,
+						   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				      }
+				    else
+				      {	
+					PT_NODE *p = parser_new_node (this_parser, 
+								      PT_NAME);
+					if (p)
+					  {
+					    p->info.name.original = 
+						 expr->info.function.generic_name;
+					  }
+					node->info.index.prefix_length = 
+						     expr->info.function.arg_list;
+					col->info.sort_spec.expr = p;
+				      }
+				  }
+				else
+				  {
+				    PT_ERRORm (this_parser, node, 
+					       MSGCAT_SET_PARSER_SYNTAX,
+					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				  }
+			      }
+			     node->info.index.where = $11;
+			     node->info.index.column_names = col;
+			  }
+		      $$ = node;
 
 		DBG_PRINT}}
 	| CREATE
@@ -2564,9 +2592,37 @@ alter_stmt
 			    pt_gather_constraints (this_parser, node);
 			    if (node->info.alter.code == PT_RENAME_ENTITY)
 			      {
-					node->info.alter.alter_clause.rename.element_type = entity_type;
-					/* We can get the original name from info.alter.entity_name */
-					node->info.alter.alter_clause.rename.old_name = NULL;
+				node->info.alter.alter_clause.rename.element_type = entity_type;
+				/* We can get the original name from info.alter.entity_name */
+				node->info.alter.alter_clause.rename.old_name = NULL;
+			      }
+			    else
+			      {
+				if (node->info.alter.code == PT_ADD_ATTR_MTHD)
+				  {
+				    PT_NODE *p = node->info.alter.create_index;
+
+				    /* add the table spec to each ALTER TABLE ADD INDEX
+				     * clause in the ALTER statement */
+				    while (p)
+				      {
+					PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+
+					if (ocs)
+					  {
+					    ocs->info.spec.entity_name = parser_copy_tree(this_parser, $5);
+					    ocs->info.spec.only_all = PT_ONLY;
+					    ocs->info.spec.meta_class = PT_CLASS;
+
+					    p->info.index.indexed_class = ocs;
+					    p = p->next;
+					  }
+					else
+					  {
+					    break;
+					  }
+				      }
+				  }
 			      }
 			  }
 			parser_free_tree (this_parser, $5);
@@ -2685,18 +2741,28 @@ alter_stmt
 	  ON_						/* 7 */
 	  only_class_name				/* 8 */
 	  index_column_name_list			/* 9 */
-	  REBUILD					/* 10 */
+	  opt_where_clause				/* 10 */
+	  REBUILD					/* 11 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
+			if (node && ocs)
+			  {
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = $5;
 
-			node->info.index.indexed_class = $8;
-			node->info.index.column_names = $9;
+			    ocs->info.spec.entity_name = $8;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
 
-			$$ = node;
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.column_names = $9;
+			    node->info.index.where = $10;
+
+			    $$ = node;
+			  }
 
 		DBG_PRINT}}
 	| ALTER						/* 1 */
@@ -2712,19 +2778,33 @@ alter_stmt
 	  ON_						/* 8 */
 	  only_class_name				/* 9 */
 	  opt_index_column_name_list			/* 10 */
-	  REBUILD					/* 11 */
+	  opt_where_clause				/* 11 */
+	  REBUILD					/* 12 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
+			if (node && ocs)
+			  {
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = $5;
+			    node->info.index.index_name = $7;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
 
-			node->info.index.index_name = $7;
-			node->info.index.indexed_class = $9;
-			node->info.index.column_names = $10;
+			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
 
-			$$ = node;
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.column_names = $10;
+			    node->info.index.where = $11;
+
+			    $$ = node;
+			  }
 
 		DBG_PRINT}}
 	| ALTER						/* 1 */
@@ -2746,6 +2826,10 @@ alter_stmt
 			node->info.index.unique = $5;
 
 			node->info.index.index_name = $7;
+			if (node->info.index.index_name)
+			  {
+			    node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			  }
 
 			$$ = node;
 
@@ -2952,16 +3036,26 @@ drop_stmt
 	  ON_						/* 7 */
 	  only_class_name				/* 8 */
 	  index_column_name_list			/* 9 */
+	  opt_where_clause				/* 10 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
+			if (node && ocs)
+			  {
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = $5;
 
-			node->info.index.indexed_class = $8;
-			node->info.index.column_names = $9;
-			$$ = node;
+			    ocs->info.spec.entity_name = $8;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.column_names = $9;
+			    node->info.index.where = $10;
+			    $$ = node;
+			  }
 
 		DBG_PRINT}}
 	| DROP						/* 1 */
@@ -2977,18 +3071,31 @@ drop_stmt
 	  ON_						/* 8 */
 	  only_class_name				/* 9 */
 	  opt_index_column_name_list			/* 10 */
+	  opt_where_clause				/* 11 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
+			if (node && ocs)
+			  {
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = $5;
+			    node->info.index.index_name = $7;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
 
-			node->info.index.index_name = $7;
-			node->info.index.indexed_class = $9;
-			node->info.index.column_names = $10;
+			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.column_names = $10;
+			    node->info.index.where = $11;
 
-			$$ = node;
+			    $$ = node;
+			  }
 
 		DBG_PRINT}}
 	| DROP						/* 1 */
@@ -3009,6 +3116,10 @@ drop_stmt
 			node->info.index.unique = $5;
 
 			node->info.index.index_name = $7;
+			if (node->info.index.index_name)
+			  {
+			    node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			  }
 			$$ = node;
 
 		DBG_PRINT}}
@@ -3186,70 +3297,18 @@ opt_index_column_name_list
 	;
 
 index_column_name_list
-	: '(' index_column_name_list_sub ')'
+	: '(' sort_spec_list ')'
 		{{
-
-			$$ = $2;
-
-		DBG_PRINT}}
-	;
-
-index_column_name_list_sub
-	: index_column_name_list_sub ',' index_column_name
-		{{
-
-			$$ = parser_make_link ($1, $3);
-
-		DBG_PRINT}}
-	| index_column_name
-		{{
-
-			$$ = $1;
-
-		DBG_PRINT}}
-	;
-
-index_column_name
-	: identifier
-		{{
-
-			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
-			if (node)
-			  {
-			    if (parser_get_is_reverse ())
-			      node->info.sort_spec.asc_or_desc = PT_DESC;
-			    else
-			      node->info.sort_spec.asc_or_desc = PT_ASC;
-			    node->info.sort_spec.expr = $1;
+			if (parser_get_is_reverse())
+			{
+			  PT_NODE *node;
+			  for (node = $2; node != NULL; node = node->next)
+			  {	
+			     node->info.sort_spec.asc_or_desc = PT_DESC;
 			  }
-			$$ = node;
+			}
 
-		DBG_PRINT}}
-	| identifier ASC
-		{{
-
-			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
-			if (node)
-			  {
-			    if (parser_get_is_reverse ())
-			      node->info.sort_spec.asc_or_desc = PT_DESC;
-			    else
-			      node->info.sort_spec.asc_or_desc = PT_ASC;
-			    node->info.sort_spec.expr = $1;
-			  }
-			$$ = node;
-
-		DBG_PRINT}}
-	| identifier DESC
-		{{
-
-			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
-			if (node)
-			  {
-			    node->info.sort_spec.asc_or_desc = PT_DESC;
-			    node->info.sort_spec.expr = $1;
-			  }
-			$$ = node;
+		      $$ = $2;
 
 		DBG_PRINT}}
 	;
@@ -3518,8 +3577,8 @@ table_spec
 			PT_NODE *ent = $1;
 			if (ent)
 			  {
-			    PT_NODE *del = parser_pop_hint_node ();
-			    if (del && del->node_type == PT_DELETE)
+			    PT_NODE *stmt = parser_pop_hint_node ();
+			    if (stmt && (stmt->node_type == PT_DELETE || stmt->node_type == PT_UPDATE))
 			      {
 			        PT_NODE *sel = $1;
 			        if (sel && sel->node_type == PT_SELECT)
@@ -3527,7 +3586,7 @@ table_spec
 				    PT_SELECT_INFO_CLEAR_FLAG (sel, PT_SELECT_INFO_DUMMY);
 				  }
 			      }
-			    parser_push_hint_node (del);
+			    parser_push_hint_node (stmt);
 
 			    ent->info.spec.range_var = CONTAINER_AT_0 ($2);
 			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($2);
@@ -3543,8 +3602,8 @@ table_spec
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
 			if (ent)
 			  {
-			    PT_NODE *del = parser_pop_hint_node ();
-			    if (del && del->node_type == PT_DELETE)
+			    PT_NODE *stmt = parser_pop_hint_node ();
+			    if (stmt && (stmt->node_type == PT_DELETE || stmt->node_type == PT_UPDATE))
 			      {
 			        PT_NODE *sel = $1;
 				if (sel && sel->node_type == PT_SELECT)
@@ -3552,7 +3611,7 @@ table_spec
 				    PT_SELECT_INFO_CLEAR_FLAG (sel, PT_SELECT_INFO_DUMMY);
 				  }
 			      }
-			    parser_push_hint_node (del);
+			    parser_push_hint_node (stmt);
 
 			    ent->info.spec.derived_table = $1;
 			    ent->info.spec.derived_table_type = PT_IS_SUBQUERY;
@@ -5332,8 +5391,7 @@ update_stmt
 			parser_push_orderby_node (node);
 			parser_push_hint_node (node);
 		}
-	  of_class_spec_meta_class_spec
-	  opt_as_identifier
+	  extended_table_spec_list
 	  SET
 	  update_assignment_list
 	  opt_of_where_cursor
@@ -5344,62 +5402,89 @@ update_stmt
 
 			PT_NODE *node = parser_pop_hint_node ();
 
-			node->info.update.spec = $3;
-			node->info.update.spec->info.spec.range_var = $4;
-			node->info.update.assignment = $6;
+			node->info.update.spec = CONTAINER_AT_0 ($3);
+			node->info.update.assignment = $5;
 
-			if (CONTAINER_AT_0 ($7))
-			  node->info.update.search_cond = CONTAINER_AT_1 ($7);
+			if (CONTAINER_AT_0 ($6))
+			  {
+			    node->info.update.search_cond = CONTAINER_AT_1 ($6);
+			  }
 			else
-			  node->info.update.cursor_name = CONTAINER_AT_1 ($7);
+			  {
+			    node->info.update.cursor_name = CONTAINER_AT_1 ($6);
+			  }
 
-			node->info.update.using_index = $8;
+			node->info.update.using_index = $7;
 
 			/* set LIMIT node */
-			node->info.update.limit = $10;
-			if (node->info.update.limit
-			    && node->info.update.search_cond)
-			  {
-			    /* For UPDATE statements that have LIMIT clause don't allow
-			     * inst_num in search condition
-			     */
-			    bool instnum_flag = false;
-			    (void) parser_walk_tree (this_parser, node->info.update.search_cond,
-						     pt_check_instnum_pre, NULL,
-						     pt_check_instnum_post, &instnum_flag);
-			    if (instnum_flag)
-			      {
-				PT_ERRORmf(this_parser, node->info.update.search_cond,
-					   MSGCAT_SET_PARSER_SEMANTIC,
-					   MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
-			      }
-			  }
-			else if (node->info.update.limit
-				 && node->info.update.cursor_name)
-			  {
-			    /* It makes no sense to allow LIMIT for UPDATE statements
-			     * that use cursor
-			     */
-			    PT_ERRORmf(this_parser, node->info.update.search_cond,
-				       MSGCAT_SET_PARSER_SEMANTIC,
-				       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
-			  }
-			else if (node->info.update.limit
-				 && node->info.update.orderby_for)
-			  {
-			    bool ordbynum_flag = false;
-			     /* check for a ORDERBY_NUM it the orderby_for tree */
-			    (void) parser_walk_tree (this_parser, node->info.update.orderby_for,
-						     pt_check_orderbynum_pre, NULL,
-						     pt_check_orderbynum_post, &ordbynum_flag);
+			node->info.update.limit = $9;
+			
+			if (node->info.update.spec->next)
+			{
+			  /* Multi-table update */
+			  
+			  /* Multi-table update cannot have ORDER BY or LIMIT */
+			  if (node->info.update.order_by)
+			    {
+			      PT_ERRORmf(this_parser, node->info.update.order_by,
+			  	       MSGCAT_SET_PARSER_SEMANTIC,
+			  	       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
+			    }
+			  else if (node->info.update.limit)
+			    {
+			      PT_ERRORmf(this_parser, node->info.update.limit,
+			  	       MSGCAT_SET_PARSER_SEMANTIC,
+			  	       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
+			    }
+			}
+		      else
+			{
+			  /* Single-table update */
+			  
+			  if (node->info.update.limit
+			      && node->info.update.search_cond)
+			    {
+			      /* For UPDATE statements that have LIMIT clause don't allow
+			       * inst_num in search condition
+			       */
+			      bool instnum_flag = false;
+			      (void) parser_walk_tree (this_parser, node->info.update.search_cond,
+						       pt_check_instnum_pre, NULL,
+						       pt_check_instnum_post, &instnum_flag);
+			      if (instnum_flag)
+				{
+				  PT_ERRORmf(this_parser, node->info.update.search_cond,
+					     MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+				}
+			    }
+			  else if (node->info.update.limit
+				   && node->info.update.cursor_name)
+			    {
+			      /* It makes no sense to allow LIMIT for UPDATE statements
+			       * that use cursor
+			       */
+			      PT_ERRORmf(this_parser, node->info.update.search_cond,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
+			    }
+			  else if (node->info.update.limit
+				   && node->info.update.orderby_for)
+			    {
+			      bool ordbynum_flag = false;
+			       /* check for a ORDERBY_NUM it the orderby_for tree */
+			      (void) parser_walk_tree (this_parser, node->info.update.orderby_for,
+						       pt_check_orderbynum_pre, NULL,
+						       pt_check_orderbynum_post, &ordbynum_flag);
 
-			    if (ordbynum_flag)
-			      {
-				PT_ERRORmf(this_parser, node->info.update.orderby_for,
-					   MSGCAT_SET_PARSER_SEMANTIC,
-					   MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "ORDERBY_NUM()");
-			      }
-			  }
+			      if (ordbynum_flag)
+				{
+				  PT_ERRORmf(this_parser, node->info.update.orderby_for,
+					     MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "ORDERBY_NUM()");
+				}
+			    }
+			}
 
 			$$ = node;
 
@@ -7374,34 +7459,57 @@ attr_index_def
 	: index_or_key
 	  opt_identifier
 	  index_column_name_list
-		{{
-			PT_NODE* node = parser_new_node(this_parser, PT_CREATE_INDEX);
-
-			node->info.index.index_name = $2;
-			node->info.index.indexed_class = NULL;
-			node->info.index.column_names = $3;
-
-			$$ = node;
-		DBG_PRINT}}
-	| index_or_key
-	  opt_identifier				/* 2 */
-	  '(' index_column_name				/* 3, 4 */
-	  '(' unsigned_integer ')' 		        /* 5, 6, 7 */
-	  opt_asc_or_desc ')'				/* 8, 9 */
+	  opt_where_clause
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_INDEX);
-
+			PT_NODE* node = parser_new_node(this_parser, 
+							PT_CREATE_INDEX);
+			PT_NODE* col = $3;
 			node->info.index.index_name = $2;
-			node->info.index.indexed_class = NULL;
-			node->info.index.column_names = $4;
-			node->info.index.prefix_length = $6;
-
-			if ($4 && $8)
+			if (node->info.index.index_name)
 			  {
-			    $4->info.sort_spec.asc_or_desc = $8;
+			    node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			  }
-
+			node->info.index.indexed_class = NULL;
+			node->info.index.where = $4;
+    		    
+			if (parser_count_list (col) == 1 
+			    && (col->info.sort_spec.expr->node_type == PT_FUNCTION))
+			  {
+			    PT_NODE *expr = col->info.sort_spec.expr;
+			    PT_NODE *arg_list = expr->info.function.arg_list;
+			    if ((arg_list->next == NULL) 
+				&& (arg_list->node_type == PT_VALUE))
+			      {
+				if (node->info.index.reverse 
+				    || node->info.index.unique)
+				  {
+				    PT_ERRORm (this_parser, node, 
+					       MSGCAT_SET_PARSER_SYNTAX,
+					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				  }
+				else
+				  {	
+				    PT_NODE *p = parser_new_node (this_parser, 
+								  PT_NAME);
+				    if (p)
+				    {
+				      p->info.name.original = 
+					     expr->info.function.generic_name;
+				    }
+				    node->info.index.prefix_length = 
+						 expr->info.function.arg_list;
+				    col->info.sort_spec.expr = p;
+				  }
+			      }
+			    else
+			      {
+				PT_ERRORm (this_parser, node,
+					   MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			      }
+			  }
+			node->info.index.column_names = col;
 			$$ = node;
 
 		DBG_PRINT}}
@@ -10789,9 +10897,9 @@ opt_orderby_clause
 					      }
 
 					    if ((col->alias_print
-						 && intl_mbs_namecmp (n_str, col->alias_print) == 0
+						 && intl_identifier_namecmp (n_str, col->alias_print) == 0
 						 && (is_alias = true))
-						|| (intl_mbs_namecmp (n_str, c_str) == 0
+						|| (intl_identifier_namecmp (n_str, c_str) == 0
 						    && (is_col = true)))
 					      {
 						if (found_star)
@@ -11519,6 +11627,24 @@ reserved_func
 			parser_groupby_exception = PT_COUNT;
 
 		DBG_PRINT}}
+	| COUNT '(' '*' ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = PT_COUNT_STAR;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = NULL;
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $7;
+			    node->info.function.analytic.order_by = $8;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
 	| COUNT '(' of_distinct_unique expression_ ')'
 		{{
 
@@ -11535,6 +11661,24 @@ reserved_func
 			parser_groupby_exception = PT_COUNT;
 
 		DBG_PRINT}}
+	| COUNT '(' of_distinct_unique expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.all_or_distinct = PT_DISTINCT;
+			    node->info.function.function_type = PT_COUNT;
+			    node->info.function.arg_list = $4;
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $8;
+			    node->info.function.analytic.order_by = $9;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
 	| COUNT '(' opt_all expression_ ')'
 		{{
 
@@ -11549,6 +11693,24 @@ reserved_func
 
 			$$ = node;
 			parser_groupby_exception = PT_COUNT;
+
+		DBG_PRINT}}
+	| COUNT '(' opt_all expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.function_type = PT_COUNT;
+			    node->info.function.arg_list = $4;
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $8;
+			    node->info.function.analytic.order_by = $9;
+			  }
+
+			$$ = node;
 
 		DBG_PRINT}}
 	| of_avg_max_etc '(' of_distinct_unique path_expression ')'
@@ -11582,6 +11744,63 @@ reserved_func
 
 			$$ = node;
 			parser_groupby_exception = PT_COUNT;
+
+		DBG_PRINT}}
+	| of_analytic '(' of_distinct_unique path_expression ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    if ($1 == PT_MAX || $1 == PT_MIN)
+			      node->info.function.all_or_distinct = PT_ALL;
+			    else
+			      node->info.function.all_or_distinct = PT_DISTINCT;
+			    node->info.function.arg_list = $4;
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $8;
+			    node->info.function.analytic.order_by = $9;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
+	| of_analytic '(' opt_all expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = $4;
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $8;
+			    node->info.function.analytic.order_by = $9;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
+	| of_analytic_no_args '(' ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = NULL;
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $6;
+			    node->info.function.analytic.order_by = $7;
+			  }
+
+			$$ = node;
 
 		DBG_PRINT}}
 	| GROUP_CONCAT
@@ -12441,6 +12660,92 @@ of_avg_max_etc
 		DBG_PRINT}}
 	;
 
+of_analytic
+	: AVG
+		{{
+
+			$$ = PT_AVG;
+
+		DBG_PRINT}}
+	| Max
+		{{
+
+			$$ = PT_MAX;
+
+		DBG_PRINT}}
+	| Min
+		{{
+
+			$$ = PT_MIN;
+
+		DBG_PRINT}}
+	| SUM
+		{{
+
+			$$ = PT_SUM;
+
+		DBG_PRINT}}
+	| STDDEV
+		{{
+
+			$$ = PT_STDDEV;
+
+		DBG_PRINT}}
+	| STDDEV_POP
+		{{
+
+			$$ = PT_STDDEV_POP;
+
+		DBG_PRINT}}
+	| STDDEV_SAMP
+		{{
+
+			$$ = PT_STDDEV_SAMP;
+
+		DBG_PRINT}}
+	| VAR_POP
+		{{
+
+			$$ = PT_VAR_POP;
+
+		DBG_PRINT}}
+	| VAR_SAMP
+		{{
+
+			$$ = PT_VAR_SAMP;
+
+		DBG_PRINT}}
+	| VARIANCE
+		{{
+
+			$$ = PT_VARIANCE;
+
+		DBG_PRINT}}
+	/* add other analytic functions here */
+	;
+
+of_analytic_no_args
+	: ROW_NUMBER
+		{{
+
+			$$ = PT_ROW_NUMBER;
+
+		DBG_PRINT}}
+	| RANK
+		{{
+
+			$$ = PT_RANK;
+
+		DBG_PRINT}}
+	| DENSE_RANK
+		{{
+
+			$$ = PT_DENSE_RANK;
+
+		DBG_PRINT}}
+	/* add other analytic functions here */
+	;
+
 of_distinct_unique
 	: DISTINCT
 	| UNIQUE
@@ -12475,6 +12780,36 @@ opt_agg_order_by
 
 		DBG_PRINT}}
 	| ORDER BY sort_spec
+		{{
+
+			$$ = $3;
+
+		DBG_PRINT}}
+	;
+
+opt_analytic_partition_by
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| PARTITION BY sort_spec_list
+		{{
+
+			$$ = $3;
+
+		DBG_PRINT}}
+	;
+
+opt_analytic_order_by
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| ORDER BY sort_spec_list
 		{{
 
 			$$ = $3;
@@ -14057,8 +14392,8 @@ path_expression
 			    PT_NODE *name_str = NULL;
 			    unsigned long save_custom;
 
-			    if (intl_mbs_casecmp (name->info.name.original, "current_value") == 0 ||
-				intl_mbs_casecmp (name->info.name.original, "currval") == 0)
+			    if (intl_identifier_casecmp (name->info.name.original, "current_value") == 0 ||
+				intl_identifier_casecmp (name->info.name.original, "currval") == 0)
 			      {
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_CURRENT_VALUE;
@@ -14091,8 +14426,8 @@ path_expression
 				parser_cannot_cache = true;
 			      }
 			    else
-			      if (intl_mbs_casecmp (name->info.name.original, "next_value") == 0 ||
-				  intl_mbs_casecmp (name->info.name.original, "nextval") == 0)
+			      if (intl_identifier_casecmp (name->info.name.original, "next_value") == 0 ||
+				  intl_identifier_casecmp (name->info.name.original, "nextval") == 0)
 			      {
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_NEXT_VALUE;
@@ -14732,7 +15067,7 @@ primitive_type
 			      {
 			      case PT_TYPE_CHAR:
 			      case PT_TYPE_VARCHAR:
-				dt->info.data_type.units = INTL_CODESET_ISO88591;
+				dt->info.data_type.units = (int) lang_charset ();
 				break;
 
 			      case PT_TYPE_NCHAR:
@@ -15299,8 +15634,25 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			char *invalid_pos = NULL;
+
 			if (p)
-			  p->info.name.original = $1;
+			  {
+			    /* check only for invalid byte, truncation can be resolved */
+			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
+			      {
+				PT_ERRORmf (this_parser, NULL,
+					    MSGCAT_SET_ERROR,
+					    -(ER_INVALID_CHAR),
+					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
+			      }
+			    else if (intl_identifier_fix ($1) != NO_ERROR)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "invalid identifier : %s", $1);
+			      }
+			    p->info.name.original = $1;
+			  }
 			$$ = p;
 
 		DBG_PRINT}}
@@ -15308,8 +15660,25 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			char *invalid_pos = NULL;
+
 			if (p)
-			  p->info.name.original = $1;
+			  {
+			    /* check only for invalid byte, truncation can be resolved */
+			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
+			      {
+				PT_ERRORmf (this_parser, NULL,
+					    MSGCAT_SET_ERROR,
+					    -(ER_INVALID_CHAR),
+					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
+			      }
+			    else if (intl_identifier_fix ($1) != NO_ERROR)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "invalid identifier : %s", $1);
+			      }
+			    p->info.name.original = $1;
+			  }
 			$$ = p;
 
 		DBG_PRINT}}
@@ -15317,8 +15686,25 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			char *invalid_pos = NULL;
+
 			if (p)
-			  p->info.name.original = $1;
+			  {
+			    /* check only for invalid byte, truncation can be resolved */
+			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
+			      {
+				PT_ERRORmf (this_parser, NULL,
+					    MSGCAT_SET_ERROR,
+					    -(ER_INVALID_CHAR),
+					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
+			      }
+			    else if (intl_identifier_fix ($1) != NO_ERROR)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "invalid identifier : %s", $1);
+			      }
+			    p->info.name.original = $1;
+			  }
 			$$ = p;
 
 		DBG_PRINT}}
@@ -15326,8 +15712,25 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			char *invalid_pos = NULL;
+
 			if (p)
-			  p->info.name.original = $1;
+			  {
+			    /* check only for invalid byte, truncation can be resolved */
+			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
+			      {
+				PT_ERRORmf (this_parser, NULL,
+					    MSGCAT_SET_ERROR,
+					    -(ER_INVALID_CHAR),
+					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
+			      }
+			    else if (intl_identifier_fix ($1) != NO_ERROR)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "invalid identifier : %s", $1);
+			      }
+			    p->info.name.original = $1;
+			  }
 			$$ = p;
 
 		DBG_PRINT}}
@@ -15396,6 +15799,15 @@ identifier
 
 		DBG_PRINT}}
 	| DECREMENT
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| DENSE_RANK
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -15746,6 +16158,15 @@ identifier
 			$$ = p;
 
 		DBG_PRINT}}
+	| RANK
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
 	| REJECT_
 		{{
 
@@ -15801,6 +16222,15 @@ identifier
 
 		DBG_PRINT}}
 	| REVERSE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| ROW_NUMBER
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -16189,14 +16619,29 @@ char_string
 	: CHAR_STRING
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			int str_size = strlen ($1);
+			PT_NODE *node = NULL;
+			char *invalid_pos = NULL;
+			char *str = $1;
 
+			if (intl_check_string (str, str_size, &invalid_pos) == 0)
+			  {
+			    node = parser_new_node (this_parser, PT_VALUE);
+			  }
+			else
+			  {
+			    PT_ERRORmf (this_parser, NULL,
+					MSGCAT_SET_ERROR,
+					-(ER_INVALID_CHAR),
+					(invalid_pos != NULL) ? invalid_pos - str : 0);			
+			  }
+			  
 			if (node)
 			  {
 			    node->type_enum = PT_TYPE_CHAR;
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $1, strlen ($1));
+			      pt_append_bytes (this_parser, NULL, $1, str_size);
 			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
 			  }
 
@@ -16456,6 +16901,26 @@ monetary_literal
 			$$ = val;
 
 		DBG_PRINT}}
+	| TURKISH_LIRA_SIGN of_integer_real_literal
+		{{
+
+			char *str, *txt;
+			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+
+			str = pt_append_string (this_parser, NULL, TURKISH_LIRA_TEXT);
+			txt = $2;
+
+			if (val)
+			  {
+			    val->info.value.data_value.money.type = PT_CURRENCY_TL;
+			    val->info.value.text = pt_append_string (this_parser, str, txt);
+			    val->type_enum = PT_TYPE_MONETARY;
+			    val->info.value.data_value.money.amount = atof (txt);
+			  }
+
+			$$ = val;
+
+		DBG_PRINT}}		
 	;
 
 of_integer_real_literal
@@ -17795,16 +18260,9 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	  else if (arg3->info.value.data_value.str != NULL)
 	    {
 	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
-	      if (strcasecmp (lang_str, LANG_NAME_KOREAN) == 0)
+	      if (lang_set_flag_from_lang (lang_str, 1,
+		      &(date_lang->info.value.data_value.i)))
 		{
-		  date_lang->info.value.data_value.i = 4;
-		}
-	      else if (strcasecmp (lang_str, LANG_NAME_ENGLISH) == 0)
-		{
-		  date_lang->info.value.data_value.i = 2;
-		}
-	      else
-		{		/* unknown */
 		  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
 		}
 	    }
@@ -17822,13 +18280,9 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	  date_lang->type_enum = PT_TYPE_INTEGER;
 	  lang_str = envvar_get ("DATE_LANG");
 
-	  if (lang_str && strcasecmp (lang_str, LANG_NAME_KOREAN) == 0)
-	    date_lang->info.value.data_value.i = 4;
-	  else
-	    date_lang->info.value.data_value.i = 2;
+	  lang_set_flag_from_lang (lang_str, (arg_cnt == 1) ? 0 : 1,
+				   &(date_lang->info.value.data_value.i));
 
-	  if (arg_cnt == 1)
-	    date_lang->info.value.data_value.i |= 1;
 	}
 
       return date_lang;
@@ -19024,7 +19478,7 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
 	      continue;
 	    }
 
-	  if (intl_mbs_casecmp (n_str, c_str) == 0)
+	  if (intl_identifier_casecmp (n_str, c_str) == 0)
 	    {
 	      resolved = true;
 	      break;
@@ -19037,7 +19491,7 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
       for (col = list; col; col = col->next)
 	{
 	  if (col->alias_print
-	      && intl_mbs_casecmp (n_str, col->alias_print) == 0)
+	      && intl_identifier_casecmp (n_str, col->alias_print) == 0)
 	    {
 	      parser_free_node (this_parser, *node);
 	      *node = parser_copy_tree (this_parser, col);

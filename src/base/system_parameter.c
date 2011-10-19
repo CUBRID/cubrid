@@ -545,6 +545,12 @@ int PRM_XASL_MAX_PLAN_CACHE_CLONES = -1;
 static int prm_xasl_max_plan_cache_clones_default = -1;	/* disabled */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+int PRM_FILTER_PRED_MAX_CACHE_ENTRIES = 1000;
+static int prm_filter_pred_max_cache_entries_default = 1000;
+
+int PRM_FILTER_PRED_MAX_CACHE_CLONES = 10;
+static int prm_filter_pred_max_cache_clones_default = 10;
+
 int PRM_XASL_PLAN_CACHE_TIMEOUT = -1;
 static int prm_xasl_plan_cache_timeout_default = -1;	/* infinity */
 
@@ -799,6 +805,12 @@ UINT64 PRM_LOG_VOLUME_SIZE = 536870912ULL;
 static UINT64 prm_log_volume_size_default = 536870912ULL;	/* 512M */
 static UINT64 prm_log_volume_size_lower = 20971520ULL;	/* 20M */
 static UINT64 prm_log_volume_size_upper = 4294967296ULL;	/* 4G */
+
+bool PRM_USE_LOCALE_NUMBER_FORMAT = true;
+static bool prm_use_locale_number_format_default = true;
+
+bool PRM_USE_LOCALE_DATE_FORMAT = true;
+static bool prm_use_locale_date_format_default = true;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -1457,6 +1469,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
 #endif /* ENABLE_UNUSED_FUNCTION */
+  {PRM_NAME_FILTER_PRED_MAX_CACHE_ENTRIES,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_FOR_SERVER),
+   (void *) &prm_filter_pred_max_cache_entries_default,
+   (void *) &PRM_FILTER_PRED_MAX_CACHE_ENTRIES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_FILTER_PRED_MAX_CACHE_CLONES,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_HIDDEN),
+   (void *) &prm_filter_pred_max_cache_clones_default,
+   (void *) &PRM_FILTER_PRED_MAX_CACHE_CLONES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_XASL_PLAN_CACHE_TIMEOUT,
    (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
    (void *) &prm_xasl_plan_cache_timeout_default,
@@ -1899,6 +1924,20 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_MULTI_RANGE_OPT_LIMIT,
    (void *) &prm_multi_range_opt_limit_upper,
    (void *) &prm_multi_range_opt_limit_lower,
+   (char *) NULL},
+  {PRM_NAME_USE_LOCALE_NUMBER_FORMAT,
+   (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT |
+    PRM_USER_CHANGE),
+   (void *) &prm_use_locale_number_format_default,
+   (void *) &PRM_USE_LOCALE_NUMBER_FORMAT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_USE_LOCALE_DATE_FORMAT,
+   (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT |
+    PRM_USER_CHANGE),
+   (void *) &prm_use_locale_date_format_default,
+   (void *) &PRM_USE_LOCALE_DATE_FORMAT,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   /* All the compound parameters *must* be at the end of the array so that the
      changes they cause are not overridden by other parameters (for example in

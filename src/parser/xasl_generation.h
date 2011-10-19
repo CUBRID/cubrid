@@ -94,6 +94,17 @@ struct aggregate_info
   int flag_agg_optimize;
 };
 
+typedef struct analytic_info ANALYTIC_INFO;
+struct analytic_info
+{
+  ANALYTIC_TYPE *head_list;
+  PT_NODE *select_node;
+  PT_NODE *arg_list;
+  REGU_VARIABLE_LIST regu_list;
+  VAL_LIST *val_list;
+  OUTPTR_LIST *out_list;
+};
+
 typedef enum
 { NOT_COMPATIBLE = 0, ENTITY_COMPATIBLE,
   NOT_COMPATIBLE_NO_RESET
@@ -137,13 +148,12 @@ extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node,
 				     PT_NODE * non_null_attrs,
 				     PT_NODE * default_expr_attrs,
 				     bool is_first_value);
+extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT *
+							parser,
+							PT_NODE * filter_pred,
+							PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser,
 				     PT_NODE * statement,
-				     PT_NODE * select_names,
-				     PT_NODE * select_vals,
-				     PT_NODE * const_names,
-				     PT_NODE * const_vals, int no_valis,
-				     int no_consts, int has_uniques,
 				     PT_NODE ** non_null_attrs);
 extern XASL_NODE *pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern XASL_NODE *pt_append_xasl (XASL_NODE * to, XASL_NODE * from_list);
@@ -212,5 +222,7 @@ extern XASL_NODE *pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
 					    PT_NODE * select_node);
 extern XASL_NODE *parser_generate_do_stmt_xasl (PARSER_CONTEXT * p,
 						PT_NODE * node);
+extern FUNC_PRED *pt_to_func_pred (PARSER_CONTEXT * parser,
+				   PT_NODE * spec, PT_NODE * expr);
 
 #endif /* _XASL_GENERATION_H_ */

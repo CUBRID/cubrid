@@ -2831,7 +2831,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
       distinct_or_all = Q_ALL;
     }
 
-  lhs_file_p = qfile_sort_list (thread_p, lhs_file_p, NULL, distinct_or_all);
+  lhs_file_p =
+    qfile_sort_list (thread_p, lhs_file_p, NULL, distinct_or_all, true);
   if (lhs_file_p == NULL)
     {
       goto error;
@@ -2846,7 +2847,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
   if (rhs_file_p)
     {
       rhs_file_p = qfile_sort_list (thread_p, rhs_file_p, NULL,
-				    distinct_or_all);
+				    distinct_or_all, true);
       if (rhs_file_p == NULL)
 	{
 	  goto error;
@@ -4076,13 +4077,14 @@ qfile_clear_sort_info (SORT_INFO * sort_info_p)
  *   cmp_fn(in):
  *   extra_arg(in):
  *   limit(in):
+ *   do_close(in):
  */
 QFILE_LIST_ID *
 qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 			   SORT_LIST * sort_list_p, QUERY_OPTIONS option,
 			   int flag, SORT_GET_FUNC * get_func,
 			   SORT_PUT_FUNC * put_func, SORT_CMP_FUNC * cmp_func,
-			   void *extra_arg, int limit)
+			   void *extra_arg, int limit, bool do_close)
 {
   QFILE_LIST_ID *srlist_id;
   QFILE_LIST_SCAN_ID t_scan_id;
@@ -4164,7 +4166,10 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
       return NULL;
     }
 
-  qfile_close_list (thread_p, srlist_id);
+  if (do_close)
+    {
+      qfile_close_list (thread_p, srlist_id);
+    }
 
 #if 0				/* SortCache */
   qfile_clear_sort_info (&info);
@@ -4188,6 +4193,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
  *   list_id(in): Source list file identifier
  *   sort_list(in): List of comparison items
  *   option(in):
+ *   do_close(in);
  *
  * Note: This routine sorts the specified list file tuples according
  *       to the list of comparison items and generates a sorted list
@@ -4195,7 +4201,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
  */
 QFILE_LIST_ID *
 qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
-		 SORT_LIST * sort_list_p, QUERY_OPTIONS option)
+		 SORT_LIST * sort_list_p, QUERY_OPTIONS option, bool do_close)
 {
   int ls_flag;
 
@@ -4211,7 +4217,7 @@ qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 
   return qfile_sort_list_with_func (thread_p, list_id_p, sort_list_p, option,
 				    ls_flag, NULL, NULL, NULL, NULL,
-				    NO_SORT_LIMIT);
+				    NO_SORT_LIMIT, do_close);
 }
 
 /*

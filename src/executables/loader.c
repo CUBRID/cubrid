@@ -2266,10 +2266,13 @@ ldr_str_db_char (LDR_CONTEXT * context,
   int precision;
   int err;
   DB_VALUE val;
+  int char_count = 0;
 
   precision = att->domain->precision;
 
-  if (len > precision)
+  intl_char_count ((char *) str, len, att->domain->codeset, &char_count);
+
+  if (char_count > precision)
     {
       /*
        * May be a violation, but first we have to check for trailing pad
@@ -2278,7 +2281,12 @@ ldr_str_db_char (LDR_CONTEXT * context,
        */
       int safe;
       const char *p;
-      for (p = &str[precision], safe = 1; p < &str[len]; p++)
+      int truncate_size;
+
+      intl_char_size ((char *) str, precision, att->domain->codeset,
+		      &truncate_size);
+
+      for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
 	  if (*p != ' ')
 	    {
@@ -2287,7 +2295,7 @@ ldr_str_db_char (LDR_CONTEXT * context,
 	    }
 	}
       if (safe)
-	len = precision;
+	len = truncate_size;
       else
 	{
 	  /*
@@ -2301,7 +2309,7 @@ ldr_str_db_char (LDR_CONTEXT * context,
     }
 
   val.domain = ldr_char_tmpl.domain;
-  val.domain.char_info.length = len;
+  val.domain.char_info.length = char_count;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.medium.size = len;
   val.data.ch.medium.buf = (char *) str;
@@ -2330,10 +2338,12 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
   int precision;
   int err;
   DB_VALUE val;
+  int char_count = 0;
 
   precision = att->domain->precision;
+  intl_char_count ((char *) str, len, att->domain->codeset, &char_count);
 
-  if (len > precision)
+  if (char_count > precision)
     {
       /*
        * May be a violation, but first we have to check for trailing pad
@@ -2342,7 +2352,11 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
        */
       int safe;
       const char *p;
-      for (p = &str[precision], safe = 1; p < &str[len]; p++)
+      int truncate_size;
+
+      intl_char_size ((char *) str, precision, att->domain->codeset,
+		      &truncate_size);
+      for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
 	  if (*p != ' ')
 	    {
@@ -2351,7 +2365,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
 	    }
 	}
       if (safe)
-	len = precision;
+	len = truncate_size;
       else
 	{
 	  /*
@@ -2365,7 +2379,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
     }
 
   val.domain = ldr_varchar_tmpl.domain;
-  val.domain.char_info.length = len;
+  val.domain.char_info.length = char_count;
   val.data.ch.medium.size = len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
@@ -3844,26 +3858,17 @@ ldr_monetary_elem (LDR_CONTEXT * context,
   char *str_ptr;
   double amt;
   int err = NO_ERROR;
-  DB_CURRENCY currency_type = DB_CURRENCY_DOLLAR;
+  int symbol_size = 0;
+  DB_CURRENCY currency_type = DB_CURRENCY_NULL;
 
-  if (p[0] == 0xa1 && p[1] == 0xef)
+  if (len >= 2 && intl_is_currency_symbol (p, &currency_type, &symbol_size,
+					   CURRENCY_CHECK_MODE_GRAMMAR))
     {
-      token += 2;
-      currency_type = DB_CURRENCY_YEN;
+      token += symbol_size;
     }
-  else if (p[0] == '\\')
+
+  if (currency_type == DB_CURRENCY_NULL)
     {
-      token += 1;
-      currency_type = DB_CURRENCY_WON;
-    }
-  else if (p[0] == 0xa3 && p[1] == 0xdc)
-    {
-      token += 2;
-      currency_type = DB_CURRENCY_WON;
-    }
-  else if (p[0] == '$')
-    {
-      token += 1;
       currency_type = DB_CURRENCY_DOLLAR;
     }
 
@@ -4676,8 +4681,8 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context)
 	    {
 	      db_attdesc = context->attrs[i].attdesc;
 	      if (db_attdesc->name_space == att->header.name_space
-		  && intl_mbs_casecmp (db_attdesc->name,
-				       att->header.name) == 0)
+		  && intl_identifier_casecmp (db_attdesc->name,
+					      att->header.name) == 0)
 		{
 		  break;
 		}
@@ -4971,7 +4976,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 	  pr_clear_value (&ele);
 	  goto error_exit;
 	}
-      if (intl_mbs_casecmp (attr_name, db_pull_string (&ele)) == 0)
+      if (intl_identifier_casecmp (attr_name, db_pull_string (&ele)) == 0)
 	{
 	  context->key_attr_idx = n;
 	}
@@ -6117,7 +6122,8 @@ ldr_is_ignore_class (char *classname, size_t size)
     {
       for (i = 0, p = ignoreClasslist; i < ignoreClassnum; i++, p++)
 	{
-	  if (strncasecmp (*p, classname, MAX (strlen (*p), size)) == 0)
+	  if (intl_identifier_ncasecmp (*p, classname, MAX (strlen (*p),
+							    size)) == 0)
 	    {
 	      return true;
 	    }
@@ -6147,7 +6153,6 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	case LDR_FLOAT:
 	case LDR_DOUBLE:
 	case LDR_NUMERIC:
-	case LDR_MONETARY:
 	case LDR_DATE:
 	case LDR_TIME:
 	case LDR_TIMESTAMP:
@@ -6159,6 +6164,40 @@ ldr_process_constants (LDR_CONSTANT * cons)
 
 	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
 	    FREE_STRING (str);
+	  }
+	  break;
+
+	case LDR_MONETARY:
+	  {
+	    LDR_MONETARY_VALUE *mon = (LDR_MONETARY_VALUE *) c->val;
+	    LDR_STRING *str = (LDR_STRING *) mon->amount;
+	    /* buffer size for monetary : numeric size +
+	     *                            grammar currency symbol +
+	     *                            string terminator */
+	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
+	    char *full_mon_str_p = full_mon_str;
+	    /* In Loader grammar always print symbol before value (position of
+	     * currency symbol is not localized) */
+	    char *curr_str =
+	      intl_get_money_symbol_grammar (mon->currency_type);
+	    int full_mon_str_len = strlen (str->val) + strlen (curr_str);
+
+	    if (full_mon_str_len >= sizeof (full_mon_str))
+	      {
+		full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
+	      }
+
+	    strcpy (full_mon_str_p, curr_str);
+	    strcat (full_mon_str_p, str->val);
+
+	    (*ldr_act) (ldr_Current_context, full_mon_str_p,
+			strlen (full_mon_str_p), c->type);
+	    if (full_mon_str_p != full_mon_str)
+	      {
+		free_and_init (full_mon_str_p);
+	      }
+	    FREE_STRING (str);
+	    free_and_init (mon);
 	  }
 	  break;
 

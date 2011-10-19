@@ -205,7 +205,8 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 			   */
 			  if (cls != NULL)
 			    {
-			      found = !intl_mbs_casecmp (cls_nam, e_nam);
+			      found =
+				!intl_identifier_casecmp (cls_nam, e_nam);
 			    }
 			}
 		      else
@@ -737,7 +738,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values,
   for (element = values, indx = 0;
        element != NULL; element = element->next, indx++)
     {
-      pt_evaluate_tree_internal (parser, element, &e_val, true);
+      pt_evaluate_tree_internal (parser, element, &e_val, 1, true);
       if (parser->error_msgs == NULL)
 	{
 	  if (db_seq_put (DB_GET_SEQUENCE (db_value), indx, &e_val)
@@ -795,7 +796,7 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values,
 
   for (element = *values; element != NULL; element = element->next)
     {
-      pt_evaluate_tree_internal (parser, element, &e_val, true);
+      pt_evaluate_tree_internal (parser, element, &e_val, 1, true);
       if (parser->error_msgs == NULL)
 	{
 	  if (db_set_add (db_get_set (db_value), &e_val) != NO_ERROR)
@@ -1430,7 +1431,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 	  if (!class_obj)
 	    {
 	      if (class_name
-		  && name && (intl_mbs_casecmp (name, class_name) != 0))
+		  && name
+		  && (intl_identifier_casecmp (name, class_name) != 0))
 		{
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			  ER_SM_DOMAIN_NOT_A_CLASS, 1,
@@ -1446,6 +1448,9 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+      precision = dt->info.data_type.precision;
+      codeset = lang_charset ();
+      break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       precision = dt->info.data_type.precision;

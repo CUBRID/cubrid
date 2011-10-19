@@ -1227,7 +1227,8 @@ smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att,
   for (crt_att = *att_list; crt_att != NULL;
        crt_att = (SM_ATTRIBUTE *) crt_att->header.next)
     {
-      if (intl_mbs_casecmp (crt_att->header.name, add_after_attribute) == 0)
+      if (intl_identifier_casecmp (crt_att->header.name, add_after_attribute)
+	  == 0)
 	{
 	  break;
 	}
@@ -1618,9 +1619,9 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
 
   if (error == NO_ERROR)
     {
-      if (classobj_put_index (&(template_->properties), type,
-			      constraint_name, atts, asc_desc, NULL,
-			      fk_info, shared_cons_name) == ER_FAILED)
+      if (classobj_put_index
+	  (&(template_->properties), type, constraint_name, atts, asc_desc,
+	   NULL, NULL, NULL, 0, fk_info, shared_cons_name, NULL) == ER_FAILED)
 	{
 	  error = er_errid ();
 	}
@@ -1656,7 +1657,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
   const char *tmp, *ref_cls_name = NULL;
 
   if (template_->op == NULL
-      && strcasecmp (template_->name, fk_info->ref_class) == 0)
+      && intl_identifier_casecmp (template_->name, fk_info->ref_class) == 0)
     {
       error =
 	classobj_make_class_constraints (template_->properties,
@@ -1998,7 +1999,8 @@ smt_check_index_exist (SM_TEMPLATE * template_,
 
   error = classobj_check_index_exist (check_cons, out_shared_cons_name,
 				      template_->name, constraint_type,
-				      constraint_name, att_names, asc_desc);
+				      constraint_name, att_names, asc_desc,
+				      NULL);
 
   if (*out_shared_cons_name != NULL)
     {
@@ -2103,8 +2105,8 @@ smt_add_constraint (SM_TEMPLATE * template_,
       for (j = i + 1; j < n_atts; j++)
 	{
 	  /* can not check attr-id, because is not yet assigned */
-	  if (intl_mbs_casecmp (atts[i]->header.name,
-				atts[j]->header.name) == 0)
+	  if (intl_identifier_casecmp (atts[i]->header.name,
+				       atts[j]->header.name) == 0)
 	    {
 	      ERROR1 (error, ER_SM_INDEX_ATTR_DUPLICATED,
 		      atts[i]->header.name);

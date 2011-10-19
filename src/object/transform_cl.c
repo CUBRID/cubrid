@@ -2817,6 +2817,29 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   /* property list */
   or_put_offset (buf, offset);
   /* formerly offset += att_extension_size(att); */
+  if (att->default_value.default_expr != DB_DEFAULT_NONE)
+    {
+      DB_VALUE val;
+      db_make_int (&val, att->default_value.default_expr);
+      if (att->properties == NULL)
+	{
+	  att->properties = classobj_make_prop ();
+	}
+      classobj_put_prop (att->properties, "default_expr", &val);
+      pr_clear_value (&val);
+    }
+  else
+    {
+      if (att->properties != NULL)
+	{
+	  classobj_drop_prop (att->properties, "default_expr");
+	  if (set_size (att->properties) == 0)
+	    {
+	      set_free (att->properties);
+	      att->properties = NULL;
+	    }
+	}
+    }
   offset += property_list_size (att->properties);
 
   /* end of object */
@@ -2841,9 +2864,6 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_int (buf, NULL_FILEID);
   or_put_int (buf, NULL_PAGEID);
   or_put_int (buf, 0);
-
-  /* default expression identifier */
-  or_put_int (buf, att->default_value.default_expr);
 
   /* name */
   put_string (buf, att->header.name);
@@ -2969,9 +2989,6 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       (void) or_get_int (buf, &rc);
       (void) or_get_int (buf, &rc);
 
-      /* default expression identifier */
-      att->default_value.default_expr = or_get_int (buf, &rc);
-
       /* variable attribute 0 : name */
       att->header.name = get_string (buf, vars[ORC_ATT_NAME_INDEX].length);
 
@@ -2999,6 +3016,16 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       /* formerly disk_to_att_extension(buf, att, vars[5].length); */
       att->properties =
 	get_property_list (buf, vars[ORC_ATT_PROPERTIES_INDEX].length);
+
+	att->default_value.default_expr = DB_DEFAULT_NONE;
+      if (att->properties)
+	{
+	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
+	    {
+	      att->default_value.default_expr = DB_GET_INT (&value);
+	      db_value_clear (&value);			  
+	    }      		
+	}
 
       /* THIS SHOULD BE INITIALIZING THE header.name_space field !! */
 

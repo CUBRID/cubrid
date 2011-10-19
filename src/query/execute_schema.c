@@ -65,6 +65,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
 
 #define QUERY_MAX_SIZE	1024 * 1024
+#define MAX_FILTER_PREDICATE_STRING_LENGTH 100
 
 typedef enum
 {
@@ -187,15 +188,19 @@ static DB_CONSTRAINT_TYPE get_reverse_unique_index_type (const bool
 							 is_reverse,
 							 const bool
 							 is_unique);
-static int create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
+static int create_or_drop_index_helper (PARSER_CONTEXT * parser,
 					const char *const constraint_name,
 					const bool is_reverse,
 					const bool is_unique,
-					const PT_NODE * const column_names,
-					const PT_NODE *
-					const column_prefix_length,
+					PT_NODE * spec,
+					PT_NODE * column_names,
+					PT_NODE * column_prefix_length,
+					PT_NODE * filter_predicate,
+					int func_index_pos,
+					int func_index_args_count,
+					PT_NODE * function_expr,
 					DB_OBJECT * const obj,
-					const DO_INDEX do_index);
+					DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name,
 						int *num_mops, MOP * mop_set,
 						int *num_names,
@@ -304,7 +309,17 @@ static int save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
 static int do_run_update_query_for_class (char *query, MOP class_mop,
 					  bool suppress_replication,
 					  int *row_count);
-
+static SM_FUNCTION_INDEX_INFO *pt_node_to_function_index (PARSER_CONTEXT *
+							  parser,
+							  PT_NODE * spec,
+							  PT_NODE * expr,
+							  DO_INDEX do_index);
+static int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
+					  SM_CONSTRAINT_INFO * constr,
+					  PT_NODE * alter);
+static int do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
+					    SM_CONSTRAINT_INFO * constr,
+					    PT_NODE * alter);
 /*
  * Function Group :
  * DO functions for alter statement
@@ -748,7 +763,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    }
 		}
 
-	      pt_evaluate_tree (parser, d, &dest_val);
+	      pt_evaluate_tree (parser, d, &dest_val, 1);
 	      if (pt_has_error (parser))
 		{
 		  pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -855,7 +870,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
-	  pt_evaluate_tree (parser, d, &src_val);
+	  pt_evaluate_tree (parser, d, &src_val, 1);
 	  if (pt_has_error (parser))
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -1262,12 +1277,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   for (; create_index != NULL; create_index = create_index->next)
     {
-      create_index->info.index.indexed_class =
-	parser_copy_tree (parser, alter->info.alter.entity_name);
-      if (create_index->info.index.indexed_class == NULL)
-	{
-	  return ER_FAILED;
-	}
       error = do_create_index (parser, create_index);
       if (error != NO_ERROR)
 	{
@@ -1485,10 +1494,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 			  continue;
 			}
 		    }
-		  error = sm_add_index (objs->op,
-					db_constraint_type (cons),
-					cons->name, (const char **) namep,
-					asc_desc, cons->attrs_prefix_length);
+		  error =
+		    sm_add_index (objs->op, db_constraint_type (cons),
+				  cons->name, (const char **) namep, asc_desc,
+				  cons->attrs_prefix_length,
+				  SM_GET_FILTER_PRED_STRING
+				  (cons->filter_predicate),
+				  SM_GET_FILTER_PRED_STREAM
+				  (cons->filter_predicate),
+				  SM_GET_FILTER_PRED_STREAM_SIZE
+				  (cons->filter_predicate),
+				  cons->func_index_info);
 		  if (error != NO_ERROR)
 		    {
 		      break;
@@ -1713,12 +1729,12 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
       error_code = er_errid ();
     }
   error_code =
-    create_or_drop_index_helper (parser,
-				 alter->info.alter.constraint_list->info.
-				 name.original,
+    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->
+				 info.name.original,
 				 alter->info.alter.alter_clause.index.reverse,
 				 alter->info.alter.alter_clause.index.unique,
-				 NULL, NULL, obj, DO_INDEX_DROP);
+				 NULL, NULL, NULL, NULL, -1, 0, NULL,
+				 obj, DO_INDEX_DROP);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -2116,7 +2132,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
 
       group_name = node->info.name.original;
-      if (strcasecmp (user_name, group_name) == 0)
+      if (intl_identifier_casecmp (user_name, group_name) == 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_AU_MEMBER_CAUSES_CYCLES, 0);
@@ -2135,8 +2151,8 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  return ER_OBJ_INVALID_ARGUMENTS;
 	}
 
-      if (strcasecmp (user_name, member_name) == 0
-	  || strcasecmp (member_name, AU_PUBLIC_USER_NAME) == 0)
+      if (intl_identifier_casecmp (user_name, member_name) == 0
+	  || intl_identifier_casecmp (member_name, AU_PUBLIC_USER_NAME) == 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_AU_MEMBER_CAUSES_CYCLES, 0);
@@ -2167,7 +2183,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      return ER_OBJ_INVALID_ARGUMENTS;
 	    }
 
-	  if (strcasecmp (group_name, member_name) == 0)
+	  if (intl_identifier_casecmp (group_name, member_name) == 0)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		      ER_AU_MEMBER_CAUSES_CYCLES, 0);
@@ -2510,7 +2526,7 @@ update_locksets_for_multiple_rename (const char *class_name, int *num_mops,
       /* Class names that don't yet exist are reserved. */
       for (i = 0; i < *num_names; ++i)
 	{
-	  if (intl_mbs_casecmp (name_set[i], realname) == 0)
+	  if (intl_identifier_casecmp (name_set[i], realname) == 0)
 	    {
 	      /* The class name is used more than once, we ignore its current
 	         occurence. */
@@ -2812,17 +2828,26 @@ get_reverse_unique_index_type (const bool is_reverse, const bool is_unique)
  *   is_unique(in):
  *   column_names(in): Can be NULL if dropping a constraint and providing the
  *                     constraint name.
+ *   column_prefix_length(in):
+ *   where_predicate(in):
+ *   func_index_pos(in):
+ *   func_index_args_count(in):
+ *   function_expr(in):
  *   obj(in): Class object
  *   do_index(in) : The operation to be performed (creating or dropping)
  */
 static int
-create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
+create_or_drop_index_helper (PARSER_CONTEXT * parser,
 			     const char *const constraint_name,
 			     const bool is_reverse,
 			     const bool is_unique,
-			     const PT_NODE * const column_names,
-			     const PT_NODE * const column_prefix_length,
-			     DB_OBJECT * const obj, const DO_INDEX do_index)
+			     PT_NODE * spec,
+			     PT_NODE * column_names,
+			     PT_NODE * column_prefix_length,
+			     PT_NODE * where_predicate,
+			     int func_index_pos, int func_index_args_count,
+			     PT_NODE * function_expr,
+			     DB_OBJECT * const obj, DO_INDEX do_index)
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
@@ -2834,6 +2859,13 @@ create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
   char *cname = NULL;
   char const *colname = NULL;
   bool mysql_index_name = false;
+  bool free_packing_buff = false;
+  PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
+  int stream_size = 0;
+  char *pred_string = NULL;
+  char *pred_stream = NULL;
+  int pred_stream_size = 0;
+  SM_FUNCTION_INDEX_INFO *func_index_info = NULL;
 
   nnames = pt_length_of_list (column_names);
 
@@ -2912,9 +2944,29 @@ create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
       mysql_index_name = true;
     }
 
+  if (function_expr)
+    {
+      pt_enter_packing_buf ();
+      free_packing_buff = true;
+      func_index_info = pt_node_to_function_index (parser, spec,
+						   function_expr, do_index);
+      if (func_index_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (SM_FUNCTION_INDEX_INFO));
+	  error = ER_FAILED;
+	  goto end;
+	}
+      else
+	{
+	  func_index_info->col_id = func_index_pos;
+	  func_index_info->attr_index_start = nnames - func_index_args_count;
+	}
+    }
   cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
 				      (const char **) attnames,
-				      asc_desc, constraint_name);
+				      asc_desc, constraint_name,
+				      func_index_info);
   if (cname == NULL)
     {
       error = er_errid ();
@@ -2923,9 +2975,55 @@ create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
     {
       if (do_index == DO_INDEX_CREATE)
 	{
-	  error = sm_add_constraint (obj, ctype, cname,
-				     (const char **) attnames,
-				     asc_desc, attrs_prefix_length, false);
+	  if (where_predicate)
+	    {
+	      PARSER_VARCHAR *filter_expr = NULL;
+	      /*free at parser_free_parser */
+	      filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser,
+					    (PT_NODE *) where_predicate);
+	      if (filter_expr)
+		{
+		  pred_string = (char *) filter_expr->bytes;
+		  if (strlen (pred_string) >
+		      MAX_FILTER_PREDICATE_STRING_LENGTH)
+		    {
+		      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+		      goto end;
+		    }
+		}
+
+	      pt_enter_packing_buf ();
+	      free_packing_buff = true;
+	      filter_predicate =
+		pt_to_pred_with_context ((PARSER_CONTEXT *) parser,
+					 (PT_NODE *) where_predicate,
+					 (PT_NODE *) spec);
+	      if (filter_predicate)
+		{
+		  error = xts_map_filter_pred_to_stream (filter_predicate,
+							 &pred_stream,
+							 &pred_stream_size);
+		  if (error != NO_ERROR)
+		    {
+		      PT_ERRORm ((PARSER_CONTEXT *) parser, where_predicate,
+				 MSGCAT_SET_PARSER_RUNTIME,
+				 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		      goto end;
+		    }
+		}
+	      else
+		{
+		  error = er_errid ();
+		  goto end;
+		}
+	    }
+
+	  error =
+	    sm_add_constraint (obj, ctype, cname,
+			       (const char **) attnames, asc_desc,
+			       attrs_prefix_length, false,
+			       pred_string, pred_stream, pred_stream_size,
+			       func_index_info);
 	}
       else
 	{
@@ -2935,6 +3033,31 @@ create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
 				      false, mysql_index_name);
 	}
       sm_free_constraint_name (cname);
+    }
+
+end:
+
+  /* free function index info */
+  if (func_index_info)
+    {
+      if (func_index_info->expr_stream)
+	{
+	  free_and_init (func_index_info->expr_stream);
+	}
+      db_ws_free (func_index_info);
+      func_index_info = NULL;
+    }
+
+  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
+  if (pred_stream)
+    {
+      free_and_init (pred_stream);
+    }
+
+  if (free_packing_buff)
+    {
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
     }
 
   free_and_init (attnames);
@@ -2954,11 +3077,15 @@ create_or_drop_index_helper (const PARSER_CONTEXT * const parser,
  *   statement(in) : Parse tree of a create index statement
  */
 int
-do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   PT_NODE *cls;
   DB_OBJECT *obj;
   const char *index_name = NULL;
+  char *stream = NULL;
+  bool have_where = false;
+  int error = NO_ERROR;
+  int stream_size = 0;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2969,7 +3096,10 @@ do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  cls = statement->info.index.indexed_class;
+  /* class should be already available */
+  assert (statement->info.index.indexed_class);
+
+  cls = statement->info.index.indexed_class->info.spec.entity_name;
 
   obj = db_find_class (cls->info.name.original);
   if (obj == NULL)
@@ -2979,13 +3109,19 @@ do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
-  return
-    create_or_drop_index_helper (parser, index_name,
-				 statement->info.index.reverse,
-				 statement->info.index.unique,
-				 statement->info.index.column_names,
-				 statement->info.index.prefix_length,
-				 obj, DO_INDEX_CREATE);
+
+  error = create_or_drop_index_helper (parser, index_name,
+				       statement->info.index.reverse,
+				       statement->info.index.unique,
+				       statement->info.index.indexed_class,
+				       statement->info.index.column_names,
+				       statement->info.index.prefix_length,
+				       statement->info.index.where,
+				       statement->info.index.func_pos,
+				       statement->info.index.func_no_args,
+				       statement->info.index.function_expr,
+				       obj, DO_INDEX_CREATE);
+  return error;
 }
 
 /*
@@ -3002,6 +3138,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   bool free_cls = false;
   const char *index_name = NULL;
   int error_code = NO_ERROR;
+  const char *class_name = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3016,7 +3153,11 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
 
-  cls = statement->info.index.indexed_class;
+  if (statement->info.index.indexed_class)
+    {
+      cls = statement->info.index.indexed_class->info.spec.flat_entity_list;
+    }
+
   if (cls == NULL)
     {
       DB_CONSTRAINT_TYPE index_type;
@@ -3037,17 +3178,23 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  goto error_exit;
 	}
       free_cls = true;
+      class_name = cls->info.name.original;
+    }
+  else
+    {
+      class_name = cls->info.name.resolved;
     }
 
-  obj = db_find_class (cls->info.name.original);
+  obj = db_find_class (class_name);
   if (obj == NULL)
     {
       error_code = er_errid ();
       goto error_exit;
     }
 
-  cls->info.name.db_object = obj;
-  pt_check_user_owns_class (parser, cls);
+  /* A call to pt_check_user_owns_class does not actually have any
+   * effect here, and it conflicts with resolved spec names. This check
+   * is already performed in name resolving. */
 
   if (free_cls)
     {
@@ -3055,12 +3202,18 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       cls = NULL;
       free_cls = false;
     }
+
   error_code =
     create_or_drop_index_helper (parser, index_name,
 				 statement->info.index.reverse,
 				 statement->info.index.unique,
+				 statement->info.index.indexed_class,
 				 statement->info.index.column_names,
 				 statement->info.index.prefix_length,
+				 statement->info.index.where,
+				 statement->info.index.func_pos,
+				 statement->info.index.func_no_args,
+				 statement->info.index.function_expr,
 				 obj, DO_INDEX_DROP);
   return error_code;
 
@@ -3100,6 +3253,15 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   SM_ATTRIBUTE **attp;
   int attnames_allocated = 0;
   const char *index_name = NULL;
+  char *pred_string = NULL;
+  bool free_pred_string = false;
+  char *pred_stream = NULL;
+  int pred_stream_size = 0;
+  bool free_packing_buff = false;
+  PT_NODE *where_predicate = NULL;
+  SM_FUNCTION_INDEX_INFO *func_index_info = NULL;
+  bool free_funtion_expr_str = false;
+  const char *class_name = NULL;
 
   /* TODO refactor this code, the code in create_or_drop_index_helper and the
      code in do_drop_index in order to remove duplicate code */
@@ -3117,7 +3279,11 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
 
-  cls = statement->info.index.indexed_class;
+  if (statement->info.index.indexed_class)
+    {
+      cls = statement->info.index.indexed_class->info.spec.flat_entity_list;
+    }
+
   if (cls == NULL)
     {
       if (index_name == NULL)
@@ -3135,16 +3301,25 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  goto error_exit;
 	}
       free_cls = true;
+
+      class_name = cls->info.name.original;
+    }
+  else
+    {
+      class_name = cls->info.name.resolved;
     }
 
-  obj = db_find_class (cls->info.name.original);
+  obj = db_find_class (class_name);
   if (obj == NULL)
     {
       error = er_errid ();
       goto error_exit;
     }
-  cls->info.name.db_object = obj;
-  pt_check_user_owns_class (parser, cls);
+
+  /* A call to pt_check_user_owns_class does not actually have any
+   * effect here, and it conflicts with resolved spec names. This check
+   * is already performed in name resolving. */
+
   if (free_cls)
     {
       parser_free_tree (parser, cls);
@@ -3170,7 +3345,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_SM_NO_INDEX, 1, index_name);
-	  return er_errid ();
+	  error = ER_SM_NO_INDEX;
+	  goto error_exit;
 	}
 
       attp = idx->attributes;
@@ -3178,7 +3354,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OBJ_INVALID_ATTRIBUTE, 1, "unknown");
-	  return er_errid ();
+	  error = ER_OBJ_INVALID_ATTRIBUTE;
+	  goto error_exit;
 	}
 
       nnames = 0;
@@ -3193,7 +3370,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (nnames + 1) * sizeof (const char *));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
 	}
 
       attnames_allocated = 1;
@@ -3212,7 +3390,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      (nnames + 1) * sizeof (const char *));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_exit;
 	    }
 	}
       attnames[i] = NULL;
@@ -3222,10 +3401,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  asc_desc = (int *) malloc ((nnames) * sizeof (int));
 	  if (asc_desc == NULL)
 	    {
-	      free_and_init (attnames);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_exit;
 	    }
 
 	  for (i = 0; i < nnames; i++)
@@ -3241,17 +3420,96 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  attrs_prefix_length = (int *) malloc ((nnames) * sizeof (int));
 	  if (attrs_prefix_length == NULL)
 	    {
-	      free_and_init (attnames);
-	      free_and_init (asc_desc);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_exit;
 	    }
 
 	  for (i = 0; i < nnames; i++)
 	    {
 	      attrs_prefix_length[i] = idx->attrs_prefix_length[i];
 	    }
+	}
+
+      if (idx->filter_predicate)
+	{
+	  if (idx->filter_predicate->pred_string)
+	    {
+	      int pred_str_len = strlen (idx->filter_predicate->pred_string);
+	      pred_string = strdup (idx->filter_predicate->pred_string);
+	      if (pred_string == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  strlen (idx->filter_predicate->pred_string) *
+			  sizeof (char));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error_exit;
+		}
+	      free_pred_string = true;
+	    }
+
+	  if (idx->filter_predicate->pred_stream)
+	    {
+	      pred_stream =
+		(char *) malloc (idx->filter_predicate->
+				 pred_stream_size * sizeof (char));
+	      if (pred_stream == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  idx->filter_predicate->pred_stream_size *
+			  sizeof (char));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error_exit;
+		}
+	      memcpy (pred_stream, idx->filter_predicate->pred_stream,
+		      idx->filter_predicate->pred_stream_size);
+	      pred_stream_size = idx->filter_predicate->pred_stream_size;
+	    }
+	}
+
+      if (idx->func_index_info)
+	{
+	  func_index_info = (SM_FUNCTION_INDEX_INFO *)
+	    db_ws_alloc (sizeof (SM_FUNCTION_INDEX_INFO));
+	  if (func_index_info == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      sizeof (SM_FUNCTION_INDEX_INFO));
+	      goto error_exit;
+	    }
+	  func_index_info->type = idx->func_index_info->type;
+	  func_index_info->expr_str = strdup (idx->func_index_info->expr_str);
+	  if (func_index_info->expr_str == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      sizeof (SM_FUNCTION_INDEX_INFO));
+	      goto error_exit;
+	    }
+	  free_funtion_expr_str = true;
+	  func_index_info->expr_stream =
+	    (char *) calloc (idx->func_index_info->expr_stream_size,
+			     sizeof (char));
+	  if (func_index_info->expr_stream == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      sizeof (SM_FUNCTION_INDEX_INFO));
+	      goto error_exit;
+	    }
+	  memcpy (func_index_info->expr_stream,
+		  idx->func_index_info->expr_stream,
+		  idx->func_index_info->expr_stream_size);
+	  func_index_info->expr_stream_size =
+	    idx->func_index_info->expr_stream_size;
+	  func_index_info->col_id = idx->func_index_info->col_id;
+	  func_index_info->attr_index_start =
+	    idx->func_index_info->attr_index_start;
+	  func_index_info->type = idx->func_index_info->type;
 	}
     }
   else
@@ -3262,16 +3520,17 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, (nnames + 1) * sizeof (const char *));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
 	}
 
       asc_desc = (int *) malloc ((nnames) * sizeof (int));
       if (asc_desc == NULL)
 	{
-	  free_and_init (attnames);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, nnames * sizeof (int));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
 	}
 
       for (c = statement->info.index.column_names, i = 0; c != NULL;
@@ -3282,17 +3541,82 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  attnames[i] = (char *) n->info.name.original;
 	}
       attnames[i] = NULL;
+
+      where_predicate = statement->info.index.where;
+      if (where_predicate)
+	{
+	  PT_NODE *spec = statement->info.index.indexed_class;
+	  PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
+	  PARSER_VARCHAR *filter_expr = NULL;
+
+	  /*free at parser_free_parser */
+	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser,
+					(PT_NODE *) where_predicate);
+	  if (filter_expr)
+	    {
+	      pred_string = filter_expr->bytes;
+	      if (strlen (pred_string) > MAX_FILTER_PREDICATE_STRING_LENGTH)
+		{
+		  error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+		  goto error_exit;
+		}
+	    }
+
+	  pt_enter_packing_buf ();
+	  free_packing_buff = true;
+
+	  filter_predicate =
+	    pt_to_pred_with_context (parser, where_predicate, spec);
+	  if (filter_predicate)
+	    {
+	      error = xts_map_filter_pred_to_stream (filter_predicate,
+						     &pred_stream,
+						     &pred_stream_size);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	  else
+	    {
+	      error = er_errid ();
+	      goto error_exit;
+	    }
+	}
+
+      if (statement->info.index.function_expr)
+	{
+	  pt_enter_packing_buf ();
+	  free_packing_buff = true;
+
+	  func_index_info =
+	    pt_node_to_function_index (parser,
+				       statement->info.index.indexed_class,
+				       statement->info.index.function_expr,
+				       DO_INDEX_CREATE);
+	  if (func_index_info == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
+		      1, sizeof (SM_FUNCTION_INDEX_INFO));
+	      goto error_exit;
+	    }
+	  func_index_info->col_id = statement->info.index.func_pos;
+	  func_index_info->attr_index_start =
+	    nnames - statement->info.index.func_no_args;
+	}
     }
 
   cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
 				      (const char **) attnames,
-				      asc_desc, index_name);
+				      asc_desc, index_name, func_index_info);
   if (cname == NULL)
     {
       if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
 	{
 	  error = ER_GENERIC_ERROR;
 	}
+      goto error_exit;
     }
   else
     {
@@ -3304,6 +3628,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      NO_ERROR)
 	    {
 	      error = er_errid ();
+	      goto error_exit;
 	    }
 	  else
 	    {
@@ -3311,7 +3636,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_SM_NO_INDEX, 1, cname);
-		  error = er_errid ();
+		  error = ER_SM_NO_INDEX;
+		  goto error_exit;
 		}
 	      else
 		{
@@ -3324,7 +3650,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY,
 			      1, nnames * sizeof (int));
-		      error = er_errid ();
+		      error = ER_OUT_OF_VIRTUAL_MEMORY;
+		      goto error_exit;
 		    }
 		  else
 		    {
@@ -3342,15 +3669,51 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  error = sm_drop_constraint (obj, ctype, cname,
 				      (const char **) attnames, false, false);
-	  if (error == NO_ERROR)
+	  if (error != NO_ERROR)
 	    {
-	      error = sm_add_constraint (obj, ctype, cname,
-					 (const char **) attnames,
-					 asc_desc, attrs_prefix_length,
-					 false);
+	      goto error_exit;
+	    }
+	  error = sm_add_constraint (obj, ctype, cname,
+				     (const char **) attnames,
+				     asc_desc, attrs_prefix_length,
+				     false, pred_string, pred_stream,
+				     pred_stream_size, func_index_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
 	    }
 	  sm_free_constraint_name (cname);
 	}
+    }
+
+end:
+  if (func_index_info)
+    {
+      if (free_funtion_expr_str)
+	{
+	  free_and_init (func_index_info->expr_str);
+	}
+      if (func_index_info->expr_stream)
+	{
+	  free_and_init (func_index_info->expr_stream);
+	}
+      db_ws_free (func_index_info);
+    }
+
+  if (pred_stream != NULL)
+    {
+      free_and_init (pred_stream);
+    }
+
+  if (free_pred_string)
+    {
+      free_and_init (pred_string);
+    }
+
+  if (free_packing_buff)
+    {
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
     }
 
   if (attnames_allocated)
@@ -3384,7 +3747,7 @@ error_exit:
       cls = NULL;
       free_cls = false;
     }
-  return error;
+  goto end;
 }
 
 /*
@@ -3448,6 +3811,9 @@ static int insert_partition_catalog (PARSER_CONTEXT * parser,
 static PT_NODE *replace_name_with_value (PARSER_CONTEXT * parser,
 					 PT_NODE * node, void *void_arg,
 					 int *continue_walk);
+static PT_NODE *replace_names_alter_chg_attr (PARSER_CONTEXT * parser,
+					      PT_NODE * node, void *void_arg,
+					      int *continue_walk);
 static PT_NODE *adjust_name_with_type (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *void_arg,
 				       int *continue_walk);
@@ -3534,7 +3900,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *parttemp, *names;
   PART_CLASS_INFO pci = { NULL, NULL, NULL, NULL };
   PART_CLASS_INFO *newpci, *wpci;
-  char class_name[DB_MAX_IDENTIFIER_LENGTH];
+  char class_name[DB_MAX_IDENTIFIER_LENGTH *
+		  INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
   DB_VALUE *minval, *parts_val, *fmin_val, partsize, delval;
   int part_cnt = 0, part_add = -1;
   int size;
@@ -3568,14 +3935,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  part_add = PT_PARTITION_HASH;
 	}
 
-      intl_mbs_lower ((char *) node->info.alter.entity_name->info.
-		      name.original, class_name);
+      intl_identifier_lower ((char *) node->info.alter.entity_name->info.
+			     name.original, class_name);
     }
   else if (node->node_type == PT_CREATE_ENTITY)
     {
       pinfo = node->info.create_entity.partition_info;
-      intl_mbs_lower ((char *) node->info.create_entity.entity_name->
-		      info.name.original, class_name);
+      intl_identifier_lower ((char *) node->info.create_entity.entity_name->
+			     info.name.original, class_name);
     }
   else
     {
@@ -4339,7 +4706,7 @@ evaluate_partition_expr (DB_VALUE * expr, DB_VALUE * ival)
       pr_clear_value (ival);
       if (expr_type->node_type == PT_EXPR)
 	{
-	  pt_evaluate_tree (expr_parser, pcol, ival);
+	  pt_evaluate_tree (expr_parser, pcol, ival, 1);
 	}
       else
 	{
@@ -4915,16 +5282,22 @@ find_partition_attr (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       if (node->info.name.spec_id == ppi->spec)
 	{
-	  const char *mbs2 = DB_GET_STRING (ppi->attr);
-	  if (mbs2 == NULL)
+	  const char *p_att_name = DB_GET_STRING (ppi->attr);
+	  int len_p_att_name;
+
+	  if (p_att_name == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_PARTITION_WORK_FAILED, 0);
 	      return NULL;
 	    }
 
-	  if (intl_mbs_ncasecmp (node->info.name.original, mbs2,
-				 DB_GET_STRING_SIZE (ppi->attr)) == 0)
+	  intl_char_count ((unsigned char *) p_att_name,
+			   DB_GET_STRING_SIZE (ppi->attr),
+			   lang_charset (), &len_p_att_name);
+
+	  if (intl_identifier_ncasecmp (node->info.name.original, p_att_name,
+					len_p_att_name) == 0)
 	    {
 	      ppi->wrkmap |= PATTR_KEY;
 	    }
@@ -5010,8 +5383,8 @@ check_same_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
       break;
 
     case PT_NAME:
-      if (intl_mbs_casecmp (p->info.name.original, q->info.name.original) !=
-	  0)
+      if (intl_identifier_casecmp
+	  (p->info.name.original, q->info.name.original) != 0)
 	{
 	  return 0;
 	}
@@ -5696,7 +6069,7 @@ select_hash_partition (PRUNING_INFO * ppi, PT_NODE * expr)
   DB_VALUE temp;
   db_make_null (&temp);
 
-  pt_evaluate_tree (ppi->parser, expr->info.expr.arg2, &temp);
+  pt_evaluate_tree (ppi->parser, expr->info.expr.arg2, &temp, 1);
   if (pt_has_error (ppi->parser))
     {
       pt_report_to_ersys (ppi->parser, PT_SEMANTIC);
@@ -6781,7 +7154,7 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  classop = db_find_class (name->info.name.original);
 	  if (classop != NULL)
 	    {
-	      if (au_fetch_class (classop, &pi.smclass, AU_FETCH_READ, 
+	      if (au_fetch_class (classop, &pi.smclass, AU_FETCH_READ,
 				  AU_SELECT) != NO_ERROR)
 		{
 		  goto work_failed;
@@ -6799,7 +7172,7 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  db_make_null (&attr);
 	  db_make_null (&hashsize);
 
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PNAME, 
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PNAME,
 		      &pname) != NO_ERROR)
 	    {
 	      continue;
@@ -6809,13 +7182,13 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      goto clear_loop;	/* partitioned sub-class */
 	    }
 
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PTYPE, 
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PTYPE,
 		      &ptype) != NO_ERROR)
 	    {
 	      goto clear_loop;
 	    }
 
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PEXPR, 
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PEXPR,
 		      &pexpr) != NO_ERROR)
 	    {
 	      goto clear_loop;
@@ -6825,7 +7198,7 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      goto clear_loop;
 	    }
 
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PVALUES, 
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PVALUES,
 		      &pattr) != NO_ERROR)
 	    {
 	      goto clear_loop;
@@ -7172,13 +7545,12 @@ is_in_range (DB_VALUE * aval1, PT_OP_TYPE aop1,
  *   parser(in): Parser context
  *   xasl(in/out): XASL tree to be built
  *   class_obj(in):
- *   idx(in):
  *
  * Note:
  */
 int
-do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
-			 MOP class_obj, int idx)
+do_build_partition_xasl (PARSER_CONTEXT * parser, MOP class_obj,
+			 XASL_PARTITION_INFO ** xasl_part_info)
 {
   DB_VALUE ptype, pname, pexpr, pattr, pval, partname;
   PT_NODE **enode, *expr;
@@ -7196,7 +7568,7 @@ do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
   PARSER_CONTEXT *expr_parser = NULL;
   int delete_flag;
 
-  if (!parser || !xasl || !class_obj)
+  if (!parser || !class_obj)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
       return ER_PARTITION_WORK_FAILED;
@@ -7464,14 +7836,8 @@ do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
     }
 
   is_error = 0;
-  if (idx <= 0)
-    {
-      xasl->proc.insert.partition = xpi;
-    }
-  else
-    {
-      xasl->proc.update.partition[idx - 1] = xpi;
-    }
+
+  *xasl_part_info = xpi;
 
 work_end:
   AU_ENABLE (au_save);
@@ -7540,7 +7906,7 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
 	}
       else if (keyattr)
 	{
-	  if (intl_mbs_casecmp (keyattr, attr_name) == 0)
+	  if (intl_identifier_casecmp (keyattr, attr_name) == 0)
 	    {
 	      error = ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
 	    }
@@ -8067,25 +8433,21 @@ end_rename:
  *   parser(in): Parser context
  *   smclass(in):
  *   editobj(in):
- *   list_column_names(in):
- *   list_values(in):
- *   const_column_names(in):
- *   const_values(in):
+ *   first_assign(in): first assignment of current class
  *
  * Note:
  */
 MOP
-do_is_partition_changed (PARSER_CONTEXT * parser, SM_CLASS * smclass,
-			 MOP editobj, PT_NODE * list_column_names,
-			 DB_VALUE * list_values, PT_NODE * const_column_names,
-			 DB_VALUE * const_values)
+do_is_partition_changed (PARSER_CONTEXT * parser,
+			 SM_CLASS * smclass, MOP editobj,
+			 CLIENT_UPDATE_INFO * first_assign)
 {
-  SM_CLASS *supclass;
-  DB_VALUE ptype, pname, pexpr, pattr, *retval, attrname, *valptr;
+  SM_CLASS *supclass = NULL;
+  DB_VALUE ptype, pname, pexpr, pattr, *retval = NULL, attrname;
   MOP chgobj = NULL;
-  PT_NODE *name;
-  char flag_prc, *nameptr;
-  int au_save;
+  char *nameptr = NULL;
+  int au_save = 0;
+  CLIENT_UPDATE_INFO *assign = NULL;
 
   if (!smclass || !editobj || !smclass->partition_of || !smclass->inheritance)
     {
@@ -8138,38 +8500,21 @@ do_is_partition_changed (PARSER_CONTEXT * parser, SM_CLASS * smclass,
 
       nameptr = DB_PULL_STRING (&attrname);
       /* partition key column search */
-      valptr = list_values;
-      flag_prc = 0;
-
-      for (name = list_column_names; name != NULL; name = name->next)
+      for (assign = first_assign; assign; assign = assign->next)
 	{
-	  if (SM_COMPARE_NAMES (nameptr, name->info.name.original) == 0)
+	  if (SM_COMPARE_NAMES
+	      (nameptr, assign->upd_col_name->info.name.original) == 0)
 	    {
-	      flag_prc = 1;
 	      break;
 	    }
-	  valptr++;
 	}
 
-      if (!flag_prc)
-	{
-	  valptr = const_values;
-	  for (name = const_column_names; name != NULL; name = name->next)
-	    {
-	      if (SM_COMPARE_NAMES (nameptr, name->info.name.original) == 0)
-		{
-		  flag_prc = 1;
-		  break;
-		}
-	      valptr++;
-	    }
-	}
-      if (!flag_prc)		/* partition key column not found! */
+      if (assign == NULL)	/* partition key column not found! */
 	{
 	  goto end_partition;
 	}
 
-      retval = evaluate_partition_expr (&pexpr, valptr);
+      retval = evaluate_partition_expr (&pexpr, assign->db_val);
       if (retval == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED,
@@ -9279,7 +9624,7 @@ query_get_column_with_name (DB_QUERY_TYPE * query_columns, const char *name)
     {
       sm_downcase_name (db_query_format_name (column), column_name,
 			SM_MAX_IDENTIFIER_LENGTH);
-      if (intl_mbs_casecmp (real_name, column_name) == 0)
+      if (intl_identifier_casecmp (real_name, column_name) == 0)
 	{
 	  return column;
 	}
@@ -9304,7 +9649,7 @@ get_attribute_with_name (PT_NODE * atts, const char *name)
     {
       sm_downcase_name (get_attr_name (crt_attr), attribute_name,
 			SM_MAX_IDENTIFIER_LENGTH);
-      if (intl_mbs_casecmp (real_name, attribute_name) == 0)
+      if (intl_identifier_casecmp (real_name, attribute_name) == 0)
 	{
 	  return crt_attr;
 	}
@@ -10880,7 +11225,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  error = execute_create_select_query (parser, class_name,
 					       create_select,
-					       node->info.create_entity.
+					       node->info.
+					       create_entity.
 					       create_select_action,
 					       query_columns, node);
 	  if (error != NO_ERROR)
@@ -10897,13 +11243,26 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   for (create_index = node->info.create_entity.create_index;
        create_index != NULL; create_index = create_index->next)
     {
+      PT_NODE *save_next = NULL;
       create_index->info.index.indexed_class =
-	parser_copy_tree (parser, node->info.create_entity.entity_name);
+	pt_entity (parser, node->info.create_entity.entity_name, NULL, NULL);
+
       if (create_index->info.index.indexed_class == NULL)
 	{
 	  error = ER_FAILED;
 	  goto error_exit;
 	}
+
+      save_next = create_index->next;
+      create_index->next = NULL;
+      pt_semantic_check (parser, create_index);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  goto error_exit;
+	}
+      create_index->next = save_next;
+
       error = do_create_index (parser, create_index);
       if (error != NO_ERROR)
 	{
@@ -10973,7 +11332,7 @@ do_copy_indexes (MOP classmop, SM_CLASS * src_class)
       constraint_type = db_constraint_type (c);
       auto_cons_name = sm_produce_constraint_name (src_class->header.name,
 						   constraint_type, att_names,
-						   c->asc_desc, NULL);
+						   c->asc_desc, NULL, NULL);
 
       /* check if constraint's name was generated automatically */
       if (auto_cons_name != NULL && strcmp (auto_cons_name, c->name) == 0)
@@ -10995,8 +11354,13 @@ do_copy_indexes (MOP classmop, SM_CLASS * src_class)
 	  sm_free_constraint_name (auto_cons_name);
 	}
 
-      error = sm_add_index (classmop, constraint_type, new_cons_name,
-			    att_names, c->asc_desc, c->attrs_prefix_length);
+      error =
+	sm_add_index (classmop, constraint_type, new_cons_name, att_names,
+		      c->asc_desc, c->attrs_prefix_length,
+		      SM_GET_FILTER_PRED_STRING (c->filter_predicate),
+		      SM_GET_FILTER_PRED_STREAM (c->filter_predicate),
+		      SM_GET_FILTER_PRED_STREAM_SIZE (c->filter_predicate),
+		      c->func_index_info);
 
       free_and_init (att_names);
 
@@ -11332,6 +11696,66 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
       ctemplate = NULL;
     }
 
+  if (attr_chg_prop.constr_info != NULL)
+    {
+      SM_CONSTRAINT_INFO *saved_constr = NULL;
+
+      for (saved_constr = attr_chg_prop.constr_info;
+	   saved_constr != NULL; saved_constr = saved_constr->next)
+	{
+	  if (saved_constr->func_index_info || saved_constr->filter_predicate)
+	    {
+	      if (saved_constr->func_index_info)
+		{
+		  error =
+		    do_recreate_func_index_constr (parser, saved_constr,
+						   alter);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+	      if (saved_constr->filter_predicate)
+		{
+		  error = do_recreate_filter_index_constr (parser,
+							   saved_constr,
+							   alter);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+
+	      if (!is_srv_update_needed)
+		{
+		  error = sm_drop_index (class_mop, saved_constr->name);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  error =
+		    sm_add_index (class_mop, saved_constr->constraint_type,
+				  saved_constr->name,
+				  (const char **) saved_constr->att_names,
+				  saved_constr->asc_desc,
+				  saved_constr->prefix_length,
+				  SM_GET_FILTER_PRED_STRING (saved_constr->
+							     filter_predicate),
+				  SM_GET_FILTER_PRED_STREAM (saved_constr->
+							     filter_predicate),
+				  SM_GET_FILTER_PRED_STREAM_SIZE
+				  (saved_constr->filter_predicate),
+				  saved_constr->func_index_info);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+	    }
+	}
+    }
+
   if (is_srv_update_needed)
     {
       assert (att_id >= 0);
@@ -11461,7 +11885,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		      ci->constraint_type == DB_CONSTRAINT_PRIMARY_KEY);
 
 	      error = db_add_constraint (class_mop, ci->constraint_type, NULL,
-					 (const char **) ci->att_names, 0);
+					 ci->att_names, 0);
 	    }
 
 	  if (error != NO_ERROR)
@@ -11811,7 +12235,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
       attr_name = old_name;
 
       attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-      if (intl_mbs_casecmp (attr_name, new_name) == 0)
+      if (intl_identifier_casecmp (attr_name, new_name) == 0)
 	{
 	  attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_UNCHANGED;
 	}
@@ -11923,8 +12347,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	  while (*sm_constr_attr != NULL)
 	    {
 	      if ((*sm_constr_attr)->header.name != NULL &&
-		  !intl_mbs_casecmp ((*sm_constr_attr)->header.name,
-				     attr_name_to_check))
+		  !intl_identifier_casecmp ((*sm_constr_attr)->header.name,
+					    attr_name_to_check))
 		{
 		  name_found_in_constr = true;
 		}
@@ -12015,7 +12439,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
    * are kept with the old name, reason: MySQL compatibility */
   if ((new_name != NULL) && (attr_name != NULL)
       && (attr_chg_properties->constr_info != NULL)
-      && (intl_mbs_casecmp (new_name, attr_name) != 0))
+      && (intl_identifier_casecmp (new_name, attr_name) != 0))
     {
       SM_CONSTRAINT_INFO *saved_constr = NULL;
 
@@ -12025,7 +12449,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	  char **c_name = NULL;
 	  for (c_name = saved_constr->att_names; *c_name != NULL; ++c_name)
 	    {
-	      if (intl_mbs_casecmp (attr_name, *c_name) == 0)
+	      if (intl_identifier_casecmp (attr_name, *c_name) == 0)
 		{
 		  free_and_init (*c_name);
 		  *c_name = strdup (new_name);
@@ -12092,7 +12516,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	   constr_att = constr_att->next)
 	{
 	  assert (constr_att->node_type == PT_NAME);
-	  if (intl_mbs_casecmp
+	  if (intl_identifier_casecmp
 	      (attr_name_to_check, constr_att->info.name.original) == 0)
 	    {
 	      if (chg_prop_idx >= NUM_ATT_CHG_PROP)
@@ -12137,7 +12561,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	{
 	  return error;
 	}
-      if (intl_mbs_casecmp (keycol, attr_name) == 0)
+      if (intl_identifier_casecmp (keycol, attr_name) == 0)
 	{
 	  attr_chg_properties->p[P_IS_PARTITION_COL] |=
 	    ATT_CHG_PROPERTY_PRESENT_OLD;
@@ -13590,7 +14014,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
 
       if (def_expr == DB_DEFAULT_NONE)
 	{
-	  pt_evaluate_tree (parser, def_val, *default_value);
+	  pt_evaluate_tree (parser, def_val, *default_value, 1);
 	}
       else
 	{
@@ -14030,7 +14454,14 @@ do_recreate_att_constraints (MOP class_mop,
 				     constr->name,
 				     (const char **) constr->att_names,
 				     constr->asc_desc, constr->prefix_length,
-				     0);
+				     0,
+				     SM_GET_FILTER_PRED_STRING
+				     (constr->filter_predicate),
+				     SM_GET_FILTER_PRED_STREAM
+				     (constr->filter_predicate),
+				     SM_GET_FILTER_PRED_STREAM_SIZE
+				     (constr->filter_predicate),
+				     constr->func_index_info);
 
 	  if (error != NO_ERROR)
 	    {
@@ -14039,10 +14470,17 @@ do_recreate_att_constraints (MOP class_mop,
 	}
       else if (constr->constraint_type == DB_CONSTRAINT_INDEX)
 	{
-	  error = sm_add_index (class_mop, constr->constraint_type,
-				constr->name,
-				(const char **) constr->att_names,
-				constr->asc_desc, constr->prefix_length);
+	  error =
+	    sm_add_index (class_mop, constr->constraint_type, constr->name,
+			  (const char **) constr->att_names, constr->asc_desc,
+			  constr->prefix_length,
+			  SM_GET_FILTER_PRED_STRING (constr->
+						     filter_predicate),
+			  SM_GET_FILTER_PRED_STREAM (constr->
+						     filter_predicate),
+			  SM_GET_FILTER_PRED_STREAM_SIZE (constr->
+							  filter_predicate),
+			  constr->func_index_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -14070,6 +14508,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 			SM_ATTR_CHG_SOL * change_mode)
 {
   SM_NAME_SPACE name_space = ID_NULL;
+  SM_CONSTRAINT_INFO *constr_info = NULL;
   int meta = 0, shared = 0;
   int error = NO_ERROR;
   const char *old_name = NULL;
@@ -14642,4 +15081,430 @@ end:
     }
 
   return error;
+}
+
+/*
+ * pt_node_to_function_index () - extracts function index information
+ *                                based on the given expression
+ * parser(in): parser context
+ * spec(in): class spec
+ * expr(in): expression used with function index
+ * return: pointer to SM_FUNCTION_INDEX_INFO structure, containing the 
+ *	function index information
+ */
+static SM_FUNCTION_INDEX_INFO *
+pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
+			   PT_NODE * expr, DO_INDEX do_index)
+{
+  int nr_const = 0, nr_attrs = 0, i = 0, k = 0;
+  SM_FUNCTION_INDEX_INFO *func_index_info;
+  FUNC_PRED *func_pred;
+  assert (pt_is_function_index_expr (expr));
+  func_index_info = (SM_FUNCTION_INDEX_INFO *)
+    db_ws_alloc (sizeof (SM_FUNCTION_INDEX_INFO));
+
+  if (func_index_info == NULL)
+    {
+      return NULL;
+    }
+  func_index_info->type = pt_type_enum_to_db (expr->type_enum);
+  func_index_info->expr_str = parser_print_tree_with_quotes (parser, expr);
+  func_index_info->expr_stream = NULL;
+  func_index_info->expr_stream_size = -1;
+
+  if (do_index == DO_INDEX_CREATE)
+    {
+      func_pred = pt_to_func_pred (parser, spec, expr);
+      if (func_pred)
+	{
+	  xts_map_func_pred_to_stream (func_pred,
+				       &func_index_info->expr_stream,
+				       &func_index_info->expr_stream_size);
+	}
+      else
+	{
+	  return NULL;
+	}
+    }
+
+  return func_index_info;
+}
+
+/*
+ * do_recreate_func_index_constr () - rebuilds the function index expression
+ *   parser(in): parser context
+ *   constr(in): constraint info, must be a function index
+ *   return: NO_ERROR or error code
+ *
+ */
+static int
+do_recreate_func_index_constr (PARSER_CONTEXT * parser,
+			       SM_CONSTRAINT_INFO * constr, PT_NODE * alter)
+{
+  PT_NODE **stmt;
+  PT_NODE *expr;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  FUNC_PRED *func_pred;
+  int error;
+  const char *class_name = NULL;
+  char *query_str = NULL;
+  int query_str_len = 0;
+  char *expr_str = NULL;
+  int expr_str_len = 0;
+
+  assert (alter->node_type == PT_ALTER);
+  if (alter->info.alter.entity_name)
+    {
+      class_name = alter->info.alter.entity_name->info.name.original;
+    }
+  else
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  if (class_name == NULL)
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  query_str_len = strlen (constr->func_index_info->expr_str) +
+    strlen (class_name) + 7 /* strlen("SELECT ") */  +
+    6 /* strlen(" FROM ") */  +
+    2 /* [] */  +
+    1 /* terminating null */ ;
+  query_str = (char *) malloc (query_str_len);
+  if (query_str == NULL)
+    {
+      /* OUT of VM */
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  snprintf (query_str, query_str_len, "SELECT %s FROM [%s]",
+	    constr->func_index_info->expr_str, class_name);
+  stmt = parser_parse_string (parser, query_str);
+  if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  expr = (*stmt)->info.query.q.select.list;
+
+  (void) parser_walk_tree (parser, expr, replace_names_alter_chg_attr, alter,
+			   NULL, NULL);
+
+  *stmt = pt_resolve_names (parser, *stmt, &sc_info);
+  if (*stmt != NULL && !pt_has_error (parser))
+    {
+      *stmt = pt_semantic_type (parser, *stmt, &sc_info);
+    }
+  else
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  if (*stmt != NULL && !pt_has_error (parser))
+    {
+      expr = (*stmt)->info.query.q.select.list;
+      if (expr && !pt_is_function_index_expr (expr))
+	{
+	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+	  error = ER_FAILED;
+	  goto error;
+	}
+    }
+  else
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  if (constr->func_index_info->expr_str)
+    {
+      free_and_init (constr->func_index_info->expr_str);
+    }
+  if (constr->func_index_info->expr_stream)
+    {
+      free_and_init (constr->func_index_info->expr_stream);
+    }
+
+  expr_str = parser_print_tree_with_quotes (parser, expr);
+  if (expr_str)
+    {
+      expr_str_len = strlen (expr_str);
+      constr->func_index_info->expr_str = (char *) calloc (expr_str_len + 1,
+							   sizeof (char));
+      if (constr->func_index_info->expr_str == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      memcpy (constr->func_index_info->expr_str, expr_str, expr_str_len);
+    }
+  else
+    {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+      error = ER_FAILED;
+      goto error;
+    }
+
+  pt_enter_packing_buf ();
+  func_pred = pt_to_func_pred (parser, (*stmt)->info.query.q.select.from,
+			       expr);
+  if (func_pred)
+    {
+      error = xts_map_func_pred_to_stream (func_pred,
+					   &constr->func_index_info->
+					   expr_stream,
+					   &constr->func_index_info->
+					   expr_stream_size);
+      if (error != NO_ERROR)
+	{
+	  pt_exit_packing_buf ();
+	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  goto error;
+	}
+    }
+  else
+    {
+      pt_exit_packing_buf ();
+      error = er_errid ();
+      goto error;
+    }
+  pt_exit_packing_buf ();
+
+  if (query_str)
+    {
+      free_and_init (query_str);
+    }
+  return NO_ERROR;
+
+error:
+  if (query_str)
+    {
+      free_and_init (query_str);
+    }
+  return error;
+}
+
+/*
+ * do_recreate_filter_index_constr () - rebuilds the filter index expression
+ *   parser(in): parser context
+ *   constr(in): constraint info, must be a filter index
+ *   return: NO_ERROR or error code
+ *
+ */
+static int
+do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
+				 SM_CONSTRAINT_INFO * constr, PT_NODE * alter)
+{
+  PT_NODE **stmt;
+  PT_NODE *where_predicate;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  PARSER_VARCHAR *filter_expr = NULL;
+  PRED_EXPR_WITH_CONTEXT *filter_predicate;
+  int error;
+  const char *class_name = NULL;
+  char *query_str = NULL;
+  int query_str_len = 0;
+  char *pred_str = NULL;
+  int pred_str_len = 0;
+
+  assert (alter->node_type == PT_ALTER);
+  if (alter->info.alter.entity_name)
+    {
+      class_name = alter->info.alter.entity_name->info.name.original;
+    }
+  else
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  if (class_name == NULL)
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  query_str_len = strlen (constr->filter_predicate->pred_string) +
+    strlen (class_name) + 9 /* strlen("SELECT * ") */  +
+    6 /* strlen(" FROM ") */  +
+    2 /* [] */  +
+    7 /* strlen(" WHERE " */  +
+    1 /* terminating null */ ;
+  query_str = (char *) malloc (query_str_len);
+  if (query_str == NULL)
+    {
+      /* OUT of VM */
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s",
+	    class_name, constr->filter_predicate->pred_string);
+  stmt = parser_parse_string (parser, query_str);
+  if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  where_predicate = (*stmt)->info.query.q.select.where;
+
+  (void) parser_walk_tree (parser, where_predicate,
+			   replace_names_alter_chg_attr, alter, NULL, NULL);
+
+  *stmt = pt_resolve_names (parser, *stmt, &sc_info);
+  if (*stmt != NULL && !pt_has_error (parser))
+    {
+      *stmt = pt_semantic_type (parser, *stmt, &sc_info);
+    }
+  else
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  if (*stmt == NULL || pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  if (constr->filter_predicate->pred_string)
+    {
+      free_and_init (constr->filter_predicate->pred_string);
+    }
+  if (constr->filter_predicate->pred_stream)
+    {
+      free_and_init (constr->filter_predicate->pred_stream);
+    }
+
+  filter_expr = pt_print_bytes (parser, where_predicate);
+  if (filter_expr)
+    {
+      pred_str = (char *) filter_expr->bytes;
+      pred_str_len = strlen (pred_str);
+      constr->filter_predicate->pred_string =
+	(char *) calloc (pred_str_len + 1, sizeof (char));
+      if (constr->filter_predicate->pred_string == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      memcpy (constr->filter_predicate->pred_string, pred_str, pred_str_len);
+
+      if (strlen (constr->filter_predicate->pred_string) >
+	  MAX_FILTER_PREDICATE_STRING_LENGTH)
+	{
+	  PT_ERRORm (parser, where_predicate, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+	  error = ER_FAILED;
+	  goto error;
+	}
+    }
+
+  pt_enter_packing_buf ();
+  filter_predicate = pt_to_pred_with_context (parser, where_predicate,
+					      (*stmt)->info.query.q.select.
+					      from);
+  if (filter_predicate)
+    {
+      error = xts_map_filter_pred_to_stream (filter_predicate,
+					     &constr->filter_predicate->
+					     pred_stream,
+					     &constr->filter_predicate->
+					     pred_stream_size);
+      if (error != NO_ERROR)
+	{
+	  pt_exit_packing_buf ();
+	  PT_ERRORm (parser, where_predicate, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  error = ER_FAILED;
+	  goto error;
+	}
+    }
+  else
+    {
+      pt_exit_packing_buf ();
+      error = er_errid ();
+      goto error;
+    }
+  pt_exit_packing_buf ();
+
+  if (query_str)
+    {
+      free_and_init (query_str);
+    }
+  return NO_ERROR;
+
+error:
+  if (query_str)
+    {
+      free_and_init (query_str);
+    }
+  return error;
+}
+
+/*
+ * replace_names_alter_chg_attr() - Replaces the attribute name in a given 
+ *				    expression, based on the changes imposed
+ *				    the ALTER CHANGE statement
+ *   return: PT_NODE pointer
+ *   parser(in): Parser context
+ *   node(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ *
+ * Note:
+ */
+static PT_NODE *
+replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node,
+			      void *void_arg, int *continue_walk)
+{
+  PT_NODE *alter = (PT_NODE *) void_arg;
+  PT_NODE *old_name = NULL;
+  const char *new_name = NULL;
+
+  assert (alter->node_type == PT_ALTER);
+
+  if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
+    {
+      new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.
+				attr_def_list);
+    }
+  old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name;
+  if (old_name == NULL || new_name == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_DOT_)
+    {
+      if (PT_IS_NAME_NODE (node->info.dot.arg2))
+	{
+	  PT_NODE *new_node = NULL;
+	  if (intl_identifier_casecmp
+	      (node->info.dot.arg2->info.name.original,
+	       old_name->info.name.original) == 0)
+	    {
+	      new_node = pt_name (parser, new_name);
+	    }
+	  else
+	    {
+	      new_node = pt_name (parser, node->info.dot.arg2->info.name.
+				  original);
+	    }
+	  if (new_node)
+	    {
+	      new_node->next = node->next;
+	      node->next = NULL;
+	      parser_free_tree (parser, node);
+	      node = new_node;
+	    }
+	}
+    }
+
+  return node;
 }

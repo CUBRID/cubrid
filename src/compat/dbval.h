@@ -433,7 +433,7 @@
     ((v)->domain.char_info.length = DB_MAX_VARCHAR_PRECISION, \
      (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), INTL_CODESET_ISO88591, (p), ((p) ? strlen(p) : 0)), \
+     db_make_db_char((v), lang_charset(), (p), ((p) ? strlen(p) : 0)), \
      NO_ERROR)
 
 #define db_make_char(v, l, p, s) \
@@ -441,7 +441,7 @@
       TP_FLOATING_PRECISION_VALUE : (l), \
      (v)->domain.general_info.type = DB_TYPE_CHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), INTL_CODESET_ISO88591, (p), (s)), \
+     db_make_db_char((v), lang_charset(), (p), (s)), \
      NO_ERROR)
 
 #define db_make_varchar(v, l, p, s) \
@@ -449,7 +449,7 @@
       DB_MAX_VARCHAR_PRECISION : (l), \
      (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), INTL_CODESET_ISO88591, (p), (s)), \
+     db_make_db_char((v), lang_charset(), (p), (s)), \
      NO_ERROR)
 
 #define db_make_nchar(v, l, p, s) \

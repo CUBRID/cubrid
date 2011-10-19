@@ -533,6 +533,19 @@ csql_append_more_line (int indent, const char *line)
   char *p;
   const char *q;
   char **t_lines;		/* temp pointer */
+  char *conv_buf = NULL;
+  int conv_buf_size = 0;
+
+  if (csql_text_utf8_to_console != NULL &&
+      (*csql_text_utf8_to_console) (line, strlen (line), &conv_buf,
+				    &conv_buf_size) == NO_ERROR)
+    {
+      line = (conv_buf != NULL) ? conv_buf : line;
+    }
+  else
+    {
+      assert (conv_buf == NULL);
+    }
 
   n = iq_Num_more_lines;
 
@@ -551,6 +564,11 @@ csql_append_more_line (int indent, const char *line)
       if (t_lines == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+	  if (conv_buf != NULL)
+	    {
+	      assert (csql_text_utf8_to_console != NULL);
+	      free_and_init (conv_buf);
+	    }
 	  return (CSQL_FAILURE);
 	}
       iq_More_lines = t_lines;
@@ -581,6 +599,11 @@ csql_append_more_line (int indent, const char *line)
   if (iq_More_lines[n] == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+      if (conv_buf != NULL)
+	{
+	  assert (csql_text_utf8_to_console != NULL);
+	  free_and_init (conv_buf);
+	}
       return (CSQL_FAILURE);
     }
   for (i = 0, p = iq_More_lines[n]; i < indent; i++)
@@ -612,6 +635,12 @@ csql_append_more_line (int indent, const char *line)
   *p = '\0';
 
   iq_Num_more_lines++;
+
+  if (conv_buf != NULL)
+    {
+      assert (csql_text_utf8_to_console != NULL);
+      free_and_init (conv_buf);
+    }
 
   return (CSQL_SUCCESS);
 }

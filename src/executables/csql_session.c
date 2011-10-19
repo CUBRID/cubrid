@@ -169,21 +169,21 @@ csql_get_session_cmd_no (const char *input)
       return S_CMD_XRUN;
     }
 
-  /*
-   * Use mbslen() here (which returns the number of *characters*, not the
-   * number of *bytes*), because intl_mbs_ncasecmp counts in characters, not
-   * in bytes.
-   */
-  input_cmd_length = intl_mbs_len (input);
+  intl_char_count ((unsigned char *) input, strlen (input), lang_charset (),
+		   &input_cmd_length);
   num_matches = 0;
   matched_index = -1;
   for (i = 0; i < (int) DIM (csql_Session_cmd_table); i++)
     {
-      if (intl_mbs_ncasecmp
+      if (intl_identifier_ncasecmp
 	  (input, csql_Session_cmd_table[i].text, input_cmd_length) == 0)
 	{
-	  if (intl_mbs_len (csql_Session_cmd_table[i].text) ==
-	      input_cmd_length)
+	  int ses_cmd_length;
+
+	  intl_char_count ((unsigned char *) csql_Session_cmd_table[i].text,
+			   strlen (csql_Session_cmd_table[i].text),
+			   lang_charset (), &ses_cmd_length);
+	  if (ses_cmd_length == input_cmd_length)
 	    {
 	      return (csql_Session_cmd_table[i].cmd_no);
 	    }

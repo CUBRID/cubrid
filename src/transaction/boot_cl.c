@@ -990,6 +990,14 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   lang_server_charset_init ();
 
+  if (!lang_check_server_env ())
+    {
+      error_code = ER_INVALID_SERVER_CHARSET;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_INVALID_SERVER_CHARSET, 0);
+      goto error;
+    }
+
   tr_init ();			/* initialize trigger manager */
 
   jsp_init ();
@@ -2239,6 +2247,19 @@ boot_define_index (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "is_foreign_key", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "filter_expression", "varchar(255)",
+				  NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "function", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3975,7 +3996,9 @@ boot_define_view_index (void)
     {"class_name", "varchar(255)"},
     {"key_count", "integer"},
     {"is_primary_key", "varchar(3)"},
-    {"is_foreign_key", "varchar(3)"}
+    {"is_foreign_key", "varchar(3)"},
+    {"filter_expression", "varchar(255)"},
+    {"function", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4004,7 +4027,9 @@ boot_define_view_index (void)
 	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " [i].[class_of].[class_name], [i].[key_count],"
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END"
+	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END,"
+	   " [i].[filter_expression],"
+	   " [i].[function]"
 	   " FROM [%s] [i]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {[i].[class_of].[owner].[name]} SUBSETEQ ("

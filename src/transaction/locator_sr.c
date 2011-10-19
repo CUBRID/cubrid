@@ -241,6 +241,13 @@ static DISK_ISVALID
 locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				    RECDES * classrec, ATTR_ID * attr_ids,
 				    const char *btname, bool repair);
+static int locator_eval_filter_predicate (THREAD_ENTRY * thread_p,
+					  BTID * btid,
+					  OR_PREDICATE * or_pred,
+					  OID * class_oid,
+					  OID ** inst_oids, int num_insts,
+					  RECDES ** recs,
+					  DB_LOGICAL * results);
 static bool locator_was_index_already_applied (HEAP_CACHE_ATTRINFO *
 					       index_attrinfo, BTID * btid,
 					       int pos);
@@ -5249,6 +5256,18 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			" failed for class { %d %d %d }\n",
 			oid->pageid, oid->slotid, oid->volid);
 	}
+
+      if (!OID_IS_ROOTOID (oid)
+	  && PRM_FILTER_PRED_MAX_CACHE_ENTRIES > 0
+	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid)
+	  != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"locator_update_force:"
+			" xs_remove_filter_pred_cache_ent_by_class"
+			" failed for class { %d %d %d }\n",
+			oid->pageid, oid->slotid, oid->volid);
+	}
     }
   else
     {
@@ -5527,6 +5546,18 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_delete_force:"
 			" qexec_remove_xasl_cache_ent_by_class"
+			" failed for class { %d %d %d }\n",
+			oid->pageid, oid->slotid, oid->volid);
+	}
+
+      if (!OID_IS_ROOTOID (oid)
+	  && PRM_FILTER_PRED_MAX_CACHE_ENTRIES > 0
+	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid)
+	  != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"locator_delete_force:"
+			" xs_remove_filter_pred_cache_ent_by_class"
 			" failed for class { %d %d %d }\n",
 			oid->pageid, oid->slotid, oid->volid);
 	}
@@ -6218,6 +6249,17 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 	      /* it is an immature record. go ahead to update */
 	      er_clear ();
 	    }
+	  else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* This means that the object we're looking for does not exist.
+	       * This information is usefull for the caller of this function
+	       * so return this error code instead of ER_FAILD.
+	       * An example for which we need to know this error code is when
+	       * we're updating partitioned tables and previous iterations 
+	       * removed this record and placed it in another partition.
+	       */
+	      return err_id;
+	    }
 	  else
 	    {
 	      return ((err_id == NO_ERROR) ? ER_FAILED : err_id);
@@ -6324,9 +6366,17 @@ locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
   int error_code = NO_ERROR;
 
   copy_recdes.data = NULL;
-  if (heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN) !=
-      S_SUCCESS)
+  scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+  if (scan != S_SUCCESS)
     {
+      if (scan == S_DOESNT_EXIST)
+	{
+	  int err_id = er_errid ();
+	  if (err_id == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      return err_id;
+	    }
+	}
       return ER_FAILED;
     }
   else
@@ -6501,6 +6551,11 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
   int error_code = NO_ERROR;
+  PR_EVAL_FNC filter_eval_func = NULL;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+  OR_PREDICATE *or_pred = NULL;
+  PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
+  DB_LOGICAL ev_res;
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -6539,6 +6594,23 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 
   for (i = 0; i < num_btids; i++)
     {
+      index = &(index_attrinfo.last_classrepr->indexes[i]);
+      or_pred = index->filter_predicate;
+      if (or_pred && or_pred->pred_stream)
+	{
+	  error_code =
+	    locator_eval_filter_predicate (thread_p, &index->btid, or_pred,
+					   class_oid,
+					   &inst_oid, 1, &recdes, &ev_res);
+	  if (error_code == ER_FAILED)
+	    {
+	      goto error;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
       /*
        *  Generate a B-tree key contained in a DB_VALUE and return a
        *  pointer to it.
@@ -6551,8 +6623,6 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-
-      index = &(index_attrinfo.last_classrepr->indexes[i]);
 
       if (i < 1 || !locator_was_index_already_applied (&index_attrinfo,
 						       &index->btid, i))
@@ -6734,6 +6804,250 @@ error:
 }
 
 /*
+ * locator_eval_filter_predicate () - evaluate index filter predicate
+ *
+ *   return: error code
+ *
+ *   btid(in): btid of index
+ *   or_pred(in): index filter predicate
+ *   class_oid(in): object identifier of the class
+ *   inst_oids(in): object identifiers of the instances
+ *   num_insts(in): the length of inst_oids, recs, results
+ *   recs(in): record descriptors
+ *   results(out): predicate evaluation results
+ */
+static int
+locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
+			       OR_PREDICATE * or_pred, OID * class_oid,
+			       OID ** inst_oids, int num_insts,
+			       RECDES ** recs, DB_LOGICAL * results)
+{
+  XASL_CACHE_ENTRY *cache_entry_p = NULL;
+  OID null_oid;
+  XASL_ID pseudo_xasl_id, temp_xasl_id;
+  int n_oid_list = 0, i;
+  int *repr_id_list = NULL;
+  XASL_CACHE_CLONE *cache_clone_p = NULL;
+  void *pred_filter_cache_context = NULL;
+  PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
+  PR_EVAL_FNC filter_eval_func = NULL;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+  HL_HEAPID old_pri_heap_id;
+  int error_code = NO_ERROR;
+
+  if (or_pred == NULL || class_oid == NULL || recs == NULL ||
+      inst_oids == NULL || num_insts <= 0 || results == NULL ||
+      or_pred->pred_stream == NULL || btid == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  OR_PUT_NULL_OID (&null_oid);
+  XASL_ID_SET_NULL (&pseudo_xasl_id);
+  cache_entry_p =
+    qexec_lookup_filter_pred_cache_ent (thread_p, or_pred->pred_string,
+					&null_oid);
+  if (cache_entry_p == NULL)
+    {
+      struct timeval time_stored;
+
+      /*make unique pseudo XASL_ID from BTID */
+      MAKE_PSEUDO_XASL_ID_FROM_BTREE (&pseudo_xasl_id, btid);
+      (void) gettimeofday (&time_stored, NULL);
+      CACHE_TIME_MAKE (&(pseudo_xasl_id.time_stored), &time_stored);
+      XASL_ID_COPY (&temp_xasl_id, &pseudo_xasl_id);
+
+      /*create new entry */
+      cache_entry_p =
+	qexec_update_filter_pred_cache_ent (thread_p, or_pred->pred_string,
+					    &pseudo_xasl_id, &null_oid,
+					    1, class_oid, repr_id_list, 0);
+      if (cache_entry_p == NULL)
+	{
+	  er_log_debug
+	    (ARG_FILE_LINE, "locator_eval_filter_predicate: "
+	     "qexec_update_predxasl_cache_ent failed pseudo_xasl_id"
+	     " { first_vpid { %d %d } temp_vfid { %d %d } }\n",
+	     pseudo_xasl_id.first_vpid.pageid,
+	     pseudo_xasl_id.first_vpid.volid, pseudo_xasl_id.temp_vfid.fileid,
+	     pseudo_xasl_id.temp_vfid.volid);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
+		  0);
+	  return ER_QPROC_INVALID_XASLNODE;
+	}
+
+      /* check whether qexec_update_xasl_cache_ent() changed the XASL_ID */
+      if (!XASL_ID_EQ (&temp_xasl_id, &pseudo_xasl_id))
+	{
+	  (void) qexec_end_use_of_filter_pred_cache_ent (thread_p,
+							 &temp_xasl_id,
+							 false);
+	  er_log_debug (ARG_FILE_LINE,
+			"locator_eval_filter_predicate: "
+			"qexec_update_xasl_cache_ent changed pseudo_xasl_id { first_vpid {"
+			"%d %d } temp_vfid { %d %d } } to pseudo_xasl_id { first_vpid"
+			"{ %d %d } temp_vfid { %d %d } }\n",
+			temp_xasl_id.first_vpid.pageid,
+			temp_xasl_id.first_vpid.volid,
+			temp_xasl_id.temp_vfid.fileid,
+			temp_xasl_id.temp_vfid.volid,
+			pseudo_xasl_id.first_vpid.pageid,
+			pseudo_xasl_id.first_vpid.volid,
+			pseudo_xasl_id.temp_vfid.fileid,
+			pseudo_xasl_id.temp_vfid.volid);
+	  /* the other competing thread which is running the has 
+	     updated the cache very after the moment of the previous check;
+	     however pseudo_xasl_id generated by the other thread must be 
+	     equal with pseudo_xasl_id generated by the current thread
+	     That's because pseudo_xasl_id is generated from BTID */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
+		  0);
+	  return ER_QPROC_INVALID_XASLNODE;
+	}
+    }
+  else
+    {
+      XASL_ID_COPY (&pseudo_xasl_id, &cache_entry_p->xasl_id);
+    }
+
+  cache_clone_p = NULL;		/* mark as pop */
+  cache_entry_p = qexec_check_filter_pred_cache_ent_by_xasl (thread_p,
+							     &pseudo_xasl_id,
+							     0,
+							     &cache_clone_p);
+  if (cache_entry_p == NULL)
+    {
+      /* It doesn't be there or was marked to be deleted. */
+      er_log_debug (ARG_FILE_LINE,
+		    "locator_eval_filter_predicate: "
+		    "qexec_check_xasl_cache_ent_by_xasl failed"
+		    " pseudo_xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
+		    pseudo_xasl_id.first_vpid.pageid,
+		    pseudo_xasl_id.first_vpid.volid,
+		    pseudo_xasl_id.temp_vfid.fileid,
+		    pseudo_xasl_id.temp_vfid.volid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+
+  /* load the XASL stream from the file of pseudo_xasl_id */
+  if (cache_clone_p == NULL || cache_clone_p->xasl == NULL)
+    {
+      if (cache_clone_p)
+	{
+	  /*use predicate cloning, allocate in global heap context (0, malloc/free) */
+	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
+	}
+      error_code =
+	stx_map_stream_to_filter_pred (thread_p, (PRED_EXPR_WITH_CONTEXT **)
+				       & pred_filter, or_pred->pred_stream,
+				       or_pred->pred_stream_size,
+				       &pred_filter_cache_context);
+      if (error_code != NO_ERROR)
+	{
+	  /* error occurred during unpacking */
+	  if (cache_clone_p)
+	    {
+	      /*free allocated memory */
+	      if (pred_filter_cache_context)
+		{
+		  free_and_init (pred_filter_cache_context);
+		}
+	      pred_filter = NULL;
+	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	      /*add clone to free list */
+	      qexec_free_filter_pred_cache_clo (cache_clone_p);
+	      cache_clone_p = NULL;
+	    }
+
+	  goto end;
+	}
+
+      if (cache_clone_p)
+	{
+	  /*restore private heap */
+	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	  /* save unpacked XASL tree info */
+	  cache_clone_p->xasl = pred_filter;
+	  cache_clone_p->xasl_buf_info = pred_filter_cache_context;
+	  pred_filter_cache_context = NULL;	/* clear */
+	}
+    }
+  else
+    {
+      pred_filter = cache_clone_p->xasl;
+    }
+
+  error_code =
+    heap_attrinfo_start (thread_p, class_oid, pred_filter->num_attrs_pred,
+			 pred_filter->attrids_pred, pred_filter->cache_pred);
+  if (error_code != NO_ERROR)
+    {
+      goto end;
+    }
+  filter_eval_func = eval_fnc (thread_p, pred_filter->pred,
+			       &single_node_type);
+  assert (filter_eval_func != NULL);
+
+  for (i = 0; i < num_insts; i++)
+    {
+      error_code =
+	heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i],
+				     pred_filter->cache_pred);
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      /* use global heap for memory allocation */
+      old_pri_heap_id = db_change_private_heap (thread_p, 0);
+      results[i] = (*filter_eval_func) (thread_p, pred_filter->pred, NULL,
+					inst_oids[i]);
+      if (results[i] == V_ERROR)
+	{
+	  /* restore private heap */
+	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	  error_code = ER_FAILED;
+	  goto end;
+	}
+      /* restore private heap */
+      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+    }
+
+end:
+  if (pred_filter)
+    {
+      heap_attrinfo_end (thread_p, pred_filter->cache_pred);
+      /* Except for db_value regu variable, all regu variables from
+         pred expression are cleared. */
+      old_pri_heap_id = db_change_private_heap (thread_p, 0);
+      qexec_clear_pred_context (thread_p, pred_filter, false);
+      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+    }
+
+  if (cache_clone_p)
+    {
+      /* cloned - save XASL tree */
+      (void) qexec_check_filter_pred_cache_ent_by_xasl (thread_p,
+							&pseudo_xasl_id,
+							-1, &cache_clone_p);
+    }
+  else
+    {
+      /* not cloned, predicate was allocated in private space
+         free the filter predicatetree */
+      if (pred_filter_cache_context)
+	{
+	  stx_free_xasl_unpack_info (pred_filter_cache_context);
+	  pred_filter_cache_context = NULL;
+	  pred_filter = NULL;
+	}
+    }
+
+  return error_code;
+}
+
+/*
  * locator_update_index () - Update index entries
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -6780,6 +7094,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   char oldbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_oldbuf;
   DB_TYPE dbval_type;
   int error_code;
+  DB_LOGICAL ev_results[2];
+  bool do_delete_only = false;
+  bool do_insert_only = false;
+  OID *inst_oids[2];
+  RECDES *recs[2];
 
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
@@ -6889,9 +7208,63 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		}
 	    }
 
-	  if (!found_btid)
+	  if (!found_btid && !index->filter_predicate)
 	    {
 	      continue;		/* skip and go ahead */
+	    }
+	}
+
+      do_delete_only = false;
+      do_insert_only = false;
+      if (index->filter_predicate)
+	{
+	  inst_oids[0] = inst_oids[1] = inst_oid;
+	  recs[0] = old_recdes;
+	  recs[1] = new_recdes;
+	  error_code = locator_eval_filter_predicate (thread_p, &index->btid,
+						      index->
+						      filter_predicate,
+						      class_oid, inst_oids,
+						      2, recs, ev_results);
+	  if (error_code == ER_FAILED)
+	    {
+	      goto error;
+	    }
+
+	  if (ev_results[0] != V_TRUE)
+	    {
+	      if (ev_results[1] != V_TRUE)
+		{
+		  /*the old rec and the new rec does not satisfied 
+		     the filter predicate */
+		  continue;
+		}
+	      else
+		{
+		  /*the old rec does not satisfied the filter predicate */
+		  /*the new rec satisfied the filter predicate */
+		  do_insert_only = true;
+		}
+	    }
+	  else
+	    {
+	      if (ev_results[1] != V_TRUE)
+		{
+		  /*the old rec satisfied the filter predicate */
+		  /*the new rec does not satisfied the filter predicate */
+		  do_delete_only = true;
+		}
+	      else
+		{
+		  if (found_btid == false)
+		    {
+		      /*the old rec satisfied the filter predicate */
+		      /*the new rec satisfied the filter predicate */
+		      /*the index does not contain updated attributes */
+		      continue;
+		    }
+		  /*nothing to do - update operation */
+		}
 	    }
 	}
 
@@ -6959,14 +7332,41 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  if (i < 1 || !locator_was_index_already_applied (new_attrinfo,
 							   &index->btid, i))
 	    {
-	      error_code = btree_update (thread_p, &old_btid, old_key,
-					 new_key,
-					 class_oid, inst_oid,
-					 op_type, unique_stat_info, &unique);
-
-	      if (error_code != NO_ERROR)
+	      if (do_delete_only)
 		{
-		  goto error;
+		  if (btree_delete (thread_p, &old_btid, old_key, class_oid,
+				    inst_oid, &unique, op_type,
+				    unique_stat_info) == NULL)
+		    {
+		      error_code = er_errid ();
+		      if (!(unique && error_code == ER_BTREE_UNKNOWN_KEY))
+			{
+			  goto error;
+			}
+		    }
+		}
+	      else if (do_insert_only)
+		{
+		  if (btree_insert (thread_p, &old_btid, new_key,
+				    class_oid, inst_oid, op_type,
+				    unique_stat_info, &unique) == NULL)
+		    {
+		      error_code = er_errid ();
+		      goto error;
+		    }
+		}
+	      else
+		{
+		  error_code = btree_update (thread_p, &old_btid, old_key,
+					     new_key,
+					     class_oid, inst_oid,
+					     op_type, unique_stat_info,
+					     &unique);
+
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
 		}
 	    }
 
@@ -7105,9 +7505,9 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 {
   HEAP_CACHE_ATTRINFO index_attrinfo;
   HEAP_SCANCACHE scan_cache;
-  OID inst_oid;
+  OID inst_oid, *p_inst_oid = &inst_oid;
   int key_index, i, num_btids, num_found, dummy, key_found;
-  RECDES copy_rec;
+  RECDES copy_rec, *p_copy_rec = &copy_rec;
   BTID inst_btid;
   DB_VALUE dbvalue;
   DB_VALUE *dbvalue_ptr = NULL;
@@ -7118,6 +7518,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   int error_code = NO_ERROR;
+  OR_INDEX *index = NULL;
+  DB_LOGICAL ev_res;
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -7216,6 +7618,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 		{
 		  key_found = true;
 		  key_index = i;
+		  index = &(index_attrinfo.last_classrepr->
+			    indexes[key_index]);
 		  break;
 		}
 	    }
@@ -7238,6 +7642,27 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+
+      assert (index != NULL);
+      if (index->filter_predicate)
+	{
+	  error_code = locator_eval_filter_predicate (thread_p, &index->btid,
+						      index->
+						      filter_predicate,
+						      class_oid, &p_inst_oid,
+						      1, &p_copy_rec,
+						      &ev_res);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  if (ev_res != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
+
       key_del = btree_delete (thread_p, btid, dbvalue_ptr,
 			      class_oid,
 			      &inst_oid, &dummy, MULTI_ROW_DELETE,
@@ -7541,8 +7966,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 {
   DISK_ISVALID isvalid = DISK_VALID;
   DISK_ISVALID isallvalid = DISK_VALID;
-  OID inst_oid;
-  RECDES peek;			/* Record descriptor for peeking object */
+  OID inst_oid, *p_inst_oid = &inst_oid;
+  RECDES peek, *p_peek = &peek;	/* Record descriptor for peeking object */
   SCAN_CODE scan;
   HEAP_SCANCACHE scan_cache;
   BTREE_CHECKSCAN bt_checkscan;
@@ -7559,6 +7984,10 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   char *class_name_p = NULL;
   KEY_VAL_RANGE key_val_range;
+  int index_id;
+  OR_INDEX *index = NULL;
+  DB_LOGICAL ev_res;
+  OR_CLASSREP *classrepr = NULL;
 
 #if defined(SERVER_MODE)
   int tran_index;
@@ -7584,6 +8013,26 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       return DISK_ERROR;
     }
 
+  classrepr = attr_info.last_classrepr;
+  if (classrepr == NULL)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      return DISK_ERROR;
+    }
+  index_id = -1;
+  for (i = 0; i < classrepr->n_indexes; i++)
+    {
+      if (BTID_IS_EQUAL (&(classrepr->indexes[i].btid), btid))
+	{
+	  index_id = i;
+	  break;
+	}
+    }
+  assert (index_id != -1);
+
+  index = &(attr_info.last_classrepr->indexes[index_id]);
+  assert (index != NULL);
+
   /*
    * Step 1) From Heap to B+tree
    */
@@ -7604,6 +8053,21 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     {
       num_heap_oids++;
 
+      if (index->filter_predicate)
+	{
+	  if (locator_eval_filter_predicate (thread_p, &index->btid,
+					     index->filter_predicate,
+					     class_oid, &p_inst_oid, 1,
+					     &p_peek, &ev_res) != NO_ERROR)
+	    {
+	      isallvalid = DISK_ERROR;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
+
       /* Make sure that the index entry exist */
       if ((n_attr_ids == 1
 	   && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek,
@@ -7612,7 +8076,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 						attr_ids, atts_prefix_length,
 						&attr_info,
 						&peek, &dbvalue,
-						aligned_buf)) == NULL)
+						aligned_buf, NULL)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
@@ -7772,6 +8236,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
 	      if (repair)
 		{
+		  /*don't care about filter predicate here since
+		     we are sure that oid_area[i] is contained in tree */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
 						    btid, &oid_area[i]);
@@ -7876,8 +8342,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				    const char *btname, bool repair)
 {
   DISK_ISVALID isvalid = DISK_VALID, isallvalid = DISK_VALID;
-  OID inst_oid;
-  RECDES peek;
+  OID inst_oid, *p_inst_oid = &inst_oid;
+  RECDES peek, *p_peek = &peek;
   SCAN_CODE scan;
   HEAP_SCANCACHE *scan_cache = NULL;
   BTREE_CHECKSCAN bt_checkscan;
@@ -7896,6 +8362,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   char *class_name_p = NULL;
   KEY_VAL_RANGE key_val_range;
+  OR_INDEX *index;
+  DB_LOGICAL ev_res;
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
@@ -7964,6 +8432,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	{
 	  goto error;
 	}
+      index = &(attr_info.last_classrepr->indexes[index_id]);
+      assert (index != NULL);
 
       attrinfo_inited = 1;
 
@@ -7981,6 +8451,22 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				&peek, &scan_cache[j], PEEK)) == S_SUCCESS)
 	{
 	  num_heap_oids++;
+
+	  if (index->filter_predicate)
+	    {
+	      if (locator_eval_filter_predicate (thread_p, btid,
+						 index->filter_predicate,
+						 class_oid, &p_inst_oid,
+						 1, &p_peek, &ev_res) !=
+		  NO_ERROR)
+		{
+		  goto error;
+		}
+	      else if (ev_res != V_TRUE)
+		{
+		  continue;
+		}
+	    }
 
 	  /* Make sure that the index entry exists */
 	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek,
@@ -8137,6 +8623,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	      isvalid = DISK_INVALID;
 	      if (repair)
 		{
+		  /*don't care about filter predicate here since
+		     we are sure that oid_area[i] is contained in tree */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
 						    btid, &oid_area[i]);
@@ -9880,7 +10368,7 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 
       key_val = heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL,
 					    &attr_info, &peek_recdes, &tmpval,
-					    aligned_midxkey_buf);
+					    aligned_midxkey_buf, NULL);
       if (key_val == NULL)
 	{
 	  error_code = ER_FAILED;

@@ -129,6 +129,8 @@ extern int catcls_get_cardinality (THREAD_ENTRY * thread_p,
 				   const char *class_name,
 				   const char *index_name,
 				   const int key_pos, int *cardinality);
+extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
+					   int *charset_id_p, int *lang_id_p);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p,
@@ -1237,7 +1239,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 {
   OR_VALUE *attrs;
   DB_VALUE *attr_val_p;
-  DB_VALUE default_expr;
+  DB_VALUE default_expr, val, default_value;
+  DB_SEQ *att_props;
   OR_VARINFO *vars = NULL;
   int size;
   int error = NO_ERROR;
@@ -1304,10 +1307,6 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* index_volid_key */
   or_advance (buf_p, OR_INT_SIZE);
 
-  /* default expression identifier */
-  (*(tp_Integer.data_readval)) (buf_p, &default_expr, NULL, -1, true, NULL,
-				0);
-
   /** variable **/
 
   /* name */
@@ -1321,11 +1320,29 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attr_val_p = &attrs[8].value;
   or_get_value (buf_p, attr_val_p, NULL,
 		vars[ORC_ATT_CURRENT_VALUE_INDEX].length, true);
-  if (DB_GET_INT (&default_expr) == DB_DEFAULT_NONE)
+
+  /* original value - advance only*/
+  or_advance (buf_p, vars[ORC_ATT_ORIGINAL_VALUE_INDEX].length);
+
+  /* domain */
+  error =
+    catcls_get_subset (thread_p, buf_p, vars[ORC_ATT_DOMAIN_INDEX].length,
+		       &attrs[9], catcls_get_or_value_from_domain);
+  if (error != NO_ERROR)
     {
-      valcnv_convert_value_to_string (attr_val_p);
+      goto error;
     }
-  else
+
+  /* triggers - advance only*/
+  or_advance (buf_p, vars[ORC_ATT_TRIGGER_INDEX].length);
+
+  /* properties */
+  or_get_value (buf_p, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), 
+		vars[ORC_ATT_PROPERTIES_INDEX].length, true);
+  att_props = DB_GET_SEQUENCE (&val);
+  attr_val_p = &attrs[8].value;
+  if (att_props != NULL && 
+      classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
       char *str_val;
 
@@ -1334,6 +1351,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
       if (str_val == NULL)
 	{
+	  pr_clear_value (&default_expr);
+	  pr_clear_value (&val); 
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
 		  strlen ("UNIX_TIMESTAMP") + 1);
@@ -1367,6 +1386,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  break;
 
 	default:
+	  pr_clear_value (&default_expr);
+	  pr_clear_value (&val); 
 	  assert (false);
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -1375,28 +1396,16 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  break;
 	}
 
+	  pr_clear_value (attr_val_p);/*clean old default value*/
       DB_MAKE_STRING (attr_val_p, str_val);
-      attr_val_p->need_clear = true;
+   }
+  else
+    {      
+      valcnv_convert_value_to_string (attr_val_p);
     }
+  pr_clear_value (&val);
+  attr_val_p->need_clear = true;
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
-
-  /* original value */
-  or_advance (buf_p, vars[ORC_ATT_ORIGINAL_VALUE_INDEX].length);
-
-  /* domain */
-  error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_ATT_DOMAIN_INDEX].length,
-		       &attrs[9], catcls_get_or_value_from_domain);
-  if (error != NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* triggers */
-  or_advance (buf_p, vars[ORC_ATT_TRIGGER_INDEX].length);
-
-  /* properties */
-  or_advance (buf_p, vars[ORC_ATT_PROPERTIES_INDEX].length);
 
   if (vars)
     {
@@ -2063,8 +2072,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 				  int is_primary_key, int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, prefix_val;
-  DB_SEQ *key_seq_p = NULL, *prefix_seq;
+  DB_VALUE keys, prefix_val, val, avalue;
+  DB_SEQ *key_seq_p = NULL, *prefix_seq, *pred_seq = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
@@ -2074,7 +2083,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 
   db_value_put_null (&keys);
   db_value_put_null (&prefix_val);
-
+  db_value_put_null (&val);
+  db_value_put_null (&avalue);
   seq_size = set_size (seq_p);
   for (i = 0, j = 0; i < seq_size; i += 2, j++)
     {
@@ -2116,6 +2126,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 	  goto error;
 	}
 
+      /* the sequence of keys also includes the B+tree ID and the filter
+       * predicate expression in the first two positions (0 and 1) */
       key_size = set_size (key_seq_p);
       att_cnt = (key_size - 1) / 2;
 
@@ -2167,20 +2179,34 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 	  db_make_int (&key_attrs[4].value, -1);
 	}
 
-      if (!is_primary_key && !is_foreign_key)
+      if (!is_primary_key && !is_foreign_key && ct_Index.n_atts > 8)
 	{
-	  /* prefix_length */
+	  /* prefix_length or filter index */
 	  error = set_get_element (key_seq_p, key_size - 1, &prefix_val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  if (DB_VALUE_TYPE (&prefix_val) == DB_TYPE_SEQUENCE)
+	  if (DB_VALUE_TYPE (&prefix_val) != DB_TYPE_SEQUENCE)
 	    {
-	      prefix_seq = DB_GET_SEQUENCE (&prefix_val);
-	      assert (set_size (prefix_seq) == att_cnt);
+	      pr_clear_value (&prefix_val);
+	      error = ER_SM_INVALID_PROPERTY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      goto error;
+	    }
 
+	  prefix_seq = DB_GET_SEQUENCE (&prefix_val);
+	  error = set_get_element (prefix_seq, 0, &val);
+	  if (error != NO_ERROR)
+	    {
+	      pr_clear_value (&prefix_val);
+	      goto error;
+	    }
+
+	  if (DB_VALUE_TYPE (&val) == DB_TYPE_INTEGER)
+	    {
+	      assert (set_size (prefix_seq) == att_cnt);
 	      for (k = 0; k < att_cnt; k++)
 		{
 		  key_attrs = subset_p[k].sub.value;
@@ -2189,19 +2215,115 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 		  error = set_get_element (prefix_seq, k, attr_val_p);
 		  if (error != NO_ERROR)
 		    {
-		      pr_clear_value (&prefix_val);
 		      goto error;
 		    }
 		}
+	    }
+	  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
+	    {
+	      DB_SET *seq = DB_GET_SEQUENCE (&prefix_val);
+	      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
+	      int seq_size = set_size (seq);
+	      int flag = 0, l = 0;
 
-	      pr_clear_value (&prefix_val);
+	      while (true)
+		{
+		  error = set_get_element (child_seq, 0, &avalue);
+		  if (error != NO_ERROR)
+		    {
+		      goto error;
+		    }
+
+		  if (DB_IS_NULL (&avalue) ||
+		      DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
+		    {
+		      error = ER_SM_INVALID_PROPERTY;
+		      goto error;
+		    }
+
+		  if (!intl_identifier_casecmp (DB_GET_STRING (&avalue),
+						SM_FILTER_INDEX_ID))
+		    {
+		      flag = 0x01;
+		    }
+
+		  if (!intl_identifier_casecmp (DB_GET_STRING (&avalue),
+						SM_FUNCTION_INDEX_ID))
+		    {
+		      flag = 0x02;
+		    }
+
+		  pr_clear_value (&avalue);
+
+		  error = set_get_element (child_seq, 1, &avalue);
+		  if (error != NO_ERROR)
+		    {
+		      goto error;
+		    }
+
+		  if (DB_VALUE_TYPE (&avalue) != DB_TYPE_SEQUENCE)
+		    {
+		      error = ER_SM_INVALID_PROPERTY;
+		      goto error;
+		    }
+
+		  switch (flag)
+		    {
+		    case 0x01:
+		      pred_seq = DB_GET_SEQUENCE (&avalue);
+		      attr_val_p = &attrs[8].value;
+		      error = set_get_element (pred_seq, 0, attr_val_p);
+		      if (error != NO_ERROR)
+			{
+			  goto error;
+			}
+		      break;
+
+		    case 0x02:
+		      pred_seq = DB_GET_SEQUENCE (&avalue);
+		      attr_val_p = &attrs[9].value;
+		      error = set_get_element (pred_seq, 0, attr_val_p);
+		      if (error != NO_ERROR)
+			{
+			  goto error;
+			}
+		      break;
+
+		    default:
+		      break;
+		    }
+
+		  pr_clear_value (&avalue);
+
+		  l++;
+		  if (l >= seq_size)
+		    {
+		      break;
+		    }
+
+		  pr_clear_value (&val);
+		  if (set_get_element (seq, l, &val) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  if (DB_VALUE_TYPE (&val) != DB_TYPE_SEQUENCE)
+		    {
+		      goto error;
+		    }
+
+		  child_seq = DB_GET_SEQUENCE (&val);
+
+		}
 	    }
 	  else
 	    {
-	      assert (DB_VALUE_TYPE (&prefix_val) == DB_TYPE_INTEGER);
+	      error = ER_SM_INVALID_PROPERTY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      goto error;
 	    }
+	  pr_clear_value (&prefix_val);
+	  pr_clear_value (&val);
 	}
-
       pr_clear_value (&keys);
 
       /* is_reverse */
@@ -2219,6 +2341,9 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 error:
 
   pr_clear_value (&keys);
+  pr_clear_value (&prefix_val);
+  pr_clear_value (&val);
+  pr_clear_value (&avalue);
   return error;
 }
 
@@ -4160,6 +4285,13 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  attr_name_p = or_get_attrname (&class_record, i);
 	  if (attr_name_p == NULL)
 	    {
+	      if (strcmp (class_name_p, CT_INDEX_NAME) == 0
+		  && (i == 8 || i == 9))
+		{		/*backward compatibility */
+		  ct_Index.n_atts = 8;
+		  continue;
+		}
+
 	      (void) heap_scancache_end (thread_p, &scan);
 	      return ER_FAILED;
 	    }
@@ -5106,5 +5238,157 @@ exit_cleanup:
       catalog_free_representation (disk_repr_p);
     }
 exit:
+  return error;
+}
+
+/*
+ * catcls_get_server_lang_charset () - get the language id and the charset id
+ *				       stored in the "db_root" system table
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)  : thread context
+ *   charset_id_p(out): 
+ *   lang_id_p(out): name of index
+ *
+ *  Note : This function is called during server initialization, for this
+ *	   reason, no locks are required on the class.
+ */
+int
+catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
+				int *lang_id_p)
+{
+  OID class_oid;
+  OID inst_oid;
+  HFID hfid;
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  const char *class_name = "db_root";
+  int charset_att_id = -1, lang_att_id = -1;
+  int i;
+  int error = NO_ERROR;
+
+  assert (charset_id_p != NULL);
+  assert (lang_id_p != NULL);
+
+  OID_SET_NULL (&class_oid);
+  OID_SET_NULL (&inst_oid);
+
+  error =
+    catcls_find_class_oid_by_class_name (thread_p, class_name, &class_oid);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (OID_ISNULL (&class_oid))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME,
+	      1, class_name);
+      goto exit;
+    }
+
+  error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  heap_scancache_quick_start (&scan_cache);
+
+  if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
+		NULL_CHN) != S_SUCCESS)
+    {
+      goto exit;
+    }
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      const char *rec_attr_name_p = or_get_attrname (&recdes, i);
+      if (rec_attr_name_p == NULL)
+	{
+	  goto exit;
+	}
+
+      if (strcmp ("charset", rec_attr_name_p) == 0)
+	{
+	  charset_att_id = i;
+	  if (lang_att_id != -1)
+	    {
+	      break;
+	    }
+	}
+      if (strcmp ("lang_id", rec_attr_name_p) == 0)
+	{
+	  lang_att_id = i;
+	  if (charset_att_id != -1)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  if (charset_att_id == -1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto exit;
+    }
+
+  /* TODO: backward compatibility : support DB without lang */
+  if (lang_att_id == -1)
+    {
+      *lang_id_p = (int) INTL_LANG_ENGLISH;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  /* read values of the single record in heap */
+  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+    {
+      goto exit;
+    }
+
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true,
+				false, LOCKHINT_NONE);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes,
+		    &scan_cache, PEEK) == S_SUCCESS)
+    {
+      HEAP_ATTRVALUE *heap_value = NULL;
+
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes,
+				       &attr_info) != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      for (i = 0, heap_value = attr_info.values;
+	   i < attr_info.num_values; i++, heap_value++)
+	{
+	  if (heap_value->attrid == charset_att_id)
+	    {
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_INTEGER);
+
+	      *charset_id_p = DB_GET_INTEGER (&heap_value->dbvalue);
+	    }
+	  else if (heap_value->attrid == lang_att_id)
+	    {
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_INTEGER);
+
+	      *lang_id_p = DB_GET_INTEGER (&heap_value->dbvalue);
+	    }
+	}
+    }
+
+exit:
+  heap_scancache_end (thread_p, &scan_cache);
+  heap_attrinfo_end (thread_p, &attr_info);
+
   return error;
 }

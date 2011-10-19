@@ -102,6 +102,25 @@ struct or_foreign_key
   bool is_cache_obj;
 };
 
+typedef struct or_predicate OR_PREDICATE;
+struct or_predicate
+{
+  char *pred_string;
+  char *pred_stream;		/* CREATE INDEX ... WHERE filter_predicate */
+  int pred_stream_size;
+};
+
+typedef struct or_function_index OR_FUNCTION_INDEX;
+struct or_function_index
+{
+  char *expr_stream;
+  int expr_stream_size;
+  int col_id;			/* the position at which the function is placed */
+  int attr_index_start;		/* the index from where the attributes involved
+				 * in a function are placed in OR_INDEX atts 
+				 * member */
+};
+
 typedef struct or_index OR_INDEX;
 struct or_index
 {
@@ -109,6 +128,8 @@ struct or_index
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
   int *attrs_prefix_length;	/* prefix length */
   char *btname;			/* index( or constraint) name */
+  OR_PREDICATE *filter_predicate;	/* CREATE INDEX idx ON tbl(col, ...) WHERE filter_predicate */
+  OR_FUNCTION_INDEX *func_index_info;	/* function index information */
   OR_FOREIGN_KEY *fk;
   BTREE_TYPE type;		/* btree type */
   int n_atts;			/* Number of associated attributes */

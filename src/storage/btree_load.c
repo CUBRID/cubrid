@@ -77,6 +77,9 @@ struct sort_args
   BTID *fk_refcls_pk_btid;
   int cache_attr_id;
   const char *fk_name;
+  PRED_EXPR_WITH_CONTEXT *filter;
+  PR_EVAL_FNC filter_eval_func;
+  FUNCTION_INDEX_INFO *func_index_info;
 };
 
 typedef struct btree_page BTREE_PAGE;
@@ -199,7 +202,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   HFID * hfids, int unique_flag,
 		   int reverse_flag, int last_key_desc, OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
-		   const char *fk_name)
+		   const char *fk_name, char *pred_stream,
+		   int pred_stream_size,
+		   char *func_pred_stream, int func_pred_stream_size,
+		   int func_col_id, int func_attr_index_start)
 {
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
@@ -210,6 +216,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   FILE_BTREE_DES btdes;
   BTID_INT btid_int;
   LOG_DATA_ADDR addr;
+  PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
+  FUNCTION_INDEX_INFO func_index_info;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+  void *buf_info = NULL;
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -290,6 +300,28 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
   sort_args->cache_attr_id = cache_attr_id;
   sort_args->fk_name = fk_name;
+  if (pred_stream && pred_stream_size > 0)
+    {
+      if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream,
+					 pred_stream_size, &buf_info) !=
+	  NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  sort_args->filter = filter_pred;
+  sort_args->filter_eval_func =
+    (filter_pred) ? eval_fnc (thread_p, filter_pred->pred, &single_node_type)
+    : NULL;
+  sort_args->func_index_info = NULL;
+  if (func_pred_stream && func_pred_stream_size > 0)
+    {
+      func_index_info.expr_stream = func_pred_stream;
+      func_index_info.expr_stream_size = func_pred_stream_size;
+      func_index_info.col_id = func_col_id;
+      func_index_info.attr_index_start = func_attr_index_start;
+      sort_args->func_index_info = &func_index_info;
+    }
 
   /*
    * Start a heap scan cache for reading objects using the first nun-null heap
@@ -319,6 +351,16 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			   &sort_args->attr_info) != NO_ERROR)
     {
       goto error;
+    }
+  if (sort_args->filter)
+    {
+      if (heap_attrinfo_start (thread_p, &sort_args->class_ids[cur_class],
+			       sort_args->filter->num_attrs_pred,
+			       sort_args->filter->attrids_pred,
+			       sort_args->filter->cache_pred) != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   sort_args->attrinfo_inited = 1;
 
@@ -407,6 +449,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   if (sort_args->attrinfo_inited)
     {
       heap_attrinfo_end (thread_p, &sort_args->attr_info);
+      if (sort_args->filter)
+	{
+	  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
+	}
     }
   sort_args->attrinfo_inited = 0;
   if (sort_args->scancache_inited)
@@ -479,6 +525,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
     }
 
 
+  if (buf_info)
+    {
+      stx_free_xasl_unpack_info (buf_info);
+    }
+
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
   addr.vfid = NULL;
   addr.pgptr = NULL;
@@ -501,6 +552,10 @@ error:
   if (sort_args->attrinfo_inited)
     {
       heap_attrinfo_end (thread_p, &sort_args->attr_info);
+      if (sort_args->filter)
+	{
+	  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
+	}
     }
 
   if (file_created)
@@ -524,6 +579,10 @@ error:
   if (load_args->nleaf.pgptr)
     {
       pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
+    }
+  if (buf_info)
+    {
+      stx_free_xasl_unpack_info (buf_info);
     }
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
@@ -2294,6 +2353,10 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  if (sort_args->attrinfo_inited)
 	    {
 	      heap_attrinfo_end (thread_p, &sort_args->attr_info);
+	      if (sort_args->filter)
+		{
+		  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
+		}
 	    }
 	  sort_args->attrinfo_inited = 0;
 	  if (sort_args->scancache_inited)
@@ -2358,6 +2421,26 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       /*
        * Produce the sort item for this object
        */
+
+      if (sort_args->filter)
+	{
+	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid,
+					   &sort_args->in_recdes,
+					   sort_args->filter->cache_pred)
+	      != NO_ERROR)
+	    {
+	      return (SORT_ERROR_OCCURRED);
+	    }
+
+	  if ((*sort_args->filter_eval_func) (thread_p,
+					      sort_args->filter->pred,
+					      NULL, &sort_args->cur_oid)
+	      != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
+
       if (sort_args->n_attrs == 1)
 	{			/* single-column index */
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid,
@@ -2377,7 +2460,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 				     [attr_offset] : NULL),
 				    &sort_args->attr_info,
 				    &sort_args->in_recdes, &dbvalue,
-				    aligned_midxkey_buf);
+				    aligned_midxkey_buf,
+				    sort_args->func_index_info);
       if (dbvalue_ptr == NULL)
 	{
 	  return (SORT_ERROR_OCCURRED);

@@ -212,6 +212,9 @@ extern int yycolumn_end;
 [dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
 [dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }
 [dD][eE][lL][eE][tT][eE]						{ begin_token(yytext);   return DELETE_; }
+[dD][eE][nN][sS][eE]_[rR][aA][nN][kK]					{ begin_token(yytext);
+									  csql_yylval.cptr = pt_makename(yytext);
+									  return DENSE_RANK; }
 [dD][eE][pP][tT][hH]							{ begin_token(yytext);   return DEPTH; }
 [dD][eE][sS][cC]							{ begin_token(yytext);   return DESC; }
 [dD][eE][sS][cC][rR][iI][bB][eE]					{ begin_token(yytext);   return DESCRIBE; }
@@ -463,6 +466,7 @@ extern int yycolumn_end;
 [oO][uU][tT]								{ begin_token(yytext);   return OUT_; }
 [oO][uU][tT][eE][rR]							{ begin_token(yytext);   return OUTER; }
 [oO][uU][tT][pP][uU][tT]						{ begin_token(yytext);   return OUTPUT; }
+[oO][vV][eE][rR]							{ begin_token(yytext);	 return OVER; }
 [oO][vV][eE][rR][lL][aA][pP][sS]					{ begin_token(yytext);   return OVERLAPS; }
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ begin_token(yytext);   return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ begin_token(yytext);   return PARTIAL; }
@@ -501,6 +505,9 @@ extern int yycolumn_end;
 [qQ][uU][aA][rR][tT][eE][rR]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return QUARTER; }
+[rR][aA][nN][kK]							{ begin_token(yytext);
+									  csql_yylval.cptr = pt_makename(yytext);
+									  return RANK; }
 [rR][aA][nN][gG][eE]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return RANGE_; }
@@ -545,6 +552,9 @@ extern int yycolumn_end;
 [rR][oO][lL][lL][uU][pP]						{ begin_token(yytext);	 return ROLLUP; }
 [rR][oO][uU][tT][iI][nN][eE]						{ begin_token(yytext);   return ROUTINE; }
 [rR][oO][wW]								{ begin_token(yytext);   return ROW; }
+[rR][oO][wW]_[nN][uU][mM][bB][eE][rR]					{ begin_token(yytext);
+									  csql_yylval.cptr = pt_makename(yytext);
+									  return ROW_NUMBER; }
 [rR][oO][wW][nN][uU][mM]						{ begin_token(yytext);   return ROWNUM; }
 [rR][oO][wW][sS]							{ begin_token(yytext);   return ROWS; }
 [sS][aA][vV][eE][pP][oO][iI][nN][tT]					{ begin_token(yytext);   return SAVEPOINT; }
@@ -797,12 +807,12 @@ extern int yycolumn_end;
 										return UNSIGNED_REAL;
 									}
 
-([a-zA-Z_#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_#0-9]|(\xa1[\xa2-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))* { begin_token(yytext);   
-										if (strlen(yytext) >= 254) 
-											yytext[254] = 0;
-										csql_yylval.cptr = pt_makename(yytext);
-										return IdName; 
-									}
+([a-zA-Z_#]|([\xc2-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* { begin_token(yytext);   
+							   if (strlen(yytext) >= 254) 
+							     yytext[254] = 0;
+							   csql_yylval.cptr = pt_makename(yytext);
+							   return IdName; 
+						         }
 0b[0-1]+			{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);
 					return BIT_STRING;
@@ -1052,7 +1062,12 @@ extern int yycolumn_end;
 \xa1\xef			{ begin_token(yytext);   return YEN_SIGN; }
 \$				{ begin_token(yytext);   return DOLLAR_SIGN; }
 \\				{ begin_token(yytext);   return WON_SIGN; }
+\\[T][L]			{ begin_token(yytext);   return TURKISH_LIRA_SIGN; }
 
+\\[J][P][Y]			{ begin_token(yytext);   return YEN_SIGN; }
+\\[U][S][D]			{ begin_token(yytext);   return DOLLAR_SIGN; }
+\\[K][R][W]			{ begin_token(yytext);   return WON_SIGN; }
+\\[T][R][Y]			{ begin_token(yytext);   return TURKISH_LIRA_SIGN; }
 
 .				{ begin_token(yytext);   return yytext[0]; }
 %%

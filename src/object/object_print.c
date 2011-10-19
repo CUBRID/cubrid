@@ -783,6 +783,7 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
   const int *asc_desc;
   const int *prefix_length;
   char temp[20];
+  int k, n_attrs = 0;
 
   buffer = NULL;
 
@@ -829,9 +830,44 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 
   prefix_length = constraint_p->attrs_prefix_length;
 
-  for (attribute_p = constraint_p->attributes; *attribute_p; attribute_p++)
+  /* If the index is a function index, then the corresponding expression
+   * is printed at the right position in the attribute list. Since the 
+   * expression is not part of the attribute list, when searching through that
+   * list we must check if the position of the expression is reached and then
+   * print it.
+   */
+  k = 0;
+  if (constraint_p->func_index_info)
     {
-      if (attribute_p != constraint_p->attributes)
+      n_attrs = constraint_p->func_index_info->attr_index_start + 1;
+    }
+  else
+    {
+      for (attribute_p = constraint_p->attributes; *attribute_p;
+	   attribute_p++)
+	{
+	  n_attrs++;
+	}
+    }
+  for (attribute_p = constraint_p->attributes; k < n_attrs; attribute_p++)
+    {
+      if (constraint_p->func_index_info
+	  && k == constraint_p->func_index_info->col_id)
+	{
+	  if (k > 0)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer =
+	    pt_append_nulstring (parser, buffer,
+				 constraint_p->func_index_info->expr_str);
+	  k++;
+	}
+      if (k == n_attrs)
+	{
+	  break;
+	}
+      if (k > 0)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, ", ");
 	}
@@ -857,8 +893,18 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	    }
 	  asc_desc++;
 	}
+      k++;
     }
   buffer = pt_append_nulstring (parser, buffer, ")");
+
+  if (constraint_p->filter_predicate &&
+      constraint_p->filter_predicate->pred_string)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " WHERE ");
+      buffer =
+	pt_append_nulstring (parser, buffer,
+			     constraint_p->filter_predicate->pred_string);
+    }
 
   if (constraint_p->type == SM_CONSTRAINT_FOREIGN_KEY
       && constraint_p->fk_info)
@@ -3564,11 +3610,12 @@ describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
   assert (parser != NULL && value != NULL);
 
-  sprintf (cbuf, "%s%.2f", lang_currency_symbol (value->type), value->amount);
+  sprintf (cbuf, "%s%.2f", intl_get_money_symbol_grammar (value->type),
+	   value->amount);
 
   if (strstr (cbuf, "Inf"))
     {
-      sprintf (cbuf, "%s%.2f", lang_currency_symbol (value->type),
+      sprintf (cbuf, "%s%.2f", intl_get_money_symbol_grammar (value->type),
 	       (value->amount > 0 ? DBL_MAX : -DBL_MAX));
     }
 

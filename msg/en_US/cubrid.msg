@@ -1143,8 +1143,12 @@ $ LOADDB
 1075 Descending index scan aborted because of lower priority on B+tree with index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 1076 Could not load system parameter.
 1077 The '%s' parameter at line %d in file '%s' : Unknown parameter
-1078 All page buffers are dirty (LRU: %1$d).
-1079 Last Error
+1078 Character at offset %d is invalid with current codeset.
+1079 Codesets of database and server configuration are incompatible.
+1080 The maximum length of filter predicate string must be %1$s.
+1081 Cannot alter an attribute involved in a filter or function index.
+1082 All page buffers are dirty (LRU: %1$d).
+1083 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1503,6 +1507,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 224 KEYLIMIT can not be used in INDEX NONE clause.
 225 Session variable not allowed in this context.
 226 '%s' function can not be used in DEFAULT clause.
+227 Updating derived tables is not allowed.
+228 Updating class attributes and instance attributes not allowed in the same statement.
+229 Updating virtual class hierarchies is not allowed.
+230 Host variables not allowed in DDL statement.
+231 Invalid filter expression for index.
+232 Multiple or nested functions are not allowed in a function index definition.
+233 Invalid index specification.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

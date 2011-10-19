@@ -2530,6 +2530,11 @@ cnv_currency_zone (DB_CURRENCY currency)
       {
 	break;
       }
+    case DB_CURRENCY_TL:
+      {
+	zone = INTL_ZONE_TR;
+	break;
+      }
     default:
       break;
     }
@@ -2594,6 +2599,7 @@ cnv_valid_currency (DB_CURRENCY currency)
     case DB_CURRENCY_YEN:
     case DB_CURRENCY_WON:
     case DB_CURRENCY_POUND:
+    case DB_CURRENCY_TL:
       {
 	break;
       }
@@ -6841,12 +6847,14 @@ num_fmt_print (FLOAT_FORMAT * ffmt,
  *    the value is unchanged and NULL is returned.
  * return:
  * string(in) :
+ * str_size(in) :
  * format(in) :
  * value(out) :
  *
  */
 const char *
-db_string_value (const char *string, const char *format, DB_VALUE * value)
+db_string_value (const char *string, int str_size, const char *format,
+		 DB_VALUE * value)
 {
   const char *next = NULL;
 

@@ -6282,13 +6282,14 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
  */
 int
 btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
-		  int n_classes, int n_attrs,
-		  int *attr_ids,
-		  int *attrs_prefix_length,
-		  HFID * hfids,
+		  int n_classes, int n_attrs, int *attr_ids,
+		  int *attrs_prefix_length, HFID * hfids,
 		  int unique_flag, int reverse_flag, int last_key_desc,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		  int cache_attr_id, const char *fk_name)
+		  int cache_attr_id, const char *fk_name,
+		  char *pred_stream, int pred_stream_size,
+		  char *expr_stream, int expr_stream_size, int func_col_id,
+		  int func_attr_index_start)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR, req_error, request_size, domain_size;
@@ -6297,18 +6298,38 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, strlen;
+  int index_info_size = 0;
+  char *stream = NULL;
+  int stream_size = 0;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  if (pred_stream && expr_stream)
+    {
+      return ER_FAILED;
+    }
+
+  index_info_size = OR_INT_SIZE	/*index info type */
+    + (pred_stream ? OR_INT_SIZE : 0) + (expr_stream ? OR_INT_SIZE * 3 : 0);
+
   domain_size = or_packed_domain_size (key_type, 0);
-  request_size = OR_BTID_ALIGNED_SIZE
-    + domain_size + (n_classes * OR_OID_SIZE) + OR_INT_SIZE + OR_INT_SIZE
-    + (n_classes * n_attrs * OR_INT_SIZE)
-    + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)
-    + (n_classes * OR_HFID_SIZE)
-    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE
-    + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE
-    + or_packed_string_length (fk_name, &strlen);
+  request_size = OR_BTID_ALIGNED_SIZE	/* BTID */
+    + domain_size		/* key_type */
+    + (n_classes * OR_OID_SIZE)	/* class_oids */
+    + OR_INT_SIZE		/* n_classes */
+    + OR_INT_SIZE		/* n_attrs */
+    + (n_classes * n_attrs * OR_INT_SIZE)	/* attr_ids */
+    + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)	/* attrs_prefix_length */
+    + (n_classes * OR_HFID_SIZE)	/* hfids */
+    + OR_INT_SIZE		/* unique_flag */
+    + OR_INT_SIZE		/* reverse_flag */
+    + OR_INT_SIZE		/* last_key_desc */
+    + OR_OID_SIZE		/* fk_refcls_oid */
+    + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
+    + OR_INT_SIZE		/* cache_attr_id */
+    + or_packed_string_length (fk_name, &strlen)	/* fk_name */
+    + index_info_size;		/* filter predicate or function 
+				   index stream size */
 
   request = (char *) malloc (request_size);
   if (request)
@@ -6359,10 +6380,32 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
       ptr = or_pack_int (ptr, cache_attr_id);
       ptr = or_pack_string_with_length (ptr, fk_name, strlen);
 
+      if (pred_stream)
+	{
+	  ptr = or_pack_int (ptr, 0);
+	  ptr = or_pack_int (ptr, pred_stream_size);
+	  stream = pred_stream;
+	  stream_size = pred_stream_size;
+	}
+      else if (expr_stream)
+	{
+	  ptr = or_pack_int (ptr, 1);
+	  ptr = or_pack_int (ptr, expr_stream_size);
+	  ptr = or_pack_int (ptr, func_col_id);
+	  ptr = or_pack_int (ptr, func_attr_index_start);
+	  stream = expr_stream;;
+	  stream_size = expr_stream_size;
+	}
+      else
+	{
+	  ptr = or_pack_int (ptr, -1);	/*stream=NULL, stream_size=0 */
+	}
+
       req_error = net_client_request (NET_SERVER_BTREE_LOADINDEX,
 				      request, request_size, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				      NULL, 0);
+				      OR_ALIGNED_BUF_SIZE (a_reply),
+				      stream, stream_size, NULL, 0);
+
       if (!req_error)
 	{
 	  ptr = or_unpack_int (reply, &error);
@@ -6397,7 +6440,9 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 		       attr_ids, attrs_prefix_length,
 		       hfids, unique_flag, reverse_flag,
 		       last_key_desc, fk_refcls_oid, fk_refcls_pk_btid,
-		       cache_attr_id, fk_name);
+		       cache_attr_id, fk_name, pred_stream, pred_stream_size,
+		       expr_stream, expr_stream_size, func_col_id,
+		       func_attr_index_start);
   if (btid == NULL)
     {
       error = er_errid ();

@@ -385,7 +385,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* must call pt_evaluate_tree */
-	  pt_evaluate_tree (parser, vc, db_value);
+	  pt_evaluate_tree (parser, vc, db_value, 1);
 	  if (parser->error_msgs)
 	    {
 	      /* to maintain the list to free all the allocated */
@@ -2067,9 +2067,16 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 {
   char *val;
   char *ptr;
+  char *invalid_pos = NULL;
 
   ptr = buffer;
   ptr = or_unpack_string (ptr, &val);
+  if (intl_check_string (val, -1, &invalid_pos) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
+	      invalid_pos - val);
+      return NULL;
+    }
   db_make_string (retval, val);
   retval->need_clear = true;
 

@@ -1225,14 +1225,18 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       entry->prev->next = entry->next;
     }
+  else
+    {
+      file_Tracker->newfiles.head = entry->next;
+    }
+
   if (entry->next != NULL)
     {
       entry->next->prev = entry->prev;
     }
-  if (file_Tracker->newfiles.head == entry)
+  else
     {
-      /* mark it as null */
-      file_Tracker->newfiles.head = NULL;
+      file_Tracker->newfiles.tail = entry->prev;
     }
   /* we don't need this entry anymore */
   free_and_init (entry);

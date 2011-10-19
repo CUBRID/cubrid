@@ -161,6 +161,15 @@ extern int qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 					      HFID * hfid);
 extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 					  AGGREGATE_TYPE * agg_list);
+extern int qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,
+					   ANALYTIC_TYPE * func_p,
+					   QUERY_ID query_id);
+extern int qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
+					 ANALYTIC_TYPE * func_p,
+					 VAL_DESCR * vd);
+extern int qdata_finalize_analytic_func (THREAD_ENTRY * thread_p,
+					 ANALYTIC_TYPE * func_p,
+					 bool keep_list_file);
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p,
 						QFILE_LIST_ID * list_id,
 						VAL_LIST * single_tuple);

@@ -276,5 +276,7 @@ extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval,
 extern int au_check_serial_authorization (MOP serial_object);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *toupper_string (const char *name1, char *name2);
+#endif
 #endif /* _AUTHENTICATE_H_ */

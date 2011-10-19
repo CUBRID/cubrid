@@ -1180,8 +1180,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       else
 	{
 	  /* must be a char string type */
-	  db_make_int (arithptr->value,
-		       8 * DB_GET_STRING_LENGTH (peek_right));
+	  db_make_int (arithptr->value, 8 * DB_GET_STRING_SIZE (peek_right));
 	}
       break;
 

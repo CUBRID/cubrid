@@ -322,26 +322,28 @@ qdump_print_attribute (const char *action_p, int attr_count, int *attr_ids_p)
 static bool
 qdump_print_update_proc_node (UPDATE_PROC_NODE * node_p)
 {
-  int i;
+  int i = 0, cnt = 0, idx = 0;
+  UPDATE_CLASS_INFO *cls = NULL;
 
-  fprintf (foutput, "[number of HFID's to use:%d]", node_p->no_classes);
-
-  for (i = 0; i < node_p->no_classes; ++i)
+  cnt = node_p->no_classes;
+  for (idx = 0; idx < cnt; idx++)
     {
-      qdump_print_oid (&node_p->class_oid[i]);
+      cls = node_p->classes;
+
+      fprintf (foutput, "[number of HFID's to use:%d]", cls->no_subclasses);
+
+      for (i = 0; i < cls->no_subclasses; ++i)
+	{
+	  qdump_print_oid (&cls->class_oid[i]);
+	}
+
+      for (i = 0; i < cls->no_subclasses; ++i)
+	{
+	  qdump_print_hfid (cls->class_hfid[i]);
+	}
+
+      qdump_print_attribute ("update", cls->no_attrs, cls->att_id);
     }
-
-  for (i = 0; i < node_p->no_classes; ++i)
-    {
-      qdump_print_hfid (node_p->class_hfid[i]);
-    }
-
-  qdump_print_attribute ("update", node_p->no_vals, node_p->att_id);
-
-  fprintf (foutput, "[number of constant values:%d]", node_p->no_consts);
-  fprintf (foutput, "[constant values:");
-  qdump_print_db_value_array (node_p->consts, node_p->no_consts);
-  fprintf (foutput, "]");
   fprintf (foutput, "[numer of ORDER BY keys:%d]", node_p->no_orderby_keys);
 
   return true;
@@ -1285,6 +1287,12 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "GROUP_CONCAT";
     case PT_GENERIC:
       return "GENERIC";
+    case PT_ROW_NUMBER:
+      return "ROW_NUMBER";
+    case PT_RANK:
+      return "RANK";
+    case PT_DENSE_RANK:
+      return "DENSE_RANK";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:

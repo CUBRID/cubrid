@@ -1011,7 +1011,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       if (dbmt_db_id == NULL)
 	dbmt_db_id = "";
 
-      if (strcasecmp (new_db_user_name, dbmt_db_id) == 0)
+      if (intl_identifier_casecmp (new_db_user_name, dbmt_db_id) == 0)
 	{
 	  old_db_passwd = db_passwd;
 	}

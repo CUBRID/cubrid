@@ -628,6 +628,12 @@ tp_init (void)
       d->built_in_index = tp_Midxkey_domains[0]->built_in_index;
       d->is_desc = false;
     }
+
+  /* update string domains with current codeset */
+  tp_String_domain.codeset = lang_charset ();
+  tp_Char_domain.codeset = lang_charset ();
+  tp_NChar_domain.codeset = lang_charset ();
+  tp_VarNChar_domain.codeset = lang_charset ();
 }
 
 
@@ -7965,26 +7971,20 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	  if (src != NULL)
 	    {
 	      src_precision = db_value_precision (value);
-	      src_length = db_get_string_size (value);
-	      if (src_length < 0)
+	      if (!TP_IS_BIT_TYPE (dbtype))
 		{
-		  if (!TP_IS_BIT_TYPE (dbtype))
-		    {
-		      src_length = strlen (src);
-		    }
+		  src_length = db_get_string_length (value);
+		  assert (src_length >= 0);
+		}
+	      else
+		{
+		  src_length = db_get_string_size (value);
 		}
 
 	      /* Check for floating precision. */
 	      if (src_precision == TP_FLOATING_PRECISION_VALUE)
 		{
-		  if (dbtype == DB_TYPE_NCHAR)
-		    {
-		      src_precision = db_get_string_length (value);
-		    }
-		  else
-		    {
-		      src_precision = src_length;
-		    }
+		  src_precision = src_length;
 		}
 
 	      if (src_precision > domain->precision)
@@ -8004,13 +8004,14 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	  src = DB_GET_STRING (value);
 	  if (src != NULL)
 	    {
-	      src_length = db_get_string_size (value);
-	      if (src_length < 0)
+	      if (!TP_IS_BIT_TYPE (dbtype))
 		{
-		  if (!TP_IS_BIT_TYPE (dbtype))
-		    {
-		      src_length = strlen (src);
-		    }
+		  src_length = db_get_string_length (value);
+		  assert (src_length >= 0);
+		}
+	      else
+		{
+		  src_length = db_get_string_size (value);
 		}
 
 	      /*
@@ -8018,14 +8019,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	       * This feels like it should be a nice packed utility
 	       * function somewhere.
 	       */
-	      if (dbtype == DB_TYPE_VARNCHAR)
-		{
-		  src_precision = db_get_string_length (value);
-		}
-	      else
-		{
-		  src_precision = src_length;
-		}
+	      src_precision = src_length;
 
 	      if (src_precision > domain->precision)
 		{

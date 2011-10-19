@@ -1522,7 +1522,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp,
 	    {
 	      t_list_id =
 		qfile_sort_list (thread_p, lhs_srlist_id->list_id, NULL,
-				 Q_ALL);
+				 Q_ALL, true);
 	      if (t_list_id == NULL)
 		{
 		  return V_ERROR;
@@ -1552,7 +1552,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp,
 		{
 		  t_list_id =
 		    qfile_sort_list (thread_p, rhs_srlist_id->list_id, NULL,
-				     Q_ALL);
+				     Q_ALL, true);
 		  if (t_list_id == NULL)
 		    {
 		      return V_ERROR;
@@ -1596,7 +1596,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp,
 	    {
 	      t_list_id =
 		qfile_sort_list (thread_p, rhs_srlist_id->list_id, NULL,
-				 Q_ALL);
+				 Q_ALL, true);
 	      if (t_list_id == NULL)
 		{
 		  return V_ERROR;

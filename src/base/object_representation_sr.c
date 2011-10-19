@@ -97,6 +97,7 @@ static void or_install_btids_foreign_key_ref (DB_SEQ * fk_container,
 					      OR_INDEX * index);
 static void or_install_btids_prefix_length (DB_SEQ * prefix_seq,
 					    OR_INDEX * index, int num_attrs);
+static int or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index);
 static void or_install_btids_class (OR_CLASSREP * rep, BTID * id,
 				    DB_SEQ * constraint_seq, int seq_size,
 				    BTREE_TYPE type, const char *cons_name);
@@ -106,6 +107,8 @@ static void or_install_btids_constraint (OR_CLASSREP * rep,
 					 DB_SEQ * constraint_seq,
 					 BTREE_TYPE type,
 					 const char *cons_name);
+static void or_install_btids_function_info (DB_SEQ * fi_seq,
+					    OR_INDEX * index);
 static void or_install_btids (OR_CLASSREP * rep, DB_SEQ * props);
 static OR_CLASSREP *or_get_current_representation (RECDES * record,
 						   int do_indexes);
@@ -1556,6 +1559,124 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index,
 }
 
 /*
+ * or_install_btids_filter_pred () - Load index filter predicate information
+ *   return: error code
+ *   pred_seq(in): sequence which contains the filter predicate
+ *   index(in): index info structure 
+ */
+static int
+or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
+{
+  DB_VALUE val1, val2;
+  int error = NO_ERROR;
+  char *pred_stream = NULL;
+  char *pred_string = NULL;
+  int buffer_len = 0;
+  char *buffer = NULL;
+  OR_PREDICATE *filter_predicate = NULL;
+
+  index->filter_predicate = NULL;
+  if (set_get_element_nocopy (pred_seq, 0, &val1) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      return ER_SM_INVALID_PROPERTY;
+    }
+
+  switch (DB_VALUE_TYPE (&val1))
+    {
+    case DB_TYPE_NULL:
+      return NO_ERROR;
+
+    case DB_TYPE_STRING:
+      /*continue */
+      break;
+
+    default:
+      error = ER_SM_INVALID_PROPERTY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      return ER_SM_INVALID_PROPERTY;
+    }
+
+  if (set_get_element_nocopy (pred_seq, 1, &val2) != NO_ERROR)
+    {
+      error = ER_SM_INVALID_PROPERTY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      return ER_SM_INVALID_PROPERTY;
+    }
+
+  switch (DB_VALUE_TYPE (&val2))
+    {
+    case DB_TYPE_NULL:
+      return NO_ERROR;
+
+    case DB_TYPE_CHAR:
+      /*continue */
+      break;
+
+    default:
+      error = ER_SM_INVALID_PROPERTY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      return ER_SM_INVALID_PROPERTY;
+    }
+
+  filter_predicate = (OR_PREDICATE *) malloc (sizeof (OR_PREDICATE));
+  if (filter_predicate == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (OR_PREDICATE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  filter_predicate->pred_string = strdup (DB_GET_STRING (&val1));
+  if (filter_predicate->pred_string == NULL)
+
+    {
+
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      strlen (DB_GET_STRING (&val1)) * sizeof (char));
+
+      goto err;
+    }
+
+  buffer = DB_GET_STRING (&val2);
+  buffer_len = DB_GET_STRING_SIZE (&val2);
+  filter_predicate->pred_stream =
+    (char *) malloc (buffer_len * sizeof (char));
+  if (filter_predicate->pred_stream == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, buffer_len * sizeof (char));
+      goto err;
+    }
+
+  memcpy (filter_predicate->pred_stream, buffer, buffer_len);
+  filter_predicate->pred_stream_size = buffer_len;
+  index->filter_predicate = filter_predicate;
+  return NO_ERROR;
+
+err:
+  if (filter_predicate)
+    {
+      if (filter_predicate->pred_string)
+	{
+	  free_and_init (filter_predicate->pred_string);
+	}
+
+      if (filter_predicate->pred_stream)
+	{
+	  free_and_init (filter_predicate->pred_stream);
+	}
+
+      free_and_init (filter_predicate);
+    }
+  return error;
+}
+
+/*
  * or_install_btids_class () - Install (add) the B-tree ID to the index
  *                             structure of the class representation
  *   return: void
@@ -1578,7 +1699,8 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index,
  *       structures which are in place that provide a list of B-tree IDs
  *       associated with an attribute in each attribute structure
  *       (OR_ATTRIBUTE).
- *       { [attrID, asc_desc]+, {fk_info} or {key prefix length} }
+ *       { [attrID, asc_desc]+, {fk_info} or {key prefix length} or
+ *	                              {function index} or {filter index}}
  */
 static void
 or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
@@ -1615,6 +1737,8 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
   index->type = type;
   index->fk = NULL;
   index->attrs_prefix_length = NULL;
+  index->filter_predicate = NULL;
+  index->func_index_info = NULL;
 
   /*
    * For each attribute ID in the set,
@@ -1684,12 +1808,122 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
-	      or_install_btids_prefix_length (DB_GET_SEQUENCE (&att_val),
-					      index, att_cnt);
+	      DB_SEQ *seq = DB_GET_SEQUENCE (&att_val);
+	      DB_VALUE val;
+	      int flag = 0;
+
+	      if (set_get_element_nocopy (seq, 0, &val) == NO_ERROR)
+		{
+		  if (DB_VALUE_TYPE (&val) == DB_TYPE_INTEGER)
+		    {
+		      or_install_btids_prefix_length (DB_GET_SEQUENCE
+						      (&att_val), index,
+						      att_cnt);
+		    }
+		  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
+		    {
+		      DB_VALUE avalue;
+		      DB_SET *seq = DB_GET_SEQUENCE (&att_val);
+		      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
+		      int seq_size = set_size (seq);
+		      int flag = 0;
+
+		      j = 0;
+		      while (true)
+			{
+			  if (set_get_element_nocopy (child_seq, 0, &avalue)
+			      != NO_ERROR)
+			    {
+			      goto next_child;
+			    }
+
+			  if (DB_IS_NULL (&avalue) ||
+			      DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
+			    {
+			      goto next_child;
+			    }
+
+			  if (strcmp (DB_GET_STRING (&avalue),
+				      SM_FILTER_INDEX_ID) == 0)
+			    {
+			      flag = 0x01;
+			    }
+			  if (strcmp (DB_GET_STRING (&avalue),
+				      SM_FUNCTION_INDEX_ID) == 0)
+			    {
+			      flag = 0x02;
+			    }
+			  if (set_get_element_nocopy (child_seq, 1, &avalue)
+			      != NO_ERROR)
+			    {
+			      goto next_child;
+			    }
+
+			  if (DB_VALUE_TYPE (&avalue) != DB_TYPE_SEQUENCE)
+			    {
+			      goto next_child;
+			    }
+
+			  switch (flag)
+			    {
+			    case 0x01:
+
+			      or_install_btids_filter_pred (DB_GET_SEQUENCE
+							    (&avalue), index);
+			      break;
+			    case 0x02:
+			      or_install_btids_function_info (DB_GET_SEQUENCE
+							      (&avalue),
+							      index);
+			    default:
+			      break;
+			    }
+
+			next_child:
+			  j++;
+			  if (j >= seq_size)
+			    {
+			      break;
+			    }
+
+			  if (set_get_element_nocopy (seq, j, &val) !=
+			      NO_ERROR)
+			    {
+			      continue;
+			    }
+
+			  if (DB_VALUE_TYPE (&val) != DB_TYPE_SEQUENCE)
+			    {
+			      continue;
+			    }
+
+			  child_seq = DB_GET_SEQUENCE (&val);
+			}
+
+		      index->attrs_prefix_length =
+			(int *) malloc (sizeof (int) * att_cnt);
+		      if (index->attrs_prefix_length == NULL)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				  sizeof (int) * att_cnt);
+			  return;
+			}
+		      for (i = 0; i < att_cnt; i++)
+			{
+			  index->attrs_prefix_length[i] = -1;
+			}
+
+		    }
+		  else
+		    {
+		      assert (0);
+		    }
+		}
 	    }
 	  else
 	    {
-	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
+	      assert (0);
 	    }
 	}
     }
@@ -1833,9 +2067,14 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
   id.root_pageid = (PAGEID) pageid;
   id.vfid.fileid = (FILEID) fileid;
 
+  /* 
+   * skip function index information, since it will be installed later,
+   * using or_install_btids_class ()
+   */
   i = 1;
   if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
     {
+      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = DB_GET_INTEGER (&att_val);	/* The first attrID */
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
@@ -1964,9 +2203,12 @@ or_get_current_representation (RECDES * record, int do_indexes)
   OR_CLASSREP *rep;
   OR_ATTRIBUTE *att;
   OID oid;
-  char *start, *ptr, *attset, *diskatt, *valptr, *dptr;
-  int i, start_offset, offset, vallen, n_fixed, n_variable;
+  char *start, *ptr, *attset, *diskatt, *valptr, *dptr, *valptr1;
+  int i, start_offset, offset, vallen, n_fixed, n_variable, vallen1;
   int n_shared_attrs, n_class_attrs;
+  OR_BUF buf;
+  DB_VALUE val, def_expr;  
+  DB_SEQ *att_props = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
@@ -2048,6 +2290,15 @@ or_get_current_representation (RECDES * record, int do_indexes)
       vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
 					    ORC_ATT_ORIGINAL_VALUE_INDEX);
 
+      valptr1 = (diskatt +
+		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
+					     ORC_ATT_PROPERTIES_INDEX));
+
+      vallen1 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
+					     ORC_ATT_PROPERTIES_INDEX);
+
+      or_init (&buf, valptr1, vallen1);
+
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
@@ -2068,12 +2319,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
-      /* extract the identifier of the default expression */
-      att->default_value.default_expr =
-	OR_GET_INT (ptr + ORC_ATT_DEFAULT_EXPR_OFFSET);
-
-      OID_SET_NULL (&(att->serial_obj));
-
+      OID_SET_NULL (&(att->serial_obj)); 
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -2117,6 +2363,25 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	      goto error_cleanup;
 	    }
 	}
+
+	att->default_value.default_expr = DB_DEFAULT_NONE;           
+	if (vallen1 > 0)
+	  {
+	    db_make_null (&val);
+	    db_make_null (&def_expr);
+	    or_get_value (&buf, &val, 
+			  tp_domain_resolve_default (DB_TYPE_SEQUENCE), 
+	  		  vallen1,  true);
+ 	    att_props = DB_GET_SEQUENCE (&val);
+	    if (att_props != NULL &&
+		classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
+	      {
+		att->default_value.default_expr = DB_GET_INT (&def_expr);
+	      }
+
+      	    pr_clear_value (&def_expr);
+   	    pr_clear_value (&val);	
+	  }
     }
 
   /* find the beginning of the "set_of(shared attributes)" attribute
@@ -2936,6 +3201,21 @@ or_free_classrep (OR_CLASSREP * rep)
 		  free_and_init (index->btname);
 		}
 
+	      if (index->filter_predicate)
+		{
+		  if (index->filter_predicate->pred_string)
+		    {
+		      free_and_init (index->filter_predicate->pred_string);
+		    }
+
+		  if (index->filter_predicate->pred_stream)
+		    {
+		      free_and_init (index->filter_predicate->pred_stream);
+		    }
+
+		  free_and_init (index->filter_predicate);
+		}
+
 	      if (index->attrs_prefix_length != NULL)
 		{
 		  free_and_init (index->attrs_prefix_length);
@@ -2952,6 +3232,11 @@ or_free_classrep (OR_CLASSREP * rep)
 			}
 		      free_and_init (fk);
 		    }
+		}
+	      if (index->func_index_info)
+		{
+		  free_and_init (index->func_index_info->expr_stream);
+		  free_and_init (index->func_index_info);
 		}
 	    }
 
@@ -3080,4 +3365,74 @@ or_get_attrname (RECDES * record, int attrid)
     }
 
   return attr_name;
+}
+
+/*
+ * or_install_btids_function_info () - Install (add) function index 
+ *				      information to the index structure 
+ *				      of the class representation
+ *   return: void
+ *   index(in): index structure
+ *   fi_seq(in): Set which contains the function index information
+ */
+static void
+or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
+{
+  OR_FUNCTION_INDEX *fi_info;
+  DB_VALUE val;
+  char *buffer;
+
+  if (fi_seq == NULL)
+    {
+      return;
+    }
+
+  fi_info = (OR_FUNCTION_INDEX *) malloc (sizeof (OR_FUNCTION_INDEX));
+  if (fi_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (OR_FUNCTION_INDEX));
+      goto error;
+    }
+
+  if (set_get_element (fi_seq, 1, &val))
+    {
+      goto error;
+    }
+  buffer = DB_GET_STRING (&val);
+  fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
+  fi_info->expr_stream = (char *) malloc (fi_info->expr_stream_size);
+  if (fi_info->expr_stream == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      fi_info->expr_stream_size * sizeof (char));
+      goto error;
+    }
+  memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);
+  pr_clear_value (&val);
+
+  if (set_get_element (fi_seq, 2, &val))
+    {
+      goto error;
+    }
+  fi_info->col_id = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
+  if (set_get_element (fi_seq, 3, &val))
+    {
+      goto error;
+    }
+  fi_info->attr_index_start = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
+  index->func_index_info = fi_info;
+  return;
+
+error:
+
+  if (fi_info)
+    {
+      free_and_init (fi_info);
+    }
+  return;
 }

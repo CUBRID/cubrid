@@ -6295,6 +6295,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       break;
 
+    case PT_CREATE_INDEX:
+      node->info.index.where = pt_where_type (parser, node->info.index.where);
+      break;
+
     case PT_DELETE:
       node->info.delete_.search_cond =
 	pt_where_type (parser, node->info.delete_.search_cond);
@@ -10444,7 +10448,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   is_agg_function = pt_is_aggregate_function (parser, node);
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
-  if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM)
+  if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM
+      && fcode != PT_ROW_NUMBER && fcode != PT_RANK && fcode != PT_DENSE_RANK)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
@@ -10935,6 +10940,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_COUNT:
 	case PT_COUNT_STAR:
+	case PT_ROW_NUMBER:
+	case PT_RANK:
+	case PT_DENSE_RANK:
 	case PT_GROUPBY_NUM:
 	  node->type_enum = PT_TYPE_INTEGER;
 	  break;
@@ -14346,7 +14354,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 
       if (PT_IS_CHAR_STRING_TYPE (o1->type_enum))
 	{
-	  db_make_int (result, 8 * DB_GET_STRING_LENGTH (arg1));
+	  db_make_int (result, 8 * DB_GET_STRING_SIZE (arg1));
 	}
       else
 	{
@@ -17170,7 +17178,7 @@ pt_set_default_data_type (PARSER_CONTEXT * parser,
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-      dt->info.data_type.units = INTL_CODESET_ISO88591;
+      dt->info.data_type.units = lang_charset ();
       break;
 
     case PT_TYPE_NCHAR:
@@ -17478,8 +17486,10 @@ static int
 generic_func_casecmp (const void *a, const void *b)
 {
   return
-    intl_mbs_casecmp (((const GENERIC_FUNCTION_RECORD *) a)->function_name,
-		      ((const GENERIC_FUNCTION_RECORD *) b)->function_name);
+    intl_identifier_casecmp (((const GENERIC_FUNCTION_RECORD *) a)->
+			     function_name,
+			     ((const GENERIC_FUNCTION_RECORD *) b)->
+			     function_name);
 }
 
 /*

@@ -7574,6 +7574,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
   BITSET kf_terms;
   BITSET seg_other_terms;
   bool plan_created = false;
+  bool no_kf_terms = false;
   int start_column = 0;
 
   bitset_init (&range_terms, infop->env);
@@ -7584,6 +7585,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
   index_entryp = (ni_entryp)->head;
   start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
+  if (index_entryp->constraints->func_index_info)
+    {
+      no_kf_terms = true;
+    }
   if (QO_ENTRY_MULTI_COL (index_entryp))
     {
       /* the section below counts the total number of segments including
@@ -7645,6 +7650,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	  bitset_add (&range_terms, t);
 	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	  bitset_difference (&kf_terms, &range_terms);
+	  if (no_kf_terms)
+	    {
+	      BITSET_CLEAR (kf_terms);
+	    }
 	  /* generate index scan plan */
 	  planp = qo_index_scan_new (infop, nodep, ni_entryp,
 				     &range_terms,
@@ -7708,6 +7717,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	  bitset_add (&range_terms, t);
 	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	  bitset_difference (&kf_terms, &range_terms);
+	  if (no_kf_terms)
+	    {
+	      BITSET_CLEAR (kf_terms);
+	    }
 	  /* generate index scan plan */
 	  planp = qo_index_scan_new (infop, nodep, ni_entryp,
 				     &range_terms,
@@ -7762,6 +7775,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	      bitset_add (&range_terms, t);
 	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	      bitset_difference (&kf_terms, &range_terms);
+	      if (no_kf_terms)
+		{
+		  BITSET_CLEAR (kf_terms);
+		}
 	      /* generate index scan plan */
 	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
 					 &range_terms,
@@ -7822,6 +7839,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	      bitset_add (&range_terms, t);
 	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	      bitset_difference (&kf_terms, &range_terms);
+	      if (no_kf_terms)
+		{
+		  BITSET_CLEAR (kf_terms);
+		}
 	      /* generate index scan plan */
 	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
 					 &range_terms,
@@ -10308,7 +10329,7 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
 	  const char *index_key_name = info->env->
 	    segs[index_entryp->seg_idxs[0]].name;
 
-	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	  if (!intl_identifier_casecmp (node_name, index_key_name))
 	    {
 	      bitset_remove (&plan->plan_un.scan.kf_terms, t);
 	    }
@@ -10354,7 +10375,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
   /* if virtual class, prevent the use of an index of the base class */
   if (nodep && nodep->class_name && index_entryp && index_entryp->class_ &&
       index_entryp->class_->name &&
-      intl_mbs_casecmp (nodep->class_name, index_entryp->class_->name))
+      intl_identifier_casecmp (nodep->class_name, index_entryp->class_->name))
     {
       goto end;
     }
@@ -10642,7 +10663,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 	  const char *index_key_name =
 	    env->segs[ni_entryp->head->seg_idxs[0]].name;
 
-	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	  if (!intl_identifier_casecmp (node_name, index_key_name))
 	    {
 	      /* we have found a term with no OR and with IS_NOT_NULL on our
 	       * key. The plan is ready for order by skip!
@@ -10674,7 +10695,8 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 
   for (i = 0; i < env->nsegs; i++)
     {
-      if (!intl_mbs_casecmp (QO_ENV_SEG (env, i)->name, pt_get_name (node)))
+      if (!intl_identifier_casecmp
+	  (QO_ENV_SEG (env, i)->name, pt_get_name (node)))
 	{
 	  segm = QO_ENV_SEG (env, i);
 	  break;
@@ -10690,7 +10712,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
     {
       SM_ATTRIBUTE *attr = &index_class->smclass->attributes[i];
 
-      if (attr && !intl_mbs_casecmp (segm->name, attr->header.name))
+      if (attr && !intl_identifier_casecmp (segm->name, attr->header.name))
 	{
 	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
 	  break;
@@ -11095,7 +11117,7 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
   /* if virtual class, prevent the use of an index of the base class */
   if (nodep && nodep->class_name && index_entryp && index_entryp->class_ &&
       index_entryp->class_->name &&
-      intl_mbs_casecmp (nodep->class_name, index_entryp->class_->name))
+      intl_identifier_casecmp (nodep->class_name, index_entryp->class_->name))
     {
       goto end;
     }
@@ -11476,7 +11498,7 @@ qo_index_scan_group_by_new (QO_INFO * info, QO_NODE * node,
 	  const char *index_key_name = info->env->
 	    segs[index_entryp->seg_idxs[0]].name;
 
-	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	  if (!intl_identifier_casecmp (node_name, index_key_name))
 	    {
 	      bitset_remove (&plan->plan_un.scan.kf_terms, t);
 	    }
@@ -11553,7 +11575,7 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 	  const char *index_key_name =
 	    env->segs[ni_entryp->head->seg_idxs[0]].name;
 
-	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	  if (!intl_identifier_casecmp (node_name, index_key_name))
 	    {
 	      /* we have found a term with no OR and with IS_NOT_NULL on our
 	       * key. The plan is ready for group by skip!
@@ -11583,7 +11605,7 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
       SM_ATTRIBUTE *attr = &index_class->smclass->attributes[i];
 
       if (first_col_name && attr &&
-	  !intl_mbs_casecmp (first_col_name, attr->header.name))
+	  !intl_identifier_casecmp (first_col_name, attr->header.name))
 	{
 	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
 	  break;
@@ -11602,7 +11624,8 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 
   for (i = 0; i < env->nsegs; i++)
     {
-      if (!intl_mbs_casecmp (QO_ENV_SEG (env, i)->name, first_col_name))
+      if (!intl_identifier_casecmp
+	  (QO_ENV_SEG (env, i)->name, first_col_name))
 	{
 	  segm = QO_ENV_SEG (env, i);
 	  break;

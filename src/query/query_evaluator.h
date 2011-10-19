@@ -66,6 +66,9 @@ typedef enum
   PT_GROUPBY_NUM,
   PT_AGG_BIT_AND, PT_AGG_BIT_OR, PT_AGG_BIT_XOR,
   PT_GROUP_CONCAT,
+  PT_ROW_NUMBER,
+  PT_RANK,
+  PT_DENSE_RANK,
   PT_TOP_AGG_FUNC,
 /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -378,6 +381,32 @@ struct aggregate_list_node
   SORT_LIST *sort_list;		/* for sorting elements before aggregation;
 				 * used by GROUP_CONCAT */
 };
+
+typedef struct analytic_list_node ANALYTIC_TYPE;
+struct analytic_list_node
+{
+  ANALYTIC_TYPE *next;		/* next analytic node */
+  TP_DOMAIN *domain;		/* domain of the result */
+  DB_VALUE *value;		/* value of the aggregate */
+  DB_VALUE *value2;		/* for STTDEV and VARIANCE */
+  DB_VALUE *default_value;	/* default value of the aggregate */
+  int curr_cnt;			/* current number of items */
+  FUNC_TYPE function;		/* analytic function type */
+  QUERY_OPTIONS option;		/* DISTINCT/ALL option */
+  DB_TYPE opr_dbtype;		/* operand data type */
+  struct regu_variable_node operand;	/* operand */
+  QFILE_LIST_ID *list_id;	/* used for distinct handling */
+  SORT_LIST *sort_list;		/* partition sort */
+  int partition_cnt;		/* number of partition items in sort list */
+  int flag;			/* flags */
+};
+
+#define ANALYTIC_ADVANCE_RANK 1	/* advance rank */
+#define ANALYTIC_KEEP_RANK    2	/* keep current rank */
+
+#define ANALYTIC_FUNC_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
+#define ANALYTIC_FUNC_SET_FLAG(x, f)         (x)->flag |= (int) (f)
+#define ANALYTIC_FUNC_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
 typedef struct function_node FUNCTION_TYPE;
 struct function_node

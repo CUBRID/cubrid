@@ -292,6 +292,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_wait_queue_count = 0;
   conn->free_net_header_list = NULL;
   conn->free_net_header_count = 0;
+  conn->session_id = DB_EMPTY_SESSION;
 
   err = css_initialize_list (&conn->request_queue, 0);
   if (err != NO_ERROR)

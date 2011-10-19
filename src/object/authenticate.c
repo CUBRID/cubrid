@@ -1107,6 +1107,7 @@ flush_caches (void)
  * COMPARISON
  */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * toupper_string -  This is used to add a user or compare two user names.
  *   return: convert a string to upper case
@@ -1139,7 +1140,7 @@ toupper_string (const char *name1, char *name2)
   free (buffer);
   return name2;
 }
-
+#endif
 
 /*
  * USER/GROUP ACCESS
@@ -1183,15 +1184,16 @@ au_find_user (const char *user_name)
   AU_DISABLE (save);
 
   user = NULL;
-  upper_case_name_size = 2 * strlen (user_name) + 1;
-  upper_case_name = (char *) malloc (upper_case_name_size);
+
+  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+  upper_case_name = (char *) malloc (upper_case_name_size + 1);
   if (upper_case_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      upper_case_name_size);
       return NULL;
     }
-  toupper_string (user_name, upper_case_name);
+  intl_identifier_upper (user_name, upper_case_name);
 
   /*
    * first try to find the user id by index. This is faster than
@@ -1322,11 +1324,14 @@ au_make_user (const char *name)
 	}
       else
 	{
+	  int name_size;
+
 	  user = obj_create (uclass);
-	  lname = (char *) malloc (2 * strlen (name) + 1);
+	  name_size = intl_identifier_upper_string_size (name);
+	  lname = (char *) malloc (name_size + 1);
 	  if (lname)
 	    {
-	      toupper_string (name, lname);
+	      intl_identifier_upper (name, lname);
 	      db_make_string (&value, lname);
 	      error = obj_set (user, "name", &value);
 	      free_and_init (lname);
@@ -7778,6 +7783,7 @@ au_install (void)
   smt_add_attribute (def, "triggers", "sequence of (string, object)",
 		     (DB_DOMAIN *) 0);
   smt_add_attribute (def, "charset", "integer", NULL);
+  smt_add_attribute (def, "lang_id", "integer", NULL);
 
 
   /* need signatures for these ! */
@@ -7859,11 +7865,15 @@ au_install (void)
 
   /* Add Index */
   {
-    const char *names[2];
+    const char *names[] = { "name", NULL };
+    int ret_code;
 
-    names[0] = "name";
-    names[1] = NULL;
-    db_add_constraint (user, DB_CONSTRAINT_INDEX, NULL, names, 0);
+    ret_code = db_add_constraint (user, DB_CONSTRAINT_INDEX, NULL, names, 0);
+
+    if (ret_code)
+      {
+	goto exit_on_error;
+      }
   }
 
   /* Password objects */

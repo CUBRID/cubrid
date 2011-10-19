@@ -371,6 +371,12 @@ extern int PRM_XASL_MAX_PLAN_CACHE_ENTRIES;
 extern int PRM_XASL_MAX_PLAN_CACHE_CLONES;
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+#define PRM_NAME_FILTER_PRED_MAX_CACHE_ENTRIES "max_filter_pred_cache_entries"
+extern int PRM_FILTER_PRED_MAX_CACHE_ENTRIES;
+
+#define PRM_NAME_FILTER_PRED_MAX_CACHE_CLONES "max_filter_pred_cache_clones"
+extern int PRM_FILTER_PRED_MAX_CACHE_CLONES;
+
 #define PRM_NAME_XASL_PLAN_CACHE_TIMEOUT "plan_cache_timeout"
 extern int PRM_XASL_PLAN_CACHE_TIMEOUT;
 
@@ -592,6 +598,12 @@ extern UINT64 PRM_DB_VOLUME_SIZE;
 
 #define PRM_NAME_LOG_VOLUME_SIZE "log_volume_size"
 extern UINT64 PRM_LOG_VOLUME_SIZE;
+
+#define PRM_NAME_USE_LOCALE_NUMBER_FORMAT "use_locale_number_format"
+extern bool PRM_USE_LOCALE_NUMBER_FORMAT;
+
+#define PRM_NAME_USE_LOCALE_DATE_FORMAT "use_locale_date_format"
+extern bool PRM_USE_LOCALE_DATE_FORMAT;
 
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
 extern int sysprm_reload_and_init (const char *db_name,
