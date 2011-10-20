@@ -2439,10 +2439,10 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
    * log_xinit which will run the compatibility functions if there are any.
    */
   /* We added disk compatibility rules to R2.2. Before that release,
-   * rel_is_disk_compatible function returned only REL_FULLY_COMPATIBLE or
+   * rel_get_disk_compatible function returned only REL_FULLY_COMPATIBLE or
    * REL_NOT_COMPATIBLE. However, it might return REL_BACKWARD_COMPATIBLE now.
    */
-  if (rel_is_disk_compatible (*db_compatibility, NULL) !=
+  if (rel_get_disk_compatible (*db_compatibility, NULL) !=
       REL_FULLY_COMPATIBLE)
     {
       log_Gl.hdr.db_compatibility = *db_compatibility;
@@ -10493,7 +10493,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
       /* Removed strict condition for checking disk compatibility.
        * Check it according to the predefined rules.
        */
-      compat = rel_is_disk_compatible (bkdb_compatibility, NULL);
+      compat = rel_get_disk_compatible (bkdb_compatibility, NULL);
       if (compat != REL_FULLY_COMPATIBLE && compat != REL_BACKWARD_COMPATIBLE)
 	{
 	  /* Database is incompatible with current release */

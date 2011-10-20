@@ -5610,7 +5610,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 	}
     }
 
-  return (bufptr);
+  return bufptr;
 }
 
 /*

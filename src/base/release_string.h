@@ -36,13 +36,13 @@
  * REL_FIXUP_FUNCTION - Signature for a function that can part of
  *                      a disk compatibility rule.
  *                      An array of these functions can be returned by
- *                      rel_is_disk_compatible.
+ *                      rel_get_disk_compatible.
  */
 typedef void (*REL_FIXUP_FUNCTION) (void);
 
 /*
  * REL_COMPATIBILITY - Describes the various types of compatibility we can have.
- *                     Returned by the rel_is_disk_compatible function.
+ *                     Returned by the rel_get_disk_compatible function.
  */
 typedef enum
 {
@@ -67,11 +67,11 @@ extern int rel_bit_platform (void);
 
 extern int rel_compare (const char *rel_a, const char *rel_b);
 extern REL_COMPATIBILITY
-rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups);
+rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups);
 extern bool rel_is_log_compatible (const char *writer_rel_str,
 				   const char *reader_rel_str);
 extern REL_COMPATIBILITY
-rel_is_net_compatible (const char *client_rel_str,
-		       const char *server_rel_str);
+rel_get_net_compatible (const char *client_rel_str,
+			const char *server_rel_str);
 extern void rel_copy_version_string (char *buf, size_t len);
 #endif /* _RELEASE_STRING_H_ */

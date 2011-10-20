@@ -309,7 +309,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
    * 2. check if the both capabilities of client and server are compatible.
    * 3. check if the client has a capability to make it compatible.
    */
-  compat = rel_is_net_compatible (client_release, server_release);
+  compat = rel_get_net_compatible (client_release, server_release);
   if (check_client_capabilities (client_capabilities,
 				 rel_compare (client_release, server_release),
 				 &compat, client_host) != client_capabilities)

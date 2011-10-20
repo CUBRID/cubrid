@@ -4225,7 +4225,9 @@ qo_plan_dump (QO_PLAN * plan, FILE * output)
   int level;
 
   if (output == NULL)
-    output = stdout;
+    {
+      output = stdout;
+    }
 
   if (plan == NULL)
     {
@@ -4235,9 +4237,13 @@ qo_plan_dump (QO_PLAN * plan, FILE * output)
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (DETAILED_DUMP (level))
-    qo_plan_fprint (plan, output, 0, NULL);
+    {
+      qo_plan_fprint (plan, output, 0, NULL);
+    }
   else if (SIMPLE_DUMP (level))
-    qo_plan_lite_print (plan, output, 0);
+    {
+      qo_plan_lite_print (plan, output, 0);
+    }
 
   fputs ("\n", output);
 

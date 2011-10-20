@@ -4253,7 +4253,7 @@ net_client_ping_server_with_handshake (int client_type,
    * 2. check if the both capabilities of client and server are compatible.
    * 3. check if the server has a capability to make it compatible.
    */
-  compat = rel_is_net_compatible (client_release, server_release);
+  compat = rel_get_net_compatible (client_release, server_release);
   if ((check_capabilities == true
        || server_capabilities & NET_CAP_REMOTE_DISABLED)
       && check_server_capabilities (server_capabilities, client_type,

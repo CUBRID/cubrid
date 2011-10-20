@@ -77,7 +77,7 @@ query_prepare (const char *qstr, const char *stream, int size,
 
   /* allocate XASL_ID, the caller is responsible to free this */
   p = (XASL_ID *) malloc (sizeof (XASL_ID));
-  if (!p)
+  if (p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));

@@ -488,7 +488,9 @@ retry_select:
 #endif /* ASYNC_MODE */
 
   if (read_len <= 0)
-    net_error_flag = 1;
+    {
+      net_error_flag = 1;
+    }
 
   return read_len;
 }

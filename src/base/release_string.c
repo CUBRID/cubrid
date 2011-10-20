@@ -76,11 +76,10 @@ static const char *package_string = PACKAGE_STRING;
 static const char *build_os = makestring (BUILD_OS);
 static int bit_platform = __WORDSIZE;
 
-
 static REL_COMPATIBILITY
-rel_is_compatible_internal (const char *base_rel_str,
-			    const char *apply_rel_str,
-			    COMPATIBILITY_RULE rules[]);
+rel_get_compatible_internal (const char *base_rel_str,
+			     const char *apply_rel_str,
+			     COMPATIBILITY_RULE rules[]);
 
 /*
  * Disk (database image) Version Compatibility
@@ -256,7 +255,7 @@ static COMPATIBILITY_RULE disk_compatibility_rules[] = {
 };
 
 /*
- * rel_is_disk_compatible - Test compatibility of disk (database image)
+ * rel_get_disk_compatible - Test compatibility of disk (database image)
  *                          Check a disk compatibility number stored in
  *                          a database with the disk compatibility number
  *                          for the system being run
@@ -271,7 +270,7 @@ static COMPATIBILITY_RULE disk_compatibility_rules[] = {
  *       an entry had better be made in the table.
  */
 REL_COMPATIBILITY
-rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
+rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
 {
   COMPATIBILITY_RULE *rule;
   REL_COMPATIBILITY compat;
@@ -300,7 +299,9 @@ rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
     }
 
   if (fixups != NULL)
-    *fixups = func;
+    {
+      *fixups = func;
+    }
 
   return compat;
 }
@@ -411,6 +412,9 @@ rel_compare (const char *rel_a, const char *rel_b)
  * if the major numbers are different, no network compatibility!
  */
 static COMPATIBILITY_RULE log_compatibility_rules[] = {
+  {4.1f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
+  {4.0f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
+
   /*
    * NOTICE:
    * 2.0 and 2.1 servers should NOT be compatible with 2.2 databases.
@@ -435,8 +439,16 @@ static COMPATIBILITY_RULE log_compatibility_rules[] = {
 bool
 rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
 {
-  return rel_is_compatible_internal (writer_rel_str, reader_rel_str,
-				     log_compatibility_rules);
+  REL_COMPATIBILITY compat;
+
+  compat = rel_get_compatible_internal (writer_rel_str, reader_rel_str,
+					log_compatibility_rules);
+  if (compat == REL_NOT_COMPATIBLE)
+    {
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -458,7 +470,7 @@ static COMPATIBILITY_RULE net_compatibility_rules[] = {
 };
 
 /*
- * rel_is_net_compatible - Compare the release strings from
+ * rel_get_net_compatible - Compare the release strings from
  *                          the server and client to determine compatibility.
  * return: REL_COMPATIBILITY
  *  REL_NOT_COMPATIBLE if the client and the server are not compatible
@@ -474,14 +486,15 @@ static COMPATIBILITY_RULE net_compatibility_rules[] = {
  *   server_rel_str(in): server's release string
  */
 REL_COMPATIBILITY
-rel_is_net_compatible (const char *client_rel_str, const char *server_rel_str)
+rel_get_net_compatible (const char *client_rel_str,
+			const char *server_rel_str)
 {
-  return rel_is_compatible_internal (server_rel_str, client_rel_str,
-				     net_compatibility_rules);
+  return rel_get_compatible_internal (server_rel_str, client_rel_str,
+				      net_compatibility_rules);
 }
 
 /*
- * rel_is_compatible_internal - Compare the release to determine compatibility.
+ * rel_get_compatible_internal - Compare the release to determine compatibility.
  *   return: REL_COMPATIBILITY
  *
  *   base_rel_str(in): base release string (of database)
@@ -489,9 +502,9 @@ rel_is_net_compatible (const char *client_rel_str, const char *server_rel_str)
  *   rules(in): rules to determine forward/backward compatibility
  */
 static REL_COMPATIBILITY
-rel_is_compatible_internal (const char *base_rel_str,
-			    const char *apply_rel_str,
-			    COMPATIBILITY_RULE rules[])
+rel_get_compatible_internal (const char *base_rel_str,
+			     const char *apply_rel_str,
+			     COMPATIBILITY_RULE rules[])
 {
   COMPATIBILITY_RULE *rule;
   REL_COMPATIBILITY compat;
@@ -512,7 +525,8 @@ rel_is_compatible_internal (const char *base_rel_str,
     {
       return REL_NOT_COMPATIBLE;
     }
-/* skip '.' */
+
+  /* skip '.' */
   while (*str_a && *str_a == '.')
     {
       str_a++;
@@ -521,6 +535,7 @@ rel_is_compatible_internal (const char *base_rel_str,
     {
       str_b++;
     }
+
   /* check minor.patch number */
   apply_level = (float) strtod (str_a, NULL);
   base_level = (float) strtod (str_b, NULL);

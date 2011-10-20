@@ -1754,7 +1754,9 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	  return -1;
 	}
       if (write_to_client (clt_sock_fd, read_buf, read_len) < 0)
-	return -1;
+	{
+	  return -1;
+	}
       msg_size -= read_len;
     }
 
@@ -1768,7 +1770,9 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	    read_from_cas_client (clt_sock_fd, tmp_p, tmp_int, as_index,
 				  cas_pid);
 	  if (read_len <= 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  tmp_int -= read_len;
 	  tmp_p += read_len;
 	}
@@ -1786,9 +1790,13 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 				   sizeof (read_buf) ? sizeof (read_buf) :
 				   msg_size), as_index, cas_pid);
 	  if (read_len <= 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  if (send (srv_sock_fd, read_buf, read_len, 0) < read_len)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  msg_size -= read_len;
 	}
 
@@ -1797,7 +1805,9 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	  return -1;
 	}
       if (write_to_client (clt_sock_fd, (char *) &msg_size, 4) < 0)
-	return -1;
+	{
+	  return -1;
+	}
 
       msg_size = ntohl (msg_size);
       while (msg_size > 0)
@@ -1811,7 +1821,9 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	      return -1;
 	    }
 	  if (write_to_client (clt_sock_fd, read_buf, read_len) < 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  msg_size -= read_len;
 	}
 

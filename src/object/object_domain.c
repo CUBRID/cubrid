@@ -764,6 +764,8 @@ tp_domain_free (TP_DOMAIN * dom)
 static void
 domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
 {
+  assert ((typeid_ >= DB_TYPE_FIRST) && (typeid_ <= DB_TYPE_LAST));
+
   domain->next = NULL;
   domain->next_list = NULL;
   domain->type = PR_TYPE_FROM_ID (typeid_);

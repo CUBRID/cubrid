@@ -1275,8 +1275,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    * This will compare the given level against the value returned by
    * rel_disk_compatible().
    */
-  compat = rel_is_disk_compatible (log_Gl.hdr.db_compatibility,
-				   &disk_compatibility_functions);
+  compat = rel_get_disk_compatible (log_Gl.hdr.db_compatibility,
+				    &disk_compatibility_functions);
 
   /* If we're not completely compatible, signal an error.
    * There had been no compatibility rules on R2.1 or earlier version.
