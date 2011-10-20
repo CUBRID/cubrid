@@ -3384,7 +3384,8 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || upd_cls->no_subclasses == 0)
     {
-      upd_cls->partition = NULL;
+      stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
+      return NULL;
     }
   else
     {
@@ -3507,7 +3508,8 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || update_info->no_classes == 0)
     {
-      update_info->classes = NULL;
+      stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
+      return NULL;
     }
   else
     {

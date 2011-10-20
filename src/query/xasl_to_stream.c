@@ -241,8 +241,8 @@ static int xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * ptr);
 static int xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * ptr);
 static int xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * ptr);
 static int xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
-static int xts_sizeof_update_proc_class (const UPDATE_CLASS_INFO * upd_cls);
-static int xts_sizeof_update_proc_assign (const UPDATE_ASSIGNMENT * assign);
+static int xts_sizeof_update_class_info (const UPDATE_CLASS_INFO * upd_cls);
+static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
 static int xts_sizeof_update_proc (const UPDATE_PROC_NODE * ptr);
 static int xts_sizeof_delete_proc (const DELETE_PROC_NODE * ptr);
 static int xts_sizeof_insert_proc (const INSERT_PROC_NODE * ptr);
@@ -3608,26 +3608,39 @@ static int
 xts_save_update_class_info_array (const UPDATE_CLASS_INFO * classes,
 				  int nelements)
 {
-  char *ptr = NULL;
-  int offset = ER_FAILED, idx;
+  char *ptr = NULL, *buf = NULL;
+  int idx, offset = ER_FAILED;
+  int size = xts_sizeof_update_class_info (classes) * nelements;
 
-  offset =
-    xts_reserve_location_in_stream (xts_sizeof_update_proc_class (classes) *
-				    nelements);
+  offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED)
     {
-      return ER_FAILED;
+      offset = ER_FAILED;
+      goto end;
     }
 
-  ptr = &xts_Stream_buffer[offset];
+  ptr = buf = (char *) malloc (size);
+  if (buf == NULL)
+    {
+      offset = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
   for (idx = 0; idx < nelements; idx++)
     {
       ptr = xts_save_update_class_info (ptr, &classes[idx]);
       if (ptr == NULL)
 	{
-	  return ER_FAILED;
+	  offset = ER_FAILED;
+	  goto end;
 	}
+    }
+  memcpy (&xts_Stream_buffer[offset], buf, size);
+
+end:
+  if (buf != NULL)
+    {
+      free_and_init (buf);
     }
 
   return offset;
@@ -3666,26 +3679,39 @@ static int
 xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns,
 				  int nelements)
 {
-  char *ptr = NULL;
+  char *ptr = NULL, *buf = NULL;
   int offset = ER_FAILED, idx;
+  int size = xts_sizeof_update_assignment (assigns) * nelements;
 
-  offset =
-    xts_reserve_location_in_stream (xts_sizeof_update_proc_assign (assigns) *
-				    nelements);
+  offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED)
     {
-      return ER_FAILED;
+      offset = ER_FAILED;
+      goto end;
     }
 
-  ptr = &xts_Stream_buffer[offset];
+  ptr = buf = (char *) malloc (size);
+  if (buf == NULL)
+    {
+      offset = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
   for (idx = 0; idx < nelements; idx++)
     {
       ptr = xts_save_update_assignment (ptr, &assigns[idx]);
       if (ptr == NULL)
 	{
-	  return ER_FAILED;
+	  offset = ER_FAILED;
+	  goto end;
 	}
+    }
+  memcpy (&xts_Stream_buffer[offset], buf, size);
+
+end:
+  if (buf != NULL)
+    {
+      free_and_init (buf);
     }
 
   return offset;
@@ -5432,12 +5458,12 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
 }
 
 /*
- * xts_sizeof_update_proc_class () -
+ * xts_sizeof_update_class_info () -
  *   return:
  *   ptr(in)    :
  */
 static int
-xts_sizeof_update_proc_class (const UPDATE_CLASS_INFO * upd_cls)
+xts_sizeof_update_class_info (const UPDATE_CLASS_INFO * upd_cls)
 {
   int size = 0;
 
@@ -5453,12 +5479,12 @@ xts_sizeof_update_proc_class (const UPDATE_CLASS_INFO * upd_cls)
 }
 
 /*
- * xts_sizeof_update_proc_assign () -
+ * xts_sizeof_update_assignment () -
  *   return:
  *   ptr(in)    :
  */
 static int
-xts_sizeof_update_proc_assign (const UPDATE_ASSIGNMENT * assign)
+xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign)
 {
   int size = 0;
 
