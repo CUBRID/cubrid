@@ -505,6 +505,7 @@ log_dump_log_info (const char *logname_info, bool also_stdout,
     {
       va_start (ap, fmt);
       (void) vfprintf (stdout, fmt, ap);
+      fflush (stdout);
     }
 #endif
 

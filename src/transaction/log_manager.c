@@ -1044,6 +1044,7 @@ log_set_no_logging (void)
       if (PRM_LOG_TRACE_DEBUG && log_No_logging)
 	{
 	  fprintf (stdout, "**Running without logging**\n");
+	  fflush (stdout);
 	}
 #endif /* NDEBUG */
     }
@@ -1092,6 +1093,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (PRM_LOG_TRACE_DEBUG && log_No_logging)
     {
       fprintf (stdout, "**Running without logging**\n");
+      fflush (stdout);
     }
 #endif /* !NDEBUG */
 }
@@ -4883,6 +4885,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					   MSGCAT_LOG_FINISH_COMMIT),
 		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
 		   log_Gl.hdr.append_lsa.offset, ctime (&xxtime));
+	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
     }
@@ -4899,6 +4902,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					   MSGCAT_LOG_FINISH_ABORT),
 		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
 		   log_Gl.hdr.append_lsa.offset, ctime (&xxtime));
+	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
     }
@@ -6610,6 +6614,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		   tdes->tran_index, tdes->trid,
 		   log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset,
 		   ctime (&xxtime));
+	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
       logtb_clear_tdes (thread_p, tdes);
@@ -10736,6 +10741,8 @@ int
 log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   char *to_data;
+
+  assert (rcv->offset + rcv->length <= DB_PAGESIZE);
 
   to_data = (char *) rcv->pgptr + rcv->offset;
   memcpy (to_data, rcv->data, rcv->length);

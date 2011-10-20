@@ -130,8 +130,9 @@ static int rv;
 /* macros for casting pointers */
 #define CAST_PGPTR_TO_BFPTR(bufptr, pgptr)                              \
   do {                                                                  \
-  (bufptr) = ((PGBUF_BCB *)((PGBUF_IOPAGE_BUFFER *)                  \
-      ((char *)pgptr - offsetof(PGBUF_IOPAGE_BUFFER, iopage.page)))->bcb);           \
+    (bufptr) = ((PGBUF_BCB *)((PGBUF_IOPAGE_BUFFER *)                   \
+      ((char *)pgptr - offsetof(PGBUF_IOPAGE_BUFFER, iopage.page)))->bcb); \
+    assert ((bufptr) == (bufptr)->iopage_buffer->bcb);                  \
   } while (0)
 
 #define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr)                          \
@@ -142,6 +143,7 @@ static int rv;
 
 #define CAST_BFPTR_TO_PGPTR(pgptr, bufptr)                              \
   do {                                                                  \
+    assert ((bufptr) == (bufptr)->iopage_buffer->bcb);                  \
     (pgptr) = ((PAGE_PTR)                                               \
                ((char *)(bufptr->iopage_buffer) 			\
 			+ offsetof(PGBUF_IOPAGE_BUFFER, iopage.page))); \
@@ -1134,6 +1136,8 @@ try_again:
 
       return NULL;
     }
+
+  assert (bufptr == bufptr->iopage_buffer->bcb);
 
   /* In case of NO_ERROR, bufptr->BCB_mutex has been released. */
 

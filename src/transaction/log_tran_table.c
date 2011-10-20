@@ -2949,6 +2949,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   " when client user = %s restarts a client ***\n",
 		   tdes->trid, tdes->tran_index, str_tmp,
 		   tdes->client.db_user);
+	  fflush (stdout);
 	}
 #endif
     }
@@ -2967,6 +2968,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   "    to this transaction and either commit or abort it."
 		   " ***\n", tdes->trid, tdes->tran_index,
 		   tdes->gtrid, tdes->client.db_user);
+	  fflush (stdout);
 	}
 #endif
     }
@@ -2990,6 +2992,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   tdes->tran_index,
 		   ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" :
 		    "ABORT"), tdes->client.db_user);
+	  fflush (stdout);
 	}
 #endif
     }

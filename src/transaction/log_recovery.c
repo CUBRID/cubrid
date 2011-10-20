@@ -2022,6 +2022,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
       /*
@@ -2997,6 +2998,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,
 					   MSGCAT_LOG_STARTS));
+		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
 	      /* if previous log record exists,
@@ -3569,7 +3571,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
+			   "TRACE REDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
@@ -3584,6 +3586,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		    {
 		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
 		    }
+		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
 
@@ -3687,7 +3690,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
+			   "TRACE REDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
@@ -3702,6 +3705,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		    {
 		      fprintf (stdout, "      page_lsa = %lld|%d\n", -1, -1);
 		    }
+		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
 
@@ -3761,9 +3765,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE EXT REDOING: LSA = %lld|%d, Rv_index = %s\n",
+			   "TRACE EXT REDOING[3]: LSA = %lld|%d, Rv_index = %s\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex));
+		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
 
@@ -3850,7 +3855,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
+			   "TRACE REDOING[4]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
@@ -3865,6 +3870,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		    {
 		      fprintf (stdout, "      page_lsa = %lld|%d\n", -1, -1);
 		    }
+		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
 
@@ -3955,7 +3961,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
+			   "TRACE REDOING[5]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
@@ -3970,6 +3976,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		    {
 		      fprintf (stdout, "      page_lsa = %lld|%d\n", -1, -1);
 		    }
+		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
 
@@ -4553,11 +4560,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  if (PRM_LOG_TRACE_DEBUG)
 		    {
 		      fprintf (stdout,
-			       "TRACE UNDOING: LSA = %lld|%d, Rv_index = %s,\n"
+			       "TRACE UNDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
 			       "      volid = %d, pageid = %d, offset = %d,\n",
 			       rcv_lsa.pageid, rcv_lsa.offset,
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			       rcv_vpid.pageid, rcv.offset);
+		      fflush (stdout);
 		    }
 #endif /* !NDEBUG */
 
@@ -4625,11 +4633,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  if (PRM_LOG_TRACE_DEBUG)
 		    {
 		      fprintf (stdout,
-			       "TRACE UNDOING: LSA = %lld|%d, Rv_index = %s,\n"
+			       "TRACE UNDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"
 			       "      volid = %d, pageid = %d, offset = %d,\n",
 			       rcv_lsa.pageid, rcv_lsa.offset,
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			       rcv_vpid.pageid, rcv.offset);
+		      fflush (stdout);
 		    }
 #endif /* !NDEBUG */
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr,

@@ -9744,8 +9744,8 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 		  FILE *lk_fp;
 		  time_t cur_time;
 
-		  lk_fp = fopen ("lock_waiter_only_info.log", "a")
-		    if (lk_fp != NULL)
+		  lk_fp = fopen ("lock_waiter_only_info.log", "a");
+		  if (lk_fp != NULL)
 		    {
 		      cur_time = time (NULL);
 		      fprintf (lk_fp,

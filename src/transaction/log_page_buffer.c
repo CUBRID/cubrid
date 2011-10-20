@@ -5163,6 +5163,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
       er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer"
 		    " contains dirty pages\n");
       logpb_dump (stdout);
+      fflush (stdout);
     }
 #endif
 
@@ -6764,8 +6765,11 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 
 #if !defined(NDEBUG)
   if (PRM_LOG_TRACE_DEBUG)
-    fprintf (stdout, "\n **log_fetch_from_archive has been called on"
-	     " pageid = %lld ** \n", pageid);
+    {
+      fprintf (stdout, "\n **log_fetch_from_archive has been called on"
+	       " pageid = %lld ** \n", pageid);
+      fflush (stdout);
+    }
 #endif
 
   hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
