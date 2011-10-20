@@ -18,7 +18,7 @@
 #
 
 
-en_US.utf8dir = @CUBRID_LOCALEDIR@/en_US
+en_US.utf8dir = @CUBRID_LOCALEDIR@/en_US.utf8
 dist_en_US.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
 en_US.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
