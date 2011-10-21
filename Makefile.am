@@ -41,3 +41,39 @@ log_DATA = # EMPTY
 
 tmpdir = @CUBRID_TMPDIR@
 tmp_DATA = # EMPTY
+
+# dist packages
+BUILD_SH_OPTIONS = -s $(top_srcdir) -b $(top_builddir) -p $(prefix)
+if BUILD_64
+BUILD_SH_OPTIONS += -t x86_64
+else
+BUILD_SH_OPTIONS += -t i386
+endif
+if BUILD_COVERAGE
+BUILD_SH_OPTIONS += -m coverage
+else
+if BUILD_DEBUG
+BUILD_SH_OPTIONS += -m debug
+else
+BUILD_SH_OPTIONS += -m release
+endif
+endif
+
+dist-src:
+	@echo "Build source packages"
+	$(top_srcdir)/build.sh $(BUILD_SH_OPTIONS) -z src -z php_src dist
+
+dist-bin: install
+	@echo "Build binary packages"
+	$(top_srcdir)/build.sh $(BUILD_SH_OPTIONS) -z tarball -z shell -z cci dist
+
+dist-jdbc:
+	@echo "Build JDBC packages"
+	$(top_srcdir)/build.sh $(BUILD_SH_OPTIONS) -z jdbc dist
+
+dist-rpm:
+	@echo "Build RPM packages"
+	$(top_srcdir)/build.sh $(BUILD_SH_OPTIONS) -z srpm -z rpm dist
+
+dist-pack: dist-src dist-bin dist-jdbc dist-rpm
+.PHONY: dist-pack

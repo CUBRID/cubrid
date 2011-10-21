@@ -278,6 +278,7 @@ then
 	CXXFLAGS="$CXXFLAGS -fprofile-arcs -ftest-coverage"
 	LDFLAGS="$LDFLAGS -lgcov"
 fi
+AM_CONDITIONAL([BUILD_COVERAGE], [test "$enable_coverage" = "yes"])
 
 AC_ARG_ENABLE([debug],
 	[AS_HELP_STRING([--enable-debug],

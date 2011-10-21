@@ -27,7 +27,7 @@ install: all-am
 
 uninstall: clean-local-check
 	@list='$(SUBDIRS)'; for subdir in $$list; do \
-	  echo "Making install in $$subdir"; \
+	  echo "Making uninstall in $$subdir"; \
 	  (cd $$subdir && $(MAKE) $(AM_MAKEFLAGS) DESTDIR="" uninstall) \
 	done;
 
