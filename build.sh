@@ -368,7 +368,7 @@ gzip -d ${PRODUCT_NAME}-product.tar.gz
 temp_dir=`mktemp -d -p .`
 (cd $temp_dir && tar --extract --no-same-owner --file=../${PRODUCT_NAME}-product.tar > /dev/null 2>&1)
 if [ $? != 0 ]; then
-    (cd $temp_dir && tar xfo ${PRODUCT_NAME}-product.tar)
+    (cd $temp_dir && tar xfo ../${PRODUCT_NAME}-product.tar)
     if [ $? != 0 ]; then
         exit 1
     fi
