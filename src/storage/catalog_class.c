@@ -1239,7 +1239,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 {
   OR_VALUE *attrs;
   DB_VALUE *attr_val_p;
-  DB_VALUE default_expr, val, default_value;
+  DB_VALUE default_expr, val;
   DB_SEQ *att_props;
   OR_VARINFO *vars = NULL;
   int size;
@@ -1321,7 +1321,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   or_get_value (buf_p, attr_val_p, NULL,
 		vars[ORC_ATT_CURRENT_VALUE_INDEX].length, true);
 
-  /* original value - advance only*/
+  /* original value - advance only */
   or_advance (buf_p, vars[ORC_ATT_ORIGINAL_VALUE_INDEX].length);
 
   /* domain */
@@ -1333,15 +1333,15 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
       goto error;
     }
 
-  /* triggers - advance only*/
+  /* triggers - advance only */
   or_advance (buf_p, vars[ORC_ATT_TRIGGER_INDEX].length);
 
   /* properties */
-  or_get_value (buf_p, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), 
+  or_get_value (buf_p, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE),
 		vars[ORC_ATT_PROPERTIES_INDEX].length, true);
   att_props = DB_GET_SEQUENCE (&val);
   attr_val_p = &attrs[8].value;
-  if (att_props != NULL && 
+  if (att_props != NULL &&
       classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
       char *str_val;
@@ -1352,7 +1352,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
       if (str_val == NULL)
 	{
 	  pr_clear_value (&default_expr);
-	  pr_clear_value (&val); 
+	  pr_clear_value (&val);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
 		  strlen ("UNIX_TIMESTAMP") + 1);
@@ -1387,7 +1387,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
 	default:
 	  pr_clear_value (&default_expr);
-	  pr_clear_value (&val); 
+	  pr_clear_value (&val);
 	  assert (false);
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -1396,11 +1396,11 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  break;
 	}
 
-	  pr_clear_value (attr_val_p);/*clean old default value*/
+      pr_clear_value (attr_val_p);	/*clean old default value */
       DB_MAKE_STRING (attr_val_p, str_val);
-   }
+    }
   else
-    {      
+    {
       valcnv_convert_value_to_string (attr_val_p);
     }
   pr_clear_value (&val);

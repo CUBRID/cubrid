@@ -3558,7 +3558,7 @@ intl_is_bom_magic (const char *buf, const int size)
  *  return:
  */
 void
-intl_init_conv_iso8859_1_to_utf8 ()
+intl_init_conv_iso8859_1_to_utf8 (void)
 {
   unsigned int i;
 
@@ -3761,7 +3761,7 @@ intl_text_utf8_to_iso8859_1 (const char *in_buf, const int in_size,
  *
  */
 void
-intl_init_conv_iso8859_9_to_utf8 ()
+intl_init_conv_iso8859_9_to_utf8 (void)
 {
   unsigned int i;
 
@@ -3953,7 +3953,7 @@ intl_text_utf8_to_iso8859_9 (const char *in_buf, const int in_size,
        p_out = (unsigned char *) *out_buf;
        p_in < (const unsigned char *) in_buf + in_size;)
     {
-      int seq_no;
+      unsigned int seq_no;
       bool utf8_seq_found = false;
 
       if (*p_in < 0x80)
@@ -3962,7 +3962,7 @@ intl_text_utf8_to_iso8859_9 (const char *in_buf, const int in_size,
 	  continue;
 	}
 
-      if (p_in + UTF8_ISO8859_9_SIZE <= in_buf + in_size)
+      if (p_in + UTF8_ISO8859_9_SIZE <= (unsigned char *) in_buf + in_size)
 	{
 	  for (seq_no = 0; seq_no < DIM (utf8_to_iso8859_9_conv); seq_no++)
 	    {
@@ -4142,7 +4142,7 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 char *
 intl_get_money_symbol (const DB_CURRENCY currency)
 {
-  if (currency < 0 || currency >= (int) DIM (moneysymbols_utf8))
+  if (currency >= (int) DIM (moneysymbols_utf8))
     {
       return moneysymbols_utf8[DB_CURRENCY_NULL];
     }
@@ -4158,7 +4158,7 @@ intl_get_money_symbol (const DB_CURRENCY currency)
 char *
 intl_get_money_symbol_console (const DB_CURRENCY currency)
 {
-  if (currency < 0 || currency >= (int) DIM (moneysymbols_console))
+  if (currency >= (int) DIM (moneysymbols_console))
     {
       return moneysymbols_console[DB_CURRENCY_NULL];
     }
@@ -4174,7 +4174,7 @@ intl_get_money_symbol_console (const DB_CURRENCY currency)
 char *
 intl_get_money_symbol_grammar (const DB_CURRENCY currency)
 {
-  if (currency < 0 || currency >= (int) DIM (moneysymbols_grammar))
+  if (currency >= (int) DIM (moneysymbols_grammar))
     {
       return moneysymbols_grammar[DB_CURRENCY_NULL];
     }

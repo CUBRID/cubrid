@@ -5754,6 +5754,10 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	}
       result->need_clear = true;
       break;
+    default:
+      assert (false);
+      DB_MAKE_NULL (result);
+      break;
     }
 
   return NO_ERROR;

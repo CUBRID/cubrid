@@ -2270,7 +2270,8 @@ ldr_str_db_char (LDR_CONTEXT * context,
 
   precision = att->domain->precision;
 
-  intl_char_count ((char *) str, len, att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, len, att->domain->codeset,
+		   &char_count);
 
   if (char_count > precision)
     {
@@ -2283,7 +2284,7 @@ ldr_str_db_char (LDR_CONTEXT * context,
       const char *p;
       int truncate_size;
 
-      intl_char_size ((char *) str, precision, att->domain->codeset,
+      intl_char_size ((unsigned char *) str, precision, att->domain->codeset,
 		      &truncate_size);
 
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
@@ -2341,7 +2342,8 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
   int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((char *) str, len, att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, len, att->domain->codeset,
+		   &char_count);
 
   if (char_count > precision)
     {
@@ -2354,7 +2356,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
       const char *p;
       int truncate_size;
 
-      intl_char_size ((char *) str, precision, att->domain->codeset,
+      intl_char_size ((unsigned char *) str, precision, att->domain->codeset,
 		      &truncate_size);
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
@@ -3861,7 +3863,8 @@ ldr_monetary_elem (LDR_CONTEXT * context,
   int symbol_size = 0;
   DB_CURRENCY currency_type = DB_CURRENCY_NULL;
 
-  if (len >= 2 && intl_is_currency_symbol (p, &currency_type, &symbol_size,
+  if (len >= 2 && intl_is_currency_symbol ((const char *) p, &currency_type,
+					   &symbol_size,
 					   CURRENCY_CHECK_MODE_GRAMMAR))
     {
       token += symbol_size;

@@ -7943,7 +7943,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
       /* cannot update derived tables */
       pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
-      while (t_node = pt_get_next_assignment (&ea))
+      while ((t_node = pt_get_next_assignment (&ea)) != NULL)
 	{
 	  entity = pt_find_spec_in_from_list (parser, node, t_node);
 

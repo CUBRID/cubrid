@@ -261,14 +261,14 @@ extern "C"
   extern unsigned int intl_utf8_to_codepoint (const unsigned char *utf8,
 					      const int size,
 					      unsigned char **next_char);
-  extern void intl_init_conv_iso8859_9_to_utf8 ();
+  extern void intl_init_conv_iso8859_9_to_utf8 (void);
   extern int intl_text_iso8859_9_to_utf8 (const char *in_buf,
 					  const int in_size, char **out_buf,
 					  int *out_size);
   extern int intl_text_utf8_to_iso8859_9 (const char *in_buf,
 					  const int in_size, char **out_buf,
 					  int *out_size);
-  extern void intl_init_conv_iso8859_1_to_utf8 ();
+  extern void intl_init_conv_iso8859_1_to_utf8 (void);
   extern int intl_text_iso8859_1_to_utf8 (const char *in_buf,
 					  const int in_size,
 					  char **out_buf, int *out_size);

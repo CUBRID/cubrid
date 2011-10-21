@@ -115,6 +115,8 @@ static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser,
 						PARSER_VARCHAR * buf,
 						const PT_NODE * value);
 static bool pt_is_function_indexable_op (PT_OP_TYPE op);
+static bool pt_is_nested_expr (const PT_NODE * node);
+static bool pt_is_allowed_as_function_index (const PT_OP_TYPE op);
 
 static void pt_init_apply_f (void);
 static void pt_init_init_f (void);
@@ -15561,8 +15563,8 @@ exit_on_error:
  *   return:
  *   node (in): PT_EXPR
  */
-bool
-pt_is_nested_expr (PT_NODE * node)
+static bool
+pt_is_nested_expr (const PT_NODE * node)
 {
   PT_NODE *func, *arg;
   assert (node->node_type == PT_EXPR);
@@ -15611,7 +15613,7 @@ pt_is_nested_expr (PT_NODE * node)
  *   op (in): PT_OP_TYPE
  */
 static bool
-pt_is_allowed_as_function_index (PT_OP_TYPE op)
+pt_is_allowed_as_function_index (const PT_OP_TYPE op)
 {
   switch (op)
     {

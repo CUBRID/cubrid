@@ -5964,9 +5964,10 @@ static int update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 			     PT_NODE * statement, PT_NODE ** non_null_attrs,
 			     int has_uniques);
 static int check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
-				  PT_NODE ** not_nulls, PT_NODE * update);
+				  PT_NODE ** not_nulls,
+				  const PT_NODE * update);
 static int update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
-					   PT_NODE * statement);
+					   const PT_NODE * statement);
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser,
 					   PT_NODE * assignment);
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -7270,7 +7271,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
  */
 static int
 check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
-		       PT_NODE ** not_nulls, PT_NODE * update)
+		       PT_NODE ** not_nulls, const PT_NODE * update)
 {
   PT_NODE *lhs = NULL, *att = NULL, *pointer = NULL, *spec = NULL;
   PT_NODE *assignment = update->info.update.assignment;
@@ -7360,7 +7361,8 @@ check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
  * Note:
  */
 static int
-update_check_for_fk_cache_attr (PARSER_CONTEXT * parser, PT_NODE * statement)
+update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
+				const PT_NODE * statement)
 {
   PT_NODE *lhs = NULL, *att = NULL, *spec = NULL;
   PT_NODE *assignment = statement->info.update.assignment;

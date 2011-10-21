@@ -2466,7 +2466,7 @@ struct pt_set_session_variable_info
  * specified. Used in update statement */
 struct pt_check_option_info
 {
-  int spec_id;			/* id of spec for wich to check condition */
+  UINTPTR spec_id;		/* id of spec for wich to check condition */
   PT_NODE *expr;		/* condition to check */
 };
 

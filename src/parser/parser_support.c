@@ -3739,7 +3739,7 @@ regu_pred_init (PRED_EXPR * ptr)
  * Note: Memory allocation function for PRED_EXPR_WITH_CONTEXT.
  */
 PRED_EXPR_WITH_CONTEXT *
-regu_pred_with_context_alloc ()
+regu_pred_with_context_alloc (void)
 {
   PRED_EXPR_WITH_CONTEXT *ptr;
 

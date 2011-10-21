@@ -816,7 +816,7 @@ lang_digit_fractional_symbol (const INTL_LANG lang_id)
 unsigned int
 lang_unicode_lower_case_ex_cp (const unsigned int cp)
 {
-  int i;
+  unsigned int i;
   const unsigned int array_ex[][2] = {
     {0x49, 0x69},		/* I -> i */
     {0x130, 0x130}		/* capital I with dot -> unchanged */
@@ -845,7 +845,7 @@ lang_unicode_lower_case_ex_cp (const unsigned int cp)
 unsigned int
 lang_unicode_upper_case_ex_cp (const unsigned int cp)
 {
-  int i;
+  unsigned int i;
   const unsigned int array_ex[][2] = {
     {0x69, 0x49},		/* i -> I */
     {0x131, 0x131}		/* small dotless i -> unchanged */

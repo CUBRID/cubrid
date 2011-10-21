@@ -787,8 +787,6 @@ mht_compare_ptrs_are_equal (const void *key1, const void *key2)
 int
 mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
 {
-  int result;
-
   return ((key1 == key2)
 	  || (tp_value_compare ((DB_VALUE *) key1, (DB_VALUE *) key2, 0, 1) ==
 	      DB_EQ));

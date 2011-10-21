@@ -96,7 +96,7 @@ extern AGGREGATE_TYPE *regu_agg_alloc (void);
 extern AGGREGATE_TYPE *regu_agg_grbynum_alloc (void);
 extern ANALYTIC_TYPE *regu_analytic_alloc (void);
 extern XASL_NODE *regu_xasl_node_alloc (PROC_TYPE type);
-extern PRED_EXPR_WITH_CONTEXT *regu_pred_with_context_alloc ();
+extern PRED_EXPR_WITH_CONTEXT *regu_pred_with_context_alloc (void);
 extern FUNC_PRED *regu_func_pred_alloc (void);
 extern ACCESS_SPEC_TYPE *regu_spec_alloc (TARGET_TYPE type);
 extern void regu_analytic_init (ANALYTIC_TYPE * ptr);

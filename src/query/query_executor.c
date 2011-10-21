@@ -352,7 +352,7 @@ struct btree_unique_stats_update_info
 
 /* used for internal update execution */
 typedef struct update_class_info_internal UPDATE_CLASS_INFO_INTERNAL;
-typedef struct update_class_info_internal
+struct update_class_info_internal
 {
   int subclass_idx;		/* active subclass index */
   OID *oid;			/* instance oid of current class */

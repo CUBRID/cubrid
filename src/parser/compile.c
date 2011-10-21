@@ -957,6 +957,8 @@ pt_set_locks_for_parenthesized_entity_list (PARSER_CONTEXT * parser,
 	    }
 	}
       break;
+    default:
+      break;
     }
 
   return node;
