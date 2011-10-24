@@ -410,6 +410,7 @@ main (int argc, char *argv[])
       thr_index[i] = i;
       THREAD_BEGIN (service_thread, service_thr_f, thr_index + i);
       shm_appl->as_info[i].last_access_time = time (NULL);
+      shm_appl->as_info[i].transaction_start_time = (time_t) 0;
       if (i < shm_br->br_info[br_index].appl_server_min_num)
 	{
 	  shm_appl->as_info[i].service_flag = SERVICE_ON;

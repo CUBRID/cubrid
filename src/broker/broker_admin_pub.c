@@ -606,6 +606,7 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
     getsize (shm_appl->as_info[as_index].pid);
   shm_appl->as_info[as_index].psize_time = time (NULL);
   shm_appl->as_info[as_index].last_access_time = time (NULL);
+  shm_appl->as_info[as_index].transaction_start_time = (time_t) 0;
   shm_appl->as_info[as_index].clt_appl_name[0] = '\0';
   shm_appl->as_info[as_index].clt_req_path_info[0] = '\0';
   shm_appl->as_info[as_index].database_name[0] = '\0';
@@ -2135,6 +2136,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   for (i = 0; i < shm_appl->num_appl_server; i++)
     {
       shm_appl->as_info[i].last_access_time = time (NULL);
+      shm_appl->as_info[i].transaction_start_time = (time_t) 0;
       as_activate (&(shm_appl->as_info[i]),
 		   i + 1, br_info, env, env_num, shm_appl, shm_br);
     }
@@ -2142,6 +2144,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
     {
       shm_appl->as_info[i].service_flag = SERVICE_OFF;
       shm_appl->as_info[i].last_access_time = time (NULL);
+      shm_appl->as_info[i].transaction_start_time = (time_t) 0;
       shm_appl->as_info[i].mutex_flag[SHM_MUTEX_BROKER] = FALSE;
       shm_appl->as_info[i].mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
       shm_appl->as_info[i].mutex_turn = SHM_MUTEX_BROKER;
@@ -2331,7 +2334,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   as_info->cur_slow_log_mode = shm_appl->slow_log_mode;
 
   memset (&shm_appl->as_info[as_index].cas_clt_ip[0], 0x0,
-          sizeof (shm_appl->as_info[as_index].cas_clt_ip));
+	  sizeof (shm_appl->as_info[as_index].cas_clt_ip));
   shm_appl->as_info[as_index].cas_clt_port = 0;
 
 #if defined(WINDOWS)
@@ -2408,6 +2411,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 
   as_info->pid = pid;
   as_info->last_access_time = time (NULL);
+  as_info->transaction_start_time = (time_t) 0;
   as_info->psize_time = time (NULL);
   as_info->psize = getsize (as_info->pid);
   as_info->uts_status = UTS_STATUS_IDLE;

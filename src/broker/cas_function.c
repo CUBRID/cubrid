@@ -224,6 +224,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if (as_info->cur_keep_con != KEEP_CON_OFF)
     {
       as_info->con_status = CON_STATUS_OUT_TRAN;
+      as_info->transaction_start_time = (time_t) 0;
       if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name, shm_as_index);

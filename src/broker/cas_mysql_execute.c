@@ -471,7 +471,10 @@ ux_end_tran (int tran_type, bool reset_con_status)
     {
       unset_xa_prepare_flag ();
       if (reset_con_status)
-	as_info->con_status = CON_STATUS_OUT_TRAN;
+	{
+	  as_info->con_status = CON_STATUS_OUT_TRAN;
+	  as_info->transaction_start_time = (time_t) 0;
+	}
     }
   else
     {

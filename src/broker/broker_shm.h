@@ -148,7 +148,7 @@
 #define ACL_MAX_DBNAME_LENGTH	32
 #define ACL_MAX_DBUSER_LENGTH	32
 
-#define MAX_QUERY_TIMEOUT_LIMIT         86400   /* seconds; 1 day */
+#define MAX_QUERY_TIMEOUT_LIMIT         86400	/* seconds; 1 day */
 
 #if defined (WINDOWS)
 #define MAKE_ACL_SEM_NAME(BUF, BROKER_NAME)  \
@@ -215,6 +215,7 @@ struct t_appl_server_info
   char close_flag;
 #endif
   time_t last_access_time;	/* last access time */
+  time_t transaction_start_time;
 #ifdef UNIXWARE711
   int clt_sock_fd;
 #endif

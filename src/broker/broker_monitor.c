@@ -534,7 +534,7 @@ static int
 appl_monitor (char *br_vector)
 {
   struct tm cur_tm;
-  time_t last_access_time, last_connect_time;
+  time_t last_access_time, last_connect_time, tran_start_time;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
   int i, j, k, appl_offset;
@@ -948,6 +948,26 @@ appl_monitor (char *br_vector)
 		      col_len +=
 			sprintf (line_buf + col_len, "%15.15s ",
 				 sql_log_mode_string);
+
+		      tran_start_time =
+			shm_appl->as_info[j].transaction_start_time;
+		      if (tran_start_time != (time_t) 0)
+			{
+			  localtime_r (&tran_start_time, &cur_tm);
+			  cur_tm.tm_year += 1900;
+
+			  col_len +=
+			    sprintf (line_buf + col_len,
+				     "%02d/%02d/%02d %02d:%02d:%02d ",
+				     cur_tm.tm_year, cur_tm.tm_mon + 1,
+				     cur_tm.tm_mday, cur_tm.tm_hour,
+				     cur_tm.tm_min, cur_tm.tm_sec);
+			}
+		      else
+			{
+			  col_len +=
+			    sprintf (line_buf + col_len, "%19c", '-');
+			}
 		    }
 
 		  if (col_len >= max_col_len)
@@ -1376,6 +1396,7 @@ print_header (bool use_pdh_flag)
       col_len += sprintf (buf + col_len, "%19s ", "LAST CONNECT TIME");
       col_len += sprintf (buf + col_len, "%15s ", "CLIENT IP");
       col_len += sprintf (buf + col_len, "%15s ", "SQL_LOG_MODE");
+      col_len += sprintf (buf + col_len, "%19s ", "TRANSACTION STIME");
     }
 
   for (i = 0; i < col_len; i++)

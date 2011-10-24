@@ -405,6 +405,7 @@ main (int argc, char *argv[])
 
   as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
+  as_info->transaction_start_time = time (0);
   as_info->cur_keep_con = KEEP_CON_OFF;
   errors_in_transaction = 0;
 #if !defined(WINDOWS)
@@ -437,6 +438,7 @@ main (int argc, char *argv[])
 	as_info->uts_status = UTS_STATUS_BUSY;
 #endif /* WINDOWS */
 	as_info->con_status = CON_STATUS_IN_TRAN;
+	as_info->transaction_start_time = time (0);
 	errors_in_transaction = 0;
 
 	client_ip_addr = 0;
@@ -824,6 +826,7 @@ main (int argc, char *argv[])
 	memset (as_info->cas_clt_ip, 0x0, sizeof (as_info->cas_clt_ip));
 	as_info->cas_clt_port = 0;
 
+	as_info->transaction_start_time = (time_t) 0;
 	cas_log_write_and_end (0, true, "disconnect");
 	cas_log_write2 (sql_log2_get_filename ());
 	cas_log_write_and_end (0, false, "STATE idle");
@@ -1014,6 +1017,7 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 	  && (as_info->con_status == CON_STATUS_OUT_TRAN))
 	{
 	  as_info->con_status = CON_STATUS_IN_TRAN;
+	  as_info->transaction_start_time = time (0);
 	  errors_in_transaction = 0;
 	}
     }
@@ -1429,6 +1433,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
       if (as_info->con_status != CON_STATUS_IN_TRAN)
 	{
 	  as_info->con_status = CON_STATUS_IN_TRAN;
+	  as_info->transaction_start_time = time (0);
 	  errors_in_transaction = 0;
 	}
     }
