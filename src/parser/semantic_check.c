@@ -6852,6 +6852,13 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* make sure we don't mix up index types */
       cons_count = 0;
+
+      pt_check_function_index_expr (parser, node);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+
       if (node->info.index.prefix_length)
 	{
 	  cons_count++;
@@ -6868,12 +6875,6 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_CREATE_INDEX);
-	  return;
-	}
-
-      pt_check_function_index_expr (parser, node);
-      if (pt_has_error (parser))
-	{
 	  return;
 	}
 

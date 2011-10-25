@@ -15561,7 +15561,7 @@ exit_on_error:
  *				argument that is not a PT_VALUE or 
  *				PT_NAME node
  *   return:
- *   node (in): PT_EXPR
+ *   node(in): PT_EXPR
  */
 static bool
 pt_is_nested_expr (const PT_NODE * node)
@@ -15610,7 +15610,7 @@ pt_is_nested_expr (const PT_NODE * node)
  *					  is allowed in the structure of a
  *					  function index
  *   return:
- *   op (in): PT_OP_TYPE
+ *   op(in): PT_OP_TYPE
  */
 static bool
 pt_is_allowed_as_function_index (const PT_OP_TYPE op)
@@ -15714,7 +15714,7 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
  *				    is a simple one, with at least one 
  *				    attribute name as an argument
  *   return:
- *   expr (in): PT_EXPR
+ *   expr(in): PT_EXPR
  */
 bool
 pt_is_function_index_expr (PT_NODE * expr)
@@ -15737,8 +15737,8 @@ pt_is_function_index_expr (PT_NODE * expr)
  *   pt_expr_to_sort_spec () : creates a list of PT_SORT_SPEC nodes from
  *			       the arguments of a given expression.
  *   return: PT_NODE representing a list of PT_SORT_SPEC nodes
- *   expr (in): PT_EXPR
- *   parser (in):
+ *   expr(in): PT_EXPR
+ *   parser(in):
  */
 PT_NODE *
 pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
@@ -15821,8 +15821,8 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
  *                        arguments from only one class
  *   return: true if more than one classes are involved in the expression, 
  *	     false otherwise
- *   expr (in): PT_EXPR
- *   spec_id (out): the spec id of the PT_SPEC used (if false is returned)
+ *   expr(in): PT_EXPR
+ *   spec_id(out): the spec id of the PT_SPEC used (if false is returned)
  */
 bool
 pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id)
@@ -15900,4 +15900,42 @@ pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id)
 	}
     }
   return false;
+}
+
+/*
+ *   pt_sort_spec_list_to_name_node_list () : creates a list of name nodes
+ *					      from sort spec nodes list
+ *   return: name list if sort spec nodes contain only name nodes,
+ *	     NULL otherwise
+ *   expr(in): sort spec list
+ *   parser(in):
+ */
+PT_NODE *
+pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser,
+				     PT_NODE * sort_spec_list)
+{
+  PT_NODE *name_list = NULL;
+  PT_NODE *node = NULL, *name_node = NULL;
+
+  for (node = sort_spec_list; node; node = node->next)
+    {
+      if (!PT_IS_SORT_SPEC_NODE (node) ||
+	  node->info.sort_spec.expr->node_type != PT_NAME)
+	{
+	  return NULL;
+	}
+    }
+
+  for (node = sort_spec_list; node; node = node->next)
+    {
+      name_node = parser_copy_tree (parser, node->info.sort_spec.expr);
+      if (node->info.sort_spec.asc_or_desc == PT_DESC)
+	{
+	  PT_NAME_INFO_SET_FLAG (name_node, PT_NAME_INFO_DESC);
+	}
+
+      name_list = parser_append_node (name_node, name_list);
+    }
+
+  return name_list;
 }

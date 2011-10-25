@@ -67,11 +67,11 @@ struct sm_constraint_info
   char **att_names;
   int *asc_desc;
   int *prefix_length;
-  SM_PREDICATE *filter_predicate;
+  SM_PREDICATE_INFO *filter_predicate;
   char *ref_cls_name;
   char **ref_attrs;
   char *fk_cache_attr;
-  SM_FUNCTION_INDEX_INFO *func_index_info;
+  SM_FUNCTION_INFO *func_index_info;
   SM_FOREIGN_KEY_ACTION fk_delete_action;
   SM_FOREIGN_KEY_ACTION fk_update_action;
   DB_CONSTRAINT_TYPE constraint_type;
@@ -97,16 +97,15 @@ extern int sm_delete_class (const char *name);
 extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 			 const char *constraint_name, const char **attnames,
 			 const int *asc_desc, const int *attrs_prefix_length,
-			 char *pred_string,
-			 char *pred_stream, int pred_steram_size,
-			 SM_FUNCTION_INDEX_INFO * fi_info);
+			 SM_PREDICATE_INFO * pred_info,
+			 SM_FUNCTION_INFO * fi_info);
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE constraint_type,
 					 const char **att_names,
 					 const int *asc_desc,
 					 const char *given_name,
-					 SM_FUNCTION_INDEX_INFO * fi_info);
+					 SM_FUNCTION_INFO * fi_info);
 extern char *sm_produce_constraint_name_mop (MOP classop,
 					     DB_CONSTRAINT_TYPE
 					     constraint_type,
@@ -127,9 +126,8 @@ extern int sm_add_constraint (MOP classop,
 			      const int *asc_desc,
 			      const int *attrs_prefix_length,
 			      int class_attributes,
-			      char *pred_string,
-			      char *pred_stream, int pred_stream_size,
-			      SM_FUNCTION_INDEX_INFO * fi_info);
+			      SM_PREDICATE_INFO * predicate_info,
+			      SM_FUNCTION_INFO * fi_info);
 extern int sm_drop_constraint (MOP classop,
 			       DB_CONSTRAINT_TYPE constraint_type,
 			       const char *constraint_name,

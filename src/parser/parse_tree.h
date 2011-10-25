@@ -473,6 +473,9 @@
 #define PT_NODE_DATA_TYPE(n) \
 	( (n) ? (n)->data_type : NULL )
 
+#define PT_IS_SORT_SPEC_NODE(n) \
+        ( (n) ? ((n)->node_type == PT_SORT_SPEC) : false )
+
 #if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements

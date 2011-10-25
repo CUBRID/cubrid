@@ -89,7 +89,10 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_,
 					   SM_ATTRIBUTE ** atts,
 					   const int *asc_desc,
 					   SM_FOREIGN_KEY_INFO * fk_info,
-					   char *shared_cons_name);
+					   char *shared_cons_name,
+					   SM_PREDICATE_INFO *
+					   filter_index,
+					   SM_FUNCTION_INFO * function_index);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_,
 					      const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
@@ -1591,6 +1594,8 @@ smt_drop_constraint_from_property (SM_TEMPLATE * template_,
  *   asc_desc(in): asc/desc info list
  *   fk_info(in):
  *   shared_cons_name(in):
+ *   filter_index(in):
+ *   function_index(in)
  */
 
 static int
@@ -1600,7 +1605,9 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
 				SM_ATTRIBUTE ** atts,
 				const int *asc_desc,
 				SM_FOREIGN_KEY_INFO * fk_info,
-				char *shared_cons_name)
+				char *shared_cons_name,
+				SM_PREDICATE_INFO * filter_index,
+				SM_FUNCTION_INFO * function_index)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val;
@@ -1621,7 +1628,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
     {
       if (classobj_put_index
 	  (&(template_->properties), type, constraint_name, atts, asc_desc,
-	   NULL, NULL, NULL, 0, fk_info, shared_cons_name, NULL) == ER_FAILED)
+	   NULL, filter_index, fk_info,
+	   shared_cons_name, function_index) == ER_FAILED)
 	{
 	  error = er_errid ();
 	}
@@ -2032,7 +2040,9 @@ smt_add_constraint (SM_TEMPLATE * template_,
 		    DB_CONSTRAINT_TYPE constraint_type,
 		    const char *constraint_name, const char **att_names,
 		    const int *asc_desc, int class_attribute,
-		    SM_FOREIGN_KEY_INFO * fk_info)
+		    SM_FOREIGN_KEY_INFO * fk_info,
+		    SM_PREDICATE_INFO * filter_index,
+		    SM_FUNCTION_INFO * function_index)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE **atts = NULL;
@@ -2170,7 +2180,9 @@ smt_add_constraint (SM_TEMPLATE * template_,
 						  (constraint),
 						  constraint_name, atts,
 						  asc_desc, NULL,
-						  shared_cons_name);
+						  shared_cons_name,
+						  filter_index,
+						  function_index);
 
 	  if (error == NO_ERROR && constraint == SM_ATTFLAG_PRIMARY_KEY)
 	    {
@@ -2206,7 +2218,8 @@ smt_add_constraint (SM_TEMPLATE * template_,
 					    SM_CONSTRAINT_FOREIGN_KEY,
 					    constraint_name, atts,
 					    asc_desc, fk_info,
-					    shared_cons_name);
+					    shared_cons_name,
+					    filter_index, function_index);
 	}
     }
   else if (constraint == SM_ATTFLAG_NON_NULL)

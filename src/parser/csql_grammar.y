@@ -6747,16 +6747,57 @@ unique_constraint
 			$$ = node;
 
 		DBG_PRINT}}
-	| UNIQUE opt_of_index_key opt_identifier '(' index_column_identifier_list ')'
+	| UNIQUE opt_of_index_key opt_identifier index_column_name_list opt_where_clause
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_CONSTRAINT);
+			PT_NODE *node = NULL;
+			PT_NODE *sort_spec_cols = $4, *name_cols = NULL;
 
-			if (node)
+			if ($5 == NULL)
 			  {
-			    node->info.constraint.type = PT_CONSTRAIN_UNIQUE;
-			    node->info.constraint.name = $3;
-			    node->info.constraint.un.unique.attrs = $5;
+			    name_cols = pt_sort_spec_list_to_name_node_list (this_parser, sort_spec_cols);
+			  }
+
+			if (name_cols)
+			  {
+			    /* create constraint node */
+			    node = parser_new_node (this_parser, PT_CONSTRAINT);
+			    if (node)
+			      {
+				node->info.constraint.type = PT_CONSTRAIN_UNIQUE;
+				node->info.constraint.name = $3;
+				node->info.constraint.un.unique.attrs = name_cols;
+			      }
+			    parser_free_tree (this_parser, sort_spec_cols);
+			  }
+			else
+			  {
+			    /* create index node */
+			    
+			    if (parser_count_list (sort_spec_cols) == 1
+				&& (sort_spec_cols->info.sort_spec.expr->node_type == PT_FUNCTION))
+			      {
+				/* unique index with prefix length not allowed */
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			      }
+			    else
+			      {
+				node = parser_new_node (this_parser, PT_CREATE_INDEX);
+				if (node)
+				  {
+				    node->info.index.index_name = $3;
+				    if (node->info.index.index_name)
+				      {
+					node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+				      }
+
+				    node->info.index.indexed_class = NULL;
+				    node->info.index.where = $5;
+				    node->info.index.column_names = sort_spec_cols;
+				    node->info.index.unique = 1;
+				  }
+			      }
 			  }
 
 			$$ = node;
@@ -7432,28 +7473,46 @@ attr_constraint_def
 			PT_NODE *name = $1;
 			PT_NODE *constraint = $2;
 
-			/* If both the constraint name and the index name are
-			   given we ignore the constraint name because that is
-			   what MySQL does for UNIQUE constraints. */
-			if (constraint->info.constraint.name == NULL)
+			if (constraint->node_type == PT_CONSTRAINT)
 			  {
-			    constraint->info.constraint.name = name;
+			    /* If both the constraint name and the index name are
+			       given we ignore the constraint name because that is
+			       what MySQL does for UNIQUE constraints. */
+			    if (constraint->info.constraint.name == NULL)
+			      {
+				constraint->info.constraint.name = name;
+			      }
+			    if (TO_NUMBER (CONTAINER_AT_0 ($3)))
+			      {
+				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($3));
+			      }
+			    if (TO_NUMBER (CONTAINER_AT_2 ($3)))
+			      {
+				constraint->info.constraint.initially_deferred =
+				  (short)TO_NUMBER (CONTAINER_AT_3 ($3));
+			      }
 			  }
-
-			if (TO_NUMBER (CONTAINER_AT_0 ($3)))
+			else
 			  {
-			    constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($3));
-			  }
-
-			if (TO_NUMBER (CONTAINER_AT_2 ($3)))
-			  {
-			    constraint->info.constraint.initially_deferred =
-			      (short)TO_NUMBER (CONTAINER_AT_3 ($3));
+			    /* UNIQUE - constraint->node_type = PT_CREATE_INDEX */ 
+			    if (TO_NUMBER (CONTAINER_AT_0 ($3)) || TO_NUMBER (CONTAINER_AT_2 ($3)))
+			      {
+				PT_ERRORm (this_parser, constraint, MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);	
+			      }
+			    else 
+			      {
+				if (constraint->info.index.index_name == NULL)
+				  {
+				    constraint->info.index.index_name = name;
+				  }					    
+			      }
 			  }
 
 			$$ = constraint;
 
 		DBG_PRINT}}
+	;
 
 attr_index_def
 	: index_or_key
@@ -7481,26 +7540,14 @@ attr_index_def
 			    if ((arg_list->next == NULL) 
 				&& (arg_list->node_type == PT_VALUE))
 			      {
-				if (node->info.index.reverse 
-				    || node->info.index.unique)
+				PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+				if (p)
 				  {
-				    PT_ERRORm (this_parser, node, 
-					       MSGCAT_SET_PARSER_SYNTAX,
-					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				    p->info.name.original = expr->info.function.generic_name;
 				  }
-				else
-				  {	
-				    PT_NODE *p = parser_new_node (this_parser, 
-								  PT_NAME);
-				    if (p)
-				    {
-				      p->info.name.original = 
-					     expr->info.function.generic_name;
-				    }
-				    node->info.index.prefix_length = 
-						 expr->info.function.arg_list;
-				    col->info.sort_spec.expr = p;
-				  }
+				node->info.index.prefix_length =
+				  expr->info.function.arg_list;
+				col->info.sort_spec.expr = p;
 			      }
 			    else
 			      {

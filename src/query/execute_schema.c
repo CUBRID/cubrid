@@ -309,11 +309,11 @@ static int save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
 static int do_run_update_query_for_class (char *query, MOP class_mop,
 					  bool suppress_replication,
 					  int *row_count);
-static SM_FUNCTION_INDEX_INFO *pt_node_to_function_index (PARSER_CONTEXT *
-							  parser,
-							  PT_NODE * spec,
-							  PT_NODE * expr,
-							  DO_INDEX do_index);
+static SM_FUNCTION_INFO *pt_node_to_function_index (PARSER_CONTEXT *
+						    parser,
+						    PT_NODE * spec,
+						    PT_NODE * expr,
+						    DO_INDEX do_index);
 static int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 					  SM_CONSTRAINT_INFO * constr,
 					  PT_NODE * alter);
@@ -1498,12 +1498,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    sm_add_index (objs->op, db_constraint_type (cons),
 				  cons->name, (const char **) namep, asc_desc,
 				  cons->attrs_prefix_length,
-				  SM_GET_FILTER_PRED_STRING
-				  (cons->filter_predicate),
-				  SM_GET_FILTER_PRED_STREAM
-				  (cons->filter_predicate),
-				  SM_GET_FILTER_PRED_STREAM_SIZE
-				  (cons->filter_predicate),
+				  cons->filter_predicate,
 				  cons->func_index_info);
 		  if (error != NO_ERROR)
 		    {
@@ -2862,10 +2857,9 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
   bool free_packing_buff = false;
   PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
   int stream_size = 0;
-  char *pred_string = NULL;
-  char *pred_stream = NULL;
-  int pred_stream_size = 0;
-  SM_FUNCTION_INDEX_INFO *func_index_info = NULL;
+  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0 },
+    *p_pred_index_info = NULL;
+  SM_FUNCTION_INFO *func_index_info = NULL;
 
   nnames = pt_length_of_list (column_names);
 
@@ -2953,7 +2947,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
       if (func_index_info == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (SM_FUNCTION_INDEX_INFO));
+		  1, sizeof (SM_FUNCTION_INFO));
 	  error = ER_FAILED;
 	  goto end;
 	}
@@ -2983,8 +2977,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 					    (PT_NODE *) where_predicate);
 	      if (filter_expr)
 		{
-		  pred_string = (char *) filter_expr->bytes;
-		  if (strlen (pred_string) >
+		  pred_index_info.pred_string = (char *) filter_expr->bytes;
+		  if (strlen (pred_index_info.pred_string) >
 		      MAX_FILTER_PREDICATE_STRING_LENGTH)
 		    {
 		      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
@@ -3001,8 +2995,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 	      if (filter_predicate)
 		{
 		  error = xts_map_filter_pred_to_stream (filter_predicate,
-							 &pred_stream,
-							 &pred_stream_size);
+							 &(pred_index_info.
+							   pred_stream),
+							 &(pred_index_info.
+							   pred_stream_size));
 		  if (error != NO_ERROR)
 		    {
 		      PT_ERRORm ((PARSER_CONTEXT *) parser, where_predicate,
@@ -3010,6 +3006,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 				 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		      goto end;
 		    }
+		  p_pred_index_info = &pred_index_info;
 		}
 	      else
 		{
@@ -3022,8 +3019,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 	    sm_add_constraint (obj, ctype, cname,
 			       (const char **) attnames, asc_desc,
 			       attrs_prefix_length, false,
-			       pred_string, pred_stream, pred_stream_size,
-			       func_index_info);
+			       p_pred_index_info, func_index_info);
 	}
       else
 	{
@@ -3049,9 +3045,9 @@ end:
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (pred_stream)
+  if (pred_index_info.pred_stream)
     {
-      free_and_init (pred_stream);
+      free_and_init (pred_index_info.pred_stream);
     }
 
   if (free_packing_buff)
@@ -3253,13 +3249,12 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   SM_ATTRIBUTE **attp;
   int attnames_allocated = 0;
   const char *index_name = NULL;
-  char *pred_string = NULL;
   bool free_pred_string = false;
-  char *pred_stream = NULL;
-  int pred_stream_size = 0;
   bool free_packing_buff = false;
   PT_NODE *where_predicate = NULL;
-  SM_FUNCTION_INDEX_INFO *func_index_info = NULL;
+  SM_FUNCTION_INFO *func_index_info = NULL;
+  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0 },
+    *p_pred_index_info = NULL;
   bool free_funtion_expr_str = false;
   const char *class_name = NULL;
 
@@ -3437,8 +3432,9 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  if (idx->filter_predicate->pred_string)
 	    {
 	      int pred_str_len = strlen (idx->filter_predicate->pred_string);
-	      pred_string = strdup (idx->filter_predicate->pred_string);
-	      if (pred_string == NULL)
+	      pred_index_info.pred_string =
+		strdup (idx->filter_predicate->pred_string);
+	      if (pred_index_info.pred_string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -3452,10 +3448,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 	  if (idx->filter_predicate->pred_stream)
 	    {
-	      pred_stream =
+	      pred_index_info.pred_stream =
 		(char *) malloc (idx->filter_predicate->
 				 pred_stream_size * sizeof (char));
-	      if (pred_stream == NULL)
+	      if (pred_index_info.pred_stream == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -3464,21 +3460,24 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  error = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error_exit;
 		}
-	      memcpy (pred_stream, idx->filter_predicate->pred_stream,
+	      memcpy (pred_index_info.pred_stream,
+		      idx->filter_predicate->pred_stream,
 		      idx->filter_predicate->pred_stream_size);
-	      pred_stream_size = idx->filter_predicate->pred_stream_size;
+	      pred_index_info.pred_stream_size =
+		idx->filter_predicate->pred_stream_size;
+	      p_pred_index_info = &pred_index_info;
 	    }
 	}
 
       if (idx->func_index_info)
 	{
-	  func_index_info = (SM_FUNCTION_INDEX_INFO *)
-	    db_ws_alloc (sizeof (SM_FUNCTION_INDEX_INFO));
+	  func_index_info = (SM_FUNCTION_INFO *)
+	    db_ws_alloc (sizeof (SM_FUNCTION_INFO));
 	  if (func_index_info == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sizeof (SM_FUNCTION_INDEX_INFO));
+		      sizeof (SM_FUNCTION_INFO));
 	      goto error_exit;
 	    }
 	  func_index_info->type = idx->func_index_info->type;
@@ -3487,7 +3486,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sizeof (SM_FUNCTION_INDEX_INFO));
+		      sizeof (SM_FUNCTION_INFO));
 	      goto error_exit;
 	    }
 	  free_funtion_expr_str = true;
@@ -3498,7 +3497,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sizeof (SM_FUNCTION_INDEX_INFO));
+		      sizeof (SM_FUNCTION_INFO));
 	      goto error_exit;
 	    }
 	  memcpy (func_index_info->expr_stream,
@@ -3554,8 +3553,9 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 					(PT_NODE *) where_predicate);
 	  if (filter_expr)
 	    {
-	      pred_string = filter_expr->bytes;
-	      if (strlen (pred_string) > MAX_FILTER_PREDICATE_STRING_LENGTH)
+	      pred_index_info.pred_string = filter_expr->bytes;
+	      if (strlen (pred_index_info.pred_string) >
+		  MAX_FILTER_PREDICATE_STRING_LENGTH)
 		{
 		  error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
 		  goto error_exit;
@@ -3570,8 +3570,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  if (filter_predicate)
 	    {
 	      error = xts_map_filter_pred_to_stream (filter_predicate,
-						     &pred_stream,
-						     &pred_stream_size);
+						     &(pred_index_info.
+						       pred_stream),
+						     &(pred_index_info.
+						       pred_stream_size));
 	      if (error != NO_ERROR)
 		{
 		  goto error_exit;
@@ -3582,6 +3584,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      error = er_errid ();
 	      goto error_exit;
 	    }
+	  p_pred_index_info = &pred_index_info;
 	}
 
       if (statement->info.index.function_expr)
@@ -3598,7 +3601,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
-		      1, sizeof (SM_FUNCTION_INDEX_INFO));
+		      1, sizeof (SM_FUNCTION_INFO));
 	      goto error_exit;
 	    }
 	  func_index_info->col_id = statement->info.index.func_pos;
@@ -3676,8 +3679,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  error = sm_add_constraint (obj, ctype, cname,
 				     (const char **) attnames,
 				     asc_desc, attrs_prefix_length,
-				     false, pred_string, pred_stream,
-				     pred_stream_size, func_index_info);
+				     false, p_pred_index_info,
+				     func_index_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -3700,14 +3703,14 @@ end:
       db_ws_free (func_index_info);
     }
 
-  if (pred_stream != NULL)
+  if (pred_index_info.pred_stream != NULL)
     {
-      free_and_init (pred_stream);
+      free_and_init (pred_index_info.pred_stream);
     }
 
   if (free_pred_string)
     {
-      free_and_init (pred_string);
+      free_and_init (pred_index_info.pred_string);
     }
 
   if (free_packing_buff)
@@ -3747,6 +3750,10 @@ error_exit:
       cls = NULL;
       free_cls = false;
     }
+
+  error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ?
+    ER_FAILED : error;
+
   goto end;
 }
 
@@ -10023,7 +10030,8 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		    smt_add_constraint (ctemplate, constraint_type,
 					constraint_name,
 					(const char **) att_names,
-					asc_desc, class_attributes, NULL);
+					asc_desc, class_attributes, NULL,
+					NULL, NULL);
 
 		  sm_free_constraint_name (constraint_name);
 		  free_and_init (asc_desc);
@@ -10095,7 +10103,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 					      constraint_name,
 					      (const char **) att_names,
 					      asc_desc, class_attributes,
-					      NULL);
+					      NULL, NULL, NULL);
 
 		  sm_free_constraint_name (constraint_name);
 		  free_and_init (asc_desc);
@@ -11259,6 +11267,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       if (pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  error = er_errid ();
 	  goto error_exit;
 	}
       create_index->next = save_next;
@@ -11357,10 +11366,7 @@ do_copy_indexes (MOP classmop, SM_CLASS * src_class)
       error =
 	sm_add_index (classmop, constraint_type, new_cons_name, att_names,
 		      c->asc_desc, c->attrs_prefix_length,
-		      SM_GET_FILTER_PRED_STRING (c->filter_predicate),
-		      SM_GET_FILTER_PRED_STREAM (c->filter_predicate),
-		      SM_GET_FILTER_PRED_STREAM_SIZE (c->filter_predicate),
-		      c->func_index_info);
+		      c->filter_predicate, c->func_index_info);
 
       free_and_init (att_names);
 
@@ -11728,25 +11734,34 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 
 	      if (!is_srv_update_needed)
 		{
-		  error = sm_drop_index (class_mop, saved_constr->name);
+		  const char *att_names[2];
+		  PT_NODE *att_old_name =
+		    alter->info.alter.alter_clause.attr_mthd.attr_old_name;
+		  assert (att_old_name->node_type == PT_NAME);
+		  att_names[0] = att_old_name->info.name.original;
+		  att_names[1] = NULL;
+
+		  assert (alter->info.alter.alter_clause.attr_mthd.
+			  attr_old_name->node_type == PT_NAME);
+		  error = sm_drop_constraint (class_mop,
+					      saved_constr->constraint_type,
+					      saved_constr->name, att_names,
+					      false, false);
+
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
 		    }
 
-		  error =
-		    sm_add_index (class_mop, saved_constr->constraint_type,
-				  saved_constr->name,
-				  (const char **) saved_constr->att_names,
-				  saved_constr->asc_desc,
-				  saved_constr->prefix_length,
-				  SM_GET_FILTER_PRED_STRING (saved_constr->
-							     filter_predicate),
-				  SM_GET_FILTER_PRED_STREAM (saved_constr->
-							     filter_predicate),
-				  SM_GET_FILTER_PRED_STREAM_SIZE
-				  (saved_constr->filter_predicate),
-				  saved_constr->func_index_info);
+		  error = sm_add_constraint (class_mop,
+					     saved_constr->constraint_type,
+					     saved_constr->name,
+					     saved_constr->att_names,
+					     saved_constr->asc_desc,
+					     saved_constr->prefix_length,
+					     false,
+					     saved_constr->filter_predicate,
+					     saved_constr->func_index_info);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
@@ -14455,12 +14470,7 @@ do_recreate_att_constraints (MOP class_mop,
 				     (const char **) constr->att_names,
 				     constr->asc_desc, constr->prefix_length,
 				     0,
-				     SM_GET_FILTER_PRED_STRING
-				     (constr->filter_predicate),
-				     SM_GET_FILTER_PRED_STREAM
-				     (constr->filter_predicate),
-				     SM_GET_FILTER_PRED_STREAM_SIZE
-				     (constr->filter_predicate),
+				     constr->filter_predicate,
 				     constr->func_index_info);
 
 	  if (error != NO_ERROR)
@@ -14474,13 +14484,7 @@ do_recreate_att_constraints (MOP class_mop,
 	    sm_add_index (class_mop, constr->constraint_type, constr->name,
 			  (const char **) constr->att_names, constr->asc_desc,
 			  constr->prefix_length,
-			  SM_GET_FILTER_PRED_STRING (constr->
-						     filter_predicate),
-			  SM_GET_FILTER_PRED_STREAM (constr->
-						     filter_predicate),
-			  SM_GET_FILTER_PRED_STREAM_SIZE (constr->
-							  filter_predicate),
-			  constr->func_index_info);
+			  constr->filter_predicate, constr->func_index_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -15089,19 +15093,19 @@ end:
  * parser(in): parser context
  * spec(in): class spec
  * expr(in): expression used with function index
- * return: pointer to SM_FUNCTION_INDEX_INFO structure, containing the 
+ * return: pointer to SM_FUNCTION_INFO structure, containing the 
  *	function index information
  */
-static SM_FUNCTION_INDEX_INFO *
+static SM_FUNCTION_INFO *
 pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
 			   PT_NODE * expr, DO_INDEX do_index)
 {
   int nr_const = 0, nr_attrs = 0, i = 0, k = 0;
-  SM_FUNCTION_INDEX_INFO *func_index_info;
+  SM_FUNCTION_INFO *func_index_info;
   FUNC_PRED *func_pred;
   assert (pt_is_function_index_expr (expr));
-  func_index_info = (SM_FUNCTION_INDEX_INFO *)
-    db_ws_alloc (sizeof (SM_FUNCTION_INDEX_INFO));
+  func_index_info = (SM_FUNCTION_INFO *)
+    db_ws_alloc (sizeof (SM_FUNCTION_INFO));
 
   if (func_index_info == NULL)
     {

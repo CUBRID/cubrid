@@ -1814,7 +1814,7 @@ db_add_constraint (MOP classmop,
     {
       retval = sm_add_constraint (classmop, constraint_type, name,
 				  att_names, NULL, NULL, class_attributes,
-				  NULL, NULL, 0, NULL);
+				  NULL, NULL);
     }
 
   sm_free_constraint_name (name);
@@ -1954,8 +1954,7 @@ db_add_filter_and_function_index_to_catalog_classes (int *added)
       return error_code;
     }
 
-  error_code =
-    smt_add_attribute (def, "function_expr", "varchar(255)", NULL);
+  error_code = smt_add_attribute (def, "function_expr", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

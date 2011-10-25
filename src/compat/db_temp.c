@@ -414,7 +414,8 @@ dbt_add_constraint (DB_CTMPL * def,
       else
 	{
 	  error = smt_add_constraint (def, constraint_type, name,
-				      attnames, NULL, class_attributes, NULL);
+				      attnames, NULL, class_attributes, NULL,
+				      NULL, NULL);
 	}
     }
 
@@ -531,7 +532,7 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
   else
     {
       error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name,
-				  attnames, NULL, 0, &fk_info);
+				  attnames, NULL, 0, &fk_info, NULL, NULL);
     }
 
   if (name)

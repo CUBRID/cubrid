@@ -136,9 +136,6 @@
 	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? "FOREIGN KEY": \
 	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? "REVERSE_UNIQUE": \
 	 					"REVERSE_INDEX")
-#define SM_GET_FILTER_PRED_STRING(filter) \
-	((filter) == NULL ? NULL : (filter)->pred_string)
-
 #define SM_GET_FILTER_PRED_STREAM(filter) \
 	((filter) == NULL ? NULL : (filter)->pred_stream)
 
@@ -614,17 +611,18 @@ struct sm_foreign_key_info
   bool is_dropped;
 };
 
-typedef struct sm_predicate SM_PREDICATE;
-struct sm_predicate
+typedef struct sm_predicate_info SM_PREDICATE_INFO;
+
+struct sm_predicate_info
 {
   char *pred_string;
   char *pred_stream;		/* CREATE INDEX ... WHERE filter_predicate */
   int pred_stream_size;
 };
 
-typedef struct sm_function_index_info SM_FUNCTION_INDEX_INFO;
+typedef struct sm_function_info SM_FUNCTION_INFO;
 
-struct sm_function_index_info
+struct sm_function_info
 {
   DB_TYPE type;			/* the domain of the function's result */
   char *expr_str;
@@ -644,12 +642,12 @@ struct sm_class_constraint
   SM_ATTRIBUTE **attributes;
   int *asc_desc;		/* asc/desc info list */
   int *attrs_prefix_length;
-  SM_PREDICATE *filter_predicate;	/* CREATE INDEX ... WHERE filter_predicate */
+  SM_PREDICATE_INFO *filter_predicate;	/* CREATE INDEX ... WHERE filter_predicate */
   SM_FOREIGN_KEY_INFO *fk_info;
   char *shared_cons_name;
   BTID index;
   SM_CONSTRAINT_TYPE type;
-  SM_FUNCTION_INDEX_INFO *func_index_info;
+  SM_FUNCTION_INFO *func_index_info;
 };
 
 /*
@@ -1042,12 +1040,10 @@ extern int classobj_put_index (DB_SEQ ** properties,
 			       SM_ATTRIBUTE ** atts,
 			       const int *asc_desc,
 			       const BTID * id,
-			       char *pred_string,
-			       char *pred_stream,
-			       int pred_stream_size,
+			       SM_PREDICATE_INFO * filter_index_info,
 			       SM_FOREIGN_KEY_INFO * fk_info,
 			       char *shared_cons_name,
-			       SM_FUNCTION_INDEX_INFO * func_index_info);
+			       SM_FUNCTION_INFO * func_index_info);
 extern int classobj_put_index_id (DB_SEQ ** properties,
 				  SM_CONSTRAINT_TYPE type,
 				  const char *constraint_name,
@@ -1055,12 +1051,10 @@ extern int classobj_put_index_id (DB_SEQ ** properties,
 				  const int *asc_desc,
 				  const int *attrs_prefix_length,
 				  const BTID * id,
-				  char *pred_string,
-				  char *pred_stream,
-				  int pred_stream_size,
+				  SM_PREDICATE_INFO * filter_index_info,
 				  SM_FOREIGN_KEY_INFO * fk_info,
 				  char *shared_cons_name,
-				  SM_FUNCTION_INDEX_INFO * func_index_info);
+				  SM_FUNCTION_INFO * func_index_info);
 extern int classobj_find_prop_constraint (DB_SEQ * properties,
 					  const char *prop_name,
 					  const char *cnstr_name,
@@ -1086,7 +1080,7 @@ extern void classobj_free_class_constraints (SM_CLASS_CONSTRAINT *
 					     constraints);
 extern void classobj_decache_class_constraints (SM_CLASS * class_);
 extern int classobj_cache_class_constraints (SM_CLASS * class_);
-extern void classobj_free_function_index_ref (SM_FUNCTION_INDEX_INFO *
+extern void classobj_free_function_index_ref (SM_FUNCTION_INFO *
 					      func_index_info);
 
 extern SM_CLASS_CONSTRAINT
@@ -1271,6 +1265,5 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 				       const char *constraint_name,
 				       const char **att_names,
 				       const int *asc_desc,
-				       SM_FUNCTION_INDEX_INFO *
-				       func_index_info);
+				       SM_FUNCTION_INFO * func_index_info);
 #endif /* _CLASS_OBJECT_H_ */
