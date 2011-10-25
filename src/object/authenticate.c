@@ -676,6 +676,7 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
   DB_VALUE value;
 
   *obj = NULL;
+
   error = set_get_element (set, index, &value);
   if (error == NO_ERROR)
     {
@@ -695,7 +696,8 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 
@@ -723,14 +725,18 @@ au_make_class_cache (int depth)
     {
       size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned int));
       new_class_cache = (AU_CLASS_CACHE *) malloc (size);
-      if (new_class_cache != NULL)
+      if (new_class_cache == NULL)
 	{
-	  new_class_cache->next = NULL;
-	  new_class_cache->class_ = NULL;
-	  for (i = 0; i < depth; i++)
-	    {
-	      new_class_cache->data[i] = AU_CACHE_INVALID;
-	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  return NULL;
+	}
+
+      new_class_cache->next = NULL;
+      new_class_cache->class_ = NULL;
+      for (i = 0; i < depth; i++)
+	{
+	  new_class_cache->data[i] = AU_CACHE_INVALID;
 	}
     }
 
@@ -5592,8 +5598,11 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 	     AU_FETCHMODE fetchmode)
 {
   int error = NO_ERROR;
-  MOP classmop;
-  SM_CLASS *class_;
+  MOP classmop = NULL;
+  SM_CLASS *class_ = NULL;
+
+  *return_mop = NULL;
+  *return_class = NULL;
 
   if (op == NULL)
     {
@@ -5695,6 +5704,11 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 	      WS_SET_DELETED (op);
 	    }
 	}
+      else if (error == NO_ERROR)
+	{
+	  /* return NO_ERROR only if class_ is not null. */
+	  error = ER_FAILED;
+	}
     }
   else
     {
@@ -5702,14 +5716,14 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
       *return_class = class_;
     }
 
-  return (error);
+  return error;
 }
 
 /*
  * au_fetch_class - This is the primary function for accessing a class
  *   return: error code
  *   op(in): class or instance
- *   class_ptr(in): returned pointer to class structure
+ *   class_ptr(out): returned pointer to class structure
  *   fetchmode(in): type of fetch/lock to obtain
  *   type(in): authorization type to check
  *
@@ -5722,45 +5736,46 @@ au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode,
   SM_CLASS *class_;
   MOP classmop;
 
+  if (class_ptr != NULL)
+    {
+      *class_ptr = NULL;
+    }
+
   if (Au_user == NULL && !Au_disable)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
+    }
+
+  if (fetchmode != AU_FETCH_READ	/* not just reading */
+      || op->deleted		/* marked deleted */
+      || op->object == NULL	/* never been fetched */
+      || op->class_mop != sm_Root_class_mop	/* not a class */
+      || op->lock < IS_LOCK)	/* don't have the lowest level lock */
+    {
+      /* go through the usual fetch process */
+      error = fetch_class (op, &classmop, &class_, fetchmode);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
   else
     {
-      if (fetchmode != AU_FETCH_READ	/* not just reading */
-	  || op->deleted	/* marked deleted */
-	  || op->object == NULL	/* never been fetched */
-	  || op->class_mop != sm_Root_class_mop	/* not a class */
-	  || op->lock < IS_LOCK)	/* don't have the lowest level lock */
+      /* looks like a basic read fetch, check authorization only */
+      classmop = op;
+      class_ = (SM_CLASS *) op->object;
+    }
+
+  if (Au_disable || !(error = check_authorization (classmop, class_, type)))
+    {
+      if (class_ptr != NULL)
 	{
-	  /* go through the usual fetch process */
-	  if (!(error = fetch_class (op, &classmop, &class_, fetchmode)))
-	    {
-	      if (Au_disable
-		  || !(error = check_authorization (classmop, class_, type)))
-		{
-		  if (class_ptr != NULL)
-		    {
-		      *class_ptr = class_;
-		    }
-		}
-	    }
-	}
-      else
-	{
-	  /* looks like a basic read fetch, check authorization only */
-	  class_ = (SM_CLASS *) op->object;
-	  if (Au_disable || !(error = check_authorization (op, class_, type)))
-	    {
-	      if (class_ptr != NULL)
-		{
-		  *class_ptr = class_;
-		}
-	    }
+	  *class_ptr = class_;
 	}
     }
+
   return error;
 }
 
@@ -5817,7 +5832,7 @@ au_check_authorization (MOP op, DB_AUTH auth)
   error = au_fetch_class (op, &class_, AU_FETCH_READ, auth);
   Au_disable = save;
 
-  return (error);
+  return error;
 }
 
 
@@ -5840,6 +5855,11 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
   int pin;
   int save;
 
+  if (obj_ptr != NULL)
+    {
+      *obj_ptr = NULL;
+    }
+
   if (op == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -5851,7 +5871,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
     {
       error = ER_OBJ_INVALID_TEMP_OBJECT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return (error);
+      return error;
     }
 
   /* DO NOT PUT ANY RETURNS FROM HERE UNTIL THE AU_ENABLE */
@@ -5888,6 +5908,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
 	  break;
 	}
     }
+
   (void) ws_pin (op, pin);
 
   if (obj == NULL)
@@ -5903,6 +5924,11 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
 	{
 	  WS_SET_DELETED (op);
 	}
+      else if (error == NO_ERROR)
+	{
+	  /* return NO_ERROR only if obj is not null. */
+	  error = ER_FAILED;
+	}
     }
   else if (obj_ptr != NULL)
     {
@@ -5911,7 +5937,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
 
   AU_ENABLE (save);
 
-  return (error);
+  return error;
 }
 
 /*
@@ -5948,8 +5974,11 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
     }
-  else if ((error = fetch_class (op, &classmop, &class_, AU_FETCH_READ)))
+
+  error = fetch_class (op, &classmop, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
     {
       /*
        * the class was deleted, make sure the instance MOP also gets
@@ -5960,14 +5989,15 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
 	{
 	  WS_SET_DELETED (op);
 	}
+      return error;
     }
-  else if (Au_disable
-	   || !(error = check_authorization (classmop, class_, type)))
+
+  if (Au_disable || !(error = check_authorization (classmop, class_, type)))
     {
       error = fetch_instance (op, obj_ptr, mode);
     }
 
-  return (error);
+  return error;
 }
 
 /*
