@@ -16624,17 +16624,15 @@ char_string
 			char *invalid_pos = NULL;
 			char *str = $1;
 
-			if (intl_check_string (str, str_size, &invalid_pos) == 0)
-			  {
-			    node = parser_new_node (this_parser, PT_VALUE);
-			  }
-			else
+			if (intl_check_string (str, str_size, &invalid_pos) != 0)
 			  {
 			    PT_ERRORmf (this_parser, NULL,
 					MSGCAT_SET_ERROR,
 					-(ER_INVALID_CHAR),
 					(invalid_pos != NULL) ? invalid_pos - str : 0);			
 			  }
+
+			node = parser_new_node (this_parser, PT_VALUE);
 			  
 			if (node)
 			  {

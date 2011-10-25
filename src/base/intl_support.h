@@ -100,6 +100,7 @@
   }
 
 extern bool intl_Mbs_support;
+extern bool intl_String_validation;
 
 typedef enum intl_lang INTL_LANG;
 enum intl_lang

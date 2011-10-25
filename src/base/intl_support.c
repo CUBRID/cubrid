@@ -117,6 +117,7 @@ static CONV_8BIT_TO_UTF8 iso8859_1_to_utf8_conv[256];
 /* identifiers : support for multibyte chars in INTL_CODESET_ISO88591 codeset
  * (default legacy codeset) */
 bool intl_Mbs_support = true;
+bool intl_String_validation = false;
 
 /* ASCII/ISO 8859-1 string manipulations */
 static int intl_tolower_iso8859 (unsigned char *s, int length);
@@ -3129,6 +3130,7 @@ intl_utf8_to_codepoint (const unsigned char *utf8, const int size,
 			     | ((utf8[1] & 0x3f) << 12)
 			     | ((utf8[2] & 0x3f) << 6) | (utf8[3] & 0x3f));
     }
+#if INTL_UTF8_MAX_CHAR_SIZE > 4
   else if (size >= 5 && utf8[0] >= 0xf8 && utf8[0] < 0xfc)
     {
       *next_char = (unsigned char *) utf8 + 5;
@@ -3146,6 +3148,7 @@ intl_utf8_to_codepoint (const unsigned char *utf8, const int size,
 			     | ((utf8[3] & 0x3f) << 12)
 			     | ((utf8[4] & 0x3f) << 6) | (utf8[5] & 0x3f));
     }
+#endif
 
   *next_char = (unsigned char *) utf8 + 1;
   return 0xffffffff;
@@ -3512,8 +3515,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 int
 intl_check_string (const char *buf, int size, char **pos)
 {
-  /* only check when intl_Mbs_support is disabled */
-  if (!intl_Mbs_support)
+  if (!intl_String_validation)
     {
       return 0;
     }

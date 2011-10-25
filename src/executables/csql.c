@@ -435,7 +435,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* Start interactive conversation or single line execution */
-  if (csql_Is_interactive)
+  if (csql_Is_interactive && lang_charset () == INTL_CODESET_UTF8)
     {
 #if defined(WINDOWS)
       UINT cp;
@@ -457,6 +457,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  assert (csql_text_utf8_to_console == NULL);
 	  assert (csql_text_console_to_utf8 == NULL);
+	  intl_String_validation = true;
 	}
 #else
       if (setlocale (LC_CTYPE, "") != NULL)
@@ -483,6 +484,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      assert (csql_text_utf8_to_console == NULL);
 	      assert (csql_text_console_to_utf8 == NULL);
+	      intl_String_validation = true;
 	    }
 	}
 #endif

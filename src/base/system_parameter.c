@@ -2551,6 +2551,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 #endif
 
   intl_Mbs_support = PRM_INTL_MBS_SUPPORT;
+  intl_String_validation = intl_Mbs_support;
 
   return NO_ERROR;
 }
