@@ -628,6 +628,8 @@ begin
 	sParam      = "Environment";
 	pParam      = &sParam;
 	pResult     = &lResult;
+
+	SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, pParam, SMTO_ABORTIFHUNG, 100, pResult);
 end;  
 
 function makeconf(conffile)
