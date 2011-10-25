@@ -6153,14 +6153,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  break;
 		}
 
-	      if (!LSA_EQ (&final, &final_log_hdr.eof_lsa))
-		{
-		  /* skip record data and copy final lsa to eof_lsa */
-		  LSA_COPY (&final, &final_log_hdr.eof_lsa);
-		  LSA_COPY (&la_Info.final_lsa, &final_log_hdr.chkpt_lsa);
-		}
-	      else if (LSA_GT (&la_Info.final_lsa,
-			       &la_Info.last_committed_lsa))
+	      /* skip record data and copy final lsa to eof_lsa */
+	      LSA_COPY (&final, &final_log_hdr.eof_lsa);
+	      LSA_COPY (&la_Info.final_lsa, &final_log_hdr.chkpt_lsa);
+
+	      if (LSA_GT (&la_Info.final_lsa, &la_Info.last_committed_lsa))
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"lowest required page id is %lld",
