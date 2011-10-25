@@ -5157,17 +5157,24 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		  /* check if the range spec is valid */
 		  cmp = qo_compare_dbvalue_with_optype (r_lv, r_lop,
 							r_uv, r_uop);
-		  if (cmp == CompResultError)
-		    {
-		      ;		/* somthine wrong; do nothing */
-		    }
-		  else if (cmp == CompResultGreaterAdj ||
-			   cmp == CompResultGreater)
+		  if (cmp == CompResultGreaterAdj || cmp == CompResultGreater)
 		    {
 		      /* the range is invalid, that is, lower bound is greater
 		       * than upper bound */
-		      node->info.expr.arg2 = NULL;
+		      if (range->or_next == NULL)
+			{
+			  node->info.expr.arg2 = NULL;
+			}
+		      else
+			{
+			  node->info.expr.arg2 = range->or_next;
+			  range->or_next = NULL;
+			}
 		      parser_free_tree (parser, range);
+		    }
+		  else if (cmp == CompResultError)
+		    {
+		      ;		/* something wrong; do nothing */
 		    }
 		}
 	    }
