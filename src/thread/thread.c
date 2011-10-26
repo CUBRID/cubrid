@@ -438,11 +438,9 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_ATTR_SETSCOPE;
     }
 
-/* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
-#if !defined(sun) && !defined(SOLARIS)
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   r = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
+  if (ts_size != (size_t) PRM_THREAD_STACKSIZE)
     {
       r = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
       if (r != 0)
@@ -451,11 +449,8 @@ thread_start_workers (void)
 			       ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
-
-      pthread_attr_getstacksize (&thread_attr, &ts_size);
     }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
-#endif /* not sun && not SOLARIS */
 #endif /* WINDOWS */
 
   /* start worker thread */

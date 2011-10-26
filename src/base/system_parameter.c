@@ -355,8 +355,8 @@ static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
 static int prm_css_max_clients_upper = 1024;
 
-int PRM_THREAD_STACKSIZE = (100 * 1024);
-static int prm_thread_stacksize_default = (100 * 1024);
+int PRM_THREAD_STACKSIZE = (1024 * 1024);
+static int prm_thread_stacksize_default = (1024 * 1024);
 static int prm_thread_stacksize_lower = 64 * 1024;
 
 const char *PRM_CFG_DB_HOSTS = "";

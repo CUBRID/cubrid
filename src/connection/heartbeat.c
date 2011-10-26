@@ -621,11 +621,9 @@ hb_create_master_reader (void)
       return ER_CSS_PTHREAD_ATTR_SETSCOPE;
     }
 
-  /* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
-#if !defined(sun) && !defined(SOLARIS)
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
+  if (ts_size != (size_t) PRM_THREAD_STACKSIZE)
     {
       rv = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
       if (rv != 0)
@@ -634,12 +632,8 @@ hb_create_master_reader (void)
 			       ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
-
-      pthread_attr_getstacksize (&thread_attr, &ts_size);
     }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
-#endif /* not sun && not SOLARIS */
-
 
   rv =
     pthread_create (&master_reader_th, &thread_attr, hb_thread_master_reader,
