@@ -151,7 +151,7 @@ extern int PRM_LK_ESCALATION_AT;
 extern int PRM_LK_TIMEOUT_SECS;
 
 #define PRM_NAME_LK_RUN_DEADLOCK_INTERVAL "deadlock_detection_interval_in_secs"
-extern int PRM_LK_RUN_DEADLOCK_INTERVAL;
+extern float PRM_LK_RUN_DEADLOCK_INTERVAL;
 
 #define PRM_NAME_LOG_NBUFFERS "log_buffer_pages"
 extern int PRM_LOG_NBUFFERS;

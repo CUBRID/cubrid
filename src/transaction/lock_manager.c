@@ -416,7 +416,7 @@ struct lk_global_data
 
   /* deadlock detection related fields */
   pthread_mutex_t DL_detection_mutex;
-  time_t last_deadlock_run;	/* last deadlock detetion time */
+  struct timeval last_deadlock_run;	/* last deadlock detetion time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
   unsigned char *scanid_bitmap;
@@ -1031,7 +1031,7 @@ lock_initialize_deadlock_detection (void)
   int i;
 
   pthread_mutex_init (&lk_Gl.DL_detection_mutex, NULL);
-  lk_Gl.last_deadlock_run = time (NULL);
+  gettimeofday (&lk_Gl.last_deadlock_run, NULL);
 
   /* allocate transaction WFG node table */
   lk_Gl.TWFG_node =
@@ -9620,9 +9620,15 @@ lock_check_local_deadlock_detection (void)
 #if !defined (SERVER_MODE)
   return false;
 #else /* !SERVER_MODE */
+  struct timeval now, elapsed;
+  double elapsed_sec;
+
   /* check deadlock detection interval */
-  if (difftime (time (NULL), lk_Gl.last_deadlock_run)
-      < PRM_LK_RUN_DEADLOCK_INTERVAL)
+  gettimeofday (&now, NULL);
+  DIFF_TIMEVAL (lk_Gl.last_deadlock_run, now, elapsed);
+  /* add 0.01 for the processing time by deadlock detection */
+  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000) + 0.01;
+  if (elapsed_sec <= PRM_LK_RUN_DEADLOCK_INTERVAL)
     {
       return false;
     }
@@ -10061,7 +10067,7 @@ final:
     }
 
   /* save the last deadlock run time */
-  lk_Gl.last_deadlock_run = time (NULL);
+  gettimeofday (&lk_Gl.last_deadlock_run, NULL);
 
   return;
 #endif /* !SERVER_MODE */

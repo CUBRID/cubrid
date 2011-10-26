@@ -2354,6 +2354,12 @@ thread_deadlock_detect_thread (void *arg_p)
   /* during server is active */
   while (!tsd_ptr->shutdown)
     {
+      thread_sleep (0, 100000);
+      if (!lock_check_local_deadlock_detection ())
+	{
+	  continue;
+	}
+
       er_clear ();
 
       /* check if the lock-wait thread exists */
@@ -2389,11 +2395,10 @@ thread_deadlock_detect_thread (void *arg_p)
 	  thread_p = thread_find_next_lockwait_entry (&thrd_index);
 	}
 
-      if (lockwait_count >= 2 && lock_check_local_deadlock_detection ())
+      if (lockwait_count >= 2)
 	{
 	  (void) lock_detect_local_deadlock (tsd_ptr);
 	}
-      thread_sleep (0, 500000);
     }
 
   er_clear ();

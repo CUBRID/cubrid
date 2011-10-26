@@ -278,9 +278,9 @@ int PRM_LK_TIMEOUT_SECS = -1;
 static int prm_lk_timeout_secs_default = -1;	/* Infinite */
 static int prm_lk_timeout_secs_lower = -1;
 
-int PRM_LK_RUN_DEADLOCK_INTERVAL = 1;
-static int prm_lk_run_deadlock_interval_default = 1;
-static int prm_lk_run_deadlock_interval_lower = 1;
+float PRM_LK_RUN_DEADLOCK_INTERVAL = 1.0f;
+static float prm_lk_run_deadlock_interval_default = 1.0f;
+static float prm_lk_run_deadlock_interval_lower = 0.1f;
 
 int PRM_LOG_NBUFFERS = 128;
 static int prm_log_nbuffers_default = 128;
@@ -979,7 +979,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) &prm_lk_timeout_secs_lower,
    (char *) NULL},
   {PRM_NAME_LK_RUN_DEADLOCK_INTERVAL,
-   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+   (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER |
     PRM_USER_CHANGE),
    (void *) &prm_lk_run_deadlock_interval_default,
    (void *) &PRM_LK_RUN_DEADLOCK_INTERVAL,
