@@ -235,10 +235,37 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
 	}
       else
 	{
-	  attr_names[i] = uncontrol_strdup (temp);
-	  if (attr_names[i] == NULL)
+	  bool is_console_conv = false;
+
+	  /* console encoded attribute name */
+	  if (csql_text_utf8_to_console != NULL)
 	    {
-	      goto error;
+	      char *attr_name_console_encoded = NULL;
+	      int attr_name_console_length = -1;
+
+	      /* try to convert attribute name from utf-8 to console */
+	      if ((*csql_text_utf8_to_console) (temp,
+						strlen (temp),
+						&attr_name_console_encoded,
+						&attr_name_console_length)
+		  == NO_ERROR)
+		{
+		  if (attr_name_console_encoded != NULL)
+		    {
+		      free_and_init (attr_names[i]);
+		      attr_names[i] = attr_name_console_encoded;
+		      is_console_conv = true;
+		    }
+		}
+	    }
+
+	  if (!is_console_conv)
+	    {
+	      attr_names[i] = uncontrol_strdup (temp);
+	      if (attr_names[i] == NULL)
+		{
+		  goto error;
+		}
 	    }
 	}
       attr_name_lengths[i] = strlen (attr_names[i]);
@@ -705,43 +732,9 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	{
 	  for (n = i = 0; i < num_attrs; i++)
 	    {
-	      /* console encoded attribute name and lengths */
-	      char *attr_name_console_encoded = NULL;
-	      int attr_name_console_length = -1;
-	      int attr_real_len, attr_padded_len, attr_actual_len;
-
-	      /* try to convert attribute name from utf-8 to console */
-	      if (csql_text_utf8_to_console == NULL
-		  || (*csql_text_utf8_to_console) (attr_names[i],
-						   strlen (attr_names[i]),
-						   &attr_name_console_encoded,
-						   &attr_name_console_length)
-		      != NO_ERROR
-		  || attr_name_console_encoded == NULL)
-		{
-		  /* if conversion fails or is not needed, use utf-8 attribute name */
-		  attr_name_console_encoded = attr_names[i];
-		}
-
-	      /* print attribute name */
-	      fprintf (fp, "  %*s", (int) (attr_lengths[i]),
-		       attr_name_console_encoded);
-
-	      /* calculate attribute name actual length */
-	      attr_real_len = strlen (attr_name_console_encoded);
-	      attr_padded_len =
-		(attr_lengths[i] > 0 ? attr_lengths[i] : -attr_lengths[i]);
-	      attr_actual_len = MAX (attr_real_len, attr_padded_len);
-
-	      /* if memory was allocated by csql_text_utf8_to_console, free it */
-	      if (attr_name_console_encoded != attr_names[i])
-		{
-		  free (attr_name_console_encoded);
-		  attr_name_console_encoded = NULL;
-		}
-
-	      /* count header size */
-	      n += 2 + attr_actual_len;
+	      fprintf (pf, "  %*s", (int) (attr_lengths[i]), attr_names[i]);
+	      n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] :
+			-attr_lengths[i]);
 	    }
 	  putc ('\n', pf);
 	  for (; n > 0; n--)

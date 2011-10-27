@@ -435,46 +435,23 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* Start interactive conversation or single line execution */
-  if (csql_Is_interactive && lang_charset () == INTL_CODESET_UTF8)
+  if (csql_Is_interactive)
     {
-#if defined(WINDOWS)
-      UINT cp;
+      csql_Tty_fp = csql_Error_fp;
 
-      cp = GetConsoleCP ();
-      if (cp == 28599)		/* ISO 8859-9 (Turkish / Latin 5) */
+      if (lang_charset () == INTL_CODESET_UTF8)
 	{
-	  intl_init_conv_iso8859_9_to_utf8 ();
-	  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
-	  csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
-	}
-      else if (cp == 28591)	/* ISO 8859-1 Latin 1; Western European */
-	{
-	  intl_init_conv_iso8859_1_to_utf8 ();
-	  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
-	  csql_text_console_to_utf8 = intl_text_iso8859_1_to_utf8;
-	}
-      else
-	{
-	  assert (csql_text_utf8_to_console == NULL);
-	  assert (csql_text_console_to_utf8 == NULL);
-	  intl_String_validation = true;
-	}
-#else
-      if (setlocale (LC_CTYPE, "") != NULL)
-	{
-	  if (strcmp (nl_langinfo (CODESET), "iso88599") == 0 ||
-	      strcmp (nl_langinfo (CODESET), "ISO_8859-9") == 0 ||
-	      strcmp (nl_langinfo (CODESET), "ISO8859-9") == 0 ||
-	      strcmp (nl_langinfo (CODESET), "ISO-8859-9") == 0)
+#if defined(WINDOWS)
+	  UINT cp;
+
+	  cp = GetConsoleCP ();
+	  if (cp == 28599)	/* ISO 8859-9 (Turkish / Latin 5) */
 	    {
 	      intl_init_conv_iso8859_9_to_utf8 ();
 	      csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
 	      csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
 	    }
-	  else if (strcmp (nl_langinfo (CODESET), "iso88591") == 0 ||
-		   strcmp (nl_langinfo (CODESET), "ISO_8859-1") == 0 ||
-		   strcmp (nl_langinfo (CODESET), "ISO8859-1") == 0 ||
-		   strcmp (nl_langinfo (CODESET), "ISO-8859-1") == 0)
+	  else if (cp == 28591)	/* ISO 8859-1 Latin 1; Western European */
 	    {
 	      intl_init_conv_iso8859_1_to_utf8 ();
 	      csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
@@ -486,9 +463,36 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      assert (csql_text_console_to_utf8 == NULL);
 	      intl_String_validation = true;
 	    }
-	}
+#else
+	  if (setlocale (LC_CTYPE, "") != NULL)
+	    {
+	      if (strcmp (nl_langinfo (CODESET), "iso88599") == 0 ||
+		  strcmp (nl_langinfo (CODESET), "ISO_8859-9") == 0 ||
+		  strcmp (nl_langinfo (CODESET), "ISO8859-9") == 0 ||
+		  strcmp (nl_langinfo (CODESET), "ISO-8859-9") == 0)
+		{
+		  intl_init_conv_iso8859_9_to_utf8 ();
+		  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
+		  csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
+		}
+	      else if (strcmp (nl_langinfo (CODESET), "iso88591") == 0 ||
+		       strcmp (nl_langinfo (CODESET), "ISO_8859-1") == 0 ||
+		       strcmp (nl_langinfo (CODESET), "ISO8859-1") == 0 ||
+		       strcmp (nl_langinfo (CODESET), "ISO-8859-1") == 0)
+		{
+		  intl_init_conv_iso8859_1_to_utf8 ();
+		  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
+		  csql_text_console_to_utf8 = intl_text_iso8859_1_to_utf8;
+		}
+	      else
+		{
+		  assert (csql_text_utf8_to_console == NULL);
+		  assert (csql_text_console_to_utf8 == NULL);
+		  intl_String_validation = true;
+		}
+	    }
 #endif
-      csql_Tty_fp = csql_Error_fp;
+	}
     }
 
   /* display product title */
