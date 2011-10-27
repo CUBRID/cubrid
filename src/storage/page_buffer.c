@@ -2058,6 +2058,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   int i, victim_cand_count, check_count, total_flushed_count;
   int lru_idx, start_lru_idx;
   int error;
+  int num_tries;
 #if defined(SERVER_MODE)
   int rv;
   static THREAD_ENTRY *page_flush_thread = NULL;
@@ -2079,7 +2080,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
   victim_cand_list = pgbuf_Pool.victim_cand_list;
 
-  total_flushed_count = 0;
   lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1)
 	     % pgbuf_Pool.num_LRU_list);
   start_lru_idx = lru_idx;
@@ -2126,37 +2126,51 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   qsort ((void *) victim_cand_list, victim_cand_count,
 	 sizeof (PGBUF_VICTIM_CANDIDATE_LIST), pgbuf_compare_victim_list);
 
-  /* for each victim candidate, do flush task */
-  for (i = 0; i < victim_cand_count; i++)
+  num_tries = 1;
+  total_flushed_count = 0;
+  while (total_flushed_count == 0 && victim_cand_count > 0)
     {
-      bufptr = victim_cand_list[i].bufptr;
-
-      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
-      /* flush condition check */
-      if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid)
-	  || bufptr->dirty == false
-	  || bufptr->zone != PGBUF_LRU_2_ZONE
-	  || bufptr->latch_mode != PGBUF_NO_LATCH
-	  || !(LSA_EQ (&bufptr->oldest_unflush_lsa,
-		       &victim_cand_list[i].recLSA))
-	  || LOG_NEED_WAL (&(bufptr->iopage_buffer->iopage.prv.lsa))
-	  || bufptr->avoid_victim == true)
+      /* for each victim candidate, do flush task */
+      for (i = 0; i < victim_cand_count; i++)
 	{
+	  bufptr = victim_cand_list[i].bufptr;
+
+	  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+	  /* flush condition check */
+	  if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid)
+	      || bufptr->dirty == false
+	      || bufptr->zone != PGBUF_LRU_2_ZONE
+	      || bufptr->latch_mode != PGBUF_NO_LATCH
+	      || !(LSA_EQ (&bufptr->oldest_unflush_lsa,
+			   &victim_cand_list[i].recLSA))
+	      || bufptr->avoid_victim == true)
+	    {
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      continue;
+	    }
+
+	  /* In the first try, we will flush pages which do not need WAL. */
+	  if (num_tries == 1
+	      && LOG_NEED_WAL (&(bufptr->iopage_buffer->iopage.prv.lsa)))
+	    {
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      continue;
+	    }
+
+	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
-	  continue;
+
+	  if (error != NO_ERROR)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
+	      return ER_FAILED;
+	    }
+
+	  total_flushed_count++;
 	}
 
-      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
-
-      if (error != NO_ERROR)
-	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		  ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
-	  return ER_FAILED;
-	}
-
-      total_flushed_count++;
+      num_tries++;
     }
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: "

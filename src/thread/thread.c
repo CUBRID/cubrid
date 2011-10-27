@@ -2716,11 +2716,6 @@ thread_page_flush_thread (void *arg_p)
       er_clear ();
 
       wakeup_interval = PRM_PAGE_BG_FLUSH_INTERVAL_MSEC;
-      if (wakeup_interval < 0)
-	{
-	  thread_sleep (1, 0);
-	  continue;
-	}
 
       if (wakeup_interval > 0)
 	{
