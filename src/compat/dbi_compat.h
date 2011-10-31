@@ -1847,6 +1847,13 @@ enum LOCKHINT
     /* other lock hint, having value of 2, 4, 8 ..., may be added here */
 };
 
+/* session state id */
+typedef unsigned int SESSION_ID;
+/* uninitialized value for session id */
+#define DB_EMPTY_SESSION 0
+/* uninitialized value for row count */
+#define DB_ROW_COUNT_NOT_SET -2
+
 
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
