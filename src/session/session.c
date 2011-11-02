@@ -319,6 +319,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 int
 session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
 {
+  static bool overflow = false;
   SESSION_STATE *session_p = NULL;
   SESSION_ID *session_key = NULL;
 
@@ -362,10 +363,24 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
     {
       /* we really should do something else here */
       sessions.last_sesson_id = 0;
+      overflow = true;
     }
 
-  sessions.last_sesson_id++;
-  *session_id = sessions.last_sesson_id;
+  if (overflow)
+    {
+      do
+	{
+	  sessions.last_sesson_id++;
+	  *session_id = sessions.last_sesson_id;
+	}
+      while (mht_get (sessions.sessions_table, session_id) != NULL);
+    }
+  else
+    {
+      sessions.last_sesson_id++;
+      *session_id = sessions.last_sesson_id;
+    }
+
   session_p->session_id = *session_id;
   *session_key = *session_id;
 
@@ -572,12 +587,6 @@ session_remove_expired_sessions (struct timeval *timeout)
   err =
     mht_map (sessions.sessions_table, session_check_timeout, &timeout_info);
 
-  if (mht_count (sessions.sessions_table) == 0)
-    {
-      /* reset session counter if session states table is empty */
-      sessions.last_sesson_id = 0;
-    }
-
   csect_exit (CSECT_SESSION_STATE);
 
   if (timeout_info.session_ids != NULL)
@@ -602,6 +611,7 @@ session_check_timeout (const void *key, void *data, void *args)
   int err = NO_ERROR, i = 0;
   SESSION_STATE *session_p = (SESSION_STATE *) data;
   SESSION_TIMEOUT_INFO *timeout_info = (SESSION_TIMEOUT_INFO *) args;
+
   if (timeout_info->timeout->tv_sec - session_p->session_timeout.tv_sec
       >= PRM_SESSION_STATE_TIMEOUT)
     {
@@ -630,6 +640,11 @@ session_check_timeout (const void *key, void *data, void *args)
 		}
 	      return err;
 	    }
+	}
+
+      if (timeout_info->session_ids != NULL)
+	{
+	  free_and_init (timeout_info->session_ids);
 	}
 #endif
       /* remove this session: timeout expired and it doesn't have an active

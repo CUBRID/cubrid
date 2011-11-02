@@ -2449,7 +2449,7 @@ thread_session_control_thread (void *arg_p)
       er_clear ();
 
       gettimeofday (&timeout, NULL);
-      to.tv_sec = timeout.tv_sec + 300;
+      to.tv_sec = timeout.tv_sec + 60;
 
       rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
       pthread_cond_timedwait (&thread_Session_control_thread.cond,
