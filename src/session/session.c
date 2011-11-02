@@ -638,6 +638,7 @@ session_check_timeout (const void *key, void *data, void *args)
 		{
 		  err = ER_FAILED;
 		}
+	      free_and_init (timeout_info->session_ids);
 	      return err;
 	    }
 	}
