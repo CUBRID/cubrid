@@ -134,9 +134,12 @@ extern int lock_object_waitsecs (THREAD_ENTRY * thread_p, const OID * oid,
 				 int cond_flag, int waitsecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid,
 			const OID * class_oid, LOCK lock, int cond_flag);
+extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
+				  const OID * class_oid, const BTID * btid,
+				  LOCK lock, int cond_flag);
 extern int lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
-				 const OID * class_oid, LOCK lock,
-				 int cond_flag, int scanid_bit);
+				 const OID * class_oid, const BTID * btid,
+				 LOCK lock, int cond_flag, int scanid_bit);
 extern int lock_objects_lock_set (THREAD_ENTRY * thread_p,
 				  LC_LOCKSET * lockset);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,

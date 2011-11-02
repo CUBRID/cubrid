@@ -163,6 +163,7 @@ static const char *er_unknown_severity = "Unknown severity level";
     } while(0)
 #endif /* SERVER_MODE */
 
+#define MAX_LINE 4096
 
 /*
  * Default text for messages. These messages are used only when we can't
@@ -314,7 +315,8 @@ static void er_call_stack_dump_on_error (int err_id);
 static void er_notify_event_on_error (int err_id);
 static int er_set_internal (int severity, const char *file_name,
 			    const int line_no, int err_id, int num_args,
-			    bool include_os_error, va_list * ap_ptr);
+			    bool include_os_error, FILE * fp,
+			    va_list * ap_ptr);
 static void er_log (void);
 static void er_stop_on_error (void);
 
@@ -1248,7 +1250,37 @@ er_set (int severity, const char *file_name, const int line_no, int err_id,
 
   va_start (ap, num_args);
   (void) er_set_internal (severity, file_name, line_no, err_id, num_args,
-			  false, &ap);
+			  false, NULL, &ap);
+  va_end (ap);
+}
+
+/*
+ * er_set_with_file - Set an error and print file contents into
+ *                    the error log file
+ *   return: none
+ *   severity(in): may exit if severity == ER_FATAL_ERROR_SEVERITY
+ *   file_name(in): file name setting the error
+ *   line_no(in): line in file where the error is set
+ *   err_id(in): the error identifier
+ *   fp(in): file pointer
+ *   num_args(in): number of arguments...
+ *   ...(in): variable list of arguments (just like fprintf)
+ *
+ * Note: The error message associated with the given error identifier
+ *       is parsed and the arguments are substituted for later
+ *       retrieval. The caller must supply the exact number of
+ *       arguments to set all level messages of the error. The error
+ *       logging function (if any) associated with the error is called.
+ */
+void
+er_set_with_file (int severity, const char *file_name, const int line_no,
+		  int err_id, FILE * fp, int num_args, ...)
+{
+  va_list ap;
+
+  va_start (ap, num_args);
+  (void) er_set_internal (severity, file_name, line_no, err_id, num_args,
+			  false, fp, &ap);
   va_end (ap);
 }
 
@@ -1279,7 +1311,7 @@ er_set_with_oserror (int severity, const char *file_name, const int line_no,
 
   va_start (ap, num_args);
   (void) er_set_internal (severity, file_name, line_no, err_id, num_args,
-			  true, &ap);
+			  true, NULL, &ap);
   va_end (ap);
 }
 
@@ -1348,6 +1380,7 @@ er_call_stack_dump_on_error (int err_id)
  *   line_no(in): line in file where the error is set
  *   err_id(in): the error identifier
  *   num_args(in): number of arguments...
+ *   fp(in): file pointer
  *   ...(in): variable list of arguments (just like fprintf)
  *
  * Note:
@@ -1355,7 +1388,7 @@ er_call_stack_dump_on_error (int err_id)
 static int
 er_set_internal (int severity, const char *file_name, const int line_no,
 		 int err_id, int num_args, bool include_os_error,
-		 va_list * ap_ptr)
+		 FILE * fp, va_list * ap_ptr)
 {
   va_list ap;
   const char *os_error;
@@ -1488,6 +1521,19 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	  /* event handler */
 	  er_notify_event_on_error (err_id);
 
+	  if (fp != NULL)
+	    {
+	      /* print file contents */
+	      if (fseek (fp, 0L, SEEK_SET) == 0)
+		{
+		  char buf[MAX_LINE];
+		  while (fgets (buf, MAX_LINE, fp) != NULL)
+		    {
+		      fprintf (er_Msglog, "%s", buf);
+		    }
+		  (void) fflush (er_Msglog);
+		}
+	    }
 	  ER_CSECT_EXIT_LOG_FILE ();
 	}
     }

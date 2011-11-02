@@ -7789,7 +7789,8 @@ start_point:
 
   /* CONDITIONAL lock request */
   ret_val =
-    lock_object (thread_p, &N_oid, &N_class_oid, next_lock, LK_COND_LOCK);
+    lock_object_with_btid (thread_p, &N_oid, &N_class_oid, btid,
+			   next_lock, LK_COND_LOCK);
   if (ret_val == LK_GRANTED)
     {
       next_lock_flag = true;
@@ -7817,8 +7818,8 @@ start_point:
       COPY_OID (&saved_N_oid, &N_oid);
       COPY_OID (&saved_N_class_oid, &N_class_oid);
 
-      ret_val = lock_object (thread_p, &N_oid, &N_class_oid, next_lock,
-			     LK_UNCOND_LOCK);
+      ret_val = lock_object_with_btid (thread_p, &N_oid, &N_class_oid,
+				       btid, next_lock, LK_UNCOND_LOCK);
       /* UNCONDITIONAL lock request */
       if (ret_val != LK_GRANTED)
 	{
@@ -7993,8 +7994,8 @@ curr_key_locking:
   if (curr_key_lock_commit_duration == true)
     {
       ret_val =
-	lock_object (thread_p, &pseudo_oid, &pseudo_class_oid, NX_LOCK,
-		     LK_COND_LOCK);
+	lock_object_with_btid (thread_p, &pseudo_oid, &pseudo_class_oid,
+			       btid, NX_LOCK, LK_COND_LOCK);
       if (ret_val == LK_NOTGRANTED_DUE_TIMEOUT)
 	{
 	  ret_val = LK_NOTGRANTED;
@@ -8039,8 +8040,9 @@ curr_key_locking:
       COPY_OID (&saved_pseudo_class_oid, &pseudo_class_oid);
 
       /* UNCONDITIONAL lock request */
-      ret_val = lock_object (thread_p, &pseudo_oid, &pseudo_class_oid,
-			     NX_LOCK, LK_UNCOND_LOCK);
+      ret_val =
+	lock_object_with_btid (thread_p, &pseudo_oid, &pseudo_class_oid, btid,
+			       NX_LOCK, LK_UNCOND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  goto error;
@@ -8136,8 +8138,9 @@ new_curr_key_locking:
 	  goto error;
 	}
 
-      ret_val = lock_object (thread_p, &new_pseudo_oid, &pseudo_class_oid,
-			     NX_LOCK, LK_COND_LOCK);
+      ret_val = lock_object_with_btid (thread_p, &new_pseudo_oid,
+				       &pseudo_class_oid, btid, NX_LOCK,
+				       LK_COND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  /* new_pseudo_oid should not be locked by other transactions
@@ -11375,8 +11378,8 @@ start_point:
       COPY_OID (&saved_N_class_oid, &N_class_oid);
 
       /* UNCONDITIONAL lock request */
-      ret_val = lock_object (thread_p, &N_oid, &N_class_oid, NS_LOCK,
-			     LK_UNCOND_LOCK);
+      ret_val = lock_object_with_btid (thread_p, &N_oid, &N_class_oid,
+				       btid, NS_LOCK, LK_UNCOND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  goto error;
@@ -11494,8 +11497,8 @@ curr_key_locking:
     }
 
   ret_val =
-    lock_object (thread_p, &pseudo_oid, &pseudo_class_oid, NS_LOCK,
-		 LK_COND_LOCK);
+    lock_object_with_btid (thread_p, &pseudo_oid, &pseudo_class_oid,
+			   btid, NS_LOCK, LK_COND_LOCK);
 
   if (ret_val == LK_GRANTED)
     {
@@ -11511,8 +11514,9 @@ curr_key_locking:
       COPY_OID (&saved_pseudo_class_oid, &pseudo_class_oid);
 
       /* UNCONDITIONAL lock request */
-      ret_val = lock_object (thread_p, &pseudo_oid, &pseudo_class_oid,
-			     NS_LOCK, LK_UNCOND_LOCK);
+      ret_val = lock_object_with_btid (thread_p, &pseudo_oid,
+				       &pseudo_class_oid, btid, NS_LOCK,
+				       LK_UNCOND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  goto error;
@@ -14500,8 +14504,8 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     }
 
   lock_ret =
-    lock_object_on_iscan (thread_p, &oid, &class_oid, bts->key_lock_mode,
-			  LK_COND_LOCK, scanid_bit);
+    lock_object_on_iscan (thread_p, &oid, &class_oid, bts->btid_int.sys_btid,
+			  bts->key_lock_mode, LK_COND_LOCK, scanid_bit);
   if (lock_ret == LK_GRANTED)
     {
       COPY_OID (ck_pseudo_oid, &oid);
@@ -14550,8 +14554,9 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   /* UNCONDITIONAL lock request */
   lock_ret = lock_object_on_iscan (thread_p, &oid, &class_oid,
-				   bts->key_lock_mode, LK_UNCOND_LOCK,
-				   scanid_bit);
+				   bts->btid_int.sys_btid,
+				   bts->key_lock_mode,
+				   LK_UNCOND_LOCK, scanid_bit);
   if (lock_ret != LK_GRANTED)
     {
       goto error;
@@ -14763,8 +14768,9 @@ start_locking:
     }
 
   lock_ret =
-    lock_object_on_iscan (thread_p, &N_oid, &N_class_oid, bts->key_lock_mode,
-			  LK_COND_LOCK, scanid_bit);
+    lock_object_on_iscan (thread_p, &N_oid, &N_class_oid,
+			  bts->btid_int.sys_btid,
+			  bts->key_lock_mode, LK_COND_LOCK, scanid_bit);
   if (lock_ret == LK_GRANTED)
     {
       COPY_OID (nk_pseudo_oid, &N_oid);
@@ -14821,8 +14827,9 @@ start_locking:
 
   /* UNCONDITIONAL lock request */
   lock_ret = lock_object_on_iscan (thread_p, &N_oid, &N_class_oid,
-				   bts->key_lock_mode, LK_UNCOND_LOCK,
-				   scanid_bit);
+				   bts->btid_int.sys_btid,
+				   bts->key_lock_mode,
+				   LK_UNCOND_LOCK, scanid_bit);
   if (lock_ret != LK_GRANTED)
     {
       goto error;
@@ -16549,7 +16556,7 @@ start_locking:
        * CONDITIONAL lock request (current waitsecs : 0)
        */
       lock_ret = lock_object_on_iscan (thread_p, &inst_oid, &class_oid,
-				       lock_mode, LK_COND_LOCK,
+				       btid, lock_mode, LK_COND_LOCK,
 				       index_scan_id_p->
 				       scan_cache.scanid_bit);
       if (lock_ret == LK_NOTGRANTED_DUE_ABORTED)
@@ -16763,7 +16770,7 @@ start_locking:
       /* UNCONDITIONAL lock request */
 
       lock_ret = lock_object_on_iscan (thread_p, &inst_oid, &class_oid,
-				       lock_mode, LK_UNCOND_LOCK,
+				       btid, lock_mode, LK_UNCOND_LOCK,
 				       index_scan_id_p->
 				       scan_cache.scanid_bit);
       if (lock_ret != LK_GRANTED)

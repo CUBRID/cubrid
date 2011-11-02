@@ -167,6 +167,9 @@ extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
 extern void er_clear (void);
 extern void er_set (int severity, const char *file_name, const int line_no,
 		    int err_id, int num_args, ...);
+extern void er_set_with_file (int severity, const char *file_name,
+			      const int line_no, int err_id, FILE * fp,
+			      int num_args, ...);
 extern void er_set_with_oserror (int severity, const char *file_name,
 				 const int line_no, int err_id, int num_args,
 				 ...);

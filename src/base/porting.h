@@ -96,6 +96,7 @@
 #define localtime_r(time, tm)   localtime_s(tm, time)
 #define gmtime_r(time, tm)	((void)(tm), gmtime(time))
 #define vsnprintf	cub_vsnprintf
+#define tempnam         _tempnam
 
 #if 0
 #define O_RDONLY                _O_RDONLY
@@ -557,8 +558,8 @@ void *pthread_getspecific (pthread_key_t key);
 }while(0)
 #endif /* WINDOWS || X86 */
 
-/* 
- * Interfaces for atomic operations 
+/*
+ * Interfaces for atomic operations
  *
  * Developers should check HAVE_ATOMIC_BUILTINS before using atomic builtins
  * as follows.
@@ -568,13 +569,13 @@ void *pthread_getspecific (pthread_key_t key);
  *   ... leave legacy codes or write codes without atomic builtins ...
  *  #endif
  *
- * ATOMIC_TAS_xx (atomic test-and-set) writes new_val into *ptr, and returns 
- * the previous contents of *ptr. ATOMIC_CAS_xx (atomic compare-and-swap) returns 
- * true if the swap is done. It is only done if *ptr equals to cmp_val. 
+ * ATOMIC_TAS_xx (atomic test-and-set) writes new_val into *ptr, and returns
+ * the previous contents of *ptr. ATOMIC_CAS_xx (atomic compare-and-swap) returns
+ * true if the swap is done. It is only done if *ptr equals to cmp_val.
  * ATOMIC_INC_xx (atomic increment) returns the result of *ptr + amount.
  *
  * Regarding Windows, there are two types of APIs to provide atomic operations.
- * While InterlockedXXX functions handles 32bit values, InterlockedXXX64 handles 
+ * While InterlockedXXX functions handles 32bit values, InterlockedXXX64 handles
  * 64bit values. That is why we define two types of macros.
  */
 #if defined(WINDOWS)
@@ -596,9 +597,9 @@ void *pthread_getspecific (pthread_key_t key);
 #define ATOMIC_INC_64(ptr, amount) \
 	(InterlockedExchangeAdd64(ptr, amount) + amount)
 #else /* _WIN64 */
-/* 
- * These functions are used on Windows 32bit OS. 
- * InterlockedXXX64 functions are provided by Windows Vista (client)/Windows 
+/*
+ * These functions are used on Windows 32bit OS.
+ * InterlockedXXX64 functions are provided by Windows Vista (client)/Windows
  * 2003 (server) or later versions. So, Windows XP 32bit does not have them.
  * We provide the following functions to support atomic operations on all
  * Windows versions.
@@ -637,9 +638,9 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 	__sync_add_and_fetch(ptr, amount)
 
 #else /* HAVE_GCC_ATOMIC_BUILTINS */
-/* 
- * Currently we do not provide interfaces for atomic operations 
- * on other OS or compilers. 
+/*
+ * Currently we do not provide interfaces for atomic operations
+ * on other OS or compilers.
  */
 #endif /* HAVE_GCC_ATOMIC_BUILTINS */
 

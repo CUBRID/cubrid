@@ -246,11 +246,7 @@ csql_invoke_system_editor (void)
     }
 
   /* create a temp file and open it */
-#if defined(WINDOWS)
-  fname = _tempnam (NULL, NULL);
-#else
-  fname = tmpnam ((char *) NULL);
-#endif
+  fname = tempnam (NULL, NULL);
 
   if (fname == NULL)
     {
@@ -301,9 +297,7 @@ csql_invoke_system_editor (void)
 
   fclose (fp);
   unlink (fname);
-#if defined(WINDOWS)
   free (fname);
-#endif
 
   return CSQL_SUCCESS;
 
@@ -315,9 +309,7 @@ error:
   if (fname != NULL)
     {
       unlink (fname);
-#if defined(WINDOWS)
       free (fname);
-#endif
     }
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
   return CSQL_FAILURE;

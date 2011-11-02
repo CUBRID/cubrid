@@ -1352,7 +1352,9 @@
 
 #define ER_PB_ALL_BUFFERS_DIRTY                     -1082
 
-#define ER_LAST_ERROR                               -1083
+#define ER_LK_DEADLOCK_SPECIFIC_INFO                -1083
+
+#define ER_LAST_ERROR                               -1084
 
 #define DB_TRUE 1
 #define DB_FALSE 0

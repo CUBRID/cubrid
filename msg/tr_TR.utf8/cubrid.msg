@@ -1148,7 +1148,8 @@ $ LOADDB
 1080 The maximum length of filter predicate string must be %1$s.
 1081 Cannot alter an attribute involved in a filter or function index.
 1082 All page buffers are dirty (LRU: %1$d).
-1083 Last Error
+1083 Specific information about deadlock.
+1084 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1683,6 +1684,8 @@ $set 14 MSGCAT_SET_LOCK
 40 %d ,
 41 Solving the deadlock by selecting a transaction and a function \n to break the deadlock: %d %s
 42 , %d %s
+43 Object type: Index key of class (%2d|%6d|%4d) = %s.\n
+44 Index name: %s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
