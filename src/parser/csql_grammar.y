@@ -786,6 +786,7 @@ void pop_msg (void);
 %type <node> session_variable_list
 %type <node> opt_analytic_partition_by
 %type <node> opt_analytic_order_by
+%type <node> opt_table_spec_index_hint
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -958,6 +959,7 @@ void pop_msg (void);
 %token FIRST
 %token FLOAT_
 %token For
+%token FORCE
 %token FOREIGN
 %token FOUND
 %token FROM
@@ -3552,7 +3554,7 @@ opt_outer
 	;
 
 table_spec
-	: class_spec opt_as_identifier_attr_name opt_with_read_uncommitted
+	: class_spec opt_as_identifier_attr_name opt_table_spec_index_hint opt_with_read_uncommitted
 		{{
 
 			PT_NODE *ent = $1;
@@ -3562,6 +3564,53 @@ table_spec
 			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($2);
 
 			    if ($3)
+			      {
+				/* This is an index hint inside a table_spec. Copy index
+				   name list to USING INDEX clause */
+				PT_NODE *stmt = parser_pop_hint_node ();
+				if (stmt)
+				  {
+				    /* copy to using_index */
+				    switch (stmt->node_type)
+				      {
+					case PT_SELECT:
+					  stmt->info.query.q.select.using_index =
+					    parser_make_link ($3, stmt->info.query.q.select.using_index);
+					break;
+
+					case PT_DELETE:
+					  stmt->info.delete_.using_index =
+					    parser_make_link ($3, stmt->info.delete_.using_index);
+					break;
+
+					case PT_UPDATE:
+					  stmt->info.update.using_index =
+					    parser_make_link ($3, stmt->info.update.using_index);
+					  break;
+
+					default:
+					  /* if index hint has been specified in
+					   * table_spec clause and statement is not
+					   * SELECT, UPDATE or DELETE raise error
+					   */
+					  PT_ERRORm (this_parser, ent, 
+					    MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_INVALID_INDEX_HINT);
+					break;
+				      }
+
+				    /* push back node */
+				    parser_push_hint_node (stmt);
+				  }
+				else
+				  {
+				    /* there should always be a top node for a table
+				       spec */
+				    assert (false);
+				  }
+			      }
+
+			    if ($4)
 			      {
 				ent->info.spec.lock_hint |= LOCKHINT_READ_UNCOMMITTED;
 			      }
@@ -3639,6 +3688,56 @@ table_spec
 			    parser_remove_dummy_select (&ent);
 			  }
 			$$ = ent;
+
+		DBG_PRINT}}
+	;
+
+opt_table_spec_index_hint
+	: /* empty */
+		{{
+
+			$$ = 0;
+
+		DBG_PRINT}}
+	| USE index_or_key '(' identifier_list ')'
+		{{
+
+			PT_NODE *list = $4;
+			while (list)
+			  {
+			    list->info.name.meta_class = PT_INDEX_NAME;
+			    list = list->next;
+			  }
+
+			$$ = $4;
+
+		DBG_PRINT}}
+	| FORCE index_or_key '(' identifier_list ')'
+		{{
+
+			PT_NODE *list = $4;
+			while (list)
+			  {
+			    list->info.name.meta_class = PT_INDEX_NAME;
+			    list->etc = (void*) 1;
+			    list = list->next;
+			  }
+
+			$$ = $4;
+
+		DBG_PRINT}}
+	| IGNORE_ index_or_key '(' identifier_list ')'
+		{{
+
+			PT_NODE *list = $4;
+			while (list)
+			  {
+			    list->info.name.meta_class = PT_INDEX_NAME;
+			    list->etc = (void*) -1;
+			    list = list->next;
+			  }
+
+			  $$ = $4;
 
 		DBG_PRINT}}
 	;
@@ -5414,7 +5513,9 @@ update_stmt
 			    node->info.update.cursor_name = CONTAINER_AT_1 ($6);
 			  }
 
-			node->info.update.using_index = $7;
+			node->info.update.using_index =
+			  (node->info.update.using_index ?
+			   parser_make_link (node->info.update.using_index, $7) : $7);
 
 			/* set LIMIT node */
 			node->info.update.limit = $9;
@@ -5817,7 +5918,10 @@ delete_stmt
 				del->info.delete_.cursor_name = CONTAINER_AT_1 ($5);
 			      }
 
-			    del->info.delete_.using_index = $6;
+			    del->info.delete_.using_index =
+			      (del->info.delete_.using_index ?
+			       parser_make_link (del->info.delete_.using_index, $6) : $6);
+
 			    del->info.delete_.limit = $7;
 
 			    /* In a multi-table case the LIMIT clauses is not allowed. */
@@ -9723,7 +9827,10 @@ select_stmt
 				n = n->next;
 			      }
 
-			    node->info.query.q.select.using_index = $17;
+			    node->info.query.q.select.using_index =
+			      (node->info.query.q.select.using_index ?
+			       parser_make_link (node->info.query.q.select.using_index, $17) : $17);
+
 			    node->info.query.q.select.with_increment = $18;
 			    node->info.query.id = (UINTPTR) node;
 			    if (isAll == PT_EMPTY)

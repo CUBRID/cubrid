@@ -259,6 +259,7 @@ extern int yycolumn_end;
 [eE][xX][tT][rR][aA][cC][tT]						{ begin_token(yytext);   return EXTRACT; }
 [fF][eE][tT][cC][hH]							{ begin_token(yytext);   return FETCH; }
 [fF][iI][rR][sS][tT]							{ begin_token(yytext);   return FIRST; }
+[fF][oO][rR][cC][eE]							{ begin_token(yytext);   return FORCE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ begin_token(yytext);   return FOREIGN; }
 [fF][oO][uU][nN][dD]							{ begin_token(yytext);   return FOUND; }
 [fF][rR][oO][mM]							{ begin_token(yytext);   return FROM; }
