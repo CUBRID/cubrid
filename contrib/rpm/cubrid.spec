@@ -1,5 +1,5 @@
 
-%define cubrid_version 8.4.9.0099
+%define cubrid_version 8.4.9.0100
 %define build_version  8.4.9
 %define cubrid_vendor  Search Solution Corporation
 %define release        el5
