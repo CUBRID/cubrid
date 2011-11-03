@@ -179,6 +179,7 @@ public class UConnection {
 
 	private long lastRCTime = 0;
 	private int reconnectionTime = 600;
+	private int queryTimeout = -1;
 	private int sessionId = 0;
 	static {
 		driverInfo = new byte[10];
@@ -317,6 +318,14 @@ public class UConnection {
 
 	public void setReconnectionTime(int sec) {
 		reconnectionTime = sec;
+	}
+
+	public int getQueryTimeout() {
+		return queryTimeout;
+	}
+
+	public void setQueryTimeout(int sec) {
+		queryTimeout = sec;
 	}
 
 	public void setCharset(String newCharsetName)

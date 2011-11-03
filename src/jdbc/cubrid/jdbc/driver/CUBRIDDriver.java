@@ -85,9 +85,11 @@ public class CUBRIDDriver implements Driver {
 	private final static String CONNECTION_PROPERTY_CHARSET = "charset";
 	private final static String CONNECTION_PROPERTY_ALTERNATIVE_HOSTS = "althosts";
 	private final static String CONNECTION_PROPERTY_RECONNECTION_TIME = "rctime";
+	private final static String CONNECTION_PROPERTY_QUERY_TIMEOUT = "queryTimeout";
 	private final static String[] params = { CONNECTION_PROPERTY_CHARSET,
 			CONNECTION_PROPERTY_ALTERNATIVE_HOSTS,
-			CONNECTION_PROPERTY_RECONNECTION_TIME };
+			CONNECTION_PROPERTY_RECONNECTION_TIME,
+			CONNECTION_PROPERTY_QUERY_TIMEOUT};
 
 	static {
 		try {
@@ -316,6 +318,15 @@ public class CUBRIDDriver implements Driver {
 				u_con.setReconnectionTime(Integer.valueOf(dummy).intValue());
 			}
 
+			dummy = info.getProperty(CONNECTION_PROPERTY_QUERY_TIMEOUT);
+			if (dummy == null) {
+				dummy = paramInfo
+						.getProperty(CONNECTION_PROPERTY_QUERY_TIMEOUT);
+			}
+			if (dummy != null) {
+				u_con.setQueryTimeout(Integer.valueOf(dummy).intValue());
+			}
+			
 			dummy = info.getProperty(CONNECTION_PROPERTY_CHARSET);
 			if (dummy == null) {
 				dummy = paramInfo.getProperty(CONNECTION_PROPERTY_CHARSET);
