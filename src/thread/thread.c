@@ -3128,14 +3128,6 @@ thread_log_flush_thread (void *arg_p)
 
 	  log_Stat.gc_flush_count++;
 	  gc_elapsed = 0;
-	  log_Stat.total_sync_count++;
-
-	  if (PRM_SUPPRESS_FSYNC == 0
-	      || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
-	    {
-	      (void) fileio_synchronize (tsd_ptr, log_Gl.append.vdes,
-					 log_Name_active);
-	    }
 
 #if defined(WINDOWS)
 	  for (loop = 0; loop != group_commit_info->waiters; ++loop)

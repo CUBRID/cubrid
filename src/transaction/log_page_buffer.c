@@ -5107,16 +5107,25 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
       ++flush_page_count;
-#if defined(CUBRID_DEBUG)
-      log_Stat.total_sync_count++;
-#endif /* CUBRID_DEBUG */
-
       if (logpb_writev_append_pages (thread_p,
 				     &(flush_info->toflush[last_idxflush]),
 				     1) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
+	}
+
+      log_Stat.total_sync_count++;
+      if (PRM_SUPPRESS_FSYNC == 0
+	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+	{
+	  if (fileio_synchronize (thread_p,
+				  log_Gl.append.vdes,
+				  log_Name_active) == NULL_VOLDES)
+	    {
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
 	}
     }
 
@@ -5364,15 +5373,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
       (void) logpb_flush_all_append_pages_helper (thread_p);
       log_Stat.direct_flush_count++;
 
-      log_Stat.total_sync_count++;
-      if (PRM_SUPPRESS_FSYNC == 0
-	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
-	{
-	  (void) fileio_synchronize (thread_p, log_Gl.append.vdes,
-				     log_Name_active);
-	}
-
-
       return;
     }
 
@@ -5401,14 +5401,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
       logpb_prior_lsa_append_all_list (thread_p);
       (void) logpb_flush_all_append_pages_helper (thread_p);
       log_Stat.direct_flush_count++;
-
-      log_Stat.total_sync_count++;
-      if (PRM_SUPPRESS_FSYNC == 0
-	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
-	{
-	  (void) fileio_synchronize (thread_p, log_Gl.append.vdes,
-				     log_Name_active);
-	}
       LOG_CS_EXIT ();
 
       return;
