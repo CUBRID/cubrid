@@ -189,6 +189,7 @@ struct la_apply
   int num_items;
   bool is_long_trans;
   LOG_LSA start_lsa;
+  LOG_LSA last_lsa;
   LA_ITEM *head;
   LA_ITEM *tail;
 };
@@ -197,6 +198,7 @@ typedef struct la_commit LA_COMMIT;
 struct la_commit
 {
   LA_COMMIT *next;
+  LA_COMMIT *prev;
 
   int type;			/* transaction state -
 				 * LOG_COMMIT or LOG_UNLOCK_COMMIT */
@@ -350,6 +352,9 @@ static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_all_repl_items_except_head (LA_APPLY * apply);
 static void la_free_all_repl_items (LA_APPLY * apply);
+static void la_free_and_add_next_repl_item (LA_APPLY * apply,
+					    LA_ITEM * next_item,
+					    LOG_LSA * lsa);
 static void la_clear_applied_info (LA_APPLY * apply);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
@@ -398,8 +403,8 @@ static int la_update_query_execute_with_values (const char *sql,
 						DB_VALUE * vals,
 						bool au_disable);
 static int la_apply_schema_log (LA_ITEM * item);
-static int la_apply_repl_log (int tranid, int rectype, int *total_rows,
-			      LOG_PAGEID final_pageid);
+static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
+			      int *total_rows, LOG_PAGEID final_pageid);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec,
@@ -419,9 +424,11 @@ static void la_shutdown (void);
 static int la_remove_archive_logs (const char *db_name,
 				   int last_deleted_arv_num, int nxarv_num);
 
-static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans);
+static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans,
+				       LOG_LSA * last_lsa);
 static LA_ITEM *la_get_next_repl_item_from_list (LA_ITEM * item);
-static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item);
+static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item,
+						LOG_LSA * last_lsa);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -2169,6 +2176,7 @@ la_init_repl_lists (bool need_realloc)
       la_Info.repl_lists[i]->num_items = 0;
       la_Info.repl_lists[i]->is_long_trans = false;
       LSA_SET_NULL (&la_Info.repl_lists[i]->start_lsa);
+      LSA_SET_NULL (&la_Info.repl_lists[i]->last_lsa);
       la_Info.repl_lists[i]->head = NULL;
       la_Info.repl_lists[i]->tail = NULL;
     }
@@ -2619,6 +2627,39 @@ la_free_all_repl_items_except_head (LA_APPLY * apply)
 }
 
 static void
+la_free_and_add_next_repl_item (LA_APPLY * apply, LA_ITEM * last_item,
+				LOG_LSA * commit_lsa)
+{
+  LA_ITEM *item, *next_item;
+  assert (apply);
+  assert (!LSA_ISNULL (commit_lsa));
+
+  if (apply->is_long_trans)
+    {
+      if (apply->head == NULL && last_item != NULL)
+	{
+	  la_add_repl_item (apply, last_item);
+	}
+    }
+  else
+    {
+      for (item = apply->head;
+	   (item != NULL) && (LSA_LT (&item->lsa, commit_lsa));
+	   item = next_item)
+	{
+	  next_item = item->next;
+
+	  la_free_repl_item (apply, item);
+	  item = NULL;
+	}
+
+      apply->head = item;
+    }
+
+  return;
+}
+
+static void
 la_free_all_repl_items (LA_APPLY * apply)
 {
   assert (apply);
@@ -2646,6 +2687,7 @@ la_clear_applied_info (LA_APPLY * apply)
   la_free_all_repl_items (apply);
 
   LSA_SET_NULL (&apply->start_lsa);
+  LSA_SET_NULL (&apply->last_lsa);
   apply->tranid = 0;
 
   return;
@@ -2684,6 +2726,7 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 
   if (apply->is_long_trans)
     {
+      LSA_COPY (&apply->last_lsa, lsa);
       return NO_ERROR;
     }
 
@@ -2691,6 +2734,7 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
     {
       la_free_all_repl_items_except_head (apply);
       apply->is_long_trans = true;
+      LSA_COPY (&apply->last_lsa, lsa);
       return NO_ERROR;
     }
 
@@ -2729,14 +2773,8 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 static int
 la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
 {
-  LA_COMMIT *commit, *tmp;
+  LA_COMMIT *commit;
   int error = NO_ERROR;
-
-  for (tmp = la_Info.commit_head; tmp; tmp = tmp->next)
-    {
-      if (tmp->tranid == tranid)
-	return error;
-    }
 
   commit = malloc (DB_SIZEOF (LA_COMMIT));
   if (commit == NULL)
@@ -2745,6 +2783,7 @@ la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_COMMIT));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  commit->prev = NULL;
   commit->next = NULL;
   commit->type = LOG_UNLOCK_COMMIT;
   LSA_COPY (&commit->log_lsa, lsa);
@@ -2757,6 +2796,7 @@ la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
     }
   else
     {
+      commit->prev = la_Info.commit_tail;
       la_Info.commit_tail->next = commit;
       la_Info.commit_tail = commit;
     }
@@ -2830,7 +2870,7 @@ la_set_commit_log (int tranid, int rectype, LOG_LSA * lsa, time_t master_time)
   LA_COMMIT *commit;
   int count = 0;
 
-  commit = la_Info.commit_head;
+  commit = la_Info.commit_tail;
   while (commit)
     {
       if (commit->tranid == tranid)
@@ -2838,11 +2878,11 @@ la_set_commit_log (int tranid, int rectype, LOG_LSA * lsa, time_t master_time)
 	  commit->type = rectype;
 	  commit->master_time = master_time;
 	  count++;
+	  break;
 	}
-      commit = commit->next;
+      commit = commit->prev;
     }
 
-  assert (count <= 1);
   return count;
 }
 
@@ -4580,11 +4620,11 @@ la_apply_schema_log (LA_ITEM * item)
  *    record.
  */
 static int
-la_apply_repl_log (int tranid, int rectype, int *total_rows,
-		   LOG_PAGEID final_pageid)
+la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
+		   int *total_rows, LOG_PAGEID final_pageid)
 {
-  LA_ITEM *item;
-  LA_ITEM *next_item;
+  LA_ITEM *item = NULL;
+  LA_ITEM *next_item = NULL;
   int error = NO_ERROR;
   LA_APPLY *apply;
   int apply_repl_log_cnt = 0;
@@ -4592,6 +4632,7 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
   char buf[256];
   static unsigned int total_repl_items = 0;
   bool release_pb = false;
+  bool has_more_commit_items = false;
 
   apply = la_find_apply_list (tranid);
   if (apply == NULL)
@@ -4683,9 +4724,17 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
 	    }
 	}
 
-      next_item = la_get_next_repl_item (item, apply->is_long_trans);
+      next_item =
+	la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa);
       la_free_repl_item (apply, item);
       item = next_item;
+
+      if ((item != NULL) && LSA_GT (&item->lsa, commit_lsa))
+	{
+	  assert (rectype == LOG_COMMIT_TOPOPE);
+	  has_more_commit_items = true;
+	  break;
+	}
     }
 
 end:
@@ -4693,7 +4742,14 @@ end:
 
   if (rectype == LOG_COMMIT_TOPOPE)
     {
-      la_free_all_repl_items (apply);
+      if (has_more_commit_items)
+	{
+	  la_free_and_add_next_repl_item (apply, item, commit_lsa);
+	}
+      else
+	{
+	  la_free_all_repl_items (apply);
+	}
     }
   else
     {
@@ -4731,8 +4787,8 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
 	}
 
       error =
-	la_apply_repl_log (commit->tranid, commit->type, &la_Info.total_rows,
-			   final_pageid);
+	la_apply_repl_log (commit->tranid, commit->type, &commit->log_lsa,
+			   &la_Info.total_rows, final_pageid);
       if (error != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -4744,6 +4800,10 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
 
       la_Info.last_master_time = commit->master_time;
 
+      if (commit->next != NULL)
+	{
+	  commit->next->prev = NULL;
+	}
       la_Info.commit_head = commit->next;
       if (la_Info.commit_head == NULL)
 	{
@@ -4808,11 +4868,11 @@ la_free_repl_items_by_tranid (int tranid)
 }
 
 static LA_ITEM *
-la_get_next_repl_item (LA_ITEM * item, bool is_long_trans)
+la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_LSA * last_lsa)
 {
   if (is_long_trans)
     {
-      return la_get_next_repl_item_from_log (item);
+      return la_get_next_repl_item_from_log (item, last_lsa);
     }
   else
     {
@@ -4827,7 +4887,7 @@ la_get_next_repl_item_from_list (LA_ITEM * item)
 }
 
 static LA_ITEM *
-la_get_next_repl_item_from_log (LA_ITEM * item)
+la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
 {
   LOG_LSA prev_repl_lsa;
   LOG_LSA curr_lsa;
@@ -4859,9 +4919,9 @@ la_get_next_repl_item_from_log (LA_ITEM * item)
       if (!LSA_EQ (&curr_lsa, &prev_repl_lsa)
 	  && prev_repl_log_record->trid == curr_log_record->trid)
 	{
-	  if (curr_log_record->type == LOG_COMMIT
+	  if (LSA_GT (&curr_lsa, last_lsa)
+	      || curr_log_record->type == LOG_COMMIT
 	      || curr_log_record->type == LOG_ABORT
-	      || curr_log_record->type == LOG_COMMIT_TOPOPE
 	      || LSA_GE (&curr_lsa, &la_Info.act_log.log_hdr->eof_lsa))
 	    {
 	      break;
