@@ -356,6 +356,7 @@ static void la_free_and_add_next_repl_item (LA_APPLY * apply,
 					    LA_ITEM * next_item,
 					    LOG_LSA * lsa);
 static void la_clear_applied_info (LA_APPLY * apply);
+static void la_clear_all_repl_and_commit_list ();
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 			    LOG_LSA * lsa);
@@ -2693,6 +2694,18 @@ la_clear_applied_info (LA_APPLY * apply)
   return;
 }
 
+static void
+la_clear_all_repl_and_commit_list ()
+{
+  int i;
+
+  for (i = 0; i < la_Info.cur_repl; i++)
+    {
+      la_free_repl_items_by_tranid (la_Info.repl_lists[i]->tranid);
+    }
+
+  return;
+}
 
 /*
  * la_set_repl_log() - insert the replication item into the apply list
@@ -5260,6 +5273,9 @@ la_change_state (void)
 	    {
 	      /* notify to slave db */
 	      new_state = HA_LOG_APPLIER_STATE_DONE;
+
+	      /* clear all repl_lists */
+	      la_clear_all_repl_and_commit_list ();
 	    }
 	  break;
 	default:
@@ -6222,7 +6238,6 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_log_debug (ARG_FILE_LINE,
 				"lowest required page id is %lld",
 				la_Info.final_lsa.pageid);
-		  LSA_COPY (&la_Info.required_lsa, &la_Info.final_lsa);
 		  error = la_log_commit ();
 		  if (error == ER_NET_CANT_CONNECT_SERVER ||
 		      error == ER_OBJ_NO_CONNECT)
