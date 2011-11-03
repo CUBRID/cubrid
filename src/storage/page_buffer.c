@@ -88,6 +88,8 @@ static int rv;
    and flushes them if they are in dirty state. */
 #define PGBUF_LRU_SIZE         ((int) (PRM_PB_NBUFFERS/pgbuf_Pool.num_LRU_list))
 
+#define PGBUF_MIN_NUM_VICTIMS (MAX (1, (int) (PGBUF_LRU_SIZE * 0.1)))
+
 /* maximum number of try in case of failure in allocating a BCB */
 #define PGBUF_SLEEP_MAX                    1
 
@@ -5530,7 +5532,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid)
   while ((bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom) != NULL)
     {
       found = false;
-      check_count = MAX (1,
+      check_count = MAX (PGBUF_MIN_NUM_VICTIMS,
 			 (int) (PGBUF_LRU_SIZE * PRM_PB_BUFFER_FLUSH_RATIO));
 
       /* search for non dirty PGBUF */

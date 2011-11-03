@@ -230,8 +230,8 @@ int PRM_PB_NBUFFERS = 32768;
 static int prm_pb_nbuffers_default = 32768;
 static int prm_pb_nbuffers_lower = 1;
 
-float PRM_PB_BUFFER_FLUSH_RATIO = 0.1f;
-static float prm_pb_buffer_flush_ratio_default = 0.1f;
+float PRM_PB_BUFFER_FLUSH_RATIO = 0.01f;
+static float prm_pb_buffer_flush_ratio_default = 0.01f;
 static float prm_pb_buffer_flush_ratio_lower = 0.01f;
 static float prm_pb_buffer_flush_ratio_upper = 0.95f;
 
