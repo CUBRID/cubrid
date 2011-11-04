@@ -356,7 +356,7 @@ static void la_free_and_add_next_repl_item (LA_APPLY * apply,
 					    LA_ITEM * next_item,
 					    LOG_LSA * lsa);
 static void la_clear_applied_info (LA_APPLY * apply);
-static void la_clear_all_repl_and_commit_list ();
+static void la_clear_all_repl_and_commit_list (void);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 			    LOG_LSA * lsa);
@@ -2695,7 +2695,7 @@ la_clear_applied_info (LA_APPLY * apply)
 }
 
 static void
-la_clear_all_repl_and_commit_list ()
+la_clear_all_repl_and_commit_list (void)
 {
   int i;
 
