@@ -3361,6 +3361,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	}
     }
 
+#if defined(SERVER_MODE)
   {
     int db_charset, db_lang;
 
@@ -3374,7 +3375,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	goto error;
       }
   }
-
+#endif
 
   /* if starting jvm fail, it would be ignored. */
   (void) jsp_start_server (db_name, db->pathname);
