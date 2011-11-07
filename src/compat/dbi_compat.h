@@ -2169,7 +2169,7 @@ typedef unsigned int SESSION_ID;
 #define DB_TIME_MIN        DB_UINT32_MIN
 #define DB_TIME_MAX        DB_UINT32_MAX
 
-#define DB_UTIME_MIN       DB_UINT32_MIN
+#define DB_UTIME_MIN       (DB_UINT32_MIN + 1)
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
 /* This defines the basic type identifier constants.  These are used in

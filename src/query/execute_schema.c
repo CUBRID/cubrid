@@ -14071,12 +14071,11 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
    * db_value_domain_default is not using NULL DB_VALUE as default for any
    * type*/
 
-  /* Timestamp is not midnight but noon(12 hrs later)
-   * to avoid UTC conflicts (the timestamp is interpreted as local and
-   * converted internally to UTC, so we need to make sure this works on every
-   * meridian).
+  /* Timestamp is interpreted as local and converted internally to UTC,
+   * so hard default value of Timestamp set to '1' (Unix epoch time + 1).
+   * (0 means zero date)
    */
-  static const char *empty_timestamp = "TIMESTAMP '00:00:00 PM 01/01/1970'";
+  static const char *empty_timestamp = "1";
   static const char *empty_set = "{}";
 
   switch (type)

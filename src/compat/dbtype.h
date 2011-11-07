@@ -354,13 +354,15 @@
 
 /* DB_DATE_MIN and DB_DATE_MAX are calculated by julian_encode function
    with arguments (1,1,1) and (12,31,9999) respectively. */
+#define DB_DATE_ZERO       DB_UINT32_MIN	/* 0 means zero date */
 #define DB_DATE_MIN        1721424
 #define DB_DATE_MAX        5373484
 
 #define DB_TIME_MIN        DB_UINT32_MIN
 #define DB_TIME_MAX        DB_UINT32_MAX
 
-#define DB_UTIME_MIN       DB_UINT32_MIN
+#define DB_UTIME_ZERO      DB_DATE_ZERO	/* 0 means zero date */
+#define DB_UTIME_MIN       (DB_UTIME_ZERO + 1)
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
 #define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \

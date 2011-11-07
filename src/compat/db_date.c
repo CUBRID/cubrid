@@ -38,13 +38,16 @@
 #include "query_opfunc.h"
 
 /* used in conversion to julian */
-#define IGREG1     (15 + 31L * (10 + 12L * 1582))
-
+#define IGREG1     	(15 + 31L * (10 + 12L * 1582))
 /* used in conversion from julian */
-#define IGREG2     2299161
+#define IGREG2     	2299161	/* 10/15/1582 */
+/* used in special zero date */
+#define IGREG_SPECIAL 	0	/* 01/01/-4713 DATE
+				   || 01/01/1970 00:00:00 TIMESTAMP */
+
 #define FLOOR(d1) floor(d1)
 
-#define YBIAS   1900
+#define YBIAS   	1900
 
 #define MMDDYYYY        0
 #define YYYYMMDD        1
@@ -137,6 +140,12 @@ julian_encode (int m, int d, int y)
       return (0L);
     }
 
+  if (m == 1 && d == 1 && y == -4713)
+    {
+      /* used for special meaning (IGREG_SPECIAL) */
+      return (0L);
+    }
+
   if (y < 0)
     {
       ++y;
@@ -156,7 +165,7 @@ julian_encode (int m, int d, int y)
   jul = (int) (FLOOR (365.25 * jy) + FLOOR (30.6001 * jm) + d + 1720995);
 
   /*
-   * Test whether to convert to gregorian calander, started Oct 15, 1982
+   * Test whether to convert to gregorian calander, started Oct 15, 1582
    */
   if ((d + 31L * (m + 12L * y)) >= IGREG1)
     {
@@ -186,6 +195,10 @@ julian_encode (int m, int d, int y)
 int
 day_of_week (int jul_day)
 {
+  if (jul_day == IGREG_SPECIAL)
+    {
+      return IGREG_SPECIAL;
+    }
   return ((int) ((jul_day + 1) % 7));
 }
 
@@ -216,25 +229,32 @@ julian_decode (int jul, int *monthp, int *dayp, int *yearp, int *weekp)
       ja = jul;			/* else no conversion necessary */
     }
 
-  jb = ja + 1524;
-  jc = (int) (6680.0 + ((float) (jb - 2439870) - 122.1) / 365.25);
-  jd = (int) (365 * jc + (0.25 * jc));
-  je = (int) ((jb - jd) / 30.6001);
+  if (ja == IGREG_SPECIAL)
+    {
+      month = day = year = 0;
+    }
+  else
+    {
+      jb = ja + 1524;
+      jc = (int) (6680.0 + ((float) (jb - 2439870) - 122.1) / 365.25);
+      jd = (int) (365 * jc + (0.25 * jc));
+      je = (int) ((jb - jd) / 30.6001);
 
-  day = jb - jd - (int) (30.6001 * je);
-  month = je - 1;
-  if (month > 12)
-    {
-      month -= 12;
-    }
-  year = jc - 4715;
-  if (month > 2)
-    {
-      --year;
-    }
-  if (year <= 0)
-    {
-      --year;
+      day = jb - jd - (int) (30.6001 * je);
+      month = je - 1;
+      if (month > 12)
+	{
+	  month -= 12;
+	}
+      year = jc - 4715;
+      if (month > 2)
+	{
+	  --year;
+	}
+      if (year <= 0)
+	{
+	  --year;
+	}
     }
 
   if (monthp != NULL)
@@ -251,6 +271,10 @@ julian_decode (int jul, int *monthp, int *dayp, int *yearp, int *weekp)
     }
   if (weekp != NULL)
     {
+      if (jul == IGREG_SPECIAL)
+	{
+	  *weekp = 0;
+	}
       *weekp = (int) ((jul + 1) % 7);
     }
 }
@@ -436,7 +460,6 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
       return ER_DATE_CONVERSION;
     }
 
-
   if (date != NULL)
     {
       julian_decode (*date, &mon, &day, &year, NULL);
@@ -499,7 +522,7 @@ db_mktime (DB_DATE * date, DB_TIME * timeval)
 
   if (db_tm_encode (&temp, date, timeval) != NO_ERROR)
     {
-      return (time_t) - 1;
+      return -1;
     }
 
   retval = (mktime (&temp));
@@ -519,6 +542,12 @@ int
 db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
 {
   time_t tmp_utime;
+
+  if (*date == IGREG_SPECIAL && *timeval == 0)
+    {
+      *utime = IGREG_SPECIAL;
+      return NO_ERROR;
+    }
 
   tmp_utime = db_mktime (date, timeval);
   if (tmp_utime < 0 || OR_CHECK_INT_OVERFLOW (tmp_utime))
@@ -540,7 +569,7 @@ db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
  *    a DB_DATE and DB_TIME pair.
  * return : void
  * time(in): universal time
- * date(out): return julian date
+ * date(out): return julian date or zero date
  * time(out): return relative time
  */
 void
@@ -549,10 +578,25 @@ db_timestamp_decode (const DB_TIMESTAMP * utime, DB_DATE * date,
 {
   struct tm *temp;
   time_t tmp_time = *utime;
-
 #if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
+#endif
 
+  if (tmp_time == IGREG_SPECIAL)
+    {
+      if (date != NULL)
+	{
+	  *date = IGREG_SPECIAL;
+	}
+      if (timeval != NULL)
+	{
+	  *timeval = 0;
+	}
+
+      return;
+    }
+
+#if defined(SERVER_MODE) && !defined(WINDOWS)
   temp = localtime_r (&tmp_time, &t);
 #else
   temp = localtime (&tmp_time);
@@ -630,7 +674,6 @@ void
 db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval)
 {
   struct tm *temp;
-
 #if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
 
@@ -895,7 +938,7 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
    */
   if (year == 0 && month == 0 && day == 0)
     {
-      *date = 0;
+      *date = IGREG_SPECIAL;
       return p;
     }
 
@@ -1224,16 +1267,13 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date,
 		      char *sep_ch)
 {
   DB_DATE cdate;
-  char unsigned
-    /* 0 - yet to be read
-       1 - only single slashes read
-       2 - non-slashes (or multiple slashes) read */
-    separator = 0;
+  unsigned char separator = 0;	/* 0 - yet to be read
+				   1 - only single slashes read
+				   2 - non-slashes (or multiple slashes) read */
 
   int date_parts[3] = { 0, 0, 0 };
-  char unsigned
-    date_parts_len[3] = { 0, 0, 0 },
-    parts_found = 0, year_part, month_part, day_part;
+  unsigned char date_parts_len[3] = { 0, 0, 0 };
+  unsigned char parts_found = 0, year_part, month_part, day_part;
 
   char const *p = str, *q;
 
@@ -1262,7 +1302,7 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date,
   while (p < strend && q == p && !char_isspace (*p) && !char_isalpha (*p)
 	 && parts_found < DIM (date_parts))
     {
-      char unsigned new_separator = separator;
+      unsigned char new_separator = separator;
 
       /* read any separator */
       while (p < strend && !char_isspace (*p) && !char_isdigit (*p)
@@ -1397,6 +1437,13 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date,
 	      date_parts[year_part] += 1900;
 	    }
 	}
+    }
+
+  if (date_parts[month_part] == 0 && date_parts[day_part] == 0
+      && date_parts[year_part] == 0)
+    {
+      *date = IGREG_SPECIAL;
+      return p;
     }
 
   /* Check and return the resulting date */
@@ -2920,10 +2967,11 @@ db_date_parse_datetime_parts (char const *str, int str_len,
   DB_DATE date = 0;
   unsigned int mtime = 0;
   char const *strend = str + str_len;
-  char const *syntax_check = NULL,
-    /* read a separated time-date string first */
-    *p = parse_timedate_separated (str, strend, &date, &mtime, &syntax_check,
-				   has_explicit_msec);
+  char const *syntax_check = NULL, *p;
+
+  /* read a separated time-date string first */
+  p = parse_timedate_separated (str, strend, &date, &mtime, &syntax_check,
+				has_explicit_msec);
 
   if (p)
     {
@@ -2948,7 +2996,7 @@ db_date_parse_datetime_parts (char const *str, int str_len,
       datetime->date = date;
       datetime->time = mtime;
 
-      return NO_ERROR;
+      goto finalcheck;
     }
   else
     {
@@ -3005,7 +3053,7 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		}
 	    }
 
-	  return NO_ERROR;
+	  goto finalcheck;
 	}
       else
 	{
@@ -3044,7 +3092,8 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		}
 
 	      datetime->time = 0;
-	      return NO_ERROR;
+
+	      goto finalcheck;
 	    }
 	}
     }
@@ -3091,7 +3140,8 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		  *endp = r;
 		}
 	      *datetime = cdatetime;
-	      return NO_ERROR;
+
+	      goto finalcheck;
 	    }
 	  else
 	    {
@@ -3130,7 +3180,7 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		  *endp = r;
 		}
 
-	      return NO_ERROR;
+	      goto finalcheck;
 	    }
 	  else
 	    {
@@ -3143,6 +3193,19 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
   return ER_TIMESTAMP_CONVERSION;
+
+finalcheck:
+  if (datetime->date == IGREG_SPECIAL)
+    {
+      if (datetime->time != 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION,
+		  0);
+	  return ER_TIMESTAMP_CONVERSION;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -3175,10 +3238,17 @@ int
 db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
 {
   DB_DATETIME datetime;
-  int err = db_date_parse_datetime (str, str_len, &datetime);
+  int err;
 
+  err = db_date_parse_datetime (str, str_len, &datetime);
   if (err == NO_ERROR)
     {
+      if (datetime.date == IGREG_SPECIAL && datetime.time == 0)
+	{
+	  *utime = IGREG_SPECIAL;
+	  return NO_ERROR;
+	}
+
       datetime.time /= 1000;
       if (db_timestamp_encode (utime, &datetime.date, &datetime.time)
 	  == NO_ERROR)
@@ -3212,8 +3282,9 @@ int
 db_date_parse_date (char const *str, int str_len, DB_DATE * date)
 {
   DB_DATETIME datetime = { 0, 0 };
-  int err = db_date_parse_datetime (str, str_len, &datetime);
+  int err;
 
+  err = db_date_parse_datetime (str, str_len, &datetime);
   if (err == NO_ERROR)
     {
       *date = datetime.date;
@@ -3271,14 +3342,14 @@ parse_timestamp (const char *buf, int buf_len, DB_TIMESTAMP * utime)
 
 finalcheck:
   /* 0000-00-00 00:00:00 treated as time_t 0 */
-  if (date == 0)
+  if (date == IGREG_SPECIAL)
     {
       if (time != 0)
 	{
 	  return NULL;
 	}
 
-      *utime = 0;
+      *utime = IGREG_SPECIAL;
       return p;
     }
 
@@ -3338,14 +3409,12 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
   return NULL;
 
 finalcheck:
-  if (date == 0)
+  if (date == IGREG_SPECIAL)
     {
       if (mtime != 0)
 	{
 	  return NULL;
 	}
-
-      date = julian_encode (1, 1, 1);
     }
 
   datetime->date = date;
@@ -3375,7 +3444,7 @@ db_string_check_explicit_date (const char *str, int str_len)
 	  result++;
 	}
     }
-  if (result == NULL || result[0] != '\0' || date == 0)
+  if (result == NULL || result[0] != '\0')
     {
       return false;
     }
@@ -3407,7 +3476,7 @@ db_string_to_date_ex (const char *str, int str_len, DB_DATE * date)
 	  p++;
 	}
     }
-  if (p == NULL || (p < p_end && p[0] != '\0') || *date == 0)
+  if (p == NULL || (p < p_end && p[0] != '\0'))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
@@ -3645,10 +3714,22 @@ db_timestamp_to_datetime (DB_TIMESTAMP * utime, DB_DATETIME * datetime)
 {
   struct tm *temp;
   time_t tmp_time = *utime;
-
 #if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
+#endif
 
+  if (tmp_time == IGREG_SPECIAL)
+    {
+      if (datetime != NULL)
+	{
+	  datetime->date = IGREG_SPECIAL;
+	  datetime->time = 0;
+	}
+
+      return;
+    }
+
+#if defined(SERVER_MODE) && !defined(WINDOWS)
   temp = localtime_r (&tmp_time, &t);
 #else
   temp = localtime (&tmp_time);
@@ -4059,6 +4140,11 @@ db_get_day_of_year (int year, int month, int day)
 int
 db_get_day_of_week (int year, int month, int day)
 {
+  if (year == 0 && month == 0 && day == 0)
+    {
+      return 0;
+    }
+
   if (month < 3)
     {
       month = month + 12;

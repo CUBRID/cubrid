@@ -386,7 +386,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
-      value->data.utime = 0 /*DB_UTIME_MIN */ ;
+      value->data.utime = DB_UTIME_MIN;
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_DATETIME:

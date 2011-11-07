@@ -56,11 +56,13 @@ class UInputBuffer {
 	private byte buffer[];
 	private int resCode;
 	private final static int CAS_INFO_SIZE = 4;
+	private UConnection uconn;
 
 	UInputBuffer(UTimedInputStream relatedI, UConnection con)
 			throws IOException, UJciException {
 		input = relatedI;
 		position = 0;
+		uconn = con;
 
 		int readLen = 0;
 		int totalReadLen = 0;
@@ -208,8 +210,22 @@ class UInputBuffer {
 		month = readShort();
 		day = readShort();
 
+		if (year == 0 && month == 0 && day == 0) {
+			if (uconn.getZeroDateTimeBehavior().equals(
+					UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)) {
+				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+			} else if (uconn.getZeroDateTimeBehavior().equals(
+					UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)) {
+				return null;
+			}
+		}
+
 		Calendar cal = Calendar.getInstance();
-		cal.set(year, month - 1, day, 0, 0, 0);
+		if (year == 0 && month == 0 && day == 0) {
+			cal.set(0, 0, 1, 0, 0, 0); /* round to 0001-01-01 00:00:00) */
+		} else {
+			cal.set(year, month - 1, day, 0, 0, 0);
+		}
 
 		return new Date(cal.getTimeInMillis());
 	}
@@ -235,8 +251,22 @@ class UInputBuffer {
 		minute = readShort();
 		second = readShort();
 
+		if (year == 0 && month == 0 && day == 0) {
+			if (uconn.getZeroDateTimeBehavior().equals(
+					UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)) {
+				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+			} else if (uconn.getZeroDateTimeBehavior().equals(
+					UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)) {
+				return null;
+			}
+		}
+
 		Calendar cal = Calendar.getInstance();
-		cal.set(year, month - 1, day, hour, minute, second);
+		if (year == 0 && month == 0 && day == 0) {
+			cal.set(0, 0, 1, 0, 0, 0); /* round to 0001-01-01 00:00:00) */
+		} else {
+			cal.set(year, month - 1, day, hour, minute, second);
+		}
 		cal.set(Calendar.MILLISECOND, 0);
 
 		return new CUBRIDTimestamp(cal.getTimeInMillis(),
@@ -253,8 +283,22 @@ class UInputBuffer {
 		second = readShort();
 		millisecond = readShort();
 
+		if (year == 0 && month == 0 && day == 0) {
+			if (uconn.getZeroDateTimeBehavior().equals(
+					UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)) {
+				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+			} else if (uconn.getZeroDateTimeBehavior().equals(
+					UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)) {
+				return null;
+			}
+		}
+
 		Calendar cal = Calendar.getInstance();
-		cal.set(year, month - 1, day, hour, minute, second);
+		if (year == 0 && month == 0 && day == 0) {
+			cal.set(0, 0, 1, 0, 0, 0); /* round to 0001-01-01 00:00:00) */
+		} else {
+			cal.set(year, month - 1, day, hour, minute, second);
+		}
 		cal.set(Calendar.MILLISECOND, millisecond);
 
 		return new CUBRIDTimestamp(cal.getTimeInMillis(),
@@ -285,7 +329,8 @@ class UInputBuffer {
 			throws UJciException {
 		try {
 			byte[] packedLobHandle = readBytes(packedLobHandleSize);
-			return new CUBRIDClob(conn, packedLobHandle, conn.getUConnection().getCharset());
+			return new CUBRIDClob(conn, packedLobHandle, conn.getUConnection()
+					.getCharset());
 		} catch (Exception e) {
 			throw new UJciException(UErrorCode.ER_UNKNOWN);
 		}

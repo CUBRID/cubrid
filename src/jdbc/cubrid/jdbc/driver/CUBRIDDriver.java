@@ -86,10 +86,12 @@ public class CUBRIDDriver implements Driver {
 	private final static String CONNECTION_PROPERTY_ALTERNATIVE_HOSTS = "althosts";
 	private final static String CONNECTION_PROPERTY_RECONNECTION_TIME = "rctime";
 	private final static String CONNECTION_PROPERTY_QUERY_TIMEOUT = "queryTimeout";
+	private final static String CONNECTION_PROPERTY_ZERODATETIME_BEHAVIOR = "zeroDateTimeBehavior";
 	private final static String[] params = { CONNECTION_PROPERTY_CHARSET,
 			CONNECTION_PROPERTY_ALTERNATIVE_HOSTS,
 			CONNECTION_PROPERTY_RECONNECTION_TIME,
-			CONNECTION_PROPERTY_QUERY_TIMEOUT};
+			CONNECTION_PROPERTY_QUERY_TIMEOUT,
+			CONNECTION_PROPERTY_ZERODATETIME_BEHAVIOR };
 
 	static {
 		try {
@@ -337,6 +339,19 @@ public class CUBRIDDriver implements Driver {
 				} catch (java.io.UnsupportedEncodingException e) {
 					throw new SQLException("UnsupportedEncodingException : "
 							+ dummy);
+				}
+			}
+
+			dummy = info.getProperty(CONNECTION_PROPERTY_ZERODATETIME_BEHAVIOR);
+			if (dummy == null) {
+				dummy = paramInfo
+						.getProperty(CONNECTION_PROPERTY_ZERODATETIME_BEHAVIOR);
+			}
+			if (dummy != null) {
+				try {
+					u_con.setZeroDateTimeBehavior(dummy);
+				} catch (CUBRIDException e) {
+					throw e;
 				}
 			}
 		}

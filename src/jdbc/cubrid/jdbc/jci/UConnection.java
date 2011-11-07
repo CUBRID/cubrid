@@ -57,6 +57,7 @@ import javax.transaction.xa.Xid;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDDriver;
 import cubrid.jdbc.driver.CUBRIDException;
+import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
 import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
 import cubrid.jdbc.driver.CUBRIDXid;
 import cubrid.sql.CUBRIDOID;
@@ -135,6 +136,12 @@ public class UConnection {
 	private final static int BROKER_INFO_RESERVED = BROKER_INFO_RESERVED3;
 
 	String conCharsetName;
+
+	public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
+	public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
+	public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
+	private String conZeroDateTimeBehavior = ZERO_DATETIME_BEHAVIOR_EXCEPTION;
+
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;
 
@@ -346,6 +353,27 @@ public class UConnection {
 
 	public String getCharset() {
 		return conCharsetName;
+	}
+
+	public void setZeroDateTimeBehavior(String behavior) throws CUBRIDException {
+		if (!behavior.equals(ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)
+				&& !behavior.equals(ZERO_DATETIME_BEHAVIOR_EXCEPTION)
+				&& !behavior.equals(ZERO_DATETIME_BEHAVIOR_ROUND)) {
+			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url,
+					"unknown value " + behavior);
+		}
+
+		conZeroDateTimeBehavior = behavior;
+
+		if (UJCIUtil.isServerSide() && isServerSideJdbc) {
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
+					"setZeroDateTimeBehavior", new Class[] { String.class },
+					this.curThread, new Object[] { conZeroDateTimeBehavior });
+		}
+	}
+
+	public String getZeroDateTimeBehavior() {
+		return conZeroDateTimeBehavior;
 	}
 
 	synchronized public void addElementToSet(CUBRIDOID oid,
