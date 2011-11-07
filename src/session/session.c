@@ -576,6 +576,7 @@ session_remove_expired_sessions (struct timeval *timeout)
 {
   int err = NO_ERROR;
   SESSION_TIMEOUT_INFO timeout_info;
+
   timeout_info.count = -1;
   timeout_info.session_ids = NULL;
   timeout_info.timeout = timeout;
@@ -584,13 +585,15 @@ session_remove_expired_sessions (struct timeval *timeout)
     {
       return ER_FAILED;
     }
-  err =
-    mht_map (sessions.sessions_table, session_check_timeout, &timeout_info);
+
+  err = mht_map (sessions.sessions_table, session_check_timeout,
+		 &timeout_info);
 
   csect_exit (CSECT_SESSION_STATE);
 
   if (timeout_info.session_ids != NULL)
     {
+      assert (timeout_info.count > 0);
       free_and_init (timeout_info.session_ids);
     }
 
@@ -638,14 +641,8 @@ session_check_timeout (const void *key, void *data, void *args)
 		{
 		  err = ER_FAILED;
 		}
-	      free_and_init (timeout_info->session_ids);
 	      return err;
 	    }
-	}
-
-      if (timeout_info->session_ids != NULL)
-	{
-	  free_and_init (timeout_info->session_ids);
 	}
 #endif
       /* remove this session: timeout expired and it doesn't have an active
