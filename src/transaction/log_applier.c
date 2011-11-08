@@ -3977,7 +3977,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
 static int
 la_apply_delete_log (LA_ITEM * item)
 {
-  DB_OBJECT *class_obj, *object;
+  DB_OBJECT *class_obj, *obj;
   int error = NO_ERROR, au_save;
   char buf[256];
 
@@ -3991,14 +3991,13 @@ la_apply_delete_log (LA_ITEM * item)
     }
 
   /* find out object by primary key */
-  object =
-    obj_repl_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
+  obj = obj_repl_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
 
   AU_SAVE_AND_DISABLE (au_save);
   /* delete this object */
-  if (object)
+  if (obj)
     {
-      error = db_drop (object);
+      error = db_drop (obj);
       if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
@@ -4063,8 +4062,7 @@ la_apply_update_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save = 0;
   DB_OBJECT *class_obj;
-  DB_OBJECT *object = NULL;
-  DB_OBJECT *new_object = NULL;
+  DB_OBJECT *object;
   MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
@@ -4159,8 +4157,7 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   /* update object */
-  new_object = dbt_finish_object (inst_tp);
-  if (new_object == NULL)
+  if (dbt_finish_object (inst_tp) == NULL)
     {
       goto error_rtn;
     }
@@ -4173,10 +4170,6 @@ la_apply_update_log (LA_ITEM * item)
     {
       free_and_init (recdes.data);
     }
-
-  assert (new_object == object);
-  ws_decache (new_object);
-  new_object = object = NULL;
 
   la_release_page_buffer (old_pageid);
 
@@ -4209,13 +4202,6 @@ error_rtn:
   if (ovfyn)
     {
       free_and_init (recdes.data);
-    }
-
-  assert (new_object == NULL || new_object == object);
-  if (object)
-    {
-      ws_decache (object);
-      object = new_object = NULL;
     }
 
   if (inst_tp)
@@ -4252,8 +4238,7 @@ la_apply_insert_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save = 0;
   DB_OBJECT *class_obj;
-  DB_OBJECT *object = NULL;
-  DB_OBJECT *new_object = NULL;
+  DB_OBJECT *object;
   MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
@@ -4346,8 +4331,7 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   /* update object */
-  new_object = dbt_finish_object (inst_tp);
-  if (new_object == NULL)
+  if (dbt_finish_object (inst_tp) == NULL)
     {
       goto error_rtn;
     }
@@ -4360,10 +4344,6 @@ la_apply_insert_log (LA_ITEM * item)
     {
       free_and_init (recdes.data);
     }
-
-  assert (object == NULL);
-  ws_decache (new_object);
-  new_object = NULL;
 
   la_release_page_buffer (old_pageid);
   return error;
@@ -4395,18 +4375,6 @@ error_rtn:
   if (ovfyn)
     {
       free_and_init (recdes.data);
-    }
-
-  if (object)
-    {
-      ws_decache (object);
-      object = NULL;
-    }
-
-  if (new_object)
-    {
-      ws_decache (new_object);
-      new_object = NULL;
     }
 
   if (inst_tp)
