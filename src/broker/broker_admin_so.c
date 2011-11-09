@@ -34,6 +34,7 @@
 #include <windows.h>
 #endif /* WINDOWS */
 
+#include "porting.h"
 #include "cas_common.h"
 #include "broker_admin_so.h"
 #include "broker_filename.h"
@@ -60,6 +61,7 @@
 #define UC_CONF_PARAM_AUTO_ADD_APPL_SERVER	"AUTO_ADD_APPL_SERVER"
 #define UC_CONF_PARAM_APPL_SERVER_SHM_ID	"APPL_SERVER_SHM_ID"
 #define UC_CONF_PARAM_APPL_SERVER_MAX_SIZE	"APPL_SERVER_MAX_SIZE"
+#define UC_CONF_PARAM_APPL_SERVER_HARD_LIMIT	"APPL_SERVER_HARD_LIMIT"
 #define UC_CONF_PARAM_LOG_DIR			"LOG_DIR"
 #define UC_CONF_PARAM_SLOW_LOG_DIR		"SLOW_LOG_DIR"
 #define UC_CONF_PARAM_ERROR_LOG_DIR		"ERROR_LOG_DIR"
@@ -976,6 +978,8 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  if (p != NULL)
 	    *p = '\0';
 	  br_info[i].as_max_size = shm_br->br_info[i].appl_server_max_size;
+	  br_info[i].as_hard_limit =
+	    shm_br->br_info[i].appl_server_hard_limit;
 	  br_info[i].log_backup_flag = shm_br->br_info[i].log_backup;
 	  br_info[i].time_to_kill = shm_br->br_info[i].time_to_kill;
 	  uw_shm_detach (shm_appl);
@@ -1280,7 +1284,9 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
       SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_SHM_ID,
 			 br_conf[i].appl_server_shm_id, FMT_X);
       SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_MAX_SIZE,
-			 br_conf[i].appl_server_max_size / 1024, FMT_D);
+			 br_conf[i].appl_server_max_size / ONE_K, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_HARD_LIMIT,
+			 br_conf[i].appl_server_hard_limit / ONE_K, FMT_D);
       SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LOG_DIR,
 			 br_conf[i].log_dir);
       SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SLOW_LOG_DIR,

@@ -411,6 +411,13 @@ main (int argc, char *argv[])
 #if !defined(WINDOWS)
   psize_at_start = as_info->psize = getsize (getpid ());
 #endif /* !WINDOWS */
+  if (shm_appl->appl_server_max_size > shm_appl->appl_server_hard_limit)
+    {
+      cas_log_write_and_end (0, true,
+			     "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE(%dM) is greater than the APPL_SERVER_LIMIT_SIZE(%dM)",
+			     shm_appl->appl_server_max_size / ONE_K,
+			     shm_appl->appl_server_hard_limit / ONE_K);
+    }
 
   stripped_column_name = shm_appl->stripped_column_name;
 
@@ -456,14 +463,14 @@ main (int argc, char *argv[])
 	if (net_read_int (br_sock_fd, &con_status) < 0)
 	  {
 	    cas_log_write_and_end (0, false,
-				   "HANDSHAKE ERORR net_read_int(con_status)");
+				   "HANDSHAKE ERROR net_read_int(con_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    goto error1;
 	  }
 	if (net_write_int (br_sock_fd, as_info->con_status) < 0)
 	  {
 	    cas_log_write_and_end (0, false,
-				   "HANDSHAKE ERORR net_write_int(con_status)");
+				   "HANDSHAKE ERROR net_write_int(con_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    goto error1;
 	  }
@@ -471,7 +478,7 @@ main (int argc, char *argv[])
 	client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr);
 	if (client_sock_fd == -1)
 	  {
-	    cas_log_write_and_end (0, false, "HANDSHAKE ERORR recv_fd %d",
+	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d",
 				   client_sock_fd);
 	    CLOSE_SOCKET (br_sock_fd);
 	    goto error1;
@@ -479,7 +486,7 @@ main (int argc, char *argv[])
 	if (net_write_int (br_sock_fd, as_info->uts_status) < 0)
 	  {
 	    cas_log_write_and_end (0, false,
-				   "HANDSHAKE ERORR net_write_int(uts_status)");
+				   "HANDSHAKE ERROR net_write_int(uts_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    CLOSE_SOCKET (client_sock_fd);
 	    goto error1;
@@ -930,6 +937,18 @@ cleanup (int signo)
 
   ux_database_shutdown ();
 
+  if (as_info->psize > shm_appl->appl_server_max_size)
+    {
+      cas_log_write_and_end (0, true,
+			     "CAS MEMORY USAGE HAS EXCEEDED MAX SIZE (%dM)",
+			     shm_appl->appl_server_max_size / ONE_K);
+    }
+  if (as_info->psize > shm_appl->appl_server_hard_limit)
+    {
+      cas_log_write_and_end (0, true,
+			     "CAS MEMORY USAGE HAS EXCEEDED HARD LIMIT (%dM)",
+			     shm_appl->appl_server_hard_limit / ONE_K);
+    }
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();

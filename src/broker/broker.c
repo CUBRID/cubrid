@@ -92,7 +92,7 @@
 #endif
 
 #define		IP_ADDR_STR_LEN		20
-#define		BUFFER_SIZE		1024
+#define		BUFFER_SIZE		ONE_K
 
 #define		ENV_BUF_INIT_SIZE	512
 #define		ALIGN_ENV_BUF_SIZE(X)	\
@@ -1472,6 +1472,23 @@ cas_monitor_thr_f (void *ar)
 		shm_appl->as_info[i].uts_status = UTS_STATUS_IDLE;
 	      else
 		tmp_num_busy_uts++;
+	    }
+#endif
+
+#if defined(WINDOWS)
+	  if (shm_appl->use_pdh_flag == TRUE)
+	    {
+	      if ((shm_appl->as_info[i].pid == shm_appl->as_info[i].pdh_pid)
+		  && (shm_appl->as_info[i].pdh_workset >
+		      shm_br->br_info[br_index].appl_server_hard_limit))
+		{
+		  shm_appl->as_info[i].uts_status = UTS_STATUS_RESTART;
+		}
+	    }
+#else
+	  if (shm_appl->as_info[i].psize > shm_appl->appl_server_hard_limit)
+	    {
+	      shm_appl->as_info[i].uts_status = UTS_STATUS_RESTART;
 	    }
 #endif
 

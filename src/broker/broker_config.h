@@ -58,6 +58,8 @@
 #define	DEFAULT_SERVER_MAX_SIZE	0
 #endif
 
+#define	DEFAULT_SERVER_HARD_LIMIT	1024
+
 #define	DEFAULT_TIME_TO_KILL	120	/* seconds */
 #define SQL_LOG_TIME_MAX	-1
 
@@ -139,6 +141,7 @@ struct t_broker_info
 #endif
   int appl_server_shm_id;
   int appl_server_max_size;
+  int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
   int job_queue_size;

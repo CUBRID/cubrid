@@ -138,7 +138,6 @@ struct log_lsa
 
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 
-#define ONE_K                   1024
 #define IO_DEFAULT_PAGE_SIZE    (16 * ONE_K)
 #define IO_MIN_PAGE_SIZE        (4 * ONE_K)
 #define IO_MAX_PAGE_SIZE        (16 * ONE_K)

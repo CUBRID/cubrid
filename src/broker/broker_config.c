@@ -41,6 +41,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "cas_common.h"
 #include "broker_config.h"
 #include "broker_shm.h"
@@ -419,7 +420,12 @@ broker_config_read_internal (const char *conf_file,
       br_info[num_brs].appl_server_max_size =
 	ini_getint (ini, sec_name, "APPL_SERVER_MAX_SIZE",
 		    DEFAULT_SERVER_MAX_SIZE, &lineno);
-      br_info[num_brs].appl_server_max_size *= 1024;	/* K bytes */
+      br_info[num_brs].appl_server_max_size *= ONE_K;	/* K bytes */
+
+      br_info[num_brs].appl_server_hard_limit =
+	ini_getint (ini, sec_name, "APPL_SERVER_HARD_LIMIT",
+		    DEFAULT_SERVER_HARD_LIMIT, &lineno);
+      br_info[num_brs].appl_server_hard_limit *= ONE_K;	/* K bytes */
 
       br_info[num_brs].session_timeout =
 	ini_getint (ini, sec_name, "SESSION_TIMEOUT",
@@ -944,7 +950,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       fprintf (fp, "APPL_SERVER_SHM_ID\t=%x\n",
 	       br_info[i].appl_server_shm_id);
       fprintf (fp, "APPL_SERVER_MAX_SIZE\t=%d\n",
-	       br_info[i].appl_server_max_size / 1204);
+	       br_info[i].appl_server_max_size / ONE_K);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);
       fprintf (fp, "SLOW_LOG_DIR\t\t\t=%s\n", br_info[i].slow_log_dir);

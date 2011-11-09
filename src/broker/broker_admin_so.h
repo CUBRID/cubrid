@@ -117,6 +117,7 @@ struct t_br_info
   INT64 num_interrupts;
   int session_timeout;
   int as_max_size;
+  int as_hard_limit;
   int time_to_kill;
   int long_query_time;		/* msec */
   int long_transaction_time;	/* msec */

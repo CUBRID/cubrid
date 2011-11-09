@@ -1360,9 +1360,18 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
       int max_size;
 
       max_size = atoi (conf_value);
-      max_size *= 1024;
+      max_size *= ONE_K;
       shm_br->br_info[br_index].appl_server_max_size = max_size;
       shm_appl->appl_server_max_size = max_size;
+    }
+  else if (strcasecmp (conf_name, "APPL_SERVER_HARD_LIMIT") == 0)
+    {
+      int hard_limit;
+
+      hard_limit = atoi (conf_value);
+      hard_limit *= ONE_K;
+      shm_br->br_info[br_index].appl_server_hard_limit = hard_limit;
+      shm_appl->appl_server_hard_limit = hard_limit;
     }
   else if (strcasecmp (conf_name, "LOG_BACKUP") == 0)
     {
@@ -2109,6 +2118,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->long_query_time = br_info->long_query_time;
   shm_appl->long_transaction_time = br_info->long_transaction_time;
   shm_appl->appl_server_max_size = br_info->appl_server_max_size;
+  shm_appl->appl_server_hard_limit = br_info->appl_server_hard_limit;
   shm_appl->session_timeout = br_info->session_timeout;
   shm_appl->sql_log2 = br_info->sql_log2;
 #if defined(WINDOWS)

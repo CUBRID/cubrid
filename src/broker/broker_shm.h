@@ -290,6 +290,7 @@ struct t_shm_appl_server
 #endif				/* USE_MUTEX */
   int magic;
   int appl_server_max_size;
+  int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
   int num_appl_server;

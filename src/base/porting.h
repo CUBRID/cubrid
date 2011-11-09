@@ -49,6 +49,12 @@
 #endif /* !L_cuserid */
 #endif /* WINDOWS */
 
+#define ONE_K		1024
+#define ONE_M		1048576
+#define ONE_G		1073741824
+#define ONE_T		1099511627776LL
+#define ONE_P		1125899906842624LL
+
 #if defined(WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
