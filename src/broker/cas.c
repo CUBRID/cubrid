@@ -414,7 +414,7 @@ main (int argc, char *argv[])
   if (shm_appl->appl_server_max_size > shm_appl->appl_server_hard_limit)
     {
       cas_log_write_and_end (0, true,
-			     "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE(%dM) is greater than the APPL_SERVER_LIMIT_SIZE(%dM)",
+			     "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE(%dM) is greater than the APPL_SERVER_HARD_LIMIT(%dM)",
 			     shm_appl->appl_server_max_size / ONE_K,
 			     shm_appl->appl_server_hard_limit / ONE_K);
     }
