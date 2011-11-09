@@ -83,7 +83,7 @@ BOOL CTrayNotifyIcon::Create(CWnd* pNotifyWnd, UINT uID, LPCTSTR pszTooltipText,
   repeat_count = 0;
   rVal = Shell_NotifyIcon(NIM_ADD, &m_NotifyIconData);
   ErrorCode = GetLastError();
-  if ((rVal == 0) && (ErrorCode == ERROR_TIMEOUT)) {
+  if ((rVal == 0) && (ErrorCode == ERROR_TIMEOUT || ErrorCode == ERROR_FILE_NOT_FOUND || ErrorCode == ERROR_SUCCESS )) {
 	  do {
 		  repeat_count++;
 		  Sleep(2000);

@@ -115,6 +115,7 @@ set BUILD_PREFIX=%BUILD_DIR%\install\CUBRID_%BUILD_MODE%_%BUILD_TARGET%
 echo Build install directory is [%BUILD_PREFIX%].
 
 if "%DIST_DIR%." == "." set DIST_DIR=%BUILD_DIR%\install\Installshield
+call :ABSPATH "%DIST_DIR%" DIST_DIR
 echo Packages Ootput directory is [%DIST_DIR%].
 if NOT EXIST "%DIST_DIR%" md %DIST_DIR%
 GOTO :EOF
