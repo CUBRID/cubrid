@@ -104,7 +104,7 @@ struct db_object
   unsigned is_set:1;		/* temporary kludge for disconnected sets */
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
-  unsigned decached:1;          /* set if mop is decached by calling ws_decache function */
+  unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
 };
 
 
@@ -552,6 +552,7 @@ extern void ws_pin_instance_and_class (MOP obj, int *opin, int *cpin);
 extern void ws_restore_pin (MOP obj, int opin, int cpin);
 
 /* Misc info */
+extern void ws_cull_mops (void);
 extern int ws_find (MOP mop, MOBJ * obj);
 extern int ws_mop_compare (MOP mop1, MOP mop2);
 extern void ws_class_has_object_dependencies (MOP mop);

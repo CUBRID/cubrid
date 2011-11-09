@@ -182,7 +182,6 @@ static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
 static void disconnect_deleted_instances (MOP classop);
 static void emergency_remove_dirty (MOP op);
-static void ws_cull_mops (void);
 static int ws_map_dirty_internal (MAPFUNC function, void *args,
 				  bool classes_only);
 static int add_class_object (MOP class_mop, MOP obj);
@@ -1430,7 +1429,7 @@ emergency_remove_dirty (MOP op)
  *    have been interned.
  *    I forget exactly what the two tables here are for.
  */
-static void
+void
 ws_cull_mops (void)
 {
   MOP mops, prev, next;

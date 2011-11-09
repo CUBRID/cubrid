@@ -73,6 +73,9 @@
 
 #define LA_MAX_REPL_ITEMS                       1000
 
+#define LA_WS_CULL_MOPS_PER_APPLY 				(100000)
+#define LA_WS_CULL_MOPS_INTERVAL				(180)
+
 #define LA_LOG_IS_IN_ARCHIVE(pageid) \
   ((pageid) < la_Info.act_log.log_hdr->nxarv_pageid)
 
@@ -431,6 +434,8 @@ static LA_ITEM *la_get_next_repl_item_from_list (LA_ITEM * item);
 static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item,
 						LOG_LSA * last_lsa);
 
+static int la_commit_transaction (void);
+
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
  *                                it does the shutdown process.
@@ -448,7 +453,6 @@ la_shutdown_by_signal ()
 
   return;
 }
-
 
 /*
  * la_log_phypageid() - get the physical page id from the logical pageid
@@ -3977,7 +3981,8 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
 static int
 la_apply_delete_log (LA_ITEM * item)
 {
-  DB_OBJECT *class_obj, *obj;
+  DB_OBJECT *class_obj;
+  DB_OBJECT *object = NULL;
   int error = NO_ERROR, au_save;
   char buf[256];
 
@@ -3991,13 +3996,14 @@ la_apply_delete_log (LA_ITEM * item)
     }
 
   /* find out object by primary key */
-  obj = obj_repl_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
+  object =
+    obj_repl_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
 
   AU_SAVE_AND_DISABLE (au_save);
   /* delete this object */
-  if (obj)
+  if (object)
     {
-      error = db_drop (obj);
+      error = db_drop (object);
       if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
@@ -4038,6 +4044,12 @@ error_rtn:
       la_Info.fail_counter++;
     }
 
+  if (object)
+    {
+      ws_release_instance (object);
+      object = NULL;
+    }
+
   return error;
 }
 
@@ -4062,7 +4074,8 @@ la_apply_update_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save = 0;
   DB_OBJECT *class_obj;
-  DB_OBJECT *object;
+  DB_OBJECT *object = NULL;
+  DB_OBJECT *new_object = NULL;
   MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
@@ -4157,7 +4170,8 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   /* update object */
-  if (dbt_finish_object (inst_tp) == NULL)
+  new_object = dbt_finish_object (inst_tp);
+  if (new_object == NULL)
     {
       goto error_rtn;
     }
@@ -4170,6 +4184,10 @@ la_apply_update_log (LA_ITEM * item)
     {
       free_and_init (recdes.data);
     }
+
+  assert (new_object == object);
+  ws_release_instance (new_object);
+  object = new_object = NULL;
 
   la_release_page_buffer (old_pageid);
 
@@ -4202,6 +4220,13 @@ error_rtn:
   if (ovfyn)
     {
       free_and_init (recdes.data);
+    }
+
+  assert (new_object == NULL || new_object == object);
+  if (object)
+    {
+      ws_release_instance (object);
+      object = new_object = NULL;
     }
 
   if (inst_tp)
@@ -4238,7 +4263,8 @@ la_apply_insert_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save = 0;
   DB_OBJECT *class_obj;
-  DB_OBJECT *object;
+  DB_OBJECT *object = NULL;
+  DB_OBJECT *new_object = NULL;
   MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
@@ -4331,7 +4357,8 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   /* update object */
-  if (dbt_finish_object (inst_tp) == NULL)
+  new_object = dbt_finish_object (inst_tp);
+  if (new_object == NULL)
     {
       goto error_rtn;
     }
@@ -4344,6 +4371,10 @@ la_apply_insert_log (LA_ITEM * item)
     {
       free_and_init (recdes.data);
     }
+
+  assert (object == NULL);
+  ws_release_instance (new_object);
+  new_object = NULL;
 
   la_release_page_buffer (old_pageid);
   return error;
@@ -4375,6 +4406,18 @@ error_rtn:
   if (ovfyn)
     {
       free_and_init (recdes.data);
+    }
+
+  if (object)
+    {
+      ws_release_instance (object);
+      object = NULL;
+    }
+
+  if (new_object)
+    {
+      ws_release_instance (new_object);
+      new_object = NULL;
     }
 
   if (inst_tp)
@@ -4649,7 +4692,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 
       if ((total_repl_items % LA_MAX_REPL_ITEMS) == 0)
 	{
-	  db_commit_transaction ();
+	  la_commit_transaction ();
 	}
 
       if (item->log_type == LOG_REPLICATION_DATA)
@@ -5333,7 +5376,7 @@ la_log_commit (void)
 {
   int error = NO_ERROR;
 
-  error = db_commit_transaction ();
+  error = la_commit_transaction ();
   if (error == NO_ERROR)
     {
       la_Info.commit_counter++;
@@ -5413,6 +5456,52 @@ la_exist_any_repl_item (void)
     }
 
   return false;
+}
+
+int
+la_commit_transaction (void)
+{
+  int error = NO_ERROR;
+  static int last_time = 0;
+  static unsigned long long last_applied_item = 0;
+  int curr_time;
+  int diff_time;
+  unsigned long long curr_applied_item;
+  unsigned long long diff_applied_item;
+
+  if (last_time == 0)
+    {
+      last_time = time (NULL);
+    }
+
+  if (last_applied_item == 0)
+    {
+      last_applied_item =
+	la_Info.insert_counter + la_Info.update_counter +
+	la_Info.delete_counter + la_Info.fail_counter;
+    }
+
+  error = db_commit_transaction ();
+
+  curr_time = time (NULL);
+  diff_time = curr_time - last_time;
+
+  curr_applied_item =
+    la_Info.insert_counter + la_Info.update_counter +
+    la_Info.delete_counter + la_Info.fail_counter;
+  diff_applied_item = curr_applied_item - last_applied_item;
+
+  if (diff_time >= LA_WS_CULL_MOPS_INTERVAL
+      || diff_applied_item >= LA_WS_CULL_MOPS_PER_APPLY)
+    {
+      ws_filter_dirty ();
+      ws_cull_mops ();
+
+      last_time = curr_time;
+      last_applied_item = curr_applied_item;
+    }
+
+  return error;
 }
 
 static int
