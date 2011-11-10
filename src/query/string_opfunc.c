@@ -9143,6 +9143,14 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 	error_status = db_datetime_decode (DB_GET_DATETIME (&dt), &month,
 					   &day, &year, &hour, &minute,
 					   &second, &ms);
+	if (year == 0 && month == 0 && day == 0
+	    && hour == 0 && minute == 0 && second == 0 && ms == 0)
+	  {
+	    /* This function should return 0 if the date is zero date */
+	    DB_MAKE_INT (result_timestamp, 0);
+	    return NO_ERROR;
+	  }
+
 	if (year < 1970 || year > 2038)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -9188,6 +9196,15 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 	{
 	  return error_status;
 	}
+
+      if (year == 0 && month == 0 && day == 0
+	  && hour == 0 && minute == 0 && second == 0 && ms == 0)
+	{
+	  /* This function should return 0 if the date is zero date */
+	  DB_MAKE_INT (result_timestamp, 0);
+	  return NO_ERROR;
+	}
+
       if (year < 1970 || year > 2038)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
@@ -9214,6 +9231,15 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
        * UTC to '2038-01-19 03:14:07' UTC */
 
       db_date_decode (DB_GET_DATE (src_date), &month, &day, &year);
+
+      if (year == 0 && month == 0 && day == 0
+	  && hour == 0 && minute == 0 && second == 0 && ms == 0)
+	{
+	  /* This function should return 0 if the date is zero date */
+	  DB_MAKE_INT (result_timestamp, 0);
+	  return NO_ERROR;
+	}
+
       if (year < 1970 || year > 2038)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,

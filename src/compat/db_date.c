@@ -3726,7 +3726,7 @@ db_timestamp_to_datetime (DB_TIMESTAMP * utime, DB_DATETIME * datetime)
 	  datetime->time = 0;
 	}
 
-      return;
+      return NO_ERROR;
     }
 
 #if defined(SERVER_MODE) && !defined(WINDOWS)
