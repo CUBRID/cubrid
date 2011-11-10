@@ -423,7 +423,7 @@ broker_config_read_internal (const char *conf_file,
       br_info[num_brs].appl_server_max_size *= ONE_K;	/* K bytes */
 
       br_info[num_brs].appl_server_hard_limit =
-	ini_getint (ini, sec_name, "APPL_SERVER_HARD_LIMIT",
+	ini_getint (ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
 		    DEFAULT_SERVER_HARD_LIMIT, &lineno);
       br_info[num_brs].appl_server_hard_limit *= ONE_K;	/* K bytes */
 

@@ -1364,7 +1364,7 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
       shm_br->br_info[br_index].appl_server_max_size = max_size;
       shm_appl->appl_server_max_size = max_size;
     }
-  else if (strcasecmp (conf_name, "APPL_SERVER_HARD_LIMIT") == 0)
+  else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT") == 0)
     {
       int hard_limit;
 
