@@ -12226,7 +12226,7 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
 		  &scanid_bit);
   if (rc != LK_GRANTED)
     {
-      return -1;
+      return ER_FAILED;
     }
 
   isidp->scan_cache.scanid_bit = scanid_bit;
@@ -19372,19 +19372,58 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 {
   int c;
   DB_TYPE key1_type, key2_type;
+  DB_TYPE dom_type;
 
   assert (key1 != NULL && key2 != NULL && key_domain != NULL);
 
-  if (key_domain->type->id == DB_TYPE_MIDXKEY)
+  key1_type = DB_VALUE_DOMAIN_TYPE (key1);
+  key2_type = DB_VALUE_DOMAIN_TYPE (key2);
+  dom_type = key_domain->type->id;
+
+  if (dom_type == DB_TYPE_MIDXKEY)
     {
+      if (key1_type != DB_TYPE_MIDXKEY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  pr_type_name (key1_type), pr_type_name (dom_type));
+	  assert (false);
+	  return DB_UNK;
+	}
+      if (key2_type != DB_TYPE_MIDXKEY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  pr_type_name (key2_type), pr_type_name (dom_type));
+	  assert (false);
+	  return DB_UNK;
+	}
+
       c = (*(key_domain->type->cmpval)) (key1, key2, key_domain,
 					 do_reverse, do_coercion,
 					 total_order, start_colp);
     }
   else
     {
-      key1_type = DB_VALUE_DOMAIN_TYPE (key1);
-      key2_type = DB_VALUE_DOMAIN_TYPE (key2);
+      assert (tp_valid_indextype (key1_type));
+      assert (tp_valid_indextype (key2_type));
+
+      if (key1_type == DB_TYPE_MIDXKEY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  pr_type_name (key1_type), pr_type_name (dom_type));
+	  assert (false);
+	  return DB_UNK;
+	}
+      if (key2_type == DB_TYPE_MIDXKEY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  pr_type_name (key2_type), pr_type_name (dom_type));
+	  assert (false);
+	  return DB_UNK;
+	}
 
       if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type))
 	{
