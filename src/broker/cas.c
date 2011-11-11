@@ -932,12 +932,15 @@ cleanup (int signo)
 #ifdef MEM_DEBUG
   int fd;
 #endif
+  int max_process_size;
 
   signal (signo, SIG_IGN);
 
   ux_database_shutdown ();
 
-  if (as_info->psize > shm_appl->appl_server_max_size)
+  max_process_size = (shm_appl->appl_server_max_size > 0) ?
+    shm_appl->appl_server_max_size : (psize_at_start * 2);
+  if (as_info->psize > max_process_size)
     {
       cas_log_write_and_end (0, true,
 			     "CAS MEMORY USAGE HAS EXCEEDED MAX SIZE (%dM)",
