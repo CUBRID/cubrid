@@ -252,6 +252,8 @@ struct t_appl_server_info
   char database_host[MAXHOSTNAMELEN + 1];
   char cci_default_autocommit;
   time_t last_connect_time;
+  INT64 num_connect_requests;
+  INT64 num_restarts;
 };
 
 typedef struct t_shm_appl_server T_SHM_APPL_SERVER;

@@ -966,8 +966,14 @@ appl_monitor (char *br_vector)
 		      else
 			{
 			  col_len +=
-			    sprintf (line_buf + col_len, "%19c", '-');
+			    sprintf (line_buf + col_len, "%19c ", '-');
 			}
+		      col_len +=
+			sprintf (line_buf + col_len, "%9d ",
+				 shm_appl->as_info[j].num_connect_requests);
+		      col_len +=
+			sprintf (line_buf + col_len, "%9d ",
+				 shm_appl->as_info[j].num_restarts);
 		    }
 
 		  if (col_len >= max_col_len)
@@ -1397,6 +1403,8 @@ print_header (bool use_pdh_flag)
       col_len += sprintf (buf + col_len, "%15s ", "CLIENT IP");
       col_len += sprintf (buf + col_len, "%15s ", "SQL_LOG_MODE");
       col_len += sprintf (buf + col_len, "%19s ", "TRANSACTION STIME");
+      col_len += sprintf (buf + col_len, "%9s ", "# CONNECT");
+      col_len += sprintf (buf + col_len, "%9s ", "# RESTART");
     }
 
   for (i = 0; i < col_len; i++)

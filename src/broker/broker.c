@@ -870,6 +870,7 @@ dispatch_thr_f (void *arg)
 
       hold_job = 0;
 
+      shm_appl->as_info[as_index].num_connect_requests++;
 #if !defined(WIN_FW)
       shm_appl->as_info[as_index].clt_version = cur_job.clt_version;
       shm_appl->as_info[as_index].cas_client_type = cur_job.cas_client_type;
@@ -882,6 +883,7 @@ dispatch_thr_f (void *arg)
       CLOSE_SOCKET (cur_job.clt_sock_fd);
       shm_appl->as_info[as_index].num_request++;
       shm_appl->as_info[as_index].last_access_time = time (NULL);
+      shm_appl->as_info[as_index].transaction_start_time = (time_t) 0;
 #else
 
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, as_index);
@@ -1006,6 +1008,7 @@ service_thr_f (void *arg)
 	  CAS_SEND_ERROR_CODE (clt_sock_fd, 0);
 	  shm_appl->as_info[self_index].num_request++;
 	  shm_appl->as_info[self_index].last_access_time = time (NULL);
+	  shm_appl->as_info[self_index].transaction_start_time = (time_t) 0;
 	}
 
       process_cas_request (cas_pid, self_index, clt_sock_fd, srv_sock_fd,
@@ -1276,6 +1279,9 @@ run_appl_server (int as_index)
   SERVICE_READY_WAIT (shm_appl->as_info[as_index].service_ready_flag);
   run_appl_server_flag = 0;
 
+  shm_appl->as_info[as_index].transaction_start_time = (time_t) 0;
+  shm_appl->as_info[as_index].num_restarts++;
+
   return pid;
 }
 
@@ -1294,6 +1300,7 @@ stop_appl_server (int as_index)
 
   shm_appl->as_info[as_index].pid = 0;
   shm_appl->as_info[as_index].last_access_time = time (NULL);
+  shm_appl->as_info[as_index].transaction_start_time = (time_t) 0;
   return 0;
 }
 

@@ -2166,6 +2166,8 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       shm_appl->as_info[i].num_long_transactions = 0;
       shm_appl->as_info[i].num_error_queries = 0;
       shm_appl->as_info[i].num_interrupts = 0;
+      shm_appl->as_info[i].num_connect_requests = 0;
+      shm_appl->as_info[i].num_restarts = 0;
       shm_appl->as_info[i].auto_commit_mode = FALSE;
       shm_appl->as_info[i].database_name[0] = '\0';
       shm_appl->as_info[i].database_host[0] = '\0';
