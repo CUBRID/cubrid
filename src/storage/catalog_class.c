@@ -4745,7 +4745,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	  break;
 
 	case DB_TYPE_SET:
-	case DB_TYPE_MULTI_SET:
+	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
 	  set_p = DB_PULL_SET (value_p);
 	  if (set_p == NULL)

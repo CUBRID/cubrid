@@ -7117,12 +7117,12 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_CLOB:
 	case DB_TYPE_ERROR:
 	case DB_TYPE_DB_VALUE:
-	case DB_TYPE_MULTISET:
 	case DB_TYPE_OBJECT:
 	case DB_TYPE_OID:
 	case DB_TYPE_POINTER:
-	case DB_TYPE_SEQUENCE:
 	case DB_TYPE_SET:
+	case DB_TYPE_MULTISET:
+	case DB_TYPE_SEQUENCE:
 	case DB_TYPE_SUB:
 	case DB_TYPE_VARIABLE:
 	case DB_TYPE_VOBJ:
@@ -7304,12 +7304,12 @@ db_value_string (const DB_VALUE * value, const char *format,
     case DB_TYPE_CLOB:
     case DB_TYPE_ERROR:
     case DB_TYPE_DB_VALUE:
-    case DB_TYPE_MULTISET:
     case DB_TYPE_OBJECT:
     case DB_TYPE_OID:
     case DB_TYPE_POINTER:
-    case DB_TYPE_SEQUENCE:
     case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
     case DB_TYPE_SUB:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_VOBJ:
@@ -9086,12 +9086,12 @@ db_validate_format (const char *format, DB_TYPE type)
     case DB_TYPE_CLOB:
     case DB_TYPE_ERROR:
     case DB_TYPE_DB_VALUE:
-    case DB_TYPE_MULTISET:
     case DB_TYPE_OBJECT:
     case DB_TYPE_OID:
     case DB_TYPE_POINTER:
-    case DB_TYPE_SEQUENCE:
     case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
     case DB_TYPE_SUB:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_VOBJ:

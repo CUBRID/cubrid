@@ -750,8 +750,7 @@ pgbuf_initialize (void)
   if (pgbuf_initialize_statistics () < 0)
     {
       fprintf (stderr, "pgbuf_initialize_statistics() failed\n");
-      pgbuf_finalize ();
-      return ER_FAILED;
+      goto error;
     }
 #endif /* PAGE_STATISTICS */
 
@@ -1000,12 +999,14 @@ try_again:
 #if defined(SERVER_MODE)
   if (thread_get_check_interrupt (thread_p) == true)
 #endif /* SERVER_MODE */
-    if (logtb_is_interrupted
-	(thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	return NULL;
-      }
+    {
+      if (logtb_is_interrupted (thread_p, true,
+				&pgbuf_Pool.check_for_interrupts) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return NULL;
+	}
+    }
 
   /* Normal process */
   /* latch_mode = PGBUF_LATCH_READ/PGBUF_LATCH_WRITE */
@@ -5757,7 +5758,7 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr)
       pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle = bufptr;
     }
 
-  bufptr->zone = PGBUF_LRU_1_ZONE;	/* OK.. */
+  bufptr->zone = PGBUF_LRU_1_ZONE;	/* OK. */
   pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt += 1;
   if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt >
       PGBUF_LRU_1_ZONE_THRESHOLD)
@@ -5849,7 +5850,7 @@ pgbuf_relocate_bottom_lru (PGBUF_BCB * bufptr)
       pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle = bufptr;
     }
 
-  bufptr->zone = PGBUF_LRU_2_ZONE;	/* OK.. */
+  bufptr->zone = PGBUF_LRU_2_ZONE;	/* OK. */
 
   pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 

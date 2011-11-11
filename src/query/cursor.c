@@ -800,7 +800,7 @@ cursor_has_first_hidden_oid (CURSOR_ID * cursor_id_p)
   return (cursor_id_p->is_oid_included
 	  && cursor_id_p->oid_ent_count > 0
 	  && cursor_id_p->list_id.type_list.domp
-	  && (cursor_id_p->list_id.type_list.domp[0]->type->id ==
+	  && (TP_DOMAIN_TYPE (cursor_id_p->list_id.type_list.domp[0]) ==
 	      DB_TYPE_OBJECT));
 }
 
@@ -881,7 +881,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
       current_tuple_length = QFILE_GET_TUPLE_LENGTH (current_tuple);
 
       /* fetch first OID */
-      type = cursor_id_p->list_id.type_list.domp[0]->type->id;
+      type = TP_DOMAIN_TYPE (cursor_id_p->list_id.type_list.domp[0]);
       tuple_p = (char *) current_tuple + QFILE_TUPLE_LENGTH_SIZE;
 
       if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) != V_BOUND)
@@ -937,7 +937,8 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
 	   col_index++)
 	{
 	  col_num = cursor_id_p->oid_col_no[col_index];
-	  type = cursor_id_p->list_id.type_list.domp[col_num]->type->id;
+	  type =
+	    TP_DOMAIN_TYPE (cursor_id_p->list_id.type_list.domp[col_num]);
 
 	  tuple_p = (char *) current_tuple + QFILE_TUPLE_LENGTH_SIZE;
 	  for (j = col_num - 1; j >= 0; --j)
@@ -1204,10 +1205,8 @@ cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id_p)
 	{
 	  fprintf (stdout, "  ");
 
-	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_SET ||
-	      DB_VALUE_TYPE (value_p) == DB_TYPE_MULTISET ||
-	      DB_VALUE_TYPE (value_p) == DB_TYPE_SEQUENCE ||
-	      DB_VALUE_TYPE (value_p) == DB_TYPE_VOBJ)
+	  if (TP_IS_SET_TYPE (DB_VALUE_TYPE (value_p))
+	      || DB_VALUE_TYPE (value_p) == DB_TYPE_VOBJ)
 	    {
 	      db_set_print (DB_GET_SET (value_p));
 	    }

@@ -1943,9 +1943,6 @@ typedef unsigned int SESSION_ID;
 #define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
-/* This is for backward compatibility, shouldn't be using this anymore */
-#define DB_TYPE_MULTI_SET DB_TYPE_MULTISET
-
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection

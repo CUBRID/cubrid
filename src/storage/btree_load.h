@@ -368,7 +368,7 @@ struct btree_root_header
   int num_keys;			/* Number of unique keys in the Btree */
   OID topclass_oid;		/* topclass oid or NULL OID(non unique index) */
   int unique;			/* unique or non-unique */
-  int reverse;			/* reverse or normal */
+  int reverse_reserved;		/* reverse or normal *//* not used */
   int rev_level;		/* Btree revision level */
   VFID ovfid;			/* Overflow file */
   TP_DOMAIN *key_type;		/* The key type for the index        */
@@ -455,10 +455,12 @@ extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p,
 				       const OID * class_oid_p,
 				       BTID_INT * btid, const char *btname);
 extern int btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
-			     DB_VALUE * prefix_key, int is_reverse,
-			     TP_DOMAIN * key_domain);
+			     DB_VALUE * prefix_key, TP_DOMAIN * key_domain);
 extern char *btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr);
-
+extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
+			      TP_DOMAIN * key_domain,
+			      int do_coercion, int total_order,
+			      int *start_colp);
 extern int btree_leaf_append_vpid_for_overflow_oids (RECDES * rec,
 						     VPID * ovfl_vpid);
 

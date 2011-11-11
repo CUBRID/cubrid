@@ -381,7 +381,7 @@ unsigned char qo_type_qualifiers[] = {
   0,				/* DB_TYPE_STRING       */
   0,				/* DB_TYPE_OBJECT       */
   0,				/* DB_TYPE_SET          */
-  0,				/* DB_TYPE_MULTI_SET    */
+  0,				/* DB_TYPE_MULTISET    */
   0,				/* DB_TYPE_SEQUENCE     */
   0,				/* DB_TYPE_ELO          */
   _INT + _NUM,			/* DB_TYPE_TIME         */
@@ -819,7 +819,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
       if (attr_stats && idx >= 0 && idx < attr_stats->n_btstats)
 	{
 	  key_type = attr_stats->bt_stats[idx].key_type;
-	  if (key_type && key_type->type->id == DB_TYPE_MIDXKEY)
+	  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
 	    {
 	      /* get the column key-type of multi-column index */
 	      key_type = key_type->setdomain;
@@ -11952,7 +11952,7 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
       if (attr_stats && idx >= 0 && idx < attr_stats->n_btstats)
 	{
 	  key_type = attr_stats->bt_stats[idx].key_type;
-	  if (key_type && key_type->type->id == DB_TYPE_MIDXKEY)
+	  if (key_type && TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
 	    {
 	      /* get the column key-type of multi-column index */
 	      key_type = key_type->setdomain;

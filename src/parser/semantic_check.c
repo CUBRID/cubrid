@@ -8553,10 +8553,7 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       type = pt_node_to_db_type (node);
       if (type == DB_TYPE_OBJECT
-	  || type == DB_TYPE_VOBJ
-	  || type == DB_TYPE_SET
-	  || type == DB_TYPE_MULTISET
-	  || type == DB_TYPE_SEQUENCE || type == DB_TYPE_VOBJ)
+	  || type == DB_TYPE_VOBJ || TP_IS_SET_TYPE (type))
 	{
 	  if (pt_is_input_parameter (node))
 	    {
@@ -10451,7 +10448,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		{
 		  if ((dp = db_attribute_domain (attr))
 		      && (db_value_domain_min (&value,
-					       dp->type->id,
+					       TP_DOMAIN_TYPE (dp),
 					       dp->precision,
 					       dp->scale) == NO_ERROR)
 		      && (llim = pt_dbval_to_value (parser, &value))

@@ -406,10 +406,6 @@ static int btree_leaf_get_num_oids (RECDES * rec, int offset,
 static void btree_write_default_split_info (RECDES * rec);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p,
 					 VPID now, VPID prev);
-static int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
-			      TP_DOMAIN * key_domain, int do_reverse,
-			      int do_coercion, int total_order,
-			      int *start_colp);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 						BTREE_SCAN * bts,
 						MULTI_RANGE_OPT *
@@ -878,7 +874,7 @@ btree_write_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
   BTREE_PUT_NUM_KEYS (rec->data, root_header->num_keys);
   BTREE_PUT_TOPCLASS_OID (rec->data, &root_header->topclass_oid);
   BTREE_PUT_UNIQUE (rec->data, root_header->unique);
-  BTREE_PUT_REVERSE (rec->data, root_header->reverse);
+  BTREE_PUT_REVERSE (rec->data, root_header->reverse_reserved);	/* not used */
   BTREE_PUT_REV_LEVEL (rec->data, root_header->rev_level);
   BTREE_PUT_OVFID (rec->data, &root_header->ovfid);
 
@@ -909,7 +905,7 @@ btree_read_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
   root_header->num_keys = BTREE_GET_NUM_KEYS (rec->data);
   BTREE_GET_TOPCLASS_OID (rec->data, &root_header->topclass_oid);
   root_header->unique = BTREE_GET_UNIQUE (rec->data);
-  root_header->reverse = BTREE_GET_REVERSE (rec->data);
+  root_header->reverse_reserved = BTREE_GET_REVERSE (rec->data);	/* not used */
   root_header->rev_level = BTREE_GET_REV_LEVEL (rec->data);
   BTREE_GET_OVFID (rec->data, &root_header->ovfid);
 
@@ -1869,7 +1865,7 @@ btree_dump_root_header (FILE * fp, RECDES rec)
   fprintf (fp,
 	   "\n==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n",
-	   pr_type_name (root_header.key_type->type->id));
+	   pr_type_name (TP_DOMAIN_TYPE (root_header.key_type)));
   fprintf (fp, " Num OIDs: %d, Num NULLs: %d, Num keys: %d\n",
 	   root_header.num_oids, root_header.num_nulls, root_header.num_keys);
   fprintf (fp, " OVFID: %d|%d\n",
@@ -2308,7 +2304,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	}
 
       c = btree_compare_key (key, &temp_key, btid->key_type,
-			     btid->reverse, 1, 1, &start_col);
+			     1, 1, &start_col);
 
       btree_clear_key_value (&clear_key, &temp_key);
 
@@ -2441,7 +2437,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	}
 
       c = btree_compare_key (key, &temp_key, btid->key_type,
-			     btid->reverse, 1, 1, &start_col);
+			     1, 1, &start_col);
 
       btree_clear_key_value (&clear_key, &temp_key);
 
@@ -2502,7 +2498,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   attr_id(in): Identifier of the attribute of the class for which the
  *                index is created.
  *   unique_btree(in):
- *   reverse_btree(in):
  *   num_oids(in):
  *   num_nulls(in):
  *   num_keys(in):
@@ -2514,9 +2509,8 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
  * initializes the root header information.
  */
 BTID *
-xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
-		  TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-		  int is_unique_btree, int is_reverse_btree,
+xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
+		  OID * class_oid, int attr_id, int is_unique_btree,
 		  int num_oids, int num_nulls, int num_keys)
 {
   BTREE_ROOT_HEADER root_header;
@@ -2594,14 +2588,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
 
   COPY_OID (&root_header.topclass_oid, class_oid);
 
-  if (is_reverse_btree)
-    {
-      root_header.reverse = true;
-    }
-  else
-    {
-      root_header.reverse = false;
-    }
+  root_header.reverse_reserved = false;	/* not used */
 
   VFID_SET_NULL (&root_header.ovfid);
   root_header.rev_level = BTREE_CURRENT_REV_LEVEL;
@@ -2711,8 +2698,10 @@ btree_generate_prefix_domain (BTID_INT * btid)
 {
   TP_DOMAIN *domain = btid->key_type;
   TP_DOMAIN *var_domain;
-  DB_TYPE dbtype = domain->type->id;
+  DB_TYPE dbtype;
   DB_TYPE vartype;
+
+  dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
   if (!pr_is_variable_type (dbtype) && pr_is_string_type (dbtype))
@@ -2766,7 +2755,9 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
   rc = NO_ERROR;
 
   btid->unique = root_header->unique;
-  btid->reverse = root_header->reverse;
+#if 0				/* not used */
+  btid->reverse = root_header->reverse_reserved;
+#endif
   btid->key_type = root_header->key_type;
   COPY_OID (&btid->topclass_oid, &root_header->topclass_oid);
 
@@ -2774,16 +2765,15 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 
   /*
    * check for the last element domain of partial-key and key is desc;
-   * set default according to reverse info
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
-  btid->part_key_desc = btid->last_key_desc = btid->reverse;
+  btid->part_key_desc = btid->last_key_desc = 0;
 
   /* check for last key domain is desc */
   if (!BTREE_IS_LAST_KEY_DESC (btid))
     {
       domain = btid->key_type;
-      if (domain->type->id == DB_TYPE_MIDXKEY)
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
 	{
 	  domain = domain->setdomain;
 	}
@@ -3241,7 +3231,7 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       if (stats_env->get_pkeys)
 	{
-	  if (key_type->type->id != DB_TYPE_MIDXKEY)
+	  if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
 	    {
 	      /* single column index */
 	      stats_env->stat_info->pkeys[0] += key_cnt;
@@ -3412,7 +3402,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTID * btid,
       for (i = 0; i < env->stat_info->key_size; i++)
 	{
 	  env->stat_info->pkeys[i] = 0;
-	  PRIM_INIT_NULL (&(env->pkeys[i]));
+	  DB_MAKE_NULL (&(env->pkeys[i]));
 	}
     }
 
@@ -3507,7 +3497,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
     }
 
   /* initializations */
-  db_value_domain_init (max_key_value, key_domain->type->id,
+  db_value_domain_init (max_key_value, TP_DOMAIN_TYPE (key_domain),
 			key_domain->precision, key_domain->scale);
 
   /* computed key_cnt value */
@@ -3634,8 +3624,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	}
 
       /* compare the keys for the order */
-      c = btree_compare_key (&key1, &key2, btid->key_type,
-			     btid->reverse, 1, 1, NULL);
+      c = btree_compare_key (&key1, &key2, btid->key_type, 1, 1, NULL);
 
       if (c >= 0)
 	{
@@ -3790,8 +3779,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	      if (i <= (keys_cnt - 1))
 		{
 		  if (btree_compare_key (&INFO2.max_key, &curr_key,
-					 btid->key_type, btid->reverse, 1, 1,
-					 NULL) > 0)
+					 btid->key_type, 1, 1, NULL) > 0)
 		    {
 		      er_log_debug (ARG_FILE_LINE, "btree_verify_subtree: "
 				    "key order test among nodes failed...\n");
@@ -7259,7 +7247,7 @@ start_point:
 	  int c;
 
 	  c = btree_compare_key (key, &mid_key, btid_int.key_type,
-				 btid_int.reverse, 1, 1, NULL);
+				 1, 1, NULL);
 	  if (c <= 0)
 	    {
 	      /* choose left child */
@@ -9181,7 +9169,6 @@ btree_find_oid_from_rec (THREAD_ENTRY * thread_p, RECDES * rec_p,
  *   key1(in): first key
  *   key2(in): second key
  *   prefix_key(in):
- *   is_reverse(in):
  *
  * Note: This function finds the prefix (the separator) of two strings.
  * Currently this is only done for one of the six string types,
@@ -9195,22 +9182,25 @@ btree_find_oid_from_rec (THREAD_ENTRY * thread_p, RECDES * rec_p,
  */
 int
 btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
-		  DB_VALUE * prefix_key, int is_reverse,
-		  TP_DOMAIN * key_domain)
+		  DB_VALUE * prefix_key, TP_DOMAIN * key_domain)
 {
   assert (DB_VALUE_DOMAIN_TYPE (key1) == DB_VALUE_DOMAIN_TYPE (key2));
   assert (pr_is_prefix_key_type (DB_VALUE_DOMAIN_TYPE (key1)));
   assert (!DB_IS_NULL (key1) && !DB_IS_NULL (key2));
+  assert (key_domain != NULL);
 
   /* currently we only do prefix keys for the string types or midxkey type */
   if (DB_VALUE_DOMAIN_TYPE (key1) == DB_TYPE_MIDXKEY)
     {
-      return pr_midxkey_unique_prefix (key1, key2, prefix_key, is_reverse);
+      assert (TP_DOMAIN_TYPE (key_domain) == DB_TYPE_MIDXKEY);
+
+      return pr_midxkey_unique_prefix (key1, key2, prefix_key);
     }
   else
     {
-      return db_string_unique_prefix (key1, key2, prefix_key, is_reverse,
-				      key_domain);
+      assert (TP_DOMAIN_TYPE (key_domain) != DB_TYPE_MIDXKEY);
+
+      return db_string_unique_prefix (key1, key2, prefix_key, key_domain);
     }
 }
 
@@ -9312,8 +9302,8 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
    *    3) we are splitting a leaf page (there may be an arbitrary number
    *       of OIDs associated with this key).
    */
-  if (!(pr_is_variable_type (btid->key_type->type->id)
-	|| (pr_is_string_type (btid->key_type->type->id)
+  if (!(pr_is_variable_type (TP_DOMAIN_TYPE (btid->key_type))
+	|| (pr_is_string_type (TP_DOMAIN_TYPE (btid->key_type))
 	    && node_type == BTREE_NON_LEAF_NODE)
 	|| node_type == BTREE_LEAF_NODE))
     {
@@ -9435,7 +9425,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
    * can only use them when splitting a leaf page.
    */
   if (node_type == BTREE_NON_LEAF_NODE
-      || !pr_is_prefix_key_type (btid->key_type->type->id))
+      || !pr_is_prefix_key_type (TP_DOMAIN_TYPE (btid->key_type)))
     {
       /* no need to find the prefix, return the middle key as it is */
       *clear_midkey = m_clear_key;
@@ -9491,8 +9481,8 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 
   prefix_key = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE));
   if (prefix_key == NULL
-      || (btree_get_prefix (mid_key, next_key, prefix_key,
-			    btid->reverse, btid->key_type) != NO_ERROR))
+      || btree_get_prefix (mid_key, next_key, prefix_key,
+			   btid->key_type) != NO_ERROR)
     {
       goto error;
     }
@@ -9949,8 +9939,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* find the child page to be followed */
 
-  c = btree_compare_key (key, mid_key, btid->key_type,
-			 btid->reverse, 1, 1, NULL);
+  c = btree_compare_key (key, mid_key, btid->key_type, 1, 1, NULL);
   if (c <= 0)
     {
       page_vpid = *Q_vpid;
@@ -10327,8 +10316,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* find the child page to be followed */
 
-  c = btree_compare_key (key, mid_key, btid->key_type,
-			 btid->reverse, 1, 1, NULL);
+  c = btree_compare_key (key, mid_key, btid->key_type, 1, 1, NULL);
   if (c <= 0)
     {
       page_vpid = *Q_page_vpid;
@@ -12280,7 +12268,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
      value */
 
   stype = DB_VALUE_TYPE (keyp);
-  dtype = btree_domainp->type->id;
+  dtype = TP_DOMAIN_TYPE (btree_domainp);
 
   if (stype == DB_TYPE_MIDXKEY && dtype == DB_TYPE_MIDXKEY)
     {
@@ -12380,8 +12368,10 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 	    {
 	      /* server doesn't treat DB_TYPE_OBJECT, so that convert it to
 	         DB_TYPE_OID */
-	      DB_TYPE type = (dp->type->id == DB_TYPE_OBJECT) ? DB_TYPE_OID
-		: dp->type->id;
+	      DB_TYPE type;
+
+	      type = (TP_DOMAIN_TYPE (dp) == DB_TYPE_OBJECT) ? DB_TYPE_OID
+		: TP_DOMAIN_TYPE (dp);
 
 	      minmax = key_minmax;	/* init */
 	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
@@ -12675,7 +12665,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       TP_DOMAIN *dom;
 
       dom = bts->btid_int.key_type;
-      if (dom->type->id == DB_TYPE_MIDXKEY)
+      if (TP_DOMAIN_TYPE (dom) == DB_TYPE_MIDXKEY)
 	{
 	  dom = dom->setdomain;
 	}
@@ -12683,7 +12673,9 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       /* get the last domain element of partial-key */
       for (i = 1; i < key_val_range->num_index_term && dom;
 	   i++, dom = dom->next)
-	;			/* nop */
+	{
+	  ;			/* nop */
+	}
 
       if (i < key_val_range->num_index_term || dom == NULL)
 	{
@@ -13561,8 +13553,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   else
     {
       c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key,
-			     bts->btid_int.key_type, bts->btid_int.reverse,
-			     1, 1, NULL);
+			     bts->btid_int.key_type, 1, 1, NULL);
       /* when using descending index the comparison should be changed again */
       if (bts->use_desc_index)
 	{
@@ -16833,8 +16824,8 @@ start_locking:
 	      range = &bts->key_range;
 	      btid_int = &bts->btid_int;
 	      c = btree_compare_key (range->upper_key, &prev_key,
-				     btid_int->key_type, btid_int->reverse,
-				     1, 1, NULL);
+				     btid_int->key_type, 1, 1, NULL);
+	      assert (c != DB_UNK);
 
 	      /* EQUALITY test only - doesn't care the reverse index */
 	      if (c != 0)
@@ -17480,11 +17471,12 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   /*
-   * in case of reverse index,
+   * in case of desc domain index,
    * we have to find the min/max key in opposite order.
    */
-  if (btid_int.reverse || btid_int.key_type->is_desc)
+  if (btid_int.key_type->is_desc)
     {
+      assert (TP_DOMAIN_TYPE (btid_int.key_type) != DB_TYPE_MIDXKEY);
       find_min_key = !find_min_key;
     }
 
@@ -18574,7 +18566,7 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
   fprintf (fp, " BTID = { { %d , %d }, %d, %s } \n ",
 	   btid.sys_btid->vfid.volid, btid.sys_btid->vfid.fileid,
 	   btid.sys_btid->root_pageid,
-	   pr_type_name (btid.key_type->type->id));
+	   pr_type_name (TP_DOMAIN_TYPE (btid.key_type)));
 
   fprintf (fp, " KEY = ");
   btree_dump_key (fp, &key);
@@ -19297,7 +19289,7 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p,
     }
 
   err_key = pr_valstring (key);
-  pr_type = PR_TYPE_FROM_ID (btid->key_type->type->id);
+  pr_type = PR_TYPE_FROM_ID (TP_DOMAIN_TYPE (btid->key_type));
 
   er_set (severity, ARG_FILE_LINE, ER_BTREE_UNKNOWN_KEY, 5,
 	  (err_key != NULL) ? err_key : "_NULL_KEY",
@@ -19365,23 +19357,26 @@ exit_on_error:
   return ER_FAILED;
 }
 
-static int
+int
 btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
-		   TP_DOMAIN * key_domain, int do_reverse,
+		   TP_DOMAIN * key_domain,
 		   int do_coercion, int total_order, int *start_colp)
 {
-  int c;
+  int c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
+  int dummy_size1, dummy_size2, dummy_diff_column;
+  bool dom_is_desc = false, dummy_next_dom_is_desc;
 
   assert (key1 != NULL && key2 != NULL && key_domain != NULL);
 
   key1_type = DB_VALUE_DOMAIN_TYPE (key1);
   key2_type = DB_VALUE_DOMAIN_TYPE (key2);
-  dom_type = key_domain->type->id;
+  dom_type = TP_DOMAIN_TYPE (key_domain);
 
   if (dom_type == DB_TYPE_MIDXKEY)
     {
+      /* safe code */
       if (key1_type != DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -19399,15 +19394,23 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 	  return DB_UNK;
 	}
 
-      c = (*(key_domain->type->cmpval)) (key1, key2, key_domain,
-					 do_reverse, do_coercion,
-					 total_order, start_colp);
+      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2),
+			      do_coercion, total_order, start_colp,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column,
+			      &dom_is_desc, &dummy_next_dom_is_desc);
+      assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
+
+      if (dom_is_desc)
+	{
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+	}
     }
   else
     {
-      assert (tp_valid_indextype (key1_type));
-      assert (tp_valid_indextype (key2_type));
+      assert (key1_type != DB_TYPE_MIDXKEY && tp_valid_indextype (key1_type));
+      assert (key2_type != DB_TYPE_MIDXKEY && tp_valid_indextype (key2_type));
 
+      /* safe code */
       if (key1_type == DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -19425,21 +19428,29 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 	  return DB_UNK;
 	}
 
-      if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type))
+      if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type)
+	  && TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type)
+	  && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type))
 	{
-	  c = (*(key_domain->type->cmpval)) (key1, key2, key_domain,
-					     do_reverse, do_coercion,
-					     total_order, NULL);
+	  c =
+	    (*(key_domain->type->cmpval)) (key1, key2,
+					   do_coercion, total_order, NULL);
 	}
       else
 	{
 	  c = tp_value_compare (key1, key2, do_coercion, total_order);
-	  if (do_reverse || (key_domain->is_desc))
-	    {
-	      c = -c;
-	    }
+	}
+
+      assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
+
+      /* for single-column desc index */
+      if (key_domain->is_desc)
+	{
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
     }
+
+  assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
   return c;
 }
@@ -19527,11 +19538,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       /* compare last key with new key */
       c = (*(multi_range_opt->sort_col_dom->type->cmpval)) (&comp_key_value,
 							    &new_key_value,
-							    multi_range_opt->
-							    sort_col_dom,
-							    bts->btid_int.
-							    reverse, 1, 1,
-							    NULL);
+							    1, 1, NULL);
 
       /* last key should be overwritten with the new key ? */
       reject_new_elem =
@@ -19699,8 +19706,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       /* compare current compare key with the preceding key */
       c =
 	(*(multi_range_opt->sort_col_dom->type->cmpval))
-	(&prec_comp_key_value, &new_key_value, multi_range_opt->sort_col_dom,
-	 bts->btid_int.reverse, 1, 1, NULL);
+	(&prec_comp_key_value, &new_key_value, 1, 1, NULL);
 
       should_reverse = (multi_range_opt->is_desc_order) ? (c < 0) : (c > 0);
       if (should_reverse)

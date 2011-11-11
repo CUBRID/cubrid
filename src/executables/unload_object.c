@@ -298,7 +298,7 @@ check_referenced_domain (DB_DOMAIN * dom_list,
 
   for (dom = dom_list; dom && !found_object_dom; dom = db_domain_next (dom))
     {
-      type = db_domain_type (dom);
+      type = TP_DOMAIN_TYPE (dom);
       switch (type)
 	{
 	case DB_TYPE_OBJECT:
@@ -1773,9 +1773,9 @@ process_value (DB_VALUE * value)
 	break;
       }
 
+    case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_SET:
       CHECK_PRINT_ERROR (process_set (DB_GET_SET (value)));
       break;
 

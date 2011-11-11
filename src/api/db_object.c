@@ -216,7 +216,7 @@ rm_api_get_info (API_RESULTSET_META * impl, int index,
 	  return ER_INTERFACE_GENERIC;
 	}
 
-      res = db_type_to_type (db_domain_type (domain), (CI_TYPE *) arg);
+      res = db_type_to_type (TP_DOMAIN_TYPE (domain), (CI_TYPE *) arg);
       return res;
 
     case CI_RMETA_INFO_PRECISION:
@@ -766,7 +766,7 @@ vt_api_init_domain (void *impl, int index, DB_VALUE * value)
   assert (attr != NULL);
   domain = db_attribute_domain (attr);
   assert (domain != NULL);
-  dbt = db_domain_type (domain);
+  dbt = TP_DOMAIN_TYPE (domain);
   p = db_domain_precision (domain);
   s = db_domain_scale (domain);
   res = db_value_domain_init (value, dbt, p, s);

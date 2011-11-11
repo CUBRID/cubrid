@@ -388,7 +388,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   for (temp_domain = domain; temp_domain != NULL;
        temp_domain = temp_domain->next)
     {
-      switch (temp_domain->type->id)
+      switch (TP_DOMAIN_TYPE (temp_domain))
 	{
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_BIGINT:
@@ -3848,7 +3848,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_VOBJ:
 	  buffer = pt_append_nulstring (parser, buffer, "vid:");
 	case DB_TYPE_SET:
-	case DB_TYPE_MULTI_SET:
+	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
 	  set = db_get_set (value);
 	  if (set != NULL)
@@ -3863,7 +3863,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_MIDXKEY:
-	  midxkey = db_get_midxkey (value);
+	  midxkey = DB_GET_MIDXKEY (value);
 	  if (midxkey != NULL)
 	    {
 	      return describe_midxkey (parser, buffer, midxkey);

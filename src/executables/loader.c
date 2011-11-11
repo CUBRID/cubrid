@@ -767,7 +767,7 @@ select_set_domain (LDR_CONTEXT * context,
   best = NULL;
   for (d = domain; d != NULL && best == NULL; d = d->next)
     {
-      if (TP_IS_SET_TYPE (d->type->id))
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (d)))
 	/* pick the first one */
 	best = d;
     }
@@ -1835,9 +1835,9 @@ ldr_act_class_attr (LDR_CONTEXT * context,
       CHECK_ERR (err,
 		 (*(elem_converter[type])) (context, str, len, &src_val));
       GET_DOMAIN (context, domain);
-      CHECK_ERR (err, db_value_domain_init (&dest_val, domain->type->id,
-					    domain->precision,
-					    domain->scale));
+      CHECK_ERR (err,
+		 db_value_domain_init (&dest_val, TP_DOMAIN_TYPE (domain),
+				       domain->precision, domain->scale));
 
       val = &dest_val;
       /* tp_value_cast does not handle DB_TYPE_OID coersions, simply use the
@@ -1845,7 +1845,7 @@ ldr_act_class_attr (LDR_CONTEXT * context,
        */
       if (type == LDR_OID || type == LDR_CLASS_OID)
 	{
-	  if (domain->type->id == DB_TYPE_OBJECT)
+	  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT)
 	    {
 	      val = &src_val;
 	    }
@@ -1862,7 +1862,7 @@ ldr_act_class_attr (LDR_CONTEXT * context,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 		  context->attrs[context->next_attr].att->header.name);
 	  CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT,
-			   context, domain->type->id, str);
+			   context, TP_DOMAIN_TYPE (domain), str);
 	}
       CHECK_ERR (err, ldr_class_attr_db_generic (context, str, len,
 						 context->attrs
@@ -2460,7 +2460,7 @@ ldr_bstr_elem (LDR_CONTEXT * context,
   else
     {
       CHECK_PARSE_ERR (err, db_value_domain_init (val,
-						  domain->type->id,
+						  TP_DOMAIN_TYPE (domain),
 						  domain->precision,
 						  domain->scale),
 		       context, DB_TYPE_BIT, str);
@@ -2547,7 +2547,7 @@ ldr_xstr_elem (LDR_CONTEXT * context,
   else
     {
       CHECK_PARSE_ERR (err, db_value_domain_init (val,
-						  domain->type->id,
+						  TP_DOMAIN_TYPE (domain),
 						  domain->precision,
 						  domain->scale),
 		       context, DB_TYPE_BIT, str);
@@ -2718,9 +2718,9 @@ ldr_double_elem (LDR_CONTEXT * context,
       GET_DOMAIN (context, domain);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (domain->type->id));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, domain->type->id,
-		       str);
+	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
+		       TP_DOMAIN_TYPE (domain), str);
     }
   else
     val->data.d = d;
@@ -2757,9 +2757,9 @@ ldr_float_elem (LDR_CONTEXT * context,
       GET_DOMAIN (context, domain);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (domain->type->id));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, domain->type->id,
-		       str);
+	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
+		       TP_DOMAIN_TYPE (domain), str);
     }
   else
     val->data.f = (float) d;
@@ -2820,9 +2820,9 @@ ldr_real_db_float (LDR_CONTEXT * context,
       GET_DOMAIN (context, domain);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (domain->type->id));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, domain->type->id,
-		       str);
+	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
+		       TP_DOMAIN_TYPE (domain), str);
     }
   else
     val.data.f = (float) d;
@@ -2865,9 +2865,9 @@ ldr_real_db_double (LDR_CONTEXT * context,
       GET_DOMAIN (context, domain);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (domain->type->id));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, domain->type->id,
-		       str);
+	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
+		       TP_DOMAIN_TYPE (domain), str);
     }
   else
     val.data.d = d;
@@ -3971,7 +3971,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
        * We've just seen the leading brace of a collection, and we need to
        * create the "holding" collection.
        */
-      context->collection = db_col_create (att->domain->type->id,
+      context->collection = db_col_create (TP_DOMAIN_TYPE (att->domain),
 					   0, attdesc->collection_domain);
 
       if (context->collection == NULL)
@@ -4813,9 +4813,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
        * Set elements need to be gathhers in a collection value bucket
        * We can use the existing setter for this.
        */
-      if (attdesc->att->domain->type->id == DB_TYPE_SET ||
-	  attdesc->att->domain->type->id == DB_TYPE_MULTISET ||
-	  attdesc->att->domain->type->id == DB_TYPE_SEQUENCE)
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (attdesc->att->domain)))
 	{
 	  attdesc->setter[LDR_COLLECTION] = &ldr_collection_db_collection;
 	  CHECK_ERR (err, select_set_domain (context, attdesc->att->domain,
@@ -4865,7 +4863,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   attdesc->setter[LDR_SYS_USER] = &ldr_sys_user_db_generic;
   attdesc->setter[LDR_SYS_CLASS] = &ldr_sys_class_db_generic;
 
-  switch (attdesc->att->domain->type->id)
+  switch (TP_DOMAIN_TYPE (attdesc->att->domain))
     {
     case DB_TYPE_CHAR:
       attdesc->setter[LDR_STR] = &ldr_str_db_char;

@@ -916,7 +916,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 
       for (d = domain; d != NULL; d = d->next)
 	{
-	  new_domain = tp_domain_new (d->type->id);
+	  new_domain = tp_domain_new (TP_DOMAIN_TYPE (d));
 	  if (new_domain == NULL)
 	    {
 	      tp_domain_free (first);
@@ -998,7 +998,7 @@ tp_domain_size (const TP_DOMAIN * domain)
 int
 tp_setdomain_size (const TP_DOMAIN * domain)
 {
-  if (domain->type->id == DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
     {
       assert ((domain->setdomain
 	       && domain->precision == tp_domain_size (domain->setdomain))
@@ -1026,7 +1026,7 @@ tp_setdomain_size (const TP_DOMAIN * domain)
 static void
 tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
 {
-  switch (domain->type->id)
+  switch (TP_DOMAIN_TYPE (domain))
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -1034,16 +1034,16 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      value->domain.char_info.type = domain->type->id;
+      value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
       value->domain.char_info.length = domain->precision;
       break;
     case DB_TYPE_NUMERIC:
-      value->domain.numeric_info.type = domain->type->id;
+      value->domain.numeric_info.type = TP_DOMAIN_TYPE (domain);
       value->domain.numeric_info.precision = domain->precision;
       value->domain.numeric_info.scale = domain->scale;
       break;
     default:
-      value->domain.general_info.type = domain->type->id;
+      value->domain.general_info.type = TP_DOMAIN_TYPE (domain);
       break;
     }
 }
@@ -1101,9 +1101,9 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
       return 1;
     }
 
-  if ((dom1->type->id != dom2->type->id) &&
+  if ((TP_DOMAIN_TYPE (dom1) != TP_DOMAIN_TYPE (dom2)) &&
       (exact != TP_STR_MATCH
-       || !TP_NEAR_MATCH (dom1->type->id, dom2->type->id)))
+       || !TP_NEAR_MATCH (TP_DOMAIN_TYPE (dom1), TP_DOMAIN_TYPE (dom2))))
     {
       return 0;
     }
@@ -1115,7 +1115,8 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
    */
 
   /* check for asc/desc */
-  if (dom1->type->id == dom2->type->id && tp_valid_indextype (dom1->type->id)
+  if (TP_DOMAIN_TYPE (dom1) == TP_DOMAIN_TYPE (dom2)
+      && tp_valid_indextype (TP_DOMAIN_TYPE (dom1))
       && match_order == true && dom1->is_desc != dom2->is_desc)
     {
       return 0;
@@ -1123,7 +1124,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 
   /* could use the new is_parameterized flag to avoid the switch ? */
 
-  switch (dom1->type->id)
+  switch (TP_DOMAIN_TYPE (dom1))
     {
 
     case DB_TYPE_NULL:
@@ -1502,9 +1503,10 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
       return domain;
     }
 
-  if ((domain->type->id != transient->type->id)
+  if ((TP_DOMAIN_TYPE (domain) != TP_DOMAIN_TYPE (transient))
       && (exact != TP_STR_MATCH
-	  || !TP_NEAR_MATCH (domain->type->id, transient->type->id)))
+	  || !TP_NEAR_MATCH (TP_DOMAIN_TYPE (domain),
+			     TP_DOMAIN_TYPE (transient))))
     {
       return NULL;
     }
@@ -1518,7 +1520,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
    */
 
   /* could use the new is_parameterized flag to avoid the switch ? */
-  switch (domain->type->id)
+  switch (TP_DOMAIN_TYPE (domain))
     {
 
     case DB_TYPE_NULL:
@@ -2055,19 +2057,17 @@ static void
 tp_swizzle_oid (TP_DOMAIN * domain)
 {
   TP_DOMAIN *d;
+  DB_TYPE type;
 
-  if ((domain->type->id == DB_TYPE_OBJECT
-       || domain->type->id == DB_TYPE_OID
-       || domain->type->id == DB_TYPE_VOBJ)
+  type = TP_DOMAIN_TYPE (domain);
+
+  if ((type == DB_TYPE_OBJECT || type == DB_TYPE_OID || type == DB_TYPE_VOBJ)
       && domain->class_mop == NULL && !OID_ISNULL (&domain->class_oid))
     {
       /* swizzle the pointer if we're on the client */
       domain->class_mop = ws_mop (&domain->class_oid, NULL);
     }
-  else if (domain->type->id == DB_TYPE_SET
-	   || domain->type->id == DB_TYPE_MULTISET
-	   || domain->type->id == DB_TYPE_SEQUENCE
-	   || domain->type->id == DB_TYPE_LIST)
+  else if (TP_IS_SET_TYPE (type))
     {
       for (d = domain->setdomain; d != NULL; d = d->next)
 	{
@@ -2455,7 +2455,8 @@ tp_domain_cache (TP_DOMAIN * transient)
    * first search stage: NO LOCK
    */
   /* locate the root of the cache list for domains of this type */
-  dlist = tp_domain_get_list_ptr (transient->type->id, transient->setdomain);
+  dlist =
+    tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
@@ -2481,7 +2482,8 @@ tp_domain_cache (TP_DOMAIN * transient)
   rv = pthread_mutex_lock (&tp_domain_cache_lock);	/* LOCK */
 
   /* locate the root of the cache list for domains of this type */
-  dlist = tp_domain_get_list_ptr (transient->type->id, transient->setdomain);
+  dlist =
+    tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
@@ -2601,7 +2603,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
   DB_TYPE value_type;
 
   domain = NULL;
-  value_type = (DB_TYPE) PRIM_TYPE (val);
+  value_type = DB_VALUE_DOMAIN_TYPE (val);
 
   if (TP_IS_SET_TYPE (value_type))
     {
@@ -2653,15 +2655,17 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
   else if (value_type == DB_TYPE_MIDXKEY)
     {
       DB_MIDXKEY *midxkey;
+
       /* For midxkey type, return the domain attached to the value */
-      midxkey = db_get_midxkey (val);
+      midxkey = DB_GET_MIDXKEY (val);
       if (midxkey != NULL)
 	{
 	  domain = midxkey->domain;
 	}
       else
 	{
-	  domain = tp_domain_resolve_default (value_type);	/* TODO: is possible ? */
+	  assert (DB_VALUE_TYPE (val) == DB_TYPE_NULL);
+	  domain = tp_domain_resolve_default (value_type);
 	}
     }
   else
@@ -2740,14 +2744,14 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * this is fixed, treat it as the floater for the variable width
 	   * types.
 	   */
-	  if (domain->type->id == DB_TYPE_VARCHAR)
+	  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR)
 	    {
 	      if (domain->precision == 0 ||
 		  domain->precision == TP_FLOATING_PRECISION_VALUE ||
 		  domain->precision > DB_MAX_VARCHAR_PRECISION)
 		domain->precision = DB_MAX_VARCHAR_PRECISION;
 	    }
-	  else if (domain->type->id == DB_TYPE_VARBIT)
+	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)
 	    {
 	      if (domain->precision == 0 ||
 		  domain->precision == TP_FLOATING_PRECISION_VALUE ||
@@ -2852,7 +2856,7 @@ tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain)
 {
   DB_TYPE value_type;
 
-  value_type = (DB_TYPE) PRIM_TYPE (val);
+  value_type = DB_VALUE_DOMAIN_TYPE (val);
 
   switch (value_type)
     {
@@ -2930,7 +2934,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
   DB_TYPE type_id;
 
   last = NULL;
-  type_id = domain->type->id;
+  type_id = TP_DOMAIN_TYPE (domain);
   for (d = *dlist, found = NULL; d != NULL && found == NULL; d = d->next)
     {
 #if 1
@@ -2939,7 +2943,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
        * must be rollback with tp_domain_match()
        */
 #else /* 0 */
-      if (d->type->id == type_id)
+      if (TP_DOMAIN_TYPE (d) == type_id)
 	{
 	  switch (type_id)
 	    {
@@ -3067,11 +3071,11 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
   int dropped = 0;
   DB_TYPE type_id;
 
-  type_id = domain->type->id;
+  type_id = TP_DOMAIN_TYPE (domain);
   for (d = *dlist, prev = NULL, found = NULL; d != NULL && found == NULL;
        d = d->next)
     {
-      if (d->type->id == type_id)
+      if (TP_DOMAIN_TYPE (d) == type_id)
 	{
 	  switch (type_id)
 	    {
@@ -3247,7 +3251,8 @@ tp_domain_filter_list (TP_DOMAIN * dlist)
 	    {
 	      has_object = 1;
 	    }
-	  else if (pr_is_set_type (d->type->id) && d->setdomain != NULL)
+	  else if (pr_is_set_type (TP_DOMAIN_TYPE (d))
+		   && d->setdomain != NULL)
 	    {
 	      /* recurse on set domain list */
 	      changes = tp_domain_filter_list (d->setdomain);
@@ -3332,11 +3337,12 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
    * If we have a hierarchical domain, perform a lenient "superset" comparison
    * rather than an exact match.
    */
-  if (TP_IS_SET_TYPE (src->type->id) || src->type->id == DB_TYPE_VARIABLE)
+  if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (src))
+      || TP_DOMAIN_TYPE (src) == DB_TYPE_VARIABLE)
     {
       for (d = dest; d != NULL && found == NULL; d = d->next)
 	{
-	  if (src->type->id == d->type->id
+	  if (TP_DOMAIN_TYPE (src) == TP_DOMAIN_TYPE (d)
 	      && tp_domain_compatible (src->setdomain, dest->setdomain))
 	    {
 	      found = d;
@@ -3452,7 +3458,7 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	       d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT)
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT)
 		{
 		  best = d;
 		}
@@ -3512,7 +3518,7 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	       d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT)
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT)
 		{
 		  best = d;
 		}
@@ -3532,7 +3538,7 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	       d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT
 		  && sm_check_object_domain (d, obj))
 		{
 		  best = d;
@@ -3561,7 +3567,7 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	       d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT
 		  && sm_check_class_domain (d, val_tmpl->classobj))
 		{
 		  best = d;
@@ -3582,7 +3588,7 @@ tp_domain_select (const TP_DOMAIN * domain_list,
       for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	   d = d->next)
 	{
-	  if (d->type->id == vtype)
+	  if (TP_DOMAIN_TYPE (d) == vtype)
 	    {
 	      if (set_check_domain (set, d) == DOMAIN_COMPATIBLE)
 		{
@@ -3681,7 +3687,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 	{
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT
 		  && sm_check_class_domain ((TP_DOMAIN *) d, class_mop))
 		{
 		  best = d;
@@ -3692,7 +3698,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 	{
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (d->type->id == type)
+	      if (TP_DOMAIN_TYPE (d) == type)
 		{
 		  /* can't check the actual set domain here, assume its ok */
 		  best = d;
@@ -3703,7 +3709,8 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 	{
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (d->type->id == type || d->type->id == DB_TYPE_VARIABLE)
+	      if (TP_DOMAIN_TYPE (d) == type
+		  || TP_DOMAIN_TYPE (d) == DB_TYPE_VARIABLE)
 		{
 		  best = d;
 		}
@@ -3814,7 +3821,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
 
   original_type = DB_VALUE_DOMAIN_TYPE (val);
   original_length = DB_GET_STRING_LENGTH (val);
-  desired_type = desired_domain->type->id;
+  desired_type = TP_DOMAIN_TYPE (desired_domain);
   desired_precision = desired_domain->precision;
 
   if (desired_precision == TP_FLOATING_PRECISION_VALUE)
@@ -4956,7 +4963,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
       return ER_FAILED;
     }
 
-  desired_type = desired_domain->type->id;
+  desired_type = TP_DOMAIN_TYPE (desired_domain);
 
   if (!TP_IS_NUMERIC_TYPE (desired_type)
       && !TP_IS_DATETIME_TYPE (desired_type))
@@ -5728,7 +5735,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    desired_domain = best;
 	}
     }
-  desired_type = desired_domain->type->id;
+  desired_type = TP_DOMAIN_TYPE (desired_domain);
 
   if (desired_type == original_type)
     {
@@ -7436,29 +7443,39 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
   DB_SET *s1, *s2;
 
   coercion = 0;
-  if (value1 == NULL || PRIM_IS_NULL (value1))
+  if (DB_IS_NULL (value1))
     {
-      if (value2 == NULL || PRIM_IS_NULL (value2))
-	status = (total_order ? DB_EQ : DB_UNK);
+      if (DB_IS_NULL (value2))
+	{
+	  status = (total_order ? DB_EQ : DB_UNK);
+	}
       else
-	status = (total_order ? DB_LT : DB_UNK);
+	{
+	  status = (total_order ? DB_LT : DB_UNK);
+	}
     }
-  else if (value2 == NULL || PRIM_IS_NULL (value2))
-    status = (total_order ? DB_GT : DB_UNK);
+  else if (DB_IS_NULL (value2))
+    {
+      status = (total_order ? DB_GT : DB_UNK);
+    }
   else
     {
       v1 = (DB_VALUE *) value1;
       v2 = (DB_VALUE *) value2;
 
-      vtype1 = (DB_TYPE) PRIM_TYPE (v1);
-      vtype2 = (DB_TYPE) PRIM_TYPE (v2);
+      vtype1 = DB_VALUE_DOMAIN_TYPE (v1);
+      vtype2 = DB_VALUE_DOMAIN_TYPE (v2);
       if (vtype1 != DB_TYPE_SET
 	  && vtype1 != DB_TYPE_MULTISET && vtype1 != DB_TYPE_SEQUENCE)
-	return DB_NE;
+	{
+	  return DB_NE;
+	}
 
       if (vtype2 != DB_TYPE_SET
 	  && vtype2 != DB_TYPE_MULTISET && vtype2 != DB_TYPE_SEQUENCE)
-	return DB_NE;
+	{
+	  return DB_NE;
+	}
 
       if (vtype1 != vtype2)
 	{
@@ -7469,7 +7486,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	    }
 	  else
 	    {
-	      PRIM_INIT_NULL (&temp);
+	      DB_MAKE_NULL (&temp);
 	      coercion = 1;
 	      if (tp_more_general_type (vtype1, vtype2) > 0)
 		{
@@ -7575,9 +7592,9 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
   status = DB_UNK;
   coercion = 0;
 
-  if (value1 == NULL || PRIM_IS_NULL (value1))
+  if (DB_IS_NULL (value1))
     {
-      if (value2 == NULL || PRIM_IS_NULL (value2))
+      if (DB_IS_NULL (value2))
 	{
 	  status = (total_order ? DB_EQ : DB_UNK);
 	}
@@ -7586,7 +7603,7 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	  status = (total_order ? DB_LT : DB_UNK);
 	}
     }
-  else if (value2 == NULL || PRIM_IS_NULL (value2))
+  else if (DB_IS_NULL (value2))
     {
       status = (total_order ? DB_GT : DB_UNK);
     }
@@ -7596,8 +7613,8 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
       v1 = (DB_VALUE *) value1;
       v2 = (DB_VALUE *) value2;
 
-      vtype1 = (DB_TYPE) PRIM_TYPE (v1);
-      vtype2 = (DB_TYPE) PRIM_TYPE (v2);
+      vtype1 = DB_VALUE_DOMAIN_TYPE (v1);
+      vtype2 = DB_VALUE_DOMAIN_TYPE (v2);
 
       /*
        * Hack, DB_TYPE_OID & DB_TYPE_OBJECT are logically the same domain
@@ -7652,8 +7669,8 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	   */
 	  if (do_coercion && !ARE_COMPARABLE (vtype1, vtype2))
 	    {
-	      PRIM_INIT_NULL (&temp1);
-	      PRIM_INIT_NULL (&temp2);
+	      DB_MAKE_NULL (&temp1);
+	      DB_MAKE_NULL (&temp2);
 	      coercion = 1;
 
 	      if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_NUMERIC_TYPE (vtype2))
@@ -7770,9 +7787,11 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	  PR_TYPE *pr_type;
 
 	  pr_type = PR_TYPE_FROM_ID (vtype1);
+	  assert (pr_type != NULL);
+
 	  if (pr_type)
 	    {
-	      status = (*(pr_type->cmpval)) (v1, v2, NULL, 0,
+	      status = (*(pr_type->cmpval)) (v1, v2,
 					     do_coercion, total_order, NULL);
 	      if (status == DB_UNK)
 		{
@@ -7781,6 +7800,7 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_MR_NULL_DOMAIN, 0);
+		      assert (false);
 		    }
 		}
 	    }
@@ -7958,7 +7978,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
   if (domain->precision != TP_FLOATING_PRECISION_VALUE)
     {
 
-      dbtype = domain->type->id;
+      dbtype = TP_DOMAIN_TYPE (domain);
       switch (dbtype)
 	{
 	case DB_TYPE_CHAR:
@@ -8057,13 +8077,13 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
   for (d = domain; d != NULL; d = d->next)
     {
 
-      switch (d->type->id)
+      switch (TP_DOMAIN_TYPE (d))
 	{
 
 	case DB_TYPE_OBJECT:
 	case DB_TYPE_OID:
 	case DB_TYPE_SUB:
-	  if (d->type->id == DB_TYPE_SUB)
+	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_SUB)
 	    {
 	      fprintf (fp, "sub(");
 	    }
@@ -8083,7 +8103,7 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 		       d->class_oid.volid, d->class_oid.pageid,
 		       d->class_oid.slotid);
 	    }
-	  if (d->type->id == DB_TYPE_SUB)
+	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_SUB)
 	    {
 	      fprintf (fp, ")");
 	    }
@@ -8221,7 +8241,7 @@ tp_valid_indextype (DB_TYPE type)
 int
 tp_domain_references_objects (const TP_DOMAIN * dom)
 {
-  switch (dom->type->id)
+  switch (TP_DOMAIN_TYPE (dom))
     {
     case DB_TYPE_OBJECT:
     case DB_TYPE_OID:

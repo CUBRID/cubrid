@@ -1496,7 +1496,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
   pgbuf_unfix_and_init (thread_p, root_page_p);
 
   btree_stats_p->key_type = root_header.key_type;
-  if (btree_stats_p->key_type->type->id == DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
     {
       btree_stats_p->key_size =
 	tp_domain_size (btree_stats_p->key_type->setdomain);
@@ -4490,8 +4490,8 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     case DB_TYPE_SET:
       fprintf (stdout, "DB_TYPE_SET \n");
       break;
-    case DB_TYPE_MULTI_SET:
-      fprintf (stdout, "DB_TYPE_MULTI_SET \n");
+    case DB_TYPE_MULTISET:
+      fprintf (stdout, "DB_TYPE_MULTISET \n");
       break;
     case DB_TYPE_SEQUENCE:
       fprintf (stdout, "DB_TYPE_SEQUENCE \n");

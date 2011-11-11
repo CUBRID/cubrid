@@ -344,7 +344,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		}
 
 	      bt_statsp->key_type = btid_int.key_type;
-	      if (bt_statsp->key_type->type->id == DB_TYPE_MIDXKEY)
+	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  /* get full-size stats in memory */
 		  bt_statsp->key_size =
@@ -2207,7 +2207,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
   int i, start_offset, offset, vallen, n_fixed, n_variable, vallen1;
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
-  DB_VALUE val, def_expr;  
+  DB_VALUE val, def_expr;
   DB_SEQ *att_props = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
@@ -2291,8 +2291,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 					    ORC_ATT_ORIGINAL_VALUE_INDEX);
 
       valptr1 = (diskatt +
-		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-					     ORC_ATT_PROPERTIES_INDEX));
+		 OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
+					      ORC_ATT_PROPERTIES_INDEX));
 
       vallen1 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
 					     ORC_ATT_PROPERTIES_INDEX);
@@ -2319,7 +2319,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
-      OID_SET_NULL (&(att->serial_obj)); 
+      OID_SET_NULL (&(att->serial_obj));
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -2364,24 +2364,24 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 	}
 
-	att->default_value.default_expr = DB_DEFAULT_NONE;           
-	if (vallen1 > 0)
-	  {
-	    db_make_null (&val);
-	    db_make_null (&def_expr);
-	    or_get_value (&buf, &val, 
-			  tp_domain_resolve_default (DB_TYPE_SEQUENCE), 
-	  		  vallen1,  true);
- 	    att_props = DB_GET_SEQUENCE (&val);
-	    if (att_props != NULL &&
-		classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
-	      {
-		att->default_value.default_expr = DB_GET_INT (&def_expr);
-	      }
+      att->default_value.default_expr = DB_DEFAULT_NONE;
+      if (vallen1 > 0)
+	{
+	  db_make_null (&val);
+	  db_make_null (&def_expr);
+	  or_get_value (&buf, &val,
+			tp_domain_resolve_default (DB_TYPE_SEQUENCE),
+			vallen1, true);
+	  att_props = DB_GET_SEQUENCE (&val);
+	  if (att_props != NULL &&
+	      classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
+	    {
+	      att->default_value.default_expr = DB_GET_INT (&def_expr);
+	    }
 
-      	    pr_clear_value (&def_expr);
-   	    pr_clear_value (&val);	
-	  }
+	  pr_clear_value (&def_expr);
+	  pr_clear_value (&val);
+	}
     }
 
   /* find the beginning of the "set_of(shared attributes)" attribute

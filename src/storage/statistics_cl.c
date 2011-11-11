@@ -264,8 +264,7 @@ stats_client_unpack_statistics (char *buf_p)
 
 	  buf_p = or_unpack_domain (buf_p, &btree_stats_p->key_type, 0);
 
-	  if (btree_stats_p->key_type != NULL
-	      && btree_stats_p->key_type->type->id == DB_TYPE_MIDXKEY)
+	  if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
 	    {
 	      btree_stats_p->key_size =
 		tp_domain_size (btree_stats_p->key_type->setdomain);
@@ -432,8 +431,8 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_SET\n");
 	  break;
 
-	case DB_TYPE_MULTI_SET:
-	  fprintf (file_p, "DB_TYPE_MULTI_SET\n");
+	case DB_TYPE_MULTISET:
+	  fprintf (file_p, "DB_TYPE_MULTISET\n");
 	  break;
 
 	case DB_TYPE_SEQUENCE:

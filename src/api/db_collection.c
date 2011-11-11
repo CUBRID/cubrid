@@ -195,11 +195,15 @@ col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
   assert (co != NULL);
   res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_GET);
   if (res != NO_ERROR)
-    return res;
+    {
+      return res;
+    }
   res =
     co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
   if (res != NO_ERROR)
-    return res;
+    {
+      return res;
+    }
 
   if (precision)
     {
@@ -210,7 +214,7 @@ col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
       *scale = db_value_scale (val);
     }
 
-  return db_type_to_type (db_value_domain_type (val), type);
+  return db_type_to_type (DB_VALUE_DOMAIN_TYPE (val), type);
 }
 
 /*
@@ -378,18 +382,27 @@ api_collection_create_from_db_value (BIND_HANDLE conn,
   int res;
 
   if (val == NULL || rc == NULL)
-    return ER_INTERFACE_INVALID_ARGUMENT;
-  dt = db_value_domain_type (val);
-  if (dt != DB_TYPE_SET && dt != DB_TYPE_MULTISET && dt != DB_TYPE_SEQUENCE)
-    return ER_INTERFACE_INVALID_ARGUMENT;	/* not collection type */
+    {
+      return ER_INTERFACE_INVALID_ARGUMENT;
+    }
+  dt = DB_VALUE_DOMAIN_TYPE (val);
+  if (!TP_IS_SET_TYPE (dt))
+    {
+      return ER_INTERFACE_INVALID_ARGUMENT;	/* not collection type */
+    }
   res = apif_collection_create (conn, &co);
   if (res != NO_ERROR)
-    return res;
+    {
+      return res;
+    }
 
   res = fill_collection (co, db_get_set (val));
   if (res != NO_ERROR)
-    co->col.ifs->destroy ((API_COLLECTION *) co);
+    {
+      co->col.ifs->destroy ((API_COLLECTION *) co);
+    }
   *rc = (API_COLLECTION *) co;
+
   return res;
 }
 
@@ -434,17 +447,25 @@ api_collection_set_to_db_value (API_COLLECTION * col, DB_VALUE * val)
   int size, res;
 
   if (col == NULL || val == NULL)
-    return ER_INTERFACE_INVALID_ARGUMENT;
+    {
+      return ER_INTERFACE_INVALID_ARGUMENT;
+    }
   co = (COLLECTION_ *) col;
-  dt = db_value_domain_type (val);
-  if (dt != DB_TYPE_SET && dt != DB_TYPE_MULTISET && dt != DB_TYPE_SEQUENCE)
-    return ER_INTERFACE_INVALID_ARGUMENT;
+  dt = DB_VALUE_DOMAIN_TYPE (val);
+  if (!TP_IS_SET_TYPE (dt))
+    {
+      return ER_INTERFACE_INVALID_ARGUMENT;
+    }
   res = co->indexer->ifs->length (co->indexer, &size);
   if (res != NO_ERROR)
-    return res;
+    {
+      return res;
+    }
   dbcol = db_col_create (dt, size, NULL);
   if (dbcol == NULL)
-    return ER_INTERFACE_GENERIC;
+    {
+      return ER_INTERFACE_GENERIC;
+    }
   res = co->indexer->ifs->map (co->indexer, set_to_db_value_mapf, dbcol);
   if (res != NO_ERROR)
     {
@@ -457,6 +478,7 @@ api_collection_set_to_db_value (API_COLLECTION * col, DB_VALUE * val)
       db_col_free (dbcol);
       return ER_INTERFACE_GENERIC;
     }
+
   return NO_ERROR;
 }
 

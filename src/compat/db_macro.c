@@ -994,7 +994,7 @@ db_value_type (const DB_VALUE * value)
     }
   else
     {
-      return (DB_TYPE) value->domain.general_info.type;
+      return DB_VALUE_DOMAIN_TYPE (value);
     }
 }
 
@@ -1080,8 +1080,8 @@ db_value_type_is_collection (const DB_VALUE * value)
   CHECK_1ARG_FALSE (value);
 
   type = db_value_type (value);
-  is_collection = (type == DB_TYPE_SET || type == DB_TYPE_MULTISET
-		   || type == DB_TYPE_SEQUENCE || type == DB_TYPE_VOBJ);
+  is_collection = (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ);
+
   return is_collection;
 }
 
@@ -3100,7 +3100,7 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest,
 		ER_TP_INCOMPATIBLE_DOMAINS, 2,
 		pr_type_name ((DB_TYPE) src->domain.
 			      general_info.type),
-		pr_type_name (desired_domain->type->id));
+		pr_type_name (TP_DOMAIN_TYPE (desired_domain)));
       }
       break;
     case DOMAIN_OVERFLOW:
@@ -3108,7 +3108,7 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest,
 	err = ER_IT_DATA_OVERFLOW;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		ER_IT_DATA_OVERFLOW, 1,
-		pr_type_name (desired_domain->type->id));
+		pr_type_name (TP_DOMAIN_TYPE (desired_domain)));
       }
       break;
     case DOMAIN_ERROR:
@@ -3973,7 +3973,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	  default:
 	    goto unsupported_conversion;
 	  }
-      }				/* DB_TYPE_SET, DB_TYPE_MULTI_SET, DB_TYPE_SEQUENCE */
+      }
       break;
 
     case DB_TYPE_TIME:
@@ -5412,7 +5412,7 @@ db_domain_next (const DB_DOMAIN * domain)
  *    db_domain_class.  This will tell you the specific class that was
  *    defined for this domain.  If the class field is NULL, the domain is
  *    a generic object and can be a reference to any object.  IFF the domain
- *    type is DB_TYPE_SET, DB_TYPE_MULTI_SET, or DB_TYPE_SEQUENCE, there
+ *    type is DB_TYPE_SET, DB_TYPE_MULTISET, or DB_TYPE_SEQUENCE, there
  *    will be additional domain information in the "set" field of the domain
  *    descriptor that can be accessed with db_domain_set.  This will be
  *    an additional list of domain descriptors that define the domains of the
@@ -5421,14 +5421,7 @@ db_domain_next (const DB_DOMAIN * domain)
 DB_TYPE
 db_domain_type (const DB_DOMAIN * domain)
 {
-  DB_TYPE type = DB_TYPE_NULL;
-
-  if (domain != NULL)
-    {
-      type = domain->type->id;
-    }
-
-  return (type);
+  return TP_DOMAIN_TYPE (domain);
 }
 
 /*
@@ -5469,7 +5462,7 @@ db_domain_class (const DB_DOMAIN * domain)
  *
  * note:
  *    This can be used to get set domain information for a domain
- *    whose basic type is DB_TYPE_SET, DB_TYPE_MULTI_SET, or DB_TYPE_SEQUENCE
+ *    whose basic type is DB_TYPE_SET, DB_TYPE_MULTISET, or DB_TYPE_SEQUENCE
  *    This field will always be NULL for any other kind of basic type.
  *    This field may be NULL even for set types if there was no additional
  *    domain information specified when the attribute was defined.
@@ -5484,7 +5477,7 @@ db_domain_set (const DB_DOMAIN * domain)
 {
   DB_DOMAIN *setdomain = NULL;
 
-  if ((domain != NULL) && pr_is_set_type (domain->type->id))
+  if ((domain != NULL) && pr_is_set_type (TP_DOMAIN_TYPE (domain)))
     {
       setdomain = domain->setdomain;
     }

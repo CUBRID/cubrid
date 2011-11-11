@@ -646,7 +646,7 @@ resolve_class_domain (SM_TEMPLATE * tmp, DB_DOMAIN * domain)
 
   if (domain)
     {
-      switch (domain->type->id)
+      switch (TP_DOMAIN_TYPE (domain))
 	{
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
@@ -1149,7 +1149,7 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
       goto error_exit;
     }
 
-  if (domain->type->id == DB_TYPE_OBJECT)
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT)
     {
       error_code = check_domain_class_type (template_, domain->class_mop);
       if (error_code != NO_ERROR)
@@ -1301,7 +1301,7 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_,
       return error;
     }
 
-  if ((att->domain == NULL) || !pr_is_set_type (att->domain->type->id))
+  if ((att->domain == NULL) || !pr_is_set_type (TP_DOMAIN_TYPE (att->domain)))
     {
       ERROR1 (error, ER_SM_DOMAIN_NOT_A_SET, name);
     }
@@ -1310,7 +1310,7 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_,
       error = get_domain (template_, domain_string, &domain);
       if (error == NO_ERROR && domain != NULL)
 	{
-	  if (pr_is_set_type (domain->type->id))
+	  if (pr_is_set_type (TP_DOMAIN_TYPE (domain)))
 	    {
 	      ERROR1 (error, ER_SM_NO_NESTED_SETS, name);
 	    }
@@ -1376,7 +1376,8 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
-      if ((att->domain == NULL) || !pr_is_set_type (att->domain->type->id))
+      if ((att->domain == NULL)
+	  || !pr_is_set_type (TP_DOMAIN_TYPE (att->domain)))
 	{
 	  ERROR1 (error, ER_SM_DOMAIN_NOT_A_SET, name);
 	}
@@ -2591,7 +2592,7 @@ smt_add_set_argument_domain (SM_TEMPLATE * template_,
 	  if (error == NO_ERROR)
 	    {
 	      if (arg->domain == NULL
-		  || !pr_is_set_type (arg->domain->type->id))
+		  || !pr_is_set_type (TP_DOMAIN_TYPE (arg->domain)))
 		{
 		  ERROR2 (error, ER_SM_ARG_DOMAIN_NOT_A_SET, name, index);
 		}
@@ -3918,7 +3919,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
       goto error_exit;
     }
 
-  if (new_domain->type->id == DB_TYPE_OBJECT)
+  if (TP_DOMAIN_TYPE (new_domain) == DB_TYPE_OBJECT)
     {
       error_code = check_domain_class_type (template_, new_domain->class_mop);
       if (error_code != NO_ERROR)

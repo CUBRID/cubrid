@@ -97,8 +97,7 @@ struct SUBKEY_INFO
 
   TP_DOMAIN *col_dom;
 
-  int (*sort_f) (void *tplp1, void *tplp2,
-		 TP_DOMAIN * dom, int do_reverse,
+  int (*sort_f) (void *tplp1, void *tplp2, TP_DOMAIN * dom,
 		 int do_coercion, int total_order, int *start_col);
 
   /*

@@ -773,7 +773,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
   int length1, length2;
   PR_TYPE *pr_type_p;
   bool is_copy;
-  DB_TYPE type = domain_p->type->id;
+  DB_TYPE type = TP_DOMAIN_TYPE (domain_p);
   int rc;
 
   pr_type_p = domain_p->type;
@@ -833,8 +833,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
     }
   else
     {
-      *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, NULL, 0, 0,
-						1, NULL);
+      *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL);
     }
 
   if (is_copy)
@@ -874,7 +873,7 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, QFILE_LIST_ID * list_id2_p)
 
   for (i = 0; i < max_count; i++)
     {
-      type1 = list_id1_p->type_list.domp[i]->type->id;
+      type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
 
       if (type1 == DB_TYPE_NULL)
 	{
@@ -882,7 +881,7 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, QFILE_LIST_ID * list_id2_p)
 	}
       else
 	{
-	  type2 = list_id2_p->type_list.domp[i]->type->id;
+	  type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
 
 	  if (type2 != DB_TYPE_NULL
 	      && (list_id1_p->type_list.domp[i] !=
@@ -3763,7 +3762,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1,
 	  d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
 
 	  order = (*key_info_p->key[i].sort_f) (d0, d1,
-						key_info_p->key[i].col_dom, 0,
+						key_info_p->key[i].col_dom,
 						0, 1, NULL);
 	}
       else
@@ -3815,7 +3814,7 @@ qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg)
 	  d1 = (char *) k1 + o1;
 
 	  order = (*key_info_p->key[i].sort_f) (d0, d1,
-						key_info_p->key[i].col_dom, 0,
+						key_info_p->key[i].col_dom,
 						0, 1, NULL);
 	}
       else
@@ -5582,7 +5581,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   for (i = 0, d = ent->list_id.type_list.domp;
        i < ent->list_id.type_list.type_cnt && d && *d; i++, d++)
     {
-      fprintf (fp, " %s/%d", (*d)->type->name, (*d)->type->id);
+      fprintf (fp, " %s/%d", (*d)->type->name, TP_DOMAIN_TYPE ((*d)));
     }
 
   fprintf (fp, " } tuple_cnt %d page_cnt %d first_vpid { %d %d } "
@@ -6737,10 +6736,10 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 	  goto exit_on_error;
 	}
 
-      if (db_domain_type (list_id_p->type_list.domp[count]) ==
+      if (TP_DOMAIN_TYPE (list_id_p->type_list.domp[count]) ==
 	  DB_TYPE_VARIABLE)
 	{
-	  if (db_domain_type (reg_var_p->value.domain) == DB_TYPE_VARIABLE)
+	  if (TP_DOMAIN_TYPE (reg_var_p->value.domain) == DB_TYPE_VARIABLE)
 	    {
 	      /* In this case, we cannot resolve the value's domain.
 	       * We will try to do for the next tuple.

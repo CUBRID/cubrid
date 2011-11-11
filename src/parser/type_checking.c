@@ -3672,7 +3672,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
 
   if (expected_domain != NULL)
     {
-      expected_type = pt_db_to_type_enum (expected_domain->type->id);
+      expected_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (expected_domain));
     }
 
   common_type = arg1_eq_type;
@@ -6831,7 +6831,7 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 
   hv_val = &parser->host_variables[hv_node->info.host_var.index];
   typ = DB_VALUE_DOMAIN_TYPE (hv_val);
-  exptyp = hv_node->expected_domain->type->id;
+  exptyp = TP_DOMAIN_TYPE (hv_node->expected_domain);
   if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
     {
       /* If the host variable was not given before by the user,
@@ -7373,7 +7373,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (arg1->type_enum == PT_TYPE_MAYBE && arg1->expected_domain)
 	{
 	  node->type_enum =
-	    pt_db_to_type_enum (arg1->expected_domain->type->id);
+	    pt_db_to_type_enum (TP_DOMAIN_TYPE (arg1->expected_domain));
 	  goto error;
 	}
 
@@ -7943,8 +7943,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (arg1_type == PT_TYPE_MAYBE)
 	{
 	  if (node->expected_domain
-	      && (TP_IS_NUMERIC_TYPE (node->expected_domain->type->id)
-		  || TP_IS_STRING_TYPE (node->expected_domain->type->id)))
+	      && (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (node->expected_domain))
+		  ||
+		  TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (node->expected_domain))))
 	    {
 	      SET_EXPECTED_DOMAIN (arg1, node->expected_domain);
 	      if (arg1->node_type == PT_HOST_VAR)
@@ -7996,8 +7997,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (arg2_type == PT_TYPE_MAYBE)
 	{
 	  if (node->expected_domain
-	      && (TP_IS_NUMERIC_TYPE (node->expected_domain->type->id)
-		  || TP_IS_STRING_TYPE (node->expected_domain->type->id)))
+	      && (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (node->expected_domain))
+		  ||
+		  TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (node->expected_domain))))
 	    {
 	      SET_EXPECTED_DOMAIN (arg2, node->expected_domain);
 	      if (arg2->node_type == PT_HOST_VAR)
@@ -8074,7 +8076,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		    /* the expected domain might have been set by a different
 		       pass through the tree */
 		    common_type =
-		      pt_db_to_type_enum (node->expected_domain->type->id);
+		      pt_db_to_type_enum (TP_DOMAIN_TYPE
+					  (node->expected_domain));
 		  }
 		else
 		  {
@@ -10151,7 +10154,7 @@ pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
     }
 
   db_src = pt_value_to_db (parser, src);
-  if (db_src == NULL || DB_IS_NULL (db_src))
+  if (DB_IS_NULL (db_src))
     {
       return ER_DATE_CONVERSION;
     }
@@ -11452,7 +11455,7 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
       domain = db_method_return_domain (method);
       if (domain)
 	{
-	  type = db_domain_type (domain);
+	  type = TP_DOMAIN_TYPE (domain);
 	  node->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (type);
 	}
     }
@@ -11508,7 +11511,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       return 0;
     }
 
-  typ = domain->type->id;
+  typ = TP_DOMAIN_TYPE (domain);
   rTyp = (PT_TYPE_ENUM) pt_db_to_type_enum (typ);
 
   /* do not coerce arg1, arg2 for STRCAT */
@@ -12726,8 +12729,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_EXISTS:
-      if (typ1 == DB_TYPE_SET
-	  || typ1 == DB_TYPE_MULTISET || typ1 == DB_TYPE_SEQUENCE)
+      if (TP_IS_SET_TYPE (typ1))
 	{
 	  if (db_set_size (db_get_set (arg1)) > 0)
 	    {
@@ -12999,14 +13001,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  return 0;
 		}
 
-	      res_type = PRIM_TYPE (result);
+	      res_type = DB_VALUE_DOMAIN_TYPE (result);
 	      if (tp_value_coerce (result, result,
 				   domain) != DOMAIN_COMPATIBLE)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_TP_CANT_COERCE, 2,
 			  pr_type_name (res_type),
-			  pr_type_name (domain->type->id));
+			  pr_type_name (TP_DOMAIN_TYPE (domain)));
 
 		  return 0;
 		}
@@ -13380,14 +13382,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      res_type = PRIM_TYPE (result);
+	      res_type = DB_VALUE_DOMAIN_TYPE (result);
 	      if (tp_value_coerce (result, result,
 				   domain) != DOMAIN_COMPATIBLE)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_TP_CANT_COERCE, 2,
 			  pr_type_name (res_type),
-			  pr_type_name (domain->type->id));
+			  pr_type_name (TP_DOMAIN_TYPE (domain)));
 
 		  return 0;
 		}
@@ -13660,14 +13662,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      res_type = PRIM_TYPE (result);
+	      res_type = DB_VALUE_DOMAIN_TYPE (result);
 	      if (tp_value_coerce (result, result,
 				   domain) != DOMAIN_COMPATIBLE)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_TP_CANT_COERCE, 2,
 			  pr_type_name (res_type),
-			  pr_type_name (domain->type->id));
+			  pr_type_name (TP_DOMAIN_TYPE (domain)));
 
 		  return 0;
 		}
@@ -13770,14 +13772,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		      return 0;
 		    }
 
-		  res_type = PRIM_TYPE (result);
+		  res_type = DB_VALUE_DOMAIN_TYPE (result);
 		  if (tp_value_coerce (result, result,
 				       domain) != DOMAIN_COMPATIBLE)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_TP_CANT_COERCE, 2,
 			      pr_type_name (res_type),
-			      pr_type_name (domain->type->id));
+			      pr_type_name (TP_DOMAIN_TYPE (domain)));
 		      return 0;
 		    }
 
@@ -15362,7 +15364,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       }
 
     case PT_CAST:
-      if (db_domain_type (domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 	{
 	  return 0;
 	}
@@ -15776,8 +15778,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	    DB_VALUE slash_char;
 	    char const *slash_str = "\\";
 
-	    if (PRM_NO_BACKSLASH_ESCAPES == false
-		&& (esc_char == NULL || DB_IS_NULL (esc_char)))
+	    if (PRM_NO_BACKSLASH_ESCAPES == false && DB_IS_NULL (esc_char))
 	      {
 		/* when compat_mode=mysql, the slash '\\' is an escape character for
 		   LIKE pattern, unless user explicitly specifies otherwise. */
@@ -16313,7 +16314,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       /* use the caching variant of this function ! */
       domain = pt_xasl_node_to_domain (parser, expr);
 
-      if (domain && QSTR_IS_ANY_CHAR_OR_BIT (domain->type->id))
+      if (domain && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
 	{
 	  if (opd1 && opd1->node_type == PT_VALUE
 	      && type1 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type2))

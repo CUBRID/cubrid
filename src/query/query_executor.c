@@ -883,18 +883,18 @@ static int bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index,
 static int bf2df_str_compare (unsigned char *s0, int l0,
 			      unsigned char *s1, int l1);
 static int bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain,
-			      int do_reverse, int do_coercion,
-			      int total_order, int *start_colp);
+			      int do_coercion, int total_order,
+			      int *start_colp);
 static int bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2,
-			     TP_DOMAIN * domain, int do_reverse,
 			     int do_coercion, int total_order,
 			     int *start_colp);
 static void qexec_resolve_domains_on_sort_list (SORT_LIST * order_list,
 						REGU_VARIABLE_LIST
 						reference_regu_list);
 static void qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE *
-						buildlist, OUTPTR_LIST
-						* reference_out_list);
+						buildlist,
+						OUTPTR_LIST *
+						reference_out_list);
 static void query_multi_range_opt_check_set_sort_col (XASL_NODE * xasl);
 static void query_multi_range_opt_check_spec (ACCESS_SPEC_TYPE * spec_list,
 					      const DB_VALUE *
@@ -1010,7 +1010,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  typ = db_value_domain_type (dbval);
+	  typ = DB_VALUE_DOMAIN_TYPE (dbval);
 	  if (typ == DB_TYPE_VOBJ)
 	    {
 	      /* grab the real oid */
@@ -1020,7 +1020,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      dbval = &element;
-	      typ = db_value_domain_type (dbval);
+	      typ = DB_VALUE_DOMAIN_TYPE (dbval);
 	    }
 
 	  if (typ != DB_TYPE_OID)
@@ -1042,7 +1042,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      typ = db_value_domain_type (dbval);
+	      typ = DB_VALUE_DOMAIN_TYPE (dbval);
 	      if (typ == DB_TYPE_VOBJ)
 		{
 		  /* grab the real oid */
@@ -1052,7 +1052,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		  dbval = &element;
-		  typ = db_value_domain_type (dbval);
+		  typ = DB_VALUE_DOMAIN_TYPE (dbval);
 		}
 
 	      if (typ != DB_TYPE_OID)
@@ -1182,7 +1182,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      assert (out_list_val->value.domain != NULL);
 	      /* aggregates corresponds to CONSTANT regu vars in outptr_list */
 	      if (out_list_val->value.type != TYPE_CONSTANT ||
-		  db_domain_type (out_list_val->value.domain) !=
+		  TP_DOMAIN_TYPE (out_list_val->value.domain) !=
 		  DB_TYPE_VARIABLE)
 		{
 		  continue;
@@ -1193,7 +1193,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		   agg_node != NULL; agg_node = agg_node->next)
 		{
 		  if (out_list_val->value.value.dbvalptr == agg_node->value &&
-		      db_domain_type (agg_node->domain) != DB_TYPE_NULL)
+		      TP_DOMAIN_TYPE (agg_node->domain) != DB_TYPE_NULL)
 		    {
 		      assert (agg_node->domain != NULL);
 		      out_list_val->value.domain = agg_node->domain;
@@ -2490,7 +2490,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return ER_FAILED;
     }
 
-  orig_type = PRIM_TYPE (dbvalp);
+  orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
 
   if (orig_type != DB_TYPE_INTEGER)
     {
@@ -2511,11 +2511,12 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (orig_type), pr_type_name (domainp->type->id));
+		  pr_type_name (orig_type),
+		  pr_type_name (TP_DOMAIN_TYPE (domainp)));
 	  return ER_FAILED;
 	}
 
-      if (PRIM_TYPE (dbvalp) != DB_TYPE_INTEGER)
+      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_INTEGER)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -3752,12 +3753,12 @@ qexec_collection_has_null (DB_VALUE * colval)
 	  return 1;
 	  /* flag an error as a NULL, DON'T clear elem with unknown state */
 	}
-      if (PRIM_IS_NULL (&elem))
+      if (DB_IS_NULL (&elem))
 	{
 	  return 1;		/* found a NULL, can stop looking, clear unecessary */
 	}
 
-      if (pr_is_set_type (PRIM_TYPE (&elem))
+      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (&elem))
 	  && qexec_collection_has_null (&elem))
 	{
 	  /* this is for nested set types, need to fall thru to clear */
@@ -3828,7 +3829,8 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom,
       /* Do not copy the string--just use the pointer.  The pr_ routines
        * for strings and sets have different semantics for length.
        */
-      left_is_set = pr_is_set_type (left_dom[i]->type->id) ? true : false;
+      left_is_set =
+	pr_is_set_type (TP_DOMAIN_TYPE (left_dom[i])) ? true : false;
       if ((*(left_dom[i]->type->data_readval)) (&buf, &left_dbval,
 						left_dom[i], -1, left_is_set,
 						NULL, 0) != NO_ERROR)
@@ -3847,7 +3849,8 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom,
       /* Do not copy the string--just use the pointer.  The pr_ routines
        * for strings and sets have different semantics for length.
        */
-      rght_is_set = pr_is_set_type (rght_dom[i]->type->id) ? true : false;
+      rght_is_set =
+	pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
       if ((*(rght_dom[i]->type->data_readval)) (&buf, &rght_dbval,
 						rght_dom[i], -1, rght_is_set,
 						NULL, 0) != NO_ERROR)
@@ -9520,7 +9523,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   fetch->fetch_res = false;
 
   /* check for virtual objects */
-  if (!PRIM_IS_NULL (fetch->arg) && PRIM_TYPE (fetch->arg) == DB_TYPE_VOBJ)
+  if (!DB_IS_NULL (fetch->arg)
+      && DB_VALUE_DOMAIN_TYPE (fetch->arg) == DB_TYPE_VOBJ)
     {
       DB_SET *setp = DB_GET_SET (fetch->arg);
       DB_VALUE dbval, dbval1;
@@ -9528,10 +9532,10 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if ((db_set_size (setp) == 3)
 	  && (db_set_get (setp, 1, &dbval) == NO_ERROR)
 	  && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
-	  && (PRIM_IS_NULL (&dbval)
-	      || ((PRIM_TYPE (&dbval) == DB_TYPE_OID)
+	  && (DB_IS_NULL (&dbval)
+	      || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
 		  && OID_ISNULL (DB_GET_OID (&dbval))))
-	  && (PRIM_TYPE (&dbval1) == DB_TYPE_OID))
+	  && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
 	{
 	  dbvaloid = DB_GET_OID (&dbval1);
 	}
@@ -9542,7 +9546,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* object is non_existent ? */
-  if (PRIM_IS_NULL (fetch->arg) || OID_ISNULL (dbvaloid))
+  if (DB_IS_NULL (fetch->arg) || OID_ISNULL (dbvaloid))
     {
       dead_end = true;
     }
@@ -10265,17 +10269,17 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p,
 	  goto exit_on_error;
 	}
 
-      orig_type = PRIM_TYPE (dbvalp);
+      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
       if (orig_type != DB_TYPE_BIGINT)
 	{
 	  if (tp_value_coerce (dbvalp, dbvalp, domainp) != DOMAIN_COMPATIBLE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		      pr_type_name (orig_type),
-		      pr_type_name (domainp->type->id));
+		      pr_type_name (TP_DOMAIN_TYPE (domainp)));
 	      goto exit_on_error;
 	    }
-	  if (PRIM_TYPE (dbvalp) != DB_TYPE_BIGINT)
+	  if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_QPROC_INVALID_DATATYPE, 0);
@@ -15795,7 +15799,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
       length2 = (dbvalp2->domain.general_info.is_null != 0) ? 0 : -1;
 
       domp = type_list->domp[i];
-      type = domp->type->id;
+      type = TP_DOMAIN_TYPE (domp);
       copy = pr_is_set_type (type);
       pr_type_p = domp->type;
 
@@ -15831,8 +15835,8 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
 	}
       else
 	{
-	  equal = ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, NULL, 0, 0,
-					   1, NULL) == DB_EQ);
+	  equal =
+	    ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL) == DB_EQ);
 	}
 
       if (copy)
@@ -17289,7 +17293,7 @@ end:
  *   return: DB_LT, DB_EQ, or DB_GT
  */
 static int
-bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_reverse,
+bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain,
 		   int do_coercion, int total_order, int *start_colp)
 {
   int c = DB_UNK;
@@ -17319,9 +17323,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_reverse,
  *   return: DB_LT, DB_EQ, or DB_GT
  */
 static int
-bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, TP_DOMAIN * domain,
-		  int do_reverse, int do_coercion, int total_order,
-		  int *start_colp)
+bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2,
+		  int do_coercion, int total_order, int *start_colp)
 {
   int c;
   unsigned char *string1, *string2;
@@ -17368,7 +17371,7 @@ qexec_resolve_domains_on_sort_list (SORT_LIST * order_list,
   for (orderby_ptr = order_list; orderby_ptr != NULL;
        orderby_ptr = orderby_ptr->next)
     {
-      if (db_domain_type (orderby_ptr->pos_descr.dom) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (orderby_ptr->pos_descr.dom) == DB_TYPE_VARIABLE)
 	{
 	  ref_curr_pos = orderby_ptr->pos_descr.pos_no;
 	  regu_list = reference_regu_list;
@@ -17429,7 +17432,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       REGU_VARIABLE_LIST group_out_regu = NULL;
 
       if (group_regu->value.domain == NULL ||
-	  db_domain_type (group_regu->value.domain) != DB_TYPE_VARIABLE)
+	  TP_DOMAIN_TYPE (group_regu->value.domain) != DB_TYPE_VARIABLE)
 	{
 	  continue;
 	}
@@ -17455,7 +17458,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       assert (ref_index == pos_in_ref_list);
 
       ref_domain = ref_regu->value.domain;
-      if (db_domain_type (ref_domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (ref_domain) == DB_TYPE_VARIABLE)
 	{
 	  return;
 	}
@@ -17492,14 +17495,14 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 
 	  assert (group_agg->operand.type == TYPE_CONSTANT);
 
-	  if (db_domain_type (group_agg->operand.domain) == DB_TYPE_VARIABLE
+	  if (TP_DOMAIN_TYPE (group_agg->operand.domain) == DB_TYPE_VARIABLE
 	      && group_agg->operand.value.dbvalptr == val_list_ref_dbvalue)
 	    {
 	      /* update domain of aggregate's operand */
 	      group_agg->operand.domain = ref_domain;
-	      group_agg->opr_dbtype = db_domain_type (ref_domain);
+	      group_agg->opr_dbtype = TP_DOMAIN_TYPE (ref_domain);
 
-	      if (db_domain_type (group_agg->domain) == DB_TYPE_VARIABLE)
+	      if (TP_DOMAIN_TYPE (group_agg->domain) == DB_TYPE_VARIABLE)
 		{
 		  assert (group_agg->function == PT_MIN ||
 			  group_agg->function == PT_MAX ||
@@ -17548,7 +17551,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 	  if (group_out_regu->value.type == TYPE_CONSTANT &&
 	      group_out_regu->value.value.dbvalptr == group_agg->value)
 	    {
-	      if (db_domain_type (group_out_regu->value.domain) ==
+	      if (TP_DOMAIN_TYPE (group_out_regu->value.domain) ==
 		  DB_TYPE_VARIABLE)
 		{
 		  group_out_regu->value.domain = ref_domain;

@@ -523,11 +523,11 @@ col_move_nulls (COL * col)
 
   while (bottom < top)
     {
-      while (top >= 0 && PRIM_IS_NULL (INDEX (col, top)))
+      while (top >= 0 && DB_IS_NULL (INDEX (col, top)))
 	{
 	  top--;
 	}
-      while (bottom < top && !PRIM_IS_NULL (INDEX (col, bottom)))
+      while (bottom < top && !DB_IS_NULL (INDEX (col, bottom)))
 	{
 	  bottom++;
 	}
@@ -908,13 +908,13 @@ non_null_index (COL * col, long lower, long upper)
     }
 
   /* optimize for this most likely case */
-  if (!PRIM_IS_NULL (INDEX (col, upper)))
+  if (!DB_IS_NULL (INDEX (col, upper)))
     {
       return upper;
     }
 
   /* handle case where all collection values NULL */
-  if (PRIM_IS_NULL (INDEX (col, lower)))
+  if (DB_IS_NULL (INDEX (col, lower)))
     {
       return lower - 1;
     }
@@ -924,12 +924,12 @@ non_null_index (COL * col, long lower, long upper)
   while (lowblock < highblock)
     {
       midblock = (lowblock + highblock) / 2;
-      if (PRIM_IS_NULL (&col->array[midblock][0]))
+      if (DB_IS_NULL (&col->array[midblock][0]))
 	{
 	  /* lowest entry in midbloack is NULL. Look to the low side */
 	  highblock = midblock - 1;
 	}
-      else if (!PRIM_IS_NULL (&col->array[midblock][BLOCKING_LESS1]))
+      else if (!DB_IS_NULL (&col->array[midblock][BLOCKING_LESS1]))
 	{
 	  /* highest entry in mid is non-NULL,  look to the high side */
 	  lowblock = midblock + 1;
@@ -947,7 +947,7 @@ non_null_index (COL * col, long lower, long upper)
    */
   offset = 0;
   while (offset < COL_BLOCK_SIZE
-	 && !PRIM_IS_NULL (&col->array[lowblock][offset]))
+	 && !DB_IS_NULL (&col->array[lowblock][offset]))
     {
       offset++;
     }
@@ -1072,13 +1072,13 @@ col_has_null (COL * col)
   if (col->sorted
       && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
     {
-      return PRIM_IS_NULL (INDEX (col, col->size - 1));
+      return DB_IS_NULL (INDEX (col, col->size - 1));
     }
 
   /* unordered collections, must be exhaustively scanned */
   for (i = 0; i < col->size; i++)
     {
-      if (PRIM_IS_NULL (INDEX (col, i)))
+      if (DB_IS_NULL (INDEX (col, i)))
 	{
 	  return 1;
 	}
@@ -1122,13 +1122,13 @@ col_is_all_null (COL * col)
   if (col->sorted
       && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
     {
-      return PRIM_IS_NULL (INDEX (col, 0));
+      return DB_IS_NULL (INDEX (col, 0));
     }
 
   /* unordered collections, must be exhaustively scanned */
   for (i = 0; i < col->size; i++)
     {
-      if (!PRIM_IS_NULL (INDEX (col, i)))
+      if (!DB_IS_NULL (INDEX (col, i)))
 	{
 	  return 0;
 	}
@@ -1170,7 +1170,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
   if (col && found)
     {
       *found = 0;
-      if (PRIM_IS_NULL (val) || col->size == 0)
+      if (DB_IS_NULL (val) || col->size == 0)
 	{
 	  /* append to end */
 	  /* ANSI puts NULLs at end of set collections for comparison */
@@ -1347,7 +1347,7 @@ col_put (COL * col, long colindex, DB_VALUE * val)
 
   if (!(error < 0))
     {
-      if (!PRIM_IS_NULL (val))
+      if (!DB_IS_NULL (val))
 	{
 	  col->lastinsert = colindex;
 	}
@@ -1668,10 +1668,6 @@ col_add (COL * col, DB_VALUE * val)
     }
   switch (col->coltype)
     {
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VOBJ:
-      error = col_put (col, col->size, val);
-      break;
     case DB_TYPE_SET:
       i = col_find (col, &found, val, 1);
       /* a SET- insert it if we did not find it */
@@ -1744,6 +1740,10 @@ col_add (COL * col, DB_VALUE * val)
 	  col->sorted = 0;
 	}
       error = col_insert (col, i, val);
+      break;
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VOBJ:
+      error = col_put (col, col->size, val);
       break;
     default:
       /* bad args */
@@ -1820,7 +1820,7 @@ col_drop_nulls (COL * col)
     {
       for (i = col->size - 1; i >= 0; i--)
 	{
-	  if (PRIM_IS_NULL (INDEX (col, i)))
+	  if (DB_IS_NULL (INDEX (col, i)))
 	    {
 	      error = col_delete (col, i);
 	    }
@@ -1837,7 +1837,7 @@ col_drop_nulls (COL * col)
     {
       for (i = col->size - 1; i >= 0; i--)
 	{
-	  if (PRIM_IS_NULL (INDEX (col, i)))
+	  if (DB_IS_NULL (INDEX (col, i)))
 	    {
 	      error = col_delete (col, i);
 	    }
@@ -1881,12 +1881,12 @@ col_permanent_oids (COL * col)
 	  for (i = 0; i < col->size && !error; i++)
 	    {
 	      val = INDEX (col, i);
-	      if (PRIM_IS_NULL (val))
+	      if (DB_IS_NULL (val))
 		{
 		  continue;
 		}
 
-	      if (PRIM_TYPE (val) == DB_TYPE_OBJECT)
+	      if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_OBJECT)
 		{
 		  obj = DB_GET_OBJECT (val);
 		  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -1899,8 +1899,8 @@ col_permanent_oids (COL * col)
 			}
 		    }
 		}
-	      else if (PRIM_TYPE (val) == DB_TYPE_SET
-		       || PRIM_TYPE (val) == DB_TYPE_MULTISET)
+	      else if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_SET
+		       || DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_MULTISET)
 		{
 		  /* recurse and make sure any nested set is also
 		   * assigned permanent oids and sorted */
@@ -1959,7 +1959,7 @@ setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order)
       && (set2->coltype == DB_TYPE_SEQUENCE || set2->coltype == DB_TYPE_VOBJ))
     {
       cmp = DB_EQ;
-      if (PRIM_TYPE (&set1->array[0][2]) != DB_TYPE_OID)
+      if (DB_VALUE_DOMAIN_TYPE (&set1->array[0][2]) != DB_TYPE_OID)
 	{
 	  cmp = tp_value_compare (&set1->array[0][1], &set2->array[0][1],
 				  do_coercion, 1);
@@ -3895,8 +3895,8 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
    */
   if (col1->coltype != DB_TYPE_SET
       && col1->coltype != DB_TYPE_MULTISET
-      && (domain->type->id == DB_TYPE_SET
-	  || domain->type->id == DB_TYPE_MULTISET))
+      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_SET
+	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_MULTISET))
     {
       col1 = setobj_coerce (col1, domain, IMPLICIT);
       if (!col1)
@@ -3908,8 +3908,8 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 
   if (col2->coltype != DB_TYPE_SET
       && col2->coltype != DB_TYPE_MULTISET
-      && (domain->type->id == DB_TYPE_SET
-	  || domain->type->id == DB_TYPE_MULTISET))
+      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_SET
+	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_MULTISET))
     {
       /* we have a slightly weaker test for differences second argument
        * than complete domain compatibility. It is sufficient to
@@ -4353,7 +4353,7 @@ setobj_create_with_domain (TP_DOMAIN * domain, int initial_size)
 {
   COL *new_ = NULL;
 
-  new_ = setobj_create (domain->type->id, initial_size);
+  new_ = setobj_create (TP_DOMAIN_TYPE (domain), initial_size);
   if (new_ != NULL)
     {
       new_->domain = domain;
@@ -4372,9 +4372,7 @@ setobj_create_with_domain (TP_DOMAIN * domain, int initial_size)
 COL *
 setobj_create (DB_TYPE collection_type, int size)
 {
-  if (collection_type != DB_TYPE_SET && collection_type != DB_TYPE_MULTISET
-      && collection_type != DB_TYPE_SEQUENCE
-      && collection_type != DB_TYPE_VOBJ)
+  if (!TP_IS_SET_TYPE (collection_type) && collection_type != DB_TYPE_VOBJ)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return (NULL);
@@ -5433,8 +5431,7 @@ setobj_difference (COL * set1, COL * set2, COL * result)
     {
       val1 = INDEX (set1, index1);
       val2 = INDEX (set2, index2);
-      if ((val1)->domain.general_info.is_null != 0
-	  || (val2)->domain.general_info.is_null != 0)
+      if (DB_IS_NULL (val1) || DB_IS_NULL (val2))
 	{
 	  error = setobj_add_element (result, val1);
 	  index1++;
@@ -5545,12 +5542,12 @@ setobj_union (COL * set1, COL * set2, COL * result)
 	{
 	  val1 = INDEX (set1, index1);
 	  val2 = INDEX (set2, index2);
-	  if ((val1)->domain.general_info.is_null != 0)
+	  if (DB_IS_NULL (val1))
 	    {
 	      error = setobj_add_element (result, val1);
 	      index1++;
 	    }
-	  else if ((val2)->domain.general_info.is_null != 0)
+	  else if (DB_IS_NULL (val2))
 	    {
 	      error = setobj_add_element (result, val2);
 	      index2++;
@@ -5636,8 +5633,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
     {
       val1 = INDEX (set1, index1);
       val2 = INDEX (set2, index2);
-      if ((val1)->domain.general_info.is_null != 0
-	  || (val2)->domain.general_info.is_null != 0)
+      if (DB_IS_NULL (val1) || DB_IS_NULL (val2))
 	{
 	  /* NULL never equals NULL, so {NULL} * {NULL} = {} */
 	  /* NULLs are at the end, so once we have hit one
@@ -5711,7 +5707,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
   int i;
   int has_null = 0;
 
-  if ((value)->domain.general_info.is_null != 0)
+  if (DB_IS_NULL (value))
     {
       return -1;
     }
@@ -5885,7 +5881,7 @@ setobj_get_element (COL * set, int index, DB_VALUE * value)
   DB_VALUE *element;
 
   /* should this be pr_clear_value instead? */
-  PRIM_INIT_NULL (value);
+  DB_MAKE_NULL (value);
 
   error = setobj_get_element_ptr (set, index, &element);
 
@@ -5897,7 +5893,7 @@ setobj_get_element (COL * set, int index, DB_VALUE * value)
       SET_FIX_VALUE (value);
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -5919,7 +5915,7 @@ setobj_add_element (COL * col, DB_VALUE * value)
   DB_VALUE temp;
   int error = NO_ERROR;
 
-  PRIM_INIT_NULL (&temp);
+  DB_MAKE_NULL (&temp);
   CHECKNULL (col);
   CHECKNULL (value);
 
@@ -5963,7 +5959,7 @@ setobj_put_element (COL * col, int index, DB_VALUE * value)
   int error = NO_ERROR;
   DB_VALUE temp;
 
-  PRIM_INIT_NULL (&temp);
+  DB_MAKE_NULL (&temp);
   CHECKNULL (col);
   CHECKNULL (value);
 
@@ -6064,7 +6060,7 @@ setobj_drop_element (COL * col, DB_VALUE * value, bool match_nulls)
    *  col_drop() won't drop anything, so don't call it.
    */
 
-  if (PRIM_IS_NULL (value))
+  if (DB_IS_NULL (value))
     {
       if (match_nulls)
 	{
@@ -6240,7 +6236,7 @@ setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion)
       while (i > 0)
 	{
 	  val = INDEX (new_, i);
-	  if (!PRIM_IS_NULL (val)
+	  if (!DB_IS_NULL (val)
 	      && col_value_compare (val, INDEX (new_, i - 1)) == 0)
 	    {
 	      col_delete (new_, i);

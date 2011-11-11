@@ -45,20 +45,18 @@
  */
 
 #define OBJ_FORCE_NULL_TO_UNBOUND(dbvalue) \
-  if (((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING) && \
-       (DB_GET_STRING(dbvalue) == NULL)) || \
-      (((DB_VALUE_TYPE(dbvalue) == DB_TYPE_SET) || \
-	(DB_VALUE_TYPE(dbvalue) == DB_TYPE_MULTI_SET) || \
-	(DB_VALUE_TYPE(dbvalue) == DB_TYPE_SEQUENCE)) && \
+  if ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING && \
+       DB_GET_STRING(dbvalue) == NULL) || \
+      (TP_IS_SET_TYPE (DB_VALUE_TYPE(dbvalue)) && \
        DB_GET_SET(dbvalue) == NULL) || \
-      ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_OBJECT) && \
-       (DB_GET_OBJECT(dbvalue) == NULL)) || \
-       ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_BLOB) && \
-	(DB_GET_ELO(dbvalue) == NULL)) || \
-       ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_CLOB) && \
-	(DB_GET_ELO(dbvalue) == NULL)) || \
-      ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_ELO) && \
-       (DB_GET_ELO(dbvalue) == NULL)) ) \
+      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_OBJECT && \
+       DB_GET_OBJECT(dbvalue) == NULL) || \
+      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_BLOB && \
+       DB_GET_ELO(dbvalue) == NULL) || \
+      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_CLOB && \
+       DB_GET_ELO(dbvalue) == NULL) || \
+      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_ELO && \
+       DB_GET_ELO(dbvalue) == NULL)) \
   DB_MAKE_NULL(dbvalue);
 
 

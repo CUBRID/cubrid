@@ -3406,7 +3406,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   PT_TYPE_ENUM t;
 
 
-  t = (PT_TYPE_ENUM) pt_db_to_type_enum (db_domain_type (domain));
+  t = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
 
   switch (t)
     {
@@ -3741,7 +3741,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att,
   attr->etc = dom;		/* used for getting additional db-specific
 				 * domain information in the Versant driver
 				 */
-  attr->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_domain_type (dom));
+  attr->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (attr->type_enum)
     {
     case PT_TYPE_OBJECT:
@@ -6546,7 +6546,7 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return false;
     }
 
-  node->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_domain_type (dom));
+  node->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (node->type_enum)
     {
     case PT_TYPE_OBJECT:

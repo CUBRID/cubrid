@@ -2688,7 +2688,7 @@ copy_column_spec_to_sqlda (DB_QUERY_TYPE * col_spec, CUBRIDDA * desc)
 
       domain = db_query_format_domain (col_spec);
 
-      desc->sqlvar[i].sqltype = db_domain_type (domain);
+      desc->sqlvar[i].sqltype = TP_DOMAIN_TYPE (domain);
       desc->sqlvar[i].sqlprec = db_domain_precision (domain);
       desc->sqlvar[i].sqlscale = db_domain_scale (domain);
       desc->sqlvar[i].sqllen = db_query_format_size (col_spec);

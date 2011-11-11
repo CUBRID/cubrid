@@ -48,7 +48,6 @@ typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
   int unique_flag;
-  int reverse_flag;
   HFID *hfids;			/* Array of HFIDs for the class(es) */
   OID *class_ids;		/* Array of class OIDs              */
   OID cur_oid;			/* Identifier of the current object */
@@ -188,7 +187,6 @@ static void print_list (const BTREE_NODE * this_list);
  *   hfids(in): Identifier of the heap file containing the instances of the
  *	        class
  *   unique_flag(in):
- *   reverse_flag(in):
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
@@ -200,7 +198,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   OID * class_oids, int n_classes, int n_attrs,
 		   int *attr_ids, int *attrs_prefix_length,
 		   HFID * hfids, int unique_flag,
-		   int reverse_flag, int last_key_desc, OID * fk_refcls_oid,
+		   int last_key_desc, OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
 		   const char *fk_name, char *pred_stream,
 		   int pred_stream_size,
@@ -251,7 +249,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   btid_int.sys_btid = btid;
   btid_int.unique = unique_flag;
-  btid_int.reverse = reverse_flag;
+#if 0				/* not used */
+  btid_int.reverse_reserved = 0;
+#endif
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
@@ -262,7 +262,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /*
    * check for the last element domain of partial-key and key is desc;
-   * set default according to reverse info
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
   btid_int.part_key_desc = btid_int.last_key_desc = last_key_desc;
@@ -281,7 +280,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /* Initialize the fields of sorting argument structures */
   sort_args->unique_flag = unique_flag;
-  sort_args->reverse_flag = reverse_flag;
   sort_args->hfids = hfids;
   sort_args->class_ids = class_oids;
   sort_args->attr_ids = attr_ids;
@@ -519,8 +517,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
       btid->vfid.volid = save_volid;
       xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0],
-			unique_flag, reverse_flag,
-			sort_args->n_oids, sort_args->n_nulls,
+			unique_flag, sort_args->n_oids, sort_args->n_nulls,
 			load_args->n_keys);
     }
 
@@ -972,7 +969,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 			 &leaf_pnt, BTREE_LEAF_NODE, &clear_last_key,
 			 &last_key_offset, PEEK_KEY_VALUE);
 
-      if (pr_is_prefix_key_type (load_args->btid->key_type->type->id))
+      if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
 	{
 	  /* Key type is string.
 	   * Should insert the prefix key to the parent level
@@ -999,7 +996,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
 	  /* Insert the prefix key to the parent level */
 	  ret = btree_get_prefix (&last_key, &first_key, &prefix_key,
-				  load_args->btid->reverse,
 				  load_args->btid->key_type);
 	  if (ret != NO_ERROR)
 	    {
@@ -1271,14 +1267,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
   COPY_OID (&root_header.topclass_oid, &load_args->btid->topclass_oid);
 
-  if (load_args->btid->reverse)
-    {
-      root_header.reverse = true;
-    }
-  else
-    {
-      root_header.reverse = false;
-    }
+  root_header.reverse_reserved = false;	/* not used */
 
   root_header.ovfid = load_args->btid->ovfid;	/* structure copy */
   root_header.rev_level = BTREE_CURRENT_REV_LEVEL;
@@ -1734,7 +1723,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
       /* Do not copy the string--just use the pointer.  The pr_ routines
        * for strings and sets have different semantics for length.
        */
-      if (load_args->btid->key_type->type->id == DB_TYPE_MIDXKEY)
+      if (TP_DOMAIN_TYPE (load_args->btid->key_type) == DB_TYPE_MIDXKEY)
 	{
 	  key_size = CAST_STRLEN (buf.endptr - buf.ptr);
 	}
@@ -1786,14 +1775,23 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	}
       else
 	{			/* This is not the first call to this function */
+	  int c = DB_UNK;
+
 	  /*
 	   * Compare the received key with the current one.
 	   * If different, then dump the current record and create a new record.
 	   */
 
-	  same_key = !(*(load_args->btid->key_type->type->cmpval))
-	    (&this_key, &load_args->current_key,
-	     load_args->btid->key_type, load_args->btid->reverse, 0, 1, NULL);
+	  c = btree_compare_key (&this_key, &load_args->current_key,
+				 load_args->btid->key_type, 0, 1, NULL);
+	  if (c == DB_UNK)
+	    {
+	      /* impossible case */
+	      assert (false);
+	      goto error;
+	    }
+
+	  same_key = (c == DB_EQ) ? true : false;
 
 	  /* EQUALITY test only - doesn't care the reverse index */
 
@@ -2120,7 +2118,7 @@ btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
   /* Do not copy the string--just use the pointer.  The pr_ routines
    * for strings and sets have different semantics for length.
    */
-  if (load_args->btid->key_type->type->id == DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (load_args->btid->key_type) == DB_TYPE_MIDXKEY)
     {
       key_size = buf.endptr - buf.ptr;
     }
@@ -2585,7 +2583,9 @@ compare_driver (const void *first, const void *second, void *arg)
   char *mem2 = *(char **) second;
   SORT_ARGS *sort_args;
   TP_DOMAIN *key_type;
-  int r;
+  DB_VALUE val1, val2;
+  OR_BUF buf_val1, buf_val2;
+  int c;
 
   sort_args = (SORT_ARGS *) arg;
   key_type = sort_args->key_type;
@@ -2612,10 +2612,27 @@ compare_driver (const void *first, const void *second, void *arg)
   mem1 = PTR_ALIGN (mem1, MAX_ALIGNMENT);
   mem2 = PTR_ALIGN (mem2, MAX_ALIGNMENT);
 
-  r = (*(key_type->type->data_cmpdisk)) (mem1, mem2,
-					 key_type, sort_args->reverse_flag,
-					 0, 1, NULL);
-  return r;
+  OR_BUF_INIT (buf_val1, mem1, -1);
+  OR_BUF_INIT (buf_val2, mem2, -1);
+
+  if ((*(key_type->type->data_readval))
+      (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+    {
+      assert (false);
+      return DB_UNK;
+    }
+
+  if ((*(key_type->type->data_readval))
+      (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
+    {
+      assert (false);
+      return DB_UNK;
+    }
+
+  c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
+  assert (c != DB_UNK);
+
+  return c;
 }
 
 /*

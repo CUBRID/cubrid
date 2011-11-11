@@ -244,15 +244,21 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
 	       || (result == DB_EQ)) ? V_TRUE : V_FALSE);
     case R_NULLSAFE_EQ:
       if (result == DB_EQ)
-	return V_TRUE;
+	{
+	  return V_TRUE;
+	}
       else
 	{
-	  if (dbval1 == NULL || PRIM_IS_NULL (dbval1))
+	  if (DB_IS_NULL (dbval1))
 	    {
-	      if (dbval2 == NULL || PRIM_IS_NULL (dbval2))
-		return V_TRUE;
+	      if (DB_IS_NULL (dbval2))
+		{
+		  return V_TRUE;
+		}
 	      else
-		return V_FALSE;
+		{
+		  return V_FALSE;
+		}
 	    }
 	  else
 	    {

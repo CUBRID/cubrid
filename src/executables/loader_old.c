@@ -385,9 +385,13 @@ check_domain (DB_TYPE src_type, DB_TYPE * appropriate_type)
       /* select the most appropriate domain from the list */
       best = tp_domain_select_type (domain, src_type, NULL, 1);
       if (best != NULL)
-	type = best->type->id;
+	{
+	  type = TP_DOMAIN_TYPE (best);
+	}
       else
-	error = domain_error (domain, src_type, NULL);
+	{
+	  error = domain_error (domain, src_type, NULL);
+	}
     }
 
   if (appropriate_type != NULL)
@@ -2250,18 +2254,25 @@ select_set_domain (TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr)
   best = NULL;
   for (d = domain; d != NULL && best == NULL; d = d->next)
     {
-      if (TP_IS_SET_TYPE (d->type->id))
-	/* pick the first one */
-	best = d;
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (d)))
+	{
+	  /* pick the first one */
+	  best = d;
+	}
     }
 
   if (best == NULL)
-    error = domain_error (domain, DB_TYPE_SET, NULL);
+    {
+      error = domain_error (domain, DB_TYPE_SET, NULL);
+    }
   else
     {
       if (set_domain_ptr != NULL)
-	*set_domain_ptr = best;
+	{
+	  *set_domain_ptr = best;
+	}
     }
+
   return error;
 }
 
@@ -2441,7 +2452,8 @@ ldr_add_value (DB_TYPE token_type, DB_VALUE ** retval)
 			}
 		      else
 			{
-			  db_value_domain_init (value, domain->type->id,
+			  db_value_domain_init (value,
+						TP_DOMAIN_TYPE (domain),
 						domain->precision,
 						domain->scale);
 			}

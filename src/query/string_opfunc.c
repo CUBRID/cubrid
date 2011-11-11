@@ -621,7 +621,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2,
 int
 db_string_unique_prefix (const DB_VALUE * db_string1,
 			 const DB_VALUE * db_string2, DB_VALUE * db_result,
-			 int is_reverse, TP_DOMAIN * key_domain)
+			 TP_DOMAIN * key_domain)
 {
   DB_TYPE result_type = (DB_TYPE) 0;
   int error_status = NO_ERROR;
@@ -637,8 +637,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
   error_status = db_string_compare (db_string1, db_string2, &tmp_result);
   if ((error_status != NO_ERROR) ||
       ((c = DB_GET_INTEGER (&tmp_result)) &&
-       (((!is_reverse && !key_domain->is_desc) && c > 0)
-	|| ((is_reverse || key_domain->is_desc) && c < 0))))
+       ((!key_domain->is_desc && c > 0) || (key_domain->is_desc && c < 0))))
     {
       DB_MAKE_NULL (db_result);
 #if defined(CUBRID_DEBUG)
@@ -781,7 +780,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	  intl_char_size (string1, char_count, codeset, &result_size);
 	}
 
-      if (!is_reverse && !key_domain->is_desc)
+      if (!key_domain->is_desc)
 	{			/* normal index */
 	  if (result_size == size1 || result_size == size2 - 1)
 	    {
@@ -5705,7 +5704,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 
   if (domain != NULL)
     {
-      assert (domain->type->id == result_type);
+      assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
 
   switch (result_type)
@@ -19655,7 +19654,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
     }
   else
     {
-      res_type = domain->type->id;
+      res_type = TP_DOMAIN_TYPE (domain);
       if (res_type != DB_TYPE_TIME && res_type != DB_TYPE_DATE &&
 	  res_type != DB_TYPE_DATETIME)
 	{

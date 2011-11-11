@@ -50,20 +50,18 @@
 /* this needs to go into the pr_ level */
 
 #define SET_FIX_VALUE(value) \
-  if (((DB_VALUE_TYPE(value) == DB_TYPE_STRING) && \
-       (DB_GET_STRING(value) == NULL)) || \
-      (((DB_VALUE_TYPE(value) == DB_TYPE_SET) || \
-        (DB_VALUE_TYPE(value) == DB_TYPE_MULTI_SET) || \
-        (DB_VALUE_TYPE(value) == DB_TYPE_SEQUENCE)) && \
+  if ((DB_VALUE_TYPE(value) == DB_TYPE_STRING && \
+       DB_GET_STRING(value) == NULL) || \
+      (TP_IS_SET_TYPE (DB_VALUE_TYPE(value)) && \
        DB_GET_SET(value) == NULL) || \
-      ((DB_VALUE_TYPE(value) == DB_TYPE_OBJECT) && \
-       (DB_GET_OBJECT(value) == NULL)) || \
-      ((DB_VALUE_TYPE(value) == DB_TYPE_BLOB) && \
-       (DB_GET_OBJECT(value) == NULL)) || \
-      ((DB_VALUE_TYPE(value) == DB_TYPE_CLOB) && \
-       (DB_GET_OBJECT(value) == NULL)) || \
-      ((DB_VALUE_TYPE(value) == DB_TYPE_ELO) && \
-       (DB_GET_ELO(value) == NULL)) ) \
+      (DB_VALUE_TYPE(value) == DB_TYPE_OBJECT && \
+       DB_GET_OBJECT(value) == NULL) || \
+      (DB_VALUE_TYPE(value) == DB_TYPE_BLOB && \
+       DB_GET_ELO(value) == NULL) || \
+      (DB_VALUE_TYPE(value) == DB_TYPE_CLOB && \
+       DB_GET_ELO(value) == NULL) || \
+      (DB_VALUE_TYPE(value) == DB_TYPE_ELO && \
+       DB_GET_ELO(value) == NULL)) \
     DB_MAKE_NULL(value);
 
 #define COL_BLOCK_SIZE (64)

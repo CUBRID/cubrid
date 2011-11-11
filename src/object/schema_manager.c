@@ -6706,7 +6706,7 @@ compare_domains (TP_DOMAIN * d1, TP_DOMAIN * d2)
 	      status = DC_INCOMPATIBLE;
 	    }
 	}
-      else if (pr_is_set_type (d1->type->id))
+      else if (pr_is_set_type (TP_DOMAIN_TYPE (d1)))
 	{
 	  /* set element domains must be compatible */
 	  status = DC_EQUAL;
@@ -9486,7 +9486,7 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
     {
       if ((asc_desc && asc_desc[0] == 1) ||
 	  (prefix_lengths && (*prefix_lengths != -1) &&
-	   QSTR_IS_ANY_CHAR_OR_BIT (atts[0]->domain->type->id)))
+	   QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (atts[0]->domain))))
 	{
 	  new_domain = tp_domain_copy (atts[0]->domain, false);
 	  if (new_domain == NULL)
@@ -9504,11 +9504,12 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	    }
 
 	  if (prefix_lengths && (*prefix_lengths != -1) &&
-	      QSTR_IS_ANY_CHAR_OR_BIT (atts[0]->domain->type->id))
+	      QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (atts[0]->domain)))
 	    {
-	      int scale = (atts[0]->domain->type->id == DB_TYPE_BIT) ? 8 : 1;
-	      new_domain->precision = MIN (new_domain->precision,
-					   *prefix_lengths * scale);
+	      int scale =
+		(TP_DOMAIN_TYPE (atts[0]->domain) == DB_TYPE_BIT) ? 8 : 1;
+	      new_domain->precision =
+		MIN (new_domain->precision, *prefix_lengths * scale);
 	    }
 
 	  cached_domain = tp_domain_cache (new_domain);
@@ -9813,6 +9814,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
     {
       TP_DOMAIN *domain = NULL;
       TP_DOMAIN *fi_domain = NULL;
+
       if (function_index)
 	{
 	  fi_domain = tp_domain_resolve_default (function_index->type);
@@ -9928,7 +9930,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  if (!has_instances)
 	    {
 	      error = btree_add_index (index, domain, WS_OID (classop),
-				       attrs[0]->id, unique, reverse);
+				       attrs[0]->id, unique);
 	    }
 	  /* If there are instances, load all of them (including applicable
 	     subclasses) into the new B-tree */
@@ -9950,7 +9952,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		  error =
 		    btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, (int *) attrs_prefix_length,
-				      hfids, unique, reverse,
+				      hfids, unique,
 				      last_key_desc, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
@@ -9968,7 +9970,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		  error =
 		    btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, (int *) attrs_prefix_length,
-				      hfids, unique, reverse,
+				      hfids, unique,
 				      last_key_desc, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,

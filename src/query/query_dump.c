@@ -829,7 +829,7 @@ qdump_print_domain_list (int cnt, TP_DOMAIN ** domains_p)
   for (i = 0; i < cnt; i++)
     {
       fprintf (foutput, "%s; ",
-	       qdump_data_type_string (domains_p[i]->type->id));
+	       qdump_data_type_string (TP_DOMAIN_TYPE (domains_p[i])));
     }
 
   return true;
@@ -895,7 +895,7 @@ static bool
 qdump_print_tuple_value_position (QFILE_TUPLE_VALUE_POSITION pos)
 {
   fprintf (foutput, "(position %d) (db_type ", pos.pos_no);
-  fprintf (foutput, "%s", qdump_data_type_string (pos.dom->type->id));
+  fprintf (foutput, "%s", qdump_data_type_string (TP_DOMAIN_TYPE (pos.dom)));
   fprintf (foutput, ")");
 
   return true;

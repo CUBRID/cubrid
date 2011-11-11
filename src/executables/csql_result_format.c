@@ -1394,9 +1394,9 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	  len = strlen (result);
 	}
       break;
-    case DB_TYPE_MULTI_SET:
-    case DB_TYPE_SEQUENCE:
     case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
       result = set_to_string (value, default_set_profile.begin_notation,
 			      default_set_profile.end_notation,
 			      default_set_profile.max_entries);

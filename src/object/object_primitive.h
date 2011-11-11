@@ -93,17 +93,16 @@ typedef struct pr_type
 			char *copy_buf, int copy_buf_len);
   /* btree value compare */
   int (*index_cmpdisk) (void *memptr1, void *memptr2,
-			struct tp_domain * domain, int do_reverse,
+			struct tp_domain * domain,
 			int do_coercion, int total_order, int *start_colp);
   /* free memory for swap or GC */
   void (*freemem) (void *memptr);
   /* memory value compare */
   int (*data_cmpdisk) (void *memptr1, void *memptr2,
-		       struct tp_domain * domain, int do_reverse,
+		       struct tp_domain * domain,
 		       int do_coercion, int total_order, int *start_colp);
   /* db value compare */
   int (*cmpval) (DB_VALUE * value, DB_VALUE * value2,
-		 struct tp_domain * domain, int do_reverse,
 		 int do_coercion, int total_order, int *start_colp);
 } PR_TYPE, *PRIM;
 
@@ -256,25 +255,6 @@ extern int pr_ordered_mem_size_total;
     ((db_value_ptr)->domain.general_info.is_null = 1, \
      (db_value_ptr)->need_clear = false)
 
-/* PRIM_IS_NULL
- * test if a db_value is NULL
- */
-#define PRIM_IS_NULL(db_value_ptr) ((db_value_ptr)->domain.general_info.is_null != 0)
-
-/* PRIM_TYPE
- * get a db_value's DB_TYPE
- */
-#define PRIM_TYPE(db_value_ptr) ((DB_TYPE) (db_value_ptr)->domain.general_info.type)
-
-/* PRIM_INIT_NULL
- * Initialize necessary fields of a DB_VALUE
- */
-#define PRIM_INIT_NULL(db_value_ptr) \
-  do { \
-    PRIM_SET_NULL(db_value_ptr); \
-    (db_value_ptr)->domain.general_info.type = DB_TYPE_NULL; \
-  } while (0)
-
 /*
  * EXTERNAL FUNCTIONS
  */
@@ -316,8 +296,8 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 	{ \
 	  *(dst) = *(src); \
 	  (dst)->need_clear = false; \
-	  if (pr_is_set_type ((DB_TYPE) ((src)->domain.general_info.type)) \
-	      && (src)->domain.general_info.is_null == 0) \
+	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE(src)) \
+	      && !DB_IS_NULL(src)) \
 	    { \
 	      (src)->data.set->ref_count++; \
 	    } \
@@ -333,6 +313,11 @@ extern int pr_free_ext_value (DB_VALUE * value);
 
 /* Special transformation functions */
 
+extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
+			       int do_coercion, int total_order,
+			       int *start_colp, int *result_size1,
+			       int *result_size2, int *diff_column,
+			       bool * dom_is_desc, bool * next_dom_is_desc);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey,
 					  int index, DB_VALUE * value,
 					  int *prev_indexp, char **prev_ptrp);
@@ -345,7 +330,7 @@ extern int pr_data_writeval_disk_size (DB_VALUE * value);
 extern void pr_data_writeval (OR_BUF * buf, DB_VALUE * value);
 extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 				     const DB_VALUE * db_midxkey2,
-				     DB_VALUE * db_result, int is_reverse);
+				     DB_VALUE * db_result);
 
 extern int pr_Inhibit_oid_promotion;
 

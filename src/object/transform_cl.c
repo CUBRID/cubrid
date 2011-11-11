@@ -235,7 +235,7 @@ tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj)
 	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
 
-	  type = att->domain->type->id;
+	  type = TP_DOMAIN_TYPE (att->domain);
 	  if (type == DB_TYPE_OBJECT)
 	    {
 	      WS_MEMOID *mem;
@@ -304,7 +304,7 @@ optimize_sets (SM_CLASS * class_, MOBJ volatile obj)
   for (att = class_->attributes; att != NULL && error == NO_ERROR;
        att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (TP_IS_SET_TYPE (att->domain->type->id))
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
 	{
 	  col = *((SETOBJ **) (obj + att->offset));
 
@@ -2014,7 +2014,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
-  or_put_int (buf, (int) domain->type->id);
+  or_put_int (buf, (int) TP_DOMAIN_TYPE (domain));
   or_put_int (buf, domain->precision);
   or_put_int (buf, domain->scale);
   or_put_int (buf, domain->codeset);
@@ -3017,14 +3017,14 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       att->properties =
 	get_property_list (buf, vars[ORC_ATT_PROPERTIES_INDEX].length);
 
-	att->default_value.default_expr = DB_DEFAULT_NONE;
+      att->default_value.default_expr = DB_DEFAULT_NONE;
       if (att->properties)
 	{
 	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
 	    {
 	      att->default_value.default_expr = DB_GET_INT (&value);
-	      db_value_clear (&value);			  
-	    }      		
+	      db_value_clear (&value);
+	    }
 	}
 
       /* THIS SHOULD BE INITIALIZING THE header.name_space field !! */

@@ -3717,7 +3717,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons,
 	}			/* for ( j = 0; ...) */
     }				/* for ( i = 0; ...) */
 
-  if (key_type && key_type->type->id == DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
       /* get the column key-type of multi-column index */
       key_type = key_type->setdomain;
@@ -6631,7 +6631,7 @@ classobj_capture_representation (SM_CLASS * class_)
        att = (SM_ATTRIBUTE *) att->header.next)
     {
       rat =
-	classobj_make_repattribute (att->id, att->domain->type->id,
+	classobj_make_repattribute (att->id, TP_DOMAIN_TYPE (att->domain),
 				    att->domain);
       if (rat == NULL)
 	{

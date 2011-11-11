@@ -3612,6 +3612,9 @@ xts_save_update_class_info_array (const UPDATE_CLASS_INFO * classes,
   int idx, offset = ER_FAILED;
   int size = xts_sizeof_update_class_info (classes) * nelements;
 
+  assert (nelements > 0);
+  assert (size > 0);
+
   offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED)
     {
@@ -3682,6 +3685,9 @@ xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns,
   char *ptr = NULL, *buf = NULL;
   int offset = ER_FAILED, idx;
   int size = xts_sizeof_update_assignment (assigns) * nelements;
+
+  assert (nelements > 0);
+  assert (size > 0);
 
   offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED)

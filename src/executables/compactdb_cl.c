@@ -1800,7 +1800,7 @@ class_referenced_by_domain (MOP referenced_class,
   for (crt_domain = domain; crt_domain != NULL;
        crt_domain = db_domain_next (crt_domain))
     {
-      const DB_TYPE type = db_domain_type (crt_domain);
+      const DB_TYPE type = TP_DOMAIN_TYPE (crt_domain);
 
       if (type == DB_TYPE_OBJECT)
 	{

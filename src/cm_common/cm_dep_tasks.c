@@ -2191,7 +2191,7 @@ _op_get_type_name (DB_DOMAIN * domain)
       return NULL;
     }
 
-  type_id = db_domain_type (domain);
+  type_id = TP_DOMAIN_TYPE (domain);
   if (type_id == 0)
     {
       free (result);
@@ -2221,8 +2221,7 @@ _op_get_type_name (DB_DOMAIN * domain)
     {
       snprintf (result, result_size, "%s(%d)", db_get_type_name (type_id), p);
     }
-  else if (type_id == DB_TYPE_SET || type_id == DB_TYPE_MULTISET ||
-	   type_id == DB_TYPE_LIST || type_id == DB_TYPE_SEQUENCE)
+  else if (TP_IS_SET_TYPE (type_id))
     {
       size_t avail_size = result_size;
       char *result_p = result;

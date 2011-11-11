@@ -3094,7 +3094,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   /* reinitialize thread mgr to reflect # of active requests */
-  thread_initialize_manager ();
+  if (thread_initialize_manager () != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
   if (er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK) != NO_ERROR)
     {
       return ER_FAILED;

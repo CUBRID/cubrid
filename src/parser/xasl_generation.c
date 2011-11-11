@@ -2657,7 +2657,7 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
     {
       return NULL;
     }
-  db_typ = PRIM_TYPE (db_val);
+  db_typ = DB_VALUE_DOMAIN_TYPE (db_val);
 
   if (val->type_enum == PT_TYPE_OBJECT)
     {
@@ -2686,7 +2686,7 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
 
       if (db_val)
 	{
-	  db_typ = PRIM_TYPE (db_val);
+	  db_typ = DB_VALUE_DOMAIN_TYPE (db_val);
 	}
     }
 
@@ -5004,6 +5004,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
   PT_NODE *node, *expr, *col, *col_list;
   int i, k;
   int adjust_for_hidden_col_from = -1;
+  DB_TYPE dom_type;
 
   sort_list = sort = lastsort = NULL;
   i = 0;			/* SORT_LIST pos_no start from 0 */
@@ -5114,11 +5115,11 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	}
 
       /* GROUP BY ?  or  ORDER BY ? are not allowed */
-      if (node->info.sort_spec.pos_descr.dom->type->id == DB_TYPE_BLOB ||
-	  node->info.sort_spec.pos_descr.dom->type->id == DB_TYPE_CLOB ||
-	  (node->info.sort_spec.expr->node_type == PT_HOST_VAR &&
-	   db_domain_type (node->info.sort_spec.pos_descr.dom) ==
-	   DB_TYPE_VARIABLE))
+      dom_type = TP_DOMAIN_TYPE (node->info.sort_spec.pos_descr.dom);
+      if (dom_type == DB_TYPE_BLOB
+	  || dom_type == DB_TYPE_CLOB
+	  || (node->info.sort_spec.expr->node_type == PT_HOST_VAR
+	      && dom_type == DB_TYPE_VARIABLE))
 	{
 	  if (sort_mode == SORT_LIST_ORDERBY)
 	    {
@@ -5649,7 +5650,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	}
       else
 	{
-	  exptyp = regu->domain->type->id;
+	  exptyp = TP_DOMAIN_TYPE (regu->domain);
 	  if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
 	    {
 	      /* If the host variable was not given before by the user,
@@ -5838,7 +5839,7 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
       return NULL;
     }
 
-  regu_dbval_type_init (dbval, domain->type->id);
+  regu_dbval_type_init (dbval, TP_DOMAIN_TYPE (domain));
   arith->domain = (TP_DOMAIN *) domain;
   arith->value = dbval;
   arith->opcode = op;
@@ -5890,7 +5891,7 @@ pt_make_regu_pred (const PRED_EXPR * pred)
       return NULL;
     }
   regu->domain = domain;
-  regu_dbval_type_init (dbval, domain->type->id);
+  regu_dbval_type_init (dbval, TP_DOMAIN_TYPE (domain));
   arith->domain = (TP_DOMAIN *) domain;
   arith->value = dbval;
   arith->opcode = T_PREDICATE;
@@ -6158,13 +6159,13 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_TABLE_SET:
 	  result_type = DB_TYPE_SET;
 	  break;
-	case F_SEQUENCE:
-	case F_TABLE_SEQUENCE:
-	  result_type = DB_TYPE_SEQUENCE;
-	  break;
 	case F_MULTISET:
 	case F_TABLE_MULTISET:
 	  result_type = DB_TYPE_MULTISET;
+	  break;
+	case F_SEQUENCE:
+	case F_TABLE_SEQUENCE:
+	  result_type = DB_TYPE_SEQUENCE;
 	  break;
 	case F_MIDXKEY:
 	  result_type = DB_TYPE_MIDXKEY;
@@ -9900,8 +9901,8 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 
       switch (DB_VALUE_TYPE (p))
 	{
-	case DB_TYPE_MULTISET:
 	case DB_TYPE_SET:
+	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
 	  break;
 	default:
@@ -9921,8 +9922,8 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 
       switch (DB_VALUE_TYPE (p))
 	{
-	case DB_TYPE_MULTISET:
 	case DB_TYPE_SET:
+	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
 	  break;
 	default:
@@ -18742,7 +18743,7 @@ pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
       return NO_ERROR;
     }
   key_type = attr_stats->bt_stats[idx].key_type;
-  if (key_type && key_type->type->id == DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
       /* get the column key-type of multi-column index */
       key_type = key_type->setdomain;

@@ -2977,7 +2977,7 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale,
   for (; ele_domain; ele_domain = db_domain_next (ele_domain))
     {
       set_domain_count++;
-      set_type = db_domain_type (ele_domain);
+      set_type = TP_DOMAIN_TYPE (ele_domain);
       if (precision)
 	*precision = db_domain_precision (ele_domain);
       if (scale)
@@ -3201,7 +3201,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
       if (param != NULL)
 	{
 	  domain = db_marker_domain (param);
-	  db_type = db_domain_type (domain);
+	  db_type = TP_DOMAIN_TYPE (domain);
 
 	  if (db_type != DB_TYPE_NULL)
 	    {
@@ -3213,7 +3213,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	  param = db_marker_next (param);
 	}
 
-      if (IS_SET_TYPE (db_type))
+      if (TP_IS_SET_TYPE (db_type))
 	{
 	  char set_type;
 	  set_type = get_set_domain (domain, NULL, NULL, NULL);
@@ -3547,8 +3547,8 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 	      break;
 
 	    case DB_TYPE_SET:
-	    case DB_TYPE_SEQUENCE:
 	    case DB_TYPE_MULTISET:
+	    case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
 	      alloced_default_value_string = true;
 	      serialize_collection_as_string (def, &default_value_string);
 	      break;
@@ -4209,9 +4209,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  }
       }
       break;
-    case DB_TYPE_LIST:
-    case DB_TYPE_MULTISET:
     case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
       {
 	DB_SET *set;
 	int i;
@@ -4551,8 +4551,8 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
       else
 	{
 	  domain = db_attribute_domain (attr);
-	  db_type = db_domain_type (domain);
-	  if (IS_SET_TYPE (db_type))
+	  db_type = TP_DOMAIN_TYPE (domain);
+	  if (TP_IS_SET_TYPE (db_type))
 	    {
 	      set_type = get_set_domain (domain, &precision, &scale, NULL);
 	      cas_type = CAS_TYPE_COLLECTION (db_type, set_type);
@@ -5038,8 +5038,8 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       /* 2. ret domain */
       domain = db_method_arg_domain (tmp_p, 0);
-      db_type = db_domain_type (domain);
-      if (IS_SET_TYPE (db_type))
+      db_type = TP_DOMAIN_TYPE (domain);
+      if (TP_IS_SET_TYPE (db_type))
 	{
 	  set_type = get_set_domain (domain, NULL, NULL, NULL);
 	  cas_type = CAS_TYPE_COLLECTION (db_type, set_type);
@@ -5056,8 +5056,8 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       for (j = 1; j <= num_args; j++)
 	{
 	  domain = db_method_arg_domain (tmp_p, j);
-	  db_type = db_domain_type (domain);
-	  if (IS_SET_TYPE (db_type))
+	  db_type = TP_DOMAIN_TYPE (domain);
+	  if (TP_IS_SET_TYPE (db_type))
 	    {
 	      set_type = get_set_domain (domain, NULL, NULL, NULL);
 	      cas_type = CAS_TYPE_COLLECTION (db_type, set_type);
@@ -6071,8 +6071,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	    }
 
 	  domain = db_query_format_domain (col);
-	  db_type = db_domain_type (domain);
-	  if (IS_SET_TYPE (db_type))
+	  db_type = TP_DOMAIN_TYPE (domain);
+	  if (TP_IS_SET_TYPE (db_type))
 	    {
 	      set_type = get_set_domain (domain, &precision, &scale, NULL);
 	      cas_type = CAS_TYPE_COLLECTION (db_type, set_type);
@@ -6229,9 +6229,9 @@ get_attr_type (DB_OBJECT * obj_p, char *attr_name)
       return DB_TYPE_NULL;
     }
 
-  db_type = db_domain_type (attr_domain);
+  db_type = TP_DOMAIN_TYPE (attr_domain);
 
-  if (IS_SET_TYPE (db_type))
+  if (TP_IS_SET_TYPE (db_type))
     {
       if (get_set_domain (attr_domain, NULL, NULL, &db_type) < 0)
 	db_type = DB_TYPE_NULL;
@@ -6256,7 +6256,7 @@ get_domain_str (DB_DOMAIN * domain)
   char *set_dom_name_p;
 
   precision_str[0] = scale_str[0] = '\0';
-  dtype = db_domain_type (domain);
+  dtype = TP_DOMAIN_TYPE (domain);
   prec = db_domain_precision (domain);
   scale = db_domain_scale (domain);
   if (prec > 0)
@@ -6282,7 +6282,7 @@ get_domain_str (DB_DOMAIN * domain)
       if (collection_str == NULL)
 	collection_str = "multiset";
       /* fall through */
-    case DB_TYPE_LIST:		/* DB_TYPE_SEQUENCE */
+    case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
       if (collection_str == NULL)
 	collection_str = "sequence";
       set_domain = db_domain_set (domain);
@@ -6921,11 +6921,11 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern,
   p = (char *) db_attribute_name (attr);
 
   domain = db_attribute_domain (attr);
-  db_type = db_domain_type (domain);
+  db_type = TP_DOMAIN_TYPE (domain);
 
   attr_table->class_name = class_name;
   attr_table->attr_name = p;
-  if (IS_SET_TYPE (db_type))
+  if (TP_IS_SET_TYPE (db_type))
     {
       set_type = get_set_domain (domain, &precision, &scale, NULL);
       attr_table->domain = CAS_TYPE_COLLECTION (db_type, set_type);
@@ -7996,7 +7996,7 @@ ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	  domain = db_attribute_domain (attr);
 	  precision = db_domain_precision (domain);
 	  scale = db_domain_scale (domain);
-	  temp_type = db_domain_type (domain);
+	  temp_type = TP_DOMAIN_TYPE (domain);
 	  set_type = ux_db_type_to_cas_type (temp_type);
 
 	  attr_name = (char *) db_attribute_name (attr);
@@ -8109,8 +8109,8 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       attr_name = "";
 
       domain = db_query_format_domain (col);
-      db_type = db_domain_type (domain);
-      if (IS_SET_TYPE (db_type))
+      db_type = TP_DOMAIN_TYPE (domain);
+      if (TP_IS_SET_TYPE (db_type))
 	{
 	  set_type = get_set_domain (domain, &precision, &scale, NULL);
 	  cas_type = CAS_TYPE_COLLECTION (db_type, set_type);
@@ -8631,9 +8631,7 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
 
   *out = NULL;
 
-  if (db_value_type (col) != DB_TYPE_SET &&
-      db_value_type (col) != DB_TYPE_SEQUENCE &&
-      db_value_type (col) != DB_TYPE_MULTISET)
+  if (!TP_IS_SET_TYPE (db_value_type (col)))
     {
       return;
     }

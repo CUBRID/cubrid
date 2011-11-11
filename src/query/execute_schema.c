@@ -892,7 +892,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      error = er_errid ();
 	      break;
 	    }
-	  db_desired_type = db_domain_type (def_domain);
+	  db_desired_type = TP_DOMAIN_TYPE (def_domain);
 
 	  error = tp_value_coerce (&src_val, &dest_val, def_domain);
 	  if (error != NO_ERROR)
@@ -5863,7 +5863,7 @@ increase_value (DB_VALUE * val)
 {
   int month, day, year;
 
-  if (!val || DB_IS_NULL (val))
+  if (DB_IS_NULL (val))
     {
       return 0;
     }
@@ -5920,7 +5920,7 @@ decrease_value (DB_VALUE * val)
 {
   int month, day, year;
 
-  if (!val || DB_IS_NULL (val))
+  if (DB_IS_NULL (val))
     {
       return 0;
     }
@@ -9554,11 +9554,11 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
       TP_DOMAIN *elem;
       for (elem = column->domain->setdomain; elem != NULL; elem = elem->next)
 	{
-	  if (elem->type->id == DB_TYPE_BLOB ||
-	      elem->type->id == DB_TYPE_CLOB)
+	  if (TP_DOMAIN_TYPE (elem) == DB_TYPE_BLOB ||
+	      TP_DOMAIN_TYPE (elem) == DB_TYPE_CLOB)
 	    {
 	      PT_TYPE_ENUM elem_type, set_type;
-	      elem_type = pt_db_to_type_enum (elem->type->id);
+	      elem_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (elem));
 	      set_type = pt_db_to_type_enum (column->domain->type->id);
 	      PT_ERRORmf2 (parser, NULL,
 			   MSGCAT_SET_PARSER_SEMANTIC,
@@ -12646,9 +12646,9 @@ build_attr_change_map (PARSER_CONTEXT * parser,
       /* remove "UNCHANGED" flag */
       attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_UNCHANGED;
 
-      if ((attr_db_domain->type->id == att->domain->type->id) &&
-	  (TP_IS_CHAR_BIT_TYPE (attr_db_domain->type->id)
-	   && TP_IS_CHAR_BIT_TYPE (att->domain->type->id)))
+      if ((TP_DOMAIN_TYPE (attr_db_domain) == TP_DOMAIN_TYPE (att->domain)) &&
+	  (TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain))
+	   && TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (att->domain))))
 	{
 	  if (tp_domain_match (attr_db_domain, att->domain, TP_STR_MATCH) !=
 	      0)
@@ -12665,7 +12665,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	      else
 		{
 		  assert (attr_db_domain->precision < att->domain->precision);
-		  if (QSTR_IS_FIXED_LENGTH (attr_db_domain->type->id)
+		  if (QSTR_IS_FIXED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
 		      && PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
 		    {
 		      attr_chg_properties->p[P_TYPE] |=
@@ -12679,8 +12679,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		}
 	    }
 	}
-      else if (TP_IS_SET_TYPE (attr_db_domain->type->id)
-	       && TP_IS_SET_TYPE (att->domain->type->id))
+      else if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (attr_db_domain))
+	       && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
 	{
 	  if (tp_domain_compatible (att->domain, attr_db_domain) != 0)
 	    {
@@ -12770,8 +12770,8 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
   const int MIN_CHARS_FOR_DATETIME = TP_DATETIME_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_TIMESTAMP = TP_TIMESTAMP_AS_CHAR_LENGTH;
 
-  DB_TYPE current_type = curr_domain->type->id;
-  DB_TYPE new_type = req_domain->type->id;
+  DB_TYPE current_type = TP_DOMAIN_TYPE (curr_domain);
+  DB_TYPE new_type = TP_DOMAIN_TYPE (req_domain);
   int req_prec = req_domain->precision;
   int req_scale = req_domain->scale;
   int cur_prec = curr_domain->precision;

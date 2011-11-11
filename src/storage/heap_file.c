@@ -13189,7 +13189,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value,
 					  value->read_attrepr->location));
 
 	      disk_bound = true;
-	      switch (attrepr->domain->type->id)
+	      switch (TP_DOMAIN_TYPE (attrepr->domain))
 		{
 		case DB_TYPE_ELO:	/* need real length */
 		case DB_TYPE_BLOB:
@@ -13863,7 +13863,8 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 	    {
 	      ret = ER_IT_DATA_OVERFLOW;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-		      pr_type_name (value->last_attrepr->domain->type->id));
+		      pr_type_name (TP_DOMAIN_TYPE
+				    (value->last_attrepr->domain)));
 	    }
 	  else
 	    {
@@ -15151,9 +15152,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 	  midxkey.buf = buf;
 	}
 
-      if ((heap_midxkey_key_generate
-	   (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res,
-	    fi_col_id, fi_attr_index_start)) == NULL)
+      if (heap_midxkey_key_generate (thread_p, recdes, &midxkey,
+				     att_ids, attr_info, fi_res,
+				     fi_col_id, fi_attr_index_start) == NULL)
 	{
 	  return NULL;
 	}
@@ -15747,8 +15748,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
       else
 	{
-	  if (dbtype == DB_TYPE_SET
-	      || dbtype == DB_TYPE_MULTI_SET || dbtype == DB_TYPE_SEQUENCE)
+	  if (TP_IS_SET_TYPE (dbtype))
 	    {
 	      /*
 	       * A set which may or may nor reference objects (OIDs)
@@ -18687,10 +18687,12 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
       TP_DOMAIN *dest_dom = value->last_attrepr->domain;
       bool log_warning = false;
       int warning_code = NO_ERROR;
-      DB_TYPE dest_type = dest_dom->type->id;
+      DB_TYPE dest_type;
       DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (&(value->dbvalue));
       int curr_prec = 0;
       int dest_prec = 0;
+
+      dest_type = TP_DOMAIN_TYPE (dest_dom);
 
       if (att_id != value->attrid)
 	{

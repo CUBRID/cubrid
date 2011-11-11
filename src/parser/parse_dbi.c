@@ -911,7 +911,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	         Just return the value and continue on... */
 	      if (value->expected_domain)
 		{
-		  expected_db_type = value->expected_domain->type->id;
+		  expected_db_type = TP_DOMAIN_TYPE (value->expected_domain);
 		}
 	      else
 		{
@@ -1118,7 +1118,7 @@ pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s,
       return;
     }
 
-  node->type_enum = pt_db_to_type_enum (db_domain_type (dom));
+  node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (node->type_enum)
     {
     case PT_TYPE_OBJECT:
@@ -2555,7 +2555,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 		      if (hv_dom)
 			{
 			  /* restore original type */
-			  db_value_domain_init (hv, hv_dom->type->id,
+			  db_value_domain_init (hv, TP_DOMAIN_TYPE (hv_dom),
 						hv_dom->precision,
 						hv_dom->scale);
 			}
@@ -2589,7 +2589,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 		  if (hv_dom)
 		    {
 		      /* restore original type */
-		      db_value_domain_init (hv, hv_dom->type->id,
+		      db_value_domain_init (hv, TP_DOMAIN_TYPE (hv_dom),
 					    hv_dom->precision, hv_dom->scale);
 		    }
 		}

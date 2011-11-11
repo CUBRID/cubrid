@@ -589,9 +589,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
   error = obj_get (obj, attname, &value);
   if (error == NO_ERROR)
     {
-      if (DB_VALUE_TYPE (&value) != DB_TYPE_SET
-	  && DB_VALUE_TYPE (&value) != DB_TYPE_MULTISET
-	  && DB_VALUE_TYPE (&value) != DB_TYPE_SEQUENCE)
+      if (!TP_IS_SET_TYPE (DB_VALUE_TYPE (&value)))
 	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
 	}
@@ -4800,14 +4798,14 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
 
   db_make_null (returnval);
 
-  if (class_ == NULL || !IS_STRING (class_) || DB_IS_NULL (class_)
+  if (DB_IS_NULL (class_) || !IS_STRING (class_)
       || (class_name = db_get_string (class_)) == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_CLASS, 1, "");
       db_make_error (returnval, ER_AU_INVALID_CLASS);
       return;
     }
-  if (owner == NULL || !IS_STRING (owner) || DB_IS_NULL (owner)
+  if (DB_IS_NULL (owner) || !IS_STRING (owner)
       || (owner_name = db_get_string (owner)) == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, "");
@@ -4949,7 +4947,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
 
   db_make_null (returnval);
 
-  if (serial == NULL || !IS_STRING (serial) || DB_IS_NULL (serial)
+  if (DB_IS_NULL (serial) || !IS_STRING (serial)
       || (serial_name = db_get_string (serial)) == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENT, 1,
@@ -4958,7 +4956,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
       return;
     }
 
-  if (owner == NULL || !IS_STRING (owner) || DB_IS_NULL (owner)
+  if (DB_IS_NULL (owner) || !IS_STRING (owner)
       || (owner_name = db_get_string (owner)) == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, "");

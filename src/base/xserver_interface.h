@@ -273,14 +273,13 @@ extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
 			       TP_DOMAIN * key_type, OID * class_oid,
 			       int attr_id, int unique_btree,
-			       int reverse_btree, int num_oids, int num_nulls,
-			       int num_keys);
+			       int num_oids, int num_nulls, int num_keys);
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				TP_DOMAIN * key_type, OID * class_oids,
 				int n_classes, int n_attrs, int *attr_ids,
 				int *attrs_prefix_length,
 				HFID * hfids, int unique_flag,
-				int reverse_flag, int last_key_desc,
+				int last_key_desc,
 				OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 				int cache_attr_id, const char *fk_name,
 				char *pred_stream, int pred_stream_size,

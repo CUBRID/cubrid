@@ -573,9 +573,11 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	OID *oid;
 
 	if (len < sizeof (CI_OID))
-	  return ER_INTERFACE_INVALID_ARGUMENT;
+	  {
+	    return ER_INTERFACE_INVALID_ARGUMENT;
+	  }
 
-	dt = db_value_domain_type (val);
+	dt = DB_VALUE_DOMAIN_TYPE (val);
 	oid = NULL;
 
 	if (dt == DB_TYPE_OBJECT)

@@ -3339,7 +3339,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
       precision = 0;
       scale = 0;
 
-      id = d->type->id;
+      id = TP_DOMAIN_TYPE (d);
       switch (id)
 	{
 
@@ -3468,7 +3468,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
   for (d = domain; d != NULL; d = d->next)
     {
 
-      id = d->type->id;
+      id = TP_DOMAIN_TYPE (d);
 
       /*
        * Initial word has type, precision, scale, & codeset to the extent that
@@ -4710,7 +4710,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 		      &element_size);
 
   or_put_set_header (buf,
-		     set_domain ? set_domain->type->id : set_type,
+		     set_domain ? TP_DOMAIN_TYPE (set_domain) : set_type,
 		     set_size,
 		     include_domain,
 		     bound_bits, offset_table, element_tags, 0);

@@ -4708,7 +4708,7 @@ qmgr_has_unresolved_types (XASL_NODE * xasl_p)
 	{
 	  continue;
 	}
-      if (list->value.domain->type->id == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (list->value.domain) == DB_TYPE_VARIABLE)
 	{
 	  return true;
 	}
@@ -5222,7 +5222,7 @@ qmgr_set_query_timeout_to_tdes (int tran_index, int query_timeout)
 	   * if the system supports atomic built-ins.
 	   */
 #if defined(HAVE_ATOMIC_BUILTINS)
-          tdes_p->query_timeout = log_Clock + query_timeout;
+	  tdes_p->query_timeout = log_Clock + query_timeout;
 #else /* HAVE_ATOMIC_BUILTINS */
 	  gettimeofday (&tv, NULL);
 	  tdes_p->query_timeout = tv.tv_sec + query_timeout;

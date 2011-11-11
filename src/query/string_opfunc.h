@@ -123,7 +123,7 @@ extern int db_string_compare (const DB_VALUE * string1,
 			      const DB_VALUE * string2, DB_VALUE * result);
 extern int db_string_unique_prefix (const DB_VALUE * db_string1,
 				    const DB_VALUE * db_string2,
-				    DB_VALUE * db_result, int is_reverse,
+				    DB_VALUE * db_result,
 				    TP_DOMAIN * key_domain);
 extern int db_string_concatenate (const DB_VALUE * string1,
 				  const DB_VALUE * string2,

@@ -1260,7 +1260,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       goto fn_col_finale;
     }
   domain = db_attribute_domain (attr);
-  col_type = ux_db_type_to_cas_type (db_domain_type (domain));
+  col_type = ux_db_type_to_cas_type (TP_DOMAIN_TYPE (domain));
   if (col_type != CCI_U_TYPE_SET
       && col_type != CCI_U_TYPE_MULTISET && col_type != CCI_U_TYPE_SEQUENCE)
     {

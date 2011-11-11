@@ -559,7 +559,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
       /* assign the value */
       if (mem != NULL)
 	{
-	  switch (att->domain->type->id)
+	  switch (TP_DOMAIN_TYPE (att->domain))
 	    {
 	    case DB_TYPE_SET:
 	    default:
@@ -604,7 +604,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	      /* set the new value */
 	      if (new_set != NULL)
 		{
-		  switch (att->domain->type->id)
+		  switch (TP_DOMAIN_TYPE (att->domain))
 		    {
 		    case DB_TYPE_SET:
 		    default:
@@ -663,13 +663,13 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  if (value == NULL || DB_IS_NULL (value))
+  if (DB_IS_NULL (value))
     {
       error = assign_null_value (op, att, mem);
     }
   else
     {
-      if (TP_IS_SET_TYPE (att->domain->type->id))
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
 	{
 	  error = assign_set_value (op, att, mem, DB_GET_SET (value));
 	}
@@ -1087,7 +1087,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	}
       current = DB_GET_OBJECT (&curval);
     }
-  else if (att->domain->type->id == DB_VALUE_TYPE (source))
+  else if (TP_DOMAIN_TYPE (att->domain) == DB_VALUE_TYPE (source))
     {
       current = DB_GET_OBJECT (source);
     }
@@ -1211,7 +1211,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   owner = op;
   if (mem != NULL)
     {
-      db_value_domain_init (&setval, att->domain->type->id, 0, 0);
+      db_value_domain_init (&setval, TP_DOMAIN_TYPE (att->domain), 0, 0);
       if (PRIM_GETMEM (att->domain->type, att->domain, mem, &setval))
 	{
 	  return er_errid ();
@@ -1226,7 +1226,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	{
 	  owner = op->class_mop;	/* shared attribute, owner is class */
 	}
-      if (att->domain->type->id == DB_VALUE_TYPE (source))
+      if (TP_DOMAIN_TYPE (att->domain) == DB_VALUE_TYPE (source))
 	{
 	  set = DB_GET_SET (source);
 	  /* KLUDGE: shouldn't be doing this at this level */
@@ -1256,7 +1256,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
     }
   else
     {
-      switch (att->domain->type->id)
+      switch (TP_DOMAIN_TYPE (att->domain))
 	{
 	case DB_TYPE_SET:
 	default:
@@ -1318,7 +1318,7 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
     }
   else
     {
-      if (TP_IS_SET_TYPE (att->domain->type->id))
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
 	{
 	  error = get_set_value (op, att, (char *) mem, source, dest);
 	}
@@ -3720,7 +3720,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 
   if (size == 1)
     {
-      if (values[0] == NULL || DB_IS_NULL (values[0]))
+      if (DB_IS_NULL (values[0]))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OBJ_INVALID_ARGUMENTS, 0);

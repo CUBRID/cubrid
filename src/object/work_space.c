@@ -902,7 +902,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   DB_TYPE keytype;
 
   vid_info = NULL;
-  keytype = (DB_TYPE) PRIM_TYPE (keys);
+  keytype = DB_VALUE_DOMAIN_TYPE (keys);
 
   switch (keytype)
     {

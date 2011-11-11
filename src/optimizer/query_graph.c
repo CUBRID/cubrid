@@ -7815,7 +7815,7 @@ qo_seg_width (QO_SEGMENT * seg)
     }
 
   size = tp_domain_disk_size (domain);
-  switch (domain->type->id)
+  switch (TP_DOMAIN_TYPE (domain))
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:

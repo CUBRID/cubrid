@@ -326,11 +326,9 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
 	    return error;
 	  }
 
-	type_id = attribute_p->domain->type->id;
+	type_id = TP_DOMAIN_TYPE (attribute_p->domain);
 
-	if ((type_id == DB_TYPE_OBJECT) ||
-	    (type_id == DB_TYPE_SET) ||
-	    (type_id == DB_TYPE_MULTISET) || (type_id == DB_TYPE_SEQUENCE))
+	if (type_id == DB_TYPE_OBJECT || TP_IS_SET_TYPE (type_id))
 	  {
 	    DB_VALUE setval;
 

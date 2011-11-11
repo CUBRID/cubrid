@@ -1708,7 +1708,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		    {
 		      /*
 		       * This will call pr_estimate_size which uses the
-		       * Avg_key_size and domain->type->id to really
+		       * Avg_key_size and TP_DOMAIN_TYPE(domain) to really
 		       * compute the correct average key size that we
 		       * need to estimate the total number of pages.
 		       */

@@ -110,7 +110,7 @@ db_set_create (MOP classop, const char *name)
 		{
 		  set = set_create_basic ();
 		}
-	      else if (att->type->id == DB_TYPE_MULTI_SET)
+	      else if (att->type->id == DB_TYPE_MULTISET)
 		{
 		  set = set_create_multi ();
 		}
@@ -232,7 +232,7 @@ db_set_create_multi (MOP classop, const char *name)
 	    }
 	  else
 	    {
-	      if (att->type->id == DB_TYPE_MULTI_SET)
+	      if (att->type->id == DB_TYPE_MULTISET)
 		{
 		  set = set_create_multi ();
 		}
@@ -1144,7 +1144,7 @@ db_col_drop_nulls (DB_COLLECTION * col)
       CHECK_MODIFICATION_ERROR ();
     }
 
-  PRIM_INIT_NULL (&value);
+  DB_MAKE_NULL (&value);
 
   error = set_drop_element (col, &value, true);
 

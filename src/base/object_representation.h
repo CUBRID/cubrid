@@ -954,7 +954,7 @@ struct or_buf
 /* Need to translate types of DB_TYPE_OBJECT into DB_TYPE_OID in server-side */
 #define OR_PACK_DOMAIN_OBJECT_TO_OID(p, d, o, n)                           \
     or_pack_domain((p),                                                    \
-                   (d)->type->id == DB_TYPE_OBJECT ? &tp_Oid_domain : (d), \
+                   TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT ? &tp_Oid_domain : (d), \
                    (o), (n))
 
 

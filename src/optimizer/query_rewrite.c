@@ -3727,7 +3727,8 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	  if (pattern_type == PT_TYPE_MAYBE && pattern->expected_domain)
 	    {
 	      pattern_type =
-		pt_db_to_type_enum (pattern->expected_domain->type->id);
+		pt_db_to_type_enum (TP_DOMAIN_TYPE
+				    (pattern->expected_domain));
 	    }
 
 	  if (escape)
@@ -3736,7 +3737,8 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	      if (escape_type == PT_TYPE_MAYBE && escape->expected_domain)
 		{
 		  escape_type =
-		    pt_db_to_type_enum (escape->expected_domain->type->id);
+		    pt_db_to_type_enum (TP_DOMAIN_TYPE
+					(escape->expected_domain));
 		}
 	    }
 

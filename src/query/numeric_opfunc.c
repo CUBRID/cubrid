@@ -3725,7 +3725,7 @@ numeric_db_value_print (DB_VALUE * val)
 bool
 numeric_db_value_is_zero (const DB_VALUE * arg)
 {
-  if (arg == NULL || DB_IS_NULL (arg))	/* NULL values are not 0 */
+  if (DB_IS_NULL (arg))		/* NULL values are not 0 */
     {
       return false;
     }
@@ -3747,8 +3747,7 @@ int
 numeric_db_value_increase (DB_VALUE * arg)
 {
   /* Check for bad inputs */
-  if (arg == NULL || DB_VALUE_TYPE (arg) != DB_TYPE_NUMERIC
-      || DB_IS_NULL (arg))
+  if (DB_IS_NULL (arg) || DB_VALUE_TYPE (arg) != DB_TYPE_NUMERIC)
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }

@@ -164,7 +164,7 @@ domain_error (DB_TYPE token_type)
 	     ldr_att_name (), ldr_class_name ());
   else
     {
-      if (pr_is_set_type (domain->type->id))
+      if (pr_is_set_type (TP_DOMAIN_TYPE (domain)))
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_LOADDB,
@@ -611,7 +611,7 @@ act_int (char *token)
       error = tp_value_cast (&temp, value, domain_ptr, false);
       if (error)
 	{
-	  parse_error (domain_ptr->type->id, token);
+	  parse_error (TP_DOMAIN_TYPE (domain_ptr), token);
 	}
     }
 }
@@ -643,7 +643,7 @@ act_real (char *token)
       error = tp_value_cast (&temp, value, domain_ptr, false);
       if (error)
 	{
-	  parse_error (domain_ptr->type->id, token);
+	  parse_error (TP_DOMAIN_TYPE (domain_ptr), token);
 	}
     }
 }
@@ -880,6 +880,7 @@ act_string (char *token, int size, DB_TYPE dtype)
   DB_VALUE temp, *value;
   TP_DOMAIN domain;
   TP_DOMAIN *domain_ptr;
+  DB_TYPE domain_type;
 
   /* size = 0 is an empty string, which is fine */
   value = get_value (dtype);
@@ -904,18 +905,19 @@ act_string (char *token, int size, DB_TYPE dtype)
       if (tp_value_cast (&temp, value, domain_ptr,
 			 false) != DOMAIN_COMPATIBLE)
 	{
-	  if (domain_ptr->type->id == DB_TYPE_TIME
-	      || domain_ptr->type->id == DB_TYPE_DATE
-	      || domain_ptr->type->id == DB_TYPE_TIMESTAMP
-	      || domain_ptr->type->id == DB_TYPE_DATETIME)
+	  domain_type = TP_DOMAIN_TYPE (domain_ptr);
+	  if (domain_type == DB_TYPE_TIME
+	      || domain_type == DB_TYPE_DATE
+	      || domain_type == DB_TYPE_TIMESTAMP
+	      || domain_type == DB_TYPE_DATETIME)
 	    {
 	      printf ("Illegal date/time literal - %s. Resetting to NULL\n",
 		      token);
-	      db_value_domain_init (value, domain_ptr->type->id, 0, 0);
+	      db_value_domain_init (value, domain_type, 0, 0);
 	    }
 	  else
 	    {
-	      parse_error (domain_ptr->type->id, token);
+	      parse_error (domain_type, token);
 	    }
 	}
     }
@@ -1031,7 +1033,7 @@ act_bstring (char *token, int type)
 	  if (tp_value_cast (&temp, value, domain_ptr,
 			     false) != DOMAIN_COMPATIBLE)
 	    {
-	      parse_error (domain_ptr->type->id, token);
+	      parse_error (TP_DOMAIN_TYPE (domain_ptr), token);
 	    }
 	}
       else
@@ -1069,7 +1071,7 @@ act_bstring (char *token, int type)
 	  if (tp_value_cast (&temp, value, domain_ptr,
 			     false) != DOMAIN_COMPATIBLE)
 	    {
-	      parse_error (domain_ptr->type->id, token);
+	      parse_error (TP_DOMAIN_TYPE (domain_ptr), token);
 	    }
 	}
     }

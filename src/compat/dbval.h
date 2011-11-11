@@ -75,22 +75,22 @@
     ((DB_TYPE) ((v)->domain.general_info.type))
 
 #define DB_VALUE_TYPE(v) \
-    ((DB_TYPE) (((v)->domain.general_info.is_null) ? \
-     DB_TYPE_NULL : (v)->domain.general_info.type))
+    (DB_IS_NULL(v) ? \
+     DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE(v))
 
 #define DB_VALUE_SCALE(v) \
-    (((v)->domain.general_info.type == DB_TYPE_NUMERIC) ? \
+    ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NUMERIC) ? \
                 (v)->domain.numeric_info.scale : 0)
 
 #define DB_VALUE_PRECISION(v) \
-    (((v)->domain.general_info.type == DB_TYPE_NUMERIC) ? \
+    ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NUMERIC) ? \
       ((v)->domain.numeric_info.precision) : \
-      (((v)->domain.general_info.type == DB_TYPE_BIT || \
-        (v)->domain.general_info.type == DB_TYPE_VARBIT || \
-        (v)->domain.general_info.type == DB_TYPE_CHAR || \
-        (v)->domain.general_info.type == DB_TYPE_VARCHAR || \
-        (v)->domain.general_info.type == DB_TYPE_NCHAR || \
-        (v)->domain.general_info.type == DB_TYPE_VARNCHAR) ? \
+      ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) ? \
         ((v)->domain.char_info.length) : 0))
 
 #define DB_GET_INTEGER(v) \
@@ -108,13 +108,11 @@
 /* note : this will have to change when we start using the small and large
           string buffers. */
 #define DB_GET_STRING(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
                           NULL : (v)->data.ch.medium.buf)
 
 #define DB_GET_STRING_SAFE(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
                           "" : (v)->data.ch.medium.buf)
 
 #define DB_PULL_STRING(v) \
@@ -131,8 +129,8 @@
 /* note : this will have to change when we start using the small and large
           string buffers. */
 #define DB_GET_CHAR(v, l) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
+    NULL : \
     (intl_char_count((unsigned char *)(v)->data.ch.medium.buf, \
          (v)->data.ch.medium.size, (INTL_CODESET) (v)->data.ch.medium.codeset, (l)), \
     (v)->data.ch.medium.buf))
@@ -150,30 +148,30 @@
 /* note: this will have to change when we start using the small and large
          string buffers. */
 #define DB_GET_BIT(v, l) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
+      NULL : \
       (((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
 
 #define DB_PULL_BIT(v, l) \
     ((((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
 
 #define DB_GET_OBJECT(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? (DB_OBJECT *)(NULL) : (v)->data.op)
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
+     (DB_OBJECT *)(NULL) : (v)->data.op)
 
 #define DB_PULL_OBJECT(v) \
     ((v)->data.op)
 
 #define DB_GET_OID(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? (OID *)(NULL) : &((v)->data.oid))
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
+     (OID *)(NULL) : &((v)->data.oid))
 
 #define DB_PULL_OID(v) \
     (&((v)->data.oid))
 
 #define DB_GET_SET(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : (v)->data.set)
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
+     NULL : (v)->data.set)
 
 #define DB_PULL_SET(v) \
     ((v)->data.set)
@@ -187,16 +185,14 @@
 #define DB_PULL_SEQUENCE(v) DB_PULL_LIST(v)
 
 #define DB_GET_MIDXKEY(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
                   NULL : (DB_MIDXKEY *)(&(v)->data.midxkey))
 
 #define DB_PULL_MIDXKEY(v) \
     ((DB_MIDXKEY *)(&(v)->data.midxkey))
 
 #define DB_GET_ELO(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR || \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR || \
       (v)->data.elo.type == ELO_NULL) ? NULL : (DB_ELO *)(&(v)->data.elo))
 
 #define DB_PULL_ELO(v) \
@@ -218,8 +214,8 @@
     ((DB_MONETARY *)(&(v)->data.money))
 
 #define DB_GET_POINTER(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : (v)->data.p)
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
+     NULL : (v)->data.p)
 
 #define DB_PULL_POINTER(v) \
     ((v)->data.p)
@@ -233,8 +229,7 @@
 #define DB_GET_SMALLINT(v) DB_GET_SHORT(v)
 
 #define DB_GET_NUMERIC(v) \
-    (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
+    ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
                       NULL : (v)->data.num.d.buf)
 
 #define DB_PULL_NUMERIC(v) \
@@ -242,12 +237,12 @@
 
 #define DB_GET_STRING_SIZE(v) \
     (((v)->data.ch.info.style == MEDIUM_STRING) ? \
-      (((v)->domain.general_info.type == DB_TYPE_BIT || \
-        (v)->domain.general_info.type == DB_TYPE_VARBIT) ? \
+      ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT) ? \
         ((v)->data.ch.medium.size + 7) / 8 : (v)->data.ch.medium.size) : ( \
       ((v)->data.ch.info.style == SMALL_STRING) ? \
-      (((v)->domain.general_info.type == DB_TYPE_BIT || \
-        (v)->domain.general_info.type == DB_TYPE_VARBIT) ? \
+      ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT || \
+        DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT) ? \
         ((v)->data.ch.sm.size + 7) / 8 : (v)->data.ch.sm.size) : 0))
 
 #define DB_GET_RESULTSET(v) \
@@ -404,9 +399,7 @@
      (v)->data.ch.medium.buf = (char *) (p), \
      (v)->domain.general_info.is_null = ((p) ? 0 : 1), \
      (v)->domain.general_info.is_null = \
-         (PRM_ORACLE_STYLE_EMPTY_STRING && (s) == 0) \
-         ? 1 \
-         : (v)->domain.general_info.is_null, \
+         (PRM_ORACLE_STYLE_EMPTY_STRING && (s) == 0) ? 1 : DB_IS_NULL(v), \
      (v)->need_clear = false, \
      NO_ERROR)
 

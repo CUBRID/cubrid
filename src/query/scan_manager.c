@@ -203,9 +203,6 @@ static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p,
 				     INDX_SCAN_ID * iscan_id, DB_VALUE * key,
 				     OID * oid, QFILE_TUPLE_RECORD * tplrec);
-static int scan_compare_range_key (DB_VALUE * key1, DB_VALUE * key2,
-				   TP_DOMAIN * key_domain);
-
 static int scan_init_range_details (RANGE_DETAILS * rd);
 static int scan_save_range_details (RANGE_DETAILS * rd, INDX_SCAN_ID * isidp);
 static SCAN_CODE scan_obtain_next_iss_value (THREAD_ENTRY * thread_p,
@@ -377,9 +374,8 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  reverse_search = !reverse_search;
 	}
 
-      if (isidp->bt_scan.btid_int.key_type &&
-	  isidp->bt_scan.btid_int.key_type->type->id == DB_TYPE_MIDXKEY &&
-	  isidp->bt_scan.btid_int.key_type->setdomain->is_desc == 1)
+      if (TP_DOMAIN_TYPE (isidp->bt_scan.btid_int.key_type) == DB_TYPE_MIDXKEY
+	  && isidp->bt_scan.btid_int.key_type->setdomain->is_desc == 1)
 	{
 	  reverse_search = !reverse_search;
 	}
@@ -437,7 +433,7 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->curr_keyno = -1;
 
   isidp->bt_scan.btid_int.part_key_desc =
-    isidp->bt_scan.btid_int.last_key_desc = isidp->bt_scan.btid_int.reverse;
+    isidp->bt_scan.btid_int.last_key_desc = 0;
 
   /* run scan_get_index_oidset. Net result will be that iss.dbval holds
    * the next usable value for the real range.
@@ -499,7 +495,7 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       if (kr->key1)
 	{
 	  assert (kr->key1->type == TYPE_FUNC
-		  && kr->key1->domain->type->id == DB_TYPE_MIDXKEY);
+		  && TP_DOMAIN_TYPE (kr->key1->domain) == DB_TYPE_MIDXKEY);
 	  assert (kr->key1->value.funcp->operand);
 	  if (kr->key1->value.funcp->operand)
 	    {
@@ -516,7 +512,7 @@ scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       if (kr->key2)
 	{
 	  assert (kr->key2->type == TYPE_FUNC
-		  && kr->key2->domain->type->id == DB_TYPE_MIDXKEY);
+		  && TP_DOMAIN_TYPE (kr->key2->domain) == DB_TYPE_MIDXKEY);
 	  assert (kr->key2->value.funcp->operand);
 	  if (kr->key2->value.funcp->operand)
 	    {
@@ -768,14 +764,15 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
 	{
 	  goto exit_on_error;
 	}
-      orig_type = PRIM_TYPE (dbvalp);
+      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
       if (tp_value_coerce (dbvalp, dbvalp, domainp) != DOMAIN_COMPATIBLE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (orig_type), pr_type_name (domainp->type->id));
+		  pr_type_name (orig_type),
+		  pr_type_name (TP_DOMAIN_TYPE (domainp)));
 	  goto exit_on_error;
 	}
-      if (PRIM_TYPE (dbvalp) != DB_TYPE_BIGINT)
+      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -815,14 +812,15 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
 	{
 	  goto exit_on_error;
 	}
-      orig_type = PRIM_TYPE (dbvalp);
+      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
       if (tp_value_coerce (dbvalp, dbvalp, domainp) != DOMAIN_COMPATIBLE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (orig_type), pr_type_name (domainp->type->id));
+		  pr_type_name (orig_type),
+		  pr_type_name (TP_DOMAIN_TYPE (domainp)));
 	  goto exit_on_error;
 	}
-      if (PRIM_TYPE (dbvalp) != DB_TYPE_BIGINT)
+      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1088,7 +1086,7 @@ key_val_compare (const void *p1, const void *p2)
 {
   return tp_value_compare (&((KEY_VAL_RANGE *) p1)->key1,
 			   &((KEY_VAL_RANGE *) p2)->key1, 1, 1);
-}				/* key_value_cmp() */
+}
 
 /*
  * eliminate_duplicated_keys () - elimnate duplicated key values
@@ -1317,7 +1315,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
   *indexable = false;
 
-  if (func->domain->type->id != DB_TYPE_MIDXKEY)
+  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY)
     {
       assert (false);
       return ER_FAILED;
@@ -1390,8 +1388,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 	    }
 	}
 
-      val_type_id = PRIM_TYPE (val);
-      if (idx_dom->type->id != val_type_id)
+      val_type_id = DB_VALUE_DOMAIN_TYPE (val);
+      if (TP_DOMAIN_TYPE (idx_dom) != val_type_id)
 	{
 	  /* allocate DB_VALUE array to store coerced values. */
 	  if (has_coerced_values == NULL)
@@ -1430,10 +1428,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 	      has_coerced_values[i] = true;
 	    }
 	}
-      else if (idx_dom->type->id == DB_TYPE_NUMERIC
-	       || idx_dom->type->id == DB_TYPE_CHAR
-	       || idx_dom->type->id == DB_TYPE_BIT
-	       || idx_dom->type->id == DB_TYPE_NCHAR)
+      else if (TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_NUMERIC
+	       || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_CHAR
+	       || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_BIT
+	       || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_NCHAR)
 	{
 	  /* skip variable string domain : DB_TYPE_VARCHAR, DB_TYPE_VARNCHAR, DB_TYPE_VARBIT */
 
@@ -1911,7 +1909,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	   "is NULL" context. */
 
 	/* to fix multi-column index NULL problem */
-	if (PRIM_IS_NULL (&key_val_range->key1))
+	if (DB_IS_NULL (&key_val_range->key1))
 	  {
 	    key_val_range->range = NA_NA;
 
@@ -1930,21 +1928,40 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	if (key_val_range->range >= GE_LE && key_val_range->range <= GT_LT)
 	  {
 	    /* to fix multi-column index NULL problem */
-	    if (PRIM_IS_NULL (&key_val_range->key1)
-		|| PRIM_IS_NULL (&key_val_range->key2)
-		|| scan_compare_range_key (&key_val_range->key1,
-					   &key_val_range->key2,
-					   btree_domainp) > 0)
+	    if (DB_IS_NULL (&key_val_range->key1)
+		|| DB_IS_NULL (&key_val_range->key2))
 	      {
 		key_val_range->range = NA_NA;
 
 		return ret;
 	      }
+	    else
+	      {
+		int c = DB_UNK;
+
+		c = tp_value_compare (&key_val_range->key1,
+				      &key_val_range->key2, 1, 1);
+		if (c == DB_UNK)
+		  {
+		    /* impossible case */
+		    assert (false);
+
+		    key_val_range->range = NA_NA;
+
+		    return ER_FAILED;
+		  }
+		else if (c > 0)
+		  {
+		    key_val_range->range = NA_NA;
+
+		    return ret;
+		  }
+	      }
 	  }
 	if (key_val_range->range >= GE_INF && key_val_range->range <= GT_INF)
 	  {
 	    /* to fix multi-column index NULL problem */
-	    if (PRIM_IS_NULL (&key_val_range->key1))
+	    if (DB_IS_NULL (&key_val_range->key1))
 	      {
 		key_val_range->range = NA_NA;
 
@@ -1954,7 +1971,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	if (key_val_range->range >= INF_LE && key_val_range->range <= INF_LT)
 	  {
 	    /* to fix multi-column index NULL problem */
-	    if (PRIM_IS_NULL (&key_val_range->key2))
+	    if (DB_IS_NULL (&key_val_range->key2))
 	      {
 		key_val_range->range = NA_NA;
 
@@ -2040,8 +2057,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	{
 	  /* initialize DB_VALUE first for error case */
 	  key_vals[i].range = NA_NA;
-	  PRIM_INIT_NULL (&key_vals[i].key1);
-	  PRIM_INIT_NULL (&key_vals[i].key2);
+	  DB_MAKE_NULL (&key_vals[i].key1);
+	  DB_MAKE_NULL (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
 	}
@@ -2991,7 +3008,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
 
       /* check for the need of index key copy_buf */
-      if (BTS->btid_int.key_type->type->id == DB_TYPE_MIDXKEY)
+      if (TP_DOMAIN_TYPE (BTS->btid_int.key_type) == DB_TYPE_MIDXKEY)
 	{
 	  /* found multi-column key-val */
 	  need_copy_buf = true;
@@ -3001,7 +3018,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  if (indx_info->key_info.key_ranges[0].range != EQ_NA)
 	    {
 	      /* found single-column key-range, not key-val */
-	      if (QSTR_IS_ANY_CHAR_OR_BIT (BTS->btid_int.key_type->type->id))
+	      if (QSTR_IS_ANY_CHAR_OR_BIT
+		  (TP_DOMAIN_TYPE (BTS->btid_int.key_type)))
 		{
 		  /* this type needs index key copy_buf */
 		  need_copy_buf = true;
@@ -5046,11 +5064,12 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	   src_valp = src_valp->next, dest_valp = dest_valp->next)
 	{
 
-	  if (PRIM_IS_NULL (src_valp->val))
+	  if (DB_IS_NULL (src_valp->val))
 	    {
 	      pr_clear_value (dest_valp->val);
 	    }
-	  else if (PRIM_TYPE (src_valp->val) != PRIM_TYPE (dest_valp->val))
+	  else if (DB_VALUE_DOMAIN_TYPE (src_valp->val) !=
+		   DB_VALUE_DOMAIN_TYPE (dest_valp->val))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_QPROC_INVALID_DATATYPE, 0);
@@ -5115,7 +5134,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	/* if it is known that scan has no qualified items, return
 	 * the NULL row, without searching.
 	 */
-      if (s_id->join_dbval && PRIM_IS_NULL (s_id->join_dbval))
+      if (s_id->join_dbval && DB_IS_NULL (s_id->join_dbval))
 	{
 	  qdata_set_value_list_to_null (s_id->val_list);
 	  s_id->single_fetched = true;
@@ -5152,7 +5171,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       /* if it is known that scan has no qualified items, return
        * the NULL row, without searching.
        */
-      else if (s_id->join_dbval && PRIM_IS_NULL (s_id->join_dbval))
+      else if (s_id->join_dbval && DB_IS_NULL (s_id->join_dbval))
 	{
 	  result = S_END;
 	}
@@ -5632,7 +5651,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
   for (scan_regu = llsidp->scan_pred.regu_list; scan_regu != NULL;
        scan_regu = scan_regu->next)
     {
-      if (db_domain_type (scan_regu->value.domain) == DB_TYPE_VARIABLE
+      if (TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
 	  && scan_regu->value.type == TYPE_POSITION)
 	{
 	  int pos = scan_regu->value.value.pos_descr.pos_no;
@@ -5642,7 +5661,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 	  new_dom = llsidp->list_id->type_list.domp[pos];
 
 
-	  if (db_domain_type (new_dom) == DB_TYPE_VARIABLE)
+	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE)
 	    {
 	      continue;
 	    }
@@ -5656,7 +5675,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
   for (scan_regu = llsidp->rest_regu_list; scan_regu != NULL;
        scan_regu = scan_regu->next)
     {
-      if (db_domain_type (scan_regu->value.domain) == DB_TYPE_VARIABLE
+      if (TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
 	  && scan_regu->value.type == TYPE_POSITION)
 	{
 	  int pos = scan_regu->value.value.pos_descr.pos_no;
@@ -5666,7 +5685,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 	  new_dom = llsidp->list_id->type_list.domp[pos];
 
 
-	  if (db_domain_type (new_dom) == DB_TYPE_VARIABLE)
+	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE)
 	    {
 	      continue;
 	    }
@@ -5688,7 +5707,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
       if (ev_t.et_type == T_COMP_EVAL_TERM)
 	{
 	  if (ev_t.et.et_comp.lhs != NULL &&
-	      db_domain_type (ev_t.et.et_comp.lhs->domain) ==
+	      TP_DOMAIN_TYPE (ev_t.et.et_comp.lhs->domain) ==
 	      DB_TYPE_VARIABLE)
 	    {
 	      resolve_domain_on_regu_operand (ev_t.et.et_comp.lhs,
@@ -5696,7 +5715,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 					      &(llsidp->list_id->type_list));
 	    }
 	  if (ev_t.et.et_comp.rhs != NULL &&
-	      db_domain_type (ev_t.et.et_comp.rhs->domain) ==
+	      TP_DOMAIN_TYPE (ev_t.et.et_comp.rhs->domain) ==
 	      DB_TYPE_VARIABLE)
 	    {
 	      resolve_domain_on_regu_operand (ev_t.et.et_comp.rhs,
@@ -5869,50 +5888,4 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id,
     }
 
   return NO_ERROR;
-}
-
-/*
- * scan_compare_range_key () - compares two range keys
- *
- *   return: >0, =0 , <0 - if key1 is greater, equal or less than key2
- *
- * key1(in):
- * key2(in):
- * key_domain(in):
- */
-static int
-scan_compare_range_key (DB_VALUE * key1, DB_VALUE * key2,
-			TP_DOMAIN * key_domain)
-{
-  int c;
-  DB_TYPE key1_type, key2_type, dom_type;
-
-  assert (key1 != NULL && key2 != NULL && key_domain != NULL);
-
-  key1_type = DB_VALUE_DOMAIN_TYPE (key1);
-  key2_type = DB_VALUE_DOMAIN_TYPE (key2);
-  dom_type = key_domain->type->id;
-
-  if (key_domain->type->id == DB_TYPE_MIDXKEY)
-    {
-      assert (key1_type == DB_TYPE_MIDXKEY);
-      assert (key2_type == DB_TYPE_MIDXKEY);
-
-      c = (*(key_domain->type->cmpval)) (key1, key2, NULL, 0, 1, 1, NULL);
-    }
-  else
-    {
-      if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type) &&
-	  TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type) &&
-	  TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type))
-	{
-	  c = (*(key_domain->type->cmpval)) (key1, key2, NULL, 0, 1, 1, NULL);
-	}
-      else
-	{
-	  c = tp_value_compare (key1, key2, 1, 1);
-	}
-    }
-
-  return c;
 }

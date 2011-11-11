@@ -292,7 +292,8 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	  return NULL;
 	}
       status = tp_value_cast (proposed_value, value, att->domain,
-			      !TP_IS_CHAR_TYPE (att->domain->type->id));
+			      !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE
+						(att->domain)));
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  (void) pr_free_ext_value (value);
@@ -307,7 +308,7 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	  /* error has already been set */
 	  break;
 	case DOMAIN_OVERFLOW:
-	  if (TP_IS_BIT_TYPE (db_value_domain_type (proposed_value)))
+	  if (TP_IS_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (proposed_value)))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OBJ_STRING_OVERFLOW, 2, att->header.name,
@@ -2353,7 +2354,7 @@ obt_apply_assignment (MOP op, SM_ATTRIBUTE * att,
 {
   int error = NO_ERROR;
 
-  if (!TP_IS_SET_TYPE (att->domain->type->id))
+  if (!TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
     {
       error = obj_assign_value (op, att, mem, value);
     }

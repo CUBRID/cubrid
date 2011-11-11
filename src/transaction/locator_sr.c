@@ -7093,12 +7093,15 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;
   char oldbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_oldbuf;
   DB_TYPE dbval_type;
+  TP_DOMAIN *key_domain = NULL;
   int error_code;
   DB_LOGICAL ev_results[2];
   bool do_delete_only = false;
   bool do_insert_only = false;
   OID *inst_oids[2];
   RECDES *recs[2];
+  bool same_key = true;
+  int c = DB_UNK;
 
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
@@ -7316,18 +7319,40 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
       if (pr_type->id == DB_TYPE_MIDXKEY)
 	{
-	  new_key->data.midxkey.domain =
-	    old_key->data.midxkey.domain =
+	  key_domain =
 	    locator_make_midxkey_domain (&
-					 (old_attrinfo->
-					  last_classrepr->indexes[i]));
+					 (old_attrinfo->last_classrepr->
+					  indexes[i]));
+	  new_key->data.midxkey.domain = old_key->data.midxkey.domain =
+	    key_domain;
+	}
+      else
+	{
+	  key_domain = tp_domain_resolve_default (pr_type->id);
+	}
+      assert (key_domain != NULL);
+
+      same_key = true;		/* init */
+      if ((new_isnull && !old_isnull) || (old_isnull && !new_isnull))
+	{
+	  same_key = false;
+	}
+      else
+	{
+	  if (!(new_isnull && old_isnull))
+	    {
+	      c =
+		btree_compare_key (old_key, new_key, key_domain, 0, 1, NULL);
+	      assert (c != DB_UNK);
+
+	      if (c != DB_EQ)
+		{
+		  same_key = false;
+		}
+	    }
 	}
 
-      if ((new_isnull && !old_isnull)
-	  || (old_isnull && !new_isnull)
-	  || (!(new_isnull && old_isnull)
-	      && ((*(pr_type->cmpval))
-		  (old_key, new_key, NULL, 0, 0, 1, NULL) != DB_EQ)))
+      if (!same_key)
 	{
 	  if (i < 1 || !locator_was_index_already_applied (new_attrinfo,
 							   &index->btid, i))
