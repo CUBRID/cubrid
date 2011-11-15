@@ -3850,8 +3850,6 @@ mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain,
 	}
     }
 
-  c = MR_CMP_RETURN_CODE (c);
-
   return c;
 }
 
@@ -3896,8 +3894,6 @@ mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain,
 	}
     }
 
-  c = MR_CMP_RETURN_CODE (c);
-
   return c;
 }
 
@@ -3934,8 +3930,6 @@ mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2,
 	  c = DB_EQ;
 	}
     }
-
-  c = MR_CMP_RETURN_CODE (c);
 
   return c;
 }
@@ -4489,9 +4483,9 @@ mr_setval_object (DB_VALUE * dest, DB_VALUE * src, bool copy)
 
 #if !defined (SERVER_MODE)
   if (DB_IS_NULL (src))
-
-    PRIM_SET_NULL (dest);
-
+    {
+      PRIM_SET_NULL (dest);
+    }
   /* can get here on the server when dispatching through set element domains */
   else if (DB_VALUE_TYPE (src) == DB_TYPE_OID)
     {
@@ -7471,6 +7465,8 @@ static int
 mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain,
 			 int do_coercion, int total_order, int *start_colp)
 {
+  assert (false);
+
   assert (domain != NULL);
 
   return mr_index_cmpdisk_midxkey (mem1, mem2, domain,
@@ -7487,7 +7483,9 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain,
   TP_DOMAIN *cmp_dom;
   int n_atts = 0;
   int dummy_size1, dummy_size2, dummy_diff_column;
-  bool dom_is_desc = false, dummy_next_dom_is_desc;
+  bool dummy_dom_is_desc = false, dummy_next_dom_is_desc;
+
+  assert (false);
 
   assert (domain != NULL && !domain->is_desc);
 
@@ -7527,13 +7525,8 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain,
   c = pr_midxkey_compare (&midxkey1, &midxkey2, do_coercion,
 			  total_order, start_colp,
 			  &dummy_size1, &dummy_size2, &dummy_diff_column,
-			  &dom_is_desc, &dummy_next_dom_is_desc);
+			  &dummy_dom_is_desc, &dummy_next_dom_is_desc);
   assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
-
-  if (dom_is_desc)
-    {
-      c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
-    }
 
   return c;
 }
@@ -8042,23 +8035,7 @@ mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain,
       return DB_UNK;
     }
 
-  if (DB_GET_INT (&answer) < 0)
-    {
-      c = DB_LT;
-    }
-  else
-    {
-      if (DB_GET_INT (&answer) > 0)
-	{
-	  c = DB_GT;
-	}
-      else
-	{
-	  c = DB_EQ;
-	}
-    }
-
-  c = MR_CMP_RETURN_CODE (c);
+  c = MR_CMP_RETURN_CODE (DB_GET_INT (&answer));
 
   return c;
 }
@@ -8090,8 +8067,6 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2,
 	  c = DB_EQ;
 	}
     }
-
-  c = MR_CMP_RETURN_CODE (c);
 
   return c;
 }

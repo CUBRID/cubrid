@@ -906,10 +906,7 @@ act_string (char *token, int size, DB_TYPE dtype)
 			 false) != DOMAIN_COMPATIBLE)
 	{
 	  domain_type = TP_DOMAIN_TYPE (domain_ptr);
-	  if (domain_type == DB_TYPE_TIME
-	      || domain_type == DB_TYPE_DATE
-	      || domain_type == DB_TYPE_TIMESTAMP
-	      || domain_type == DB_TYPE_DATETIME)
+	  if (TP_IS_DATE_TYPE (domain_type))
 	    {
 	      printf ("Illegal date/time literal - %s. Resetting to NULL\n",
 		      token);

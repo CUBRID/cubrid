@@ -249,9 +249,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   btid_int.sys_btid = btid;
   btid_int.unique = unique_flag;
-#if 0				/* not used */
-  btid_int.reverse_reserved = 0;
-#endif
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
@@ -1266,8 +1263,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     }
 
   COPY_OID (&root_header.topclass_oid, &load_args->btid->topclass_oid);
-
-  root_header.reverse_reserved = false;	/* not used */
 
   root_header.ovfid = load_args->btid->ovfid;	/* structure copy */
   root_header.rev_level = BTREE_CURRENT_REV_LEVEL;

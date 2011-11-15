@@ -81,9 +81,6 @@ struct btid_int
 {				/* Internal btree block */
   BTID *sys_btid;
   int unique;			/* if it is an unique index */
-#if 0
-  int reverse_reserved;		/* if it is a reverse index *//* not used */
-#endif
   int part_key_desc;		/* the last partial-key domain is desc */
   int last_key_desc;		/* the last key domain is desc */
   TP_DOMAIN *key_type;

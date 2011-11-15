@@ -975,7 +975,7 @@ qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg)
 /*
  * qo_set_use_desc () - sets certain plans' use_descending index flag to the
  *                      boolean value given in *arg.
- * 
+ *
  * return: NO_ERROR
  * plan(in):
  * arg(in): will be cast to bool* and its values used to set
@@ -999,7 +999,7 @@ qo_set_use_desc (QO_PLAN * plan, void *arg)
 /*
  * qo_set_orderby_skip () - sets certain plans' orderby_skip index flag to the
  *                          boolean value given in *arg.
- * 
+ *
  * return: NO_ERROR
  * plan(in):
  * arg(in): will be cast to bool* and its values used to set
@@ -1899,7 +1899,7 @@ qo_iscan_cost (QO_PLAN * planp)
        * selectivity and check that we have relevant statistics. */
       if (index_entryp->is_iss_candidate)
 	{
-	  /* we can't do proper index skip scan analysis without 
+	  /* we can't do proper index skip scan analysis without
 	   * relevant statistics */
 	  if (pkeys_num <= 0 || cum_statsp->pkeys[0] <= 0)
 	    {
@@ -11952,7 +11952,7 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
       if (attr_stats && idx >= 0 && idx < attr_stats->n_btstats)
 	{
 	  key_type = attr_stats->bt_stats[idx].key_type;
-	  if (key_type && TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
+	  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
 	    {
 	      /* get the column key-type of multi-column index */
 	      key_type = key_type->setdomain;

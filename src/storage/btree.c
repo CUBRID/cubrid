@@ -874,7 +874,7 @@ btree_write_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
   BTREE_PUT_NUM_KEYS (rec->data, root_header->num_keys);
   BTREE_PUT_TOPCLASS_OID (rec->data, &root_header->topclass_oid);
   BTREE_PUT_UNIQUE (rec->data, root_header->unique);
-  BTREE_PUT_REVERSE (rec->data, root_header->reverse_reserved);	/* not used */
+  BTREE_PUT_REVERSE_RESERVED (rec->data, 0);	/* not used(root_header->reverse_reserved) */
   BTREE_PUT_REV_LEVEL (rec->data, root_header->rev_level);
   BTREE_PUT_OVFID (rec->data, &root_header->ovfid);
 
@@ -905,7 +905,7 @@ btree_read_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
   root_header->num_keys = BTREE_GET_NUM_KEYS (rec->data);
   BTREE_GET_TOPCLASS_OID (rec->data, &root_header->topclass_oid);
   root_header->unique = BTREE_GET_UNIQUE (rec->data);
-  root_header->reverse_reserved = BTREE_GET_REVERSE (rec->data);	/* not used */
+  root_header->reverse_reserved = 0;	/* not used */
   root_header->rev_level = BTREE_GET_REV_LEVEL (rec->data);
   BTREE_GET_OVFID (rec->data, &root_header->ovfid);
 
@@ -2588,8 +2588,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   COPY_OID (&root_header.topclass_oid, class_oid);
 
-  root_header.reverse_reserved = false;	/* not used */
-
   VFID_SET_NULL (&root_header.ovfid);
   root_header.rev_level = BTREE_CURRENT_REV_LEVEL;
 
@@ -2755,9 +2753,6 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
   rc = NO_ERROR;
 
   btid->unique = root_header->unique;
-#if 0				/* not used */
-  btid->reverse = root_header->reverse_reserved;
-#endif
   btid->key_type = root_header->key_type;
   COPY_OID (&btid->topclass_oid, &root_header->topclass_oid);
 
@@ -2769,23 +2764,19 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
    */
   btid->part_key_desc = btid->last_key_desc = 0;
 
-  /* check for last key domain is desc */
-  if (!BTREE_IS_LAST_KEY_DESC (btid))
+  domain = btid->key_type;
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
     {
-      domain = btid->key_type;
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
-	{
-	  domain = domain->setdomain;
-	}
-
-      /* get the last key domain */
-      while (domain->next != NULL)
-	{
-	  domain = domain->next;
-	}
-
-      btid->last_key_desc = domain->is_desc;
+      domain = domain->setdomain;
     }
+
+  /* get the last key domain */
+  while (domain->next != NULL)
+    {
+      domain = domain->next;
+    }
+
+  btid->last_key_desc = domain->is_desc;
 
   /* init index key copy_buf info */
   btid->copy_buf = NULL;
