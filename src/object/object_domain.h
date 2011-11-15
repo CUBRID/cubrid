@@ -469,8 +469,8 @@ extern int tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
 extern int tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
 			       const TP_DOMAIN * desired_domain);
-extern int tp_value_str_auto_cast_to_number (DB_VALUE ** value,
-					     DB_VALUE * number_val,
+extern int tp_value_str_auto_cast_to_number (DB_VALUE * src,
+					     DB_VALUE * dest,
 					     DB_TYPE * val_type);
 extern int tp_value_string_to_double (const DB_VALUE * value,
 				      DB_VALUE * result);

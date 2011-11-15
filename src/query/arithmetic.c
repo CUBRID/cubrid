@@ -106,7 +106,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (&value, &cast_value,
+      er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -116,6 +116,8 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	}
 
       assert (res_type == DB_TYPE_DOUBLE);
+
+      value = &cast_value;
 
       /* fall through */
 
@@ -276,7 +278,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (&value, &cast_value,
+      er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -286,6 +288,8 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	}
 
       assert (res_type == DB_TYPE_DOUBLE);
+
+      value = &cast_value;
 
       /* fall through */
 
@@ -601,7 +605,7 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (&value, &cast_value,
+      er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -611,6 +615,8 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 	}
 
       assert (res_type == DB_TYPE_DOUBLE);
+
+      value = &cast_value;
 
       /* fall through */
 
@@ -981,7 +987,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -991,6 +997,8 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -1134,7 +1142,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -1144,6 +1152,8 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -1287,7 +1297,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -1297,6 +1307,8 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -1437,7 +1449,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -1447,6 +1459,8 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -1583,7 +1597,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -1593,6 +1607,8 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -1670,8 +1686,7 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   assert (TP_IS_CHAR_TYPE (type1));
 #endif
 
-  er_status = tp_value_str_auto_cast_to_number (&value1, &cast_value1,
-						&type1);
+  er_status = tp_value_str_auto_cast_to_number (value1, &cast_value1, &type1);
   if (er_status != NO_ERROR
       || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
 	  && type1 != DB_TYPE_DOUBLE))
@@ -1680,6 +1695,8 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   assert (type1 == DB_TYPE_DOUBLE);
+
+  value1 = &cast_value1;
 
   return db_mod_double (result, value1, value2);
 }
@@ -1783,7 +1800,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -1793,6 +1810,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -1899,7 +1918,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&value2, &cast_value2,
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -1909,6 +1928,8 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type2 == DB_TYPE_DOUBLE);
+
+      value2 = &cast_value2;
 
       /* fall through */
 
@@ -2127,7 +2148,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (&value1, &cast_value,
+      er_status = tp_value_str_auto_cast_to_number (value1, &cast_value,
 						    &type1);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -2137,6 +2158,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type1 == DB_TYPE_DOUBLE);
+
+      value1 = &cast_value;
 
       /* fall through */
 
@@ -2951,7 +2974,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (&value1, &cast_value,
+      er_status = tp_value_str_auto_cast_to_number (value1, &cast_value,
 						    &type1);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -2961,6 +2984,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type1 == DB_TYPE_DOUBLE);
+
+      value1 = &cast_value;
 
       /* fall through */
 
@@ -3059,7 +3084,7 @@ db_drandom_dbval (DB_VALUE * result)
 }
 
 /*
- * get_number_dbval_as_double () - 
+ * get_number_dbval_as_double () -
  *   return: NO_ERROR/error code
  *   d(out) : double
  *   value(in) : input db_value
@@ -3384,7 +3409,7 @@ db_atan_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  *   value2(in) : second input db_value
  *  OBS: this should have been done like db_power_dbval, i.e. switch in switch
- *	  but this yields in very much code so we prefered to get all values 
+ *	  but this yields in very much code so we prefered to get all values
  *	  separated and then convert all to double. Then just one call of atan2.
  */
 int

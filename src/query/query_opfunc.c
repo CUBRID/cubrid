@@ -2278,11 +2278,11 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
  *   warning_context(in)  : used only to display truncation warning context
  *
  * Note: Concatenates a db_values to string db value.
- *	 Value to be added is truncated in case the allowed size would be 
- *	 exceeded . Truncation is done without modifying the value (a new 
+ *	 Value to be added is truncated in case the allowed size would be
+ *	 exceeded . Truncation is done without modifying the value (a new
  *	 temporary value is used).
  *	 A warning is logged the first time the allowed size is exceeded
- *	 (when the value to add has already exceeded the size, no warning is 
+ *	 (when the value to add has already exceeded the size, no warning is
  *	 logged).
  */
 int
@@ -5236,7 +5236,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (&dbval_p, &cast_value,
+      er_status = tp_value_str_auto_cast_to_number (dbval_p, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
 	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
@@ -5246,6 +5246,8 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 	}
 
       assert (res_type == DB_TYPE_DOUBLE);
+
+      dbval_p = &cast_value;
 
       /* fall through */
 
@@ -6654,7 +6656,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 
-	  /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for 
+	  /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for
 	   * xxx_SAMP agg*/
 	  if (qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val,
 				    double_domain_ptr) != NO_ERROR)
@@ -6662,8 +6664,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 
-	  /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR 
-	   * VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}  for 
+	  /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR
+	   * VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}  for
 	   * xxx_SAMP aggregates */
 	  if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval,
 				    double_domain_ptr) != NO_ERROR)
@@ -8765,7 +8767,7 @@ error:
 /*
  * qdata_group_concat_first_value() - concatenates the first value
  *   return: NO_ERROR, or ER_code
- *   thread_p(in) : 
+ *   thread_p(in) :
  *   agg_p(in)	  : GROUP_CONCAT aggregate
  *   dbvalue(in)  : current value
  */
@@ -8809,7 +8811,7 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
 /*
  * qdata_group_concat_value() - concatenates a value
  *   return: NO_ERROR, or ER_code
- *   thread_p(in) : 
+ *   thread_p(in) :
  *   agg_p(in)	  : GROUP_CONCAT aggregate
  *   dbvalue(in)  : current value
  */
@@ -9817,7 +9819,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	  goto error;
 	}
 
-      /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for 
+      /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for
        * xxx_SAMP agg*/
       if (qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val,
 				double_domain_ptr) != NO_ERROR)
@@ -9825,8 +9827,8 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	  goto error;
 	}
 
-      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR 
-       * VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}  for 
+      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR
+       * VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}  for
        * xxx_SAMP aggregates */
       if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval,
 				double_domain_ptr) != NO_ERROR)

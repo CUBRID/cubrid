@@ -8323,31 +8323,29 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
 
 /*
  * tp_value_str_auto_cast_to_number () - checks if the original value
- *	  is of type string, and cast it to a DOUBLE value using the
- *	  'number_val' as storage.
- *   return: the original value if no cast is performed or the 'number_val'
- *	     after the cast to number is performed
- *   value(in/out) : original db_value, changed to ''number_val'' if cast is
- *		     performed
- *   number_val(in): pre-allocated DB_VALUE, used in case the cast is needed.
- *		     Needs to be cleared by the caller.
+ *	  is of type string, and cast it to a DOUBLE type domain.
+ *   return: error code.
+ *   src(in): source DB_VALUE
+ *   dest(out): destination DB_VALUE
  *   val_type(in/out): db type of value; modified if the cast is performed
  *
  *  Note : this is a helper function used by arithmetic functions to accept
  *	   string arguments.
  */
 int
-tp_value_str_auto_cast_to_number (DB_VALUE ** value, DB_VALUE * number_val,
+tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest,
 				  DB_TYPE * val_type)
 {
   TP_DOMAIN *cast_dom = NULL;
   int er_status = NO_ERROR;
 
-  assert (value != NULL);
-  assert (*value != NULL);
-  assert (number_val != NULL);
+  assert (src != NULL);
+  assert (dest != NULL);
   assert (val_type != NULL);
   assert (TP_IS_CHAR_TYPE (*val_type));
+  assert (src != dest);
+
+  DB_MAKE_NULL (dest);
 
   /* cast string to DOUBLE */
   cast_dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
@@ -8356,17 +8354,14 @@ tp_value_str_auto_cast_to_number (DB_VALUE ** value, DB_VALUE * number_val,
       return ER_FAILED;
     }
 
-  er_status = tp_value_auto_cast (*value, number_val, cast_dom);
+  er_status = tp_value_auto_cast (src, dest, cast_dom);
   if (er_status != NO_ERROR)
     {
-      pr_clear_value (number_val);
+      pr_clear_value (dest);
       return er_status;
     }
 
-  pr_clear_value (*value);
-
-  *value = number_val;
-  *val_type = DB_VALUE_DOMAIN_TYPE (*value);
+  *val_type = DB_VALUE_DOMAIN_TYPE (dest);
 
   return NO_ERROR;
 }
