@@ -235,6 +235,7 @@ struct la_info
   time_t last_master_time;	/* time of the last commit log record */
   LA_COMMIT *commit_head;	/* queue list head */
   LA_COMMIT *commit_tail;	/* queue list tail */
+  int last_deleted_archive_num;
 
   /* slave info */
   char *log_data;
@@ -693,6 +694,8 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
   DKNPAGES npages;
   int arv_log_vdes = NULL_VOLDES;
   char arv_log_path[PATH_MAX];
+  int left;
+  int right;
 
   if (*arv_log_num == -1)
     {
@@ -714,6 +717,11 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
       /* do not guess, just check */
       guess_num = *arv_log_num;
     }
+
+  guess_num = MAX (guess_num, la_Info.last_deleted_archive_num + 1);
+
+  left = la_Info.last_deleted_archive_num + 1;
+  right = la_Info.act_log.log_hdr->nxarv_num - 1;
 
   do
     {
@@ -741,14 +749,17 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
 	}
       else if (pageid < fpageid)
 	{
-	  guess_num--;
+	  right = guess_num - 1;
+	  guess_num = CEIL_PTVDIV ((left + right), 2);
 	}
       else if (pageid >= fpageid + npages)
 	{
-	  guess_num++;
+	  left = guess_num + 1;
+	  guess_num = CEIL_PTVDIV ((left + right), 2);
 	}
     }
-  while (guess_num >= 0 && guess_num < la_Info.act_log.log_hdr->nxarv_num);
+  while (guess_num >= 0 && guess_num < la_Info.act_log.log_hdr->nxarv_num
+	 && left <= right);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_NOTIN_ARCHIVE, 1, pageid);
   return ER_LOG_NOTIN_ARCHIVE;
@@ -765,12 +776,27 @@ la_log_fetch_from_archive (LOG_PAGEID pageid, char *data)
 {
   int error = NO_ERROR;
   int arv_log_num;
+  bool need_guess = true;
+  struct log_arv_header *log_hdr = NULL;
+  int fpageid;
+  int npages;
 
-  arv_log_num = -1;
-  error = la_find_archive_num (&arv_log_num, pageid);
-  if (error < 0)
+  if (la_Info.arv_log.log_vdes != NULL_VOLDES
+      && la_Info.arv_log.log_hdr != NULL)
     {
-      arv_log_num = la_Info.act_log.log_hdr->nxarv_num - 1;
+      log_hdr = la_Info.arv_log.log_hdr;
+      fpageid = log_hdr->fpageid;
+      npages = log_hdr->npages;
+
+      if (pageid >= fpageid && pageid < fpageid + npages)
+	{
+	  need_guess = false;
+	}
+    }
+
+  if (need_guess)
+    {
+      arv_log_num = -1;
       error = la_find_archive_num (&arv_log_num, pageid);
       if (error < 0)
 	{
@@ -778,16 +804,15 @@ la_log_fetch_from_archive (LOG_PAGEID pageid, char *data)
 			"cannot find archive log for %lld page.", pageid);
 	  return error;
 	}
-    }
-
-  if (la_Info.arv_log.arv_num != arv_log_num)
-    {
-      if (la_Info.arv_log.log_vdes > 0)
+      if (la_Info.arv_log.arv_num != arv_log_num)
 	{
-	  fileio_close (la_Info.arv_log.log_vdes);
-	  la_Info.arv_log.log_vdes = NULL_VOLDES;
+	  if (la_Info.arv_log.log_vdes > 0)
+	    {
+	      fileio_close (la_Info.arv_log.log_vdes);
+	      la_Info.arv_log.log_vdes = NULL_VOLDES;
+	    }
+	  la_Info.arv_log.arv_num = arv_log_num;
 	}
-      la_Info.arv_log.arv_num = arv_log_num;
     }
 
 log_reopen:
@@ -5698,6 +5723,7 @@ la_init (const char *log_path)
   la_Info.arv_log.log_vdes = NULL_VOLDES;
   LSA_SET_NULL (&la_Info.last_committed_lsa);
   LSA_SET_NULL (&la_Info.required_lsa);
+  la_Info.last_deleted_archive_num = 0;
   /* check vsize when it started */
   if (!start_vsize)
     {
@@ -6144,7 +6170,6 @@ la_apply_log_file (const char *database_name, const char *log_path,
   la_applier_need_shutdown = false;
   char *s;
 
-  int last_deleted_arv_num = 0;
   int last_nxarv_num = 0;
 
   assert (database_name != NULL);
@@ -6181,7 +6206,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
   error =
     la_check_duplicated (la_Info.log_path, la_slave_db_name,
-			 &la_Info.lockf_vdes, &last_deleted_arv_num);
+			 &la_Info.lockf_vdes,
+			 &la_Info.last_deleted_archive_num);
+
   if (error != NO_ERROR)
     {
       return error;
@@ -6286,14 +6313,15 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 	  if (last_nxarv_num != la_Info.act_log.log_hdr->nxarv_num)
 	    {
-	      last_deleted_arv_num =
+	      la_Info.last_deleted_archive_num =
 		la_remove_archive_logs (la_slave_db_name,
-					last_deleted_arv_num,
+					la_Info.last_deleted_archive_num,
 					la_Info.act_log.log_hdr->nxarv_num);
-	      if (last_deleted_arv_num > 0)
+	      if (la_Info.last_deleted_archive_num > 0)
 		{
 		  la_update_last_deleted_arv_num (la_Info.lockf_vdes,
-						  last_deleted_arv_num);
+						  la_Info.
+						  last_deleted_archive_num);
 		}
 	      last_nxarv_num = la_Info.act_log.log_hdr->nxarv_num;
 	    }
