@@ -7672,6 +7672,11 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
     char *db_name = db_get_database_name ();
     const char *const col_header = "Tables_in_";
 
+    if (db_name == NULL)
+      {
+	return NULL;
+      }
+
     strcpy (tables_col_name, col_header);
     strncat (tables_col_name, db_name,
 	     SM_MAX_IDENTIFIER_LENGTH - strlen (col_header) - 1);
