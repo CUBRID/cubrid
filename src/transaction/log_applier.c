@@ -321,6 +321,8 @@ static LOG_PAGE *la_get_page (LOG_PAGEID pageid);
 static void la_release_page_buffer (LOG_PAGEID pageid);
 static void la_release_all_page_buffers (LOG_PAGEID except_pageid);
 static void la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer);
+static void la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to);
+
 static int la_find_required_lsa (LOG_LSA * required_lsa);
 static int
 la_get_db_ha_apply_info (const char *log_path, const char *prefix_name,
@@ -1280,6 +1282,34 @@ la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer)
   cache_buffer->pageid = 0;
 }
 
+static void
+la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to)
+{
+  int i;
+  LA_CACHE_PB *cache_pb = la_Info.cache_pb;
+  LA_CACHE_BUFFER *cache_buffer = NULL;
+
+  for (i = 0; i < cache_pb->num_buffers; i++)
+    {
+      cache_buffer = cache_pb->log_buffer[i];
+
+      if ((cache_buffer->pageid == NULL_PAGEID)
+	  || (cache_buffer->pageid == 0)
+	  || (cache_buffer->pageid < from) || (cache_buffer->pageid > to))
+	{
+	  continue;
+	}
+
+      (void) mht_rem (cache_pb->hash_table, &cache_buffer->pageid, NULL,
+		      NULL);
+
+      cache_buffer->fix_count = 0;
+      cache_buffer->recently_free = false;
+      cache_buffer->pageid = 0;
+    }
+
+  return;
+}
 
 /*
  * la_find_required_lsa() - Find out the lowest required page ID
@@ -6239,6 +6269,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  /* release all page buffers */
 	  la_release_all_page_buffers (NULL_PAGEID);
 
+	  /* we should fetch final log page from disk not cache buffer */
+	  la_decache_page_buffers (final.pageid, LOGPAGEID_MAX);
+
 	  error = la_fetch_log_hdr (&la_Info.act_log);
 	  if (error != NO_ERROR)
 	    {
@@ -6493,6 +6526,13 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_PAGE_CORRUPTED, 1, final.pageid);
 		  /* it should be refetched and release later */
+		  la_invalidate_page_buffer (log_buf);
+		  break;
+		}
+
+	      if (LSA_EQ (&final, &final_log_hdr.eof_lsa)
+		  && lrec->type != LOG_END_OF_LOG)
+		{
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
