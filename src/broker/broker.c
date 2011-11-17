@@ -638,6 +638,7 @@ receiver_thr_f (void *arg)
 
       setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		  sizeof (one));
+      ut_set_keepalive (clt_sock_fd, 1800);
 
       cas_client_type = CAS_CLIENT_NONE;
 

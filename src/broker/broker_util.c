@@ -40,10 +40,12 @@
 #include <io.h>
 #include <process.h>
 #include <sys/timeb.h>
+#include <mstcpip.h>
 #else
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/timeb.h>
+#include <netinet/tcp.h>
 #endif
 
 #ifdef V3_TEST
@@ -276,6 +278,36 @@ clear_sock_file:
 }
 #endif
 
+int
+ut_set_keepalive (int sock, int keepalivetime)
+{
+  int optval, optlen;
+#if defined(WINDOWS)
+  /* WinSock structure for KeepAlive timing settings */
+  struct tcp_keepalive settings;
+  DWORD bytesReturned;
+  WSAOVERLAPPED overlapped;
+#endif
+
+  optlen = sizeof (optval);
+  optval = 1;			/* true for SO_KEEPALIVE */
+  setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen);
+
+#if defined(WINDOWS)
+  overlapped.hEvent = NULL;
+  settings.onoff = 1;
+  settings.keepalivetime = keepalivetime * 1000;
+  optlen = sizeof (struct tcp_keepalive);
+  WSAIoctl (sock, SIO_KEEPALIVE_VALS, &settings, optlen, NULL, 0,
+	    &bytesReturned, &overlapped, NULL);
+#else
+  optval = keepalivetime;
+  setsockopt (sock, SOL_TCP, TCP_KEEPIDLE, &optval, optlen);
+#endif
+
+  return 0;
+}
+
 #if defined(WINDOWS)
 int
 run_child (const char *appl_name)
@@ -459,7 +491,7 @@ ut_get_ipv4_string (char *ip_str, int len, unsigned char *ip_addr)
 {
   assert (ip_addr != NULL);
   assert (ip_str != NULL);
-  assert (len >= 16);    /* xxx.xxx.xxx.xxx\0 */
+  assert (len >= 16);		/* xxx.xxx.xxx.xxx\0 */
 
   snprintf (ip_str, len, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
 	    (unsigned char) ip_addr[1],

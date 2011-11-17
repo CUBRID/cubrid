@@ -510,6 +510,7 @@ main (int argc, char *argv[])
 	cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
+	ut_set_keepalive (client_sock_fd, 1800);
 
 	if (IS_INVALID_SOCKET (client_sock_fd))
 	  {
