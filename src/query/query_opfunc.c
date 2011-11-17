@@ -59,6 +59,7 @@
 
 static int qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 			int num_args, DB_VALUE ** args);
+static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_int (int i1, int i2, DB_VALUE * result_p);
@@ -381,6 +382,41 @@ qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args,
 {
   DB_MAKE_NULL (result_p);
   return ER_FAILED;
+}
+
+static bool
+qdata_is_zero_value_date (DB_VALUE * dbval_p)
+{
+  DB_TYPE type;
+  DB_UTIME *utime;
+  DB_DATE *date;
+  DB_DATETIME *datetime;
+
+  if (DB_IS_NULL (dbval_p))	/* NULL is not zero value */
+    {
+      return false;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+  if (TP_IS_DATE_TYPE (type))
+    {
+      switch (type)
+	{
+	case DB_TYPE_UTIME:
+	  utime = DB_GET_UTIME (dbval_p);
+	  return (*utime == 0);
+	case DB_TYPE_DATETIME:
+	  datetime = DB_GET_DATETIME (dbval_p);
+	  return (datetime->date == 0 && datetime->time == 0);
+	case DB_TYPE_DATE:
+	  date = DB_GET_DATE (dbval_p);
+	  return (*date == 0);
+	default:
+	  break;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -1000,11 +1036,11 @@ qdata_add_short_to_utime_asymmetry (DB_VALUE * utime_val_p, short s,
 
   if (s == DB_INT16_MIN)	/* check for asymmetry */
     {
-      if (*utime == 0)
+      if (*utime <= 1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_TIME_UNDERFLOW, 0);
+	  return ER_QPROC_TIME_UNDERFLOW;
 	}
 
       (*utime)--;
@@ -1024,11 +1060,11 @@ qdata_add_int_to_utime_asymmetry (DB_VALUE * utime_val_p, int i,
 
   if (i == DB_INT32_MIN)	/* check for asymmetry */
     {
-      if (*utime == 0)
+      if (*utime <= 1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_TIME_UNDERFLOW, 0);
+	  return ER_QPROC_TIME_UNDERFLOW;
 	}
 
       (*utime)--;
@@ -1048,11 +1084,11 @@ qdata_add_bigint_to_utime_asymmetry (DB_VALUE * utime_val_p, DB_BIGINT bi,
 
   if (bi == DB_BIGINT_MIN)	/* check for asymmetry */
     {
-      if (*utime == 0)
+      if (*utime <= 1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_TIME_UNDERFLOW, 0);
+	  return ER_QPROC_TIME_UNDERFLOW;
 	}
 
       (*utime)--;
@@ -2106,8 +2142,8 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
    * NUMBER + DATE
    * STRING + DATE */
   if ((TP_IS_CHAR_TYPE (type1) && TP_IS_NUMERIC_TYPE (type2))
-      || (TP_IS_NUMERIC_TYPE (type1) && TP_IS_DATE_TYPE (type2))
-      || (TP_IS_CHAR_TYPE (type1) && TP_IS_DATE_TYPE (type2)))
+      || (TP_IS_NUMERIC_TYPE (type1) && TP_IS_DATE_OR_TIME_TYPE (type2))
+      || (TP_IS_CHAR_TYPE (type1) && TP_IS_DATE_OR_TIME_TYPE (type2)))
     {
       DB_VALUE *temp = NULL;
 
@@ -2126,7 +2162,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     }
   /* date + number : cast number to bigint, add as date + bigint */
   /* date + string : cast string to bigint, add as date + bigint */
-  else if (TP_IS_DATE_TYPE (type1)
+  else if (TP_IS_DATE_OR_TIME_TYPE (type1)
 	   && (TP_IS_FLOATING_NUMBER_TYPE (type2) || TP_IS_CHAR_TYPE (type2)))
     {
       /* cast number to BIGINT */
@@ -2165,6 +2201,14 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 
   if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
+      return NO_ERROR;
+    }
+
+  if (qdata_is_zero_value_date (dbval1_p)
+      || qdata_is_zero_value_date (dbval2_p))
+    {
+      /* add operation with zero date returns null */
+      DB_MAKE_NULL (result_p);
       return NO_ERROR;
     }
 
@@ -2675,9 +2719,9 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s,
     {
       if (*utime == DB_UINT32_MAX)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW,
-		  0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_OVERFLOW_HAPPENED, 0);
+	  return ER_QPROC_OVERFLOW_HAPPENED;
 	}
 
       (*utime)++;
@@ -2700,9 +2744,9 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i,
     {
       if (*utime == DB_UINT32_MAX)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW,
-		  0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_OVERFLOW_HAPPENED, 0);
+	  return ER_QPROC_OVERFLOW_HAPPENED;
 	}
 
       (*utime)++;
@@ -2725,9 +2769,9 @@ qdata_subtract_utime_to_bigint_asymmetry (DB_VALUE * utime_val_p,
     {
       if (*utime == DB_UINT32_MAX)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW,
-		  0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_OVERFLOW_HAPPENED, 0);
+	  return ER_QPROC_OVERFLOW_HAPPENED;
 	}
 
       (*utime)++;
@@ -3683,7 +3727,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
  *   return: NO_ERROR, or ER_code
  *   dbval1(in) : First db_value node
  *   dbval2(in) : Second db_value node
- *   res(out    : Resultant db_value node
+ *   res(out)   : Resultant db_value node
  *   domain(in) :
  *
  * Note: Subtract dbval2 value from dbval1 value.
@@ -3739,13 +3783,15 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
     }
   /* date - number : cast floating point number to bigint, date - bigint = date */
-  else if (TP_IS_DATE_TYPE (type1) && TP_IS_FLOATING_NUMBER_TYPE (type2))
+  else if (TP_IS_DATE_OR_TIME_TYPE (type1)
+	   && TP_IS_FLOATING_NUMBER_TYPE (type2))
     {
       /* cast number to BIGINT */
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_BIGINT);
     }
   /* number - date: cast floating point number to bigint, bigint - date= date */
-  else if (TP_IS_FLOATING_NUMBER_TYPE (type1) && TP_IS_DATE_TYPE (type2))
+  else if (TP_IS_FLOATING_NUMBER_TYPE (type1)
+	   && TP_IS_DATE_OR_TIME_TYPE (type2))
     {
       /* cast number to BIGINT */
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_BIGINT);
@@ -3753,7 +3799,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
   /* TIME - string : cast string to TIME , date - TIME = bigint */
   /* DATE - string : cast string to DATETIME, the other operand to DATETIME
    * DATETIME - DATETIME = bigint */
-  else if (TP_IS_DATE_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
+  else if (TP_IS_DATE_OR_TIME_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
     {
       if (type1 == DB_TYPE_TIME)
 	{
@@ -3772,7 +3818,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
   /* string - TIME : cast string to TIME, TIME - TIME = bigint */
   /* string - DATE : cast string to DATETIME, the other operand to DATETIME
    * DATETIME - DATETIME = bigint */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_DATE_TYPE (type2))
+  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_DATE_OR_TIME_TYPE (type2))
     {
       if (type2 == DB_TYPE_TIME)
 	{
@@ -3814,6 +3860,14 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 
   if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
+      return NO_ERROR;
+    }
+
+  if (qdata_is_zero_value_date (dbval1_p)
+      || qdata_is_zero_value_date (dbval2_p))
+    {
+      /* subtract operation with zero date returns null */
+      DB_MAKE_NULL (result_p);
       return NO_ERROR;
     }
 
@@ -5483,11 +5537,11 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
   /* string STRCAT date: cast date to string, concat as strings */
   /* string STRCAT number: cast number to string, concat as strings */
   if (TP_IS_CHAR_TYPE (type1)
-      && (TP_IS_DATE_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2)))
+      && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2)))
     {
       cast_dom2 = tp_domain_resolve_value (dbval1_p, NULL);
     }
-  else if ((TP_IS_DATE_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1))
+  else if ((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1))
 	   && TP_IS_CHAR_TYPE (type2))
     {
       cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);

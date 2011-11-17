@@ -242,8 +242,11 @@ typedef enum tp_match
   ((typeid) == DB_TYPE_DOUBLE || (typeid) == DB_TYPE_BIGINT)
 
 #define TP_IS_DATE_TYPE(typeid) \
-  (((typeid) == DB_TYPE_TIME) || ((typeid) == DB_TYPE_DATE) \
-   || ((typeid) == DB_TYPE_DATETIME)  || ((typeid) == DB_TYPE_TIMESTAMP))
+  (((typeid) == DB_TYPE_DATE) || ((typeid) == DB_TYPE_DATETIME) \
+   || ((typeid) == DB_TYPE_TIMESTAMP))
+
+#define TP_IS_DATE_OR_TIME_TYPE(typeid) \
+  (((typeid) == DB_TYPE_TIME) || TP_IS_DATE_TYPE(typeid))
 
 #define TP_IS_FLOATING_NUMBER_TYPE(typeid) \
   (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \

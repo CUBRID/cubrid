@@ -12494,7 +12494,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 
 	  pr_clear_value (&temp_val);
 	}
-      else if (TP_IS_NUMERIC_TYPE (dtype) || TP_IS_DATE_TYPE (dtype))
+      else if (TP_IS_NUMERIC_TYPE (dtype) || TP_IS_DATE_OR_TIME_TYPE (dtype))
 	{
 	  /* try to strict cast keyp to dtype */
 	  err = tp_value_coerce_strict (keyp, &temp_val, btree_domainp);

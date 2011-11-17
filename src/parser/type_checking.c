@@ -13094,6 +13094,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    other = arg1;
 		  }
 
+		if (*utime == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
+		  }
+
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_INTEGER:
@@ -13159,6 +13166,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    datetime = DB_GET_DATETIME (arg2);
 		    other = arg1;
+		  }
+
+		if (datetime->date == 0 && datetime->time == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
 		  }
 
 		switch (DB_VALUE_TYPE (other))
@@ -13227,6 +13241,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    date = DB_GET_DATE (arg2);
 		    other = arg1;
+		  }
+
+		if (*date == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
 		  }
 
 		switch (DB_VALUE_TYPE (other))
@@ -13324,6 +13345,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    bi1 = DB_GET_BIGINT (arg1);
 		    bi2 = DB_GET_BIGINT (arg2);
+		  }
+
+		if ((TP_IS_DATE_TYPE (typ1) && bi1 == 0)
+		    || (TP_IS_DATE_TYPE (typ2) && bi2 == 0))
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
 		  }
 
 		result_bi = bi1 - bi2;
@@ -13463,6 +13492,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    break;
 		  }
 		utime = DB_GET_UTIME (arg1);
+
+		if (*utime == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
+		  }
+
 		if (bi < 0)
 		  {
 		    /* we're adding */
@@ -13510,6 +13547,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  }
 		datetime = DB_GET_DATETIME (arg1);
 
+		if (datetime->date == 0 && datetime->time == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
+		  }
+
 		error = db_subtract_int_from_datetime (datetime, bi,
 						       &result_datetime);
 		if (error != NO_ERROR)
@@ -13544,6 +13588,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    break;
 		  }
 		date = DB_GET_DATE (arg1);
+
+		if (*date == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
+		  }
+
 		if (bi < 0)
 		  {
 		    /* we're adding */
