@@ -11011,13 +11011,11 @@ db_to_char (const DB_VALUE * src_value,
       return number_to_char (src_value, format_or_length, lang_str,
 			     result_str);
     }
-  else if (type == DB_TYPE_DATE || type == DB_TYPE_TIME
-	   || type == DB_TYPE_TIMESTAMP || type == DB_TYPE_DATETIME)
+  else if (TP_IS_DATE_OR_TIME_TYPE(type))
     {
       return date_to_char (src_value, format_or_length, lang_str, result_str);
     }
-  else if (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR
-	   || type == DB_TYPE_NCHAR || type == DB_TYPE_VARNCHAR)
+  else if (TP_IS_CHAR_TYPE(type))
     {
       return pr_clone_value (src_value, result_str);
     }
