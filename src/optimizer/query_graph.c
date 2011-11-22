@@ -4473,6 +4473,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	  if (indexp->info.name.original == NULL
 	      && indexp->info.name.resolved == NULL)
 	    {
+	      n = 0;
 	      is_none = true;
 	      break;		/* USING INDEX NONE case */
 	    }

@@ -269,6 +269,8 @@ static PT_NODE *mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 static PT_NODE *mq_translate_local (PARSER_CONTEXT * parser,
 				    PT_NODE * statement, void *void_arg,
 				    int *continue_walk);
+static int mq_check_using_index (PARSER_CONTEXT * parser,
+				 PT_NODE * using_index);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *mq_collapse_dot (PARSER_CONTEXT * parser, PT_NODE * tree);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -3976,7 +3978,7 @@ mq_translate_local (PARSER_CONTEXT * parser,
 {
   int line, column;
   PT_NODE *next;
-  PT_NODE *indexp, *spec;
+  PT_NODE *indexp, *spec, *using_index;
 
   if (statement == NULL)
     {
@@ -4061,24 +4063,24 @@ mq_translate_local (PARSER_CONTEXT * parser,
     }
 
   /* resolving using index */
-  indexp = NULL;
+  using_index = NULL;
   spec = NULL;
   if (!pt_has_error (parser) && statement)
     {
       switch (statement->node_type)
 	{
 	case PT_SELECT:
-	  indexp = statement->info.query.q.select.using_index;
+	  using_index = statement->info.query.q.select.using_index;
 	  spec = statement->info.query.q.select.from;
 	  break;
 
 	case PT_UPDATE:
-	  indexp = statement->info.update.using_index;
+	  using_index = statement->info.update.using_index;
 	  spec = statement->info.update.spec;
 	  break;
 
 	case PT_DELETE:
-	  indexp = statement->info.delete_.using_index;
+	  using_index = statement->info.delete_.using_index;
 	  spec = statement->info.delete_.spec;
 	  break;
 
@@ -4087,6 +4089,8 @@ mq_translate_local (PARSER_CONTEXT * parser,
 	}
     }
 
+  /* resolve using index */
+  indexp = using_index;
   if (indexp != NULL && spec != NULL)
     {
       for (; indexp; indexp = indexp->next)
@@ -4098,7 +4102,172 @@ mq_translate_local (PARSER_CONTEXT * parser,
 	}
     }
 
+  /* semantic check on using index */
+  if (using_index != NULL)
+    {
+      if (mq_check_using_index (parser, using_index) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
   return statement;
+}
+
+
+/*
+ * mq_check_using_index() - check the using index clause for semantic errors
+ *   return: error code
+ *   parser(in): current parser
+ *   using_index(in): list of PT_NODEs in USING INDEX clause
+ */
+static int
+mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
+{
+  PT_NODE *index_none = NULL;
+  PT_NODE *index_hint = NULL;
+  PT_NODE *node = NULL, *search_node = NULL;
+  bool has_index_class_none = false, has_all_except = false;
+
+  /* check for valid using_index node */
+  if (using_index == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /*
+   * search for USING INDEX NONE node, which can clash with another index
+   * hint. NOTE: USING INDEX NONE node is compatible with USING INDEX
+   * class_name.NONE node and USING INDEX ALL EXCEPT node, but both cases
+   * should never occur
+   */
+  node = using_index;
+  while (node != NULL)
+    {
+      if (node->info.name.original == NULL &&
+	  node->info.name.resolved == NULL)
+	{
+	  /* USING INDEX NONE node found */
+	  index_none = node;
+	}
+
+      if (node->info.name.original != NULL &&
+	  node->info.name.resolved != NULL &&
+	  (node->etc == (void *) 0 || node->etc == (void *) 1))
+	{
+	  /* USE INDEX or FORCE INDEX node found */
+	  index_hint = node;
+	}
+
+      /* check for USING INDEX ALL EXCEPT and USING INDEX class_name.NONE
+         syntax; if they are not found, we'll skip some loops later */
+      if (node->etc == (void *) -2)
+	{
+	  has_all_except = true;
+	}
+
+      if (node->etc == (void *) -3)
+	{
+	  has_index_class_none = true;
+	}
+
+      node = node->next;
+    }
+
+  if (index_none != NULL && index_hint != NULL)
+    {
+      /* {USE|FORCE} INDEX idx ... USING INDEX NONE case was found */
+      PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC,
+		   MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
+		   "using index none",
+		   parser_print_tree (parser, index_hint));
+
+      return ER_PT_SEMANTIC;
+    }
+
+  /* check for USING INDEX class_name.NONE, class_name.idx[(+)] or
+     {USE|FORCE} INDEX class_name.idx ... USING INDEX class_name.NONE */
+  node = using_index;
+  while (node != NULL && has_index_class_none)
+    {
+      if (node->info.name.original == NULL &&
+	  node->info.name.resolved != NULL && node->etc == (void *) -3)
+	{
+	  /* search trough all nodes again and check for other index hints
+	     on class_name */
+	  search_node = using_index;
+	  while (search_node != NULL)
+	    {
+	      if (search_node->info.name.original != NULL &&
+		  search_node->info.name.resolved != NULL &&
+		  (search_node->etc == (void *) 0 ||
+		   search_node->etc == (void *) 1) &&
+		  !intl_identifier_casecmp (node->info.name.resolved,
+					    search_node->info.name.resolved))
+		{
+		  /* class_name.idx_name and class_name.none found in USE
+		     INDEX and/or USING INDEX clauses */
+		  PT_ERRORmf2 (parser, using_index,
+			       MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
+			       parser_print_tree (parser, node),
+			       parser_print_tree (parser, search_node));
+
+		  return ER_PT_SEMANTIC;
+		}
+
+	      search_node = search_node->next;
+	    }
+	}
+
+      node = node->next;
+    }
+
+  /* check for {USE|FORCE} INDEX(idx) ... USING INDEX ALL EXCEPT idx */
+  node = using_index;
+  while (node != NULL && has_all_except)
+    {
+      if (node->info.name.original != NULL &&
+	  node->info.name.resolved != NULL &&
+	  (node->etc == (void *) 0 || node->etc == (void *) 1))
+	{
+	  /* found a normal index hint; search for same index in USING INDEX 
+	     ALL EXCEPT clause */
+	  search_node = using_index;
+	  while (search_node != NULL)
+	    {
+	      if (search_node->info.name.original != NULL &&
+		  search_node->info.name.original != NULL &&
+		  search_node->etc == (void *) -2)
+		{
+		  if (!intl_identifier_casecmp
+		      (search_node->info.name.original,
+		       node->info.name.original) &&
+		      !intl_identifier_casecmp
+		      (search_node->info.name.resolved,
+		       node->info.name.resolved))
+		    {
+		      /* same index found in USE INDEX and USING INDEX ALL
+		         EXCEPT clauses */
+		      PT_ERRORmf2 (parser, using_index,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
+				   parser_print_tree (parser, node),
+				   parser_print_tree (parser, search_node));
+
+		      return ER_PT_SEMANTIC;
+		    }
+		}
+
+	      search_node = search_node->next;
+	    }
+	}
+
+      node = node->next;
+    }
+
+  /* no error */
+  return NO_ERROR;
 }
 
 

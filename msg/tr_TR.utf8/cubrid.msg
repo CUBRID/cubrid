@@ -1508,14 +1508,15 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 223 The LIKE predicate requires an escape character to be specified. See the documentation for the '%1$s' and '%2$s' configuration parameters.
 224 KEYLIMIT can not be used in INDEX NONE clause.
 225 Session variable not allowed in this context.
-226 '%s' function can not be used in DEFAULT clause.
-227 Updating derived tables is not allowed.
-228 Updating class attributes and instance attributes not allowed in the same statement.
-229 Updating virtual class hierarchies is not allowed.
-230 Host variables not allowed in DDL statement.
-231 Invalid filter expression for index.
-232 Multiple or nested functions are not allowed in a function index definition.
-233 Invalid index specification.
+226 Index hint conflict between '%s' and '%s'.
+227 '%s' function can not be used in DEFAULT clause.
+228 Updating derived tables is not allowed.
+229 Updating class attributes and instance attributes not allowed in the same statement.
+230 Updating virtual class hierarchies is not allowed.
+231 Host variables not allowed in DDL statement.
+232 Invalid filter expression for index.
+233 Multiple or nested functions are not allowed in a function index definition.
+234 Invalid index specification.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
