@@ -1696,7 +1696,10 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
   if (r != NO_ERROR)
     {
       error = ER_CSS_PTHREAD_COND_WAIT;
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      if (timeout == INF_WAIT || r != ETIMEDOUT)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
     }
 
   r = pthread_mutex_lock (&thread_p->th_entry_lock);
