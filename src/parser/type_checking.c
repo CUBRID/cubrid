@@ -18213,6 +18213,7 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
     case PT_ADDTIME:
+    case PT_TO_CHAR:
       return true;
     default:
       return false;

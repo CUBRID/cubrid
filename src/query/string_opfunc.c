@@ -4141,7 +4141,7 @@ db_string_like (const DB_VALUE * src_string,
  *	  The truncation of domain size in case of fixed domain argument
  *	  is needed in context of GROUP_CONCAT, when the result needs to be
  *	  truncated.
- *	  The full-char adjusting code in this function is specific to 
+ *	  The full-char adjusting code in this function is specific to
  *	  GROUP_CONCAT.
  */
 int
@@ -4244,7 +4244,7 @@ exit_copy:
  *	ER_QSTR_INVALID_DATA_TYPE:
  *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR
  *
- * Note : Used in context of GROUP_CONCAT. It is complementary to 
+ * Note : Used in context of GROUP_CONCAT. It is complementary to
  *	  'db_string_limit_size_string' function
  */
 int
@@ -5699,7 +5699,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
       rsecond = seconds % 60;
     }
 
-  /* depending on the first argument, the result is either result_date or 
+  /* depending on the first argument, the result is either result_date or
      result_time */
 
   if (domain != NULL)
@@ -11005,17 +11005,21 @@ db_to_char (const DB_VALUE * src_value,
   int error_status = NO_ERROR;
   DB_TYPE type;
 
-  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL
-      || is_number (src_value))
+  type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (type == DB_TYPE_NULL || is_number (src_value))
     {
       return number_to_char (src_value, format_or_length, lang_str,
 			     result_str);
     }
-  else if ((type = DB_VALUE_DOMAIN_TYPE (src_value)) == DB_TYPE_DATE
-	   || type == DB_TYPE_TIME || type == DB_TYPE_TIMESTAMP
-	   || type == DB_TYPE_DATETIME)
+  else if (type == DB_TYPE_DATE || type == DB_TYPE_TIME
+	   || type == DB_TYPE_TIMESTAMP || type == DB_TYPE_DATETIME)
     {
       return date_to_char (src_value, format_or_length, lang_str, result_str);
+    }
+  else if (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR
+	   || type == DB_TYPE_NCHAR || type == DB_TYPE_VARNCHAR)
+    {
+      return pr_clone_value (src_value, result_str);
     }
   else
     {
@@ -16203,7 +16207,7 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher,
  * scientific_to_decimal_string () -
  *
  *  Note :  This function is localized in relation to fractional and digit
- *	    grouping symbols. 
+ *	    grouping symbols.
  */
 static int
 scientific_to_decimal_string (const INTL_LANG lang, char *src_string,
@@ -22650,7 +22654,7 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val,
 }
 
 /*
- * get_string_date_token_id() - get the id of date token identifier 
+ * get_string_date_token_id() - get the id of date token identifier
  *   return: NO_ERROR or error code
  *   token_type(in): string-to-date token type
  *   intl_lang_id(in):
