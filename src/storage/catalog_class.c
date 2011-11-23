@@ -5098,6 +5098,8 @@ catcls_get_cardinality (THREAD_ENTRY * thread_p, const char *class_name,
   BTID curr_bitd;
   OID class_oid;
   bool is_btree_found;
+  char cls_lower[DB_MAX_IDENTIFIER_LENGTH *
+		 INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER] = { 0 };
 
   BTID_SET_NULL (&found_btid);
   BTID_SET_NULL (&curr_bitd);
@@ -5109,8 +5111,9 @@ catcls_get_cardinality (THREAD_ENTRY * thread_p, const char *class_name,
   assert (cardinality != NULL);
 
   /* get class OID from class name */
+  intl_identifier_lower (class_name, cls_lower);
   error =
-    catcls_find_class_oid_by_class_name (thread_p, class_name, &class_oid);
+    catcls_find_class_oid_by_class_name (thread_p, cls_lower, &class_oid);
   if (error != NO_ERROR)
     {
       goto exit;
