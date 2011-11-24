@@ -223,7 +223,8 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
     {
       const char *temp;
 
-      if ((temp = db_query_format_name (t)) == NULL)
+      temp = db_query_format_name (t);
+      if (temp == NULL)
 	{
 	  attr_names[i] = (char *) malloc (7);
 	  if (attr_names[i] == NULL)

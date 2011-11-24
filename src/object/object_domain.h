@@ -196,7 +196,7 @@ typedef enum tp_match
 /*
  * !!! DB_TYPE_VOBJ probably should be added to this macro as this
  * is now the behavior of pr_is_set_type() which we should try to
- * phase out in favor of the faster inlin macro.  Unfortunately, there
+ * phase out in favor of the faster inline macro.  Unfortunately, there
  * are a number of usages of both TP_IS_SET_TYPE that may break if
  * we change the semantics.  Will have to think carefully about this
  */
