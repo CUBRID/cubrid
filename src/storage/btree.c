@@ -405,7 +405,8 @@ static int btree_leaf_get_num_oids (RECDES * rec, int offset,
 				    short node_type, int oid_size);
 static void btree_write_default_split_info (RECDES * rec);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p,
-					 VPID now, VPID prev);
+					 BTID_INT * btid,
+					 VPID * now, VPID * prev);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 						BTREE_SCAN * bts,
 						MULTI_RANGE_OPT *
@@ -6556,15 +6557,20 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 	}
       btree_write_default_split_info (&peek_rec);
 
-      /* we should set the prev_vpid of next_vpid to left_page instead of
-       * right_page. For this we need the page at next_vpid
-       */
-      btree_set_vpid_previous_vpid (thread_p, next_vpid, left_vpid);
-
       /* log the new header record for redo purposes */
       log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD,
 			     &btid->sys_btid->vfid, left_pg, HEADER,
 			     peek_rec.length, peek_rec.data);
+
+      /* we should set the prev_vpid of next_vpid to left_page instead of
+       * right_page. For this we need the page at next_vpid
+       */
+      ret = btree_set_vpid_previous_vpid (thread_p, btid, &next_vpid,
+					  &left_vpid);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
 
       *child_vpid = left_vpid;
 
@@ -9753,13 +9759,17 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       goto exit_on_error;
     }
 
-  btree_set_vpid_previous_vpid (thread_p, next_vpid, *R_vpid);
-
   /* log the new header record for redo purposes, there is no need
      to undo the change to the header record, since the page will be
      dealloacted on futher undo operations. */
   log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, &btid->sys_btid->vfid,
 			 R, HEADER, rec.length, rec.data);
+
+  ret = btree_set_vpid_previous_vpid (thread_p, btid, &next_vpid, R_vpid);
+  if (ret != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* move second half of page Q to page R */
   right = (node_type == BTREE_LEAF_NODE) ? rightcnt : (rightcnt + 1);
@@ -19300,41 +19310,43 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p,
 /*
  * btree_set_vpid_previous_vpid () - Sets the prev VPID of a page
  *   return: error code
+ *   btid(in): BTID
  *   now(in): a page's vpid
  *   prev(in): a vpid to be set as previous for the input page
  */
 static int
-btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, VPID now, VPID prev)
+btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid,
+			      VPID * now, VPID * prev)
 {
   PAGE_PTR curr_page;
-  RECDES rec;
+  RECDES peek_rec;
 
-  if (now.pageid == -1 && now.volid == -1)
+  if (VPID_ISNULL (now))
     {
-      return 0;
+      return NO_ERROR;
     }
 
-  curr_page = pgbuf_fix (thread_p, &now, OLD_PAGE, PGBUF_LATCH_WRITE,
-			 PGBUF_CONDITIONAL_LATCH);
-
-  if (curr_page)
-    {
-      if (spage_get_record (curr_page, HEADER, &rec, PEEK) != S_SUCCESS)
-	{
-	  goto exit_on_error;
-	}
-
-      BTREE_PUT_NODE_PREV_VPID (rec.data, &prev);
-    }
-  else
+  curr_page = pgbuf_fix (thread_p, now, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 PGBUF_UNCONDITIONAL_LATCH);
+  if (curr_page == NULL
+      || spage_get_record (curr_page, HEADER, &peek_rec, PEEK) != S_SUCCESS)
     {
       goto exit_on_error;
     }
 
-  if (curr_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, curr_page);
-    }
+  /* log the old header record for undo purposes */
+  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD,
+			 &btid->sys_btid->vfid, curr_page, HEADER,
+			 peek_rec.length, peek_rec.data);
+
+  BTREE_PUT_NODE_PREV_VPID (peek_rec.data, prev);
+
+  /* log the new header record for redo purposes */
+  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD,
+			 &btid->sys_btid->vfid, curr_page, HEADER,
+			 peek_rec.length, peek_rec.data);
+
+  pgbuf_set_dirty (thread_p, curr_page, FREE);
 
   return NO_ERROR;
 
