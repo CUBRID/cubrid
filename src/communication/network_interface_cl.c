@@ -7625,41 +7625,32 @@ qp_get_sys_timestamp (DB_VALUE * value)
  * NOTE:
  */
 int
-serial_get_current_value (DB_VALUE * value, DB_VALUE * oid)
+serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num)
 {
 #if defined(CS_MODE)
   int req_error, error = ER_NET_CLIENT_DATA_RECEIVE;
   char *request, *area = NULL;
-  int request_size, area_size;
+  int area_size;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply, *ptr;
 
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = or_db_value_size (oid);
-  request = (char *) malloc (request_size);
-  if (request)
-    {
-      or_pack_value (request, oid);
+  ptr = or_pack_oid (request, oid_p);
+  ptr = or_pack_int (ptr, cached_num);
 
-      req_error = net_client_request2 (NET_SERVER_QPROC_GET_CURRENT_VALUE,
-				       request, request_size,
-				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				       NULL, 0, &area, &area_size);
-      if (!req_error && area != NULL)
-	{
-	  ptr = or_unpack_int (reply, &area_size);
-	  ptr = or_unpack_int (ptr, &error);
-	  (void) or_unpack_value (area, value);
-	  free_and_init (area);
-	}
-      free_and_init (request);
-    }
-  else
+  req_error = net_client_request2 (NET_SERVER_QPROC_GET_CURRENT_VALUE,
+				   request, OR_ALIGNED_BUF_SIZE (a_request),
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &area, &area_size);
+  if (!req_error && area != NULL)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      (void) or_unpack_value (area, value);
+      free_and_init (area);
     }
 
   return error;
@@ -7668,7 +7659,7 @@ serial_get_current_value (DB_VALUE * value, DB_VALUE * oid)
 
   ENTER_SERVER ();
 
-  error = xserial_get_current_value (NULL, value, oid);
+  error = xserial_get_current_value (NULL, value, oid_p, cached_num);
 
   EXIT_SERVER ();
 
@@ -7687,47 +7678,35 @@ serial_get_current_value (DB_VALUE * value, DB_VALUE * oid)
  * NOTE:
  */
 int
-serial_get_next_value (DB_VALUE * value, DB_VALUE * oid,
-		       int is_auto_increment)
+serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num,
+		       int num_alloc, int is_auto_increment)
 {
 #if defined(CS_MODE)
   int req_error, error = ER_NET_CLIENT_DATA_RECEIVE;
   char *request, *area = NULL;
-  int request_size, area_size;
+  int area_size;
+  OR_ALIGNED_BUF (OR_OID_SIZE + (OR_INT_SIZE * 3)) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply, *ptr;
 
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* packed oid size */
-  request_size = or_db_value_size (oid);
-  /* packed is_auto_increment size */
-  request_size += OR_INT_SIZE;
+  ptr = or_pack_oid (request, oid_p);
+  ptr = or_pack_int (ptr, cached_num);
+  ptr = or_pack_int (ptr, num_alloc);
+  ptr = or_pack_int (ptr, is_auto_increment);
 
-  request = (char *) malloc (request_size);
-  if (request)
+  req_error = net_client_request2 (NET_SERVER_QPROC_GET_NEXT_VALUE,
+				   request, OR_ALIGNED_BUF_SIZE (a_request),
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &area, &area_size);
+  if (!req_error && area != NULL)
     {
-      ptr = or_pack_value (request, oid);
-      ptr = or_pack_int (ptr, is_auto_increment);
-
-      req_error = net_client_request2 (NET_SERVER_QPROC_GET_NEXT_VALUE,
-				       request, request_size,
-				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				       NULL, 0, &area, &area_size);
-      if (!req_error && area != NULL)
-	{
-	  ptr = or_unpack_int (reply, &area_size);
-	  ptr = or_unpack_int (ptr, &error);
-	  (void) or_unpack_value (area, value);
-	  free_and_init (area);
-	}
-      free_and_init (request);
-    }
-  else
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      (void) or_unpack_value (area, value);
+      free_and_init (area);
     }
 
   return error;
@@ -7740,7 +7719,8 @@ serial_get_next_value (DB_VALUE * value, DB_VALUE * oid,
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
-  error = xserial_get_next_value (NULL, value, oid, is_auto_increment, true);
+  error = xserial_get_next_value (NULL, value, oid_p, cached_num, num_alloc,
+				  is_auto_increment, true);
 
   EXIT_SERVER ();
 

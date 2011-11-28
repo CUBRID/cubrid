@@ -1122,8 +1122,6 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   SM_ATTRIBUTE *att;
   OBJ_TEMPASSIGN *a, *exists;
   SM_CLASS *class_;
-  DB_VALUE oid_str_val;
-  char oid_str[36];
   int error = NO_ERROR;
   DB_VALUE val;
   DB_DATA_STATUS data_status;
@@ -1157,7 +1155,6 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
 						     serial_class_mop,
 						     auto_increment_name);
-
 		  if (serial_mop == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1191,23 +1188,19 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 			  goto auto_increment_error;
 			}
 
-		      sprintf (oid_str, "%d %d %d 0",
-			       att->auto_increment->oid_info.oid.pageid,
-			       att->auto_increment->oid_info.oid.slotid,
-			       att->auto_increment->oid_info.oid.volid);
-		      DB_MAKE_STRING (&oid_str_val, oid_str);
-
 		      DB_MAKE_NULL (&val);
 		      /* Do not update LAST_INSERT_ID during executing a trigger. */
 		      if (do_Trigger_involved == true
 			  || obt_Last_insert_id_generated == true)
 			{
-			  error = serial_get_next_value (&val, &oid_str_val,
+			  error = serial_get_next_value (&val, &att->auto_increment->oid_info.oid, 0,	/* no cache */
+							 1,	/* generate one */
 							 GENERATE_SERIAL);
 			}
 		      else
 			{
-			  error = serial_get_next_value (&val, &oid_str_val,
+			  error = serial_get_next_value (&val, &att->auto_increment->oid_info.oid, 0,	/* no cache */
+							 1,	/* generate one */
 							 GENERATE_AUTO_INCREMENT);
 			  if (error == NO_ERROR)
 			    {

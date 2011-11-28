@@ -1628,16 +1628,12 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  filter_predicate->pred_string = strdup (DB_GET_STRING (&val1));
+  filter_predicate->pred_string = strdup (DB_PULL_STRING (&val1));
   if (filter_predicate->pred_string == NULL)
-
     {
-
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_GET_STRING (&val1)) * sizeof (char));
-
+	      strlen (DB_PULL_STRING (&val1)) * sizeof (char));
       goto err;
     }
 
@@ -1843,12 +1839,12 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 			      goto next_child;
 			    }
 
-			  if (strcmp (DB_GET_STRING (&avalue),
+			  if (strcmp (DB_PULL_STRING (&avalue),
 				      SM_FILTER_INDEX_ID) == 0)
 			    {
 			      flag = 0x01;
 			    }
-			  if (strcmp (DB_GET_STRING (&avalue),
+			  if (strcmp (DB_PULL_STRING (&avalue),
 				      SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      flag = 0x02;

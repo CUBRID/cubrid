@@ -1438,7 +1438,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 153 Minimum value exceeds -1.0e36.
 154 Maximum value is invalid.
 155 Specify alter serial option.
-156 Creator or DBA can alter target serial.
+156 The second argument of serial_next_value function should be greater than 0.
 157 Serial values cannot exceeds its minimum or maximum
 158 Internal I/O error for serial
 159 Cannot find the index '%s'.

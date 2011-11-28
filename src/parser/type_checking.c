@@ -1216,13 +1216,33 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       break;
 
     case PT_CURRENT_VALUE:
+      num = 0;
+
+      /* one overload */
+
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_NUMERIC;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_NEXT_VALUE:
       num = 0;
 
       /* one overload */
 
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_CHAR;
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_NUMERIC;
@@ -15692,17 +15712,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  if (arg1 == NULL || arg1->domain.general_info.is_null)
 	    {
 	      if (arg2 == NULL || arg2->domain.general_info.is_null)
-		cmp_result = DB_EQ;
+		{
+		  cmp_result = DB_EQ;
+		}
 	      else
-		cmp_result = DB_NE;
+		{
+		  cmp_result = DB_NE;
+		}
 	    }
 	  else
 	    {
 	      if (arg2 == NULL || arg2->domain.general_info.is_null)
-		cmp_result = DB_NE;
+		{
+		  cmp_result = DB_NE;
+		}
 	      else
-		cmp_result =
-		  (DB_VALUE_COMPARE_RESULT) db_value_compare (arg1, arg2);
+		{
+		  cmp_result = (DB_VALUE_COMPARE_RESULT)
+		    db_value_compare (arg1, arg2);
+		}
 	    }
 	  cmp = (cmp_result == DB_EQ) ? 1 : 0;
 	  break;

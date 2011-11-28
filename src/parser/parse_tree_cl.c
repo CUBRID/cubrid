@@ -42,6 +42,7 @@
 #include "language_support.h"
 #include "object_print.h"
 #include "optimizer.h"
+#include "serial.h"
 
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100
@@ -3231,9 +3232,9 @@ pt_show_binopcode (PT_OP_TYPE n)
     case PT_TO_NUMBER:
       return "to_number ";
     case PT_CURRENT_VALUE:
-      return "current_value ";
+      return "serial_current_value ";
     case PT_NEXT_VALUE:
-      return "next_value ";
+      return "serial_next_value ";
     case PT_EXTRACT:
       return "extract ";
     case PT_CAST:
@@ -9024,18 +9025,22 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+
     case PT_CURRENT_VALUE:
-      q = pt_append_nulstring (parser, q,
-			       (char *) p->info.expr.arg1->info.
-			       value.data_value.str->bytes);
-      q = pt_append_nulstring (parser, q, ".current_value");
+      q = pt_append_nulstring (parser, q, "serial_current_value(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_NEXT_VALUE:
-      q = pt_append_nulstring (parser, q,
-			       (char *) p->info.expr.arg1->info.
-			       value.data_value.str->bytes);
-      q = pt_append_nulstring (parser, q, ".next_value");
+      q = pt_append_nulstring (parser, q, "serial_next_value(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_TO_NUMBER:

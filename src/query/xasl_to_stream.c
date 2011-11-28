@@ -137,7 +137,6 @@ static char *xts_process_xasl_node (char *ptr, const XASL_NODE * xasl);
 static char *xts_process_filter_pred_node (char *ptr,
 					   const PRED_EXPR_WITH_CONTEXT *
 					   pred);
-static char *xts_process_node (char *ptr, const *xasl);
 static char *xts_process_func_pred (char *ptr, const FUNC_PRED * xasl);
 static char *xts_process_cache_attrinfo (char *ptr);
 static char *xts_process_union_proc (char *ptr,

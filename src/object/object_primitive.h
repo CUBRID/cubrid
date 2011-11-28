@@ -64,7 +64,7 @@ typedef struct pr_type
   int (*getmem) (void *memptr, struct tp_domain * domain,
 		 DB_VALUE * value, bool copy);
   /* set DB_VALUE from DB_VALUE */
-  int (*setval) (DB_VALUE * dest, DB_VALUE * src, bool copy);
+  int (*setval) (DB_VALUE * dest, const DB_VALUE * src, bool copy);
   /* return memory size */
   int (*data_lengthmem) (void *memptr, struct tp_domain * domain, int disk);
   /* return DB_VALUE size */

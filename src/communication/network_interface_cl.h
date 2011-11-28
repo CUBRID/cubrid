@@ -332,9 +332,11 @@ extern int qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int qp_get_sys_timestamp (DB_VALUE * value);
 #endif
-extern int serial_get_next_value (DB_VALUE * value, DB_VALUE * oid,
+extern int serial_get_next_value (DB_VALUE * value, OID * oid_p,
+				  int cached_num, int num_alloc,
 				  int is_auto_increment);
-extern int serial_get_current_value (DB_VALUE * value, DB_VALUE * oid);
+extern int serial_get_current_value (DB_VALUE * value, OID * oid_p,
+				     int cached_num);
 extern int serial_decache (OID * oid);
 
 extern int mnt_server_start_stats (bool for_all_trans);

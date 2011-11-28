@@ -3108,12 +3108,12 @@ classobj_make_class_constraints (DB_SET * class_props,
 				  goto structure_error;
 				}
 
-			      if (strcmp (DB_GET_STRING (&avalue),
+			      if (strcmp (DB_PULL_STRING (&avalue),
 					  SM_FILTER_INDEX_ID) == 0)
 				{
 				  flag = 0x01;
 				}
-			      if (strcmp (DB_GET_STRING (&avalue),
+			      if (strcmp (DB_PULL_STRING (&avalue),
 					  SM_FUNCTION_INDEX_ID) == 0)
 				{
 				  flag = 0x02;

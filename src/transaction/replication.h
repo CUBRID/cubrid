@@ -73,11 +73,12 @@ extern void repl_data_udpate_log_dump (FILE * fp, int length, void *data);
 extern void repl_data_delete_log_dump (FILE * fp, int length, void *data);
 #endif
 extern void repl_schema_log_dump (FILE * fp, int length, void *data);
-extern bool repl_class_is_replicated (OID * class_oid);
+extern bool repl_class_is_replicated (const OID * class_oid);
 extern void repl_log_send (void);
-extern int repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid);
-extern int repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
-			    OID * inst_oid, LOG_RECTYPE log_type,
+extern int repl_add_update_lsa (THREAD_ENTRY * thread_p,
+				const OID * inst_oid);
+extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
+			    const OID * inst_oid, LOG_RECTYPE log_type,
 			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue,
 			    REPL_INFO_TYPE repl_type);
 extern int repl_log_insert_schema (THREAD_ENTRY * thread_p,

@@ -3236,7 +3236,7 @@ db_get_oid (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  return (OID *) & value->data.oid;
+  return (OID *) (&value->data.oid);
 }
 
 /*

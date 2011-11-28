@@ -30,12 +30,24 @@
 #include "dbtype.h"
 #include "thread.h"
 
+#define SERIAL_ATTR_NAME          "name"
+#define SERIAL_ATTR_OWNER         "owner"
+#define SERIAL_ATTR_CURRENT_VAL   "current_val"
+#define SERIAL_ATTR_INCREMENT_VAL "increment_val"
+#define SERIAL_ATTR_MAX_VAL       "max_val"
+#define SERIAL_ATTR_MIN_VAL       "min_val"
+#define SERIAL_ATTR_CYCLIC        "cyclic"
+#define SERIAL_ATTR_STARTED       "started"
+#define SERIAL_ATTR_CLASS_NAME    "class_name"
+#define SERIAL_ATTR_ATT_NAME      "att_name"
+#define SERIAL_ATTR_CACHED_NUM    "cached_num"
+
 extern int xserial_get_current_value (THREAD_ENTRY * thread_p,
 				      DB_VALUE * result_num,
-				      const DB_VALUE * oid_str_val);
+				      const OID * oid_p, int cached_num);
 extern int xserial_get_next_value (THREAD_ENTRY * thread_p,
-				   DB_VALUE * result_num,
-				   const DB_VALUE * oid_str_val,
+				   DB_VALUE * result_num, const OID * oid_p,
+				   int cached_num, int num_alloc,
 				   int is_auto_increment,
 				   bool force_set_last_insert_id);
 extern void serial_finalize_cache_pool (void);

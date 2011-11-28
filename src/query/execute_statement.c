@@ -94,20 +94,6 @@
  *
  */
 
-#define SR_CLASS_NAME			CT_SERIAL_NAME
-
-#define SR_ATT_NAME			"name"
-#define SR_ATT_OWNER 			"owner"
-#define SR_ATT_CURRENT_VAL		"current_val"
-#define SR_ATT_INCREMENT_VAL		"increment_val"
-#define SR_ATT_MAX_VAL			"max_val"
-#define SR_ATT_MIN_VAL			"min_val"
-#define SR_ATT_CYCLIC			"cyclic"
-#define SR_ATT_STARTED			"started"
-#define SR_ATT_CLASS_NAME       	"class_name"
-#define SR_ATT_ATT_NAME         	"att_name"
-#define SR_ATT_CACHED_NUM               "cached_num"
-
 #define PT_NODE_SR_NAME(node)			\
 	((node)->info.serial.serial_name->info.name.original)
 #define PT_NODE_SR_START_VAL(node)		\
@@ -224,7 +210,7 @@ do_create_serial_internal (MOP * serial_object,
   /* temporarily disable authorization to access db_serial class */
   AU_DISABLE (au_save);
 
-  serial_class = sm_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -241,7 +227,7 @@ do_create_serial_internal (MOP * serial_object,
 
   /* name */
   db_make_string (&value, serial_name);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error < 0)
     {
@@ -250,32 +236,32 @@ do_create_serial_internal (MOP * serial_object,
 
   /* owner */
   db_make_object (&value, Au_user);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_OWNER, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_OWNER, &value);
   pr_clear_value (&value);
   if (error < 0)
     goto end;
 
   /* current_val */
-  error = dbt_put_internal (obj_tmpl, SR_ATT_CURRENT_VAL, current_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, current_val);
   if (error < 0)
     {
       goto end;
     }
 
   /* increment_val */
-  error = dbt_put_internal (obj_tmpl, SR_ATT_INCREMENT_VAL, inc_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, inc_val);
   if (error < 0)
     {
       goto end;
     }
 
   /* min_val */
-  error = dbt_put_internal (obj_tmpl, SR_ATT_MIN_VAL, min_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, min_val);
   if (error < 0)
     goto end;
 
   /* max_val */
-  error = dbt_put_internal (obj_tmpl, SR_ATT_MAX_VAL, max_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, max_val);
   if (error < 0)
     {
       goto end;
@@ -283,7 +269,7 @@ do_create_serial_internal (MOP * serial_object,
 
   /* cyclic */
   db_make_int (&value, cyclic);	/* always false */
-  error = dbt_put_internal (obj_tmpl, SR_ATT_CYCLIC, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
   pr_clear_value (&value);
   if (error < 0)
     {
@@ -292,7 +278,7 @@ do_create_serial_internal (MOP * serial_object,
 
   /* started */
   db_make_int (&value, started);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_STARTED, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
   pr_clear_value (&value);
   if (error < 0)
     {
@@ -303,7 +289,7 @@ do_create_serial_internal (MOP * serial_object,
   if (class_name)
     {
       db_make_string (&value, class_name);
-      error = dbt_put_internal (obj_tmpl, SR_ATT_CLASS_NAME, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
       if (error < 0)
 	{
@@ -315,7 +301,7 @@ do_create_serial_internal (MOP * serial_object,
   if (att_name)
     {
       db_make_string (&value, att_name);
-      error = dbt_put_internal (obj_tmpl, SR_ATT_ATT_NAME, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
       pr_clear_value (&value);
       if (error < 0)
 	{
@@ -327,7 +313,7 @@ do_create_serial_internal (MOP * serial_object,
   if (cached_num > 0)
     {
       DB_MAKE_INT (&value, cached_num);
-      error = dbt_put_internal (obj_tmpl, SR_ATT_CACHED_NUM, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
       pr_clear_value (&value);
       if (error < 0)
 	{
@@ -404,7 +390,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   /* name */
   db_make_string (&value, serial_name);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   if (error < 0)
     {
       goto update_auto_increment_error;
@@ -412,7 +398,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   /* class name */
   db_make_string (&value, class_name);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_CLASS_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   if (error < 0)
     {
       goto update_auto_increment_error;
@@ -420,7 +406,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   /* att name */
   db_make_string (&value, att_name);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_ATT_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
   if (error < 0)
     {
       goto update_auto_increment_error;
@@ -469,7 +455,7 @@ do_reset_auto_increment_serial (MOP serial_obj)
   db_make_null (&start_value);
   db_make_null (&started_flag);
 
-  error_code = db_get (serial_object, SR_ATT_MIN_VAL, &start_value);
+  error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -482,14 +468,16 @@ do_reset_auto_increment_serial (MOP serial_obj)
       goto error_exit;
     }
 
-  error_code = dbt_put_internal (obj_tmpl, SR_ATT_CURRENT_VAL, &start_value);
+  error_code =
+    dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_value);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
 
   db_make_int (&started_flag, 0);
-  error_code = dbt_put_internal (obj_tmpl, SR_ATT_STARTED, &started_flag);
+  error_code =
+    dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &started_flag);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -592,7 +580,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser,
 
 
   /* get the serial's max from db. */
-  error_code = db_get (serial_object, SR_ATT_MAX_VAL, &max_val);
+  error_code = db_get (serial_object, SERIAL_ATTR_MAX_VAL, &max_val);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -628,20 +616,20 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser,
       goto error_exit;
     }
 
-  error_code = dbt_put_internal (obj_tmpl, SR_ATT_CURRENT_VAL, &new_val);
+  error_code = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &new_val);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
 
-  error_code = dbt_put_internal (obj_tmpl, SR_ATT_MIN_VAL, &new_val);
+  error_code = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_val);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
 
   db_make_int (&started, 0);
-  error_code = dbt_put_internal (obj_tmpl, SR_ATT_STARTED, &started);
+  error_code = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &started);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -702,6 +690,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   DB_IDENTIFIER *db_id;
   char *p;
   int serial_name_size;
+  int save;
 
   if (serial_class_mop == NULL || serial_name == NULL)
     {
@@ -720,7 +709,9 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   db_make_string (&val, p);
 
   er_stack_push ();
-  mop = db_find_unique (serial_class_mop, SR_ATT_NAME, &val);
+  AU_DISABLE (save);
+  mop = db_find_unique (serial_class_mop, SERIAL_ATTR_NAME, &val);
+  AU_ENABLE (save);
   er_stack_pop ();
 
   if (mop)
@@ -757,7 +748,7 @@ do_get_serial_cached_num (int *cached_num, MOP serial_obj)
   DB_VALUE cached_num_val;
   int error;
 
-  error = db_get (serial_obj, SR_ATT_CACHED_NUM, &cached_num_val);
+  error = db_get (serial_obj, SERIAL_ATTR_CACHED_NUM, &cached_num_val);
   if (error != NO_ERROR)
     {
       return error;
@@ -831,7 +822,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * find db_serial_class
    */
-  serial_class = sm_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -1400,7 +1391,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   /*
    * find db_serial
    */
-  serial_class = sm_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -1565,13 +1556,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
     }
 
   /* create auto increment serial object */
-  error = do_create_serial_internal (serial_object,
-				     serial_name,
-				     &start_val,
-				     &inc_val,
-				     &min_val,
-				     &max_val, 0, 0, 0, class_name, att_name);
-
+  error = do_create_serial_internal (serial_object, serial_name, &start_val,
+				     &inc_val, &min_val, &max_val, 0, 0, 0,
+				     class_name, att_name);
   if (error < 0)
     {
       goto end;
@@ -1676,7 +1663,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * find db_serial_class
    */
-  serial_class = sm_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -1700,7 +1687,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = db_get (serial_object, SR_ATT_CLASS_NAME, &class_name_val);
+  error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
       goto end;
@@ -1721,29 +1708,29 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* get old values */
-  error = db_get (serial_object, SR_ATT_CURRENT_VAL, &current_val);
+  error = db_get (serial_object, SERIAL_ATTR_CURRENT_VAL, &current_val);
   if (error < 0)
     {
       goto end;
     }
 
-  error = db_get (serial_object, SR_ATT_INCREMENT_VAL, &old_inc_val);
+  error = db_get (serial_object, SERIAL_ATTR_INCREMENT_VAL, &old_inc_val);
   if (error < 0)
     {
       goto end;
     }
 
-  error = db_get (serial_object, SR_ATT_MAX_VAL, &old_max_val);
+  error = db_get (serial_object, SERIAL_ATTR_MAX_VAL, &old_max_val);
   if (error < 0)
     goto end;
 
-  error = db_get (serial_object, SR_ATT_MIN_VAL, &old_min_val);
+  error = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &old_min_val);
   if (error < 0)
     {
       goto end;
     }
 
-  error = db_get (serial_object, SR_ATT_CACHED_NUM, &old_cached_num);
+  error = db_get (serial_object, SERIAL_ATTR_CACHED_NUM, &old_cached_num);
   if (error < 0)
     {
       cached_num = 0;
@@ -2269,7 +2256,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* current_val */
   if (cur_val_change)
     {
-      error = dbt_put_internal (obj_tmpl, SR_ATT_CURRENT_VAL, &start_val);
+      error =
+	dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
       if (error < 0)
 	{
 	  goto end;
@@ -2279,7 +2267,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* increment_val */
   if (inc_val_change)
     {
-      error = dbt_put_internal (obj_tmpl, SR_ATT_INCREMENT_VAL, &new_inc_val);
+      error =
+	dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
       if (error < 0)
 	{
 	  goto end;
@@ -2289,7 +2278,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* max_val */
   if (max_val_change)
     {
-      error = dbt_put_internal (obj_tmpl, SR_ATT_MAX_VAL, &new_max_val);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
       if (error < 0)
 	{
 	  goto end;
@@ -2299,7 +2288,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* min_val */
   if (min_val_change)
     {
-      error = dbt_put_internal (obj_tmpl, SR_ATT_MIN_VAL, &new_min_val);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
       if (error < 0)
 	{
 	  goto end;
@@ -2310,7 +2299,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (cyclic_change)
     {
       db_make_int (&value, new_cyclic);
-      error = dbt_put_internal (obj_tmpl, SR_ATT_CYCLIC, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
       if (error < 0)
 	{
 	  goto end;
@@ -2320,7 +2309,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* cached num */
   DB_MAKE_INT (&value, cached_num);
-  error = dbt_put_internal (obj_tmpl, SR_ATT_CACHED_NUM, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
   if (error < 0)
     {
       goto end;
@@ -2406,7 +2395,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   db_make_null (&class_name_val);
 
-  serial_class = sm_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -2426,7 +2415,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = db_get (serial_object, SR_ATT_CLASS_NAME, &class_name_val);
+  error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
       goto end;
@@ -5080,7 +5069,7 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 		pt_init_assignments_helper (parser, &ea,
 					    statement->info.update.
 					    assignment);
-		while (assign = pt_get_next_assignment (&ea))
+		while ((assign = pt_get_next_assignment (&ea)) != NULL)
 		  {
 		    if (assign->info.name.spec_id == flat->info.name.spec_id)
 		      {
@@ -12671,8 +12660,7 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
   MOP retobj;
   int error;
   PARTITION_INSERT_CACHE *picwork;
-  char oid_str[36];
-  DB_VALUE next_val, auto_inc_val, oid_str_val;
+  DB_VALUE next_val, auto_inc_val;
   int r = 0;
   char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
@@ -12701,7 +12689,7 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 		{
 		  if (serial_class_mop == NULL)
 		    {
-		      serial_class_mop = sm_find_class (SR_CLASS_NAME);
+		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 		    }
 
 		  class_name = sm_class_name (dbattr->class_mop);
@@ -12728,22 +12716,18 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 		{
 		  db_make_null (&next_val);
 
-		  sprintf (oid_str, "%d %d %d 0",
-			   dbattr->auto_increment->oid_info.oid.pageid,
-			   dbattr->auto_increment->oid_info.oid.slotid,
-			   dbattr->auto_increment->oid_info.oid.volid);
-		  db_make_string (&oid_str_val, oid_str);
-
 		  /* Do not update LAST_INSERT_ID during executing a trigger. */
 		  if (do_Trigger_involved == true
 		      || obt_Last_insert_id_generated == true)
 		    {
-		      error = serial_get_next_value (&next_val, &oid_str_val,
+		      error = serial_get_next_value (&next_val, &dbattr->auto_increment->oid_info.oid, 0,	/* no cache */
+						     1,	/* generate one */
 						     GENERATE_SERIAL);
 		    }
 		  else
 		    {
-		      error = serial_get_next_value (&next_val, &oid_str_val,
+		      error = serial_get_next_value (&next_val, &dbattr->auto_increment->oid_info.oid, 0,	/* no cache */
+						     1,	/* generate one */
 						     GENERATE_AUTO_INCREMENT);
 		      if (error == NO_ERROR)
 			{

@@ -2958,6 +2958,9 @@ extern int db_get_serial_current_value (const char *serial_name,
 					DB_VALUE * serial_value);
 extern int db_get_serial_next_value (const char *serial_name,
 				     DB_VALUE * serial_value);
+extern int db_get_serial_next_value_ex (const char *serial_name,
+					DB_VALUE * serial_value,
+					int num_alloc);
 
 /* Instance manipulation */
 extern DB_OBJECT *db_create (DB_OBJECT * obj);

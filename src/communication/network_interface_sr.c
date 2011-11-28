@@ -6263,17 +6263,20 @@ sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 			   char *request, int reqlen)
 {
   int error_status = NO_ERROR;
-  DB_VALUE oid, cur_val;
-  char *buffer;
+  DB_VALUE cur_val;
+  OID oid;
+  int cached_num;
   int buffer_length;
+  char *buffer;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *p;
 
-  (void) or_unpack_value (request, &oid);
-  error_status = xserial_get_current_value (thread_p, &cur_val, &oid);
-  db_value_clear (&oid);
+  p = or_unpack_oid (request, &oid);
+  p = or_unpack_int (p, &cached_num);
 
+  error_status = xserial_get_current_value (thread_p, &cur_val, &oid,
+					    cached_num);
   if (error_status != NO_ERROR)
     {
       error_status = er_errid ();
@@ -6331,24 +6334,26 @@ void
 sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
-  DB_VALUE oid, next_val;
+  DB_VALUE next_val;
+  OID oid;
   char *buffer;
-  int is_auto_increment;
+  int cached_num, num_alloc, is_auto_increment;
   int buffer_length, errid;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *p;
 
-  p = or_unpack_value (request, &oid);
+  p = or_unpack_oid (request, &oid);
+  p = or_unpack_int (p, &cached_num);
+  p = or_unpack_int (p, &num_alloc);
   p = or_unpack_int (p, &is_auto_increment);
 
   /*
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
-  errid = xserial_get_next_value (thread_p, &next_val, &oid,
-				  is_auto_increment, true);
-  db_value_clear (&oid);
+  errid = xserial_get_next_value (thread_p, &next_val, &oid, cached_num,
+				  num_alloc, is_auto_increment, true);
 
   if (errid != NO_ERROR)
     {

@@ -34,7 +34,7 @@
 
 /* Tokens.  */
 #ifndef YYTOKENTYPE
-#define YYTOKENTYPE
+# define YYTOKENTYPE
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
 enum yytokentype
@@ -695,6 +695,8 @@ static FUNCTION_MAP functions[] = {
   {"rpad", PT_RPAD},
   {"rtrim", PT_RTRIM},
   {"sec_to_time", PT_SECTOTIME},
+  {"serial_current_value", PT_CURRENT_VALUE},
+  {"serial_next_value", PT_NEXT_VALUE},
   {"sign", PT_SIGN},
   {"sin", PT_SIN},
   {"sqrt", PT_SQRT},
@@ -959,7 +961,7 @@ void pop_msg (void);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 453 "../../src/parser/csql_grammar.y"
+#line 455 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -970,11 +972,11 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2604 of glr.c.  */
-#line 974 "../../src/parser/csql_grammar.h"
+/* Line 2616 of glr.c.  */
+#line 976 "../../src/parser/csql_grammar.h"
 YYSTYPE;
-#define YYSTYPE_IS_DECLARED 1
-#define YYSTYPE_IS_TRIVIAL 1
+# define YYSTYPE_IS_DECLARED 1
+# define YYSTYPE_IS_TRIVIAL 1
 #endif
 
 #if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
@@ -987,8 +989,8 @@ typedef struct YYLTYPE
   int last_column;
 
 } YYLTYPE;
-#define YYLTYPE_IS_DECLARED 1
-#define YYLTYPE_IS_TRIVIAL 1
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
 #endif
 
 

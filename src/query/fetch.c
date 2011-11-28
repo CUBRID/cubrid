@@ -48,6 +48,7 @@
 #include "fetch.h"
 #include "list_file.h"
 #include "string_opfunc.h"
+#include "server_interface.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -102,6 +103,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_MID:
     case T_DATE_ADD:
     case T_DATE_SUB:
+    case T_NEXT_VALUE:
 
       /* fetch lhs, rhs, and third value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
@@ -168,6 +170,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_TIMEDIFF:
     case T_DATE_FORMAT:
     case T_STR_TO_DATE:
+    case T_CURRENT_VALUE:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -407,8 +410,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_LAST_DAY:
-    case T_CURRENT_VALUE:
-    case T_NEXT_VALUE:
 #if defined(ENABLE_UNUSED_FUNCTION)
     case T_UNPLUS:
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -2084,18 +2085,48 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CURRENT_VALUE:
-      if (xserial_get_current_value (thread_p, arithptr->value, peek_right)
-	  != NO_ERROR)
+      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  goto error;
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  OID *serial_oid;
+	  int cached_num;
+
+	  serial_oid = DB_GET_OID (peek_left);
+	  cached_num = DB_GET_INTEGER (peek_right);
+
+	  if (xserial_get_current_value (thread_p, arithptr->value,
+					 serial_oid, cached_num) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 
     case T_NEXT_VALUE:
-      if (xserial_get_next_value (thread_p, arithptr->value, peek_right,
-				  false, false) != NO_ERROR)
+      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right)
+	  || DB_IS_NULL (peek_third))
 	{
-	  goto error;
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  OID *serial_oid;
+	  int cached_num;
+	  int num_alloc;
+
+	  serial_oid = DB_GET_OID (peek_left);
+	  cached_num = DB_GET_INTEGER (peek_right);
+	  num_alloc = DB_GET_INTEGER (peek_third);
+
+	  if (xserial_get_next_value (thread_p, arithptr->value, serial_oid,
+				      cached_num, num_alloc, GENERATE_SERIAL,
+				      false) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 

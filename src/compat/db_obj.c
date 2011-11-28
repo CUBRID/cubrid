@@ -1832,8 +1832,6 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
   int result = NO_ERROR;
   MOP serial_class_mop, serial_mop;
   DB_IDENTIFIER serial_obj_id;
-  char oid_str[36];
-  DB_VALUE oid_str_val;
   int cached_num;
 
   if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL)
@@ -1853,10 +1851,9 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 	{
 	  cached_num = 0;
 	}
-      sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
-	       serial_obj_id.slotid, serial_obj_id.volid, cached_num);
-      db_make_string (&oid_str_val, oid_str);
-      if (serial_get_current_value (serial_value, &oid_str_val) != NO_ERROR)
+
+      if (serial_get_current_value (serial_value, &serial_obj_id,
+				    cached_num) != NO_ERROR)
 	{
 	  result = er_errid ();
 	}
@@ -1880,14 +1877,26 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 int
 db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value)
 {
+  return db_get_serial_next_value_ex (serial_name, serial_value, 1);
+}
+
+/*
+ * db_get_serial_next_value_ex() -
+ * returns: error code
+ * serial_name(in):
+ * serial_value(out):
+ */
+int
+db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value,
+			     int num_alloc)
+{
   int result = NO_ERROR;
   MOP serial_class_mop, serial_mop;
   DB_IDENTIFIER serial_obj_id;
-  char oid_str[36];
-  DB_VALUE oid_str_val;
   int cached_num;
 
-  if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL)
+  if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL
+      || num_alloc <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER,
 	      0);
@@ -1904,11 +1913,8 @@ db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value)
 	{
 	  cached_num = 0;
 	}
-      sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
-	       serial_obj_id.slotid, serial_obj_id.volid, cached_num);
-      db_make_string (&oid_str_val, oid_str);
-      if (serial_get_next_value (serial_value, &oid_str_val, GENERATE_SERIAL)
-	  != NO_ERROR)
+      if (serial_get_next_value (serial_value, &serial_obj_id, cached_num,
+				 num_alloc, GENERATE_SERIAL) != NO_ERROR)
 	{
 	  result = er_errid ();
 	}

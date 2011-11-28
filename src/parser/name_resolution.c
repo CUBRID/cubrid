@@ -41,6 +41,9 @@
 #include "jsp_cl.h"
 #include "execute_schema.h"
 #include "schema_manager.h"
+#include "transform.h"
+#include "execute_statement.h"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -2819,6 +2822,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       /* don't revisit leaves */
       *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_NEXT_VALUE
+	  || node->info.expr.op == PT_CURRENT_VALUE)
+	{
+	  /* don't walk leaves */
+	  *continue_walk = PT_LIST_WALK;
+	}
       break;
 
     default:
@@ -6873,4 +6885,34 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
     default:
       return (PT_OP_TYPE) 0;
     }
+}
+
+DB_OBJECT *
+pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
+{
+  char *serial_name, *t;
+  DB_OBJECT *serial_class_mop, *serial_mop;
+  DB_IDENTIFIER serial_obj_id;
+
+  if (serial_name_node == NULL || serial_name_node->node_type != PT_NAME)
+    {
+      return NULL;
+    }
+
+  serial_name = (char *) serial_name_node->info.name.original;
+  t = strchr (serial_name, '.');	/* FIXME */
+  serial_name = (t != NULL) ? (t + 1) : serial_name;
+
+  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+				     serial_name);
+#if 0
+  if (serial_mop == NULL)
+    {
+      PT_ERRORmf (parser, serial_name_node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED, serial_name);
+    }
+#endif
+
+  return serial_mop;
 }

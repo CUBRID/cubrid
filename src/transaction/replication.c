@@ -158,7 +158,7 @@ repl_schema_log_dump (FILE * fp, int length, void *data)
  *     transaction commits.
  */
 bool
-repl_class_is_replicated (OID * class_oid)
+repl_class_is_replicated (const OID * class_oid)
 {
   if (OID_ISNULL (class_oid))
     return false;
@@ -251,7 +251,7 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
  *     log after heap_update(). This is done by locator_update_force().
  */
 int
-repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
+repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -318,9 +318,10 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 int
-repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
-		 LOG_RECTYPE log_type, LOG_RCVINDEX rcvindex,
-		 DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
+repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
+		 const OID * inst_oid, LOG_RECTYPE log_type,
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue,
+		 REPL_INFO_TYPE repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -382,7 +383,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
   /* make the common info for the data replication */
   if (log_type == LOG_REPLICATION_DATA)
     {
-      class_name = heap_get_class_name (thread_p, (const OID *) class_oid);
+      class_name = heap_get_class_name (thread_p, class_oid);
       if (class_name == NULL)
 	{
 	  error = er_errid ();

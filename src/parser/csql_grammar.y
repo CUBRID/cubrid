@@ -182,6 +182,8 @@ static FUNCTION_MAP functions[] = {
   {"rpad", PT_RPAD},
   {"rtrim", PT_RTRIM},
   {"sec_to_time", PT_SECTOTIME},
+  {"serial_current_value", PT_CURRENT_VALUE},
+  {"serial_next_value", PT_NEXT_VALUE},
   {"sign", PT_SIGN},
   {"sin", PT_SIN},
   {"sqrt", PT_SQRT},
@@ -14533,9 +14535,9 @@ path_expression
 		DBG_PRINT}}
 	| path_id_list				%dprec 2
 		{{
-
 			PT_NODE *dot;
 			PT_NODE *serial_value = NULL;
+			DB_OBJECT *serial_mop;
 
 			dot = $1;
 			if (dot
@@ -14543,37 +14545,25 @@ path_expression
 			    && dot->info.dot.arg2 && dot->info.dot.arg2->node_type == PT_NAME)
 			  {
 			    PT_NODE *name = dot->info.dot.arg2;
-			    PT_NODE *name_str = NULL;
-			    unsigned long save_custom;
 
 			    if (intl_identifier_casecmp (name->info.name.original, "current_value") == 0 ||
 				intl_identifier_casecmp (name->info.name.original, "currval") == 0)
 			      {
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_CURRENT_VALUE;
-				name_str = parser_new_node (this_parser, PT_VALUE);
+				serial_value->info.expr.arg1
+				  = dot->info.dot.arg1;
+				dot->info.dot.arg1 = NULL; /* cut */
 
-				save_custom = this_parser->custom_print;
-				this_parser->custom_print |= PT_SUPPRESS_QUOTES;
-
-				name_str->info.value.data_value.str =
-				  pt_print_bytes (this_parser, dot->info.dot.arg1);
-				this_parser->custom_print = save_custom;
-
-				name_str->info.value.data_value.str->length =
-				  strlen ((char *) name_str->info.value.data_value.str->bytes);
-				name_str->info.value.text = (char *)
-				  name_str->info.value.data_value.str->bytes;
-				name_str->type_enum = PT_TYPE_CHAR;
-				name_str->info.value.string_type = ' ';
-				serial_value->info.expr.arg1 = name_str;
 				serial_value->info.expr.arg2 = NULL;
+
 				PICE (serial_value);
 				if (parser_serial_check == 0)
 				    PT_ERRORmf(this_parser, serial_value,
 					MSGCAT_SET_PARSER_SEMANTIC,
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
+
 				parser_free_node (this_parser, dot);
 				dot = serial_value;
 
@@ -14585,29 +14575,29 @@ path_expression
 			      {
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_NEXT_VALUE;
-				name_str = parser_new_node (this_parser, PT_VALUE);
 
-				save_custom = this_parser->custom_print;
-				this_parser->custom_print |= PT_SUPPRESS_QUOTES;
+				serial_value->info.expr.arg1
+				  = dot->info.dot.arg1;
+				dot->info.dot.arg1 = NULL; /* cut */
 
-				name_str->info.value.data_value.str =
-				  pt_print_bytes (this_parser, dot->info.dot.arg1);
-				this_parser->custom_print = save_custom;
+				serial_value->info.expr.arg2 
+				  = parser_new_node (this_parser, PT_VALUE);
+				if (serial_value->info.expr.arg2)
+				  {
+				    PT_NODE *arg2;
 
-				name_str->info.value.data_value.str->length =
-				  strlen ((char *) name_str->info.value.data_value.str->bytes);
-				name_str->info.value.text = (char *)
-				  name_str->info.value.data_value.str->bytes;
-				name_str->type_enum = PT_TYPE_CHAR;
-				name_str->info.value.string_type = ' ';
-				serial_value->info.expr.arg1 = name_str;
-				serial_value->info.expr.arg2 = NULL;
+				    arg2 = serial_value->info.expr.arg2;
+				    arg2->type_enum = PT_TYPE_INTEGER;
+				    arg2->info.value.data_value.i = 1;
+				  }
+
 				PICE (serial_value);
 				if (parser_serial_check == 0)
 				    PT_ERRORmf(this_parser, serial_value,
 					MSGCAT_SET_PARSER_SEMANTIC,
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
+
 				parser_free_node (this_parser, dot);
 				dot = serial_value;
 
@@ -18662,7 +18652,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  return NULL;
 	}
       return parser_make_expression (key->op, NULL, NULL, NULL);
-      break;
 
     case PT_ROW_COUNT:
     case PT_LAST_INSERT_ID:
@@ -18673,7 +18662,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       parser_cannot_cache = true;
       parser_cannot_prepare = true;
       return parser_make_expression (key->op, NULL, NULL, NULL);
-      break;
 
       /* arg 0 or 1 */
     case PT_RAND:
@@ -18733,13 +18721,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SECTOTIME:
     case PT_QUARTERF:
     case PT_EXEC_STATS:
+    case PT_CURRENT_VALUE:
       if (c != 1)
         {
 	  return NULL;
 	}
       a1 = args;
       return parser_make_expression (key->op, a1, NULL, NULL);
-      break;
+
     case PT_UNIX_TIMESTAMP:
       if (c > 1)
 	{
@@ -18754,7 +18743,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	{
 	  return parser_make_expression (key->op, NULL, NULL, NULL);
 	}
-      break;
 
       /* arg 2 */
     case PT_LOG:
@@ -18777,7 +18765,34 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a2 = a1->next;
       a1->next = NULL;
       return parser_make_expression (key->op, a1, a2, NULL);
-      break;
+
+    case PT_NEXT_VALUE:
+      if (c == 1)
+	{
+	  a1 = args;
+
+	  /* default value for the second argument is 1. */
+	  a2 = parser_new_node (this_parser, PT_VALUE);
+	  if (a2)
+	    {
+	      a2->type_enum = PT_TYPE_INTEGER;
+	      a2->info.value.data_value.i = 1;
+	    }
+
+	  return parser_make_expression (key->op, a1, a2, NULL);
+	}
+      else if (c == 2)
+	{
+	  a1 = args;
+	  a2 = a1->next;
+	  a1->next = NULL;
+
+	  return parser_make_expression (key->op, a1, a2, NULL);
+	}
+      else
+	{
+	  return NULL;
+	}
 
     case PT_ATAN:
       if (c == 1)
@@ -18793,8 +18808,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  return parser_make_expression (PT_ATAN2, a1, a2, NULL);
 	}
       else
-	return NULL;
-      break;
+	{
+	  return NULL;
+	}
 
       /* arg 3 */
     case PT_SUBSTRING_INDEX:
@@ -18808,7 +18824,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a3 = a2->next;
       a1->next = a2->next = NULL;
       return parser_make_expression (key->op, a1, a2, a3);
-      break;
 
       /* arg 1 + default */
     case PT_ROUND:
@@ -18832,7 +18847,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a2 = a1->next;
       a1->next = NULL;
       return parser_make_expression (key->op, a1, a2, NULL);
-      break;
 
       /* arg 2 + default */
     case PT_INSTR:		/* instr, instrb */
@@ -18859,7 +18873,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a3 = a2->next;
       a1->next = a2->next = NULL;
       return parser_make_expression (key->op, a1, a2, a3);
-      break;
 
       /* arg 1 or 2 */
     case PT_WEEKF:
@@ -18876,14 +18889,13 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	   }
 	  return parser_make_expression (key->op, a1, a2, NULL);
 	}
-	else
+      else
 	{
 	  a1 = args;
 	  a2 = a1->next;
 	  a1->next = NULL;
 	  return parser_make_expression (key->op, a1, a2, NULL);
 	}
-      break;
 
     case PT_LTRIM:
     case PT_RTRIM:
@@ -18897,7 +18909,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	a2 = a1->next;
       a1->next = NULL;
       return parser_make_expression (key->op, a1, a2, a3);
-      break;
 
       /* arg 1 or 2 */
     case PT_TO_NUMBER:
@@ -18926,7 +18937,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	a2 = a1->next;
       a1->next = NULL;
       return parser_make_expression (key->op, a1, a2, a3);
-      break;
 
       /* arg 2 or 3 */
     case PT_LPAD:
@@ -18954,7 +18964,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	}
 
       return node;
-      break;
 
     case PT_ORDERBY_NUM:
       if (c != 0)
@@ -18974,7 +18983,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       parser_groupby_exception = PT_ORDERBY_NUM;
       return node;
-      break;
 
     case PT_INST_NUM:
       if (c != 0)
@@ -18995,7 +19003,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       parser_groupby_exception = PT_INST_NUM;
       return node;
-      break;
 
     case PT_INCR:
     case PT_DECR:
@@ -19040,7 +19047,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       }
 
       return a1;
-      break;
 
     case PT_TO_CHAR:
     case PT_TO_DATE:
@@ -19075,7 +19081,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       return parser_make_expression (key->op, a1, a2,
 				     parser_make_date_lang (c, a3));
-      break;
 
     case PT_BIT_TO_BLOB:
     case PT_CHAR_TO_BLOB:
@@ -19109,7 +19114,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
          }
        */
       return parser_make_expression (key->op, a1, NULL, NULL);
-      break;
 
     case PT_BLOB_TO_BIT:
     case PT_CLOB_TO_CHAR:
@@ -19142,7 +19146,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  a1->next = NULL;
 	}
       return parser_make_expression (key->op, a1, a2, NULL);
-      break;
 
     case PT_BLOB_FROM_FILE:
     case PT_CLOB_FROM_FILE:
@@ -19182,7 +19185,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    }
 	  return node;
 	}
-      break;
 
     case PT_DECODE:
       {
@@ -19280,7 +19282,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
 	return node;
       }
-      break;
 
     case PT_LEAST:
     case PT_GREATEST:
@@ -19346,7 +19347,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
 	return expr;
       }
-      break;
 
     case PT_CONCAT:
     case PT_CONCAT_WS:
@@ -19462,7 +19462,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
 	return expr;
       }
-      break;
 
     case PT_LOCATE:
       if (c < 2 || c > 3)
@@ -19538,10 +19537,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INSTNUM_COMPATIBILITY_ERR,
 		     "GROUPBY_NUM()", "GROUPBY_NUM()");
-
       return node;
-
-      break;
 
     case PT_LIST_DBS:
       if (c != 0)
@@ -19653,3 +19649,4 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
 	}
     }
 }
+

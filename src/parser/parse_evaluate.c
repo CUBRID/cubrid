@@ -1323,13 +1323,11 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
   PT_TYPE_ENUM type1, type2, type3;
   TP_DOMAIN *domain;
   PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
-  MOP serial_class_mop, serial_mop;
-  DB_IDENTIFIER serial_obj_id;
+  MOP serial_mop;
+  DB_IDENTIFIER *serial_oid_p;
+  const char *serial_name = NULL;
   int cached_num;
-  DB_VALUE oid_str_val;
-  int found = 0, r = 0;
-  char *serial_name = 0, *t = 0;
-  char oid_str[36];
+  int r = 0;
   int error_code;
   bool opd2_set_null = false;
 
@@ -1423,35 +1421,42 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	  if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
 	    {
-	      serial_name = (char *) arg1->info.value.data_value.str->bytes;
-	      serial_name = (t = strchr (serial_name, '.'))
-		? t + 1 : serial_name;
-
-	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-	      serial_mop = do_get_serial_obj_id (&serial_obj_id,
-						 serial_class_mop,
-						 serial_name);
+	      serial_mop = pt_resolve_serial (parser, arg1);
 	      if (serial_mop != NULL)
 		{
+		  serial_oid_p = db_identifier (serial_mop);
 		  if (do_get_serial_cached_num (&cached_num,
 						serial_mop) != NO_ERROR)
 		    {
 		      cached_num = 0;
 		    }
 
-		  sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
-			   serial_obj_id.slotid, serial_obj_id.volid,
-			   cached_num);
-		  db_make_string (&oid_str_val, oid_str);
 		  if (op == PT_CURRENT_VALUE)
 		    {
 		      error = serial_get_current_value (db_values,
-							&oid_str_val);
+							serial_oid_p,
+							cached_num);
 		    }
 		  else
 		    {
-		      error = serial_get_next_value (db_values, &oid_str_val,
-						     GENERATE_SERIAL);
+		      int num_alloc;
+
+		      val = pt_value_to_db (parser, arg2);
+		      num_alloc = DB_GET_INTEGER (val);
+		      if (num_alloc < 1)
+			{
+			  PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
+				     MSGCAT_SEMANTIC_SERIAL_NUM_ALLOC_INVALID);
+			  return;
+			}
+		      else
+			{
+			  error = serial_get_next_value (db_values,
+							 serial_oid_p,
+							 cached_num,
+							 num_alloc,
+							 GENERATE_SERIAL);
+			}
 		    }
 
 		  if (error != NO_ERROR)
@@ -1473,15 +1478,16 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 			  error_code = MSGCAT_SEMANTIC_SERIAL_IO_ERROR;
 			  break;
 			}
+
 		      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-				  error_code, serial_name);
+				  error_code, arg1->info.name.original);
 		    }
 		}
 	      else
 		{
 		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
 			      MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED,
-			      serial_name);
+			      arg1->info.name.original);
 		}
 	      return;
 	    }

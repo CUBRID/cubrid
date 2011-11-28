@@ -64,6 +64,7 @@
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
+#include "server_interface.h"
 
 /* For getting and dumping attributes */
 #include "language_support.h"
@@ -18209,9 +18210,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
   RECDES recdes;		/* Used to obtain attribute name */
   char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   HEAP_ATTRVALUE *value;
-  DB_VALUE dbvalue_numeric, *dbvalue, oid_str_val, key_val;
+  DB_VALUE dbvalue_numeric, *dbvalue, key_val;
   OR_ATTRIBUTE *att;
-  char oid_str[36];
   OID serial_class_oid;
   LC_FIND_CLASSNAME status;
   OR_CLASSREP *classrep;
@@ -18311,15 +18311,12 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		}
 	    }
 
-	  sprintf (oid_str, "%d %d %d 0", att->serial_obj.pageid,
-		   att->serial_obj.slotid, att->serial_obj.volid);
-	  DB_MAKE_STRING (&oid_str_val, oid_str);
-
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER)
 	      || (att->type == DB_TYPE_BIGINT))
 	    {
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric,
-					  &oid_str_val, true,
+	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &att->serial_obj, 0,	/* no cache */
+					  1,	/* generate one value */
+					  GENERATE_AUTO_INCREMENT,
 					  false) != NO_ERROR)
 		{
 		  return ER_FAILED;
@@ -18334,8 +18331,10 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	    }
 	  else if (att->type == DB_TYPE_NUMERIC)
 	    {
-	      if (xserial_get_next_value (thread_p, dbvalue, &oid_str_val,
-					  true, false) != NO_ERROR)
+	      if (xserial_get_next_value (thread_p, dbvalue, &att->serial_obj, 0,	/* no cache */
+					  1,	/* generate one value */
+					  GENERATE_AUTO_INCREMENT,
+					  false) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}

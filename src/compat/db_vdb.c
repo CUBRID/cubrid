@@ -960,8 +960,8 @@ db_get_errors (DB_SESSION * session)
  *
  * note : Do not free this list of errors.
  */
-DB_SESSION_ERROR *db_get_next_error
-  (DB_SESSION_ERROR * errors, int *line, int *col)
+DB_SESSION_ERROR *
+db_get_next_error (DB_SESSION_ERROR * errors, int *line, int *col)
 {
   DB_SESSION_ERROR *result;
   int stmt_no;
@@ -1020,8 +1020,8 @@ db_get_warnings (DB_SESSION * session)
  *
  * note : Do not free this list of warnings.
  */
-DB_SESSION_WARNING *db_get_next_warning
-  (DB_SESSION_WARNING * warnings, int *line, int *col)
+DB_SESSION_WARNING *
+db_get_next_warning (DB_SESSION_WARNING * warnings, int *line, int *col)
 {
   DB_SESSION_WARNING *result;
   int stmt_no;

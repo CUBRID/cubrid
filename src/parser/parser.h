@@ -808,10 +808,13 @@ extern "C"
   extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser,
 					PT_NODE * expr);
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
-  extern PT_NODE *pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser,
+  extern PT_NODE *pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT *
+						       parser,
 						       PT_NODE *
 						       sort_spec_list);
 
+  extern DB_OBJECT *pt_resolve_serial (PARSER_CONTEXT * parser,
+				       PT_NODE * serial_name_node);
 #ifdef __cplusplus
 }
 #endif
