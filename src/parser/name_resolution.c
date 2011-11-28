@@ -6906,13 +6906,6 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
 				     serial_name);
-#if 0
-  if (serial_mop == NULL)
-    {
-      PT_ERRORmf (parser, serial_name_node, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED, serial_name);
-    }
-#endif
 
   return serial_mop;
 }
