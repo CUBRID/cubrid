@@ -938,6 +938,7 @@ logwr_archive_active_log (void)
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;
   LOG_PAGEID pageid;
+  LOG_LSA saved_append_lsa;
   LOG_PHY_PAGEID ar_phy_pageid = NULL_PAGEID, phy_pageid = NULL_PAGEID;
   int vdes = NULL_VOLDES;
   int error_code = NO_ERROR;
@@ -1122,8 +1123,17 @@ logwr_archive_active_log (void)
   logwr_Gl.last_arv_num++;
   logwr_Gl.last_arv_fpageid = logwr_Gl.last_arv_lpageid + 1;
 
+  /* set append lsa as last archive logical pageid */
+  /* in order to prevent log applier reading an immature active log page. */
+  LSA_COPY (&saved_append_lsa, &logwr_Gl.hdr.append_lsa);
+  logwr_Gl.hdr.append_lsa.pageid = logwr_Gl.last_arv_lpageid;
+  logwr_Gl.hdr.append_lsa.offset = NULL_OFFSET;
+
   /* Flush the log header to reflect the archive */
   logwr_flush_header_page ();
+
+  /* restore append lsa */
+  LSA_COPY (&logwr_Gl.hdr.append_lsa, &saved_append_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_ARCHIVE_CREATED, 3,
 	  archive_name, arvhdr->fpageid,
