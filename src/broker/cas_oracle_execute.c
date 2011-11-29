@@ -595,6 +595,13 @@ set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	  columns[i].db_type = SQLT_RDD;
 	  data = &columns[i].data.p;
 	  break;
+	case SQLT_BIN:
+	  columns[i].size = columns[i].size + 1;
+	  columns[i].db_type = SQLT_BIN;
+	  columns[i].data.p = MALLOC (columns[i].size);
+	  columns[i].rlen = columns[i].size;
+	  data = columns[i].data.p;
+	  break;
 	case SQLT_VST:
 	  columns[i].data.p = NULL;
 	  ret = OCIStringResize (ORA_ENV, ORA_ERR, columns[i].size + 1,
@@ -1808,6 +1815,12 @@ ora_value_to_net_buf (void *value, int type, bool null, int size,
 	memset (v->p, 0, size);
 	return 4 + size + 1;
       }
+    case SQLT_BIN:
+      {
+	add_res_data_bytes (net_buf, v->p, size, col_type);
+	memset (v->p, 0, size);
+	return 4 + size + 1;
+      }
     case SQLT_VST:
       {
 	OCIString *ocistr = (OCIString *) v->p;
@@ -2130,6 +2143,7 @@ ux_free_result (void *result)
 	      OCIStringResize (ORA_ENV, ORA_ERR, 0,
 			       (OCIString **) & r->columns[i].data.p);
 	      break;
+	    case SQLT_BIN:
 	    case SQLT_LNG:
 	    case SQLT_AFC:
 	    case SQLT_STR:
@@ -2179,6 +2193,7 @@ ux_db_type_to_cas_type (int db_type)
     case SQLT_CLOB:
     case SQLT_RDD:
       return CCI_U_TYPE_STRING;
+    case SQLT_BIN:
     case SQLT_BLOB:
       return CCI_U_TYPE_VARBIT;
     default:
