@@ -5238,9 +5238,6 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
   int recset_length;
   char *recredo_data = NULL;
   int recredo_length;
-#if defined(SERVER_MODE)
-  bool old_check_interrupt;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
   char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -5265,10 +5262,6 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
     }
 
   copy_rec.data = NULL;
-
-#if defined(SERVER_MODE)
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   leaf_pg = pgbuf_fix (thread_p, leaf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		       PGBUF_UNCONDITIONAL_LATCH);
@@ -5876,10 +5869,6 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
     }
 
 end:
-
-#if defined(SERVER_MODE)
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
   return ret;
 
@@ -6872,6 +6861,13 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   int oid_size;
   bool curr_key_lock_commit_duration = false;
   LOCK next_lock;
+#if defined(SERVER_MODE)
+  bool old_check_interrupt;
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+#endif /* SERVER_MODE */
 
   copy_rec.data = NULL;
   copy_rec1.data = NULL;
@@ -6983,7 +6979,13 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       /* nothing more to do -- this is not an error */
       pgbuf_unfix_and_init (thread_p, P);
+
       mnt_bt_deletes (thread_p);
+
+#if defined(SERVER_MODE)
+      (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
+
       return key;
     }
 
@@ -7387,11 +7389,20 @@ start_point:
 		}
 	      else
 		{
+		  assert (false);	/* is error ? */
+
+		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  top_op_active = 0;
+
 		  pgbuf_unfix_and_init (thread_p, P);
 		  pgbuf_unfix_and_init (thread_p, Q);
 		  pgbuf_unfix_and_init (thread_p, Right);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-		  top_op_active = 0;
+
+#if defined(SERVER_MODE)
+		  (void) thread_set_check_interrupt (thread_p,
+						     old_check_interrupt);
+#endif /* SERVER_MODE */
+
 		  return NULL;
 		}
 
@@ -7518,11 +7529,21 @@ start_point:
 		}
 	      else
 		{
+		  assert (false);
+
+		  /* do not unfix P, Q, R before topop rollback */
+		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  top_op_active = 0;
+
 		  pgbuf_unfix_and_init (thread_p, P);
 		  pgbuf_unfix_and_init (thread_p, Q);
 		  pgbuf_unfix_and_init (thread_p, Left);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-		  top_op_active = 0;
+
+#if defined(SERVER_MODE)
+		  (void) thread_set_check_interrupt (thread_p,
+						     old_check_interrupt);
+#endif /* SERVER_MODE */
+
 		  return NULL;
 		}
 
@@ -8182,9 +8203,20 @@ key_deletion:
     }
 
   mnt_bt_deletes (thread_p);
+
+#if defined(SERVER_MODE)
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
+
   return key;
 
 error:
+
+  /* do not unfix P, Q, R before topop rollback */
+  if (top_op_active)
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+    }
 
   if (P)
     {
@@ -8233,10 +8265,9 @@ error:
       pgbuf_unfix_and_init (thread_p, Right);
     }
 
-  if (top_op_active)
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-    }
+#if defined(SERVER_MODE)
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -8333,9 +8364,6 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   char *keyvalp;		/* for recovery purposes */
   int keyval_len, recset_length;	/* for recovery purposes */
   RECINS_STRUCT recins;		/* for recovery purposes */
-#if defined(SERVER_MODE)
-  bool old_check_interrupt;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
   int key_type = BTREE_NORMAL_KEY;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -8353,10 +8381,6 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
       goto exit_on_error;
     }
 #endif /* DB_DEBUG */
-
-#if defined(SERVER_MODE)
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   /* In an unique index, each OID information in leaf entry
    * is composed of <instance OID, class OID>.
@@ -8967,10 +8991,6 @@ end:
     {
       db_private_free_and_init (thread_p, keyvalp);
     }
-
-#if defined(SERVER_MODE)
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
   return ret;
 
@@ -10422,6 +10442,13 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   char copy_rec_buf1[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   bool is_active;
   bool key_found = false;
+#if defined(SERVER_MODE)
+  bool old_check_interrupt;
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+#endif /* SERVER_MODE */
 
   copy_rec.data = NULL;
   copy_rec1.data = NULL;
@@ -10589,7 +10616,13 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       /* nothing more to do -- this is not an error */
       pgbuf_unfix_and_init (thread_p, P);
+
       mnt_bt_inserts (thread_p);
+
+#if defined(SERVER_MODE)
+      (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
+
       return key;
     }
 
@@ -10887,6 +10920,8 @@ start_point:
 	}
       else
 	{
+	  assert (false);	/* is error ? */
+
 	  pgbuf_unfix_and_init (thread_p, R);
 	  pgbuf_unfix_and_init (thread_p, Q);
 
@@ -11075,6 +11110,8 @@ start_point:
 	    }
 	  else
 	    {
+	      assert (false);	/* is error ? */
+
 	      pgbuf_unfix_and_init (thread_p, Q);
 	      pgbuf_unfix_and_init (thread_p, R);
 
@@ -11611,9 +11648,20 @@ key_insertion:
     }
 
   mnt_bt_inserts (thread_p);
+
+#if defined(SERVER_MODE)
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
+
   return key;
 
 error:
+
+  /* do not unfix P, Q, R before topop rollback */
+  if (top_op_active)
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+    }
 
   if (P)
     {
@@ -11641,10 +11689,10 @@ error:
       lock_unlock_object (thread_p, &pseudo_oid, &pseudo_class_oid, NS_LOCK,
 			  true);
     }
-  if (top_op_active)
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-    }
+
+#if defined(SERVER_MODE)
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -11699,6 +11747,7 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
 end:
 
   mnt_bt_updates (thread_p);
+
   return ret;
 
 exit_on_error:
