@@ -596,7 +596,8 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
-static DISK_ISVALID pgbuf_is_valid_page (const VPID * vpid,
+static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, 
+					 const VPID * vpid,
 					 DISK_ISVALID (*fun) (const VPID *
 							      vpid,
 							      void *args),
@@ -964,7 +965,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 
 #if defined(CUBRID_DEBUG)
   /* Make sure that the page has been allocated (i.e., is a valid page) */
-  if (pgbuf_is_valid_page (vpid, NULL, NULL) != DISK_VALID)
+  if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
     {
       return NULL;
     }
@@ -1232,12 +1233,12 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        * Do not give warnings on this page any longer. Set the LSA of the
        * buffer for this purposes
        */
-      (void)
-	pgbuf_set_lsa ((PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
-		       log_get_restart_lsa ());
-      (void)
-	pgbuf_set_lsa ((PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
-		       &restart_lsa);
+      pgbuf_set_lsa (thread_p, 
+		     (PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
+		     log_get_restart_lsa ());
+      pgbuf_set_lsa (thread_p,
+		     (PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
+		     &restart_lsa);
       LSA_COPY (&bufptr->oldest_unflush_lsa,
 		&bufptr->iopage_buffer->iopage.prv.lsa);
     }
@@ -1312,10 +1313,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 		{
 		  /* flush the page with PGBUF_LATCH_FLUSH mode */
 #if !defined(NDEBUG)
-		  (void) pgbuf_flush_bcb (bufptr, true,
+		  (void) pgbuf_flush_bcb (thread_p, bufptr, true,
 					  caller_file, caller_line);
 #else /* NDEBUG */
-		  (void) pgbuf_flush_bcb (bufptr, true);
+		  (void) pgbuf_flush_bcb (thread_p, bufptr, true);
 #endif /* NDEBUG */
 		  /*
 		   * Since above function releases bufptr->BCB_mutex,
@@ -2365,7 +2366,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	   * Read the needed portion of the page directly from disk
 	   */
 #if defined(CUBRID_DEBUG)
-	  if (pgbuf_is_valid_page (vpid, NULL, NULL) != DISK_VALID)
+	  if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
 	    {
 	      return NULL;
 	    }
@@ -2456,7 +2457,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	   * Write the desired portion of the page directly to disk
 	   */
 #if defined(CUBRID_DEBUG)
-	  if (pgbuf_is_valid_page (vpid, NULL, NULL) != DISK_VALID)
+	  if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
 	    {
 	      return NULL;
 	    }
@@ -6094,7 +6095,7 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
  *       capacbilities.
  */
 static DISK_ISVALID
-pgbuf_is_valid_page (const VPID * vpid,
+pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
 		     DISK_ISVALID (*fun) (const VPID * vpid, void *args),
 		     void *args)
 {
@@ -6107,7 +6108,7 @@ pgbuf_is_valid_page (const VPID * vpid,
 	  return DISK_INVALID;
 	}
 
-      valid = disk_isvalid_page (vpid->volid, vpid->pageid);
+      valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
       if (valid != DISK_VALID
 	  || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
 	{
@@ -6327,11 +6328,12 @@ pgbuf_dump (void)
 			    "LIKELY BAD");
 
 	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s"
-		   " %6d|%4d %10s %p %p-%p\n",
+		   " %lld|%4d %10s %p %p-%p\n",
 		   bufptr->ipool, bufptr->vpid.volid, bufptr->vpid.pageid,
 		   bufptr->fcnt, latch_mode_str, bufptr->dirty,
 		   bufptr->avoid_victim, bufptr->async_flush_request,
-		   zone_str, bufptr->iopage_buffer->iopage.prv.lsa.pageid,
+		   zone_str, 
+		   (long long) bufptr->iopage_buffer->iopage.prv.lsa.pageid,
 		   bufptr->iopage_buffer->iopage.prv.lsa.offset,
 		   consistent_str, (void *) bufptr,
 		   (void *) (&bufptr->iopage_buffer->iopage.page[0]),
@@ -6382,15 +6384,16 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 
   if (!VPID_ISNULL (&bufptr->vpid))
     {
-      malloc_io_pgptr = (FILEIO_PAGE *) fileio_allocate_page (ARG_FILE_LINE);
+      malloc_io_pgptr = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
       if (malloc_io_pgptr == NULL)
 	{
 	  return consistent;
 	}
 
       /* Read the disk page into local page area */
-      if (fileio_read (fileio_get_volume_descriptor (bufptr->vpid.volid),
-		       malloc_io_pgptr, bufptr->vpid.pageid) == NULL)
+      if (fileio_read (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid),
+		       malloc_io_pgptr, bufptr->vpid.pageid, 
+		       IO_PAGESIZE) == NULL)
 	{
 	  /* Unable to verify consistency of this page */
 	  consistent = PGBUF_CONTENT_BAD;
@@ -6398,9 +6401,8 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
       else
 	{
 	  /* If page is dirty, it should be different from the one on disk */
-	  if (!LSA_EQ
-	      (&malloc_io_pgptr->prv.lsa,
-	       &bufptr->iopage_buffer->iopage.prv.lsa)
+	  if (!LSA_EQ (&malloc_io_pgptr->prv.lsa, 
+		       &bufptr->iopage_buffer->iopage.prv.lsa)
 	      || memcmp (malloc_io_pgptr->page,
 			 bufptr->iopage_buffer->iopage.page,
 			 DB_PAGESIZE) != 0)
@@ -6422,7 +6424,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 			    PGBUF_CONTENT_LIKELY_BAD : PGBUF_CONTENT_GOOD);
 	    }
 	}
-      fileio_free_page (ARG_FILE_LINE, malloc_io_pgptr);
+      free_and_init (malloc_io_pgptr);
     }
   else
     {
@@ -6432,7 +6434,8 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	  /* The page should be scrambled, otherwise some one step on it */
 	  for (i = 0; i < DB_PAGESIZE; i++)
 	    {
-	      if (bufptr->iopage_buffer->iopage.page[i] != DB_MEM_SCRAMBLE)
+	      if (bufptr->iopage_buffer->iopage.page[i] 
+		  != MEM_REGION_SCRAMBLE_MARK)
 		{
 		  /* The page has been stepped by someone */
 		  consistent = PGBUF_CONTENT_BAD;
