@@ -865,6 +865,7 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 
   net_buf_cp_str (&net_buf, &func_code, 1);
   ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
+  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
   if (net_buf.err_code < 0)
     {

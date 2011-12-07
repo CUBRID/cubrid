@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #endif
+#include <assert.h>
 
 #include "cas_common.h"
 #include "cas.h"
@@ -796,6 +797,10 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv,
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
+  char auto_commit_mode = FALSE;
+
+  /* check for newly added parameter (autocommit mode) */
+  assert (argc == 2);
 
   if (argc < 1)
     {
@@ -806,12 +811,18 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv,
 
   net_arg_get_int (&srv_h_id, argv[0]);
 
+  if (argc > 1)
+    {
+      net_arg_get_char (auto_commit_mode, argv[1]);
+    }
+
 #ifndef LIBCAS_FOR_JSP
   srv_handle = hm_find_srv_handle (srv_h_id);
-  if (srv_handle && srv_handle->auto_commit_mode == TRUE)
+  if (auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
+
 #else /* !LIBCAS_FOR_JSP */
   srv_handle = NULL;
 #endif /* !LIBCAS_FOR_JSP */
