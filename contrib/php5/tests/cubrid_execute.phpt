@@ -1,5 +1,5 @@
 --TEST--
-cubrid_execute()
+cubrid_execute
 --SKIPIF--
 <?php
 require_once('skipif.inc');

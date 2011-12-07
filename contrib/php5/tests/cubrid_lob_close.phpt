@@ -1,5 +1,5 @@
 --TEST--
-cubrid_lob_close()
+cubrid_lob_close
 --SKIPIF--
 <?php
 require_once('skipif.inc');

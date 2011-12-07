@@ -63,7 +63,9 @@ ZEND_MINFO_FUNCTION(cubrid);
 
 ZEND_FUNCTION(cubrid_version);
 ZEND_FUNCTION(cubrid_connect);
+ZEND_FUNCTION(cubrid_pconnect);
 ZEND_FUNCTION(cubrid_connect_with_url);
+ZEND_FUNCTION(cubrid_pconnect_with_url);
 ZEND_FUNCTION(cubrid_disconnect);
 ZEND_FUNCTION(cubrid_close);
 ZEND_FUNCTION(cubrid_prepare);
@@ -137,6 +139,9 @@ ZEND_FUNCTION(cubrid_lob_size);
 ZEND_FUNCTION(cubrid_lob_export);
 ZEND_FUNCTION(cubrid_lob_send);
 ZEND_FUNCTION(cubrid_lob_close);
+
+ZEND_FUNCTION(cubrid_get_query_timeout);
+ZEND_FUNCTION(cubrid_set_query_timeout);
 
 ZEND_BEGIN_MODULE_GLOBALS(cubrid)
     T_CUBRID_ERROR recent_error;

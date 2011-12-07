@@ -1,5 +1,5 @@
 --TEST--
-cubrid_fetch_array()
+cubrid_fetch_array
 --SKIPIF--
 <?php
 require_once('skipif.inc');

@@ -37,7 +37,7 @@ print "done!";
 --CLEAN--
 --EXPECTF--
 bool(false)
-string(38) "11111111111111111111111111111111111129"
+string(2) "19"
 int(0)
 
 Warning: Error: DBMS, -493, Syntax: Precision (39) too large. Maximum precision is 38.  in %s on line %d

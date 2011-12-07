@@ -1,8 +1,9 @@
 <?php
-$host = "127.0.0.1";
+$host = "localhost";
 $port = 33000;
 $db = "demodb";
-$user = "PUBLIC";
+$user = "public";
 $passwd = "";
+$connect_url = "CUBRID:$host:$port:$db";
 $skip_on_connect_failure  = getenv("CUBRID_TEST_SKIP_CONNECT_FAILURE") ? getenv("CUBRID_TEST_SKIP_CONNECT_FAILURE") : true;
 ?>

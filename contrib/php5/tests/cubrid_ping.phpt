@@ -1,5 +1,5 @@
 --TEST--
-cubrid_ping()
+cubrid_ping
 --SKIPIF--
 <?php
 require_once('skipif.inc');

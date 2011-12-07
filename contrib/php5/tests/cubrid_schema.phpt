@@ -1,5 +1,5 @@
 --TEST--
-cubrid_schema()
+cubrid_schema
 --SKIPIF--
 <?php
 require_once('skipif.inc');

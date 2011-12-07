@@ -1,5 +1,5 @@
 --TEST--
-cubrid_next_result()
+cubrid_next_result
 --SKIPIF--
 <?php
 require_once('skipif.inc');
@@ -21,7 +21,8 @@ if (false !== ($tmp = cubrid_execute($conn, "SELECT * FROM code; SELECT * FROM u
 }
 
 $sql_stmt = "SELECT * FROM code; SELECT * FROM history WHERE host_year=2004 AND event_code=20281";
-$res = cubrid_execute($conn, $sql_stmt, CUBRID_EXEC_QUERY_ALL);
+$res = cubrid_prepare($conn, $sql_stmt);
+$req = cubrid_execute($res, CUBRID_EXEC_QUERY_ALL);
 
 get_result_info($res);
 print_field_info($res, 1);
@@ -56,9 +57,11 @@ function print_field_info($req_handle, $offset = 0)
     printf("%-30s \"%s\"\n", "default value:", $field->def);
     printf("%-30s %d\n", "max lenght:", $field->max_length);
     printf("%-30s %d\n", "not null:", $field->not_null);
+    printf("%-30s %d\n", "primary key:", $field->primary_key);
     printf("%-30s %d\n", "unique key:", $field->unique_key);
     printf("%-30s %d\n", "multiple key:", $field->multiple_key);
     printf("%-30s %d\n", "numeric:", $field->numeric);
+    printf("%-30s %d\n", "blob:", $field->blob);
 
     return true;
 }
@@ -171,9 +174,11 @@ table:                         code
 default value:                 ""
 max lenght:                    6
 not null:                      0
+primary key:                   0
 unique key:                    0
 multiple key:                  1
 numeric:                       0
+blob:                          0
 
 ------------ get_result_info --------------------
 Row count:                     4
@@ -202,7 +207,9 @@ table:                         history
 default value:                 ""
 max lenght:                    13
 not null:                      1
+primary key:                   1
 unique key:                    1
 multiple key:                  0
 numeric:                       0
+blob:                          0
 done!

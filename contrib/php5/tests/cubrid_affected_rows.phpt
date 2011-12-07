@@ -1,5 +1,5 @@
 --TEST--
-cubrid_affected_rows()
+cubrid_affected_rows
 --SKIPIF--
 <?php
 require_once('skipif.inc');

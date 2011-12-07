@@ -1,5 +1,5 @@
 --TEST--
-cubrid_get_db_parameter() and cubrid_set_db_parameter()
+cubrid_db_parameter
 --SKIPIF--
 <?php
 require_once('skipif.inc');
@@ -62,14 +62,14 @@ array(4) {
   ["PARAM_ISOLATION_LEVEL"]=>
   int(3)
   ["PARAM_LOCK_TIMEOUT"]=>
-  int(0)
+  int(-1)
   ["PARAM_MAX_STRING_LENGTH"]=>
   int(1073741823)
   ["PARAM_AUTO_COMMIT"]=>
-  int(0)
+  int(1)
 }
 
-Warning: Error: CCI, -25, Unknown transaction isolation level in %s on line %d
+Warning: Error: DBMS, -110, Isolation level value must be between 1 and 6. in %s on line %d
 array(4) {
   ["PARAM_ISOLATION_LEVEL"]=>
   int(2)
@@ -78,6 +78,6 @@ array(4) {
   ["PARAM_MAX_STRING_LENGTH"]=>
   int(1073741823)
   ["PARAM_AUTO_COMMIT"]=>
-  int(0)
+  int(1)
 }
 done!

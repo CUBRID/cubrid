@@ -1,5 +1,5 @@
 --TEST--
-cubrid_bind()
+cubrid_bind
 --SKIPIF--
 <?php
 require_once('skipif.inc');

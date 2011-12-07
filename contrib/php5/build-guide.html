@@ -8,12 +8,12 @@
     </style>
     <meta http-equiv="Content-Type" content="text/html; charset=US-ASCII"> 
 
-    <title>CUBRID 2008 R4.0 PHP Library Build Guide</title> 
+    <title>CUBRID 2008 R4.1 PHP Library Build Guide</title> 
   </head> 
 
   <body bgcolor="#ffffff" text="#000000" link="#ff0000" vlink="#a00000" alink="#0000ff"> 
   
-<h1>CUBRID 2008 R4.0 PHP Library Build Guide</h1> 
+<h1>CUBRID 2008 R4.1 PHP Library Build Guide</h1> 
 <h4><pre class = "s1">Open Source PHP Library for CUBRID Database 
 (http://sourceforge.net/projects/cubridinterface)</pre></h4> 
 <hr> 
@@ -41,7 +41,7 @@
 <h2>1.	Introduction</h2> 
 
 <pre class = "s1">
-This manual mainly tells you how to build CUBRID 2008 R4.0 PHP Library with PHP 5.3/5.2 on Linux and Windows.
+This manual mainly tells you how to build CUBRID 2008 R4.1 PHP Library with PHP 5.3/5.2 on Linux and Windows.
 </pre>
 
 <a name="Building on Linux"></a>
@@ -58,15 +58,15 @@ In this section, we will introduce two ways of building PHP Library for CUBRID o
   <b>Building CUBRID PHP Library on 64bit Linux</b>
 
   In this section, we assume that the Linux system is 32bit. If you build CUBRID PHP Library on 
-  64bit Linux, remember to install 64bit CUBRID 2008 R4.0
+  64bit Linux, remember to install 64bit CUBRID 2008 R4.1
 
 </pre></td></tr></table>
 
 <a name="Configuring the Environment for Linux"></a>
 <h3>2.1	Configuring the Environment</h3> 
 
-<li>CUBRID 2008 R4.0:</li>
-<pre class = "s1">Install CUBRID 2008 R4.0, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
+<li>CUBRID 2008 R4.1:</li>
+<pre class = "s1">Install CUBRID 2008 R4.1, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
 system;</pre>
 
 <li>PHP 5.3/5.2 source code:</li>
@@ -219,7 +219,7 @@ system;</pre>
 
 <tr>
 <td><pre class = "s1"> Version </pre></td>
-<td><pre class = "s1"> 8.4.0.xxxx </pre></td>
+<td><pre class = "s1"> 8.4.1.xxxx </pre></td>
 </tr>
 
 </table>
@@ -268,8 +268,8 @@ Download CUBRID PHP Library, extract it and enter directory win, you will find V
 <a name="Configuring the Environment for VC9"></a>
 <h3>3.1.1	Configuring the Environment</h3> 
 
-<li>CUBRID 2008 R4.0:</li>
-<pre class = "s1">Install CUBRID 2008 R4.0, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
+<li>CUBRID 2008 R4.1:</li>
+<pre class = "s1">Install CUBRID 2008 R4.1, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
 system;</pre>
 
 <li>Visual Studio 2008:</li>
@@ -339,8 +339,8 @@ you open the project, you should do some preparations.
 <a name="Configuring the Environment for VC6"></a>
 <h3>3.2.1	Configuring the Environment</h3> 
 
-<li>CUBRID 2008 R4.0:</li>
-<pre class = "s1">Install CUBRID 2008 R4.0, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
+<li>CUBRID 2008 R4.1:</li>
+<pre class = "s1">Install CUBRID 2008 R4.1, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
 system;</pre>
 
 <li>Visual C++ 6.0 SP6:</li>
@@ -395,15 +395,10 @@ VC9 will tell you that it can't find header file config.w32.h. You can read the 
     Project Configuration; 
 </pre>
 
-<pre class = "s1"> 2. On the top right corner of the php_cubrid Property Page press Configuration Manager button. In the new window, 
-    select the configure you want for Active solution configuration for Configuration in the Project contexts. There are 
-    four configurations (Release_TS, Release_NTS, Debug_TS and Debug_NTS).  Then close the Configuration Manager;
+<pre class = "s1"> 2. Once you complete the properties modification, press the OK button. Then press F7 to compile;
 </pre>
 
-<pre class = "s1"> 3. Once you complete the properties modification, press the OK button. Then press F7 to compile;
-</pre>
-
-<pre class = "s1"> 4. As we have built php_cubrid.dll we have to make PHP recognize it as an extension:
+<pre class = "s1"> 3. As we have built php_cubrid.dll we have to make PHP recognize it as an extension:
 
     a) Inside PHP installation folder create the new folder called cubrid, and copy php_cubrid.dll to cubrid folder. 
       You can also put php_cubrid.dll in %PHPRC%\ext if this directory exists.
@@ -431,8 +426,8 @@ VC9.
 <a name="Configuring the Environment for VC9 x64"></a>
 <h3>4.1	Configuring the Environment</h3> 
 
-<li>CUBRID 2008 R4.0:</li>
-<pre class = "s1">Install CUBRID 2008 R4.0, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
+<li>CUBRID 2008 R4.1:</li>
+<pre class = "s1">Install CUBRID 2008 R4.1, and make sure the Environment Variable <b>%CUBRID%</b> is defined in your
 system;</pre>
 
 <li>Visual Studio 2008:</li>
@@ -494,10 +489,10 @@ tell you that it can't find header file config.w32.h. You can read the wiki page
 </pre>
 
 
-<pre class = "s1"> 4. Once you complete the properties modification, press the OK button. Then press F7 to compile;
+<pre class = "s1"> 5. Once you complete the properties modification, press the OK button. Then press F7 to compile;
 </pre>
 
-<pre class = "s1"> 5. As we have built php_cubrid.dll we have to make PHP recognize it as an extension:
+<pre class = "s1"> 6. As we have built php_cubrid.dll we have to make PHP recognize it as an extension:
 
     a) Inside PHP installation folder create the new folder called cubrid, and copy php_cubrid.dll to cubrid folder. 
       You can also put php_cubrid.dll in %PHPRC%\ext if this directory exists.
