@@ -147,13 +147,10 @@ typedef enum
 /* error codes */
 #define CUBRID_ER_INVALID_SQL_TYPE 		-2002
 #define CUBRID_ER_CANNOT_GET_COLUMN_INFO 	-2003
-#define CUBRID_ER_UNKNOWN_TYPE 			-2005
 #define CUBRID_ER_INVALID_PARAM 		-2006
-#define CUBRID_ER_INVALID_ARRAY_TYPE 		-2007
 #define CUBRID_ER_NOT_SUPPORTED_TYPE 		-2008
 #define CUBRID_ER_TRANSFER_FAIL 		-2011
 #define CUBRID_ER_PHP				-2012
-#define CUBRID_ER_SQL_UNPREPARE                 -2014
 #define CUBRID_ER_PARAM_UNBIND                  -2015
 #define CUBRID_ER_PLACEHOLDER_TYPE              -2016
 #define CUBRID_ER_NAMED_PLACEHOLDER_FORMAT      -2017
@@ -162,7 +159,6 @@ typedef enum
 #define CUBRID_ER_NAMED_PLACEHOLDER_NOT_EXISTS  -2020
 #define CUBRID_ER_QUOTES_MATCH                  -2021
 #define CUBRID_ER_INVALID_PARAM_TYPE            -2022
-#define CUBRID_ER_INVALID_PARAM_VALUE           -2023
 /* CAUTION! Also add the error message string to db_error[] */
 
 /* Maximum length for the Cubrid data types. 
@@ -203,13 +199,10 @@ typedef struct
 static const DB_ERROR_INFO db_error[] = {
     {CUBRID_ER_INVALID_SQL_TYPE, "Invalid API call"},
     {CUBRID_ER_CANNOT_GET_COLUMN_INFO, "Cannot get column info"},
-    {CUBRID_ER_UNKNOWN_TYPE, "Unknown column type"},
     {CUBRID_ER_INVALID_PARAM, "Invalid parameter"},
-    {CUBRID_ER_INVALID_ARRAY_TYPE, "Invalid array type"},
     {CUBRID_ER_NOT_SUPPORTED_TYPE, "Invalid type"},
     {CUBRID_ER_TRANSFER_FAIL, "Lob transfering error"},
     {CUBRID_ER_PHP, "PHP error"},
-    {CUBRID_ER_SQL_UNPREPARE, "SQL statement not prepared"},
     {CUBRID_ER_PARAM_UNBIND, "Some parameter not binded"},
     {CUBRID_ER_PLACEHOLDER_TYPE, "Invalid placeholder for prepare statement, use named or positional only"},
     {CUBRID_ER_NAMED_PLACEHOLDER_FORMAT, "Invalid variable name for named placeholder"},
@@ -218,7 +211,6 @@ static const DB_ERROR_INFO db_error[] = {
     {CUBRID_ER_NAMED_PLACEHOLDER_NOT_EXISTS, "Named placeholder used can't be found in prepare statement"},
     {CUBRID_ER_QUOTES_MATCH, "Quotes in prepare statement don't match"},
     {CUBRID_ER_INVALID_PARAM_TYPE, "Invalid db parameter type"},
-    {CUBRID_ER_INVALID_PARAM_VALUE, "Invalid db parameter value"},
 };
 
 typedef struct
@@ -1658,7 +1650,7 @@ ZEND_FUNCTION(cubrid_bind)
 
         break;
     default:
-        handle_error(CUBRID_ER_NOT_SUPPORTED_TYPE, NULL, request->conn);
+        handle_error(CCI_ER_ATYPE, NULL, request->conn);
         RETURN_FALSE;
     }
 
@@ -1858,7 +1850,7 @@ ZEND_FUNCTION(cubrid_execute)
 	req_handle = request->handle;
 
 	if (!request->l_prepare) {
-            handle_error(CUBRID_ER_SQL_UNPREPARE, NULL, connect);
+            handle_error(CCI_ER_REQ_HANDLE, NULL, connect);
 	    RETURN_FALSE;
 	}
 
@@ -2212,7 +2204,7 @@ ZEND_FUNCTION(cubrid_column_types)
 
     for (i = 0; i < request->col_count; i++) {
 	if (type2str(&request->col_info[i], full_type_name, sizeof(full_type_name)) < 0) {
-	    handle_error(CUBRID_ER_UNKNOWN_TYPE, NULL, request->conn);
+	    handle_error(CCI_ER_TYPE_CONVERSION, NULL, request->conn);
             cubrid_array_destroy(return_value->value.ht ZEND_FILE_LINE_CC);
 	    RETURN_FALSE;
 	}
@@ -2496,11 +2488,6 @@ ZEND_FUNCTION(cubrid_put)
 	    for (i = 0; i < attr_count; i++) {
 		if (zend_hash_get_current_key(HASH_OF(attr_value), &key, &index, 1) == HASH_KEY_NON_EXISTANT) {
 		    break;
-		}
-
-		if (cubrid_retval == HASH_KEY_IS_LONG) {
-		    handle_error(CUBRID_ER_INVALID_ARRAY_TYPE, NULL, connect);
-		    RETURN_FALSE;
 		}
 
 		attr_name[i] = (char *) safe_emalloc(strlen(key) + 1, sizeof(char), 0);
@@ -3348,7 +3335,7 @@ ZEND_FUNCTION(cubrid_field_name)
     init_error_link(request->conn);
 
     if (offset < 0 || offset >= request->col_count) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -3379,7 +3366,7 @@ ZEND_FUNCTION(cubrid_field_table)
     init_error_link(request->conn);
 
     if (offset < 0 || offset >= request->col_count) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -3410,7 +3397,7 @@ ZEND_FUNCTION(cubrid_field_type)
     init_error_link(request->conn);
 
     if (offset < 0 || offset >= request->col_count) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -3443,7 +3430,7 @@ ZEND_FUNCTION(cubrid_field_flags)
     init_error_link(request->conn);
 
     if (offset < 0 || offset >= request->col_count) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -3702,7 +3689,7 @@ ZEND_FUNCTION(cubrid_fetch_field)
     }
 
     if (offset < 0 || offset >= request->col_count) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -4024,7 +4011,7 @@ ZEND_FUNCTION(cubrid_field_seek)
     init_error_link(request->conn);
 
     if (offset < 0 || offset > request->col_count - 1) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -4054,7 +4041,7 @@ ZEND_FUNCTION(cubrid_field_len)
     init_error_link(request->conn);
 
     if (offset < 0 || offset > request->col_count - 1) {
-	handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
 
@@ -4117,7 +4104,7 @@ ZEND_FUNCTION(cubrid_result)
 	    }
 
 	    if (i == request->col_count) {
-		handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+		handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 		RETURN_FALSE;
 	    }
 
@@ -4127,13 +4114,13 @@ ZEND_FUNCTION(cubrid_result)
 	    col_offset = Z_LVAL_P(column); 
 
 	    if (col_offset < 0 || col_offset >= request->col_count) {
-		handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+		handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 		RETURN_FALSE;
 	    }
 
 	    break;
 	default:
-	    handle_error(CUBRID_ER_INVALID_PARAM, NULL, request->conn);
+	    handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	    RETURN_FALSE;
 	}
     }
@@ -5304,7 +5291,7 @@ ZEND_FUNCTION(cubrid_set_query_timeout)
     init_error_link (request->conn);
 
     if ((cubrid_retval = cci_set_query_timeout (request->handle, timeout)) < 0) {
-        handle_error (CCI_ER_QUERY_TIMEOUT, NULL, request->conn);
+        handle_error (cubrid_retval, NULL, request->conn);
         RETURN_FALSE;
     }
 
