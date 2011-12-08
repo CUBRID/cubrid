@@ -163,7 +163,6 @@ typedef enum
 #define CUBRID_ER_QUOTES_MATCH                  -2021
 #define CUBRID_ER_INVALID_PARAM_TYPE            -2022
 #define CUBRID_ER_INVALID_PARAM_VALUE           -2023
-#define CUBRID_ER_QUERY_TIMEOUT                 -2024
 /* CAUTION! Also add the error message string to db_error[] */
 
 /* Maximum length for the Cubrid data types. 
@@ -220,7 +219,6 @@ static const DB_ERROR_INFO db_error[] = {
     {CUBRID_ER_QUOTES_MATCH, "Quotes in prepare statement don't match"},
     {CUBRID_ER_INVALID_PARAM_TYPE, "Invalid db parameter type"},
     {CUBRID_ER_INVALID_PARAM_VALUE, "Invalid db parameter value"},
-    {CUBRID_ER_QUERY_TIMEOUT, "Invalid query timeout"} 
 };
 
 typedef struct
@@ -5306,7 +5304,7 @@ ZEND_FUNCTION(cubrid_set_query_timeout)
     init_error_link (request->conn);
 
     if ((cubrid_retval = cci_set_query_timeout (request->handle, timeout)) < 0) {
-        handle_error (CUBRID_ER_QUERY_TIMEOUT, NULL, request->conn);
+        handle_error (CCI_ER_QUERY_TIMEOUT, NULL, request->conn);
         RETURN_FALSE;
     }
 
@@ -5330,7 +5328,7 @@ ZEND_FUNCTION(cubrid_get_query_timeout)
     init_error_link (request->conn);
 
     if ((timeout = cci_get_query_timeout (request->handle)) < 0) {
-        handle_error (CUBRID_ER_QUERY_TIMEOUT, NULL, request->conn);
+        handle_error (timeout, NULL, request->conn);
         RETURN_FALSE;
     }
 
