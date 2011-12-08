@@ -36,8 +36,10 @@
 
 package cubrid.jdbc.jci;
 
+import java.io.IOException;
+
 class UUpdateParameter extends UParameter {
-	private int indexes[]; /* parameter¿« column index */
+	private int indexes[]; /* parameter's column index */
 
 	public UUpdateParameter(UColumnInfo columnInfo[], int[] columnIndexes,
 			Object[] columnValues) throws UJciException {
@@ -71,10 +73,14 @@ class UUpdateParameter extends UParameter {
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-		for (int i = 0; i < number; i++) {
-			outBuffer.addInt(indexes[i]);
-			outBuffer.addByte(types[i]);
-			outBuffer.writeParameter(types[i], values[i]);
-		}
+	    	try {
+            		for (int i = 0; i < number; i++) {
+            			outBuffer.addInt(indexes[i]);
+            			outBuffer.addByte(types[i]);
+            			outBuffer.writeParameter(types[i], values[i]);
+            		}
+	    	} catch (IOException e) {
+	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);    
+	    	}
 	}
 }

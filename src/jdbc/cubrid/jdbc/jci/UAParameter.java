@@ -36,6 +36,8 @@
 
 package cubrid.jdbc.jci;
 
+import java.io.IOException;
+
 class UAParameter extends UParameter {
 	private String attributeName;
 
@@ -61,11 +63,15 @@ class UAParameter extends UParameter {
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-		if (attributeName != null)
-			outBuffer.addStringWithNull(attributeName);
-		else
-			outBuffer.addNull();
-		outBuffer.addByte(types[0]);
-		outBuffer.writeParameter(types[0], values[0]);
+	    	try {
+			if (attributeName != null)
+				outBuffer.addStringWithNull(attributeName);
+			else
+				outBuffer.addNull();
+			outBuffer.addByte(types[0]);
+			outBuffer.writeParameter(types[0], values[0]);
+	    	} catch (IOException e) {
+	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+	    	}
 	}
 }

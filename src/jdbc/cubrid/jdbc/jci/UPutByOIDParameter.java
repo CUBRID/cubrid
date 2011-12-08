@@ -36,6 +36,8 @@
 
 package cubrid.jdbc.jci;
 
+import java.io.IOException;
+
 class UPutByOIDParameter extends UParameter {
 	private String attributeNames[];
 
@@ -66,13 +68,17 @@ class UPutByOIDParameter extends UParameter {
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-		for (int i = 0; i < number; i++) {
-			if (attributeNames[i] != null)
-				outBuffer.addStringWithNull(attributeNames[i]);
-			else
-				outBuffer.addNull();
-			outBuffer.addByte(types[i]);
-			outBuffer.writeParameter(types[i], values[i]);
-		}
+    	    	try {
+            		for (int i = 0; i < number; i++) {
+        			if (attributeNames[i] != null)
+        				outBuffer.addStringWithNull(attributeNames[i]);
+        			else
+        				outBuffer.addNull();
+        			outBuffer.addByte(types[i]);
+        			outBuffer.writeParameter(types[i], values[i]);
+        		}
+    	    	} catch (IOException e) {
+    	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+    	    	}
 	}
 }

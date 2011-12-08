@@ -36,10 +36,12 @@
 
 package cubrid.jdbc.jci;
 
+import java.io.IOException;
+
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 
-class UBindParameter extends UParameter {
+public class UBindParameter extends UParameter {
 	private final static byte PARAM_MODE_UNKNOWN = 0;
 	private final static byte PARAM_MODE_IN = 1;
 	private final static byte PARAM_MODE_OUT = 2;
@@ -110,15 +112,19 @@ class UBindParameter extends UParameter {
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-		for (int i = 0; i < number; i++) {
-			if (values[i] == null) {
-				outBuffer.addByte(UUType.U_TYPE_NULL);
-				outBuffer.addNull();
-			} else {
-				outBuffer.addByte((byte) types[i]);
-				outBuffer.writeParameter(((byte) types[i]), values[i]);
-			}
-		}
+    	    	try {
+        		for (int i = 0; i < number; i++) {
+        			if (values[i] == null) {
+        				outBuffer.addByte(UUType.U_TYPE_NULL);
+        				outBuffer.addNull();
+        			} else {
+        				outBuffer.addByte((byte) types[i]);
+        				outBuffer.writeParameter(((byte) types[i]), values[i]);
+        			}
+        		}
+    	    	} catch (IOException e) {
+    	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+    	    	}
 	}
 
 	synchronized void flushLobStreams() {

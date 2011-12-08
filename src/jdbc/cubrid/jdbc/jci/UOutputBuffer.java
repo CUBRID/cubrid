@@ -36,13 +36,14 @@
 
 package cubrid.jdbc.jci;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
+import java.util.Calendar;
 
 import javax.transaction.xa.Xid;
 
@@ -52,684 +53,382 @@ import cubrid.jdbc.driver.CUBRIDLobHandle;
 import cubrid.sql.CUBRIDOID;
 
 class UOutputBuffer {
-	private final static int DEFAULT_BUFFER_SIZE = 1024;
-	private final static int DEFAULT_CAPACITY = 100000;
+    private UConnection u_con;
+    private DataOutputStream dataBuffer;
+    private ByteArrayOutputStream byteBuffer;
 
-	OutputStream outStream;
+    UOutputBuffer(UConnection ucon) throws IOException {
+	this.u_con = ucon;
+	initBuffer();
+    }
 
-	private int length; // data size in bufferes
-	private int positionInABuffer; // current cursor position in a buffer
-	private int bufferCursor; // current buffer number
-	private int allocatedBufferSize; // allocated buffer number
-	private byte buffer[][];
-	private UConnection u_con;
+    private void initBuffer() throws IOException {
+	byteBuffer = new ByteArrayOutputStream(4096);
+	dataBuffer = new DataOutputStream(byteBuffer);
+    }
 
-	UOutputBuffer(UConnection ucon) {
-		outStream = null;
-		length = 0;
-		buffer = new byte[DEFAULT_BUFFER_SIZE][];
-		allocatedBufferSize = 1;
-		buffer[0] = new byte[DEFAULT_CAPACITY];
-		bufferCursor = 0;
-		positionInABuffer = 0;
-		this.u_con = ucon;
+    void sendData() throws IOException {
+	DataOutputStream os = new DataOutputStream(u_con.getOutputStream());
+	byte b[] = byteBuffer.toByteArray();
+
+	os.writeInt(b.length);
+	os.write(u_con.getCASInfo());
+	os.write(b);
+	os.flush();
+	byteBuffer = new ByteArrayOutputStream(4096);
+	dataBuffer = new DataOutputStream(byteBuffer);
+    }
+
+    void newRequest(OutputStream out, byte func_code) throws IOException {
+	initBuffer();
+	dataBuffer.write(func_code);
+    }
+
+    void newRequest(byte func_code) throws IOException {
+	initBuffer();
+	dataBuffer.write(func_code);
+    }
+
+    int addInt(int intValue) throws IOException {
+	dataBuffer.writeInt(4);
+	dataBuffer.writeInt(intValue);
+	return 8;
+    }
+
+    int addLong(long longValue) throws IOException {
+	dataBuffer.writeInt(8);
+	dataBuffer.writeLong(longValue);
+	return 12;
+    }
+
+    int addByte(byte bValue) throws IOException {
+	dataBuffer.writeInt(1);
+	dataBuffer.writeByte(bValue);
+	return 5;
+    }
+
+    int addBytes(byte[] value) throws IOException {
+	return addBytes(value, 0, value.length);
+    }
+
+    int addBytes(byte[] value, int offset, int len) throws IOException {
+	dataBuffer.writeInt(len);
+	dataBuffer.write(value, offset, len);
+	return len + 4;
+    }
+
+    int addNull() throws IOException {
+	dataBuffer.writeInt(0);
+	return 4;
+    }
+
+    int addStringWithNull(String str) throws IOException {
+	byte[] b;
+
+	try {
+	    b = str.getBytes(u_con.getCharset());
+	} catch (java.io.UnsupportedEncodingException e) {
+	    b = str.getBytes();
 	}
 
-	void sendData() throws IOException {
-		/*
-		 * byte[] bSize = new byte[4];
-		 * 
-		 * bSize[0] = (byte) ((length >>> 24) & 0xFF); bSize[1] = (byte)
-		 * ((length >>> 16) & 0xFF); bSize[2] = (byte) ((length >>> 8) & 0xFF);
-		 * bSize[3] = (byte) ((length >>> 0) & 0xFF); outStream.write(bSize);
-		 * outStream.flush();
-		 */
-		byte[] jdbcInfo = null;
-		/* now, just send back received casinfo data to cas */
-		jdbcInfo = u_con.getCASInfo();
+	dataBuffer.writeInt(b.length + 1);
+	dataBuffer.write(b, 0, b.length);
+	dataBuffer.writeByte((byte) 0);
+	return b.length + 5;
+    }
 
-		overwriteInt(length - 8, 0, 0);
-		if (jdbcInfo != null) {
-			overwriteBytes(u_con.getCASInfo(), 0, 4);
+    int addDouble(double value) throws IOException {
+	dataBuffer.writeInt(8);
+	dataBuffer.writeDouble(value);
+	return 12;
+    }
+
+    int addShort(short value) throws IOException {
+	dataBuffer.writeInt(2);
+	dataBuffer.writeShort(value);
+	return 6;
+    }
+
+    int addFloat(float value) throws IOException {
+	dataBuffer.writeInt(4);
+	dataBuffer.writeFloat(value);
+	return 8;
+    }
+
+    int addDate(Date value) throws IOException {
+	dataBuffer.writeInt(14);
+	writeDate(value);
+	return 18;
+    }
+
+    private Calendar c = Calendar.getInstance();
+
+    private void writeDate(Date date) throws IOException {
+	c.setTime(date);
+	dataBuffer.writeShort(c.get(Calendar.YEAR));
+	dataBuffer.writeShort(c.get(Calendar.MONTH) + 1);
+	dataBuffer.writeShort(c.get(Calendar.DAY_OF_MONTH));
+	dataBuffer.writeShort((short) 0);
+	dataBuffer.writeShort((short) 0);
+	dataBuffer.writeShort((short) 0);
+	dataBuffer.writeShort((short) 0);
+    }
+
+    int addTime(Time value) throws IOException {
+	dataBuffer.writeInt(14);
+	writeTime(value);
+	return 18;
+    }
+
+    private void writeTime(Time date) throws IOException {
+	c.setTime(date);
+	dataBuffer.writeShort((short) 0);
+	dataBuffer.writeShort((short) 0);
+	dataBuffer.writeShort((short) 0);
+	dataBuffer.writeShort(c.get(Calendar.HOUR_OF_DAY));
+	dataBuffer.writeShort(c.get(Calendar.MINUTE));
+	dataBuffer.writeShort(c.get(Calendar.SECOND));
+	dataBuffer.writeShort((short) 0);
+    }
+
+    int addTimestamp(Timestamp value) throws IOException {
+	dataBuffer.writeInt(14);
+	writeTimestamp(value, false);
+	return 18;
+    }
+
+    private void writeTimestamp(Timestamp date, boolean withMili) throws IOException {
+	c.setTime(date);
+	dataBuffer.writeShort(c.get(Calendar.YEAR));
+	dataBuffer.writeShort(c.get(Calendar.MONTH) + 1);
+	dataBuffer.writeShort(c.get(Calendar.DAY_OF_MONTH));
+	dataBuffer.writeShort(c.get(Calendar.HOUR_OF_DAY));
+	dataBuffer.writeShort(c.get(Calendar.MINUTE));
+	dataBuffer.writeShort(c.get(Calendar.SECOND));
+	if (withMili) {
+	    dataBuffer.writeShort(c.get(Calendar.MILLISECOND));
+	} else {
+	    dataBuffer.writeShort((short) 0);
+	}
+    }
+
+    int addDatetime(Timestamp value) throws IOException {
+	dataBuffer.writeInt(14);
+	writeTimestamp(value, true);
+	return 18;
+    }
+
+    int addOID(CUBRIDOID value) throws IOException {
+	byte[] b = value.getOID();
+
+	if (b == null || b.length != UConnection.OID_BYTE_SIZE) {
+	    b = new byte[UConnection.OID_BYTE_SIZE];
+	}
+
+	dataBuffer.writeInt(UConnection.OID_BYTE_SIZE);
+	dataBuffer.write(b, 0, b.length);
+	return UConnection.OID_BYTE_SIZE + 4;
+    }
+
+    int addXid(Xid xid) throws IOException {
+	byte[] gid = xid.getGlobalTransactionId();
+	byte[] bid = xid.getBranchQualifier();
+	int msgSize = 12 + gid.length + bid.length;
+	dataBuffer.writeInt(msgSize);
+	dataBuffer.writeInt(xid.getFormatId());
+	dataBuffer.writeInt(gid.length);
+	dataBuffer.writeInt(bid.length);
+	dataBuffer.write(gid, 0, gid.length);
+	dataBuffer.write(bid, 0, bid.length);
+	return msgSize + 4;
+    }
+
+    int addCacheTime(UStatementCacheData cache_data) throws IOException {
+	int sec, usec;
+	if (cache_data == null) {
+	    sec = usec = 0;
+	} else {
+	    sec = (int) (cache_data.srvCacheTime >>> 32);
+	    usec = (int) (cache_data.srvCacheTime);
+	}
+	dataBuffer.writeInt(8);
+	dataBuffer.writeInt(sec);
+	dataBuffer.writeInt(usec);
+	return 12;
+    }
+
+    int addBlob(CUBRIDBlob value) throws IOException {
+	return addLob(value.getLobHandle());
+    }
+
+    int addClob(CUBRIDClob value) throws IOException {
+	return addLob(value.getLobHandle());
+    }
+
+    private int addLob(CUBRIDLobHandle lobHandle) throws IOException {
+	byte[] packedLobHandle = lobHandle.getPackedLobHandle();
+
+	dataBuffer.writeInt(packedLobHandle.length);
+	dataBuffer.write(packedLobHandle, 0, packedLobHandle.length);
+	return packedLobHandle.length + 4;
+    }
+
+    int writeParameter(byte type, Object value) throws UJciException, IOException {
+	String stringData;
+
+	if (value == null) {
+	    return addNull();
+	}
+
+	switch (type) {
+	case UUType.U_TYPE_NULL:
+	    return addNull();
+	case UUType.U_TYPE_CHAR:
+	case UUType.U_TYPE_NCHAR:
+	case UUType.U_TYPE_STRING:
+	case UUType.U_TYPE_VARNCHAR:
+	    stringData = UGetTypeConvertedValue.getString(value);
+	    return addStringWithNull(stringData);
+	case UUType.U_TYPE_NUMERIC:
+	    stringData = UGetTypeConvertedValue.getString(value);
+	    return addStringWithNull(stringData);
+	case UUType.U_TYPE_BIT:
+	case UUType.U_TYPE_VARBIT:
+	    if ((value instanceof byte[]) && (((byte[]) value).length > 1)) {
+		return addBytes(UGetTypeConvertedValue.getBytes(value));
+	    } else {
+		return addByte(UGetTypeConvertedValue.getByte(value));
+	    }
+	case UUType.U_TYPE_MONETARY:
+	case UUType.U_TYPE_DOUBLE:
+	    return addDouble(UGetTypeConvertedValue.getDouble(value));
+	case UUType.U_TYPE_DATE:
+	    return addDate(UGetTypeConvertedValue.getDate(value));
+	case UUType.U_TYPE_TIME:
+	    return addTime(UGetTypeConvertedValue.getTime(value));
+	case UUType.U_TYPE_TIMESTAMP:
+	    return addTimestamp(UGetTypeConvertedValue.getTimestamp(value));
+	case UUType.U_TYPE_DATETIME:
+	    return addDatetime(UGetTypeConvertedValue.getTimestamp(value));
+	case UUType.U_TYPE_FLOAT:
+	    return addFloat(UGetTypeConvertedValue.getFloat(value));
+	case UUType.U_TYPE_SHORT:
+	    return addShort(UGetTypeConvertedValue.getShort(value));
+	case UUType.U_TYPE_INT:
+	    return addInt(UGetTypeConvertedValue.getInt(value));
+	case UUType.U_TYPE_BIGINT:
+	    return addLong(UGetTypeConvertedValue.getLong(value));
+	case UUType.U_TYPE_SET:
+	case UUType.U_TYPE_MULTISET:
+	case UUType.U_TYPE_SEQUENCE:
+	    if (!(value instanceof CUBRIDArray))
+		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	    return writeCollection((CUBRIDArray) value);
+	case UUType.U_TYPE_OBJECT:
+	    if (!(value instanceof CUBRIDOID)) {
+		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	    }
+	    return addOID((CUBRIDOID) value);
+	case UUType.U_TYPE_BLOB:
+	    if (!(value instanceof CUBRIDBlob)) {
+		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	    }
+	    return addBlob((CUBRIDBlob) value);
+	case UUType.U_TYPE_CLOB:
+	    if (!(value instanceof CUBRIDClob)) {
+		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	    }
+	    return addClob((CUBRIDClob) value);
+	}
+
+	return 0;
+    }
+
+    private int writeCollection(CUBRIDArray data) throws UJciException, IOException {
+	int collection_size = 1;
+	DataOutputStream saveStream = dataBuffer;
+	ByteArrayOutputStream byteStream = new ByteArrayOutputStream(4096);
+	dataBuffer = new DataOutputStream(byteStream);
+
+	dataBuffer.writeByte((byte) data.getBaseType());
+	Object[] values = (Object[]) data.getArray();
+	if (values == null) {
+	    return collection_size;
+	}
+
+	switch (data.getBaseType()) {
+	case UUType.U_TYPE_BIT:
+	case UUType.U_TYPE_VARBIT:
+	    byte[][] byteValues = null;
+	    if (values instanceof byte[][]) {
+		byteValues = (byte[][]) values;
+	    } else if (values instanceof Boolean[]) {
+		byteValues = new byte[values.length][];
+		for (int i = 0; i < byteValues.length; i++) {
+		    if (((Boolean[]) values)[i] != null) {
+			byteValues[i] = new byte[1];
+			byteValues[i][0] = (((Boolean[]) values)[i].booleanValue() == true) ? (byte) 1 : (byte) 0;
+		    } else {
+			byteValues[i] = null;
+		    }
 		}
+	    }
 
-		for (int i = 0; i < bufferCursor; i++) {
-			outStream.write(buffer[i]);
-		}
-		if (positionInABuffer > 0)
-			outStream.write(buffer[bufferCursor], 0, positionInABuffer);
-		outStream.flush();
-		clearBuffer(outStream);
-	}
-
-	void newRequest(OutputStream out, byte func_code) {
-		clearBuffer(out);
-		writeByte(func_code);
-	}
-
-	void newRequest(byte func_code) {
-		clearBuffer(outStream);
-		writeByte(func_code);
-	}
-
-	int addInt(int intValue) {
-		writeInt(4);
-		writeInt(intValue);
-		return 8;
-	}
-
-	int addLong(long longValue) {
-		writeInt(8);
-		writeLong(longValue);
-		return 12;
-	}
-
-	int addByte(byte bValue) {
-		writeInt(1);
-		writeByte(bValue);
-		return 5;
-	}
-
-	int addBytes(byte[] value) {
-		return (addBytes(value, 0, value.length));
-	}
-
-	int addBytes(byte[] value, int offset, int len) {
-		writeInt(len);
-		writeBytes(value, offset, len);
-		return (len + 4);
-	}
-
-	int addNull() {
-		writeInt(0);
-		return 4;
-	}
-
-	int addStringWithNull(String str) {
-		byte[] b;
-
-		try {
-			b = str.getBytes(u_con.conCharsetName);
-		} catch (java.io.UnsupportedEncodingException e) {
-			b = str.getBytes();
-		}
-
-		writeInt(b.length + 1);
-		writeBytes(b, 0, b.length);
-		writeByte((byte) 0);
-		return (b.length + 5);
-	}
-
-	int addDouble(double value) {
-		writeInt(8);
-		writeDouble(value);
-		return 12;
-	}
-
-	int addShort(short value) {
-		writeInt(2);
-		writeShort(value);
-		return 6;
-	}
-
-	int addFloat(float value) {
-		writeInt(4);
-		writeFloat(value);
-		return 8;
-	}
-
-	int addDate(Date value) {
-		writeInt(14);
-		writeDate(value);
-		return 18;
-	}
-
-	int addTime(Time value) {
-		writeInt(14);
-		writeTime(value);
-		return 18;
-	}
-
-	int addTimestamp(Timestamp value) {
-		writeInt(14);
-		writeTimestamp(value);
-		return 18;
-	}
-
-	int addDatetime(Timestamp value) {
-		writeInt(14);
-		writeDatetime(value);
-		return 18;
-	}
-
-	int addOID(CUBRIDOID value) {
-		byte[] b = value.getOID();
-
-		if (b == null || b.length != UConnection.OID_BYTE_SIZE) {
-			b = new byte[UConnection.OID_BYTE_SIZE];
-		}
-
-		writeInt(UConnection.OID_BYTE_SIZE);
-		writeBytes(b, 0, b.length);
-		return (UConnection.OID_BYTE_SIZE + 4);
-	}
-
-	int addXid(Xid xid) {
-		byte[] gid = xid.getGlobalTransactionId();
-		byte[] bid = xid.getBranchQualifier();
-		int msg_size = 12 + gid.length + bid.length;
-		writeInt(msg_size);
-		writeInt(xid.getFormatId());
-		writeInt(gid.length);
-		writeInt(bid.length);
-		writeBytes(gid, 0, gid.length);
-		writeBytes(bid, 0, bid.length);
-		return (msg_size + 4);
-	}
-
-	int addCacheTime(UStatementCacheData cache_data) {
-		int sec, usec;
-		if (cache_data == null) {
-			sec = usec = 0;
+	    for (int i = 0; byteValues != null && i < byteValues.length; i++) {
+		if (byteValues[i] == null) {
+		    collection_size += addNull();
 		} else {
-			sec = (int) (cache_data.srvCacheTime >>> 32);
-			usec = (int) (cache_data.srvCacheTime);
+		    collection_size += addBytes(byteValues[i]);
 		}
-		writeInt(8);
-		writeInt(sec);
-		writeInt(usec);
-		return 12;
+	    }
+	    break;
+	case UUType.U_TYPE_NUMERIC:
+	    for (int i = 0; i < values.length; i++) {
+		if (values[i] == null) {
+		    collection_size += addNull();
+		} else {
+		    collection_size += addStringWithNull(values[i].toString());
+		}
+	    }
+	    break;
+	case UUType.U_TYPE_SHORT:
+	case UUType.U_TYPE_INT:
+	case UUType.U_TYPE_BIGINT:
+	case UUType.U_TYPE_FLOAT:
+	case UUType.U_TYPE_DOUBLE:
+	case UUType.U_TYPE_MONETARY:
+	case UUType.U_TYPE_DATE:
+	case UUType.U_TYPE_TIME:
+	case UUType.U_TYPE_TIMESTAMP:
+	case UUType.U_TYPE_DATETIME:
+	case UUType.U_TYPE_OBJECT:
+	case UUType.U_TYPE_BLOB:
+	case UUType.U_TYPE_CLOB:
+	case UUType.U_TYPE_CHAR:
+	case UUType.U_TYPE_NCHAR:
+	case UUType.U_TYPE_STRING:
+	case UUType.U_TYPE_VARNCHAR:
+	    for (int i = 0; i < values.length; i++) {
+		if (values[i] == null) {
+		    collection_size += addNull();
+		} else {
+		    collection_size += writeParameter((byte) data.getBaseType(), values[i]);
+		}
+	    }
+	    break;
+	case UUType.U_TYPE_NULL:
+	default:
+	    for (int i = 0; i < values.length; i++) {
+		collection_size += addNull();
+	    }
 	}
 
-	int addBlob(CUBRIDBlob value) {
-		CUBRIDLobHandle lobHandle = value.getLobHandle();
-		byte[] packedLobHandle = lobHandle.getPackedLobHandle();
+	dataBuffer.close();
+	dataBuffer = saveStream;
 
-		writeInt(packedLobHandle.length);
-		writeBytes(packedLobHandle, 0, packedLobHandle.length);
-		return (packedLobHandle.length + 4);
-	}
+	dataBuffer.writeInt(collection_size);
+	dataBuffer.write(byteStream.toByteArray());
+	return collection_size + 4;
+    }
 
-	int addClob(CUBRIDClob value) {
-		CUBRIDLobHandle lobHandle = value.getLobHandle();
-		byte[] packedLobHandle = lobHandle.getPackedLobHandle();
-
-		writeInt(packedLobHandle.length);
-		writeBytes(packedLobHandle, 0, packedLobHandle.length);
-		return (packedLobHandle.length + 4);
-	}
-
-	void writeParameter(byte type, Object value) throws UJciException {
-		String stringData;
-
-		if (value == null) {
-			addNull();
-			return;
-		}
-		switch (type) {
-		case UUType.U_TYPE_NULL:
-			addNull();
-			break;
-		case UUType.U_TYPE_CHAR:
-		case UUType.U_TYPE_NCHAR:
-		case UUType.U_TYPE_STRING:
-		case UUType.U_TYPE_VARNCHAR:
-			stringData = UGetTypeConvertedValue.getString(value);
-			addStringWithNull(stringData);
-			break;
-		case UUType.U_TYPE_NUMERIC:
-			stringData = UGetTypeConvertedValue.getString(value);
-			addStringWithNull(stringData);
-			break;
-		case UUType.U_TYPE_BIT:
-		case UUType.U_TYPE_VARBIT:
-			if ((value instanceof byte[]) && (((byte[]) value).length > 1)) {
-				addBytes(UGetTypeConvertedValue.getBytes(value));
-			} else {
-				addByte(UGetTypeConvertedValue.getByte(value));
-			}
-			break;
-		case UUType.U_TYPE_MONETARY:
-		case UUType.U_TYPE_DOUBLE:
-			addDouble(UGetTypeConvertedValue.getDouble(value));
-			break;
-		case UUType.U_TYPE_DATE:
-			addDate(UGetTypeConvertedValue.getDate(value));
-			break;
-		case UUType.U_TYPE_TIME:
-			addTime(UGetTypeConvertedValue.getTime(value));
-			break;
-		case UUType.U_TYPE_TIMESTAMP:
-			addTimestamp(UGetTypeConvertedValue.getTimestamp(value));
-			break;
-		case UUType.U_TYPE_DATETIME:
-			addDatetime(UGetTypeConvertedValue.getTimestamp(value));
-			break;
-		case UUType.U_TYPE_FLOAT:
-			addFloat(UGetTypeConvertedValue.getFloat(value));
-			break;
-		case UUType.U_TYPE_SHORT:
-			addShort(UGetTypeConvertedValue.getShort(value));
-			break;
-		case UUType.U_TYPE_INT:
-			addInt(UGetTypeConvertedValue.getInt(value));
-			break;
-		case UUType.U_TYPE_BIGINT:
-			addLong(UGetTypeConvertedValue.getLong(value));
-			break;
-		case UUType.U_TYPE_SET:
-		case UUType.U_TYPE_MULTISET:
-		case UUType.U_TYPE_SEQUENCE:
-			if (!(value instanceof CUBRIDArray))
-				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-			writeCollection((CUBRIDArray) value);
-			break;
-		case UUType.U_TYPE_OBJECT: {
-			if (!(value instanceof CUBRIDOID)) {
-				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-			}
-			addOID((CUBRIDOID) value);
-		}
-			break;
-		case UUType.U_TYPE_BLOB: {
-			if (!(value instanceof CUBRIDBlob)) {
-				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-			}
-			addBlob((CUBRIDBlob) value);
-		}
-			break;
-		case UUType.U_TYPE_CLOB: {
-			if (!(value instanceof CUBRIDClob)) {
-				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-			}
-			addClob((CUBRIDClob) value);
-		}
-			break;
-		}
-	}
-
-	private void writeCollection(CUBRIDArray data) {
-		int collection_size = 0;
-		int collection_size_msg_buffer_cursor;
-		int collection_size_msg_buffer_position;
-
-		// writeInt(data.getLength() * 4 + data.getBytesLength() + 1);
-		collection_size_msg_buffer_cursor = bufferCursor;
-		collection_size_msg_buffer_position = positionInABuffer;
-
-		writeInt(collection_size);
-
-		writeByte((byte) data.getBaseType());
-		collection_size++;
-
-		switch (data.getBaseType()) {
-		case UUType.U_TYPE_BIT:
-		case UUType.U_TYPE_VARBIT: {
-			Object[] objectValues;
-			byte[][] byteValues = null;
-			objectValues = (Object[]) data.getArray();
-			if (objectValues != null && objectValues instanceof byte[][])
-				byteValues = (byte[][]) objectValues;
-			else if (objectValues != null && objectValues instanceof Boolean[]) {
-				byteValues = new byte[objectValues.length][];
-				for (int i = 0; i < byteValues.length; i++) {
-					if (((Boolean[]) objectValues)[i] != null) {
-						byteValues[i] = new byte[1];
-						byteValues[i][0] = (((Boolean[]) objectValues)[i]
-								.booleanValue() == true) ? (byte) 1 : (byte) 0;
-					} else
-						byteValues[i] = null;
-				}
-			}
-			for (int i = 0; byteValues != null && i < byteValues.length; i++) {
-				if (byteValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addBytes(byteValues[i]);
-			}
-		}
-			break;
-		case UUType.U_TYPE_SHORT: {
-			Number[] shortValues; // Byte[] or Short[]
-			shortValues = (Number[]) data.getArray();
-			for (int i = 0; shortValues != null && i < shortValues.length; i++) {
-				if (shortValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addShort(shortValues[i].shortValue());
-			}
-		}
-			break;
-		case UUType.U_TYPE_INT: {
-			Integer[] intValues;
-			intValues = (Integer[]) data.getArray();
-			for (int i = 0; intValues != null && i < intValues.length; i++) {
-				if (intValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addInt(intValues[i].intValue());
-			}
-		}
-			break;
-		case UUType.U_TYPE_BIGINT: {
-			Long[] longValues;
-			longValues = (Long[]) data.getArray();
-			for (int i = 0; longValues != null && i < longValues.length; i++) {
-				if (longValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addLong(longValues[i].longValue());
-			}
-		}
-			break;
-		case UUType.U_TYPE_FLOAT: {
-			Float[] floatValues;
-			floatValues = (Float[]) data.getArray();
-			for (int i = 0; floatValues != null && i < floatValues.length; i++) {
-				if (floatValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addFloat(floatValues[i].floatValue());
-			}
-		}
-			break;
-		case UUType.U_TYPE_DOUBLE:
-		case UUType.U_TYPE_MONETARY: {
-			Double[] doubleValues;
-			doubleValues = (Double[]) data.getArray();
-			for (int i = 0; doubleValues != null && i < doubleValues.length; i++) {
-				if (doubleValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addDouble(doubleValues[i].doubleValue());
-			}
-		}
-			break;
-		case UUType.U_TYPE_NUMERIC: {
-			String[] stringValues;
-			BigDecimal tempBValues[] = (BigDecimal[]) data.getArray();
-			stringValues = new String[(tempBValues != null) ? tempBValues.length
-					: 0];
-			for (int i = 0; stringValues != null && i < stringValues.length; i++) {
-				if (tempBValues[i] == null)
-					collection_size += addNull();
-				else {
-					stringValues[i] = tempBValues[i].toString();
-					collection_size += addStringWithNull(stringValues[i]);
-				}
-			}
-		}
-			break;
-		case UUType.U_TYPE_DATE: {
-			Date[] dateValues;
-			dateValues = (Date[]) data.getArray();
-			for (int i = 0; dateValues != null && i < dateValues.length; i++) {
-				if (dateValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addDate(dateValues[i]);
-			}
-		}
-			break;
-		case UUType.U_TYPE_TIME: {
-			Time[] timeValues;
-			timeValues = (Time[]) data.getArray();
-			for (int i = 0; timeValues != null && i < timeValues.length; i++) {
-				if (timeValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addTime(timeValues[i]);
-			}
-		}
-			break;
-		case UUType.U_TYPE_TIMESTAMP:
-		case UUType.U_TYPE_DATETIME: {
-			Timestamp[] timestampValues;
-			timestampValues = (Timestamp[]) data.getArray();
-			for (int i = 0; timestampValues != null
-					&& i < timestampValues.length; i++) {
-				if (timestampValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addTimestamp(timestampValues[i]);
-			}
-		}
-			break;
-		case UUType.U_TYPE_CHAR:
-		case UUType.U_TYPE_NCHAR:
-		case UUType.U_TYPE_STRING:
-		case UUType.U_TYPE_VARNCHAR: {
-			String[] stringValues;
-			stringValues = (String[]) data.getArray();
-			for (int i = 0; stringValues != null && i < stringValues.length; i++) {
-				if (stringValues[i] == null)
-					collection_size += addNull();
-				else
-					collection_size += addStringWithNull(stringValues[i]);
-			}
-		}
-			break;
-		case UUType.U_TYPE_OBJECT: {
-			if (data.getLength() > 0) {
-				CUBRIDOID oidValues[] = (CUBRIDOID[]) data.getArray();
-				for (int i = 0; i < oidValues.length; i++) {
-					if (oidValues[i] == null)
-						collection_size += addNull();
-					else
-						collection_size += addOID(oidValues[i]);
-				}
-			}
-		}
-			break;
-		case UUType.U_TYPE_BLOB: {
-			if (data.getLength() > 0) {
-				CUBRIDBlob[] blobValues = (CUBRIDBlob[]) data.getArray();
-				for (int i = 0; i < blobValues.length; i++) {
-					if (blobValues[i] == null)
-						collection_size += addNull();
-					else
-						collection_size += addBlob(blobValues[i]);
-				}
-			}
-		}
-			break;
-		case UUType.U_TYPE_CLOB: {
-			if (data.getLength() > 0) {
-				CUBRIDClob[] clobValues = (CUBRIDClob[]) data.getArray();
-				for (int i = 0; i < clobValues.length; i++) {
-					if (clobValues[i] == null)
-						collection_size += addNull();
-					else
-						collection_size += addClob(clobValues[i]);
-				}
-			}
-		}
-			break;
-		case UUType.U_TYPE_NULL:
-		default: {
-			Object[] objectValues;
-			objectValues = (Object[]) data.getArray();
-			for (int i = 0; objectValues != null && i < objectValues.length; i++)
-				collection_size += addNull();
-		}
-			break;
-		}
-
-		overwriteInt(collection_size, collection_size_msg_buffer_cursor,
-				collection_size_msg_buffer_position);
-	}
-
-	private void overwriteInt(int data, int msg_buffer_cursor,
-			int msg_buffer_position) {
-		int saved_length = length;
-		int saved_buffer_cursor = bufferCursor;
-		int saved_position_buffer = positionInABuffer;
-
-		bufferCursor = msg_buffer_cursor;
-		;
-		positionInABuffer = msg_buffer_position;
-
-		writeInt(data);
-
-		length = saved_length;
-		bufferCursor = saved_buffer_cursor;
-		positionInABuffer = saved_position_buffer;
-	}
-
-	private void overwriteBytes(byte[] data, int msg_buffer_cursor,
-			int msg_buffer_position) {
-		int saved_length = length;
-		int saved_buffer_cursor = bufferCursor;
-		int saved_position_buffer = positionInABuffer;
-
-		bufferCursor = msg_buffer_cursor;
-		positionInABuffer = msg_buffer_position;
-
-		writeBytes(data, 0, data.length);
-
-		length = saved_length;
-		bufferCursor = saved_buffer_cursor;
-		positionInABuffer = saved_position_buffer;
-	}
-
-	private void writeInt(int data) {
-		writeByte((byte) ((data >>> 24) & 0xFF));
-		writeByte((byte) ((data >>> 16) & 0xFF));
-		writeByte((byte) ((data >>> 8) & 0xFF));
-		writeByte((byte) ((data >>> 0) & 0xFF));
-	}
-
-	private void writeByte(byte data) {
-		length++;
-		if (positionInABuffer >= DEFAULT_CAPACITY) {
-			bufferCursor++;
-			if (bufferCursor >= allocatedBufferSize) {
-				buffer[bufferCursor] = new byte[DEFAULT_CAPACITY];
-				allocatedBufferSize = bufferCursor + 1;
-			}
-			positionInABuffer = 0;
-		}
-		buffer[bufferCursor][positionInABuffer++] = data;
-	}
-
-	private void writeBoolean(boolean data) {
-		if (data == true)
-			writeByte((byte) 1);
-		else
-			writeByte((byte) 0);
-	}
-
-	private void writeBytes(byte data[], int pos, int len) {
-		if (positionInABuffer + len <= DEFAULT_CAPACITY) {
-			System.arraycopy(data, pos, buffer[bufferCursor],
-					positionInABuffer, len);
-			length += len;
-			positionInABuffer += len;
-			return;
-		}
-
-		for (int i = 0; i < len; i++) {
-			writeByte(data[pos++]);
-		}
-	}
-
-	private void writeDouble(double data) {
-		writeLong(Double.doubleToLongBits(data));
-	}
-
-	private void writeLong(long data) {
-		writeByte((byte) ((data >>> 56) & 0xFF));
-		writeByte((byte) ((data >>> 48) & 0xFF));
-		writeByte((byte) ((data >>> 40) & 0xFF));
-		writeByte((byte) ((data >>> 32) & 0xFF));
-		writeByte((byte) ((data >>> 24) & 0xFF));
-		writeByte((byte) ((data >>> 16) & 0xFF));
-		writeByte((byte) ((data >>> 8) & 0xFF));
-		writeByte((byte) ((data >>> 0) & 0xFF));
-	}
-
-	private void writeShort(short data) {
-		writeByte((byte) ((data >>> 8) & 0xFF));
-		writeByte((byte) ((data >>> 0) & 0xFF));
-	}
-
-	private void writeDate(Date data) throws IllegalArgumentException {
-		String stringData;
-		SimpleDateFormat localFormat = new SimpleDateFormat("yyyy-MM-dd");
-		stringData = localFormat.format((Date) data);
-		writeShort(Short.parseShort(stringData.substring(0, 4)));
-		writeShort(Short.parseShort(stringData.substring(5, 7)));
-		writeShort(Short.parseShort(stringData.substring(8, 10)));
-		writeShort((short) 0);
-		writeShort((short) 0);
-		writeShort((short) 0);
-		writeShort((short) 0);
-	}
-
-	private void writeTime(Time data) throws IllegalArgumentException {
-		String stringData;
-		SimpleDateFormat localFormat;
-		localFormat = new SimpleDateFormat("HH:mm:ss");
-		stringData = localFormat.format((Time) data);
-		writeShort((short) 0);
-		writeShort((short) 0);
-		writeShort((short) 0);
-		writeShort(Short.parseShort(stringData.substring(0, 2)));
-		writeShort(Short.parseShort(stringData.substring(3, 5)));
-		writeShort(Short.parseShort(stringData.substring(6, 8)));
-		writeShort((short) 0);
-	}
-
-	private void writeTimestamp(Timestamp data) throws IllegalArgumentException {
-		String stringData;
-		SimpleDateFormat localFormat;
-		localFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-		stringData = localFormat.format((Timestamp) data);
-		writeShort(Short.parseShort(stringData.substring(0, 4)));
-		writeShort(Short.parseShort(stringData.substring(5, 7)));
-		writeShort(Short.parseShort(stringData.substring(8, 10)));
-		writeShort(Short.parseShort(stringData.substring(11, 13)));
-		writeShort(Short.parseShort(stringData.substring(14, 16)));
-		writeShort(Short.parseShort(stringData.substring(17, 19)));
-		writeShort((short) 0);
-	}
-
-	private void writeDatetime(Timestamp data) throws IllegalArgumentException {
-		String stringData;
-		SimpleDateFormat localFormat;
-		localFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-		stringData = localFormat.format((Timestamp) data);
-		writeShort(Short.parseShort(stringData.substring(0, 4)));
-		writeShort(Short.parseShort(stringData.substring(5, 7)));
-		writeShort(Short.parseShort(stringData.substring(8, 10)));
-		writeShort(Short.parseShort(stringData.substring(11, 13)));
-		writeShort(Short.parseShort(stringData.substring(14, 16)));
-		writeShort(Short.parseShort(stringData.substring(17, 19)));
-		writeShort(Short.parseShort(stringData.substring(20, 23)));
-	}
-
-	private void writeFloat(float data) {
-		writeInt(Float.floatToIntBits(data));
-	}
-
-	private void clearBuffer(OutputStream out) {
-		byte[] jdbcinfo = new byte[4];
-		/*
-		 * clear jdbcinfo value, this data will be over written by sendData()
-		 * function
-		 */
-		/* not defined yet */
-		jdbcinfo[0] = 0;
-		jdbcinfo[1] = 0;
-		jdbcinfo[2] = 0;
-		jdbcinfo[3] = 0;
-
-		length = 0;
-		bufferCursor = 0;
-		positionInABuffer = 0;
-		outStream = out;
-
-		writeInt(0);
-		writeBytes(jdbcinfo, 0, jdbcinfo.length);
-	}
 }
