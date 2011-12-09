@@ -11869,7 +11869,7 @@ reserved_func
 			$$ = node;
 
 		DBG_PRINT}}
-	| of_avg_max_etc '(' of_distinct_unique path_expression ')'
+	| of_avg_max_etc '(' of_distinct_unique expression_ ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
