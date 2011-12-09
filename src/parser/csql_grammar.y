@@ -9885,13 +9885,14 @@ select_stmt
 
 		DBG_PRINT}}
 	opt_hint_list 		/* $3 */
-	select_list 		/* $4 */
+	all_distinct_distinctrow/* $4 */
+	select_list 		/* $5 */
 		{{
-				/* $5 */
+				/* $6 */
 			PT_NODE *node = parser_top_select_stmt_node ();
 			if (node)
 			  {
-			    node->info.query.q.select.list = $4;
+			    node->info.query.q.select.list = $5;
 			    if (parser_hidden_incr_list)
 			      {
 				(void) parser_append_node (parser_hidden_incr_list,
@@ -9901,7 +9902,7 @@ select_stmt
 			  }
 
 		DBG_PRINT}}
-	opt_select_param_list	/* $6 */
+	opt_select_param_list	/* $7 */
 		{{
 
 			PT_NODE *n;
@@ -9911,7 +9912,7 @@ select_stmt
 
 			if (node)
 			  {
-			    n = $4;
+			    n = $5;
 			    if (n && n->type_enum == PT_TYPE_STAR)
 			      {
 				/* "select *" is not valid, raise an error */
@@ -9919,7 +9920,7 @@ select_stmt
 					   MSGCAT_SEMANTIC_NO_TABLES_USED);
 			      }
 
-			    node->info.query.into_list = $6;	/* param_list */
+			    node->info.query.into_list = $7;	/* param_list */
 			    node->info.query.id = (UINTPTR) node;
 			    node->info.query.all_distinct = PT_ALL;
 			  }
