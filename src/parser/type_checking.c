@@ -10946,7 +10946,10 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* TODO does this belong to type checking or constant folding? */
 	  if (pt_is_const (arg_list))
 	    {
-	      if (fcode == PT_COUNT)
+	      PT_MISC_TYPE all_or_distinct;
+
+	      all_or_distinct = node->info.function.all_or_distinct;
+	      if (fcode == PT_COUNT && all_or_distinct != PT_DISTINCT)
 		{
 		  fcode = node->info.function.function_type = PT_COUNT_STAR;
 		  parser_free_tree (parser, arg_list);
