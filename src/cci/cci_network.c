@@ -524,6 +524,15 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   memcpy (con_handle->cas_info, recv_msg_header.info_ptr,
 	  MSG_HEADER_INFO_SIZE);
 
+  if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE)
+    {
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
+  else
+    {
+      con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
+    }
+
   tmp_p = (char *) MALLOC (*(recv_msg_header.msg_body_size_ptr));
   if (tmp_p == NULL)
     {
@@ -578,20 +587,12 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       *msg_size = *(recv_msg_header.msg_body_size_ptr);
     }
 
-  if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE)
+  if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE
+      && con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
+      CAS_KEEP_CONNECTION_OFF)
     {
-      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-
-      if (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
-	  CAS_KEEP_CONNECTION_OFF)
-	{
-	  CLOSE_SOCKET (con_handle->sock_fd);
-	  con_handle->sock_fd = INVALID_SOCKET;
-	}
-    }
-  else
-    {
-      con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
     }
 
   return result_code;
