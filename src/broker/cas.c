@@ -78,6 +78,14 @@
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \
+  (((func_code) == CAS_FC_GET_DB_PARAMETER) \
+   ||((func_code) == CAS_FC_SET_DB_PARAMETER) \
+   ||((func_code) == CAS_FC_CLOSE_REQ_HANDLE) \
+   ||((func_code) == CAS_FC_GET_DB_VERSION) \
+   ||((func_code) == CAS_FC_GET_ATTR_TYPE_STR) \
+   ||((func_code) == CAS_FC_END_SESSION))
+
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf,
 				  T_REQ_INFO * req_info);
 
@@ -131,6 +139,7 @@ char stripped_column_name;
 char cas_client_type;
 
 #ifndef LIBCAS_FOR_JSP
+int con_status_before_check_cas;
 SOCKET new_req_sock_fd = INVALID_SOCKET;
 #endif /* !LIBCAS_FOR_JSP */
 int cas_default_isolation_level = 0;
@@ -766,6 +775,9 @@ main (int argc, char *argv[])
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_log_error_handler_begin ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#ifndef LIBCAS_FOR_JSP
+	    con_status_before_check_cas = -1;
+#endif
 	    fn_ret = FN_KEEP_CONN;
 	    while (fn_ret == FN_KEEP_CONN)
 	      {
@@ -1017,6 +1029,9 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
   int argc;
   void **argv = NULL;
   int err_code;
+#ifndef LIBCAS_FOR_JSP
+  int con_status_to_restore, old_con_status;
+#endif
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
 
@@ -1024,8 +1039,8 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
   init_msg_header (&client_msg_header);
   init_msg_header (&cas_msg_header);
 
-
 #ifndef LIBCAS_FOR_JSP
+  old_con_status = as_info->con_status;
   if (as_info->cur_keep_con == KEEP_CON_AUTO)
     {
       err_code = net_read_int_keep_con_auto (clt_sock_fd,
@@ -1142,6 +1157,26 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
     }
 
 #ifndef LIBCAS_FOR_JSP
+  con_status_to_restore = -1;
+
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code)
+      && (as_info->cur_keep_con == KEEP_CON_AUTO
+	  || as_info->cur_keep_con == KEEP_CON_ON))
+    {
+      con_status_to_restore = (con_status_before_check_cas != -1) ?
+	con_status_before_check_cas : old_con_status;
+
+      con_status_before_check_cas = -1;
+    }
+  else if (func_code == CAS_FC_CHECK_CAS)
+    {
+      con_status_before_check_cas = old_con_status;
+    }
+  else
+    {
+      con_status_before_check_cas = -1;
+    }
+
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -1180,6 +1215,13 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 #ifndef LIBCAS_FOR_JSP
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
 		 server_func_name[func_code - 1], err_info.err_number);
+
+  if (con_status_to_restore != -1)
+    {
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      as_info->con_status = con_status_to_restore;
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+    }
 #endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
