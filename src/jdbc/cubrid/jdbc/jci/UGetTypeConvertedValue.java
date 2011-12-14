@@ -59,8 +59,11 @@ abstract public class UGetTypeConvertedValue {
 			} catch (NumberFormatException e) {
 				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			}
-		} else if (data instanceof Number)
+		} else if (data instanceof Long) {
+			return new BigDecimal(((Long) data).longValue());
+		} else if (data instanceof Number) {
 			return new BigDecimal(((Number) data).doubleValue());
+		}
 		else if (data instanceof Boolean)
 			return new BigDecimal(
 					(((Boolean) data).booleanValue() == true) ? (double) 1
