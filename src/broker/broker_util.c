@@ -440,27 +440,43 @@ as_get_my_as_info (char *br_name, int *as_index)
 #endif /* LIBCAS_FOR_JSP */
 
 int
-ut_time_string (char *buf)
+ut_time_string (char *buf, struct timeval *time_val)
 {
-  struct timeb tb;
   struct tm tm, *tm_p;
+  time_t sec;
+  int millisec;
 
   if (buf == NULL)
     {
       return 0;
     }
 
-  (void) ftime (&tb);
+  if (time_val == NULL)
+    {
+      struct timeb tb;
+
+      /* current time */
+      (void) ftime (&tb);
+      sec = tb.time;
+      millisec = tb.millitm;
+    }
+  else
+    {
+      sec = time_val->tv_sec;
+      millisec = time_val->tv_usec / 1000;
+    }
+
 #if defined(WINDOWS)
-  tm_p = localtime (&tb.time);
+  tm_p = localtime (&sec);
   if (tm_p)
     {
       tm = *tm_p;
     }
 #else
-  tm_p = localtime_r (&tb.time, &tm);
+  tm_p = localtime_r (&sec, &tm);
 #endif
   tm.tm_mon++;
+
   buf[0] = (tm.tm_mon / 10) + '0';
   buf[1] = (tm.tm_mon % 10) + '0';
   buf[2] = '/';
@@ -476,11 +492,11 @@ ut_time_string (char *buf)
   buf[12] = (tm.tm_sec / 10) + '0';
   buf[13] = (tm.tm_sec % 10) + '0';
   buf[14] = '.';
-  buf[17] = (tb.millitm % 10) + '0';
-  tb.millitm /= 10;
-  buf[16] = (tb.millitm % 10) + '0';
-  tb.millitm /= 10;
-  buf[15] = (tb.millitm % 10) + '0';
+  buf[17] = (millisec % 10) + '0';
+  millisec /= 10;
+  buf[16] = (millisec % 10) + '0';
+  millisec /= 10;
+  buf[15] = (millisec % 10) + '0';
   buf[18] = '\0';
 
   return 18;

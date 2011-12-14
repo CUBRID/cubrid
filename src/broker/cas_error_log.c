@@ -144,7 +144,7 @@ cas_log_write_internal (const char *fmt, ...)
   va_start (ap, fmt);
   p = buf;
   len = LINE_MAX;
-  n = ut_time_string (p);
+  n = ut_time_string (p, NULL);
   len -= n;
   p += n;
   if (len > 0)

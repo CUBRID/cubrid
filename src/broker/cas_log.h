@@ -63,7 +63,8 @@ extern void cas_slow_log_open (char *br_name, int as_index);
 extern void cas_slow_log_reset (char *br_name, int as_index);
 extern void cas_slow_log_close (void);
 extern void cas_slow_log_end (void);
-extern void cas_slow_log_write (unsigned int seq_num, bool unit_start,
+extern void cas_slow_log_write (struct timeval *log_time,
+				unsigned int seq_num, bool unit_start,
 				const char *fmt, ...);
 extern void cas_slow_log_write2 (const char *fmt, ...);
 extern void cas_slow_log_write_value_string (char *value, int size);

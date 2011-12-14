@@ -65,9 +65,9 @@ static void cas_log_backup (T_CUBRID_FILE_ID fid);
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name,
 			    int as_index);
 #endif
-static void cas_log_write_internal (FILE * fp, unsigned int seq_num,
-				    bool do_flush, const char *fmt,
-				    va_list ap);
+static void cas_log_write_internal (FILE * fp, struct timeval *log_time,
+				    unsigned int seq_num, bool do_flush,
+				    const char *fmt, va_list ap);
 static void cas_log_write2_internal (FILE * fp, bool do_flush,
 				     const char *fmt, va_list ap);
 
@@ -293,7 +293,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
       if (abandon)
 	{
-	  cas_log_write_internal (log_fp, 0, false, "END OF LOG\n\n", "");
+	  cas_log_write_internal (log_fp, NULL, 0, false,
+				  "END OF LOG\n\n", "");
 	  fseek (log_fp, saved_log_fpos, SEEK_SET);
 	}
       else
@@ -313,7 +314,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	  else
 	    {
-	      cas_log_write_internal (log_fp, 0, true, "END OF LOG\n\n", "");
+	      cas_log_write_internal (log_fp, NULL, 0, true,
+				      "END OF LOG\n\n", "");
 	      fseek (log_fp, saved_log_fpos, SEEK_SET);
 	    }
 	}
@@ -322,7 +324,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 }
 
 static void
-cas_log_write_internal (FILE * fp, unsigned int seq_num, bool do_flush,
+cas_log_write_internal (FILE * fp, struct timeval *log_time,
+			unsigned int seq_num, bool do_flush,
 			const char *fmt, va_list ap)
 {
   char buf[LINE_MAX], *p;
@@ -330,7 +333,7 @@ cas_log_write_internal (FILE * fp, unsigned int seq_num, bool do_flush,
 
   p = buf;
   len = LINE_MAX;
-  n = ut_time_string (p);
+  n = ut_time_string (p, log_time);
   len -= n;
   p += n;
   if (len > 0)
@@ -372,7 +375,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt,
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, seq_num,
+      cas_log_write_internal (log_fp, NULL, seq_num,
 			      (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL),
 			      fmt, ap);
       va_end (ap);
@@ -398,7 +401,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, seq_num,
+      cas_log_write_internal (log_fp, NULL, seq_num,
 			      (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL),
 			      fmt, ap);
       va_end (ap);
@@ -426,7 +429,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, seq_num,
+      cas_log_write_internal (log_fp, NULL, seq_num,
 			      (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL),
 			      fmt, ap);
       va_end (ap);
@@ -899,8 +902,8 @@ cas_slow_log_end ()
 }
 
 void
-cas_slow_log_write (unsigned int seq_num, bool unit_start, const char *fmt,
-		    ...)
+cas_slow_log_write (struct timeval *log_time, unsigned int seq_num,
+		    bool unit_start, const char *fmt, ...)
 {
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
@@ -913,7 +916,7 @@ cas_slow_log_write (unsigned int seq_num, bool unit_start, const char *fmt,
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write_internal (slow_log_fp, seq_num, false, fmt, ap);
+      cas_log_write_internal (slow_log_fp, log_time, seq_num, false, fmt, ap);
       va_end (ap);
     }
 #endif /* LIBCAS_FOR_JSP */

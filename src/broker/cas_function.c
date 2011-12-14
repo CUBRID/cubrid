@@ -62,9 +62,9 @@ static const char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value, bool slow_log);
 static char *get_error_log_eids (int err);
 #ifndef LIBCAS_FOR_JSP
-static void bind_value_log (int start, int argc, void **argv, int param_size,
-			    char *param_mode, unsigned int query_seq_num,
-			    bool slow_log);
+static void bind_value_log (struct timeval *log_time, int start, int argc,
+			    void **argv, int param_size, char *param_mode,
+			    unsigned int query_seq_num, bool slow_log);
 #endif /* !LIBCAS_FOR_JSP */
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 static void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
@@ -542,7 +542,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      bind_value_log (bind_value_index, argc, argv,
+      bind_value_log (NULL, bind_value_index, argc, argv,
 		      param_mode_size, param_mode,
 		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
     }
@@ -622,22 +622,23 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
 	{
-	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+	  cas_slow_log_write (&query_start_time,
+			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "%s srv_h_id %d ", exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt,
 					       strlen (srv_handle->sql_stmt));
-	      bind_value_log (bind_value_index, argc, argv,
+	      bind_value_log (&query_start_time, bind_value_index, argc, argv,
 			      param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
-	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			      "%s %s%d tuple %d time %d.%03d%s%s%s\n",
+	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
+			      false, "%s %s%d tuple %d time %d.%03d%s%s%s\n",
 			      exec_func_name, (ret_code < 0) ? "error:" : "",
 			      err_number_execute,
-			      get_tuple_count (srv_handle),
-			      elapsed_sec, elapsed_msec,
+			      get_tuple_count (srv_handle), elapsed_sec,
+			      elapsed_msec,
 			      (client_cache_reusable == TRUE) ? " (CC)" : "",
 			      (srv_handle->use_query_cache ==
 			       true) ? " (QC)" : "", eid_string);
@@ -1470,7 +1471,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      bind_value_log (2, argc - 1, argv, 0, NULL,
+      bind_value_log (NULL, 2, argc - 1, argv, 0, NULL,
 		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
     }
 #endif /* !LIBCAS_FOR_JSP */
@@ -1514,23 +1515,24 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
 	{
-	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+	  cas_slow_log_write (&query_start_time,
+			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "execute_array srv_h_id %d %d ", srv_h_id,
 			      (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt,
 					       strlen (srv_handle->sql_stmt));
-	      bind_value_log (2, argc - 1, argv, 0, NULL,
+	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
-	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
+			      false,
 			      "execute_array %s%d tuple %d time %d.%03d%s%s%s\n",
 			      (ret_code < 0) ? "error:" : "",
 			      err_info.err_number,
-			      get_tuple_count (srv_handle),
-			      elapsed_sec, elapsed_msec,
-			      "",
+			      get_tuple_count (srv_handle), elapsed_sec,
+			      elapsed_msec, "",
 			      (srv_handle->use_query_cache ==
 			       true) ? " (QC)" : "", eid_string);
 	  cas_slow_log_end ();
@@ -1893,7 +1895,8 @@ get_tran_type_str (int tran_type)
 
 #ifndef LIBCAS_FOR_JSP
 static void
-bind_value_log (int start, int argc, void **argv, int param_size,
+bind_value_log (struct timeval *log_time, int start, int argc,
+		void **argv, int param_size,
 		char *param_mode, unsigned int query_seq_num, bool slow_log)
 {
   int idx;
@@ -1901,17 +1904,14 @@ bind_value_log (int start, int argc, void **argv, int param_size,
   int num_bind;
   void *net_value;
   const char *param_mode_str;
-  void (*write_func) (unsigned int, bool, const char *, ...);
   void (*write2_func) (const char *, ...);
 
   if (slow_log)
     {
-      write_func = cas_slow_log_write;
       write2_func = cas_slow_log_write2;
     }
   else
     {
-      write_func = cas_log_write_nonl;
       write2_func = cas_log_write2_nonl;
     }
 
@@ -1934,8 +1934,17 @@ bind_value_log (int start, int argc, void **argv, int param_size,
 	    param_mode_str = "(INOUT) ";
 	}
 
-      write_func (query_seq_num, false, "bind %d %s: ",
-		  num_bind++, param_mode_str);
+      if (slow_log)
+	{
+	  cas_slow_log_write (log_time, query_seq_num, false, "bind %d %s: ",
+			      num_bind++, param_mode_str);
+	}
+      else
+	{
+	  cas_log_write_nonl (query_seq_num, false, "bind %d %s: ",
+			      num_bind++, param_mode_str);
+	}
+
       if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
 	{
 	  write2_func ("%s ", type_str_tbl[(int) type]);
