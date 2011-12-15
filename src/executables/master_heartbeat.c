@@ -171,7 +171,7 @@ static void hb_cluster_cleanup (void);
 
 /* process command */
 static const char *hb_node_state_string (int nstate);
-static const char *hb_process_state_string (int pstate);
+static const char *hb_process_state_string (unsigned char ptype, int pstate);
 static int hb_reload_config (void);
 
 /* debug and test */
@@ -2072,7 +2072,15 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 
   if (proc->state == HB_PSTATE_NOT_REGISTERED)
     {
-      proc->state = HB_PSTATE_REGISTERED;
+      if (proc->type == HB_PTYPE_SERVER)
+	{
+	  proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
+	}
+      else
+	{
+	  proc->state = HB_PSTATE_REGISTERED;
+	}
+
       retry = false;
     }
 
@@ -2204,25 +2212,29 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   rv = pthread_mutex_lock (&hb_Resource->lock);
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-      if ((proc->type != HB_PTYPE_SERVER)
-	  || (hb_Resource->state == HB_NSTATE_MASTER
-	      && proc->state != HB_PSTATE_REGISTERED)
-	  || (hb_Resource->state == HB_NSTATE_TO_BE_SLAVE
-	      && proc->state != HB_PSTATE_REGISTERED_AND_ACTIVE))
+      if (proc->type != HB_PTYPE_SERVER)
 	{
 	  continue;
 	}
 
-      /* TODO : send heartbeat changemode request */
-      er_log_debug (ARG_FILE_LINE,
-		    "send change-mode request. "
-		    "(node_state:%d, pid:%d, proc_state:%d). \n",
-		    hb_Resource->state, proc->pid, proc->state);
-
-      error = hb_resource_send_changemode (proc);
-      if (NO_ERROR != error)
+      if ((hb_Resource->state == HB_NSTATE_MASTER
+	   && (proc->state == HB_PSTATE_REGISTERED_AND_STANDBY
+	       || proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE))
+	  || (hb_Resource->state == HB_NSTATE_TO_BE_SLAVE
+	      && (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE
+		  || proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY)))
 	{
-	  /* TODO : if error */
+	  /* TODO : send heartbeat changemode request */
+	  er_log_debug (ARG_FILE_LINE,
+			"send change-mode request. "
+			"(node_state:%d, pid:%d, proc_state:%d). \n",
+			hb_Resource->state, proc->pid, proc->state);
+
+	  error = hb_resource_send_changemode (proc);
+	  if (NO_ERROR != error)
+	    {
+	      /* TODO : if error */
+	    }
 	}
     }
 
@@ -2494,8 +2506,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       return;
     }
 
-  if (HB_PSTATE_REGISTERED != proc->state
-      && HB_PSTATE_REGISTERED_AND_ACTIVE != proc->state)
+  if (proc->state < HB_PSTATE_REGISTERED)
     {
       er_log_debug (ARG_FILE_LINE, "unexpected process's state. "
 		    "(fd:%d, pid:%d, state:%d, args:{%s}). \n", sfd,
@@ -2630,7 +2641,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
     }
 
   proc = hb_return_proc_by_args (hbp_proc_register->args);
-  if (NULL == proc)
+  if (proc == NULL)
     {
       proc = hb_alloc_new_proc ();
       if (proc == NULL)
@@ -2641,14 +2652,14 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	}
       else
 	{
-	  proc_state = HB_PSTATE_REGISTERED;
+	  proc_state = HB_PSTATE_REGISTERED;	/* first register */
 	}
     }
   else
     {
-      proc_state =
-	(proc->state ==
-	 HB_PSTATE_STARTED) ? HB_PSTATE_NOT_REGISTERED : HB_PSTATE_UNKNOWN;
+      proc_state = (proc->state == HB_PSTATE_STARTED) ?
+	HB_PSTATE_NOT_REGISTERED /* restarted by heartbeat */ :
+	HB_PSTATE_UNKNOWN /* already registered */ ;
     }
 
   if ((proc_state == HB_PSTATE_REGISTERED) ||
@@ -2667,6 +2678,10 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	{
 	  proc->pid = ntohl (hbp_proc_register->pid);
 	  proc->type = ntohl (hbp_proc_register->type);
+	  if (proc->type == HB_PTYPE_SERVER)
+	    {
+	      proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
+	    }
 	  memcpy ((void *) &proc->exec_path[0],
 		  (void *) &hbp_proc_register->exec_path[0],
 		  sizeof (proc->exec_path));
@@ -2835,13 +2850,23 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
   switch (state)
     {
     case HA_SERVER_STATE_ACTIVE:
-    case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
       break;
+
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE;
+      break;
+
     case HA_SERVER_STATE_STANDBY:
-      proc->state = HB_PSTATE_REGISTERED;
+      proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
       hb_Cluster->state = HB_NSTATE_SLAVE;
       hb_Resource->state = HB_NSTATE_SLAVE;
+      break;
+
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
+      break;
+
     default:
       break;
     }
@@ -3631,10 +3656,11 @@ hb_node_state_string (int nstate)
  * hb_process_state_string -
  *   return: process state sring
  *
+ *   ptype(in):
  *   pstate(in):
  */
 const char *
-hb_process_state_string (int pstate)
+hb_process_state_string (unsigned char ptype, int pstate)
 {
   switch (pstate)
     {
@@ -3649,9 +3675,20 @@ hb_process_state_string (int pstate)
     case HB_PSTATE_NOT_REGISTERED:
       return HB_PSTATE_NOT_REGISTERED_STR;
     case HB_PSTATE_REGISTERED:
-      return HB_PSTATE_REGISTERED_STR;
+      if (ptype == HB_PTYPE_SERVER)
+	{
+	  return HB_PSTATE_REGISTERED_AND_STANDBY_STR;
+	}
+      else
+	{
+	  return HB_PSTATE_REGISTERED_STR;
+	}
+    case HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY:
+      return HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY_STR;
     case HB_PSTATE_REGISTERED_AND_ACTIVE:
       return HB_PSTATE_REGISTERED_AND_ACTIVE_STR;
+    case HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE:
+      return HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE_STR;
     }
 
   return "invalid";
@@ -3938,19 +3975,19 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 	  p += snprintf (p, MAX ((last - p), 0),
 			 HA_SERVER_PROCESS_FORMAT_STRING,
 			 sock_entq->name + 1, proc->pid,
-			 hb_process_state_string (proc->state));
+			 hb_process_state_string (proc->type, proc->state));
 	  break;
 	case HB_PTYPE_COPYLOGDB:
 	  p += snprintf (p, MAX ((last - p), 0),
 			 HA_COPYLOG_PROCESS_FORMAT_STRING,
 			 sock_entq->name + 1, proc->pid,
-			 hb_process_state_string (proc->state));
+			 hb_process_state_string (proc->type, proc->state));
 	  break;
 	case HB_PTYPE_APPLYLOGDB:
 	  p += snprintf (p, MAX ((last - p), 0),
 			 HA_APPLYLOG_PROCESS_FORMAT_STRING,
 			 sock_entq->name + 1, proc->pid,
-			 hb_process_state_string (proc->state));
+			 hb_process_state_string (proc->type, proc->state));
 	  break;
 	default:
 	  break;

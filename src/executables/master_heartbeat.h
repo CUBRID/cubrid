@@ -93,7 +93,10 @@ enum HB_PROC_STATE
   HB_PSTATE_STARTED = 3,
   HB_PSTATE_NOT_REGISTERED = 4,
   HB_PSTATE_REGISTERED = 5,
-  HB_PSTATE_REGISTERED_AND_ACTIVE = 6,
+  HB_PSTATE_REGISTERED_AND_STANDBY = HB_PSTATE_REGISTERED,
+  HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY = 6,
+  HB_PSTATE_REGISTERED_AND_ACTIVE = 7,
+  HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE = 8,
   HB_PSTATE_MAX
 };
 #define HB_PSTATE_UNKNOWN_STR                   "unknown"
@@ -102,7 +105,10 @@ enum HB_PROC_STATE
 #define HB_PSTATE_STARTED_STR                   "started"
 #define HB_PSTATE_NOT_REGISTERED_STR            "not_registered"
 #define HB_PSTATE_REGISTERED_STR                "registered"
-#define HB_PSTATE_REGISTERED_AND_ACTIVE_STR     "registered_and_active"
+#define HB_PSTATE_REGISTERED_AND_STANDBY_STR		"registered_and_standby"
+#define HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY_STR	"registered_and_to_be_standby"
+#define HB_PSTATE_REGISTERED_AND_ACTIVE_STR			"registered_and_active"
+#define HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE_STR	"registered_and_to_be_active"
 #define HB_PSTATE_STR_SZ                        (32)
 
 #define HB_REPLICA_PRIORITY                     0x7FFF
