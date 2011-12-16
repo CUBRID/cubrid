@@ -36,8 +36,6 @@
 
 package cubrid.jdbc.jci;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.sql.Date;
@@ -50,43 +48,39 @@ import javax.transaction.xa.Xid;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDLobHandle;
+import cubrid.jdbc.util.ByteArrayBuffer;
 import cubrid.sql.CUBRIDOID;
 
 class UOutputBuffer {
     private UConnection u_con;
-    private DataOutputStream dataBuffer;
-    private ByteArrayOutputStream byteBuffer;
+    private OutputStream output;
+    private ByteArrayBuffer dataBuffer;
 
     UOutputBuffer(UConnection ucon) throws IOException {
 	this.u_con = ucon;
-	initBuffer();
+	output = u_con.getOutputStream();
+	dataBuffer = new ByteArrayBuffer();
     }
 
     private void initBuffer() throws IOException {
-	byteBuffer = new ByteArrayOutputStream(4096);
-	dataBuffer = new DataOutputStream(byteBuffer);
+	dataBuffer.reset();
     }
 
     void sendData() throws IOException {
-	DataOutputStream os = new DataOutputStream(u_con.getOutputStream());
-	byte b[] = byteBuffer.toByteArray();
-
-	os.writeInt(b.length);
-	os.write(u_con.getCASInfo());
-	os.write(b);
-	os.flush();
-	byteBuffer = new ByteArrayOutputStream(4096);
-	dataBuffer = new DataOutputStream(byteBuffer);
+	dataBuffer.writeToStream(u_con.getCASInfo(), output);
+	initBuffer();
     }
 
     void newRequest(OutputStream out, byte func_code) throws IOException {
+	output = out;
 	initBuffer();
-	dataBuffer.write(func_code);
+	dataBuffer.writeByte(func_code);
     }
 
     void newRequest(byte func_code) throws IOException {
+	output = u_con.getOutputStream();
 	initBuffer();
-	dataBuffer.write(func_code);
+	dataBuffer.writeByte(func_code);
     }
 
     int addInt(int intValue) throws IOException {
@@ -321,8 +315,9 @@ class UOutputBuffer {
 	case UUType.U_TYPE_SET:
 	case UUType.U_TYPE_MULTISET:
 	case UUType.U_TYPE_SEQUENCE:
-	    if (!(value instanceof CUBRIDArray))
+	    if (!(value instanceof CUBRIDArray)) {
 		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	    }
 	    return writeCollection((CUBRIDArray) value);
 	case UUType.U_TYPE_OBJECT:
 	    if (!(value instanceof CUBRIDOID)) {
@@ -346,9 +341,8 @@ class UOutputBuffer {
 
     private int writeCollection(CUBRIDArray data) throws UJciException, IOException {
 	int collection_size = 1;
-	DataOutputStream saveStream = dataBuffer;
-	ByteArrayOutputStream byteStream = new ByteArrayOutputStream(4096);
-	dataBuffer = new DataOutputStream(byteStream);
+	ByteArrayBuffer saveBuffer = dataBuffer;
+	dataBuffer = new ByteArrayBuffer();
 
 	dataBuffer.writeByte((byte) data.getBaseType());
 	Object[] values = (Object[]) data.getArray();
@@ -423,11 +417,8 @@ class UOutputBuffer {
 	    }
 	}
 
-	dataBuffer.close();
-	dataBuffer = saveStream;
-
-	dataBuffer.writeInt(collection_size);
-	dataBuffer.write(byteStream.toByteArray());
+	saveBuffer.merge(collection_size, dataBuffer);
+	dataBuffer = saveBuffer;
 	return collection_size + 4;
     }
 
