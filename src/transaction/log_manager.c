@@ -1215,6 +1215,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       logpb_fetch_header (thread_p, &log_Gl.hdr);
     }
 
+  LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
+
   /* Make sure that this is the desired log */
   if (strcmp (log_Gl.hdr.prefix_name, prefix_logname) != 0)
     {
@@ -3503,6 +3505,9 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
     }
 #endif /* CUBRID_DEBUG */
 
+  return;
+
+#if 0
   if (!pgbuf_is_lsa_temporary (addr->pgptr))
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -3554,6 +3559,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 	    }
 	}
     }
+#endif
 }
 
 /*

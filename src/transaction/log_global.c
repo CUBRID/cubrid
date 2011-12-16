@@ -73,6 +73,8 @@ LOG_GLOBAL log_Gl = {
   /* chkpt_lsa_lock */
   PTHREAD_MUTEX_INITIALIZER,
 #endif /* SERVER_MODE */
+  /* chkpt_redo_lsa */
+  {NULL_PAGEID, NULL_OFFSET},
   /* chkpt_every_npages */
   INT_MAX,
   /* rcv_phase */

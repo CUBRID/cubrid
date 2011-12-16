@@ -1413,6 +1413,7 @@ struct log_global
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
   pthread_mutex_t chkpt_lsa_lock;
 #endif				/* SERVER_MODE */
+  LOG_LSA chkpt_redo_lsa;
   DKNPAGES chkpt_every_npages;	/* How frequent a checkpoint
 				   should be taken ?
 				 */

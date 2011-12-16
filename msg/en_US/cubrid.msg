@@ -1042,8 +1042,8 @@ $ LOADDB
 974 Archive log "%1$s" is created to archive pages from %2$lld to %3$lld.
 975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
 976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
-977 Checkpoint started (page %lld).
-978 Checkpoint finished (page %lld).
+977 Checkpoint started (previous checkpoint page id: %lld, previous redo page id: %lld).
+978 Checkpoint finished (checkpoint page id: %lld, checkpoint redo page id: %lld).
 979 CONNECT BY loop in user data.
 980 A thread is waiting in %1$s more than %2$d msec.
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
@@ -1149,7 +1149,8 @@ $ LOADDB
 1081 Cannot alter an attribute involved in a filter or function index.
 1082 All page buffers are dirty (LRU: %1$d).
 1083 Specific information about deadlock.
-1084 Last Error
+1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
+1085 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

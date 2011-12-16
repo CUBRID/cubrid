@@ -1350,7 +1350,9 @@
 
 #define ER_LK_DEADLOCK_SPECIFIC_INFO                -1083
 
-#define ER_LAST_ERROR                               -1084
+#define ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE         -1084
+
+#define ER_LAST_ERROR                               -1085
 
 /*
  * CAUTION!

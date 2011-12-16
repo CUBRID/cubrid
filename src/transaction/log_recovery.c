@@ -736,6 +736,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa,
 			 ismedia_crash, stopat, &did_incom_recovery);
+  LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
   if (logpb_fetch_start_append_page (thread_p) == NULL)
     {

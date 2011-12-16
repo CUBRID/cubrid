@@ -596,7 +596,7 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
-static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, 
+static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 					 const VPID * vpid,
 					 DISK_ISVALID (*fun) (const VPID *
 							      vpid,
@@ -1233,7 +1233,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        * Do not give warnings on this page any longer. Set the LSA of the
        * buffer for this purposes
        */
-      pgbuf_set_lsa (thread_p, 
+      pgbuf_set_lsa (thread_p,
 		     (PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
 		     log_get_restart_lsa ());
       pgbuf_set_lsa (thread_p,
@@ -2193,7 +2193,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
  * pgbuf_flush_checkpoint () - Flush any unfixed dirty page whose lsa
  *                                      is smaller than the last checkpoint lsa
  *   return: void
- *   last_chkpt_lsa(in): Last checkpoint log sequence address
+ *   flush_upto_lsa(in):
+ *   prev_chkpt_redo_lsa(in): Redo_LSA of previous checkpoint
  *   smallest_lsa(out): Smallest LSA of a dirty buffer in buffer pool
  *
  * Note: The function flushes and dirty unfixed page whose LSA is smaller that
@@ -2205,13 +2206,15 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #if !defined(NDEBUG)
 void
 pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p,
-			      const LOG_LSA * last_chkpt_lsa,
+			      const LOG_LSA * flush_upto_lsa,
+			      const LOG_LSA * prev_chkpt_redo_lsa,
 			      LOG_LSA * smallest_lsa,
 			      const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
-			const LOG_LSA * last_chkpt_lsa,
+			const LOG_LSA * flush_upto_lsa,
+			const LOG_LSA * prev_chkpt_redo_lsa,
 			LOG_LSA * smallest_lsa)
 #endif				/* NDEBUG */
 {
@@ -2226,7 +2229,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 
   /* Things must be truly flushed up to this lsa */
-  logpb_flush_log_for_wal (thread_p, last_chkpt_lsa);
+  logpb_flush_log_for_wal (thread_p, flush_upto_lsa);
   LSA_SET_NULL (smallest_lsa);
 
   /* Now, flush all unfixed dirty buffers */
@@ -2236,15 +2239,36 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
       MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
 
       /* flush condition check */
-      if (bufptr->dirty == false || LSA_ISNULL (&bufptr->oldest_unflush_lsa))
+      if (bufptr->dirty == false
+	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa)
+	      && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa)))
 	{
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  continue;
 	}
 
+      if (!LSA_ISNULL (&bufptr->oldest_unflush_lsa)
+	  && prev_chkpt_redo_lsa != NULL && !LSA_ISNULL (prev_chkpt_redo_lsa))
+	{
+	  if (LSA_LT (&bufptr->oldest_unflush_lsa, prev_chkpt_redo_lsa))
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6,
+		      bufptr->vpid.pageid,
+		      fileio_get_volume_label (bufptr->vpid.volid),
+		      bufptr->oldest_unflush_lsa.pageid,
+		      bufptr->oldest_unflush_lsa.offset,
+		      prev_chkpt_redo_lsa->pageid,
+		      prev_chkpt_redo_lsa->offset);
+
+	      assert (false);
+	    }
+	}
+
       /* flush when buffer is not fixed or was fixed by reader */
       done_flush = false;
-      if (LSA_LE (&bufptr->oldest_unflush_lsa, last_chkpt_lsa)
+      if ((LSA_ISNULL (&bufptr->oldest_unflush_lsa)
+	   || LSA_LE (&bufptr->oldest_unflush_lsa, flush_upto_lsa))
 	  && bufptr->avoid_victim == false
 	  && (bufptr->latch_mode == PGBUF_NO_LATCH
 	      || bufptr->latch_mode == PGBUF_LATCH_READ
@@ -2270,11 +2294,27 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  /* get the smallest oldest_unflush_lsa */
-	  if (LSA_ISNULL (smallest_lsa)
-	      || LSA_LT (&bufptr->oldest_unflush_lsa, smallest_lsa))
+	  if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
 	    {
-	      LSA_COPY (smallest_lsa, &bufptr->oldest_unflush_lsa);
+	      /* this page skipped logging.(log_skip_logging()) */
+	      ;			/* no op. */
+	    }
+	  else if (prev_chkpt_redo_lsa != NULL
+		   && !LSA_ISNULL (prev_chkpt_redo_lsa)
+		   && LSA_LT (&bufptr->oldest_unflush_lsa,
+			      prev_chkpt_redo_lsa))
+	    {
+	      /* invalid page */
+	      assert (false);
+	    }
+	  else
+	    {
+	      /* get the smallest oldest_unflush_lsa */
+	      if (LSA_ISNULL (smallest_lsa)
+		  || LSA_LT (&bufptr->oldest_unflush_lsa, smallest_lsa))
+		{
+		  LSA_COPY (smallest_lsa, &bufptr->oldest_unflush_lsa);
+		}
 	    }
 
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
@@ -6332,7 +6372,7 @@ pgbuf_dump (void)
 		   bufptr->ipool, bufptr->vpid.volid, bufptr->vpid.pageid,
 		   bufptr->fcnt, latch_mode_str, bufptr->dirty,
 		   bufptr->avoid_victim, bufptr->async_flush_request,
-		   zone_str, 
+		   zone_str,
 		   (long long) bufptr->iopage_buffer->iopage.prv.lsa.pageid,
 		   bufptr->iopage_buffer->iopage.prv.lsa.offset,
 		   consistent_str, (void *) bufptr,
@@ -6391,9 +6431,9 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	}
 
       /* Read the disk page into local page area */
-      if (fileio_read (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid),
-		       malloc_io_pgptr, bufptr->vpid.pageid, 
-		       IO_PAGESIZE) == NULL)
+      if (fileio_read
+	  (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid),
+	   malloc_io_pgptr, bufptr->vpid.pageid, IO_PAGESIZE) == NULL)
 	{
 	  /* Unable to verify consistency of this page */
 	  consistent = PGBUF_CONTENT_BAD;
@@ -6401,7 +6441,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
       else
 	{
 	  /* If page is dirty, it should be different from the one on disk */
-	  if (!LSA_EQ (&malloc_io_pgptr->prv.lsa, 
+	  if (!LSA_EQ (&malloc_io_pgptr->prv.lsa,
 		       &bufptr->iopage_buffer->iopage.prv.lsa)
 	      || memcmp (malloc_io_pgptr->page,
 			 bufptr->iopage_buffer->iopage.page,
@@ -6434,7 +6474,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	  /* The page should be scrambled, otherwise some one step on it */
 	  for (i = 0; i < DB_PAGESIZE; i++)
 	    {
-	      if (bufptr->iopage_buffer->iopage.page[i] 
+	      if (bufptr->iopage_buffer->iopage.page[i]
 		  != MEM_REGION_SCRAMBLE_MARK)
 		{
 		  /* The page has been stepped by someone */

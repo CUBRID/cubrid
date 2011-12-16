@@ -7357,7 +7357,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	  smallest_lsa.offset = 0;
 
 #if !defined(SERVER_MODE)
-	  pgbuf_flush_checkpoint (thread_p, &smallest_lsa, &newsmallest_lsa);
+	  pgbuf_flush_checkpoint (thread_p, &smallest_lsa, NULL,
+				  &newsmallest_lsa);
 	  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
 	    {
 	      LSA_SET_NULL (&newsmallest_lsa);
@@ -7369,7 +7370,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	   */
 	  if (!BO_IS_SERVER_RESTARTED ())
 	    {
-	      pgbuf_flush_checkpoint (thread_p, &smallest_lsa,
+	      pgbuf_flush_checkpoint (thread_p, &smallest_lsa, NULL,
 				      &newsmallest_lsa);
 	      if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
 		{
@@ -7929,7 +7930,8 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   flush_upto_lsa.pageid = LOGPB_NEXT_ARCHIVE_PAGE_ID;
   flush_upto_lsa.offset = NULL_OFFSET;
 
-  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, &newflush_upto_lsa);
+  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL,
+			  &newflush_upto_lsa);
 
   if ((!LSA_ISNULL (&newflush_upto_lsa)
        && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
@@ -8607,6 +8609,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope   */
   LOG_LSA flush_upto_lsa;	/* Flush data pages up to LSA   */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
+  LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint
 				 * record
 				 */
@@ -8651,7 +8654,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   mnt_log_start_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED,
-	  1, log_Gl.hdr.chkpt_lsa.pageid);
+	  2, log_Gl.hdr.chkpt_lsa.pageid, log_Gl.chkpt_redo_lsa.pageid);
   er_log_debug (ARG_FILE_LINE, "start checkpoint\n");
 
   /*
@@ -8676,6 +8679,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
+  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
   if (!logpb_is_page_in_archive (chkpt_lsa.pageid))
@@ -8728,7 +8732,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, &tmp_chkpt.redo_lsa);
+  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, &chkpt_redo_lsa,
+			  &tmp_chkpt.redo_lsa);
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call fileio_synchronize_all()\n");
@@ -8742,8 +8747,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   if (LSA_ISNULL (&tmp_chkpt.redo_lsa))
     {
-      LSA_COPY (&tmp_chkpt.redo_lsa, &newchkpt_lsa);
+      LSA_COPY (&tmp_chkpt.redo_lsa, &flush_upto_lsa);
     }
+
+  assert (LSA_LT (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
+  assert (LSA_LT (&flush_upto_lsa, &newchkpt_lsa));
+  assert (LSA_LE (&tmp_chkpt.redo_lsa, &flush_upto_lsa));
 
 #if defined(SERVER_MODE)
   /* Save lower bound of flushed lsa */
@@ -8983,6 +8992,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &smallest_lsa);
     }
+  LSA_COPY (&log_Gl.chkpt_redo_lsa, &tmp_chkpt.redo_lsa);
+
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
   er_log_debug (ARG_FILE_LINE,
@@ -9164,7 +9175,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   mnt_log_end_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED,
-	  1, log_Gl.hdr.chkpt_lsa.pageid);
+	  2, log_Gl.hdr.chkpt_lsa.pageid, log_Gl.chkpt_redo_lsa.pageid);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
   return tmp_chkpt.redo_lsa.pageid;
 
@@ -12497,7 +12508,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
 	   * Flush as much as you can without forcing the current unfinish log
 	   * record.
 	   */
-	  pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, &tmp_lsa2);
+	  pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL, &tmp_lsa2);
 	  in_fatal = false;
 	}
     }

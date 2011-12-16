@@ -5952,7 +5952,6 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   int recset_length;		/* for recovery purposes */
   RECSET_HEADER recset_header;	/* for recovery purposes */
   int sp_success;
-  LOG_LSA temp_lsa;
   int recset_data_length;
   PGLENGTH log_addr_offset;
   int ret = NO_ERROR;
@@ -5960,6 +5959,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   VPID null_vpid;
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  LOG_DATA_ADDR addr;
 
   /* initializations */
   copy_rec.data = NULL;
@@ -6104,9 +6104,10 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     &recset_header, recset_data);
 
   /* increment lsa of the page to be deallocated */
-  LSA_COPY (&temp_lsa, pgbuf_get_lsa (Q));
-  temp_lsa.offset++;
-  pgbuf_set_lsa (thread_p, Q, &temp_lsa);
+  addr.vfid = NULL;
+  addr.pgptr = Q;
+  addr.offset = 0;
+  log_skip_logging (thread_p, &addr);
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
 
   if (node_type == BTREE_NON_LEAF_NODE)
@@ -6228,9 +6229,10 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
   /* increment lsa of the page to be deallocated */
-  LSA_COPY (&temp_lsa, pgbuf_get_lsa (R));
-  temp_lsa.offset++;
-  pgbuf_set_lsa (thread_p, R, &temp_lsa);
+  addr.vfid = NULL;
+  addr.pgptr = R;
+  addr.offset = 0;
+  log_skip_logging (thread_p, &addr);
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
   btree_clear_key_value (&clear_key, &mid_key);
@@ -6295,10 +6297,10 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   int recset_length;		/* for recovery purposes */
   RECSET_HEADER recset_header;	/* for recovery purposes */
   int key_type;
-  LOG_LSA temp_lsa;
   int ret = NO_ERROR;
   char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  LOG_DATA_ADDR addr;
 
   /* initializations */
   recset_data = NULL;
@@ -6566,9 +6568,10 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       pgbuf_set_dirty (thread_p, left_pg, DONT_FREE);
 
       /* increment lsa of the page to be deallocated */
-      LSA_COPY (&temp_lsa, pgbuf_get_lsa (right_pg));
-      temp_lsa.offset++;
-      pgbuf_set_lsa (thread_p, right_pg, &temp_lsa);
+      addr.vfid = NULL;
+      addr.pgptr = right_pg;
+      addr.offset = 0;
+      log_skip_logging (thread_p, &addr);
       pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
     }
@@ -6753,9 +6756,10 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
       /* increment lsa of the page to be deallocated */
-      LSA_COPY (&temp_lsa, pgbuf_get_lsa (left_pg));
-      temp_lsa.offset++;
-      pgbuf_set_lsa (thread_p, left_pg, &temp_lsa);
+      addr.vfid = NULL;
+      addr.pgptr = left_pg;
+      addr.offset = 0;
+      log_skip_logging (thread_p, &addr);
       pgbuf_set_dirty (thread_p, left_pg, DONT_FREE);
 
     }
