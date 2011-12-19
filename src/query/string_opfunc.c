@@ -5559,13 +5559,15 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	     const TP_DOMAIN * domain)
 {
   int error = NO_ERROR;
-  DB_DATETIME ldatetime = { 0, 0 }, result_datetime =
-  {
-  0, 0};
+  DB_DATETIME ldatetime = { 0, 0 };
+  DB_DATETIME result_datetime = { 0, 0 };
   bool left_is_datetime = false;
+  int month = 0, day = 0, year = 0;
+  int lsecond = 0, lminute = 0, lhour = 0, lms = 0;
+  bool is_time_decoded = false;
+  bool is_datetime_decoded = false;
   int rsecond = 0, rminute = 0, rhour = 0, rms = 0;
   DB_TIME ltime = 0, rtime = 0;
-  int lms = 0;
   char *res_s = NULL;
   DB_TYPE result_type = DB_TYPE_NULL;
 
@@ -5584,29 +5586,41 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
       {
 	bool is_explicit_time = false;
 	error =
+	  db_date_parse_time (DB_PULL_STRING (left),
+			      DB_GET_STRING_SIZE (left), &ltime, &lms);
+	if (error != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	    error = ER_TIME_CONVERSION;
+	    goto error_return;
+	  }
+	db_time_decode (&ltime, &lhour, &lminute, &lsecond);
+	is_time_decoded = true;
+
+	error =
 	  db_date_parse_datetime_parts (DB_PULL_STRING (left),
 					DB_GET_STRING_SIZE (left),
 					&ldatetime, &is_explicit_time, NULL,
 					NULL, NULL);
 	if (error != NO_ERROR || !is_explicit_time)
 	  {
-	    /* not a DATETIME, maybe it's a TIME */
-	    er_clear ();
-	    error =
-	      db_date_parse_time (DB_PULL_STRING (left),
-				  DB_GET_STRING_SIZE (left), &ltime, &lms);
-	    if (error != NO_ERROR)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
-			0);
-		error = ER_TIME_CONVERSION;
-		goto error_return;
-	      }
 	    left_is_datetime = false;
 	  }
 	else
 	  {
+	    int lsecond2 = 0, lminute2 = 0, lhour2 = 0, lms2 = 0;
 	    left_is_datetime = true;
+	    db_datetime_decode (&ldatetime, &month, &day, &year, &lhour2,
+				&lminute2, &lsecond2, &lms2);
+	    is_datetime_decoded = true;
+	    if (lhour2 != lhour || lminute2 != lminute ||
+		lsecond2 != lsecond || lms2 != lms)
+	      {
+		month = 0;
+		day = 0;
+		year = 0;
+		left_is_datetime = false;
+	      }
 	  }
 	result_type = DB_TYPE_VARCHAR;
 	break;
@@ -5654,10 +5668,11 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
   if (left_is_datetime)
     {
       /* add a datetime to a time */
-      int month = 0, day = 0, year = 0;
-      int lsecond = 0, lminute = 0, lhour = 0, lms = 0;
-      db_datetime_decode (&ldatetime, &month, &day, &year, &lhour, &lminute,
-			  &lsecond, &lms);
+      if (!is_datetime_decoded)
+	{
+	  db_datetime_decode (&ldatetime, &month, &day, &year, &lhour,
+			      &lminute, &lsecond, &lms);
+	}
 
       if (month == 0 && day == 0 && year == 0
 	  && lhour == 0 && lminute == 0 && lsecond == 0 && lms == 0)
@@ -5683,9 +5698,11 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
   else
     {
       /* add two time values */
-      int lsecond = 0, lminute = 0, lhour = 0, lms = 0;
       int seconds = 0;
-      db_time_decode (&ltime, &lhour, &lminute, &lsecond);
+      if (!is_time_decoded)
+	{
+	  db_time_decode (&ltime, &lhour, &lminute, &lsecond);
+	}
       seconds =
 	(lhour + rhour) * 3600 + (lminute + rminute) * 60 + lsecond + rsecond;
       rhour = seconds / 3600;
@@ -11011,11 +11028,11 @@ db_to_char (const DB_VALUE * src_value,
       return number_to_char (src_value, format_or_length, lang_str,
 			     result_str);
     }
-  else if (TP_IS_DATE_OR_TIME_TYPE(type))
+  else if (TP_IS_DATE_OR_TIME_TYPE (type))
     {
       return date_to_char (src_value, format_or_length, lang_str, result_str);
     }
-  else if (TP_IS_CHAR_TYPE(type))
+  else if (TP_IS_CHAR_TYPE (type))
     {
       return pr_clone_value (src_value, result_str);
     }
