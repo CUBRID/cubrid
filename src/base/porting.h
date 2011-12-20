@@ -96,6 +96,7 @@
 #define pclose _pclose
 #define strtok_r            strtok_s
 #define strtoll             _strtoi64
+#define strtoull            _strtoui64
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define fileno		_fileno

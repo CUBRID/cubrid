@@ -5607,6 +5607,9 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_CHAR_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_HEX:
+	case PT_ASCII:
+	case PT_CONV:
 	case PT_BIN:
 	case PT_ADDTIME:
 	case PT_MD5:

@@ -1186,7 +1186,11 @@ typedef enum
   PT_EXEC_STATS,
   PT_ADDTIME,
   PT_BIN,
-  PT_FINDINSET
+  PT_FINDINSET,
+
+  PT_HEX,
+  PT_ASCII,
+  PT_CONV
 } PT_OP_TYPE;
 
 

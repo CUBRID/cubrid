@@ -211,7 +211,10 @@ static FUNCTION_MAP functions[] = {
   {"dayofweek", PT_DAYOFWEEK},
   {"version", PT_VERSION},
   {"quarter", PT_QUARTERF},
-  {"week", PT_WEEKF}
+  {"week", PT_WEEKF},
+  {"hex", PT_HEX},
+  {"ascii", PT_ASCII},
+  {"conv", PT_CONV}
 };
 
 
@@ -18726,6 +18729,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_QUARTERF:
     case PT_EXEC_STATS:
     case PT_CURRENT_VALUE:
+    case PT_HEX:
+    case PT_ASCII:
       if (c != 1)
         {
 	  return NULL;
@@ -18821,6 +18826,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_NVL2:
     case PT_MAKETIME:
     case PT_INDEX_CARDINALITY:
+    case PT_CONV:
       if (c != 3)
 	return NULL;
       a1 = args;

@@ -3127,6 +3127,12 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "lower ";
     case PT_UPPER:
       return "upper ";
+    case PT_HEX:
+      return "hex ";
+    case PT_ASCII:
+      return "ascii ";
+    case PT_CONV:
+      return "conv ";
     case PT_MD5:
       return "md5 ";
     case PT_BIN:
@@ -8978,6 +8984,30 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " upper(");
       q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_HEX:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " hex(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_ASCII:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " ascii(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_CONV:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      r3 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_nulstring (parser, q, " conv(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r3);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_BIN:
@@ -15105,6 +15135,7 @@ pt_is_const_expr_node (PT_NODE * node)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
 	case PT_INSTR:
+	case PT_CONV:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.
@@ -15132,6 +15163,8 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_BIT_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_HEX:
+	case PT_ASCII:
 	case PT_BIN:
 	case PT_MD5:
 	case PT_REVERSE:

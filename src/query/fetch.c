@@ -249,6 +249,24 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_CONV:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+			    vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_LOCATE:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -419,6 +437,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_CHAR_LENGTH:
     case T_LOWER:
     case T_UPPER:
+    case T_HEX:
+    case T_ASCII:
     case T_SPACE:
     case T_MD5:
     case T_BIN:
@@ -1216,6 +1236,44 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       else if (db_string_upper (peek_right, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
+	}
+      break;
+
+    case T_HEX:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_hex (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ASCII:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_ascii (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_CONV:
+      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right)
+	  || DB_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_conv (peek_left, peek_right, peek_third, arithptr->value)
+	      != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 

@@ -7091,6 +7091,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_CHAR_LENGTH
 		       || node->info.expr.op == PT_LOWER
 		       || node->info.expr.op == PT_UPPER
+		       || node->info.expr.op == PT_HEX
+		       || node->info.expr.op == PT_ASCII
 		       || node->info.expr.op == PT_LAST_DAY
 		       || node->info.expr.op == PT_CAST
 		       || node->info.expr.op == PT_EXTRACT
@@ -7301,6 +7303,20 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      domain = pt_xasl_node_to_domain (parser, node);
 		    }
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
+	      else if (node->info.expr.op == PT_CONV)
+		{
+		  r1 = pt_to_regu_variable (parser,
+					    node->info.expr.arg1, unbox);
+		  r2 = pt_to_regu_variable (parser,
+					    node->info.expr.arg2, unbox);
+		  r3 = pt_to_regu_variable (parser,
+					    node->info.expr.arg3, unbox);
+		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
 		    {
 		      goto end_expr_op_switch;
@@ -7958,6 +7974,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_UPPER:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_UPPER, domain);
+		  break;
+
+		case PT_HEX:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_HEX, domain);
+		  break;
+
+		case PT_ASCII:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ASCII, domain);
+		  break;
+
+		case PT_CONV:
+		  regu = pt_make_regu_arith (r1, r2, r3, T_CONV, domain);
 		  break;
 
 		case PT_BIN:

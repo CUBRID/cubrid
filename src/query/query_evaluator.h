@@ -339,7 +339,10 @@ typedef enum
   T_EXEC_STATS,
   T_ADDTIME,
   T_BIN,
-  T_FINDINSET
+  T_FINDINSET,
+  T_HEX,
+  T_ASCII,
+  T_CONV
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

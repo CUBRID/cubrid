@@ -4027,6 +4027,9 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_CHAR_LENGTH:
     case PT_LOWER:
     case PT_UPPER:
+    case PT_HEX:
+    case PT_ASCII:
+    case PT_CONV:
     case PT_BIN:
     case PT_MD5:
     case PT_TRIM:

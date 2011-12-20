@@ -823,6 +823,120 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_HEX:
+      num = 0;
+
+      /* three overloads */
+
+      /* HEX (STRING) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* HEX (NUMBER) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* HEX (BIT) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_ASCII:
+      num = 0;
+
+      /* two overloads */
+
+      /* ASCII (STRING) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_SMALLINT;
+      def->overloads[num++] = sig;
+
+      /* ASCII (BIT) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_SMALLINT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CONV:
+      num = 0;
+
+      /* three overloads */
+
+      /* CONV(NUMBER, SMALLINT, SMALLINT) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_SMALLINT;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_SMALLINT;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* CONV(VARCHAR, SMALLINT, SMALLINT) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_SMALLINT;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_SMALLINT;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* CONV(BIT, SMALLINT, SMALLINT) */
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_SMALLINT;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_SMALLINT;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_DATEF:
     case PT_REVERSE:
       num = 0;
@@ -5108,6 +5222,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
     case PT_EXEC_STATS:
+    case PT_CONV:
       return false;
 
     default:
@@ -7003,6 +7118,9 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_NOT_LIKE:
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
+    case PT_HEX:
+    case PT_ASCII:
+    case PT_CONV:
       return true;
 
     default:
@@ -10005,6 +10123,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 
     case PT_LOWER:
     case PT_UPPER:
+    case PT_HEX:
     case PT_REVERSE:
     case PT_LEFT:
     case PT_RIGHT:
@@ -14354,6 +14473,42 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  return 1;
 	}
 
+    case PT_HEX:
+      error = db_hex (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_ASCII:
+      error = db_ascii (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CONV:
+      error = db_conv (arg1, arg2, arg3, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
     case PT_BIN:
       error = db_bigint_to_binary_string (arg1, result);
       if (error != NO_ERROR)
@@ -18119,6 +18274,9 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_DEFINE_VARIABLE:
     case PT_ADDTIME:
     case PT_TO_CHAR:
+    case PT_HEX:
+    case PT_CONV:
+    case PT_ASCII:
       return true;
     default:
       return false;

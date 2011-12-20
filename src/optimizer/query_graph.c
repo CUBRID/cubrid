@@ -3318,6 +3318,9 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_CHAR_LENGTH:
     case PT_LOWER:
     case PT_UPPER:
+    case PT_HEX:
+    case PT_ASCII:
+    case PT_CONV:
     case PT_TRIM:
 
     case PT_LIKE_LOWER_BOUND:
@@ -3819,6 +3822,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 		  && pt_is_pseudo_const (expr->info.
 					 expr.arg2)) ? true : false;
 	case PT_INSTR:
+	case PT_CONV:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.expr.arg2)
 		  && pt_is_pseudo_const (expr->info.
@@ -3841,6 +3845,8 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_BIT_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_HEX:
+	case PT_ASCII:
 	case PT_REVERSE:
 	case PT_SPACE:
 	case PT_MD5:

@@ -70,6 +70,8 @@
 #define LEAP(y)	  (((y) % 400 == 0) || ((y) % 100 != 0 && (y) % 4 == 0))
 
 #define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10((double) FLT_RADIX)))
+#define UINT64_MAX_HEX_DIGITS 16
+#define UINT64_MAX_BIN_DIGITS 64
 
 #define LOB_CHUNK_SIZE	(128 * 1024)
 
@@ -23034,4 +23036,504 @@ convert_locale_number (char *sz, const int size,
 	  *sz = dst_locale_frac;
 	}
     }
+}
+
+
+/*
+ * db_hex() - return hexadecimal representation
+ *  returns: error code or NO_ERROR
+ *   param(in): parameter to turn to hex
+ *   result(out): varchar db_value with hex representation
+ * 
+ * Note:
+ *  If param is a generic string, the hex representation will be the
+ *  concatenation of hex values of each byte.
+ *  If param is a generic numeric, the hex representation will be that of
+ *  param casted to bigint (64bit unsigned integer). if value exceeds UINT64
+ *  capacity, the return value is 'FFFFFFFFFFFFFFFF'.
+ */
+int
+db_hex (const DB_VALUE * param, DB_VALUE * result)
+{
+  /* String length limits for numeric values of param. When param is numeric, 
+   * it will be cast to BIGINT db type and then internally to UINT64.
+   * hex_lenght_limits[i] is the upper limit of the closed set of integers 
+   * that can be represented in hex on i digits. */
+  const UINT64 hex_length_limits[UINT64_MAX_HEX_DIGITS + 1] = {
+    0x0, 0xF, 0xFF, 0xFFF, 0xFFFF,
+    0xFFFFF, 0xFFFFFF, 0xFFFFFFF,
+    0xFFFFFFFF, 0xFFFFFFFFF,
+    0xFFFFFFFFFF, 0xFFFFFFFFFFF,
+    0xFFFFFFFFFFFF, 0xFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF
+  };
+
+  /* hex digits */
+  const char hex_digit[] = "0123456789ABCDEF";
+
+  /* other variables */
+  DB_TYPE param_type = DB_TYPE_UNKNOWN;
+  char *str = NULL, *hexval = NULL;
+  int str_size = 0, hexval_len = 0, i = 0, err = 0, error_code = NO_ERROR;
+
+  /* check parameters for NULL values */
+  if (param == NULL || result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
+    }
+
+  if (DB_IS_NULL (param))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* compute hex representation */
+  param_type = DB_VALUE_DOMAIN_TYPE (param);
+
+  if (TP_IS_CHAR_TYPE (param_type) || TP_IS_BIT_TYPE (param_type))
+    {
+      if (TP_IS_CHAR_TYPE (param_type))
+	{
+	  /* retrieve source string */
+	  str = DB_PULL_STRING (param);
+	  str_size = DB_GET_STRING_SIZE (param);
+
+	  /* remove padding from end of string */
+	  if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
+	    {
+	      while (str_size > 0 && str[str_size - 1] == ' ')
+		{
+		  str_size--;
+		}
+	    }
+	}
+      else
+	{
+	  /* get bytes of bitfield */
+	  str = DB_PULL_BIT (param, &str_size);
+	  str_size = QSTR_NUM_BYTES (str_size);
+	}
+
+      /* allocate hex string */
+      hexval_len = str_size * 2;
+      hexval = (char *) db_private_alloc (NULL, hexval_len + 1);
+      if (hexval == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      hexval[hexval_len] = 0;
+
+      /* compute hex representation */
+      for (i = 0; i < str_size; i++)
+	{
+	  hexval[i * 2] = hex_digit[(str[i] >> 4) & 0xF];
+	  hexval[i * 2 + 1] = hex_digit[str[i] & 0xF];
+	}
+
+      /* set return string */
+      DB_MAKE_STRING (result, hexval);
+      result->need_clear = true;
+    }
+  else if (TP_IS_NUMERIC_TYPE (param_type))
+    {
+      DB_VALUE param_db_bigint;
+      TP_DOMAIN *domain, *param_domain;
+      UINT64 param_bigint;
+
+      /* try to convert to bigint */
+      param_domain = tp_domain_resolve_default (param_type);
+      domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
+      /* don't mind error code here, we need to know if param is
+       * out of range */
+      tp_value_auto_cast (param, &param_db_bigint, domain);
+      if (DB_IS_NULL (&param_db_bigint))
+	{
+	  /* param is out of range, set it to max */
+	  param_bigint = hex_length_limits[UINT64_MAX_HEX_DIGITS];
+	}
+      else
+	{
+	  param_bigint = (UINT64) DB_GET_BIGINT (&param_db_bigint);
+	}
+
+      /* compute hex representation length */
+      hexval_len = 1;
+      while (param_bigint > hex_length_limits[hexval_len]
+	     && hexval_len < UINT64_MAX_HEX_DIGITS)
+	{
+	  hexval_len++;
+	}
+
+      /* allocate memory */
+      hexval = (char *) db_private_alloc (NULL, hexval_len + 1);
+      if (hexval == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      hexval[hexval_len] = 0;
+
+      /* compute hex representation */
+      for (i = hexval_len - 1; i >= 0; --i)
+	{
+	  hexval[i] = hex_digit[param_bigint & 0xF];
+	  param_bigint >>= 4;
+	}
+
+      /* set return string */
+      DB_MAKE_STRING (result, hexval);
+      result->need_clear = true;
+    }
+  else
+    {
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
+
+  /* all ok */
+  return NO_ERROR;
+
+error:
+  DB_MAKE_NULL (result);
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+  return error_code;
+}
+
+
+/*
+ * db_ascii() - return ASCII code of first character in string
+ *  returns: error code or NO_ERROR
+ *   param(in): string
+ *   result(out): smallint db_value of ASCII code
+ * 
+ * Note:
+ *  If param is a zero-length string, result should be zero.
+ *  If param is DB null, result should be DB null
+ */
+int
+db_ascii (const DB_VALUE * param, DB_VALUE * result)
+{
+  /* other variables */
+  DB_TYPE param_type = DB_TYPE_UNKNOWN;
+  char *str = NULL;
+  int str_size = 0, error_code = NO_ERROR;
+
+  /* check parameters for NULL values */
+  if (param == NULL || result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
+    }
+
+  if (DB_IS_NULL (param))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* get ASCII value */
+  param_type = DB_VALUE_DOMAIN_TYPE (param);
+
+  if (TP_IS_CHAR_TYPE (param_type))
+    {
+      /* get string and length */
+      str = DB_PULL_STRING (param);
+      str_size = DB_GET_STRING_SIZE (param);
+
+      /* remove padding from end of string */
+      if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
+	{
+	  while (str_size > 0 && str[str_size - 1] == ' ')
+	    {
+	      str_size--;
+	    }
+	}
+
+      /* return first character */
+      if (str_size > 0)
+	{
+	  DB_MAKE_SMALLINT (result, (unsigned char) str[0]);
+	}
+      else
+	{
+	  DB_MAKE_SMALLINT (result, 0);
+	}
+    }
+  else if (TP_IS_BIT_TYPE (param_type))
+    {
+      /* get bitfield as char array */
+      str = DB_PULL_BIT (param, &str_size);
+
+      /* return first byte */
+      if (str_size > 0)
+	{
+	  DB_MAKE_SMALLINT (result, (unsigned char) str[0]);
+	}
+      else
+	{
+	  DB_MAKE_SMALLINT (result, 0);
+	}
+    }
+  else
+    {
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
+
+  /* no error */
+  return NO_ERROR;
+
+error:
+  DB_MAKE_NULL (result);
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+  return error_code;
+}
+
+
+/*
+ * db_conv() - convert number form one base to another
+ *  returns: error code or NO_ERROR
+ *   num(in): number to convert
+ *   from_base(in): base of num
+ *   to_base(in): base to convert num to
+ *   result(out): string db_value with number in new base
+ * 
+ * Note:
+ *  From_base and to_base should satisfy 2 <= abs(base) <= 36
+ */
+int
+db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
+	 const DB_VALUE * to_base, DB_VALUE * result)
+{
+  /* digit value lookup table vars */
+  const unsigned char base_digits[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+  /* error handling vars */
+  int error_code = NO_ERROR;
+
+  /* type checking vars */
+  DB_TYPE num_type = DB_TYPE_UNKNOWN;
+  DB_TYPE from_base_type = DB_TYPE_UNKNOWN;
+  DB_TYPE to_base_type = DB_TYPE_UNKNOWN;
+
+  /* sign flags */
+  bool num_is_signed = false, res_is_signed = false;
+  bool res_has_minus = false;
+
+  /* string representations of input number and result; size of buffer is 
+     maximum computable value in base 2 (64 digits) + sign (1 digit) + NULL 
+     terminator (1 byte) */
+  unsigned char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
+  unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
+  char *num_p_str = num_str, *res_p_str = NULL;
+  unsigned char swap = 0;
+  int num_size = 0, res_size = 0;
+
+  /* auxiliary variables */
+  UINT64 base10 = 0;
+  int from_base_int = 0, to_base_int = 0, i = 0;
+
+  /* check parameters for NULL values */
+  if (num == NULL || from_base == NULL || to_base == NULL || result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
+    }
+
+  if (DB_IS_NULL (num) || DB_IS_NULL (from_base) || DB_IS_NULL (to_base))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* type checking; do not check num_type here, we will do it later on */
+  num_type = DB_VALUE_DOMAIN_TYPE (num);
+  from_base_type = DB_VALUE_DOMAIN_TYPE (from_base);
+  to_base_type = DB_VALUE_DOMAIN_TYPE (to_base);
+
+  if (from_base_type != DB_TYPE_SMALLINT || to_base_type != DB_TYPE_SMALLINT)
+    {
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
+
+  /* from_base and to_base bounds checking */
+  from_base_int = DB_GET_SMALLINT (from_base);
+  to_base_int = DB_GET_SMALLINT (to_base);
+  num_is_signed = (from_base_int < 0);
+  res_is_signed = (to_base_int < 0);
+  from_base_int = ABS (from_base_int);
+  to_base_int = ABS (to_base_int);
+
+  if (from_base_int < 2 || from_base_int > 36 || to_base_int < 2
+      || to_base_int > 36)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* compute input number string from either generic NUMERIC or generic
+     STRING types */
+  if (TP_IS_NUMERIC_TYPE (num_type))
+    {
+      /* generic number -> string */
+      switch (num_type)
+	{
+	case DB_TYPE_SMALLINT:
+	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%d",
+		    DB_GET_SMALLINT (num));
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%d",
+		    DB_GET_INT (num));
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%lld",
+		    DB_GET_BIGINT (num));
+	  break;
+
+	case DB_TYPE_NUMERIC:
+	  num_p_str = numeric_db_value_print ((DB_VALUE *) num);
+	  break;
+
+	case DB_TYPE_FLOAT:
+	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%.0f",
+		    DB_GET_FLOAT (num));
+	  break;
+
+	case DB_TYPE_DOUBLE:
+	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%.0f",
+		    DB_GET_DOUBLE (num));
+	  break;
+
+	case DB_TYPE_MONETARY:
+	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%.0f",
+		    db_value_get_monetary_amount_as_double (num));
+	  break;
+
+	default:
+	  DB_MAKE_NULL (result);
+	  return NO_ERROR;
+	}
+    }
+  else if (TP_IS_CHAR_TYPE (num_type))
+    {
+      /* get string */
+      num_p_str = DB_PULL_STRING (num);
+    }
+  else if (TP_IS_BIT_TYPE (num_type))
+    {
+      /* get raw bytes */
+      num_p_str = DB_PULL_BIT (num, &num_size);
+      num_size = QSTR_NUM_BYTES (num_size);
+
+      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted 
+         bytes, not the size of the hex string; also, we convert at most 64
+         digits even if we need only 16 in order to let strtoll handle
+         overflow (weird stuff happens there ...) */
+      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_p_str,
+				  num_size);
+      num_str[num_size * 2] = '\0';
+
+      /* set up variables for hex -> base10 conversion */
+      num_p_str = num_str;
+      from_base_int = 16;
+      num_is_signed = false;
+    }
+  else
+    {
+      /* we cannot process the input in any way */
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
+
+  /* convert from string to INT64/UINT64 */
+  if (num_is_signed)
+    {
+      base10 = (UINT64) strtoll (num_p_str, NULL, from_base_int);
+    }
+  else
+    {
+      base10 = (UINT64) strtoull (num_p_str, NULL, from_base_int);
+    }
+
+  /* compute signed part of number */
+  if (res_is_signed && base10 > DB_BIGINT_MAX)
+    {
+      /* result should be signed and we DO have a negative INT64; compute
+         complement and remember to add minus sign to string */
+      base10 = ~base10;
+      ++base10;
+      res_has_minus = true;
+    }
+
+  /* convert base 10 -> to_base */
+  if (base10 == 0)
+    {
+      /* number is zero? display it as such */
+      res_str[res_size++] = '0';
+      res_has_minus = false;
+    }
+
+  while (base10 > 0)
+    {
+      /* convert another digit */
+      res_str[res_size++] = base_digits[base10 % to_base_int];
+      base10 /= to_base_int;
+    }
+
+  if (res_has_minus)
+    {
+      /* add minus sign to number string */
+      res_str[res_size++] = '-';
+    }
+
+  /* reverse string (duh!) */
+  res_str[res_size] = 0;
+  for (i = 0; i < res_size / 2; i++)
+    {
+      swap = res_str[i];
+      res_str[i] = res_str[res_size - i - 1];
+      res_str[res_size - i - 1] = swap;
+    }
+
+  /* return string */
+  res_p_str = db_private_alloc (NULL, res_size + 1);
+  if (res_p_str == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  memcpy (res_p_str, res_str, res_size + 1);
+  DB_MAKE_STRING (result, res_p_str);
+  result->need_clear = true;
+
+  /* all ok */
+  return NO_ERROR;
+
+error:
+  DB_MAKE_NULL (result);
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+  return error_code;
 }
