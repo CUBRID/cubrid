@@ -7845,7 +7845,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	       * If a position is specified on group by clause,
 	       * we should check its range.
 	       */
-	      if (r->node_type == PT_VALUE)
+	      if (r->node_type == PT_VALUE && r->alias_print == NULL)
 		{
 		  assert (r->type_enum == PT_TYPE_INTEGER);
 		  if (r->info.value.data_value.i == 0 ||
