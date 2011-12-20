@@ -20275,9 +20275,17 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
   while (0);
 
   /* 2. Validations */
-  if (am != -1 && h24 == 1)	/* 24h time format and am/pm */
+  if (am != -1)			/* 24h time format and am/pm */
     {
-      goto conversion_error;
+      if (h24 == 1 || h == 0)
+	{
+	  goto conversion_error;
+	}
+
+      if (h == 12)
+	{
+	  h = 0;
+	}
     }
 
   if (_x != _v && _x != -1)	/* accept %v only if %x and %V only if %X */
