@@ -982,101 +982,101 @@ static const unsigned short int yyrline[] = {
   7323, 7328, 7334, 7343, 7349, 7358, 7377, 7384, 7394, 7399,
   7408, 7414, 7423, 7436, 7443, 7445, 7441, 7454, 7460, 7469,
   7469, 7469, 7475, 7484, 7490, 7499, 7505, 7523, 7529, 7538,
-  7544, 7553, 7559, 7565, 7574, 7624, 7674, 7672, 7715, 7751,
-  7756, 7774, 7795, 7828, 7835, 7839, 7843, 7847, 7851, 7855,
-  7859, 7866, 7908, 7942, 7971, 8011, 8041, 8092, 8093, 8096,
-  8098, 8099, 8102, 8104, 8108, 8140, 8160, 8179, 8234, 8240,
-  8249, 8328, 8352, 8370, 8379, 8388, 8397, 8406, 8419, 8442,
-  8457, 8479, 8503, 8504, 8508, 8514, 8520, 8529, 8543, 8557,
-  8563, 8569, 8575, 8585, 8598, 8605, 8618, 8625, 8641, 8643,
-  8646, 8648, 8651, 8653, 8657, 8674, 8691, 8711, 8717, 8719,
-  8716, 8729, 8734, 8743, 8749, 8759, 8764, 8773, 8783, 8788,
-  8797, 8803, 8809, 8819, 8824, 8830, 8839, 8852, 8869, 8875,
-  8881, 8887, 8893, 8899, 8905, 8911, 8920, 8934, 8950, 8956,
-  8965, 8978, 8991, 9005, 9019, 9033, 9047, 9061, 9078, 9091,
-  9107, 9115, 9125, 9127, 9131, 9145, 9159, 9165, 9171, 9180,
-  9186, 9192, 9201, 9217, 9234, 9249, 9260, 9275, 9286, 9294,
-  9305, 9313, 9323, 9329, 9338, 9346, 9348, 9353, 9358, 9364,
-  9372, 9374, 9375, 9380, 9385, 9394, 9400, 9409, 9425, 9444,
-  9450, 9459, 9459, 9472, 9473, 9479, 9495, 9502, 9479, 9564,
-  9580, 9589, 9604, 9619, 9634, 9649, 9667, 9673, 9684, 9707,
-  9725, 9683, 9867, 9890, 9866, 9947, 9952, 9958, 9966, 9968,
-  9972, 9980, 9988, 9996, 10004, 10012, 10023, 10029, 10039, 10044,
-  10050, 10056, 10065, 10075, 10086, 10094, 10094, 10119, 10125, 10134,
-  10182, 10188, 10197, 10203, 10212, 10219, 10234, 10252, 10266, 10280,
-  10294, 10312, 10332, 10359, 10374, 10402, 10413, 10418, 10418, 10440,
-  10445, 10445, 10459, 10464, 10464, 10482, 10484, 10498, 10503, 10513,
-  10518, 10527, 10533, 10545, 10545, 10599, 10604, 10604, 10616, 10621,
-  10627, 10641, 10666, 10672, 10681, 10687, 10696, 10715, 10738, 10747,
-  10756, 10765, 10773, 10788, 10793, 10799, 10808, 10814, 10823, 10847,
-  10853, 10862, 10887, 10890, 10888, 10906, 10910, 10936, 10907, 11102,
-  11104, 11121, 11127, 11135, 11137, 11205, 11282, 11283, 11293, 11294,
-  11299, 11305, 11314, 11327, 11341, 11359, 11365, 11374, 11380, 11389,
-  11395, 11404, 11410, 11419, 11425, 11431, 11440, 11446, 11452, 11461,
-  11467, 11473, 11479, 11485, 11494, 11500, 11509, 11515, 11521, 11528,
-  11527, 11556, 11555, 11586, 11596, 11602, 11608, 11614, 11620, 11628,
-  11634, 11682, 11696, 11701, 11711, 11710, 11727, 11740, 11749, 11755,
-  11761, 11771, 11787, 11805, 11821, 11839, 11855, 11873, 11890, 11906,
-  11927, 11945, 11964, 11966, 11963, 11982, 12007, 12009, 12006, 12025,
-  12041, 12048, 12050, 12047, 12060, 12062, 12059, 12072, 12074, 12071,
-  12084, 12086, 12083, 12096, 12098, 12095, 12107, 12109, 12106, 12118,
-  12120, 12117, 12129, 12131, 12128, 12149, 12151, 12148, 12160, 12162,
-  12159, 12180, 12182, 12179, 12191, 12193, 12190, 12202, 12204, 12201,
-  12213, 12215, 12212, 12224, 12226, 12223, 12235, 12237, 12234, 12246,
-  12248, 12245, 12257, 12259, 12256, 12268, 12270, 12267, 12279, 12281,
-  12278, 12290, 12292, 12289, 12302, 12304, 12301, 12314, 12316, 12313,
-  12326, 12328, 12325, 12338, 12340, 12337, 12367, 12375, 12382, 12389,
-  12396, 12403, 12415, 12417, 12414, 12426, 12428, 12425, 12443, 12455,
-  12476, 12478, 12475, 12485, 12487, 12484, 12494, 12496, 12493, 12503,
-  12505, 12502, 12512, 12514, 12511, 12521, 12523, 12520, 12530, 12532,
-  12529, 12539, 12550, 12538, 12568, 12570, 12567, 12577, 12579, 12576,
-  12586, 12588, 12585, 12595, 12597, 12594, 12606, 12608, 12605, 12617,
-  12619, 12616, 12628, 12630, 12627, 12637, 12639, 12636, 12646, 12648,
-  12645, 12655, 12657, 12654, 12664, 12666, 12663, 12673, 12675, 12672,
-  12688, 12689, 12691, 12690, 12697, 12698, 12700, 12699, 12706, 12707,
-  12709, 12708, 12712, 12714, 12713, 12717, 12719, 12718, 12725, 12726,
-  12728, 12727, 12734, 12735, 12736, 12740, 12746, 12752, 12758, 12764,
-  12770, 12776, 12782, 12788, 12794, 12800, 12806, 12812, 12821, 12827,
-  12833, 12839, 12845, 12851, 12857, 12863, 12869, 12875, 12885, 12891,
-  12897, 12907, 12908, 12913, 12918, 12924, 12934, 12939, 12949, 12954,
-  12964, 12969, 12978, 12984, 12990, 12999, 13003, 13067, 13120, 13165,
-  13170, 13179, 13185, 13194, 13225, 13231, 13240, 13268, 13281, 13282,
-  13286, 13287, 13291, 13297, 13303, 13309, 13315, 13321, 13327, 13333,
-  13339, 13345, 13351, 13357, 13363, 13369, 13375, 13381, 13387, 13393,
-  13399, 13405, 13415, 13420, 13429, 13455, 13497, 13502, 13511, 13524,
-  13537, 13550, 13566, 13573, 13582, 13589, 13597, 13603, 13612, 13618,
-  13627, 13634, 13643, 13650, 13657, 13666, 13672, 13678, 13688, 13687,
-  13781, 13887, 13895, 13908, 13914, 13920, 13927, 14048, 14054, 14064,
-  14083, 14088, 14097, 14117, 14137, 14157, 14177, 14197, 14217, 14224,
-  14231, 14241, 14246, 14252, 14258, 14267, 14273, 14282, 14288, 14298,
-  14304, 14313, 14319, 14328, 14369, 14375, 14384, 14390, 14396, 14402,
-  14408, 14414, 14420, 14426, 14432, 14441, 14447, 14453, 14459, 14465,
-  14471, 14480, 14500, 14506, 14518, 14537, 14615, 14628, 14637, 14643,
-  14652, 14664, 14665, 14669, 14680, 14686, 14692, 14701, 14714, 14724,
-  14729, 14735, 14741, 14751, 14776, 14790, 14801, 14820, 14830, 14839,
-  14845, 14854, 14886, 14921, 14930, 14936, 14945, 14954, 14967, 14972,
-  14981, 14989, 14997, 15005, 15013, 15021, 15029, 15037, 15045, 15053,
-  15061, 15069, 15077, 15092, 15100, 15108, 15126, 15239, 15287, 15337,
-  15342, 15348, 15358, 15363, 15373, 15378, 15388, 15393, 15403, 15410,
-  15418, 15430, 15436, 15442, 15448, 15456, 15458, 15462, 15468, 15503,
-  15530, 15548, 15554, 15563, 15569, 15575, 15581, 15587, 15593, 15599,
-  15608, 15614, 15623, 15629, 15638, 15651, 15664, 15676, 15703, 15721,
-  15726, 15735, 15741, 15747, 15753, 15762, 15768, 15778, 15804, 15830,
-  15856, 15883, 15892, 15901, 15910, 15919, 15928, 15937, 15946, 15955,
-  15964, 15973, 15982, 15991, 16000, 16009, 16018, 16027, 16036, 16045,
-  16054, 16063, 16072, 16081, 16090, 16099, 16108, 16117, 16126, 16135,
-  16144, 16153, 16162, 16171, 16180, 16189, 16198, 16207, 16216, 16225,
-  16234, 16243, 16252, 16261, 16270, 16279, 16288, 16297, 16306, 16315,
-  16324, 16333, 16342, 16351, 16360, 16369, 16378, 16387, 16396, 16405,
-  16414, 16423, 16432, 16441, 16450, 16459, 16468, 16477, 16486, 16495,
-  16504, 16513, 16522, 16531, 16540, 16549, 16558, 16567, 16576, 16585,
-  16594, 16603, 16612, 16621, 16630, 16639, 16648, 16657, 16666, 16675,
-  16684, 16693, 16706, 16712, 16724, 16730, 16740, 16755, 16764, 16794,
-  16815, 16830, 16839, 16856, 16876, 16922, 16953, 16987, 17007, 17027,
-  17047, 17070, 17076, 17082, 17091, 17100, 17109, 17118, 17130, 17139,
-  17153, 17168, 17185, 17187, 17191, 17197, 17206, 17220, 17234, 17251,
-  17263, 17272, 17285, 17297, 17309, 17323, 17325, 17329, 17335, 17341,
-  17347, 17356, 17362, 17371, 17375
+  7544, 7553, 7559, 7565, 7574, 7627, 7677, 7675, 7718, 7754,
+  7759, 7777, 7798, 7831, 7838, 7842, 7846, 7850, 7854, 7858,
+  7862, 7869, 7911, 7945, 7974, 8014, 8044, 8095, 8096, 8099,
+  8101, 8102, 8105, 8107, 8111, 8143, 8163, 8182, 8237, 8243,
+  8252, 8331, 8355, 8373, 8382, 8391, 8400, 8409, 8422, 8445,
+  8460, 8482, 8506, 8507, 8511, 8517, 8523, 8532, 8546, 8560,
+  8566, 8572, 8578, 8588, 8601, 8608, 8621, 8628, 8644, 8646,
+  8649, 8651, 8654, 8656, 8660, 8677, 8694, 8714, 8720, 8722,
+  8719, 8732, 8737, 8746, 8752, 8762, 8767, 8776, 8786, 8791,
+  8800, 8806, 8812, 8822, 8827, 8833, 8842, 8855, 8872, 8878,
+  8884, 8890, 8896, 8902, 8908, 8914, 8923, 8937, 8953, 8959,
+  8968, 8981, 8994, 9008, 9022, 9036, 9050, 9064, 9081, 9094,
+  9110, 9118, 9128, 9130, 9134, 9148, 9162, 9168, 9174, 9183,
+  9189, 9195, 9204, 9220, 9237, 9252, 9263, 9278, 9289, 9297,
+  9308, 9316, 9326, 9332, 9341, 9349, 9351, 9356, 9361, 9367,
+  9375, 9377, 9378, 9383, 9388, 9397, 9403, 9412, 9428, 9447,
+  9453, 9462, 9462, 9475, 9476, 9482, 9498, 9505, 9482, 9567,
+  9583, 9592, 9607, 9622, 9637, 9652, 9670, 9676, 9687, 9710,
+  9728, 9686, 9870, 9893, 9869, 9950, 9955, 9961, 9969, 9971,
+  9975, 9983, 9991, 9999, 10007, 10015, 10026, 10032, 10042, 10047,
+  10053, 10059, 10068, 10078, 10089, 10097, 10097, 10122, 10128, 10137,
+  10185, 10191, 10200, 10206, 10215, 10222, 10237, 10255, 10269, 10283,
+  10297, 10315, 10335, 10362, 10377, 10405, 10416, 10421, 10421, 10443,
+  10448, 10448, 10462, 10467, 10467, 10485, 10487, 10501, 10506, 10516,
+  10521, 10530, 10536, 10548, 10548, 10602, 10607, 10607, 10619, 10624,
+  10630, 10644, 10669, 10675, 10684, 10690, 10699, 10718, 10741, 10750,
+  10759, 10768, 10776, 10791, 10796, 10802, 10811, 10817, 10826, 10850,
+  10856, 10865, 10890, 10893, 10891, 10909, 10913, 10939, 10910, 11105,
+  11107, 11124, 11130, 11138, 11140, 11208, 11285, 11286, 11296, 11297,
+  11302, 11308, 11317, 11330, 11344, 11362, 11368, 11377, 11383, 11392,
+  11398, 11407, 11413, 11422, 11428, 11434, 11443, 11449, 11455, 11464,
+  11470, 11476, 11482, 11488, 11497, 11503, 11512, 11518, 11524, 11531,
+  11530, 11559, 11558, 11589, 11599, 11605, 11611, 11617, 11623, 11631,
+  11637, 11685, 11699, 11704, 11714, 11713, 11730, 11743, 11752, 11758,
+  11764, 11774, 11790, 11808, 11824, 11842, 11858, 11876, 11893, 11909,
+  11930, 11948, 11967, 11969, 11966, 11985, 12010, 12012, 12009, 12028,
+  12044, 12051, 12053, 12050, 12063, 12065, 12062, 12075, 12077, 12074,
+  12087, 12089, 12086, 12099, 12101, 12098, 12110, 12112, 12109, 12121,
+  12123, 12120, 12132, 12134, 12131, 12152, 12154, 12151, 12163, 12165,
+  12162, 12183, 12185, 12182, 12194, 12196, 12193, 12205, 12207, 12204,
+  12216, 12218, 12215, 12227, 12229, 12226, 12238, 12240, 12237, 12249,
+  12251, 12248, 12260, 12262, 12259, 12271, 12273, 12270, 12282, 12284,
+  12281, 12293, 12295, 12292, 12305, 12307, 12304, 12317, 12319, 12316,
+  12329, 12331, 12328, 12341, 12343, 12340, 12370, 12378, 12385, 12392,
+  12399, 12406, 12418, 12420, 12417, 12429, 12431, 12428, 12446, 12458,
+  12479, 12481, 12478, 12488, 12490, 12487, 12497, 12499, 12496, 12506,
+  12508, 12505, 12515, 12517, 12514, 12524, 12526, 12523, 12533, 12535,
+  12532, 12542, 12553, 12541, 12571, 12573, 12570, 12580, 12582, 12579,
+  12589, 12591, 12588, 12598, 12600, 12597, 12609, 12611, 12608, 12620,
+  12622, 12619, 12631, 12633, 12630, 12640, 12642, 12639, 12649, 12651,
+  12648, 12658, 12660, 12657, 12667, 12669, 12666, 12676, 12678, 12675,
+  12691, 12692, 12694, 12693, 12700, 12701, 12703, 12702, 12709, 12710,
+  12712, 12711, 12715, 12717, 12716, 12720, 12722, 12721, 12728, 12729,
+  12731, 12730, 12737, 12738, 12739, 12743, 12749, 12755, 12761, 12767,
+  12773, 12779, 12785, 12791, 12797, 12803, 12809, 12815, 12824, 12830,
+  12836, 12842, 12848, 12854, 12860, 12866, 12872, 12878, 12888, 12894,
+  12900, 12910, 12911, 12916, 12921, 12927, 12937, 12942, 12952, 12957,
+  12967, 12972, 12981, 12987, 12993, 13002, 13006, 13070, 13123, 13168,
+  13173, 13182, 13188, 13197, 13228, 13234, 13243, 13271, 13284, 13285,
+  13289, 13290, 13294, 13300, 13306, 13312, 13318, 13324, 13330, 13336,
+  13342, 13348, 13354, 13360, 13366, 13372, 13378, 13384, 13390, 13396,
+  13402, 13408, 13418, 13423, 13432, 13458, 13500, 13505, 13514, 13527,
+  13540, 13553, 13569, 13576, 13585, 13592, 13600, 13606, 13615, 13621,
+  13630, 13637, 13646, 13653, 13660, 13669, 13675, 13681, 13691, 13690,
+  13784, 13890, 13898, 13911, 13917, 13923, 13930, 14051, 14057, 14067,
+  14086, 14091, 14100, 14120, 14140, 14160, 14180, 14200, 14220, 14227,
+  14234, 14244, 14249, 14255, 14261, 14270, 14276, 14285, 14291, 14301,
+  14307, 14316, 14322, 14331, 14372, 14378, 14387, 14393, 14399, 14405,
+  14411, 14417, 14423, 14429, 14435, 14444, 14450, 14456, 14462, 14468,
+  14474, 14483, 14503, 14509, 14521, 14540, 14618, 14631, 14640, 14646,
+  14655, 14667, 14668, 14672, 14683, 14689, 14695, 14704, 14717, 14727,
+  14732, 14738, 14744, 14754, 14779, 14793, 14804, 14823, 14833, 14842,
+  14848, 14857, 14889, 14924, 14933, 14939, 14948, 14957, 14970, 14975,
+  14984, 14992, 15000, 15008, 15016, 15024, 15032, 15040, 15048, 15056,
+  15064, 15072, 15080, 15095, 15103, 15111, 15129, 15242, 15290, 15340,
+  15345, 15351, 15361, 15366, 15376, 15381, 15391, 15396, 15406, 15413,
+  15421, 15433, 15439, 15445, 15451, 15459, 15461, 15465, 15471, 15506,
+  15533, 15551, 15557, 15566, 15572, 15578, 15584, 15590, 15596, 15602,
+  15611, 15617, 15626, 15632, 15641, 15654, 15667, 15679, 15706, 15724,
+  15729, 15738, 15744, 15750, 15756, 15765, 15771, 15781, 15807, 15833,
+  15859, 15886, 15895, 15904, 15913, 15922, 15931, 15940, 15949, 15958,
+  15967, 15976, 15985, 15994, 16003, 16012, 16021, 16030, 16039, 16048,
+  16057, 16066, 16075, 16084, 16093, 16102, 16111, 16120, 16129, 16138,
+  16147, 16156, 16165, 16174, 16183, 16192, 16201, 16210, 16219, 16228,
+  16237, 16246, 16255, 16264, 16273, 16282, 16291, 16300, 16309, 16318,
+  16327, 16336, 16345, 16354, 16363, 16372, 16381, 16390, 16399, 16408,
+  16417, 16426, 16435, 16444, 16453, 16462, 16471, 16480, 16489, 16498,
+  16507, 16516, 16525, 16534, 16543, 16552, 16561, 16570, 16579, 16588,
+  16597, 16606, 16615, 16624, 16633, 16642, 16651, 16660, 16669, 16678,
+  16687, 16696, 16709, 16715, 16727, 16733, 16743, 16758, 16767, 16797,
+  16818, 16833, 16842, 16859, 16879, 16925, 16956, 16990, 17010, 17030,
+  17050, 17073, 17079, 17085, 17094, 17103, 17112, 17121, 17133, 17142,
+  17156, 17171, 17188, 17190, 17194, 17200, 17209, 17223, 17237, 17254,
+  17266, 17275, 17288, 17300, 17312, 17326, 17328, 17332, 17338, 17344,
+  17350, 17359, 17365, 17374, 17378
 };
 #endif
 
@@ -16367,8 +16367,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	      /* create index node */
 
 	      if (parser_count_list (sort_spec_cols) == 1
-		  && (sort_spec_cols->info.sort_spec.expr->node_type ==
-		      PT_FUNCTION))
+		  && (sort_spec_cols->info.sort_spec.expr->node_type !=
+		      PT_NAME))
 		{
 		  /* unique index with prefix length not allowed */
 		  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
@@ -17569,65 +17569,68 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
 	     yysemantics.yysval.node);
 
-	  if (constraint->node_type == PT_CONSTRAINT)
+	  if (constraint)
 	    {
-	      /* If both the constraint name and the index name are
-	         given we ignore the constraint name because that is
-	         what MySQL does for UNIQUE constraints. */
-	      if (constraint->info.constraint.name == NULL)
+	      if (constraint->node_type == PT_CONSTRAINT)
 		{
-		  constraint->info.constraint.name = name;
-		}
-	      if (TO_NUMBER
-		  (CONTAINER_AT_0
-		   ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-		     yystate.yysemantics.yysval.c4))))
-		{
-		  constraint->info.constraint.deferrable =
-		    (short)
-		    TO_NUMBER (CONTAINER_AT_1
-			       ((((yyGLRStackItem const *)
-				  yyvsp)[YYFILL ((3) -
-						 (3))].yystate.yysemantics.
-				 yysval.c4)));
-		}
-	      if (TO_NUMBER
-		  (CONTAINER_AT_2
-		   ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-		     yystate.yysemantics.yysval.c4))))
-		{
-		  constraint->info.constraint.initially_deferred =
-		    (short)
-		    TO_NUMBER (CONTAINER_AT_3
-			       ((((yyGLRStackItem const *)
-				  yyvsp)[YYFILL ((3) -
-						 (3))].yystate.yysemantics.
-				 yysval.c4)));
-		}
-	    }
-	  else
-	    {
-	      /* UNIQUE - constraint->node_type = PT_CREATE_INDEX */
-	      if (TO_NUMBER
-		  (CONTAINER_AT_0
-		   ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-		     yystate.yysemantics.yysval.c4)))
-		  ||
-		  TO_NUMBER (CONTAINER_AT_2
-			     ((((yyGLRStackItem const *)
-				yyvsp)[YYFILL ((3) -
-					       (3))].yystate.yysemantics.
-			       yysval.c4))))
-		{
-		  PT_ERRORm (this_parser, constraint,
-			     MSGCAT_SET_PARSER_SYNTAX,
-			     MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+		  /* If both the constraint name and the index name are
+		     given we ignore the constraint name because that is
+		     what MySQL does for UNIQUE constraints. */
+		  if (constraint->info.constraint.name == NULL)
+		    {
+		      constraint->info.constraint.name = name;
+		    }
+		  if (TO_NUMBER
+		      (CONTAINER_AT_0
+		       ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
+			 yystate.yysemantics.yysval.c4))))
+		    {
+		      constraint->info.constraint.deferrable =
+			(short)
+			TO_NUMBER (CONTAINER_AT_1
+				   ((((yyGLRStackItem const *)
+				      yyvsp)[YYFILL ((3) -
+						     (3))].yystate.
+				     yysemantics.yysval.c4)));
+		    }
+		  if (TO_NUMBER
+		      (CONTAINER_AT_2
+		       ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
+			 yystate.yysemantics.yysval.c4))))
+		    {
+		      constraint->info.constraint.initially_deferred =
+			(short)
+			TO_NUMBER (CONTAINER_AT_3
+				   ((((yyGLRStackItem const *)
+				      yyvsp)[YYFILL ((3) -
+						     (3))].yystate.
+				     yysemantics.yysval.c4)));
+		    }
 		}
 	      else
 		{
-		  if (constraint->info.index.index_name == NULL)
+		  /* UNIQUE - constraint->node_type = PT_CREATE_INDEX */
+		  if (TO_NUMBER
+		      (CONTAINER_AT_0
+		       ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
+			 yystate.yysemantics.yysval.c4)))
+		      ||
+		      TO_NUMBER (CONTAINER_AT_2
+				 ((((yyGLRStackItem const *)
+				    yyvsp)[YYFILL ((3) -
+						   (3))].yystate.yysemantics.
+				   yysval.c4))))
 		    {
-		      constraint->info.index.index_name = name;
+		      PT_ERRORm (this_parser, constraint,
+				 MSGCAT_SET_PARSER_SYNTAX,
+				 MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+		    }
+		  else
+		    {
+		      if (constraint->info.index.index_name == NULL)
+			{
+			  constraint->info.index.index_name = name;
+			}
 		    }
 		}
 	    }
@@ -17639,7 +17642,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 625:
-#line 7628 "../../src/parser/csql_grammar.y"
+#line 7631 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17694,7 +17697,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 626:
-#line 7674 "../../src/parser/csql_grammar.y"
+#line 7677 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17737,7 +17740,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 627:
-#line 7700 "../../src/parser/csql_grammar.y"
+#line 7703 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17760,7 +17763,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 628:
-#line 7718 "../../src/parser/csql_grammar.y"
+#line 7721 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17810,7 +17813,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 629:
-#line 7751 "../../src/parser/csql_grammar.y"
+#line 7754 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17821,7 +17824,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 630:
-#line 7757 "../../src/parser/csql_grammar.y"
+#line 7760 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17844,7 +17847,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 631:
-#line 7775 "../../src/parser/csql_grammar.y"
+#line 7778 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -17870,7 +17873,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 632:
-#line 7796 "../../src/parser/csql_grammar.y"
+#line 7799 "../../src/parser/csql_grammar.y"
       {
 	{
 	  unsigned char mask =
@@ -17913,7 +17916,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 633:
-#line 7829 "../../src/parser/csql_grammar.y"
+#line 7832 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) =
@@ -17924,7 +17927,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 634:
-#line 7836 "../../src/parser/csql_grammar.y"
+#line 7839 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_UNIQUE;
@@ -17933,7 +17936,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 635:
-#line 7840 "../../src/parser/csql_grammar.y"
+#line 7843 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_PRIMARY_KEY;
@@ -17942,7 +17945,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 636:
-#line 7844 "../../src/parser/csql_grammar.y"
+#line 7847 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_NULL;
@@ -17951,7 +17954,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 637:
-#line 7848 "../../src/parser/csql_grammar.y"
+#line 7851 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_OTHERS;
@@ -17960,7 +17963,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 638:
-#line 7852 "../../src/parser/csql_grammar.y"
+#line 7855 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_SHARED;
@@ -17969,7 +17972,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 639:
-#line 7856 "../../src/parser/csql_grammar.y"
+#line 7859 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_DEFAULT;
@@ -17978,7 +17981,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 640:
-#line 7860 "../../src/parser/csql_grammar.y"
+#line 7863 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).number) = COLUMN_CONSTRAINT_AUTO_INCREMENT;
@@ -17987,7 +17990,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 641:
-#line 7867 "../../src/parser/csql_grammar.y"
+#line 7870 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18052,7 +18055,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 642:
-#line 7909 "../../src/parser/csql_grammar.y"
+#line 7912 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18109,7 +18112,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 643:
-#line 7943 "../../src/parser/csql_grammar.y"
+#line 7946 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18163,7 +18166,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 644:
-#line 7972 "../../src/parser/csql_grammar.y"
+#line 7975 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18226,7 +18229,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 645:
-#line 8012 "../../src/parser/csql_grammar.y"
+#line 8015 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18283,7 +18286,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 646:
-#line 8049 "../../src/parser/csql_grammar.y"
+#line 8052 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18355,7 +18358,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 654:
-#line 8109 "../../src/parser/csql_grammar.y"
+#line 8112 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18396,7 +18399,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 655:
-#line 8141 "../../src/parser/csql_grammar.y"
+#line 8144 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18418,7 +18421,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 656:
-#line 8161 "../../src/parser/csql_grammar.y"
+#line 8164 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *attr_node;
@@ -18441,7 +18444,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 657:
-#line 8180 "../../src/parser/csql_grammar.y"
+#line 8183 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18504,7 +18507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 658:
-#line 8235 "../../src/parser/csql_grammar.y"
+#line 8238 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18523,7 +18526,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 659:
-#line 8241 "../../src/parser/csql_grammar.y"
+#line 8244 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18536,7 +18539,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 660:
-#line 8250 "../../src/parser/csql_grammar.y"
+#line 8253 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18662,7 +18665,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 661:
-#line 8329 "../../src/parser/csql_grammar.y"
+#line 8332 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18708,7 +18711,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 662:
-#line 8353 "../../src/parser/csql_grammar.y"
+#line 8356 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18728,7 +18731,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 663:
-#line 8371 "../../src/parser/csql_grammar.y"
+#line 8374 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18747,7 +18750,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 664:
-#line 8380 "../../src/parser/csql_grammar.y"
+#line 8383 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18762,7 +18765,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 665:
-#line 8389 "../../src/parser/csql_grammar.y"
+#line 8392 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18776,7 +18779,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 666:
-#line 8398 "../../src/parser/csql_grammar.y"
+#line 8401 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18790,7 +18793,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 667:
-#line 8407 "../../src/parser/csql_grammar.y"
+#line 8410 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18811,7 +18814,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 668:
-#line 8420 "../../src/parser/csql_grammar.y"
+#line 8423 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18842,7 +18845,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 669:
-#line 8443 "../../src/parser/csql_grammar.y"
+#line 8446 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18864,7 +18867,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 670:
-#line 8458 "../../src/parser/csql_grammar.y"
+#line 8461 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18896,7 +18899,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 671:
-#line 8480 "../../src/parser/csql_grammar.y"
+#line 8483 "../../src/parser/csql_grammar.y"
       {
 	{
 	  container_4 ctn;
@@ -18927,7 +18930,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 674:
-#line 8509 "../../src/parser/csql_grammar.y"
+#line 8512 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18938,7 +18941,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 675:
-#line 8515 "../../src/parser/csql_grammar.y"
+#line 8518 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18949,7 +18952,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 676:
-#line 8521 "../../src/parser/csql_grammar.y"
+#line 8524 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18960,7 +18963,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 677:
-#line 8530 "../../src/parser/csql_grammar.y"
+#line 8533 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18979,7 +18982,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 678:
-#line 8544 "../../src/parser/csql_grammar.y"
+#line 8547 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -18998,7 +19001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 679:
-#line 8558 "../../src/parser/csql_grammar.y"
+#line 8561 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19011,7 +19014,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 680:
-#line 8564 "../../src/parser/csql_grammar.y"
+#line 8567 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19024,7 +19027,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 681:
-#line 8570 "../../src/parser/csql_grammar.y"
+#line 8573 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19037,7 +19040,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 682:
-#line 8576 "../../src/parser/csql_grammar.y"
+#line 8579 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19050,7 +19053,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 683:
-#line 8586 "../../src/parser/csql_grammar.y"
+#line 8589 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19068,7 +19071,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 684:
-#line 8599 "../../src/parser/csql_grammar.y"
+#line 8602 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19080,7 +19083,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 685:
-#line 8606 "../../src/parser/csql_grammar.y"
+#line 8609 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19100,7 +19103,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 686:
-#line 8619 "../../src/parser/csql_grammar.y"
+#line 8622 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19112,7 +19115,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 687:
-#line 8626 "../../src/parser/csql_grammar.y"
+#line 8629 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19132,7 +19135,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 694:
-#line 8658 "../../src/parser/csql_grammar.y"
+#line 8661 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19155,7 +19158,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 695:
-#line 8675 "../../src/parser/csql_grammar.y"
+#line 8678 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19178,7 +19181,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 696:
-#line 8692 "../../src/parser/csql_grammar.y"
+#line 8695 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19203,7 +19206,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 697:
-#line 8711 "../../src/parser/csql_grammar.y"
+#line 8714 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19214,21 +19217,21 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 698:
-#line 8717 "../../src/parser/csql_grammar.y"
+#line 8720 "../../src/parser/csql_grammar.y"
       {
 	parser_save_and_set_hvar (0);;
       }
       break;
 
     case 699:
-#line 8719 "../../src/parser/csql_grammar.y"
+#line 8722 "../../src/parser/csql_grammar.y"
       {
 	parser_restore_hvar ();;
       }
       break;
 
     case 700:
-#line 8720 "../../src/parser/csql_grammar.y"
+#line 8723 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19241,7 +19244,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 701:
-#line 8729 "../../src/parser/csql_grammar.y"
+#line 8732 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19252,7 +19255,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 702:
-#line 8735 "../../src/parser/csql_grammar.y"
+#line 8738 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19265,7 +19268,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 703:
-#line 8744 "../../src/parser/csql_grammar.y"
+#line 8747 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19276,7 +19279,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 704:
-#line 8750 "../../src/parser/csql_grammar.y"
+#line 8753 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19287,7 +19290,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 705:
-#line 8759 "../../src/parser/csql_grammar.y"
+#line 8762 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19298,7 +19301,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 706:
-#line 8765 "../../src/parser/csql_grammar.y"
+#line 8768 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19311,7 +19314,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 707:
-#line 8774 "../../src/parser/csql_grammar.y"
+#line 8777 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19324,7 +19327,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 708:
-#line 8783 "../../src/parser/csql_grammar.y"
+#line 8786 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19335,7 +19338,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 709:
-#line 8789 "../../src/parser/csql_grammar.y"
+#line 8792 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19348,7 +19351,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 710:
-#line 8798 "../../src/parser/csql_grammar.y"
+#line 8801 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19359,7 +19362,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 711:
-#line 8804 "../../src/parser/csql_grammar.y"
+#line 8807 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19370,7 +19373,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 712:
-#line 8810 "../../src/parser/csql_grammar.y"
+#line 8813 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19381,7 +19384,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 713:
-#line 8819 "../../src/parser/csql_grammar.y"
+#line 8822 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19392,7 +19395,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 714:
-#line 8825 "../../src/parser/csql_grammar.y"
+#line 8828 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19403,7 +19406,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 715:
-#line 8831 "../../src/parser/csql_grammar.y"
+#line 8834 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19414,7 +19417,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 716:
-#line 8840 "../../src/parser/csql_grammar.y"
+#line 8843 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19434,7 +19437,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 717:
-#line 8853 "../../src/parser/csql_grammar.y"
+#line 8856 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19457,7 +19460,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 718:
-#line 8870 "../../src/parser/csql_grammar.y"
+#line 8873 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19468,7 +19471,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 719:
-#line 8876 "../../src/parser/csql_grammar.y"
+#line 8879 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19479,7 +19482,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 720:
-#line 8882 "../../src/parser/csql_grammar.y"
+#line 8885 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19490,7 +19493,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 721:
-#line 8888 "../../src/parser/csql_grammar.y"
+#line 8891 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19501,7 +19504,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 722:
-#line 8894 "../../src/parser/csql_grammar.y"
+#line 8897 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19512,7 +19515,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 723:
-#line 8900 "../../src/parser/csql_grammar.y"
+#line 8903 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19523,7 +19526,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 724:
-#line 8906 "../../src/parser/csql_grammar.y"
+#line 8909 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19534,7 +19537,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 725:
-#line 8912 "../../src/parser/csql_grammar.y"
+#line 8915 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19545,7 +19548,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 726:
-#line 8921 "../../src/parser/csql_grammar.y"
+#line 8924 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19568,7 +19571,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 727:
-#line 8935 "../../src/parser/csql_grammar.y"
+#line 8938 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19588,7 +19591,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 728:
-#line 8951 "../../src/parser/csql_grammar.y"
+#line 8954 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19601,7 +19604,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 729:
-#line 8957 "../../src/parser/csql_grammar.y"
+#line 8960 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19614,7 +19617,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 730:
-#line 8966 "../../src/parser/csql_grammar.y"
+#line 8969 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19632,7 +19635,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 731:
-#line 8979 "../../src/parser/csql_grammar.y"
+#line 8982 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19650,7 +19653,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 732:
-#line 8992 "../../src/parser/csql_grammar.y"
+#line 8995 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19671,7 +19674,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 733:
-#line 9006 "../../src/parser/csql_grammar.y"
+#line 9009 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19692,7 +19695,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 734:
-#line 9020 "../../src/parser/csql_grammar.y"
+#line 9023 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19713,7 +19716,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 735:
-#line 9034 "../../src/parser/csql_grammar.y"
+#line 9037 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19734,7 +19737,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 736:
-#line 9048 "../../src/parser/csql_grammar.y"
+#line 9051 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19755,7 +19758,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 737:
-#line 9062 "../../src/parser/csql_grammar.y"
+#line 9065 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19776,7 +19779,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 738:
-#line 9079 "../../src/parser/csql_grammar.y"
+#line 9082 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19796,7 +19799,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 739:
-#line 9092 "../../src/parser/csql_grammar.y"
+#line 9095 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19814,7 +19817,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 740:
-#line 9108 "../../src/parser/csql_grammar.y"
+#line 9111 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19831,7 +19834,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 741:
-#line 9116 "../../src/parser/csql_grammar.y"
+#line 9119 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19848,7 +19851,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 744:
-#line 9132 "../../src/parser/csql_grammar.y"
+#line 9135 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19867,7 +19870,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 745:
-#line 9146 "../../src/parser/csql_grammar.y"
+#line 9149 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19886,7 +19889,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 746:
-#line 9160 "../../src/parser/csql_grammar.y"
+#line 9163 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19899,7 +19902,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 747:
-#line 9166 "../../src/parser/csql_grammar.y"
+#line 9169 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19912,7 +19915,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 748:
-#line 9172 "../../src/parser/csql_grammar.y"
+#line 9175 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19925,7 +19928,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 749:
-#line 9181 "../../src/parser/csql_grammar.y"
+#line 9184 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19938,7 +19941,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 750:
-#line 9187 "../../src/parser/csql_grammar.y"
+#line 9190 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19951,7 +19954,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 751:
-#line 9193 "../../src/parser/csql_grammar.y"
+#line 9196 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19964,7 +19967,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 752:
-#line 9202 "../../src/parser/csql_grammar.y"
+#line 9205 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -19984,7 +19987,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 753:
-#line 9218 "../../src/parser/csql_grammar.y"
+#line 9221 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20004,7 +20007,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 754:
-#line 9235 "../../src/parser/csql_grammar.y"
+#line 9238 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20026,7 +20029,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 755:
-#line 9250 "../../src/parser/csql_grammar.y"
+#line 9253 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20039,7 +20042,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 756:
-#line 9261 "../../src/parser/csql_grammar.y"
+#line 9264 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20061,7 +20064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 757:
-#line 9276 "../../src/parser/csql_grammar.y"
+#line 9279 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20074,7 +20077,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 758:
-#line 9287 "../../src/parser/csql_grammar.y"
+#line 9290 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20087,7 +20090,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 759:
-#line 9295 "../../src/parser/csql_grammar.y"
+#line 9298 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20100,7 +20103,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 760:
-#line 9306 "../../src/parser/csql_grammar.y"
+#line 9309 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20117,7 +20120,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 761:
-#line 9314 "../../src/parser/csql_grammar.y"
+#line 9317 "../../src/parser/csql_grammar.y"
       {
 	{
 	  container_2 ctn;
@@ -20129,7 +20132,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 762:
-#line 9324 "../../src/parser/csql_grammar.y"
+#line 9327 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20142,7 +20145,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 763:
-#line 9330 "../../src/parser/csql_grammar.y"
+#line 9333 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20158,7 +20161,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 764:
-#line 9339 "../../src/parser/csql_grammar.y"
+#line 9342 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20171,7 +20174,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 767:
-#line 9353 "../../src/parser/csql_grammar.y"
+#line 9356 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20182,7 +20185,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 768:
-#line 9359 "../../src/parser/csql_grammar.y"
+#line 9362 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20196,7 +20199,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 769:
-#line 9365 "../../src/parser/csql_grammar.y"
+#line 9368 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20207,7 +20210,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 773:
-#line 9380 "../../src/parser/csql_grammar.y"
+#line 9383 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20218,7 +20221,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 774:
-#line 9386 "../../src/parser/csql_grammar.y"
+#line 9389 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20231,7 +20234,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 775:
-#line 9395 "../../src/parser/csql_grammar.y"
+#line 9398 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20250,7 +20253,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 776:
-#line 9401 "../../src/parser/csql_grammar.y"
+#line 9404 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20263,7 +20266,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 777:
-#line 9410 "../../src/parser/csql_grammar.y"
+#line 9413 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20297,7 +20300,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 778:
-#line 9426 "../../src/parser/csql_grammar.y"
+#line 9429 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20322,7 +20325,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 779:
-#line 9445 "../../src/parser/csql_grammar.y"
+#line 9448 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20335,7 +20338,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 780:
-#line 9451 "../../src/parser/csql_grammar.y"
+#line 9454 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20346,14 +20349,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 781:
-#line 9459 "../../src/parser/csql_grammar.y"
+#line 9462 "../../src/parser/csql_grammar.y"
       {
 	parser_select_level++;;
       }
       break;
 
     case 782:
-#line 9461 "../../src/parser/csql_grammar.y"
+#line 9464 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20370,14 +20373,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 783:
-#line 9472 "../../src/parser/csql_grammar.y"
+#line 9475 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) = NULL;;
       }
       break;
 
     case 784:
-#line 9474 "../../src/parser/csql_grammar.y"
+#line 9477 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) =
 	  (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].yystate.
@@ -20386,7 +20389,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 785:
-#line 9479 "../../src/parser/csql_grammar.y"
+#line 9482 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20407,7 +20410,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 786:
-#line 9495 "../../src/parser/csql_grammar.y"
+#line 9498 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20421,7 +20424,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 787:
-#line 9502 "../../src/parser/csql_grammar.y"
+#line 9505 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20481,7 +20484,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 788:
-#line 9555 "../../src/parser/csql_grammar.y"
+#line 9558 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20493,7 +20496,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 789:
-#line 9565 "../../src/parser/csql_grammar.y"
+#line 9568 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20520,7 +20523,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 790:
-#line 9581 "../../src/parser/csql_grammar.y"
+#line 9584 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20533,7 +20536,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 791:
-#line 9590 "../../src/parser/csql_grammar.y"
+#line 9593 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20555,7 +20558,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 792:
-#line 9605 "../../src/parser/csql_grammar.y"
+#line 9608 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20577,7 +20580,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 793:
-#line 9620 "../../src/parser/csql_grammar.y"
+#line 9623 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20599,7 +20602,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 794:
-#line 9635 "../../src/parser/csql_grammar.y"
+#line 9638 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20621,7 +20624,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 795:
-#line 9650 "../../src/parser/csql_grammar.y"
+#line 9653 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20643,7 +20646,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 796:
-#line 9668 "../../src/parser/csql_grammar.y"
+#line 9671 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20656,7 +20659,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 797:
-#line 9674 "../../src/parser/csql_grammar.y"
+#line 9677 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20669,7 +20672,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 798:
-#line 9684 "../../src/parser/csql_grammar.y"
+#line 9687 "../../src/parser/csql_grammar.y"
       {
 	{
 	  /* $2 */
@@ -20695,7 +20698,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 799:
-#line 9707 "../../src/parser/csql_grammar.y"
+#line 9710 "../../src/parser/csql_grammar.y"
       {
 	{
 	  /* $6 */
@@ -20718,7 +20721,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 800:
-#line 9725 "../../src/parser/csql_grammar.y"
+#line 9728 "../../src/parser/csql_grammar.y"
       {
 	{			/* $10 */
 	  parser_found_Oracle_outer = false;
@@ -20728,7 +20731,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 801:
-#line 9737 "../../src/parser/csql_grammar.y"
+#line 9740 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20902,7 +20905,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 802:
-#line 9867 "../../src/parser/csql_grammar.y"
+#line 9870 "../../src/parser/csql_grammar.y"
       {
 	{
 	  /* $2 */
@@ -20928,7 +20931,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 803:
-#line 9890 "../../src/parser/csql_grammar.y"
+#line 9893 "../../src/parser/csql_grammar.y"
       {
 	{
 	  /* $6 */
@@ -20951,7 +20954,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 804:
-#line 9906 "../../src/parser/csql_grammar.y"
+#line 9909 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -20997,7 +21000,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 805:
-#line 9947 "../../src/parser/csql_grammar.y"
+#line 9950 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21008,7 +21011,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 806:
-#line 9953 "../../src/parser/csql_grammar.y"
+#line 9956 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21021,7 +21024,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 807:
-#line 9959 "../../src/parser/csql_grammar.y"
+#line 9962 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21034,7 +21037,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 810:
-#line 9973 "../../src/parser/csql_grammar.y"
+#line 9976 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21049,7 +21052,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 811:
-#line 9981 "../../src/parser/csql_grammar.y"
+#line 9984 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21064,7 +21067,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 812:
-#line 9989 "../../src/parser/csql_grammar.y"
+#line 9992 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21079,7 +21082,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 813:
-#line 9997 "../../src/parser/csql_grammar.y"
+#line 10000 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21094,7 +21097,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 814:
-#line 10005 "../../src/parser/csql_grammar.y"
+#line 10008 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21109,7 +21112,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 815:
-#line 10013 "../../src/parser/csql_grammar.y"
+#line 10016 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21124,7 +21127,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 816:
-#line 10024 "../../src/parser/csql_grammar.y"
+#line 10027 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21137,7 +21140,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 817:
-#line 10030 "../../src/parser/csql_grammar.y"
+#line 10033 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21148,7 +21151,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 818:
-#line 10039 "../../src/parser/csql_grammar.y"
+#line 10042 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21159,7 +21162,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 819:
-#line 10045 "../../src/parser/csql_grammar.y"
+#line 10048 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21170,7 +21173,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 820:
-#line 10051 "../../src/parser/csql_grammar.y"
+#line 10054 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21181,7 +21184,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 821:
-#line 10057 "../../src/parser/csql_grammar.y"
+#line 10060 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21192,7 +21195,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 822:
-#line 10066 "../../src/parser/csql_grammar.y"
+#line 10069 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21206,7 +21209,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 823:
-#line 10076 "../../src/parser/csql_grammar.y"
+#line 10079 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21226,7 +21229,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 824:
-#line 10087 "../../src/parser/csql_grammar.y"
+#line 10090 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).node) =
@@ -21237,7 +21240,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 825:
-#line 10094 "../../src/parser/csql_grammar.y"
+#line 10097 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21253,7 +21256,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 826:
-#line 10105 "../../src/parser/csql_grammar.y"
+#line 10108 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21272,7 +21275,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 827:
-#line 10120 "../../src/parser/csql_grammar.y"
+#line 10123 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21291,7 +21294,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 828:
-#line 10126 "../../src/parser/csql_grammar.y"
+#line 10129 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21304,7 +21307,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 829:
-#line 10135 "../../src/parser/csql_grammar.y"
+#line 10138 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21358,7 +21361,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 830:
-#line 10183 "../../src/parser/csql_grammar.y"
+#line 10186 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21377,7 +21380,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 831:
-#line 10189 "../../src/parser/csql_grammar.y"
+#line 10192 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21390,7 +21393,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 832:
-#line 10198 "../../src/parser/csql_grammar.y"
+#line 10201 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21409,7 +21412,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 833:
-#line 10204 "../../src/parser/csql_grammar.y"
+#line 10207 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21422,7 +21425,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 834:
-#line 10213 "../../src/parser/csql_grammar.y"
+#line 10216 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21437,7 +21440,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 835:
-#line 10220 "../../src/parser/csql_grammar.y"
+#line 10223 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21459,7 +21462,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 836:
-#line 10235 "../../src/parser/csql_grammar.y"
+#line 10238 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21481,7 +21484,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 837:
-#line 10253 "../../src/parser/csql_grammar.y"
+#line 10256 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21502,7 +21505,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 838:
-#line 10267 "../../src/parser/csql_grammar.y"
+#line 10270 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21523,7 +21526,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 839:
-#line 10281 "../../src/parser/csql_grammar.y"
+#line 10284 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21544,7 +21547,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 840:
-#line 10295 "../../src/parser/csql_grammar.y"
+#line 10298 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21565,7 +21568,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 841:
-#line 10313 "../../src/parser/csql_grammar.y"
+#line 10316 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21590,7 +21593,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 842:
-#line 10333 "../../src/parser/csql_grammar.y"
+#line 10336 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21621,7 +21624,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 843:
-#line 10360 "../../src/parser/csql_grammar.y"
+#line 10363 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21641,7 +21644,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 844:
-#line 10375 "../../src/parser/csql_grammar.y"
+#line 10378 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21673,7 +21676,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 845:
-#line 10403 "../../src/parser/csql_grammar.y"
+#line 10406 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21688,7 +21691,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 846:
-#line 10413 "../../src/parser/csql_grammar.y"
+#line 10416 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21699,7 +21702,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 847:
-#line 10418 "../../src/parser/csql_grammar.y"
+#line 10421 "../../src/parser/csql_grammar.y"
       {
 	parser_save_and_set_ic (1);
 	assert (parser_prior_check == 0);
@@ -21712,7 +21715,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 848:
-#line 10427 "../../src/parser/csql_grammar.y"
+#line 10430 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21729,7 +21732,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 849:
-#line 10440 "../../src/parser/csql_grammar.y"
+#line 10443 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21740,7 +21743,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 850:
-#line 10445 "../../src/parser/csql_grammar.y"
+#line 10448 "../../src/parser/csql_grammar.y"
       {
 	parser_save_and_set_pseudoc (0);
 	;
@@ -21748,7 +21751,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 851:
-#line 10449 "../../src/parser/csql_grammar.y"
+#line 10452 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21762,7 +21765,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 852:
-#line 10459 "../../src/parser/csql_grammar.y"
+#line 10462 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21773,7 +21776,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 853:
-#line 10464 "../../src/parser/csql_grammar.y"
+#line 10467 "../../src/parser/csql_grammar.y"
       {
 	parser_save_and_set_prc (1);
 	parser_save_and_set_serc (0);
@@ -21784,7 +21787,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 854:
-#line 10471 "../../src/parser/csql_grammar.y"
+#line 10474 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21801,7 +21804,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 856:
-#line 10485 "../../src/parser/csql_grammar.y"
+#line 10488 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21816,7 +21819,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 857:
-#line 10498 "../../src/parser/csql_grammar.y"
+#line 10501 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21827,7 +21830,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 858:
-#line 10504 "../../src/parser/csql_grammar.y"
+#line 10507 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21840,7 +21843,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 859:
-#line 10513 "../../src/parser/csql_grammar.y"
+#line 10516 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21851,7 +21854,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 860:
-#line 10519 "../../src/parser/csql_grammar.y"
+#line 10522 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21862,7 +21865,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 861:
-#line 10528 "../../src/parser/csql_grammar.y"
+#line 10531 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21881,7 +21884,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 862:
-#line 10534 "../../src/parser/csql_grammar.y"
+#line 10537 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21894,7 +21897,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 863:
-#line 10545 "../../src/parser/csql_grammar.y"
+#line 10548 "../../src/parser/csql_grammar.y"
       {
 	parser_groupby_exception = 0;
 	;
@@ -21902,7 +21905,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 864:
-#line 10550 "../../src/parser/csql_grammar.y"
+#line 10553 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21955,7 +21958,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 865:
-#line 10599 "../../src/parser/csql_grammar.y"
+#line 10602 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21966,14 +21969,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 866:
-#line 10604 "../../src/parser/csql_grammar.y"
+#line 10607 "../../src/parser/csql_grammar.y"
       {
 	parser_save_and_set_gc (1);;
       }
       break;
 
     case 867:
-#line 10606 "../../src/parser/csql_grammar.y"
+#line 10609 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21987,7 +21990,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 868:
-#line 10616 "../../src/parser/csql_grammar.y"
+#line 10619 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -21998,7 +22001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 869:
-#line 10622 "../../src/parser/csql_grammar.y"
+#line 10625 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22011,7 +22014,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 870:
-#line 10628 "../../src/parser/csql_grammar.y"
+#line 10631 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22030,7 +22033,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 871:
-#line 10642 "../../src/parser/csql_grammar.y"
+#line 10645 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *curr;
@@ -22059,7 +22062,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 872:
-#line 10667 "../../src/parser/csql_grammar.y"
+#line 10670 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22078,7 +22081,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 873:
-#line 10673 "../../src/parser/csql_grammar.y"
+#line 10676 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22091,7 +22094,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 874:
-#line 10682 "../../src/parser/csql_grammar.y"
+#line 10685 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22110,7 +22113,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 875:
-#line 10688 "../../src/parser/csql_grammar.y"
+#line 10691 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22123,7 +22126,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 876:
-#line 10697 "../../src/parser/csql_grammar.y"
+#line 10700 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22152,7 +22155,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 877:
-#line 10716 "../../src/parser/csql_grammar.y"
+#line 10719 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22189,7 +22192,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 878:
-#line 10739 "../../src/parser/csql_grammar.y"
+#line 10742 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22202,7 +22205,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 879:
-#line 10748 "../../src/parser/csql_grammar.y"
+#line 10751 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22218,7 +22221,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 880:
-#line 10757 "../../src/parser/csql_grammar.y"
+#line 10760 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22234,7 +22237,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 881:
-#line 10766 "../../src/parser/csql_grammar.y"
+#line 10769 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22249,7 +22252,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 882:
-#line 10774 "../../src/parser/csql_grammar.y"
+#line 10777 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22267,7 +22270,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 883:
-#line 10788 "../../src/parser/csql_grammar.y"
+#line 10791 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22278,7 +22281,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 884:
-#line 10794 "../../src/parser/csql_grammar.y"
+#line 10797 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22291,7 +22294,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 885:
-#line 10800 "../../src/parser/csql_grammar.y"
+#line 10803 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22304,7 +22307,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 886:
-#line 10809 "../../src/parser/csql_grammar.y"
+#line 10812 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22323,7 +22326,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 887:
-#line 10815 "../../src/parser/csql_grammar.y"
+#line 10818 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22336,7 +22339,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 888:
-#line 10824 "../../src/parser/csql_grammar.y"
+#line 10827 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node =
@@ -22372,7 +22375,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 889:
-#line 10848 "../../src/parser/csql_grammar.y"
+#line 10851 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22391,7 +22394,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 890:
-#line 10854 "../../src/parser/csql_grammar.y"
+#line 10857 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22404,7 +22407,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 891:
-#line 10863 "../../src/parser/csql_grammar.y"
+#line 10866 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node =
@@ -22440,21 +22443,21 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 892:
-#line 10887 "../../src/parser/csql_grammar.y"
+#line 10890 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) = NULL;;
       }
       break;
 
     case 893:
-#line 10890 "../../src/parser/csql_grammar.y"
+#line 10893 "../../src/parser/csql_grammar.y"
       {
 	parser_save_and_set_oc (1);;
       }
       break;
 
     case 894:
-#line 10892 "../../src/parser/csql_grammar.y"
+#line 10895 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *stmt = parser_pop_orderby_node ();
@@ -22474,14 +22477,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 895:
-#line 10906 "../../src/parser/csql_grammar.y"
+#line 10909 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) = NULL;;
       }
       break;
 
     case 896:
-#line 10910 "../../src/parser/csql_grammar.y"
+#line 10913 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22512,7 +22515,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 897:
-#line 10936 "../../src/parser/csql_grammar.y"
+#line 10939 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22529,7 +22532,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 898:
-#line 10948 "../../src/parser/csql_grammar.y"
+#line 10951 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22701,7 +22704,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 900:
-#line 11105 "../../src/parser/csql_grammar.y"
+#line 11108 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22719,7 +22722,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 901:
-#line 11122 "../../src/parser/csql_grammar.y"
+#line 11125 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22732,7 +22735,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 902:
-#line 11128 "../../src/parser/csql_grammar.y"
+#line 11131 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22745,7 +22748,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 904:
-#line 11138 "../../src/parser/csql_grammar.y"
+#line 11141 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22833,7 +22836,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 905:
-#line 11206 "../../src/parser/csql_grammar.y"
+#line 11209 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22928,14 +22931,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 906:
-#line 11282 "../../src/parser/csql_grammar.y"
+#line 11285 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) = NULL;;
       }
       break;
 
     case 907:
-#line 11284 "../../src/parser/csql_grammar.y"
+#line 11287 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22948,14 +22951,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 908:
-#line 11293 "../../src/parser/csql_grammar.y"
+#line 11296 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) = NULL;;
       }
       break;
 
     case 909:
-#line 11295 "../../src/parser/csql_grammar.y"
+#line 11298 "../../src/parser/csql_grammar.y"
       {
 	((*yyvalp).node) =
 	  (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
@@ -22964,7 +22967,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 910:
-#line 11300 "../../src/parser/csql_grammar.y"
+#line 11303 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22983,7 +22986,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 911:
-#line 11306 "../../src/parser/csql_grammar.y"
+#line 11309 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -22996,7 +22999,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 912:
-#line 11315 "../../src/parser/csql_grammar.y"
+#line 11318 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
@@ -23016,7 +23019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 913:
-#line 11328 "../../src/parser/csql_grammar.y"
+#line 11331 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23037,7 +23040,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 914:
-#line 11342 "../../src/parser/csql_grammar.y"
+#line 11345 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23058,7 +23061,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 915:
-#line 11360 "../../src/parser/csql_grammar.y"
+#line 11363 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23071,7 +23074,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 916:
-#line 11366 "../../src/parser/csql_grammar.y"
+#line 11369 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23084,7 +23087,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 917:
-#line 11375 "../../src/parser/csql_grammar.y"
+#line 11378 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23104,7 +23107,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 918:
-#line 11381 "../../src/parser/csql_grammar.y"
+#line 11384 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23117,7 +23120,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 919:
-#line 11390 "../../src/parser/csql_grammar.y"
+#line 11393 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23137,7 +23140,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 920:
-#line 11396 "../../src/parser/csql_grammar.y"
+#line 11399 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23150,7 +23153,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 921:
-#line 11405 "../../src/parser/csql_grammar.y"
+#line 11408 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23170,7 +23173,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 922:
-#line 11411 "../../src/parser/csql_grammar.y"
+#line 11414 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23183,7 +23186,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 923:
-#line 11420 "../../src/parser/csql_grammar.y"
+#line 11423 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23203,7 +23206,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 924:
-#line 11426 "../../src/parser/csql_grammar.y"
+#line 11429 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23223,7 +23226,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 925:
-#line 11432 "../../src/parser/csql_grammar.y"
+#line 11435 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23236,7 +23239,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 926:
-#line 11441 "../../src/parser/csql_grammar.y"
+#line 11444 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23256,7 +23259,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 927:
-#line 11447 "../../src/parser/csql_grammar.y"
+#line 11450 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23276,7 +23279,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 928:
-#line 11453 "../../src/parser/csql_grammar.y"
+#line 11456 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23289,7 +23292,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 929:
-#line 11462 "../../src/parser/csql_grammar.y"
+#line 11465 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23309,7 +23312,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 930:
-#line 11468 "../../src/parser/csql_grammar.y"
+#line 11471 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23329,7 +23332,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 931:
-#line 11474 "../../src/parser/csql_grammar.y"
+#line 11477 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23349,7 +23352,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 932:
-#line 11480 "../../src/parser/csql_grammar.y"
+#line 11483 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23369,7 +23372,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 933:
-#line 11486 "../../src/parser/csql_grammar.y"
+#line 11489 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23382,7 +23385,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 934:
-#line 11495 "../../src/parser/csql_grammar.y"
+#line 11498 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23402,7 +23405,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 935:
-#line 11501 "../../src/parser/csql_grammar.y"
+#line 11504 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23415,7 +23418,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 936:
-#line 11510 "../../src/parser/csql_grammar.y"
+#line 11513 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23428,7 +23431,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 937:
-#line 11516 "../../src/parser/csql_grammar.y"
+#line 11519 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23444,7 +23447,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 938:
-#line 11522 "../../src/parser/csql_grammar.y"
+#line 11525 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23460,7 +23463,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 939:
-#line 11528 "../../src/parser/csql_grammar.y"
+#line 11531 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23474,7 +23477,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 940:
-#line 11537 "../../src/parser/csql_grammar.y"
+#line 11540 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23503,7 +23506,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 941:
-#line 11556 "../../src/parser/csql_grammar.y"
+#line 11559 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23517,7 +23520,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 942:
-#line 11565 "../../src/parser/csql_grammar.y"
+#line 11568 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23547,7 +23550,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 943:
-#line 11587 "../../src/parser/csql_grammar.y"
+#line 11590 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23567,7 +23570,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 944:
-#line 11597 "../../src/parser/csql_grammar.y"
+#line 11600 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23580,7 +23583,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 945:
-#line 11603 "../../src/parser/csql_grammar.y"
+#line 11606 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23593,7 +23596,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 946:
-#line 11609 "../../src/parser/csql_grammar.y"
+#line 11612 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23606,7 +23609,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 947:
-#line 11615 "../../src/parser/csql_grammar.y"
+#line 11618 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23619,7 +23622,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       break;
 
     case 948:
-#line 11621 "../../src/parser/csql_grammar.y"
+#line 11624 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23636,7 +23639,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 949:
-#line 11629 "../../src/parser/csql_grammar.y"
+#line 11632 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23649,7 +23652,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 950:
-#line 11635 "../../src/parser/csql_grammar.y"
+#line 11638 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *exp =
@@ -23705,7 +23708,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 951:
-#line 11683 "../../src/parser/csql_grammar.y"
+#line 11686 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23726,7 +23729,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 952:
-#line 11697 "../../src/parser/csql_grammar.y"
+#line 11700 "../../src/parser/csql_grammar.y"
       {
 	{
 	  parser_groupby_exception = PT_IS_SUBQUERY;
@@ -23738,7 +23741,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 953:
-#line 11702 "../../src/parser/csql_grammar.y"
+#line 11705 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23751,7 +23754,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 954:
-#line 11711 "../../src/parser/csql_grammar.y"
+#line 11714 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23765,7 +23768,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 955:
-#line 11718 "../../src/parser/csql_grammar.y"
+#line 11721 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23777,7 +23780,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 956:
-#line 11728 "../../src/parser/csql_grammar.y"
+#line 11731 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23801,7 +23804,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 957:
-#line 11741 "../../src/parser/csql_grammar.y"
+#line 11744 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23814,7 +23817,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 958:
-#line 11750 "../../src/parser/csql_grammar.y"
+#line 11753 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23826,7 +23829,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 959:
-#line 11756 "../../src/parser/csql_grammar.y"
+#line 11759 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23838,7 +23841,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 960:
-#line 11762 "../../src/parser/csql_grammar.y"
+#line 11765 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23850,7 +23853,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 961:
-#line 11772 "../../src/parser/csql_grammar.y"
+#line 11775 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23871,7 +23874,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 962:
-#line 11788 "../../src/parser/csql_grammar.y"
+#line 11791 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23898,7 +23901,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 963:
-#line 11806 "../../src/parser/csql_grammar.y"
+#line 11809 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23921,7 +23924,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 964:
-#line 11822 "../../src/parser/csql_grammar.y"
+#line 11825 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23950,7 +23953,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 965:
-#line 11840 "../../src/parser/csql_grammar.y"
+#line 11843 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -23973,7 +23976,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 966:
-#line 11856 "../../src/parser/csql_grammar.y"
+#line 11859 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24002,7 +24005,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 967:
-#line 11874 "../../src/parser/csql_grammar.y"
+#line 11877 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24031,7 +24034,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 968:
-#line 11891 "../../src/parser/csql_grammar.y"
+#line 11894 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24056,7 +24059,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 969:
-#line 11907 "../../src/parser/csql_grammar.y"
+#line 11910 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24093,7 +24096,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 970:
-#line 11928 "../../src/parser/csql_grammar.y"
+#line 11931 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24124,7 +24127,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 971:
-#line 11946 "../../src/parser/csql_grammar.y"
+#line 11949 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24153,21 +24156,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 972:
-#line 11964 "../../src/parser/csql_grammar.y"
+#line 11967 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_GROUP_CONCAT);;
       }
       break;
 
     case 973:
-#line 11966 "../../src/parser/csql_grammar.y"
+#line 11969 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 974:
-#line 11967 "../../src/parser/csql_grammar.y"
+#line 11970 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24198,7 +24201,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 975:
-#line 11983 "../../src/parser/csql_grammar.y"
+#line 11986 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24239,21 +24242,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 976:
-#line 12007 "../../src/parser/csql_grammar.y"
+#line 12010 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_INSERT_SUBSTRING);;
       }
       break;
 
     case 977:
-#line 12009 "../../src/parser/csql_grammar.y"
+#line 12012 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 978:
-#line 12010 "../../src/parser/csql_grammar.y"
+#line 12013 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *args_list =
@@ -24278,7 +24281,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 979:
-#line 12026 "../../src/parser/csql_grammar.y"
+#line 12029 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *args_list =
@@ -24300,7 +24303,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 980:
-#line 12042 "../../src/parser/csql_grammar.y"
+#line 12045 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24320,21 +24323,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 981:
-#line 12048 "../../src/parser/csql_grammar.y"
+#line 12051 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SUBSTRING);;
       }
       break;
 
     case 982:
-#line 12050 "../../src/parser/csql_grammar.y"
+#line 12053 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 983:
-#line 12051 "../../src/parser/csql_grammar.y"
+#line 12054 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24361,21 +24364,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 984:
-#line 12060 "../../src/parser/csql_grammar.y"
+#line 12063 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SUBSTRING);;
       }
       break;
 
     case 985:
-#line 12062 "../../src/parser/csql_grammar.y"
+#line 12065 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 986:
-#line 12063 "../../src/parser/csql_grammar.y"
+#line 12066 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24398,21 +24401,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 987:
-#line 12072 "../../src/parser/csql_grammar.y"
+#line 12075 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SUBSTRING);;
       }
       break;
 
     case 988:
-#line 12074 "../../src/parser/csql_grammar.y"
+#line 12077 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 989:
-#line 12075 "../../src/parser/csql_grammar.y"
+#line 12078 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24439,21 +24442,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 990:
-#line 12084 "../../src/parser/csql_grammar.y"
+#line 12087 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SUBSTRING);;
       }
       break;
 
     case 991:
-#line 12086 "../../src/parser/csql_grammar.y"
+#line 12089 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 992:
-#line 12087 "../../src/parser/csql_grammar.y"
+#line 12090 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24476,21 +24479,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 993:
-#line 12096 "../../src/parser/csql_grammar.y"
+#line 12099 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_DATE);;
       }
       break;
 
     case 994:
-#line 12098 "../../src/parser/csql_grammar.y"
+#line 12101 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 995:
-#line 12099 "../../src/parser/csql_grammar.y"
+#line 12102 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24508,21 +24511,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 996:
-#line 12107 "../../src/parser/csql_grammar.y"
+#line 12110 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TIME);;
       }
       break;
 
     case 997:
-#line 12109 "../../src/parser/csql_grammar.y"
+#line 12112 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 998:
-#line 12110 "../../src/parser/csql_grammar.y"
+#line 12113 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24540,21 +24543,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 999:
-#line 12118 "../../src/parser/csql_grammar.y"
+#line 12121 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_ADDDATE);;
       }
       break;
 
     case 1000:
-#line 12120 "../../src/parser/csql_grammar.y"
+#line 12123 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1001:
-#line 12121 "../../src/parser/csql_grammar.y"
+#line 12124 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24576,21 +24579,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1002:
-#line 12129 "../../src/parser/csql_grammar.y"
+#line 12132 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_DATE_ADD);;
       }
       break;
 
     case 1003:
-#line 12131 "../../src/parser/csql_grammar.y"
+#line 12134 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1004:
-#line 12132 "../../src/parser/csql_grammar.y"
+#line 12135 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24623,21 +24626,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1005:
-#line 12149 "../../src/parser/csql_grammar.y"
+#line 12152 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SUBDATE);;
       }
       break;
 
     case 1006:
-#line 12151 "../../src/parser/csql_grammar.y"
+#line 12154 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1007:
-#line 12152 "../../src/parser/csql_grammar.y"
+#line 12155 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24659,21 +24662,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1008:
-#line 12160 "../../src/parser/csql_grammar.y"
+#line 12163 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_DATE_SUB);;
       }
       break;
 
     case 1009:
-#line 12162 "../../src/parser/csql_grammar.y"
+#line 12165 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1010:
-#line 12163 "../../src/parser/csql_grammar.y"
+#line 12166 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24706,21 +24709,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1011:
-#line 12180 "../../src/parser/csql_grammar.y"
+#line 12183 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TIMESTAMP);;
       }
       break;
 
     case 1012:
-#line 12182 "../../src/parser/csql_grammar.y"
+#line 12185 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1013:
-#line 12183 "../../src/parser/csql_grammar.y"
+#line 12186 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24733,21 +24736,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1014:
-#line 12191 "../../src/parser/csql_grammar.y"
+#line 12194 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TIMESTAMP);;
       }
       break;
 
     case 1015:
-#line 12193 "../../src/parser/csql_grammar.y"
+#line 12196 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1016:
-#line 12194 "../../src/parser/csql_grammar.y"
+#line 12197 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24760,21 +24763,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1017:
-#line 12202 "../../src/parser/csql_grammar.y"
+#line 12205 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_YEAR);;
       }
       break;
 
     case 1018:
-#line 12204 "../../src/parser/csql_grammar.y"
+#line 12207 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1019:
-#line 12205 "../../src/parser/csql_grammar.y"
+#line 12208 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24787,21 +24790,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1020:
-#line 12213 "../../src/parser/csql_grammar.y"
+#line 12216 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_MONTH);;
       }
       break;
 
     case 1021:
-#line 12215 "../../src/parser/csql_grammar.y"
+#line 12218 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1022:
-#line 12216 "../../src/parser/csql_grammar.y"
+#line 12219 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24814,21 +24817,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1023:
-#line 12224 "../../src/parser/csql_grammar.y"
+#line 12227 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_DAY);;
       }
       break;
 
     case 1024:
-#line 12226 "../../src/parser/csql_grammar.y"
+#line 12229 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1025:
-#line 12227 "../../src/parser/csql_grammar.y"
+#line 12230 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24841,21 +24844,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1026:
-#line 12235 "../../src/parser/csql_grammar.y"
+#line 12238 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_HOUR);;
       }
       break;
 
     case 1027:
-#line 12237 "../../src/parser/csql_grammar.y"
+#line 12240 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1028:
-#line 12238 "../../src/parser/csql_grammar.y"
+#line 12241 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24868,21 +24871,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1029:
-#line 12246 "../../src/parser/csql_grammar.y"
+#line 12249 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_MINUTE);;
       }
       break;
 
     case 1030:
-#line 12248 "../../src/parser/csql_grammar.y"
+#line 12251 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1031:
-#line 12249 "../../src/parser/csql_grammar.y"
+#line 12252 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24895,21 +24898,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1032:
-#line 12257 "../../src/parser/csql_grammar.y"
+#line 12260 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SECOND);;
       }
       break;
 
     case 1033:
-#line 12259 "../../src/parser/csql_grammar.y"
+#line 12262 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1034:
-#line 12260 "../../src/parser/csql_grammar.y"
+#line 12263 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24922,21 +24925,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1035:
-#line 12268 "../../src/parser/csql_grammar.y"
+#line 12271 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_DATABASE);;
       }
       break;
 
     case 1036:
-#line 12270 "../../src/parser/csql_grammar.y"
+#line 12273 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1037:
-#line 12271 "../../src/parser/csql_grammar.y"
+#line 12274 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24950,21 +24953,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1038:
-#line 12279 "../../src/parser/csql_grammar.y"
+#line 12282 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SCHEMA);;
       }
       break;
 
     case 1039:
-#line 12281 "../../src/parser/csql_grammar.y"
+#line 12284 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1040:
-#line 12282 "../../src/parser/csql_grammar.y"
+#line 12285 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -24978,21 +24981,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1041:
-#line 12290 "../../src/parser/csql_grammar.y"
+#line 12293 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRIM);;
       }
       break;
 
     case 1042:
-#line 12292 "../../src/parser/csql_grammar.y"
+#line 12295 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1043:
-#line 12293 "../../src/parser/csql_grammar.y"
+#line 12296 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25017,21 +25020,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1044:
-#line 12302 "../../src/parser/csql_grammar.y"
+#line 12305 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRIM);;
       }
       break;
 
     case 1045:
-#line 12304 "../../src/parser/csql_grammar.y"
+#line 12307 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1046:
-#line 12305 "../../src/parser/csql_grammar.y"
+#line 12308 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25052,21 +25055,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1047:
-#line 12314 "../../src/parser/csql_grammar.y"
+#line 12317 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRIM);;
       }
       break;
 
     case 1048:
-#line 12316 "../../src/parser/csql_grammar.y"
+#line 12319 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1049:
-#line 12317 "../../src/parser/csql_grammar.y"
+#line 12320 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25089,21 +25092,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1050:
-#line 12326 "../../src/parser/csql_grammar.y"
+#line 12329 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRIM);;
       }
       break;
 
     case 1051:
-#line 12328 "../../src/parser/csql_grammar.y"
+#line 12331 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1052:
-#line 12329 "../../src/parser/csql_grammar.y"
+#line 12332 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25122,21 +25125,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1053:
-#line 12338 "../../src/parser/csql_grammar.y"
+#line 12341 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_CAST);;
       }
       break;
 
     case 1054:
-#line 12340 "../../src/parser/csql_grammar.y"
+#line 12343 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1055:
-#line 12341 "../../src/parser/csql_grammar.y"
+#line 12344 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25185,7 +25188,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1056:
-#line 12368 "../../src/parser/csql_grammar.y"
+#line 12371 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25201,7 +25204,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1057:
-#line 12376 "../../src/parser/csql_grammar.y"
+#line 12379 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25214,7 +25217,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1058:
-#line 12383 "../../src/parser/csql_grammar.y"
+#line 12386 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25227,7 +25230,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1059:
-#line 12390 "../../src/parser/csql_grammar.y"
+#line 12393 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25240,7 +25243,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1060:
-#line 12397 "../../src/parser/csql_grammar.y"
+#line 12400 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25253,7 +25256,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1061:
-#line 12404 "../../src/parser/csql_grammar.y"
+#line 12407 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25269,21 +25272,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1062:
-#line 12415 "../../src/parser/csql_grammar.y"
+#line 12418 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_SYSTEM_USER);;
       }
       break;
 
     case 1063:
-#line 12417 "../../src/parser/csql_grammar.y"
+#line 12420 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1064:
-#line 12418 "../../src/parser/csql_grammar.y"
+#line 12421 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25296,21 +25299,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1065:
-#line 12426 "../../src/parser/csql_grammar.y"
+#line 12429 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_DEFAULT);;
       }
       break;
 
     case 1066:
-#line 12428 "../../src/parser/csql_grammar.y"
+#line 12431 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1067:
-#line 12429 "../../src/parser/csql_grammar.y"
+#line 12432 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25332,7 +25335,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1068:
-#line 12444 "../../src/parser/csql_grammar.y"
+#line 12447 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25349,7 +25352,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1069:
-#line 12456 "../../src/parser/csql_grammar.y"
+#line 12459 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25374,21 +25377,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1070:
-#line 12476 "../../src/parser/csql_grammar.y"
+#line 12479 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_ADD_MONTHS);;
       }
       break;
 
     case 1071:
-#line 12478 "../../src/parser/csql_grammar.y"
+#line 12481 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1072:
-#line 12479 "../../src/parser/csql_grammar.y"
+#line 12482 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25408,21 +25411,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1073:
-#line 12485 "../../src/parser/csql_grammar.y"
+#line 12488 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_OCTET_LENGTH);;
       }
       break;
 
     case 1074:
-#line 12487 "../../src/parser/csql_grammar.y"
+#line 12490 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1075:
-#line 12488 "../../src/parser/csql_grammar.y"
+#line 12491 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25438,21 +25441,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1076:
-#line 12494 "../../src/parser/csql_grammar.y"
+#line 12497 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_BIT_LENGTH);;
       }
       break;
 
     case 1077:
-#line 12496 "../../src/parser/csql_grammar.y"
+#line 12499 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1078:
-#line 12497 "../../src/parser/csql_grammar.y"
+#line 12500 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25468,21 +25471,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1079:
-#line 12503 "../../src/parser/csql_grammar.y"
+#line 12506 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_LOWER);;
       }
       break;
 
     case 1080:
-#line 12505 "../../src/parser/csql_grammar.y"
+#line 12508 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1081:
-#line 12506 "../../src/parser/csql_grammar.y"
+#line 12509 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25498,21 +25501,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1082:
-#line 12512 "../../src/parser/csql_grammar.y"
+#line 12515 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_LOWER);;
       }
       break;
 
     case 1083:
-#line 12514 "../../src/parser/csql_grammar.y"
+#line 12517 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1084:
-#line 12515 "../../src/parser/csql_grammar.y"
+#line 12518 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25528,21 +25531,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1085:
-#line 12521 "../../src/parser/csql_grammar.y"
+#line 12524 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_UPPER);;
       }
       break;
 
     case 1086:
-#line 12523 "../../src/parser/csql_grammar.y"
+#line 12526 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1087:
-#line 12524 "../../src/parser/csql_grammar.y"
+#line 12527 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25558,21 +25561,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1088:
-#line 12530 "../../src/parser/csql_grammar.y"
+#line 12533 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_UPPER);;
       }
       break;
 
     case 1089:
-#line 12532 "../../src/parser/csql_grammar.y"
+#line 12535 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1090:
-#line 12533 "../../src/parser/csql_grammar.y"
+#line 12536 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25588,7 +25591,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1091:
-#line 12539 "../../src/parser/csql_grammar.y"
+#line 12542 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25604,14 +25607,14 @@ PT_IS_SUBINSERT;
       break;
 
     case 1092:
-#line 12550 "../../src/parser/csql_grammar.y"
+#line 12553 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1093:
-#line 12551 "../../src/parser/csql_grammar.y"
+#line 12554 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25643,21 +25646,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1094:
-#line 12568 "../../src/parser/csql_grammar.y"
+#line 12571 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_IF);;
       }
       break;
 
     case 1095:
-#line 12570 "../../src/parser/csql_grammar.y"
+#line 12573 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1096:
-#line 12571 "../../src/parser/csql_grammar.y"
+#line 12574 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25681,21 +25684,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1097:
-#line 12577 "../../src/parser/csql_grammar.y"
+#line 12580 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_IFNULL);;
       }
       break;
 
     case 1098:
-#line 12579 "../../src/parser/csql_grammar.y"
+#line 12582 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1099:
-#line 12580 "../../src/parser/csql_grammar.y"
+#line 12583 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25715,21 +25718,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1100:
-#line 12586 "../../src/parser/csql_grammar.y"
+#line 12589 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_ISNULL);;
       }
       break;
 
     case 1101:
-#line 12588 "../../src/parser/csql_grammar.y"
+#line 12591 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1102:
-#line 12589 "../../src/parser/csql_grammar.y"
+#line 12592 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25745,21 +25748,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1103:
-#line 12595 "../../src/parser/csql_grammar.y"
+#line 12598 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_LEFT);;
       }
       break;
 
     case 1104:
-#line 12597 "../../src/parser/csql_grammar.y"
+#line 12600 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1105:
-#line 12598 "../../src/parser/csql_grammar.y"
+#line 12601 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node =
@@ -25780,21 +25783,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1106:
-#line 12606 "../../src/parser/csql_grammar.y"
+#line 12609 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_RIGHT);;
       }
       break;
 
     case 1107:
-#line 12608 "../../src/parser/csql_grammar.y"
+#line 12611 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1108:
-#line 12609 "../../src/parser/csql_grammar.y"
+#line 12612 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node =
@@ -25815,21 +25818,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1109:
-#line 12617 "../../src/parser/csql_grammar.y"
+#line 12620 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_MODULUS);;
       }
       break;
 
     case 1110:
-#line 12619 "../../src/parser/csql_grammar.y"
+#line 12622 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1111:
-#line 12620 "../../src/parser/csql_grammar.y"
+#line 12623 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node =
@@ -25850,21 +25853,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1112:
-#line 12628 "../../src/parser/csql_grammar.y"
+#line 12631 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRUNCATE);;
       }
       break;
 
     case 1113:
-#line 12630 "../../src/parser/csql_grammar.y"
+#line 12633 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1114:
-#line 12631 "../../src/parser/csql_grammar.y"
+#line 12634 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25884,21 +25887,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1115:
-#line 12637 "../../src/parser/csql_grammar.y"
+#line 12640 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRANSLATE);;
       }
       break;
 
     case 1116:
-#line 12639 "../../src/parser/csql_grammar.y"
+#line 12642 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1117:
-#line 12640 "../../src/parser/csql_grammar.y"
+#line 12643 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25922,21 +25925,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1118:
-#line 12646 "../../src/parser/csql_grammar.y"
+#line 12649 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_TRANSLATE);;
       }
       break;
 
     case 1119:
-#line 12648 "../../src/parser/csql_grammar.y"
+#line 12651 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1120:
-#line 12649 "../../src/parser/csql_grammar.y"
+#line 12652 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25960,21 +25963,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1121:
-#line 12655 "../../src/parser/csql_grammar.y"
+#line 12658 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_REPLACE);;
       }
       break;
 
     case 1122:
-#line 12657 "../../src/parser/csql_grammar.y"
+#line 12660 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1123:
-#line 12658 "../../src/parser/csql_grammar.y"
+#line 12661 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -25994,21 +25997,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1124:
-#line 12664 "../../src/parser/csql_grammar.y"
+#line 12667 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_STRTODATE);;
       }
       break;
 
     case 1125:
-#line 12666 "../../src/parser/csql_grammar.y"
+#line 12669 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1126:
-#line 12667 "../../src/parser/csql_grammar.y"
+#line 12670 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26028,21 +26031,21 @@ PT_IS_SUBINSERT;
       break;
 
     case 1127:
-#line 12673 "../../src/parser/csql_grammar.y"
+#line 12676 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_STRTODATE);;
       }
       break;
 
     case 1128:
-#line 12675 "../../src/parser/csql_grammar.y"
+#line 12678 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1129:
-#line 12676 "../../src/parser/csql_grammar.y"
+#line 12679 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -26061,91 +26064,91 @@ PT_IS_SUBINSERT;
       break;
 
     case 1132:
-#line 12691 "../../src/parser/csql_grammar.y"
+#line 12694 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_CURRENT_DATE);;
       }
       break;
 
     case 1133:
-#line 12693 "../../src/parser/csql_grammar.y"
+#line 12696 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1136:
-#line 12700 "../../src/parser/csql_grammar.y"
+#line 12703 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_CURRENT_TIME);;
       }
       break;
 
     case 1137:
-#line 12702 "../../src/parser/csql_grammar.y"
+#line 12705 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1140:
-#line 12709 "../../src/parser/csql_grammar.y"
+#line 12712 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP);;
       }
       break;
 
     case 1141:
-#line 12711 "../../src/parser/csql_grammar.y"
+#line 12714 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1143:
-#line 12714 "../../src/parser/csql_grammar.y"
+#line 12717 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_LOCALTIME);;
       }
       break;
 
     case 1144:
-#line 12716 "../../src/parser/csql_grammar.y"
+#line 12719 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1146:
-#line 12719 "../../src/parser/csql_grammar.y"
+#line 12722 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_LOCALTIMESTAMP);;
       }
       break;
 
     case 1147:
-#line 12721 "../../src/parser/csql_grammar.y"
+#line 12724 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1150:
-#line 12728 "../../src/parser/csql_grammar.y"
+#line 12731 "../../src/parser/csql_grammar.y"
       {
 	push_msg (MSGCAT_SYNTAX_INVALID_CURRENT_DATETIME);;
       }
       break;
 
     case 1151:
-#line 12730 "../../src/parser/csql_grammar.y"
+#line 12733 "../../src/parser/csql_grammar.y"
       {
 	pop_msg ();;
       }
       break;
 
     case 1155:
-#line 12741 "../../src/parser/csql_grammar.y"
+#line 12744 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26156,7 +26159,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1156:
-#line 12747 "../../src/parser/csql_grammar.y"
+#line 12750 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26167,7 +26170,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1157:
-#line 12753 "../../src/parser/csql_grammar.y"
+#line 12756 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26178,7 +26181,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1158:
-#line 12759 "../../src/parser/csql_grammar.y"
+#line 12762 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26189,7 +26192,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1159:
-#line 12765 "../../src/parser/csql_grammar.y"
+#line 12768 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26200,7 +26203,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1160:
-#line 12771 "../../src/parser/csql_grammar.y"
+#line 12774 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26211,7 +26214,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1161:
-#line 12777 "../../src/parser/csql_grammar.y"
+#line 12780 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26222,7 +26225,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1162:
-#line 12783 "../../src/parser/csql_grammar.y"
+#line 12786 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26233,7 +26236,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1163:
-#line 12789 "../../src/parser/csql_grammar.y"
+#line 12792 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26244,7 +26247,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1164:
-#line 12795 "../../src/parser/csql_grammar.y"
+#line 12798 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26255,7 +26258,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1165:
-#line 12801 "../../src/parser/csql_grammar.y"
+#line 12804 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26266,7 +26269,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1166:
-#line 12807 "../../src/parser/csql_grammar.y"
+#line 12810 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26277,7 +26280,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1167:
-#line 12813 "../../src/parser/csql_grammar.y"
+#line 12816 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26288,7 +26291,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1168:
-#line 12822 "../../src/parser/csql_grammar.y"
+#line 12825 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26299,7 +26302,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1169:
-#line 12828 "../../src/parser/csql_grammar.y"
+#line 12831 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26310,7 +26313,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1170:
-#line 12834 "../../src/parser/csql_grammar.y"
+#line 12837 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26321,7 +26324,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1171:
-#line 12840 "../../src/parser/csql_grammar.y"
+#line 12843 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26332,7 +26335,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1172:
-#line 12846 "../../src/parser/csql_grammar.y"
+#line 12849 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26343,7 +26346,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1173:
-#line 12852 "../../src/parser/csql_grammar.y"
+#line 12855 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26354,7 +26357,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1174:
-#line 12858 "../../src/parser/csql_grammar.y"
+#line 12861 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26365,7 +26368,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1175:
-#line 12864 "../../src/parser/csql_grammar.y"
+#line 12867 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26376,7 +26379,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1176:
-#line 12870 "../../src/parser/csql_grammar.y"
+#line 12873 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26387,7 +26390,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1177:
-#line 12876 "../../src/parser/csql_grammar.y"
+#line 12879 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26398,7 +26401,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1178:
-#line 12886 "../../src/parser/csql_grammar.y"
+#line 12889 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26409,7 +26412,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1179:
-#line 12892 "../../src/parser/csql_grammar.y"
+#line 12895 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26420,7 +26423,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1180:
-#line 12898 "../../src/parser/csql_grammar.y"
+#line 12901 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26431,7 +26434,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1183:
-#line 12913 "../../src/parser/csql_grammar.y"
+#line 12916 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26442,7 +26445,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1184:
-#line 12919 "../../src/parser/csql_grammar.y"
+#line 12922 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26455,7 +26458,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1185:
-#line 12925 "../../src/parser/csql_grammar.y"
+#line 12928 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26468,7 +26471,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1186:
-#line 12934 "../../src/parser/csql_grammar.y"
+#line 12937 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26479,7 +26482,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1187:
-#line 12940 "../../src/parser/csql_grammar.y"
+#line 12943 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26492,7 +26495,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1188:
-#line 12949 "../../src/parser/csql_grammar.y"
+#line 12952 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26503,7 +26506,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1189:
-#line 12955 "../../src/parser/csql_grammar.y"
+#line 12958 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26516,7 +26519,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1190:
-#line 12964 "../../src/parser/csql_grammar.y"
+#line 12967 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26527,7 +26530,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1191:
-#line 12970 "../../src/parser/csql_grammar.y"
+#line 12973 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26540,7 +26543,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1192:
-#line 12979 "../../src/parser/csql_grammar.y"
+#line 12982 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26551,7 +26554,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1193:
-#line 12985 "../../src/parser/csql_grammar.y"
+#line 12988 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26562,7 +26565,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1194:
-#line 12991 "../../src/parser/csql_grammar.y"
+#line 12994 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26573,7 +26576,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1195:
-#line 13000 "../../src/parser/csql_grammar.y"
+#line 13003 "../../src/parser/csql_grammar.y"
       {
 	{
 	  ((*yyvalp).node) =
@@ -26591,7 +26594,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1196:
-#line 13004 "../../src/parser/csql_grammar.y"
+#line 13007 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *prev, *expr, *arg, *tmp;
@@ -26666,7 +26669,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1197:
-#line 13068 "../../src/parser/csql_grammar.y"
+#line 13071 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26736,7 +26739,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1198:
-#line 13121 "../../src/parser/csql_grammar.y"
+#line 13124 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26790,7 +26793,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1199:
-#line 13165 "../../src/parser/csql_grammar.y"
+#line 13168 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26801,7 +26804,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1200:
-#line 13171 "../../src/parser/csql_grammar.y"
+#line 13174 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26814,7 +26817,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1201:
-#line 13180 "../../src/parser/csql_grammar.y"
+#line 13183 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26833,7 +26836,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1202:
-#line 13186 "../../src/parser/csql_grammar.y"
+#line 13189 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26846,7 +26849,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1203:
-#line 13195 "../../src/parser/csql_grammar.y"
+#line 13198 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26883,7 +26886,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1204:
-#line 13226 "../../src/parser/csql_grammar.y"
+#line 13229 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26902,7 +26905,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1205:
-#line 13232 "../../src/parser/csql_grammar.y"
+#line 13235 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26915,7 +26918,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1206:
-#line 13241 "../../src/parser/csql_grammar.y"
+#line 13244 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26948,7 +26951,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1207:
-#line 13269 "../../src/parser/csql_grammar.y"
+#line 13272 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26970,7 +26973,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1212:
-#line 13292 "../../src/parser/csql_grammar.y"
+#line 13295 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26981,7 +26984,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1213:
-#line 13298 "../../src/parser/csql_grammar.y"
+#line 13301 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -26992,7 +26995,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1214:
-#line 13304 "../../src/parser/csql_grammar.y"
+#line 13307 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27003,7 +27006,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1215:
-#line 13310 "../../src/parser/csql_grammar.y"
+#line 13313 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27014,7 +27017,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1216:
-#line 13316 "../../src/parser/csql_grammar.y"
+#line 13319 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27025,7 +27028,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1217:
-#line 13322 "../../src/parser/csql_grammar.y"
+#line 13325 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27036,7 +27039,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1218:
-#line 13328 "../../src/parser/csql_grammar.y"
+#line 13331 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27047,7 +27050,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1219:
-#line 13334 "../../src/parser/csql_grammar.y"
+#line 13337 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27058,7 +27061,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1220:
-#line 13340 "../../src/parser/csql_grammar.y"
+#line 13343 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27069,7 +27072,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1221:
-#line 13346 "../../src/parser/csql_grammar.y"
+#line 13349 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27080,7 +27083,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1222:
-#line 13352 "../../src/parser/csql_grammar.y"
+#line 13355 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27091,7 +27094,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1223:
-#line 13358 "../../src/parser/csql_grammar.y"
+#line 13361 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27102,7 +27105,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1224:
-#line 13364 "../../src/parser/csql_grammar.y"
+#line 13367 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27113,7 +27116,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1225:
-#line 13370 "../../src/parser/csql_grammar.y"
+#line 13373 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27124,7 +27127,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1226:
-#line 13376 "../../src/parser/csql_grammar.y"
+#line 13379 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27135,7 +27138,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1227:
-#line 13382 "../../src/parser/csql_grammar.y"
+#line 13385 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27146,7 +27149,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1228:
-#line 13388 "../../src/parser/csql_grammar.y"
+#line 13391 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27157,7 +27160,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1229:
-#line 13394 "../../src/parser/csql_grammar.y"
+#line 13397 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27168,7 +27171,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1230:
-#line 13400 "../../src/parser/csql_grammar.y"
+#line 13403 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27179,7 +27182,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1231:
-#line 13406 "../../src/parser/csql_grammar.y"
+#line 13409 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27190,7 +27193,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1232:
-#line 13415 "../../src/parser/csql_grammar.y"
+#line 13418 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27201,7 +27204,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1233:
-#line 13421 "../../src/parser/csql_grammar.y"
+#line 13424 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27214,7 +27217,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1234:
-#line 13430 "../../src/parser/csql_grammar.y"
+#line 13433 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27257,7 +27260,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1235:
-#line 13456 "../../src/parser/csql_grammar.y"
+#line 13459 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27303,7 +27306,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1236:
-#line 13497 "../../src/parser/csql_grammar.y"
+#line 13500 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27314,7 +27317,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1237:
-#line 13503 "../../src/parser/csql_grammar.y"
+#line 13506 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27327,7 +27330,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1238:
-#line 13512 "../../src/parser/csql_grammar.y"
+#line 13515 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27347,7 +27350,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1239:
-#line 13525 "../../src/parser/csql_grammar.y"
+#line 13528 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27367,7 +27370,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1240:
-#line 13538 "../../src/parser/csql_grammar.y"
+#line 13541 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27387,7 +27390,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1241:
-#line 13551 "../../src/parser/csql_grammar.y"
+#line 13554 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27407,7 +27410,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1242:
-#line 13567 "../../src/parser/csql_grammar.y"
+#line 13570 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *arg1 =
@@ -27429,7 +27432,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1243:
-#line 13574 "../../src/parser/csql_grammar.y"
+#line 13577 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27445,7 +27448,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1244:
-#line 13583 "../../src/parser/csql_grammar.y"
+#line 13586 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *arg1 =
@@ -27468,7 +27471,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1245:
-#line 13590 "../../src/parser/csql_grammar.y"
+#line 13593 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27480,7 +27483,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1246:
-#line 13598 "../../src/parser/csql_grammar.y"
+#line 13601 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *arg =
@@ -27504,7 +27507,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1247:
-#line 13604 "../../src/parser/csql_grammar.y"
+#line 13607 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27517,7 +27520,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1248:
-#line 13613 "../../src/parser/csql_grammar.y"
+#line 13616 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27528,7 +27531,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1249:
-#line 13619 "../../src/parser/csql_grammar.y"
+#line 13622 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27539,7 +27542,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1250:
-#line 13628 "../../src/parser/csql_grammar.y"
+#line 13631 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *arg1 =
@@ -27562,7 +27565,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1251:
-#line 13635 "../../src/parser/csql_grammar.y"
+#line 13638 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27575,7 +27578,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1252:
-#line 13644 "../../src/parser/csql_grammar.y"
+#line 13647 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27592,7 +27595,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1253:
-#line 13651 "../../src/parser/csql_grammar.y"
+#line 13654 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27609,7 +27612,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1254:
-#line 13658 "../../src/parser/csql_grammar.y"
+#line 13661 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27622,7 +27625,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1255:
-#line 13667 "../../src/parser/csql_grammar.y"
+#line 13670 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27638,7 +27641,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1256:
-#line 13673 "../../src/parser/csql_grammar.y"
+#line 13676 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27651,7 +27654,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1257:
-#line 13679 "../../src/parser/csql_grammar.y"
+#line 13682 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27664,7 +27667,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1258:
-#line 13688 "../../src/parser/csql_grammar.y"
+#line 13691 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27677,7 +27680,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1259:
-#line 13696 "../../src/parser/csql_grammar.y"
+#line 13699 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27769,7 +27772,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1260:
-#line 13782 "../../src/parser/csql_grammar.y"
+#line 13785 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27893,7 +27896,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1261:
-#line 13888 "../../src/parser/csql_grammar.y"
+#line 13891 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27923,7 +27926,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1262:
-#line 13896 "../../src/parser/csql_grammar.y"
+#line 13899 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27957,7 +27960,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1263:
-#line 13909 "../../src/parser/csql_grammar.y"
+#line 13912 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27976,7 +27979,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1264:
-#line 13915 "../../src/parser/csql_grammar.y"
+#line 13918 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -27999,7 +28002,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1265:
-#line 13921 "../../src/parser/csql_grammar.y"
+#line 13924 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28028,7 +28031,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1266:
-#line 13928 "../../src/parser/csql_grammar.y"
+#line 13931 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28175,7 +28178,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1267:
-#line 14049 "../../src/parser/csql_grammar.y"
+#line 14052 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28195,7 +28198,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1268:
-#line 14055 "../../src/parser/csql_grammar.y"
+#line 14058 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28214,7 +28217,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1269:
-#line 14065 "../../src/parser/csql_grammar.y"
+#line 14068 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28237,7 +28240,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1270:
-#line 14083 "../../src/parser/csql_grammar.y"
+#line 14086 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28248,7 +28251,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1271:
-#line 14089 "../../src/parser/csql_grammar.y"
+#line 14092 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28259,7 +28262,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1272:
-#line 14098 "../../src/parser/csql_grammar.y"
+#line 14101 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28285,7 +28288,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1273:
-#line 14118 "../../src/parser/csql_grammar.y"
+#line 14121 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28311,7 +28314,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1274:
-#line 14138 "../../src/parser/csql_grammar.y"
+#line 14141 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28337,7 +28340,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1275:
-#line 14158 "../../src/parser/csql_grammar.y"
+#line 14161 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28363,7 +28366,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1276:
-#line 14178 "../../src/parser/csql_grammar.y"
+#line 14181 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28389,7 +28392,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1277:
-#line 14198 "../../src/parser/csql_grammar.y"
+#line 14201 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28415,7 +28418,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1278:
-#line 14218 "../../src/parser/csql_grammar.y"
+#line 14221 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28434,7 +28437,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1279:
-#line 14225 "../../src/parser/csql_grammar.y"
+#line 14228 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28453,7 +28456,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1280:
-#line 14232 "../../src/parser/csql_grammar.y"
+#line 14235 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28464,7 +28467,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1281:
-#line 14241 "../../src/parser/csql_grammar.y"
+#line 14244 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28475,7 +28478,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1282:
-#line 14247 "../../src/parser/csql_grammar.y"
+#line 14250 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28486,7 +28489,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1283:
-#line 14253 "../../src/parser/csql_grammar.y"
+#line 14256 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28497,7 +28500,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1284:
-#line 14259 "../../src/parser/csql_grammar.y"
+#line 14262 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28508,7 +28511,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1285:
-#line 14268 "../../src/parser/csql_grammar.y"
+#line 14271 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28519,7 +28522,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1286:
-#line 14274 "../../src/parser/csql_grammar.y"
+#line 14277 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28530,7 +28533,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1287:
-#line 14283 "../../src/parser/csql_grammar.y"
+#line 14286 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28541,7 +28544,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1288:
-#line 14289 "../../src/parser/csql_grammar.y"
+#line 14292 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28552,7 +28555,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1289:
-#line 14299 "../../src/parser/csql_grammar.y"
+#line 14302 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28563,7 +28566,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1290:
-#line 14305 "../../src/parser/csql_grammar.y"
+#line 14308 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28574,7 +28577,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1291:
-#line 14314 "../../src/parser/csql_grammar.y"
+#line 14317 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28585,7 +28588,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1292:
-#line 14320 "../../src/parser/csql_grammar.y"
+#line 14323 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28596,7 +28599,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1293:
-#line 14329 "../../src/parser/csql_grammar.y"
+#line 14332 "../../src/parser/csql_grammar.y"
       {
 	{
 	  container_2 ctn;
@@ -28641,7 +28644,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1294:
-#line 14370 "../../src/parser/csql_grammar.y"
+#line 14373 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28660,7 +28663,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1295:
-#line 14376 "../../src/parser/csql_grammar.y"
+#line 14379 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28673,7 +28676,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1296:
-#line 14385 "../../src/parser/csql_grammar.y"
+#line 14388 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28693,7 +28696,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1297:
-#line 14391 "../../src/parser/csql_grammar.y"
+#line 14394 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28713,7 +28716,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1298:
-#line 14397 "../../src/parser/csql_grammar.y"
+#line 14400 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28733,7 +28736,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1299:
-#line 14403 "../../src/parser/csql_grammar.y"
+#line 14406 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28753,7 +28756,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1300:
-#line 14409 "../../src/parser/csql_grammar.y"
+#line 14412 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28769,7 +28772,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1301:
-#line 14415 "../../src/parser/csql_grammar.y"
+#line 14418 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28785,7 +28788,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1302:
-#line 14421 "../../src/parser/csql_grammar.y"
+#line 14424 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28801,7 +28804,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1303:
-#line 14427 "../../src/parser/csql_grammar.y"
+#line 14430 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28817,7 +28820,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1304:
-#line 14433 "../../src/parser/csql_grammar.y"
+#line 14436 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28833,7 +28836,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1305:
-#line 14442 "../../src/parser/csql_grammar.y"
+#line 14445 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28844,7 +28847,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1306:
-#line 14448 "../../src/parser/csql_grammar.y"
+#line 14451 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28855,7 +28858,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1307:
-#line 14454 "../../src/parser/csql_grammar.y"
+#line 14457 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28866,7 +28869,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1308:
-#line 14460 "../../src/parser/csql_grammar.y"
+#line 14463 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28877,7 +28880,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1309:
-#line 14466 "../../src/parser/csql_grammar.y"
+#line 14469 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28888,7 +28891,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1310:
-#line 14472 "../../src/parser/csql_grammar.y"
+#line 14475 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28899,7 +28902,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1311:
-#line 14481 "../../src/parser/csql_grammar.y"
+#line 14484 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28922,7 +28925,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1312:
-#line 14501 "../../src/parser/csql_grammar.y"
+#line 14504 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28935,7 +28938,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1313:
-#line 14507 "../../src/parser/csql_grammar.y"
+#line 14510 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28954,7 +28957,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1314:
-#line 14519 "../../src/parser/csql_grammar.y"
+#line 14522 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -28980,7 +28983,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1315:
-#line 14538 "../../src/parser/csql_grammar.y"
+#line 14541 "../../src/parser/csql_grammar.y"
       {
 	{
 	  PT_NODE *dot;
@@ -29061,7 +29064,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1316:
-#line 14616 "../../src/parser/csql_grammar.y"
+#line 14619 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29083,7 +29086,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1317:
-#line 14629 "../../src/parser/csql_grammar.y"
+#line 14632 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29096,7 +29099,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1318:
-#line 14638 "../../src/parser/csql_grammar.y"
+#line 14641 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29109,7 +29112,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1319:
-#line 14644 "../../src/parser/csql_grammar.y"
+#line 14647 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29125,7 +29128,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1320:
-#line 14653 "../../src/parser/csql_grammar.y"
+#line 14656 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29141,7 +29144,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1323:
-#line 14670 "../../src/parser/csql_grammar.y"
+#line 14673 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29161,7 +29164,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1324:
-#line 14681 "../../src/parser/csql_grammar.y"
+#line 14684 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29174,7 +29177,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1325:
-#line 14687 "../../src/parser/csql_grammar.y"
+#line 14690 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29187,7 +29190,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1326:
-#line 14693 "../../src/parser/csql_grammar.y"
+#line 14696 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29200,7 +29203,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1327:
-#line 14702 "../../src/parser/csql_grammar.y"
+#line 14705 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29222,7 +29225,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1328:
-#line 14715 "../../src/parser/csql_grammar.y"
+#line 14718 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29235,7 +29238,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1329:
-#line 14724 "../../src/parser/csql_grammar.y"
+#line 14727 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29246,7 +29249,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1330:
-#line 14730 "../../src/parser/csql_grammar.y"
+#line 14733 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29257,7 +29260,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1331:
-#line 14736 "../../src/parser/csql_grammar.y"
+#line 14739 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29268,7 +29271,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1332:
-#line 14742 "../../src/parser/csql_grammar.y"
+#line 14745 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29279,7 +29282,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1333:
-#line 14752 "../../src/parser/csql_grammar.y"
+#line 14755 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29318,7 +29321,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1334:
-#line 14777 "../../src/parser/csql_grammar.y"
+#line 14780 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29341,7 +29344,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1335:
-#line 14791 "../../src/parser/csql_grammar.y"
+#line 14794 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29359,7 +29362,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1336:
-#line 14802 "../../src/parser/csql_grammar.y"
+#line 14805 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29387,7 +29390,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1337:
-#line 14821 "../../src/parser/csql_grammar.y"
+#line 14824 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29404,7 +29407,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1338:
-#line 14831 "../../src/parser/csql_grammar.y"
+#line 14834 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29417,7 +29420,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1339:
-#line 14840 "../../src/parser/csql_grammar.y"
+#line 14843 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29430,7 +29433,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1340:
-#line 14846 "../../src/parser/csql_grammar.y"
+#line 14849 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29443,7 +29446,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1341:
-#line 14855 "../../src/parser/csql_grammar.y"
+#line 14858 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29490,7 +29493,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1342:
-#line 14887 "../../src/parser/csql_grammar.y"
+#line 14890 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29533,7 +29536,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1343:
-#line 14922 "../../src/parser/csql_grammar.y"
+#line 14925 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29548,7 +29551,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1344:
-#line 14931 "../../src/parser/csql_grammar.y"
+#line 14934 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29559,7 +29562,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1345:
-#line 14937 "../../src/parser/csql_grammar.y"
+#line 14940 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29574,7 +29577,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1346:
-#line 14946 "../../src/parser/csql_grammar.y"
+#line 14949 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29589,7 +29592,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1347:
-#line 14955 "../../src/parser/csql_grammar.y"
+#line 14958 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29604,7 +29607,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1348:
-#line 14967 "../../src/parser/csql_grammar.y"
+#line 14970 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29615,7 +29618,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1349:
-#line 14973 "../../src/parser/csql_grammar.y"
+#line 14976 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29626,7 +29629,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1350:
-#line 14982 "../../src/parser/csql_grammar.y"
+#line 14985 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29639,7 +29642,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1351:
-#line 14990 "../../src/parser/csql_grammar.y"
+#line 14993 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29652,7 +29655,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1352:
-#line 14998 "../../src/parser/csql_grammar.y"
+#line 15001 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29665,7 +29668,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1353:
-#line 15006 "../../src/parser/csql_grammar.y"
+#line 15009 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29678,7 +29681,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1354:
-#line 15014 "../../src/parser/csql_grammar.y"
+#line 15017 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29691,7 +29694,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1355:
-#line 15022 "../../src/parser/csql_grammar.y"
+#line 15025 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29704,7 +29707,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1356:
-#line 15030 "../../src/parser/csql_grammar.y"
+#line 15033 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29717,7 +29720,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1357:
-#line 15038 "../../src/parser/csql_grammar.y"
+#line 15041 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29730,7 +29733,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1358:
-#line 15046 "../../src/parser/csql_grammar.y"
+#line 15049 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29743,7 +29746,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1359:
-#line 15054 "../../src/parser/csql_grammar.y"
+#line 15057 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29756,7 +29759,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1360:
-#line 15062 "../../src/parser/csql_grammar.y"
+#line 15065 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29769,7 +29772,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1361:
-#line 15070 "../../src/parser/csql_grammar.y"
+#line 15073 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29782,7 +29785,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1362:
-#line 15078 "../../src/parser/csql_grammar.y"
+#line 15081 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29802,7 +29805,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1363:
-#line 15093 "../../src/parser/csql_grammar.y"
+#line 15096 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29815,7 +29818,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1364:
-#line 15101 "../../src/parser/csql_grammar.y"
+#line 15104 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29828,7 +29831,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1365:
-#line 15109 "../../src/parser/csql_grammar.y"
+#line 15112 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29855,7 +29858,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1366:
-#line 15127 "../../src/parser/csql_grammar.y"
+#line 15130 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -29977,7 +29980,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1367:
-#line 15240 "../../src/parser/csql_grammar.y"
+#line 15243 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30040,7 +30043,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1368:
-#line 15288 "../../src/parser/csql_grammar.y"
+#line 15291 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30094,7 +30097,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1369:
-#line 15337 "../../src/parser/csql_grammar.y"
+#line 15340 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30105,7 +30108,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1370:
-#line 15343 "../../src/parser/csql_grammar.y"
+#line 15346 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30116,7 +30119,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1371:
-#line 15349 "../../src/parser/csql_grammar.y"
+#line 15352 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30127,7 +30130,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1372:
-#line 15358 "../../src/parser/csql_grammar.y"
+#line 15361 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30138,7 +30141,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1373:
-#line 15364 "../../src/parser/csql_grammar.y"
+#line 15367 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30149,7 +30152,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1374:
-#line 15373 "../../src/parser/csql_grammar.y"
+#line 15376 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30160,7 +30163,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1375:
-#line 15379 "../../src/parser/csql_grammar.y"
+#line 15382 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30173,7 +30176,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1376:
-#line 15388 "../../src/parser/csql_grammar.y"
+#line 15391 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30184,7 +30187,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1377:
-#line 15394 "../../src/parser/csql_grammar.y"
+#line 15397 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30195,7 +30198,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1378:
-#line 15403 "../../src/parser/csql_grammar.y"
+#line 15406 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30208,7 +30211,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1379:
-#line 15411 "../../src/parser/csql_grammar.y"
+#line 15414 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30225,7 +30228,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1380:
-#line 15419 "../../src/parser/csql_grammar.y"
+#line 15422 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30246,7 +30249,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1381:
-#line 15431 "../../src/parser/csql_grammar.y"
+#line 15434 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30257,7 +30260,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1382:
-#line 15437 "../../src/parser/csql_grammar.y"
+#line 15440 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30268,7 +30271,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1383:
-#line 15443 "../../src/parser/csql_grammar.y"
+#line 15446 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30279,7 +30282,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1384:
-#line 15449 "../../src/parser/csql_grammar.y"
+#line 15452 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30292,7 +30295,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1387:
-#line 15463 "../../src/parser/csql_grammar.y"
+#line 15466 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30305,7 +30308,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1388:
-#line 15469 "../../src/parser/csql_grammar.y"
+#line 15472 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30348,7 +30351,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1389:
-#line 15504 "../../src/parser/csql_grammar.y"
+#line 15507 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30384,7 +30387,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1390:
-#line 15531 "../../src/parser/csql_grammar.y"
+#line 15534 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30406,7 +30409,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1391:
-#line 15549 "../../src/parser/csql_grammar.y"
+#line 15552 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30419,7 +30422,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1392:
-#line 15555 "../../src/parser/csql_grammar.y"
+#line 15558 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30432,7 +30435,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1393:
-#line 15564 "../../src/parser/csql_grammar.y"
+#line 15567 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30445,7 +30448,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1394:
-#line 15570 "../../src/parser/csql_grammar.y"
+#line 15573 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30458,7 +30461,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1395:
-#line 15576 "../../src/parser/csql_grammar.y"
+#line 15579 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30471,7 +30474,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1396:
-#line 15582 "../../src/parser/csql_grammar.y"
+#line 15585 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30484,7 +30487,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1397:
-#line 15588 "../../src/parser/csql_grammar.y"
+#line 15591 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30497,7 +30500,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1398:
-#line 15594 "../../src/parser/csql_grammar.y"
+#line 15597 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30510,7 +30513,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1399:
-#line 15600 "../../src/parser/csql_grammar.y"
+#line 15603 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30524,7 +30527,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1400:
-#line 15609 "../../src/parser/csql_grammar.y"
+#line 15612 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30537,7 +30540,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1401:
-#line 15615 "../../src/parser/csql_grammar.y"
+#line 15618 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30551,7 +30554,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1402:
-#line 15624 "../../src/parser/csql_grammar.y"
+#line 15627 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30564,7 +30567,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1403:
-#line 15630 "../../src/parser/csql_grammar.y"
+#line 15633 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30577,7 +30580,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1404:
-#line 15639 "../../src/parser/csql_grammar.y"
+#line 15642 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30595,7 +30598,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1405:
-#line 15652 "../../src/parser/csql_grammar.y"
+#line 15655 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30613,7 +30616,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1406:
-#line 15665 "../../src/parser/csql_grammar.y"
+#line 15668 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30627,7 +30630,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1407:
-#line 15677 "../../src/parser/csql_grammar.y"
+#line 15680 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30663,7 +30666,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1408:
-#line 15704 "../../src/parser/csql_grammar.y"
+#line 15707 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30684,7 +30687,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1409:
-#line 15721 "../../src/parser/csql_grammar.y"
+#line 15724 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30695,7 +30698,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1410:
-#line 15727 "../../src/parser/csql_grammar.y"
+#line 15730 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30708,7 +30711,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1411:
-#line 15736 "../../src/parser/csql_grammar.y"
+#line 15739 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30719,7 +30722,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1412:
-#line 15742 "../../src/parser/csql_grammar.y"
+#line 15745 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30730,7 +30733,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1413:
-#line 15748 "../../src/parser/csql_grammar.y"
+#line 15751 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30741,7 +30744,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1414:
-#line 15754 "../../src/parser/csql_grammar.y"
+#line 15757 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30752,7 +30755,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1415:
-#line 15763 "../../src/parser/csql_grammar.y"
+#line 15766 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30771,7 +30774,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1416:
-#line 15769 "../../src/parser/csql_grammar.y"
+#line 15772 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30784,7 +30787,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1417:
-#line 15779 "../../src/parser/csql_grammar.y"
+#line 15782 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30831,7 +30834,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1418:
-#line 15805 "../../src/parser/csql_grammar.y"
+#line 15808 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30878,7 +30881,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1419:
-#line 15831 "../../src/parser/csql_grammar.y"
+#line 15834 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30925,7 +30928,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1420:
-#line 15857 "../../src/parser/csql_grammar.y"
+#line 15860 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30972,7 +30975,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1421:
-#line 15884 "../../src/parser/csql_grammar.y"
+#line 15887 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -30988,7 +30991,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1422:
-#line 15893 "../../src/parser/csql_grammar.y"
+#line 15896 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31004,7 +31007,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1423:
-#line 15902 "../../src/parser/csql_grammar.y"
+#line 15905 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31020,7 +31023,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1424:
-#line 15911 "../../src/parser/csql_grammar.y"
+#line 15914 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31036,7 +31039,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1425:
-#line 15920 "../../src/parser/csql_grammar.y"
+#line 15923 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31052,7 +31055,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1426:
-#line 15929 "../../src/parser/csql_grammar.y"
+#line 15932 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31068,7 +31071,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1427:
-#line 15938 "../../src/parser/csql_grammar.y"
+#line 15941 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31084,7 +31087,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1428:
-#line 15947 "../../src/parser/csql_grammar.y"
+#line 15950 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31100,7 +31103,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1429:
-#line 15956 "../../src/parser/csql_grammar.y"
+#line 15959 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31116,7 +31119,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1430:
-#line 15965 "../../src/parser/csql_grammar.y"
+#line 15968 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31132,7 +31135,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1431:
-#line 15974 "../../src/parser/csql_grammar.y"
+#line 15977 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31148,7 +31151,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1432:
-#line 15983 "../../src/parser/csql_grammar.y"
+#line 15986 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31164,7 +31167,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1433:
-#line 15992 "../../src/parser/csql_grammar.y"
+#line 15995 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31180,7 +31183,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1434:
-#line 16001 "../../src/parser/csql_grammar.y"
+#line 16004 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31196,7 +31199,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1435:
-#line 16010 "../../src/parser/csql_grammar.y"
+#line 16013 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31212,7 +31215,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1436:
-#line 16019 "../../src/parser/csql_grammar.y"
+#line 16022 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31228,7 +31231,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1437:
-#line 16028 "../../src/parser/csql_grammar.y"
+#line 16031 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31244,7 +31247,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1438:
-#line 16037 "../../src/parser/csql_grammar.y"
+#line 16040 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31260,7 +31263,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1439:
-#line 16046 "../../src/parser/csql_grammar.y"
+#line 16049 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31276,7 +31279,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1440:
-#line 16055 "../../src/parser/csql_grammar.y"
+#line 16058 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31292,7 +31295,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1441:
-#line 16064 "../../src/parser/csql_grammar.y"
+#line 16067 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31308,7 +31311,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1442:
-#line 16073 "../../src/parser/csql_grammar.y"
+#line 16076 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31324,7 +31327,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1443:
-#line 16082 "../../src/parser/csql_grammar.y"
+#line 16085 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31340,7 +31343,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1444:
-#line 16091 "../../src/parser/csql_grammar.y"
+#line 16094 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31356,7 +31359,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1445:
-#line 16100 "../../src/parser/csql_grammar.y"
+#line 16103 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31372,7 +31375,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1446:
-#line 16109 "../../src/parser/csql_grammar.y"
+#line 16112 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31388,7 +31391,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1447:
-#line 16118 "../../src/parser/csql_grammar.y"
+#line 16121 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31404,7 +31407,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1448:
-#line 16127 "../../src/parser/csql_grammar.y"
+#line 16130 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31420,7 +31423,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1449:
-#line 16136 "../../src/parser/csql_grammar.y"
+#line 16139 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31436,7 +31439,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1450:
-#line 16145 "../../src/parser/csql_grammar.y"
+#line 16148 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31452,7 +31455,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1451:
-#line 16154 "../../src/parser/csql_grammar.y"
+#line 16157 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31468,7 +31471,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1452:
-#line 16163 "../../src/parser/csql_grammar.y"
+#line 16166 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31484,7 +31487,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1453:
-#line 16172 "../../src/parser/csql_grammar.y"
+#line 16175 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31500,7 +31503,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1454:
-#line 16181 "../../src/parser/csql_grammar.y"
+#line 16184 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31516,7 +31519,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1455:
-#line 16190 "../../src/parser/csql_grammar.y"
+#line 16193 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31532,7 +31535,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1456:
-#line 16199 "../../src/parser/csql_grammar.y"
+#line 16202 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31548,7 +31551,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1457:
-#line 16208 "../../src/parser/csql_grammar.y"
+#line 16211 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31564,7 +31567,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1458:
-#line 16217 "../../src/parser/csql_grammar.y"
+#line 16220 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31580,7 +31583,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1459:
-#line 16226 "../../src/parser/csql_grammar.y"
+#line 16229 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31596,7 +31599,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1460:
-#line 16235 "../../src/parser/csql_grammar.y"
+#line 16238 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31612,7 +31615,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1461:
-#line 16244 "../../src/parser/csql_grammar.y"
+#line 16247 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31628,7 +31631,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1462:
-#line 16253 "../../src/parser/csql_grammar.y"
+#line 16256 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31644,7 +31647,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1463:
-#line 16262 "../../src/parser/csql_grammar.y"
+#line 16265 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31660,7 +31663,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1464:
-#line 16271 "../../src/parser/csql_grammar.y"
+#line 16274 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31676,7 +31679,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1465:
-#line 16280 "../../src/parser/csql_grammar.y"
+#line 16283 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31692,7 +31695,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1466:
-#line 16289 "../../src/parser/csql_grammar.y"
+#line 16292 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31708,7 +31711,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1467:
-#line 16298 "../../src/parser/csql_grammar.y"
+#line 16301 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31724,7 +31727,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1468:
-#line 16307 "../../src/parser/csql_grammar.y"
+#line 16310 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31740,7 +31743,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1469:
-#line 16316 "../../src/parser/csql_grammar.y"
+#line 16319 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31756,7 +31759,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1470:
-#line 16325 "../../src/parser/csql_grammar.y"
+#line 16328 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31772,7 +31775,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1471:
-#line 16334 "../../src/parser/csql_grammar.y"
+#line 16337 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31788,7 +31791,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1472:
-#line 16343 "../../src/parser/csql_grammar.y"
+#line 16346 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31804,7 +31807,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1473:
-#line 16352 "../../src/parser/csql_grammar.y"
+#line 16355 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31820,7 +31823,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1474:
-#line 16361 "../../src/parser/csql_grammar.y"
+#line 16364 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31836,7 +31839,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1475:
-#line 16370 "../../src/parser/csql_grammar.y"
+#line 16373 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31852,7 +31855,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1476:
-#line 16379 "../../src/parser/csql_grammar.y"
+#line 16382 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31868,7 +31871,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1477:
-#line 16388 "../../src/parser/csql_grammar.y"
+#line 16391 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31884,7 +31887,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1478:
-#line 16397 "../../src/parser/csql_grammar.y"
+#line 16400 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31900,7 +31903,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1479:
-#line 16406 "../../src/parser/csql_grammar.y"
+#line 16409 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31916,7 +31919,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1480:
-#line 16415 "../../src/parser/csql_grammar.y"
+#line 16418 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31932,7 +31935,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1481:
-#line 16424 "../../src/parser/csql_grammar.y"
+#line 16427 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31948,7 +31951,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1482:
-#line 16433 "../../src/parser/csql_grammar.y"
+#line 16436 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31964,7 +31967,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1483:
-#line 16442 "../../src/parser/csql_grammar.y"
+#line 16445 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31980,7 +31983,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1484:
-#line 16451 "../../src/parser/csql_grammar.y"
+#line 16454 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -31996,7 +31999,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1485:
-#line 16460 "../../src/parser/csql_grammar.y"
+#line 16463 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32012,7 +32015,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1486:
-#line 16469 "../../src/parser/csql_grammar.y"
+#line 16472 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32028,7 +32031,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1487:
-#line 16478 "../../src/parser/csql_grammar.y"
+#line 16481 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32044,7 +32047,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1488:
-#line 16487 "../../src/parser/csql_grammar.y"
+#line 16490 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32060,7 +32063,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1489:
-#line 16496 "../../src/parser/csql_grammar.y"
+#line 16499 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32076,7 +32079,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1490:
-#line 16505 "../../src/parser/csql_grammar.y"
+#line 16508 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32092,7 +32095,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1491:
-#line 16514 "../../src/parser/csql_grammar.y"
+#line 16517 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32108,7 +32111,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1492:
-#line 16523 "../../src/parser/csql_grammar.y"
+#line 16526 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32124,7 +32127,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1493:
-#line 16532 "../../src/parser/csql_grammar.y"
+#line 16535 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32140,7 +32143,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1494:
-#line 16541 "../../src/parser/csql_grammar.y"
+#line 16544 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32156,7 +32159,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1495:
-#line 16550 "../../src/parser/csql_grammar.y"
+#line 16553 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32172,7 +32175,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1496:
-#line 16559 "../../src/parser/csql_grammar.y"
+#line 16562 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32188,7 +32191,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1497:
-#line 16568 "../../src/parser/csql_grammar.y"
+#line 16571 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32204,7 +32207,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1498:
-#line 16577 "../../src/parser/csql_grammar.y"
+#line 16580 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32220,7 +32223,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1499:
-#line 16586 "../../src/parser/csql_grammar.y"
+#line 16589 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32236,7 +32239,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1500:
-#line 16595 "../../src/parser/csql_grammar.y"
+#line 16598 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32252,7 +32255,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1501:
-#line 16604 "../../src/parser/csql_grammar.y"
+#line 16607 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32268,7 +32271,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1502:
-#line 16613 "../../src/parser/csql_grammar.y"
+#line 16616 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32284,7 +32287,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1503:
-#line 16622 "../../src/parser/csql_grammar.y"
+#line 16625 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32300,7 +32303,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1504:
-#line 16631 "../../src/parser/csql_grammar.y"
+#line 16634 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32316,7 +32319,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1505:
-#line 16640 "../../src/parser/csql_grammar.y"
+#line 16643 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32332,7 +32335,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1506:
-#line 16649 "../../src/parser/csql_grammar.y"
+#line 16652 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32348,7 +32351,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1507:
-#line 16658 "../../src/parser/csql_grammar.y"
+#line 16661 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32364,7 +32367,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1508:
-#line 16667 "../../src/parser/csql_grammar.y"
+#line 16670 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32380,7 +32383,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1509:
-#line 16676 "../../src/parser/csql_grammar.y"
+#line 16679 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32396,7 +32399,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1510:
-#line 16685 "../../src/parser/csql_grammar.y"
+#line 16688 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32412,7 +32415,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1511:
-#line 16694 "../../src/parser/csql_grammar.y"
+#line 16697 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32428,7 +32431,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1512:
-#line 16707 "../../src/parser/csql_grammar.y"
+#line 16710 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32441,7 +32444,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1513:
-#line 16713 "../../src/parser/csql_grammar.y"
+#line 16716 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32455,7 +32458,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1514:
-#line 16725 "../../src/parser/csql_grammar.y"
+#line 16728 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32468,7 +32471,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1515:
-#line 16731 "../../src/parser/csql_grammar.y"
+#line 16734 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32481,7 +32484,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1516:
-#line 16741 "../../src/parser/csql_grammar.y"
+#line 16744 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32511,7 +32514,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1517:
-#line 16756 "../../src/parser/csql_grammar.y"
+#line 16759 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32524,7 +32527,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1518:
-#line 16765 "../../src/parser/csql_grammar.y"
+#line 16768 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32568,7 +32571,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1519:
-#line 16795 "../../src/parser/csql_grammar.y"
+#line 16798 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32599,7 +32602,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1520:
-#line 16816 "../../src/parser/csql_grammar.y"
+#line 16819 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32629,7 +32632,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1521:
-#line 16831 "../../src/parser/csql_grammar.y"
+#line 16834 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32642,7 +32645,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1522:
-#line 16840 "../../src/parser/csql_grammar.y"
+#line 16843 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32673,7 +32676,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1523:
-#line 16857 "../../src/parser/csql_grammar.y"
+#line 16860 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32704,7 +32707,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1524:
-#line 16877 "../../src/parser/csql_grammar.y"
+#line 16880 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32767,7 +32770,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1525:
-#line 16923 "../../src/parser/csql_grammar.y"
+#line 16926 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32805,7 +32808,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1526:
-#line 16954 "../../src/parser/csql_grammar.y"
+#line 16957 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32871,7 +32874,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1527:
-#line 16988 "../../src/parser/csql_grammar.y"
+#line 16991 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32898,7 +32901,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1528:
-#line 17008 "../../src/parser/csql_grammar.y"
+#line 17011 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32925,7 +32928,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1529:
-#line 17028 "../../src/parser/csql_grammar.y"
+#line 17031 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32952,7 +32955,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1530:
-#line 17048 "../../src/parser/csql_grammar.y"
+#line 17051 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32979,7 +32982,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1531:
-#line 17071 "../../src/parser/csql_grammar.y"
+#line 17074 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -32992,7 +32995,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1532:
-#line 17077 "../../src/parser/csql_grammar.y"
+#line 17080 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33005,7 +33008,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1533:
-#line 17083 "../../src/parser/csql_grammar.y"
+#line 17086 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33021,7 +33024,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1534:
-#line 17092 "../../src/parser/csql_grammar.y"
+#line 17095 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33037,7 +33040,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1535:
-#line 17101 "../../src/parser/csql_grammar.y"
+#line 17104 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33053,7 +33056,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1536:
-#line 17110 "../../src/parser/csql_grammar.y"
+#line 17113 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33069,7 +33072,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1537:
-#line 17119 "../../src/parser/csql_grammar.y"
+#line 17122 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33085,7 +33088,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1538:
-#line 17131 "../../src/parser/csql_grammar.y"
+#line 17134 "../../src/parser/csql_grammar.y"
       {
 	{
 	  container_2 ctn;
@@ -33104,7 +33107,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1539:
-#line 17140 "../../src/parser/csql_grammar.y"
+#line 17143 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33127,7 +33130,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1540:
-#line 17154 "../../src/parser/csql_grammar.y"
+#line 17157 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33151,7 +33154,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1541:
-#line 17169 "../../src/parser/csql_grammar.y"
+#line 17172 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33175,7 +33178,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1544:
-#line 17192 "../../src/parser/csql_grammar.y"
+#line 17195 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33194,7 +33197,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1545:
-#line 17198 "../../src/parser/csql_grammar.y"
+#line 17201 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33207,7 +33210,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1546:
-#line 17207 "../../src/parser/csql_grammar.y"
+#line 17210 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33228,7 +33231,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1547:
-#line 17221 "../../src/parser/csql_grammar.y"
+#line 17224 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33251,7 +33254,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1548:
-#line 17235 "../../src/parser/csql_grammar.y"
+#line 17238 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33274,7 +33277,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1549:
-#line 17252 "../../src/parser/csql_grammar.y"
+#line 17255 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33293,7 +33296,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1550:
-#line 17264 "../../src/parser/csql_grammar.y"
+#line 17267 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33307,7 +33310,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1551:
-#line 17273 "../../src/parser/csql_grammar.y"
+#line 17276 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33329,7 +33332,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1552:
-#line 17286 "../../src/parser/csql_grammar.y"
+#line 17289 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33346,7 +33349,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1553:
-#line 17298 "../../src/parser/csql_grammar.y"
+#line 17301 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33365,7 +33368,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1554:
-#line 17310 "../../src/parser/csql_grammar.y"
+#line 17313 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33384,7 +33387,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1557:
-#line 17330 "../../src/parser/csql_grammar.y"
+#line 17333 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33403,7 +33406,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1558:
-#line 17336 "../../src/parser/csql_grammar.y"
+#line 17339 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33422,7 +33425,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1559:
-#line 17342 "../../src/parser/csql_grammar.y"
+#line 17345 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33435,7 +33438,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1560:
-#line 17348 "../../src/parser/csql_grammar.y"
+#line 17351 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33448,7 +33451,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1561:
-#line 17357 "../../src/parser/csql_grammar.y"
+#line 17360 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33467,7 +33470,7 @@ PT_IS_SUBINSERT;
       break;
 
     case 1562:
-#line 17363 "../../src/parser/csql_grammar.y"
+#line 17366 "../../src/parser/csql_grammar.y"
       {
 	{
 
@@ -33481,7 +33484,7 @@ PT_IS_SUBINSERT;
 
 
 /* Line 930 of glr.c.  */
-#line 26324 "../../src/parser/csql_grammar.c"
+#line 26327 "../../src/parser/csql_grammar.c"
     default:
       break;
     }
@@ -35155,7 +35158,7 @@ yypdumpstack (yyGLRStack * yystackp)
 #endif
 
 
-#line 17389 "../../src/parser/csql_grammar.y"
+#line 17392 "../../src/parser/csql_grammar.y"
 
 
 

@@ -6881,7 +6881,7 @@ unique_constraint
 			    /* create index node */
 			    
 			    if (parser_count_list (sort_spec_cols) == 1
-				&& (sort_spec_cols->info.sort_spec.expr->node_type == PT_FUNCTION))
+				&& (sort_spec_cols->info.sort_spec.expr->node_type != PT_NAME))
 			      {
 				/* unique index with prefix length not allowed */
 				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
@@ -7579,39 +7579,42 @@ attr_constraint_def
 			PT_NODE *name = $1;
 			PT_NODE *constraint = $2;
 
-			if (constraint->node_type == PT_CONSTRAINT)
+			if (constraint)
 			  {
-			    /* If both the constraint name and the index name are
-			       given we ignore the constraint name because that is
-			       what MySQL does for UNIQUE constraints. */
-			    if (constraint->info.constraint.name == NULL)
+			    if (constraint->node_type == PT_CONSTRAINT)
 			      {
-				constraint->info.constraint.name = name;
-			      }
-			    if (TO_NUMBER (CONTAINER_AT_0 ($3)))
-			      {
-				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($3));
-			      }
-			    if (TO_NUMBER (CONTAINER_AT_2 ($3)))
-			      {
-				constraint->info.constraint.initially_deferred =
-				  (short)TO_NUMBER (CONTAINER_AT_3 ($3));
-			      }
-			  }
-			else
-			  {
-			    /* UNIQUE - constraint->node_type = PT_CREATE_INDEX */ 
-			    if (TO_NUMBER (CONTAINER_AT_0 ($3)) || TO_NUMBER (CONTAINER_AT_2 ($3)))
-			      {
-				PT_ERRORm (this_parser, constraint, MSGCAT_SET_PARSER_SYNTAX,
-					   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);	
-			      }
-			    else 
-			      {
-				if (constraint->info.index.index_name == NULL)
+				/* If both the constraint name and the index name are
+				   given we ignore the constraint name because that is
+				   what MySQL does for UNIQUE constraints. */
+				if (constraint->info.constraint.name == NULL)
 				  {
-				    constraint->info.index.index_name = name;
-				  }					    
+				    constraint->info.constraint.name = name;
+				  }
+				if (TO_NUMBER (CONTAINER_AT_0 ($3)))
+				  {
+				    constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($3));
+				  }
+				if (TO_NUMBER (CONTAINER_AT_2 ($3)))
+				  {
+				    constraint->info.constraint.initially_deferred =
+				      (short)TO_NUMBER (CONTAINER_AT_3 ($3));
+				  }
+			      }
+			    else
+			      {
+				/* UNIQUE - constraint->node_type = PT_CREATE_INDEX */ 
+				if (TO_NUMBER (CONTAINER_AT_0 ($3)) || TO_NUMBER (CONTAINER_AT_2 ($3)))
+				  {
+				    PT_ERRORm (this_parser, constraint, MSGCAT_SET_PARSER_SYNTAX,
+					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);	
+				  }
+				else 
+				  {
+				    if (constraint->info.index.index_name == NULL)
+				      {
+					constraint->info.index.index_name = name;
+				      }
+				  }
 			      }
 			  }
 
