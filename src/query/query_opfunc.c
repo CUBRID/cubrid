@@ -8191,36 +8191,15 @@ qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p,
       break;
 
     case DB_TYPE_INTEGER:
-      if (DB_GET_INTEGER (dbval_p) == DB_INT32_MIN)
-	{
-	  goto overflow;
-	}
-      else
-	{
-	  db_make_bigint (result_p, ~((INT64) DB_GET_INTEGER (dbval_p)));
-	}
+      db_make_bigint (result_p, ~((INT64) DB_GET_INTEGER (dbval_p)));
       break;
 
     case DB_TYPE_BIGINT:
-      if (DB_GET_BIGINT (dbval_p) == DB_BIGINT_MIN)
-	{
-	  goto overflow;
-	}
-      else
-	{
-	  db_make_bigint (result_p, ~DB_GET_BIGINT (dbval_p));
-	}
+      db_make_bigint (result_p, ~DB_GET_BIGINT (dbval_p));
       break;
 
     case DB_TYPE_SHORT:
-      if (DB_GET_SHORT (dbval_p) == DB_INT16_MIN)
-	{
-	  goto overflow;
-	}
-      else
-	{
-	  db_make_bigint (result_p, ~((INT64) DB_GET_SHORT (dbval_p)));
-	}
+      db_make_bigint (result_p, ~((INT64) DB_GET_SHORT (dbval_p)));
       break;
 
     default:
@@ -8229,10 +8208,6 @@ qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p,
     }
 
   return NO_ERROR;
-
-overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
-  return ER_QPROC_OVERFLOW_BITOP;
 }
 
 /*
@@ -8274,36 +8249,15 @@ qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = DB_GET_BIGINT (dbval[i]);
-	    }
+	  bi[i] = DB_GET_BIGINT (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 	  break;
 
 	default:
@@ -8317,10 +8271,6 @@ qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     db_make_bigint (result_p, bi[0] & bi[1]);
 
   return NO_ERROR;
-
-overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
-  return ER_QPROC_OVERFLOW_BITOP;
 }
 
 /*
@@ -8362,36 +8312,15 @@ qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = DB_GET_BIGINT (dbval[i]);
-	    }
+	  bi[i] = DB_GET_BIGINT (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 	  break;
 
 	default:
@@ -8405,10 +8334,6 @@ qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     db_make_bigint (result_p, bi[0] | bi[1]);
 
   return NO_ERROR;
-
-overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
-  return ER_QPROC_OVERFLOW_BITOP;
 }
 
 /*
@@ -8450,36 +8375,15 @@ qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = DB_GET_BIGINT (dbval[i]);
-	    }
+	  bi[i] = DB_GET_BIGINT (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 	  break;
 
 	default:
@@ -8493,10 +8397,6 @@ qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     db_make_bigint (result_p, bi[0] ^ bi[1]);
 
   return NO_ERROR;
-
-overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
-  return ER_QPROC_OVERFLOW_BITOP;
 }
 
 /*
@@ -8539,36 +8439,15 @@ qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = DB_GET_BIGINT (dbval[i]);
-	    }
+	  bi[i] = DB_GET_BIGINT (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 	  break;
 
 	default:
@@ -8598,10 +8477,6 @@ qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     }
 
   return NO_ERROR;
-
-overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
-  return ER_QPROC_OVERFLOW_DIVISION;
 }
 
 /*
@@ -8644,36 +8519,15 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = DB_GET_BIGINT (dbval[i]);
-	    }
+	  bi[i] = DB_GET_BIGINT (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-	    }
+	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 	  break;
 
 	default:
@@ -8726,10 +8580,6 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     }
 
   return NO_ERROR;
-
-overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
-  return ER_QPROC_OVERFLOW_DIVISION;
 }
 
 /*

@@ -11592,36 +11592,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (arg1) == DB_INT32_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      db_make_bigint (result, ~((DB_BIGINT) DB_GET_INTEGER (arg1)));
-	    }
+	  db_make_bigint (result, ~((DB_BIGINT) DB_GET_INTEGER (arg1)));
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (arg1) == DB_BIGINT_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      db_make_bigint (result, ~DB_GET_BIGINT (arg1));
-	    }
+	  db_make_bigint (result, ~DB_GET_BIGINT (arg1));
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (arg1) == DB_INT16_MIN)
-	    {
-	      goto overflow;
-	    }
-	  else
-	    {
-	      db_make_bigint (result, ~((DB_BIGINT) DB_GET_SHORT (arg1)));
-	    }
+	  db_make_bigint (result, ~((DB_BIGINT) DB_GET_SHORT (arg1)));
 	  break;
 
 	default:
@@ -11650,36 +11629,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		break;
 
 	      case DB_TYPE_INTEGER:
-		if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = DB_GET_BIGINT (dbval[i]);
-		  }
+		bi[i] = DB_GET_BIGINT (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 		break;
 
 	      default:
@@ -11715,36 +11673,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		break;
 
 	      case DB_TYPE_INTEGER:
-		if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = DB_GET_BIGINT (dbval[i]);
-		  }
+		bi[i] = DB_GET_BIGINT (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 		break;
 
 	      default:
@@ -11780,36 +11717,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		break;
 
 	      case DB_TYPE_INTEGER:
-		if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = DB_GET_BIGINT (dbval[i]);
-		  }
+		bi[i] = DB_GET_BIGINT (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 		break;
 
 	      default:
@@ -11846,36 +11762,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		break;
 
 	      case DB_TYPE_INTEGER:
-		if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = DB_GET_BIGINT (dbval[i]);
-		  }
+		bi[i] = DB_GET_BIGINT (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 		break;
 
 	      default:
@@ -11928,36 +11823,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		break;
 
 	      case DB_TYPE_INTEGER:
-		if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = DB_GET_BIGINT (dbval[i]);
-		  }
+		bi[i] = DB_GET_BIGINT (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
-		  {
-		    goto overflow;
-		  }
-		else
-		  {
-		    bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
-		  }
+		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
 		break;
 
 	      default:
