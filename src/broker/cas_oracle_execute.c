@@ -64,7 +64,6 @@
 #define ORA_BUFSIZ  4096
 
 #define MAX_ROWID_LEN 128
-#define MAX_INT_LEN 10
 
 #define GOTO_ORA_ERROR(ret, label) \
   if (!ORA_SUCCESS(ret)) { goto label; }
@@ -389,44 +388,29 @@ convert_stmt_type_oracle_to_cubrid (T_SRV_HANDLE * srv_handle)
 static int
 convert_data_type_oracle_to_cas (OCIParam * col)
 {
-  ub4 len;
+  sb1 sc;
+  sb2 prec;
   ub2 type;
   OCIAttrGet (col, OCI_DTYPE_PARAM, &type, 0, OCI_ATTR_DATA_TYPE, ORA_ERR);
 
   if (type == SQLT_NUM)
     {
-      len = 0;
-      OCIAttrGet (col, OCI_DTYPE_PARAM, (dvoid **) (dvoid *) & len, NULL,
+      OCIAttrGet (col, OCI_DTYPE_PARAM, (dvoid **) (dvoid *) & sc, NULL,
+		  OCI_ATTR_SCALE, ORA_ERR);
+      OCIAttrGet (col, OCI_DTYPE_PARAM, (dvoid **) (dvoid *) & prec, NULL,
 		  OCI_ATTR_PRECISION, ORA_ERR);
-      if (len <= MAX_INT_LEN)
+
+      if (prec != 0 && sc == -127)
 	{
-	  sb1 sc;
-	  OCIAttrGet (col, OCI_DTYPE_PARAM, (dvoid **) (dvoid *) & sc, NULL,
-		      OCI_ATTR_SCALE, ORA_ERR);
-	  if (!sc)
-	    {
-	      /* 
-	       * If the number's precision less than MAX_INT_LEN and no scale
-	       * then, it's type INT.
-	       */
-	      type = SQLT_VNU;
-	    }
-	  else
-	    {
-	      /* 
-	       * If the number's precision larger than MAX_INT_LEN or has scale
-	       * then, it's type FLOAT. 
-	       */
-	      type = SQLT_FLT;
-	    }
+	  /*
+	   * If the precision is nonzero and scale is -127, then
+	   * it is a FLOAT.
+	   */
+	  type = SQLT_FLT;
 	}
       else
 	{
-	  /* 
-	   * If the number's precision larger than MAX_INT_LEN or has scale
-	   * then, it's type FLOAT. 
-	   */
-	  type = SQLT_FLT;
+	  type = SQLT_VNU;
 	}
     }
 
@@ -538,34 +522,21 @@ set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       switch (columns[i].db_type)
 	{
 	case SQLT_NUM:
-	  len = 0;
-	  OCIAttrGet (col, OCI_DTYPE_PARAM, (dvoid **) (dvoid *) & len, NULL,
-		      OCI_ATTR_PRECISION, ORA_ERR);
-	  if (len <= MAX_INT_LEN)
+	  if (scale != -127 || prec == 0)
 	    {
-	      sb1 sc;
-	      OCIAttrGet (col, OCI_DTYPE_PARAM, (dvoid **) (dvoid *) & sc,
-			  NULL, OCI_ATTR_SCALE, ORA_ERR);
-	      if (!sc)
-		{
-		  /* 
-		   * If the number's precision less than MAX_INT_LEN and no scale
-		   * then, it's type INT.
-		   */
-		  columns[i].db_type = SQLT_VNU;
-		  columns[i].size = sizeof (OCINumber);
-		  data = (void **) &columns[i].data.number;
-		  break;
-		}
+	      columns[i].db_type = SQLT_VNU;
+	      columns[i].size = sizeof (OCINumber);
+	      data = (void **) &columns[i].data.number;
+	      break;
 	    }
 	case SQLT_FLT:
 	  /* 
-	   * If the number's precision larger than MAX_INT_LEN or has scale
-	   * then, it's type FLOAT. 
+	   * If the precision is nonzero and scale is -127, then
+	   * it is a FLOAT.
 	   */
 	  columns[i].db_type = SQLT_FLT;
 	  columns[i].size = sizeof (double);
-	  data = (void **) &columns[i].data.number;
+	  data = (void **) &columns[i].data.d;
 	  break;
 	case SQLT_TIMESTAMP:
 	case SQLT_TIMESTAMP_TZ:
