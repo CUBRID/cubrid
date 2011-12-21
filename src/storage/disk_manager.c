@@ -982,6 +982,7 @@ disk_goodvol_find (THREAD_ENTRY * thread_p, INT16 hint_volid,
   INT16 num_data_vols, num_index_vols, num_generic_vols;
   INT16 num_ptemp_vols, num_ttemp_vols;
   bool found_contiguous = true;
+  bool tmp_var, is_interrupted;
 
   /* If disk cache is not initialized, we do it here. */
   if (disk_Cache->max_nvols <= 0
@@ -1251,8 +1252,18 @@ disk_goodvol_find (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	}
     }
 
+  is_interrupted = false;
+
+#if defined (SERVER_MODE)
+  if (thread_get_check_interrupt (thread_p) == true)
+#endif
+    if (logtb_is_interrupted (thread_p, false, &tmp_var) == true)
+      {
+	is_interrupted = true;
+      }
+
   /* If we are interrupted, not to do anymore. */
-  if (best_volid == NULL_VOLID && er_errid () != ER_INTERRUPTED)
+  if (best_volid == NULL_VOLID && is_interrupted == false)
     {
       /* Expand the database with a generic volume for permananet data
          or with a temporary volume for temporary data */
