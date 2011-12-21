@@ -8740,7 +8740,9 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
 
-  if (size1 == midxkey1->size || size2 == midxkey2->size)
+  if (size1 == midxkey1->size || size2 == midxkey2->size
+      || OR_MULTI_ATT_IS_UNBOUND (midxkey1->buf, diff_column + 1)
+      || OR_MULTI_ATT_IS_UNBOUND (midxkey2->buf, diff_column + 1))
     {
       /* not found separator: give up */
       pr_clone_value (db_midxkey1, db_result);
