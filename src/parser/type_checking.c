@@ -686,6 +686,47 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_RLIKE:
+    case PT_NOT_RLIKE:
+    case PT_RLIKE_BINARY:
+    case PT_NOT_RLIKE_BINARY:
+      num = 0;
+
+      /* two overloads */
+
+      /* BOOL PT_RLIKE([VAR]CHAR, [VAR]CHAR, INT); */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_LOGICAL;
+
+      def->overloads[num++] = sig;
+
+      /* BOOL PT_RLIKE([VAR]NCHAR, [VAR]NCHAR, INT); */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_LOGICAL;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_CEIL:
     case PT_FLOOR:
       num = 0;
@@ -5219,6 +5260,10 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CASE:
     case PT_DECODE:
     case PT_LIKE_ESCAPE:
+    case PT_RLIKE:
+    case PT_NOT_RLIKE:
+    case PT_RLIKE_BINARY:
+    case PT_NOT_RLIKE_BINARY:
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
     case PT_EXEC_STATS:
@@ -7116,6 +7161,10 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_DECODE:
     case PT_LIKE:
     case PT_NOT_LIKE:
+    case PT_RLIKE:
+    case PT_NOT_RLIKE:
+    case PT_RLIKE_BINARY:
+    case PT_NOT_RLIKE_BINARY:
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
     case PT_HEX:
@@ -15694,6 +15743,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_LE_ALL:
     case PT_LIKE:
     case PT_NOT_LIKE:
+    case PT_RLIKE:
+    case PT_NOT_RLIKE:
+    case PT_RLIKE_BINARY:
+    case PT_NOT_RLIKE_BINARY:
     case PT_BETWEEN:
     case PT_NOT_BETWEEN:
     case PT_RANGE:
@@ -15915,6 +15968,44 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	      }
 	    cmp = ((op == PT_LIKE && cmp == V_TRUE)
 		   || (op == PT_NOT_LIKE && cmp == V_FALSE)) ? 1 : 0;
+	  }
+	  break;
+
+	case PT_RLIKE:
+	case PT_NOT_RLIKE:
+	case PT_RLIKE_BINARY:
+	case PT_NOT_RLIKE_BINARY:
+	  {
+	    int err = db_string_rlike (arg1, arg2, arg3, NULL, NULL, &cmp);
+
+	    switch (err)
+	      {
+	      case NO_ERROR:
+		break;
+	      case ER_REGEX_COMPILE_ERROR:	/* fall through */
+	      case ER_REGEX_EXEC_ERROR:
+		PT_ERRORc (parser, o1, er_msg ());
+	      default:
+		return 0;
+	      }
+
+	    /* negate result if using NOT syntax of operator */
+	    if (op == PT_NOT_RLIKE || op == PT_NOT_RLIKE_BINARY)
+	      {
+		switch (cmp)
+		  {
+		  case V_TRUE:
+		    cmp = V_FALSE;
+		    break;
+
+		  case V_FALSE:
+		    cmp = V_TRUE;
+		    break;
+
+		  default:
+		    break;
+		  }
+	      }
 	  }
 	  break;
 
@@ -18110,6 +18201,14 @@ pt_negate_op (PT_OP_TYPE op)
       return PT_NOT_LIKE;
     case PT_NOT_LIKE:
       return PT_LIKE;
+    case PT_RLIKE:
+      return PT_NOT_RLIKE;
+    case PT_NOT_RLIKE:
+      return PT_RLIKE;
+    case PT_RLIKE_BINARY:
+      return PT_NOT_RLIKE_BINARY;
+    case PT_NOT_RLIKE_BINARY:
+      return PT_RLIKE_BINARY;
     case PT_IS_NULL:
       return PT_IS_NOT_NULL;
     case PT_IS_NOT_NULL:

@@ -2135,6 +2135,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	case PT_NE_ALL:
 	case PT_LIKE:
 	case PT_NOT_LIKE:
+	case PT_RLIKE:
+	case PT_NOT_RLIKE:
+	case PT_RLIKE_BINARY:
+	case PT_NOT_RLIKE_BINARY:
 	case PT_NULLSAFE_EQ:
 	  /* RHS of the expression */
 	  rhs_expr = pt_expr->info.expr.arg2;
@@ -3390,6 +3394,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
       /* Group 3 -- heavy */
     case PT_LIKE:
     case PT_NOT_LIKE:
+    case PT_RLIKE:
+    case PT_NOT_RLIKE:
+    case PT_RLIKE_BINARY:
+    case PT_NOT_RLIKE_BINARY:
 
     case PT_MD5:
     case PT_ENCRYPT:

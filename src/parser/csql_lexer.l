@@ -115,6 +115,7 @@ extern int yycolumn_end;
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
 [bB][eE][tT][wW][eE][eE][nN]						{ begin_token(yytext);   return BETWEEN; }
 [bB][iI][gG][iI][nN][tT]						{ begin_token(yytext);   return BIGINT;}
+[bB][iI][nN][aA][rR][yY]						{ begin_token(yytext);   return BINARY;}
 [bB][iI][tT]								{ begin_token(yytext);   return BIT; }
 [bB][iI][tT]_[lL][eE][nN][gG][tT][hH]					{ begin_token(yytext);   return BIT_LENGTH; }
 [bB][iI][tT]_[aA][nN][dD]						{ begin_token(yytext);	 
@@ -519,6 +520,7 @@ extern int yycolumn_end;
 [rR][eE][fF]								{ begin_token(yytext);   return REF; }
 [rR][eE][fF][eE][rR][eE][nN][cC][eE][sS]				{ begin_token(yytext);   return REFERENCES; }
 [rR][eE][fF][eE][rR][eE][nN][cC][iI][nN][gG]				{ begin_token(yytext);   return REFERENCING; }
+[rR][eE][gG][eE][xX][pP]						{ begin_token(yytext);   return REGEXP; }
 [rR][eE][gG][iI][sS][tT][eE][rR]					{ begin_token(yytext);   return REGISTER; }
 [rR][eE][jJ][eE][cC][tT]						{ begin_token(yytext);   return REJECT_; }
 [rR][eE][lL][aA][tT][iI][vV][eE]					{ begin_token(yytext);   return RELATIVE_; }
@@ -548,6 +550,7 @@ extern int yycolumn_end;
 										return REVERSE; }
 [rR][eE][vV][oO][kK][eE]						{ begin_token(yytext);   return REVOKE; }
 [rR][iI][gG][hH][tT]							{ begin_token(yytext);   return RIGHT; }
+[rR][lL][iI][kK][eE]							{ begin_token(yytext);   return RLIKE; }
 [rR][oO][lL][eE]							{ begin_token(yytext);   return ROLE; }
 [rR][oO][lL][lL][bB][aA][cC][kK]					{ begin_token(yytext);   return ROLLBACK; }
 [rR][oO][lL][lL][uU][pP]						{ begin_token(yytext);	 return ROLLUP; }

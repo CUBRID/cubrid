@@ -508,6 +508,7 @@ void pop_msg (void);
 %type <number> opt_sp_in_out
 %type <number> opt_in_out
 %type <number> like_op
+%type <number> rlike_op
 %type <number> null_op
 %type <number> is_op
 %type <number> in_op
@@ -860,6 +861,7 @@ void pop_msg (void);
 %token BEGIN_
 %token BETWEEN
 %token BIGINT
+%token BINARY
 %token BIT
 %token BIT_LENGTH
 %token BITSHIFT_LEFT
@@ -1092,6 +1094,7 @@ void pop_msg (void);
 %token REF
 %token REFERENCES
 %token REFERENCING
+%token REGEXP
 %token REGISTER
 %token RELATIVE_
 %token RENAME
@@ -1102,6 +1105,7 @@ void pop_msg (void);
 %token RETURNS
 %token REVOKE
 %token RIGHT
+%token RLIKE
 %token ROLE
 %token ROLLBACK
 %token ROLLUP
@@ -13917,6 +13921,25 @@ predicate_expr_sub
 			$$ = parser_make_expression ($2, $1, $3, NULL);
 
 		DBG_PRINT}}
+	| pred_lhs rlike_op expression_
+		{{
+
+			/* case sensitivity flag */
+			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+			    node->info.value.data_value.i = 
+			      ($2 == PT_RLIKE_BINARY || $2 == PT_NOT_RLIKE_BINARY ? 1 : 0);
+
+			    $$ = parser_make_expression ($2, $1, $3, node);
+			  }
+			else
+			  {
+			    $$ = NULL;
+			  }
+
+		DBG_PRINT}}
 	| pred_lhs null_op
 		{{
 
@@ -14288,6 +14311,38 @@ like_op
 			$$ = PT_LIKE;
 
 		DBG_PRINT}}
+	;
+
+rlike_op
+	: rlike_or_regexp
+		{{
+
+			$$ = PT_RLIKE;
+
+		DBG_PRINT}}
+	| NOT rlike_or_regexp
+		{{
+
+			$$ = PT_NOT_RLIKE;
+
+		DBG_PRINT}}
+	| rlike_or_regexp BINARY
+		{{
+
+			$$ = PT_RLIKE_BINARY;
+
+		DBG_PRINT}}
+	| NOT rlike_or_regexp BINARY
+		{{
+
+			$$ = PT_NOT_RLIKE_BINARY;
+
+		DBG_PRINT}}
+	;
+
+rlike_or_regexp
+	: RLIKE
+	| REGEXP
 	;
 
 null_op

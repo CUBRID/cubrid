@@ -1354,7 +1354,12 @@
 
 #define ER_LK_DEADLOCK_SPECIFIC_INFO                -1083
 
-#define ER_LAST_ERROR                               -1084
+#define ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE         -1084
+
+#define ER_REGEX_COMPILE_ERROR			    -1085
+#define ER_REGEX_EXEC_ERROR			    -1086
+
+#define ER_LAST_ERROR                               -1087
 
 #define DB_TRUE 1
 #define DB_FALSE 0

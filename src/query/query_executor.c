@@ -44,6 +44,7 @@
 #include "btree.h"
 #include "replication.h"
 #include "xserver_interface.h"
+#include "regex38a.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -1468,6 +1469,29 @@ qexec_clear_pred (XASL_NODE * xasl_p, PRED_EXPR * pr, int final)
 	    pg_cnt += qexec_clear_regu_var (xasl_p, et_like->src, final);
 	    pg_cnt += qexec_clear_regu_var (xasl_p, et_like->pattern, final);
 	    pg_cnt += qexec_clear_regu_var (xasl_p, et_like->esc_char, final);
+	  }
+	  break;
+	case T_RLIKE_EVAL_TERM:
+	  {
+	    RLIKE_EVAL_TERM *et_rlike = &pr->pe.eval_term.et.et_rlike;
+
+	    pg_cnt += qexec_clear_regu_var (xasl_p, et_rlike->src, final);
+	    pg_cnt += qexec_clear_regu_var (xasl_p, et_rlike->pattern, final);
+	    pg_cnt +=
+	      qexec_clear_regu_var (xasl_p, et_rlike->case_sensitive, final);
+
+	    /* free memory of compiled regex object */
+	    if (et_rlike->compiled_regex != NULL)
+	      {
+		cub_regfree (et_rlike->compiled_regex);
+		db_private_free_and_init (NULL, et_rlike->compiled_regex);
+	      }
+
+	    /* free memory of regex compiled pattern */
+	    if (et_rlike->compiled_pattern != NULL)
+	      {
+		db_private_free_and_init (NULL, et_rlike->compiled_pattern);
+	      }
 	  }
 	  break;
 	}
@@ -15494,6 +15518,14 @@ qexec_replace_prior_regu_vars_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pred,
 					 et_like.pattern, xasl);
 	  qexec_replace_prior_regu_vars (thread_p,
 					 pred->pe.eval_term.et.et_like.src,
+					 xasl);
+	  break;
+	case T_RLIKE_EVAL_TERM:
+	  qexec_replace_prior_regu_vars (thread_p,
+					 pred->pe.eval_term.et.
+					 et_rlike.pattern, xasl);
+	  qexec_replace_prior_regu_vars (thread_p,
+					 pred->pe.eval_term.et.et_rlike.src,
 					 xasl);
 	  break;
 	}

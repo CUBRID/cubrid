@@ -1150,7 +1150,9 @@ $ LOADDB
 1082 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
 1083 교착상태에 대한 상세정보.
 1084 체크포인트에서 사용할 수 없는 페이지가 존재합니다. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
-1085 마지막 에러
+1085 Cannot compile regular expression: '%s'
+1086 Cannot execute regular expression: '%s'
+1087 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

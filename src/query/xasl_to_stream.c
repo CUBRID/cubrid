@@ -187,6 +187,9 @@ static char *xts_process_alsm_eval_term (char *ptr,
 static char *xts_process_like_eval_term (char *ptr,
 					 const LIKE_EVAL_TERM *
 					 like_eval_term);
+static char *xts_process_rlike_eval_term (char *ptr,
+					  const RLIKE_EVAL_TERM *
+					  rlike_eval_term);
 static char *xts_process_access_spec_type (char *ptr,
 					   const ACCESS_SPEC_TYPE *
 					   access_spec);
@@ -255,6 +258,7 @@ static int xts_sizeof_eval_term (const EVAL_TERM * ptr);
 static int xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * ptr);
 static int xts_sizeof_alsm_eval_term (const ALSM_EVAL_TERM * ptr);
 static int xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * ptr);
+static int xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * ptr);
 static int xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * ptr);
 static int xts_sizeof_indx_info (const INDX_INFO * ptr);
 static int xts_sizeof_indx_id (const INDX_ID * ptr);
@@ -4050,6 +4054,10 @@ xts_process_eval_term (char *ptr, const EVAL_TERM * eval_term)
       ptr = xts_process_like_eval_term (ptr, &eval_term->et.et_like);
       break;
 
+    case T_RLIKE_EVAL_TERM:
+      ptr = xts_process_rlike_eval_term (ptr, &eval_term->et.et_rlike);
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -4132,6 +4140,36 @@ xts_process_like_eval_term (char *ptr, const LIKE_EVAL_TERM * like_eval_term)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_regu_variable (like_eval_term->esc_char);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_rlike_eval_term (char *ptr,
+			     const RLIKE_EVAL_TERM * rlike_eval_term)
+{
+  int offset;
+
+  offset = xts_save_regu_variable (rlike_eval_term->src);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable (rlike_eval_term->pattern);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable (rlike_eval_term->case_sensitive);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -5780,6 +5818,15 @@ xts_sizeof_eval_term (const EVAL_TERM * eval_term)
       size += tmp_size;
       break;
 
+    case T_RLIKE_EVAL_TERM:
+      tmp_size = xts_sizeof_rlike_eval_term (&eval_term->et.et_rlike);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
@@ -5838,6 +5885,23 @@ xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * like_eval_term)
   size += PTR_SIZE +		/* src */
     PTR_SIZE +			/* pattern */
     PTR_SIZE;			/* esc_char */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_rlike_eval_term () -
+ *   return: size of rlike eval term
+ *   rlike_eval_term(in): 
+ */
+static int
+xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * rlike_eval_term)
+{
+  int size = 0;
+
+  size += PTR_SIZE +		/* src */
+    PTR_SIZE +			/* pattern */
+    PTR_SIZE;			/* case_sensitive */
 
   return size;
 }

@@ -106,6 +106,9 @@ static PRED_EXPR *pt_make_pred_term_some_all (const REGU_VARIABLE * arg1,
 static PRED_EXPR *pt_make_pred_term_like (const REGU_VARIABLE * arg1,
 					  const REGU_VARIABLE * arg2,
 					  const REGU_VARIABLE * arg3);
+static PRED_EXPR *pt_make_pred_term_rlike (REGU_VARIABLE * arg1,
+					   REGU_VARIABLE * arg2,
+					   REGU_VARIABLE * case_sensitive);
 static PRED_EXPR *pt_make_pred_term_is (PARSER_CONTEXT * parser,
 					PT_NODE * arg1,
 					PT_NODE * arg2, const BOOL_OP bop);
@@ -1429,6 +1432,43 @@ pt_make_pred_term_like (const REGU_VARIABLE * arg1,
 }
 
 /*
+ * pt_make_pred_term_rlike () - makes a pred expr term of regex comparison node
+ *   return: predicate expression
+ *   arg1(in): source string regu var
+ *   arg2(in): pattern regu var
+ *   case_sensitive(in): sensitivity flag regu var
+ */
+static PRED_EXPR *
+pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2,
+			 REGU_VARIABLE * case_sensitive)
+{
+  PRED_EXPR *pred = NULL;
+  RLIKE_EVAL_TERM *et_rlike = NULL;
+
+  if (arg1 == NULL || arg2 == NULL || case_sensitive == NULL)
+    {
+      return NULL;
+    }
+
+  pred = regu_pred_alloc ();
+  if (pred == NULL)
+    {
+      return NULL;
+    }
+
+  et_rlike = &pred->pe.eval_term.et.et_rlike;
+  pred->type = T_EVAL_TERM;
+  pred->pe.eval_term.et_type = T_RLIKE_EVAL_TERM;
+  et_rlike->src = arg1;
+  et_rlike->pattern = arg2;
+  et_rlike->case_sensitive = case_sensitive;
+  et_rlike->compiled_regex = NULL;
+  et_rlike->compiled_pattern = NULL;
+
+  return pred;
+}
+
+/*
  * pt_make_pred_term_is () - makes a pred expr term for IS/IS NOT
  *     return:
  *   parser(in):
@@ -1507,7 +1547,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
   void *saved_etc;
   int dummy;
   PT_NODE *save_node;
-  REGU_VARIABLE *regu_var1 = NULL, *regu_var2 = NULL;
+  REGU_VARIABLE *regu_var1 = NULL, *regu_var2 = NULL, *regu_var3 = NULL;
 
   if (!argp)
     {
@@ -1987,6 +2027,36 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 					       regu_var2, regu_escape);
 
 		if (node->info.expr.op == PT_NOT_LIKE)
+		  {
+		    pred = pt_make_pred_term_not (pred);
+		  }
+	      }
+	      break;
+
+	      /* regex like comparison */
+	    case PT_RLIKE:
+	    case PT_NOT_RLIKE:
+	    case PT_RLIKE_BINARY:
+	    case PT_NOT_RLIKE_BINARY:
+	      /* set information for inst_num() scan type */
+	      *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
+	      *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
+	      *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	      {
+		regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1,
+						 UNBOX_AS_VALUE);
+
+		regu_var2 = pt_to_regu_variable (parser, node->info.expr.arg2,
+						 UNBOX_AS_VALUE);
+
+		regu_var3 = pt_to_regu_variable (parser, node->info.expr.arg3,
+						 UNBOX_AS_VALUE);
+
+		pred = pt_make_pred_term_rlike
+		  (regu_var1, regu_var2, regu_var3);
+
+		if (node->info.expr.op == PT_NOT_RLIKE ||
+		    node->info.expr.op == PT_NOT_RLIKE_BINARY)
 		  {
 		    pred = pt_make_pred_term_not (pred);
 		  }
@@ -17558,6 +17628,15 @@ pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err)
 	  nextr =
 	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
 					     et_like.src, false, err);
+	  break;
+
+	case T_RLIKE_EVAL_TERM:
+	  nextl =
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_rlike.pattern, false, err);
+	  nextr =
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_rlike.src, false, err);
 	  break;
 	}
       break;

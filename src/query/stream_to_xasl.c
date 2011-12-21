@@ -245,6 +245,8 @@ static char *stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *tmp,
 				       ALSM_EVAL_TERM * ptr);
 static char *stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *tmp,
 				       LIKE_EVAL_TERM * ptr);
+static char *stx_build_rlike_eval_term (THREAD_ENTRY * thread_p, char *tmp,
+					RLIKE_EVAL_TERM * ptr);
 static char *stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *tmp,
 					 ACCESS_SPEC_TYPE * ptr);
 static char *stx_build_indx_info (THREAD_ENTRY * thread_p, char *tmp,
@@ -4030,6 +4032,11 @@ stx_build_eval_term (THREAD_ENTRY * thread_p, char *ptr,
       ptr = stx_build_like_eval_term (thread_p, ptr, &eval_term->et.et_like);
       break;
 
+    case T_RLIKE_EVAL_TERM:
+      ptr =
+	stx_build_rlike_eval_term (thread_p, ptr, &eval_term->et.et_rlike);
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -4198,6 +4205,74 @@ error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
 }
+
+static char *
+stx_build_rlike_eval_term (THREAD_ENTRY * thread_p, char *ptr,
+			   RLIKE_EVAL_TERM * rlike_eval_term)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      rlike_eval_term->src = NULL;
+    }
+  else
+    {
+      rlike_eval_term->src =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (rlike_eval_term->src == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      rlike_eval_term->pattern = NULL;
+    }
+  else
+    {
+      rlike_eval_term->pattern =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (rlike_eval_term->pattern == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      rlike_eval_term->case_sensitive = NULL;
+    }
+  else
+    {
+      rlike_eval_term->case_sensitive =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (rlike_eval_term->case_sensitive == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  /* initialize regex object pointer */
+  rlike_eval_term->compiled_regex = NULL;
+  rlike_eval_term->compiled_pattern = NULL;
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
 
 static char *
 stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,

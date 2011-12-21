@@ -9057,6 +9057,10 @@ pt_is_operator_logical (PT_OP_TYPE op)
     case PT_LIKE_ESCAPE:
     case PT_LIKE:
     case PT_NOT_LIKE:
+    case PT_RLIKE:
+    case PT_NOT_RLIKE:
+    case PT_RLIKE_BINARY:
+    case PT_NOT_RLIKE_BINARY:
     case PT_EQ:
     case PT_EQ_ALL:
     case PT_EQ_SOME:

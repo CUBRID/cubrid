@@ -592,6 +592,27 @@ esac
 AM_CONDITIONAL([BUILD_CMSERVER], [test "$with_cmserver" != "no"])
 AC_MSG_RESULT([$with_cmserver])
 
+AC_MSG_CHECKING([for regex library])
+AC_ARG_WITH([regex],
+	AS_HELP_STRING([--with-regex=PATH],
+		[prefix for installed regex @<:@default=builtin@:>@]),
+	[with_regex=$withval],
+	[with_regex=builtin])
+
+if test "$with_regex" = "builtin"
+then
+	AC_CONFIG_SUBDIRS([external/libregex38a])
+	REGEX_LIBS="\$(top_builddir)/external/lib/libregex38a.la"
+	REGEX_INC="-I\$(top_builddir)/external/include/libregex38a"
+	EXTERNAL_PKGS="$EXTERNAL_PKGS libregex38a"
+else
+	REGEX_LIBS="-L$with_regex/lib"
+	REGEX_INC="-I$with_regex/include"
+	EXTERNAL_DIST="$EXTERNAL_DIST libregex38a"
+fi
+AC_MSG_RESULT([$with_regex])
+
+
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
 BUILD_NUMBER=BUILD_NUMBER_STRING
@@ -623,8 +644,8 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS"
-EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS"
+EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
 AC_ARG_ENABLE([cubridenv],

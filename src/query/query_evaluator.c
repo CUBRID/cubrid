@@ -2041,6 +2041,11 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  result = (DB_LOGICAL) regexp_res;
 	  break;
 
+	case T_RLIKE_EVAL_TERM:
+	  /* evaluate rlike */
+	  result = eval_pred_rlike7 (thread_p, pr, vd, obj_oid);
+	  break;
+
 	default:
 	  result = V_ERROR;
 	  break;
@@ -2461,6 +2466,70 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
+ * eval_pred_rlike7 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
+ *   obj_oid(in): Object Identifier
+ *
+ * Note: single node like predicate
+ */
+DB_LOGICAL
+eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
+		  OID * obj_oid)
+{
+  RLIKE_EVAL_TERM *et_rlike;
+  DB_VALUE *peek_val1, *peek_val2, *peek_val3;
+  int regexp_res;
+
+  peek_val1 = NULL;
+  peek_val2 = NULL;
+  peek_val3 = NULL;
+
+  et_rlike = &pr->pe.eval_term.et.et_rlike;
+
+  /* fetch source text expression */
+  if (fetch_peek_dbval (thread_p, et_rlike->src, vd, NULL, obj_oid, NULL,
+			&peek_val1) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+  else if (db_value_is_null (peek_val1))
+    {
+      return V_UNKNOWN;
+    }
+
+  /* fetch pattern */
+  if (fetch_peek_dbval (thread_p, et_rlike->pattern, vd, NULL, obj_oid, NULL,
+			&peek_val2) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+  else if (db_value_is_null (peek_val2))
+    {
+      return V_UNKNOWN;
+    }
+
+  /* fetch case sensitiveness */
+  if (fetch_peek_dbval (thread_p, et_rlike->case_sensitive, vd, NULL, obj_oid,
+			NULL, &peek_val3) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+  else if (db_value_is_null (peek_val3))
+    {
+      return V_UNKNOWN;
+    }
+
+  /* evaluate regular expression match */
+  db_string_rlike (peek_val1, peek_val2, peek_val3,
+		   &et_rlike->compiled_regex, &et_rlike->compiled_pattern,
+		   &regexp_res);
+
+  return (DB_LOGICAL) regexp_res;
+}
+
+/*
  * eval_fnc () -
  *   return:
  *   pr(in): Predicate Expression Tree
@@ -2523,6 +2592,9 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 
 	case T_LIKE_EVAL_TERM:
 	  return (PR_EVAL_FNC) eval_pred_like6;
+
+	case T_RLIKE_EVAL_TERM:
+	  return (PR_EVAL_FNC) eval_pred_rlike7;
 
 	default:
 	  return NULL;

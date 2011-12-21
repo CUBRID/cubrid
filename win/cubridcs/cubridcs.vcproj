@@ -65,7 +65,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -141,7 +141,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -217,7 +217,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -296,7 +296,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib"
 				LinkIncremental="0"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="libcmt.lib"

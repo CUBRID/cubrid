@@ -74,6 +74,7 @@
 #define UINT64_MAX_BIN_DIGITS 64
 
 #define LOB_CHUNK_SIZE	(128 * 1024)
+#define REGEX_MAX_ERROR_MSG_SIZE  100
 
 /*
  *  This enumeration type is used to categorize the different
@@ -4115,6 +4116,287 @@ db_string_like (const DB_VALUE * src_string,
 
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE
 	  : error_status);
+}
+
+/*
+ * db_string_rlike () - check for match between string and regex
+ *
+ * Arguments:
+ *             src_string:     (IN) Source string.
+ *                pattern:     (IN) Regular expression.
+ *	   case_sensitive:     (IN) Perform case sensitive matching when 1
+ *	       comp_regex: (IN/OUT) Compiled regex object
+ *	     comp_pattern: (IN/OUT) Compiled regex pattern
+ *                 result:    (OUT) Integer result.
+ *
+ * Returns: int
+ *
+ * Errors:
+ *      ER_QSTR_INVALID_DATA_TYPE:
+ *          <src_string>, <pattern> (if it's not NULL)
+ *          is not a character string.
+ *
+ *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
+ *          <src_string>, <pattern> (if it's not NULL)
+ *          have different character code sets.
+ *
+ *      ER_QSTR_INVALID_ESCAPE_SEQUENCE:
+ *          An illegal pattern is specified.
+ *
+ */
+
+int
+db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
+		 const DB_VALUE * case_sensitive, cub_regex_t ** comp_regex,
+		 char **comp_pattern, int *result)
+{
+  QSTR_CATEGORY src_category = QSTR_UNKNOWN;
+  QSTR_CATEGORY pattern_category = QSTR_UNKNOWN;
+  int error_status = NO_ERROR;
+  DB_TYPE src_type = DB_TYPE_UNKNOWN;
+  DB_TYPE pattern_type = DB_TYPE_UNKNOWN;
+  DB_TYPE case_sens_type = DB_TYPE_UNKNOWN;
+  const char *src_char_string_p = NULL;
+  const char *pattern_char_string_p = NULL;
+  bool is_case_sensitive = false;
+  int src_length = 0, pattern_length = 0;
+
+  char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
+  int rx_err = CUB_REG_OKAY;
+  int rx_err_len = 0;
+  char *rx_compiled_pattern = NULL;
+  cub_regex_t *rx_compiled_regex = NULL;
+
+  /* check for allocated DB values */
+  assert (src_string != NULL);
+  assert (pattern != NULL);
+  assert (case_sensitive != NULL);
+
+  /* get compiled pattern */
+  if (comp_pattern != NULL)
+    {
+      rx_compiled_pattern = *comp_pattern;
+    }
+
+  /* if regex object was specified, use local regex */
+  if (comp_regex != NULL)
+    {
+      rx_compiled_regex = *comp_regex;
+    }
+
+  /* type checking */
+  src_category = qstr_get_category (src_string);
+  pattern_category = qstr_get_category (pattern);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_string);
+  pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
+  case_sens_type = DB_VALUE_DOMAIN_TYPE (case_sensitive);
+
+  if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type))
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      *result = V_ERROR;
+      goto cleanup;
+    }
+
+  if (src_category != pattern_category)
+    {
+      error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      *result = V_ERROR;
+      goto cleanup;
+    }
+
+  if (DB_IS_NULL (src_string) || DB_IS_NULL (pattern))
+    {
+      *result = V_UNKNOWN;
+      goto cleanup;
+    }
+
+  if (DB_IS_NULL (case_sensitive) || case_sens_type != DB_TYPE_INTEGER)
+    {
+      error_status = ER_QPROC_INVALID_PARAMETER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      *result = V_ERROR;
+      goto cleanup;
+    }
+
+  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+    {
+      src_char_string_p = DB_PULL_CHAR (src_string, &src_length);
+
+      /* remove padding */
+      while (src_length > 0 && src_char_string_p[src_length - 1] == ' ')
+	{
+	  src_length--;
+	}
+    }
+  else
+    {
+      src_char_string_p = DB_PULL_STRING (src_string);
+      src_length = DB_GET_STRING_SIZE (src_string);
+    }
+
+  if (pattern_type == DB_TYPE_CHAR || pattern_type == DB_TYPE_NCHAR)
+    {
+      pattern_char_string_p = DB_PULL_CHAR (pattern, &pattern_length);
+
+      /* remove padding */
+      while (pattern_length > 0
+	     && pattern_char_string_p[pattern_length - 1] == ' ')
+	{
+	  pattern_length--;
+	}
+    }
+  else
+    {
+      pattern_char_string_p = DB_PULL_STRING (pattern);
+      pattern_length = DB_GET_STRING_SIZE (pattern);
+    }
+
+  /* initialize regex library memory allocator */
+  cub_regset_malloc ((CUB_REG_MALLOC) db_private_alloc);
+  cub_regset_realloc ((CUB_REG_REALLOC) db_private_realloc);
+  cub_regset_free ((CUB_REG_FREE) db_private_free);
+
+  /* extract case sensitivity */
+  is_case_sensitive = (case_sensitive->data.i != 0);
+
+  /* check for recompile */
+  if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL
+      || pattern_length != strlen (rx_compiled_pattern)
+      || strncmp (rx_compiled_pattern, pattern_char_string_p,
+		  pattern_length) != 0)
+    {
+      /* regex must be recompiled if regex object is not specified, pattern is 
+         not specified or compiled pattern does not match current pattern */
+
+      /* update compiled pattern */
+      if (rx_compiled_pattern != NULL)
+	{
+	  /* free old memory */
+	  db_private_free_and_init (NULL, rx_compiled_pattern);
+	}
+
+      /* allocate new memory */
+      rx_compiled_pattern =
+	(char *) db_private_alloc (NULL, pattern_length + 1);
+
+      if (rx_compiled_pattern == NULL)
+	{
+	  /* out of memory */
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  *result = V_ERROR;
+	  goto cleanup;
+	}
+
+      /* copy string */
+      memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
+      rx_compiled_pattern[pattern_length] = '\0';
+
+      /* update compiled regex */
+      if (rx_compiled_regex != NULL)
+	{
+	  /* free previously allocated memory */
+	  cub_regfree (rx_compiled_regex);
+	  db_private_free_and_init (NULL, rx_compiled_regex);
+	}
+
+      /* allocate memory for new regex object */
+      rx_compiled_regex =
+	(cub_regex_t *) db_private_alloc (NULL, sizeof (cub_regex_t));
+
+      if (rx_compiled_regex == NULL)
+	{
+	  /* out of memory */
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  *result = V_ERROR;
+	  goto cleanup;
+	}
+
+      /* compile regex */
+      rx_err = cub_regcomp (rx_compiled_regex, rx_compiled_pattern,
+			    CUB_REG_EXTENDED | CUB_REG_NOSUB
+			    | (is_case_sensitive ? 0 : CUB_REG_ICASE));
+
+      if (rx_err != CUB_REG_OKAY)
+	{
+	  /* regex compilation error */
+	  rx_err_len = cub_regerror (rx_err, rx_compiled_regex, rx_err_buf,
+				     REGEX_MAX_ERROR_MSG_SIZE);
+	  error_status = ER_REGEX_COMPILE_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+		  rx_err_buf);
+	  *result = V_ERROR;
+	  db_private_free_and_init (NULL, rx_compiled_regex);
+	  goto cleanup;
+	}
+    }
+
+  /* match against pattern; regexec returns zero on match */
+  rx_err =
+    cub_regexec (rx_compiled_regex, src_char_string_p, src_length, 0, NULL,
+		 0);
+  switch (rx_err)
+    {
+    case CUB_REG_OKAY:
+      *result = V_TRUE;
+      break;
+
+    case CUB_REG_NOMATCH:
+      *result = V_FALSE;
+      break;
+
+    default:
+      rx_err_len = cub_regerror (rx_err, rx_compiled_regex, rx_err_buf,
+				 REGEX_MAX_ERROR_MSG_SIZE);
+      error_status = ER_REGEX_EXEC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
+      *result = V_ERROR;
+      break;
+    }
+
+cleanup:
+
+  if ((comp_regex == NULL || error_status != NO_ERROR)
+      && rx_compiled_regex != NULL)
+    {
+      /* free memory if (using local regex) or (error occurred) */
+      cub_regfree (rx_compiled_regex);
+      db_private_free_and_init (NULL, rx_compiled_regex);
+    }
+
+  if ((comp_pattern == NULL || error_status != NO_ERROR)
+      && rx_compiled_pattern != NULL)
+    {
+      /* free memory if (using local pattern) or (error occurred) */
+      db_private_free_and_init (NULL, rx_compiled_pattern);
+    }
+
+  if (comp_regex != NULL)
+    {
+      /* pass compiled regex object out */
+      *comp_regex = rx_compiled_regex;
+    }
+
+  if (comp_pattern != NULL)
+    {
+      /* pass compiled pattern out */
+      *comp_pattern = rx_compiled_pattern;
+    }
+
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS && error_status != NO_ERROR)
+    {
+      /* we must not return an error code */
+      *result = V_UNKNOWN;
+      return NO_ERROR;
+    }
+
+  /* return */
+  return error_status;
 }
 
 /*

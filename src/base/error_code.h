@@ -1352,7 +1352,10 @@
 
 #define ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE         -1084
 
-#define ER_LAST_ERROR                               -1085
+#define ER_REGEX_COMPILE_ERROR			    -1085
+#define ER_REGEX_EXEC_ERROR			    -1086
+
+#define ER_LAST_ERROR                               -1087
 
 /*
  * CAUTION!

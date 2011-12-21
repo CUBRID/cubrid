@@ -1190,7 +1190,10 @@ typedef enum
 
   PT_HEX,
   PT_ASCII,
-  PT_CONV
+  PT_CONV,
+
+  /* rlike operator */
+  PT_RLIKE, PT_NOT_RLIKE, PT_RLIKE_BINARY, PT_NOT_RLIKE_BINARY
 } PT_OP_TYPE;
 
 

@@ -40,6 +40,7 @@
 #include "query_list.h"
 #include "parser_support.h"
 #include "thread.h"
+#include "regex38a.h"
 
 typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
 struct qproc_db_value_list
@@ -453,7 +454,8 @@ typedef enum
 { T_PRED = 1, T_EVAL_TERM, T_NOT_TERM } TYPE_PRED_EXPR;
 
 typedef enum
-{ T_COMP_EVAL_TERM = 1, T_ALSM_EVAL_TERM, T_LIKE_EVAL_TERM } TYPE_EVAL_TERM;
+{ T_COMP_EVAL_TERM = 1, T_ALSM_EVAL_TERM, T_LIKE_EVAL_TERM, T_RLIKE_EVAL_TERM
+} TYPE_EVAL_TERM;
 
 typedef struct comp_eval_term COMP_EVAL_TERM;
 struct comp_eval_term
@@ -482,6 +484,16 @@ struct like_eval_term
   REGU_VARIABLE *esc_char;
 };
 
+typedef struct rlike_eval_term RLIKE_EVAL_TERM;
+struct rlike_eval_term
+{
+  REGU_VARIABLE *src;
+  REGU_VARIABLE *pattern;
+  REGU_VARIABLE *case_sensitive;
+  cub_regex_t *compiled_regex;
+  char *compiled_pattern;
+};
+
 typedef struct eval_term EVAL_TERM;
 struct eval_term
 {
@@ -491,6 +503,7 @@ struct eval_term
     COMP_EVAL_TERM et_comp;
     ALSM_EVAL_TERM et_alsm;
     LIKE_EVAL_TERM et_like;
+    RLIKE_EVAL_TERM et_rlike;
   } et;
 };
 
@@ -578,6 +591,8 @@ extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
 				   VAL_DESCR * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
 				   VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
+				    VAL_DESCR * vd, OID * obj_oid);
 extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
 			     DB_TYPE * single_node_type);
 extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid,

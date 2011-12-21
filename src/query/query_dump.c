@@ -1504,6 +1504,25 @@ qdump_print_like_eval_term (EVAL_TERM * term_p)
 }
 
 static bool
+qdump_print_rlike_eval_term (EVAL_TERM * term_p)
+{
+  RLIKE_EVAL_TERM *et_rlike_p = &term_p->et.et_rlike;
+
+  fprintf (foutput, "SOURCE");
+  qdump_print_value (et_rlike_p->src);
+  fprintf (foutput, (et_rlike_p->case_sensitive->value.dbval.data.i ?
+		     "PATTERN (CASE SENSITIVE):" :
+		     "PATTERN (CASE INSENSITIVE):"));
+
+  if (!qdump_print_value (et_rlike_p->pattern))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+static bool
 qdump_print_eval_term (PRED_EXPR * pred_p)
 {
   EVAL_TERM *term = &pred_p->pe.eval_term;
@@ -1518,6 +1537,9 @@ qdump_print_eval_term (PRED_EXPR * pred_p)
 
     case T_LIKE_EVAL_TERM:
       return qdump_print_like_eval_term (term);
+
+    case T_RLIKE_EVAL_TERM:
+      return qdump_print_rlike_eval_term (term);
 
     default:
       return false;
