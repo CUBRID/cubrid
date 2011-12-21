@@ -11512,16 +11512,22 @@ factor
 	;
 
 factor_
-	: opt_plus primary
+	: primary
 		{{
 
-			$$ = $2;
+			$$ = $1;
 
 		DBG_PRINT}}
-	| '-' primary
+	| '-' factor_
 		{{
 
 			$$ = parser_make_expression (PT_UNARY_MINUS, $2, NULL, NULL);
+
+		DBG_PRINT}}
+	| '+' factor_
+		{{
+
+			$$ = $2;
 
 		DBG_PRINT}}
 	| '~' primary
