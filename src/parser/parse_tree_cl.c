@@ -5383,6 +5383,62 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_REMOVE_PARTITION:
       q = pt_append_nulstring (parser, q, " remove partitioning ");
       break;
+    case PT_REORG_PARTITION:
+      if (p->info.alter.alter_clause.partition.name_list)
+	{
+	  r1 =
+	    pt_print_bytes_l (parser,
+			      p->info.alter.alter_clause.partition.name_list);
+	  q = pt_append_nulstring (parser, q, " reorganize partition ");
+	  q = pt_append_varchar (parser, q, r1);
+	  if (p->info.alter.alter_clause.partition.parts)
+	    {
+	      r2 =
+		pt_print_bytes_l (parser,
+				  p->info.alter.alter_clause.partition.parts);
+	      q = pt_append_nulstring (parser, q, " into ( ");
+	      q = pt_append_varchar (parser, q, r2);
+	      q = pt_append_nulstring (parser, q, " ) ");
+	    }
+	}
+      break;
+    case PT_ANALYZE_PARTITION:
+      q = pt_append_nulstring (parser, q, " analyze partition ");
+      if (p->info.alter.alter_clause.partition.name_list)
+	{
+	  r1 =
+	    pt_print_bytes_l (parser,
+			      p->info.alter.alter_clause.partition.name_list);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      break;
+    case PT_COALESCE_PARTITION:
+      r1 = pt_print_bytes (parser, p->info.alter.alter_clause.partition.size);
+      q = pt_append_nulstring (parser, q, " coalesce partition ");
+      q = pt_append_varchar (parser, q, r1);
+      break;
+    case PT_DROP_PARTITION:
+      if (p->info.alter.alter_clause.partition.name_list)
+	{
+	  r1 =
+	    pt_print_bytes_l (parser,
+			      p->info.alter.alter_clause.partition.name_list);
+	  q = pt_append_nulstring (parser, q, " drop partition ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      break;
+    case PT_ADD_PARTITION:
+      r1 =
+	pt_print_bytes_l (parser, p->info.alter.alter_clause.partition.parts);
+      q = pt_append_nulstring (parser, q, " add partition ( ");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " ) ");
+      break;
+    case PT_ADD_HASHPARTITION:
+      r1 = pt_print_bytes (parser, p->info.alter.alter_clause.partition.size);
+      q = pt_append_nulstring (parser, q, " add partition partitions ");
+      q = pt_append_varchar (parser, q, r1);
+      break;
     case PT_CHANGE_AUTO_INCREMENT:
       r1 = pt_print_bytes (parser,
 			   p->info.alter.alter_clause.auto_increment.
@@ -5390,7 +5446,6 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " auto_increment = ");
       q = pt_append_varchar (parser, q, r1);
       break;
-
     }
   if (p->info.alter.super.resolution_list &&
       p->info.alter.code != PT_DROP_RESOLUTION &&

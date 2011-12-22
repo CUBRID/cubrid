@@ -357,7 +357,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *vlist, *p, *n, *d;
   PT_NODE *node, *nodelist;
   PT_NODE *data_type, *data_default, *path;
-  PT_NODE *slist, *parts, *coalesce_list, *names, *delnames;
+  PT_NODE *slist, *parts, *coalesce_list, *names, *delnames = NULL;
+  PT_NODE *tmp_node = NULL;
   PT_NODE *create_index = NULL;
   PT_TYPE_ENUM pt_desired_type;
 #if 0
@@ -1531,40 +1532,31 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  delnames = NULL;
 	  names = alter->info.alter.alter_clause.partition.name_list;
-	  for (; names; names = parts)
+
+	  for (; names; names = names->next)
 	    {
-	      parts = names->next;
 	      if (names->partition_pruned)
-		{		/* for delete partition */
-		  if (delnames != NULL)
-		    {
-		      delnames->next = names;
-		    }
-		  else
-		    {
-		      alter->info.alter.alter_clause.partition.name_list =
-			names;
-		    }
-		  delnames = names;
-		  delnames->next = NULL;
-		}
-	      else
 		{
-		  names->next = NULL;
-		  parser_free_tree (parser, names);
+		  /* for delete partition */
+		  tmp_node = parser_copy_tree (parser, names);
+		  tmp_node->next = delnames;
+		  delnames = tmp_node;
 		}
 	    }
 
 	  if (delnames != NULL)
 	    {
-	      error =
-		do_drop_partition_list (vclass,
-					alter->info.alter.
-					alter_clause.partition.name_list);
+	      error = do_drop_partition_list (vclass, delnames);
 	      if (error != NO_ERROR)
 		{
 		  goto alter_partition_fail;
 		}
+	    }
+
+	  if (delnames != NULL)
+	    {
+	      parser_free_tree (parser, delnames);
+	      delnames = NULL;
 	    }
 	}
       break;
@@ -1634,6 +1626,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   return NO_ERROR;
 
 alter_partition_fail:
+  if (delnames != NULL)
+    {
+      parser_free_tree (parser, delnames);
+      delnames = NULL;
+    }
+
   if (partition_savepoint && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
@@ -1894,7 +1892,35 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	     we keep crt_clause->next to NULL during its execution just to be
 	     on the safe side. */
 	  crt_clause->next = NULL;
+
+	  /*
+	   * DO NOT WRITE REPLICATION LOG DURING PARTITION RELATED WORKS 
+	   */
+	  if (alter_code == PT_APPLY_PARTITION ||
+	      alter_code == PT_REMOVE_PARTITION ||
+	      alter_code == PT_ADD_PARTITION ||
+	      alter_code == PT_ADD_HASHPARTITION ||
+	      alter_code == PT_COALESCE_PARTITION ||
+	      alter_code == PT_REORG_PARTITION ||
+	      alter_code == PT_ANALYZE_PARTITION)
+	    {
+	      db_set_suppress_repl_on_transaction (true);
+	    }
+
 	  error_code = do_alter_one_clause_with_template (parser, crt_clause);
+
+	  /* Do not suppress writing replication log. */
+	  if (alter_code == PT_APPLY_PARTITION ||
+	      alter_code == PT_REMOVE_PARTITION ||
+	      alter_code == PT_ADD_PARTITION ||
+	      alter_code == PT_ADD_HASHPARTITION ||
+	      alter_code == PT_COALESCE_PARTITION ||
+	      alter_code == PT_REORG_PARTITION ||
+	      alter_code == PT_ANALYZE_PARTITION)
+	    {
+	      db_set_suppress_repl_on_transaction (false);
+	    }
+
 	  crt_clause->next = save_next;
 	}
 
