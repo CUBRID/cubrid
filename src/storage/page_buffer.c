@@ -2089,6 +2089,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   start_lru_idx = lru_idx;
 
   victim_cand_count = 0;
+  total_flushed_count = 0;
 
   do
     {
@@ -2127,12 +2128,16 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
     }
   while (lru_idx != start_lru_idx);	/* check if we've visited all of the lists */
 
+  if (victim_cand_count == 0)
+    {
+      goto end;
+    }
+
   qsort ((void *) victim_cand_list, victim_cand_count,
 	 sizeof (PGBUF_VICTIM_CANDIDATE_LIST), pgbuf_compare_victim_list);
 
   num_tries = 1;
-  total_flushed_count = 0;
-  while (total_flushed_count == 0 && victim_cand_count > 0)
+  while (total_flushed_count <= 0 && num_tries <= 2)
     {
       /* for each victim candidate, do flush task */
       for (i = 0; i < victim_cand_count; i++)
@@ -2177,6 +2182,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       num_tries++;
     }
 
+end:
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: "
 		"flush %d pages from (%d) to (%d) list.",
 		total_flushed_count, start_lru_idx,
