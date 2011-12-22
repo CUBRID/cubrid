@@ -38,7 +38,8 @@
 
 #define MAX_STACK_OBJECTS 500
 
-#define PT_PUSHABLE_TERM(p) ((p)->out.pushable)
+#define PT_PUSHABLE_TERM(p) \
+  ((p)->out.pushable && (p)->out.correlated_found == false)
 
 #define MAX_CYCLE 300
 
