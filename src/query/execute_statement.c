@@ -3052,6 +3052,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_DROP_SESSION_VARIABLES:
       err = do_drop_session_variables (parser, statement);
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
 	      ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);

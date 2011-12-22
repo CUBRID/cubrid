@@ -5301,13 +5301,26 @@ cleanup:
   return err;
 #else
   int err = NO_ERROR;
+  DB_VALUE *val_ref = NULL;
 
   ENTER_SERVER ();
-
-  err = xsession_get_session_variable (NULL, name, value);
+  /* we cannot use the allocation methods from the server context so 
+   * we will just get a reference here
+   */
+  err = xsession_get_session_variable_no_copy (NULL, name, &val_ref);
 
   EXIT_SERVER ();
 
+  if (err == NO_ERROR)
+    {
+      assert (val_ref != NULL);
+      /* create a clone of this value to be used in the client scope */
+      pr_clone_value (val_ref, value);
+    }
+  else
+    {
+      DB_MAKE_NULL (value);
+    }
   return err;
 #endif
 }

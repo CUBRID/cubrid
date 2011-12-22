@@ -1826,6 +1826,98 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 }
 
 /*
+ * session_get_session_variable_no_copy () - get the value of a session
+ *					     variable
+ * return : int
+ * thread_p (in) : worker thread
+ * name (in)	 : name of the variable
+ * value (in/out): variable value
+ * Note: This function gets a reference to a session variable from the session
+ * state object. Because it gets the actual pointer, it is not thread safe
+ * and it should only be called in the stand alone mode
+ */
+int
+session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
+			      DB_VALUE ** result)
+{
+  SESSION_ID id;
+  SESSION_STATE *state_p = NULL;
+  int name_len = 0;
+  const char *name_str;
+  SESSION_VARIABLE *var;
+
+#if defined (SERVER_MODE)
+  /* do not call this function in a multi-threaded context */
+  assert (false);
+#endif
+
+  assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
+  assert (result != NULL);
+
+  name_str = DB_GET_CHAR (name, &name_len);
+
+  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (!sessions_is_states_table_initialized ())
+    {
+      return ER_FAILED;
+    }
+
+  state_p = mht_get (sessions.sessions_table, &id);
+  if (state_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+      return ER_FAILED;
+    }
+
+  var = state_p->session_variables;
+  while (var != NULL)
+    {
+      assert (var->name != NULL);
+
+      if (name_len != strlen (var->name))
+	{
+	  var = var->next;
+	  continue;
+	}
+      if (strncasecmp (var->name, name_str, name_len) == 0)
+	{
+	  *result = var->value;
+	  break;
+	}
+      var = var->next;
+    }
+
+  if (var == NULL)
+    {
+      /* we didn't find it, set error and exit */
+      char *var_name = NULL;
+
+      var_name = (char *) malloc (name_len + 1);
+      if (var_name != NULL)
+	{
+	  memcpy (var_name, name_str, name_len);
+	  var_name[name_len] = 0;
+	}
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_VARIABLE_NOT_FOUND, 1,
+	      var_name);
+
+      if (var_name != NULL)
+	{
+	  free_and_init (var_name);
+	}
+
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * session_drop_session_variables () - drop session variables
  * return : error code
  * thread_p (in) : worker thread

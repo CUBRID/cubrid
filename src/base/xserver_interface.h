@@ -457,6 +457,9 @@ extern int xsession_set_session_variables (THREAD_ENTRY * thread_p,
 extern int xsession_get_session_variable (THREAD_ENTRY * thread_p,
 					  const DB_VALUE * name,
 					  DB_VALUE * value);
+extern int xsession_get_session_variable_no_copy (THREAD_ENTRY * thread_p,
+						  const DB_VALUE * name,
+						  DB_VALUE ** value);
 extern int xsession_drop_session_variables (THREAD_ENTRY * thread_p,
 					    DB_VALUE * values,
 					    const int count);

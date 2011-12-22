@@ -223,6 +223,29 @@ xsession_get_session_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 }
 
 /*
+ * xsession_get_session_variable_no_copy () - get the value of a session
+ *					      variable
+ * return : int
+ * thread_p (in) : worker thread
+ * name (in)	 : name of the variable
+ * value (in/out): variable value
+ * Note: This function gets a reference to a session variable from the session
+ * state object. Because it gets the actual pointer, it is not thread safe
+ * and it should only be called in the stand alone mode
+ */
+int
+xsession_get_session_variable_no_copy (THREAD_ENTRY * thread_p,
+				       const DB_VALUE * name,
+				       DB_VALUE ** value)
+{
+#if defined (SERVER_MODE)
+  /* do not call this function in a multi-threaded context */
+  assert (false);
+#endif
+  return session_get_variable_no_copy (thread_p, name, value);
+}
+
+/*
  * xsession_drop_session_variables () - drop session variables
  * return : error code or NO_ERROR
  * thread_p (in) : worker thread
