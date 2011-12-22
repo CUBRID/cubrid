@@ -241,6 +241,7 @@ xsession_get_session_variable_no_copy (THREAD_ENTRY * thread_p,
 #if defined (SERVER_MODE)
   /* do not call this function in a multi-threaded context */
   assert (false);
+  return ER_FAILED;
 #endif
   return session_get_variable_no_copy (thread_p, name, value);
 }

@@ -1849,6 +1849,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 #if defined (SERVER_MODE)
   /* do not call this function in a multi-threaded context */
   assert (false);
+  return ER_FAILED;
 #endif
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
