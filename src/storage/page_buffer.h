@@ -83,6 +83,13 @@ typedef enum
   PGBUF_CONDITIONAL_LATCH
 } PGBUF_LATCH_CONDITION;
 
+typedef enum
+{
+  PGBUF_DEBUG_NO_PAGE_VALIDATION,
+  PGBUF_DEBUG_PAGE_VALIDATION_FETCH,
+  PGBUF_DEBUG_PAGE_VALIDATION_FREE,
+  PGBUF_DEBUG_PAGE_VALIDATION_ALL
+} PGBUF_DEBUG_PAGE_VALIDATION_LEVEL;
 
 extern unsigned int pgbuf_hash_vpid (const void *key_vpid,
 				     unsigned int htsize);

@@ -282,6 +282,9 @@ extern int PRM_MAX_FLUSH_PAGES_PER_SECOND;
 #define PRM_NAME_PB_SYNC_ON_NFLUSH "sync_on_nflush"
 extern int PRM_PB_SYNC_ON_NFLUSH;
 
+#define PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL "page_validation_level"
+extern int PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL;
+
 #define PRM_NAME_ORACLE_STYLE_OUTERJOIN "oracle_style_outerjoin"
 extern bool PRM_ORACLE_STYLE_OUTERJOIN;
 
@@ -397,8 +400,8 @@ extern bool PRM_REPLICATION_MODE;
 
 #define PRM_NAME_HA_MODE "ha_mode"
 extern int PRM_HA_MODE;
-extern int PRM_HA_MODE_FOR_SA_UTILS_ONLY;	/* this is for SA mode cubrid 
-						 * utilities only, such as 
+extern int PRM_HA_MODE_FOR_SA_UTILS_ONLY;	/* this is for SA mode cubrid
+						 * utilities only, such as
 						 * 'cubrid heartbeat' */
 
 #define PRM_NAME_HA_SERVER_STATE "ha_server_state"

@@ -76,6 +76,7 @@
 #endif /* WINDOWS */
 #include "heartbeat.h"
 #include "utility.h"
+#include "page_buffer.h"
 
 
 #define ER_LOG_FILE_DIR	"server"
@@ -185,11 +186,11 @@ static int int_list_initial[1] = { 0 };
  * Upper and lower bounds for the parameters
  */
 bool PRM_ER_LOG_DEBUG = false;
-#if defined(NDEBUG)
-static bool prm_er_log_debug_default = false;
-#else /* NDEBUG */
+#if !defined(NDEBUG)
 static bool prm_er_log_debug_default = true;
-#endif /*!NDEBUG */
+#else /* !NDEBUG */
+static bool prm_er_log_debug_default = false;
+#endif /* !NDEBUG */
 
 int PRM_ER_LOG_LEVEL = ER_SYNTAX_ERROR_SEVERITY;
 static int prm_er_log_level_default = ER_SYNTAX_ERROR_SEVERITY;
@@ -443,6 +444,15 @@ int PRM_PB_SYNC_ON_NFLUSH = 200;
 static int prm_pb_sync_on_nflush_default = 200;
 static int prm_pb_sync_on_nflush_lower = 1;
 static int prm_pb_sync_on_nflush_upper = INT_MAX;
+
+int PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL = PGBUF_DEBUG_NO_PAGE_VALIDATION;
+#if !defined(NDEBUG)
+static int prm_pb_debug_page_validation_level_default =
+  PGBUF_DEBUG_PAGE_VALIDATION_FETCH;
+#else /* !NDEBUG */
+static int prm_pb_debug_page_validation_level_default =
+  PGBUF_DEBUG_NO_PAGE_VALIDATION;
+#endif /* !NDEBUG */
 
 bool PRM_ORACLE_STYLE_OUTERJOIN = false;
 static bool prm_oracle_style_outerjoin_default = false;
@@ -1270,6 +1280,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_pb_sync_on_nflush_upper,
    (void *) &prm_pb_sync_on_nflush_lower,
    (char *) NULL},
+  {PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL,
+   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE |
+    PRM_HIDDEN),
+   (void *) &prm_pb_debug_page_validation_level_default,
+   (void *) &PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_ORACLE_STYLE_OUTERJOIN,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
     PRM_USER_CHANGE | PRM_HIDDEN),
@@ -2041,6 +2059,12 @@ static KEYVAL isolation_level_words[] = {
   {"read_uncommited", TRAN_REP_CLASS_UNCOMMIT_INSTANCE},
   {"commit_class_commit_instance", TRAN_COMMIT_CLASS_COMMIT_INSTANCE},
   {"commit_class_uncommit_instance", TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE}
+};
+
+static KEYVAL pgbuf_debug_page_validation_level_words[] = {
+  {"fetch", PGBUF_DEBUG_PAGE_VALIDATION_FETCH},
+  {"free", PGBUF_DEBUG_PAGE_VALIDATION_FREE},
+  {"all", PGBUF_DEBUG_PAGE_VALIDATION_ALL}
 };
 
 static KEYVAL null_words[] = {
@@ -3198,6 +3222,16 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, bool print_name)
 				 NULL, isolation_level_words,
 				 DIM (isolation_level_words));
 	}
+      else if (intl_mbs_casecmp (prm->name,
+				 PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL) ==
+	       0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
+				 NULL,
+				 pgbuf_debug_page_validation_level_words,
+				 DIM
+				 (pgbuf_debug_page_validation_level_words));
+	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0)
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
@@ -3753,11 +3787,20 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
 	  keyvalp = prm_keyword (-1, value, er_log_level_words,
 				 DIM (er_log_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_LOG_ISOLATION_LEVEL) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name,
+				 PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
 	{
 	  keyvalp = prm_keyword (-1, value, isolation_level_words,
 				 DIM (isolation_level_words));
+	}
+      else if (intl_mbs_casecmp (prm->name,
+				 PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL)
+	       == 0)
+	{
+	  keyvalp = prm_keyword (-1, value,
+				 pgbuf_debug_page_validation_level_words,
+				 DIM
+				 (pgbuf_debug_page_validation_level_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0)
 	{
@@ -3769,8 +3812,8 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
 	  keyvalp = prm_keyword (-1, value, ha_server_state_words,
 				 DIM (ha_server_state_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_LOG_APPLIER_STATE) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name,
+				 PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
 	{
 	  keyvalp = prm_keyword (-1, value, ha_log_applier_state_words,
 				 DIM (ha_log_applier_state_words));

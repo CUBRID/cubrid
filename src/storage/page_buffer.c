@@ -187,21 +187,6 @@ static int rv;
 #define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_VICTIM_INVALID-PGBUF_NO_LATCH+1)
 #endif /* PAGE_STATISTICS */
 
-#if defined(CUBRID_DEBUG)
-#define DEBUG_CHECK_INVALID_PAGE(pgptr, ret) \
-  do { \
-    if (pgbuf_Expensive_debug_free == true) \
-      { \
-        if (!(pgbuf_is_valid_page_ptr ((pgptr)))) \
-          { \
-            return (ret); \
-          } \
-      } \
-  } while (0)
-#else
-#define DEBUG_CHECK_INVALID_PAGE(pgptr, ret)
-#endif
-
 /* BCB zone */
 enum
 {
@@ -470,9 +455,6 @@ static char pgbuf_Guard[8] =
   MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK,
   MEM_REGION_GUARD_MARK
 };
-
-static bool pgbuf_Expensive_debug_free = false;
-static bool pgbuf_Expensive_debug_fetch = true;
 #endif /* CUBRID_DEBUG */
 
 #if defined(PAGE_STATISTICS)
@@ -594,8 +576,6 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #endif /* NDEBUG */
 #endif /* SERVER_MODE */
 
-#if defined(CUBRID_DEBUG)
-static void pgbuf_scramble (FILEIO_PAGE * iopage);
 static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 					 const VPID * vpid,
 					 DISK_ISVALID (*fun) (const VPID *
@@ -603,6 +583,9 @@ static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 							      void *args),
 					 void *args);
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
+
+#if defined(CUBRID_DEBUG)
+static void pgbuf_scramble (FILEIO_PAGE * iopage);
 static void pgbuf_dump (void);
 static int pgbuf_is_consistent (const PGBUF_BCB * bufptr,
 				int likely_bad_after_fixcnt);
@@ -679,24 +662,6 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
-
-#if defined(CUBRID_DEBUG)
-  {
-    const char *env_value;
-
-    env_value = envvar_get ("PB_EXPENSIVE_DEBUG_FREE");
-    if (env_value != NULL)
-      {
-	pgbuf_Expensive_debug_free = atoi (env_value) != 0 ? true : false;
-      }
-
-    env_value = envvar_get ("PB_EXPENSIVE_DEBUG_FETCH");
-    if (env_value != NULL)
-      {
-	pgbuf_Expensive_debug_fetch = atoi (env_value) != 0 ? true : false;
-      }
-  }
-#endif /* CUBRID_DEBUG */
 
   if (pgbuf_initialize_bcb_table () != NO_ERROR)
     {
@@ -963,13 +928,14 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
   int rv;
 #endif /* SERVER_MODE */
 
-#if defined(CUBRID_DEBUG)
-  /* Make sure that the page has been allocated (i.e., is a valid page) */
-  if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_FETCH)
     {
-      return NULL;
+      /* Make sure that the page has been allocated (i.e., is a valid page) */
+      if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
+	{
+	  return NULL;
+	}
     }
-#else /* CUBRID_DEBUG */
 
   /* Do a simple check in non debugging mode */
   if (vpid->pageid < 0)
@@ -978,7 +944,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 	      vpid->pageid, fileio_get_volume_label (vpid->volid));
       return NULL;
     }
-#endif /* CUBRID_DEBUG */
 
   if (condition == PGBUF_UNCONDITIONAL_LATCH)
     {
@@ -1195,24 +1160,24 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   LOG_LSA restart_lsa;
 #endif /* CUBRID_DEBUG */
 
-#if defined (NDEBUG)
-  if (pgptr == NULL)
-    {
-      return;
-    }
-#else /* NDEBUG */
+#if !defined (NDEBUG)
   assert (pgptr != NULL);
-#endif /* NDEBUG */
 
-#if defined(CUBRID_DEBUG)
-  if (pgbuf_Expensive_debug_free == true)
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_FREE)
     {
-      if (!pgbuf_is_valid_page_ptr (pgptr))
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
 	  return;
 	}
     }
+#else /* !NDEBUG */
+  if (pgptr == NULL)
+    {
+      return;
+    }
+#endif /* !NDEBUG */
 
+#if defined(CUBRID_DEBUG)
   /*
    * If the buffer is dirty and the log sequence address of the buffer
    * has not changed since the database restart, a warning is given about
@@ -1285,7 +1250,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * since its operations and their implications are very expensive.
    * Too much I/O
    */
-  if (pgbuf_Expensive_debug_free == true)
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       /*
        * Check if the content of the page is consistent and then scramble
@@ -1491,7 +1456,13 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, ER_FAILED);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   /* Get the address of the buffer from the page and invalidate buffer */
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
@@ -1783,7 +1754,13 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   int rv;
 #endif /* SERVER_MODE */
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL;
+	}
+    }
 
   /* Get the address of the buffer from the page. */
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
@@ -1841,7 +1818,13 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL;
+	}
+    }
 
   /* NOTE: the page is fixed */
   /* Get the address of the buffer from the page. */
@@ -2411,12 +2394,15 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	   * Do not cache the page in the page buffer pool.
 	   * Read the needed portion of the page directly from disk
 	   */
-#if defined(CUBRID_DEBUG)
-	  if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
+	  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >=
+	      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
 	    {
-	      return NULL;
+	      if (pgbuf_is_valid_page (thread_p, vpid,
+				       NULL, NULL) != DISK_VALID)
+		{
+		  return NULL;
+		}
 	    }
-#endif /* CUBRID_DEBUG */
 
 	  /* Record number of reads in statistics */
 	  mnt_pb_ioreads (thread_p);
@@ -2502,12 +2488,15 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	  /* Do not cache the page in the page buffer pool.
 	   * Write the desired portion of the page directly to disk
 	   */
-#if defined(CUBRID_DEBUG)
-	  if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
+	  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >=
+	      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
 	    {
-	      return NULL;
+	      if (pgbuf_is_valid_page (thread_p, vpid,
+				       NULL, NULL) != DISK_VALID)
+		{
+		  return NULL;
+		}
 	    }
-#endif /* CUBRID_DEBUG */
 
 	  /* Record number of reads in statistics */
 	  mnt_pb_iowrites (thread_p, 1);
@@ -2561,15 +2550,13 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 {
   PGBUF_BCB *bufptr;
 
-#if defined(CUBRID_DEBUG)
-  if (pgbuf_Expensive_debug_free == true)
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
-      if (!(pgbuf_is_valid_page_ptr (pgptr)))
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
 	  return;
 	}
     }
-#endif /* CUBRID_DEBUG */
 
   /* Get the address of the buffer from the page and set buffer dirty */
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
@@ -2606,7 +2593,13 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 {
   FILEIO_PAGE *io_pgptr;
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL;
+	}
+    }
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 
@@ -2629,7 +2622,14 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 {
   PGBUF_BCB *bufptr;
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL;
+	}
+    }
+
   assert (lsa_ptr != NULL);
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
@@ -2702,16 +2702,14 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 {
   PGBUF_BCB *bufptr;
 
-#if defined(CUBRID_DEBUG)
-  if (pgbuf_Expensive_debug_free == true)
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
-      if (!(pgbuf_is_valid_page_ptr (pgptr)))
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
 	  VPID_SET_NULL (vpid);
 	  return;
 	}
     }
-#endif /* CUBRID_DEBUG */
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 
@@ -2736,7 +2734,13 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL;
+	}
+    }
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 
@@ -2755,7 +2759,13 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL_PAGEID);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL_PAGEID;
+	}
+    }
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 
@@ -2773,7 +2783,13 @@ pgbuf_get_volume_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  DEBUG_CHECK_INVALID_PAGE (pgptr, NULL_PAGEID);
+  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return NULL_VOLID;
+	}
+    }
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 
@@ -6108,24 +6124,6 @@ pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr)
 }
 #endif /* SERVER_MODE */
 
-#if defined(CUBRID_DEBUG)
-/*
- * pgbuf_scramble () - Scramble the content of the buffer
- *   return: void
- *   iopage(in): Pointer to page portion
- *
- * Note: This is done for debugging reasons to make sure that a user of a
- *       buffer does not assume that buffers are initialized to zero. For safty
- *       reasons, the buffers are initialized to zero, instead of scrambled,
- *       when running in production mode.
- */
-static void
-pgbuf_scramble (FILEIO_PAGE * iopage)
-{
-  MEM_REGION_INIT (iopage, IO_PAGESIZE);
-  LSA_SET_NULL (&iopage->prv.lsa);
-}
-
 /*
  * pgbuf_is_valid_page () - Verify if given page is a valid one
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
@@ -6147,37 +6145,28 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
 {
   DISK_ISVALID valid;
 
-  if (pgbuf_Expensive_debug_fetch == true)
+  if (fileio_get_volume_label (vpid->volid) == NULL || VPID_ISNULL (vpid))
     {
-      if (fileio_get_volume_label (vpid->volid) == NULL || VPID_ISNULL (vpid))
-	{
-	  return DISK_INVALID;
-	}
+      assert (false);
 
-      valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
-      if (valid != DISK_VALID
-	  || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
-	{
-	  if (valid != DISK_ERROR)
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		      fileio_get_volume_label (vpid->volid));
-	    }
-	}
-
-      return valid;
-    }
-
-  /* Do a simple check in non debugging mode */
-  if (vpid->pageid < 0)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2,
-	      vpid->pageid, fileio_get_volume_label (vpid->volid));
       return DISK_INVALID;
     }
 
-  return DISK_VALID;
+  valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
+  if (valid != DISK_VALID
+      || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
+    {
+      if (valid != DISK_ERROR)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PB_BAD_PAGEID, 2, vpid->pageid,
+		  fileio_get_volume_label (vpid->volid));
+
+	  assert (false);
+	}
+    }
+
+  return valid;
 }
 
 /*
@@ -6210,11 +6199,15 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 		      bufptr->vpid.pageid,
 		      fileio_get_volume_label (bufptr->vpid.volid));
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+	      assert (false);
+
 	      return false;
 	    }
 	  else
 	    {
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
 	      return true;
 	    }
 	}
@@ -6226,7 +6219,28 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 
   er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNKNOWN_PAGEPTR, 1,
 	  pgptr);
+
+  assert (false);
+
   return false;
+}
+
+#if defined(CUBRID_DEBUG)
+/*
+ * pgbuf_scramble () - Scramble the content of the buffer
+ *   return: void
+ *   iopage(in): Pointer to page portion
+ *
+ * Note: This is done for debugging reasons to make sure that a user of a
+ *       buffer does not assume that buffers are initialized to zero. For safty
+ *       reasons, the buffers are initialized to zero, instead of scrambled,
+ *       when running in production mode.
+ */
+static void
+pgbuf_scramble (FILEIO_PAGE * iopage)
+{
+  MEM_REGION_INIT (iopage, IO_PAGESIZE);
+  LSA_SET_NULL (&iopage->prv.lsa);
 }
 
 /*
@@ -6474,7 +6488,9 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
     }
   else
     {
-      if (pgbuf_Expensive_debug_free == true && bufptr->fcnt <= 0)
+      if (bufptr->fcnt <= 0
+	  && (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >=
+	      PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	{
 	  int i;
 	  /* The page should be scrambled, otherwise some one step on it */

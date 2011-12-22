@@ -8461,7 +8461,7 @@ retain_former_ids (SM_TEMPLATE * flat)
 				{
 				  if (is_partition)
 				    {
-				      /* the current class is a partition 
+				      /* the current class is a partition
 				       * it is not necessary to check the ID
 				       * of attribute in a the old configuration
 				       * Also, in case of ALTER .. CHANGE with
@@ -9521,10 +9521,10 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
     }
   else if ((n_atts > 1) || func_domain)
     {
-      /* If this is multi column index and a function index,  
-       * we must construct the domain  of the keys accordingly, 
+      /* If this is multi column index and a function index,
+       * we must construct the domain  of the keys accordingly,
        * using the type returned by the function index expression.
-       * If it is just a multi column index, the position at 
+       * If it is just a multi column index, the position at
        * which the expression should be found is -1, so it will
        * never be reached.
        */
@@ -9820,7 +9820,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  fi_domain = tp_domain_resolve_default (function_index->type);
 	  if (function_index->attr_index_start == 0)
 	    {
-	      /* if this is a single column function index, the key domain 
+	      /* if this is a single column function index, the key domain
 	       * is actually the domain of the function result
 	       */
 	      domain = fi_domain;
@@ -11681,6 +11681,18 @@ sm_constraint_belongs_to_class (const SM_CLASS_CONSTRAINT * const con,
  *    flattened and it is ok to install new representations for each.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   subclasses(in): list of subclasses
+ *
+ * NOTE:
+ * update constraints
+ *   update_subclasses():
+ *          SM_CONSTRAINT_UNIQUE,
+ *          SM_CONSTRAINT_REVERSE_UNIQUE,
+ *          SM_CONSTRAINT_PRIMARY_KEY,
+ *          SM_CONSTRAINT_FOREIGN_KEY
+ *   sm_drop_index():
+ *   sm_add_index():
+ *          SM_CONSTRAINT_INDEX,
+ *          SM_CONSTRAINT_REVERSE_INDEX,
  */
 
 static int
@@ -11715,30 +11727,13 @@ update_subclasses (DB_OBJLIST * subclasses)
 		   *   modify install_new_representation and
 		   *   remove allocated_disk_structures
 		   */
-		  found_inherited_index = false;
-		  for (con = class_->constraints; con != NULL;
-		       con = con->next)
+		  error = allocate_disk_structures (sub->op, class_, NULL);
+		  if (error != NO_ERROR)
 		    {
-		      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type) ||
-			  con->type == SM_CONSTRAINT_FOREIGN_KEY)
-			{
-			  if (!sm_constraint_belongs_to_class (con, sub->op))
-			    {
-			      /* there is inherited B+tree index */
-			      found_inherited_index = true;
-			      break;
-			    }
-			}
-		    }
+		      classobj_free_template (class_->new_);
+		      class_->new_ = NULL;
 
-		  if (found_inherited_index == true)
-		    {
-		      error = allocate_disk_structures (sub->op, class_,
-							NULL);
-		      if (error != NO_ERROR)
-			{
-			  return error;
-			}
+		      return error;
 		    }
 
 		  classobj_free_template (class_->new_);
