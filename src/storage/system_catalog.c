@@ -2757,17 +2757,18 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
 	}
 
-      if (catalog_store_disk_attribute
-	  (thread_p, disk_attr_p, &catalog_record,
-	   &remembered_slot_id) != NO_ERROR)
+      if (catalog_store_disk_attribute (thread_p, disk_attr_p, 
+					&catalog_record, 
+					&remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
 	  return er_errid ();
 	}
 
-      if (catalog_store_attribute_value
-	  (thread_p, disk_attr_p->value, disk_attr_p->val_length,
-	   &catalog_record, &remembered_slot_id) != NO_ERROR)
+      if (catalog_store_attribute_value (thread_p, disk_attr_p->value, 
+					 disk_attr_p->val_length, 
+					 &catalog_record, 
+					 &remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
 	  return er_errid ();
@@ -2777,9 +2778,9 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[j];
 
-	  if (catalog_store_btree_statistics
-	      (thread_p, btree_stats_p, &catalog_record,
-	       &remembered_slot_id) != NO_ERROR)
+	  if (catalog_store_btree_statistics (thread_p, btree_stats_p, 
+					      &catalog_record, 
+					      &remembered_slot_id) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, data);
 	      return er_errid ();

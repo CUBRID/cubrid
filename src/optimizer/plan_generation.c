@@ -131,7 +131,7 @@ make_scan_proc (QO_ENV * env)
 {
   return ptqo_to_scan_proc (QO_ENV_PARSER (env), NULL, NULL, NULL, NULL,
 			    NULL);
-}				/* make_scan_proc */
+}
 
 
 /*
@@ -159,6 +159,7 @@ make_fetch_proc (QO_ENV * env, QO_PLAN * plan)
   /* free pointer node list */
   parser_free_tree (QO_ENV_PARSER (env), access_pred);
   parser_free_tree (QO_ENV_PARSER (env), if_pred);
+
   return xasl;
 }
 
@@ -555,7 +556,7 @@ exit_on_error:
 
   merge = NULL;
   goto exit_on_end;
-}				/* make_mergelist_proc */
+}
 
 /*
  * make_buildlist_proc () -
@@ -568,8 +569,7 @@ static XASL_NODE *
 make_buildlist_proc (QO_ENV * env, PT_NODE * namelist)
 {
   return pt_skeleton_buildlist_proc (QO_ENV_PARSER (env), namelist);
-
-}				/* make_buildlist_proc */
+}
 
 /*
  * bitset_has_path () -
@@ -590,12 +590,13 @@ bitset_has_path (QO_ENV * env, BITSET * predset)
 
       term = QO_ENV_TERM (env, i);
       if (QO_IS_PATH_TERM (term))
-	return 1;
+	{
+	  return 1;
+	}
     }
 
   return 0;
-
-}				/* bitset_has_path */
+}
 
 /*
  * mark_access_as_outer_join () - mark aan xasl proc's access spec
@@ -613,7 +614,7 @@ mark_access_as_outer_join (PARSER_CONTEXT * parser, XASL_NODE * xasl)
     {
       access->single_fetch = QPROC_NO_SINGLE_OUTER;
     }
-}				/* mark_access_as_outer_join */
+}
 
 /*
  * init_class_scan_proc () -
@@ -665,10 +666,12 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
     }
 
   if (info)
-    qo_free_xasl_index_info (env, info);
+    {
+      qo_free_xasl_index_info (env, info);
+    }
 
   return xasl;
-}				/* init_class_scan_proc */
+}
 
 /*
  * init_list_scan_proc () -
@@ -735,7 +738,7 @@ init_list_scan_proc (QO_ENV * env,
     }
 
   return xasl;
-}				/* init_list_scan_proc */
+}
 
 /*
  * add_access_spec () -
@@ -814,7 +817,7 @@ exit_on_error:
 
   xasl = NULL;
   goto success;
-}				/* add_access_spec */
+}
 
 /*
  * add_scan_proc () - Add the scan proc to the end of xasl's scan_ptr list
@@ -838,8 +841,7 @@ add_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * scan)
     xasl = NULL;
 
   return xasl;
-
-}				/* add_scan_proc */
+}
 
 /*
  * add_fetch_proc () - Create a fetch proc and add it to the *head*
@@ -866,11 +868,12 @@ add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * procs)
       f->fptr_list = procs;
     }
   else
-    xasl = NULL;
+    {
+      xasl = NULL;
+    }
 
   return xasl;
-
-}				/* add_fetch_proc */
+}
 
 /*
  * add_uncorrelated () - Add the scan proc to the *head* of the list of
@@ -891,11 +894,12 @@ add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub)
 	pt_remove_xasl (pt_append_xasl (xasl->aptr_list, sub), xasl);
     }
   else
-    xasl = NULL;
+    {
+      xasl = NULL;
+    }
 
   return xasl;
-
-}				/* add_uncorrelated */
+}
 
 /*
  * add_subqueries () - Add the xasl trees for the subqueries to the xasl node
@@ -945,7 +949,7 @@ add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET * subqueries)
     }
 
   return xasl;
-}				/* add_subqueries */
+}
 
 /*
  * add_sort_spec () -
@@ -983,7 +987,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
     }
 
   return xasl;
-}				/* add_sort_spec */
+}
 
 /*
  * add_if_predicate () - Tack the predicate onto the XASL node's if_pred list
@@ -1002,8 +1006,9 @@ add_if_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
       parser = QO_ENV_PARSER (env);
       xasl->if_pred = pt_to_pred_expr (parser, pred);
     }
+
   return xasl;
-}				/* add_if_predicate() */
+}
 
 /*
  * add_after_join_predicate () -
@@ -1022,8 +1027,9 @@ add_after_join_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
       parser = QO_ENV_PARSER (env);
       xasl->after_join_pred = pt_to_pred_expr (parser, pred);
     }
+
   return xasl;
-}				/* add_after_join_predicate() */
+}	
 
 static XASL_NODE *
 add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
@@ -1039,10 +1045,13 @@ add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
       flag = 0;
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
       if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-	xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	{
+	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	}
     }
+
   return xasl;
-}				/* add_instnum_predicate() */
+}
 
 /*
  * path_access_term () -
@@ -1081,7 +1090,10 @@ is_normal_access_term (QO_TERM * term)
       /* nl outer join treats during join terms as sarged terms of inner */
       QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN ||
       QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
-    return 0;
+    {
+      return 0;
+    }
+
   return 1;
 }
 
@@ -1094,9 +1106,14 @@ static int
 is_norma_if_term (QO_TERM * term)
 {
   if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
-    return 1;
+    {
+      return 1;
+    }
   if (QO_TERM_CLASS (term) == QO_TC_OTHER)
-    return 1;
+    {
+      return 1;
+    }
+
   return 0;
 }
 
@@ -1109,9 +1126,14 @@ static int
 is_after_join_term (QO_TERM * term)
 {
   if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
-    return 0;
+    {
+      return 0;
+    }
   if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN)
-    return 1;
+    {
+      return 1;
+    }
+
   return 0;
 }
 
@@ -1124,9 +1146,14 @@ static int
 is_totally_after_join_term (QO_TERM * term)
 {
   if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
-    return 0;
+    {
+      return 0;
+    }
   if (QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
-    return 1;
+    {
+      return 1;
+    }
+
   return 0;
 }
 
@@ -1141,7 +1168,10 @@ is_follow_if_term (QO_TERM * term)
   if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN /*? */  ||
       QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN ||
       QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
-    return 0;
+    {
+      return 0;
+    }
+
   return 1;
 }
 
@@ -1245,7 +1275,7 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
 	    }
 
 	  prev = curr;
-	}			/* for (curr = pred_list; curr; curr = curr->next) */
+	}
 
       /* append to the predicate list */
       if (found == false)
@@ -1260,8 +1290,7 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
 	      prev->next = pointer;
 	    }
 	}
-
-    }				/* for (i = ...) */
+    }
 
   return pred_list;
 
@@ -1273,8 +1302,7 @@ exit_on_error:
     }
 
   return NULL;
-
-}				/* make_pred_from_bitset */
+}
 
 /*
  * make_pred_from_plan () -
@@ -1363,7 +1391,7 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan,
 				      path_access_term :
 				      is_normal_access_term);
     }
-}				/* make_pred_from_plan() */
+}
 
 /*
  * make_if_pred_from_plan () -
@@ -1451,8 +1479,7 @@ make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
     }
 
   return namelist;
-
-}				/* make_namelist_from_projected_segs */
+}
 
 /*
  * make_sort_list_after_eqclass () -
@@ -1487,8 +1514,7 @@ make_sort_list_after_eqclass (QO_ENV * env, int column_cnt)
     }
 
   return list;
-
-}				/* make_sort_list_after_eqclass */
+}
 
 /*
  * check_merge_xasl () -
@@ -1507,7 +1533,9 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
    * conditions, etc.
    */
   if (xasl == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   /*
    * The mergelist proc isn't necessarily the first thing on the
@@ -1554,7 +1582,7 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
 	      xasl = NULL;
 	      break;
 	    }
-	}			/* for (i = ...) */
+	}
     }
 
   return xasl;
@@ -1581,9 +1609,11 @@ make_outer_instnum (QO_ENV * env, QO_PLAN * outer, QO_PLAN * plan)
       termp = QO_ENV_TERM (env, t);
 
       if (is_totally_after_join_term (termp))
-	bitset_add (&(outer->sarged_terms), t);
+	{
+	  bitset_add (&(outer->sarged_terms), t);
+	}
     }
-}				/* make_outer_instnum() */
+}
 
 /*
  * gen_outer () -
@@ -1598,9 +1628,7 @@ make_outer_instnum (QO_ENV * env, QO_PLAN * outer, QO_PLAN * plan)
  *   xasl(in): The xasl node that is receiving the various procs we generate
  */
 static XASL_NODE *
-gen_outer (QO_ENV * env,
-	   QO_PLAN * plan,
-	   BITSET * subqueries,
+gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	   XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl)
 {
   PARSER_CONTEXT *parser;
@@ -1625,6 +1653,7 @@ gen_outer (QO_ENV * env,
     {
       return NULL;
     }
+
   bitset_init (&new_subqueries, env);
   bitset_init (&fake_subqueries, env);
   bitset_init (&predset, env);
@@ -1801,8 +1830,8 @@ gen_outer (QO_ENV * env,
 	   * by single scan due to key filtering, and null records can be returned
 	   * by scan_handle_single_scan. It might lead to making a wrong result.
 	   */
-	  scan = gen_inner (env, inner,
-			    &predset, &new_subqueries, inner_scans, fetches,
+	  scan = gen_inner (env, inner, &predset, &new_subqueries, 
+			    inner_scans, fetches,
 			    IS_OUTER_JOIN_TYPE (join_type));
 	  if (scan)
 	    {
@@ -2200,8 +2229,7 @@ gen_outer (QO_ENV * env,
   bitset_delset (&new_subqueries);
 
   return xasl;
-
-}				/* gen_outer */
+}
 
 /*
  * gen_inner () -
@@ -2217,9 +2245,7 @@ gen_outer (QO_ENV * env,
  *   do_not_push_sarg_to_kf(in): Do not use sarg as key filter if it is true
  */
 static XASL_NODE *
-gen_inner (QO_ENV * env,
-	   QO_PLAN * plan,
-	   BITSET * predset,
+gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset,
 	   BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches,
 	   bool do_not_push_sarg_to_kf)
 {
@@ -2323,8 +2349,7 @@ gen_inner (QO_ENV * env,
   bitset_delset (&new_subqueries);
 
   return scan;
-
-}				/* gen_inner */
+}
 
 /*
  * preserve_info () -
@@ -2369,8 +2394,7 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
     }
 
   return xasl;
-
-}				/* preserve_info */
+}
 
 /*
  * qo_to_xasl () -
@@ -2407,11 +2431,17 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
 	   * values retrieved by a fetch proc that lives on an fptr.
 	   */
 	  if (lastxasl->scan_ptr)
-	    lastxasl = lastxasl->scan_ptr;
+	    {
+	      lastxasl = lastxasl->scan_ptr;
+	    }
 	  else if (lastxasl->fptr_list)
-	    lastxasl = lastxasl->fptr_list;
+	    {
+	      lastxasl = lastxasl->fptr_list;
+	    }
 	  else
-	    break;
+	    {
+	      break;
+	    }
 	}
       (void) pt_set_dptr (env->parser,
 			  env->pt_tree->info.query.q.select.list,
@@ -2420,7 +2450,9 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
       xasl = preserve_info (env, plan, xasl);
     }
   else
-    xasl = NULL;
+    {
+      xasl = NULL;
+    }
 
   if (xasl == NULL)
     {
@@ -2441,8 +2473,7 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
     }
 
   return xasl;
-
-}				/* qo_to_xasl */
+}
 
 /*
  * qo_plan_iscan_sort_list () - get after index scan PT_SORT_SPEC list
@@ -2657,7 +2688,7 @@ error:
   /* malloc error */
   qo_free_xasl_index_info (env, index_infop);
   return NULL;
-}				/* qo_get_xasl_index_info() */
+}
 
 /*
  * qo_free_xasl_index_info () -
@@ -2692,7 +2723,7 @@ int
 qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info)
 {
   return info->nterms;
-}				/* qo_xasl_get_num_terms */
+}
 
 /*
  * qo_xasl_get_terms () - Return a point to the NULL terminated list
@@ -2704,7 +2735,7 @@ PT_NODE **
 qo_xasl_get_terms (QO_XASL_INDEX_INFO * info)
 {
   return info->term_exprs;
-}				/* qo_xasl_get_terms */
+}
 
 /*
  * qo_xasl_get_btid () - Return a point to the index BTID
@@ -2729,7 +2760,7 @@ qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info)
     }
 
   return btid;
-}				/* qo_xasl_get_btid */
+}
 
 /*
  * qo_xasl_get_multi_col () -
