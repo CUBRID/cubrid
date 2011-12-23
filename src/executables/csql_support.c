@@ -1022,6 +1022,13 @@ csql_is_statement_end (const char *str)
 	      break;
 	    }
 	  break;
+	case '\\':
+	  if (state == CSQL_STATE_SINGLE_QUOTE && *(p + 1) == '\'')
+	    {
+	      p++;
+	      break;
+	    }
+	  break;
 	case '\n':
 	  if (state == CSQL_STATE_SQL_COMMENT
 	      || state == CSQL_STATE_CPP_COMMENT)
