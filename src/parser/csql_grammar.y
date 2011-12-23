@@ -3574,9 +3574,33 @@ table_spec
 
 			    if ($3)
 			      {
+				PT_NODE *hint = NULL, *alias = NULL, *stmt = NULL;
+				char *qualifier_name = NULL;
+
+				/* Get qualifier */
+				alias = CONTAINER_AT_0 ($2);
+				if (alias)
+				  {
+				    qualifier_name = alias->info.name.original;
+				  }
+				else if (ent->info.spec.entity_name != NULL)
+				  {
+				    qualifier_name = ent->info.spec.entity_name->info.name.original;
+				  }
+
+				/* Resolve table spec index hint names */
+				hint = $3;
+				while (hint && qualifier_name)
+				  {
+				    hint->info.name.resolved = 
+				      pt_append_string (this_parser, NULL, qualifier_name);
+
+				    hint = hint->next;
+				  }
+
 				/* This is an index hint inside a table_spec. Copy index
 				   name list to USING INDEX clause */
-				PT_NODE *stmt = parser_pop_hint_node ();
+				stmt = parser_pop_hint_node ();
 				if (stmt)
 				  {
 				    /* copy to using_index */
