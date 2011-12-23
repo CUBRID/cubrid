@@ -5734,13 +5734,6 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
 	  j = 0;
 	}
     }
-  if (j == 0 && needle_len == 0)
-    {
-      /* we have reached the end, but the last token is an empty string.
-         if the needle is also an empty string, we must match it */
-      DB_MAKE_INT (result, position);
-      return NO_ERROR;
-    }
   /* if we didn't find it in the loop above, then there is no match */
   DB_MAKE_INTEGER (result, 0);
   return NO_ERROR;
