@@ -15945,14 +15945,19 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p,
 		     int *len_son_index, int cnt)
 {
   char counter[32];
-  int n = father_index ? strlen (father_index) : 0;
+  int size, n = father_index ? strlen (father_index) : 0;
 
   snprintf (counter, 32, "%d", cnt);
+  size = strlen (counter) + n + 2;
 
-  /* double the size, if more space needed */
-  while (n + 1 + strlen (counter) > *len_son_index)
+  /* more space needed? */
+  if (size > *len_son_index)
     {
-      *len_son_index += CONNECTBY_TUPLE_INDEX_STRING_MEM;
+      do
+	{
+	  *len_son_index += CONNECTBY_TUPLE_INDEX_STRING_MEM;
+	}
+      while (size > *len_son_index);
       db_private_free_and_init (thread_p, *son_index);
       *son_index = (char *) db_private_alloc (thread_p, *len_son_index);
       if ((*son_index) == NULL)
@@ -15965,6 +15970,10 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p,
   if (father_index)
     {
       strcpy (*son_index, father_index);
+    }
+  else
+    {
+      (*son_index)[0] = 0;
     }
   if (n > 0)
     {
