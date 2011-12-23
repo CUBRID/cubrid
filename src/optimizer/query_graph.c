@@ -1780,6 +1780,8 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM *term;
   QO_NODE *node;
 
+  QO_ASSERT (env, conjunct->next == NULL);
+
   /* The conjuct could be PT_VALUE(0);
      (1) if an outer join condition was derived/transformed to the
      always-false ON condition when type checking, expression evaluation
@@ -1817,6 +1819,11 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	{
 	  /* is an always-false WHERE condition */
 	  QO_TERM_CLASS (term) = QO_TC_OTHER;	/* is dummy */
+	  if (!pt_false_search_condition (QO_ENV_PARSER (env), conjunct))
+	    {
+	      /* is an always-true WHERE condition */
+	      QO_TERM_SELECTIVITY (term) = 1.0;
+	    }
 	}
       else
 	{
@@ -8244,8 +8251,8 @@ qo_term_dump (QO_TERM * term, FILE * f)
 	if (conj && conj->node_type == PT_VALUE
 	    && conj->info.value.location == 0)
 	  {
-	    /* is an always-false WHERE condition */
-	    fprintf (f, " (always-false term)");
+	    /* is an always-false or always-true WHERE condition */
+	    fprintf (f, " (dummy sarg term)");
 	  }
 	else
 	  {

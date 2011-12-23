@@ -23480,7 +23480,10 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   return NO_ERROR;
 
 error:
-  DB_MAKE_NULL (result);
+  if (result)
+    {
+      DB_MAKE_NULL (result);
+    }
   if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
     {
       return NO_ERROR;
@@ -23575,7 +23578,10 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
   return NO_ERROR;
 
 error:
-  DB_MAKE_NULL (result);
+  if (result)
+    {
+      DB_MAKE_NULL (result);
+    }
   if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
     {
       return NO_ERROR;
@@ -23810,7 +23816,10 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
   return NO_ERROR;
 
 error:
-  DB_MAKE_NULL (result);
+  if (result)
+    {
+      DB_MAKE_NULL (result);
+    }
   if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
     {
       return NO_ERROR;

@@ -90,7 +90,7 @@ static SORT_LIST *make_sort_list_after_eqclass (QO_ENV * env, int column_cnt);
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *,
 			     XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *,
-			     XASL_NODE *, XASL_NODE *, bool);
+			     XASL_NODE *, XASL_NODE *);
 static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan,
 				 XASL_NODE * xasl);
 
@@ -1029,7 +1029,7 @@ add_after_join_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
     }
 
   return xasl;
-}	
+}
 
 static XASL_NODE *
 add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
@@ -1819,6 +1819,23 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 		{
 		  bitset_add (&taj_terms, i);
 		}
+	      else if (is_normal_access_term (term))
+		{
+		  /* Especially, if a scan plan uses a covered index and
+		   * is normal term, we push them to key filter
+		   * instead of sarg term.
+		   */
+		  if (inner->plan_type == QO_PLANTYPE_SCAN
+		      && inner->plan_un.scan.scan_method ==
+		      QO_SCANMETHOD_INDEX_SCAN
+		      && inner->plan_un.scan.index->head
+		      && inner->plan_un.scan.index->head->cover_segments)
+		    {
+		      bitset_add (&(inner->plan_un.scan.kf_terms), i);
+		      bitset_difference (&predset,
+					 &(inner->plan_un.scan.kf_terms));
+		    }
+		}
 	    }			/* for (i = ... ) */
 	  /* exclude totally after join term and push into inner */
 	  bitset_difference (&predset, &taj_terms);
@@ -1830,9 +1847,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	   * by single scan due to key filtering, and null records can be returned
 	   * by scan_handle_single_scan. It might lead to making a wrong result.
 	   */
-	  scan = gen_inner (env, inner, &predset, &new_subqueries, 
-			    inner_scans, fetches,
-			    IS_OUTER_JOIN_TYPE (join_type));
+	  scan = gen_inner (env, inner, &predset, &new_subqueries,
+			    inner_scans, fetches);
 	  if (scan)
 	    {
 	      if (IS_OUTER_JOIN_TYPE (join_type))
@@ -2242,12 +2258,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
  *		      scan_ptr list
  *   fetches(in): A list of fetch procs to be run every time plan produces
  *		  a new row
- *   do_not_push_sarg_to_kf(in): Do not use sarg as key filter if it is true
  */
 static XASL_NODE *
 gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset,
-	   BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches,
-	   bool do_not_push_sarg_to_kf)
+	   BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches)
 {
   XASL_NODE *scan, *listfile, *fetch;
   PT_NODE *namelist;
@@ -2267,22 +2281,11 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset,
     {
     case QO_PLANTYPE_SCAN:
       /*
-       * For nl-join and idx-join, we push join edge to sarg term of inner scan
-       * to filter out unsatisfied records earlier. Especially, if a scan plan
-       * uses a covered index and join type is not outer join, we push them to
-       * key filter instead of sarg term.
+       * For nl-join and idx-join, we push join edge to sarg term of
+       * inner scan to filter out unsatisfied records earlier.
        */
-      if (do_not_push_sarg_to_kf == false
-	  && plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN
-	  && plan->plan_un.scan.index->head
-	  && plan->plan_un.scan.index->head->cover_segments)
-	{
-	  bitset_union (&(plan->plan_un.scan.kf_terms), predset);
-	}
-      else
-	{
-	  bitset_union (&(plan->sarged_terms), predset);
-	}
+      bitset_union (&(plan->sarged_terms), predset);
+
       scan = init_class_scan_proc (env, scan, plan);
       scan = add_scan_proc (env, scan, inner_scans);
       scan = add_fetch_proc (env, scan, fetches);
@@ -2307,7 +2310,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset,
        */
       scan = gen_inner (env,
 			plan->plan_un.follow.head,
-			&EMPTY_SET, &EMPTY_SET, inner_scans, fetch, false);
+			&EMPTY_SET, &EMPTY_SET, inner_scans, fetch);
       break;
 #else
       /* Fall through */
