@@ -40,6 +40,7 @@ configure_options=""
 build_dir=""
 install_dir=""
 prefix_dir=""
+output_dir=""
 build_args="all"
 default_packages="all"
 packages=""
@@ -186,7 +187,7 @@ function build_configure ()
     print_error "Manager server source path is not exist. It will not be built"
   fi
 
-  if [ $run_autogen = "yes" ]; then
+  if [ $run_autogen = "yes" -o ! -f $source_dir/configure ]; then
     print_check "Running autogen.sh..."
     (cd $source_dir && sh ./autogen.sh)
     [ $? -eq 0 ] && print_result "OK." || print_fatal "Result failed."
@@ -702,13 +703,13 @@ function build_rpm ()
     srpm)
       rpmbuild --clean -ts $source_tarball
       if [ $? -eq 0 ]; then
-	mv $install_dir/rpmbuild/RPMS/*.src.rpm $rpm_output_dir
+	mv -f $install_dir/rpmbuild/RPMS/*.src.rpm $rpm_output_dir
       fi
     ;;
     rpm)
       rpmbuild --clean -tb --target=$build_target $source_tarball
       if [ $? -eq 0 ]; then
-	mv $install_dir/rpmbuild/RPMS/$build_target/*.rpm $rpm_output_dir
+	mv -f $install_dir/rpmbuild/RPMS/$build_target/*.rpm $rpm_output_dir
       fi
     ;;
     *)
@@ -727,6 +728,10 @@ function build_package ()
     print_fatal "Build directory not found. please build first."
   fi
 
+  if [ ! -d $output_dir ]; then
+    mkdir -p $output_dir
+  fi
+  
   # create additional dirs for binary package
   pre_created_dirs="databases var var/log var/tmp var/run var/lock var/manager log log/manager"
   for dir in $pre_created_dirs; do
@@ -753,6 +758,9 @@ function build_package ()
 	  package_name="$src_package_name"
 	  # make dist for pack sources
 	  (cd $build_dir && make dist)
+	  if [ $? -eq 0 -a ! $build_dir -ef $output_dir ]; then
+	    mv -f $build_dir/$package_name $output_dir
+	  fi
 	fi
       ;;
       php_src)
@@ -767,7 +775,7 @@ function build_package ()
 	  fi
 	  mkdir -p $build_dir/$package_basename
 	  cp $source_dir/contrib/php* $build_dir/$package_basename/
-	  (cd $build_dir && tar czf $build_dir/$package_name $package_basename)
+	  (cd $build_dir && tar czf $output_dir/$package_name $package_basename)
 	  [ $? -eq 0 ] && rm -rf $build_dir/$package_basename
 	fi
       ;;
@@ -785,7 +793,7 @@ function build_package ()
 	else
 	  package_name="$package_basename.sh"
 	fi
-	build_bin_pack $build_dir/$package_name $package
+	build_bin_pack $output_dir/$package_name $package
       ;;
       cci)
 	if [ ! -d "$install_dir" ]; then
@@ -803,7 +811,7 @@ function build_package ()
 	for file in $cci_headers $cci_libs; do
 	  pack_file_list="$pack_file_list $product_name/$file"
 	done
-	(cd $install_dir && tar czf $build_dir/$package_name $pack_file_list)
+	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
       ;;
       jdbc)
 	if [ "$build_mode" = "debug" ]; then
@@ -811,7 +819,7 @@ function build_package ()
 	  package_name="NONE"
 	else
 	  package_name="JDBC-$build_number-$product_name_lower"
-	  cp $build_dir/jdbc/$package_name*.jar $build_dir
+	  cp $build_dir/jdbc/$package_name*.jar $output_dir
 	fi
       ;;
       srpm|rpm)
@@ -820,7 +828,7 @@ function build_package ()
 	  package_name="NONE"
 	else
 	  package_name="$product_name-$build_number...rpm"
-	  build_rpm $build_dir/$src_package_name $package
+	  build_rpm $output_dir/$src_package_name $package
 	fi
       ;;
     esac
@@ -853,7 +861,8 @@ function show_usage ()
   echo "  -c opts Set configure options; [default: NONE]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
-  echo "  -p path Set prefix path; [default: <build_path/_install/$product_name"
+  echo "  -p path Set prefix path; [default: <build_path>/_install/$product_name]"
+  echo "  -o path Set package output path; [default: <build_path>]"
   if [ "x$JAVA_HOME" = "x" ]; then
     echo "  -j path Set JAVA_HOME path; [default: /usr/java/default]"
   else
@@ -878,7 +887,7 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:is:b:p:aj:c:z:h" opt; do
+  while getopts ":t:m:is:b:p:o:aj:c:z:h" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
@@ -886,6 +895,7 @@ function get_options ()
       s ) source_dir="$OPTARG" ;;
       b ) build_dir="$OPTARG" ;;
       p ) prefix_dir="$OPTARG" ;;
+      o ) output_dir="$OPTARG" ;;
       a ) run_autogen="yes" ;;
       j ) java_dir="$OPTARG" ;;
       c )
@@ -916,10 +926,10 @@ function get_options ()
     *) show_usage; print_fatal "Mode [$build_mode] is not valid mode." ;;
   esac
 
-  # convert paths to absolute path
   if [ "x$build_dir" = "x" ]; then
     build_dir="$source_dir/build_${build_target}_${build_mode}"
   fi
+  # convert paths to absolute path
   build_dir=$(readlink -f $build_dir)
   install_dir="$build_dir/_install"
   mkdir -p $install_dir
@@ -945,6 +955,11 @@ function get_options ()
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
     packages="src php_src tarball shell cci jdbc srpm rpm"
   fi
+
+  if [ "x$output_dir" = "x" ]; then
+    output_dir="$build_dir"
+  fi
+  output_dir=$(readlink -f $output_dir)
 
   if [ $# -gt 0 ]; then
     build_args="$@"
