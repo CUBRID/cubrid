@@ -2892,13 +2892,13 @@ pt_show_binopcode (PT_OP_TYPE n)
     case PT_LIKE_ESCAPE:
       return " escape ";
     case PT_RLIKE:
-      return " rlike ";
+      return " regexp ";
     case PT_NOT_RLIKE:
-      return " not rlike ";
+      return " not regexp ";
     case PT_RLIKE_BINARY:
-      return " rlike binary ";
+      return " regexp binary ";
     case PT_NOT_RLIKE_BINARY:
-      return " not rlike binary ";
+      return " not regexp binary ";
     case PT_IS_IN:
       return " in ";
     case PT_IS:
