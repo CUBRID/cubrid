@@ -403,6 +403,10 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
       switch (class_stats_p->attr_stats[i].type)
 	{
+	case DB_TYPE_SHORT:
+	  fprintf (file_p, "DB_TYPE_SHORT\n");
+	  break;
+
 	case DB_TYPE_INTEGER:
 	  fprintf (file_p, "DB_TYPE_INTEGER\n");
 	  break;
@@ -516,6 +520,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  break;
 
 	default:
+	  assert (false);
 	  fprintf (file_p, "UNKNOWN_TYPE\n");
 	  break;
 	}
