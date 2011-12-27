@@ -5679,9 +5679,16 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
   needle_str = DB_PULL_STRING (needle);
   needle_len = DB_GET_STRING_SIZE (needle);
 
+  if (stack_len == 0 && needle_len == 0)
+    {
+      /* if both are empty string, no match */
+      goto match_not_found;
+    }
+
   for (i = 0; i < stack_len; i++)
     {
       int char_size = 0;
+
       if (j == 0 && needle_len == 0 && stack_str[i] == ',')
 	{
 	  /* if the needle is a empty string and the current token is also an 
@@ -5721,6 +5728,16 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
 	  j = 0;
 	}
     }
+
+  if (j == 0 && needle_len == 0)
+    {
+      /* we have reached the end, but the last token is an empty string.
+         if the needle is also an empty string, we must match it */
+      DB_MAKE_INT (result, position);
+      return NO_ERROR;
+    }
+
+match_not_found:
   /* if we didn't find it in the loop above, then there is no match */
   DB_MAKE_INTEGER (result, 0);
   return NO_ERROR;
