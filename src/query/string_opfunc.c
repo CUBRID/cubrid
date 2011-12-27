@@ -4225,12 +4225,6 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
   if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
     {
       src_char_string_p = DB_PULL_CHAR (src_string, &src_length);
-
-      /* remove padding */
-      while (src_length > 0 && src_char_string_p[src_length - 1] == ' ')
-	{
-	  src_length--;
-	}
     }
   else
     {
@@ -4241,13 +4235,6 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
   if (pattern_type == DB_TYPE_CHAR || pattern_type == DB_TYPE_NCHAR)
     {
       pattern_char_string_p = DB_PULL_CHAR (pattern, &pattern_length);
-
-      /* remove padding */
-      while (pattern_length > 0
-	     && pattern_char_string_p[pattern_length - 1] == ' ')
-	{
-	  pattern_length--;
-	}
     }
   else
     {
