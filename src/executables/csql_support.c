@@ -58,7 +58,6 @@ typedef enum csql_statement_state
   CSQL_STATE_CPP_COMMENT,
   CSQL_STATE_SQL_COMMENT,
   CSQL_STATE_SINGLE_QUOTE,
-  CSQL_STATE_DOUBLE_QOUTE,
   CSQL_STATE_MYSQL_QUOTE,
   CSQL_STATE_STATEMENT_END
 } CSQL_STATEMENT_STATE;
@@ -924,6 +923,11 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
 bool
 csql_is_statement_end (const char *str)
 {
+  /* using flags but not adding many states in here may be not good choice,
+   * but it will not change the state machine model and save a lot of states.
+   */
+  bool include_stmt = false;
+  bool is_last_stmt_valid = true;
   const char *p = str;
   CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
 
@@ -932,122 +936,143 @@ csql_is_statement_end (const char *str)
       return false;
     }
 
+
   if (state == CSQL_STATE_CPP_COMMENT || state == CSQL_STATE_SQL_COMMENT)
     {
       /* these are single line comments and we're parsing a new line */
       state = CSQL_STATE_GENERAL;
     }
 
+  if (state == CSQL_STATE_STATEMENT_END)
+    {
+      /* reset state in prev statement */
+      state = CSQL_STATE_GENERAL;
+    }
+
+  /* run as state machine */
   while (*p != 0)
     {
-      if (state == CSQL_STATE_STATEMENT_END)
+      switch (state)
 	{
-	  /* ignore ';' if not the last character in the string */
-	  state = CSQL_STATE_GENERAL;
-	}
-
-      switch (*p)
-	{
-	case '/':
-	  if (state != CSQL_STATE_GENERAL)
+	case CSQL_STATE_GENERAL:
+	  switch (*p)
 	    {
-	      break;
-	    }
-	  if (*(p + 1) == '/')
-	    {
-	      state = CSQL_STATE_CPP_COMMENT;
-	      p++;
-	      break;
-	    }
-	  if (*(p + 1) == '*')
-	    {
-	      state = CSQL_STATE_C_COMMENT;
-	      p++;
-	      break;
-	    }
-	  break;
-	case '*':
-	  if (state != CSQL_STATE_C_COMMENT)
-	    {
-	      break;
-	    }
-	  if (*(p + 1) == '/')
-	    {
-	      state = CSQL_STATE_GENERAL;
-	      p++;
-	      break;
-	    }
-	  break;
-	case '\'':
-	  switch (state)
-	    {
-	    case CSQL_STATE_SINGLE_QUOTE:
-	      if (*(p + 1) == '\'')
+	    case '/':
+	      if (*(p + 1) == '/')
 		{
+		  state = CSQL_STATE_CPP_COMMENT;
 		  p++;
 		  break;
 		}
-	      /* end of single quoted value */
-	      state = CSQL_STATE_GENERAL;
+	      if (*(p + 1) == '*')
+		{
+		  state = CSQL_STATE_C_COMMENT;
+		  p++;
+		  break;
+		}
+	      is_last_stmt_valid = true;
 	      break;
-	    case CSQL_STATE_GENERAL:
+	    case '-':
+	      if (*(p + 1) == '-')
+		{
+		  state = CSQL_STATE_SQL_COMMENT;
+		  p++;
+		  break;
+		}
+	      is_last_stmt_valid = true;
+	      break;
+	    case '\'':
 	      state = CSQL_STATE_SINGLE_QUOTE;
+	      is_last_stmt_valid = true;
 	      break;
-	    default:
-	      break;
-	    }
-	  break;
-	case '"':
-	  switch (state)
-	    {
-	    case CSQL_STATE_GENERAL:
+	    case '"':
 	      state = CSQL_STATE_MYSQL_QUOTE;
+	      is_last_stmt_valid = true;
 	      break;
-	    case CSQL_STATE_MYSQL_QUOTE:
-	      state = CSQL_STATE_GENERAL;
+	    case ';':
+	      include_stmt = true;
+	      is_last_stmt_valid = false;
+	      if (*(p + 1) == 0)
+		{
+		  state = CSQL_STATE_STATEMENT_END;
+		}
+	      break;
+	    case ' ':
+	    case '\t':
+	      /* do not change is_last_stmt_valid */
 	      break;
 	    default:
+	      if (!is_last_stmt_valid)
+		{
+		  is_last_stmt_valid = true;
+		}
 	      break;
 	    }
 	  break;
-	case '-':
-	  if (state != CSQL_STATE_GENERAL)
+
+	case CSQL_STATE_C_COMMENT:
+	  if (*p == '*' && *(p + 1) == '/')
 	    {
-	      break;
-	    }
-	  if (*(p + 1) == '-')
-	    {
-	      state = CSQL_STATE_SQL_COMMENT;
+	      state = CSQL_STATE_GENERAL;
 	      p++;
 	      break;
 	    }
 	  break;
-	case '\\':
-	  if (state == CSQL_STATE_SINGLE_QUOTE && *(p + 1) == '\'')
+
+	case CSQL_STATE_CPP_COMMENT:
+	  if (*p == '\n')
 	    {
-	      p++;
-	      break;
+	      state = CSQL_STATE_GENERAL;
 	    }
 	  break;
-	case '\n':
-	  if (state == CSQL_STATE_SQL_COMMENT
-	      || state == CSQL_STATE_CPP_COMMENT)
+
+	case CSQL_STATE_SQL_COMMENT:
+	  if (*p == '\n')
+	    {
+	      state = CSQL_STATE_GENERAL;
+	    }
+	  break;
+
+	case CSQL_STATE_SINGLE_QUOTE:
+	  if (*p == '\'')
 	    {
 	      state = CSQL_STATE_GENERAL;
 	      break;
 	    }
-	  break;
-	case ';':
-	  if (state == CSQL_STATE_GENERAL && *(p + 1) == 0)
+	  if (*p == '\\' && *(p + 1) == '\'')
 	    {
-	      state = CSQL_STATE_STATEMENT_END;
+	      p++;
 	      break;
 	    }
+	  break;
+
+	case CSQL_STATE_MYSQL_QUOTE:
+	  if (*p == '"')
+	    {
+	      state = CSQL_STATE_GENERAL;
+	      break;
+	    }
+	  if (*p == '\\' && *(p + 1) == '"')
+	    {
+	      p++;
+	      break;
+	    }
+	  break;
+
 	default:
+	  /* should not be here */
 	  break;
 	}
 
       p++;
+    }
+
+  /* when include other stmts and the last smt is non sense stmt. */
+  if (include_stmt && !is_last_stmt_valid
+      && (state == CSQL_STATE_SQL_COMMENT || state == CSQL_STATE_CPP_COMMENT
+	  || state == CSQL_STATE_GENERAL))
+    {
+      state = CSQL_STATE_STATEMENT_END;
     }
 
   csql_Edit_contents.state = state;
