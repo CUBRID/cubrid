@@ -91,7 +91,6 @@ static const char *css_Csect_name[CRITICAL_SECTION_COUNT] = {
   "COMPACTDB_ONE_INSTANCE",
   "SESSION_STATE",
   "ACL",
-  "LOG_RUN_POSTPONE",
   "QPROC_FILTER_PRED_CACHE"
 };
 

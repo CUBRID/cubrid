@@ -4468,18 +4468,72 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 static void
 add_using_index (QO_ENV * env, PT_NODE * using_index)
 {
-  int i, n;
+  int i, j, n;
   QO_NODE *nodep;
   QO_USING_INDEX *uip;
-  PT_NODE *indexp;
-  bool is_none;
+  PT_NODE *indexp, *indexp_nokl;
+  bool is_none, is_ignored;
+  PT_NODE **idx_ignore_list = NULL;
+  int idx_ignore_list_capacity = 0;
+  int idx_ignore_list_size = 0;
 
   if (!using_index)
     {
       /* no USING INDEX clause in the query;
          all QO_NODE_USING_INDEX(node) will contain NULL */
-      return;
+      goto cleanup;
     }
+
+  /* allocate memory for index ignore list; by default, the capacity of the
+     list is the number of index hints in the USING INDEX clause */
+  idx_ignore_list_capacity = 0;
+  for (indexp = using_index; indexp; indexp = indexp->next)
+    {
+      idx_ignore_list_capacity++;
+    }
+
+  idx_ignore_list = (PT_NODE **) malloc (idx_ignore_list_capacity *
+					 sizeof (PT_NODE *));
+  if (idx_ignore_list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, idx_ignore_list_capacity * sizeof (PT_NODE *));
+      goto cleanup;
+    }
+
+  /* if an index occurs more than once and at least one occurrence has a
+     keylimit, we should ignore the occurrences without keylimit; we now
+     build an ignore list containing indexes which should not be attached to
+     the QO_NODE */
+  idx_ignore_list_size = 0;
+  for (indexp_nokl = using_index; indexp_nokl;
+       indexp_nokl = indexp_nokl->next)
+    {
+      if (indexp_nokl->info.name.original
+	  && indexp_nokl->info.name.resolved
+	  && !indexp_nokl->info.name.indx_key_limit)
+	{
+	  /* it's a normal index without a keylimit; search for same index
+	     with keylimit */
+	  for (indexp = using_index; indexp; indexp = indexp->next)
+	    {
+	      if (indexp->info.name.original
+		  && indexp->info.name.resolved
+		  && indexp->info.name.indx_key_limit
+		  && !intl_identifier_casecmp (indexp->info.name.original,
+					       indexp_nokl->info.name.
+					       original)
+		  && !intl_identifier_casecmp (indexp->info.name.resolved,
+					       indexp_nokl->info.name.
+					       resolved))
+		{
+		  /* same index found, with keylimit; add to ignore list */
+		  idx_ignore_list[idx_ignore_list_size++] = indexp_nokl;
+		  break;
+		}
+	    }			/* for (indexp ...) */
+	}
+    }				/* for (indexp_nokl ...) */
 
   /* for each node */
   for (i = 0; i < env->nnodes; i++)
@@ -4491,6 +4545,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
       n = 0;
       for (indexp = using_index; indexp; indexp = indexp->next)
 	{
+	  /* check for USING INDEX NONE or USING INDEX class.NONE cases */
 	  if (indexp->info.name.original == NULL
 	      && indexp->info.name.resolved == NULL)
 	    {
@@ -4498,6 +4553,32 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	      is_none = true;
 	      break;		/* USING INDEX NONE case */
 	    }
+	  if (indexp->info.name.original == NULL
+	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
+					   indexp->info.name.resolved)
+	      && indexp->etc == (void *) -3)
+	    {
+	      n = 0;		/* USING INDEX class_name.NONE,... case */
+	      is_none = true;
+	      break;
+	    }
+
+	  /* check if index is in ignore list (pointer comparison) */
+	  is_ignored = false;
+	  for (j = 0; j < idx_ignore_list_size; j++)
+	    {
+	      if (indexp == idx_ignore_list[j])
+		{
+		  is_ignored = true;
+		  break;
+		}
+	    }
+	  if (is_ignored)
+	    {
+	      continue;
+	    }
+
+	  /* check index type and count it accordingly */
 	  if (indexp->info.name.original == NULL
 	      && indexp->info.name.resolved[0] == '*')
 	    {
@@ -4508,15 +4589,6 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 					   indexp->info.name.resolved))
 	    {
 	      n++;
-	    }
-	  if (indexp->info.name.original == NULL
-	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
-					   indexp->info.name.resolved)
-	      && indexp->etc == (void *) -3)
-	    {
-	      n = 0;		/* USING INDEX class_name.NONE,... case */
-	      is_none = true;
-	      break;
 	    }
 	}
       /* if n == 0, it means that either no indexes in USING INDEX clause for
@@ -4545,7 +4617,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, SIZEOF_USING_INDEX (n ? n : 1));
-	  return;
+	  goto cleanup;
 	}
 
       QO_UI_N (uip) = n;
@@ -4560,11 +4632,29 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
       n = 0;
       for (indexp = using_index; indexp; indexp = indexp->next)
 	{
+	  /* check for USING INDEX NONE case */
 	  if (indexp->info.name.original == NULL
 	      && indexp->info.name.resolved == NULL)
 	    {
 	      break;		/* USING INDEX NONE case */
 	    }
+
+	  /* check if index is in ignore list (pointer comparison) */
+	  is_ignored = false;
+	  for (j = 0; j < idx_ignore_list_size; j++)
+	    {
+	      if (indexp == idx_ignore_list[j])
+		{
+		  is_ignored = true;
+		  break;
+		}
+	    }
+	  if (is_ignored)
+	    {
+	      continue;
+	    }
+
+	  /* attach index if necessary */
 	  if (indexp->info.name.original == NULL
 	      && indexp->info.name.resolved[0] == '*')
 	    {
@@ -4581,6 +4671,13 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	      QO_UI_FORCE (uip, n++) = (int) (indexp->etc);
 	    }
 	}
+    }
+
+cleanup:
+  /* free memory of index ignore list */
+  if (idx_ignore_list != NULL)
+    {
+      free (idx_ignore_list);
     }
 }
 
