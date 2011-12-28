@@ -53,6 +53,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/time.h>
+#include <poll.h>
 #endif
 
 /************************************************************************
@@ -697,12 +698,17 @@ static int
 net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 {
   int read_len, tot_read_len = 0;
+#if defined(WINDOWS)
   fd_set rfds;
   struct timeval tv;
+#else
+  struct pollfd po[1] = { {0, 0, 0} };
+#endif
   int n;
 
   while (tot_read_len < size)
     {
+#if defined(WINDOWS)
       FD_ZERO (&rfds);
       FD_SET (sock_fd, &rfds);
 
@@ -719,8 +725,22 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 
       n = select (sock_fd + 1, &rfds, NULL, NULL, &tv);
 
+#else
+      po[0].fd = sock_fd;
+      po[0].events = POLLIN;
+
+      if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
+	{
+	  timeout = SOCKET_TIMEOUT;
+	}
+
+      n = poll (po, 1, timeout);
+
+#endif
+
       if (n == 0)
 	{
+          /* select / poll return time out */
 	  if (timeout > 0)
 	    {
 	      timeout -= SOCKET_TIMEOUT;
@@ -744,6 +764,12 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 	      return CCI_ER_COMMUNICATION;
 	    }
 	}
+      else if (n < 0)
+	{
+      	  /* select / poll return error */
+	  return CCI_ER_COMMUNICATION;
+	}
+
 
       read_len = READ_FROM_SOCKET (sock_fd, buf + tot_read_len,
 				   size - tot_read_len);
@@ -889,19 +915,23 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry,
   int one = 1;
   int retry_count = 0;
   int con_retry_count;
+  int ret;
+#if defined (WINDOWS)
   struct timeval timeout_val;
   fd_set rset, wset;
-  int ret;
-#if !defined (WINDOWS)
+#else
   int flags;
+  struct pollfd po[1] = { {0, 0, 0} };
 #endif
 
   con_retry_count = (is_retry) ? 10 : 0;
 
 connect_retry:
 
+#if defined(WINDOWS)
   timeout_val.tv_sec = login_timeout / 1000;
   timeout_val.tv_usec = (login_timeout % 1000) * 1000;	/* micro second */
+#endif
 
   sock_fd = socket (AF_INET, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sock_fd))
@@ -935,6 +965,8 @@ connect_retry:
       if (errno == EINPROGRESS)
 #endif
 	{
+
+#if defined (WINDOWS)
 	  FD_ZERO (&rset);
 	  FD_ZERO (&wset);
 	  FD_SET (sock_fd, &rset);
@@ -943,7 +975,17 @@ connect_retry:
 	  ret =
 	    select (sock_fd + 1, &rset, &wset, NULL,
 		    ((login_timeout == 0) ? NULL : &timeout_val));
+#else
+	  po[0].fd = sock_fd;
+	  po[0].events = POLLOUT;
 
+	  if (login_timeout == 0)
+	    {
+	      login_timeout = -1;
+	    }
+
+	  ret = poll (po, 1, login_timeout);
+#endif
 	  if (ret == 0)
 	    {
 	      CLOSE_SOCKET (sock_fd);
