@@ -949,6 +949,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
   /* get the number of keys in this page */
   key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
+  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE
+	  && key_cnt + 1 == spage_number_of_records (load_args->leaf.pgptr));
+
   BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
 
   /* While there are some more leaf pages do */
@@ -1050,6 +1053,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
       /* get the number of keys in this page */
       key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
+      assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE
+	      && key_cnt + 1 ==
+	      spage_number_of_records (load_args->leaf.pgptr));
       BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
 
       btree_clear_key_value (&clear_last_key, &last_key);
@@ -1151,10 +1157,12 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
 	  /* obtain the header information for the current non-leaf page */
 	  btree_get_header_ptr (cur_nleafpgptr, &header_ptr);
-	  /* get the maximum key length on this leaf page */
+	  /* get the maximum key length on this non-leaf page */
 	  max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
 	  /* get the number of keys in this page */
 	  key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
+	  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE
+		  && key_cnt + 2 == spage_number_of_records (cur_nleafpgptr));
 
 	  /* Learn the last key of the current page */
 	  /* Notice that since this is a non-leaf node */

@@ -10288,13 +10288,10 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
   allocset_vpid.volid = vfid->volid;
   allocset_vpid.pageid = vfid->fileid;
 
-  LOG_POSTPONE_CS_ENTER (thread_p);
-
   fhdr_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE,
 			  PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr == NULL)
     {
-      LOG_POSTPONE_CS_EXIT ();
       return DISK_ERROR;
     }
 
@@ -10348,8 +10345,7 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
 
-  LOG_POSTPONE_CS_EXIT ();
-
+#if defined(SA_MODE)
   if (fhdr->num_user_pages_mrkdelete != total_marked_deleted)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -10359,6 +10355,10 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
 	      fhdr->num_user_pages_mrkdelete, total_marked_deleted);
       valid = DISK_INVALID;
     }
+
+  assert (fhdr->num_user_pages_mrkdelete == 0 && total_marked_deleted == 0);
+#endif
+
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 
   return valid;
@@ -10374,8 +10374,6 @@ exit_on_error:
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
-
-  LOG_POSTPONE_CS_EXIT ();
 
   return DISK_ERROR;
 }
