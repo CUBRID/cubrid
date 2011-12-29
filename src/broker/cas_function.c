@@ -390,6 +390,12 @@ fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 get_error_log_eids (err_info.err_number));
 
 #ifndef LIBCAS_FOR_JSP
+  if (srv_h_id < 0)
+    {
+      as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
+      as_info->num_error_queries++;
+    }
+
   if (shm_appl->select_auto_commit == ON)
     {
       (void) hm_srv_handle_append_active (srv_handle);
