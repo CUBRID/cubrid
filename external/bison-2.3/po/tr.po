@@ -69,14 +69,12 @@ msgstr "%%expect-rr sadece GLR ayrýþtýrýcýlarý için geçerlidir"
 msgid "expected %d shift/reduce conflict"
 msgid_plural "expected %d shift/reduce conflicts"
 msgstr[0] "%d öteleme/indirgeme çeliþkisi bekleniyor"
-msgstr[1] "%d öteleme/indirgeme çeliþkisi bekleniyor"
 
 #: src/conflicts.c:520
 #, c-format
 msgid "expected %d reduce/reduce conflict"
 msgid_plural "expected %d reduce/reduce conflicts"
 msgstr[0] "%d indirgeme/indirgeme çeliþkisi bekleniyor"
-msgstr[1] "%d indirgeme/indirgeme çeliþkisi bekleniyor"
 
 #: src/files.c:112
 #, c-format
@@ -392,14 +390,12 @@ msgstr "Gereksiz kurallar"
 msgid "%d rule never reduced\n"
 msgid_plural "%d rules never reduced\n"
 msgstr[0] "%d kural hiç indirgenmedi\n"
-msgstr[1] "%d kural hiç indirgenmedi\n"
 
 #: src/reduce.c:398
 #, c-format
 msgid "%d useless nonterminal"
 msgid_plural "%d useless nonterminals"
 msgstr[0] "%d gereksiz deðiþken simge"
-msgstr[1] "%d gereksiz deðiþken simge"
 
 #: src/reduce.c:404
 #, c-format
@@ -411,7 +407,6 @@ msgstr " ve "
 msgid "%d useless rule"
 msgid_plural "%d useless rules"
 msgstr[0] "%d gereksiz kural"
-msgstr[1] "%d gereksiz kural"
 
 #: src/reduce.c:437
 #, c-format

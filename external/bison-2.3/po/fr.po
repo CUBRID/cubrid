@@ -75,8 +75,8 @@ msgstr[1] "attendait %d conflits par décalage/réduction"
 #, c-format
 msgid "expected %d reduce/reduce conflict"
 msgid_plural "expected %d reduce/reduce conflicts"
-msgstr[0] "attendait 0 conflit par réduction/réduction"
-msgstr[1] "attendait 0 conflits par réduction/réduction"
+msgstr[0] "attendait %d conflit par réduction/réduction"
+msgstr[1] "attendait %d conflits par réduction/réduction"
 
 #: src/files.c:112
 #, c-format

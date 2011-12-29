@@ -71,7 +71,6 @@ msgstr "%%expect-rr hanya berkesan kepada parser GLR"
 msgid "expected %d shift/reduce conflict"
 msgid_plural "expected %d shift/reduce conflicts"
 msgstr[0] "jangkaan %d konflik pemindahan/pengurangan"
-msgstr[1] "jangkaan %d konflik pemindahan/pengurangan"
 
 #: src/conflicts.c:520
 #, c-format
@@ -389,14 +388,12 @@ msgstr "Hukum tidak berguna"
 msgid "%d rule never reduced\n"
 msgid_plural "%d rules never reduced\n"
 msgstr[0] "%d hukum tidak dikurangkan\n"
-msgstr[1] "%d hukum tidak dikurangkan\n"
 
 #: src/reduce.c:398
 #, c-format
 msgid "%d useless nonterminal"
 msgid_plural "%d useless nonterminals"
 msgstr[0] "%d bukan terminal tidak berguna"
-msgstr[1] "%d bukan terminal tidak berguna"
 
 #: src/reduce.c:404
 #, c-format
@@ -408,7 +405,6 @@ msgstr " dan "
 msgid "%d useless rule"
 msgid_plural "%d useless rules"
 msgstr[0] "%d hukum tidak berguna"
-msgstr[1] "%d hukum tidak berguna"
 
 #: src/reduce.c:437
 #, c-format
