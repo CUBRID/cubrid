@@ -106,7 +106,7 @@ $set 5 MSGCAT_SET_ERROR
 39 내부 에러: Page %1$d|%2$d(volume "%3$s") of file VFID %4$d|%5$d(volume "%6$s") is invalid/deallocated according to allocation map.
 40 내부 에러: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
 41 내부 에러: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
-42 Cannot reorder anchored records on page %1$d of volume "%2$s".
+42 볼륨 "%2$s"의 페이지 %1$d 에 연결된 레코드들을 재정렬할 수 없습니다.
 43 내부 에러: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
 44 "%2$s" 볼륨의 %1$d 페이지에 사용할 수 있는 스페이스가 없습니다.
 45 "%3$s" 볼륨의 %2$d 페이지의 %1$d 슬롯은 anchored record로 할당되었습니다.  이 위치에 새로운 레코드를 삽입할 수 없습니다. 
@@ -264,7 +264,7 @@ $set 5 MSGCAT_SET_ERROR
 197 마스터 서버와 연결할 수 없습니다.
 198 수신 버퍼가 작아서, 데이터가 단절되었습니다.
 199 서버가 응답하지 않습니다.
-200 Not properly removing set from object after free.
+200 free 이후 오브젝트에서 set을 제대로 제거하지 않습니다.
 201 잘못된 UNIQUE 테이블 엔트리가 제거되었습니다.
 202 애트리뷰트 "%1$s"을 찾을 수 없습니다.
 203 애트리뷰트 "%1$s"의 값은 "%3$s" 타입이 아닌 "%2$s" 타입이어야 합니다. 
@@ -1030,7 +1030,7 @@ $ LOADDB
 962 메모리 부족.
 963 브로커 에러.
 964 결과 집합의 핸들이 닫혔습니다.
-965 인덱스 키 리스트에 중복된 속성 이름이 허용되지 않습니다.  속성 이름인 '%s' (이)가 두 번 이상 나열 되었습니다.
+965 인덱스 키 리스트에 중복된 속성 이름이 허용되지 않습니다.  속성 이름인 '%s' 이(가) 두 번 이상 나열되었습니다.
 966 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$d|%7$d|%8$d 오브젝트에 대한 %5$s 락 대기 중에 데드락으로 인해 타임아웃 되었습니다. 사용자 %9$s 이(가) 종료할 때까지 기다리고 있었습니다. 
 967 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$s 클래스에 대한 %5$s 락 대기 중에 데드락으로 인해 타임아웃 되었습니다. 사용자 %7$s 이(가) 종료할 때까지 기다리고 있었습니다.
 968 트랜잭션이(인덱스  %1$d, %2$s@%3$s|%4$d) %9$s 클래스의 %6$d|%7$d|%8$d 인스턴스에 대한 %5$s 락 대기 중에 데드락으로 인해 타임아웃 되었습니다. 사용자 %10$s 이(가) 종료할 때까지 기다리고 있었습니다.
@@ -1042,8 +1042,8 @@ $ LOADDB
 974 %2$lld에서 %3$lld까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성했습니다.
 975 현재 버전의 복제는 하나의 UPDATE 질의로 여러 레코드를 변경시키는 것이 UNIQUE 제약을 위반하는 경우 허용되지 않습니다.
 976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명: "%5$s")
-977 체크포인트가 시작되었습니다. (이전 체트포인트 페이지: %1$lld, 이전 체크포인트 redo 페이지: %2$lld)
-978 체크포인트가 완료되었습니다. (체크포인트 페이지 %1$lld, 체크포인트 redo 페이지: %2$lld)
+977 체크포인트가 시작되었습니다. (이전 체크포인트 페이지: %1$lld, 이전 체크포인트 redo 페이지: %2$lld)
+978 체크포인트가 완료되었습니다. (체크포인트 페이지: %1$lld, 체크포인트 redo 페이지: %2$lld)
 979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
 980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
 981 트랜잭션 %1$d이 모니터링 통계값 %2$s의 임계치를 넘었습니다.
@@ -1150,8 +1150,8 @@ $ LOADDB
 1082 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
 1083 교착상태에 대한 상세정보.
 1084 체크포인트에서 사용할 수 없는 페이지가 존재합니다. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
-1085 Cannot compile regular expression: '%s'
-1086 Cannot execute regular expression: '%s'
+1085 정규 표현식을 컴파일할 수 없습니다: '%s'
+1086 정규 표현식을 실행할 수 없습니다: '%s'
 1087 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1283,7 +1283,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 100 잘못된 형식의 week 함수입니다.\n WEEK( expression ), WEEK( expression, expression)
 101 잘못된 형식의 time 함수입니다.\n TIME(expression)
 102 잘못된 형식의 group_concat 함수입니다.\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
-103 invalid use of index hint
+103 잘못된 형식의 인덱스 힌트입니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1383,7 +1383,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 95 %s (도메인 오브젝트)는 속성 %s를 갖고 있지 않습니다.
 96 EXCEPT 절 내의 %s 은(는) 서브클래스가 아닙니다.
 97 ALL ... EXCEPT 리스트는 클래스 내 EVERYTHING 을 배제합니다.
-98 '%s' is inconsistent with\nother use of path selector '%s' or of path root '%s'.
+98 '%s'은 path selector '%s' 혹은 path root '%s' 의 다른 사용과 불일치합니다.
 99 정의되지 않은 인자입니다.
 100 인자가 오브젝트가 아닙니다.
 101 %s는 %s의 클래스 메소드나 속성이 아닙니다.
@@ -1478,10 +1478,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 190 가상 클래스 속성에 auto increment 제약 조건을 정의할 수 없습니다.
 191 Auto increment 제약 조건을 가진 속성 '%s'에 사용할 수 없는 도메인입니다.
 192 외래키 'ON CACHE OBJECT'절로 생성된 속성 '%s'에는 사용자가 직접 값을 할당할 수는 없습니다.
-193 인덱스 키 리스트에 중복된 속성 이름이 허용되지 않습니다.  속성 이름인 '%s' (이)가 두 번 이상 나열 되었습니다.
+193 인덱스 키 리스트에 중복된 속성 이름이 허용되지 않습니다.  속성 이름인 '%s' 이(가) 두 번 이상 나열되었습니다.
 194 함수 %s 은(는) 정의되어 있지 않거나, 파라미터 갯수가 틀립니다.
-195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
-196 '%s' is not allowed here.
+195 '%s' 은(는) 계층 질의에서만 사용될 수 있습니다. CONNECT BY절을 명시하세요.
+196 '%s' 은(는) 여기에서 허용되지 않습니다.
 197 CONNECT_BY_ISCYCLE은 CONNECT BY NOCYCLE 절이 명시된 질의문에서만 사용할 수 있습니다.
 198 사용되는 테이블이 없습니다.
 199 ORDER BY NULL은 GROUP BY 절과 함께 사용됩니다.
@@ -1511,7 +1511,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 223 LIKE 구문에 이스케이프 문자가 지정되어야 합니다. '%1$s'과 '%2$s' 시스템 파라미터에 대해서는 매뉴얼을 참고하시기 바랍니다.
 224 INDEX NONE 절에서는 KEYLIMIT을 사용할 수 없습니다.
 225 이 구문에서는 세션 변수를 사용할 수 없습니다.
-226 Index hint conflict between '%s' and '%s'.
+226 '%s'와 '%s' 의 인덱스 힌트가 충돌합니다.
 227 '%s' function can not be used in DEFAULT clause.
 228 Updating derived tables is not allowed.
 229 Updating class attributes and instance attributes not allowed in the same statement.
@@ -1687,7 +1687,7 @@ $set 14 MSGCAT_SET_LOCK
 38 %d ,
 39 타임아웃 된 트랜잭션 인덱스 리스트:\n
 40 %d ,
-41 Solving the deadlock by selecting a transaction and a function \n to break the deadlock: %d %s
+41 교착상태를 제거하기 위해 트랜잭션과 함수를 선택: %d %s
 42 , %d %s
 43 락 대상: Index key of class (%2d|%6d|%4d) = %s.\n
 44 인덱스 이름: %s\n
