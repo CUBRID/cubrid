@@ -65,6 +65,11 @@
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page   */
 #define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
 
+#define BTREE_GET_KEY_LEN_IN_PAGE(node_type, key_len) \
+   ((((node_type) == BTREE_LEAF_NODE && (key_len) >= BTREE_MAX_KEYLEN_INPAGE)                    \
+      || ((node_type) == BTREE_NON_LEAF_NODE && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
+    ? DISK_VPID_SIZE : (key_len))
+
 /*
  * Page header information related defines
  */
@@ -10457,7 +10462,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   PAGE_PTR P = NULL, Q = NULL, R = NULL;
   RECDES peek_rec, copy_rec, copy_rec1;
   BTREE_ROOT_HEADER root_header;
-  int key_len, max_key, max_entry;
+  int key_len, max_key, max_entry, key_len_in_page;
   INT16 p_slot_id, q_slot_id;
   int top_op_active = 0;
   int max_free;
@@ -10552,32 +10557,22 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   node_type = root_header.node.node_type;
   /* if root is a non leaf node, the number of keys is actually one greater */
+  key_len = btree_get_key_length (key);
   if (node_type == BTREE_LEAF_NODE)
     {
       key_cnt = root_header.node.key_cnt;
       assert (key_cnt >= 0);
-
-      key_len = btree_get_key_length (key);
-      if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
-	{
-	  key_len = DISK_VPID_SIZE;
-	}
     }
   else
     {
       key_cnt = root_header.node.key_cnt + 1;
       assert (key_cnt >= 1);
-
-      key_len = btree_get_key_length (key);
-      if (key_len >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
-	{
-	  key_len = DISK_VPID_SIZE;
-	}
     }
 
   max_key = root_header.node.max_key_len;
+  key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (node_type, key_len);
 
-  if (key_len > max_key)
+  if (key_len_in_page > max_key)
     {
       /* new key is longer than all the keys in index */
       copy_rec.area_size = DB_PAGESIZE;
@@ -10590,8 +10585,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       btree_rv_save_root_head (root_header.node.max_key_len, 0, 0, 0,
 			       &copy_rec1);
 
-      root_header.node.max_key_len = key_len;
-      max_key = key_len;
+      root_header.node.max_key_len = key_len_in_page;
+      max_key = key_len_in_page;
 
       /* update the root header */
       btree_write_root_header (&copy_rec, &root_header);
@@ -11048,12 +11043,13 @@ start_point:
       key_cnt = (node_type == BTREE_LEAF_NODE) ? key_cnt : key_cnt + 1;
       assert (key_cnt + 1 == spage_number_of_records (Q));
       max_key = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
+      key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (node_type, key_len);
 
       /* is new key longer than all in the subtree of child page Q ? */
-      if (key_len > max_key)
+      if (key_len_in_page > max_key)
 	{
-	  BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, key_len);
-	  max_key = key_len;
+	  BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, key_len_in_page);
+	  max_key = key_len_in_page;
 
 	  /* log the new header record for redo purposes, there is no need
 	   * to undo the change to the header record
