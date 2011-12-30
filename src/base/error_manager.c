@@ -1746,22 +1746,11 @@ er_log (void)
     }
 #endif /* !SERVER_MODE */
 
-  if (PRM_ER_PRODUCTION_MODE)
-    {
-      (void) fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER],
-		      time_array, ER_SEVERITY_STRING (severity),
-		      ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
-		      more_info_p, msg);
-      (void) fflush (er_Msglog);
-    }
-  else
-    {
-      (void) fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D],
-		      time_array, ER_SEVERITY_STRING (severity), file_name,
-		      line_no, ER_ERROR_WARNING_STRING (severity), err_id,
-		      tran_index, more_info_p, msg);
-      (void) fflush (er_Msglog);
-    }
+  fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
+	   ER_SEVERITY_STRING (severity), file_name, line_no,
+	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
+	   more_info_p, msg);
+  fflush (er_Msglog);
 
   /* Flush the message so it is printed immediately */
   (void) fflush (er_Msglog);
@@ -2072,21 +2061,10 @@ er_print (void)
   tran_index = TM_TRAN_INDEX ();
 #endif /* !SERVER_MODE */
 
-  if (PRM_ER_PRODUCTION_MODE)
-    {
-      (void) fprintf (stdout, er_cached_msg[ER_LOG_MSG_WRAPPER],
-		      time_array_p, ER_SEVERITY_STRING (severity),
-		      ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
-		      msg);
-    }
-  else
-    {
-      (void) fprintf (stdout, er_cached_msg[ER_LOG_MSG_WRAPPER_D],
-		      time_array_p, ER_SEVERITY_STRING (severity), file_name,
-		      line_no, ER_ERROR_WARNING_STRING (severity), err_id,
-		      tran_index, msg);
-    }
-  (void) fflush (stdout);
+  fprintf (stdout, er_cached_msg[ER_LOG_MSG_WRAPPER_D], time_array_p,
+	   ER_SEVERITY_STRING (severity), file_name, line_no,
+	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index, msg);
+  fflush (stdout);
 
 }
 

@@ -1959,8 +1959,9 @@ csql_set_sys_param (const char *arg_str)
 {
   char plantype[128];
   char val[128];
-  char ans[128];
+  char ans[4096];
   int level;
+  int len = sizeof (ans);
 
   if (arg_str == NULL)
     return;
@@ -1985,10 +1986,10 @@ csql_set_sys_param (const char *arg_str)
     }
   else
     {
-      strncpy (ans, arg_str, 127);
+      strncpy (ans, arg_str, len - 1);
       if (db_set_system_parameters (ans) != NO_ERROR)
 	{
-	  snprintf (ans, 128, "error: set %s", arg_str);
+	  snprintf (ans, len, "error: set %s", arg_str);
 	}
     }
 
@@ -2007,8 +2008,9 @@ csql_get_sys_param (const char *arg_str)
 {
   char plantype[128];
   int cost;
-  char ans[128];
+  char ans[4096];
   int level;
+  int len = sizeof (ans);
 
   if (arg_str == NULL)
     return;
@@ -2019,25 +2021,25 @@ csql_get_sys_param (const char *arg_str)
       cost = qo_plan_get_cost_fn (plantype);
       if (cost == 'u')
 	{
-	  snprintf (ans, 128, "error: unknown cost parameter %s", arg_str);
+	  snprintf (ans, len, "error: unknown cost parameter %s", arg_str);
 	}
       else
 	{
-	  snprintf (ans, 128, "cost %s: %c", arg_str, (char) cost);
+	  snprintf (ans, len, "cost %s: %c", arg_str, (char) cost);
 	}
     }
   else if (strncmp (arg_str, "level", 5) == 0
 	   && sscanf (arg_str, "level") == 0)
     {
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-      snprintf (ans, 128, "level %d", level);
+      snprintf (ans, len, "level %d", level);
     }
   else
     {
-      strncpy (ans, arg_str, 127);
-      if (db_get_system_parameters (ans, 127) != NO_ERROR)
+      strncpy (ans, arg_str, len - 1);
+      if (db_get_system_parameters (ans, len - 1) != NO_ERROR)
 	{
-	  snprintf (ans, 128, "error: get %s", arg_str);
+	  snprintf (ans, len - 1, "error: get %s", arg_str);
 	}
     }
 

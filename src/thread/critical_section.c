@@ -67,7 +67,7 @@ do { \
 /* define critical section array */
 CSS_CRITICAL_SECTION css_Csect_array[CRITICAL_SECTION_COUNT];
 
-static const char *css_Csect_name[CRITICAL_SECTION_COUNT] = {
+static const char *css_Csect_name[] = {
   "ER_LOG_FILE",
   "ER_MSG_CACHE",
   "WFG",
