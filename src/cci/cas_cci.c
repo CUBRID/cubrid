@@ -5736,31 +5736,38 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 	  ts.tv_sec += 1;
 	  ts.tv_nsec -= 1000000000;
 	}
-      r = cci_cond_timedwait ((cci_cond_t *) ds->cond,
-			      (cci_mutex_t *) ds->mutex, &ts);
-      if (r == ETIMEDOUT)
+
+      while (ds->num_idle == 0)
 	{
-	  err_buf->err_code = CCI_ER_DATASOURCE_TIMEOUT;
-	  snprintf (err_buf->err_msg, 1023, "All connections are used");
-	  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
-	  return -1;
-	}
-      else if (r != 0)
-	{
-	  err_buf->err_code = CCI_ER_DATASOURCE_TIMEDWAIT;
-	  snprintf (err_buf->err_msg, 1023, "pthread_cond_timedwait : %d", r);
-	  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
-	  return -1;
+	  r = cci_cond_timedwait ((cci_cond_t *) ds->cond,
+				  (cci_mutex_t *) ds->mutex, &ts);
+	  if (r == ETIMEDOUT)
+	    {
+	      err_buf->err_code = CCI_ER_DATASOURCE_TIMEOUT;
+	      snprintf (err_buf->err_msg, 1023, "All connections are used");
+	      cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+	      return -1;
+	    }
+	  else if (r != 0)
+	    {
+	      err_buf->err_code = CCI_ER_DATASOURCE_TIMEDWAIT;
+	      snprintf (err_buf->err_msg, 1023, "pthread_cond_timedwait : %d",
+			r);
+	      cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+	      return -1;
+	    }
 	}
     }
 
-  ds->num_idle--;
+  assert (ds->num_idle > 0);
+
   for (i = 0; i < ds->pool_size; i++)
     {
       if (ds->con_handles[i] > 0)
 	{
 	  id = ds->con_handles[i];
 	  ds->con_handles[i] = -id;
+	  ds->num_idle--;
 	  break;
 	}
     }
