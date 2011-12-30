@@ -2830,12 +2830,155 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
-    case PT_IFNULL:
     case PT_NVL:
+    case PT_IFNULL:
+    case PT_COALESCE:
+      num = 0;
+
+      /* arg1 : generic string , arg2 : generic string */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_STRING;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic string , arg2 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic bit , arg2 : generic bit */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_BIT;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic bit , arg2 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic number , arg2 : generic number */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_NUMBER;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic number , arg2 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic date , arg2 : generic date */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic date , arg2 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : PT_TYPE_TIME , arg2 : PT_TYPE_TIME */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 : PT_TYPE_TIME , arg2 : generic any */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic sequence, arg2 : generic sequence */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_SEQUENCE;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic sequence, arg2 : generic type any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic lob, arg2 : generic lob */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_LOB;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic sequence, arg2 : generic type any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic any, arg2 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      sig.return_type.is_generic = true;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+
+      break;
+
     case PT_NULLIF:
     case PT_LEAST:
     case PT_GREATEST:
-    case PT_COALESCE:
       num = 0;
 
       /* one overload */
@@ -2856,24 +2999,174 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_NVL2:
       num = 0;
 
-      /* one overload */
-
+      /* arg1, arg1, arg3 : generic string */
       sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_STRING;
+      def->overloads[num++] = sig;
 
+      /* arg1 : generic string , arg2, arg3 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
-
       sig.arg3_type.is_generic = true;
       sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
 
+      /* arg1, arg2, arg3 : generic bit */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_BIT;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic bit , arg2, arg3 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1, arg2, arg3 : generic number */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_NUMBER;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic number , arg2, arg3 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1, arg2, arg3 : generic date */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic date , arg2, arg3 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1, arg2, arg3 : PT_TYPE_TIME */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_TIME;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 : PT_TYPE_TIME , arg2, arg3 : generic any */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1, arg2, arg3 : generic sequence */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_SEQUENCE;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic sequence, arg2, arg3 : generic type any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1, arg2, arg3 : generic lob */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_LOB;
+      def->overloads[num++] = sig;
+
+      /* arg1 : generic lob, arg2, arg3 : generic type any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1, arg2, arg3 : generic any */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_ANY;
       sig.return_type.is_generic = true;
       sig.return_type.val.generic_type = PT_GENERIC_TYPE_ANY;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
-      break;
 
+      break;
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:
@@ -3370,6 +3663,8 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     default:
       return false;
     }
+
+  assert (def->overloads_count <= MAX_OVERLOADS);
 
   return true;
 }
@@ -5033,7 +5328,8 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
       {
 	PT_TYPE_ENUM common_type = PT_TYPE_NONE;
 	if (arg2_type == PT_TYPE_NONE
-	    || !pt_is_symmetric_op (expr->info.expr.op))
+	    || (!pt_is_symmetric_op (expr->info.expr.op)
+		&& !pt_is_op_with_forced_common_type (expr->info.expr.op)))
 	  {
 	    return arg1_type;
 	  }
@@ -5268,6 +5564,10 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_DEFINE_VARIABLE:
     case PT_EXEC_STATS:
     case PT_CONV:
+    case PT_IFNULL:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_COALESCE:
       return false;
 
     default:
@@ -7897,32 +8197,13 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  break;
 	case PT_COALESCE:
-	  if (common_type == PT_TYPE_NULL)
+	  if (common_type != PT_TYPE_NONE
+	      && arg1_type != PT_TYPE_NA && arg1_type != PT_TYPE_NULL
+	      && arg2_type != PT_TYPE_NA && arg2_type != PT_TYPE_NULL
+	      && PT_IS_COLLECTION_TYPE (common_type))
 	    {
-	      common_type = pt_common_type_op (arg1_type, op, arg2_type);
-	    }
-	  else if (common_type != PT_TYPE_NONE &&
-		   arg1_type != PT_TYPE_NA && arg1_type != PT_TYPE_NULL &&
-		   arg2_type != PT_TYPE_NA && arg2_type != PT_TYPE_NULL)
-	    {
-	      if (PT_IS_DATE_TIME_TYPE (common_type))
-		{
-		  if (PT_IS_NUMERIC_TYPE (arg1_type) ||
-		      PT_IS_NUMERIC_TYPE (arg2_type))
-		    {
-		      node->type_enum = PT_TYPE_NONE;
-		    }
-		  else if (arg1_type != arg2_type)
-		    {
-		      node->type_enum = common_type =
-			pt_common_type_op (arg1_type, op, arg2_type);
-		    }
-		}
-	      else if (PT_IS_COLLECTION_TYPE (common_type))
-		{
-		  pt_propagate_types (parser, node, arg1->data_type,
-				      arg2->data_type);
-		}
+	      pt_propagate_types (parser, node, arg1->data_type,
+				  arg2->data_type);
 	    }
 	  break;
 	default:
@@ -10006,6 +10287,13 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 					  + dt->info.data_type.dec_precision);
 	  dt->info.data_type.units = 0;
 	}
+      else if ((arg1->type_enum != arg2->type_enum)
+	       && pt_is_op_with_forced_common_type (op))
+	{
+	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	  dt->info.data_type.dec_precision = 0;
+	  dt->info.data_type.units = 0;
+	}
       else
 	{
 	  dt->info.data_type.precision = MAX (arg1_prec, arg2_prec);
@@ -12082,20 +12370,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_IFNULL:
-      {				/* Obs: when this case occurs both args are the same type */
-	if (DB_IS_NULL (arg1))
+      {
+	DB_VALUE *src;
+	src = DB_IS_NULL (arg1) ? arg2 : arg1;
+
+	if (tp_value_cast (src, result, domain, false) != DOMAIN_COMPATIBLE)
 	  {
-	    if (db_value_clone (arg2, result) != NO_ERROR)
-	      {
-		return 0;
-	      }
-	  }
-	else
-	  {
-	    if (db_value_clone (arg1, result) != NO_ERROR)
-	      {
-		return 0;
-	      }
+	    return 0;
 	  }
       }
       break;
@@ -15583,7 +15864,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_NVL:
       if (typ1 == DB_TYPE_NULL)
 	{
-	  if (tp_value_coerce (arg2, result, domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (arg2, result, domain, false) !=
+	      DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -15594,7 +15876,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       else
 	{
-	  if (tp_value_coerce (arg1, result, domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (arg1, result, domain, false) !=
+	      DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -15608,7 +15891,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_NVL2:
       if (typ1 == DB_TYPE_NULL)
 	{
-	  if (tp_value_coerce (arg3, result, domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (arg3, result, domain, false) !=
+	      DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o3, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -15619,7 +15903,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       else
 	{
-	  if (tp_value_coerce (arg2, result, domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (arg2, result, domain, false) !=
+	      DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -18376,6 +18661,10 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_HEX:
     case PT_CONV:
     case PT_ASCII:
+    case PT_IFNULL:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_COALESCE:
       return true;
     default:
       return false;
@@ -18440,6 +18729,7 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
   switch (op)
     {
     case PT_IFNULL:
+    case PT_COALESCE:
     case PT_NVL:
     case PT_NVL2:
     case PT_NULLIF:

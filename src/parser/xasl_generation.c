@@ -7060,11 +7060,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  /* PT_COALESCE is not full hv_late_bind op:
-			   * it supports late binding only when both arguments
-			   * are HV */
-			  if (pt_is_op_hv_late_bind (node->info.expr.op)
-			      || node->info.expr.op == PT_COALESCE)
+			  if (pt_is_op_hv_late_bind (node->info.expr.op))
 			    {
 			      domain = pt_xasl_node_to_domain (parser, node);
 			    }
@@ -7367,7 +7363,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 		  if (node->type_enum == PT_TYPE_MAYBE)
 		    {
-		      domain = node->expected_domain;
+		      if (pt_is_op_hv_late_bind (node->info.expr.op))
+			{
+			  domain = pt_xasl_node_to_domain (parser, node);
+			}
+		      else
+			{
+			  domain = node->expected_domain;
+			}
 		    }
 		  else
 		    {

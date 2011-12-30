@@ -62,7 +62,9 @@ static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 				 QFILE_TUPLE * next_tpl);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
-
+static TP_DOMAIN *fetch_infer_common_domain (TP_DOMAIN * arg1,
+					     TP_DOMAIN * arg2,
+					     bool * need_free);
 /*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
@@ -324,17 +326,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
-    case T_COALESCE:
-    case T_NVL:
-    case T_NVL2:
-      /* fetch only lhs value here */
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
-			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_REPEAT:
     case T_LEAST:
     case T_GREATEST:
@@ -423,7 +414,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DECODE:
     case T_IF:
     case T_IFNULL:
+    case T_NVL:
     case T_PREDICATE:
+    case T_COALESCE:
+    case T_NVL2:
       /* defer fetch values */
       break;
 
@@ -2287,32 +2281,180 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_NVL:
     case T_IFNULL:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
-			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
-	{
-	  goto error;
-	}
+    case T_COALESCE:
+      {
+	DB_VALUE *src;
+	bool need_free = false;
+	TP_DOMAIN *target_domain;
 
-      if (DB_IS_NULL (peek_left))
-	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
-				vd, NULL, obj_oid, tpl,
-				&peek_left) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
+	target_domain = regu_var->domain;
 
-      if (tp_value_coerce (peek_left,
+	if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			      vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	if (DB_IS_NULL (peek_left) || target_domain == NULL)
+	  {
+	    if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				  vd, NULL, obj_oid, tpl,
+				  &peek_right) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+
+	if (target_domain == NULL)
+	  {
+	    TP_DOMAIN *arg1, *arg2, tmp_arg1, tmp_arg2;
+
+	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
+	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
+
+	    target_domain = fetch_infer_common_domain (arg1, arg2,
+						       &need_free);
+	  }
+
+	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
+	if (tp_value_cast (src,
 			   arithptr->value,
-			   regu_var->domain) != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
-	  goto error;
-	}
+			   target_domain, false) != DOMAIN_COMPATIBLE)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		    pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
+	    if (need_free)
+	      {
+		tp_domain_free (target_domain);
+	      }
+	    goto error;
+	  }
+
+	if (need_free)
+	  {
+	    tp_domain_free (target_domain);
+	  }
+      }
+      break;
+    case T_NVL2:
+      {
+	int ret_val;
+	DB_VALUE *src;
+	TP_DOMAIN *target_domain;
+	bool need_free = false;
+
+	target_domain = regu_var->domain;
+
+	if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			      vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	if (target_domain == NULL)
+	  {
+	    TP_DOMAIN *arg1, *arg2, *arg3, tmp_arg1, tmp_arg2, tmp_arg3;
+
+	    if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				  vd, NULL, obj_oid, tpl,
+				  &peek_right) != NO_ERROR)
+	      {
+		goto error;
+	      }
+
+	    if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+				  vd, NULL, obj_oid, tpl,
+				  &peek_third) != NO_ERROR)
+	      {
+		goto error;
+	      }
+
+	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
+	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
+
+	    target_domain =
+	      fetch_infer_common_domain (arg1, arg2, &need_free);
+
+	    arg3 = NULL;
+	    if (peek_third)
+	      {
+		bool need_tmp_domain_free;
+		TP_DOMAIN *tmp_domain;
+
+		arg3 = tp_domain_resolve_value (peek_third, &tmp_arg3);
+		tmp_domain =
+		  fetch_infer_common_domain (target_domain, arg3,
+					     &need_tmp_domain_free);
+
+		if (need_free)
+		  {
+		    tp_domain_free (target_domain);
+		  }
+		target_domain = tmp_domain;
+		need_free = need_tmp_domain_free;
+	      }
+	  }
+
+	if (DB_IS_NULL (peek_left))
+	  {
+	    if (peek_third == NULL)
+	      {
+		if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+				      vd, NULL, obj_oid, tpl,
+				      &peek_third) != NO_ERROR)
+		  {
+		    if (need_free)
+		      {
+			tp_domain_free (target_domain);
+		      }
+
+		    goto error;
+		  }
+	      }
+	    src = peek_third;
+	  }
+	else
+	  {
+	    if (peek_right == NULL)
+	      {
+		if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				      vd, NULL, obj_oid, tpl,
+				      &peek_right) != NO_ERROR)
+		  {
+		    if (need_free)
+		      {
+			tp_domain_free (target_domain);
+		      }
+		    goto error;
+		  }
+	      }
+
+	    src = peek_right;
+	  }
+
+	if (tp_value_cast (src,
+			   arithptr->value,
+			   target_domain, false) != DOMAIN_COMPATIBLE)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		    pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
+
+	    if (need_free)
+	      {
+		tp_domain_free (target_domain);
+	      }
+	    goto error;
+	  }
+
+	if (need_free)
+	  {
+	    tp_domain_free (target_domain);
+	  }
+      }
       break;
 
     case T_ISNULL:
@@ -2764,66 +2906,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
-	  goto error;
-	}
-      break;
-
-    case T_COALESCE:
-    case T_NVL:		/* when a is not null then a else b end */
-      if (DB_IS_NULL (peek_left))
-	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
-				vd, NULL, obj_oid, tpl,
-				&peek_left) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
-      if (regu_var->domain == NULL)
-	{
-	  /* COALESCE late binding : both arguments were HV */
-	  assert (arithptr->opcode == T_COALESCE);
-	  pr_clone_value (peek_left, arithptr->value);
-	}
-      else if (tp_value_coerce (peek_left,
-				arithptr->value,
-				regu_var->domain) != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
-	  goto error;
-	}
-      break;
-
-    case T_NVL2:		/* when a is not null then b else c end */
-      if (DB_IS_NULL (peek_left))
-	{
-	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
-				vd, NULL, obj_oid, tpl,
-				&peek_right) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-      else
-	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
-				vd, NULL, obj_oid, tpl,
-				&peek_right) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
-      if (tp_value_coerce (peek_right,
-			   arithptr->value,
-			   regu_var->domain) != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
 		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
 	  goto error;
 	}
@@ -3572,4 +3654,108 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
     }
 
   return false;
+}
+
+static TP_DOMAIN *
+fetch_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2,
+			   bool * need_free)
+{
+  TP_DOMAIN *target_domain;
+  DB_TYPE arg1_type, arg2_type, common_type;
+  bool need_to_domain_update = false;
+
+  assert (arg1 && arg2 && need_free);
+
+  if (need_free)
+    {
+      *need_free = true;
+    }
+
+  arg1_type = arg1->type->id;
+  arg2_type = arg2->type->id;
+
+  if (arg1_type == arg2_type)
+    {
+      common_type = arg1_type;
+      target_domain = tp_domain_copy (arg1, false);
+      need_to_domain_update = true;
+    }
+  else if (arg1_type == DB_TYPE_NULL)
+    {
+      common_type = arg2_type;
+      target_domain = tp_domain_copy (arg2, false);
+    }
+  else if (arg2_type == DB_TYPE_NULL)
+    {
+      common_type = arg1_type;
+      target_domain = tp_domain_copy (arg1, false);
+    }
+  else
+    if ((TP_IS_BIT_TYPE (arg1_type) && TP_IS_BIT_TYPE (arg2_type))
+	|| (TP_IS_CHAR_TYPE (arg1_type)
+	    && TP_IS_CHAR_TYPE (arg2_type))
+	|| (TP_IS_DATE_TYPE (arg1_type)
+	    && TP_IS_DATE_TYPE (arg2_type))
+	|| (TP_IS_SET_TYPE (arg1_type)
+	    && TP_IS_SET_TYPE (arg2_type))
+	|| (TP_IS_NUMERIC_TYPE (arg1_type) && TP_IS_NUMERIC_TYPE (arg2_type)))
+    {
+      if (tp_more_general_type (arg1_type, arg2_type) > 0)
+	{
+	  common_type = arg1_type;
+	  target_domain = tp_domain_copy (arg1, false);
+	}
+      else
+	{
+	  common_type = arg2_type;
+	  target_domain = tp_domain_copy (arg2, false);
+	}
+      need_to_domain_update = true;
+    }
+  else
+    {
+      common_type = DB_TYPE_VARCHAR;
+      target_domain = db_type_to_db_domain (common_type);
+      if (need_free)
+	{
+	  *need_free = false;
+	}
+    }
+
+  if (need_to_domain_update)
+    {
+      int arg1_prec, arg2_prec, arg1_scale, arg2_scale;
+
+      arg1_prec = arg1->precision;
+      arg1_scale = arg1->scale;
+
+      arg2_prec = arg2->precision;
+      arg2_scale = arg2->scale;
+
+      if (arg1_prec == TP_FLOATING_PRECISION_VALUE
+	  || arg2_prec == TP_FLOATING_PRECISION_VALUE)
+	{
+	  target_domain->precision = TP_FLOATING_PRECISION_VALUE;
+	  target_domain->scale = 0;
+	}
+      else if (common_type == DB_TYPE_NUMERIC)
+	{
+	  int integral_digits1, integral_digits2;
+
+	  integral_digits1 = arg1_prec - arg1_scale;
+	  integral_digits2 = arg2_prec - arg2_scale;
+	  target_domain->scale = MAX (arg1_scale, arg2_scale);
+	  target_domain->precision =
+	    (target_domain->scale + MAX (integral_digits1, integral_digits2));
+	  target_domain->precision =
+	    MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
+	}
+      else
+	{
+	  target_domain->precision = MAX (arg1_prec, arg2_prec);
+	  target_domain->scale = 0;
+	}
+    }
+
+  return target_domain;
 }
