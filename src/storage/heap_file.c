@@ -5850,6 +5850,78 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
   return NO_ERROR;
 }
 
+
+
+static PAGE_PTR
+heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
+				     const HFID * hfid,
+				     HEAP_SCANCACHE * scan_cache,
+				     OID * oid,
+				     RECDES * recdes,
+				     OID * class_oid,
+				     void **out_slot_p, int *out_space_p)
+{
+  int slot_id = 0;
+  int lk_result;
+  int slot_num;
+
+  PAGE_PTR pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
+					      recdes->type != REC_NEWHOME,
+					      recdes->length,
+					      scan_cache);
+
+  if (pgptr == NULL)
+    {
+      return NULL;
+    }
+
+  slot_num = spage_number_of_slots (pgptr);
+
+  oid->volid = pgbuf_get_volume_id (pgptr);
+  oid->pageid = pgbuf_get_page_id (pgptr);
+
+  /* find REC_DELETED_WILL_REUSE slot or add new slot */
+  /* slot_id == slot_num means add new slot */
+  for (slot_id = 0; slot_id <= slot_num; slot_id++)
+    {
+      slot_id = spage_find_free_slot (pgptr, NULL, slot_id);
+      oid->slotid = slot_id;
+
+      /* lock the object to be inserted conditionally */
+      lk_result =
+	lock_object (thread_p, oid, class_oid, X_LOCK, LK_COND_LOCK);
+      if (lk_result == LK_GRANTED)
+	{
+	  if (spage_find_empty_slot_at (thread_p, pgptr, slot_id,
+					recdes->length, recdes->type,
+					out_slot_p,
+					out_space_p) != SP_SUCCESS)
+	    {
+	      assert (false);
+	      OID_SET_NULL (oid);
+	      return NULL;
+	    }
+
+	  return pgptr;
+	}
+      else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
+	{
+	  /* This means unknown locking error */
+	  assert (false);
+	  OID_SET_NULL (oid);
+	  return NULL;
+	}
+    }
+
+  /* This means there is no lockable (or add) slot even if 
+   * there is enough space. Impossible case */
+  assert (false);
+  OID_SET_NULL (oid);
+  return NULL;
+}
+
+
+
 /*
  * heap_insert_with_lock_internal () -
  *   return:
@@ -5868,11 +5940,9 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 				bool ishome_insert, int guess_sumlen)
 {
   LOG_DATA_ADDR addr;		/* Address of logging data */
-  int sp_success, lk_result;
   bool isnew_rec;
   void *slotptr;
   int used_space;
-  VPID vpid;
   RECDES tmp_recdes, *undo_recdes;
   INT16 bytes_reserved;
 
@@ -5903,171 +5973,43 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 #endif
 
-  addr.pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
-					  isnew_rec, guess_sumlen,
-					  scan_cache);
+  addr.pgptr =
+    heap_find_slot_for_insert_with_lock (thread_p, hfid, scan_cache,
+					 oid, recdes, class_oid,
+					 &slotptr, &used_space);
   if (addr.pgptr == NULL)
     {
-      /* something went wrong. Unable to fetch hinted page. Return */
       return ER_FAILED;
     }
 
-  /* Get a slot id, slot pointer, used space */
-  sp_success = spage_find_slot_for_insert (thread_p, addr.pgptr, recdes,
-					   &oid->slotid, &slotptr,
-					   &used_space);
-  if (sp_success != SP_SUCCESS)
+  /* insert a original record */
+  if (spage_insert_data (thread_p, addr.pgptr, recdes, slotptr,
+			 used_space) != NO_ERROR)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       oid = NULL;
       goto unfix_end;
     }
 
-  /* Make OID */
-  oid->volid = pgbuf_get_volume_id (addr.pgptr);
-  oid->pageid = pgbuf_get_page_id (addr.pgptr);
-
-  /* lock the object to be inserted conditionally */
-  lk_result = lock_object (thread_p, oid, class_oid, X_LOCK, LK_COND_LOCK);
-  if (lk_result == LK_GRANTED)
+  if (recdes->type == REC_ASSIGN_ADDRESS)
     {
-      /* Normal insert process */
-
-      /* insert a original record */
-      if (spage_insert_data (thread_p, addr.pgptr, recdes, slotptr,
-			     used_space) != NO_ERROR)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
-	  oid = NULL;
-	  goto unfix_end;
-	}
-
-      if (recdes->type == REC_ASSIGN_ADDRESS)
-	{
-	  bytes_reserved = (INT16) recdes->length;
-	  tmp_recdes.type = recdes->type;
-	  tmp_recdes.area_size = sizeof (bytes_reserved);
-	  tmp_recdes.length = sizeof (bytes_reserved);
-	  tmp_recdes.data = (char *) &bytes_reserved;
-	  undo_recdes = &tmp_recdes;
-	}
-      else
-	{
-	  undo_recdes = recdes;
-	}
-
-      /* Log the insertion, set the page dirty, free, and unlock */
-      addr.offset = oid->slotid;
-      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &addr, NULL,
-				  undo_recdes);
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      bytes_reserved = (INT16) recdes->length;
+      tmp_recdes.type = recdes->type;
+      tmp_recdes.area_size = sizeof (bytes_reserved);
+      tmp_recdes.length = sizeof (bytes_reserved);
+      tmp_recdes.data = (char *) &bytes_reserved;
+      undo_recdes = &tmp_recdes;
     }
   else
     {
-      RECDES tmp_recdes_log;
-      RECDES forward_recdes;
-
-      /* insert a record with rec_type == REC_ASSIGN_ADDRESS */
-      spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-				REC_ASSIGN_ADDRESS);
-
-      tmp_recdes.type = REC_ASSIGN_ADDRESS;
-      tmp_recdes.length = recdes->length;
-      tmp_recdes.data = (char *) class_oid;
-
-      if (spage_insert_data (thread_p, addr.pgptr, &tmp_recdes, slotptr,
-			     used_space) != NO_ERROR)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
-	  oid = NULL;
-	  goto unfix_end;
-	}
-
-      /* prepare for logging of above insert */
-      bytes_reserved = (INT16) tmp_recdes.length;
-      tmp_recdes_log.type = tmp_recdes.type;
-      tmp_recdes_log.area_size = sizeof (bytes_reserved);
-      tmp_recdes_log.length = sizeof (bytes_reserved);
-      tmp_recdes_log.data = (char *) &bytes_reserved;
-
-      /* log the insertion, set the page dirty, free and unlock */
-      addr.offset = oid->slotid;
-      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &addr, NULL,
-				  &tmp_recdes_log);
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-
-      /* save the page id */
-      pgbuf_get_vpid (addr.pgptr, &vpid);
-
-      /* unfix the page */
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      /* lock the object */
-      lk_result = lock_object (thread_p, oid, class_oid, X_LOCK,
-			       LK_UNCOND_LOCK);
-      if (lk_result == LK_GRANTED)
-	{
-	  /* fix the page */
-	  addr.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
-						    X_LOCK, scan_cache);
-	  if (addr.pgptr == NULL)
-	    {
-	      /*
-	       * something went wrong.
-	       * unlock the object because fixing the page failed
-	       */
-	      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
-	      if (er_errid () == NO_ERROR)
-		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_GENERIC_ERROR, 0);
-		}
-	      /* Non-exsitence a fixed page, a locked object. */
-	      return ER_FAILED;
-	    }
-	  if (recdes->type == REC_ASSIGN_ADDRESS)
-	    {
-	      goto unfix_end;
-	    }
-
-	  /* log the insertion, set the page dirty, free and unlock */
-	  if (spage_get_record (addr.pgptr, oid->slotid, &forward_recdes,
-				PEEK) != S_SUCCESS)
-	    {
-	      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
-	      /* unable to peek before image of logging purpose */
-	      oid = NULL;
-	      goto unfix_end;
-	    }
-
-	  addr.offset = oid->slotid;
-	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
-				      &forward_recdes, recdes);
-
-	  /* update a record; insert a copy */
-	  spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-				    recdes->type);
-
-	  if (spage_update (thread_p, addr.pgptr, oid->slotid, recdes) !=
-	      SP_SUCCESS)
-	    {
-	      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_GENERIC_ERROR, 0);
-	      oid = NULL;
-	      goto unfix_end;
-	    }
-
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-	}
-      else
-	{
-	  /* lock failure : timeout, ... */
-	  return ER_FAILED;
-	}
+      undo_recdes = recdes;
     }
+
+  /* Log the insertion, set the page dirty, free, and unlock */
+  addr.offset = oid->slotid;
+  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &addr, NULL,
+			      undo_recdes);
+  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
 unfix_end:
   /*
