@@ -36,8 +36,8 @@ nochange = False
 forceyes = False
 
 exclude_list = ['configure', 'Makefile.in', 'makefile']
-donottouch_dirs = ['heaplayers']
-donottouch_files = []
+donottouch_dirs = ['heaplayers', 'contrib']
+donottouch_files = ['loader_grammar.c', 'loader_grammar.h', 'loader_old_grammar.c', 'loader_old_grammar.h', 'esql_grammar.c', 'esql_grammar.h', 'loader_lexer.c', 'loader_old_lexer.c', 'csql_lexer.c', 'cnvlex.c']
 
 
 def getSvnStatusList (inputfiles):
@@ -160,13 +160,13 @@ def isAllowToChange (file):
   for ex_dir in donottouch_dirs:
     search_pattern = r'\b' + ex_dir + r'\b'
     if re.search (search_pattern, os.path.dirname(file)):
-      if verbose: print 'do not touch directory...', ex_dir
+      print >> sys.stderr, '* File "%s" in quarantined directory "%s" is not touched' % (file, ex_dir)
       return False
 
   for ex_file in donottouch_files:
     search_pattern = r'\b' + ex_file + r'\b'
     if re.search (search_pattern, os.path.basename(file)):
-      if verbose: print 'do not touch file...', ex_file
+      print >> sys.stderr, '* Quarantined file "%s" is not touched.' % (ex_file)
       return False
 
   ext = os.path.splitext (file)[1]
