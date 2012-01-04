@@ -18357,6 +18357,8 @@ pt_converse_op (PT_OP_TYPE op)
       return PT_LT;
     case PT_GE:
       return PT_LE;
+    case PT_NE:
+      return PT_NE;
     default:
       return (PT_OP_TYPE) 0;
     }
