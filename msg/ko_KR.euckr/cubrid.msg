@@ -1520,6 +1520,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 232 Invalid filter expression for index.
 233 Multiple or nested functions are not allowed in a function index definition.
 234 Invalid index specification.
+235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

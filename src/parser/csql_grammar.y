@@ -7846,8 +7846,9 @@ constraint_list
 				  && ((merged & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI)
 				       ^ (new_bit & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI)) != 0)
 			  {
-			    PT_ERROR (this_parser, pt_top(this_parser),
-				      "SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other");
+			    PT_ERRORm (this_parser, pt_top(this_parser),
+				       MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_INVALID_AUTO_INCREMENT_ON_DEFAULT_SHARED);
 			  }
 			else if ((merged & COLUMN_CONSTRAINT_SHARED)
 			          && ((merged & COLUMN_CONSTRAINT_UNIQUE)

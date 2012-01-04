@@ -3503,8 +3503,26 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				 attr_mthd.attr_def_list, type, NULL,
 				 reuse_oid, alter);
       break;
-    case PT_MODIFY_DEFAULT:
     case PT_ALTER_DEFAULT:
+      for (attr = alter->info.alter.alter_clause.ch_attr_def.attr_name_list;
+	   attr; attr = attr->next)
+	{
+	  att_nam = attr->info.name.original;
+	  is_meta = (attr->info.name.meta_class == PT_META_ATTR);
+	  db_att =
+	    (DB_ATTRIBUTE *) (is_meta ? db_get_class_attribute (db, att_nam) :
+			      db_get_attribute_force (db, att_nam));
+	  if (db_att != NULL
+	      && (db_att->auto_increment != NULL
+		  || db_att->header.name_space == ID_SHARED_ATTRIBUTE))
+	    {
+	      PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_AUTO_INCREMENT_ON_DEFAULT_SHARED);
+	      return;
+	    }
+	}
+      /* fall through, no break */
+    case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
       break;
     case PT_CHANGE_ATTR:
