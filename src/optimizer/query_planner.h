@@ -361,8 +361,6 @@ struct qo_planner
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
 extern void qo_planner_free (QO_PLANNER *);
-#if defined (CUBRID_DEBUG)
 extern void qo_plans_stats (FILE *);
 extern void qo_info_stats (FILE *);
-#endif
 #endif /* _QUERY_PLANNER_H_ */

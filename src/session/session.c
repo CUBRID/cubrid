@@ -1852,6 +1852,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   return ER_FAILED;
 #endif
 
+  assert (name != NULL);
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
   assert (result != NULL);
 

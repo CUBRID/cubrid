@@ -95,7 +95,7 @@ static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan,
 				 XASL_NODE * xasl);
 
 static int is_normal_access_term (QO_TERM *);
-static int is_norma_if_term (QO_TERM *);
+static int is_normal_if_term (QO_TERM *);
 static int is_after_join_term (QO_TERM *);
 static int is_totally_after_join_term (QO_TERM *);
 static int is_follow_if_term (QO_TERM *);
@@ -700,7 +700,7 @@ init_list_scan_proc (QO_ENV * env,
     {
       access_pred =
 	make_pred_from_bitset (env, predset, is_normal_access_term);
-      if_pred = make_pred_from_bitset (env, predset, is_norma_if_term);
+      if_pred = make_pred_from_bitset (env, predset, is_normal_if_term);
       after_join_pred =
 	make_pred_from_bitset (env, predset, is_after_join_term);
       instnum_pred =
@@ -1098,12 +1098,12 @@ is_normal_access_term (QO_TERM * term)
 }
 
 /*
- * is_norma_if_term () -
+ * is_normal_if_term () -
  *   return:
  *   term(in):
  */
 static int
-is_norma_if_term (QO_TERM * term)
+is_normal_if_term (QO_TERM * term)
 {
   if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
     {
@@ -1418,7 +1418,7 @@ make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
   else
     {
       test = bitset_has_path (env, &(plan->sarged_terms))
-	? path_if_term : is_norma_if_term;
+	? path_if_term : is_normal_if_term;
     }
 
   return make_pred_from_bitset (env, &(plan->sarged_terms), test);

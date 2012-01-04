@@ -146,11 +146,9 @@ static QO_INFO *qo_alloc_info (QO_PLANNER *, BITSET *, BITSET *, BITSET *,
 			       double);
 static void qo_free_info (QO_INFO *);
 static void qo_detach_info (QO_INFO *);
-#if defined (CUBRID_DEBUG)
 static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
 static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
-#endif
 static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *,
 							JOIN_TYPE);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
@@ -1380,9 +1378,16 @@ qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
       QO_ENV *env;
       PT_NODE *tree;
 
-      if ((env = (plan->info)->env) == NULL ||
-	  (tree = QO_ENV_PT_TREE (env)) == NULL)
+      env = (plan->info)->env;
+      if (env == NULL)
 	{
+	  assert (false);
+	  return;		/* give up */
+	}
+      tree = QO_ENV_PT_TREE (env);
+      if (tree == NULL)
+	{
+	  assert (false);
 	  return;		/* give up */
 	}
 
@@ -1415,6 +1420,7 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
 {
   double fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
+
   fprintf (f,
 	   "\n" INDENTED_TITLE_FMT
 	   "fixed %.0f(%.1f/%.1f) var %.0f(%.1f/%.1f) card %.0f",
@@ -1443,7 +1449,9 @@ qo_plan_print_projected_segs (QO_PLAN * plan, FILE * f, int howfar)
   BITSET_ITERATOR si;
 
   if (!((plan->info)->env->dump_enable))
-    return;
+    {
+      return;
+    }
 
   fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "segs:");
   for (sx = bitset_iterate (&((plan->info)->projected_segs), &si);
@@ -3988,11 +3996,15 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
     {
       fputs ("\n", f);
       if (howfar)
-	fprintf (f, INDENT_FMT, (int) howfar, ' ');
+	{
+	  fprintf (f, INDENT_FMT, (int) howfar, ' ');
+	}
     }
 
   if (title)
-    fprintf (f, TITLE_FMT, title);
+    {
+      fprintf (f, TITLE_FMT, title);
+    }
 
   fputs ((plan->vtbl)->plan_string, f);
 
@@ -4061,10 +4073,10 @@ qo_plan_discard (QO_PLAN * plan)
       qo_plan_del_ref (plan);
       qo_env_free (env);
 
-#if defined (CUBRID_DEBUG)
       if (dump_enable)
-	qo_print_stats (stdout);
-#endif
+	{
+	  qo_print_stats (stdout);
+	}
     }
 }
 
@@ -4196,7 +4208,6 @@ qo_plans_teardown (QO_ENV * env)
   qo_accumulating_plans = false;
 }
 
-#if defined (CUBRID_DEBUG)
 /*
  * qo_plans_stats () -
  *   return:
@@ -4210,7 +4221,6 @@ qo_plans_stats (FILE * f)
   fprintf (f, "%d/%d plans malloced/demalloced\n",
 	   qo_plans_malloced, qo_plans_demalloced);
 }
-#endif
 
 /*
  * qo_plan_dump () - Print a representation of the plan on the indicated
@@ -4443,7 +4453,6 @@ qo_uninit_planvec (QO_PLANVEC * planvec)
   planvec->nplans = 0;
 }
 
-#if defined (CUBRID_DEBUG)
 /*
  * qo_dump_planvec () -
  *   return:
@@ -4458,7 +4467,9 @@ qo_dump_planvec (QO_PLANVEC * planvec, FILE * f, int indent)
   int positive_indent = indent < 0 ? -indent : indent;
 
   if (planvec->overflow)
-    fputs ("(overflowed) ", f);
+    {
+      fputs ("(overflowed) ", f);
+    }
 
   for (i = 0; i < planvec->nplans; ++i)
     {
@@ -4467,7 +4478,6 @@ qo_dump_planvec (QO_PLANVEC * planvec, FILE * f, int indent)
       indent = positive_indent;
     }
 }
-#endif
 
 /*
  * qo_check_planvec () -
@@ -5994,7 +6004,6 @@ qo_compute_projected_size (QO_PLANNER * planner, BITSET * segset)
   return size;
 }
 
-#if defined (CUBRID_DEBUG)
 /*
  * qo_dump_info () -
  *   return:
@@ -6051,7 +6060,6 @@ qo_info_stats (FILE * f)
   fprintf (f, "%d/%d info nodes allocated/deallocated\n",
 	   infos_allocated, infos_deallocated);
 }
-#endif
 
 /*
  * qo_alloc_planner () -
@@ -6160,7 +6168,6 @@ qo_planner_free (QO_PLANNER * planner)
   free_and_init (planner);
 }
 
-#if defined (CUBRID_DEBUG)
 /*
  * qo_dump_planner_info () -
  *   return:
@@ -6220,7 +6227,6 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition,
 	}			/* for (i = i + 3; i < M; i++) */
     }
 }
-#endif
 
 /*
  * planner_visit_node () -
@@ -8805,12 +8811,10 @@ qo_search_partition (QO_PLANNER * planner,
       planner->best_info = planner->node_info[QO_NODE_IDX (node)];
     }
 
-#if defined (CUBRID_DEBUG)
   if (planner->env->dump_enable)
     {
       qo_dump_planner_info (planner, partition, stdout);
     }
-#endif
 
   QO_PARTITION_PLAN (partition) =
     planner->best_info

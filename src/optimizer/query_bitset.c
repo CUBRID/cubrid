@@ -65,16 +65,18 @@ static BITSET_CARRIER empty_set_words[NWORDS] = { 0 };
 BITSET EMPTY_SET = { NULL, empty_set_words, NWORDS, {{0}}
 };
 
+#if defined (CUBRID_DEBUG)
 /*
  * set_stats () - Print stats about set usage
  *   return: nothing
- *   set_stats(in):
- *   file(in): the stream on which to print the statistics
+ *   fp(in): the stream on which to print the statistics
  */
-void (set_stats) (FILE * file)
+void
+set_stats (FILE * fp)
 {
-  fprintf (file, "Set statistics no longer collected\n");
+  fprintf (fp, "Set statistics no longer collected\n");
 }
+#endif
 
 /******************************************************************************
  *                                                                            *
@@ -516,8 +518,7 @@ bitset_first_member (const BITSET * s)
  * bitset_print () -
  *   return:
  *   s(in):
- *   fn(in):
- *   data(in):
+ *   fp(in):
  */
 void
 bitset_print (const BITSET * s, FILE * fp)

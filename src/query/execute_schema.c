@@ -1539,6 +1539,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		{
 		  /* for delete partition */
 		  tmp_node = parser_copy_tree (parser, names);
+		  if (tmp_node == NULL)
+		    {
+		      goto alter_partition_fail;
+		    }
 		  tmp_node->next = delnames;
 		  delnames = tmp_node;
 		}

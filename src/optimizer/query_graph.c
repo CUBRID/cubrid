@@ -8549,7 +8549,6 @@ qo_partition_dump (QO_PARTITION * part, FILE * f)
   fputs (")", f);
 }
 
-#if defined (CUBRID_DEBUG)
 /*
  * qo_print_stats () -
  *   return:
@@ -8561,9 +8560,10 @@ qo_print_stats (FILE * f)
   fputs ("\n", f);
   qo_info_stats (f);
   qo_plans_stats (f);
+#if defined (CUBRID_DEBUG)
   set_stats (f);
-}
 #endif
+}
 
 /*
  * qo_seg_nodes () - Return a bitset of node ids produced from the heads

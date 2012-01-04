@@ -87,7 +87,9 @@ struct bitset_iterator
 
 extern BITSET EMPTY_SET;
 
-extern void set_stats (FILE *);
+#if defined (CUBRID_DEBUG)
+extern void set_stats (FILE * fp);
+#endif
 extern void bitset_extend (BITSET * dst, int nwords);
 extern void bitset_assign (BITSET *, const BITSET *);
 extern void bitset_add (BITSET *, int);

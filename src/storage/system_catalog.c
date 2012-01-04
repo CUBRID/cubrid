@@ -2757,17 +2757,17 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
 	}
 
-      if (catalog_store_disk_attribute (thread_p, disk_attr_p, 
-					&catalog_record, 
+      if (catalog_store_disk_attribute (thread_p, disk_attr_p,
+					&catalog_record,
 					&remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
 	  return er_errid ();
 	}
 
-      if (catalog_store_attribute_value (thread_p, disk_attr_p->value, 
-					 disk_attr_p->val_length, 
-					 &catalog_record, 
+      if (catalog_store_attribute_value (thread_p, disk_attr_p->value,
+					 disk_attr_p->val_length,
+					 &catalog_record,
 					 &remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
@@ -2778,9 +2778,10 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[j];
 
-	  if (catalog_store_btree_statistics (thread_p, btree_stats_p, 
-					      &catalog_record, 
-					      &remembered_slot_id) != NO_ERROR)
+	  if (catalog_store_btree_statistics (thread_p, btree_stats_p,
+					      &catalog_record,
+					      &remembered_slot_id) !=
+	      NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, data);
 	      return er_errid ();
@@ -2943,7 +2944,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
     {
 #if defined(CT_DEBUG)
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
-	er_log_debug (ARG_FILE_LINE, "ct_getcls: ",
+	er_log_debug (ARG_FILE_LINE, "catalog_update_class_info: ",
 		      "no class information record found in catalog.\n"
 		      "possibly catalog index points to a non_existent "
 		      "disk repr.\n");
@@ -3957,7 +3958,7 @@ start:
 	     which is referred to by index. It is possible that the slot has been
 	     deleted from the catalog page, but necessary changes have not been
 	     reflected to the index or to the memory hash table. */
-	  er_log_debug (ARG_FILE_LINE, "ct_getcls: ",
+	  er_log_debug (ARG_FILE_LINE, "catalog_get_class_info: ",
 			"no class information record found in catalog.\n"
 			"possibly catalog index points to a non_existent "
 			"disk repr.\n");

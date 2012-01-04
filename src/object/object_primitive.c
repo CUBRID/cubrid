@@ -1941,9 +1941,9 @@ pr_make_ext_value (void)
 }
 
 /*
- * pr_clear_value - clear an internal or external DB_VALUE and initialize
- * it to the NULL state.
- *    return: NO_ERROR if successful, error code otherwise
+ * pr_clear_value - clear an internal or external DB_VALUE and
+ *                  initialize it to the NULL state.
+ *    return: NO_ERROR
  *    value(in/out): value to initialize
  * Note:
  *    Any external allocations (strings, sets, etc) will be freed.
@@ -1954,109 +1954,113 @@ pr_make_ext_value (void)
 int
 pr_clear_value (DB_VALUE * value)
 {
-  int error = NO_ERROR;
   unsigned char *data;
   bool need_clear;
-  DB_TYPE type;
+  DB_TYPE db_type;
 
-  need_clear = (value != NULL) ? true : false;
-
-  if (need_clear)
+  if (value == NULL)
     {
-      if (DB_IS_NULL (value))
-	{
-	  need_clear = false;
-	  if (PRM_ORACLE_STYLE_EMPTY_STRING)
-	    {
-	      if (value->need_clear)
-		{		/* need to check */
-		  type = DB_VALUE_DOMAIN_TYPE (value);
-		  if (QSTR_IS_ANY_CHAR_OR_BIT (type)
-		      && value->data.ch.medium.buf != NULL)
-		    {
-		      need_clear = true;	/* need to free Empty-string */
-		    }
-		}
-	    }
-	}			/* if (DB_IS_NULL(value)) */
+      return NO_ERROR;		/* do nothing */
     }
 
-  if (need_clear)
+  db_type = DB_VALUE_DOMAIN_TYPE (value);
+
+  need_clear = true;
+
+  if (DB_IS_NULL (value))
     {
-      switch (DB_VALUE_DOMAIN_TYPE (value))
+      need_clear = false;
+      if (PRM_ORACLE_STYLE_EMPTY_STRING)
 	{
-	case DB_TYPE_OBJECT:
-	  /* we need to be sure to NULL the object pointer so that this
-	   * db_value does not cause garbage collection problems by
-	   * retaining an object pointer.
-	   */
-	  value->data.op = NULL;
-	  break;
-
-	case DB_TYPE_SET:
-	case DB_TYPE_MULTISET:
-	case DB_TYPE_SEQUENCE:
-	case DB_TYPE_VOBJ:
-	  set_free (db_get_set (value));
-	  value->data.set = NULL;
-	  break;
-
-	case DB_TYPE_MIDXKEY:
-	  data = (unsigned char *) value->data.midxkey.buf;
-	  if (data != NULL)
-	    {
-	      if (value->need_clear)
+	  if (value->need_clear)
+	    {			/* need to check */
+	      if (QSTR_IS_ANY_CHAR_OR_BIT (db_type)
+		  && value->data.ch.medium.buf != NULL)
 		{
-		  db_private_free_and_init (NULL, data);
+		  need_clear = true;	/* need to free Empty-string */
 		}
-	      /*
-	       * Ack, phfffft!!! why should we have to know about the
-	       * internals here?
-	       */
-	      value->data.midxkey.buf = NULL;
 	    }
-	  break;
+	}
+    }
 
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	case DB_TYPE_BIT:
-	case DB_TYPE_VARBIT:
-	  data = (unsigned char *) value->data.ch.medium.buf;
-	  if (data != NULL)
-	    {
-	      if (value->need_clear)
-		{
-		  db_private_free_and_init (NULL, data);
-		}
-	      /*
-	       * Ack, phfffft!!! why should we have to know about the
-	       * internals here?
-	       */
-	      value->data.ch.medium.buf = NULL;
-	    }
-	  break;
+  if (need_clear == false)
+    {
+      return NO_ERROR;		/* do nothing */
+    }
 
-	case DB_TYPE_ELO:
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
+  switch (db_type)
+    {
+    case DB_TYPE_OBJECT:
+      /* we need to be sure to NULL the object pointer so that this
+       * db_value does not cause garbage collection problems by
+       * retaining an object pointer.
+       */
+      value->data.op = NULL;
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VOBJ:
+      set_free (db_get_set (value));
+      value->data.set = NULL;
+      break;
+
+    case DB_TYPE_MIDXKEY:
+      data = (unsigned char *) value->data.midxkey.buf;
+      if (data != NULL)
+	{
 	  if (value->need_clear)
 	    {
-	      elo_free_structure (db_get_elo (value));
+	      db_private_free_and_init (NULL, data);
 	    }
-	  break;
-
-	default:
-	  break;
+	  /*
+	   * Ack, phfffft!!! why should we have to know about the
+	   * internals here?
+	   */
+	  value->data.midxkey.buf = NULL;
 	}
+      break;
 
-      /* always make sure the value gets cleared */
-      PRIM_SET_NULL (value);
-      value->need_clear = false;
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      data = (unsigned char *) value->data.ch.medium.buf;
+      if (data != NULL)
+	{
+	  if (value->need_clear)
+	    {
+	      db_private_free_and_init (NULL, data);
+	    }
+	  /*
+	   * Ack, phfffft!!! why should we have to know about the
+	   * internals here?
+	   */
+	  value->data.ch.medium.buf = NULL;
+	}
+      break;
+
+    case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      if (value->need_clear)
+	{
+	  elo_free_structure (db_get_elo (value));
+	}
+      break;
+
+    default:
+      break;
     }
 
-  return error;
+  /* always make sure the value gets cleared */
+  PRIM_SET_NULL (value);
+  value->need_clear = false;
+
+  return NO_ERROR;
 }
 
 /*
