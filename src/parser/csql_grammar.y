@@ -15262,8 +15262,16 @@ primitive_type
 
 			    if (l > maxlen)
 			      {
-				PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
-					    MSGCAT_SYNTAX_MAX_BITLEN, maxlen);
+				if (typ == PT_TYPE_BIT || typ == PT_TYPE_VARBIT)
+				  {
+				    PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
+						MSGCAT_SYNTAX_MAX_BITLEN, maxlen);
+				  }
+				else
+				  {
+				    PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
+				    		MSGCAT_SYNTAX_MAX_BYTELEN, maxlen);
+				  }
 			      }
 
 			    l = (l > maxlen ? maxlen : l);

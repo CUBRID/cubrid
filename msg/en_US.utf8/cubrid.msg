@@ -1,4 +1,4 @@
-
+﻿
 $
 $ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
 $
@@ -1281,6 +1281,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 101 invalid use of time\n TIME(expression)
 102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 invalid use of index hint
+104 Maximum byte string length is %d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
