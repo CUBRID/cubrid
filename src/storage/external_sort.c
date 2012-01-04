@@ -507,15 +507,23 @@ sort_spage_find_free (PAGE_PTR pgptr, SLOT ** sptr, INT16 length, INT16 type,
     }
   else
     {
-      for (slotid = 0;
-	   slotid < sphdr->nslots && (*sptr)->rtype != REC_DELETED_WILL_REUSE;
-	   (*sptr)--, slotid++)
+      for (slotid = 0; slotid < sphdr->nslots; (*sptr)--, slotid++)
 	{
-	  ;
+	  if ((*sptr)->rtype == REC_HOME || (*sptr)->rtype == REC_BIGONE)
+	    {
+	      ;			/* go ahead */
+	    }
+	  else
+	    {			/* impossible case */
+	      assert (false);
+	      break;
+	    }
 	}
     }
 
   /* Make sure that there is enough space for the record and the slot */
+
+  assert (slotid <= sphdr->nslots);
 
   if (slotid >= sphdr->nslots)
     {
@@ -588,11 +596,7 @@ sort_spage_insert (PAGE_PTR pgptr, RECDES * recdes)
       return NULL_SLOTID;
     }
 
-  if (recdes->type == REC_MARKDELETED ||
-      recdes->type == REC_DELETED_WILL_REUSE)
-    {
-      recdes->type = REC_HOME;
-    }
+  assert (recdes->type == REC_HOME || recdes->type == REC_BIGONE);
 
   slotid = sort_spage_find_free (pgptr, &sptr, recdes->length, recdes->type,
 				 &used_space);
@@ -705,17 +709,11 @@ sort_spage_dump_sptr (SLOT * sptr, INT16 nslots, INT16 alignment)
 
   for (i = 0; i < nslots; sptr--, i++)
     {
+      assert (sptr->rtype == REC_HOME || sptr->rtype == REC_BIGONE);
       (void) fprintf (stdout, "\nSlot-id = %2d, offset = %4d, type = %s",
 		      i, sptr->roffset,
 		      ((sptr->rtype == REC_HOME) ? "HOME" :
-		       (sptr->rtype == REC_NEWHOME) ? "NEWHOME" :
-		       (sptr->rtype == REC_RELOCATION) ? "RELOCATION" :
 		       (sptr->rtype == REC_BIGONE) ? "BIGONE" :
-		       (sptr->rtype == REC_MARKDELETED) ? "MARKDELETED" :
-		       (sptr->rtype == REC_DELETED_WILL_REUSE) ?
-		       "DELETED_WILL_REUSE" :
-		       (sptr->rtype ==
-			REC_ASSIGN_ADDRESS) ? "ASSIGN_ADDRESS" :
 		       "UNKNOWN-BY-CURRENT-MODULE"));
 
       if (sptr->roffset != NULL_OFFSET)

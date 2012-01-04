@@ -584,6 +584,12 @@ static int heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 OID * oid, RECDES * recdes,
 				 HEAP_SCANCACHE * scan_cache,
 				 bool ishome_insert, int guess_sumlen);
+static PAGE_PTR heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
+						     const HFID * hfid,
+						     HEAP_SCANCACHE *
+						     scan_cache, OID * oid,
+						     RECDES * recdes,
+						     OID * class_oid);
 static int heap_insert_with_lock_internal (THREAD_ENTRY * thread_p,
 					   const HFID * hfid, OID * oid,
 					   OID * class_oid, RECDES * recdes,
@@ -5857,9 +5863,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 				     const HFID * hfid,
 				     HEAP_SCANCACHE * scan_cache,
 				     OID * oid,
-				     RECDES * recdes,
-				     OID * class_oid,
-				     void **out_slot_p, int *out_space_p)
+				     RECDES * recdes, OID * class_oid)
 {
   int slot_id = 0;
   int lk_result;
@@ -5892,23 +5896,14 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 	lock_object (thread_p, oid, class_oid, X_LOCK, LK_COND_LOCK);
       if (lk_result == LK_GRANTED)
 	{
-	  if (spage_find_empty_slot_at (thread_p, pgptr, slot_id,
-					recdes->length, recdes->type,
-					out_slot_p,
-					out_space_p) != SP_SUCCESS)
-	    {
-	      assert (false);
-	      OID_SET_NULL (oid);
-	      return NULL;
-	    }
-
-	  return pgptr;
+	  return pgptr;		/* OK */
 	}
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
 	{
 	  /* This means unknown locking error */
 	  assert (false);
 	  OID_SET_NULL (oid);
+
 	  return NULL;
 	}
     }
@@ -5917,6 +5912,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
    * there is enough space. Impossible case */
   assert (false);
   OID_SET_NULL (oid);
+
   return NULL;
 }
 
@@ -5942,7 +5938,6 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   LOG_DATA_ADDR addr;		/* Address of logging data */
   bool isnew_rec;
   void *slotptr;
-  int used_space;
   RECDES tmp_recdes, *undo_recdes;
   INT16 bytes_reserved;
 
@@ -5973,18 +5968,17 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 #endif
 
-  addr.pgptr =
-    heap_find_slot_for_insert_with_lock (thread_p, hfid, scan_cache,
-					 oid, recdes, class_oid,
-					 &slotptr, &used_space);
+  addr.pgptr = heap_find_slot_for_insert_with_lock (thread_p, hfid,
+						    scan_cache, oid, recdes,
+						    class_oid);
   if (addr.pgptr == NULL)
     {
       return ER_FAILED;
     }
 
   /* insert a original record */
-  if (spage_insert_data (thread_p, addr.pgptr, recdes, slotptr,
-			 used_space) != NO_ERROR)
+  if (spage_insert_at (thread_p, addr.pgptr, oid->slotid, recdes)
+      != SP_SUCCESS)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       oid = NULL;
@@ -16833,7 +16827,7 @@ heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent,
  *                 otherwise, we add an entry into the unfound_reloc list
  */
 
-#define HEAP_CHRELOC_UNFOUND_SHORT 5
+#define HEAP_CHKRELOC_UNFOUND_SHORT 5
 
 static DISK_ISVALID
 heap_chkreloc_next (HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr)
@@ -16877,7 +16871,7 @@ heap_chkreloc_next (HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr)
 	   */
 	  peek_oid = (OID *) recdes.data;
 	  found = false;
-	  if (chk->num_unfound_reloc < HEAP_CHRELOC_UNFOUND_SHORT)
+	  if (chk->num_unfound_reloc < HEAP_CHKRELOC_UNFOUND_SHORT)
 	    {
 	      /*
 	       * Go a head and check since the list is very short.

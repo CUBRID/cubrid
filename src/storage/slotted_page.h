@@ -116,8 +116,6 @@ extern int spage_find_slot_for_insert (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr, RECDES * recdes,
 				       PGSLOTID * slotid, void **slotptr,
 				       int *used_space);
-extern int spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
-			      RECDES * recdes, void *slotptr, int used_space);
 extern int spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			    PGSLOTID slotid, RECDES * recdes);
 extern int spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
