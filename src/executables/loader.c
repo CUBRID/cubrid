@@ -3364,7 +3364,7 @@ ldr_elo_ext_db_elo (LDR_CONTEXT * context,
   CHECK_ERR (err, ldr_elo_ext_elem (context, name, new_len, &val));
   mem = context->mobj + att->offset;
   CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
+  /* No bound bit to be set for a variable length attribute. */
 
 error_exit:
   if (name != NULL && name != &name_buf[0])
