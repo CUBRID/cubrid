@@ -77,6 +77,7 @@
 #include "critical_section.h"
 #include "error_manager.h"
 #include "error_code.h"
+#include "memory_hash.h"
 #include "stack_dump.h"
 #include "log_impl.h"
 
@@ -311,7 +312,7 @@ static int er_start (THREAD_ENTRY * th_entry);
 static int er_start (void);
 #endif /* SERVER_MODE */
 
-static void er_call_stack_dump_on_error (int err_id);
+static void er_call_stack_dump_on_error (int severity, int err_id);
 static void er_notify_event_on_error (int err_id);
 static int er_set_internal (int severity, const char *file_name,
 			    const int line_no, int err_id, int num_args,
@@ -337,6 +338,10 @@ static void er_internal_msg (ER_FMT * fmt, int code, int msg_num);
 static void *er_malloc_helper (int size, const char *file, int line);
 static void er_emergency (const char *file, int line, const char *fmt, ...);
 static int er_vsprintf (ER_FMT * fmt, va_list * ap);
+
+static int er_call_stack_init ();
+static int er_fname_free (const void *key, void *data, void *args);
+static void er_call_stack_final ();
 
 /* vector of functions to call when an error is set */
 static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
@@ -547,6 +552,25 @@ er_event_final (void)
 }
 
 /*
+ * er_call_stack_init -
+ *   return: error code
+ */
+static int
+er_call_stack_init ()
+{
+#if defined(LINUX)
+  fname_table = mht_create (0, 100, mht_5strhash,
+			    mht_compare_strings_are_equal);
+  if (fname_table == NULL)
+    {
+      return ER_FAILED;
+    }
+#endif
+
+  return NO_ERROR;
+}
+
+/*
  * er_init - Initialize parameters for message module
  *   return: none
  *   msglog_file_name(in): name of message log file
@@ -684,6 +708,11 @@ er_init (const char *msglog_file_name, int exit_ask)
     }
 
   ER_CSECT_EXIT_LOG_FILE ();
+
+  if (er_call_stack_init () != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   return NO_ERROR;
 }
@@ -1025,6 +1054,38 @@ er_start (void)
 #if defined (SERVER_MODE)
 
 /*
+ * er_fname_free -
+ *   return: error code
+ */
+static int
+er_fname_free (const void *key, void *data, void *args)
+{
+  free (key);
+  free (data);
+
+  return NO_ERROR;
+}
+
+/*
+ * er_call_stack_final -
+ *   return: none
+ */
+static void
+er_call_stack_final ()
+{
+#if defined(LINUX)
+  if (fname_table == NULL)
+    {
+      return;
+    }
+
+  mht_map (fname_table, er_fname_free, NULL);
+  mht_destroy (fname_table);
+  fname_table = NULL;
+#endif
+}
+
+/*
  * er_final - Terminate the error message module
  *   return: none
  *   do_global_final(in):
@@ -1101,6 +1162,8 @@ er_final (bool do_global_final)
       er_hasalready_initiated = false;
       ER_CSECT_EXIT_LOG_FILE ();
     }
+
+  er_call_stack_final ();
 }
 
 #else /* SERVER_MODE */
@@ -1338,15 +1401,20 @@ er_notify_event_on_error (int err_id)
 /*
  * er_call_stack_dump_on_error - call stack dump
  *   return: none
+ *   severity(in):
  *   err_id(in):
  */
 static void
-er_call_stack_dump_on_error (int err_id)
+er_call_stack_dump_on_error (int severity, int err_id)
 {
   assert (err_id != NO_ERROR);
 
   err_id = abs (err_id);
-  if (PRM_CALL_STACK_DUMP_ON_ERROR)
+  if (severity == ER_FATAL_ERROR_SEVERITY)
+    {
+      er_dump_call_stack (er_Msglog);
+    }
+  else if (PRM_CALL_STACK_DUMP_ON_ERROR)
     {
       if (PRM_CALL_STACK_DUMP_DEACTIVATION)
 	{
@@ -1516,7 +1584,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	  (*er_Fnlog[severity]) ();
 
 	  /* call stack dump */
-	  er_call_stack_dump_on_error (err_id);
+	  er_call_stack_dump_on_error (severity, err_id);
 
 	  /* event handler */
 	  er_notify_event_on_error (err_id);

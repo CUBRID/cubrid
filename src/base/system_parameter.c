@@ -2215,6 +2215,46 @@ static const char **compat_mode_values[] = {
   compat_mode_values_PRM_PLUS_AS_CONCAT
 };
 
+static const int call_stack_dump_error_codes[] = {
+  ER_GENERIC_ERROR,
+  ER_IO_FORMAT_BAD_NPAGES,
+  ER_IO_READ,
+  ER_IO_WRITE,
+  ER_PB_BAD_PAGEID,
+  ER_PB_UNFIXED_PAGEPTR,
+  ER_DISK_UNKNOWN_SECTOR,
+  ER_DISK_UNKNOWN_PAGE,
+  ER_SP_BAD_INSERTION_SLOT,
+  ER_SP_UNKNOWN_SLOTID,
+  ER_HEAP_UNKNOWN_OBJECT,
+  ER_HEAP_BAD_RELOCATION_RECORD,
+  ER_HEAP_BAD_OBJECT_TYPE,
+  ER_HEAP_OVFADDRESS_CORRUPTED,
+  ER_LK_PAGE_TIMEOUT,
+  ER_LOG_READ,
+  ER_LOG_WRITE,
+  ER_LOG_PAGE_CORRUPTED,
+  ER_LOG_REDO_INTERFACE,
+  ER_LOG_MAYNEED_MEDIA_RECOVERY,
+  ER_LOG_NOTIN_ARCHIVE,
+  ER_TF_BUFFER_UNDERFLOW,
+  ER_TF_BUFFER_OVERFLOW,
+  ER_BTREE_UNKNOWN_KEY,
+  ER_CT_UNKNOWN_CLASSID,
+  ER_CT_INVALID_CLASSID,
+  ER_CT_UNKNOWN_REPRID,
+  ER_CT_INVALID_REPRID,
+  ER_FILE_ALLOC_NOPAGES,
+  ER_FILE_TABLE_CORRUPTED,
+  ER_PAGE_LATCH_TIMEDOUT,
+  ER_PAGE_LATCH_ABORTED,
+  ER_PARTITION_WORK_FAILED,
+  ER_PARTITION_NOT_EXIST,
+  ER_FILE_TABLE_OVERFLOW,
+  ER_HA_GENERIC_ERROR,
+  ER_DESC_ISCAN_ABORTED
+};
+
 static void prm_the_file_has_been_loaded (const char *path);
 static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
 static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
@@ -4372,6 +4412,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_node_list_prm;
   SYSPRM_PARAM *max_log_archives_prm;
   SYSPRM_PARAM *force_remove_log_archives_prm;
+  SYSPRM_PARAM *call_stack_dump_activation_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -4595,6 +4636,25 @@ prm_tune_parameters (void)
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
       prm_set (ha_node_list_prm, newval, false);
+    }
+
+  call_stack_dump_activation_prm =
+    prm_find (PRM_NAME_CALL_STACK_DUMP_ACTIVATION, NULL);
+  if (call_stack_dump_activation_prm)
+    {
+      bool *val;
+      int i;
+
+      if (!PRM_IS_ALLOCATED (call_stack_dump_activation_prm->flag))
+	{
+	  prm_set (call_stack_dump_activation_prm, "-2", false);
+	}
+
+      val = PRM_GET_ERROR_LIST (call_stack_dump_activation_prm->value);
+      for (i = 0; i < DIM (call_stack_dump_error_codes); i++)
+	{
+	  val[abs (call_stack_dump_error_codes[i])] = true;
+	}
     }
 
   return;

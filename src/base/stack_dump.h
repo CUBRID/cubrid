@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined(LINUX)
+extern MHT_TABLE *fname_table;
+#endif
+
 extern void er_dump_call_stack (FILE * outfp);
 
 #endif /* _STACK_DUMP_H_ */

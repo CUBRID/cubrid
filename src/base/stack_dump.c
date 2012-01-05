@@ -255,6 +255,7 @@ static int er_resolve_function_name (const void *address,
 #include <dlfcn.h>
 
 #include "error_code.h"
+#include "memory_hash.h"
 #include "stack_dump.h"
 
 #define PEEK_DATA(addr)	(*(size_t *)(addr))
@@ -366,6 +367,7 @@ er_dump_call_stack (FILE * outfp)
 #include <execinfo.h>
 
 #include "error_code.h"
+#include "memory_hash.h"
 #include "stack_dump.h"
 
 #define MAX_TRACE       32
@@ -430,6 +432,8 @@ er_dump_call_stack (FILE * outfp)
 }
 #endif /* __WORDSIZE == 32 */
 
+MHT_TABLE *fname_table;
+
 static int
 er_resolve_function_name (const void *address, const char *lib_file_name_p,
 			  char *buffer, int buffer_size)
@@ -437,6 +441,15 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p,
   FILE *output;
   char cmd_line[BUFFER_SIZE];
   char *func_name_p, *pos;
+  char buf[BUFFER_SIZE], *key, *data;
+
+  snprintf (buf, BUFFER_SIZE, "%p%s", address, lib_file_name_p);
+  data = mht_get (fname_table, buf);
+  if (data != NULL)
+    {
+      snprintf (buffer, buffer_size, data);
+      return NO_ERROR;
+    }
 
   snprintf (cmd_line, sizeof (cmd_line),
 	    "addr2line -f -C -e %s %p 2>/dev/null", lib_file_name_p, address);
@@ -461,6 +474,26 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p,
     }
 
   pclose (output);
+
+  key = strdup (buf);
+  if (key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  data = strdup (func_name_p);
+  if (data == NULL)
+    {
+      free (key);
+      return ER_FAILED;
+    }
+
+  if (mht_put (fname_table, key, data) == NULL)
+    {
+      free (key);
+      free (data);
+      return ER_FAILED;
+    }
   return NO_ERROR;
 }
 #else /* LINUX */
