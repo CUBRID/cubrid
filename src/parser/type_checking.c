@@ -12565,11 +12565,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_CONCAT_WS:
-      if (o1->node_type != PT_VALUE
-	  || (o2 && o2->node_type != PT_VALUE) || o3->node_type != PT_VALUE)
-	{
-	  return 0;
-	}
       if (DB_VALUE_TYPE (arg3) == DB_TYPE_NULL)
 	{
 	  db_make_null (result);
