@@ -1590,7 +1590,8 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
-					  LOG_FLUSH_TYPE flush_type);
+					  LOG_FLUSH_TYPE flush_type,
+					  LOG_LSA *lsa);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p,
 				     const LOG_LSA * lsa_ptr);

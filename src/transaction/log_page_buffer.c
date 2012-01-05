@@ -1025,7 +1025,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
    * Flush any append dirty buffers at this moment.
    * Then, invalidate any buffer that it is not fixed and dirty
    */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
   csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
 
@@ -1104,7 +1104,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
 		      logpb_flush_all_append_pages (thread_p,
-						    LOG_FLUSH_DIRECT);
+						    LOG_FLUSH_DIRECT, NULL);
 
 		      csect_enter_critical_section (thread_p,
 						    &log_Pb.lpb_cs, INF_WAIT);
@@ -2581,7 +2581,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 
   if (need_flush)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
     }
 
   return log_Gl.append.log_pgptr;
@@ -3001,8 +3001,6 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
        * (which will be written at next time)
        */
       bg_arv_info->current_page_id = last_page->hdr.logical_pageid;
-
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
     }
 }
 
@@ -4669,10 +4667,13 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
   prior_list = prior_lsa_remove_prior_list (thread_p);
   PRIOR_LSA_MUTEX_UNLOCK (&log_Gl.prior_info.prior_lsa_mutex);
 
-  mnt_prior_lsa_list_size (thread_p, current_size / ONE_K);	/* kbytes */
-  mnt_prior_lsa_list_removed (thread_p);
+  if (prior_list != NULL)
+    {
+      mnt_prior_lsa_list_size (thread_p, current_size / ONE_K);	/* kbytes */
+      mnt_prior_lsa_list_removed (thread_p);
 
-  logpb_append_prior_lsa_list (thread_p, prior_list);
+      logpb_append_prior_lsa_list (thread_p, prior_list);
+    }
 
   return NO_ERROR;
 }
@@ -5337,7 +5338,7 @@ error:
  */
 void
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
-			      LOG_FLUSH_TYPE flush_type)
+			      LOG_FLUSH_TYPE flush_type, LOG_LSA * lsa)
 {
 #if !defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
@@ -5404,6 +5405,19 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
       LOG_CS_EXIT ();
 
       return;
+    }
+
+  if (lsa != NULL)
+    {
+      LOG_CS_ENTER (thread_p);
+      if (LSA_LE (lsa, &log_Gl.append.nxio_lsa))
+	{
+	  /* It doesn't necessary for commit to flush log */
+	  LOG_CS_EXIT ();
+	  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+	  return;
+	}
+      LOG_CS_EXIT ();
     }
 
   if (!LOG_IS_GROUP_COMMIT_ACTIVE ())
@@ -5491,7 +5505,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
        * Somehow we already have an append page, flush all current append page
        * and start form scratch
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
       logpb_free_page (thread_p, log_Gl.append.log_pgptr);
       log_Gl.append.log_pgptr = NULL;
     }
@@ -5526,7 +5540,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
       LOG_CS_ENTER (thread_p);
       if (LOG_NEED_WAL (lsa_ptr))
 	{
-	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 	}
       LOG_CS_EXIT ();
 
@@ -8706,7 +8720,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
     }
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
   /* MARK THE CHECKPOINT PROCESS */
   node = prior_lsa_alloc_and_copy_data (thread_p,
@@ -8961,7 +8975,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Flush the page since we are going to flush the log header which
    * reflects the new location of the last checkpoint log record
    */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call logpb_flush_all_append_pages()\n");
 
@@ -9347,7 +9361,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
     }
 
   LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
   LOG_CS_EXIT ();
 
   error_code = pgbuf_flush_all_unfixed (thread_p, volid);
@@ -11098,7 +11112,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
   from_vdes = fileio_get_volume_descriptor (from_volid);
 
   /* Flush all dirty pages */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
   error_code = pgbuf_flush_all_unfixed (thread_p, from_volid);
   if (error_code != NO_ERROR)
@@ -11130,7 +11144,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
 			    db_creation, to_volchkpt_lsa, false,
 			    DISK_DONT_FLUSH);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
   (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
 						      LOG_DBCOPY_VOLID);
 
@@ -11463,7 +11477,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+	      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 	      error_code =
 		pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
 							     LOG_DBCOPY_VOLID);
@@ -11788,7 +11802,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
   strcpy (log_Gl.hdr.prefix_name, to_prefix_logname);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
   logpb_flush_header (thread_p);
 
   if (extern_rename == true)
@@ -11956,7 +11970,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        * Now flush every single page of this volume, dismount the volume, rename
        * the volume, and mount the volume
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
       error_code = pgbuf_flush_all (thread_p, volid);
       if (error_code != NO_ERROR)
 	{
@@ -12709,7 +12723,7 @@ logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
 
   log_append_empty_record (thread_p, LOG_DUMMY_FILLPAGE_FORARCHIVE);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
   return NO_ERROR;
 }

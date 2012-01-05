@@ -620,6 +620,7 @@ static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd,
 static int fileio_flush_control_get_token (THREAD_ENTRY * thread_p,
 					   int ntoken);
 static int fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb);
+static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
 
 static void
 fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
@@ -663,6 +664,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
   if (need_sync)
     {
       fileio_synchronize_all (thread_p, false);
+      fileio_synchronize_bg_archive_volume (thread_p);
     }
 #endif /* SERVER_MODE */
 }
@@ -4032,6 +4034,21 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
       mnt_file_iosynches (thread_p);
       return vol_fd;
     }
+}
+
+/*
+ * fileio_synchronize_bg_archive_volume () -
+ *   return:
+ */
+static int
+fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p)
+{
+  APPLY_ARG arg = { 0 };
+
+  arg.vol_id = LOG_DBLOG_BG_ARCHIVE_VOLID;
+  (void) fileio_traverse_system_volume (thread_p,
+					fileio_synchronize_sys_volume, &arg);
+  return NO_ERROR;
 }
 
 /*

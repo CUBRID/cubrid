@@ -3126,7 +3126,7 @@ thread_log_flush_thread (void *arg_p)
       else
 	{
 	  LOG_CS_ENTER (tsd_ptr);
-	  logpb_flush_all_append_pages (tsd_ptr, LOG_FLUSH_DIRECT);
+	  logpb_flush_all_append_pages (tsd_ptr, LOG_FLUSH_DIRECT, NULL);
 	  LOG_CS_EXIT ();
 
 	  log_Stat.gc_flush_count++;

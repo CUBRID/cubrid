@@ -2644,7 +2644,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 	  /* Force the log to reduce the possibility of unreclaiming a temporary
 	     file in the case of system crash. See above */
 	  LOG_CS_ENTER (thread_p);
-	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 	  LOG_CS_EXIT ();
 	}
     }

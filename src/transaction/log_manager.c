@@ -922,7 +922,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    * Then, free the page, same for the header page.
    */
   logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
   log_Gl.chkpt_every_npages = PRM_LOG_CHECKPOINT_NPAGES;
 
@@ -1799,7 +1799,7 @@ log_final (THREAD_ENTRY * thread_p)
   /*
    * Flush all log append dirty pages and all data dirty pages
    */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
   error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
   if (error_code == NO_ERROR)
@@ -3382,6 +3382,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   LOG_TDES *tdes;
   struct log_ha_server_state *ha_server_state;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -3401,9 +3402,9 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   ha_server_state = (struct log_ha_server_state *) node->data_header;
   ha_server_state->state = state;
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -3634,6 +3635,7 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
   LOG_TDES *tdes;		/* Transaction descriptor    */
   int tran_index;
   int error_code = NO_ERROR;
+  LOG_LSA start_lsa;
 
   /* We will log client undo stuff even when we are not logging */
 
@@ -3675,13 +3677,13 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 	  return;
 	}
 
-      (void) prior_lsa_next_record (thread_p, node, tdes);
+      start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
       /*
        * END append. NOTE: We must flush the log since there is not
        * coordination WAL rule for the client. Thus, the log has to be permanent
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 
       if (tdes->topops.last >= 0)
 	{
@@ -4515,6 +4517,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   struct log_start_postpone *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE,
 					RV_NOT_DEFINED, NULL,
@@ -4527,11 +4530,11 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   start_posp = (struct log_start_postpone *) node->data_header;
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -4557,6 +4560,7 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 							 * operations
 							 */
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_COMMIT_TOPOPE_WITH_POSTPONE,
@@ -4572,10 +4576,10 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_start_posp->posp_lsa, start_postpone_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -4597,6 +4601,7 @@ log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   struct log_start_client *start_client;	/* Start client actions */
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS,
@@ -4610,10 +4615,10 @@ log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   start_client = (struct log_start_client *) node->data_header;
   LSA_COPY (&start_client->lsa, &tdes->client_posp_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -4635,6 +4640,7 @@ log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   struct log_start_client *start_client;	/* Start client actions */
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS,
@@ -4648,10 +4654,10 @@ log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   start_client = (struct log_start_client *) node->data_header;
   LSA_COPY (&start_client->lsa, &tdes->client_undo_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -4675,6 +4681,7 @@ log_append_topope_commit_client_loose_ends (THREAD_ENTRY * thread_p,
 {
   struct log_topope_start_client *top_start_client;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
@@ -4690,10 +4697,10 @@ log_append_topope_commit_client_loose_ends (THREAD_ENTRY * thread_p,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_start_client->lsa, &tdes->client_posp_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -4717,6 +4724,7 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 {
   struct log_topope_start_client *top_start_client;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
@@ -4732,11 +4740,11 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_start_client->lsa, &tdes->client_undo_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -4858,6 +4866,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   struct log_donetime *donetime;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, iscommitted,
 					RV_NOT_DEFINED, NULL,
@@ -4870,7 +4879,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   donetime = (struct log_donetime *) node->data_header;
   donetime->at_time = time (NULL);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   /* END append */
   if (iscommitted == LOG_COMMIT)
@@ -4879,7 +4888,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
       log_Stat.commit_count++;
 
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 
 #if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
@@ -6121,7 +6130,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
     {
       LOG_CS_ENTER (thread_p);
       /* We are not logging */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
       (void) pgbuf_flush_all_unfixed (thread_p, NULL_VOLID);
       if (LOG_HAS_LOGGING_BEEN_IGNORED ())
 	{
@@ -6429,6 +6438,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   bool all_acks = true;
   int i;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   state = tdes->state;
 
@@ -6472,9 +6482,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		      TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
 		    state = tdes->state;
 
-		    (void) prior_lsa_next_record (thread_p, node, tdes);
+		    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL,
+						  &start_lsa);
 		  }
 	      }
 	    else
@@ -6498,9 +6509,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		      TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
 		    state = tdes->state;
 
-		    (void) prior_lsa_next_record (thread_p, node, tdes);
+		    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL,
+						  &start_lsa);
 		  }
 	      }
 	    /*
@@ -7316,6 +7328,7 @@ log_client_append_done_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   struct log_run_client *run_client;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, rectype,
 					RV_NOT_DEFINED, NULL,
@@ -7328,9 +7341,9 @@ log_client_append_done_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   run_client = (struct log_run_client *) node->data_header;
   LSA_COPY (&run_client->nxlsa, next_lsa);
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -8986,7 +8999,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 
   xlogtb_dump_trantable (thread_p, out_fp);
   logpb_dump (out_fp);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
   logpb_flush_header (thread_p);
 
   /* Now start dumping the log */
@@ -10619,7 +10632,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
 
       LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
       LOG_CS_EXIT ();
 
       (void) pgbuf_flush_all (thread_p, volid);
@@ -10637,7 +10650,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 				&log_Gl.hdr.chkpt_lsa, false,
 				DISK_DONT_FLUSH);
       LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
       LOG_CS_EXIT ();
 
       (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, volid);
@@ -10817,7 +10830,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 
   if (flush_log != false || flush_data_pages != false)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
     }
 
   if (flush_data_pages)

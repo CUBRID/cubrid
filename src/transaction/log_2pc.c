@@ -1429,7 +1429,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
    * again.
    */
   logpb_end_append (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, NULL);
   assert (LOG_CS_OWN (thread_p));
 
   LOG_CS_EXIT ();
@@ -1474,6 +1474,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   int i;
   int tran_index;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1620,7 +1621,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   /* ignore num_page_locks */
   prepared->num_page_locks = 0;
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   if (acq_locks.obj != NULL)
     {
@@ -1633,7 +1634,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    */
 
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 
   return tdes->state;
 }
@@ -1824,6 +1825,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   struct log_2pc_start *start_2pc;	/* Start 2PC log record */
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_START,
 					RV_NOT_DEFINED, NULL,
@@ -1843,7 +1845,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   start_2pc->num_particps = tdes->coord->num_particps;
   start_2pc->particp_id_length = tdes->coord->particp_id_length;
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   /*
    * END append
@@ -1854,7 +1856,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * particpants know about each other and the coordiantor.
    */
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 }
 
 /*
@@ -1882,6 +1884,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			 LOG_RECTYPE decision)
 {
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, decision,
 					RV_NOT_DEFINED, NULL,
@@ -1891,7 +1894,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       return;
     }
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   if (decision == LOG_2PC_COMMIT_DECISION)
     {
@@ -1903,7 +1906,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * participant needed in the event of a crash. If the decision is not
        * found in the log, we will assume abort
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
     }
   else
     {
