@@ -70,6 +70,12 @@
       || ((node_type) == BTREE_NON_LEAF_NODE && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
     ? DISK_VPID_SIZE : (key_len))
 
+#define BTREE_HEADER_SIZE(page) \
+  (spage_get_record_length((page), HEADER) + spage_slot_size())
+
+#define BTREE_NODE_MAX_SIZE(page) \
+  (db_page_size() - spage_header_size() - BTREE_HEADER_SIZE(page))
+
 /*
  * Page header information related defines
  */
@@ -238,7 +244,8 @@ static DB_VALUE *btree_find_split_point (THREAD_ENTRY * thread_p,
 					 DB_VALUE * key, bool * clear_midkey);
 static int btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info,
 				   float new_value, int max_index);
-static int btree_split_find_pivot (int total,
+static int btree_split_find_pivot (PAGE_PTR page_ptr, int total,
+				   int entry_size,
 				   BTREE_NODE_SPLIT_INFO * split_info);
 static int btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
@@ -9304,7 +9311,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   int n, i, mid_size;
   bool m_clear_key, n_clear_key;
   DB_VALUE *mid_key = NULL, *next_key = NULL, *prefix_key = NULL, *tmp_key;
-  int key_read, found;
+  bool key_read, found;
   char *header_ptr;
   NON_LEAF_REC nleaf_pnt;
   LEAF_REC leaf_pnt;
@@ -9331,30 +9338,25 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
       goto error;
     }
 
+  key_len = btree_get_key_length (key);
+  key_len = BTREE_GET_KEY_LEN_IN_PAGE (node_type, key_len);
+
   key_read = false;
 
   /* find the slot position of the key if it is to be located in the page */
   if (node_type == BTREE_LEAF_NODE)
     {
-      found =
-	btree_search_leaf_page (thread_p, btid, page_ptr, key, &slot_id);
+      found = btree_search_leaf_page (thread_p, btid, page_ptr,
+				      key, &slot_id);
       if (slot_id == NULL_SLOTID)	/* leaf search failed */
 	{
 	  goto error;
 	}
-
-      key_len = btree_get_key_length (key);
-      key_len = ((key_len < BTREE_MAX_KEYLEN_INPAGE)
-		 ? key_len : DISK_VPID_SIZE);
     }
   else
     {
       found = 0;
       slot_id = NULL_SLOTID;
-
-      key_len = btree_get_key_length (key);
-      key_len = ((key_len < BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
-		 ? key_len : DISK_VPID_SIZE);
     }
 
   /* records will be variable if:
@@ -9370,7 +9372,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 	|| node_type == BTREE_LEAF_NODE))
     {
       /* records are of fixed size */
-      *mid_slot = btree_split_find_pivot (n, &split_info);
+      *mid_slot = btree_split_find_pivot (NULL, n, 0, &split_info);
     }
   else
     {
@@ -9384,10 +9386,11 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 
       if (node_type == BTREE_LEAF_NODE && !found)
 	{			/* take key length into consideration */
-
 	  ent_size = LEAFENTSZ (key_len);
 	  tot_rec += ent_size;
-	  mid_size = btree_split_find_pivot (tot_rec, &split_info);
+
+	  mid_size = btree_split_find_pivot (page_ptr, tot_rec,
+					     ent_size, &split_info);
 	  for (i = 1, sum = 0; i < slot_id && sum < mid_size; i++)
 	    {
 	      sum += spage_get_record_length (page_ptr, i);
@@ -9401,11 +9404,11 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 		  sum += spage_get_record_length (page_ptr, i);
 		}
 	    }
-
 	}
       else
 	{			/* consider only the length of the records in the page */
-	  mid_size = btree_split_find_pivot (tot_rec, &split_info);
+	  mid_size = btree_split_find_pivot (page_ptr, tot_rec,
+					     0, &split_info);
 	  for (i = 1, sum = 0; sum < mid_size && i <= n; i++)
 	    {
 	      sum += spage_get_record_length (page_ptr, i);
@@ -9588,11 +9591,14 @@ success:
 /*
  * btree_split_find_pivot () -
  *   return:
+ *   page_ptr(in)
  *   total(in):
+ *   entry_size(in):
  *   split_info(in):
  */
 static int
-btree_split_find_pivot (int total, BTREE_NODE_SPLIT_INFO * split_info)
+btree_split_find_pivot (PAGE_PTR page_ptr, int total, int entry_size,
+			BTREE_NODE_SPLIT_INFO * split_info)
 {
   int split_point;
 
@@ -9604,9 +9610,29 @@ btree_split_find_pivot (int total, BTREE_NODE_SPLIT_INFO * split_info)
     }
   else
     {
-      split_point = (int) (total * MAX (MIN (split_info->pivot,
-					     BTREE_SPLIT_MAX_PIVOT),
-					BTREE_SPLIT_MIN_PIVOT));
+      if (page_ptr == NULL)
+	{
+	  /* records are of fixed size */
+	  split_point = total * MAX (MIN (split_info->pivot,
+					  BTREE_SPLIT_MAX_PIVOT),
+				     BTREE_SPLIT_MIN_PIVOT);
+	}
+      else
+	{
+	  total += ((spage_number_of_records (page_ptr) - 1)
+		    * spage_slot_size ());
+
+	  total = MIN (total, BTREE_NODE_MAX_SIZE (page_ptr));
+
+	  split_point = total * MAX (MIN (split_info->pivot,
+					  BTREE_SPLIT_MAX_PIVOT),
+				     BTREE_SPLIT_MIN_PIVOT);
+
+	  split_point = MAX (entry_size + total * BTREE_SPLIT_MIN_PIVOT,
+			     split_point);
+	  split_point = MIN (total * BTREE_SPLIT_MAX_PIVOT - entry_size,
+			     split_point);
+	}
     }
 
   return split_point;
