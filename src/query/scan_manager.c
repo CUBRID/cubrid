@@ -2138,9 +2138,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       /* reset any previous results for multiple range optimization */
       int i;
 
-      assert (indx_infop->range_type == R_KEY ||
-	      indx_infop->range_type == R_KEYLIST);
-
       for (i = 0; i < iscan_id->multi_range_opt.cnt; i++)
 	{
 	  if (iscan_id->multi_range_opt.top_n_items[i] != NULL)
@@ -2307,6 +2304,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  iscan_id->curr_keyno++;
 	}
 
+      if (iscan_id->multi_range_opt.use)
+	{
+	  /* with multiple range optimization, we store the only the top N
+	   * OIDS or index keys: the only valid exit condition from
+	   * 'btree_range_search' is when the index scan has reached the end
+	   * for this key */
+	  assert (BTREE_END_OF_SCAN (BTS));
+	}
       break;
 
     case R_KEYLIST:
@@ -2423,6 +2428,17 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    {
 	      /* skip this key value and continue to the next */
 	      iscan_id->curr_keyno++;
+	      if (key_limit_upper && !key_limit_lower &&
+		  indx_infop->key_info.key_limit_reset)
+		{
+		  if (scan_init_index_key_limit (thread_p, iscan_id,
+						 &indx_infop->key_info,
+						 s_id->vd) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		  *key_limit_upper = iscan_id->key_limit_upper;
+		}
 	      continue;
 	    }
 
@@ -2472,8 +2488,31 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  if (BTREE_END_OF_SCAN (BTS))
 	    {
 	      iscan_id->curr_keyno++;
+	      /* reset upper key limit, if flag is set */
+	      if (key_limit_upper && !key_limit_lower &&
+		  indx_infop->key_info.key_limit_reset)
+		{
+		  if (scan_init_index_key_limit (thread_p, iscan_id,
+						 &indx_infop->key_info,
+						 s_id->vd) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		  *key_limit_upper = iscan_id->key_limit_upper;
+		}
 	    }
 
+	  if (iscan_id->multi_range_opt.use)
+	    {
+	      /* with multiple range optimization, we store the only the top N
+	       * OIDS or index keys: the only valid exit condition from
+	       * 'btree_range_search' is when the index scan has reached the end
+	       * for this key */
+	      assert (BTREE_END_OF_SCAN (BTS));
+	      /* continue loop : exhaust all keys in one shot when in
+	       * multiple range search optimization mode */
+	      continue;
+	    }
 	  if (iscan_id->oid_list.oid_cnt > 0)
 	    {
 	      /* we've got some result */
@@ -3069,13 +3108,11 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize multiple range search optimization structure */
   {
     bool use_multi_range_opt =
-      (isidp->bt_num_attrs > 1 &&
-       (isidp->indx_info->range_type == R_KEYLIST ||
-	isidp->indx_info->range_type == R_KEY) &&
-       isidp->indx_info->key_info.key_limit_reset == 1 &&
-       isidp->key_limit_upper > 0 &&
-       isidp->key_limit_upper < DB_INT32_MAX &&
-       isidp->key_limit_lower == -1) ? true : false;
+      (isidp->bt_num_attrs > 1
+       && isidp->indx_info->key_info.key_limit_reset == 1
+       && isidp->key_limit_upper > 0
+       && isidp->key_limit_upper < DB_INT32_MAX
+       && isidp->key_limit_lower == -1) ? true : false;
 
     if (scan_init_multi_range_optimization (thread_p,
 					    &(isidp->multi_range_opt),

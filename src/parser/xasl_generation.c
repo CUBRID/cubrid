@@ -18996,15 +18996,6 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
       goto exit;
     }
 
-  /* Apply optimization to single key selection paths ("j=1") and also
-   * ranges like "i in (1,2,3)".
-   */
-  if (scan->spec_list->indexptr->range_type != R_KEYLIST &&
-      scan->spec_list->indexptr->range_type != R_KEY)
-    {
-      goto exit;
-    }
-
   /* recheck orderby column and sort order */
   can_optimize = false;
   ret = pt_check_subplan_and_orderby_correlation (subplan,

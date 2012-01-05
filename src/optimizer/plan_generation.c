@@ -3446,12 +3446,15 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 
   *can_optimize = false;
 
-  if (!subplan || !subplan->info || !subplan->plan_un.scan.index ||
-      subplan->plan_type != QO_PLANTYPE_SCAN ||
-      (subplan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
-       subplan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN
-       && subplan->plan_un.scan.scan_method !=
-       QO_SCANMETHOD_INDEX_GROUPBY_SCAN))
+  if (!subplan
+      || !subplan->info
+      || !subplan->plan_un.scan.index
+      || subplan->plan_type != QO_PLANTYPE_SCAN
+      || ((subplan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+	  && (subplan->plan_un.scan.scan_method !=
+	      QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+	  && (subplan->plan_un.scan.scan_method !=
+	      QO_SCANMETHOD_INDEX_GROUPBY_SCAN)))
     {
       return NO_ERROR;
     }
@@ -3481,8 +3484,8 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
     {
       seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entryp->seg_idxs[i]));
       CAST_POINTER_TO_NODE (seg_node);
-      if (seg_node->node_type == PT_NAME &&
-	  pt_name_equal (parser, sort_node, seg_node))
+      if (seg_node->node_type == PT_NAME
+	  && pt_name_equal (parser, sort_node, seg_node))
 	{
 	  idx_col = i;
 	  break;
@@ -3515,8 +3518,8 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	{
 	  for (j = 0; j < index_entryp->nsegs; j++)
 	    {
-	      if ((index_entryp->seg_idxs[j]) ==
-		  QO_SEG_IDX (termp->index_seg[i]))
+	      if ((index_entryp->seg_idxs[j] ==
+		   QO_SEG_IDX (termp->index_seg[i])))
 		{
 		  pos = j;
 		  break;
@@ -3525,7 +3528,7 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	}
       if (pos == -1)
 	{
-	  free (used_cols);
+	  free_and_init (used_cols);
 	  return NO_ERROR;
 	}
 
@@ -3539,11 +3542,27 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	      break;
 	    case PT_IS_IN:
 	    case PT_EQ_SOME:
-	    case PT_RANGE:
 	      kl_terms++;
 	      break;
+	    case PT_RANGE:
+	      {
+		PT_NODE *between_and;
+
+		between_and = QO_TERM_PT_EXPR (termp)->info.expr.arg2;
+		if (PT_IS_EXPR_NODE (between_and)
+		    && between_and->info.expr.op == PT_BETWEEN_EQ_NA)
+		  {
+		    kl_terms++;
+		  }
+		else
+		  {
+		    free_and_init (used_cols);
+		    return NO_ERROR;
+		  }
+	      }
+	      break;
 	    default:
-	      free (used_cols);
+	      free_and_init (used_cols);
 	      return NO_ERROR;
 	    }
 	}
@@ -3560,8 +3579,8 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	{
 	  for (j = 0; j < index_entryp->nsegs; j++)
 	    {
-	      if ((index_entryp->seg_idxs[j]) ==
-		  QO_SEG_IDX (termp->index_seg[i]))
+	      if ((index_entryp->seg_idxs[j] ==
+		   QO_SEG_IDX (termp->index_seg[i])))
 		{
 		  pos = j;
 		  break;
@@ -3574,7 +3593,7 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	    {
 	      continue;
 	    }
-	  free (used_cols);
+	  free_and_init (used_cols);
 	  return NO_ERROR;
 	}
 
@@ -3591,7 +3610,7 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
   /* check key list terms */
   if (kl_terms > 1)
     {
-      free (used_cols);
+      free_and_init (used_cols);
       return NO_ERROR;
     }
   /* check used columns */
@@ -3599,13 +3618,13 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
     {
       if (used_cols[i] == 0)
 	{
-	  free (used_cols);
+	  free_and_init (used_cols);
 	  return NO_ERROR;
 	}
     }
 
   *can_optimize = true;
 
-  free (used_cols);
+  free_and_init (used_cols);
   return NO_ERROR;
 }
