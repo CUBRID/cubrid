@@ -37,6 +37,7 @@
 
 #include "csql.h"
 #include "memory_alloc.h"
+#include "system_parameter.h"
 
 /* fixed stop position of a tab */
 #define TAB_STOP        8
@@ -1039,7 +1040,7 @@ csql_is_statement_end (const char *str)
 	      state = CSQL_STATE_GENERAL;
 	      break;
 	    }
-	  if (*p == '\\' && *(p + 1) == '\'')
+	  if (*p == '\\' && !PRM_NO_BACKSLASH_ESCAPES)
 	    {
 	      p++;
 	      break;
@@ -1052,7 +1053,7 @@ csql_is_statement_end (const char *str)
 	      state = CSQL_STATE_GENERAL;
 	      break;
 	    }
-	  if (*p == '\\' && *(p + 1) == '"')
+	  if (*p == '\\' && !PRM_NO_BACKSLASH_ESCAPES)
 	    {
 	      p++;
 	      break;
