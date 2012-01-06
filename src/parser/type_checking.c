@@ -18078,6 +18078,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser,
   bool lhs_less = false;
   bool lhs_greater = false;
   bool always_false = false;
+  bool always_false_due_to_null = false;
   bool always_true = false;
   PT_NODE *result = expr;
   double dtmp;
@@ -18085,7 +18086,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser,
   /* we can't determine anything if the types are the same */
   if (lhs_type == rhs_type)
     {
-      return (result);
+      return result;
     }
 
   /* check if op is always false due to null */
@@ -18095,9 +18096,15 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser,
 	  && rhs_type != PT_TYPE_SET
 	  && rhs_type != PT_TYPE_SEQUENCE && rhs_type != PT_TYPE_MULTISET)
 	{
-	  always_false = true;
+	  always_false_due_to_null = true;
 	  goto end;
 	}
+    }
+
+  /* we only allow PT_EQ, PT_GT, PT_GE, PT_LT, PT_LE. */
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+    {
+      return result;
     }
 
   /* we need to extend the following to compare dates and times, but
@@ -18311,6 +18318,19 @@ end:
       result->info.value.location = expr->info.expr.location;
       (void) pt_value_to_db (parser, result);
     }
+  else if (always_false_due_to_null)
+    {
+      result = parser_new_node (parser, PT_VALUE);
+      if (result == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
+      result->type_enum = PT_TYPE_NULL;
+      result->info.value.location = expr->info.expr.location;
+      (void) pt_value_to_db (parser, result);
+    }
   else if (always_true)
     {
       result = parser_new_node (parser, PT_VALUE);
@@ -18326,7 +18346,7 @@ end:
       (void) pt_value_to_db (parser, result);
     }
 
-  return (result);
+  return result;
 }
 
 
