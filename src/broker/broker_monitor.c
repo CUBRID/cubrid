@@ -340,7 +340,7 @@ main (int argc, char **argv)
 	}
       else if (refresh_sec > 0)
 	{
-	  for (i = 0; i < refresh_sec * 10; i++)
+	  for (i = 0; i < 10; i++)
 	    {
 #if defined (WINDOWS)
 	      if (shm_br != NULL && shm_br->magic == 0)
