@@ -4102,6 +4102,11 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 					     serial_class_mop,
 					     auto_increment_name);
 
+	  /* If this att is inherited from a super class,
+	   * serial_mop can be NULL.
+	   * In this case, att->auto_increment will be set later.
+	   */
+#if 0
 	  if (serial_mop == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -4111,7 +4116,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	      or_abort (buf);
 	      return NULL;
 	    }
-
+#endif
 	  att->auto_increment = serial_mop;
 	}
     }
