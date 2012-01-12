@@ -174,6 +174,7 @@ enum t_cas_func_code
   CAS_FC_GET_ROW_COUNT = 39,
   CAS_FC_GET_LAST_INSERT_ID = 40,
   CAS_FC_CURSOR_CLOSE = 41,
+  CAS_FC_PREPARE_AND_EXECUTE = 42,
 
   /* Whenever you want to introduce a new function code, 
    * you must add a corresponding function entry to server_fn_table 

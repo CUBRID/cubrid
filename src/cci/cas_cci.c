@@ -1498,6 +1498,97 @@ execute_end:
 }
 
 int
+cci_prepare_and_execute (int con_id, char *sql_stmt,
+			 int max_col_size, int *exec_retval,
+			 T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  T_REQ_HANDLE *req_handle = NULL;
+  int err_code = 0;
+  int req_handle_id;
+
+  *exec_retval = 0;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_prepare_and_execute %d %d %d %d %s", con_handle,
+		    max_col_size, DEBUG_STR (sql_stmt)));
+#endif
+
+  err_buf_reset (err_buf);
+
+  if (sql_stmt == NULL)
+    return CCI_ER_STRING_PARAM;
+
+  while (1)
+    {
+      MUTEX_LOCK (con_handle_table_mutex);
+
+      con_handle = hm_find_con_handle (con_id);
+      if (con_handle == NULL)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  return CCI_ER_CON_HANDLE;
+	}
+
+      if (con_handle->ref_count > 0)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  SLEEP_MILISEC (0, 100);
+	}
+      else
+	{
+	  con_handle->ref_count = 1;
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  break;
+	}
+    }
+
+  req_handle_id = hm_req_handle_alloc (con_id, &req_handle);
+  if (req_handle_id < 0)
+    {
+      err_code = req_handle_id;
+      goto prepare_execute_error;
+    }
+
+  SET_START_TIME (con_handle, con_handle->query_timeout);
+
+  err_code = qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
+				     max_col_size, err_buf);
+
+  *exec_retval = err_code;
+  if (err_code < 0)
+    {
+      goto prepare_execute_error;
+    }
+
+prepare_execute_end:
+  RESET_START_TIME (con_handle);
+  con_handle->ref_count = 0;
+  return req_handle_id;
+
+prepare_execute_error:
+  RESET_START_TIME (con_handle);
+
+  if (req_handle)
+    {
+      hm_req_handle_free (con_handle, req_handle_id, req_handle);
+    }
+
+  con_handle->ref_count = 0;
+
+  if (err_code == CCI_ER_QUERY_TIMEOUT &&
+      con_handle->disconnect_on_query_timeout)
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
+
+  return (err_code);
+}
+
+int
 cci_get_thread_result (int con_id, T_CCI_ERROR * err_buf)
 {
   int err_code;

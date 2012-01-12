@@ -192,7 +192,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_END_SESSION */
   fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
   fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
-  fn_not_supported		/* CAS_FC_CURSOR_CLOSE */
+  fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
+  fn_not_supported		/* CAS_FC_PREPARE_AND_EXECUTE */
 };
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 static T_SERVER_FUNC server_fn_table[] = {
@@ -236,7 +237,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_end_session,		/* CAS_FC_END_SESSION */
   fn_get_row_count,		/* CAS_FC_GET_ROW_COUNT */
   fn_get_last_insert_id,	/* CAS_FC_GET_LAST_INSERT_ID */
-  fn_cursor_close		/* CAS_FC_CURSOR_CLOSE */
+  fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
+  fn_prepare_and_execute	/* CAS_FC_PREPARE_AND_EXECUTE */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -282,7 +284,8 @@ static const char *server_func_name[] = {
   "fn_end_session",
   "fn_get_row_count",
   "fn_get_last_insert_id",
-  "fn_cursor_close"
+  "fn_cursor_close",
+  "fn_prepare_and_execute"
 };
 #endif /* !LIBCAS_FOR_JSP */
 

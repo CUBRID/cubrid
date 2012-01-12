@@ -180,6 +180,12 @@ error_info_set_with_msg (int err_number, int err_indicator,
   return err_indicator;
 }
 
+int
+is_error_info_set (void)
+{
+  return (err_info.err_indicator == ERROR_INDICATOR_UNSET) ? 0 : 1;
+}
+
 void
 error_info_clear (void)
 {

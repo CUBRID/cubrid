@@ -146,7 +146,7 @@ typedef enum
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-static int prepare_info_decode (char *buf, int size,
+static int prepare_info_decode (char *buf, int *size,
 				T_REQ_HANDLE * req_handle);
 static int get_cursor_pos (T_REQ_HANDLE * req_handle, int offset,
 			   char origin);
@@ -159,7 +159,7 @@ static void stream_to_obj (char *buf, T_OBJECT * obj);
 static int get_data_set (T_CCI_U_TYPE u_type, char *col_value_p,
 			 T_SET ** value, int data_size);
 static int get_file_size (char *filename);
-static int get_column_info (char *buf_p, int remain_size,
+static int get_column_info (char *buf_p, int *remain_size,
 			    T_CCI_COL_INFO ** ret_col_info,
 			    char **next_buf_p, bool is_prepare);
 static int oid_get_info_decode (char *buf_p, int remain_size,
@@ -393,6 +393,13 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
+  while (con_handle->deferred_close_handle_count > 0)
+    {
+      ADD_ARG_INT (&net_buf,
+		   con_handle->deferred_close_handle_list[--con_handle->
+							  deferred_close_handle_count]);
+    }
+
   if (net_buf.err_code < 0)
     {
       err_code = net_buf.err_code;
@@ -428,8 +435,9 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       return result_code;
     }
 
+  result_msg_size -= 4;
   err_code =
-    prepare_info_decode (result_msg + 4, result_msg_size - 4, req_handle);
+    prepare_info_decode (result_msg + 4, &result_msg_size, req_handle);
   if (err_code < 0)
     {
       FREE_MEM (result_msg);
@@ -696,6 +704,226 @@ execute_error:
   return err_code;
 }
 
+int
+qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+			char *sql_stmt, int max_col_size,
+			T_CCI_ERROR * err_buf)
+{
+  T_NET_BUF net_buf;
+  char func_code = CAS_FC_PREPARE_AND_EXECUTE;
+  int sql_stmt_size;
+  int err_code;
+  int result_code;
+  int execute_res_count;
+  char *result_msg = NULL;
+  char *result_msg_org;
+  int result_msg_size;
+  T_CCI_QUERY_RESULT *qr = NULL;
+  char fetch_flag;
+  int remain_msg_size = 0;
+  int remained_time = 0;
+  int num_tuple = 0;
+  char prepare_flag = 0;
+  char execute_flag = CCI_EXEC_QUERY_ALL;
+  int prepare_argc_count = 3;
+
+  QUERY_RESULT_FREE (req_handle);
+
+  ALLOC_COPY (req_handle->sql_text, sql_stmt);
+
+  if (req_handle->sql_text == NULL)
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
+  sql_stmt_size = strlen (req_handle->sql_text) + 1;
+
+  net_buf_init (&net_buf);
+
+  /* prepare info */
+  net_buf_cp_str (&net_buf, &func_code, 1);
+  prepare_argc_count += con_handle->deferred_close_handle_count;
+  ADD_ARG_INT (&net_buf, prepare_argc_count);
+  ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
+	       con_handle->charset);
+  ADD_ARG_BYTES (&net_buf, &prepare_flag, 1);
+  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+
+  while (con_handle->deferred_close_handle_count > 0)
+    {
+      ADD_ARG_INT (&net_buf,
+		   con_handle->deferred_close_handle_list[--con_handle->
+							  deferred_close_handle_count]);
+    }
+
+  /* execute info */
+  ADD_ARG_BYTES (&net_buf, &execute_flag, 1);
+  ADD_ARG_INT (&net_buf, max_col_size);
+  ADD_ARG_INT (&net_buf, req_handle->max_row);
+  ADD_ARG_BYTES (&net_buf, NULL, 0);
+
+  ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
+    {
+      /* query timeout - CCI does not support query timeout by itself. */
+      ADD_ARG_INT (&net_buf, 0);
+    }
+
+  if (net_buf.err_code < 0)
+    {
+      err_code = net_buf.err_code;
+      goto prepare_and_execute_error;
+    }
+
+  if (TIMEOUT_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  err_code = CCI_ER_QUERY_TIMEOUT;
+	  goto prepare_and_execute_error;
+	}
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+
+  if (err_code < 0)
+    {
+      goto prepare_and_execute_error;
+    }
+
+  net_buf_clear (&net_buf);
+
+
+  /* prepare result */
+  result_code =
+    net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size, err_buf,
+			  remained_time);
+
+  if (result_code < 0)
+    {
+      return result_code;
+    }
+
+  result_msg_org = result_msg;
+  result_msg += 4;
+  result_msg_size -= 4;
+  remain_msg_size = result_msg_size;
+
+  err_code = prepare_info_decode (result_msg, &result_msg_size, req_handle);
+
+  if (err_code < 0)
+    {
+      FREE_MEM (result_msg_org);
+      return err_code;
+    }
+
+  req_handle->handle_type = HANDLE_PREPARE;
+  req_handle->server_handle_id = result_code;
+  req_handle->cur_fetch_tuple_index = -1;
+  if (prepare_flag == CCI_PREPARE_UPDATABLE)
+    prepare_flag |= CCI_PREPARE_INCLUDE_OID;
+  req_handle->prepare_flag = prepare_flag;
+  req_handle->cursor_pos = 0;
+  req_handle->valid = 1;
+
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
+    {
+      fetch_flag = 1;
+    }
+  else
+    {
+      fetch_flag = 0;
+    }
+
+  /* execute result */
+  result_msg += (remain_msg_size - result_msg_size);
+
+  memcpy ((char *) &execute_res_count,
+	  result_msg + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
+	  CAS_PROTOCOL_ERR_INDICATOR_SIZE);
+  execute_res_count = ntohl (execute_res_count);
+
+  result_msg += 4;
+  result_msg_size -= 4;
+
+  err_code = execute_array_info_decode (result_msg, result_msg_size,
+					EXECUTE_EXEC, &qr, &remain_msg_size);
+
+  if (err_code < 0 || qr == NULL)
+    {
+      req_handle->num_query_res = 0;
+      req_handle->qr = NULL;
+    }
+  else
+    {
+      req_handle->num_query_res = err_code;
+      req_handle->qr = qr;
+    }
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT
+      || req_handle->stmt_type == CUBRID_STMT_GET_STATS
+      || req_handle->stmt_type == CUBRID_STMT_CALL
+      || req_handle->stmt_type == CUBRID_STMT_EVALUATE)
+    {
+      if (execute_flag & CCI_EXEC_ASYNC)
+	{
+	  req_handle->num_tuple = -1;
+	}
+      else
+	{
+	  req_handle->num_tuple = execute_res_count;
+	}
+    }
+  else if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
+    {
+      req_handle->num_tuple = execute_res_count;
+    }
+  else
+    {
+      req_handle->num_tuple = -1;
+    }
+
+  req_handle->execute_flag = execute_flag;
+
+  hm_req_handle_fetch_buf_free (req_handle);
+  req_handle->cursor_pos = 0;
+
+  /* If fetch_flag is 1, executing query and fetching data
+     is processed together.
+     So, fetching results are included in result_msg.
+   */
+  if (fetch_flag)
+    {
+      req_handle->cursor_pos = 1;
+      num_tuple = decode_fetch_result (req_handle, result_msg_org,
+				       result_msg + (result_msg_size -
+						     remain_msg_size) + 4,
+				       remain_msg_size - 4,
+				       con_handle->charset);
+      req_handle->cursor_pos = 0;
+      if (num_tuple < 0)
+	{
+	  FREE_MEM (result_msg_org);
+	  return num_tuple;
+	}
+    }
+  else
+    {
+      FREE_MEM (result_msg_org);
+    }
+
+  return execute_res_count;
+
+prepare_and_execute_error:
+  net_buf_clear (&net_buf);
+  return err_code;
+}
+
+
 void
 qe_bind_value_free (int num_bind, T_BIND_VALUE * bind_value)
 {
@@ -847,7 +1075,9 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CLOSE_REQ_HANDLE;
-  int err_code;
+  int err_code = 0;
+  int *new_deferred_close_handle_list = NULL;
+  int new_deferred_max_close_handle_count;
 
   /* same to qe_close_con.
      when statement pool is on,
@@ -860,6 +1090,49 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
     {
       return 0;
     }
+
+  if (con_handle->deferred_close_handle_count == 0 &&
+      con_handle->deferred_max_close_handle_count !=
+      DEFERRED_CLOSE_HANDLE_ALLOC_SIZE)
+    {
+      /* shrink the list size */
+      new_deferred_close_handle_list =
+	(int *) REALLOC (con_handle->deferred_close_handle_list,
+			 sizeof (int) * DEFERRED_CLOSE_HANDLE_ALLOC_SIZE);
+      if (new_deferred_close_handle_list == NULL)
+	{
+	  goto send_close_handle_msg;
+	}
+      con_handle->deferred_max_close_handle_count =
+	DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+      con_handle->deferred_close_handle_list = new_deferred_close_handle_list;
+    }
+  else if (con_handle->deferred_close_handle_count + 1 >
+	   con_handle->deferred_max_close_handle_count)
+    {
+      /* grow the list size */
+      new_deferred_max_close_handle_count =
+	con_handle->deferred_max_close_handle_count +
+	DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+      new_deferred_close_handle_list =
+	(int *) REALLOC (con_handle->deferred_close_handle_list,
+			 sizeof (int) * new_deferred_max_close_handle_count);
+      if (new_deferred_close_handle_list == NULL)
+	{
+	  goto send_close_handle_msg;
+	}
+      con_handle->deferred_max_close_handle_count =
+	new_deferred_max_close_handle_count;
+      con_handle->deferred_close_handle_list = new_deferred_close_handle_list;
+    }
+
+  con_handle->deferred_close_handle_list[con_handle->
+					 deferred_close_handle_count++] =
+    req_handle->server_handle_id;
+
+  return err_code;
+
+send_close_handle_msg:
 
   net_buf_init (&net_buf);
 
@@ -877,7 +1150,9 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   err_code = net_recv_msg (con_handle, NULL, NULL, NULL);
 
@@ -3603,11 +3878,11 @@ get_windows_charset_code (char *str)
 #endif
 
 static int
-prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
+prepare_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
 {
   int num_bind_info;
   int num_col_info;
-  int remain_size = size;
+  int remain_size = *size;
   char stmt_type;
   char updatable_flag = 0;
   char *cur_p = buf;
@@ -3650,7 +3925,7 @@ prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   remain_size -= 1;
   cur_p += 1;
 
-  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, true);
+  num_col_info = get_column_info (cur_p, &remain_size, &col_info, NULL, true);
   if (num_col_info < 0)
     {
       if (col_info != NULL)
@@ -3666,6 +3941,7 @@ prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
 
+  *size = remain_size;
   return 0;
 }
 
@@ -3926,10 +4202,11 @@ get_file_size (char *filename)
 }
 
 static int
-get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
+get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
 		 char **next_buf_p, bool is_prepare)
 {
   char *cur_p = buf_p;
+  int remain_size = *size;
   int num_col_info = 0;
   T_CCI_COL_INFO *col_info = NULL;
   int i;
@@ -4147,6 +4424,7 @@ get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
       *next_buf_p = cur_p;
     }
 
+  *size = remain_size;
   return num_col_info;
 
 get_column_info_error:
@@ -4173,6 +4451,7 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
   int err_code;
   char *class_name;
   char *cur_p = buf_p;
+  int size;
   char *next_buf_p;
   T_CCI_COL_INFO *col_info = NULL;
 
@@ -4191,8 +4470,10 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
   remain_size -= class_name_size;
   cur_p += class_name_size;
 
+  size = remain_size;
+
   num_col_info =
-    get_column_info (cur_p, remain_size, &col_info, &next_buf_p, false);
+    get_column_info (cur_p, &size, &col_info, &next_buf_p, false);
   if (num_col_info < 0)
     {
       if (col_info != NULL)
@@ -4239,7 +4520,8 @@ schema_info_decode (char *buf_p, int size, T_REQ_HANDLE * req_handle)
   remain_size -= 4;
   cur_p += 4;
 
-  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, false);
+  size = remain_size;
+  num_col_info = get_column_info (cur_p, &size, &col_info, NULL, false);
   if (num_col_info < 0)
     {
       if (col_info != NULL)
@@ -4266,6 +4548,7 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
   char *next_buf_p;
   T_CCI_COL_INFO *col_info = NULL;
   int num_tuple;
+  int size;
 
   if (remain_size < 1)
     return CCI_ER_COMMUNICATION;
@@ -4273,8 +4556,9 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
   remain_size -= 1;
   cur_p += 1;
 
+  size = remain_size;
   num_col_info =
-    get_column_info (cur_p, remain_size, &col_info, &next_buf_p, false);
+    get_column_info (cur_p, &size, &col_info, &next_buf_p, false);
   if (num_col_info < 0)
     return num_col_info;
 
@@ -4346,7 +4630,8 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   remain_size -= 1;
   cur_p += 1;
 
-  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, true);
+  size = remain_size;
+  num_col_info = get_column_info (cur_p, &size, &col_info, NULL, true);
   if (num_col_info < 0)
     {
       if (col_info != NULL)

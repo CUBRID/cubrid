@@ -303,6 +303,11 @@ extern int qe_prepare (T_REQ_HANDLE * req_handle,
 		       T_CON_HANDLE * con_handle,
 		       char *sql_stmt,
 		       char flag, T_CCI_ERROR * err_buf, int reuse);
+extern int qe_prepare_and_execute (T_REQ_HANDLE * req_handle,
+				   T_CON_HANDLE * con_handle,
+				   char *sql_stmt, int max_col_size,
+				   T_CCI_ERROR * err_buf);
+
 extern void qe_bind_value_free (int num_bind, T_BIND_VALUE * bind_value);
 extern int qe_bind_param (T_REQ_HANDLE * req_handle,
 			  int index,

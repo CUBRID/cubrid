@@ -676,6 +676,9 @@ extern "C"
 			     void *value, T_CCI_U_TYPE u_type, char flag);
   extern int cci_execute (int req_handle,
 			  char flag, int max_col_size, T_CCI_ERROR * err_buf);
+  extern int cci_prepare_and_execute (int con_handle, char *sql_stmt,
+				      int max_col_size, int *exec_retval,
+				      T_CCI_ERROR * err_buf);
   extern int cci_get_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,
 				   void *value, T_CCI_ERROR * err_buf);
   extern int cci_set_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,

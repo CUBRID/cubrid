@@ -722,6 +722,13 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->start_time_is_set = 0;
   con_handle->current_timeout = 0;
 
+  con_handle->deferred_max_close_handle_count =
+    DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+  con_handle->deferred_close_handle_list =
+    (int *) MALLOC (sizeof (int) *
+		    con_handle->deferred_max_close_handle_count);
+  con_handle->deferred_close_handle_count = 0;
+
   return 0;
 }
 
@@ -780,6 +787,7 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
   FREE_MEM (con_handle->db_user);
   FREE_MEM (con_handle->db_passwd);
   FREE_MEM (con_handle->req_handle_table);
+  FREE_MEM (con_handle->deferred_close_handle_list);
   if (con_handle->stmt_pool != NULL)
     {
       mht_destroy (con_handle->stmt_pool, true, false);

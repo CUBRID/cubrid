@@ -69,6 +69,8 @@
 
 #define ALTER_HOST_MAX_SIZE 4
 
+#define DEFERRED_CLOSE_HANDLE_ALLOC_SIZE        256
+
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
@@ -206,6 +208,9 @@ typedef struct
   struct timeval start_time;	/* function start time to check timeout */
   char start_time_is_set;
   int current_timeout;		/* login_timeout or query_timeout */
+  int deferred_max_close_handle_count;
+  int *deferred_close_handle_list;
+  int deferred_close_handle_count;
 } T_CON_HANDLE;
 
 /************************************************************************
