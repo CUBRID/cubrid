@@ -155,6 +155,7 @@ extern bool spage_is_slot_exist (PAGE_PTR pgptr, PGSLOTID slotid);
 extern void spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR pgptr,
 			int isrecord_printed);
 extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
+extern int spage_get_space_for_record (PAGE_PTR page_p, PGSLOTID slot_id);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p,
 					   PAGE_PTR pgptr);

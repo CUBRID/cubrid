@@ -3660,6 +3660,37 @@ spage_get_record_length (PAGE_PTR page_p, PGSLOTID slot_id)
 }
 
 /*
+ * spage_get_space_for_record () -
+ *   return:
+ *   pgptr(in): Pointer to slotted page
+ *   slotid(in): Slot identifier of record
+ */
+int
+spage_get_space_for_record (PAGE_PTR page_p, PGSLOTID slot_id)
+{
+  SPAGE_HEADER *page_header_p;
+  SPAGE_SLOT *slot_p;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_HEADER_CHECK (page_header_p);
+
+  slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
+  if (slot_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3,
+	      slot_id, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p));
+      return -1;
+    }
+
+  return (slot_p->record_length
+	  + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment)
+	  + spage_slot_size ());
+}
+
+/*
  * spage_get_record_type () - Find the type of the record associated with the given slot
  *                 on the given page
  *   return: record type, or -1 if the given slot is invalid
