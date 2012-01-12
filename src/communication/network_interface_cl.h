@@ -298,6 +298,8 @@ extern BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
 extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key,
 					    OID * class_oid, OID * oid);
+extern int btree_delete_with_unique_key (BTID * btid, OID * class_oid,
+					 DB_VALUE * key_value);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid,
 				     PAGEID pageid, char *buffer,

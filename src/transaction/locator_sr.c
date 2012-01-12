@@ -204,10 +204,6 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info);
-static int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid,
-				 OID * oid, int has_index, int op_type,
-				 HEAP_SCANCACHE * scan_cache,
-				 int *force_count);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 					   LC_COPYAREA * force_area);
 
@@ -5418,7 +5414,7 @@ error:
  * Note: The given object is deleted on this heap and all appropiate
  *              index entries are deleted.
  */
-static int
+int
 locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 		      int has_index, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count)

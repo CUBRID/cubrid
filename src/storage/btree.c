@@ -51,6 +51,7 @@
 #include "list_file.h"
 #include "fetch.h"
 #include "connection_defs.h"
+#include "locator_sr.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -2803,6 +2804,56 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 		    == FILE_NEW_FILE) ? 1 : 0;
 
   return rc;
+}
+
+/*
+ * xbtree_delete_with_unique_key -
+ *   btid (in):
+ *   class_oid (in):
+ *   key_value (in):
+ *   return:
+ */
+int
+xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
+			       OID * class_oid, DB_VALUE * key_value)
+{
+  int error = NO_ERROR;
+  OID unique_oid;
+  HEAP_SCANCACHE scan_cache;
+
+  if (xbtree_find_unique (thread_p, btid, false, S_DELETE, key_value,
+			  class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
+    {
+      HFID hfid;
+      int force_count;
+
+      error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = heap_scancache_start_modify (thread_p, &scan_cache, &hfid,
+					   class_oid, SINGLE_ROW_DELETE);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = locator_delete_force (thread_p, &hfid, &unique_oid, true,
+				    SINGLE_ROW_DELETE, &scan_cache,
+				    &force_count);
+
+      heap_scancache_end_modify (thread_p, &scan_cache);
+    }
+  else
+    {
+      btree_set_unknown_key_error (thread_p, btid, key_value,
+				   "xbtree_delete_with_unique_key");
+      error = ER_BTREE_UNKNOWN_KEY;
+    }
+
+  return error;
 }
 
 /*

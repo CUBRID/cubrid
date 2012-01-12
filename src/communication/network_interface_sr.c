@@ -4835,6 +4835,45 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+
+/*
+ * sbtree_delete_with_unique_key -
+ * rid(in):
+ * request(in):
+ * reqlen(in):
+ */
+void
+sbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, unsigned int rid,
+			       char *request, int reqlen)
+{
+  DB_VALUE key_value;
+  char *ptr, *class_name = NULL;
+  int error;
+  OID class_oid;
+  BTID btid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = request;
+  ptr = or_unpack_btid (ptr, &btid);
+  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_mem_value (ptr, &key_value);
+
+  error = xbtree_delete_with_unique_key (thread_p, &btid,
+					 &class_oid, &key_value);
+
+  if (error != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  or_pack_int (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+
+  pr_clear_value (&key_value);
+}
+
 /*
  * sbtree_find_unique -
  *

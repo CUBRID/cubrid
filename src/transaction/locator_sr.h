@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -112,6 +112,10 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p,
 						 int *atts_prefix_length,
 						 const char *btname,
 						 bool repair);
+extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid,
+				 OID * oid, int has_index, int op_type,
+				 HEAP_SCANCACHE * scan_cache,
+				 int *force_count);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p,
 					RECDES * recdes, OID * inst_oid,
 					OID * class_oid, int is_insert,

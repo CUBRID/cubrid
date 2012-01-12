@@ -4037,8 +4037,7 @@ static int
 la_apply_delete_log (LA_ITEM * item)
 {
   DB_OBJECT *class_obj;
-  DB_OBJECT *object = NULL;
-  int error = NO_ERROR, au_save;
+  int error;
   char buf[256];
 
   /* find out class object by class name */
@@ -4046,43 +4045,15 @@ la_apply_delete_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       error = er_errid ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto error_rtn;
-    }
-
-  /* find out object by primary key */
-  object =
-    obj_repl_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
-
-  AU_SAVE_AND_DISABLE (au_save);
-  /* delete this object */
-  if (object)
-    {
-      error = db_drop (object);
-      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
-	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
-	  goto error_rtn;
-	}
-      if (error != NO_ERROR)
-	{
-	  goto error_rtn;
-	}
-
-      la_Info.delete_counter++;
     }
   else
     {
-      help_sprint_value (&item->key, buf, 255);
-      er_log_debug (ARG_FILE_LINE,
-		    "apply_delete : cannot find class %s key %s\n",
-		    item->class_name, buf);
-      error = er_errid ();
+      error = obj_repl_delete_object_by_pkey (class_obj, &item->key);
+      if (error == NO_ERROR)
+	{
+	  la_Info.delete_counter++;
+	}
     }
-
-  AU_RESTORE (au_save);
-
-error_rtn:
 
   if (error != NO_ERROR && la_Info.error_log_enable)
     {
@@ -4093,16 +4064,9 @@ error_rtn:
 		    error, er_msg (), item->class_name, buf);
 #endif
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 3, item->class_name, buf,
-	      error);
-
+	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 3,
+	      item->class_name, buf, error);
       la_Info.fail_counter++;
-    }
-
-  if (object)
-    {
-      ws_release_instance (object);
-      object = NULL;
     }
 
   return error;

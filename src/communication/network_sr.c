@@ -1177,6 +1177,11 @@ net_server_init (void)
   net_Requests[NET_SERVER_ACL_RELOAD].action_attribute = 0;
   net_Requests[NET_SERVER_ACL_RELOAD].processing_function = sacl_reload;
   net_Requests[NET_SERVER_ACL_RELOAD].name = "NET_SERVER_ACL_RELOAD";
+
+  net_Requests[NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY].processing_function =
+    sbtree_delete_with_unique_key;
+  net_Requests[NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY].name =
+    "NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY";
 }
 
 #if defined(CUBRID_DEBUG)

@@ -292,6 +292,9 @@ extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 					DB_VALUE * key,
 					OID * class_oid, OID * oid,
 					bool is_all_class_srch);
+extern int xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p,
+					  BTID * btid, OID * class_oid,
+					  DB_VALUE * key_value);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf,
 				     int buf_size);
 

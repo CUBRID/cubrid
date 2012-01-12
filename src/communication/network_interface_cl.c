@@ -6699,6 +6699,86 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 }
 
 /*
+ * btree_delete_with_unique_key -
+ *
+ * return:
+ *
+ *   btid(in):
+ *   class_oid(in):
+ *   key_value(in):
+ *
+ * NOTE:
+ */
+int
+btree_delete_with_unique_key (BTID * btid, OID * class_oid,
+			      DB_VALUE * key_value)
+{
+#if defined(CS_MODE)
+  int error = ER_FAILED;
+  int req_error, request_size, key_size;
+  char *ptr;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  if (btid == NULL || class_oid == NULL || key_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
+  request_size = OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + key_size;
+  request = (char *) malloc (request_size);
+
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (request_size));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = request;
+  ptr = or_pack_btid (ptr, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_mem_value (ptr, key_value);
+  if (ptr == NULL)
+    {
+      free_and_init (request);
+      return ER_FAILED;
+    }
+
+  req_error = net_client_request (NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY,
+				  request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error);
+    }
+
+  free_and_init (request);
+#else /* CS_MODE */
+  int error = ER_FAILED;
+
+  if (btid == NULL || class_oid == NULL || key_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ENTER_SERVER ();
+  error = xbtree_delete_with_unique_key (NULL, btid, class_oid, key_value);
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+
+  return error;
+}
+
+/*
  * btree_class_test_unique -
  *
  * return:
