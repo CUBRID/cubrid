@@ -5937,7 +5937,6 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 {
   LOG_DATA_ADDR addr;		/* Address of logging data */
   bool isnew_rec;
-  void *slotptr;
   RECDES tmp_recdes, *undo_recdes;
   INT16 bytes_reserved;
 

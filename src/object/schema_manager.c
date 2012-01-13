@@ -11701,8 +11701,6 @@ update_subclasses (DB_OBJLIST * subclasses)
   int error = NO_ERROR;
   DB_OBJLIST *sub;
   SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *con;
-  bool found_inherited_index;
 
   for (sub = subclasses; sub != NULL && error == NO_ERROR; sub = sub->next)
     {

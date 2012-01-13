@@ -159,7 +159,9 @@ HRESULT CSRIndexes::FillRowData(int hConn, int hReq, LONG* pcRowsAffected,
 	{
 		CIndexesRow irData;
 		wcscpy(irData.m_szTableName, CA2W(table_name));
+#if 0
 		int hReq2, int_val, ind;
+#endif
 
 		hr = FetchData(hReq, irData, index_name);
 		if(FAILED(hr))

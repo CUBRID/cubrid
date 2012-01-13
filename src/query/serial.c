@@ -304,7 +304,6 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 {
   int ret = NO_ERROR, granted;
   const char *oid_str = NULL;
-  char *p;
   SERIAL_CACHE_ENTRY *entry;
 #if defined (SERVER_MODE)
   int rc;
@@ -405,7 +404,6 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p,
 {
   DB_VALUE cmp_result;
   DB_VALUE next_val;
-  DB_VALUE next_cached_num;
   int error, nturns;
   bool exhausted = false;
 

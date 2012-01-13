@@ -317,9 +317,10 @@ main (int argc, char *argv[])
   SESSION_ID session_id = DB_EMPTY_SESSION;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int one = 1, db_info_size;
-  int con_status;
 #if defined(WINDOWS)
   int new_port;
+#else
+  int con_status;
 #endif /* WINDOWS */
   char broker_info[BROKER_INFO_SIZE];
   int client_ip_addr;

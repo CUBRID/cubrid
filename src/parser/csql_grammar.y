@@ -14630,7 +14630,6 @@ path_expression
 		{{
 			PT_NODE *dot;
 			PT_NODE *serial_value = NULL;
-			DB_OBJECT *serial_mop;
 
 			dot = $1;
 			if (dot

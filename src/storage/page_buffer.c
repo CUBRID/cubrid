@@ -1337,9 +1337,9 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
   int tran_index;
   PAGE_PTR pgptr;
   PGBUF_HOLDER *holder;
-  PGBUF_BCB *bufptr;
 #if defined(NDEBUG)
 #else /* NDEBUG */
+  PGBUF_BCB *bufptr;
 #if defined(CUBRID_DEBUG)
   int consistent;
 #endif /* CUBRID_DEBUG */

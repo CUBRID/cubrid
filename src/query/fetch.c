@@ -2341,7 +2341,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
     case T_NVL2:
       {
-	int ret_val;
 	DB_VALUE *src;
 	TP_DOMAIN *target_domain;
 	bool need_free = false;

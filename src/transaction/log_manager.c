@@ -3488,6 +3488,7 @@ log_skip_tailsa_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 void
 log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 {
+#if 0
   LOG_TDES *tdes;		/* Transaction descriptor */
   LOG_LSA *page_lsa;
 #if defined(SERVER_MODE)
@@ -3495,6 +3496,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 #endif /* SERVER_MODE */
   int tran_index;
   int error_code = NO_ERROR;
+#endif
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)

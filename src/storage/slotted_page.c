@@ -1909,7 +1909,6 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
-  int waste;
   int used_space;
   int total_free_save;
   int status;
@@ -3733,7 +3732,6 @@ spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   SPAGE_HEADER *page_header_p = NULL;
   SPAGE_SLOT *slot_p = NULL;
   SPAGE_SLOT *first_slot_p = NULL;
-  int i;
 
   assert (page_p != NULL);
 

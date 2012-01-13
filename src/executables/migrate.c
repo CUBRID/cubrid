@@ -967,8 +967,6 @@ fix_db_ha_apply_info ()
 {
   MOP class_mop;
   int error_code = NO_ERROR;
-  char sql_stmt[LINE_MAX];
-  DB_ATTRIBUTE *att;
 
   class_mop = db_find_class (CT_HA_APPLY_INFO_NAME);
   if (class_mop == NULL)

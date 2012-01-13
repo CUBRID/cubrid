@@ -15205,12 +15205,13 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   int offset;
   bool dummy_clear;
   int i, j;
-  OID class_oid, inst_oid, pseudo_oid;
+  OID class_oid, inst_oid;
   short node_type;
   OID temp_oid;
   bool multi_range_opt_continue = true;
   bool iss_get_first_result_only = false;
 #if defined(SERVER_MODE)
+  OID pseudo_oid;
   int CLS_satisfied = true;
   int lock_ret;
   OID saved_class_oid;
@@ -15459,10 +15460,10 @@ get_oidcnt_and_oidptr:
 
   if (bts->C_vpid.pageid == NULL_PAGEID)
     {
-      OID N_oid;
-
       /* It reached at the end of leaf level */
 #if defined(SERVER_MODE)
+      OID N_oid;
+
       if (bts->read_uncommitted)
 	{
 	  goto end_of_scan;

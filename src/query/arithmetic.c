@@ -912,7 +912,10 @@ pow_error:
 static int
 db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   short s1, s2;
   int i2;
   float f2;
@@ -1067,7 +1070,10 @@ exit:
 static int
 db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   short s2;
   int i1, i2;
   float f2;
@@ -1222,7 +1228,10 @@ exit:
 static int
 db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   short s2;
   int i2;
   float f2;
@@ -1378,7 +1387,10 @@ exit:
 static int
 db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   short s2;
   int i2;
   float f1, f2;
@@ -1526,7 +1538,10 @@ exit:
 static int
 db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   short s2;
   int i2;
   float f2;
@@ -1711,7 +1726,10 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 static int
 db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   short s2;
   int i2;
   float f2;
@@ -1882,7 +1900,10 @@ exit:
 static int
 db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2;
+#if !defined(NDEBUG)
+  DB_TYPE type1;
+#endif
+  DB_TYPE type2;
   double d1, d2;
   int er_status = NO_ERROR;
   DB_VALUE cast_value2;

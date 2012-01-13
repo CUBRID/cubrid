@@ -400,7 +400,9 @@ thread_start_workers (void)
   int thread_index, r;
   THREAD_ENTRY *thread_p;
   pthread_attr_t thread_attr;
+#if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   size_t ts_size;
+#endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 
   assert (thread_Manager.initialized == true);
 

@@ -260,9 +260,6 @@ vHandler (DWORD opcode)
       opcode == SERVICE_CONTROL_BROKER_ON    ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
-      SERVICE_STATUS ss;
-      int service_control_code;
-      SERVICE_DESCRIPTION service_description;
       DWORD dwBytesNeeded;
       LPSERVICE_DESCRIPTION lpsd;
 
@@ -494,8 +491,6 @@ SetCUBRIDEnvVar ()
 
   DWORD dwBufLength = BUF_LENGTH;
   TCHAR sEnvCUBRID[BUF_LENGTH];
-  TCHAR sEnvCUBRID_CAS[BUF_LENGTH];
-  TCHAR sEnvCUBRID_MANAGER[BUF_LENGTH];
   TCHAR sEnvCUBRID_DATABASES[BUF_LENGTH];
   TCHAR sEnvCUBRID_LANG[BUF_LENGTH];
   TCHAR sEnvCUBRID_MODE[BUF_LENGTH];

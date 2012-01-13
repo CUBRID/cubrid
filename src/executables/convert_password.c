@@ -48,12 +48,9 @@ main (int argc, char *argv[])
   char *prog_name;
   const char *qp1 = "select [db_user], [password].[password] from [db_user]";
   DB_VALUE user_val, password_val;
-  MOP user_class;
   MOP user;
   char *db_name;
   char *password;
-  char *decoded_str;
-  char *encoded_str;
   int retval, error;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
