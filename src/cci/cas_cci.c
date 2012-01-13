@@ -1562,7 +1562,6 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
       goto prepare_execute_error;
     }
 
-prepare_execute_end:
   RESET_START_TIME (con_handle);
   con_handle->ref_count = 0;
   return req_handle_id;

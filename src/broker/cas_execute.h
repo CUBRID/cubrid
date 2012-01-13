@@ -206,6 +206,7 @@ extern void release_all_fk_info_results (T_FK_INFO_RESULT * fk_res);
 /*****************************
   cas_error.c function list
  *****************************/
+extern int is_error_info_set (void);
 extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
 extern int error_info_set (int err_number, int err_indicator,
 			   const char *file, int line);

@@ -496,6 +496,17 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     }
   srv_handle = hm_find_srv_handle (srv_h_id);
 
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  if (srv_handle == NULL)
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+  if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+    {
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
   net_arg_get_char (flag, argv[arg_idx++]);
   net_arg_get_int (&max_col_size, argv[arg_idx++]);
   net_arg_get_int (&max_row, argv[arg_idx++]);
@@ -551,17 +562,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 	max_col_size = shm_appl->max_string_length;
     }
 #endif /* LIBCAS_FOR_JSP */
-
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  if (srv_handle == NULL)
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-    {
-      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   set_query_timeout (srv_handle, app_query_timeout);
