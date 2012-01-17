@@ -2054,6 +2054,7 @@ parser_init_node (PT_NODE * node)
       node->force_auto_parameterize = 0;
       node->do_not_fold = 0;
       node->is_cnf_start = 0;
+      node->is_click_counter = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
