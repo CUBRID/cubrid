@@ -703,6 +703,7 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
   struct timeval tv;
 #else
   struct pollfd po[1] = { {0, 0, 0} };
+  int polling_timeout;
 #endif
   int n;
 
@@ -731,16 +732,20 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 
       if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
 	{
-	  timeout = SOCKET_TIMEOUT;
+	  polling_timeout = SOCKET_TIMEOUT;
+	}
+      else
+	{
+	  polling_timeout = timeout;
 	}
 
-      n = poll (po, 1, timeout);
+      n = poll (po, 1, polling_timeout);
 
 #endif
 
       if (n == 0)
 	{
-          /* select / poll return time out */
+	  /* select / poll return time out */
 	  if (timeout > 0)
 	    {
 	      timeout -= SOCKET_TIMEOUT;
@@ -766,7 +771,7 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 	}
       else if (n < 0)
 	{
-      	  /* select / poll return error */
+	  /* select / poll return error */
 	  return CCI_ER_COMMUNICATION;
 	}
 
