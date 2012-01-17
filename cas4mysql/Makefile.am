@@ -73,7 +73,7 @@ cub_cas_mysql_CPPFLAGS = @SRC_INC@ @EXT_INC@ @MYSQL_INC_PATH@\
 	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
 	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL
 
-cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ -lmysqlclient
+cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ -lmysqlclient -lrt
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/cas_mysql_execute.c

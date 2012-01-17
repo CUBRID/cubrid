@@ -383,6 +383,46 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt,
 #endif /* LIBCAS_FOR_JSP */
 }
 
+static void
+cas_log_query_cancel (int dummy, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  va_list ap;
+  const char *fmt;
+  char buf[LINE_MAX];
+  bool log_mode;
+  struct timeval tv;
+
+  if (log_fp == NULL || query_cancel_flag != 1)
+    {
+      return;
+    }
+
+  tv.tv_sec = query_cancel_time / 1000;
+  tv.tv_usec = (query_cancel_time % 1000) * 1000;
+
+  if (as_info->clt_version >= CAS_PROTO_MAKE_VER (1))
+    {
+      char ip_str[16];
+      ut_get_ipv4_string (ip_str, 16, as_info->cas_clt_ip);
+      fmt = "query_cancel client ip %s port %u";
+      snprintf (buf, LINE_MAX, fmt, ip_str, as_info->cas_clt_port);
+    }
+  else
+    {
+      snprintf (buf, LINE_MAX, "query_cancel");
+    }
+
+  log_mode = as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL;
+  va_start (ap, dummy);
+  cas_log_write_internal (log_fp, &tv, 0, log_mode, buf, ap);
+  va_end (ap);
+  fputc ('\n', log_fp);
+
+  query_cancel_flag = 0;
+#endif /* LIBCAS_FOR_JSP */
+}
+
 void
 cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
@@ -391,6 +431,8 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
     {
       cas_log_open (shm_appl->broker_name, shm_as_index);
     }
+
+  cas_log_query_cancel (0);
 
   if (log_fp != NULL)
     {

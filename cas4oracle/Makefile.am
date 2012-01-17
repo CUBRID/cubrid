@@ -72,7 +72,7 @@ cub_cas_oracle_SOURCES = \
 cub_cas_oracle_CPPFLAGS = @SRC_INC@ @EXT_INC@ @ORACLE_INC_PATH@\
 	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
 	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_ORACLE
-cub_cas_oracle_LDFLAGS = @ORACLE_LIB_PATH@ -lclntsh -lnnz11
+cub_cas_oracle_LDFLAGS = @ORACLE_LIB_PATH@ -lclntsh -lnnz11 -lrt
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/cas_oracle_execute.c

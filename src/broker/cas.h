@@ -99,6 +99,8 @@ extern struct timeval tran_start_time;
 extern struct timeval query_start_time;
 extern int tran_timeout;
 extern int query_timeout;
+extern INT64 query_cancel_time;
+extern char query_cancel_flag;
 
 #endif
 

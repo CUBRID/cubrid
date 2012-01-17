@@ -120,7 +120,7 @@ cub_cas_SOURCES = \
 	$(BROKER_DIR)/broker_error.c \
 	$(BROKER_DIR)/cas_error.c
 cub_cas_CPPFLAGS = $(AM_CPPFLAGS) -DCAS_CUBRID
-cub_cas_LDADD = $(BROKER_CAS_LIBS)
+cub_cas_LDADD = $(BROKER_CAS_LIBS) -lrt
 
 broker_log_converter_SOURCES = \
 	$(BROKER_DIR)/broker_log_converter.c \

@@ -126,6 +126,8 @@ struct timeval tran_start_time;
 struct timeval query_start_time;
 int tran_timeout = 0;
 int query_timeout = 0;
+INT64 query_cancel_time;
+char query_cancel_flag;
 
 ACCESS_INFO cas_access_info[ACL_MAX_ITEM_COUNT];
 int num_cas_access_info;
@@ -420,6 +422,7 @@ main (int argc, char *argv[])
   as_info->con_status = CON_STATUS_IN_TRAN;
   as_info->transaction_start_time = time (0);
   as_info->cur_keep_con = KEEP_CON_OFF;
+  query_cancel_flag = 0;
   errors_in_transaction = 0;
 #if !defined(WINDOWS)
   psize_at_start = as_info->psize = getsize (getpid ());
@@ -995,7 +998,8 @@ cleanup (int signo)
 static void
 query_cancel (int signo)
 {
-  char client_ip_str[16];
+#if !defined(WINDOWS)
+  struct timespec ts;
 #if defined(CAS_FOR_ORACLE)
   signal (signo, SIG_IGN);
   cas_oracle_query_cancel ();
@@ -1007,18 +1011,13 @@ query_cancel (int signo)
   as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
   as_info->num_interrupts++;
 
-  if (as_info->clt_version >= CAS_PROTO_MAKE_VER (1))
-    {
-      cas_log_write (0, false, "query_cancel client ip %s port %u",
-		     ut_get_ipv4_string (client_ip_str,
-					 sizeof (client_ip_str),
-					 as_info->cas_clt_ip),
-		     as_info->cas_clt_port);
-    }
-  else
-    {
-      cas_log_write (0, false, "query_cancel");
-    }
+  clock_gettime (CLOCK_REALTIME, &ts);
+  query_cancel_time = ts.tv_sec * 1000L;
+  query_cancel_time += (ts.tv_nsec / 1000000L);
+  query_cancel_flag = 1;
+#else
+  assert (0);
+#endif /* !WINDOWS */
 }
 #endif /* !LIBCAS_FOR_JSP */
 
