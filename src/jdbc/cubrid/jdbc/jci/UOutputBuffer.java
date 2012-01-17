@@ -316,22 +316,22 @@ class UOutputBuffer {
 	case UUType.U_TYPE_MULTISET:
 	case UUType.U_TYPE_SEQUENCE:
 	    if (!(value instanceof CUBRIDArray)) {
-		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+		throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
 	    }
 	    return writeCollection((CUBRIDArray) value);
 	case UUType.U_TYPE_OBJECT:
 	    if (!(value instanceof CUBRIDOID)) {
-		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+		throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
 	    }
 	    return addOID((CUBRIDOID) value);
 	case UUType.U_TYPE_BLOB:
 	    if (!(value instanceof CUBRIDBlob)) {
-		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+		throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
 	    }
 	    return addBlob((CUBRIDBlob) value);
 	case UUType.U_TYPE_CLOB:
 	    if (!(value instanceof CUBRIDClob)) {
-		new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+		throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
 	    }
 	    return addClob((CUBRIDClob) value);
 	}

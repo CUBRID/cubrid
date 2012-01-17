@@ -672,7 +672,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 		Integer index = col_name_to_index.get(columnName.toLowerCase());
 		if (index == null) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_column_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_column_name);
 		}
 
 		return index.intValue() + 1;
@@ -835,7 +835,7 @@ public class CUBRIDResultSet implements ResultSet {
 		clearCurrentRow();
 
 		if (row == 0) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.argument_zero);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.argument_zero);
 		}
 
 		if (row > 0) {
@@ -866,7 +866,7 @@ public class CUBRIDResultSet implements ResultSet {
 		clearCurrentRow();
 
 		if (current_row == -1 || current_row == number_of_rows) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
 		}
 
 		current_row += rows;
@@ -908,7 +908,7 @@ public class CUBRIDResultSet implements ResultSet {
 		checkIsOpen();
 
 		if (!is_scrollable) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.non_scrollable);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_scrollable);
 		}
 
 		if (direction != FETCH_FORWARD && direction != FETCH_REVERSE
@@ -927,7 +927,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -954,7 +954,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -1003,7 +1003,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 
 		return !b;
@@ -1095,11 +1095,11 @@ public class CUBRIDResultSet implements ResultSet {
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		if (len == -1) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.empty_inputstream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.empty_inputstream);
 		}
 		updateValue(columnIndex, new String(value, 0, len));
 	}
@@ -1121,11 +1121,11 @@ public class CUBRIDResultSet implements ResultSet {
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		if (len == -1) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.empty_inputstream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.empty_inputstream);
 		}
 
 		byte[] value2 = new byte[len];
@@ -1153,11 +1153,11 @@ public class CUBRIDResultSet implements ResultSet {
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		if (len == -1) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.empty_reader);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.empty_reader);
 		}
 
 		try {
@@ -1285,8 +1285,7 @@ public class CUBRIDResultSet implements ResultSet {
 					checkIsOpen();
 					checkIsUpdatable();
 					if (!inserting) {
-						throw new CUBRIDException(
-								CUBRIDJDBCErrorCode.invalid_row);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
 					}
 
 					if (main_table_name == null) {
@@ -1326,8 +1325,7 @@ public class CUBRIDResultSet implements ResultSet {
 					error = t_u_stmt.getRecentError();
 					t_u_stmt.close();
 					if (error.getErrorCode() != UErrorCode.ER_NO_ERROR)
-						throw new CUBRIDException(
-								CUBRIDJDBCErrorCode.insertion_query_fail);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.insertion_query_fail);
 				}
 			}
 		} catch (NullPointerException e) {
@@ -1358,7 +1356,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 
 		if (is_sensitive) {
@@ -1383,7 +1381,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -1401,7 +1399,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -1640,55 +1638,55 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_OID_IS_NOT_INCLUDED:
 			return null;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
 	private void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.result_set_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.result_set_closed);
 		}
 	}
 
 	private void checkIsUpdatable() throws SQLException {
 		if (!is_updatable) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.non_updatable);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_updatable);
 		}
 	}
 
 	private void checkIsSensitive() throws SQLException {
 		if (!is_sensitive) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.non_sensitive);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_sensitive);
 		}
 	}
 
 	private void checkIsScrollable() throws SQLException {
 		if (!is_scrollable) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.non_scrollable);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_scrollable);
 		}
 	}
 
 	private void checkRowIsValidForGet() throws SQLException {
 		if (current_row == number_of_rows || current_row == -1 || inserting) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
 		}
 	}
 
 	private void checkRowIsValidForUpdate() throws SQLException {
 		if ((current_row == number_of_rows || current_row == -1) && !inserting) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_row);
 		}
 	}
 
 	private void checkColumnIsValid(int columnIndex) throws SQLException {
 		if (columnIndex < 1 || columnIndex > column_info.length) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
 		}
 	}
 
 	private void checkColumnIsUpdatable(int columnIndex) throws SQLException {
 		if (updatable[columnIndex - 1] == false) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.non_updatable_column);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_updatable_column);
 		}
 	}
 
@@ -1705,7 +1703,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -1718,7 +1716,7 @@ public class CUBRIDResultSet implements ResultSet {
 			was_null = true;
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -1760,7 +1758,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 	private void move() throws SQLException {
 		synchronized (u_stmt) {
-			u_stmt.moveCursor(current_row, u_stmt.CURSOR_SET);
+			u_stmt.moveCursor(current_row, UStatement.CURSOR_SET);
 			error = u_stmt.getRecentError();
 		}
 
@@ -1768,7 +1766,7 @@ public class CUBRIDResultSet implements ResultSet {
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 

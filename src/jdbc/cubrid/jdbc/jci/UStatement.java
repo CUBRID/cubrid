@@ -195,7 +195,7 @@ public class UStatement {
 		serverHandler = -1;
 
 		className = inBuffer.readString(inBuffer.readInt(),
-				relatedConnection.conCharsetName);
+				relatedConnection.getCharset());
 		columnNumber = inBuffer.readInt();
 		readColumnInfo(inBuffer);
 		fetchSize = 1;
@@ -1677,7 +1677,7 @@ public class UStatement {
 			}
 
 			plan = inBuffer.readString(inBuffer.remainedCapacity(),
-					relatedConnection.conCharsetName);
+					relatedConnection.getCharset());
 		} catch (UJciException e) {
 			closeInternal();
 			e.toUError(errorHandler);
@@ -1881,7 +1881,7 @@ public class UStatement {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 			return inBuffer.readString(dataSize,
-					relatedConnection.conCharsetName);
+					relatedConnection.getCharset());
 		case UUType.U_TYPE_NUMERIC:
 			return new BigDecimal(inBuffer.readString(dataSize,
 					UJCIManager.sysCharsetName));
@@ -1984,7 +1984,7 @@ public class UStatement {
 			scale = inBuffer.readShort();
 			precision = inBuffer.readInt();
 			name = inBuffer.readString(inBuffer.readInt(),
-					relatedConnection.conCharsetName);
+					relatedConnection.getCharset());
 			columnInfo[i] = new UColumnInfo(type, scale, precision, name);
 			if (statementType == NORMAL) {
 				/*
@@ -1993,15 +1993,15 @@ public class UStatement {
 				 */
 
 				String attributeName = inBuffer.readString(inBuffer.readInt(),
-						relatedConnection.conCharsetName);
+						relatedConnection.getCharset());
 				String className = inBuffer.readString(inBuffer.readInt(),
-						relatedConnection.conCharsetName);
+						relatedConnection.getCharset());
 				byte byteData = inBuffer.readByte();
 				columnInfo[i].setRemainedData(attributeName, className,
 						((byteData == (byte) 0) ? true : false));
 
 				String defValue = inBuffer.readString(inBuffer.readInt(),
-						relatedConnection.conCharsetName);
+						relatedConnection.getCharset());
 				byte bAI = inBuffer.readByte();
 				byte bUK = inBuffer.readByte();
 				byte bPK = inBuffer.readByte();
@@ -2101,5 +2101,13 @@ public class UStatement {
 				bindParameter.flushLobStreams();
 			}
 		}
+	}
+
+	public String getQuery() {
+	    return sql_stmt;
+	}
+
+	public UBindParameter getBindParameter() {
+	    return bindParameter;
 	}
 }

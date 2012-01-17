@@ -130,7 +130,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		case UErrorCode.ER_NO_ERROR:
 			return ver;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -811,9 +811,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -845,7 +845,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 			int i = 0;
 			while (true) {
-				us.moveCursor(i++, us.CURSOR_SET);
+				us.moveCursor(i++, UStatement.CURSOR_SET);
 				if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 					break;
 				us.fetch();
@@ -871,7 +871,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 			int i = 0;
 			while (true) {
-				us.moveCursor(i++, us.CURSOR_SET);
+				us.moveCursor(i++, UStatement.CURSOR_SET);
 				if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 					break;
 				us.fetch();
@@ -896,7 +896,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 			int i = 0;
 			while (true) {
-				us.moveCursor(i++, us.CURSOR_SET);
+				us.moveCursor(i++, UStatement.CURSOR_SET);
 				if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 					break;
 				us.fetch();
@@ -997,9 +997,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -1015,14 +1015,14 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		int i = 0;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
 			int err_code = us.getRecentError().getErrorCode();
 			if (err_code != UErrorCode.ER_NO_ERROR
 					&& err_code != UErrorCode.ER_WAS_NULL) {
-				throw new CUBRIDException(us.getRecentError());
+				throw con.createCUBRIDException(us.getRecentError());
 			}
 
 			// type-independent decisions
@@ -1149,9 +1149,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			case UErrorCode.ER_NO_ERROR:
 				break;
 			case UErrorCode.ER_IS_CLOSED:
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -1163,7 +1163,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		int i = 0;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
@@ -1208,9 +1208,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -1221,7 +1221,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		int i = 0;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
@@ -1268,15 +1268,15 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
 		int i = 0, min = 2100000000, minindex = -1;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
@@ -1313,25 +1313,25 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
 		Object[] value = new Object[8];
 		value[5] = null;
-		value[7] = new Short((short) this.bestRowNotPseudo);
+		value[7] = new Short((short) DatabaseMetaData.bestRowNotPseudo);
 
 		for (i = 0; i <= min; i++) {
-			us.moveCursor(minindex + i, us.CURSOR_SET);
+			us.moveCursor(minindex + i, UStatement.CURSOR_SET);
 			us.fetch();
 
 			value[1] = us.getString(2);
 
 			int j = 0;
 			while (true) {
-				us2.moveCursor(j, us.CURSOR_SET);
+				us2.moveCursor(j, UStatement.CURSOR_SET);
 				us2.fetch();
 				if (us2.getString(0).equals(value[1]))
 					break;
@@ -1470,9 +1470,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -1485,7 +1485,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		int i = 0;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
@@ -1553,9 +1553,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -1576,7 +1576,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		int i = 0;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR) {
 				break;
 			}
@@ -1621,7 +1621,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized ResultSet getImportedKeys(String catalog,
 			String schema, String table) throws SQLException {
 		if (table == null) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
 		}
 		return getForeignKeys(USchType.SCH_IMPORTED_KEYS, table, null);
 	}
@@ -1629,7 +1629,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized ResultSet getExportedKeys(String catalog,
 			String schema, String table) throws SQLException {
 		if (table == null) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
 		}
 		return getForeignKeys(USchType.SCH_EXPORTED_KEYS, table, null);
 	}
@@ -1638,7 +1638,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			String primarySchema, String primaryTable, String foreignCatalog,
 			String foreignSchema, String foreignTable) throws SQLException {
 		if (primaryTable == null || foreignTable == null) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
 		}
 		return getForeignKeys(USchType.SCH_CROSS_REFERENCE, primaryTable,
 				foreignTable);
@@ -1843,9 +1843,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -1878,7 +1878,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		int i = 0, ordinal = 1;
 		String previousIndex = "";
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
@@ -2142,9 +2142,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
-				throw new CUBRIDException(error);
+				throw con.createCUBRIDException(error);
 			}
 		}
 
@@ -2155,7 +2155,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		int i = 0;
 		while (true) {
-			us.moveCursor(i++, us.CURSOR_SET);
+			us.moveCursor(i++, UStatement.CURSOR_SET);
 			if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
 				break;
 			us.fetch();
@@ -2197,7 +2197,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	private void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 		}
 	}
 

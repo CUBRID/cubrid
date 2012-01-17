@@ -602,7 +602,7 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 
 	private void beforeGetValue(int index) throws SQLException {
 		if (index < 0 || index > u_stmt.getParameterCount()) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
 		}
 
 		synchronized (u_stmt) {
@@ -614,7 +614,7 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -627,7 +627,7 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 			was_null = true;
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 

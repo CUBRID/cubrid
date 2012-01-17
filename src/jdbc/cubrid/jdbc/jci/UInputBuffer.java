@@ -71,7 +71,7 @@ class UInputBuffer {
 		while (totalReadLen < 8) {
 			readLen = input.read(headerData, totalReadLen, 8 - totalReadLen);
 			if (readLen == -1) {
-				throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+				throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 			}
 			totalReadLen = totalReadLen + readLen;
 		}
@@ -96,7 +96,7 @@ class UInputBuffer {
 			int eCode = readInt();
 			String msg = readString(remainedCapacity(),
 					UJCIManager.sysCharsetName);
-			throw new UJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
+			throw uconn.createJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
 		}
 	}
 
@@ -110,7 +110,7 @@ class UInputBuffer {
 
 	byte readByte() throws UJciException {
 		if (position >= capacity) {
-			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+			throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		return buffer[position++];
@@ -121,7 +121,7 @@ class UInputBuffer {
 			return;
 
 		if (position + len > capacity) {
-			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		    throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		System.arraycopy(buffer, position, value, offset, len);
@@ -148,7 +148,7 @@ class UInputBuffer {
 
 	int readInt() throws UJciException {
 		if (position + 4 > capacity) {
-			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+			throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		int data = UJCIUtil.bytes2int(buffer, position);
@@ -161,7 +161,7 @@ class UInputBuffer {
 		long data = 0;
 
 		if (position + 8 > capacity) {
-			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		for (int i = 0; i < 8; i++) {
@@ -174,7 +174,7 @@ class UInputBuffer {
 
 	short readShort() throws UJciException {
 		if (position + 2 > capacity) {
-			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		short data = UJCIUtil.bytes2short(buffer, position);
@@ -190,7 +190,7 @@ class UInputBuffer {
 			return null;
 
 		if (position + size > capacity) {
-			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		try {
@@ -321,7 +321,7 @@ class UInputBuffer {
 			byte[] packedLobHandle = readBytes(packedLobHandleSize);
 			return new CUBRIDBlob(conn, packedLobHandle);
 		} catch (Exception e) {
-			throw new UJciException(UErrorCode.ER_UNKNOWN);
+		    	throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
 		}
 	}
 
@@ -332,7 +332,7 @@ class UInputBuffer {
 			return new CUBRIDClob(conn, packedLobHandle, conn.getUConnection()
 					.getCharset());
 		} catch (Exception e) {
-			throw new UJciException(UErrorCode.ER_UNKNOWN);
+		    	throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
 		}
 	}
 
@@ -341,7 +341,7 @@ class UInputBuffer {
 	}
 
 	CUBRIDXid readXid() throws UJciException {
-		int msg_size = readInt();
+		readInt(); // msg_size
 		int formatId = readInt();
 		int gid_size = readInt();
 		int bid_size = readInt();

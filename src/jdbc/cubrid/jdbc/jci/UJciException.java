@@ -31,6 +31,8 @@
 package cubrid.jdbc.jci;
 
 class UJciException extends Exception {
+    	private static final long serialVersionUID = 4464106407657785825L;
+
 	private int jciErrCode;
 	private int serverErrCode;
 	private int serverErrIndicator;
@@ -67,5 +69,22 @@ class UJciException extends Exception {
 
 	public int getJciError() {
 		return this.jciErrCode;
+	}
+
+	public String toString() {
+	    	String msg, indicator;
+		if (jciErrCode == UErrorCode.ER_DBMS) {
+			if (serverErrIndicator == UErrorCode.DBMS_ERROR_INDICATOR) {
+				msg = getMessage();
+				indicator = "ER_DBMS";
+			} else {
+				msg = UErrorCode.codeToCASMessage(serverErrCode);
+				indicator = "ER_BROKER";
+			}
+		} else {
+		    	msg = getMessage();
+		    	indicator = "ER_DRIVER";
+		}
+		return String.format("%s[%d,%s]", indicator, jciErrCode, msg);
 	}
 }

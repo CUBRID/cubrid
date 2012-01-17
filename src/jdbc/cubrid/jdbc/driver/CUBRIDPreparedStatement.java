@@ -58,7 +58,6 @@ import java.util.Calendar;
 import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.jdbc.jci.UBatchResult;
 import cubrid.jdbc.jci.UColumnInfo;
-import cubrid.jdbc.jci.UError;
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UStatement;
 import cubrid.sql.CUBRIDOID;
@@ -91,6 +90,10 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    	long begin = 0;
+				    	if (u_con.getLogSlowQuery()) {
+				    	    	begin = System.currentTimeMillis();
+				    	}
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -98,18 +101,21 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 					checkIsOpen();
 					if ((!first_result_type)
 							&& (u_stmt.getCommandType() != CUBRIDCommandType.CUBRID_STMT_CALL_SP)) {
-						throw new CUBRIDException(
-								CUBRIDJDBCErrorCode.invalid_query_type_for_executeQuery);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeQuery);
 					}
 					executeCore(false);
 					getMoreResults();
 					if (current_result_set != null)
 						current_result_set.complete_on_close = true;
+					if (u_con.getLogSlowQuery()) {
+					    	long end = System.currentTimeMillis();
+						u_con.logSlowQuery(begin, end, u_stmt.getQuery(), u_stmt.getBindParameter());
+					}
 					return current_result_set;
 				}
 			}
 		} catch (NullPointerException e) {
-			throw new CUBRIDException(
+			throw con.createCUBRIDException(
 					CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
@@ -118,14 +124,17 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    	long begin = 0;
+				    	if (u_con.getLogSlowQuery()) {
+				    	    	begin = System.currentTimeMillis();
+				    	}
 					checkIsOpen();
 					if (!completed) {
 						complete();
 					}
 					checkIsOpen();
 					if (first_result_type) {
-						throw new CUBRIDException(
-								CUBRIDJDBCErrorCode.invalid_query_type_for_executeUpdate);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeUpdate);
 					}
 					executeCore(false);
 					getMoreResults();
@@ -136,12 +145,15 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 					if (u_stmt.getCommandType() != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
 						complete();
 					}
+					if (u_con.getLogSlowQuery()) {
+					    	long end = System.currentTimeMillis();
+						u_con.logSlowQuery(begin, end, u_stmt.getQuery(), u_stmt.getBindParameter());
+					}
 					return update_count;
 				}
 			}
 		} catch (NullPointerException e) {
-			throw new CUBRIDException(
-					CUBRIDJDBCErrorCode.prepared_statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -308,7 +320,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		synchronized (u_stmt) {
@@ -347,7 +359,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		byte[] value2 = new byte[len];
@@ -375,7 +387,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -439,6 +451,10 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    	long begin = 0;
+				    	if (u_con.getLogSlowQuery()) {
+				    	    	begin = System.currentTimeMillis();
+				    	}
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -469,12 +485,15 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 						}
 					}
 
+					if (u_con.getLogSlowQuery()) {
+					    	long end = System.currentTimeMillis();
+						u_con.logSlowQuery(begin, end, u_stmt.getQuery(), u_stmt.getBindParameter());
+					}
 					return first_result_type;
 				}
 			}
 		} catch (NullPointerException e) {
-			throw new CUBRIDException(
-					CUBRIDJDBCErrorCode.prepared_statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -490,7 +509,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -517,7 +536,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			len = reader.read(value);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		synchronized (u_stmt) {
@@ -570,7 +589,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			((CUBRIDBufferedOutputStream) out).streamCopyFromInputStream(
 					inputStream, Long.MAX_VALUE);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		setBlob(parameterIndex, blob);
@@ -591,7 +610,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			((CUBRIDBufferedOutputStream) out).streamCopyFromInputStream(
 					inputStream, length);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		setBlob(parameterIndex, blob);
@@ -611,7 +630,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			((CUBRIDBufferedWriter) out).streamCopyFromReader(reader,
 					Long.MAX_VALUE);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		setClob(parameterIndex, clob);
@@ -631,7 +650,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			((CUBRIDBufferedWriter) out).streamCopyFromReader(reader, length);
 		} catch (IOException e) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
 		}
 
 		setClob(parameterIndex, clob);
@@ -654,7 +673,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 
 		if (col_info.length == 0)
@@ -719,7 +738,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		default:
-			throw new CUBRIDException(error);
+			throw con.createCUBRIDException(error);
 		}
 	}
 
@@ -739,7 +758,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 					case UErrorCode.ER_NO_ERROR:
 						break;
 					default:
-						throw new CUBRIDException(error);
+						throw con.createCUBRIDException(error);
 					}
 
 					con.autoCommit();
@@ -747,8 +766,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw new CUBRIDException(
-					CUBRIDJDBCErrorCode.prepared_statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -763,7 +781,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		 * = u_stmt.getParameterInfo(); error = u_stmt.getRecentError(); }
 		 * 
 		 * switch (error.getErrorCode()) { case UErrorCode.ER_NO_ERROR : break;
-		 * default : throw new CUBRIDException(error); }
+		 * default : throw con.createCUBRIDException(error); }
 		 * 
 		 * if (pram_info.length == 0) return null;
 		 * 
@@ -859,8 +877,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw new CUBRIDException(
-					CUBRIDJDBCErrorCode.prepared_statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -892,8 +909,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 
 	protected void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw new CUBRIDException(
-					CUBRIDJDBCErrorCode.prepared_statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -902,22 +918,11 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		case UErrorCode.ER_BIND_INDEX:
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
 		case UErrorCode.ER_INVALID_ARGUMENT:
 			throw new IllegalArgumentException();
 		default:
-			throw new CUBRIDException(error);
-		}
-	}
-
-	private void checkExecuteError() throws SQLException {
-		switch (error.getErrorCode()) {
-		case UErrorCode.ER_NO_ERROR:
-			break;
-		default:
-			UError cpErr = new UError(error);
-			con.autoRollback();
-			throw new CUBRIDException(cpErr);
+			throw con.createCUBRIDException(error);
 		}
 	}
 

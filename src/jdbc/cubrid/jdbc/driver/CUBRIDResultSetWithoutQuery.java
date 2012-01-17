@@ -396,9 +396,6 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 		checkIsOpen();
 	}
 
-	/*
-	 * 지원되지 않는 메소드
-	 */
 	public String getCursorName() throws SQLException {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.not_supported);
 	}
