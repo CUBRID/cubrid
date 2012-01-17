@@ -10827,23 +10827,27 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
       xasl->instnum_pred = NULL;
     }
 
-  /* set the key limit to all the eligible spec lists (the ones
-   * that have index scans.) */
-  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+  /* cannot handle for join; skip and go ahead */
+  if (xasl->scan_ptr == NULL)
     {
-      for (spec_list = xptr->spec_list; spec_list;
-	   spec_list = spec_list->next)
+      /* set the key limit to all the eligible spec lists (the ones
+       * that have index scans.) */
+      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	{
-	  if (!spec_list->indexptr)
+	  for (spec_list = xptr->spec_list; spec_list;
+	       spec_list = spec_list->next)
 	    {
-	      continue;
-	    }
+	      if (!spec_list->indexptr)
+		{
+		  continue;
+		}
 
-	  ret = pt_to_key_limit (parser, NULL, limit_infop,
-				 &(spec_list->indexptr->key_info), false);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
+	      ret = pt_to_key_limit (parser, NULL, limit_infop,
+				     &(spec_list->indexptr->key_info), false);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
 	    }
 	}
     }
