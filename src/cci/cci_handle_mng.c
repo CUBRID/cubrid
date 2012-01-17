@@ -790,7 +790,7 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
   FREE_MEM (con_handle->deferred_close_handle_list);
   if (con_handle->stmt_pool != NULL)
     {
-      mht_destroy (con_handle->stmt_pool, true, false);
+      mht_destroy (con_handle->stmt_pool, true, true);
     }
 }
 
