@@ -12303,14 +12303,26 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    if (typ1 == DB_TYPE_INTEGER)
 		      {
+			if (OR_CHECK_INT_DIV_OVERFLOW (bi[0], bi[1]))
+			  {
+			    goto overflow;
+			  }
 			db_make_int (result, (INT32) (bi[0] / bi[1]));
 		      }
 		    else if (typ1 == DB_TYPE_BIGINT)
 		      {
+			if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
+			  {
+			    goto overflow;
+			  }
 			db_make_bigint (result, bi[0] / bi[1]);
 		      }
 		    else
 		      {
+			if (OR_CHECK_SHORT_DIV_OVERFLOW (bi[0], bi[1]))
+			  {
+			    goto overflow;
+			  }
 			db_make_short (result, (INT16) (bi[0] / bi[1]));
 		      }
 		  }

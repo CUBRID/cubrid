@@ -149,6 +149,9 @@
   (((a) < (b) && (c) > 0) || ((a) > (b) && (c) < 0))
 #define OR_CHECK_UNS_SUB_UNDERFLOW(a,b,c)	(b) > (a)
 #define OR_CHECK_MULT_OVERFLOW(a,b,c)  (((b)==0)?((c)!=0):((c)/(b)!=(a)))
+#define OR_CHECK_SHORT_DIV_OVERFLOW(a,b) ((a) == DB_INT16_MIN && (b) == -1)
+#define OR_CHECK_INT_DIV_OVERFLOW(a,b) ((a) == DB_INT32_MIN && (b) == -1)
+#define OR_CHECK_BIGINT_DIV_OVERFLOW(a,b) ((a) == DB_BIGINT_MIN && (b) == -1)
 
 #define OR_CHECK_SHORT_OVERFLOW(i)  ((i) > DB_INT16_MAX || (i) < DB_INT16_MIN )
 #define OR_CHECK_INT_OVERFLOW(i)    ((i) > DB_INT32_MAX || (i) < DB_INT32_MIN )
