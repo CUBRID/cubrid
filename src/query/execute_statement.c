@@ -6203,6 +6203,9 @@ update_object_tuple (PARSER_CONTEXT * parser,
 	      return ((error != NO_ERROR) ? error : ER_GENERIC_ERROR);
 	    }
 
+	  /* this is an update - force NOT NULL constraint check */
+	  otmpl->force_check_not_null = 1;
+
 	  /* because the tuple needs to be moved to another partition we will
 	   * update the template with new values for attributes that need to
 	   * be updated and with old values the other attributes */
@@ -6287,6 +6290,10 @@ update_object_tuple (PARSER_CONTEXT * parser,
 	    {
 	      obt_disable_unique_checking (otemplate);
 	    }
+
+	  /* this is an update - force NOT NULL constraint check */
+	  otemplate->force_check_not_null = 1;
+
 	  /* If this update came from INSERT ON DUPLICATE KEY UPDATE,
 	   * flush the object on updating it.
 	   */

@@ -874,7 +874,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 
 	  if (error == NO_ERROR)
 	    {
-	      actual = obt_check_assignment (att, value, valid);
+	      actual = obt_check_assignment (att, value, valid, 0);
 	      if (actual == NULL)
 		{
 		  error = er_errid ();
@@ -1023,7 +1023,7 @@ obj_set_shared (MOP op, const char *name, DB_VALUE * value)
       error = find_shared_attribute (&class_, &att, op, name, 1);
       if (error == NO_ERROR)
 	{
-	  actual = obt_check_assignment (att, value, NULL);
+	  actual = obt_check_assignment (att, value, NULL, 0);
 	  if (actual == NULL)
 	    {
 	      error = er_errid ();

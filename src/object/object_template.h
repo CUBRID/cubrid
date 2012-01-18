@@ -161,6 +161,13 @@ typedef struct obj_template
    * updating the PRIMARY KEY/UNIQUE constraint.
    */
   unsigned force_flush:1;
+
+  /*
+   * true if we want to regard NULL values in NOT NULL AUTO_INCREMENT
+   * attributes as errors (i.e. when executing UPDATE or ON DUPLICATE KEY 
+   * UPDATE statements).
+   */
+  unsigned force_check_not_null:1;
 } OBJ_TEMPLATE, *OBT;
 
 /*
@@ -209,7 +216,8 @@ extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
 extern DB_VALUE *obt_check_assignment (SM_ATTRIBUTE * att,
 				       DB_VALUE * proposed_value,
-				       SM_VALIDATION * valid);
+				       SM_VALIDATION * valid,
+				       unsigned force_check_not_null);
 extern int obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 				int check_non_null);
 extern void obt_area_init (void);

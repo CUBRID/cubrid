@@ -122,7 +122,8 @@ static unsigned int template_savepoint_count = 0;
 
 static DB_VALUE *check_att_domain (SM_ATTRIBUTE * att,
 				   DB_VALUE * proposed_value);
-static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value);
+static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value,
+			      unsigned force_check_not_null);
 static int quick_validate (SM_VALIDATION * valid, DB_VALUE * value);
 static void cache_validation (SM_VALIDATION * valid, DB_VALUE * value);
 static void begin_template_traversal (void);
@@ -351,6 +352,7 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
  *
  *      att(in): attribute descriptor
  *      value(in): value to verify
+ *      force_check_not_null(in): force NOT NULL constraint check
  *
  * Note:
  *    If will return an error code if any of the constraints are violated.
@@ -358,7 +360,8 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
  */
 
 static int
-check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value)
+check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value,
+		   unsigned force_check_not_null)
 {
   int error = NO_ERROR;
   MOP mop;
@@ -370,12 +373,16 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value)
     {
       if (att->flags & SM_ATTFLAG_NON_NULL)
 	{
-	  if ((att->flags & SM_ATTFLAG_AUTO_INCREMENT))
+	  if ((att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	      && !force_check_not_null)
 	    {
 	      assert (DB_IS_NULL (value));
 	      assert (att->domain->type != tp_Type_object);
-	      /* This is allowed to happen as it means the auto_increment
-	         value should be inserted. */
+
+	      /* This is allowed to happen only during INSERT statements,
+	       * since the next serial value will be filled in at a later
+	       * time. For other cases, the force_check_not_null flag should
+	       * be set. */
 	    }
 	  else
 	    {
@@ -597,6 +604,8 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
  *      att(in): attribute descriptor
  *      proposed_value(in): value to assign
  *      valid(in):
+ *      force_check_not_null(in): force check for NOT NULL
+ *                                constraints
  *
  *
  * Note:
@@ -623,7 +632,8 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
 
 DB_VALUE *
 obt_check_assignment (SM_ATTRIBUTE * att,
-		      DB_VALUE * proposed_value, SM_VALIDATION * valid)
+		      DB_VALUE * proposed_value, SM_VALIDATION * valid,
+		      unsigned force_check_not_null)
 {
   DB_VALUE *value;
 
@@ -646,7 +656,8 @@ obt_check_assignment (SM_ATTRIBUTE * att,
 	  value = check_att_domain (att, proposed_value);
 	  if (value != NULL)
 	    {
-	      if (check_constraints (att, value) != NO_ERROR)
+	      if (check_constraints
+		  (att, value, force_check_not_null) != NO_ERROR)
 		{
 		  if (value != proposed_value)
 		    {
@@ -726,6 +737,7 @@ reset_template (OBJ_TEMPLATE * template_ptr)
   template_ptr->shared_was_modified = 0;
   template_ptr->fkeys_were_modified = 0;
   template_ptr->force_flush = 0;
+  template_ptr->force_check_not_null = 0;
 }
 
 /*
@@ -875,6 +887,7 @@ make_template (MOP object, MOP classobj)
       template_ptr->shared_was_modified = 0;
       template_ptr->discard_on_finish = 1;
       template_ptr->fkeys_were_modified = 0;
+      template_ptr->force_check_not_null = 0;
       template_ptr->force_flush = 0;
 
       /*
@@ -1572,7 +1585,9 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
   /* check assignment validity */
   object = OBT_BASE_OBJECT (template_ptr);
-  actual = obt_check_assignment (att, value, valid);
+  actual =
+    obt_check_assignment (att, value, valid,
+			  template_ptr->force_check_not_null);
   if (actual == NULL)
     {
       goto error_exit;
