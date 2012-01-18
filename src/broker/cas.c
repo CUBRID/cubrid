@@ -964,7 +964,7 @@ cleanup (int signo)
     {
       cas_log_write_and_end (0, true,
 			     "CAS MEMORY USAGE HAS EXCEEDED MAX SIZE (%dM)",
-			     shm_appl->appl_server_max_size / ONE_K);
+			     max_process_size / ONE_K);
     }
   if (as_info->psize > shm_appl->appl_server_hard_limit)
     {
