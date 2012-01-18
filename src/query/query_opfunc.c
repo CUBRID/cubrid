@@ -1104,7 +1104,7 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
 			  DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   DB_UTIME *utime;
-  int utmp, u1, u2;
+  DB_UTIME utmp, u1, u2;
   DB_DATE date;
   DB_TIME time;
   DB_TYPE type;
@@ -1119,11 +1119,11 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
 						 result_p, domain_p);
     }
 
-  u1 = (int) s;
-  u2 = (int) *utime;
+  u1 = s;
+  u2 = *utime;
   utmp = u1 + u2;
 
-  if (OR_CHECK_ADD_OVERFLOW (u1, u2, utmp))
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
@@ -1163,7 +1163,7 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
 			TP_DOMAIN * domain_p)
 {
   DB_UTIME *utime;
-  int utmp, u1, u2;
+  DB_UTIME utmp, u1, u2;
   DB_DATE date;
   DB_TIME time;
   DB_TYPE type;
@@ -1178,11 +1178,11 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
 					       result_p, domain_p);
     }
 
-  u1 = (int) i;
-  u2 = (int) *utime;
+  u1 = i;
+  u2 = *utime;
   utmp = u1 + u2;
 
-  if (OR_CHECK_ADD_OVERFLOW (u1, u2, utmp))
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
