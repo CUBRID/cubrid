@@ -1507,7 +1507,9 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 	       join_term = join_term->next)
 	    {
 	      if (join_term->etc == (void *) temp)
-		break;		/* found */
+		{
+		  break;	/* found */
+		}
 	    }
 
 	  /* check for not added join terms */
@@ -1638,8 +1640,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		{
 		  join_term = parser_copy_tree (parser, temp);
 		  join_term->etc = (void *) temp;	/* mark as added */
-		  join_term_list =
-		    parser_append_node (join_term, join_term_list);
+		  join_term_list = parser_append_node (join_term,
+						       join_term_list);
 		}
 
 	    }			/* if (join_term == NULL) */

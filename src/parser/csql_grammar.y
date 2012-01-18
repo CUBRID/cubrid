@@ -10834,15 +10834,6 @@ index_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| class_name paren_minus
-		{{
-
-			PT_NODE *node = $1;
-			node->info.name.meta_class = PT_INDEX_NAME;
-			node->etc = (void *) -1;
-			$$ = node;
-
-		DBG_PRINT}}
 	| class_name
 		{{
 

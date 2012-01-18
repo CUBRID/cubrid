@@ -12076,6 +12076,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  q = pt_append_nulstring (parser, q, "(+)");
 		}
+	      /* TODO: temporary for IGNORE INDEX */
 	      if (p->etc == (void *) -1)
 		{
 		  q = pt_append_nulstring (parser, q, "(-)");
@@ -12115,6 +12116,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  q = pt_append_nulstring (parser, q, "(+)");
 		}
+	      /* TODO: temporary for IGNORE INDEX */
 	      if (p->etc == (void *) -1)
 		{
 		  q = pt_append_nulstring (parser, q, "(-)");

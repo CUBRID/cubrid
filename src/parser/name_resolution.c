@@ -5823,7 +5823,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
   int found = 0;
   int errid;
 
-  if (!index || index->info.name.original == NULL)
+  if (index == NULL || index->info.name.original == NULL)
     {
       if (index->etc != (void *) -3)
 	{
@@ -5831,6 +5831,9 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 	  return index;
 	}
     }
+
+  assert (index != NULL);
+
   if (index->info.name.spec_id != 0)	/* already resolved */
     {
       return index;
