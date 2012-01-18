@@ -280,6 +280,7 @@
 		<row><td>cub_job.exe</td><td>CUBRID</td><td>cub_job.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_job.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_jobsa.exe</td><td>CUBRID</td><td>cub_jobsa.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobsa.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_js.exe</td><td>CUBRID</td><td>cub_js.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_js.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_ftproc.exe</td><td>CUBRID</td><td>cub_ftproc.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_ftproc.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_master.exe</td><td>CUBRID</td><td>cub_master.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_master.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_sainfo.exe</td><td>CUBRID</td><td>cub_sainfo.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_sainfo.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_server.exe</td><td>CUBRID</td><td>cub_server.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_server.exe</td><td>1</td><td>NewSubFolder5</td></row>
