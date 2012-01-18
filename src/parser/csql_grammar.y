@@ -793,6 +793,8 @@ void pop_msg (void);
 %type <node> opt_analytic_partition_by
 %type <node> opt_analytic_order_by
 %type <node> opt_table_spec_index_hint
+%type <node> delete_name
+%type <node> delete_name_list
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -5891,8 +5893,52 @@ path_expression_list
 		DBG_PRINT}}
 	;
 
+delete_name
+	: identifier
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| identifier '.' '*'
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| identifier '.' identifier
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_DOT_);
+
+			if (node)
+			  {
+			    node->info.dot.arg1 = $1;
+			    node->info.dot.arg2 = $3;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+delete_name_list
+	: delete_name_list ',' delete_name
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	| delete_name
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
 delete_from_using
-	: class_name_list FROM extended_table_spec_list
+	: delete_name_list FROM extended_table_spec_list
 		{{
 
 			container_3 ctn;
