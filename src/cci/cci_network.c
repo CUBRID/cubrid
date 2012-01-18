@@ -772,6 +772,11 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
       else if (n < 0)
 	{
 	  /* select / poll return error */
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+
 	  return CCI_ER_COMMUNICATION;
 	}
 
