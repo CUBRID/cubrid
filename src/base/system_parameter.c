@@ -229,7 +229,7 @@ static UINT64 prm_sort_buffer_size_lower = 65536;
 
 int PRM_PB_NBUFFERS = 32768;
 static int prm_pb_nbuffers_default = 32768;
-static int prm_pb_nbuffers_lower = 1;
+static int prm_pb_nbuffers_lower = 1024;
 
 float PRM_PB_BUFFER_FLUSH_RATIO = 0.01f;
 static float prm_pb_buffer_flush_ratio_default = 0.01f;
@@ -238,7 +238,7 @@ static float prm_pb_buffer_flush_ratio_upper = 0.95f;
 
 UINT64 PRM_PAGE_BUFFER_SIZE = 536870912;
 static UINT64 prm_page_buffer_size_default = 536870912;
-static UINT64 prm_page_buffer_size_lower = 65536;
+static UINT64 prm_page_buffer_size_lower = 16777216;
 
 float PRM_HF_UNFILL_FACTOR = 0.10f;
 static float prm_hf_unfill_factor_default = 0.10f;
