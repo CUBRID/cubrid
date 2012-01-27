@@ -30,19 +30,25 @@
 
 package cubrid.jdbc.jci;
 
-class UJciException extends Exception {
+public class UJciException extends Exception {
     	private static final long serialVersionUID = 4464106407657785825L;
 
 	private int jciErrCode;
 	private int serverErrCode;
 	private int serverErrIndicator;
 
-	UJciException(int err) {
+	public UJciException(int err) {
 		super();
 		jciErrCode = err;
 	}
 
-	UJciException(int err, int indicator, int srv_err, String msg) {
+	public UJciException(int err, Throwable t) {
+	    	super();
+		jciErrCode = err;
+		setStackTrace(t.getStackTrace());
+	}
+
+	public UJciException(int err, int indicator, int srv_err, String msg) {
 		super(msg);
 		jciErrCode = err;
 		serverErrCode = srv_err;

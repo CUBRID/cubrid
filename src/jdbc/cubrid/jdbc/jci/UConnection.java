@@ -36,12 +36,11 @@
 
 package cubrid.jdbc.jci;
 
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -53,11 +52,13 @@ import javax.transaction.xa.Xid;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDDriver;
 import cubrid.jdbc.driver.CUBRIDException;
+import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
 import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
 import cubrid.jdbc.driver.CUBRIDXid;
 import cubrid.jdbc.driver.ConnectionProperties;
 import cubrid.jdbc.log.BasicLogger;
 import cubrid.jdbc.log.Log;
+import cubrid.jdbc.net.BrokerHandler;
 import cubrid.sql.CUBRIDOID;
 
 public class UConnection {
@@ -76,9 +77,7 @@ public class UConnection {
 
 	public final static int OID_BYTE_SIZE = 8;
 
-	/*
-	 * The followings are also defined in broker/cas_protocol.h
-	 */
+	// this value is defined in broker/cas_protocol.h
 	private final static String magicString = "CUBRK";
 	private final static byte CAS_CLIENT_JDBC = 3;
 	/* Current protocol version */
@@ -139,8 +138,6 @@ public class UConnection {
 
 	boolean update_executed; /* for result cache */
 
-	private OutputStream out;
-	private UTimedInputStream in;
 	private boolean needReconnection;
 	private UTimedDataInputStream input;
 	private DataOutputStream output;
@@ -205,22 +202,12 @@ public class UConnection {
 		update_executed = false;
 
 		needReconnection = true;
-
-		String version = getDatabaseProductVersion();
-		UError cpErr = errorHandler;
-		endTransaction(true);
-		if (version == null) {
-			throw new CUBRIDException(cpErr);
-		}
+	    	errorHandler = new UError();
 	}
 
 	UConnection(ArrayList<String> altHostList, String dbname, String user,
 			String passwd, String url) throws CUBRIDException {
-		try {
-			setAltHosts(altHostList);
-		} catch (CUBRIDException e) {
-			throw e;
-		}
+		setAltHosts(altHostList);
 		this.dbname = dbname;
 		this.user = user;
 		this.passwd = passwd;
@@ -228,32 +215,21 @@ public class UConnection {
 		update_executed = false;
 
 		needReconnection = true;
-
-		String version = getDatabaseProductVersion();
-		UError cpErr = errorHandler;
-		endTransaction(true);
-		if (version == null) {
-			throw new CUBRIDException(cpErr);
-		}
+	    	errorHandler = new UError();
 	}
 
-	/*
-	 * the constructor of the class UConnection for class UStatement method
-	 * cancel
-	 */
-
-	UConnection(String ip, int port) throws UJciException {
-		errorHandler = new UError();
-		CASIp = ip;
-		CASPort = port;
-		initConnection(ip, port, true);
-		needReconnection = false;
-	}
-
+	// This constructor is called on the server side.
 	UConnection(Socket socket, Object curThread) throws CUBRIDException {
 		errorHandler = new UError();
 		try {
-			initConnection(socket);
+			client = socket;
+			client.setTcpNoDelay(true);
+
+			output = new DataOutputStream(client.getOutputStream());
+			output.writeInt(0x08);
+			output.flush();
+			input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
+
 			needReconnection = false;
 			casinfo = new byte[CAS_INFO_SIZE];
 			casinfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
@@ -263,31 +239,25 @@ public class UConnection {
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setCharSet",
 					new Class[] { String.class }, this.curThread,
 					new Object[] { connectionProperties.getCharSet() });
-		} catch (UJciException e) {
-			e.toUError(errorHandler);
-			throw new CUBRIDException(errorHandler);
+		} catch (IOException e) {
+		    	UJciException je = new UJciException(UErrorCode.ER_CONNECTION);
+		    	je.toUError(errorHandler);
+			throw new CUBRIDException(errorHandler, e);
 		}
 	}
 
-	private void initConnection(Socket socket) throws UJciException {
-		try {
-			client = socket;
-			client.setTcpNoDelay(true);
-			if (!UJCIUtil.isServerSide()) {
-				client.setSoTimeout(SOCKET_TIMEOUT);
-			}
-
-			out = client.getOutputStream();
-			output = new DataOutputStream(client.getOutputStream());
-			output.writeInt(0x08);
-			out.flush();
-			output.flush();
-
-			in = new UTimedInputStream(client.getInputStream(), CASIp, CASPort);
-			input = new UTimedDataInputStream(client.getInputStream(), CASIp,
-					CASPort);
+	public void tryConnect() throws CUBRIDException {
+	    	try {
+	    	    	checkReconnect();
+	    	    	endTransaction(true);
+		} catch (UJciException e) {
+	    	    	e.toUError(errorHandler);
+	    	    	throw new CUBRIDException(errorHandler, e);
 		} catch (IOException e) {
-			throw createJciException(UErrorCode.ER_CONNECTION);
+		    	if (e instanceof SocketTimeoutException) {
+		    	    	throw new CUBRIDException(CUBRIDJDBCErrorCode.request_timeout, e);
+		    	}
+		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 	}
 
@@ -379,7 +349,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.EXECUTE_BATCH_STATEMENT);
+			outBuffer.newRequest(output, UFunctionCode.EXECUTE_BATCH_STATEMENT);
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
 			for (int i = 0; i < batchSqlStmt.length; i++) {
@@ -463,7 +433,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
-			outBuffer.newRequest(out, UFunctionCode.RELATED_TO_COLLECTION);
+			outBuffer.newRequest(output, UFunctionCode.RELATED_TO_COLLECTION);
 			outBuffer.addByte(UConnection.DROP_ELEMENT_IN_SEQUENCE);
 			outBuffer.addOID(oid);
 			outBuffer.addInt(index);
@@ -528,7 +498,7 @@ public class UConnection {
 							throw new Exception("Check It Out!");
 						}
 					}
-					outBuffer.newRequest(out, UFunctionCode.END_TRANSACTION);
+					outBuffer.newRequest(output, UFunctionCode.END_TRANSACTION);
 					outBuffer.addByte((type == true) ? END_TRAN_COMMIT
 							: END_TRAN_ROLLBACK);
 
@@ -578,7 +548,7 @@ public class UConnection {
 	}
 
 	synchronized public OutputStream getOutputStream() {
-		return out;
+		return output;
 	}
 
 	synchronized public UStatement getByOID(CUBRIDOID oid,
@@ -595,7 +565,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.GET_BY_OID);
+			outBuffer.newRequest(output, UFunctionCode.GET_BY_OID);
 			outBuffer.addOID(oid);
 			for (int i = 0; attributeName != null && i < attributeName.length; i++) {
 				if (attributeName[i] != null)
@@ -634,7 +604,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.GET_DB_VERSION);
+			outBuffer.newRequest(output, UFunctionCode.GET_DB_VERSION);
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
 			UInputBuffer inBuffer;
@@ -665,7 +635,7 @@ public class UConnection {
 				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 					return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 
-				outBuffer.newRequest(out, UFunctionCode.GET_DB_PARAMETER);
+				outBuffer.newRequest(output, UFunctionCode.GET_DB_PARAMETER);
 				outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
 
 				UInputBuffer inBuffer;
@@ -747,7 +717,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.GET_SCHEMA_INFO);
+			outBuffer.newRequest(output, UFunctionCode.GET_SCHEMA_INFO);
 			outBuffer.addInt(type);
 			if (arg1 == null)
 				outBuffer.addNull();
@@ -791,7 +761,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return 0;
 
-			outBuffer.newRequest(out, UFunctionCode.RELATED_TO_COLLECTION);
+			outBuffer.newRequest(output, UFunctionCode.RELATED_TO_COLLECTION);
 			outBuffer.addByte(UConnection.GET_SIZE_OF_COLLECTION);
 			outBuffer.addOID(oid);
 			if (attributeName == null)
@@ -856,7 +826,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.PREPARE);
+			outBuffer.newRequest(output, UFunctionCode.PREPARE);
 			outBuffer.addStringWithNull(sqlStatement);
 			outBuffer.addByte(prepareFlag);
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
@@ -931,7 +901,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
-			outBuffer.newRequest(out, UFunctionCode.PUT_BY_OID);
+			outBuffer.newRequest(output, UFunctionCode.PUT_BY_OID);
 			outBuffer.addOID(oid);
 			if (putParameter != null)
 				putParameter.writeParameter(outBuffer);
@@ -985,7 +955,7 @@ public class UConnection {
 				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 					return;
 
-				outBuffer.newRequest(out, UFunctionCode.SET_DB_PARAMETER);
+				outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
 				outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
 				outBuffer.addInt(level);
 
@@ -1013,7 +983,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
-			outBuffer.newRequest(out, UFunctionCode.SET_DB_PARAMETER);
+			outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
 			outBuffer.addInt(DB_PARAM_LOCK_TIMEOUT);
 			outBuffer.addInt(timeout);
 
@@ -1100,7 +1070,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
-			outBuffer.newRequest(out, UFunctionCode.XA_END_TRAN);
+			outBuffer.newRequest(output, UFunctionCode.XA_END_TRAN);
 			outBuffer.addXid(xid);
 			outBuffer.addByte((type == true) ? END_TRAN_COMMIT
 					: END_TRAN_ROLLBACK);
@@ -1130,7 +1100,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
-			outBuffer.newRequest(out, UFunctionCode.XA_PREPARE);
+			outBuffer.newRequest(output, UFunctionCode.XA_PREPARE);
 			outBuffer.addXid(xid);
 
 			send_recv_msg();
@@ -1152,7 +1122,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.XA_RECOVER);
+			outBuffer.newRequest(output, UFunctionCode.XA_RECOVER);
 
 			UInputBuffer inBuffer;
 			inBuffer = send_recv_msg();
@@ -1202,7 +1172,7 @@ public class UConnection {
 		}
 
 		try {
-			synchronized (in) {
+			synchronized (input) {
 				if (checkCasMsg == null) {
 					int msgSize = 1;
 					checkCasMsg = new byte[9];
@@ -1250,7 +1220,7 @@ public class UConnection {
 
 	synchronized public boolean check_cas(String msg) {
 		try {
-			outBuffer.newRequest(out, UFunctionCode.CHECK_CAS);
+			outBuffer.newRequest(output, UFunctionCode.CHECK_CAS);
 			outBuffer.addStringWithNull(msg);
 			send_recv_msg();
 		} catch (Exception e) {
@@ -1282,7 +1252,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.RELATED_TO_OID);
+			outBuffer.newRequest(output, UFunctionCode.RELATED_TO_OID);
 			outBuffer.addByte(cmd);
 			outBuffer.addOID(oid);
 
@@ -1319,7 +1289,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
 
-			outBuffer.newRequest(out, UFunctionCode.NEW_LOB);
+			outBuffer.newRequest(output, UFunctionCode.NEW_LOB);
 			outBuffer.addInt(lob_type);
 
 			UInputBuffer inBuffer;
@@ -1358,7 +1328,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return -1;
 
-			outBuffer.newRequest(out, UFunctionCode.WRITE_LOB);
+			outBuffer.newRequest(output, UFunctionCode.WRITE_LOB);
 			outBuffer.addBytes(packedLobHandle);
 			outBuffer.addLong(offset);
 			outBuffer.addBytes(buf, start, len);
@@ -1394,7 +1364,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return -1;
 
-			outBuffer.newRequest(out, UFunctionCode.READ_LOB);
+			outBuffer.newRequest(output, UFunctionCode.READ_LOB);
 			outBuffer.addBytes(packedLobHandle);
 			outBuffer.addLong(offset);
 			outBuffer.addInt(len);
@@ -1469,7 +1439,7 @@ public class UConnection {
 		byte prev_casinfo[] = casinfo;
 		outBuffer.sendData();
 		/* set cas info to UConnection member variable and return InputBuffer */
-		UInputBuffer inputBuffer = new UInputBuffer(in, this);
+		UInputBuffer inputBuffer = new UInputBuffer(input, this);
 
 		if (UJCIUtil.isConsoleDebug()) {
 			printCasInfo(prev_casinfo, casinfo);
@@ -1482,39 +1452,7 @@ public class UConnection {
 	}
 
 	void cancel() throws UJciException, IOException {
-		UConnection conCancel = null;
-		try {
-			conCancel = new UConnection(CASIp, CASPort);
-
-			if (protoVersionIsAbove(1) == true) {
-				String cancelCommand = "QC";
-				int localPort = client.getLocalPort();
-				if (localPort < 0)
-					localPort = 0;
-				conCancel.output.write(cancelCommand.getBytes());
-				conCancel.output.writeInt(processId);
-				conCancel.output.writeShort((short) localPort);
-				conCancel.output.writeShort(0); /* reserved */
-			} else {
-				String cancelCommand = "CANCEL";
-				conCancel.output.write(cancelCommand.getBytes());
-				conCancel.output.writeInt(processId);
-			}
-
-			conCancel.output.flush();
-
-			int error = conCancel.input.readInt();
-
-			if (error < 0) {
-				int errorCode = conCancel.input.readInt();
-				throw createJciException(UErrorCode.ER_DBMS, error, errorCode, null);
-			}
-		} finally {
-			if (conCancel != null) {
-				conCancel.clientSocketClose();
-				conCancel.close();
-			}
-		}
+	    	BrokerHandler.cancelBroker(CASIp, CASPort, processId, 0);
 	}
 
 	UUrlCache getUrlCache() {
@@ -1530,11 +1468,17 @@ public class UConnection {
 			CUBRIDDriver.printDebug(String.format("Try Connect (%s,%d)", CASIp,
 					CASPort));
 		}
-		initConnection(CASIp, CASPort, true);
-		sendDriverInfo();
-		whetherConnectOtherPortOrNot();
-		connectDB();
 
+		long begin = System.currentTimeMillis();
+		int timeout = connectionProperties.getConnectTimeout() * 1000;
+		client = BrokerHandler.connectBroker(CASIp, CASPort, timeout);
+		output = new DataOutputStream(client.getOutputStream());
+		input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
+		timeout -= (System.currentTimeMillis() - begin);
+		connectDB(timeout);
+
+		client.setTcpNoDelay(true);
+		client.setSoTimeout(SOCKET_TIMEOUT);
 		needReconnection = false;
 		if (connectionProperties.getReconnectTime() > 0)
 			lastRCTime = System.currentTimeMillis() / 1000;
@@ -1546,6 +1490,38 @@ public class UConnection {
 		/*
 		 * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
 		 */
+	}
+
+	private synchronized void connectDB(int timeout) throws IOException, UJciException {
+		UTimedDataInputStream is = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort, timeout);
+		DataOutputStream os = new DataOutputStream(client.getOutputStream());
+
+		// send database information
+		os.write(dbInfo);
+
+		// receive header
+		int dataLength = is.readInt();
+		casinfo = new byte[CAS_INFO_SIZE];
+		is.readFully(casinfo);
+		if (dataLength < 0) {
+		    throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		}
+
+		// receive data
+		int response = is.readInt();
+		if (response < 0) {
+		    int code = is.readInt();
+		    byte msg[] = new byte[dataLength - 8];
+		    is.readFully(msg);
+		    throw new UJciException(UErrorCode.ER_DBMS, response, code, new String(msg));
+		}
+
+		processId = response;
+		if (broker_info == null) {
+	    		broker_info = new byte[BROKER_INFO_SIZE];
+		}
+		is.readFully(broker_info);
+		sessionId = is.readInt();
 	}
 
 	private boolean setActiveHost(int hostId) throws UJciException {
@@ -1636,41 +1612,6 @@ public class UConnection {
 		return false;
 	}
 
-	private void connectDB() throws IOException, UJciException {
-		UInputBuffer inBuffer;
-
-		synchronized (output) {
-			output.write(dbInfo);
-			output.flush();
-
-			synchronized (input) {
-				synchronized (in) {
-					inBuffer = new UInputBuffer(in, this);
-					processId = inBuffer.getResCode();
-					if (broker_info == null)
-						broker_info = new byte[BROKER_INFO_SIZE];
-					inBuffer.readBytes(broker_info);
-					sessionId = inBuffer.readInt();
-				}
-			}
-		}
-
-		/* synchronize with broker_info */
-		byte version = broker_info[BROKER_INFO_PROTO_VERSION];
-		if ((version & CAS_PROTO_INDICATOR) == CAS_PROTO_INDICATOR) {
-			brokerVersion = makeProtoVersion(version & CAS_PROTO_VER_MASK);
-		} else {
-			brokerVersion = makeBrokerVersion(
-					(int) broker_info[BROKER_INFO_MAJOR_VERSION],
-					(int) broker_info[BROKER_INFO_MINOR_VERSION],
-					(int) broker_info[BROKER_INFO_PATCH_VERSION]);
-		}
-	}
-
-	private String makeConnectInfo(String ip, int port) {
-		return String.format("%s:%d", ip, port);
-	}
-
 	private void setConnectInfo(String info) throws UJciException {
 		StringTokenizer st = new StringTokenizer(info, ":");
 		if (st.countTokens() != 2) {
@@ -1679,30 +1620,6 @@ public class UConnection {
 
 		CASIp = st.nextToken();
 		CASPort = Integer.valueOf(st.nextToken()).intValue();
-	}
-
-	private void initConnection(String ip, int port, boolean setInfo)
-			throws UJciException {
-		try {
-			client = new Socket(InetAddress.getByName(ip), port);
-			client.setTcpNoDelay(true);
-			client.setSoTimeout(SOCKET_TIMEOUT);
-
-			out = client.getOutputStream();
-			output = new DataOutputStream(client.getOutputStream());
-			out.flush();
-			output.flush();
-
-			in = new UTimedInputStream(client.getInputStream(), ip, CASPort);
-			input = new UTimedDataInputStream(client.getInputStream(), ip,
-					CASPort);
-
-			if (setInfo) {
-				CUBRIDDriver.setLastConnectInfo(url, makeConnectInfo(ip, port));
-			}
-		} catch (IOException e) {
-		    	throw createJciException(UErrorCode.ER_CONNECTION);
-		}
 	}
 
 	private void manageElementOfSequence(CUBRIDOID oid, String attributeName,
@@ -1715,7 +1632,7 @@ public class UConnection {
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return;
 
-		outBuffer.newRequest(out, UFunctionCode.RELATED_TO_COLLECTION);
+		outBuffer.newRequest(output, UFunctionCode.RELATED_TO_COLLECTION);
 		outBuffer.addByte(flag);
 		outBuffer.addOID(oid);
 		outBuffer.addInt(index);
@@ -1733,7 +1650,7 @@ public class UConnection {
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return;
 
-		outBuffer.newRequest(out, UFunctionCode.RELATED_TO_COLLECTION);
+		outBuffer.newRequest(output, UFunctionCode.RELATED_TO_COLLECTION);
 		outBuffer.addByte(flag);
 		outBuffer.addOID(oid);
 		aParameter.writeParameter(outBuffer);
@@ -1800,36 +1717,12 @@ public class UConnection {
 		check_cas(msg);
 	}
 
-	private void sendDriverInfo() throws IOException {
-		synchronized (output) {
-			output.write(driverInfo);
-			output.flush();
-		}
-	}
-
-	private void whetherConnectOtherPortOrNot() throws IOException,
-			UJciException {
-		int newPort = 0;
-
-		synchronized (input) {
-			newPort = input.readInt();
-		}
-		if (newPort < 0) {
-			int err_code = input.readInt();
-			throw createJciException(UErrorCode.ER_DBMS, newPort, err_code, null);
-		} else if (newPort == 0)
-			return;
-		client.setSoLinger(true, 0);
-		client.close();
-		initConnection(CASIp, newPort, false);
-	}
-
 	public void closeSession() {
 		try {
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
-			outBuffer.newRequest(out, UFunctionCode.END_SESSION);
+			outBuffer.newRequest(output, UFunctionCode.END_SESSION);
 			send_recv_msg();
 			sessionId = 0;
 		} catch (Exception e) {
@@ -1843,8 +1736,7 @@ public class UConnection {
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
-			outBuffer.newRequest(out, UFunctionCode.CON_CLOSE);
-
+			outBuffer.newRequest(output, UFunctionCode.CON_CLOSE);
 			send_recv_msg();
 		} catch (Exception e) {
 		}
@@ -1879,41 +1771,6 @@ public class UConnection {
 
 	public void turnOffAutoCommitBySelf() {
 		isAutoCommitBySelf = false;
-	}
-
-	static void ping(String ip, int port, int socketTimeout) throws IOException {
-		Socket clientSocket = null;
-		DataOutputStream outputStream = null;
-		DataInputStream inputStream = null;
-
-		try {
-			String ping_msg = "PING_TEST!";
-
-			clientSocket = new Socket(InetAddress.getByName(ip), port);
-			clientSocket.setTcpNoDelay(true);
-			clientSocket.setSoTimeout(socketTimeout);
-
-			outputStream = new DataOutputStream(clientSocket.getOutputStream());
-
-			outputStream.write(ping_msg.getBytes());
-			outputStream.flush();
-
-			inputStream = new DataInputStream(clientSocket.getInputStream());
-			inputStream.readInt();
-
-		} catch (Exception e) {
-			throw new IOException(e.getMessage());
-		} finally {
-			if (outputStream != null) {
-				outputStream.close();
-			}
-			if (inputStream != null) {
-				inputStream.close();
-			}
-			if (clientSocket != null) {
-				clientSocket.close();
-			}
-		}
 	}
 
     public void setConnectionProperties(ConnectionProperties connProperties) {

@@ -78,6 +78,7 @@ public class CUBRIDJDBCErrorCode {
 	public static int invalid_table_name = 38;
 	public static int lob_pos_invalid = 39;
 	public static int lob_is_not_writable = 40;
+	public static int request_timeout = 41;
 
 	public static String[] err_msg = {
 	// 0
@@ -161,7 +162,9 @@ public class CUBRIDJDBCErrorCode {
 			// 39
 			"Lob position to write is invalid.",
 			// 40
-			"Lob is not writable." };
+			"Lob is not writable.",
+			// 41
+			"Request timed out."};
 
 	public static String getMessage(int code) {
 		return err_msg[code];

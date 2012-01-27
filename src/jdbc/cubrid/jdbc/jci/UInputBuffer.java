@@ -49,7 +49,7 @@ import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 
 class UInputBuffer {
-	private UTimedInputStream input;
+	private UTimedDataInputStream input;
 	private int position;
 	private int capacity;
 	private byte casinfo[];
@@ -58,7 +58,7 @@ class UInputBuffer {
 	private final static int CAS_INFO_SIZE = 4;
 	private UConnection uconn;
 
-	UInputBuffer(UTimedInputStream relatedI, UConnection con)
+	UInputBuffer(UTimedDataInputStream relatedI, UConnection con)
 			throws IOException, UJciException {
 		input = relatedI;
 		position = 0;

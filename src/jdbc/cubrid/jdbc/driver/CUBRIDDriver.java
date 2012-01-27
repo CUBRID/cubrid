@@ -304,6 +304,7 @@ public class CUBRIDDriver implements Driver {
 		}
 
 		u_con.setConnectionProperties(connProperties);
+		u_con.tryConnect();
 		return new CUBRIDConnection(u_con, url, user);
 	}
 

@@ -283,6 +283,9 @@ public class ConnectionProperties {
 
     IntegerConnectionProperty queryTimeout = new IntegerConnectionProperty(
 	    "queryTimeout", -1, -1, Integer.MAX_VALUE);
+    
+    IntegerConnectionProperty connectTimeout = new IntegerConnectionProperty(
+	    "connectTimeout", -1, -1, Integer.MAX_VALUE);
 
     StringConnectionProperty altHosts = new StringConnectionProperty(
 	    "altHosts", null);
@@ -316,6 +319,10 @@ public class ConnectionProperties {
 
     public int getQueryTimeout() {
 	return queryTimeout.getValueAsInteger();
+    }
+
+    public int getConnectTimeout() {
+	return connectTimeout.getValueAsInteger();
     }
 
     public String getAltHosts() {

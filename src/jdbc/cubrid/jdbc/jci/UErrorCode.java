@@ -67,6 +67,7 @@ abstract public class UErrorCode {
 	public static final int ER_OID_IS_NOT_INCLUDED = 21;
 	public static final int ER_CMD_IS_NOT_INSERT = 22;
 	public static final int ER_UNKNOWN = 23;
+	public static final int ER_TIMEOUT = 24;
 
 	/* CAS Error Code */
 
@@ -104,7 +105,7 @@ abstract public class UErrorCode {
 	public final static int CAS_ERROR_INDICATOR = -1;
 	public final static int DBMS_ERROR_INDICATOR = -2;
 
-	private static Hashtable messageString, CASMessageString;
+	private static Hashtable<Integer, String> messageString, CASMessageString;
 
 	public static String codeToMessage(int index) {
 		if (messageString == null)
@@ -119,7 +120,7 @@ abstract public class UErrorCode {
 	}
 
 	private static void setMessageHash() {
-		messageString = new Hashtable(24);
+		messageString = new Hashtable<Integer, String>();
 
 		messageString.put(new Integer(ER_UNKNOWN), "Error");
 		messageString.put(new Integer(ER_NO_ERROR), "No Error");
@@ -132,9 +133,8 @@ abstract public class UErrorCode {
 				"Type conversion error");
 		messageString.put(new Integer(ER_BIND_INDEX),
 				"Missing or invalid position of the bind variable provided");
-		messageString
-				.put(new Integer(ER_NOT_BIND),
-						"Attempt to execute the query when not all the parameters are binded");
+		messageString.put(new Integer(ER_NOT_BIND),
+				"Attempt to execute the query when not all the parameters are binded");
 		messageString.put(new Integer(ER_WAS_NULL),
 				"Internal Error: NULL value");
 		messageString.put(new Integer(ER_COLUMN_INDEX),
@@ -156,9 +156,8 @@ abstract public class UErrorCode {
 				"Connection or Statement might be closed");
 		messageString.put(new Integer(ER_ILLEGAL_FLAG),
 				"Internal error: Invalid argument");
-		messageString
-				.put(new Integer(ER_ILLEGAL_DATA_SIZE),
-						"Cannot communicate with the broker or received invalid packet");
+		messageString.put(new Integer(ER_ILLEGAL_DATA_SIZE),
+				"Cannot communicate with the broker or received invalid packet");
 		messageString.put(new Integer(ER_NOT_OBJECT),
 				"Index's Column is Not Object");
 		messageString.put(new Integer(ER_NO_MORE_RESULT), "No More Result");
@@ -166,10 +165,11 @@ abstract public class UErrorCode {
 				"This ResultSet do not include the OID");
 		messageString.put(new Integer(ER_CMD_IS_NOT_INSERT),
 				"Command is not insert");
+		messageString.put(new Integer(ER_TIMEOUT), "Request timed out");
 	}
 
 	private static void setCASMessageHash() {
-		CASMessageString = new Hashtable(30);
+		CASMessageString = new Hashtable<Integer, String>();
 
 		CASMessageString.put(new Integer(CAS_ER_DBMS),
 				"Database connection error");

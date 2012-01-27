@@ -41,46 +41,113 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketTimeoutException;
 
-class UTimedDataInputStream {
-	public final static int PING_TIMEOUT = 5000;
-	private DataInputStream stream = null;
-	private String ip = null;
-	private int port = 0;
+import cubrid.jdbc.net.BrokerHandler;
 
-	UTimedDataInputStream() {
-	}
+public class UTimedDataInputStream {
+    public final static int PING_TIMEOUT = 5000;
+    private DataInputStream stream = null;
+    private String ip = null;
+    private int port = 0;
+    private int timeout = 0;
 
-	public UTimedDataInputStream(InputStream stream, String ip, int port) {
-		this.stream = new DataInputStream(stream);
-		this.ip = ip;
-		this.port = port;
-	}
+    public UTimedDataInputStream(InputStream stream, String ip, int port) {
+	this(stream, ip, port, 0);
+    }
 
-	public int readInt() throws IOException {
-		while (true) {
-			try {
-				return stream.readInt();
-			} catch (SocketTimeoutException e) {
-				try {
-					UConnection.ping(ip, port, PING_TIMEOUT);
-				} catch (Exception f) {
-					throw new IOException(f.getMessage());
-				}
-			}
+    public UTimedDataInputStream(InputStream stream, String ip, int port, int timeout) {
+	this.stream = new DataInputStream(stream);
+	this.ip = ip;
+	this.port = port;
+	this.timeout = timeout;
+    }
+
+    public int readInt(int timeout) throws IOException {
+	long begin = System.currentTimeMillis();
+
+	while (true) {
+	    try {
+		return stream.readInt();
+	    } catch (SocketTimeoutException e) {
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+		if (timeout <= 0) {
+		    continue;
+		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+		    throw new SocketTimeoutException(msg);
 		}
+	    }
 	}
+    }
 
-	public int readByte(byte[] b) throws IOException {
-		while (true) {
-			try {
-				return stream.read(b);
-			} catch (SocketTimeoutException e) {
-				try {
-					UConnection.ping(ip, port, PING_TIMEOUT);
-				} catch (Exception f) {
-					throw new IOException(f.getMessage());
-				}
-			}
+    public int readInt() throws IOException {
+	return readInt(timeout);
+    }
+
+    public void readFully(byte[] b) throws IOException {
+	readFully(b, timeout);
+    }
+
+    public void readFully(byte[] b, int timeout) throws IOException {
+	long begin = System.currentTimeMillis();
+
+	while (true) {
+	    try {
+		stream.readFully(b);
+		return;
+	    } catch (SocketTimeoutException e) {
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+		if (timeout <= 0) {
+		    continue;
+		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+		    throw new SocketTimeoutException(msg);
 		}
+	    }
 	}
+    }
+
+    public int readByte(byte[] b, int timeout) throws IOException {
+	long begin = System.currentTimeMillis();
+
+	while (true) {
+	    try {
+		return stream.read(b);
+	    } catch (SocketTimeoutException e) {
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+		if (timeout <= 0) {
+		    continue;
+		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+		    throw new SocketTimeoutException(msg);
+		}
+	    }
+	}
+    }
+
+    public int readByte(byte[] b) throws IOException {
+	return readByte(b, timeout);
+    }
+
+    public int read(byte[] b, int off, int len, int timeout) throws IOException {
+	long begin = System.currentTimeMillis();
+
+	while (true) {
+	    try {
+		return stream.read(b, off, len);
+	    } catch (SocketTimeoutException e) {
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+		if (timeout <= 0) {
+		    continue;
+		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+		    throw new SocketTimeoutException(msg);
+		}
+	    }
+	}
+    }
+
+    public int read(byte[] b, int off, int len) throws IOException {
+	return read(b, off, len, timeout);
+    }
+
 }
