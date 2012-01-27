@@ -128,27 +128,6 @@ public class CUBRIDDriver implements Driver {
 		return info;
 	}
 
-	private boolean exValidKey(String key) throws Exception {
-		String className = CUBRIDDriver.class.getName();
-		String classSplit[] = className.split("\\.");
-		String keySplit[] = key.split("\\-");
-		if (!classSplit[0].equals(keySplit[0].toLowerCase())) {
-			throw new Exception("Invalid URL");
-		}
-
-		if (classSplit[2].equals("oracle") || classSplit[2].equals("mysql")) {
-			if (keySplit[1] != null
-					&& !classSplit[2].equals(keySplit[1].toLowerCase())) {
-				throw new Exception("Invalid URL");
-			}
-		} else {
-			if (keySplit.length != 1) {
-				throw new Exception("Invalid URL");
-			}
-		}
-		return true;
-	}
-
 	/*
 	 * java.sql.Driver interface
 	 */
@@ -194,7 +173,6 @@ public class CUBRIDDriver implements Driver {
 					throw new Exception("Invalid URL");
 				} else {
 					tokenizer.nextToken();
-					exValidKey(magickey);
 				}
 
 				hostname = tokenizer.nextToken();
@@ -331,10 +309,19 @@ public class CUBRIDDriver implements Driver {
 	}
 
 	public boolean acceptsURL(String url) throws SQLException {
-		if (url == null)
-			return false;
-		return url.toLowerCase().startsWith(CUBRID_JDBC_URL_HEADER)
-				|| url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION);
+	    if (url == null)
+            return false;
+
+        String urlHeader = CUBRID_JDBC_URL_HEADER;
+        String className = CUBRIDDriver.class.getName();
+        if (className.matches(".*oracle.*")) {
+            urlHeader += "-oracle";
+        } else if (className.matches(".*mysql.*")) {
+            urlHeader += "-mysql";
+        }
+        
+        return url.toLowerCase().startsWith(urlHeader)
+                || url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION);
 	}
 
 	public DriverPropertyInfo[] getPropertyInfo(String url, Properties info)
