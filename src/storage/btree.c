@@ -2893,7 +2893,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
   index_scan_id.indx_info = NULL;
   memset ((void *) (&(index_scan_id.multi_range_opt)), 0,
 	  sizeof (MULTI_RANGE_OPT));
-  scan_init_iss (&index_scan_id.iss);
+  scan_init_iss (&index_scan_id);
 
   if (key == NULL || db_value_is_null (key)
       || btree_multicol_key_is_null (key))
@@ -2963,7 +2963,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
   index_scan_id.indx_info = NULL;
   memset ((void *) (&(index_scan_id.multi_range_opt)), 0,
 	  sizeof (MULTI_RANGE_OPT));
-  scan_init_iss (&index_scan_id.iss);
+  scan_init_iss (&index_scan_id);
 
   if (key == NULL || db_value_is_null (key)
       || btree_multicol_key_is_null (key))
@@ -4305,7 +4305,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
   memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
   isid.indx_info = NULL;
   memset ((void *) (&(isid.multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
-  scan_init_iss (&isid.iss);
+  scan_init_iss (&isid);
 
   do
     {
@@ -15857,6 +15857,7 @@ start_locking:
 			      goto error;
 			    }
 
+			  oids_cnt++;
 			  goto end_of_scan;
 			}
 		      else if (index_scan_id_p->multi_range_opt.use)
@@ -15960,6 +15961,7 @@ start_locking:
 				  goto error;
 				}
 
+			      oids_cnt++;
 			      goto end_of_scan;
 			    }
 			  else if (index_scan_id_p->multi_range_opt.use)
@@ -16147,6 +16149,7 @@ start_locking:
 						      true);
 				}
 
+			      oids_cnt++;
 			      goto end_of_scan;
 			    }
 			  else if (index_scan_id_p->multi_range_opt.use)
@@ -16393,6 +16396,7 @@ start_locking:
 			  goto error;
 			}
 
+		      oids_cnt++;
 		      goto end_of_scan;
 		    }
 		  else if (index_scan_id_p->multi_range_opt.use)
@@ -16533,6 +16537,8 @@ start_locking:
 				{
 				  goto error;
 				}
+
+			      oids_cnt++;
 			      goto end_of_scan;
 			    }
 			  else if (index_scan_id_p->multi_range_opt.use)
@@ -16688,6 +16694,8 @@ start_locking:
 				    {
 				      goto error;
 				    }
+
+				  oids_cnt++;
 				  goto end_of_scan;
 				}
 			      else if (index_scan_id_p->multi_range_opt.use)
@@ -16902,6 +16910,7 @@ start_locking:
 						  bts->key_lock_mode, true);
 			    }
 
+			  oids_cnt++;
 			  goto end_of_scan;
 			}
 		      else if (index_scan_id_p->multi_range_opt.use)
@@ -17224,6 +17233,7 @@ start_locking:
 						  bts->key_lock_mode, true);
 			    }
 
+			  oids_cnt++;
 			  goto end_of_scan;
 			}
 		      else if (index_scan_id_p->multi_range_opt.use)
@@ -17359,6 +17369,8 @@ start_locking:
 			{
 			  goto error;
 			}
+
+		      oids_cnt++;
 		      goto end_of_scan;
 		    }
 		  else if (index_scan_id_p->multi_range_opt.use)
@@ -17464,6 +17476,8 @@ start_locking:
 			    {
 			      goto error;
 			    }
+
+			  oids_cnt++;
 			  goto end_of_scan;
 			}
 		      else if (index_scan_id_p->multi_range_opt.use)
@@ -19990,16 +20004,43 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 static int
 btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
 {
+  struct regu_variable_node *key = NULL;
   int ret = NO_ERROR;
 
-  if (DB_VALUE_DOMAIN_TYPE (&(bts->cur_key)) != DB_TYPE_MIDXKEY
-      || iss == NULL)
+  /* check environment */
+  if (DB_VALUE_DOMAIN_TYPE (&bts->cur_key) != DB_TYPE_MIDXKEY
+      || iss == NULL || iss->skipped_range == NULL)
     {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
       return ER_FAILED;
     }
 
-  /* 2. SAVE THE NEW current key */
-  ret = pr_clone_value (&bts->cur_key, &iss->dbval);
+  /* get correct key to update value to (key1 for normal scan or key2 for 
+     reverse scan); the fetch range will have one of the keys NULLed */
+  if (iss->skipped_range->key1 == NULL)
+    {
+      key = iss->skipped_range->key2;
+    }
+  else
+    {
+      key = iss->skipped_range->key1;
+    }
+
+  /* check the key */
+  if (key == NULL || key->value.funcp == NULL
+      || key->value.funcp->operand == NULL
+      || key->value.funcp->operand->value.type != TYPE_DBVAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* save the found key as bound for next fetch */
+  pr_clear_value (&key->value.funcp->operand->value.value.dbval);
+  ret = pr_clone_value (&bts->cur_key,
+			&key->value.funcp->operand->value.value.dbval);
   if (ret != NO_ERROR)
     {
       return ret;

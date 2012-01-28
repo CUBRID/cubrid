@@ -4319,15 +4319,15 @@ regu_index_init (INDX_INFO * ptr)
   ptr->key_info.key_limit_l = NULL;
   ptr->key_info.key_limit_u = NULL;
   ptr->key_info.key_limit_reset = false;
-  ptr->key_info.use_iss = false;
-  ptr->key_info.iss_range.range = NA_NA;
-  ptr->key_info.iss_range.key1 = NULL;
-  ptr->key_info.iss_range.key2 = NULL;
   ptr->orderby_desc = 0;
   ptr->groupby_desc = 0;
   ptr->use_desc_index = 0;
   ptr->orderby_skip = 0;
   ptr->groupby_skip = 0;
+  ptr->use_iss = false;
+  ptr->iss_range.range = NA_NA;
+  ptr->iss_range.key1 = NULL;
+  ptr->iss_range.key2 = NULL;
 }
 
 /*

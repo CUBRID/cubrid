@@ -270,7 +270,7 @@ static PT_NODE *pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
 static int pt_fix_first_term_expr_for_iss (PARSER_CONTEXT * parser,
 					   QO_INDEX_ENTRY * index_entryp,
 					   PT_NODE ** term_exprs);
-static int pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain);
+static int pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain);
 static int pt_init_pred_expr_context (PARSER_CONTEXT * parser,
 				      PT_NODE * predicate, PT_NODE * spec,
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
@@ -9446,42 +9446,51 @@ op_type_to_range (const PT_OP_TYPE op_type, const int nterms)
 
 /*
  * pt_create_iss_range () - Create a range to be used by Index Skip Scan 
- *   return:            NO_ERROR or error code
- *   key_infop(in,out): the key info structure that holds the special
- *                      secondary range used by Index Skip Scan
- *   domain(in):        domain of the first range element
+ *   return:             NO_ERROR or error code
+ *   indx_infop(in,out): the index info structure that holds the special
+ *                       range used by Index Skip Scan
+ *   domain(in):         domain of the first range element
  *
  * Note :
  * Index Skip Scan (ISS) uses an alternative range to scan the btree for 
  * the next suitable value of the first column. It looks similar to
  * "col1 > cur_col1_value". Although it is used on the server side, it must
- * be created on the broker and serialized vias XASL, because the server 
+ * be created on the broker and serialized via XASL, because the server 
  * cannot create regu variables.
  * The actual range (INF_INF, GT_INF, INF_LE) will be changed dynamically
  * at runtime, as well as the comparison value (left to NULL for now),
  * but we must create the basic regu var scaffolding here.
  */
 static int
-pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain)
+pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
 {
-  KEY_RANGE *kr = &key_infop->iss_range;
-  REGU_VARIABLE *key1, *v1;
+  KEY_RANGE *kr = NULL;
+  REGU_VARIABLE *key1 = NULL, *v1 = NULL;
 
-  assert (key_infop->use_iss);
-  if (!key_infop->use_iss)
+  if (indx_infop == NULL)
     {
-      return NO_ERROR;
-    }
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
-  kr->range = INF_INF;
-  key1 = kr->key1 = regu_var_alloc ();
-  if (key1 == NULL)
-    {
-      key_infop->use_iss = false;
       return ER_FAILED;
     }
 
-  kr->key2 = NULL;
+  if (!indx_infop->use_iss)
+    {
+      /* nothing to do if not using iss */
+      return NO_ERROR;
+    }
+
+  /* set up default range */
+  kr = &indx_infop->iss_range;
+  kr->range = INF_INF;
+
+  /* allocate range lower bound as regu var (will be used on server) */
+  key1 = kr->key1 = regu_var_alloc ();
+  if (key1 == NULL)
+    {
+      return ER_FAILED;
+    }
 
   key1->type = TYPE_FUNC;
   key1->domain = tp_domain_resolve_default (DB_TYPE_MIDXKEY);
@@ -9491,7 +9500,6 @@ pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain)
   key1->value.funcp = regu_func_alloc ();
   if (key1->value.funcp == NULL)
     {
-      key_infop->use_iss = false;
       return ER_FAILED;
     }
 
@@ -9500,7 +9508,6 @@ pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain)
   key1->value.funcp->operand = regu_varlist_alloc ();
   if (key1->value.funcp->operand == NULL)
     {
-      key_infop->use_iss = false;
       return ER_FAILED;
     }
 
@@ -9515,6 +9522,9 @@ pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain)
   DB_MAKE_NULL (&v1->value.dbval);
 
   v1->vfetch_to = NULL;
+
+  /* upper bound is not needed */
+  kr->key2 = NULL;
 
   return NO_ERROR;
 }
@@ -11106,16 +11116,18 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
 
-  key_infop = &indx_infop->key_info;
-
-  key_infop->use_iss = index_entryp->is_iss_candidate;
-  if (key_infop->use_iss)
+  indx_infop->use_iss = index_entryp->is_iss_candidate;
+  rc = pt_create_iss_range (indx_infop,
+			    index_entryp->constraints->attributes[0]->domain);
+  if (rc != NO_ERROR)
     {
-      pt_create_iss_range (key_infop,
-			   index_entryp->constraints->attributes[0]->domain);
+      PT_INTERNAL_ERROR (parser,
+			 "index plan generation - create iss range fail");
+      return NULL;
     }
 
   /* key limits */
+  key_infop = &indx_infop->key_info;
   key_limit = qo_xasl_get_key_limit (class_, qo_index_infop);
   if (pt_to_key_limit (parser, key_limit, NULL, key_infop, false) != NO_ERROR)
     {

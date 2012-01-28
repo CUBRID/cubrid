@@ -76,6 +76,21 @@ static int rv;
    && ((iso) == TRAN_REP_CLASS_UNCOMMIT_INSTANCE \
        || (iso) == TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE))
 
+/* ISS_RANGE_DETAILS stores information about the two ranges we use
+ * interchangeably in Index Skip Scan mode: along with the real range, we
+ * use a "fake" one to obtain the next value for the index's first column.
+ * 
+ * ISS_RANGE_DETAILS tries to completely encapsulate one of these ranges, so
+ * that whenever the need arises, we can "swap" them. */
+typedef struct iss_range_details ISS_RANGE_DETAILS;
+struct iss_range_details
+{
+  int key_cnt;
+  KEY_RANGE *key_ranges;
+  SCAN_PRED key_pred;
+  RANGE_TYPE range_type;
+};
+
 typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
 typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 
@@ -203,77 +218,107 @@ static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p,
 				     INDX_SCAN_ID * iscan_id, DB_VALUE * key,
 				     OID * oid, QFILE_TUPLE_RECORD * tplrec);
-static int scan_init_range_details (RANGE_DETAILS * rd);
-static int scan_save_range_details (RANGE_DETAILS * rd, INDX_SCAN_ID * isidp);
-static SCAN_CODE scan_obtain_next_iss_value (THREAD_ENTRY * thread_p,
-					     SCAN_ID * scan_id,
-					     INDX_SCAN_ID * isidp);
+static int scan_save_range_details (INDX_SCAN_ID * isidp_src,
+				    ISS_RANGE_DETAILS * rdp_dest);
+static int scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src,
+				       INDX_SCAN_ID * isidp_dest);
+static SCAN_CODE scan_get_next_iss_value (THREAD_ENTRY * thread_p,
+					  SCAN_ID * scan_id,
+					  INDX_SCAN_ID * isidp);
 static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p,
 					     SCAN_ID * scan_id,
 					     INDX_SCAN_ID * isidp,
 					     bool should_go_to_next_value);
 
 /*
- * scan_init_iss () - initialize iss structure
+ * scan_init_iss () - initialize index skip scan structure
  *   return: error code
- *   iss: pointer to index skip scan structure
+ *   isidp: pointer to index scan id structure that contains iss structure
  */
 int
-scan_init_iss (INDEX_SKIP_SCAN * iss)
+scan_init_iss (INDX_SCAN_ID * isidp)
 {
-  if (!iss)
+  DB_VALUE *last_key = NULL;
+  INDEX_SKIP_SCAN *iss = NULL;
+
+  if (isidp == NULL)
     {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
       return ER_FAILED;
     }
 
-  iss->use = false;
-  db_make_null (&iss->dbval);
+  iss = &isidp->iss;
+
+  /* initialize iss structure */
   iss->current_op = ISS_OP_NONE;
-  scan_init_range_details (&iss->real_range);
-  scan_init_range_details (&iss->fake_range);
-  return NO_ERROR;
-}
+  iss->skipped_range = NULL;
 
-/*
- * scan_init_range_details () - initialize range structure
- *   return: error code
- *   rd: pointer to range details structure to be initialized
- */
-static int
-scan_init_range_details (RANGE_DETAILS * rd)
-{
-  if (!rd)
+  if (isidp->indx_info == NULL)
     {
+      /* no index info specified so no iss needed */
+      iss->use = false;
+      return NO_ERROR;
+    }
+
+  iss->use = isidp->indx_info->use_iss;
+
+  if (!iss->use)
+    {
+      /* if not using iss, nothing more to do */
+      return NO_ERROR;
+    }
+
+  /* assign range */
+  iss->skipped_range = &isidp->indx_info->iss_range;
+
+  if (iss->skipped_range->key1 == NULL
+      || iss->skipped_range->key1->value.funcp == NULL
+      || iss->skipped_range->key1->value.funcp->operand == NULL
+      || iss->skipped_range->key1->value.funcp->operand->value.type
+      != TYPE_DBVAL)
+    {
+      /* this should never happen */
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
       return ER_FAILED;
     }
 
-  rd->key_cnt = 0;
-  rd->key_ranges = NULL;
-  rd->key_pred.pred_expr = NULL;
-  rd->key_pred.regu_list = NULL;
-  rd->range_type = NA_NA;
+  /* reset key value */
+  last_key =
+    &iss->skipped_range->key1->value.funcp->operand->value.value.dbval;
+
+  if (!DB_IS_NULL (last_key))
+    {
+      pr_clear_value (last_key);
+      DB_MAKE_NULL (last_key);
+    }
+
   return NO_ERROR;
 }
 
 /*
  * scan_save_range_details () - save range details from the index scan id to
- *                              a "backup" range_details structure.
- *   return: error code
- *   rd: pointer to range details structure to be filled with data from isidp
- *   isidp: pointer to index scan id
+ *                              a "backup" iss_range_details structure.
+ *    return: error code
+ *  rdp_dest: pointer to range details structure to be filled with data from isidp_src
+ * isidp_src: pointer to index scan id
  */
 static int
-scan_save_range_details (RANGE_DETAILS * rd, INDX_SCAN_ID * isidp)
+scan_save_range_details (INDX_SCAN_ID * isidp_src,
+			 ISS_RANGE_DETAILS * rdp_dest)
 {
-  if (!rd || !isidp)
+  if (rdp_dest == NULL || isidp_src == NULL || isidp_src->indx_info == NULL)
     {
       return ER_FAILED;
     }
 
-  rd->key_cnt = isidp->indx_info->key_info.key_cnt;
-  rd->key_ranges = isidp->indx_info->key_info.key_ranges;
-  rd->key_pred = isidp->key_pred;
-  rd->range_type = isidp->indx_info->range_type;
+  rdp_dest->key_cnt = isidp_src->indx_info->key_info.key_cnt;
+  rdp_dest->key_ranges = isidp_src->indx_info->key_info.key_ranges;
+  rdp_dest->key_pred = isidp_src->key_pred;
+  rdp_dest->range_type = isidp_src->indx_info->range_type;
 
   return NO_ERROR;
 }
@@ -281,43 +326,44 @@ scan_save_range_details (RANGE_DETAILS * rd, INDX_SCAN_ID * isidp)
 /*
  * scan_restore_range_details () - restore range details from the backup
  *                                 structure into the index scan id.
- *   return: error code
- *   rd: pointer to range details structure to be restored
- *   isidp: pointer to index scan id to be filled
+ *     return: error code
+ *    rdp_src: pointer to range details structure to be restored
+ * isidp_dest: pointer to index scan id to be filled
  *
  * Note:
  * The index scan is reset so that it is considered a brand new scan (for
  * instance, curr_keyno is set to -1 etc.)
  */
 static int
-scan_restore_range_details (RANGE_DETAILS * rd, INDX_SCAN_ID * isidp)
+scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src,
+			    INDX_SCAN_ID * isidp_dest)
 {
-  if (!rd || !isidp)
+  if (isidp_dest == NULL || rdp_src == NULL || isidp_dest->indx_info == NULL)
     {
       return ER_FAILED;
     }
 
-  isidp->curr_keyno = -1;
-  isidp->indx_info->key_info.key_cnt = rd->key_cnt;
+  isidp_dest->curr_keyno = -1;
+  isidp_dest->indx_info->key_info.key_cnt = rdp_src->key_cnt;
 
-  isidp->indx_info->key_info.key_ranges = rd->key_ranges;
-  isidp->key_pred = rd->key_pred;
-  isidp->indx_info->range_type = rd->range_type;
+  isidp_dest->indx_info->key_info.key_ranges = rdp_src->key_ranges;
+  isidp_dest->key_pred = rdp_src->key_pred;
+  isidp_dest->indx_info->range_type = rdp_src->range_type;
 
   return NO_ERROR;
 }
 
 /*
- * scan_obtain_next_iss_value () - retrieve the next value to be used in the
- *                                 index skip scan: the next value from the
- *                                 first column of the index.
+ * scan_get_next_iss_value () - retrieve the next value to be used in the
+ *                              index skip scan: the next value from the
+ *                              first column of the index.
  *   return: S_SUCCESS on successfully retrieving the next value
  *           S_ERROR on encountering an error
  *           S_END when the search does not find any "next value" (reached
  *           end of the btree).
  *   thread_p(in):
- *   scan_id (in):
- *   isidp   (in):
+ *   scan_id (in): scan id
+ *   isidp   (in): index scan id
  *
  * Note:
  * This function is called from call_get_next_index_oidset whenever the
@@ -332,206 +378,235 @@ scan_restore_range_details (RANGE_DETAILS * rd, INDX_SCAN_ID * isidp)
  * for the first time.
  */
 static SCAN_CODE
-scan_obtain_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
-			    INDX_SCAN_ID * isidp)
+scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+			 INDX_SCAN_ID * isidp)
 {
-  KEY_RANGE *kr = NULL;
-  bool veryfirst = false;
-  bool reverse_search = false;
-  int i;
-
   /* we are being called either before any other btree range search, or
      after somebody finished a real range search and wants to advance to
      the next value for the first column of the index.
    */
-  assert (isidp);
-  assert (isidp->iss.use);
-  assert (isidp->iss.current_op == ISS_OP_NONE
-	  || isidp->iss.current_op == ISS_OP_DO_RANGE_SEARCH);
 
-  veryfirst = (isidp->iss.current_op == ISS_OP_NONE);
+  INDEX_SKIP_SCAN *iss = NULL;
+  DB_VALUE *last_key = NULL;
+  ISS_RANGE_DETAILS scan_range_det, fetch_range_det;
+  bool descending_scan = false;
+  int i;
 
-  /* First, set up the fake range, either to "get me the first decent
-   * value" (INF_INF), or to "get me the first value greater than this
-   * DBVAL that I have here" (GT_INF).
-   */
-  if (veryfirst)
+  if (isidp == NULL)
     {
-      isidp->iss.fake_range.key_ranges =
-	&isidp->indx_info->key_info.iss_range;
-      isidp->iss.fake_range.key_ranges->range = INF_INF;
-      isidp->iss.current_op = ISS_OP_GET_FIRST_KEY;
-      /* key_ranges[0] will have key1 set, but it will be ignored because
-       * the range is INF_INF */
+      /* null pointer was passed to function */
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+      return S_ERROR;
+    }
+
+  if (!isidp->iss.use)
+    {
+      /* not using iss but function was called; should not be here */
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+      return S_ERROR;
+    }
+
+  if (isidp->iss.skipped_range == NULL
+      || isidp->iss.skipped_range->key1 == NULL
+      || isidp->iss.skipped_range->key1->value.funcp == NULL
+      || isidp->iss.skipped_range->key1->value.funcp->operand == NULL
+      || isidp->iss.skipped_range->key1->value.funcp->operand->value.type !=
+      TYPE_DBVAL)
+    {
+      /* the fetch range is corrupted; should not be here */
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+      return S_ERROR;
+    }
+
+  /* populate local variables iss and last_key */
+  iss = &isidp->iss;
+  last_key =
+    &iss->skipped_range->key1->value.funcp->operand->value.value.dbval;
+
+  if (iss->current_op == ISS_OP_NONE)
+    {
+      /* first iteration of index skip scan; set up range for fetching first
+         value. key1 might be set but will be ignored for INF_INF range. */
+      iss->current_op = ISS_OP_GET_FIRST_KEY;
+      iss->skipped_range->range = INF_INF;
+    }
+  else if (iss->current_op == ISS_OP_DO_RANGE_SEARCH)
+    {
+      DB_TYPE key_type = TP_DOMAIN_TYPE (isidp->bt_scan.btid_int.key_type);
+
+      /* find out whether the first column of the index is asc or desc */
+      descending_scan = (isidp->bt_scan.use_desc_index ? true : false);
+      if ((key_type == DB_TYPE_MIDXKEY)
+	  && isidp->bt_scan.btid_int.key_type->setdomain->is_desc)
+	{
+	  descending_scan = !descending_scan;
+	}
+
+      if (descending_scan)
+	{
+	  /* if we're doing a descending scan, we can stop before searching
+	     for first_column < NULL since it won't produce any results */
+	  if (DB_IS_NULL (last_key))
+	    {
+	      pr_clear_value (last_key);
+	      DB_MAKE_NULL (last_key);
+
+	      return S_END;
+	    }
+
+	  /* set the upper bound to last used key value and lower bound to 
+	     NULL (i.e. infinity) */
+	  iss->skipped_range->key2 = iss->skipped_range->key1;
+	  iss->skipped_range->key1 = NULL;
+	}
+
+      /* set up ISS state for searching next distinct key */
+      iss->current_op = ISS_OP_SEARCH_NEXT_DISTINCT_KEY;
+      iss->skipped_range->range = (descending_scan ? INF_LT : GT_INF);
     }
   else
     {
-      kr = isidp->iss.fake_range.key_ranges;
+      /* operator is neither ISS_OP_NONE nor ISS_OP_DO_RANGE_SEARCH; we
+         shouldn't be here */
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
-      /* find out whether the first column of the index is asc or desc */
-      if (isidp->bt_scan.use_desc_index)
-	{
-	  reverse_search = !reverse_search;
-	}
-
-      if (TP_DOMAIN_TYPE (isidp->bt_scan.btid_int.key_type) == DB_TYPE_MIDXKEY
-	  && isidp->bt_scan.btid_int.key_type->setdomain->is_desc == 1)
-	{
-	  reverse_search = !reverse_search;
-	}
-
-      if (reverse_search)
-	{
-	  /* if we're doing a reverse search we can stop before searching
-	     for first_column < NULL since it won't produce any results */
-	  if (DB_IS_NULL (&isidp->iss.dbval)
-	      || btree_multicol_key_is_null (&isidp->iss.dbval))
-	    {
-	      pr_clear_value (&isidp->iss.dbval);
-	      db_make_null (&isidp->iss.dbval);
-	      return S_END;
-	    }
-	}
-
-      /* reverse the search criterion if the first column is descending. */
-      kr->range = reverse_search ? INF_LT : GT_INF;
-
-      db_value_clear (&kr->key1->value.funcp->operand->value.value.dbval);
-      db_value_clone (&isidp->iss.dbval,
-		      &kr->key1->value.funcp->operand->value.value.dbval);
-
-      /* GT_INF only needs key1. Key2 can be null. */
-      assert (kr->key2 == NULL);
-
-      /* However, if the first column of the index is descending, we must
-       * reverse key1 and key2 (see definition of INF_LT and GT_INF */
-      if (reverse_search)
-	{
-	  kr->key2 = kr->key1;
-	  kr->key1 = NULL;
-	}
-
-      isidp->iss.current_op = ISS_OP_SEARCH_NEXT_DISTINCT_KEY;
+      return S_ERROR;
     }
 
-  isidp->iss.fake_range.key_pred.pred_expr = NULL;
-  isidp->iss.fake_range.key_pred.regu_list = NULL;
-  isidp->iss.fake_range.key_cnt = 1;
-  isidp->iss.fake_range.range_type = R_RANGE;
+  /* populate details structure for the fetch range so we can load it */
+  fetch_range_det.key_cnt = 1;
+  fetch_range_det.key_ranges = iss->skipped_range;
+  fetch_range_det.key_pred.pred_expr = NULL;
+  fetch_range_det.key_pred.regu_list = NULL;
+  fetch_range_det.range_type = R_RANGE;
 
-  /* save current range - the real one */
-  scan_save_range_details (&isidp->iss.real_range, isidp);
+  /* save current range details */
+  scan_save_range_details (isidp, &scan_range_det);
 
-  /* load the fake range - the one we just set up */
-  scan_restore_range_details (&isidp->iss.fake_range, isidp);
-
-  /* this will be set by.. btree_range_search, called from 
-   * scan_get_index_oidset a few lines lower. */
-  db_value_clear (&isidp->iss.dbval);
-  db_make_null (&isidp->iss.dbval);
+  /* load the range we set up for fetching the next key of the first column */
+  scan_restore_range_details (&fetch_range_det, isidp);
 
   isidp->curr_keyno = -1;
 
   isidp->bt_scan.btid_int.part_key_desc =
     isidp->bt_scan.btid_int.last_key_desc = 0;
 
-  /* run scan_get_index_oidset. Net result will be that iss.dbval holds
-   * the next usable value for the real range.
-   */
+  /* run a scan to get next key for first index column; value will be stored
+     in the lower (or higher) bound of the fetch range (i.e. in last_key) */
   if (scan_get_index_oidset (thread_p, scan_id, NULL, NULL) != NO_ERROR)
     {
       return S_ERROR;
     }
 
-  /* remember to switch key1 and key2 if the first index col was descending */
-  if (reverse_search)
+  /* undo bounds swapping if scan is descending */
+  if (descending_scan)
     {
-      kr = isidp->iss.fake_range.key_ranges;
-      kr->key1 = kr->key2;
-      kr->key2 = NULL;
+      iss->skipped_range->key1 = iss->skipped_range->key2;
+      iss->skipped_range->key2 = NULL;
     }
 
-  /* as soon as the scan returned, convert the midxkey dbvalue
-   * to real db value */
-  if (db_value_is_null (&isidp->iss.dbval)
-      || btree_multicol_key_is_null (&isidp->iss.dbval))
+  /* as soon as the scan returned, convert the midxkey dbvalue to real db 
+     value (if necessary) */
+  if (scan_id->s.isid.oid_list.oid_cnt == 0)
     {
+      /* no other keys exist; restore scan range and exit */
+      scan_restore_range_details (&scan_range_det, isidp);
       return S_END;
     }
-  else if (DB_VALUE_DOMAIN_TYPE (&isidp->iss.dbval) == DB_TYPE_MIDXKEY)
+  else if (DB_VALUE_DOMAIN_TYPE (last_key) == DB_TYPE_MIDXKEY)
     {
+      /* scan_get_index_oidset() returned a midxkey */
       DB_VALUE first_midxkey_val;
       DB_VALUE tmp;
       int ret;
+
+      /* initialize temporary variables */
       db_make_null (&first_midxkey_val);
       db_make_null (&tmp);
 
+      /* put pointer to first value of midxkey into first_midxkey_val */
       ret =
-	pr_midxkey_get_element_nocopy (&isidp->iss.dbval.data.midxkey, 0,
+	pr_midxkey_get_element_nocopy (&last_key->data.midxkey, 0,
 				       &first_midxkey_val, NULL, NULL);
       if (ret != NO_ERROR)
 	{
 	  return ret;
 	}
 
-      db_value_clone (&first_midxkey_val, &tmp);
-      db_value_clear (&isidp->iss.dbval);
-
-      /* no need to clear first_midxkey_val, because it was obtained
-       * with pr_midxkey_get_element_nocopy() from iss.dbval, and we
-       * cleared that already. */
-      db_value_clone (&tmp, &isidp->iss.dbval);
-      db_value_clear (&tmp);
+      /* first_midxkey_val holds pointer to first value from last_key, which 
+       * we actually want to place in last_key. steps:
+       * 1. clone first_midxkey_val to a temp variable so we have a DB_VALUE
+       *    independent of last_key
+       * 2. clear last_key (no longer holds important data)
+       * 3. clone temp variable to last_key (for later use)
+       * 4. clear tmp (we no longer need it) */
+      pr_clone_value (&first_midxkey_val, &tmp);
+      pr_clear_value (last_key);
+      pr_clone_value (&tmp, last_key);
+      pr_clear_value (&tmp);
     }
 
-  /* save this fake but useful range */
-  scan_save_range_details (&isidp->iss.fake_range, isidp);
-
-  /* restore real range, set it using the newly found dbvalue */
-  for (i = 0; i < isidp->iss.real_range.key_cnt; i++)
+  /* use last_key in scan_range */
+  for (i = 0; i < scan_range_det.key_cnt; i++)
     {
-      kr = &(isidp->iss.real_range.key_ranges[i]);
+      KEY_RANGE *kr = &(scan_range_det.key_ranges[i]);
 
-      if (kr->key1)
+      if (kr == NULL)
+	{
+	  continue;
+	}
+
+      if (kr->key1 != NULL)
 	{
 	  assert (kr->key1->type == TYPE_FUNC
 		  && TP_DOMAIN_TYPE (kr->key1->domain) == DB_TYPE_MIDXKEY);
 	  assert (kr->key1->value.funcp->operand);
-	  if (kr->key1->value.funcp->operand)
+
+	  if (kr->key1->value.funcp->operand != NULL)
 	    {
 	      REGU_VARIABLE *regu = &kr->key1->value.funcp->operand->value;
+
 	      regu->type = TYPE_DBVAL;
 	      regu->domain =
-		tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE
-					   (&isidp->iss.dbval));
-	      db_value_clear (&regu->value.dbval);
-	      db_value_clone (&isidp->iss.dbval, &regu->value.dbval);
+		tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (last_key));
+
+	      pr_clear_value (&regu->value.dbval);
+	      pr_clone_value (last_key, &regu->value.dbval);
 	    }
 	}
 
-      if (kr->key2)
+      if (kr->key2 != NULL)
 	{
 	  assert (kr->key2->type == TYPE_FUNC
 		  && TP_DOMAIN_TYPE (kr->key2->domain) == DB_TYPE_MIDXKEY);
 	  assert (kr->key2->value.funcp->operand);
-	  if (kr->key2->value.funcp->operand)
+
+	  if (kr->key2->value.funcp->operand != NULL)
 	    {
 	      REGU_VARIABLE *regu = &kr->key2->value.funcp->operand->value;
+
 	      regu->type = TYPE_DBVAL;
 	      regu->domain =
-		tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE
-					   (&isidp->iss.dbval));
-	      db_value_clear (&regu->value.dbval);
-	      db_value_clone (&isidp->iss.dbval, &regu->value.dbval);
+		tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (last_key));
+
+	      pr_clear_value (&regu->value.dbval);
+	      pr_clone_value (last_key, &regu->value.dbval);
 	    }
 	}
     }
 
-  scan_restore_range_details (&isidp->iss.real_range, isidp);
+  /* restore the range used for normal scanning */
+  scan_restore_range_details (&scan_range_det, isidp);
 
-  /* business as usual */
+  /* prepare for range search */
   isidp->iss.current_op = ISS_OP_DO_RANGE_SEARCH;
-
   isidp->curr_keyno = -1;
 
   return S_SUCCESS;
@@ -3097,12 +3172,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       goto exit_on_error;
     }
 
-  isidp->iss.use = isidp->indx_info->key_info.use_iss;
-  isidp->iss.current_op = ISS_OP_NONE;
-  if (!db_value_is_null (&isidp->iss.dbval))
+  if (scan_init_iss (isidp) != NO_ERROR)
     {
-      db_value_clear (&isidp->iss.dbval);
-      db_make_null (&isidp->iss.dbval);
+      goto exit_on_error;
     }
 
   /* initialize multiple range search optimization structure */
@@ -3142,7 +3214,7 @@ exit_on_error:
     }
   if (isidp->oid_list.oidp)
     {
-      db_private_free_and_init (thread_p, isidp->oid_list.oidp);
+      scan_free_iscan_oid_buf_list (isidp->oid_list.oidp);
     }
   if (isidp->copy_buf)
     {
@@ -3565,6 +3637,13 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      s_id->s.isid.curr_oidno = -1;
 	      s_id->direction = S_FORWARD;
 	    }
+
+	  /* reinitialize index skip scan structure */
+	  if (scan_init_iss (&s_id->s.isid) != NO_ERROR)
+	    {
+	      status = S_ERROR;
+	      break;
+	    }
 	}
       else
 	{
@@ -3585,6 +3664,13 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		  status = S_ERROR;
 		  break;
 		}
+	    }
+
+	  /* reinitialize index skip scan structure */
+	  if (scan_init_iss (&s_id->s.isid) != NO_ERROR)
+	    {
+	      status = S_ERROR;
+	      break;
 	    }
 
 	  /* reset index covering */
@@ -4053,8 +4139,7 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       if (isidp->iss.use && should_go_to_next_value)
 	{
-	  SCAN_CODE code =
-	    scan_obtain_next_iss_value (thread_p, scan_id, isidp);
+	  SCAN_CODE code = scan_get_next_iss_value (thread_p, scan_id, isidp);
 	  if (code != S_SUCCESS)
 	    {
 	      /* anything wrong? or even end of scan? just leave */

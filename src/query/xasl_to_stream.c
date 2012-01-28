@@ -4303,6 +4303,25 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->groupby_skip);
 
+  ptr = or_pack_int (ptr, indx_info->use_iss);
+
+  if (indx_info->use_iss)
+    {
+      int offset;
+
+      ptr = or_pack_int (ptr, (int) indx_info->iss_range.range);
+
+      offset = xts_save_regu_variable (indx_info->iss_range.key1);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+
+      /* Key 2 is ALWAYS NULL (see pt_create_iss_range(), so we do not
+       * stream it */
+    }
+
   return ptr;
 }
 
@@ -4349,23 +4368,6 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
   else
     {
       ptr = or_pack_int (ptr, 0);
-    }
-
-  ptr = or_pack_int (ptr, key_info->use_iss);
-
-  if (key_info->use_iss)
-    {
-      ptr = or_pack_int (ptr, (int) key_info->iss_range.range);
-
-      offset = xts_save_regu_variable (key_info->iss_range.key1);
-      if (offset == ER_FAILED)
-	{
-	  return NULL;
-	}
-      ptr = or_pack_int (ptr, offset);
-
-      /* Key 2 is ALWAYS NULL (see pt_create_iss_range(), so we do not
-       * stream it */
     }
 
   ptr = or_pack_int (ptr, key_info->is_constant);
@@ -6021,6 +6023,12 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 
   size += OR_INT_SIZE;		/* groupby_skip */
 
+  size += OR_INT_SIZE;		/* use_iss boolean (int) */
+
+  size += OR_INT_SIZE;		/* iss_range's range */
+
+  size += PTR_SIZE;		/* iss_range's key1 */
+
   return size;
 }
 
@@ -6065,9 +6073,6 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 
   size += OR_INT_SIZE +		/* key_cnt */
     PTR_SIZE +			/* key_ranges */
-    OR_INT_SIZE +		/* use_iss boolean (int) */
-    OR_INT_SIZE +		/* iss_range's range */
-    PTR_SIZE +			/* iss_range's key1 */
     OR_INT_SIZE +		/* is_constant */
     PTR_SIZE +			/* key_limit_l */
     PTR_SIZE +			/* key_limit_u */

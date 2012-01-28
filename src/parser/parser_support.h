@@ -124,8 +124,6 @@ typedef struct key_range
 typedef struct key_info
 {
   KEY_RANGE *key_ranges;	/* a list of key ranges */
-  bool use_iss;			/* true if index skip scan optimization */
-  KEY_RANGE iss_range;		/* secondary range, used by index skip scan */
   int key_cnt;			/* key count */
   int is_constant;		/* every key value is a constant */
   struct regu_variable_node *key_limit_l;	/* lower key limit */
@@ -145,6 +143,9 @@ typedef struct indx_info
   int use_desc_index;		/* using descending index */
   int orderby_skip;		/* order by skip information */
   int groupby_skip;		/* group by skip information */
+  int use_iss;			/* flag set if using index skip scan */
+  KEY_RANGE iss_range;		/* placeholder range used for ISS; must be
+				   created on the broker */
 } INDX_INFO;			/* index information structure */
 
 

@@ -4404,6 +4404,9 @@ static char *
 stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr,
 		     INDX_INFO * indx_info)
 {
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
+
   ptr = stx_build_indx_id (thread_p, ptr, &indx_info->indx_id);
   if (ptr == NULL)
     {
@@ -4429,6 +4432,36 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, (int *) &(indx_info->orderby_skip));
 
   ptr = or_unpack_int (ptr, (int *) &(indx_info->groupby_skip));
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->use_iss));
+
+  if (indx_info->use_iss)
+    {
+      int offset;
+
+      ptr = or_unpack_int (ptr, (int *) &(indx_info->iss_range.range));
+
+      ptr = or_unpack_int (ptr, &offset);
+      if (offset == 0)
+	{
+	  /* can't go on without correct range */
+	  return NULL;
+	}
+      else
+	{
+	  indx_info->iss_range.key1 =
+	    stx_restore_regu_variable (thread_p,
+				       &xasl_unpack_info->
+				       packed_xasl[offset]);
+	  if (indx_info->iss_range.key1 == NULL)
+	    {
+	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	      return NULL;
+	    }
+	}
+
+      indx_info->iss_range.key2 = NULL;
+    }
 
   return ptr;
 }
@@ -4464,7 +4497,6 @@ static char *
 stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 {
   int offset;
-  int dummy;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -4487,35 +4519,6 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	  return NULL;
 	}
     }
-
-  ptr = or_unpack_int (ptr, &dummy);
-  key_info->use_iss = (bool) dummy;
-
-  if (key_info->use_iss)
-    {
-      ptr = or_unpack_int (ptr, &dummy);
-      key_info->iss_range.range = (RANGE) dummy;
-
-      ptr = or_unpack_int (ptr, &offset);
-      if (offset == 0)
-	{
-	  key_info->iss_range.key1 = NULL;
-	}
-      else
-	{
-	  key_info->iss_range.key1 =
-	    stx_restore_regu_variable (thread_p,
-				       &xasl_unpack_info->
-				       packed_xasl[offset]);
-	  if (key_info->iss_range.key1 == NULL)
-	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
-	    }
-	}
-
-      key_info->iss_range.key2 = NULL;
-    }				/* end if (use iss) */
 
   ptr = or_unpack_int (ptr, &key_info->is_constant);
 

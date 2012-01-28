@@ -139,29 +139,13 @@ typedef enum
 }
 ISS_OP_TYPE;
 
-/* RANGE_DETAILS stores information about the two ranges we use
- * interchangeably in Index Skip Scan mode: along with the real range, we
- * use a "fake" one to obtain the next value for the index's first column.
- * 
- * RANGE_DETAILS tries to completely encapsulate one of these ranges, so that
- * whenever the need arises, we can "swap" them. */
-typedef struct range_details RANGE_DETAILS;
-struct range_details
-{
-  int key_cnt;
-  KEY_RANGE *key_ranges;
-  SCAN_PRED key_pred;
-  RANGE_TYPE range_type;
-};
-
 typedef struct index_skip_scan INDEX_SKIP_SCAN;
 struct index_skip_scan
 {
-  bool use;
-  ISS_OP_TYPE current_op;	/* one of the ISS_CURRENT_OP_* flags */
-  DB_VALUE dbval;
-  RANGE_DETAILS real_range;
-  RANGE_DETAILS fake_range;
+  int use;
+  ISS_OP_TYPE current_op;	/* one of the ISS_OP_ flags */
+  KEY_RANGE *skipped_range;	/* range used for iterating the distinct
+				   values on the first index column */
 };
 
 typedef struct indx_scan_id INDX_SCAN_ID;
@@ -203,7 +187,7 @@ struct indx_scan_id
   INDX_COV indx_cov;		/* index covering information */
   MULTI_RANGE_OPT multi_range_opt;	/* optimization for multiple range
 					 * search*/
-  INDEX_SKIP_SCAN iss;		/* inedx skip scan structure */
+  INDEX_SKIP_SCAN iss;		/* index skip scan structure */
 };
 
 typedef struct llist_scan_id LLIST_SCAN_ID;
@@ -401,7 +385,7 @@ extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				     SCAN_POS * scan_pos);
-extern int scan_init_iss (INDEX_SKIP_SCAN * iss);
+extern int scan_init_iss (INDX_SCAN_ID * isidp);
 
 extern void scan_initialize (void);
 extern void scan_finalize (void);
