@@ -81,6 +81,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 {
   ARITH_TYPE *arithptr = regu_var->value.arithptr;
   DB_VALUE *peek_left, *peek_right, *peek_third;
+  DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
 
   peek_left = NULL;
@@ -2248,7 +2249,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_PREDICATE:
       /* return 0,1 or NULL accordingly */
-      peek_left = db_value_create ();
+      peek_left = &tmp_value;
       if (peek_left == NULL)
 	{
 	  goto error;
