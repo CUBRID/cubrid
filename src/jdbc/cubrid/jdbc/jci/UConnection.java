@@ -1477,6 +1477,8 @@ public class UConnection {
 		timeout -= (System.currentTimeMillis() - begin);
 		connectDB(timeout);
 
+		CUBRIDDriver.setLastConnectInfo(url, makeConnectInfo(CASIp, CASPort));
+
 		client.setTcpNoDelay(true);
 		client.setSoTimeout(SOCKET_TIMEOUT);
 		needReconnection = false;
@@ -1490,6 +1492,10 @@ public class UConnection {
 		/*
 		 * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
 		 */
+	}
+
+	private String makeConnectInfo(String ip, int port) {
+		return String.format("%s:%d", ip, port);
 	}
 
 	private synchronized void connectDB(int timeout) throws IOException, UJciException {
@@ -1522,6 +1528,17 @@ public class UConnection {
 		}
 		is.readFully(broker_info);
 		sessionId = is.readInt();
+
+		/* synchronize with broker_info */
+		byte version = broker_info[BROKER_INFO_PROTO_VERSION];
+		if ((version & CAS_PROTO_INDICATOR) == CAS_PROTO_INDICATOR) {
+			brokerVersion = makeProtoVersion(version & CAS_PROTO_VER_MASK);
+		} else {
+			brokerVersion = makeBrokerVersion(
+				(int) broker_info[BROKER_INFO_MAJOR_VERSION],
+				(int) broker_info[BROKER_INFO_MINOR_VERSION],
+				(int) broker_info[BROKER_INFO_PATCH_VERSION]);
+		}
 	}
 
 	private boolean setActiveHost(int hostId) throws UJciException {
