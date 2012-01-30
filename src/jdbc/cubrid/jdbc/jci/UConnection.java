@@ -171,7 +171,7 @@ public class UConnection {
 	private UUrlCache url_cache = null;
 	private boolean isAutoCommitBySelf = false;
 
-	private static byte[] driverInfo;
+	public static byte[] driverInfo;
 
 	private ConnectionProperties connectionProperties = new ConnectionProperties();
 	private long lastRCTime = 0;
@@ -1498,7 +1498,7 @@ public class UConnection {
 		return String.format("%s:%d", ip, port);
 	}
 
-	private synchronized void connectDB(int timeout) throws IOException, UJciException {
+	private void connectDB(int timeout) throws IOException, UJciException {
 		UTimedDataInputStream is = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort, timeout);
 		DataOutputStream os = new DataOutputStream(client.getOutputStream());
 

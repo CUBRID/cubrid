@@ -8,19 +8,12 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 
 import cubrid.jdbc.driver.CUBRIDDriver;
+import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UJciException;
 import cubrid.jdbc.jci.UTimedDataInputStream;
 
 public class BrokerHandler {
-    private static byte[] DRIVER_INFO = {
-	'C', 'U', 'B', 'R', 'K', // MAGIC
-	3, // CAS_CLIENT_JDBC
-	(byte) CUBRIDDriver.major_version,
-	(byte) CUBRIDDriver.minor_version,
-	(byte) CUBRIDDriver.patch_version,
-	0
-    };
     private static int TIMEOUT_UNIT = 1000;
 
     public static Socket connectBroker(String ip, int port, int timeout)
@@ -38,7 +31,7 @@ public class BrokerHandler {
 	    } else {
 		toBroker.connect(brokerAddress, timeout);
 		timeout -= (System.currentTimeMillis() - begin);
-		if (timeout < 0) {
+		if (timeout <= 0) {
 		    toBroker.close();
 		    throw new UJciException(UErrorCode.ER_TIMEOUT);
 		}
@@ -47,7 +40,7 @@ public class BrokerHandler {
 
 	    in = new UTimedDataInputStream(toBroker.getInputStream(), ip, port, timeout);
 	    out = new DataOutputStream(toBroker.getOutputStream());
-	    out.write(DRIVER_INFO);
+	    out.write(UConnection.driverInfo);
 	    out.flush();
 	    int code = in.readInt();
 	    if (code < 0) {
@@ -60,11 +53,11 @@ public class BrokerHandler {
 	    toBroker.close();
 
 	    brokerAddress = new InetSocketAddress(ip, code);
-	    if (timeout == 0) {
+	    if (timeout <= 0) {
 		toBroker.connect(brokerAddress);
 	    } else {
 		timeout -= (System.currentTimeMillis() - begin);
-		if (timeout < 0) {
+		if (timeout <= 0) {
 		    toBroker.close();
 		    throw new UJciException(UErrorCode.ER_TIMEOUT);
 		}
