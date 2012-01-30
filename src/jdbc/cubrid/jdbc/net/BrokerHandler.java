@@ -49,16 +49,18 @@ public class BrokerHandler {
 	    } else if (code == 0) {
 		return toBroker;
 	    }
+
+	    // if (code > 0) { only windows }
 	    toBroker.setSoLinger(true, 0);
 	    toBroker.close();
 
+	    toBroker = new Socket(); // need instantiation
 	    brokerAddress = new InetSocketAddress(ip, code);
 	    if (timeout <= 0) {
 		toBroker.connect(brokerAddress);
 	    } else {
 		timeout -= (System.currentTimeMillis() - begin);
 		if (timeout <= 0) {
-		    toBroker.close();
 		    throw new UJciException(UErrorCode.ER_TIMEOUT);
 		}
 		toBroker.connect(brokerAddress, timeout);
