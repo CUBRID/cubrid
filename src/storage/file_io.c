@@ -773,7 +773,7 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
 
   assert (ntoken > 0);
 
-  if (LOG_CS_OWN_WRITE_MODE (thread_p))
+  if (LOG_CS_OWN (thread_p))
     {
       log_cs_own = true;
     }
