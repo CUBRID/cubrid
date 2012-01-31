@@ -4989,6 +4989,15 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
 	  parser->custom_print = save_custom;	/* restore */
 	}
 
+      /* when do lex analysis, will CHECK nodes in groupby or orderby list
+       * whether in select_item list by alias and positions,if yes,some 
+       * substitution will done,so can not just compare by node_type,
+       * alias_print also be considered. As function resolve_alias_in_name_node(),
+       * two round comparison will be done : first compare with node_type, if not
+       * found, second round check will execute if alias_print is not NULL,
+       * compare it with select_item whose alias_print is also not NULL.*/
+
+      /* first round search */
       i = 1;			/* PT_SORT_SPEC pos_no start from 1 */
       for (temp = root->info.query.q.select.list; temp != NULL;
 	   temp = temp->next)
@@ -5010,15 +5019,18 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
 	    }
 	  else
 	    {			/* node type must be an integer */
-	      assert (node->node_type == PT_VALUE
-		      && node->type_enum == PT_TYPE_INTEGER);
-	      if (node->info.value.data_value.i == i)
+	      if (node->node_type == PT_VALUE && node->alias_print == NULL)
 		{
-		  pos_p->pos_no = i;
-
-		  if (referred_node != NULL)
+		  assert (node->node_type == PT_VALUE
+			  && node->type_enum == PT_TYPE_INTEGER);
+		  if (node->info.value.data_value.i == i)
 		    {
-		      *referred_node = temp;
+		      pos_p->pos_no = i;
+
+		      if (referred_node != NULL)
+			{
+			  *referred_node = temp;
+			}
 		    }
 		}
 	    }
@@ -5034,6 +5046,36 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
 	    }
 
 	  i++;
+	}
+
+      /*if not found, second round search in select items with alias_print */
+      if (pos_p->pos_no == -1 && node->alias_print != NULL)
+	{
+
+	  for (i = 1, temp = root->info.query.q.select.list; temp != NULL;
+	       temp = temp->next, i++)
+	    {
+	      if (temp->alias_print == NULL)
+		{
+		  continue;
+		}
+
+	      if (pt_str_compare (node->alias_print, temp->alias_print,
+				  CASE_INSENSITIVE) == 0)
+		{
+		  pos_p->pos_no = i;
+		  break;
+		}
+	    }
+
+	  if (pos_p->pos_no != -1)
+	    {			/* found match */
+	      if (temp->type_enum != PT_TYPE_NONE
+		  && temp->type_enum != PT_TYPE_MAYBE)
+		{		/* is resolved */
+		  pos_p->dom = pt_xasl_node_to_domain (parser, temp);
+		}
+	    }
 	}
 
       break;
