@@ -438,6 +438,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 
       if (select_list == NULL)
 	{
+	  /* if arg1 or arg2 is null, there need be resolved firstly.*/
+	  if (arg1 == NULL || arg2 == NULL)
+	    {
+	      return NULL;
+	    }
+
 	  cnt1 = pt_length_of_select_list (arg1, EXCLUDE_HIDDEN_COLUMNS);
 	  cnt2 = pt_length_of_select_list (arg2, EXCLUDE_HIDDEN_COLUMNS);
 
