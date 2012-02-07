@@ -420,6 +420,7 @@ main (int argc, char *argv[])
 
   as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
+  cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
   as_info->transaction_start_time = time (0);
   as_info->cur_keep_con = KEEP_CON_OFF;
   query_cancel_flag = 0;
