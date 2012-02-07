@@ -751,7 +751,7 @@ lock_initialize_resource_as_allocated (struct lk_res *res_ptr,
 	  COPY_OID (&(res_ptr->oid), id1);
 	  COPY_OID (&(res_ptr->class_oid), id2);
 
-	  if (btid != NULL && OID_IS_BTREE_PSEUDO_OID (id1))
+	  if (btid != NULL && OID_IS_PSEUDO_OID (id1))
 	    {
 	      res_ptr->btid = *btid;
 	    }
@@ -5587,7 +5587,8 @@ lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
     {
       next = curr->tran_next;
       if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
-	  && curr->granted_mode <= lock && curr->res_head->oid.volid < 0)
+	  && curr->granted_mode <= lock
+	  && OID_IS_PSEUDO_OID (&curr->res_head->oid))
 	{
 	  unlock = false;
 

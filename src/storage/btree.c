@@ -318,8 +318,8 @@ static int btree_lock_next_key (THREAD_ENTRY * thread_p,
 				DB_VALUE * prev_key,
 				OID * nk_pseudo_oid, int *which_action);
 #endif /* SERVER_MODE */
-static int btree_make_pseudo_oid (int p, short s, short v, BTID * btid,
-				  OID * oid);
+static void btree_make_pseudo_oid (int p, short s, short v, BTID * btid,
+				   OID * oid);
 static int btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
 				 OID * cls_oid, OID * oid, char **data,
 				 int *length);
@@ -7795,12 +7795,8 @@ start_point:
 	      COPY_OID (&N_class_oid, &class_oid);
 	    }
 
-	  if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
-				     N_oid.volid, btid_int.sys_btid,
-				     &N_oid) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	  btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
+				 N_oid.volid, btid_int.sys_btid, &N_oid);
 	}
     }
   else
@@ -7855,11 +7851,8 @@ start_point:
 	  COPY_OID (&N_class_oid, &class_oid);
 	}
 
-      if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-				 btid_int.sys_btid, &N_oid) != NO_ERROR)
-	{
-	  goto error;
-	}
+      btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+			     btid_int.sys_btid, &N_oid);
     }
 
   if (next_lock_flag == true)
@@ -7998,13 +7991,10 @@ curr_key_locking:
       COPY_OID (&pseudo_class_oid, &class_oid);
     }
 
-  if (btree_make_pseudo_oid (curr_key_first_oid.pageid,
-			     curr_key_first_oid.slotid,
-			     curr_key_first_oid.volid, btid_int.sys_btid,
-			     &pseudo_oid) != NO_ERROR)
-    {
-      goto error;
-    }
+  btree_make_pseudo_oid (curr_key_first_oid.pageid,
+			 curr_key_first_oid.slotid,
+			 curr_key_first_oid.volid, btid_int.sys_btid,
+			 &pseudo_oid);
 
   if (curr_lock_flag == true)
     {
@@ -8224,14 +8214,10 @@ new_curr_key_locking:
 	    }
 	}
 
-      if (btree_make_pseudo_oid (curr_key_second_oid.pageid,
-				 curr_key_second_oid.slotid,
-				 curr_key_second_oid.volid,
-				 btid_int.sys_btid,
-				 &new_pseudo_oid) != NO_ERROR)
-	{
-	  goto error;
-	}
+      btree_make_pseudo_oid (curr_key_second_oid.pageid,
+			     curr_key_second_oid.slotid,
+			     curr_key_second_oid.volid,
+			     btid_int.sys_btid, &new_pseudo_oid);
 
       ret_val = lock_object_with_btid (thread_p, &new_pseudo_oid,
 				       &pseudo_class_oid, btid, NX_LOCK,
@@ -11434,12 +11420,8 @@ start_point:
 	    }
 
 	  /* make an pseudo oid associated with next key */
-	  if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
-				     N_oid.volid, btid_int.sys_btid,
-				     &N_oid) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	  btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
+				 N_oid.volid, btid_int.sys_btid, &N_oid);
 	}
     }
   else
@@ -11485,11 +11467,8 @@ start_point:
 	  COPY_OID (&N_class_oid, &class_oid);
 	}
 
-      if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-				 btid_int.sys_btid, &N_oid) != NO_ERROR)
-	{
-	  goto error;
-	}
+      btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+			     btid_int.sys_btid, &N_oid);
     }
 
   if (next_lock_flag == true)
@@ -11636,12 +11615,8 @@ curr_key_locking:
       COPY_OID (&pseudo_oid, oid);
     }
 
-  if (btree_make_pseudo_oid (pseudo_oid.pageid, pseudo_oid.slotid,
-			     pseudo_oid.volid, btid_int.sys_btid,
-			     &pseudo_oid) != NO_ERROR)
-    {
-      goto error;
-    }
+  btree_make_pseudo_oid (pseudo_oid.pageid, pseudo_oid.slotid,
+			 pseudo_oid.volid, btid_int.sys_btid, &pseudo_oid);
 
   if (curr_lock_flag == true)
     {
@@ -14691,11 +14666,8 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       COPY_OID (&class_oid, &bts->cls_oid);
     }
 
-  if (btree_make_pseudo_oid (oid.pageid, oid.slotid, oid.volid,
-			     bts->btid_int.sys_btid, &oid) != NO_ERROR)
-    {
-      goto error;
-    }
+  btree_make_pseudo_oid (oid.pageid, oid.slotid, oid.volid,
+			 bts->btid_int.sys_btid, &oid);
 
   if (OID_EQ (ck_pseudo_oid, &oid))
     {
@@ -14959,11 +14931,8 @@ start_point:
       COPY_OID (&N_class_oid, &bts->cls_oid);
     }
 
-  if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-			     bts->btid_int.sys_btid, &N_oid) != NO_ERROR)
-    {
-      goto error;
-    }
+  btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+			 bts->btid_int.sys_btid, &N_oid);
 
 start_locking:
   if (OID_EQ (nk_pseudo_oid, &N_oid))
@@ -15136,25 +15105,22 @@ error:
  *   btid(in): btree id
  *   oid(out): the pseudo oid
  */
-static int
+static void
 btree_make_pseudo_oid (int p, short s, short v, BTID * btid, OID * oid)
 {
-  short catp, cp, pos;
+  short catp, pos, cb;
 
-  if (oid == NULL || btid == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
+  assert (oid != NULL && btid != NULL);
 
-  pos = btid->root_pageid % DISK_PAGE_BITS;
-  catp = (btid->root_pageid / DISK_PAGE_BITS) & 0x07;
-  cp = -(2 + pos);
-  oid->volid = cp;
+  pos = (btid->root_pageid % DISK_PAGE_BITS) % (SHRT_MAX - 2);
+  catp = (btid->root_pageid / SHRT_MAX) & 0x1;
+  cb = pos & 0x7;
+
+  oid->volid = -(pos + 2);
   oid->pageid = p;
-  oid->slotid = s + ((v & 0x1f) << 8) + (catp << 13);
+  oid->slotid = s + ((v & 0x0f) << 8) + (catp << 12) + (cb << 13);
 
-  return NO_ERROR;
+  assert (oid->volid < NULL_VOLID);
 }
 
 /*
@@ -16055,15 +16021,12 @@ start_locking:
 				      &inst_oid, &class_oid);
       /* compare the OID with the unconditionally locked OID */
       oids_equal = false;
-      if (is_condition_satisfied == false && saved_inst_oid.volid < -1)
+      if (is_condition_satisfied == false
+	  && OID_IS_PSEUDO_OID (&saved_inst_oid))
 	{
-	  if (btree_make_pseudo_oid (inst_oid.pageid, inst_oid.slotid,
-				     inst_oid.volid,
-				     bts->btid_int.sys_btid,
-				     &pseudo_oid) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	  btree_make_pseudo_oid (inst_oid.pageid, inst_oid.slotid,
+				 inst_oid.volid, bts->btid_int.sys_btid,
+				 &pseudo_oid);
 	  oids_equal = OID_EQ (&saved_inst_oid, &pseudo_oid);
 	}
       else
@@ -16751,14 +16714,10 @@ start_locking:
 	    {
 	      if (bts->C_vpid.pageid != NULL_PAGEID)
 		{
-		  if (btree_make_pseudo_oid (inst_oid.pageid,
-					     inst_oid.slotid,
-					     inst_oid.volid,
-					     bts->btid_int.sys_btid,
-					     &inst_oid) != NO_ERROR)
-		    {
-		      goto error;
-		    }
+		  btree_make_pseudo_oid (inst_oid.pageid,
+					 inst_oid.slotid,
+					 inst_oid.volid,
+					 bts->btid_int.sys_btid, &inst_oid);
 		}
 
 	      lock_pseudo_oid = true;

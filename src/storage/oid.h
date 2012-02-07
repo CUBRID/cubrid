@@ -58,7 +58,7 @@
 #define OID_ISTEMP(oidp)        ((oidp)->pageid < NULL_PAGEID)
 #define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
 #define OID_IS_ROOTOID(oidp)    (OID_EQ((oidp), oid_Root_class_oid))
-#define OID_IS_BTREE_PSEUDO_OID(oidp) ((oidp) && (oidp)->volid < 0)
+#define OID_IS_PSEUDO_OID(oidp) ((oidp)->volid < NULL_VOLID)
 
 #define OID_SET_NULL(oidp) \
   do { \
