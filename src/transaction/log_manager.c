@@ -3472,6 +3472,46 @@ log_skip_tailsa_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 }
 
 /*
+ * log_skip_logging_set_lsa -  A log entry was not recorded intentionally
+ *                             by the caller. set page LSA
+ *
+ * return: nothing
+ *
+ *   addr(in): Address (Volume, page, and offset) of data
+ *
+ * NOTE: A log entry was not recorded intentionally by the caller. For
+ *              example, if the data is not accurate, the logging could be
+ *              avoided since it will be brought up to date later by the
+ *              normal execution of the database.
+ *              This function is used to avoid warning of unlogged pages.
+ */
+void
+log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
+{
+  assert (addr && addr->pgptr != NULL);
+
+#if defined(CUBRID_DEBUG)
+  if (addr->pgptr == NULL)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "log_skip_logging_set_lsa: A data page pointer must"
+		    " be given as part of the address... ignored\n");
+      return;
+    }
+#endif /* CUBRID_DEBUG */
+
+  /* Don't need to log */
+
+  LOG_CS_ENTER (thread_p);
+
+  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.hdr.append_lsa);
+
+  LOG_CS_EXIT ();
+
+  return;
+}
+
+/*
  * log_skip_logging -  A log entry was not recorded intentionally by the
  *                      caller
  *

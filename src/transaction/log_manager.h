@@ -187,6 +187,8 @@ extern void log_append_empty_record (THREAD_ENTRY * thread_p,
 				     LOG_RECTYPE logrec_type);
 extern void log_skip_tailsa_logging (THREAD_ENTRY * thread_p,
 				     LOG_DATA_ADDR * addr);
+extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p,
+				      LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p,
 				      const char *savept_name);

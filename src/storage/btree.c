@@ -6173,7 +6173,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   addr.vfid = NULL;
   addr.pgptr = Q;
   addr.offset = 0;
-  log_skip_logging (thread_p, &addr);
+  log_skip_logging_set_lsa (thread_p, &addr);
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
 
   if (node_type == BTREE_NON_LEAF_NODE)
@@ -6300,7 +6300,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   addr.vfid = NULL;
   addr.pgptr = R;
   addr.offset = 0;
-  log_skip_logging (thread_p, &addr);
+  log_skip_logging_set_lsa (thread_p, &addr);
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
   btree_clear_key_value (&clear_key, &mid_key);
@@ -6645,7 +6645,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       addr.vfid = NULL;
       addr.pgptr = right_pg;
       addr.offset = 0;
-      log_skip_logging (thread_p, &addr);
+      log_skip_logging_set_lsa (thread_p, &addr);
       pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
     }
@@ -6837,7 +6837,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       addr.vfid = NULL;
       addr.pgptr = left_pg;
       addr.offset = 0;
-      log_skip_logging (thread_p, &addr);
+      log_skip_logging_set_lsa (thread_p, &addr);
       pgbuf_set_dirty (thread_p, left_pg, DONT_FREE);
 
     }
