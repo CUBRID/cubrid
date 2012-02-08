@@ -8621,7 +8621,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 							 * commit postpone mode
 							 */
   struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope   */
-  LOG_LSA flush_upto_lsa;	/* Flush data pages up to LSA   */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint
@@ -8687,7 +8686,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   /*
    * FLUSH all append LOG PAGES and flush all DIRTY DATA PAGES whose LSA
-   * are SMALLER OR EQUAL than flush_upto_lsa value and find the next redo
+   * are SMALLER OR EQUAL than newchkpt_lsa value and find the next redo
    * point.
    */
 
@@ -8695,30 +8694,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
   LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-
-  if (!logpb_is_page_in_archive (chkpt_lsa.pageid))
-    {
-      LSA_COPY (&flush_upto_lsa, &chkpt_lsa);
-    }
-  else
-    {
-      flush_upto_lsa.pageid = LOGPB_NEXT_ARCHIVE_PAGE_ID;
-
-      if (flush_upto_lsa.pageid > log_Gl.hdr.append_lsa.pageid)
-	{
-	  /* Likely we archive an incomplete page */
-	  flush_upto_lsa.pageid = log_Gl.hdr.append_lsa.pageid;
-	}
-
-      if (flush_upto_lsa.pageid == log_Gl.hdr.append_lsa.pageid)
-	{
-	  flush_upto_lsa.offset = log_Gl.hdr.append_lsa.offset - 1;
-	}
-      else
-	{
-	  flush_upto_lsa.offset = LOGAREA_SIZE;
-	}
-    }
 
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
@@ -8746,7 +8721,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, &chkpt_redo_lsa,
+  pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
 			  &tmp_chkpt.redo_lsa);
 
   er_log_debug (ARG_FILE_LINE,
@@ -8761,12 +8736,10 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   if (LSA_ISNULL (&tmp_chkpt.redo_lsa))
     {
-      LSA_COPY (&tmp_chkpt.redo_lsa, &flush_upto_lsa);
+      LSA_COPY (&tmp_chkpt.redo_lsa, &newchkpt_lsa);
     }
 
-  assert (LSA_LT (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
-  assert (LSA_LT (&flush_upto_lsa, &newchkpt_lsa));
-  assert (LSA_LE (&tmp_chkpt.redo_lsa, &flush_upto_lsa));
+  assert (LSA_LE (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
 
 #if defined(SERVER_MODE)
   /* Save lower bound of flushed lsa */

@@ -3320,6 +3320,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
   LSA_COPY (&lsa, start_redolsa);
 
+  /* Defense for illegal start_redolsa */
+  if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)
+    {
+      assert (false);
+      /* move first record of next page */
+      lsa.pageid++;
+      lsa.offset = NULL_OFFSET;
+    }
+
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
