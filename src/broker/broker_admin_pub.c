@@ -428,8 +428,7 @@ admin_add_cmd (int master_shm_id, const char *broker)
   env = make_env (shm_br->br_info[br_index].source_env, &env_num);
 
   as_activate (&(shm_appl_server->as_info[as_index]),
-	       as_index + 1,
-	       &(shm_br->br_info[br_index]),
+	       as_index, &(shm_br->br_info[br_index]),
 	       env, env_num, shm_appl_server, shm_br);
 
   shm_appl_server->as_info[as_index].service_flag = SERVICE_ON;
@@ -2148,7 +2147,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       shm_appl->as_info[i].last_access_time = time (NULL);
       shm_appl->as_info[i].transaction_start_time = (time_t) 0;
       as_activate (&(shm_appl->as_info[i]),
-		   i + 1, br_info, env, env_num, shm_appl, shm_br);
+		   i, br_info, env, env_num, shm_appl, shm_br);
     }
   for (; i < br_info->appl_server_max_num; i++)
     {
@@ -2326,7 +2325,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 
   get_cubrid_file (FID_SOCK_DIR, dirname);
   snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname,
-	    br_info->name, as_index);
+	    br_info->name, as_index + 1);
 #if !defined(WINDOWS)
   unlink (port_name);
 #endif /* !WINDOWS */
@@ -2345,9 +2344,8 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   as_info->cur_sql_log_mode = shm_appl->sql_log_mode;
   as_info->cur_slow_log_mode = shm_appl->slow_log_mode;
 
-  memset (&shm_appl->as_info[as_index].cas_clt_ip[0], 0x0,
-	  sizeof (shm_appl->as_info[as_index].cas_clt_ip));
-  shm_appl->as_info[as_index].cas_clt_port = 0;
+  memset (&as_info->cas_clt_ip[0], 0x0, sizeof (as_info->cas_clt_ip));
+  as_info->cas_clt_port = 0;
 
 #if defined(WINDOWS)
   as_info->pdh_pid = 0;
@@ -2402,7 +2400,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
       else
 	{
 	  snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
-		    br_info->name, appl_name, as_index);
+		    br_info->name, appl_name, as_index + 1);
 	}
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
