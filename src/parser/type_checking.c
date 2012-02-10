@@ -16475,13 +16475,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		pt_append_string (parser, NULL, result->alias_print);
 	    }
 	  parser_free_tree (parser, expr);
-	  return result;
 	}
       else if (expr->info.expr.arg1->node_type != PT_FUNCTION)
 	{
 	  assert (false);
 	}
-      /* const folding was not done */
       goto end;
     }
   /* special handling for only one range - convert to comp op */
