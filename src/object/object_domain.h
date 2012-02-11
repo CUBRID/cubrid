@@ -475,6 +475,8 @@ extern int tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
 extern int tp_value_str_auto_cast_to_number (DB_VALUE * src,
 					     DB_VALUE * dest,
 					     DB_TYPE * val_type);
+extern TP_DOMAIN *tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2,
+					  bool * need_free);
 extern int tp_value_string_to_double (const DB_VALUE * value,
 				      DB_VALUE * result);
 #endif /* _OBJECT_DOMAIN_H_ */

@@ -62,9 +62,7 @@ static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 				 QFILE_TUPLE * next_tpl);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
-static TP_DOMAIN *fetch_infer_common_domain (TP_DOMAIN * arg1,
-					     TP_DOMAIN * arg2,
-					     bool * need_free);
+
 /*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
@@ -2315,8 +2313,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = fetch_infer_common_domain (arg1, arg2,
-						       &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
 	  }
 
 	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
@@ -2375,8 +2372,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain =
-	      fetch_infer_common_domain (arg1, arg2, &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
 
 	    arg3 = NULL;
 	    if (peek_third)
@@ -2386,8 +2382,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
 		arg3 = tp_domain_resolve_value (peek_third, &tmp_arg3);
 		tmp_domain =
-		  fetch_infer_common_domain (target_domain, arg3,
-					     &need_tmp_domain_free);
+		  tp_infer_common_domain (target_domain, arg3,
+					  &need_tmp_domain_free);
 
 		if (need_free)
 		  {
@@ -3654,108 +3650,4 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
     }
 
   return false;
-}
-
-static TP_DOMAIN *
-fetch_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2,
-			   bool * need_free)
-{
-  TP_DOMAIN *target_domain;
-  DB_TYPE arg1_type, arg2_type, common_type;
-  bool need_to_domain_update = false;
-
-  assert (arg1 && arg2 && need_free);
-
-  if (need_free)
-    {
-      *need_free = true;
-    }
-
-  arg1_type = arg1->type->id;
-  arg2_type = arg2->type->id;
-
-  if (arg1_type == arg2_type)
-    {
-      common_type = arg1_type;
-      target_domain = tp_domain_copy (arg1, false);
-      need_to_domain_update = true;
-    }
-  else if (arg1_type == DB_TYPE_NULL)
-    {
-      common_type = arg2_type;
-      target_domain = tp_domain_copy (arg2, false);
-    }
-  else if (arg2_type == DB_TYPE_NULL)
-    {
-      common_type = arg1_type;
-      target_domain = tp_domain_copy (arg1, false);
-    }
-  else
-    if ((TP_IS_BIT_TYPE (arg1_type) && TP_IS_BIT_TYPE (arg2_type))
-	|| (TP_IS_CHAR_TYPE (arg1_type)
-	    && TP_IS_CHAR_TYPE (arg2_type))
-	|| (TP_IS_DATE_TYPE (arg1_type)
-	    && TP_IS_DATE_TYPE (arg2_type))
-	|| (TP_IS_SET_TYPE (arg1_type)
-	    && TP_IS_SET_TYPE (arg2_type))
-	|| (TP_IS_NUMERIC_TYPE (arg1_type) && TP_IS_NUMERIC_TYPE (arg2_type)))
-    {
-      if (tp_more_general_type (arg1_type, arg2_type) > 0)
-	{
-	  common_type = arg1_type;
-	  target_domain = tp_domain_copy (arg1, false);
-	}
-      else
-	{
-	  common_type = arg2_type;
-	  target_domain = tp_domain_copy (arg2, false);
-	}
-      need_to_domain_update = true;
-    }
-  else
-    {
-      common_type = DB_TYPE_VARCHAR;
-      target_domain = db_type_to_db_domain (common_type);
-      if (need_free)
-	{
-	  *need_free = false;
-	}
-    }
-
-  if (need_to_domain_update)
-    {
-      int arg1_prec, arg2_prec, arg1_scale, arg2_scale;
-
-      arg1_prec = arg1->precision;
-      arg1_scale = arg1->scale;
-
-      arg2_prec = arg2->precision;
-      arg2_scale = arg2->scale;
-
-      if (arg1_prec == TP_FLOATING_PRECISION_VALUE
-	  || arg2_prec == TP_FLOATING_PRECISION_VALUE)
-	{
-	  target_domain->precision = TP_FLOATING_PRECISION_VALUE;
-	  target_domain->scale = 0;
-	}
-      else if (common_type == DB_TYPE_NUMERIC)
-	{
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_scale;
-	  integral_digits2 = arg2_prec - arg2_scale;
-	  target_domain->scale = MAX (arg1_scale, arg2_scale);
-	  target_domain->precision =
-	    (target_domain->scale + MAX (integral_digits1, integral_digits2));
-	  target_domain->precision =
-	    MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
-	}
-      else
-	{
-	  target_domain->precision = MAX (arg1_prec, arg2_prec);
-	  target_domain->scale = 0;
-	}
-    }
-
-  return target_domain;
 }
