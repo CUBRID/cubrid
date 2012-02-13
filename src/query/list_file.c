@@ -6773,3 +6773,229 @@ exit_on_error:
   *resolved_all = false;
   return ER_FAILED;
 }
+
+/*
+ * qfile_set_tuple_column_value() - Set column value for a fixed size column
+ *				    of a tuple inside a list file (in-place)
+ *  return: error code
+ *  list_id_p(in): list file id
+ *  curr_page_p(in): use this only with curr_pgptr of your open scanner!
+ *  vpid_p(in): real VPID
+ *  tuple_p(in): pointer to the tuple inside the page
+ *  col_num(in): column number
+ *  value_p(in): new column value
+ *  domain_p(in): column domain
+ *
+ *  Note: Caller is responsible to ensure that the size of the column data
+ *        is fixed!
+ */
+int
+qfile_set_tuple_column_value (THREAD_ENTRY * thread_p,
+			      QFILE_LIST_ID * list_id_p, PAGE_PTR curr_page_p,
+			      VPID * vpid_p, QFILE_TUPLE tuple_p, int col_num,
+			      DB_VALUE * value_p, TP_DOMAIN * domain_p)
+{
+  PAGE_PTR page_p;
+  QFILE_TUPLE_VALUE_FLAG flag;
+  QFILE_TUPLE_RECORD tuple_rec = {NULL, 0};
+  PR_TYPE *pr_type;
+  OR_BUF buf;
+  char *ptr;
+  int length;
+  int error = NO_ERROR;
+
+  pr_type = domain_p->type;
+  if (pr_type == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* get a pointer to the page */
+  if (curr_page_p != NULL)
+    {
+      page_p = curr_page_p;
+    }
+  else
+    {
+      page_p = qmgr_get_old_page (thread_p, vpid_p, list_id_p->tfile_vfid);
+    }
+  if (page_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* locate and update tuple value inside the page or in overflow pages */
+  if (QFILE_GET_OVERFLOW_PAGE_ID (page_p) == NULL_PAGEID)
+    {
+      /* tuple is inside the page, locate column and set the new value */
+      flag =
+	(QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_p, col_num,
+							   &ptr, &length);
+      if (flag == V_BOUND)
+	{
+	  OR_BUF_INIT (buf, ptr, length);
+
+	  if ((*(pr_type->data_writeval)) (&buf, value_p) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+      else
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      qfile_set_dirty_page (thread_p, page_p, DONT_FREE,
+			    list_id_p->tfile_vfid);
+    }
+  else
+    {
+      /* tuple is in overflow pages */
+      if (curr_page_p)
+	{
+	  /* tuple_p is not a tuple pointer inside the current page,
+	   * it is a copy made by qfile_scan_list_next(), so avoid fetching
+	   * it twice, and make sure it doesn't get freed at cleanup stage of
+	   * this function. For reference see how qfile_retrieve_tuple()
+	   * handles overflow pages. */
+	  tuple_rec.tpl = tuple_p;
+	  tuple_rec.size = QFILE_GET_TUPLE_LENGTH (tuple_p);
+	}
+      else
+	{
+	  if (qfile_get_tuple (thread_p, page_p, tuple_p, &tuple_rec,
+	      list_id_p) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+
+      /* locate column and set the new value */
+      flag =
+	(QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_rec.tpl,
+							   col_num, &ptr,
+							   &length);
+      if (flag == V_BOUND)
+	{
+	  OR_BUF_INIT (buf, ptr, length);
+
+	  if ((*(pr_type->data_writeval)) (&buf, value_p) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+      else
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+
+      /* flush the tuple back into overflow pages */
+      if (qfile_overwrite_tuple (thread_p, page_p, tuple_p, &tuple_rec,
+				 list_id_p) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      qfile_set_dirty_page (thread_p, page_p, DONT_FREE,
+			    list_id_p->tfile_vfid);
+    }
+
+cleanup:
+  /* free the tuple record if used */
+  if (tuple_rec.tpl != NULL && tuple_rec.tpl != tuple_p)
+    {
+      db_private_free_and_init (NULL, tuple_rec.tpl);
+    }
+  /* free the page */
+  if (page_p != curr_page_p)
+    {
+      qmgr_free_old_page (thread_p, page_p, list_id_p->tfile_vfid);
+    }
+
+  return error;
+}
+
+/*
+ * qfile_overwrite_tuple () - Overwrite a tuple inside a list file with a tuple
+ *                            record of the same size
+ *  return: error code
+ *  first_page_p(in): pointer to the first page where the tuple is located
+ *  tuple(in): pointer to the tuple to be overwritten
+ *  tuple_record_p(in): tuple record to overwrite with
+ *  list_id_p(in): list file id
+ *
+ *  Note: The caller should use responsibly this function!
+ */
+int
+qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
+		       QFILE_TUPLE tuple, QFILE_TUPLE_RECORD * tuple_record_p,
+		       QFILE_LIST_ID * list_id_p)
+{
+  VPID ovfl_vpid;
+  char *tuple_p;
+  int offset;
+  int tuple_length, tuple_page_size;
+  int max_tuple_page_size;
+  PAGE_PTR page_p;
+
+  page_p = first_page_p;
+  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
+
+  /* sanity check */
+  if (tuple_length != tuple_record_p->size)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  tuple_p = (char *) tuple_record_p->tpl;
+
+  if (QFILE_GET_OVERFLOW_PAGE_ID (page_p) == NULL_PAGEID)
+    {
+      /* tuple is inside the page */
+      memcpy (tuple, tuple_p, tuple_length);
+      return NO_ERROR;
+    }
+  else
+    {
+      /* tuple has overflow pages */
+      offset = 0;
+      max_tuple_page_size = qfile_Max_tuple_page_size;
+
+      do
+	{
+	  QFILE_GET_OVERFLOW_VPID (&ovfl_vpid, page_p);
+	  tuple_page_size = MIN (tuple_length - offset, max_tuple_page_size);
+
+	  memcpy ((char *) page_p + QFILE_PAGE_HEADER_SIZE, tuple_p,
+		  tuple_page_size);
+
+	  tuple_p += tuple_page_size;
+	  offset += tuple_page_size;
+
+	  if (page_p != first_page_p)
+	    {
+	      qfile_set_dirty_page (thread_p, page_p, FREE,
+				    list_id_p->tfile_vfid);
+	    }
+
+	  if (ovfl_vpid.pageid != NULL_PAGEID)
+	    {
+	      page_p = qmgr_get_old_page (thread_p, &ovfl_vpid,
+					  list_id_p->tfile_vfid);
+	      if (page_p == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	}
+      while (ovfl_vpid.pageid != NULL_PAGEID);
+    }
+
+  return NO_ERROR;
+}
+

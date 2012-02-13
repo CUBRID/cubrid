@@ -14468,7 +14468,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   SCAN_CODE qp_lfscan, qp_input_lfscan;
 
   DB_LOGICAL ev_res;
-  QFILE_TUPLE parent_tpl_in_list;	/* points to parent tuple in result list */
   bool parent_tuple_added;
   int cycle;
 
@@ -14604,7 +14603,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  isleaf_value = 1;
 	  iscycle_value = 0;
-	  parent_tpl_in_list = NULL;
 
 	  qp_lfscan = qfile_scan_list_next (thread_p, &lfscan_id, &tuple_rec,
 					    PEEK);
@@ -14848,9 +14846,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  GOTO_EXIT_ON_ERROR;
 			}
 
-		      /* set parent tuple pointer in list */
-		      parent_tpl_in_list = parent_pos.tpl;
-
 		      /* set parent tuple position pseudocolumn value */
 		      DB_MAKE_BIT (parent_pos_valp, DB_DEFAULT_PRECISION,
 				   (void *) &parent_pos,
@@ -14973,14 +14968,14 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-
-	      parent_tpl_in_list = parent_pos.tpl;
 	    }
 
 	  /* set CONNECT_BY_ISCYCLE pseudocolumn value */
 	  DB_MAKE_INT (iscycle_valp, iscycle_value);
 	  /* it is fixed size data, so we can set it in this fashion */
-	  if (qexec_set_tuple_column_value (parent_tpl_in_list,
+	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL,
+					    &parent_pos.vpid,
+					    parent_pos.tpl,
 					    xasl->outptr_list->valptr_cnt -
 					    PCOL_ISCYCLE_TUPLE_OFFSET,
 					    iscycle_valp,
@@ -14991,7 +14986,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  /* set CONNECT_BY_ISLEAF pseudocolumn value */
 	  DB_MAKE_INT (isleaf_valp, isleaf_value);
-	  if (qexec_set_tuple_column_value (parent_tpl_in_list,
+	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL,
+					    &parent_pos.vpid,
+					    parent_pos.tpl,
 					    xasl->outptr_list->valptr_cnt -
 					    PCOL_ISLEAF_TUPLE_OFFSET,
 					    isleaf_valp,
@@ -15623,6 +15620,7 @@ qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * qexec_set_tuple_column_value () - helper function for writing a column
  *    value into a tuple
@@ -15666,6 +15664,7 @@ qexec_set_tuple_column_value (QFILE_TUPLE tpl, int index,
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * qexec_get_tuple_column_value () - helper function for reading a column
@@ -16309,10 +16308,11 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p,
 			   (void *) &pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
-	      if (qexec_set_tuple_column_value (tuple_rec.tpl,
-						list_id_p->
-						type_list.type_cnt -
-						PCOL_PARENTPOS_TUPLE_OFFSET,
+	      if (qfile_set_tuple_column_value (thread_p, list_id_p,
+						s_id.curr_pgptr,
+						&s_id.curr_vpid, tuple_rec.tpl,
+						list_id_p->type_list.type_cnt 
+						- PCOL_PARENTPOS_TUPLE_OFFSET,
 						&parent_pos_dbval,
 						&tp_Bit_domain) != NO_ERROR)
 		{
@@ -16347,9 +16347,11 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p,
 		       (void *) &pos_info_p->tpl_pos,
 		       sizeof (pos_info_p->tpl_pos) * 8);
 
-	  if (qexec_set_tuple_column_value (tuple_rec.tpl,
-					    list_id_p->type_list.type_cnt -
-					    PCOL_PARENTPOS_TUPLE_OFFSET,
+	  if (qfile_set_tuple_column_value (thread_p, list_id_p,
+					    s_id.curr_pgptr, &s_id.curr_vpid,
+					    tuple_rec.tpl,
+					    list_id_p->type_list.type_cnt
+					    - PCOL_PARENTPOS_TUPLE_OFFSET,
 					    &parent_pos_dbval,
 					    &tp_Bit_domain) != NO_ERROR)
 	    {
@@ -16385,10 +16387,11 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p,
 			   (void *) &pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
-	      if (qexec_set_tuple_column_value (tuple_rec.tpl,
-						list_id_p->
-						type_list.type_cnt -
-						PCOL_PARENTPOS_TUPLE_OFFSET,
+	      if (qfile_set_tuple_column_value (thread_p, list_id_p,
+						s_id.curr_pgptr,
+						&s_id.curr_vpid, tuple_rec.tpl,
+						list_id_p->type_list.type_cnt 
+						- PCOL_PARENTPOS_TUPLE_OFFSET,
 						&parent_pos_dbval,
 						&tp_Bit_domain) != NO_ERROR)
 		{

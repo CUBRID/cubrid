@@ -842,9 +842,11 @@ extern void stx_free_additional_buff (void *unpack_info_ptr);
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl,
 					 int index,
 					 DB_VALUE * valp, TP_DOMAIN * domain);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_set_tuple_column_value (QFILE_TUPLE tpl,
 					 int index,
 					 DB_VALUE * valp, TP_DOMAIN * domain);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p,
 					 QFILE_LIST_ID * list_id,
 					 OUTPTR_LIST * outptr_list,

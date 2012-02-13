@@ -254,4 +254,14 @@ extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * list_id_p,
 					      VALPTR_LIST * valptr_list_p,
 					      bool * resolved_all);
+extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p,
+					 QFILE_LIST_ID * list_id_p,
+					 PAGE_PTR curr_page_p, VPID * vpid_p,
+					 QFILE_TUPLE tuple_p, int col_num,
+					 DB_VALUE * value_p,
+					 TP_DOMAIN * domain);
+extern int qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page,
+				  QFILE_TUPLE tuplep,
+				  QFILE_TUPLE_RECORD * tplrec,
+				  QFILE_LIST_ID * list_idp);
 #endif /* _LIST_FILE_H_ */
