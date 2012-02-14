@@ -95,6 +95,10 @@ public class ByteArrayBuffer {
 	    byteArrayList.add(b);
 	}
 
+	dest = new byte[buf.pos];
+	System.arraycopy(buf.buffer, 0, dest, 0, buf.pos);
+	byteArrayList.add(dest);
+
 	buffer = new byte[UnitSize];
 	pos = 0;
 	dataSize += size;
@@ -102,8 +106,16 @@ public class ByteArrayBuffer {
 
     public void writeToStream(byte[] info, OutputStream o) throws IOException {
 	DataOutputStream os = new DataOutputStream(o);
-	os.writeInt(dataSize);
-	os.write(info);
+	byte[] header = new byte[8];
+        header[0] = (byte) ((dataSize >>> 24) & 0xFF);
+        header[1] = (byte) ((dataSize >>> 16) & 0xFF);
+        header[2] = (byte) ((dataSize >>>  8) & 0xFF);
+        header[3] = (byte) ((dataSize >>>  0) & 0xFF);
+        header[4] = info[0];
+        header[5] = info[1];
+        header[6] = info[2];
+        header[7] = info[3];
+        os.write(header);
 
 	Iterator<byte[]> i = byteArrayList.iterator();
 	while (i.hasNext()) {

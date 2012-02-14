@@ -201,8 +201,11 @@
         <mkdir dir="${src-oracle}/cubrid/jdbc/oracle"/>
         <copy file="src/CUBRID-JDBC-${version}" tofile="${src-oracle}/CUBRID-JDBC-${version}"/>
         <copy todir="${src-oracle}/cubrid/jdbc/oracle" filtering="true">
-            <fileset dir="src/cubrid">
+            <fileset dir="src/cubrid/jdbc">
                 <include name="**/*.java"/>
+            </fileset>
+            <fileset dir="src/cubrid">
+                <include name="sql/**/*.java"/>
             </fileset>
             <filterset>
                 <filter token="JDBC_DRIVER_VERSION_STRING" value="${version}"/>

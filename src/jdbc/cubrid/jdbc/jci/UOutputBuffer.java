@@ -340,15 +340,17 @@ class UOutputBuffer {
     }
 
     private int writeCollection(CUBRIDArray data) throws UJciException, IOException {
+	Object[] values = (Object[]) data.getArray();
+	if (values == null) {
+	    dataBuffer.writeInt(1);
+	    dataBuffer.writeByte((byte) data.getBaseType());
+	    return 5;
+	}
+
 	int collection_size = 1;
 	ByteArrayBuffer saveBuffer = dataBuffer;
 	dataBuffer = new ByteArrayBuffer();
-
 	dataBuffer.writeByte((byte) data.getBaseType());
-	Object[] values = (Object[]) data.getArray();
-	if (values == null) {
-	    return collection_size;
-	}
 
 	switch (data.getBaseType()) {
 	case UUType.U_TYPE_BIT:

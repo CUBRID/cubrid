@@ -39,7 +39,7 @@ public class ConnectionProperties {
 	    String prop = st.nextToken();
 	    StringTokenizer pt = new StringTokenizer(prop, "=");
 	    if (pt.hasMoreTokens()) {
-		String name = pt.nextToken();
+		String name = pt.nextToken().toLowerCase();
 		if (pt.hasMoreTokens()) {
 		    String value = pt.nextToken();
 		    p.put(name, value);
@@ -60,8 +60,13 @@ public class ConnectionProperties {
 
 	    try {
 		ConnectionProperty prop = (ConnectionProperty) propertyField.get(this);
-		String propName = prop.getPropertyName();
+		String propName = prop.getPropertyName().toLowerCase();
 		String propValue = info.getProperty(propName);
+		if (propValue == null) {
+		    propName = prop.getPropertyName();
+		    propValue = info.getProperty(propName);
+		}
+
 		if (propValue != null) {
 		    prop.setValue(propValue);
 		}
