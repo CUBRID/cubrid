@@ -367,6 +367,7 @@ static void la_clear_all_repl_and_commit_list (void);
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 			    LOG_LSA * lsa);
 static int la_add_unlock_commit_log (int tranid, LOG_LSA * lsa);
+static int la_add_abort_log (int tranid, LOG_LSA * lsa);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_set_commit_log (int tranid, int rectype, LOG_LSA * lsa,
 			      time_t master_time);
@@ -2876,6 +2877,24 @@ la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
   return error;
 }
 
+static int
+la_add_abort_log (int tranid, LOG_LSA * lsa)
+{
+  int error = NO_ERROR;
+  LA_COMMIT *commit;
+
+  error = la_add_unlock_commit_log (tranid, lsa);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  commit = la_Info.commit_tail;	/* last commit log */
+  commit->type = LOG_ABORT;
+
+  return error;
+}
+
 /*
  * la_retrieve_eot_time() - Retrieve the timestamp of End of Transaction
  *   return: NO_ERROR or error code
@@ -4683,6 +4702,12 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
       return NO_ERROR;
     }
 
+  if (rectype == LOG_ABORT)
+    {
+      la_clear_applied_info (apply);
+      return NO_ERROR;
+    }
+
   if (apply->head == NULL)
     {
       if (rectype == LOG_COMMIT_TOPOPE)
@@ -4822,7 +4847,8 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
 
   commit = la_Info.commit_head;
   if (commit
-      && (commit->type == LOG_COMMIT || commit->type == LOG_COMMIT_TOPOPE))
+      && (commit->type == LOG_COMMIT
+	  || commit->type == LOG_COMMIT_TOPOPE || commit->type == LOG_ABORT))
     {
       if (LSA_GT (&commit->log_lsa, &la_Info.prev_last_committed_lsa))
 	{
@@ -4876,8 +4902,7 @@ static void
 la_free_repl_items_by_tranid (int tranid)
 {
   LA_APPLY *apply;
-  LA_COMMIT **commit;
-  LA_COMMIT *tmp;
+  LA_COMMIT *commit, *commit_next;
 
   apply = la_find_apply_list (tranid);
   if (apply)
@@ -4885,22 +4910,34 @@ la_free_repl_items_by_tranid (int tranid)
       la_clear_applied_info (apply);
     }
 
-  commit = &la_Info.commit_head;
-  while ((*commit))
+  for (commit = la_Info.commit_head; commit; commit = commit_next)
     {
-      if ((*commit)->tranid == tranid)
+      commit_next = commit->next;
+
+      if (commit->tranid == tranid)
 	{
-	  tmp = (*commit);
-	  if (tmp->next == NULL)
+	  if (commit->next)
 	    {
-	      la_Info.commit_tail = (LA_COMMIT *) commit;
+	      commit->next->prev = commit->prev;
 	    }
-	  (*commit) = tmp->next;
-	  free_and_init (tmp);
-	}
-      else
-	{
-	  commit = &((*commit)->next);
+	  else
+	    {
+	      la_Info.commit_tail = commit->prev;
+	    }
+
+	  if (commit->prev)
+	    {
+	      commit->prev->next = commit->next;
+	    }
+	  else
+	    {
+	      la_Info.commit_head = commit->next;
+	    }
+
+	  commit->next = NULL;
+	  commit->prev = NULL;
+
+	  free_and_init (commit);
 	}
     }
 
@@ -4908,6 +4945,8 @@ la_free_repl_items_by_tranid (int tranid)
     {
       la_Info.commit_tail = NULL;
     }
+
+  return;
 }
 
 static LA_ITEM *
@@ -5192,7 +5231,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       break;
 
     case LOG_ABORT:
-      la_free_repl_items_by_tranid (lrec->trid);
+      error = la_add_abort_log (lrec->trid, final);
+      if (error != NO_ERROR)
+	{
+	  la_applier_need_shutdown = true;
+	  return error;
+	}
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
