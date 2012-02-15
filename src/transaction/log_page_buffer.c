@@ -4517,9 +4517,18 @@ prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
       mnt_prior_lsa_list_maxed (thread_p);
 
 #if defined(SERVER_MODE)
-      thread_wakeup_log_flush_thread ();
+      if (!log_is_in_crash_recovery ())
+	{
+	  thread_wakeup_log_flush_thread ();
 
-      thread_sleep (0, 1000);	/* 1msec */
+	  thread_sleep (0, 1000);	/* 1msec */
+	}
+      else
+	{
+	  LOG_CS_ENTER (thread_p);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	  LOG_CS_EXIT ();
+	}
 #else
       LOG_CS_ENTER (thread_p);
       logpb_prior_lsa_append_all_list (thread_p);

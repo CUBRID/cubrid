@@ -2058,11 +2058,14 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (page_flush_thread == NULL)
+  if (!log_is_in_crash_recovery ())
     {
-      page_flush_thread = thread_p;
+      if (page_flush_thread == NULL)
+	{
+	  page_flush_thread = thread_p;
+	}
+      assert (page_flush_thread == thread_p);
     }
-  assert (page_flush_thread == thread_p);
 #endif
 
   victim_cand_list = pgbuf_Pool.victim_cand_list;
@@ -5660,7 +5663,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 	  && pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom->dirty == true)
 	{
 #if defined(SERVER_MODE)
-	  thread_wakeup_page_flush_thread ();
+	  if (!log_is_in_crash_recovery ())
+	    {
+	      thread_wakeup_page_flush_thread ();
+	    }
+	  else
+	    {
+	      pgbuf_flush_victim_candidate (thread_p,
+					    PRM_PB_BUFFER_FLUSH_RATIO);
+	    }
 #else
 	  pgbuf_flush_victim_candidate (thread_p, PRM_PB_BUFFER_FLUSH_RATIO);
 #endif /* SERVER_MODE */
