@@ -92,14 +92,15 @@ static int connect_srv (unsigned char *ip_addr, int port, char is_retry,
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int net_send_int (SOCKET sock_fd, int value);
 #endif
-static int net_recv_int (SOCKET sock_fd, int *value);
-static int net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout);
+static int net_recv_int (SOCKET sock_fd, int port, int *value);
+static int net_recv_stream (SOCKET sock_fd, int port, char *buf, int size,
+			    int timeout);
 static int net_send_stream (SOCKET sock_fd, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
-static int net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header,
+static int net_recv_msg_header (SOCKET sock_fd, int port, MSG_HEADER * header,
 				int timeout);
-static bool net_peer_alive (SOCKET sd, int timeout);
+static bool net_peer_alive (SOCKET sd, int port, int timeout);
 static int net_cancel_request_internal (unsigned char *ip_addr, int port,
 					char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port,
@@ -119,8 +120,6 @@ static char cci_client_type = CAS_CLIENT_ODBC;
 #else
 static char cci_client_type = CAS_CLIENT_CCI;
 #endif
-
-static short cci_broker_port = 0;
 
 /************************************************************************
  * PRIVATE VARIABLES							*
@@ -151,7 +150,6 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   char *msg_buf;
 
   init_msg_header (&msg_header);
-  cci_broker_port = port;
 
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
@@ -204,7 +202,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     }
 
   ret_value =
-    net_recv_stream (srv_sock_fd, (char *) &err_code, 4, login_timeout);
+    net_recv_stream (srv_sock_fd, port, (char *) &err_code, 4, login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -238,7 +236,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  ret_value = net_recv_msg_header (srv_sock_fd, &msg_header, login_timeout);
+  ret_value =
+    net_recv_msg_header (srv_sock_fd, port, &msg_header, login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -255,8 +254,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     }
 
   ret_value =
-    net_recv_stream (srv_sock_fd, msg_buf, *(msg_header.msg_body_size_ptr),
-		     login_timeout);
+    net_recv_stream (srv_sock_fd, port, msg_buf,
+		     *(msg_header.msg_body_size_ptr), login_timeout);
   if (ret_value < 0)
     {
       FREE_MEM (msg_buf);
@@ -329,7 +328,7 @@ net_cancel_request_internal (unsigned char *ip_addr, int port,
       goto cancel_error;
     }
 
-  if (net_recv_stream (srv_sock_fd, (char *) &err_code, 4, 0) < 0)
+  if (net_recv_stream (srv_sock_fd, port, (char *) &err_code, 4, 0) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
@@ -383,6 +382,16 @@ net_cancel_request (T_CON_HANDLE * con_handle)
   socklen_t local_sockaddr_len;
   unsigned short local_port = 0;
   int error;
+  int broker_port;
+
+  if (con_handle->alter_host_id < 0)
+    {
+      broker_port = con_handle->port;
+    }
+  else
+    {
+      broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
+    }
 
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
     {
@@ -396,14 +405,14 @@ net_cancel_request (T_CON_HANDLE * con_handle)
 	}
 
       return net_cancel_request_w_local_port (con_handle->ip_addr,
-					      con_handle->port,
+					      broker_port,
 					      con_handle->cas_pid,
 					      local_port);
     }
   else
     {
       return net_cancel_request_wo_local_port (con_handle->ip_addr,
-					       con_handle->port,
+					       broker_port,
 					       con_handle->cas_pid);
     }
 }
@@ -416,6 +425,16 @@ net_check_cas_request (T_CON_HANDLE * con_handle)
   int data_size;
   int ret_value = -1;
   char status[4];
+  int broker_port;
+
+  if (con_handle->alter_host_id < 0)
+    {
+      broker_port = con_handle->port;
+    }
+  else
+    {
+      broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
+    }
 
   if (IS_INVALID_SOCKET (con_handle->sock_fd))
     return 0;
@@ -438,12 +457,12 @@ net_check_cas_request (T_CON_HANDLE * con_handle)
       return -1;
     }
 
-  if (net_recv_int (con_handle->sock_fd, &ret_value) < 0)
+  if (net_recv_int (con_handle->sock_fd, broker_port, &ret_value) < 0)
     {
       return -1;
     }
 
-  if (net_recv_stream (con_handle->sock_fd, status, 4, 0) < 0)
+  if (net_recv_stream (con_handle->sock_fd, broker_port, status, 4, 0) < 0)
     {
       return -1;
     }
@@ -484,6 +503,16 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   char *tmp_p = NULL;
   MSG_HEADER recv_msg_header;
   int result_code = 0;
+  int broker_port;
+
+  if (con_handle->alter_host_id < 0)
+    {
+      broker_port = con_handle->port;
+    }
+  else
+    {
+      broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
+    }
 
   init_msg_header (&recv_msg_header);
 
@@ -497,7 +526,8 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
     }
 
   result_code =
-    net_recv_msg_header (con_handle->sock_fd, &recv_msg_header, timeout);
+    net_recv_msg_header (con_handle->sock_fd, broker_port,
+			 &recv_msg_header, timeout);
   if (result_code < 0)
     {
       if (result_code == CCI_ER_QUERY_TIMEOUT)
@@ -505,20 +535,17 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  /* send cancel message */
 	  net_cancel_request (con_handle);
 
-	  if (con_handle->disconnect_on_query_timeout == true)
-	    {
-	      return result_code;
-	    }
-	  else
+	  if (con_handle->disconnect_on_query_timeout == false)
 	    {
 	      result_code =
-		net_recv_msg_header (con_handle->sock_fd, &recv_msg_header,
-				     0);
+		net_recv_msg_header (con_handle->sock_fd, broker_port,
+				     &recv_msg_header, 0);
 	    }
 	}
-      else
+
+      if (result_code < 0)
 	{
-	  return result_code;
+	  goto error_return;
 	}
     }
 
@@ -534,44 +561,48 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
     }
 
-  tmp_p = (char *) MALLOC (*(recv_msg_header.msg_body_size_ptr));
-  if (tmp_p == NULL)
+  if (*(recv_msg_header.msg_body_size_ptr) > 0)
     {
-      return CCI_ER_NO_MORE_MEMORY;
-    }
-
-  result_code = net_recv_stream (con_handle->sock_fd, tmp_p,
-				 *(recv_msg_header.msg_body_size_ptr),
-				 timeout);
-  if (result_code < 0)
-    {
-      FREE_MEM (tmp_p);
-      return result_code;
-    }
-
-  memcpy ((char *) &result_code, tmp_p + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
-	  CAS_PROTOCOL_ERR_INDICATOR_SIZE);
-  result_code = ntohl (result_code);
-  if (result_code < 0)
-    {
-      int err_code = 0;
-      memcpy ((char *) &err_code, tmp_p + CAS_PROTOCOL_ERR_CODE_INDEX,
-	      CAS_PROTOCOL_ERR_CODE_SIZE);
-      err_code = ntohl (err_code);
-      if (result_code == DBMS_ERROR_INDICATOR)
+      tmp_p = (char *) MALLOC (*(recv_msg_header.msg_body_size_ptr));
+      if (tmp_p == NULL)
 	{
-	  if (err_buf)
-	    {
-	      memcpy (err_buf->err_msg, tmp_p + CAS_PROTOCOL_ERR_MSG_INDEX,
-		      *(recv_msg_header.msg_body_size_ptr) -
-		      (CAS_PROTOCOL_ERR_INDICATOR_SIZE +
-		       CAS_PROTOCOL_ERR_CODE_SIZE));
-	      err_buf->err_code = err_code;
-	    }
-	  err_code = CCI_ER_DBMS;
+	  result_code = CCI_ER_NO_MORE_MEMORY;
+	  goto error_return;
 	}
-      FREE_MEM (tmp_p);
-      return err_code;
+
+      result_code =
+	net_recv_stream (con_handle->sock_fd, broker_port, tmp_p,
+			 *(recv_msg_header.msg_body_size_ptr), timeout);
+      if (result_code < 0)
+	{
+	  goto error_return;
+	}
+
+      memcpy ((char *) &result_code, tmp_p + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
+	      CAS_PROTOCOL_ERR_INDICATOR_SIZE);
+      result_code = ntohl (result_code);
+      if (result_code < 0)
+	{
+	  int err_code = 0;
+	  memcpy ((char *) &err_code, tmp_p + CAS_PROTOCOL_ERR_CODE_INDEX,
+		  CAS_PROTOCOL_ERR_CODE_SIZE);
+	  err_code = ntohl (err_code);
+	  if (result_code == DBMS_ERROR_INDICATOR)
+	    {
+	      if (err_buf)
+		{
+		  memcpy (err_buf->err_msg,
+			  tmp_p + CAS_PROTOCOL_ERR_MSG_INDEX,
+			  *(recv_msg_header.msg_body_size_ptr) -
+			  (CAS_PROTOCOL_ERR_INDICATOR_SIZE +
+			   CAS_PROTOCOL_ERR_CODE_SIZE));
+		  err_buf->err_code = err_code;
+		}
+	      err_code = CCI_ER_DBMS;
+	    }
+	  FREE_MEM (tmp_p);
+	  return err_code;
+	}
     }
 
   if (msg)
@@ -595,6 +626,14 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
     }
+
+  return result_code;
+
+error_return:
+  FREE_MEM (tmp_p);
+  CLOSE_SOCKET (con_handle->sock_fd);
+  con_handle->sock_fd = INVALID_SOCKET;
+  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
 
   return result_code;
 }
@@ -647,7 +686,7 @@ net_send_file (SOCKET sock_fd, char *filename, int filesize)
 }
 
 int
-net_recv_file (SOCKET sock_fd, int file_size, int out_fd)
+net_recv_file (SOCKET sock_fd, int port, int file_size, int out_fd)
 {
   int read_len;
   char read_buf[1024];
@@ -655,7 +694,7 @@ net_recv_file (SOCKET sock_fd, int file_size, int out_fd)
   while (file_size > 0)
     {
       read_len = (int) MIN (file_size, SSIZEOF (read_buf));
-      if (net_recv_stream (sock_fd, read_buf, read_len, 0) < 0)
+      if (net_recv_stream (sock_fd, port, read_buf, read_len, 0) < 0)
 	{
 	  return CCI_ER_COMMUNICATION;
 	}
@@ -679,11 +718,11 @@ net_send_int (SOCKET sock_fd, int value)
 #endif
 
 static int
-net_recv_int (SOCKET sock_fd, int *value)
+net_recv_int (SOCKET sock_fd, int port, int *value)
 {
   int read_value;
 
-  if (net_recv_stream (sock_fd, (char *) &read_value, 4, 0) < 0)
+  if (net_recv_stream (sock_fd, port, (char *) &read_value, 4, 0) < 0)
     {
       return CCI_ER_COMMUNICATION;
     }
@@ -695,7 +734,7 @@ net_recv_int (SOCKET sock_fd, int *value)
 }
 
 static int
-net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
+net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
 {
   int read_len, tot_read_len = 0;
 #if defined(WINDOWS)
@@ -760,7 +799,7 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 		}
 	    }
 
-	  if (net_peer_alive (sock_fd, SOCKET_TIMEOUT) == true)
+	  if (net_peer_alive (sock_fd, port, SOCKET_TIMEOUT) == true)
 	    {
 	      continue;
 	    }
@@ -795,7 +834,7 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 }
 
 static bool
-net_peer_alive (SOCKET sd, int timeout)
+net_peer_alive (SOCKET sd, int port, int timeout)
 {
   SOCKET nsd;
   int n, dummy;
@@ -821,7 +860,7 @@ net_peer_alive (SOCKET sd, int timeout)
       return false;
     }
 
-  saddr.sin_port = htons (cci_broker_port);
+  saddr.sin_port = htons (port);
   n = connect (nsd, (struct sockaddr *) &saddr, slen);
 
   if (n < 0)
@@ -850,12 +889,13 @@ net_peer_alive (SOCKET sd, int timeout)
 }
 
 static int
-net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header, int timeout)
+net_recv_msg_header (SOCKET sock_fd, int port, MSG_HEADER * header,
+		     int timeout)
 {
   int result_code;
 
   result_code =
-    net_recv_stream (sock_fd, header->buf, MSG_HEADER_SIZE, timeout);
+    net_recv_stream (sock_fd, port, header->buf, MSG_HEADER_SIZE, timeout);
 
   if (result_code < 0)
     {
