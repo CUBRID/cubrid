@@ -488,8 +488,7 @@ cci_connect_with_url (char *url, char *user, char *password)
 
 	  if (con_handle->alter_host_count > 0)
 	    {
-	      con_handle->alter_host_id =
-		hm_get_ha_connected_host (con_handle);
+	      con_handle->alter_host_id = 0;
 	    }
 	}
 
@@ -587,7 +586,7 @@ static int
 cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
 {
   char *p, *q = NULL, *end;
-  int count = 0;
+  int count = 1;
   int error;
   int port;
 
@@ -596,6 +595,9 @@ cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
     {
       return CCI_ER_INVALID_URL;
     }
+
+  memcpy (con_handle->alter_hosts[0].ip_addr, con_handle->ip_addr, 4);
+  con_handle->alter_hosts[0].port = con_handle->port;
 
   do
     {

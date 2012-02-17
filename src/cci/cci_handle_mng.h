@@ -67,7 +67,7 @@
 	  (REQ_HANDLE)->qr = NULL;		\
 	} while (0)
 
-#define ALTER_HOST_MAX_SIZE 4
+#define ALTER_HOST_MAX_SIZE                     256
 
 #define DEFERRED_CLOSE_HANDLE_ALLOC_SIZE        256
 
