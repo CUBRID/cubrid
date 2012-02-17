@@ -719,7 +719,6 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->disconnect_on_query_timeout = false;
   con_handle->start_time.tv_sec = 0;
   con_handle->start_time.tv_usec = 0;
-  con_handle->start_time_is_set = 0;
   con_handle->current_timeout = 0;
 
   con_handle->deferred_max_close_handle_count =

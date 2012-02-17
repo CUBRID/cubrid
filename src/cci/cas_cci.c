@@ -348,7 +348,7 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
       con_handle = hm_find_con_handle (con_handle_id);
       if (con_handle != NULL)
 	{
-	  SET_START_TIME (con_handle, con_handle->login_timeout);
+	  SET_START_TIME_FOR_LOGIN (con_handle);
 
 	  con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
 	  error = cci_get_db_version (con_handle_id, NULL, 0);
@@ -492,7 +492,7 @@ cci_connect_with_url (char *url, char *user, char *password)
 	    }
 	}
 
-      SET_START_TIME (con_handle, con_handle->login_timeout);
+      SET_START_TIME_FOR_LOGIN (con_handle);
 
       con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
       error = cci_get_db_version (con_handle_id, NULL, 0);
@@ -1033,7 +1033,7 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       goto prepare_error;
     }
 
-  SET_START_TIME (con_handle, con_handle->query_timeout);
+  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag, err_buf, 0);
 
@@ -1414,7 +1414,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       flag |= CCI_EXEC_QUERY_INFO;
     }
 
-  SET_START_TIME (con_handle, con_handle->query_timeout);
+  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle))
     {
@@ -1553,7 +1553,7 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
       goto prepare_execute_error;
     }
 
-  SET_START_TIME (con_handle, con_handle->query_timeout);
+  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   err_code = qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
 				     max_col_size, err_buf);
@@ -1662,7 +1662,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
-  SET_START_TIME (con_handle, con_handle->query_timeout);
+  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle))
     {
@@ -2417,7 +2417,6 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
-  bool need_to_reset_start_time = false;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_get_db_version %d", con_h_id));
@@ -2450,12 +2449,6 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 	}
     }
 
-  if (!START_TIME_IS_SET (con_handle))
-    {
-      SET_START_TIME (con_handle, con_handle->query_timeout);
-      need_to_reset_start_time = true;
-    }
-
   if (IS_OUT_TRAN_STATUS (con_handle))
     {
       err_code = cas_connect (con_handle, NULL);
@@ -2464,11 +2457,6 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
   if (err_code >= 0)
     {
       err_code = qe_get_db_version (con_handle, out_buf, buf_size);
-    }
-
-  if (need_to_reset_start_time)
-    {
-      RESET_START_TIME (con_handle);
     }
 
   con_handle->ref_count = 0;
@@ -2910,7 +2898,7 @@ cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
 	}
     }
 
-  SET_START_TIME (con_handle, con_handle->query_timeout);
+  SET_START_TIME_FOR_QUERY (con_handle, NULL);
 
   if (IS_OUT_TRAN_STATUS (con_handle))
     {

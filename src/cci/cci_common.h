@@ -177,19 +177,32 @@
         } while(0)
 #endif
 
-#define SET_START_TIME(CON_HANDLE, TIME_TO_CHECK) \
-  do {\
-    if (CON_HANDLE) {\
-      if (TIME_TO_CHECK > 0) {\
-        cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);\
-        (CON_HANDLE)->current_timeout = (TIME_TO_CHECK);\
-      }\
-      (CON_HANDLE)->start_time_is_set = 1; \
-    }\
+#define SET_START_TIME_FOR_QUERY(CON_HANDLE, REQ_HANDLE)            \
+  do {                                                              \
+    if (CON_HANDLE) {                                               \
+      int time_to_check = 0;                                        \
+      if (REQ_HANDLE) {                                             \
+        time_to_check = ((T_REQ_HANDLE *)(REQ_HANDLE))->query_timeout;\
+      }                                                             \
+      else {                                                        \
+        time_to_check = (CON_HANDLE)->query_timeout;                \
+      }                                                             \
+      if (time_to_check > 0) {                                      \
+        cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
+        (CON_HANDLE)->current_timeout = (time_to_check);            \
+      }                                                             \
+    }                                                               \
   } while (0)
 
-#define START_TIME_IS_SET(CON_HANDLE)   \
-  ((CON_HANDLE) && (CON_HANDLE)->start_time_is_set)
+#define SET_START_TIME_FOR_LOGIN(CON_HANDLE)                        \
+  do {                                                              \
+    if (CON_HANDLE) {                                               \
+      if ((CON_HANDLE)->login_timeout > 0) {                        \
+        cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
+        (CON_HANDLE)->current_timeout = (CON_HANDLE)->login_timeout;\
+      }                                                             \
+    }                                                               \
+  } while (0)
 
 #define TIMEOUT_IS_SET(CON_HANDLE) \
   ((CON_HANDLE) && ((CON_HANDLE)->current_timeout > 0) && \
@@ -201,7 +214,6 @@
       (CON_HANDLE)->start_time.tv_sec = 0;\
       (CON_HANDLE)->start_time.tv_usec = 0;\
       (CON_HANDLE)->current_timeout = 0; \
-      (CON_HANDLE)->start_time_is_set = 0;\
     }\
   } while (0)
 

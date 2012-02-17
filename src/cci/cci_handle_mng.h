@@ -206,7 +206,6 @@ typedef struct
   int query_timeout;
   char disconnect_on_query_timeout;
   struct timeval start_time;	/* function start time to check timeout */
-  char start_time_is_set;
   int current_timeout;		/* login_timeout or query_timeout */
   int deferred_max_close_handle_count;
   int *deferred_close_handle_list;
