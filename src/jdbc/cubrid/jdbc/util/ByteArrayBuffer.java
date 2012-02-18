@@ -104,9 +104,14 @@ public class ByteArrayBuffer {
 	dataSize += size;
     }
 
-    public void writeToStream(byte[] info, OutputStream o) throws IOException {
-	DataOutputStream os = new DataOutputStream(o);
-	byte[] header = new byte[8];
+    private void writeHeader(byte[] info) {
+	byte[] header = null;
+
+	if (byteArrayList.size() == 0) {
+	    header = buffer;
+	} else {
+	    header = byteArrayList.get(0);
+	}
         header[0] = (byte) ((dataSize >>> 24) & 0xFF);
         header[1] = (byte) ((dataSize >>> 16) & 0xFF);
         header[2] = (byte) ((dataSize >>>  8) & 0xFF);
@@ -115,7 +120,11 @@ public class ByteArrayBuffer {
         header[5] = info[1];
         header[6] = info[2];
         header[7] = info[3];
-        os.write(header);
+    }
+
+    public void writeToStream(byte[] info, OutputStream o) throws IOException {
+	DataOutputStream os = new DataOutputStream(o);
+	writeHeader(info);
 
 	Iterator<byte[]> i = byteArrayList.iterator();
 	while (i.hasNext()) {
@@ -131,7 +140,7 @@ public class ByteArrayBuffer {
     public void reset() {
 	byteArrayList = new ArrayList<byte[]>();
 	buffer = baseByteArray;
-	pos = 0;
+	pos = 8;
 	dataSize = 0;
     }
 
