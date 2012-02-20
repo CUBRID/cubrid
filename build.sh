@@ -53,57 +53,73 @@ typeset -i minor
 typeset -i maintanance
 typeset -i serial
 build_number=""
+last_checking_msg=""
+output_packages=""
 
 function print_check ()
 {
-  echo -n "$@"
+  echo ""
+  last_checking_msg="$@"
+  echo "  $last_checking_msg..."
 }
 
 function print_result ()
 {
-  echo " $@"
+  [ -n "$last_checking_msg" ] && echo -n "  "
+  echo "  [$@] $last_checking_msg."
+  last_checking_msg=""
+}
+
+function print_info ()
+{
+  [ -n "$last_checking_msg" ] && echo -n "  "
+  echo "  [INFO] $@"
 }
 
 function print_error ()
 {
-  echo "ERROR: $@"
+  echo ""
+  echo "  [ERROR] $@"
 }
 
 function print_fatal ()
 {
   echo ""
-  echo "FATAL: $@"
-  echo "QUITTING..."
+  echo "  [FATAL] $@"
+  echo ""
+  echo "[`date +'%F %T'`] QUITTING..."
+  echo ""
   exit 1
 }
 
 
-function build_prepare ()
+function build_initialize ()
 {
   # check for source dir
-  print_check "Checking for root source path [$source_dir]..."
+  print_check "Checking for root source path [$source_dir]"
   if [ -d $source_dir -a -d $source_dir/src -a -f $source_dir/BUILD_NUMBER ]
   then
-    print_result "OK."
+    print_result "OK"
   else
-    print_fatal "Root path for source is not valid."
+    print_fatal "Root path for source is not valid"
   fi
 
-  print_check "Checking for compiler..."
+  print_check "Checking for compiler"
   which_gcc=$(which gcc)
-  [ $? -eq 0 ] && print_check "$which_gcc..." || print_fatal "GCC not found"
+  [ $? -eq 0 ] && print_info "$which_gcc" || print_fatal "GCC not found"
   gcc_version=$(gcc --version | grep GCC)
-  [ $? -eq 0 ] && print_check "$gcc_version..." || print_check "unknown."
+  [ $? -eq 0 ] && print_info "$gcc_version" || print_info "unknown GCC version"
   print_result "OK"
 
   # check version
-  print_check "Checking BUILD NUMBER..."
+  print_check "Checking BUILD NUMBER"
   build_number=$(cat $source_dir/BUILD_NUMBER)
   major=$(echo $build_number | cut -d . -f 1)
   minor=$(echo $build_number | cut -d . -f 2)
   maintanance=$(echo $build_number | cut -d . -f 3)
   serial=10#$(echo $build_number | cut -d . -f 4)
-  print_result "[$build_number ($major.$minor.$maintanance.$serial)] OK."
+  print_info "version: $build_number ($major.$minor.$maintanance.$serial)"
+  print_result "OK"
 }
 
 
@@ -111,13 +127,12 @@ function build_increase_version ()
 {
   # check for increase_build_number
   if [ "$increase_build_number" = "yes" ]; then
-    print_check "Increasing BUILD NUMBER..."
+    print_check "Increasing BUILD NUMBER"
     serial_num=$(printf "%04d" $(expr $serial + 1))
     build_number="$major.$minor.$maintanance.$serial_num"
     #build_number=$(cat $source_dir/BUILD_NUMBER | awk -F'.' '{ printf("%d.%d.%d.%04d\n", $1, $2, $3, $4+1) }')
-    print_result "new version to $build_number"
 
-    print_check "Modifing VERSION to $build_number..."
+    print_info "Modifing Version to $build_number"
     # BUILD_NUMBER
     echo $build_number > $source_dir/BUILD_NUMBER
 
@@ -153,56 +168,76 @@ function build_increase_version ()
     # RPM spec's release number
     sed --in-place -r -e "s/cubrid_version [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/cubrid_version ${build_number}/g" -e "s/build_version  [0-9]+\.[0-9]+\.[0-9]+/build_version  ${major}.${minor}.${maintanance}/g" $source_dir/contrib/rpm/cubrid.spec
 
-    print_result "OK."
+    print_result "OK"
   fi
 }
 
 
 function build_clean ()
 {
-  print_check "Cleaning packaging directory..."
+  print_check "Cleaning packaging directory"
   if [ -d $install_dir ]; then
     if [ "$install_dir" = "/" ]; then
-      print_fatal "Do not set root dir as build directory."
+      print_fatal "Do not set root dir as install directory"
     fi
     
-    print_result "All files in $install_dir is removing."
+    print_info "All files in $install_dir is removing"
     rm -rf $install_dir/*
   fi
-  print_result "OK."
+  print_result "OK"
+
+  print_check "Cleaning build directory"
+  if [ -d $build_dir ]; then
+    if [ "$build_dir" = "/" ]; then
+      print_fatal "Do not set root dir as build directory"
+    fi
+
+    if [ $build_dir -ef $source_dir ]; then
+      [ -f "$build_dir/Makefile" ] && make -C $build_dir distclean
+    else
+      print_info "All files in $build_dir is removing"
+      rm -rf $build_dir/*
+    fi
+  fi
+  print_result "OK"
+}
+
+
+function build_autogen ()
+{
+  # run autogen if needed
+  if [ $run_autogen = "yes" -o $source_dir/BUILD_NUMBER -nt $source_dir/configure ]; then
+    print_check "Running autogen.sh"
+    (cd $source_dir && sh ./autogen.sh)
+    [ $? -eq 0 ] && print_result "OK" || print_fatal "Result failed"
+  fi
 }
 
 
 function build_configure ()
 {
   # configure with target and options
-  print_check "Preparing build directory..."
+  print_check "Preparing build directory"
   if [ ! -d $build_dir ]; then
     mkdir -p $build_dir
   fi
-  print_result "OK."
+  print_result "OK"
 
-  print_check "Checking manager server directory..."
+  print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     print_error "Manager server source path is not exist. It will not be built"
   fi
 
-  if [ $run_autogen = "yes" -o ! -f $source_dir/configure ]; then
-    print_check "Running autogen.sh..."
-    (cd $source_dir && sh ./autogen.sh)
-    [ $? -eq 0 ] && print_result "OK." || print_fatal "Result failed."
-  fi
-
-  print_check "Setting environment variables..."
+  print_check "Setting environment variables"
   if [ "x$java_dir" != "x" ]; then
     export JAVA_HOME="$java_dir"
   elif [ "x$JAVA_HOME" = "x" -a "x$JAVA_HOME" = "x" ]; then
     export JAVA_HOME="$default_java_dir"
   fi
   export PATH="$JAVA_HOME/bin:$PATH"
-  print_result "OK."
+  print_result "OK"
 
-  print_check "Prepare configure options..."
+  print_check "Prepare configure options"
   # set up prefix
   configure_prefix="--prefix=$prefix_dir"
 
@@ -212,7 +247,7 @@ function build_configure ()
     x86_64)
       configure_options="--enable-64bit $configure_options" ;;
     *)
-      print_fatal "Build target [$build_target] is not valid target." ;;
+      print_fatal "Build target [$build_target] is not valid target" ;;
   esac
 
   # set up build mode
@@ -230,32 +265,32 @@ function build_configure ()
     # check conflict
     case "$configure_options" in
       *"--enable-debug"*)
-	print_fatal "Conflict release mode with debug mode. check options.";;
+	print_fatal "Conflict release mode with debug mode. check options";;
     esac
   fi
-  print_result "OK. [$configure_options]"
+  print_result "OK"
 
-  print_check "Configuring [with $configure_options]..."
+  print_check "Configuring [with $configure_options]"
   (cd $build_dir && $source_dir/configure $configure_prefix $configure_options)
-  [ $? -eq 0 ] && print_result "OK." || print_fatal "Configuring failed."
+  [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
 
 function build_compile ()
 {
   # make
-  print_check "Building..."
+  print_check "Building"
   (cd $build_dir && make -j)
-  [ $? -eq 0 ] && print_result "OK." || print_fatal "Building failed."
+  [ $? -eq 0 ] && print_result "OK" || print_fatal "Building failed"
 }
 
 
 function build_install ()
 {
   # make install
-  print_check "Installing..."
+  print_check "Installing"
   (cd $build_dir && make install)
-  [ $? -eq 0 ] && print_result "OK." || print_fatal "Installation failed."
+  [ $? -eq 0 ] && print_result "OK" || print_fatal "Installation failed"
 }
 
 
@@ -615,7 +650,7 @@ END_OF_FILE
 function build_bin_pack ()
 {
   if [ $# -lt 2 ]; then
-    print_error "Missing product name or target."
+    print_error "Missing product name or target"
     return 1
   else
     package_file="$1"
@@ -631,7 +666,7 @@ function build_bin_pack ()
     (cd $install_dir && tar czf $package_file $product_name)
     return $?
   elif [ "$pack_target" != "shell" ]; then
-    print_error "Unknown target."
+    print_error "Unknown target"
     return 1
   fi
 
@@ -655,7 +690,7 @@ function build_bin_pack ()
       mv -f $archive_dir/conf/$file $archive_dir/conf/$file-dist
     fi
     if [ ! -f $archive_dir/conf/$file-dist ]; then
-      print_fatal "Config file [$archive_dir/conf/$file-dist] not found."
+      print_fatal "Config file [$archive_dir/conf/$file-dist] not found"
     fi
   done
 
@@ -671,7 +706,7 @@ function build_bin_pack ()
 
 function build_rpm ()
 {
-  print_check "Preparing RPM package directory..."
+  print_check "Preparing RPM package directory"
 
   if [ $# -lt 2 ]; then
     print_error "Missing source tarball filename or target"
@@ -682,38 +717,31 @@ function build_rpm ()
   fi
 
   if [ ! -f "$source_tarball" ]; then
-    print_error "Source tarball [$source_tarball] is not exist."
+    print_error "Source tarball [$source_tarball] is not exist"
     return 1
   else
-    print_check "Using source tarball [$source_tarball]"
+    print_info "Using source tarball [$source_tarball]"
     rpm_output_dir=$(dirname $source_tarball)
   fi
 
-  mkdir -p $install_dir/rpmbuild/{BUILD,RPMS,SOURCES}
-  echo "%_topdir            $install_dir/rpmbuild" > $HOME/.rpmmacros
-  echo "%_builddir          %_topdir/BUILD" >> $HOME/.rpmmacros
-  echo "%_rpmdir            %_topdir/RPMS" >> $HOME/.rpmmacros
-  echo "%_sourcedir         %_topdir/SOURCES" >> $HOME/.rpmmacros
-  echo "%_specdir           %_topdir/SOURCES" >> $HOME/.rpmmacros
-  echo "%_srcrpmdir         %_topdir/RPMS" >> $HOME/.rpmmacros
-  echo "%_buildrootdir      %_topdir/BUILD" >> $HOME/.rpmmacros
-  print_result "OK."
+  mkdir -p $install_dir/rpmbuild/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
+  print_result "OK"
 
   case $rpm_target in
     srpm)
-      rpmbuild --clean -ts $source_tarball
+      rpmbuild --define="_topdir $install_dir/rpmbuild" --clean -ts $source_tarball
       if [ $? -eq 0 ]; then
-	mv -f $install_dir/rpmbuild/RPMS/*.src.rpm $rpm_output_dir
+	mv -f $install_dir/rpmbuild/SRPMS/$product_name-$build_number-*.src.rpm $rpm_output_dir
       fi
     ;;
     rpm)
-      rpmbuild --clean -tb --target=$build_target $source_tarball
+      rpmbuild --define="_topdir $install_dir/rpmbuild" --clean -tb --target=$build_target $source_tarball
       if [ $? -eq 0 ]; then
-	mv -f $install_dir/rpmbuild/RPMS/$build_target/*.rpm $rpm_output_dir
+	mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name-$build_number-*.$build_target.rpm $rpm_output_dir
       fi
     ;;
     *)
-      print_error "Unknown target."
+      print_error "Unknown target"
       return 1
       ;;
   esac
@@ -722,10 +750,10 @@ function build_rpm ()
 
 function build_package ()
 {
-  print_check "Preparing package directory..."
+  print_check "Preparing package directory"
 
   if [ ! -d "$build_dir" ]; then
-    print_fatal "Build directory not found. please build first."
+    print_fatal "Build directory not found. please build first"
   fi
 
   if [ ! -d $output_dir ]; then
@@ -745,27 +773,28 @@ function build_package ()
   done
 
   src_package_name="$product_name_lower-$build_number.tar.gz"
-  print_result "OK."
+  print_result "OK"
 
   for package in $packages; do
-    print_check "Packing package for $package..."
+    print_check "Packing package for $package"
     case $package in
       src)
-	if [ "$build_mode" = "debug" ]; then
-	  print_check "Debug mode source tarball is not supported. Skip."
+	if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode source tarball is not supported. Skip"
 	  package_name="NONE"
 	else
 	  package_name="$src_package_name"
 	  # make dist for pack sources
 	  (cd $build_dir && make dist)
-	  if [ $? -eq 0 -a ! $build_dir -ef $output_dir ]; then
-	    mv -f $build_dir/$package_name $output_dir
+	  if [ $? -eq 0 ]; then
+	    output_packages="$output_packages $package_name"
+	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
 	  fi
 	fi
       ;;
-      php_src)
-	if [ "$build_mode" = "debug" ]; then
-	  print_check "Debug mode php source tarball is not supported. Skip."
+	php_src)
+	  if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode php source tarball is not supported. Skip"
 	  package_name="NONE"
 	else
 	  package_basename="$product_name-php-$build_number"
@@ -773,20 +802,23 @@ function build_package ()
 	  if [ -d "$build_dir/$package_basename" ]; then
 	    rm -rf $build_dir/$package_basename
 	  fi
-	  mkdir -p $build_dir/$package_basename
-	  cp $source_dir/contrib/php* $build_dir/$package_basename/
+	  mkdir $build_dir/$package_basename
+	  cp -r $source_dir/contrib/php* $build_dir/$package_basename/
 	  (cd $build_dir && tar czf $output_dir/$package_name $package_basename)
-	  [ $? -eq 0 ] && rm -rf $build_dir/$package_basename
+	  if [ $? -eq 0 ]; then
+	    output_packages="$output_packages $package_name"
+	    rm -rf $build_dir/$package_basename
+	  fi
 	fi
       ;;
       tarball|shell)
 	if [ ! -d "$install_dir" -o ! -d "$prefix_dir" ]; then
-	  print_fatal "Installed directory or prefix directory not found."
+	  print_fatal "Installed directory or prefix directory not found"
 	fi
 
       	package_basename="$product_name-$build_number-linux.$build_target"
-	if [ "$build_mode" = "debug" ]; then
-	  package_basename="$package_basename-debug"
+	if [ ! "$build_mode" = "release" ]; then
+	  package_basename="$package_basename-$build_mode"
 	fi
 	if [ "$package" = tarball ]; then
 	  package_name="$package_basename.tar.gz"
@@ -794,15 +826,16 @@ function build_package ()
 	  package_name="$package_basename.sh"
 	fi
 	build_bin_pack $output_dir/$package_name $package
+	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
       ;;
       cci)
 	if [ ! -d "$install_dir" ]; then
-	  print_fatal "Installed directory not found."
+	  print_fatal "Installed directory not found"
 	fi
 
       	package_basename="$product_name-CCI-$build_number-$build_target"
-	if [ "$build_mode" = "debug" ]; then
-	  package_name="$package_basename-debug.tar.gz"
+	if [ ! "$build_mode" = "release" ]; then
+	  package_name="$package_basename-$build_mode.tar.gz"
 	else
 	  package_name="$package_basename.tar.gz"
 	fi
@@ -812,27 +845,46 @@ function build_package ()
 	  pack_file_list="$pack_file_list $product_name/$file"
 	done
 	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
+	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
       ;;
       jdbc)
-	if [ "$build_mode" = "debug" ]; then
-	  print_check "Debug mode JDBC is not supported. Skip."
+	if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode JDBC is not supported. Skip"
 	  package_name="NONE"
 	else
 	  package_name="JDBC-$build_number-$product_name_lower"
 	  cp $build_dir/jdbc/$package_name*.jar $output_dir
+	  [ $? -eq 0 ] && output_packages="$output_packages $package_name"
 	fi
       ;;
-      srpm|rpm)
-	if [ "$build_mode" = "debug" -o "$build_mode" = "coverage" ]; then
-	  print_check "Debug mode RPM is not supported. Skip."
+      srpm)
+	if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode SRPM is not supported. Skip"
+	  package_name="NONE"
+	else
+	  package_name="$product_name-$build_number...src.rpm"
+	  build_rpm $output_dir/$src_package_name $package
+	  if [ $? -eq 0 ]; then
+	    rpm_pkgs=$(cd $output_dir && ls $product_name-$build_number-*.src.rpm)
+	    [ $? -eq 0 ] && output_packages="$output_packages $rpm_pkgs"
+	  fi
+	fi
+      ;;
+      rpm)
+	if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode RPM or SRPM is not supported. Skip"
 	  package_name="NONE"
 	else
 	  package_name="$product_name-$build_number...rpm"
 	  build_rpm $output_dir/$src_package_name $package
+	  if [ $? -eq 0 ]; then
+	    rpm_pkgs=$(cd $output_dir && ls $product_name-$build_number-*.$build_target.rpm)
+	    [ $? -eq 0 ] && output_packages="$output_packages $rpm_pkgs"
+	  fi
 	fi
       ;;
     esac
-    [ $? -eq 0 ] && print_result "OK. [$package_name] for $package" || print_fatal "Packaging failed."
+    [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
   done
 }
 
@@ -840,11 +892,20 @@ function build_package ()
 function build_post ()
 {
   # post job
+  echo "[`date +'%F %T'`] Completed"
   echo ""
-  echo "Completed. - Target $build_args in [$build_dir]"
-  echo "  	   - Mode [$build_target/$build_mode]"
-  if [ "x$configure_options" != "x" ]; then
-    echo "           - Configured with [$configure_options]"
+  echo "*** Summary ***"
+  echo "  Target [$build_args]"
+  echo "  Version [$build_number]"
+  echo "  Build mode [$build_target/$build_mode]"
+  if [ -n "$configure_options" ]; then
+    echo "    Configured with [$configure_options]"
+  fi
+  if [ -n "$output_packages" ]; then
+    echo "  Generated packages in [$output_dir]"
+    for pkg in $(echo $output_packages|tr " " "\n"|sort -u|tr "\n" " "); do
+      echo "    -" $(cd $output_dir && md5sum $pkg)
+    done
   fi
   echo ""
 }
@@ -874,6 +935,7 @@ function show_usage ()
   echo ""
   echo " TARGET"
   echo "  all     Build and create packages (default)"
+  echo "  prepare Prepare only (check increase version and autogen option)"
   echo "  build   Build only"
   echo "  dist    Create packages only"
   echo ""
@@ -918,12 +980,12 @@ function get_options ()
   case $build_target in
     i386|x86|32|32bit) build_target="i386";;
     x86_64|x64|64|64bit) build_target="x86_64";;
-    *) show_usage; print_fatal "Target [$build_target] is not valid target." ;;
+    *) show_usage; print_fatal "Target [$build_target] is not valid target" ;;
   esac
 
   case $build_mode in
     release|debug|coverage);;
-    *) show_usage; print_fatal "Mode [$build_mode] is not valid mode." ;;
+    *) show_usage; print_fatal "Mode [$build_mode] is not valid mode" ;;
   esac
 
   if [ "x$build_dir" = "x" ]; then
@@ -942,7 +1004,7 @@ function get_options ()
 
   source_dir=$(readlink -f $source_dir)
   if [ ! -d "$source_dir" ]; then
-    print_fatal "Source path [$source_dir] is not exist."
+    print_fatal "Source path [$source_dir] is not exist"
   fi
 
   [ "x$packages" = "x" ] && packages=$default_packages
@@ -963,7 +1025,7 @@ function get_options ()
 
   if [ $# -gt 0 ]; then
     build_args="$@"
-    echo "build targets: $build_args"
+    echo "[`date +'%F %T'`] Build target [$build_args]"
   fi
 }
 
@@ -984,9 +1046,15 @@ function build_dist ()
 }
 
 
+function build_prepare ()
+{
+  build_increase_version && build_autogen
+}
+
+
 function build_build ()
 {
-  build_increase_version && build_configure && build_compile && build_install
+  build_prepare && build_configure && build_compile && build_install
 }
 
 
@@ -996,7 +1064,7 @@ function build_build ()
   get_options "$@"
 } &&
 {
-  build_prepare
+  build_initialize
 } &&
 {
   declare -f target
@@ -1011,8 +1079,10 @@ function build_build ()
     echo "[`date +'%F %T'`] Entering target [$target]"
     build_$target
     if [ $? -ne 0 ]; then
+      echo ""
       print_fatal "*** [`date +'%F %T'`] Failed target [$target]"
     fi
+    echo ""
     echo "[`date +'%F %T'`] Leaving target [$target]"
     echo ""
   done

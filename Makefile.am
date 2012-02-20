@@ -22,7 +22,7 @@ AUTOMAKE_OPTIONS = foreign
 SUBDIRS = external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib @OPTIONAL_DIR@
 
 EXTRA_DIST = BUILD_NUMBER COPYING CREDITS README \
-	     autogen.sh debian win src
+	     autogen.sh build.sh debian win src
 
 if BUILD_CMSERVER
   BUILD_CMSERVER="--with-cmserver"
@@ -34,7 +34,7 @@ dist-hook:
 	    cp $(top_srcdir)/external/$$subdir/configure.gnu $(distdir)/external/$$subdir; \
 	  fi; \
 	done;
-	@rm -rf `find $(distdir) -type d -name .svn` 
+	@find $(distdir) -type d -name .svn -print0 | xargs -0 rm -rf
 
 logdir = @CUBRID_LOGDIR@
 log_DATA = # EMPTY

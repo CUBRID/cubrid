@@ -21,8 +21,9 @@ SETLOCAL
 rem CUBRID build script for MS Windows.
 rem
 rem Requirements
-rem - Cygwin with make, ant, zip
+rem - Cygwin with make, ant, zip, md5sum
 rem - Windows 2003 or later
+
 if NOT "%OS%"=="Windows_NT" echo "ERROR: Not supported OS" & GOTO :EOF
 rem - JAVA_HOME environment variable must be set to make JDBC package
 if "%JAVA_HOME%" == "" echo "ERROR: JAVA_HOME variable is not set" & GOTO :EOF
@@ -47,6 +48,8 @@ rem set variables
 call :ABSPATH "%SCRIPT_DIR%\.." SOURCE_DIR
 set BUILD_DIR=%SOURCE_DIR%\win
 
+rem unset DIST_PKGS
+if NOT "%DIST_PKGS%." == "." set DIST_PKGS=
 
 :CHECK_OPTION
 if "%1." == "."       GOTO :BUILD
@@ -89,7 +92,19 @@ for %%i IN (%BUILD_LIST%) DO (
   echo.
 )
 echo.
-echo Completed.
+echo [%DATE% %TIME%] Completed.
+echo.
+echo *** Summary ***
+echo   Target [%BUILD_LIST%]
+echo   Version [%BUILD_NUMBER%]
+echo   Build mode [%BUILD_TARGET%/%BUILD_MODE%]
+if NOT "%DIST_PKGS%." == "." (
+  echo   Generated packages in [%DIST_DIR%]
+  cd /d %DIST_DIR%
+  for /f "delims=" %%i in ('md5sum -t %DIST_PKGS%') DO (
+    echo     - %%i
+  )
+)
 echo.
 GOTO :EOF
 
@@ -201,11 +216,11 @@ echo Buiding exe packages in %BUILD_DIR% ...
 if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
 cd /d %BUILD_PREFIX%
 
-move /y conf\cubrid.conf conf\cubrid.conf-dist
-move /y conf\cubrid_broker.conf conf\cubrid_broker.conf-dist
-move /y conf\cm.conf conf\cm.conf-dist
-move /y conf\cmdb.pass conf\cmdb.pass-dist
-move /y conf\cm.pass conf\cm.pass-dist
+copy /y conf\cubrid.conf conf\cubrid.conf-dist
+copy /y conf\cubrid_broker.conf conf\cubrid_broker.conf-dist
+copy /y conf\cm.conf conf\cm.conf-dist
+copy /y conf\cmdb.pass conf\cmdb.pass-dist
+copy /y conf\cm.pass conf\cm.pass-dist
 
 cd /d %BUILD_DIR%\install\Installshield
 if "%BUILD_TARGET%" == "Win32" (set CUBRID_ISM="CUBRID.ism") ELSE set CUBRID_ISM="CUBRID_x64.ism"
@@ -221,12 +236,13 @@ move /y packaging\product\Package\CUBRID.EXE %DIST_DIR%\%CUBRID_PACKAGE_NAME%.ex
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
 
 cd /d %BUILD_PREFIX%
-move /y conf\cubrid.conf-dist conf\cubrid.conf
-move /y conf\cubrid_broker.conf-dist conf\cubrid_broker.conf
-move /y conf\cm.conf-dist conf\cm.conf
-move /y conf\cmdb.pass-dist conf\cmdb.pass
-move /y conf\cm.pass-dist conf\cm.pass
+del conf\cubrid.conf-dist
+del conf\cubrid_broker.conf-dist
+del conf\cm.conf-dist
+del conf\cmdb.pass-dist
+del conf\cm.pass-dist
 echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.exe
 GOTO :EOF
 
 
@@ -242,6 +258,7 @@ echo drop %CUBRID_PACKAGE_NAME%.zip into %DIST_DIR%
 zip -r %DIST_DIR%\%CUBRID_PACKAGE_NAME%.zip *
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
 echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.zip]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.zip
 GOTO :EOF
 
 
@@ -263,6 +280,7 @@ echo drop CUBRID_CCI_PACKAGE_NAME%.zip into %DIST_DIR%
 zip -r %DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip cubrid-cci-%BUILD_NUMBER%
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
 echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
 
@@ -273,6 +291,8 @@ if NOT EXIST %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar echo Cannot found built jar. & 
 echo drop JDBC-%BUILD_NUMBER%-cubrid.jar into %DIST_DIR%
 copy %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+echo Package created. [%DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar]
+set DIST_PKGS=%DIST_PKGS% JDBC-%BUILD_NUMBER%-cubrid.jar
 GOTO :EOF
 
 
