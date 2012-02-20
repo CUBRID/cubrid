@@ -140,6 +140,14 @@ GOTO :EOF
 echo Building CUBRID in %BUILD_DIR%
 cd /d %BUILD_DIR%
 
+rem build gencat win32 version when build target is x64 on win32 host
+if NOT DEFINED ProgramFiles(x86) (
+  if "%BUILD_TARGET%" == "x64" (
+    "%DEVENV_PATH%" /rebuild "Release|Win32" "gencat/gencat.vcproj"
+    if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
+  )
+)
+
 "%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid.sln"
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
