@@ -363,4 +363,10 @@ extern QO_PLAN *qo_planner_search (QO_ENV *);
 extern void qo_planner_free (QO_PLANNER *);
 extern void qo_plans_stats (FILE *);
 extern void qo_info_stats (FILE *);
+
+extern bool qo_is_seq_scan (QO_PLAN *);
+extern bool qo_is_iscan (QO_PLAN *);
+extern bool qo_is_iscan_from_groupby (QO_PLAN *);
+extern bool qo_is_iscan_from_orderby (QO_PLAN *);
+extern bool qo_is_interesting_order_scan (QO_PLAN *);
 #endif /* _QUERY_PLANNER_H_ */

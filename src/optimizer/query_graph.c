@@ -6860,9 +6860,10 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	    {
 	      if (QO_UI_N (uip) == 0)
 		{
-		  /* USING INDEX NONE case */
+		  /* USING INDEX NONE case, skip */
 		  continue;
 		}
+
 	      /* search USING INDEX list */
 	      found = false;
 	      for (j = 0; j < QO_UI_N (uip); j++)

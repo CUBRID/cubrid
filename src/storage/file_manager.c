@@ -10692,11 +10692,12 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
 
       pgbuf_unfix_and_init (thread_p, pgptr);
     }
+  (void) fprintf (fp, "\n");
 
   if (allocset->num_pages != num_aids)
     {
       (void) fprintf (fp, "WARNING: Number of pages = %d does not match"
-		      "pages = %d in allocationset header\n",
+		      " pages = %d in allocationset header\n",
 		      num_aids, allocset->num_pages);
     }
 

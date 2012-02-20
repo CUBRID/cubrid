@@ -18253,9 +18253,7 @@ pt_find_subplan_with_orderby_column (PARSER_CONTEXT * parser,
       return ret;
     }
 
-  if (pt == QO_PLANTYPE_SCAN &&
-      (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN ||
-       plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN))
+  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
     {
       int i;
 
@@ -18851,8 +18849,7 @@ pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
 
   env = (plan->info)->env;
   nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-  if (nterms <= 0
-      && plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+  if (nterms <= 0 && !qo_is_iscan_from_orderby (plan))
     {
       return NO_ERROR;
     }

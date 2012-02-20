@@ -1825,9 +1825,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 		   * is normal term, we push them to key filter
 		   * instead of sarg term.
 		   */
-		  if (inner->plan_type == QO_PLANTYPE_SCAN
-		      && inner->plan_un.scan.scan_method ==
-		      QO_SCANMETHOD_INDEX_SCAN
+		  if (qo_is_iscan (inner)
 		      && inner->plan_un.scan.index->head
 		      && inner->plan_un.scan.index->head->cover_segments)
 		    {
@@ -2569,8 +2567,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   nkfterms = bitset_cardinality (&(plan->plan_un.scan.kf_terms));
 
   /* support also indexes with only sarg terms */
-  if (plan && plan->plan_type == QO_PLANTYPE_SCAN &&
-      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+  if (qo_is_iscan_from_groupby (plan))
     {
       /* if group by skip plan do not return */
       ;
@@ -3247,11 +3244,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan,
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      if (plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
-	  && (plan->plan_un.scan.scan_method !=
-	      QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
-	  && (plan->plan_un.scan.scan_method !=
-	      QO_SCANMETHOD_INDEX_GROUPBY_SCAN))
+      if (!qo_is_interesting_order_scan (plan))
 	{
 	  return NULL;
 	}
@@ -3449,12 +3442,7 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
   if (!subplan
       || !subplan->info
       || !subplan->plan_un.scan.index
-      || subplan->plan_type != QO_PLANTYPE_SCAN
-      || ((subplan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
-	  && (subplan->plan_un.scan.scan_method !=
-	      QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
-	  && (subplan->plan_un.scan.scan_method !=
-	      QO_SCANMETHOD_INDEX_GROUPBY_SCAN)))
+      || !qo_is_interesting_order_scan (subplan))
     {
       return NO_ERROR;
     }

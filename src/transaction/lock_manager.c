@@ -2442,6 +2442,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
+  int message_dump_level;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2450,11 +2451,13 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   assert (entry_ptr->granted_mode >= NULL_LOCK
 	  && entry_ptr->blocked_mode >= NULL_LOCK);
 
-  if (PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL == 0)
+  message_dump_level = PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL;
+
+  if (message_dump_level == 0)
     {
       /* nothing to do */
     }
-  else if (PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL == 1)
+  else if (message_dump_level == 1)
     {
       /* Dump only the first tran. info. which this tran. is waiting for */
       res_ptr = entry_ptr->res_head;
@@ -2504,7 +2507,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	}
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
-  else if (PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL == 2)
+  else if (message_dump_level == 2)
     {
       /* Dump all the tran. info. which this tran. is waiting for */
       res_ptr = entry_ptr->res_head;
@@ -4733,6 +4736,11 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (entry_ptr->tran_index != tran_index)
+    {
+      assert (false);
+      return;
+    }
 
   if (release_flag == false)
     {
@@ -4819,6 +4827,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
 	}
       else
 	{
+	  assert (false);
 	  /* The transaction is neither the lock holder nor the lock waiter */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4,
 		  tran_index,
@@ -11154,9 +11163,11 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
     {
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
+      assert (count >= 0);
       entry_ptr->instant_lock_count = 0;
       if (need_unlock)
 	{
+	  assert (count >= 0);
 	  while (count--)
 	    {
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
@@ -11172,9 +11183,11 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
     {
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
+      assert (count >= 0);
       entry_ptr->instant_lock_count = 0;
       if (need_unlock)
 	{
+	  assert (count >= 0);
 	  while (count--)
 	    {
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
@@ -11190,8 +11203,10 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
     {
       count = entry_ptr->instant_lock_count;
       entry_ptr->instant_lock_count = 0;
+      assert (count >= 0);
       if (need_unlock)
 	{
+	  assert (count >= 0);
 	  while (count--)
 	    {
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
