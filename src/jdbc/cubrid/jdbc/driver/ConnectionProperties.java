@@ -281,7 +281,7 @@ public class ConnectionProperties {
 	    "logFile", "cubrid_jdbc.log");
 
     CharSetConnectionProperty charSet = new CharSetConnectionProperty(
-	    "charSet", null);
+	    "charSet", System.getProperty("file.encoding"));
 
     IntegerConnectionProperty rcTime = new IntegerConnectionProperty(
 	    "rcTime", 600, 0, Integer.MAX_VALUE);
