@@ -992,13 +992,15 @@ function get_options ()
     build_dir="$source_dir/build_${build_target}_${build_mode}"
   fi
   # convert paths to absolute path
+  [ ! -d "$build_dir" ] && mkdir -p $build_dir
   build_dir=$(readlink -f $build_dir)
   install_dir="$build_dir/_install"
-  mkdir -p $install_dir
+  [ ! -d "$install_dir" ] && mkdir -p $install_dir
 
   if [ "x$prefix_dir" = "x" ]; then
     prefix_dir="$install_dir/$product_name"
   else
+    [ ! -d "$prefix_dir" ] && mkdir -p $prefix_dir
     prefix_dir=$(readlink -f $prefix_dir)
   fi
 
@@ -1021,6 +1023,7 @@ function get_options ()
   if [ "x$output_dir" = "x" ]; then
     output_dir="$build_dir"
   fi
+  [ ! -d "$output_dir" ] && mkdir -p $output_dir
   output_dir=$(readlink -f $output_dir)
 
   if [ $# -gt 0 ]; then
