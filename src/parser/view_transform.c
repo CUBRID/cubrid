@@ -5755,10 +5755,39 @@ static PT_NODE *
 mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 		   int *continue_walk)
 {
+  PT_NODE *spec = NULL;
 
-  if (node->node_type == PT_SELECT)
+  switch (node->node_type)
     {
-      mq_set_references (parser, node, node->info.query.q.select.from);
+    case PT_SELECT:
+      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
+	{
+	  /* might not be necessary to reset paths and references, but it's
+	     a good failsafe */
+	  mq_set_references (parser, node, spec);
+	}
+      break;
+
+    case PT_UPDATE:
+      for (spec = node->info.update.spec; spec; spec = spec->next)
+	{
+	  /* only reset IDs, in case query will be rewritten as SELECT for
+	     broker execution */
+	  mq_reset_ids (parser, node, spec);
+	}
+      break;
+
+    case PT_DELETE:
+      for (spec = node->info.delete_.spec; spec; spec = spec->next)
+	{
+	  /* only reset IDs, in case query will be rewritten as SELECT for
+	     broker execution */
+	  mq_reset_ids (parser, node, spec);
+	}
+      break;
+
+    default:
+      break;
     }
 
   return (node);
