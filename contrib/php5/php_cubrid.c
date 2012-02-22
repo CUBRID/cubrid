@@ -403,6 +403,8 @@ static int cubrid_lob_free(T_CCI_LOB lob, T_CCI_U_TYPE type);
 static char *php_cubrid_int64_to_str(php_cubrid_int64_t i64 TSRMLS_DC);
 static int cubrid_parse_params(T_CUBRID_REQUEST *req, char *sql_stmt, size_t sql_stmt_len TSRMLS_DC);
 
+static int cubrid_get_charset_internal(int conn, T_CCI_ERROR *error);
+
 /************************************************************************
 * INTERFACE VARIABLES
 ************************************************************************/
@@ -4373,18 +4375,11 @@ ZEND_FUNCTION(cubrid_query)
 ZEND_FUNCTION(cubrid_get_charset)
 {
     zval *conn_id = NULL;
-    char *query = "SELECT charset FROM db_root";
 
     T_CUBRID_CONNECT *connect;
     T_CCI_ERROR error;
 
     int cubrid_retval = 0;
-    int request_handle = 0;
-
-    char *buffer;
-    int ind;
-
-    int index = -1;
 
     init_error();
 
@@ -4395,72 +4390,23 @@ ZEND_FUNCTION(cubrid_get_charset)
     ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
 
     init_error_link(connect);
-
-    if ((cubrid_retval = cci_prepare(connect->handle, query, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-	RETURN_FALSE;
+    
+    if ((cubrid_retval = cubrid_get_charset_internal (connect->handle, &error)) < 0) {
+        handle_error(cubrid_retval, &error, connect);
+        RETURN_FALSE;
     }
 
-    request_handle = cubrid_retval;
-
-    if ((cubrid_retval = cci_execute(request_handle, CCI_EXEC_ASYNC, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-        goto ERR_CUBRID_GET_CHARSET;
-    }
-
-    cubrid_retval = cci_cursor(request_handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, connect);
-        goto ERR_CUBRID_GET_CHARSET;
-    }
-
-    if ((cubrid_retval = cci_fetch(request_handle, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-        goto ERR_CUBRID_GET_CHARSET;
-    }
-
-    if ((cubrid_retval = cci_get_data(request_handle, 1, CCI_A_TYPE_STR, &buffer, &ind)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-        goto ERR_CUBRID_GET_CHARSET;
-    }
-
-    if (ind != -1) {
-	index = atoi(buffer);
-    } else {
-	RETURN_FALSE;
-    }
-
-    if (index < 0 || index > MAX_DB_CHARSETS) {
-	index = MAX_DB_CHARSETS;
-    }
-
-    RETURN_STRING((char *) db_charsets[index].charset_name, 1);
-
-    cci_close_req_handle(request_handle);
-    return;
-
-ERR_CUBRID_GET_CHARSET:
-
-    cci_close_req_handle(request_handle);
-    RETURN_FALSE;
+    RETURN_STRING((char *) db_charsets[cubrid_retval].charset_name, 1);
 }
 
 ZEND_FUNCTION(cubrid_client_encoding)
 {
     zval *conn_id = NULL;
-    char *query = "SELECT charset FROM db_root";
 
-    int connect_handle = 0;
     T_CUBRID_CONNECT *connect;
     T_CCI_ERROR error;
 
     int cubrid_retval = 0;
-    int request_handle = 0;
-
-    char *buffer;
-    int ind;
-
-    int index = -1;
 
     init_error();
 
@@ -4478,57 +4424,14 @@ ZEND_FUNCTION(cubrid_client_encoding)
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, NULL, CUBRID_G(last_connect_id), "CUBRID-Connect", le_connect, le_pconnect);
     }
 
-    connect_handle = connect->handle;
-    
     init_error_link(connect);
 
-    if ((cubrid_retval = cci_prepare(connect_handle, query, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-	RETURN_FALSE;
+    if ((cubrid_retval = cubrid_get_charset_internal (connect->handle, &error)) < 0) {
+        handle_error(cubrid_retval, &error, connect);
+        RETURN_FALSE;
     }
 
-    request_handle = cubrid_retval;
-
-    if ((cubrid_retval = cci_execute(request_handle, CCI_EXEC_ASYNC, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-	goto ERR_CUBRID_CLIENT_ENCODING;
-    }
-
-    cubrid_retval = cci_cursor(request_handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, connect);
-	goto ERR_CUBRID_CLIENT_ENCODING;
-    }
-
-    if ((cubrid_retval = cci_fetch(request_handle, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-	goto ERR_CUBRID_CLIENT_ENCODING;
-    }
-
-    if ((cubrid_retval = cci_get_data(request_handle, 1, CCI_A_TYPE_STR, &buffer, &ind)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-	goto ERR_CUBRID_CLIENT_ENCODING;
-    }
-
-    if (ind != -1) {
-	index = atoi(buffer);
-    } else {
-	RETURN_FALSE;
-    }
-
-    if (index < 0 || index > MAX_DB_CHARSETS) {
-	index = MAX_DB_CHARSETS;
-    }
-
-    RETURN_STRING((char *) db_charsets[index].charset_name, 1);
-
-    cci_close_req_handle(request_handle);
-    return;
-
-ERR_CUBRID_CLIENT_ENCODING:
-
-    cci_close_req_handle(request_handle);
-    RETURN_FALSE;
+    RETURN_STRING((char *) db_charsets[cubrid_retval].charset_name, 1);
 }
 
 ZEND_FUNCTION(cubrid_get_client_info)
@@ -6232,6 +6135,61 @@ ERR_CUBRID_PARSE_PARAMS:
         zend_hash_destroy(req->params);
         FREE_HASHTABLE(req->params);
         req->params = NULL;
+    }
+
+    return cubrid_retval;
+}
+
+static int
+cubrid_get_charset_internal (int conn, T_CCI_ERROR *error)
+{
+    char *query = "SELECT charset FROM db_root";
+    char *buffer;
+
+    int cubrid_retval = 0;
+    int request_handle = 0;
+    int ind, index = -1;
+
+    if ((cubrid_retval = cci_prepare(conn, query, 0, error)) < 0) {
+        goto ERR_CUBRID_GET_CHARSET_INTERNAL;
+    }
+
+    request_handle = cubrid_retval;
+
+    if ((cubrid_retval = cci_execute(request_handle, CCI_EXEC_ASYNC, 0, error)) < 0) {
+        goto ERR_CUBRID_GET_CHARSET_INTERNAL;
+    }
+
+    cubrid_retval = cci_cursor(request_handle, 1, CCI_CURSOR_CURRENT, error);
+    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
+        goto ERR_CUBRID_GET_CHARSET_INTERNAL;
+    }
+
+    if ((cubrid_retval = cci_fetch(request_handle, error)) < 0) {
+        goto ERR_CUBRID_GET_CHARSET_INTERNAL;
+    }
+
+    if ((cubrid_retval = cci_get_data(request_handle, 1, CCI_A_TYPE_STR, &buffer, &ind)) < 0) {
+        goto ERR_CUBRID_GET_CHARSET_INTERNAL;
+    }
+
+    if (ind != -1) {
+	index = atoi(buffer);
+    } else {
+	goto ERR_CUBRID_GET_CHARSET_INTERNAL;
+    }
+
+    if (index < 0 || index > MAX_DB_CHARSETS) {
+	index = MAX_DB_CHARSETS;
+    }
+
+    cci_close_req_handle(request_handle);
+    return index;
+
+ERR_CUBRID_GET_CHARSET_INTERNAL:
+
+    if (request_handle > 0) {
+        cci_close_req_handle(request_handle);
     }
 
     return cubrid_retval;
