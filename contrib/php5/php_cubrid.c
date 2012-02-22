@@ -381,6 +381,7 @@ static void register_cubrid_request(T_CUBRID_CONNECT *conn, T_CUBRID_REQUEST *re
 
 static void php_cubrid_set_default_conn(int id TSRMLS_DC);
 static void php_cubrid_set_default_req(int id TSRMLS_DC);
+static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int is_object);
 
 static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int type TSRMLS_DC);
 static int type2str(T_CCI_COL_INFO *column_info, char *type_name, int type_name_len);
@@ -2113,63 +2114,6 @@ ZEND_FUNCTION(cubrid_close_request)
     RETURN_TRUE;
 }
 
-ZEND_FUNCTION(cubrid_fetch)
-{
-    zval *req_id= NULL;
-    long type = CUBRID_BOTH;
-
-    T_CUBRID_REQUEST *request;
-    T_CCI_ERROR error;
-    int cubrid_retval = 0;
-
-    init_error();
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r|l", &req_id, &type) == FAILURE) {
-	return;
-    }
-
-    if (type & CUBRID_OBJECT) {
-	type |= CUBRID_ASSOC;
-    }
-
-    ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
-
-    init_error_link(request->conn);
-
-    if ((cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error)) == CCI_ER_NO_MORE_DATA) {
-	return;
-    }
-    if (cubrid_retval < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    cubrid_retval = cci_fetch(request->handle, &error);
-    if (cubrid_retval < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, type TSRMLS_CC)) != SUCCESS) {
-	handle_error(cubrid_retval, NULL, request->conn);
-	RETURN_FALSE;
-    }
-
-    if (type & CUBRID_OBJECT) {
-	if (return_value->type == IS_ARRAY) {
-	    convert_to_object(return_value);
-	}
-    }
-
-    cubrid_retval = cci_cursor(request->handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    return;
-}
-
 ZEND_FUNCTION(cubrid_current_oid)
 {
     zval *req_id= NULL;
@@ -3543,138 +3487,29 @@ ZEND_FUNCTION(cubrid_data_seek)
     RETURN_LONG(CUBRID_CURSOR_SUCCESS);
 }
 
+ZEND_FUNCTION(cubrid_fetch)
+{
+    php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAM_PASSTHRU, 0, 0);
+}
+
 ZEND_FUNCTION(cubrid_fetch_array)
 {
-    zval *req_id = NULL;
-    long type = CUBRID_BOTH;
-
-    T_CUBRID_REQUEST *request;
-    T_CCI_ERROR error;
-    int cubrid_retval = 0;
-
-    init_error();
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r|l", &req_id, &type) == FAILURE) {
-	return;
-    }
-
-    ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
-
-    init_error_link(request->conn);
-
-    if ((cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error)) == CCI_ER_NO_MORE_DATA) {
-	return;
-    }
-    if (cubrid_retval < 0) {
-    handle_error(cubrid_retval, &error, request->conn);
-    RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, type TSRMLS_CC)) != SUCCESS) {
-	handle_error(cubrid_retval, NULL, request->conn);
-	RETURN_FALSE;
-    }
-
-    cubrid_retval = cci_cursor(request->handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    return;
+    php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAM_PASSTHRU, 0, 0);
 }
 
 ZEND_FUNCTION(cubrid_fetch_assoc)
 {
-    zval *req_id = NULL;
-    T_CUBRID_REQUEST *request;
-    T_CCI_ERROR error;
-    int cubrid_retval = 0;
-
-    init_error();
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &req_id) == FAILURE) {
-	return;
-    }
-    
-    ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
-
-    init_error_link(request->conn);
-
-    if ((cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error)) == CCI_ER_NO_MORE_DATA) {
-	return;
-    }
-    if (cubrid_retval < 0) {
-    handle_error(cubrid_retval, &error, request->conn);
-    RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, CUBRID_ASSOC TSRMLS_CC)) != SUCCESS) {
-	handle_error(cubrid_retval, NULL, request->conn);
-	RETURN_FALSE;
-    }
-
-    cubrid_retval = cci_cursor(request->handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    return;
+    php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAM_PASSTHRU, CUBRID_ASSOC, 0);
 }
 
 ZEND_FUNCTION(cubrid_fetch_row)
 {
-    zval *req_id = NULL;
-    T_CUBRID_REQUEST *request;
-    T_CCI_ERROR error;
-    int cubrid_retval = 0;
+    php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAM_PASSTHRU, CUBRID_NUM, 0);
+}
 
-    init_error();
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &req_id) == FAILURE) {
-	return;
-    }
-    
-    ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
-
-    init_error_link(request->conn);
-
-    if ((cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error)) == CCI_ER_NO_MORE_DATA) {
-	return;
-    }
-    if (cubrid_retval < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, CUBRID_NUM TSRMLS_CC)) != SUCCESS) {
-	handle_error(cubrid_retval, NULL, request->conn);
-	RETURN_FALSE;
-    }
-
-    cubrid_retval = cci_cursor(request->handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    return;
+ZEND_FUNCTION(cubrid_fetch_object)
+{
+    php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAM_PASSTHRU, CUBRID_BOTH | CUBRID_OBJECT, 1);
 }
 
 ZEND_FUNCTION(cubrid_fetch_field)
@@ -3871,144 +3706,6 @@ ZEND_FUNCTION(cubrid_fetch_lengths)
 	}
 
 	add_index_long(return_value, col, len);
-    }
-
-    return;
-}
-
-ZEND_FUNCTION(cubrid_fetch_object)
-{
-    zval *req_id = NULL, *ctor_params = NULL;
-    char *class_name = NULL;
-    int class_name_len = 0;
-
-    T_CUBRID_REQUEST *request;
-    T_CCI_ERROR error;
-    int cubrid_retval = 0;
-
-    zend_class_entry *ce = NULL;
-
-    zval dataset;
-    zend_fcall_info fci;
-    zend_fcall_info_cache fcc;
-    zval *retval_ptr;
-
-    init_error();
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r|sz", 
-                &req_id, &class_name, &class_name_len, &ctor_params) == FAILURE) {
-	return;
-    }
-    
-    if (ZEND_NUM_ARGS() < 2) {
-        ce = zend_standard_class_def;
-    } else {
-        ce = zend_fetch_class(class_name, class_name_len, ZEND_FETCH_CLASS_AUTO TSRMLS_CC);
-    }
-
-    if (!ce) {
-        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Could not find class '%s'", class_name);
-        return;
-    }
-
-    ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
-
-    init_error_link(request->conn);
-
-    /* get cursor at current position in the returned recordset */
-    if ((cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error)) == CCI_ER_NO_MORE_DATA) {
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
-    }
-
-    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, CUBRID_BOTH | CUBRID_OBJECT TSRMLS_CC)) != SUCCESS) {
-	handle_error(cubrid_retval, NULL, request->conn);
-	RETURN_FALSE;
-    }
-
-    /* convert to object, method learned from mysql extension */ 
-    dataset = *return_value;
-
-    object_and_properties_init(return_value, ce, NULL);
-    zend_merge_properties(return_value, Z_ARRVAL(dataset), 1 TSRMLS_CC);
-
-    if (ce->constructor) {
-        fci.size = sizeof(fci);
-        fci.function_table = &ce->function_table;
-        fci.function_name = NULL;
-        fci.symbol_table = NULL;
-#if PHP_MINOR_VERSION < 3
-        fci.object_pp = &return_value;
-#else
-        fci.object_ptr = return_value;
-#endif
-        fci.retval_ptr_ptr = &retval_ptr;
-        if (ctor_params && Z_TYPE_P(ctor_params) != IS_NULL) {
-            if (Z_TYPE_P(ctor_params) == IS_ARRAY) {
-                HashTable *ht = Z_ARRVAL_P(ctor_params);
-                Bucket *p;
-
-                fci.param_count = 0;
-                fci.params = safe_emalloc(sizeof(zval*), ht->nNumOfElements, 0);
-                p = ht->pListHead;
-                while (p != NULL) {
-                    fci.params[fci.param_count++] = (zval**)p->pData;
-                    p = p->pListNext;
-                }
-            } else {
-                /* Two problems why we throw exceptions here: PHP is typeless
-                 * and hence passing one argument that's not an array could be
-                 * by mistake and the other way round is possible, too. The 
-                 * single value is an array. Also we'd have to make that one
-                 * argument passed by reference.
-                 */
-                zend_throw_exception(zend_exception_get_default(TSRMLS_C), 
-                        "Parameter ctor_params must be an array", 0 TSRMLS_CC);
-                return;
-            }
-        } else {
-            fci.param_count = 0;
-            fci.params = NULL;
-        }
-        fci.no_separation = 1;
-
-        fcc.initialized = 1;
-        fcc.function_handler = ce->constructor;
-        fcc.calling_scope = EG(scope);
-#if PHP_MINOR_VERSION < 3
-        fcc.object_pp = &return_value;
-#else
-        fcc.called_scope = Z_OBJCE_P(return_value);
-        fcc.object_ptr = return_value;
-#endif
-
-        if (zend_call_function(&fci, &fcc TSRMLS_CC) == FAILURE) {
-            zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "Could not execute %s::%s()", ce->name, ce->constructor->common.function_name);
-        } else {
-            if (retval_ptr) {
-                zval_ptr_dtor(&retval_ptr);
-            }
-        }
-        if (fci.params) {
-            efree(fci.params);
-        }
-    } else if (ctor_params) {
-        zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "Class %s does not have a constructor hence you cannot use ctor_params", ce->name);
-    }
-
-    if (Z_TYPE_P(return_value) == IS_ARRAY) {
-        object_and_properties_init(return_value, ZEND_STANDARD_CLASS_DEF_PTR, Z_ARRVAL_P(return_value));
-    }
-
-    /* advance current recordset position with one row */
-    cubrid_retval = cci_cursor(request->handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
     }
 
     return;
@@ -6140,8 +5837,7 @@ ERR_CUBRID_PARSE_PARAMS:
     return cubrid_retval;
 }
 
-static int
-cubrid_get_charset_internal (int conn, T_CCI_ERROR *error)
+static int cubrid_get_charset_internal(int conn, T_CCI_ERROR *error)
 {
     char *query = "SELECT charset FROM db_root";
     char *buffer;
@@ -6193,4 +5889,157 @@ ERR_CUBRID_GET_CHARSET_INTERNAL:
     }
 
     return cubrid_retval;
+}
+
+static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int is_object)
+{
+    zval *req_id = NULL, *ctor_params = NULL;
+    zend_class_entry *ce = NULL;
+
+    T_CUBRID_REQUEST *request;
+    T_CCI_ERROR error;
+    int cubrid_retval = 0;
+
+    init_error();
+
+    if (is_object) {
+        char *class_name = NULL;
+        int class_name_len = 0;
+
+        if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r|sz",
+                    &req_id, &class_name, &class_name_len, &ctor_params) == FAILURE) {
+            return;
+        }
+
+        if (ZEND_NUM_ARGS() < 2) {
+            ce = zend_standard_class_def;
+        } else {
+            ce = zend_fetch_class(class_name, class_name_len, ZEND_FETCH_CLASS_AUTO TSRMLS_CC);
+        }
+
+        if (!ce) {
+            php_error_docref(NULL TSRMLS_CC, E_WARNING, "Could not find class '%s'", class_name);
+            return;
+        }
+    } else {
+        if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r|l", &req_id, &type) == FAILURE) {
+            return;
+        }
+
+        if (!type) {
+            type = CUBRID_BOTH;
+        }
+
+        if (type & CUBRID_OBJECT) {
+            type |= CUBRID_ASSOC;
+        }
+    }
+
+    ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
+
+    init_error_link(request->conn);
+
+    cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error);
+    if (cubrid_retval == CCI_ER_NO_MORE_DATA) {
+        RETURN_FALSE;
+    } else if (cubrid_retval < 0) {
+        handle_error(cubrid_retval, &error, request->conn);
+        return;
+    }
+
+    if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
+        handle_error(cubrid_retval, &error, request->conn);
+        return;
+    }
+
+    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, type TSRMLS_CC)) != SUCCESS) {
+        handle_error(cubrid_retval, NULL, request->conn);
+        return;
+    }
+
+    if (is_object) {
+        zval dataset = *return_value;
+        zend_fcall_info fci;
+        zend_fcall_info_cache fcc;
+        zval *retval_ptr;
+
+        object_and_properties_init(return_value, ce, NULL);
+        zend_merge_properties(return_value, Z_ARRVAL(dataset), 1 TSRMLS_CC);
+
+        if (ce->constructor) {
+            fci.size = sizeof(fci);
+            fci.function_table = &ce->function_table;
+            fci.function_name = NULL;
+            fci.symbol_table = NULL;
+#if PHP_MINOR_VERSION < 3
+            fci.object_pp = &return_value;
+#else
+            fci.object_ptr = return_value;
+#endif
+            fci.retval_ptr_ptr = &retval_ptr;
+
+            if (ctor_params && Z_TYPE_P(ctor_params) != IS_NULL) {
+                if (Z_TYPE_P(ctor_params) == IS_ARRAY) {
+                    HashTable *ht = Z_ARRVAL_P(ctor_params);
+                    Bucket *p;
+
+                    fci.param_count = 0;
+                    fci.params = safe_emalloc(sizeof(zval*), ht->nNumOfElements, 0);
+                    p = ht->pListHead;
+                    while (p != NULL) {
+                        fci.params[fci.param_count++] = (zval**)p->pData;
+                        p = p->pListNext;
+                    }
+                } else {
+                    zend_throw_exception(zend_exception_get_default(TSRMLS_C), "Parameter ctor_params must be an array", 0 TSRMLS_CC);
+                    return;
+                }
+            } else {
+                fci.param_count = 0;
+                fci.params = NULL;
+            }
+
+            fci.no_separation = 1;
+            fcc.function_handler = ce->constructor;
+            fcc.calling_scope = EG(scope);
+#if PHP_MINOR_VERSION < 3
+            fcc.object_pp = &return_value;
+#else
+            fcc.called_scope = Z_OBJCE_P(return_value);
+            fcc.object_ptr = return_value;
+#endif
+
+            if (zend_call_function(&fci, &fcc TSRMLS_CC) == FAILURE) {
+                zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, 
+                        "Could not execute %s::%s()", ce->name, ce->constructor->common.function_name);
+            } else {
+                if (retval_ptr) {
+                    zval_ptr_dtor(&retval_ptr);
+                }
+            }
+
+            if (fci.params) {
+                efree(fci.params);
+            }
+        } else if (ctor_params) {
+            zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
+                    "Class %s does not have a constructor hence you cannot use ctor_params", ce->name);
+        }
+
+        if (Z_TYPE_P(return_value) == IS_ARRAY) {
+            object_and_properties_init(return_value, ZEND_STANDARD_CLASS_DEF_PTR, Z_ARRVAL_P(return_value));
+        }
+    }
+
+    if (type & CUBRID_OBJECT) {
+        if (return_value->type == IS_ARRAY) {
+            convert_to_object(return_value);
+        }
+    }
+
+    cubrid_retval = cci_cursor (request->handle, 1, CCI_CURSOR_CURRENT, &error);
+    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
+        handle_error(cubrid_retval, &error, request->conn);
+        return;
+    }
 }
