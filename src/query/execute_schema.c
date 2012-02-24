@@ -910,18 +910,21 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		{
 		  desired_type = db_get_type_name (db_desired_type);
 		}
-
-	      if (error == DOMAIN_OVERFLOW)
+	      if (error != DOMAIN_COMPATIBLE)
 		{
-		  PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-			       pt_short_print (parser, d), desired_type);
-		}
-	      else
-		{
-		  PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			       pt_short_print (parser, d), desired_type);
+		  if (error == DOMAIN_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				   pt_short_print (parser, d), desired_type);
+		    }
+		  else
+		    {
+		      PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, d), desired_type);
+		    }
+		  error = er_errid ();
 		}
 	      break;
 	    }
