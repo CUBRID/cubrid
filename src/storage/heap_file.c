@@ -14556,6 +14556,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid,
 		  && indexp->atts[0]->id == search_attrepr->id)
 		{
 		  set_attrids[num_found_attrs++] = search_attrepr->id;
+		  break;
 		}
 	    }
 	}
