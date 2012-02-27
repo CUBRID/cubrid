@@ -410,7 +410,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue);
-      db_value_clear (key_dbvalue);
       free_and_init (class_name);
     }
   else
