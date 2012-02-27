@@ -695,6 +695,12 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 		    {
 		      col = pt_name (parser, att->info.name.original);
 		    }
+		  else if (att->node_type == PT_VALUE
+			   && att->info.value.text != NULL
+			   && att->info.value.text[0] != '\0')
+		    {
+		      col = pt_name (parser, att->info.value.text);
+		    }
 		  else
 		    {		/* generate column name */
 		      id = i;

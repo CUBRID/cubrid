@@ -9829,7 +9829,8 @@ select_stmt
 			if (node)
 			  {
 			    n = $5;
-			    if (n && n->node_type == PT_VALUE && n->type_enum == PT_TYPE_STAR)
+			    if (n && n->next == NULL && n->node_type == PT_VALUE
+			        && n->type_enum == PT_TYPE_STAR)
 			      {
 				/* select * from ... */
 				is_dummy_select = true;	/* Here, guess as TRUE */
