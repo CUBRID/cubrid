@@ -3626,6 +3626,7 @@ sm_get_statistics_force (MOP classop)
 	  if (class_->stats)
 	    {
 	      stats_free_statistics (class_->stats);
+	      class_->stats = NULL;
 	    }
 	  stats = class_->stats = stats_get_statistics (WS_OID (classop), 0);
 	}
@@ -3686,8 +3687,8 @@ sm_update_statistics (MOP classop, bool do_now)
 		  if (class_->stats != NULL)
 		    {
 		      stats_free_statistics (class_->stats);
+		      class_->stats = NULL;
 		    }
-		  class_->stats = NULL;
 
 		  /* make sure the class is flushed before acquiring stats,
 		     see comments above in sm_get_class_with_statistics */

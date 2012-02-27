@@ -4713,8 +4713,7 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->next = NULL;
       entryp->class_ = NULL;
       entryp->col_num = 0;
-      entryp->stats = NULL;
-      entryp->bt_stats_idx = -1;
+      entryp->key_type = NULL;
       entryp->nsegs = 0;
       entryp->seg_idxs = NULL;
       entryp->rangelist_seg_idx = -1;
@@ -5362,8 +5361,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 
 	  if (segp == NULL)
 	    {
-	      index_entryp->stats = NULL;
-	      index_entryp->bt_stats_idx = -1;
+	      index_entryp->key_type = NULL;
 	      continue;
 	    }
 
@@ -5398,16 +5396,11 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  break;
 		}
 	    }
+
+	  index_entryp->key_type = NULL;
 	  if (k >= n_attrs)	/* not found */
 	    {
 	      attr_statsp = NULL;
-	    }
-	  index_entryp->stats = attr_statsp;
-	  index_entryp->bt_stats_idx = -1;
-
-	  if (attr_statsp == NULL)
-	    {
-	      /* absence of the attribute statistics? */
 	      continue;
 	    }
 
@@ -5460,7 +5453,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	      if (BTID_IS_EQUAL
 		  (&bt_statsp->btid, &(index_entryp->constraints->index)))
 		{
-		  index_entryp->bt_stats_idx = k;
+		  index_entryp->key_type = attr_statsp->bt_stats[k].key_type;
 		  break;
 		}
 	    }			/* for (k = 0, ...) */
@@ -7001,8 +6994,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      /* j == -1 iff no USING INDEX or USING INDEX ALL EXCEPT */
 	      index_entryp->force = (j == -1) ? 0 : QO_UI_FORCE (uip, j);
 	      index_entryp->col_num = col_num;
-	      index_entryp->stats = NULL;
-	      index_entryp->bt_stats_idx = -1;
+	      index_entryp->key_type = NULL;
 	      index_entryp->constraints = consp;
 
 	      /* set key limits */

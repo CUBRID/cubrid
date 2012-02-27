@@ -18862,13 +18862,11 @@ pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
       return NO_ERROR;
     }
 
-  attr_stats = index_entryp->stats;
-  idx = index_entryp->bt_stats_idx;
-  if (!attr_stats || idx < 0 || idx >= attr_stats->n_btstats)
+  if (index_entryp->key_type == NULL)
     {
       return NO_ERROR;
     }
-  key_type = attr_stats->bt_stats[idx].key_type;
+  key_type = index_entryp->key_type;
   if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
       /* get the column key-type of multi-column index */

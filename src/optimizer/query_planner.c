@@ -834,19 +834,11 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
   key_type = NULL;		/* init */
   if (asc_or_desc != PT_DESC)
     {				/* is not reverse index */
-      ATTR_STATS *attr_stats;
-      int idx;
-
-      attr_stats = index_entryp->stats;
-      idx = index_entryp->bt_stats_idx;
-      if (attr_stats && idx >= 0 && idx < attr_stats->n_btstats)
+      key_type = index_entryp->key_type;
+      if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
 	{
-	  key_type = attr_stats->bt_stats[idx].key_type;
-	  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
-	    {
-	      /* get the column key-type of multi-column index */
-	      key_type = key_type->setdomain;
-	    }
+	  /* get the column key-type of multi-column index */
+	  key_type = key_type->setdomain;
 	}
 
       /* get the first non-equal range key domain */
@@ -12068,19 +12060,11 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
   key_type = NULL;		/* init */
   if (asc_or_desc != PT_DESC)
     {				/* is not reverse index */
-      ATTR_STATS *attr_stats;
-      int idx;
-
-      attr_stats = index_entryp->stats;
-      idx = index_entryp->bt_stats_idx;
-      if (attr_stats && idx >= 0 && idx < attr_stats->n_btstats)
+      key_type = index_entryp->key_type;
+      if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
 	{
-	  key_type = attr_stats->bt_stats[idx].key_type;
-	  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
-	    {
-	      /* get the column key-type of multi-column index */
-	      key_type = key_type->setdomain;
-	    }
+	  /* get the column key-type of multi-column index */
+	  key_type = key_type->setdomain;
 	}
 
       /* get the first non-equal range key domain */

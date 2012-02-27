@@ -6347,6 +6347,7 @@ classobj_free_class (SM_CLASS * class_)
   if (class_->stats != NULL)
     {
       stats_free_statistics (class_->stats);
+      class_->stats = NULL;
     }
 
   if (class_->properties != NULL)

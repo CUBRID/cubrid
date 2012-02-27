@@ -111,11 +111,8 @@ struct qo_index_entry
   /* number of columns of the index */
   int col_num;
 
-  /* statistics of the index; statistcs of the first indexed attribute */
-  ATTR_STATS *stats;
-
-  /* B-tree statistics of the index; ATTR_STATS.BTREE_STATS[idx] */
-  int bt_stats_idx;
+  /* TP_DOMAIN of the first indexed attribute */
+  TP_DOMAIN *key_type;
 
   /* number of entries of seg_idxs[] and seg_terms[] array */
   int nsegs;

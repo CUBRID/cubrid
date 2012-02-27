@@ -318,13 +318,16 @@ stats_free_statistics (CLASS_STATS * class_statsp)
 		      if (attr_statsp->bt_stats[j].pkeys)
 			{
 			  db_ws_free (attr_statsp->bt_stats[j].pkeys);
+			  attr_statsp->bt_stats[j].pkeys = NULL;
 			}
 		    }
 
 		  db_ws_free (attr_statsp->bt_stats);
+		  attr_statsp->bt_stats = NULL;
 		}
 	    }
 	  db_ws_free (class_statsp->attr_stats);
+	  class_statsp->attr_stats = NULL;
 	}
 
       db_ws_free (class_statsp);
