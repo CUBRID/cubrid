@@ -12753,6 +12753,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   /* initialize current key related fields */
   bts->clear_cur_key = false;
+  bts->read_cur_key = false;
 
   /* cache transaction isolation level */
   bts->tran_isolation = logtb_find_current_isolation (thread_p);
@@ -15193,7 +15194,6 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   bool keep_on_copying = false;
   int new_size;
   char *new_ptr;
-  bool read_cur_key = false;
   bool oids_equal = false;
   OID ck_pseudo_oid, saved_ck_pseudo_oid;
   OID nk_pseudo_oid, saved_nk_pseudo_oid;
@@ -15563,15 +15563,15 @@ get_oidcnt_and_oidptr:
       else
 	{			/* new key value */
 #if defined(SERVER_MODE)
-	  if (!bts->read_uncommitted && read_cur_key)
+	  if (!bts->read_uncommitted && bts->read_cur_key)
 	    {
 	      btree_clear_key_value (&clear_prev_key, &prev_key);
 
 	      pr_clone_value (&bts->cur_key, &prev_key);
 	      /* pr_clone_value allocates and copies a DB_VALUE */
-	      clear_prev_key = bts->clear_cur_key;
+	      clear_prev_key = true;
 
-	      read_cur_key = false;	/* reset read_cur_key */
+	      bts->read_cur_key = false;	/* reset read_cur_key */
 	    }
 #endif /* SERVER_MODE */
 
@@ -15586,7 +15586,7 @@ get_oidcnt_and_oidptr:
 	  /* the last argument means that key value must be copied. */
 
 #if defined(SERVER_MODE)
-	  read_cur_key = true;
+	  bts->read_cur_key = true;
 #endif /* SERVER_MODE */
 
 	  /* get 'rec_oid_cnt' and 'rec_oid_ptr' */

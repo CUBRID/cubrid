@@ -142,6 +142,7 @@ struct btree_scan
 
   DB_VALUE cur_key;		/* current key value */
   bool clear_cur_key;		/* clear flag for current key value */
+  bool read_cur_key;		/* read flag for current key value */
 
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information */
