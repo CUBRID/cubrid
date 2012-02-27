@@ -170,6 +170,7 @@ qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	case PT_IF:
 	case PT_IFNULL:
 	case PT_ISNULL:
+	case PT_CONCAT_WS:
 	  /* NEED FUTURE OPTIMIZATION */
 	  (*nullable_cntp)++;
 	  break;
