@@ -13708,6 +13708,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
       if (DB_IS_NULL (&ep))
 	{
+	  bool is_desc = false;
 	  allow_null_in_midxkey = false;	/* init */
 	  if (PRM_ORACLE_STYLE_EMPTY_STRING)
 	    {
@@ -13721,8 +13722,15 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		    }
 		}
 	    }
-	  if (is_iss && bts->key_range.num_index_term == 1
-	      && bts->use_desc_index)
+
+	  is_desc = (bts->use_desc_index ? true : false);
+	  if (bts->btid_int.key_type && bts->btid_int.key_type->setdomain
+	      && bts->btid_int.key_type->setdomain->is_desc)
+	    {
+	      is_desc = !is_desc;
+	    }
+
+	  if (is_iss && is_desc && bts->key_range.num_index_term == 1)
 	    {
 	      /* We're inside an INDEX SKIP SCAN doing a descending scan. We
 	       * allow the first term of a MIDXKEY to be NULL since ISS has
