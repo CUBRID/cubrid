@@ -318,6 +318,8 @@ static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser,
 static PT_NODE *pt_check_filter_index_expr (PARSER_CONTEXT * parser,
 					    PT_NODE * node,
 					    void *arg, int *continue_walk);
+static void pt_check_filter_index_expr_tree (PARSER_CONTEXT * parser,
+					     PT_NODE * node);
 
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
@@ -6934,20 +6936,9 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (node->info.index.where != NULL)
-    {
-      /* if this is a filter index, check that the filter is a valid filter
-         expression. */
-      bool is_filter_valid = false;
-      (void) parser_walk_tree (parser, node->info.index.where,
-			       pt_check_filter_index_expr, &is_filter_valid,
-			       NULL, NULL);
-      if (!is_filter_valid)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
-	}
-    }
+  /* if this is a filter index, check that the filter is a valid filter
+     expression. */
+  pt_check_filter_index_expr_tree (parser, node->info.index.where);
 }
 
 /*
@@ -8777,6 +8768,12 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		  || node->node_type == PT_ALTER_INDEX))
 	    {
 	      pt_check_function_index_expr (parser, node);
+	    }
+
+	  if (!pt_has_error (parser) && node->node_type == PT_ALTER_INDEX)
+	    {
+	      pt_check_filter_index_expr_tree (parser,
+					       node->info.index.where);
 	    }
 
 	  if (!pt_has_error (parser))
@@ -12185,6 +12182,35 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_check_filter_index_expr_tree () - verify if an expression tree is
+ *				        allowed to be used in the filter
+ *				        expression of an index
+ * return : true if expression tree is valid, false otherwise
+ * parser (in)	: parser context
+ * node (in)	: root node of expression tree
+ */
+static void
+pt_check_filter_index_expr_tree (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool is_filter_valid = false;
+
+  if (node == NULL)
+    {
+      /* null node; nothing to check */
+      return;
+    }
+
+  (void) parser_walk_tree (parser, node, pt_check_filter_index_expr,
+			   &is_filter_valid, NULL, NULL);
+
+  if (!is_filter_valid)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+    }
+}
+
+/*
  * pt_check_filter_index_expr () - verify if a node is allowed to be used
  *				   in the filter expression of an index
  * return : current node
@@ -12395,6 +12421,13 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_CLOB_FROM_FILE:
 	case PT_CLOB_LENGTH:
 	case PT_CLOB_TO_CHAR:
+	case PT_RLIKE:
+	case PT_RLIKE_BINARY:
+	case PT_NOT_RLIKE:
+	case PT_NOT_RLIKE_BINARY:
+	case PT_HEX:
+	case PT_ASCII:
+	case PT_CONV:
 	  *is_valid = true;
 	  *continue_walk = PT_CONTINUE_WALK;
 	  break;
