@@ -16,6 +16,7 @@ EXPORTS
 	cci_get_result_info
 	cci_bind_param
 	cci_execute
+	cci_prepare_and_execute
 	cci_get_db_parameter
 	cci_set_db_parameter
 	cci_close_req_handle
