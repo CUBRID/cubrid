@@ -5996,14 +5996,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       return ER_FAILED;
     }
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM
-	  && bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
-  assert (bufptr->latch_mode == PGBUF_NO_LATCH
-	  || bufptr->latch_mode == PGBUF_LATCH_READ
-	  || bufptr->latch_mode == PGBUF_LATCH_WRITE
-	  || bufptr->latch_mode == PGBUF_LATCH_FLUSH
-	  || bufptr->latch_mode == PGBUF_LATCH_FLUSH_INVALID);
+  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
   MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
 

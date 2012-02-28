@@ -18702,7 +18702,7 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       int err;
 
       err = er_errid ();
-      assert (err == ER_BTREE_UNKNOWN_KEY);
+      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR);
       return err;
     }
 
@@ -18743,7 +18743,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       int err;
 
       err = er_errid ();
-      assert (err == ER_BTREE_DUPLICATE_OID);
+      assert (err == ER_BTREE_DUPLICATE_OID || err == NO_ERROR);
       return err;
     }
 
