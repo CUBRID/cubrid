@@ -3476,7 +3476,6 @@ trim_leading (const unsigned char *trim_charset_ptr,
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
 
   int cmp_flag = 0;
-  int matched = 0;
 
   *lead_trimmed_ptr = (unsigned char *) src_ptr;
   *lead_trimmed_length = src_length;
@@ -3486,50 +3485,38 @@ trim_leading (const unsigned char *trim_charset_ptr,
   for (cur_src_char_ptr = (unsigned char *) src_ptr;
        cur_src_char_ptr < src_ptr + src_size;)
     {
-      intl_char_size_pseudo_kor (cur_src_char_ptr, 1, codeset,
-				 &cur_src_char_size);
-
-      matched = 0;
-
-      /* iterate for trim charset */
       for (cur_trim_char_ptr = (unsigned char *) trim_charset_ptr;
-	   cur_trim_char_ptr < trim_charset_ptr + trim_charset_size;)
+	   cur_src_char_ptr < (src_ptr + src_size)
+	   && (cur_trim_char_ptr < trim_charset_ptr + trim_charset_size);)
 	{
+	  intl_char_size_pseudo_kor (cur_src_char_ptr, 1, codeset,
+				     &cur_src_char_size);
 	  intl_char_size_pseudo_kor (cur_trim_char_ptr, 1, codeset,
 				     &cur_trim_char_size);
 
 	  if (cur_src_char_size != cur_trim_char_size)
 	    {
-	      cur_trim_char_ptr += cur_trim_char_size;
-	      continue;
+	      return;
 	    }
 
-	  cmp_flag = memcmp ((char *) cur_src_char_ptr,
-			     (char *) cur_trim_char_ptr, cur_trim_char_size);
-
-	  if (cmp_flag == 0)
+	  cmp_flag =
+	    memcmp ((char *) cur_src_char_ptr, (char *) cur_trim_char_ptr,
+		    cur_trim_char_size);
+	  if (cmp_flag != 0)
 	    {
-	      int lead_char_size = 0;
-
-	      intl_char_size_pseudo_kor (cur_src_char_ptr, 1, codeset,
-					 &lead_char_size);
-
-	      *lead_trimmed_length -= lead_char_size;
-
-	      *lead_trimmed_size -= cur_trim_char_size;
-	      *lead_trimmed_ptr += cur_src_char_size;
-	      matched = 1;
-	      break;
+	      return;
 	    }
 
+	  cur_src_char_ptr += cur_src_char_size;
 	  cur_trim_char_ptr += cur_trim_char_size;
 	}
 
-      if (!matched)
-	{
-	  break;
+      if (cur_trim_char_ptr >= trim_charset_ptr + trim_charset_size)
+	{			/* all string matched */
+	  *lead_trimmed_length -= trim_charset_size;
+	  *lead_trimmed_size -= trim_charset_size;
+	  *lead_trimmed_ptr += trim_charset_size;
 	}
-      cur_src_char_ptr += cur_src_char_size;
     }
 }
 
@@ -3565,13 +3552,10 @@ trim_trailing (const unsigned char *trim_charset_ptr,
 	       INTL_CODESET codeset,
 	       int *trail_trimmed_length, int *trail_trimmed_size)
 {
-  int cur_trim_char_size;
-  int prev_src_char_size;
+  int prev_src_char_size, prev_trim_char_size;
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
-  unsigned char *prev_src_char_ptr;
-
+  unsigned char *prev_src_char_ptr, *prev_trim_char_ptr;
   int cmp_flag = 0;
-  int matched = 0;
 
   *trail_trimmed_length = src_length;
   *trail_trimmed_size = src_size;
@@ -3580,48 +3564,41 @@ trim_trailing (const unsigned char *trim_charset_ptr,
   for (cur_src_char_ptr = (unsigned char *) src_ptr + src_size;
        cur_src_char_ptr > src_ptr;)
     {
-      /* get previous letter */
-      prev_src_char_ptr =
-	intl_prev_char_pseudo_kor (cur_src_char_ptr, codeset,
-				   &prev_src_char_size);
-
-      /* iterate for trim charset */
-      matched = 0;
-      for (cur_trim_char_ptr = (unsigned char *) trim_charset_ptr;
-	   cur_trim_char_ptr < trim_charset_ptr + trim_charset_size;)
+      for (cur_trim_char_ptr =
+	   (unsigned char *) trim_charset_ptr + trim_charset_size;
+	   cur_trim_char_ptr > trim_charset_ptr
+	   && cur_src_char_ptr > src_ptr;)
 	{
-	  intl_char_size_pseudo_kor (cur_trim_char_ptr, 1, codeset,
-				     &cur_trim_char_size);
+	  /* get previous letter */
+	  prev_src_char_ptr =
+	    intl_prev_char_pseudo_kor (cur_src_char_ptr, codeset,
+				       &prev_src_char_size);
+	  prev_trim_char_ptr =
+	    intl_prev_char_pseudo_kor (cur_trim_char_ptr, codeset,
+				       &prev_trim_char_size);
 
-	  if (cur_trim_char_size != prev_src_char_size)
+	  if (prev_trim_char_size != prev_src_char_size)
 	    {
-	      cur_trim_char_ptr += cur_trim_char_size;
-	      continue;
+	      return;
 	    }
 
 	  cmp_flag = memcmp ((char *) prev_src_char_ptr,
-			     (char *) cur_trim_char_ptr, cur_trim_char_size);
-	  if (cmp_flag == 0)
+			     (char *) prev_trim_char_ptr,
+			     prev_trim_char_size);
+	  if (cmp_flag != 0)
 	    {
-	      int lead_char_size;
-
-	      intl_char_size_pseudo_kor (cur_trim_char_ptr, 1, codeset,
-					 &lead_char_size);
-	      *trail_trimmed_length -= lead_char_size;
-	      *trail_trimmed_size -= cur_trim_char_size;
-	      matched = 1;
-	      break;
+	      return;
 	    }
 
-	  cur_trim_char_ptr += cur_trim_char_size;
+	  cur_src_char_ptr -= prev_src_char_size;
+	  cur_trim_char_ptr -= prev_trim_char_size;
 	}
 
-      if (!matched)
+      if (cur_trim_char_ptr <= trim_charset_ptr)
 	{
-	  break;
+	  *trail_trimmed_length -= trim_charset_size;
+	  *trail_trimmed_size -= trim_charset_size;
 	}
-
-      cur_src_char_ptr -= prev_src_char_size;
     }
 }
 
