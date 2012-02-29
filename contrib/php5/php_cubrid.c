@@ -64,7 +64,7 @@
 
 #if defined(WINDOWS)
 #define snprintf _snprintf
-#define strncasecmp (str1, str2, size) _strnicmp(str1, str2, size)
+#define strncasecmp _strnicmp
 #endif
 
 #ifndef TRUE
