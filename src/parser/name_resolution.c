@@ -3616,14 +3616,6 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
 		  node->info.spec.id = (UINTPTR) node;
 		}
 
-	      /* derived table must have a correlation name */
-	      if (!node->info.spec.range_var)
-		{
-		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			      MSGCAT_SEMANTIC_WANT_CORRELATION_NAM,
-			      pt_short_print (parser, node));
-		}
-
 	      parser_walk_tree (parser, derived_table, pt_flat_spec_pre,
 				chk_parent, pt_continue_walk, NULL);
 	    }
