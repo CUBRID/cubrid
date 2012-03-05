@@ -3497,6 +3497,7 @@ regu_var_init (REGU_VARIABLE * ptr)
   ptr->hidden_column = 0;
   ptr->value.val_pos = 0;
   ptr->vfetch_to = NULL;
+  ptr->domain = NULL;
   REGU_VARIABLE_XASL (ptr) = NULL;
 }
 

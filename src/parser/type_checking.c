@@ -8985,6 +8985,12 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  common_type = (arg1_type == PT_TYPE_MAYBE) ? arg2_type : arg1_type;
 	}
 
+      if (common_type == PT_TYPE_MAYBE)
+	{
+	  /* both args are MAYBE, default to VARCHAR */
+	  common_type = PT_TYPE_VARCHAR;
+	}
+
       if (PT_IS_COLLECTION_TYPE (common_type))
 	{
 	  /* we're not casting collections */
