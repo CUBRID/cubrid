@@ -6929,7 +6929,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
       CAST_POINTER_TO_NODE (node);
 
-      if (node != NULL && node->type_enum == PT_TYPE_LOGICAL)
+      if (node != NULL && node->type_enum == PT_TYPE_LOGICAL
+	  && (node->node_type == PT_EXPR || node->node_type == PT_VALUE))
 	{
 	  regu = pt_make_regu_pred (pt_to_pred_expr (parser, node));
 	}
