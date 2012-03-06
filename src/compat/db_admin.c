@@ -2432,18 +2432,6 @@ db_get_system_parameters (char *data, int len)
   return error;
 }
 
-
-/*
- * db_disable_first_user() -
- * return : NO_ERROR
- */
-int
-db_disable_first_user (void)
-{
-  Au_remember_first_user = false;
-  return NO_ERROR;
-}
-
 /*
  * db_get_host_connected() - return the host name connected
  * return : host name or NULL

@@ -318,21 +318,6 @@ MOP Au_dba_user = NULL;
 MOP Au_user = NULL;
 
 /*
- * Au_first_user
- *
- * This is set to the first user that was logged into the database
- * at startup.  If this is the same as Au_dba_user, then we enter a
- * "super user" mode where the active user can be changed without
- * requiring a password.  This makes it easier for the dba to perform
- * operations on behalf of other users without knowing everyone's
- * password.  Note that this will only be available with the
- * first user is dba.  If the dba user is ativated after the database
- * has been reopened, passwords will still be required.
- */
-bool Au_remember_first_user = true;
-static MOP Au_first_user = NULL;
-
-/*
  * Au_user_name, Au_user_password
  *
  * Saves the registered user name and password.
@@ -6053,15 +6038,6 @@ au_set_user (MOP newuser)
 	   */
 
 	  /*
-	   * Remember the first user, allows dba to switch
-	   * between users without knowing passwords
-	   */
-	  if (Au_remember_first_user && Au_first_user == NULL)
-	    {
-	      Au_first_user = Au_user;
-	    }
-
-	  /*
 	   * Entry-level SQL specifies that the schema name is the same as
 	   * the current user authorization name.  In any case, this is
 	   * the place to set the current schema since the user just changed.
@@ -6126,8 +6102,7 @@ au_perform_login (const char *name, const char *password)
 	       * changed without entering passwords
 	       */
 
-	      if (!Au_ignore_passwords
-		  && !au_is_dba_group_member (Au_first_user))
+	      if (!Au_ignore_passwords && !au_is_dba_group_member (Au_user))
 		{
 		  pass = NULL;
 		  if (!DB_IS_NULL (&value) && db_get_object (&value) != NULL)
@@ -8044,7 +8019,6 @@ au_init (void)
   Au_user = NULL;
   Au_public_user = NULL;
   Au_dba_user = NULL;
-  Au_first_user = NULL;
   Au_disable = 1;
 
   init_caches ();
@@ -8066,7 +8040,6 @@ au_final (void)
   Au_user = NULL;
   Au_public_user = NULL;
   Au_dba_user = NULL;
-  Au_first_user = NULL;
   Au_disable = 1;
 
   /*

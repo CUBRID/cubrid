@@ -141,7 +141,6 @@ extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
 extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
 extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
 extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
-extern int db_disable_first_user (void);
 
 extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
 extern void db_value_fprint (FILE * fp, const DB_VALUE * value);

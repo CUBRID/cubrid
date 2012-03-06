@@ -269,7 +269,6 @@ EXPORTS
     db_dfind_multi_unique
     db_dfind_unique
     db_dget
-    db_disable_first_user
     db_domain_class
     db_domain_codeset
     db_domain_next

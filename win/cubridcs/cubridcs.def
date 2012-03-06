@@ -95,7 +95,6 @@ EXPORTS
     db_date_to_string
     db_datetime_decode
     db_datetime_encode
-    db_disable_first_user
     db_disable_modification
     db_domain_class
     db_domain_next

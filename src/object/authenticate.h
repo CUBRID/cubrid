@@ -147,7 +147,6 @@ extern MOP Au_root;
 extern MOP Au_user;
 extern MOP Au_dba_user;
 extern MOP Au_public_user;
-extern bool Au_remember_first_user;
 extern char Au_user_password[AU_MAX_PASSWORD_BUF + 4];
 extern int Au_disable;
 
