@@ -47,5 +47,6 @@ libcas_la_LDFLAGS = -static
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/cas.c
+
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 	touch $@

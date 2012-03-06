@@ -44,5 +44,6 @@ libcascci_la_LDFLAGS = -version-number @LT_VERSION@
 VERSIONED_FILES = \
 	$(CCI_DIR)/cas_cci.c \
 	$(CCI_DIR)/cci_network.c
+
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 	touch $@

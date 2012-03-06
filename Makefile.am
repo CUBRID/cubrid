@@ -42,6 +42,9 @@ log_DATA = # EMPTY
 tmpdir = @CUBRID_TMPDIR@
 tmp_DATA = # EMPTY
 
+$(top_srcdir)/configure.ac: $(top_srcdir)/BUILD_NUMBER
+	@touch $(top_srcdir)/configure.ac
+
 # dist packages
 BUILD_SH_OPTIONS = -s $(top_srcdir) -b $(top_builddir) -p $(prefix)
 if BUILD_64

@@ -77,5 +77,6 @@ cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ -lmysqlclient -lrt
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/cas_mysql_execute.c
+
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 	touch $@

@@ -63,7 +63,7 @@
         <jar jarfile="${cubrid-jar-file}">
         <fileset dir="${bin-cubrid}"/>
         <fileset file="${src}/sql-error-codes.xml"/>
-        <fileset file="src/CUBRID-JDBC-*"/>
+	<fileset file="src/CUBRID-JDBC-${version}"/>
     </jar>
     </target>
 
@@ -71,7 +71,7 @@
         <jar jarfile="${mysql-jar-file}">
         <fileset dir="${bin-mysql}"/>
         <fileset file="${src}/sql-error-codes.xml"/>
-        <fileset file="src/CUBRID-JDBC-*"/>
+	<fileset file="src/CUBRID-JDBC-${version}"/>
     </jar>
     </target>
 
@@ -79,7 +79,7 @@
         <jar jarfile="${oracle-jar-file}">
         <fileset dir="${bin-oracle}"/>
         <fileset file="${src}/sql-error-codes.xml"/>
-        <fileset file="src/CUBRID-JDBC-*"/>
+	<fileset file="src/CUBRID-JDBC-${version}"/>
     </jar>
     </target>
 
@@ -126,7 +126,7 @@
         <jar jarfile="JDBC-${version}-cubrid-src.jar">
             <fileset dir="${src-cubrid}"/>
             <fileset file="${src}/sql-error-codes.xml"/>
-            <fileset file="src/CUBRID-JDBC-*"/>
+	    <fileset file="src/CUBRID-JDBC-${version}"/>
         </jar>
     </target>
 
@@ -192,7 +192,7 @@
         <jar jarfile="JDBC-${version}-cubrid-mysql-src.jar">
             <fileset dir="${src-mysql}"/>
             <fileset file="${src}/../sql-error-codes.xml"/>
-            <fileset file="src/CUBRID-JDBC-*"/>
+	    <fileset file="src/CUBRID-JDBC-${version}"/>
         </jar>
     </target>
 
@@ -258,7 +258,7 @@
         <jar jarfile="JDBC-${version}-cubrid-oracle-src.jar">
             <fileset dir="${src-oracle}"/>
             <fileset file="${src}/../sql-error-codes.xml"/>
-            <fileset file="src/CUBRID-JDBC-*"/>
+	    <fileset file="src/CUBRID-JDBC-${version}"/>
         </jar>
     </target>
 </project>

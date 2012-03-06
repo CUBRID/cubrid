@@ -76,5 +76,6 @@ cub_cas_oracle_LDFLAGS = @ORACLE_LIB_PATH@ -lclntsh -lnnz11 -lrt
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/cas_oracle_execute.c
+
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 	touch $@
