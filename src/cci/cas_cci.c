@@ -81,6 +81,7 @@
 #include "cas_protocol.h"
 #include "cci_net_buf.h"
 #include "cci_util.h"
+#include "error_code.h"
 
 #if defined(WINDOWS)
 int wsa_initialize ();
@@ -113,6 +114,7 @@ int wsa_initialize ();
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
 #define IS_ER_COMMUNICATION(e) \
   ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
+#define IS_SERVER_DOWN(e) (e == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 
 /* default value of each datesource property */
 #define CCI_DS_POOL_SIZE_DEFAULT 			10
@@ -1039,38 +1041,31 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 
   err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag, err_buf, 0);
 
-  if (err_code < 0)
+  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
+      || IS_SERVER_DOWN (err_buf->err_code))
     {
-      if (IS_ER_COMMUNICATION (err_code) &&
-	  con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
+      con_err_code = cas_connect_with_ret (con_handle, err_buf,
+					   &connect_done);
+
+      if (con_err_code < 0)
 	{
-	  con_err_code = cas_connect_with_ret (con_handle, err_buf,
-					       &connect_done);
-
-	  if (con_err_code < 0)
-	    {
-	      err_code = con_err_code;
-	      goto prepare_error;
-	    }
-	  if (!connect_done)
-	    {
-	      /* connection is no problem */
-	      goto prepare_error;
-	    }
-
-	  req_handle_content_free (req_handle, 0);
-	  err_code = qe_prepare (req_handle, con_handle, sql_stmt,
-				 flag, err_buf, 0);
-
-	  if (err_code < 0)
-	    {
-	      goto prepare_error;
-	    }
-	}
-      else
-	{
+	  err_code = con_err_code;
 	  goto prepare_error;
 	}
+      if (!connect_done)
+	{
+	  /* connection is no problem */
+	  goto prepare_error;
+	}
+
+      req_handle_content_free (req_handle, 0);
+      err_code = qe_prepare (req_handle, con_handle, sql_stmt,
+			     flag, err_buf, 0);
+    }
+
+  if (err_code < 0)
+    {
+      goto prepare_error;
     }
 
   if (IS_STMT_POOL (con_handle))
@@ -1442,8 +1437,8 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       err_code =
 	qe_execute (req_handle, con_handle, flag, max_col_size, err_buf);
     }
-
-  if (IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
+  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
+      || IS_SERVER_DOWN (err_buf->err_code))
     {
       int connect_done;
 
@@ -1676,7 +1671,8 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
       err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
     }
 
-  if (IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
+  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
+      || IS_SERVER_DOWN (err_buf->err_code))
     {
       int connect_done;
 
@@ -4515,6 +4511,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 	{
 	  CLOSE_SOCKET (con_handle->sock_fd);
 	  con_handle->sock_fd = INVALID_SOCKET;
+	  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
 	}
     }
 

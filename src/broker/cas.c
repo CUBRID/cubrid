@@ -447,6 +447,7 @@ main (int argc, char *argv[])
 #if !defined(WINDOWS)
       retry:
 #endif
+	error_info_clear ();
 	br_sock_fd = net_connect_client (srv_sock_fd);
 
 	if (IS_INVALID_SOCKET (br_sock_fd))
