@@ -599,6 +599,11 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
 	    }
 
 	  n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
+	  if (n_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+
 	  if ((tuple_record_p->size - toffset) < n_size)
 	    {
 	      /* no space left in tuple to put next item, increase the tuple size
@@ -673,6 +678,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i;
+  int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
@@ -705,9 +711,16 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
 	    }
 
 	  /* add aligned field size to tuple size */
-	  tuple_desc_p->tpl_size +=
-	    qdata_get_tuple_value_size_from_dbval (tuple_desc_p->f_valp
-						   [tuple_desc_p->f_cnt]);
+	  value_size =
+	    qdata_get_tuple_value_size_from_dbval (tuple_desc_p->
+						   f_valp[tuple_desc_p->
+							  f_cnt]);
+	  if (value_size == ER_FAILED)
+	    {
+	      status = QPROC_TPLDESCR_FAILURE;
+	      goto exit_with_status;
+	    }
+	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
 	}
 
@@ -6771,7 +6784,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 /*
  * qdata_get_tuple_value_size_from_dbval () - Return the tuple value size
  *	for the db_value
- *   return:
+ *   return: tuple_value_size or ER_FAILED
  *   dbval(in)  : db_value node
  */
 static int
@@ -6799,6 +6812,19 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	  else
 	    {
 	      val_size = (*(type_p->data_lengthval)) (dbval_p, 1);
+	      if (pr_is_string_type (dbval_type))
+		{
+		  int p = DB_VALUE_PRECISION (dbval_p);
+		  if (p == TP_FLOATING_PRECISION_VALUE)
+		    {
+		      p = DB_MAX_STRING_LENGTH;
+		    }
+		  if (val_size < 0 || DB_GET_STRING_LENGTH (dbval_p) > p)
+		    {
+		      /* The size of db_value is incorrect. */
+		      return ER_FAILED;
+		    }
+		}
 	    }
 
 	  align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */
