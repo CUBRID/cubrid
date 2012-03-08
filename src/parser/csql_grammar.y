@@ -659,6 +659,7 @@ void pop_msg (void);
 %type <node> select_or_subquery
 %type <node> select_stmt
 %type <node> opt_select_param_list
+%type <node> opt_from_clause
 %type <node> select_list
 %type <node> alias_enabled_expression_list_top
 %type <node> alias_enabled_expression_list
@@ -9799,12 +9800,18 @@ select_stmt
 	opt_hint_list 		/* $3 */
 	all_distinct_distinctrow/* $4 */
 	select_list 		/* $5 */
+	opt_select_param_list	/* $6 */
 		{{
-				/* $6 */
+				/* $7 */
+			PT_MISC_TYPE isAll = $4;
 			PT_NODE *node = parser_top_select_stmt_node ();
 			if (node)
 			  {
+			    if (isAll == PT_EMPTY)
+			      isAll = PT_ALL;
+			    node->info.query.all_distinct = isAll;
 			    node->info.query.q.select.list = $5;
+			    node->info.query.into_list = $6;
 			    if (parser_hidden_incr_list)
 			      {
 				(void) parser_append_node (parser_hidden_incr_list,
@@ -9813,36 +9820,80 @@ select_stmt
 			      }
 			  }
 
+		}}
+	opt_from_clause  	/* $8 */
+		{{
+			$$ = $8;
+		}}
+	;
+
+
+opt_from_clause
+	: /* empty */
+		{{
+
+			PT_NODE *n;
+			PT_NODE *node = parser_pop_select_stmt_node ();
+			parser_found_Oracle_outer = false;
+			parser_pop_hint_node ();
+
+			if (node)
+			  {
+			    n = node->info.query.q.select.list;
+			    if (n && n->type_enum == PT_TYPE_STAR)
+			      {
+				/* "select *" is not valid, raise an error */
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NO_TABLES_USED);
+			      }
+
+			    node->info.query.id = (UINTPTR) node;
+			    node->info.query.all_distinct = PT_ALL;
+			  }
+
+			if (parser_hidden_incr_list)
+			  {
+			    /* if not handle hidden expressions, raise an error */
+			    PT_ERRORf (this_parser, node,
+				       "%s can be used at select or with increment clause only.",
+				       pt_short_print (this_parser, parser_hidden_incr_list));
+			  }
+
+			parser_restore_found_Oracle_outer ();	/* restore */
+			if (parser_select_level >= 0)
+			  parser_select_level--;
+
+			$$ = node;
+
 		DBG_PRINT}}
-	opt_select_param_list		/* $7 */
-	FROM				/* $8 */
-	extended_table_spec_list	/* $9 */
-		{{			/* $10 */
+	| FROM				/* $1 */
+	  extended_table_spec_list	/* $2 */
+		{{			/* $3 */
+
 			parser_found_Oracle_outer = false;
 
 		DBG_PRINT}}
-	opt_where_clause		/* $11 */
-	opt_startwith_clause		/* $12 */
-	opt_connectby_clause		/* $13 */
-	opt_groupby_clause		/* $14 */
-	opt_with_rollup			/* $15 */
-	opt_having_clause 		/* $16 */
-	opt_using_index_clause		/* $17 */
-	opt_with_increment_clause	/* $18 */
+	  opt_where_clause		/* $4 */
+	  opt_startwith_clause		/* $5 */
+	  opt_connectby_clause		/* $6 */
+	  opt_groupby_clause		/* $7 */
+	  opt_with_rollup		/* $8 */
+	  opt_having_clause 		/* $9 */
+	  opt_using_index_clause	/* $10 */
+	  opt_with_increment_clause	/* $11 */
 		{{
 
 			PT_NODE *n;
 			bool is_dummy_select;
-			PT_MISC_TYPE isAll = $4;
 			PT_NODE *node = parser_pop_select_stmt_node ();
-			int with_rollup = $15;
+			int with_rollup = $8;
 			parser_pop_hint_node ();
 
 			is_dummy_select = false;
 
 			if (node)
 			  {
-			    n = $5;
+			    n = node->info.query.q.select.list;
 			    if (n && n->next == NULL && n->node_type == PT_VALUE
 			        && n->type_enum == PT_TYPE_STAR)
 			      {
@@ -9860,35 +9911,34 @@ select_stmt
 				is_dummy_select = false;	/* not dummy */
 			      }
 
-			    node->info.query.into_list = $7;	/* param_list */
-			    if ($7)
+			    if (node->info.query.into_list)
 			      {
 				is_dummy_select = false;	/* not dummy */
 			      }
 
-			    node->info.query.q.select.from = n = CONTAINER_AT_0 ($9);
+			    node->info.query.q.select.from = n = CONTAINER_AT_0 ($2);
 			    if (n && n->next)
 			      is_dummy_select = false;	/* not dummy */
-			    if (TO_NUMBER (CONTAINER_AT_1 ($9)) == 1)
+			    if (TO_NUMBER (CONTAINER_AT_1 ($2)) == 1)
 			      {
 				PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
 			      }
 
-			    node->info.query.q.select.where = n = $11;
+			    node->info.query.q.select.where = n = $4;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 			    if (parser_found_Oracle_outer == true)
 			      PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
 
-			    node->info.query.q.select.start_with = n = $12;
+			    node->info.query.q.select.start_with = n = $5;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
-			    node->info.query.q.select.connect_by = n = $13;
+			    node->info.query.q.select.connect_by = n = $6;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
-			    node->info.query.q.select.group_by = n = $14;
+			    node->info.query.q.select.group_by = n = $7;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
@@ -9905,7 +9955,7 @@ select_stmt
 				  }
 			      }
 
-			    node->info.query.q.select.having = n = $16;
+			    node->info.query.q.select.having = n = $9;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
@@ -9927,98 +9977,18 @@ select_stmt
 
 			    node->info.query.q.select.using_index =
 			      (node->info.query.q.select.using_index ?
-			       parser_make_link (node->info.query.q.select.using_index, $17) : $17);
+			       parser_make_link (node->info.query.q.select.using_index, $10) : $10);
 
-			    node->info.query.q.select.with_increment = $18;
+			    node->info.query.q.select.with_increment = $11;
 			    node->info.query.id = (UINTPTR) node;
-			    if (isAll == PT_EMPTY)
-			      isAll = PT_ALL;
-			    node->info.query.all_distinct = isAll;
 			  }
 
-			if (isAll != PT_ALL)
+			if (node->info.query.all_distinct != PT_ALL)
 			  is_dummy_select = false;	/* not dummy */
 			if (is_dummy_select == true)
 			  {
 			    /* mark as dummy */
 			    PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_DUMMY);
-			  }
-
-			if (parser_hidden_incr_list)
-			  {
-			    /* if not handle hidden expressions, raise an error */
-			    PT_ERRORf (this_parser, node,
-				       "%s can be used at select or with increment clause only.",
-				       pt_short_print (this_parser, parser_hidden_incr_list));
-			  }
-
-			parser_restore_found_Oracle_outer ();	/* restore */
-			if (parser_select_level >= 0)
-			  parser_select_level--;
-
-			$$ = node;
-
-		DBG_PRINT}}
-	| SELECT		/* $1 */
-		{{
-				/* $2 */
-			PT_NODE *node;
-			parser_save_found_Oracle_outer ();
-			if (parser_select_level >= 0)
-			  parser_select_level++;
-			parser_hidden_incr_list = NULL;
-
-			node = parser_new_node (this_parser, PT_SELECT);
-
-			if (node)
-			  {
-			    node->info.query.q.select.flavor = PT_USER_SELECT;
-			    node->info.query.q.select.hint = PT_HINT_NONE;
-			  }
-
-			parser_push_select_stmt_node (node);
-			parser_push_hint_node (node);
-
-		DBG_PRINT}}
-	opt_hint_list 		/* $3 */
-	all_distinct_distinctrow/* $4 */
-	select_list 		/* $5 */
-		{{
-				/* $6 */
-			PT_NODE *node = parser_top_select_stmt_node ();
-			if (node)
-			  {
-			    node->info.query.q.select.list = $5;
-			    if (parser_hidden_incr_list)
-			      {
-				(void) parser_append_node (parser_hidden_incr_list,
-							   node->info.query.q.select.list);
-				parser_hidden_incr_list = NULL;
-			      }
-			  }
-
-		DBG_PRINT}}
-	opt_select_param_list	/* $7 */
-		{{
-
-			PT_NODE *n;
-			PT_NODE *node = parser_pop_select_stmt_node ();
-			parser_found_Oracle_outer = false;
-			parser_pop_hint_node ();
-
-			if (node)
-			  {
-			    n = $5;
-			    if (n && n->type_enum == PT_TYPE_STAR)
-			      {
-				/* "select *" is not valid, raise an error */
-				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					   MSGCAT_SEMANTIC_NO_TABLES_USED);
-			      }
-
-			    node->info.query.into_list = $7;	/* param_list */
-			    node->info.query.id = (UINTPTR) node;
-			    node->info.query.all_distinct = PT_ALL;
 			  }
 
 			if (parser_hidden_incr_list)
