@@ -352,18 +352,19 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 
 	  con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
 	  error = cci_get_db_version (con_handle_id, NULL, 0);
-	  con_handle->autocommit_mode =
-	    con_handle->
-	    cas_info[CAS_INFO_ADDITIONAL_FLAG] &
-	    CAS_INFO_FLAG_MASK_AUTOCOMMIT;
 
 	  if (error < 0)
 	    {
 	      hm_con_handle_free (con_handle_id);
 	      con_handle_id = error;
 	    }
-
-	  RESET_START_TIME (con_handle);
+	  else
+	    {
+	      con_handle->autocommit_mode =
+		con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
+		& CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+	      RESET_START_TIME (con_handle);
+	    }
 	}
       else
 	{
@@ -496,17 +497,18 @@ cci_connect_with_url (char *url, char *user, char *password)
 
       con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
       error = cci_get_db_version (con_handle_id, NULL, 0);
-      con_handle->autocommit_mode =
-	con_handle->
-	cas_info[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_AUTOCOMMIT;
-
-      RESET_START_TIME (con_handle);
 
       if (error < 0)
 	{
 	  hm_con_handle_free (con_handle_id);
 	  con_handle_id = error;
-	  goto ret;
+	}
+      else
+	{
+	  con_handle->autocommit_mode =
+	    con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
+	    & CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+	  RESET_START_TIME (con_handle);
 	}
     }
 

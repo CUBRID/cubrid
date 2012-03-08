@@ -126,6 +126,7 @@ static int hm_find_ha_status_index (T_CON_HANDLE * con_handle);
  ************************************************************************/
 
 static T_CON_HANDLE *con_handle_table[MAX_CON_HANDLE];
+static int con_handle_current_index;
 
 /************************************************************************
  * PRIVATE VARIABLES							*
@@ -205,7 +206,11 @@ hm_con_handle_table_init ()
   int i;
 
   for (i = 0; i < MAX_CON_HANDLE; i++)
-    con_handle_table[i] = NULL;
+    {
+      con_handle_table[i] = NULL;
+    }
+
+  con_handle_current_index = 0;
 }
 
 int
@@ -738,9 +743,12 @@ new_con_handle_id ()
 
   for (i = 0; i < MAX_CON_HANDLE; i++)
     {
-      if (con_handle_table[i] == NULL)
+      con_handle_current_index =
+	(con_handle_current_index + 1) % MAX_CON_HANDLE;
+
+      if (con_handle_table[con_handle_current_index] == NULL)
 	{
-	  return (i + 1);
+	  return (con_handle_current_index + 1);
 	}
     }
 
