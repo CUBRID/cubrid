@@ -2998,7 +2998,21 @@ do_stmt
 			PT_NODE *node = parser_new_node (this_parser, PT_DO);
 			if (node)
 			  {
-			    node->info.do_.expr = $2;
+			    PT_NODE *expr = $2, *subq = NULL;
+
+			    if (expr && PT_IS_QUERY_NODE_TYPE (expr->node_type))
+			      {
+				expr->info.query.single_tuple = 1;
+
+				if ((subq = pt_get_subquery_list (expr)) && subq->next)
+				{
+				  /* illegal multi-column subquery */
+				  PT_ERRORm (this_parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_NOT_SINGLE_COL);
+				}
+			      }
+
+			    node->info.do_.expr = expr;
 			  }
 
 			$$ = node;

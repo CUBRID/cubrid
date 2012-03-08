@@ -602,6 +602,15 @@ static SORT_LIST *pt_to_after_groupby (PARSER_CONTEXT * parser,
 static TABLE_INFO *pt_find_table_info (UINTPTR spec_id,
 				       TABLE_INFO * exposed_list);
 
+static PT_NODE *pt_build_do_stmt_aptr_list_pre (PARSER_CONTEXT *
+						parser,
+						PT_NODE * node,
+						void *arg,
+						int *continue_walk);
+
+static XASL_NODE *pt_build_do_stmt_aptr_list (PARSER_CONTEXT * parser,
+					      PT_NODE * node);
+
 static METHOD_SIG_LIST *pt_to_method_sig_list (PARSER_CONTEXT * parser,
 					       PT_NODE * node_list,
 					       PT_NODE *
@@ -17899,6 +17908,92 @@ pt_add_regu_var_to_list (REGU_VARIABLE_LIST * regu_list_dst,
 }
 
 /*
+ * pt_build_do_stmt_aptr_list_pre () - build an XASL list of top level
+ *				       queries
+ * returns: original node
+ *  node(in): node to check
+ *  arg(out): first node in list
+ */
+static PT_NODE *
+pt_build_do_stmt_aptr_list_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+				void *arg, int *continue_walk)
+{
+  if (arg == NULL)
+    {
+      /* function was called with wrong params */
+      assert (false);
+      return NULL;
+    }
+
+  if (node == NULL)
+    {
+      /* nothing to do */
+      return NULL;
+    }
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type)
+      && node->info.query.correlation_level == 0)
+    {
+      XASL_NODE **out_xasl = (XASL_NODE **) arg;
+      XASL_NODE *aptr_list = *((XASL_NODE **) arg);
+      XASL_NODE *xasl = NULL;
+
+      *continue_walk = PT_LIST_WALK;
+
+      /* generate query XASL */
+      xasl = parser_generate_xasl (parser, node);
+      if (xasl == NULL)
+	{
+	  /* error generating xasl; check for parser messages */
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys_with_statement (parser, PT_EXECUTION, node);
+	    }
+
+	  return node;
+	}
+
+      if (aptr_list != NULL)
+	{
+	  /* list is not empty, append our XASL node */
+	  while (aptr_list->next)
+	    {
+	      aptr_list = aptr_list->next;
+	    }
+
+	  aptr_list->next = xasl;
+	}
+      else
+	{
+	  /* first found query node */
+	  *out_xasl = xasl;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_build_do_stmt_aptr_list () - search for top level queries in node and
+ *                                 build an XASL list
+ * returns: XASL node list
+ *  node(in): parser node to search in
+ *
+ * NOTE: search includes specified node (if node is a query, it will be
+ *       returned).
+ */
+static XASL_NODE *
+pt_build_do_stmt_aptr_list (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  XASL_NODE *out_node = NULL;
+
+  parser_walk_tree (parser, node, pt_build_do_stmt_aptr_list_pre,
+		    &out_node, pt_continue_walk, NULL);
+
+  return out_node;
+}
+
+/*
  * parser_generate_do_stmt_xasl () - Generate xasl for DO statement
  *   return:
  *   parser(in):
@@ -17911,10 +18006,18 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   OID *oid;
   DB_OBJECT *user = NULL;
 
+  /* check parameters */
   assert (parser != NULL && node != NULL);
 
   if (node->node_type != PT_DO)
     {
+      return NULL;
+    }
+
+  if (node->info.do_.expr == NULL)
+    {
+      /* do not accept NULL expressions */
+      assert (false);
       return NULL;
     }
 
@@ -17926,9 +18029,16 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
+  /* populate statement's aptr_list; in this context, uncorrelated
+     subqueries mean top level queries in expr tree */
+  xasl->aptr_list = pt_build_do_stmt_aptr_list (parser, node);
+  if (er_errid () != NO_ERROR)
+    {
+      return NULL;
+    }
+
   xasl->outptr_list =
     pt_to_outlist (parser, node->info.do_.expr, NULL, UNBOX_AS_VALUE);
-
   if (!xasl->outptr_list)
     {
       return NULL;

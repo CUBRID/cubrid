@@ -14028,7 +14028,7 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int error;
+  int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
   QFILE_LIST_ID *list_id = NULL;
   int save;
@@ -14037,15 +14037,13 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
 
-  error = NO_ERROR;
-
   AU_DISABLE (save);
   parser->au_save = save;
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  /* only sync executable becuse we're after the side effects */
+  /* only sync executable because we're after the side effects */
   query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
   /* don't cache anything */
   query_flag |= NOT_FROM_RESULT_CACHE;
@@ -14053,62 +14051,56 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   pt_null_etc (statement);
 
+  /* generate statement's XASL */
   xasl = parser_generate_do_stmt_xasl (parser, statement);
 
-  if (xasl && !pt_has_error (parser))
+  if (pt_has_error (parser))
     {
-      if (error >= NO_ERROR)
-	{
-	  error = xts_map_xasl_to_stream (xasl, &stream, &size);
-	  if (error != NO_ERROR)
-	    {
-	      PT_ERRORm (parser, statement,
-			 MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-	    }
-	}
-
-      if (error >= NO_ERROR)
-	{
-	  error = query_prepare_and_execute (stream,
-					     size,
-					     &query_id,
-					     parser->host_var_count +
-					     parser->auto_param_count,
-					     parser->host_variables,
-					     &list_id, query_flag);
-	}
-      parser->query_id = query_id;
-      statement->etc = list_id;
-
-      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream)
-	{
-	  free_and_init (stream);
-	}
-
-      if (error < NO_ERROR)
-	{
-	  error = er_errid ();
-	  if (error == NO_ERROR)
-	    {
-	      error = ER_REGU_SYSTEM;
-	    }
-	}
+      pt_report_to_ersys (parser, PT_EXECUTION);
+      error = er_errid ();
+      goto end;
     }
-  else
+  else if (xasl == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      goto end;
+    }
+
+  /* map XASL to stream */
+  error = xts_map_xasl_to_stream (xasl, &stream, &size);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* execute statement */
+  error = query_prepare_and_execute (stream,
+				     size,
+				     &query_id,
+				     parser->host_var_count +
+				     parser->auto_param_count,
+				     parser->host_variables,
+				     &list_id, query_flag);
+
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  parser->query_id = query_id;
+  statement->etc = list_id;
+
+end:
+  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
+  if (stream)
+    {
+      free_and_init (stream);
     }
 
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
-
   AU_ENABLE (save);
+
   return error;
 }
 

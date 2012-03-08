@@ -5369,6 +5369,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
+    case PT_DO:
       node = parser_walk_tree (parser, node, mq_push_paths, NULL,
 			       mq_translate_local, NULL);
       node = parser_walk_tree (parser, node,
