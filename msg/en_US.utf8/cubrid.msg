@@ -1149,7 +1149,11 @@ $ LOADDB
 1081 Cannot alter an attribute involved in a filter or function index.
 1082 All page buffers are dirty (LRU: %1$d).
 1083 Specific information about deadlock.
-1084 Last Error
+1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
+1085 Cannot compile regular expression: '%s'
+1086 Cannot execute regular expression: '%s'
+1087 Cannot prepare statement of type '%s' with host variables.
+1088 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

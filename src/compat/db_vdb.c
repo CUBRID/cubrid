@@ -99,7 +99,8 @@ static int do_recompile_and_execute_prepared_statement (DB_SESSION * session,
 							result);
 static int do_process_deallocate_prepare (DB_SESSION * session,
 					  PT_NODE * statement);
-static bool is_disallowed_as_prepared_statement (PT_NODE_TYPE node_type);
+static bool is_allowed_as_prepared_statement (PT_NODE_TYPE node_type);
+static bool is_allowed_as_prepared_statement_with_hv (PT_NODE_TYPE node_type);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -2293,6 +2294,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   DB_SESSION *prepared_session = NULL;
   int prepared_statement_ndx = 0;
   PT_NODE *prepared_stmt = NULL;
+  PT_NODE_TYPE stmt_type = PT_NODE_NUMBER;
   int include_oids = 0;
   const char *const name = statement->info.prepare.name->info.name.original;
   const char *const statement_literal =
@@ -2330,11 +2332,22 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   assert (prepared_session->dimension == 1);
   assert (prepared_session->statements[0] != NULL);
 
-  if (is_disallowed_as_prepared_statement
-      (prepared_session->statements[0]->node_type))
+  stmt_type = prepared_session->statements[0]->node_type;
+
+  if (!is_allowed_as_prepared_statement (stmt_type))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_IT_IS_DISALLOWED_AS_PREPARED, 0);
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (prepared_session->parser->host_var_count > 0
+      && !is_allowed_as_prepared_statement_with_hv (stmt_type))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_CANNOT_PREPARE_WITH_HOST_VAR, 1,
+	      pt_show_node_type (prepared_session->statements[0]));
       err = ER_FAILED;
       goto cleanup;
     }
@@ -2627,16 +2640,57 @@ do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
   return csession_delete_prepared_statement (name);
 }
 
+/*
+ * is_allowed_as_prepared_statement () - check if node type is a valid
+ *					 prepared statement
+ * return:    true if node is valid prepared statement, false otherwise
+ *  node_type (in): parse tree node type to check
+ */
 static bool
-is_disallowed_as_prepared_statement (PT_NODE_TYPE node_type)
+is_allowed_as_prepared_statement (PT_NODE_TYPE node_type)
 {
-  if (node_type == PT_PREPARE_STATEMENT
-      || node_type == PT_EXECUTE_PREPARE
-      || node_type == PT_DEALLOCATE_PREPARE)
+  switch (node_type)
     {
+    case PT_PREPARE_STATEMENT:
+    case PT_EXECUTE_PREPARE:
+    case PT_DEALLOCATE_PREPARE:
+      return false;
+
+    default:
       return true;
     }
-  return false;
+}
+
+/*
+ * is_allowed_as_prepared_statement_with_hv () - check if node type is a valid
+ *					         prepared statement that can
+ *						 accept hostvars
+ * return:    true if node is valid prepared statement, false otherwise
+ *  node_type (in): parse tree node type to check
+ */
+static bool
+is_allowed_as_prepared_statement_with_hv (PT_NODE_TYPE node_type)
+{
+  switch (node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+
+    case PT_INSERT:
+    case PT_UPDATE:
+    case PT_DELETE:
+
+    case PT_DO:
+    case PT_METHOD_CALL:
+    case PT_SET_SESSION_VARIABLES:
+    case PT_EVALUATE:
+      return true;
+
+    default:
+      return false;
+    }
 }
 
 
