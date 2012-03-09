@@ -10436,6 +10436,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_TYPEOF:
     case PT_LPAD:
     case PT_RPAD:
+    case PT_HEX:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -10466,7 +10467,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 
     case PT_LOWER:
     case PT_UPPER:
-    case PT_HEX:
     case PT_REVERSE:
     case PT_LEFT:
     case PT_RIGHT:
