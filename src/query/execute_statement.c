@@ -2661,6 +2661,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_check_update_trigger (parser, statement, do_update);
 	  break;
 
+	case PT_MERGE:
+	  error = do_check_merge_trigger (parser, statement, do_merge);
+	  break;
+
 	case PT_UPDATE_STATS:
 	  error = do_update_stats (parser, statement);
 	  break;
@@ -2813,6 +2817,9 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_UPDATE:
       err = do_prepare_update (parser, statement);
       break;
+    case PT_MERGE:
+      err = do_prepare_merge (parser, statement);
+      break;
     case PT_SELECT:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -2849,7 +2856,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
   bool old_disable_update_stats;
-
 
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
@@ -3004,6 +3010,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_UPDATE:
       err = do_check_update_trigger (parser, statement, do_execute_update);
+      break;
+    case PT_MERGE:
+      err = do_check_merge_trigger (parser, statement, do_execute_merge);
       break;
     case PT_SELECT:
     case PT_DIFFERENCE:
@@ -4659,6 +4668,8 @@ static int convert_speclist_to_objlist (DB_OBJLIST ** triglist,
 					PT_NODE * specnode);
 static int check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 			  PARSER_CONTEXT * parser, PT_NODE * statement);
+static int check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
+				PT_NODE * statement);
 static char **find_update_columns (int *count_ptr, PT_NODE * statement);
 static void get_activity_info (PARSER_CONTEXT * parser,
 			       DB_TRIGGER_ACTION * type, const char **source,
@@ -5953,9 +5964,10 @@ static int update_class_attributes (PARSER_CONTEXT * parser,
 static int update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 			     PT_NODE * statement, PT_NODE ** non_null_attrs,
 			     int has_uniques);
-static int check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
-				  PT_NODE ** not_nulls,
-				  const PT_NODE * update);
+static int update_check_for_constraints (PARSER_CONTEXT * parser,
+					 int *has_unique,
+					 PT_NODE ** not_nulls,
+					 const PT_NODE * statement);
 static int update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
 					   const PT_NODE * statement);
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser,
@@ -6017,7 +6029,8 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
       && ((statement = pt_to_upd_del_query (parser, column_values, from,
 					    class_specs, where, using_index,
 					    order_by, orderby_for,
-					    0 /* not server update */ , true))
+					    0 /* not server update */ ,
+					    PT_COMPOSITE_LOCKING_UPDATE))
 	  != NULL))
     {
       /* If we are updating a proxy, the select is not yet fully translated.
@@ -6554,13 +6567,23 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
   int error = NO_ERROR;
   int assign_cnt = 0, upd_cls_cnt = 0, vals_cnt = 0, idx, idx2, idx3;
   PT_ASSIGNMENTS_HELPER ea;
-  PT_NODE *node = NULL;
+  PT_NODE *node = NULL, *assignments, *spec, *class_spec, *check_where;
   DB_VALUE *dbvals = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls_info_tmp = NULL;
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL, *assign2 = NULL;
 
   assign_cnt = vals_cnt = 0;
-  pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
+  assignments = statement->node_type == PT_MERGE
+		? statement->info.merge.update.assignment
+		: statement->info.update.assignment;
+  spec = statement->node_type == PT_MERGE
+	 ? statement->info.merge.into : statement->info.update.spec;
+  class_spec = statement->node_type == PT_MERGE ? NULL
+	       : statement->info.update.class_specs;
+  check_where = statement->node_type == PT_MERGE ? NULL
+		: statement->info.update.check_where;
+
+  pt_init_assignments_helper (parser, &ea, assignments);
   while (pt_get_next_assignment (&ea))
     {
       if (!ea.is_rhs_const)
@@ -6584,7 +6607,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
       goto error_return;
     }
 
-  node = statement->info.update.spec;
+  node = spec;
   while (node)
     {
       if (node->info.spec.flag & PT_SPEC_FLAG_UPDATE)
@@ -6596,7 +6619,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
       node = node->next;
     }
 
-  node = statement->info.update.class_specs;
+  node = class_spec;
   while (node)
     {
       if (node->info.spec.flag & PT_SPEC_FLAG_UPDATE)
@@ -6639,12 +6662,12 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* initialize classes info array */
   idx = 0;
-  node = statement->info.update.spec;
+  node = spec;
   while (node)
     {
       if (node->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	{
-	  PT_NODE *check_where = statement->info.update.check_where;
+	  PT_NODE *save = check_where;
 
 	  cls_info_tmp = &cls_info[idx++];
 	  cls_info_tmp->spec = node;
@@ -6659,18 +6682,20 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      check_where = check_where->next;
 	    }
 	  cls_info_tmp->check_where = check_where;
+
+	  check_where = save;
 	}
 
       node = node->next;
     }
 
   /* initialize classes info array */
-  node = statement->info.update.class_specs;
+  node = class_spec;
   while (node)
     {
       if (node->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	{
-	  PT_NODE *check_where = statement->info.update.check_where;
+	  PT_NODE *save = check_where;
 
 	  cls_info_tmp = &cls_info[idx++];
 	  cls_info_tmp->spec = node;
@@ -6685,6 +6710,8 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      check_where = check_where->next;
 	    }
 	  cls_info_tmp->check_where = check_where;
+
+	  check_where = save;
 	}
 
       node = node->next;
@@ -6692,7 +6719,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* Fill assignment structures */
   idx = 0;
-  pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
+  pt_init_assignments_helper (parser, &ea, assignments);
   for (idx3 = 1, assign = assigns; pt_get_next_assignment (&ea); assign++)
     {
       assign->attr_desc = NULL;
@@ -6810,6 +6837,8 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   DB_VALUE *dbvals = NULL;
   const char *savepoint_name = NULL;
   int cursor_status;
+  PT_NODE *check_where;
+  bool has_unique;
 
   if (list_id == NULL || statement == NULL)
     {
@@ -6817,6 +6846,12 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       error = ER_REGU_SYSTEM;
       goto done;
     }
+
+  check_where = statement->node_type == PT_MERGE ? NULL
+		: statement->info.update.check_where;
+  has_unique = statement->node_type == PT_MERGE
+	       ? statement->info.merge.update.has_unique
+	       : statement->info.update.has_unique;
 
   /* load data in update structures */
   error = init_update_data (parser, statement, &assigns, &assign_count,
@@ -6829,8 +6864,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   /* if the list file contains more than 1 object we need to savepoint
    * the statement to guarantee statement atomicity.
    */
-  if (list_id->tuple_cnt > 1 || statement->info.update.check_where
-      || statement->info.update.has_unique)
+  if (list_id->tuple_cnt > 1 || check_where || has_unique)
     {
       savepoint_name =
 	mq_generate_name (parser, "UusP", &update_savepoint_number);
@@ -6926,7 +6960,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   cursor_close (&cursor_id);
 
   /* check uniques */
-  if (statement->info.update.has_unique)
+  if (has_unique)
     {
 
       for (idx = upd_cls_cnt - 1; idx >= 0; idx--)
@@ -6997,13 +7031,17 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   DB_OTMPL *otemplate = NULL;
-  PT_NODE *spec = NULL, *rhs = NULL;
+  PT_NODE *spec = NULL, *rhs = NULL, *assignments = NULL;
   PT_ASSIGNMENTS_HELPER ea;
   int idx = 0, count = 0, assigns_count = 0;
   int upd_cls_cnt = 0, vals_cnt = 0, multi_assign_cnt = 0;
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
   DB_VALUE *dbvals = NULL;
+
+  assignments = statement->node_type == PT_MERGE
+		? statement->info.merge.update.assignment
+		: statement->info.update.assignment;
 
   /* load data for update */
   error =
@@ -7012,8 +7050,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error == NO_ERROR)
     {
       /* evaluate values for assignment */
-      pt_init_assignments_helper (parser, &ea,
-				  statement->info.update.assignment);
+      pt_init_assignments_helper (parser, &ea, assignments);
       for (idx = 0; idx < assigns_count && error == NO_ERROR;
 	   idx += multi_assign_cnt)
 	{
@@ -7255,24 +7292,30 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 }
 
 /*
- * check_for_constraints - Determine whether attributes of the target classes
- *			   have UNIQUE and/or NOT NULL constraints, and return
- *			   a list of NOT NULL attributes if exist
+ * update_check_for_constraints - Determine whether attributes of the target
+ *				  classes have UNIQUE and/or NOT NULL
+ *				  constraints, and return a list of NOT NULL
+ *				  attributes if exist
  *   return: Error code
  *   parser(in): Parser context
  *   has_unique(out): Indicator representing there is UNIQUE constraint, 1 or 0
  *   not_nulls(out): A list of pointers to NOT NULL attributes, or NULL
- *   update(in):  Parse tree of an UPDATE statement
+ *   statement(in):  Parse tree of an UPDATE or MERGE statement
  *
  * Note:
  */
 static int
-check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
-		       PT_NODE ** not_nulls, const PT_NODE * update)
+update_check_for_constraints (PARSER_CONTEXT * parser, int * has_unique,
+			      PT_NODE ** not_nulls, const PT_NODE * statement)
 {
+  int error = NO_ERROR;
   PT_NODE *lhs = NULL, *att = NULL, *pointer = NULL, *spec = NULL;
-  PT_NODE *assignment = update->info.update.assignment;
+  PT_NODE *assignment;
   DB_OBJECT *class_obj = NULL;
+
+  assignment = statement->node_type == PT_MERGE
+	      ? statement->info.merge.update.assignment
+	      : statement->info.update.assignment;
 
   *has_unique = 0;
   *not_nulls = NULL;
@@ -7295,7 +7338,8 @@ check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 	  fprintf (stdout, "system error detected in %s, line %d.\n",
 		   __FILE__, __LINE__);
 #endif
-	  return ER_GENERIC_ERROR;
+	  error = ER_GENERIC_ERROR;
+	  goto exit_on_error;
 	}
 
       for (; att; att = att->next)
@@ -7307,16 +7351,18 @@ check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 	      fprintf (stdout, "system error detected in %s, line %d.\n",
 		       __FILE__, __LINE__);
 #endif
-	      return ER_GENERIC_ERROR;
+	      error = ER_GENERIC_ERROR;
+	      goto exit_on_error;
 	    }
 
-	  spec = pt_find_spec_in_from_list (parser, update, att);
+	  spec = pt_find_spec_in_statement (parser, statement, att);
 	  if (spec == NULL
 	      || (class_obj =
 		  spec->info.spec.flat_entity_list->info.name.db_object) ==
 	      NULL)
 	    {
-	      return ER_GENERIC_ERROR;
+	      error = ER_GENERIC_ERROR;
+	      goto exit_on_error;
 	    }
 
 	  if (*has_unique == 0 && sm_att_unique_constrained (class_obj,
@@ -7333,12 +7379,8 @@ check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 		{
 		  PT_ERRORm (parser, att, MSGCAT_SET_PARSER_RUNTIME,
 			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-		  if (*not_nulls)
-		    {
-		      parser_free_tree (parser, *not_nulls);
-		    }
-		  *not_nulls = NULL;
-		  return MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+		  error = MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+		  goto exit_on_error;
 		}
 	      *not_nulls = parser_append_node (pointer, *not_nulls);
 	    }
@@ -7346,24 +7388,34 @@ check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
     }				/* for ( ; assignment; ...) */
 
   return NO_ERROR;
+
+exit_on_error:
+  if (*not_nulls)
+    {
+      parser_free_tree (parser, *not_nulls);
+      *not_nulls = NULL;
+    }
+  return error;
 }
 
 /*
  * update_check_for_fk_cache_attr() -
  *   return: Error code if update fails
  *   parser(in): Parser context
- *   assignment(in): Parse tree of an assignment clause
- *   specs(in): Specs to be checked
+ *   statement(in): Parse tree of an UPDATE or MERGE statement
  *
- * Note:
  */
 static int
 update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
 				const PT_NODE * statement)
 {
   PT_NODE *lhs = NULL, *att = NULL, *spec = NULL;
-  PT_NODE *assignment = statement->info.update.assignment;
+  PT_NODE *assignment;
   DB_OBJECT *class_obj = NULL;
+
+  assignment = statement->node_type == PT_MERGE
+	      ? statement->info.merge.update.assignment
+	      : statement->info.update.assignment;
 
   for (; assignment; assignment = assignment->next)
     {
@@ -7388,7 +7440,7 @@ update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
 	      return ER_GENERIC_ERROR;
 	    }
 
-	  spec = pt_find_spec_in_from_list (parser, statement, att);
+	  spec = pt_find_spec_in_statement (parser, statement, att);
 	  if (spec == NULL
 	      || (class_obj =
 		  spec->info.spec.flat_entity_list->info.name.db_object) ==
@@ -7679,8 +7731,8 @@ is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs,
       spec = spec->next;
     }
 
-  error = check_for_constraints (parser, has_uniques, non_null_attrs,
-				 statement);
+  error = update_check_for_constraints (parser, has_uniques, non_null_attrs,
+					statement);
   if (error < NO_ERROR)
     {
       goto error_exit;
@@ -7770,7 +7822,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  pt_record_error (parser, parser->statement_number,
 			   statement->line_number, statement->column_number,
-			   er_msg ());
+			   er_msg (), NULL);
 	}
 
       result += error;
@@ -7901,8 +7953,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* check if the target class has UNIQUE constraint and
          get attributes that has NOT NULL constraint */
-      err = check_for_constraints (parser, &has_unique, &not_nulls,
-				   statement);
+      err = update_check_for_constraints (parser, &has_unique, &not_nulls,
+					  statement);
       if (err < NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "update");
@@ -8036,7 +8088,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = er_errid ();
 		  pt_record_error (parser, parser->statement_number,
 				   statement->line_number,
-				   statement->column_number, er_msg ());
+				   statement->column_number, er_msg (), NULL);
 		}
 
 	      /* mark the end of another level of xasl packing */
@@ -8130,7 +8182,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 						  statement->info.update.
 						  order_by,
 						  statement->info.update.
-						  orderby_for, 0, true);
+						  orderby_for, 0,
+						  PT_COMPOSITE_LOCKING_UPDATE);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.update.assignment,
@@ -8168,7 +8221,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (not_nulls)
 	{
-	  parser_free_tree (parser, not_nulls);	/* check_for_constraints() */
+	  parser_free_tree (parser, not_nulls);
 	}
     }
 
@@ -8186,7 +8239,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err, result;
+  int err, result = 0;
   PT_NODE *flat, *spec = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
@@ -8419,7 +8472,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  pt_record_error (parser, parser->statement_number,
 			   statement->line_number, statement->column_number,
-			   er_msg ());
+			   er_msg (), NULL);
 	}
     }
 
@@ -8480,7 +8533,8 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 			 delete_stmt->info.delete_.class_specs,
 			 delete_stmt->info.delete_.search_cond,
 			 delete_stmt->info.delete_.using_index, NULL, NULL,
-			 0 /* not server update */ , false);
+			 0 /* not server update */ ,
+			 PT_COMPOSITE_LOCKING_DELETE);
   if (statement != NULL)
     {
       /* If we are updating a proxy, the select is not yet fully translated.
@@ -9243,7 +9297,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = er_errid ();
 		  pt_record_error (parser, parser->statement_number,
 				   statement->line_number,
-				   statement->column_number, er_msg ());
+				   statement->column_number, er_msg (), NULL);
 		}
 
 	      /* mark the end of another level of xasl packing */
@@ -9297,7 +9351,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 						  delete_info->class_specs,
 						  delete_info->search_cond,
 						  delete_info->using_index,
-						  NULL, NULL, 0, false);
+						  NULL, NULL, 0,
+						  PT_COMPOSITE_LOCKING_DELETE);
 	  /* translate views or virtual classes into base classes;
 	     If we are updating a proxy, the SELECT is not yet fully
 	     translated. If we are updating anything else, this is a no-op. */
@@ -9342,7 +9397,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err, result;
+  int err, result = 0;
   PT_NODE *flat, *node;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
@@ -10843,7 +10898,9 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
       stmt = pt_add_row_classoid_name (parser, stmt, 0);
       stmt = pt_add_row_oid_name (parser, stmt);
 
-      stmt->info.query.composite_locking = (for_update ? 2 : 1);
+      stmt->info.query.composite_locking =
+	(for_update ? PT_COMPOSITE_LOCKING_UPDATE :
+	 PT_COMPOSITE_LOCKING_DELETE);
 
       *statement = stmt;
     }
@@ -11651,12 +11708,18 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   PARTITION_INSERT_CACHE *pic = NULL, *picwork;
   MOP retobj;
 
-  if (!parser
-      || !statement
-      || statement->node_type != PT_INSERT
+  if (values_list == NULL || values_list->node_type != PT_NODE_LIST
       || values_list->info.node_list.list_type != PT_IS_SUBQUERY
       || (qry = values_list->info.node_list.list) == NULL
-      || (attrs = statement->info.insert.attr_list) == NULL)
+      || (statement->node_type != PT_INSERT
+	  && statement->node_type != PT_MERGE))
+    {
+      return ER_GENERIC_ERROR;
+    }
+  attrs = statement->node_type == PT_MERGE
+	  ? statement->info.merge.insert.attr_list
+	  : statement->info.insert.attr_list;
+  if (attrs == NULL)
     {
       return ER_GENERIC_ERROR;
     }
@@ -11870,7 +11933,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			 &partcol, psi, pic);
 		    }
 
-		  if (statement->info.insert.on_dup_key_update)
+		  if (statement->node_type == PT_INSERT
+		      && statement->info.insert.on_dup_key_update)
 		    {
 		      error =
 			do_on_duplicate_key_update (parser, otemplate,
@@ -11901,7 +11965,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			}
 		    }
 
-		  if (statement->info.insert.do_replace)
+		  if (statement->node_type == PT_INSERT
+		      && statement->info.insert.do_replace)
 		    {
 		      error = do_replace_into (parser, otemplate,
 					       statement->info.insert.spec,
@@ -11926,7 +11991,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		      /* apply the object template */
 		      obj = dbt_finish_object (otemplate);
 
-		      if (obj && error >= NO_ERROR)
+		      if (obj && error >= NO_ERROR
+			  && statement->node_type == PT_INSERT)
 			{
 			  error =
 			    mq_evaluate_check_option (parser,
@@ -12633,7 +12699,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       pt_record_error (parser, parser->statement_number,
 		       statement->line_number, statement->column_number,
-		       er_msg ());
+		       er_msg (), NULL);
     }
 
   return err;
@@ -13180,6 +13246,13 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl && !pt_has_error (parser))
     {
+      if (statement->node_type == PT_SELECT
+	  && PT_SELECT_INFO_IS_FLAGED (statement,
+				       PT_SELECT_INFO_MULTI_UPATE_AGG))
+	{
+	  XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
+	}
+
       if (pt_false_where (parser, statement))
 	{
 	  /* there is no results, this is a compile time false where clause */
@@ -13375,6 +13448,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (xasl && (err == NO_ERROR) && !pt_has_error (parser))
 	{
+	  if (PT_SELECT_INFO_IS_FLAGED (statement,
+					PT_SELECT_INFO_MULTI_UPATE_AGG))
+	    {
+	      XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
+	    }
+
 	  /* convert the created XASL tree to the byte stream for transmission
 	     to the server */
 	  err = xts_map_xasl_to_stream (xasl, &stream, &size);
@@ -14217,4 +14296,809 @@ cleanup:
       free_and_init (values);
     }
   return error;
+}
+
+/*
+ * MERGE STATEMENT
+ */
+
+/*
+ * do_check_merge_trigger() -
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a statement
+ *
+ * Note: The function checks if there is any active trigger with event
+ *   TR_EVENT_STATEMENT_INSERT/UPDATE/DELETE defined on the target.
+ *   If there is one, raise the trigger. Otherwise, perform the
+ *   given do_ function.
+ */
+int
+do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
+			PT_DO_FUNC * do_func)
+{
+  int err;
+
+  if (PRM_BLOCK_NOWHERE_STATEMENT
+      && statement->info.merge.search_cond == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
+  err = check_merge_trigger (do_func, parser, statement);
+  return err;
+}
+
+/*
+ * check_merge_trigger() -
+ *   return: Error code
+ *   do_func(in): Function to do
+ *   parser(in): Parser context used by do_func
+ *   statement(in): Parse tree of a statement used by do_func
+ *
+ * Note: The function checks if there is any active trigger for UPDATE, 
+ *       INSERT, or DELETE statements of a MERGE statement.
+ */
+static int
+check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
+		     PT_NODE * statement)
+{
+  int err, result = NO_ERROR;
+  TR_STATE *state;
+  const char *savepoint_name = NULL;
+  PT_NODE *node = NULL, *flat = NULL;
+  DB_OBJECT *class_ = NULL;
+
+  /* Prepare a trigger state for any triggers that must be raised in
+     this statement */
+
+  state = NULL;
+
+  flat = (statement->info.merge.into) ?
+	  statement->info.merge.into->info.spec.flat_entity_list : NULL;
+  class_ = (flat) ? flat->info.name.db_object : NULL;
+  if (class_ == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid spec id");
+      result = ER_FAILED;
+      goto exit;
+    }
+
+  if (statement->info.merge.update.assignment)
+    {
+      /* UPDATE statement triggers */
+      result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_UPDATE,
+				     class_, 0, NULL);
+      if (result != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+  if (statement->info.merge.insert.value_clauses)
+    {
+      /* INSERT statement triggers */
+      result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_INSERT,
+				     class_, 0, NULL);
+      if (result != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  if (state == NULL)
+    {
+      /* no triggers */
+      result = do_check_internal_statements (parser, statement, do_func);
+    }
+  else
+    {
+      /* the operations performed in 'tr_before',
+       * 'do_check_internal_statements' and 'tr_after' should be all
+       * contained in one transaction */
+      if (tr_Current_depth <= 1)
+	{
+	  savepoint_name =
+	    mq_generate_name (parser, "UtrP", &tr_savepoint_number);
+	  if (savepoint_name == NULL)
+	    {
+	      result = ER_GENERIC_ERROR;
+	      goto exit;
+	    }
+	  result = tran_savepoint (savepoint_name, false);
+	  if (result != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      /* fire BEFORE STATEMENT triggers */
+      result = tr_before (state);
+      if (result == NO_ERROR)
+	{
+	  result = do_check_internal_statements (parser, statement, do_func);
+	  if (result < NO_ERROR)
+	    {
+	      tr_abort (state);
+	      state = NULL;	/* state was freed */
+	    }
+	  else
+	    {
+	      /* fire AFTER STATEMENT triggers */
+	      /* try to preserve the usual result value */
+	      err = tr_after (state);
+	      if (err != NO_ERROR)
+		{
+		  result = err;
+		}
+	      if (tr_get_execution_state ())
+		{
+		  state = NULL;	/* state was freed */
+		}
+	    }
+	}
+      else
+	{
+	  /* state was freed */
+	  state = NULL;
+	}
+    }
+
+exit:
+  if (state)
+    {
+      /* We need to free state and decrease the tr_Current_depth. */
+      tr_abort (state);
+    }
+
+  if (result < NO_ERROR && savepoint_name != NULL
+      && (result != ER_LK_UNILATERALLY_ABORTED))
+    {
+      /* savepoint from tran_savepoint() */
+      (void) db_abort_to_savepoint (savepoint_name);
+    }
+  return result;
+}
+
+/*
+ * do_merge () - MERGE statement
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *
+ */
+int
+do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int err = NO_ERROR;
+  PT_NODE *not_nulls, *lhs, *spec = NULL;
+  int has_unique;
+  const char *savepoint_name = NULL;
+  DB_OBJECT *class_obj;
+  QFILE_LIST_ID *list_id = NULL;
+  PT_NODE *select_statement = NULL;
+  PT_NODE *select_names = NULL, *select_values = NULL;
+  PT_NODE *const_names = NULL, *const_values = NULL;
+  PT_NODE *flat, *values_list = NULL;
+  PT_NODE **links = NULL;
+  PT_NODE *hint_arg;
+  int no_vals, no_consts;
+  float waitsecs = -2, old_waitsecs = -2;
+  int result = 0;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  AU_DISABLE (parser->au_save);
+
+  if (pt_false_where (parser, statement))
+    {
+      /* nothing to merge */
+      goto exit;
+    }
+
+  spec = statement->info.merge.into;
+  flat = spec->info.spec.flat_entity_list;
+  if (flat == NULL)
+    {
+      err = ER_GENERIC_ERROR;
+      goto exit;
+    }
+  class_obj = flat->info.name.db_object;
+
+  if (statement->info.merge.update.assignment)
+    {
+      err = update_check_for_fk_cache_attr (parser, statement);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge update");
+	  goto exit;
+	}
+
+      /* check if the target class has UNIQUE constraint */
+      err = update_check_for_constraints (parser, &has_unique, &not_nulls,
+					  statement);
+      /* currently not needed */
+      if (not_nulls)
+	{
+	  parser_free_tree (parser, not_nulls);
+	}
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge update");
+	  goto exit;
+	}
+
+      statement->info.merge.update.has_unique = (bool) has_unique;
+
+      lhs = statement->info.merge.update.assignment->info.expr.arg1;
+      if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+	{
+	  lhs = lhs->info.expr.arg1;
+	}
+      if (lhs->info.name.meta_class == PT_META_ATTR)
+	{
+	  statement->info.merge.update.do_class_attrs = true;
+	}
+
+      if (!statement->info.merge.update.do_class_attrs)
+	{
+	  /* make the SELECT statement for OID list to be updated */
+	  no_vals = 0;
+	  no_consts = 0;
+
+	  err = pt_get_assignment_lists (parser, &select_names, &select_values,
+					 &const_names, &const_values,
+					 &no_vals, &no_consts,
+					 statement->
+					 info.merge.update.assignment,
+					 &links);
+	  if (err != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "merge update");
+	      goto exit;
+	    }
+
+	  select_statement =
+	    pt_to_merge_update_query (parser, select_values,
+				      &statement->info.merge);
+
+	  /* restore tree structure; pt_get_assignment_lists() */
+	  pt_restore_assignment_links (statement->info.merge.update.assignment,
+				       links, -1);
+
+	  select_statement = mq_translate (parser, select_statement);
+	  if (select_statement == NULL)
+	    {
+	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      err = er_errid ();
+	      goto exit;
+	    }
+	}
+
+      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	{
+	  /* The IX lock on the class is sufficient.
+	     DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
+	  if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE)
+	      == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_GENERIC_ERROR;
+		}
+	      goto exit;
+	    }
+	}
+
+      if (!statement->info.merge.update.do_class_attrs)
+	{
+	  /* flush necessary objects before execute */
+	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	    {
+	      err = sm_flush_objects (class_obj);
+	      if (err != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+
+	  /* This enables authorization checking during methods in queries */
+	  AU_ENABLE (parser->au_save);
+	  err = do_select (parser, select_statement);
+	  AU_DISABLE (parser->au_save);
+	  if (err < NO_ERROR)
+	    {
+	      /* query failed, an error has already been set */
+	      select_statement = NULL;
+	      goto exit;
+	    }
+
+	  list_id = (QFILE_LIST_ID *) select_statement->etc;
+	  parser_free_tree (parser, select_statement);
+	  select_statement = NULL;
+	}
+
+      hint_arg = statement->info.merge.waitsecs_hint;
+      if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
+	  && PT_IS_HINT_NODE (hint_arg))
+	{
+	  waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (waitsecs >= -1)
+	    {
+	      old_waitsecs = (float) TM_TRAN_WAITSECS ();
+	      (void) tran_reset_wait_times (waitsecs);
+	    }
+	}
+
+      if (statement->info.merge.update.do_class_attrs)
+	{
+	  /* update class attributes */
+	  err = update_class_attributes (parser, statement);
+	}
+      else
+	{
+	  /* OID list update */
+	  err = update_objs_for_list_file (parser, list_id, statement);
+	}
+
+      if (old_waitsecs >= -1)
+	{
+	  (void) tran_reset_wait_times (old_waitsecs);
+	}
+
+      if (!statement->info.merge.update.do_class_attrs)
+	{
+	  /* free returned QFILE_LIST_ID */
+	  if (list_id)
+	    {
+	      regu_free_listid (list_id);
+	    }
+	}
+
+      /* set result count */
+      if (err >= NO_ERROR)
+	{
+	  result += err;
+	}
+
+      if (err != NO_ERROR && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+	{
+	  if (class_obj && db_is_vclass (class_obj))
+	    {
+	      err = sm_flush_objects (class_obj);
+	    }
+	}
+    }
+
+  values_list = statement->info.merge.insert.value_clauses;
+  if (values_list != NULL)
+    {
+      PT_NODE *subq, *save_list;
+      PT_MISC_TYPE save_type;
+
+      subq =
+	pt_to_merge_insert_query (parser, values_list->info.node_list.list,
+				  &statement->info.merge);
+      subq = mq_translate (parser, subq);
+      if (subq == NULL)
+	{
+	  err = er_errid ();
+	  if (err == NO_ERROR)
+	    {
+	      err = ER_GENERIC_ERROR;
+	    }
+	  goto exit;
+	}
+
+      /* save node list */
+      save_type = values_list->info.node_list.list_type;
+      save_list = values_list->info.node_list.list;
+
+      values_list->info.node_list.list_type = PT_IS_SUBQUERY;
+      values_list->info.node_list.list = subq;
+
+      obt_begin_insert_values ();
+      /* execute subquery & insert its results into target class */
+      err = insert_subquery_results (parser, statement, values_list, flat,
+				     &savepoint_name);
+      if (parser->abort)
+	{
+	  err = er_errid ();
+	}
+      else if (err >= NO_ERROR)
+	{
+	  result += err;
+	}
+
+      /* restore node list */
+      values_list->info.node_list.list_type = save_type;
+      values_list->info.node_list.list = save_list;
+
+      parser_free_tree (parser, subq);
+    }
+
+exit:
+  if (select_statement != NULL)
+    {
+      parser_free_tree (parser, select_statement);
+    }
+
+  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
+    {
+      pt_record_error (parser, parser->statement_number,
+		       statement->line_number, statement->column_number,
+		       er_msg (), NULL);
+    }
+  /* If error and a savepoint was created, rollback to savepoint.
+     No need to rollback if the TM aborted the transaction. */
+  if ((err < NO_ERROR) && savepoint_name
+      && (err != ER_LK_UNILATERALLY_ABORTED))
+    {
+      do_rollback_savepoints (parser, savepoint_name);
+    }
+
+  AU_ENABLE (parser->au_save);
+
+  return (err < NO_ERROR) ? err : result;
+}
+
+/*
+ * do_prepare_merge() - Prepare the MERGE statement
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in/out): Parse tree of a MERGE statement
+ *
+ */
+int
+do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int err = NO_ERROR;
+  PT_NODE *not_nulls, *lhs, *spec = NULL;
+  int has_unique, au_save;
+
+  PT_NODE *select_statement = NULL;
+  PT_NODE *select_names = NULL, *select_values = NULL;
+  PT_NODE *const_names = NULL, *const_values = NULL;
+  PT_NODE **links = NULL;
+  int no_vals, no_consts;
+
+  if (parser == NULL || statement == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (pt_false_where (parser, statement)
+      || !statement->info.merge.update.assignment)
+    {
+      /* nothing to merge */
+      statement->xasl_id = NULL;
+      return err;
+    }
+
+  if (statement->xasl_id)
+    {
+      /* already prepared */
+      return err;
+    }
+
+  err = update_check_for_fk_cache_attr (parser, statement);
+  if (err != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      return err;
+    }
+
+  /* check if the target class has UNIQUE constraint */
+  err = update_check_for_constraints (parser, &has_unique, &not_nulls,
+				      statement);
+  /* currently not needed */
+  if (not_nulls)
+    {
+      parser_free_tree (parser, not_nulls);
+    }
+  if (err != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      return err;
+    }
+
+  statement->info.merge.update.has_unique = (bool) has_unique;
+
+  lhs = statement->info.merge.update.assignment->info.expr.arg1;
+  if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+    {
+      lhs = lhs->info.expr.arg1;
+    }
+
+  /* if we are updating class attributes, not need to prepare */
+  if (lhs->info.name.meta_class == PT_META_ATTR)
+    {
+      statement->info.merge.update.do_class_attrs = true;
+      return err;
+    }
+
+  /* make the SELECT statement for OID list to be updated */
+  no_vals = 0;
+  no_consts = 0;
+
+  err = pt_get_assignment_lists (parser, &select_names, &select_values,
+				 &const_names, &const_values,
+				 &no_vals, &no_consts,
+				 statement->info.merge.update.assignment,
+				 &links);
+  if (err != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      return err;
+    }
+
+  select_statement =
+    pt_to_merge_update_query (parser, select_values, &statement->info.merge);
+
+  /* restore tree structure; pt_get_assignment_lists() */
+  pt_restore_assignment_links (statement->info.merge.update.assignment,
+			       links, -1);
+
+  /* translate views or virtual classes into base classes;
+     If we are updating a proxy, the SELECT is not yet fully
+     translated. If we are updating anything else, this is a no-op. */
+
+  /* this prevents authorization checking during view transformation */
+  AU_SAVE_AND_DISABLE (au_save);
+  select_statement = mq_translate (parser, select_statement);
+  AU_RESTORE (au_save);
+  if (select_statement)
+    {
+      /* get XASL_ID by calling do_prepare_select() */
+      err = do_prepare_select (parser, select_statement);
+      /* save the XASL_ID to be used by do_execute_merge() */
+      statement->xasl_id = select_statement->xasl_id;
+      /* deallocate the SELECT statement */
+      parser_free_tree (parser, select_statement);
+    }
+  else
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      err = er_errid ();
+    }
+
+  /* nothing to prepare for merge insert part */
+
+  return err;
+}
+
+/*
+ * do_execute_merge() - Execute the prepared MERGE statement
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a MERGE statement
+ *
+ */
+int
+do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int err = NO_ERROR, result = 0;
+  PT_NODE *flat, *spec = NULL, *values_list = NULL;
+  const char *savepoint_name;
+  DB_OBJECT *class_obj;
+  QFILE_LIST_ID *list_id = NULL;
+  int au_save;
+  float waitsecs = -2, old_waitsecs = -2;
+  PT_NODE *hint_arg;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  /* If the UPDATE statement contains more than one update component,
+     we savepoint the update components to try to guarantee UPDATE statement
+     atomicity. */
+  savepoint_name = NULL;
+
+  if (!statement->info.merge.update.do_class_attrs && !statement->xasl_id
+      && !statement->info.merge.insert.value_clauses)
+    {
+      /* nothing to execute */
+      statement->etc = NULL;
+      goto exit;
+    }
+
+  spec = statement->info.merge.into;
+  flat = spec->info.spec.flat_entity_list;
+  if (flat == NULL)
+    {
+      err = ER_GENERIC_ERROR;
+      goto exit;
+    }
+  class_obj = flat->info.name.db_object;
+
+  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+    {
+      /* The IX lock on the class is sufficient.
+      DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
+      if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE)
+	  == NULL)
+	{
+	  err = er_errid ();
+	  goto exit;
+	}
+    }
+
+  if (!statement->info.merge.update.do_class_attrs && statement->xasl_id)
+    {
+      /* Request that the server executes the stored XASL, which is
+         the execution plan of the prepared query, with the host variables
+	 given by users as parameter values for the query.
+	 As a result, query id and result file id (QFILE_LIST_ID) will be
+	 returned.
+	 do_prepare_merge() has saved the XASL file id (XASL_ID) in
+	 'statement->xasl_id' */
+
+      int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+      
+      /* flush necessary objects before execute */
+      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	{
+	  err = sm_flush_objects (class_obj);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      if (statement->do_not_keep == 0)
+	{
+	  query_flag |= KEEP_PLAN_CACHE;
+	}
+      query_flag |= NOT_FROM_RESULT_CACHE;
+      query_flag |= RESULT_CACHE_INHIBITED;
+
+      AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
+					   checking for method */
+      list_id = NULL;
+      parser->query_id = -1;
+
+      err = query_execute (statement->xasl_id, &parser->query_id,
+			   parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag,
+			   NULL, NULL);
+      AU_RESTORE (au_save);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  hint_arg = statement->info.merge.waitsecs_hint;
+  if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
+      && PT_IS_HINT_NODE (hint_arg))
+    {
+      waitsecs = (float) atof (hint_arg->info.name.original);
+      if (waitsecs >= -1)
+	{
+	  old_waitsecs = (float) TM_TRAN_WAITSECS ();
+	  (void) tran_reset_wait_times (waitsecs);
+	}
+    }
+
+  if (statement->info.merge.update.assignment)
+    {
+      AU_SAVE_AND_DISABLE (au_save);
+
+      if (statement->info.merge.update.do_class_attrs)
+	{
+	  /* update class attributes */
+	  err = update_class_attributes (parser, statement);
+	}
+      else
+	{
+	  /* OID list update */
+	  err = update_objs_for_list_file (parser, list_id, statement);
+	}
+
+      AU_RESTORE (au_save);
+    }
+
+  if (old_waitsecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_waitsecs);
+    }
+
+  if (statement->info.merge.update.assignment
+      && !statement->info.merge.update.do_class_attrs)
+    {
+      /* free returned QFILE_LIST_ID */
+      if (list_id)
+	{
+	  regu_free_listid (list_id);
+	}
+      /* end the query; reset query_id and call qmgr_end_query() */
+      pt_end_query (parser);
+    }
+
+  /* set result count */
+  if (err >= NO_ERROR)
+    {
+      result += err;
+    }
+
+  if (err != NO_ERROR && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+    {
+      if (class_obj && db_is_vclass (class_obj))
+	{
+	  err = sm_flush_objects (class_obj);
+	}
+    }
+
+  values_list = statement->info.merge.insert.value_clauses;
+  if (values_list != NULL)
+    {
+      PT_NODE *subq, *save_list;
+      PT_MISC_TYPE save_type;
+
+      subq =
+	pt_to_merge_insert_query (parser, values_list->info.node_list.list,
+				  &statement->info.merge);
+      subq = mq_translate (parser, subq);
+
+      if (subq == NULL)
+	{
+	  err = er_errid ();
+	  if (err == NO_ERROR)
+	    {
+	      err = ER_GENERIC_ERROR;
+	    }
+	  goto exit;
+	}
+
+      /* save node list */
+      save_type = values_list->info.node_list.list_type;
+      save_list = values_list->info.node_list.list;
+
+      values_list->info.node_list.list_type = PT_IS_SUBQUERY;
+      values_list->info.node_list.list = subq;
+
+      AU_SAVE_AND_DISABLE (au_save);
+
+      obt_begin_insert_values ();
+      /* execute subquery & insert its results into target class */
+      err = insert_subquery_results (parser, statement, values_list, flat,
+				     &savepoint_name);
+      if (parser->abort)
+	{
+	  err = er_errid ();
+	}
+      else if (err >= NO_ERROR)
+	{
+	  result += err;
+	}
+
+      AU_RESTORE (au_save);
+
+      /* restore node list */
+      values_list->info.node_list.list_type = save_type;
+      values_list->info.node_list.list = save_list;
+
+      parser_free_tree (parser, subq);
+    }
+
+exit:
+  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
+    {
+      pt_record_error (parser, parser->statement_number,
+		       statement->line_number, statement->column_number,
+		       er_msg (), NULL);
+    }
+  /* If error and a savepoint was created, rollback to savepoint.
+     No need to rollback if the TM aborted the transaction. */
+  if ((err < NO_ERROR) && savepoint_name
+      && (err != ER_LK_UNILATERALLY_ABORTED))
+    {
+      do_rollback_savepoints (parser, savepoint_name);
+    }
+
+  return (err < NO_ERROR) ? err : result;
 }

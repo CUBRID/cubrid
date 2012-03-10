@@ -612,6 +612,26 @@ else
 fi
 AC_MSG_RESULT([$with_regex])
 
+AC_MSG_CHECKING([for expat library])
+AC_ARG_WITH([expat],
+	AS_HELP_STRING([--with-expat=PATH],
+		[prefix for installed expat @<:@default=builtin@:>@]),
+	[with_expat=$withval],
+	[with_expat=builtin])
+
+if test "$with_expat" = "builtin"
+then
+	AC_CONFIG_SUBDIRS([external/expat-2.0.1])
+	EXPAT_LIBS="\$(top_builddir)/external/lib/libexpat.la"
+	EXPAT_INC="-I\$(top_builddir)/external/include/expat"
+	EXTERNAL_PKGS="$EXTERNAL_PKGS expat-2.0.1"
+else
+	EXPAT_LIBS="-L$with_expat/lib -lexpat"
+	EXPAT_INC="-I$with_expat/include"
+	EXTERNAL_DIST="$EXTERNAL_DIST expat-2.0.1"
+fi
+AC_MSG_RESULT([$with_expat])
+
 
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
@@ -644,8 +664,8 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS"
-EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS"
+EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
 AC_ARG_ENABLE([cubridenv],
@@ -906,6 +926,14 @@ AC_CONFIG_FILES([Makefile
 	msg/ko_KR.euckr/Makefile
 	msg/ko_KR.utf8/Makefile
 	msg/tr_TR.utf8/Makefile
+	msg/de_DE.utf8/Makefile
+	msg/es_ES.utf8/Makefile
+	msg/fr_FR.utf8/Makefile
+	msg/it_IT.utf8/Makefile
+	msg/ja_JP.utf8/Makefile
+	msg/km_KH.utf8/Makefile
+	msg/vi_VN.utf8/Makefile
+	msg/zh_CN.utf8/Makefile
 	demo/Makefile
 	contrib/Makefile
 	jdbc/Makefile

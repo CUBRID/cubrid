@@ -3289,6 +3289,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_CLASS_OID_FLAG 	(0x100)	/* for object types */
 #define OR_DOMAIN_SET_DOMAIN_FLAG	(0x100)	/* for set types */
 #define OR_DOMAIN_BUILTIN_FLAG		(0x100)	/* for NULL type only */
+#define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -3395,6 +3396,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    }
 	  break;
 
+	case DB_TYPE_ENUMERATION:
+	  size += or_packed_enumeration_size (&DOM_GET_ENUMERATION (d));
+	  break;
+
 	default:
 	  break;
 	}
@@ -3438,7 +3443,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 {
   unsigned int carrier, extended_precision, extended_scale;
   int precision;
-  int has_oid, has_subdomain;
+  int has_oid, has_subdomain, has_enum;
   TP_DOMAIN *d;
   DB_TYPE id;
   int rc = NO_ERROR;
@@ -3494,6 +3499,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
       extended_scale = 0;
       has_oid = 0;
       has_subdomain = 0;
+      has_enum = 0;
 
       switch (id)
 	{
@@ -3592,6 +3598,14 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 
 	  break;
 
+	case DB_TYPE_ENUMERATION:
+	  if (DOM_GET_ENUM_ELEMENTS (d) != NULL)
+	    {
+	      carrier |= OR_DOMAIN_ENUMERATION_FLAG;
+	      has_enum = 1;
+	    }
+	  break;
+
 	default:
 	  break;
 	}
@@ -3648,6 +3662,16 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	    }
 	}
 
+      if (has_enum)
+	{
+	  rc = or_put_enumeration (buf, &DOM_GET_ENUMERATION (d));
+
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+
       /*
        * Recurse on the sub domains if necessary, note that we don't
        * pass the NULL bit down here because that applies only to the
@@ -3677,7 +3701,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid,
-    has_setdomain;
+    has_setdomain, has_enum;
   bool more, auto_precision, is_desc;
   DB_TYPE type;
   int index;
@@ -3730,6 +3754,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  codeset = 0;
 	  has_classoid = 0;
 	  has_setdomain = 0;
+	  has_enum = 0;
 	  auto_precision = false;
 
 	  if (carrier & OR_DOMAIN_DESC_FLAG)
@@ -3801,6 +3826,10 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	      break;
 
+	    case DB_TYPE_ENUMERATION:
+	      has_enum = carrier & OR_DOMAIN_ENUMERATION_FLAG;
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -3859,6 +3888,15 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	  /* store the codset if we had one */
 	  d->codeset = codeset;
+
+	  if (has_enum)
+	    {
+	      rc = or_get_enumeration (buf, &DOM_GET_ENUMERATION (d));
+	      if (rc != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
 
 	  /*
 	   * Recurse to get set sub-domains if there are any, note that
@@ -3930,6 +3968,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
+  int enum_vals_cnt = 0;
+  DB_ENUMERATION db_enum = { 0, NULL };
 
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;
@@ -4122,6 +4162,27 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      break;
 
+	    case DB_TYPE_ENUMERATION:
+	      {
+		if (carrier & OR_DOMAIN_ENUMERATION_FLAG)
+		  {
+		    rc = or_get_enumeration (buf, &db_enum);
+		    if (rc != NO_ERROR)
+		      {
+			goto error;
+		      }
+		    dom = tp_domain_find_enumeration (&db_enum, is_desc);
+		    if (dom != NULL)
+		      {
+			/* we have to free the memory allocated for the enum
+			 * above since we already have it cached
+			 */
+			tp_domain_clear_enumeration (&db_enum);
+		      }
+		  }
+	      }
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -4131,6 +4192,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      /* not found. need to construct one */
 	      dom =
 		tp_domain_construct (type, NULL, precision, scale, setdomain);
+	      DOM_SET_ENUM_ELEMENTS (dom, db_enum.elements);
+	      DOM_SET_ENUM_ELEMS_COUNT (dom, db_enum.count);
 	      if (dom == NULL)
 		{
 		  goto error;
@@ -6223,6 +6286,181 @@ or_unpack_db_value (char *buffer, DB_VALUE * val)
 {
   /* new interface, hopefully compatible */
   return or_unpack_value (buffer, val);
+}
+
+/*
+ * or_packed_enumeration_size () - get the packed size of an enumeration
+ *    return: packed size
+ *    enumeration (in): enumeration
+ */
+int
+or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
+{
+  int size = 0, idx;
+  DB_VALUE value;
+  DB_ENUM_ELEMENT *db_enum = NULL;
+
+  if (enumeration->count == 0)
+    {
+      return 0;
+    }
+  /* an enumeration is packed as a collection of strings */
+  size += OR_SET_HEADER_SIZE;
+
+  for (idx = 0; idx < enumeration->count; idx++)
+    {
+      db_enum = &enumeration->elements[idx];
+
+      db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
+		       DB_GET_ENUM_ELEM_STRING (db_enum),
+		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum));
+      size += (*(tp_String.data_lengthval)) (&value, 1);
+    }
+
+  return size;
+}
+
+/*
+ * or_put_enumeration () - pack an enumeration
+ *    return: error code or NO_ERROR
+ *    enumeration (in): enumeration
+ */
+int
+or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
+{
+  int rc = NO_ERROR, idx;
+  DB_VALUE value;
+  DB_ENUM_ELEMENT *db_enum = NULL;
+
+  if (enumeration->count == 0)
+    {
+      return rc;
+    }
+  /* an enumeration is packed as a collection of strings */
+  rc =
+    or_put_set_header (buf, DB_TYPE_SEQUENCE, enumeration->count, 0, 0, 0, 0,
+		       0);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  for (idx = 0; idx < enumeration->count; idx++)
+    {
+      db_enum = &enumeration->elements[idx];
+      db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
+		       DB_GET_ENUM_ELEM_STRING (db_enum),
+		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum));
+      rc = (*(tp_String.data_writeval)) (buf, &value);
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  return rc;
+}
+
+/*
+ * or_get_enumeration - read enumeration from input buffer
+ *    return: NO_ERROR or error code
+ *    buf(in): input buffer
+ *    enumeration(in/out): pointer to enumeration holder
+ */
+int
+or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
+{
+  DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
+  int idx = 0, count = 0, error = NO_ERROR;
+  DB_VALUE value;
+  char *enum_str = NULL;
+  int str_size = 0;
+
+  DB_MAKE_NULL (&value);
+
+  if (enumeration == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  count = or_skip_set_header (buf);
+
+  if (count <= 0)
+    {
+      /* set header is not packed if count is 0 so this should never happen */
+      enumeration->count = 0;
+      enumeration->elements = NULL;
+      assert (false);
+      return ER_FAILED;
+    }
+
+  enum_vals = malloc (sizeof (DB_ENUM_ELEMENT) * count);
+  if (enum_vals == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (DB_ENUM_ELEMENT) * count);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (idx = 0; idx < count; idx++)
+    {
+      db_enum = &enum_vals[idx];
+      /* enum values are indexed starting with 1 */
+      db_enum->short_val = idx + 1;
+
+      /*
+       * Make sure this starts off initialized so "readval" won't try to free
+       * any existing contents.
+       */
+      db_make_null (&value);
+
+      error =
+	(*(tp_String.data_readval)) (buf, &value, NULL, -1, false, NULL, 0);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      DB_GET_ENUM_ELEM_DBCHAR (db_enum).info = value.data.ch.info;
+      str_size = db_get_string_size (&value);
+      enum_str = malloc (str_size + 1);
+      if (enum_str == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  db_get_string_size (&value) + 1);
+
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_return;
+	}
+      memcpy (enum_str, db_get_string (&value), str_size);
+      enum_str[str_size] = 0;
+
+      DB_SET_ENUM_ELEM_STRING (db_enum, enum_str);
+      DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_size);
+      pr_clear_value (&value);
+    }
+
+  enumeration->count = count;
+  enumeration->elements = enum_vals;
+
+  return NO_ERROR;
+
+error_return:
+  if (enum_vals != NULL)
+    {
+      for (--idx; idx >= 0; idx--)
+	{
+	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_vals[idx]));
+	}
+      free_and_init (enum_vals);
+    }
+  pr_clear_value (&value);
+
+  enumeration->count = 0;
+  enumeration->elements = NULL;
+  return error;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

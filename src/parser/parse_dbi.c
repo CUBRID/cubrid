@@ -391,6 +391,72 @@ pt_set_elements_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 }
 
 /*
+ * pt_sm_default_value_to_node () - returns a PT_NODE equivalent to the info
+ *	in the default_value
+ *
+ *  parser (in):
+ *  default_value (in):
+ */
+PT_NODE *
+pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser,
+				       const SM_ATTRIBUTE * sm_attr)
+{
+  PT_NODE *result;
+  SM_DEFAULT_VALUE *default_value;
+  PT_NODE *data_type;
+
+  if (!sm_attr || !(&sm_attr->default_value))
+    {
+      return NULL;
+    }
+
+  default_value = &sm_attr->default_value;
+
+  if (!default_value)
+    {
+      return NULL;
+    }
+
+  if (default_value->default_expr == DB_DEFAULT_NONE)
+    {
+      result = pt_dbval_to_value (parser, &default_value->value);
+      if (!result)
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORm (parser, sm_attr, MSGCAT_SET_ERROR,
+			 -(ER_GENERIC_ERROR));
+	    }
+	  return NULL;
+	}
+    }
+  else
+    {
+      result = parser_new_node (parser, PT_EXPR);
+      if (!result)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+      result->info.expr.op =
+	pt_op_type_from_default_expr_type (default_value->default_expr);
+    }
+
+  data_type = parser_new_node (parser, PT_DATA_TYPE);
+  if (!data_type)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      parser_free_tree (parser, result);
+      return NULL;
+    }
+  result->type_enum = pt_db_to_type_enum (sm_attr->type->id);
+  data_type->type_enum = result->type_enum;
+  result->data_type = data_type;
+
+  return result;
+}
+
+/*
  * pt_dbval_to_value() -  convert a db_value into a PT_NODE
  *   return:  a PT_VALUE type PT_NODE
  *   parser(in):  parser context from which to get a new PT_NODE
@@ -690,6 +756,18 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  result = NULL;
 	}
       result->type_enum = PT_TYPE_CLOB;
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      bytes = DB_GET_ENUM_STRING (val);
+      size = DB_GET_ENUM_STRING_SIZE (val);
+      result->info.value.data_value.enumeration.short_val =
+	DB_GET_ENUM_SHORT (val);
+      result->info.value.data_value.enumeration.str_val =
+	pt_append_bytes (parser, NULL, bytes, size);
+      result->info.value.text =
+	result->info.value.data_value.enumeration.str_val->bytes;
+      result->data_type = NULL;
       break;
 
       /* explicitly treat others as an error condition */
@@ -1236,6 +1314,10 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_CLOB:
       name = "clob";
       break;
+
+    case PT_TYPE_ENUMERATION:
+      name = "enum";
+      break;
     }
 
   return name;
@@ -1278,6 +1360,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BIGINT:
+    case DB_TYPE_ENUMERATION:
       retval = tp_domain_construct (domain_type, (DB_OBJECT *) 0, 0, 0,
 				    (TP_DOMAIN *) 0);
       break;
@@ -1381,7 +1464,9 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
   DB_TYPE domain_type;
   DB_OBJECT *class_obj = (DB_OBJECT *) 0;
-  int precision = 0, scale = 0, codeset = 0;
+  DB_ENUM_ELEMENT *enum_elements = NULL;
+  int precision = 0, scale = 0, codeset = 0, enum_elements_cnt = 0;
+  int idx;
 
   if (dt == NULL)
     {
@@ -1468,6 +1553,86 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_MIDXKEY:
       return pt_node_to_db_domain (parser, dt, class_name);
 
+    case DB_TYPE_ENUMERATION:
+      {
+	PT_NODE *node = dt->info.data_type.enumeration;
+	DB_ENUM_ELEMENT *db_enum = NULL;
+	char *str_val = NULL;
+	int str_len = 0;
+
+	enum_elements_cnt = 0;
+	while (node != NULL)
+	  {
+	    enum_elements_cnt++;
+	    node = node->next;
+	  }
+
+	if (enum_elements_cnt == 0)
+	  {
+	    break;
+	  }
+
+	enum_elements = malloc (enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
+	if (enum_elements == NULL)
+	  {
+	    er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		    ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
+	    return NULL;
+	  }
+
+	idx = 0;
+	node = dt->info.data_type.enumeration;
+	while (node != NULL)
+	  {
+	    if (node->node_type != PT_VALUE)
+	      {
+		/* node_type should always be PT_VALUE */
+		assert (false);
+		for (--idx; idx >= 0; idx--)
+		  {
+		    free_and_init (DB_GET_ENUM_ELEM_STRING
+				   (&enum_elements[idx]));
+		  }
+		free_and_init (enum_elements);
+
+		er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			ER_GENERIC_ERROR, 0);
+
+		return NULL;
+	      }
+	    db_enum = &enum_elements[idx];
+	    str_len = pt_get_varchar_length (node->info.value.data_value.str);
+	    str_val = malloc (str_len + 1);
+	    if (str_val == NULL)
+	      {
+		for (--idx; idx >= 0; idx--)
+		  {
+		    free_and_init (DB_GET_ENUM_ELEM_STRING
+				   (&enum_elements[idx]));
+		  }
+		free_and_init (enum_elements);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_OUT_OF_VIRTUAL_MEMORY, 1, str_len + 1);
+		return NULL;
+	      }
+
+	    memcpy (str_val,
+		    pt_get_varchar_bytes (node->info.value.data_value.str),
+		    str_len);
+	    str_val[str_len] = 0;
+
+	    /* enum values are indexed starting from 1 */
+	    DB_SET_ENUM_ELEM_SHORT (db_enum, (unsigned short) idx + 1);
+	    DB_SET_ENUM_ELEM_STRING (db_enum, str_val);
+	    DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_len);
+
+	    idx++;
+	    node = node->next;
+	  }
+      }
+      break;
+
     case DB_TYPE_NULL:
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_VARIABLE:
@@ -1497,6 +1662,19 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       retval->precision = precision;
       retval->scale = scale;
       retval->codeset = codeset;
+      DOM_SET_ENUM_ELEMENTS (retval, enum_elements);
+      DOM_SET_ENUM_ELEMS_COUNT (retval, enum_elements_cnt);
+    }
+  else
+    {
+      if (domain_type == DB_TYPE_ENUMERATION)
+	{
+	  for (idx = 0; idx < enum_elements_cnt; idx++)
+	    {
+	      free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_elements[idx]));
+	    }
+	  free_and_init (enum_elements);
+	}
     }
 
   return retval;
@@ -1850,6 +2028,10 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_VARIABLE;
       break;
 
+    case PT_TYPE_ENUMERATION:
+      db_type = DB_TYPE_ENUMERATION;
+      break;
+
     default:
       db_type = DB_TYPE_NULL;
       break;
@@ -2108,6 +2290,9 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_CLOB:
       pt_type = PT_TYPE_CLOB;
       break;
+    case DB_TYPE_ENUMERATION:
+      pt_type = PT_TYPE_ENUMERATION;
+      break;
 
       /* these guys should not get encountered */
     case DB_TYPE_OID:
@@ -2312,6 +2497,10 @@ pt_bind_helper (PARSER_CONTEXT * parser,
 	  dt->info.data_type.precision = DB_VALUE_PRECISION (val);
 	  dt->info.data_type.units = (int) db_get_string_codeset (val);
 	}
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      dt = NULL;
       break;
 
     case DB_TYPE_OBJECT:
@@ -2534,7 +2723,11 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	      (void) pr_clear_value (hv);
 	      hv_dom = tp_domain_resolve_value (hv, NULL);
 	      val_dom = tp_domain_resolve_value (val, NULL);
-	      if (tp_domain_match (hv_dom, val_dom, TP_EXACT_MATCH))
+	      if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_ENUMERATION)
+		{
+		  (void) pr_clone_value (val, hv);
+		}
+	      else if (tp_domain_match (hv_dom, val_dom, TP_EXACT_MATCH))
 		{
 		  (void) pr_clone_value (val, hv);
 		}
@@ -2570,9 +2763,13 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	      typ = DB_VALUE_DOMAIN_TYPE (hv);
 	      val_typ = DB_VALUE_DOMAIN_TYPE (val);
 	      hv_dom = tp_domain_resolve_value (hv, NULL);
-	      if (typ == DB_TYPE_NUMERIC && typ == val_typ && hv_dom
-		  && (hv_dom->precision < DB_VALUE_PRECISION (val)
-		      || hv_dom->scale < DB_VALUE_SCALE (val)))
+	      if (typ == DB_TYPE_ENUMERATION)
+		{
+		  (void) pr_clone_value (val, hv);
+		}
+	      else if (typ == DB_TYPE_NUMERIC && typ == val_typ && hv_dom
+		       && (hv_dom->precision < DB_VALUE_PRECISION (val)
+			   || hv_dom->scale < DB_VALUE_SCALE (val)))
 		{
 		  /* we had made a miss prediction for numeric type */
 		  (void) pr_clone_value (val, hv);

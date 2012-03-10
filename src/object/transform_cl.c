@@ -201,6 +201,11 @@ static int root_size (MOBJ rootobj);
 static int tf_class_size (MOBJ classobj);
 static ROOT_CLASS *disk_to_root (OR_BUF * buf);
 
+static int enumeration_size (const DB_ENUMERATION * enumeration);
+static void put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
+static int get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration,
+			    int expected);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tf_find_temporary_oids - walks over the memory representation of an
@@ -1979,6 +1984,9 @@ domain_size (TP_DOMAIN * domain)
   size =
     tf_Metaclass_domain.fixed_size +
     OR_VAR_TABLE_SIZE (tf_Metaclass_domain.n_variable);
+
+  size += enumeration_size (&DOM_GET_ENUMERATION (domain));
+
   size +=
     substructure_set_size ((DB_LIST *) domain->setdomain,
 			   (LSIZER) domain_size);
@@ -2010,6 +2018,10 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset +=
     substructure_set_size ((DB_LIST *) domain->setdomain,
 			   (LSIZER) domain_size);
+
+  or_put_offset (buf, offset);
+  offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
+
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2024,6 +2036,8 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 			(LWRITER) domain_to_disk,
 			&tf_Metaclass_domain.classoid,
 			tf_Metaclass_domain.repid);
+
+  put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
 
   if (start + offset != buf->ptr)
     {
@@ -2094,6 +2108,14 @@ disk_to_domain2 (OR_BUF * buf)
     (TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain2,
 					vars
 					[ORC_DOMAIN_SETDOMAIN_INDEX].length);
+
+  if (get_enumeration (buf, &DOM_GET_ENUMERATION (domain),
+		       vars[ORC_DOMAIN_ENUMERATION_INDEX].length) != NO_ERROR)
+    {
+      free_var_table (vars);
+      or_abort (buf);
+      return NULL;
+    }
 
   free_var_table (vars);
 
@@ -4509,6 +4531,47 @@ tf_object_size (MOBJ classobj, MOBJ obj)
     }
 
   return size;
+}
+
+/*
+ * enumeration_size () - calculates size of enumeration
+ * return : size of enumeration
+ * enumeration (in) : enumeration
+ */
+static int
+enumeration_size (const DB_ENUMERATION * enumeration)
+{
+  return or_packed_enumeration_size (enumeration);
+}
+
+/*
+ * put_enumeration () - pack an enumeration
+ * return: error code or NO_ERROR
+ * enumeration (in): enumeration
+ */
+static void
+put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
+{
+  (void) or_put_enumeration (buf, enumeration);
+}
+
+/*
+ * get_enumeration - read enumeration from input buffer
+ * return: NO_ERROR or error code
+ * buf(in): input buffer
+ * enumeration(in/out): pointer to enumeration holder
+ * expected(in): expected length
+ */
+static int
+get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration, int expected)
+{
+  if (expected == 0)
+    {
+      enumeration->count = 0;
+      enumeration->elements = NULL;
+      return NO_ERROR;
+    }
+  return or_get_enumeration (buf, enumeration);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

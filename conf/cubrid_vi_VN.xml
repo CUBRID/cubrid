@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ldml>
+	<identity>
+		<version number="$Revision: 5953 $"/>
+		<generation date="$Date: 2011-07-05 02:22:55 +0300 (Ma, 05 iul. 2011) $"/>
+		<language type="vi"/>
+	</identity>
+	<dates>
+		<calendars>
+			<calendar type="gregorian">
+				<dateFormatCUBRID>DD/MM/YYYY</dateFormatCUBRID>
+				<timeFormatCUBRID>HH24:MI:SS</timeFormatCUBRID>
+				<datetimeFormatCUBRID>HH24:MI:SS.FF DD/MM/YYYY</datetimeFormatCUBRID>
+				<timestampFormatCUBRID>HH24:MI:SS DD/MM/YYYY</timestampFormatCUBRID>
+				<months>
+					<monthContext type="format">
+						<monthWidth type="abbreviated">
+							<month type="1">Thg 1</month>
+							<month type="2">Thg 2</month>
+							<month type="3">Thg 3</month>
+							<month type="4">Thg 4</month>
+							<month type="5">Thg 5</month>
+							<month type="6">Thg 6</month>
+							<month type="7">Thg 7</month>
+							<month type="8">Thg 8</month>
+							<month type="9">Thg 9</month>
+							<month type="10">Thg 10</month>
+							<month type="11">Thg 11</month>
+							<month type="12">Thg 12</month>
+						</monthWidth>
+						<monthWidth type="wide">
+							<month type="1">Tháng một</month>
+							<month type="2">Tháng hai</month>
+							<month type="3">Tháng ba</month>
+							<month type="4">Tháng tư</month>
+							<month type="5">Tháng năm</month>
+							<month type="6">Tháng sáu</month>
+							<month type="7">Tháng bảy</month>
+							<month type="8">Tháng tám</month>
+							<month type="9">Tháng chín</month>
+							<month type="10">Tháng mười</month>
+							<month type="11">Tháng mười một</month>
+							<month type="12">Tháng mười hai</month>
+						</monthWidth>
+					</monthContext>
+				</months>
+				<days>
+					<dayContext type="format">
+						<dayWidth type="abbreviated">
+							<day type="sun">CN</day>
+							<day type="mon">Th 2</day>
+							<day type="tue">Th 3</day>
+							<day type="wed">Th 4</day>
+							<day type="thu">Th 5</day>
+							<day type="fri">Th 6</day>
+							<day type="sat">Th 7</day>
+						</dayWidth>
+						<dayWidth type="wide">
+							<day type="sun">Chủ nhật</day>
+							<day type="mon">Thứ hai</day>
+							<day type="tue">Thứ ba</day>
+							<day type="wed">Thứ tư</day>
+							<day type="thu">Thứ năm</day>
+							<day type="fri">Thứ sáu</day>
+							<day type="sat">Thứ bảy</day>
+						</dayWidth>
+					</dayContext>
+				</days>
+				<dayPeriods>
+					<dayPeriodContext type="format">
+						<dayPeriodWidth type="wide">
+							<dayPeriod type="am">SA</dayPeriod>
+							<dayPeriod type="pm">CH</dayPeriod>
+							<dayPeriod type="Am">SA</dayPeriod>
+							<dayPeriod type="Pm">CH</dayPeriod>
+							<dayPeriod type="AM">SA</dayPeriod>
+							<dayPeriod type="PM">CH</dayPeriod>
+							<dayPeriod type="a.m.">SA</dayPeriod>
+							<dayPeriod type="p.m.">CH</dayPeriod>
+							<dayPeriod type="A.m.">SA</dayPeriod>
+							<dayPeriod type="P.m.">CH</dayPeriod>	
+							<dayPeriod type="A.M.">SA</dayPeriod>
+							<dayPeriod type="P.M.">CH</dayPeriod>
+						</dayPeriodWidth>
+					</dayPeriodContext>
+				</dayPeriods>
+			</calendar>
+		</calendars>
+	</dates>
+	<numbers>
+		<symbols numberSystem="latn">
+			<decimal>,</decimal>
+			<group>.</group>
+		</symbols>
+		<currencies>
+			<currency type="VND" />
+		</currencies>
+	</numbers>
+	<collations validSubLocales="vi_VN">
+		<collation type="standard">
+			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+			<rules>
+				<reset>̀</reset>
+				<sc>̣̉̃́</sc>
+				<reset>a</reset>
+				<p>ă</p>
+				<t>Ă</t>
+				<p>â</p>
+				<t>Â</t>
+				<reset>d</reset>
+				<p>đ</p>
+				<t>Đ</t>
+				<reset>e</reset>
+				<p>ê</p>
+				<t>Ê</t>
+				<reset>o</reset>
+				<p>ô</p>
+				<t>Ô</t>
+				<p>ơ</p>
+				<t>Ơ</t>
+				<reset>u</reset>
+				<p>ư</p>
+				<t>Ư</t>
+			</rules>
+		</collation>
+	</collations>
+	<alphabets>
+		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
+		</alphabet>
+	</alphabets>
+	<consoleconversion type="ISO" windows_codepage="1258" linux_charset="8859-12" file="CP1258.TXT" />	
+</ldml>

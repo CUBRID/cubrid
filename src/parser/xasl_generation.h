@@ -142,7 +142,7 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
 				     PT_NODE * using_index,
 				     PT_NODE * order_by,
 				     PT_NODE * orderby_for, int server_op,
-				     bool used_to_update);
+				     PT_COMPOSITE_LOCKING composite_locking);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node,
 				     PT_NODE * values_list, int has_uniques,
 				     PT_NODE * non_null_attrs,
@@ -224,5 +224,11 @@ extern XASL_NODE *parser_generate_do_stmt_xasl (PARSER_CONTEXT * p,
 						PT_NODE * node);
 extern FUNC_PRED *pt_to_func_pred (PARSER_CONTEXT * parser,
 				   PT_NODE * spec, PT_NODE * expr);
+extern PT_NODE *pt_to_merge_update_query (PARSER_CONTEXT * parser,
+					  PT_NODE * select_list,
+					  PT_MERGE_INFO * info);
+extern PT_NODE *pt_to_merge_insert_query (PARSER_CONTEXT * parser,
+					  PT_NODE * select_list,
+					  PT_MERGE_INFO * info);
 
 #endif /* _XASL_GENERATION_H_ */

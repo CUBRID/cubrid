@@ -603,6 +603,7 @@ struct func_pred
 #define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
 #define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
 #define XASL_QEXEC_MODE_ASYNC    128	/* query exec mode (async) */
+#define XASL_MULTI_UPDATE_AGG    256	/* is for multi-update with aggregate */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

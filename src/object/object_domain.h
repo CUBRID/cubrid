@@ -34,9 +34,24 @@
 #include "object_representation.h"
 #include "area_alloc.h"
 
+#define DOM_GET_ENUMERATION(dom) \
+    ((dom)->enumeration)
+#define DOM_GET_ENUM_ELEMENTS(dom) \
+    ((dom)->enumeration.elements)
+#define DOM_GET_ENUM_ELEMS_COUNT(dom) \
+    ((dom)->enumeration.count)
+#define DOM_GET_ENUM_ELEM(dom, idx) \
+    ((dom)->enumeration.elements[idx - 1])
 
-
-
+#define DOM_SET_ENUM_ELEMENTS(dom, elems) \
+    ((dom)->enumeration.elements = (elems))
+#define DOM_SET_ENUM_ELEMS_COUNT(dom, cnt) \
+    ((dom)->enumeration.count = (cnt))
+#define DOM_SET_ENUM(dom, elems, cnt) \
+    do{\
+	(dom)->enumeration.count = (cnt); \
+	(dom)->enumeration.elements = (elems); \
+      } while(0)
 /*
  * TP_DOMAIN_SELF_REF is used as an argument
  * to tp_domain_construct so that the self_ref flag can be set
@@ -54,6 +69,8 @@ typedef struct tp_domain
 
   struct db_object *class_mop;	/* swizzled class oid if on client */
   struct tp_domain *setdomain;	/* hierarchical domain for sets */
+
+  DB_ENUMERATION enumeration;	/* enumeration values */
 
   OID class_oid;		/* Class OID if type is tp_Object */
 
@@ -150,6 +167,7 @@ extern TP_DOMAIN tp_VarNChar_domain;
 extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
+extern TP_DOMAIN tp_Enumeration_domain;
 
 /*
  * TP_DOMAIN_STATUS
@@ -353,6 +371,8 @@ extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
 
 extern void tp_domain_free (TP_DOMAIN * dom);
 extern TP_DOMAIN *tp_domain_new (DB_TYPE type);
+extern int tp_domain_copy_enumeration (DB_ENUMERATION * dest,
+				       const DB_ENUMERATION * src);
 extern TP_DOMAIN *tp_domain_copy (const TP_DOMAIN * dom, bool check_cache);
 extern TP_DOMAIN *tp_domain_construct (DB_TYPE domain_type,
 				       DB_OBJECT * class_obj,
@@ -404,6 +424,8 @@ TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid,
 				  struct db_object *class_, bool is_desc);
 TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain,
 			       bool is_desc);
+TP_DOMAIN *tp_domain_find_enumeration (const DB_ENUMERATION * enumeration,
+				       bool is_desc);
 TP_DOMAIN *tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf);
 #if defined(ENABLE_UNUSED_FUNCTION)
 TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val,
@@ -479,4 +501,8 @@ extern TP_DOMAIN *tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2,
 					  bool * need_free);
 extern int tp_value_string_to_double (const DB_VALUE * value,
 				      DB_VALUE * result);
+extern void tp_domain_clear_enumeration (DB_ENUMERATION * enumeration);
+extern int tp_enumeration_to_varchar (const DB_VALUE * src,
+				      DB_VALUE * result);
+
 #endif /* _OBJECT_DOMAIN_H_ */

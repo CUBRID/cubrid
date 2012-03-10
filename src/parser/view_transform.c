@@ -261,6 +261,10 @@ static PT_NODE *mq_translate_insert (PARSER_CONTEXT * parser,
 				     PT_NODE * insert_statement);
 static PT_NODE *mq_translate_delete (PARSER_CONTEXT * parser,
 				     PT_NODE * delete_statement);
+static void mq_check_merge (PARSER_CONTEXT * parser,
+			    PT_NODE * merge_statement);
+static PT_NODE *mq_translate_merge (PARSER_CONTEXT * parser,
+				    PT_NODE * merge_statement);
 static void mq_push_paths_select (PARSER_CONTEXT * parser,
 				  PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_check_rewrite_select (PARSER_CONTEXT * parser,
@@ -3706,6 +3710,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   return insert_statement;
 }
 
+
 /*
  * mq_translate_delete() - leaf expansion or vclass/view expansion
  *   return:
@@ -3735,6 +3740,60 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
 
   return delete_statement;
 }
+
+
+/*
+ * mq_check_merge() - checks duplicated column names
+ *   return:
+ *   parser(in):
+ *   merge_statement(in):
+ */
+static void
+mq_check_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
+{
+  pt_no_double_updates (parser, merge_statement);
+  pt_no_attr_and_meta_attr_updates (parser, merge_statement);
+}
+
+
+/*
+ * mq_translate_merge() - leaf expansion or vclass/view expansion for merge
+ *   return:
+ *   parser(in):
+ *   merge_statement(in):
+ */
+static PT_NODE *
+mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
+{
+  PT_NODE *from, *flat;
+  PT_NODE *save = merge_statement;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+
+  assert (merge_statement->info.merge.into->next == NULL);
+  merge_statement->info.merge.into->next = merge_statement->info.merge.using;
+
+  mq_check_merge (parser, merge_statement);
+
+  /* set flags for updatable specs */
+  pt_mark_spec_list_for_update (parser, merge_statement);
+
+  from = merge_statement->info.merge.into;
+  flat = from->info.spec.flat_entity_list;
+  if (flat)
+    {
+      if (db_is_class (flat->info.name.db_object))
+	{
+	  sc_info.top_node = merge_statement;
+	  sc_info.donot_fold = false;
+	  pt_semantic_type (parser, merge_statement, &sc_info);
+	}
+    }
+
+  merge_statement->info.merge.into->next = NULL;
+
+  return merge_statement;
+}
+
 
 /*
  * mq_push_paths_select() -
@@ -4024,6 +4083,10 @@ mq_translate_local (PARSER_CONTEXT * parser,
 
     case PT_DELETE:
       statement = mq_translate_delete (parser, statement);
+      break;
+
+    case PT_MERGE:
+      statement = mq_translate_merge (parser, statement);
       break;
 
     default:
@@ -5369,6 +5432,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
+    case PT_MERGE:
     case PT_DO:
       node = parser_walk_tree (parser, node, mq_push_paths, NULL,
 			       mq_translate_local, NULL);
@@ -5391,7 +5455,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       break;
-
+ 
     default:
       break;
     }
@@ -7361,7 +7425,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       break;
 
-
     case PT_UPDATE:
       specptr = &statement->info.update.spec;
       where_part = &statement->info.update.search_cond;
@@ -7563,6 +7626,10 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  assert (false);
 	}
+      break;
+
+    case PT_MERGE:
+      /* This is performed for the generated insert and update queries */
       break;
 
 #if 0				/* this is impossible case */
@@ -8340,6 +8407,36 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  PT_INTERNAL_ERROR (parser, "translate");
 	}
+      break;
+
+    case PT_MERGE:
+      {
+	bool link_spec = false;
+	if (statement->info.merge.into->next == NULL)
+	  {
+	    statement->info.merge.into->next = statement->info.merge.using;
+	    link_spec = true;
+	  }
+	spec = statement->info.merge.into;
+
+	while (spec && spec->info.spec.id != spec_id)
+	  {
+	    spec = spec->next;
+	  }
+	if (spec)
+	  {
+	    statement = mq_fix_derived (parser, statement, spec);
+	  }
+	else
+	  {
+	    PT_INTERNAL_ERROR (parser, "translate");
+	  }
+
+	if (link_spec)
+	  {
+	    statement->info.merge.into->next = NULL;
+	  }
+      }
       break;
 
     case PT_UNION:

@@ -157,6 +157,9 @@ extern int do_check_insert_trigger (PARSER_CONTEXT * parser,
 extern int do_check_update_trigger (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
 				    PT_DO_FUNC * do_func);
+extern int do_check_merge_trigger (PARSER_CONTEXT * parser,
+				   PT_NODE * statement,
+				   PT_DO_FUNC * do_func);
 
 extern int do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -188,4 +191,9 @@ extern int do_execute_session_statement (PARSER_CONTEXT * parser,
 					 PT_NODE * statement);
 extern int do_evaluate_default_expr (PARSER_CONTEXT * parser,
 				     PT_NODE * class_name);
+
+extern int do_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 #endif /* _EXECUTE_STATEMENT_H_ */

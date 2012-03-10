@@ -56,6 +56,7 @@
 #include "csql.h"
 #include "locator_cl.h"
 #include "network_interface_cl.h"
+#include "locale_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif
@@ -1963,5 +1964,468 @@ print_alterdbhost_usage:
 				   ALTERDBHOST_MSG_USAGE),
 	   basename (arg->argv0));
 error_exit:
+  return EXIT_FAILURE;
+}
+
+/*
+ * genlocale() - generate locales binary files
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+genlocale (UTIL_FUNCTION_ARG * arg)
+{
+  char *locale_str = NULL;
+  char *input_path = NULL;
+  char *output_path = NULL;
+  bool is_scan_locales = false;
+  bool is_verbose = false;
+  LOCALE_FILE *lf = NULL;
+  LOCALE_FILE lf_one;
+  int count_loc = 0, i;
+  bool need_free_lf = false;
+  char er_msg_file[PATH_MAX];
+  int str_count = 0;
+  UTIL_ARG_MAP *arg_map = NULL;
+
+  assert (arg != NULL);
+
+  arg_map = arg->arg_map;
+
+  if (!arg->valid_arg)
+    {
+      goto print_genlocale_usage;
+    }
+
+  str_count = utility_get_option_string_table_size (arg_map);
+  if (str_count == 0)
+    {
+      is_scan_locales = true;
+      locale_str = NULL;
+    }
+  else if (str_count == 1)
+    {
+      locale_str =
+	utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+      if (locale_str == NULL)
+	{
+	  goto print_genlocale_usage;
+	}
+    }
+  else
+    {
+      goto print_genlocale_usage;
+    }
+
+  is_verbose = utility_get_option_bool_value (arg_map, GENLOCALE_VERBOSE_S);
+
+  input_path =
+    utility_get_option_string_value (arg_map, GENLOCALE_INPUT_PATH_S, 0);
+
+  output_path =
+    utility_get_option_string_value (arg_map, GENLOCALE_OUTPUT_PATH_S, 0);
+
+  if ((input_path != NULL || output_path != NULL) && is_scan_locales)
+    {
+      goto print_genlocale_usage;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s.err", arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (is_scan_locales)
+    {
+      if (locale_get_cfg_locales (&lf, &count_loc, false) != NO_ERROR)
+	{
+	  goto error;
+	}
+      need_free_lf = true;
+      if (is_verbose)
+	{
+	  printf ("\n\nFound %d locale files\n\n", count_loc);
+	}
+    }
+  else
+    {
+      lf = &lf_one;
+
+      memset (lf, 0, sizeof (LOCALE_FILE));
+
+      assert (locale_str != NULL);
+
+      lf->locale_name = strdup (locale_str);
+      if (lf->locale_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, strlen (locale_str));
+	  goto error;
+	}
+
+      if (input_path != NULL)
+	{
+	  lf->ldml_file = strdup (input_path);
+	  if (lf->ldml_file == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_path));
+	      goto error;
+	    }
+	}
+
+      if (output_path != NULL)
+	{
+	  lf->bin_file = strdup (output_path);
+	  if (lf->bin_file == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (output_path));
+	      goto error;
+	    }
+	}
+
+      count_loc = 1;
+    }
+
+  for (i = 0; i < count_loc; i++)
+    {
+      if (locale_check_and_set_default_files (&(lf[i]), false) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (is_verbose)
+	{
+	  printf ("*********************************\n");
+	  printf ("Compile locale:\n");
+	  printf ("Locale string: %s\n", lf[i].locale_name);
+	  printf ("Input LDML: %s\n", lf[i].ldml_file);
+	  printf ("Output Binary: %s\n", lf[i].bin_file);
+	}
+
+      if (locale_compile_locale (&(lf[i]), is_verbose) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (lf[i].locale_name != NULL)
+	{
+	  free_and_init (lf[i].locale_name);
+	}
+      if (lf[i].ldml_file != NULL)
+	{
+	  free_and_init (lf[i].ldml_file);
+	}
+      if (lf[i].bin_file != NULL)
+	{
+	  free_and_init (lf[i].bin_file);
+	}
+    }
+
+  if (need_free_lf)
+    {
+      free_and_init (lf);
+    }
+
+  locale_destroy_shared_data ();
+
+  return EXIT_SUCCESS;
+
+error:
+  printf ("%s\n", db_error_string (3));
+
+  /* Deallocate any allocated structures */
+  for (i = 0; i < count_loc; i++)
+    {
+      if (lf[i].locale_name != NULL)
+	{
+	  free_and_init (lf[i].locale_name);
+	}
+      if (lf[i].ldml_file != NULL)
+	{
+	  free_and_init (lf[i].ldml_file);
+	}
+      if (lf[i].bin_file != NULL)
+	{
+	  free_and_init (lf[i].bin_file);
+	}
+    }
+
+  if (need_free_lf)
+    {
+      free_and_init (lf);
+    }
+
+  locale_destroy_shared_data ();
+
+  return EXIT_FAILURE;
+
+print_genlocale_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_GENLOCALE,
+				   GENLOCALE_MSG_USAGE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+}
+
+/*
+ * dumplocale() - generate locales binary files
+ *   return: error status
+ */
+int
+dumplocale (UTIL_FUNCTION_ARG * arg)
+{
+  char *locale_str = NULL;
+  char *input_path = NULL;
+  char *alphabet_type = NULL;
+  LOCALE_DATA ld;
+  bool is_scan_locales = false;
+  LOCALE_FILE *lf = NULL;
+  LOCALE_FILE lf_one;
+  int dl_settings = 0;
+  int str_count, i, count_loc, loc_index;
+  int start_value = 0;
+  int end_value = 0;
+  UTIL_ARG_MAP *arg_map = NULL;
+  int err_status = NO_ERROR;
+
+  assert (arg != NULL);
+  arg_map = arg->arg_map;
+
+  if (!arg->valid_arg)
+    {
+      goto print_dumplocale_usage;
+    }
+
+  str_count = utility_get_option_string_table_size (arg_map);
+
+  locale_str =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+
+  input_path =
+    utility_get_option_string_value (arg_map, DUMPLOCALE_INPUT_PATH_S, 0);
+
+  if (utility_get_option_bool_value (arg_map, DUMPLOCALE_CALENDAR_S))
+    {
+      dl_settings |= DUMPLOCALE_IS_CALENDAR;
+    }
+
+  if (utility_get_option_bool_value (arg_map, DUMPLOCALE_NUMBERING_S))
+    {
+      dl_settings |= DUMPLOCALE_IS_NUMBERING;
+    }
+
+  alphabet_type =
+    utility_get_option_string_value (arg_map, DUMPLOCALE_ALPHABET_S, 0);
+  if (alphabet_type != NULL)
+    {
+      if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_S) == 0 ||
+	  strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_L) == 0)
+	{
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET;
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET_LOWER;
+	  dl_settings &= ~DUMPLOCALE_IS_ALPHABET_UPPER;
+	}
+      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_S) == 0 ||
+	       strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_L) == 0)
+	{
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET;
+	  dl_settings &= ~DUMPLOCALE_IS_ALPHABET_LOWER;
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET_UPPER;
+	}
+      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_ALL_CASING) == 0)
+	{
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET;
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET_LOWER;
+	  dl_settings |= DUMPLOCALE_IS_ALPHABET_UPPER;
+	}
+    }
+
+  alphabet_type = NULL;
+  /* check if --identifier-alphabet is set. */
+  alphabet_type =
+    utility_get_option_string_value (arg_map,
+				     DUMPLOCALE_IDENTIFIER_ALPHABET_S, 0);
+  if (alphabet_type != NULL)
+    {
+      if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_S) == 0 ||
+	  strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_L) == 0)
+	{
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET;
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER;
+	  dl_settings &= ~DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER;
+	}
+      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_S) == 0 ||
+	       strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_L) == 0)
+	{
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET;
+	  dl_settings &= ~DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER;
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER;
+	}
+      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_ALL_CASING) == 0)
+	{
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET;
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER;
+	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER;
+	}
+    }
+
+  if (utility_get_option_bool_value (arg_map, DUMPLOCALE_COLLATION_S))
+    {
+      dl_settings |= DUMPLOCALE_IS_COLLATION_CP_ORDER;
+    }
+
+  if (utility_get_option_bool_value (arg_map, DUMPLOCALE_WEIGHT_ORDER_S))
+    {
+      dl_settings |= DUMPLOCALE_IS_COLLATION_WEIGHT_ORDER;
+    }
+  start_value =
+    utility_get_option_int_value (arg_map, DUMPLOCALE_START_VALUE_S);
+  end_value = utility_get_option_int_value (arg_map, DUMPLOCALE_END_VALUE_S);
+
+  /* Check command line arguments for incompatibilities. */
+  if (locale_str != NULL && input_path != NULL)
+    {
+      err_status = ER_LOC_GEN;
+      LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_DUMPLOCALE,
+					DUMPLOCALE_MSG_INCOMPAT_INPUT_SEL),
+			ER_LOC_GEN, true);
+      goto print_dumplocale_usage;
+    }
+  if (start_value > end_value)
+    {
+      err_status = ER_LOC_GEN;
+      LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_DUMPLOCALE,
+					DUMPLOCALE_MSG_INVALID_CP_RANGE),
+			ER_LOC_GEN, true);
+      goto print_dumplocale_usage;
+    }
+
+  /* Start the dumping process. */
+  /* Prepare the locale file(s) to be dumped. */
+  memset (&lf_one, 0, sizeof (LOCALE_FILE));
+  memset (&ld, 0, sizeof (LOCALE_DATA));
+
+  if (locale_str != NULL)
+    {
+      /* Find binary file corresponding to the selected locale. */
+      count_loc = 1;
+      lf = &lf_one;
+      if (locale_str == NULL || strlen (locale_str) > LOC_LOCALE_STR_SIZE)
+	{
+	  err_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
+					    MSGCAT_UTIL_SET_DUMPLOCALE,
+					    DUMPLOCALE_MSG_INVALID_LOCALE),
+			    err_status, true);
+	  goto error;
+	}
+      lf->locale_name = malloc (strlen (locale_str) + 1);
+      if (lf->locale_name == NULL)
+	{
+	  err_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
+	  goto error;
+	}
+      strcpy (lf->locale_name, locale_str);
+      err_status = locale_check_and_set_default_files (lf, true);
+      if (err_status != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else if (input_path != NULL)
+    {
+      /* Prepare the selected binary file. */
+      count_loc = 1;
+      lf = &lf_one;
+      lf_one.bin_file = malloc (strlen (input_path) + 1);
+      if (lf_one.bin_file == NULL)
+	{
+	  err_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
+	  goto error;
+	}
+      strcpy (lf_one.bin_file, input_path);
+      err_status = locale_check_and_set_default_files (lf, true);
+      if (err_status != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      /* Parse cubrid_locales.txt and select all locale files. */
+      err_status = locale_get_cfg_locales (&lf, &count_loc, false);
+    }
+
+  if (err_status != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Do the actual dumping. */
+  for (loc_index = 0; loc_index < count_loc; loc_index++)
+    {
+      err_status =
+	locale_check_and_set_default_files (&(lf[loc_index]), true);
+      if (err_status != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      memset (&ld, 0, sizeof (LOCALE_DATA));
+      err_status = locale_load_from_bin (&(lf[loc_index]), &ld);
+      if (err_status != NO_ERROR)
+	{
+	  goto error;
+	}
+      err_status =
+	locale_dump (&ld, &(lf[loc_index]), dl_settings, start_value,
+		     end_value);
+      if (err_status != NO_ERROR)
+	{
+	  goto error;
+	}
+      locale_destroy_data (&ld);
+      locale_destroy_shared_data ();
+    }
+
+error:
+  for (i = 0; i < count_loc; i++)
+    {
+      if (lf[i].bin_file != NULL)
+	{
+	  free (lf[i].bin_file);
+	}
+      if (lf[i].ldml_file != NULL)
+	{
+	  free (lf[i].ldml_file);
+	}
+      if (lf[i].locale_name != NULL)
+	{
+	  free (lf[i].locale_name);
+	}
+    }
+
+  if (lf != &lf_one)
+    {
+      free (lf);
+      lf = NULL;
+    }
+
+  locale_destroy_data (&ld);
+  locale_destroy_shared_data ();
+
+  return err_status;
+
+print_dumplocale_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_DUMPLOCALE,
+				   DUMPLOCALE_MSG_USAGE),
+	   basename (arg->argv0));
+
   return EXIT_FAILURE;
 }

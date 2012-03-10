@@ -243,6 +243,9 @@
 #define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size)\
         db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size)
 
+#define DB_MAKE_ENUMERATION(value, index, str, size) \
+	db_make_enumeration(value, index, str, size)
+
 #define DB_MAKE_RESULTSET(value, handle) db_make_resultset(value, handle)
 
 #define db_get_collection db_get_set
@@ -408,12 +411,13 @@ typedef enum
   DB_TYPE_DATETIME = 32,
   DB_TYPE_BLOB = 33,
   DB_TYPE_CLOB = 34,
+  DB_TYPE_ENUMERATION = 35,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_CLOB
+  DB_TYPE_LAST = DB_TYPE_ENUMERATION
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -478,9 +482,28 @@ typedef enum
 {
   DB_CURRENCY_DOLLAR,
   DB_CURRENCY_YEN,
-  DB_CURRENCY_POUND,
+  DB_CURRENCY_BRITISH_POUND,
   DB_CURRENCY_WON,
   DB_CURRENCY_TL,
+  DB_CURRENCY_CAMBODIAN_RIEL,
+  DB_CURRENCY_CHINESE_RENMINBI,
+  DB_CURRENCY_INDIAN_RUPEE,
+  DB_CURRENCY_RUSSIAN_RUBLE,
+  DB_CURRENCY_AUSTRALIAN_DOLLAR,
+  DB_CURRENCY_CANADIAN_DOLLAR,
+  DB_CURRENCY_BRASILIAN_REAL,
+  DB_CURRENCY_ROMANIAN_LEU,
+  DB_CURRENCY_EURO,
+  DB_CURRENCY_SWISS_FRANC,
+  DB_CURRENCY_DANISH_KRONE,
+  DB_CURRENCY_NORWEGIAN_KRONE,
+  DB_CURRENCY_BULGARIAN_LEV,
+  DB_CURRENCY_VIETNAMESE_DONG,
+  DB_CURRENCY_CZECH_KORUNA,
+  DB_CURRENCY_POLISH_ZLOTY,
+  DB_CURRENCY_SWEDISH_KRONA,
+  DB_CURRENCY_CROATIAN_KUNA,
+  DB_CURRENCY_SERBIAN_DINAR,
   DB_CURRENCY_NULL
 } DB_CURRENCY;
 
@@ -628,6 +651,22 @@ typedef DB_CHAR DB_BIT;
 
 typedef int DB_RESULTSET;
 
+/* Structure for an ENUMERATION element */
+typedef struct db_enum_element DB_ENUM_ELEMENT;
+struct db_enum_element
+{
+  unsigned short short_val;	/* element index */
+  DB_CHAR str_val;		/* element string */
+};
+
+/* Structure for an ENUMERATION */
+typedef struct db_enumeration DB_ENUMERATION;
+struct db_enumeration
+{
+  unsigned short count;		/* count of enumeration elements */
+  DB_ENUM_ELEMENT *elements;	/* array of enumeration elements */
+};
+
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
@@ -657,6 +696,7 @@ union db_data
   DB_NUMERIC num;
   DB_CHAR ch;
   DB_RESULTSET rset;
+  DB_ENUM_ELEMENT enumeration;
 };
 
 /* This is the primary structure used for passing values in and out of
@@ -900,6 +940,9 @@ extern int db_make_varnchar (DB_VALUE * value,
 			     const int nchar_str_byte_size);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
+extern int db_make_enumeration (DB_VALUE * value, unsigned short index,
+				DB_C_CHAR str, int size);
+
 extern DB_CURRENCY db_get_currency_default (void);
 
 extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
@@ -932,7 +975,9 @@ extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
 extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
 extern int db_get_string_size (const DB_VALUE * value);
-
+extern DB_C_SHORT db_get_enum_short (const DB_VALUE * value);
+extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
+extern int db_get_enum_string_size (const DB_VALUE * value);
 extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);

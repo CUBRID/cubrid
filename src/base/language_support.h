@@ -31,6 +31,7 @@
 #include <stddef.h>
 
 #include "intl_support.h"
+#include "locale_support.h"
 
 /*
  * currently recognized language names.
@@ -76,23 +77,48 @@ struct db_charset
 typedef struct lang_locale_data LANG_LOCALE_DATA;
 struct lang_locale_data
 {
-  const unsigned int *alpha_upper_cp;	/* alphabet codepoints for upper case */
-  const unsigned int *alpha_lower_cp;	/* alphabet codepoints for lower case */
-  const unsigned char *alpha_is_letter_cp;	/* alphabet codepoints:
-						 * 1 - is letter, 0 - otherwise */
-  const unsigned int *alpha_weight;	/* weight for codepoints */
-  const unsigned int *alpha_next_char;	/* next alphetic char (as codepoint) */
-  int alpha_cnt;		/* number of (extended) alphabet characters */
+  const char *lang_name;
+  INTL_LANG lang_id;
+  INTL_CODESET codeset;
+
+  ALPHABET_DATA alphabet;	/* data for lower / uppper */
+  ALPHABET_DATA ident_alphabet;	/* data for lower / uppper for identifiers */
+
+  COLL_DATA coll;		/* collation data */
+
+  TEXT_CONVERSION *txt_conv;	/* console text conversion */
+
+
   bool is_initialized;		/* init status */
+
   const char *time_format;	/* default time format */
   const char *date_format;	/* default date format */
   const char *datetime_format;	/* default datetime format */
   const char *timestamp_format;	/* default timestamp format */
-  void (*initloc) (void);	/* locale data init function */
+
+  const char *day_short_name[CAL_DAY_COUNT];
+  const char *day_name[CAL_DAY_COUNT];
+  const char *month_short_name[CAL_MONTH_COUNT];
+  const char *month_name[CAL_MONTH_COUNT];
+  const char *am_pm[CAL_AM_PM_COUNT];
+
+  const char *day_short_parse_order;
+  const char *day_parse_order;
+  const char *month_short_parse_order;
+  const char *month_parse_order;
+  const char *am_pm_parse_order;
+
+  char number_decimal_sym;
+  char number_group_sym;
+  DB_CURRENCY default_currency_code;
+
+  void (*initloc) (LANG_LOCALE_DATA * ld);	/* locale data init function */
   int (*fastcmp) (const unsigned char *string1, const int size1,	/* fast string compare */
 		  const unsigned char *string2, const int size2);
-  int (*next_alpha_char) (const unsigned char *cur_char,	/* function to get next alphabetical character */
-			  unsigned char *next_char);
+  /* function to get collatable character sequence (in sort order) */
+  int (*next_coll_seq) (const unsigned char *seq, const int size,
+			unsigned char *next_seq, int *len_next);
+  void *user_data;		/* pointer to user locale data */
 };
 
 #ifdef __cplusplus
@@ -101,8 +127,11 @@ extern "C"
 #endif
 
   extern bool lang_init (void);
+  extern bool lang_init_full (void);
   extern void lang_final (void);
-  extern const char *lang_name (void);
+  extern bool lang_check_init (void);
+  extern const char *lang_get_Loc_name (void);
+  extern const char *lang_get_Lang_name (void);
   extern INTL_LANG lang_id (void);
   extern INTL_CODESET lang_charset (void);
   extern int lang_loc_bytes_per_char (void);
@@ -129,8 +158,7 @@ extern "C"
 				       const DB_TYPE type);
   extern char lang_digit_grouping_symbol (const INTL_LANG lang_id);
   extern char lang_digit_fractional_symbol (const INTL_LANG lang_id);
-  extern unsigned int lang_unicode_lower_case_ex_cp (const unsigned int cp);
-  extern unsigned int lang_unicode_upper_case_ex_cp (const unsigned int cp);
+  extern TEXT_CONVERSION *lang_get_txt_conv (void);
 
 #if !defined (SERVER_MODE)
   extern void lang_server_charset_init (void);

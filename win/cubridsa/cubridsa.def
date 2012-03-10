@@ -138,6 +138,8 @@ EXPORTS
 	applylogdb
 	statdump
 	acldb
+	genlocale
+	dumplocale
 
 ;
 ;	enable below two functions when
@@ -378,6 +380,9 @@ EXPORTS
     db_get_db_value_query_result
     db_get_double
     db_get_elo
+    db_get_enum_short
+    db_get_enum_string
+    db_get_enum_string_size
     db_get_error
     db_get_errors
     db_get_expression
@@ -475,6 +480,7 @@ EXPORTS
     db_make_datetime
     db_make_double
     db_make_elo
+    db_make_enumeration    
     db_make_error
     db_make_float
     db_make_int

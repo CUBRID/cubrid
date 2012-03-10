@@ -190,6 +190,8 @@ struct groupby_state
   int rollup_levels;
 
   SORT_CMP_FUNC *cmp_fn;
+  LK_COMPOSITE_LOCK *composite_lock;
+  int upd_del_class_cnt;
 };
 
 typedef struct analytic_state ANALYTIC_STATE;
@@ -509,6 +511,13 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl,
 					   XASL_STATE * xasl_state);
+static int qexec_add_composite_lock (THREAD_ENTRY * thread_p,
+				     REGU_VARIABLE_LIST
+				     reg_var_list,
+				     VAL_LIST * vl,
+				     XASL_STATE * xasl_state,
+				     LK_COMPOSITE_LOCK *
+				     composite_lock, int upd_del_cls_cnt);
 static int qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				    XASL_STATE * xasl_state,
 				    QFILE_TUPLE_RECORD * tplrec);
@@ -969,43 +978,78 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 }
 
 /*
- * qexec_end_one_iteration () -
+ * qexec_add_composite_lock () -
  *   return: NO_ERROR or ER_code
- *   xasl(in)   :
- *   xasl_state(in)     :
- *   tplrec(in) :
- *
- * Note: Processing to be accomplished when a candidate row has been qualified.
+ *   thread_p(in)   :
+ *   reg_var_list(in/out) : list of regu variables to be fetched. First
+ *	  upd_del_cls_cnt pairs of variables will be loaded. Each pair will
+ *	  contain instance OID and class OID.
+ *   xasl_state(in) : xasl state. Needed for fetch_peek_dbval.
+ *   composite_lock(in/out) : structure that will be filled with composite
+ *	  locks.
+ *   upd_del_cls_cnt(in): number of classes for wich rows will be updated or
+ *	  deleted.
  */
 static int
-qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-			 XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
+qexec_add_composite_lock (THREAD_ENTRY * thread_p,
+			  REGU_VARIABLE_LIST reg_var_list,
+			  VAL_LIST * vl,
+			  XASL_STATE * xasl_state,
+			  LK_COMPOSITE_LOCK * composite_lock,
+			  int upd_del_cls_cnt)
 {
-  DB_VALUE *dbval, element;
-  REGU_VARIABLE_LIST reg_varptr;
-  OID instance_oid, class_oid;
-  DB_TYPE typ;
-  QFILE_TUPLE_DESCRIPTOR *tdp;
-  QFILE_LIST_ID *xlist_id;
-  QPROC_TPLDESCR_STATUS tpldescr_status;
   int ret = NO_ERROR, idx;
+  DB_VALUE *dbval, element;
+  DB_TYPE typ;
+  OID instance_oid, class_oid;
+  REGU_VARIABLE_LIST initial_reg_var_list = reg_var_list;
 
-  if (xasl->composite_locking)
+  /* By convention, the first upd_del_class_cnt pairs
+   * of values must be: instance OID - class OID
+   */
+
+  idx = 0;
+  while (reg_var_list && idx < upd_del_cls_cnt)
     {
-      /* By convention, the first xasl->upd_del_class_cnt pairs
-       * of values must be: instance OID - class OID
-       */
-      idx = 0;
-      reg_varptr = xasl->outptr_list->valptrp;
-      while (reg_varptr && idx < xasl->upd_del_class_cnt)
+      if (reg_var_list->next == NULL)
 	{
-	  if (reg_varptr->next == NULL)
+	  GOTO_EXIT_ON_ERROR;
+	}
+      ret =
+	fetch_peek_dbval (thread_p, &reg_var_list->value, &xasl_state->vd,
+			  NULL, NULL, NULL, &dbval);
+      if (ret != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      typ = DB_VALUE_DOMAIN_TYPE (dbval);
+      if (typ == DB_TYPE_VOBJ)
+	{
+	  /* grab the real oid */
+	  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	  if (ret != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
+	  dbval = &element;
+	  typ = DB_VALUE_DOMAIN_TYPE (dbval);
+	}
+
+      if (typ != DB_TYPE_OID)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      reg_var_list = reg_var_list->next;
+
+      if (!DB_IS_NULL (dbval))
+	{
+	  COPY_OID (&instance_oid, DB_GET_OID (dbval));
+
 	  ret =
-	    fetch_peek_dbval (thread_p, &reg_varptr->value, &xasl_state->vd,
-			      NULL, NULL, NULL, &dbval);
+	    fetch_peek_dbval (thread_p, &reg_var_list->value,
+			      &xasl_state->vd, NULL, NULL, NULL, &dbval);
 	  if (ret != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -1029,51 +1073,60 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  if (!DB_IS_NULL (dbval))
+	  COPY_OID (&class_oid, DB_GET_OID (dbval));
+
+	  ret =
+	    lock_add_composite_lock (thread_p, composite_lock,
+				     &instance_oid, &class_oid);
+	  if (ret != NO_ERROR)
 	    {
-	      COPY_OID (&instance_oid, DB_GET_OID (dbval));
-
-	      reg_varptr = reg_varptr->next;
-
-	      ret =
-		fetch_peek_dbval (thread_p, &reg_varptr->value,
-				  &xasl_state->vd, NULL, NULL, NULL, &dbval);
-	      if (ret != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      typ = DB_VALUE_DOMAIN_TYPE (dbval);
-	      if (typ == DB_TYPE_VOBJ)
-		{
-		  /* grab the real oid */
-		  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
-		  if (ret != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  dbval = &element;
-		  typ = DB_VALUE_DOMAIN_TYPE (dbval);
-		}
-
-	      if (typ != DB_TYPE_OID)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      COPY_OID (&class_oid, DB_GET_OID (dbval));
-
-	      ret =
-		lock_add_composite_lock (thread_p, &xasl->composite_lock,
-					 &instance_oid, &class_oid);
-	      if (ret != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
+	      GOTO_EXIT_ON_ERROR;
 	    }
+	}
 
-	  idx++;
-	  reg_varptr = reg_varptr->next;
+      idx++;
+      reg_var_list = reg_var_list->next;
+    }
+
+  return ret;
+
+exit_on_error:
+
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * qexec_end_one_iteration () -
+ *   return: NO_ERROR or ER_code
+ *   xasl(in)   :
+ *   xasl_state(in)     :
+ *   tplrec(in) :
+ *
+ * Note: Processing to be accomplished when a candidate row has been qualified.
+ */
+static int
+qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+			 XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
+{
+  QFILE_TUPLE_DESCRIPTOR *tdp;
+  QFILE_LIST_ID *xlist_id;
+  QPROC_TPLDESCR_STATUS tpldescr_status;
+  int ret = NO_ERROR;
+
+  if (xasl->composite_locking)
+    {
+      if (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+	{
+	  ret =
+	    qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
+				      xasl->val_list, xasl_state,
+				      &xasl->composite_lock,
+				      xasl->upd_del_class_cnt);
+	  if (ret != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
     }
 
@@ -2947,6 +3000,9 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 	}
     }
 
+  gbstate->composite_lock = NULL;
+  gbstate->upd_del_class_cnt = 0;
+
   return gbstate;
 }
 
@@ -3204,6 +3260,17 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 
   if (ev_res == V_TRUE)
     {
+      if (gbstate->composite_lock != NULL)
+	{
+	  if (qexec_add_composite_lock
+	      (thread_p, gbstate->g_outptr_list->valptrp, gbstate->g_val_list,
+	       xasl_state, gbstate->composite_lock,
+	       gbstate->upd_del_class_cnt) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
       /* make f_valp array */
       xlist_id = gbstate->output_file;
       if ((xlist_id->tpl_descr.f_valp == NULL)
@@ -3689,6 +3756,17 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   gbstate.cmp_fn = (gbstate.key_info.use_original == 1
 		    ? &qfile_compare_partial_sort_record
 		    : &qfile_compare_all_sort_record);
+
+  if (XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+    {
+      gbstate.composite_lock = &xasl->composite_lock;
+      gbstate.upd_del_class_cnt = xasl->upd_del_class_cnt;
+    }
+  else
+    {
+      gbstate.composite_lock = NULL;
+      gbstate.upd_del_class_cnt = 0;
+    }
 
   if (sort_listfile (thread_p, NULL_VOLID,
 		     qfile_get_estimated_pages_for_sorting (list_id,
@@ -7375,6 +7453,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      if (oid == NULL)
 		{
+		  if (assign->constant == NULL)
+		    {
+		      vallist = vallist->next;
+		    }
 		  continue;
 		}
 
@@ -10759,7 +10841,8 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   distinct_needed = (xasl->option == Q_DISTINCT) ? true : false;
 
   /* Acquire the lockset if composite locking is enabled. */
-  if (xasl->composite_locking)
+  if (xasl->composite_locking
+      && (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)))
     {
       if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock) !=
 	  LK_GRANTED)
@@ -11563,6 +11646,16 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      analytic_func_p = analytic_func_p->next;
+	    }
+	}
+
+      if (xasl->composite_locking
+	  && XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+	{
+	  if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock)
+	      != LK_GRANTED)
+	    {
+	      return ER_FAILED;
 	    }
 	}
 

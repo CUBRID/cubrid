@@ -158,7 +158,8 @@ extern "C"
 				  const PT_ERROR_TYPE error_type);
 
   extern void pt_record_error (PARSER_CONTEXT * parser, int stmt_no,
-			       int line_no, int col_no, const char *msg);
+			       int line_no, int col_no, const char *msg,
+			       const char *context);
 
   extern void pt_frob_warning (PARSER_CONTEXT * parser,
 			       const PT_NODE * statement, const char *fmt,
@@ -186,6 +187,8 @@ extern "C"
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser,
 				      PT_NODE * query);
+  extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE
+						       expr_type);
 
   extern int pt_associate_label_with_value_check_reference (const char *label,
 							    DB_VALUE * val);
@@ -241,6 +244,10 @@ extern "C"
 
   extern PT_NODE *pt_dbval_to_value (PARSER_CONTEXT * parser,
 				     const DB_VALUE * val);
+  extern PT_NODE *pt_sm_attribute_default_value_to_node (PARSER_CONTEXT *
+							 parser,
+							 const SM_ATTRIBUTE *
+							 default_value);
   extern DB_VALUE *pt_seq_value_to_db (PARSER_CONTEXT * parser,
 				       PT_NODE * values, DB_VALUE * db_value,
 				       PT_NODE ** el_types);
@@ -260,14 +267,19 @@ extern "C"
 			      PT_NODE * elem_type_list);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser,
 					PT_NODE * arg, PT_TYPE_ENUM new_type,
-					int p, int s);
+					int p, int s, PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser,
 						   PT_NODE * arg,
 						   PT_TYPE_ENUM set_type,
 						   PT_NODE * set_data);
   extern int pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser,
 					       PT_NODE * query,
-					       PT_TYPE_ENUM new_type);
+					       PT_TYPE_ENUM new_type,
+					       PT_NODE * data_type);
+
+  extern PT_NODE *pt_append_query_select_list (PARSER_CONTEXT * parser,
+					       PT_NODE * query,
+					       PT_NODE * attrs);
 
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *,
 					   DB_VALUE *);
@@ -563,8 +575,8 @@ extern "C"
 				    void *arg, int *continue_walk);
   extern PT_NODE *pt_find_spec_post (PARSER_CONTEXT * parser, PT_NODE * node,
 				     void *arg, int *continue_walk);
-  extern PT_NODE *pt_find_spec_in_from_list (PARSER_CONTEXT * parser,
-					     const PT_NODE * from,
+  extern PT_NODE *pt_find_spec_in_statement (PARSER_CONTEXT * parser,
+					     const PT_NODE * stmt,
 					     const PT_NODE * name);
   extern PT_NODE *pt_is_aggregate_node (PARSER_CONTEXT * parser,
 					PT_NODE * tree, void *arg,
@@ -785,7 +797,7 @@ extern "C"
   extern PT_OP_TYPE pt_op_type_from_default_expr (DB_DEFAULT_EXPR_TYPE
 						  expr_type);
   extern void pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
-					    PT_NODE * update_statement);
+					    PT_NODE * statement);
   extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
 					    PT_NODE * delete_statement);
   extern void pt_init_assignments_helper (PARSER_CONTEXT * parser,

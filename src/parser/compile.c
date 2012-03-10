@@ -118,6 +118,9 @@ static PT_NODE *pt_set_locks_for_parenthesized_entity_list (PARSER_CONTEXT *
 static int pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser,
 					  PT_CLASS_LOCKS * lcks,
 					  PT_NODE * statement);
+static int pt_fix_lck_classes_for_merge (PARSER_CONTEXT * parser,
+					 PT_CLASS_LOCKS * lcks,
+					 PT_NODE * statement);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str);
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *arg,
@@ -459,6 +462,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+    case PT_MERGE:
       break;
     default:
       return statement;
@@ -484,7 +488,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       pt_count_names, &cnt, NULL, NULL);
       lcks.num_classes += cnt;
     }
-  else if (statement->node_type == PT_UPDATE)
+  else if (statement->node_type == PT_UPDATE
+	   || statement->node_type == PT_MERGE)
     {
       /* We first set a DB_FETCH_CLREAD_INSTREAD lock for each encountered
          spec and then a DB_FETCH_CLREAD_INSTWRITE lock for each spec that
@@ -546,6 +551,17 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Set DB_FETCH_CLREAD_INSTWRITE for each spec that will be updated */
       lcks.lock_type = DB_FETCH_CLREAD_INSTWRITE;
       error = pt_fix_lck_classes_for_update (parser, &lcks, statement);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+  else if (statement->node_type == PT_MERGE)
+    {
+      /* Set DB_FETCH_CLREAD_INSTWRITE for each class to be updated
+       * or inserted into */
+      lcks.lock_type = DB_FETCH_CLREAD_INSTWRITE;
+      error = pt_fix_lck_classes_for_merge (parser, &lcks, statement);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -726,6 +742,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+    case PT_MERGE:
       lcks->lock_type = DB_FETCH_CLREAD_INSTREAD;
       break;
     default:
@@ -1039,7 +1056,7 @@ pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 				  statement->info.update.assignment);
       while (pt_get_next_assignment (&ea))
 	{
-	  found_spec = pt_find_spec_in_from_list (parser, statement, ea.lhs);
+	  found_spec = pt_find_spec_in_statement (parser, statement, ea.lhs);
 	  if (found_spec == NULL || found_spec->info.spec.entity_name == NULL)
 	    {
 	      PT_INTERNAL_ERROR (parser, "invalid spec");
@@ -1702,6 +1719,51 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
     }
 
   parser_free_tree (parser, tmp_trigger);
+
+  return error;
+}
+
+/*
+ * pt_fix_lck_classes_for_merge () -
+ *   return:
+ *   parser(in):
+ *   lcks(in/out):
+ *   statement(in):
+ */
+static int
+pt_fix_lck_classes_for_merge (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
+			      PT_NODE * statement)
+{
+  PT_NODE *spec = statement->info.merge.into;
+  int error = NO_ERROR;
+
+  /* check for spec null pointer */
+  if (spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid spec");
+      return ER_GENERIC_ERROR;
+    }
+  
+  /* check if this is a parenthesized entity list. If so then need special
+   * treatment */
+  if (spec->info.spec.entity_name
+      && spec->info.spec.entity_name->node_type != PT_NAME)
+    {
+      parser_walk_tree (parser, spec->info.spec.entity_name,
+			pt_set_locks_for_parenthesized_entity_list, lcks,
+			NULL, NULL);
+    }
+  else
+    {
+      /* add lock for the spec if it is not already in the locks list */
+      if (spec->info.spec.entity_name
+	  && !pt_in_lck_array (lcks,
+			       spec->info.spec.entity_name->
+			       info.name.original))
+	{
+	  error = pt_add_lock_class (parser, lcks, spec);
+	}
+    }
 
   return error;
 }

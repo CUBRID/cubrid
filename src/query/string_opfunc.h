@@ -33,6 +33,7 @@
 #include "dbtype.h"
 #include "numeric_opfunc.h"
 #include "regex38a.h"
+#include "language_support.h"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -60,8 +61,8 @@
   (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
 #define QSTR_COMPARE(string1, size1, string2, size2) \
   (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
-#define QSTR_NEXT_ALPHA_CHAR(cur_chr, next_chr) \
-  (lang_locale ())->next_alpha_char ((cur_chr), (next_chr))
+#define QSTR_NEXT_ALPHA_CHAR(cur_chr, size, next_chr, len) \
+  (lang_locale ())->next_coll_seq ((cur_chr), (size), (next_chr), (len))
 
 /*
  * These are the sizes for scratch buffers for formatting numbers, dates,
@@ -377,4 +378,5 @@ extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
 extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
 		    const DB_VALUE * to_base, DB_VALUE * result);
+extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);
 #endif /* _STRING_OPFUNC_H_ */

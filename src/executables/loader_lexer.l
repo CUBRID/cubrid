@@ -262,6 +262,16 @@ static LDR_STRING *loader_make_string_by_buffer (void);
     return YEN_SYMBOL;
 }
 
+\\[J][P][Y] {
+    PRINT ("YEN_SYMBOL %s\n", yytext);
+    return YEN_SYMBOL;
+}
+
+\\[K][R][W] {
+    PRINT ("WON_SYMBOL %s\n", yytext);
+    return WON_SYMBOL;
+}
+
 \xa3\xdc {
     PRINT ("WON_SYMBOL %s\n", yytext);
     return WON_SYMBOL;
@@ -270,6 +280,106 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 \\[T][L] {
     PRINT ("TURKISH_LIRA_CURRENCY %s\n", yytext);
     return TURKISH_LIRA_CURRENCY;
+}
+
+\\[G][B][P] {
+    PRINT ("BRITISH_POUND_SYMBOL %s\n", yytext);
+    return BRITISH_POUND_SYMBOL;
+}
+
+\\[K][H][R] {
+    PRINT ("CAMBODIAN_RIEL_SYMBOL %s\n", yytext);
+    return CAMBODIAN_RIEL_SYMBOL;
+}
+
+\\[C][N][Y] {
+    PRINT ("CHINESE_RENMINBI_SYMBOL %s\n", yytext);
+    return CHINESE_RENMINBI_SYMBOL;
+}
+
+\\[I][N][R] {
+    PRINT ("INDIAN_RUPEE_SYMBOL %s\n", yytext);
+    return INDIAN_RUPEE_SYMBOL;
+}
+
+\\[R][U][B] {
+    PRINT ("RUSSIAN_RUBLE_SYMBOL %s\n", yytext);
+    return RUSSIAN_RUBLE_SYMBOL;
+}
+
+\\[A][U][D] {
+    PRINT ("AUSTRALIAN_DOLLAR_SYMBOL %s\n", yytext);
+    return AUSTRALIAN_DOLLAR_SYMBOL;
+}
+
+\\[C][A][D] {
+    PRINT ("CANADIAN_DOLLAR_SYMBOL %s\n", yytext);
+    return CANADIAN_DOLLAR_SYMBOL;
+}
+
+\\[B][R][L] {
+    PRINT ("BRASILIAN_REAL_SYMBOL %s\n", yytext);
+    return BRASILIAN_REAL_SYMBOL;
+}
+
+\\[R][O][N] {
+    PRINT ("ROMANIAN_LEU_SYMBOL %s\n", yytext);
+    return ROMANIAN_LEU_SYMBOL;
+}
+
+\\[E][U][R] {
+    PRINT ("EURO_SYMBOL %s\n", yytext);
+    return EURO_SYMBOL;
+}
+
+\\[C][H][F] {
+    PRINT ("SWISS_FRANC_SYMBOL %s\n", yytext);
+    return SWISS_FRANC_SYMBOL;
+}
+
+\\[D][K][K] {
+    PRINT ("DANISH_KRONE_SYMBOL %s\n", yytext);
+    return DANISH_KRONE_SYMBOL;
+}
+
+\\[N][O][K] {
+    PRINT ("NORWEGIAN_KRONE_SYMBOL %s\n", yytext);
+    return NORWEGIAN_KRONE_SYMBOL;
+}
+
+\\[B][G][N] {
+    PRINT ("BULGARIAN_LEV_SYMBOL %s\n", yytext);
+    return BULGARIAN_LEV_SYMBOL;
+}
+
+\\[V][N][D] {
+    PRINT ("VIETNAMESE_DONG_SYMBOL %s\n", yytext);
+    return VIETNAMESE_DONG_SYMBOL;
+}
+
+\\[C][Z][K] {
+    PRINT ("CZECH_KORUNA_SYMBOL %s\n", yytext);
+    return CZECH_KORUNA_SYMBOL;
+}
+
+\\[P][L][N] {
+    PRINT ("POLISH_ZLOTY_SYMBOL %s\n", yytext);
+    return POLISH_ZLOTY_SYMBOL;
+}
+
+\\[S][E][K] {
+    PRINT ("SWEDISH_KRONA_SYMBOL %s\n", yytext);
+    return SWEDISH_KRONA_SYMBOL;
+}
+
+\\[H][R][K] {
+    PRINT ("CROATIAN_KUNA_SYMBOL %s\n", yytext);
+    return CROATIAN_KUNA_SYMBOL;
+}
+
+\\[R][S][D] {
+    PRINT ("SERBIAN_DINAR_SYMBOL %s\n", yytext);
+    return SERBIAN_DINAR_SYMBOL;
 }
 
 \\ {

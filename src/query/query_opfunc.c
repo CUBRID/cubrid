@@ -2132,6 +2132,47 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
   type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
 
+  /* Enumeration */
+  if (type1 == DB_TYPE_ENUMERATION)
+    {
+      if (TP_IS_CHAR_BIT_TYPE (type2))
+	{
+	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+	}
+      else
+	{
+	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
+	}
+
+      error = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = qdata_add_dbval (&cast_value1, dbval2_p, result_p, domain_p);
+      pr_clear_value (&cast_value1);
+      return error;
+    }
+  else if (type2 == DB_TYPE_ENUMERATION)
+    {
+      if (TP_IS_CHAR_BIT_TYPE (type1))
+	{
+	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+	}
+      else
+	{
+	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
+	}
+      error = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = qdata_add_dbval (dbval1_p, &cast_value2, result_p, domain_p);
+      pr_clear_value (&cast_value2);
+      return error;
+    }
+
   /* plus as concat : when both operands are string or bit */
   if (PRM_PLUS_AS_CONCAT == true)
     {
@@ -3775,6 +3816,30 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+
+  if (type1 == DB_TYPE_ENUMERATION)
+    {
+      /* The enumeration will always be casted to SMALLINT */
+      cast_dom1 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
+      error = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      return qdata_subtract_dbval (&cast_value1, dbval2_p, result_p,
+				   domain_p);
+    }
+  else if (type2 == DB_TYPE_ENUMERATION)
+    {
+      cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
+      error = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      return qdata_subtract_dbval (dbval1_p, &cast_value2, result_p,
+				   domain_p);
+    }
 
   /* number - string : cast string to number, substract as numbers */
   if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))

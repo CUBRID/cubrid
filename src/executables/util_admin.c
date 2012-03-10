@@ -591,6 +591,49 @@ static GETOPT_LONG ua_ApplyInfo_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_GenLocale_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {GENLOCALE_INPUT_PATH_S, {ARG_STRING}, {0}},
+  {GENLOCALE_OUTPUT_PATH_S, {ARG_STRING}, {0}},
+  {GENLOCALE_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_GenLocale_Option[] = {
+  {GENLOCALE_INPUT_PATH_L, 1, 0, GENLOCALE_INPUT_PATH_S},
+  {GENLOCALE_INPUT_PATH_L, 1, 0, GENLOCALE_OUTPUT_PATH_S},
+  {GENLOCALE_VERBOSE_L, 0, 0, APPLYINFO_VERBOSE_S},
+  {0, 0, 0, 0}
+};
+
+
+static UTIL_ARG_MAP ua_DumpLocale_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {DUMPLOCALE_INPUT_PATH_S, {ARG_STRING}, {0}},
+  {DUMPLOCALE_CALENDAR_S, {ARG_BOOLEAN}, {0}},
+  {DUMPLOCALE_NUMBERING_S, {ARG_BOOLEAN}, {0}},
+  {DUMPLOCALE_ALPHABET_S, {ARG_STRING}, {0}},
+  {DUMPLOCALE_IDENTIFIER_ALPHABET_S, {ARG_STRING}, {0}},
+  {DUMPLOCALE_COLLATION_S, {ARG_BOOLEAN}, {0}},
+  {DUMPLOCALE_WEIGHT_ORDER_S, {ARG_BOOLEAN}, {0}},
+  {DUMPLOCALE_START_VALUE_S, {ARG_INTEGER}, {0}},
+  {DUMPLOCALE_END_VALUE_S, {ARG_INTEGER}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_DumpLocale_Option[] = {
+  {DUMPLOCALE_INPUT_PATH_L, 1, 0, DUMPLOCALE_INPUT_PATH_S},
+  {DUMPLOCALE_CALENDAR_L, 0, 0, DUMPLOCALE_CALENDAR_S},
+  {DUMPLOCALE_NUMBERING_L, 0, 0, DUMPLOCALE_NUMBERING_S},
+  {DUMPLOCALE_ALPHABET_L, 1, 0, DUMPLOCALE_ALPHABET_S},
+  {DUMPLOCALE_IDENTIFIER_ALPHABET_L, 1, 0, DUMPLOCALE_IDENTIFIER_ALPHABET_S},
+  {DUMPLOCALE_COLLATION_L, 0, 0, DUMPLOCALE_COLLATION_S},
+  {DUMPLOCALE_WEIGHT_ORDER_L, 0, 0, DUMPLOCALE_WEIGHT_ORDER_S},
+  {DUMPLOCALE_START_VALUE_L, 1, 0, DUMPLOCALE_START_VALUE_S},
+  {DUMPLOCALE_END_VALUE_L, 1, 0, DUMPLOCALE_END_VALUE_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 1, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
@@ -650,6 +693,10 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_ApplyInfo_Option, ua_ApplyInfo_Option_Map},
   {ACLDB, CS_ONLY, 1, UTIL_OPTION_ACLDB, "acldb",
    ua_Acl_Option, ua_Acl_Option_Map},
+  {GENLOCALE, SA_ONLY, 1, UTIL_OPTION_GENERATE_LOCALE, "genlocale",
+   ua_GenLocale_Option, ua_GenLocale_Map},
+  {DUMPLOCALE, SA_ONLY, 1, UTIL_OPTION_DUMP_LOCALE, "dumplocale",
+   ua_DumpLocale_Option, ua_DumpLocale_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 
@@ -744,6 +791,7 @@ main (int argc, char *argv[])
   UTILITY_FUNCTION loaded_function;
   int utility_index;
   const char *library_name;
+  bool is_valid_arg = true;
 
   if (argc > 1 && strcmp (argv[1], "--version") == 0)
     {
@@ -760,6 +808,7 @@ main (int argc, char *argv[])
   if (util_parse_argument (&ua_Utility_Map[utility_index], argc - 1, &argv[1])
       != NO_ERROR)
     {
+      is_valid_arg = false;
       argc = 2;
     }
 
@@ -784,6 +833,7 @@ main (int argc, char *argv[])
 	    ua_Utility_Map[utility_index].utility_name;
 	  util_func_arg.argv0 = argv[0];
 	  util_func_arg.argv = argv;
+	  util_func_arg.valid_arg = is_valid_arg;
 	  loaded_function = (UTILITY_FUNCTION) symbol_handle;
 	  status = (*loaded_function) (&util_func_arg);
 	}

@@ -130,7 +130,8 @@ extern int catcls_get_cardinality (THREAD_ENTRY * thread_p,
 				   const char *index_name,
 				   const int key_pos, int *cardinality);
 extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
-					   int *charset_id_p, int *lang_id_p);
+					   int *charset_id_p, char *lang_buf,
+					   const int lang_buf_size);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p,
@@ -1576,10 +1577,29 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	}
     }
 
+  /* enumeration */
+  if (vars[ORC_DOMAIN_ENUMERATION_INDEX].length)
+    {
+      /* enumerations are stored as a collection of strings */
+      TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_STRING);
+      PR_TYPE *seq_type = PR_TYPE_FROM_ID (DB_TYPE_SEQUENCE);
+
+      TP_DOMAIN *domain =
+	tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
+      if (domain == NULL)
+	{
+	  goto error;
+	}
+      domain = tp_domain_cache (domain);
+
+      (*(seq_type->data_readval)) (buf_p, &attrs[6].value, domain, -1, true,
+				   NULL, 0);
+    }
+
   /* set_domain */
   error =
     catcls_get_subset (thread_p, buf_p,
-		       vars[ORC_DOMAIN_SETDOMAIN_INDEX].length, &attrs[6],
+		       vars[ORC_DOMAIN_SETDOMAIN_INDEX].length, &attrs[7],
 		       catcls_get_or_value_from_domain);
   if (error != NO_ERROR)
     {
@@ -5250,14 +5270,15 @@ exit:
  *   return: NO_ERROR, or error code
  *   thread_p(in)  : thread context
  *   charset_id_p(out): 
- *   lang_id_p(out): name of index
+ *   lang_buf(in/out): buffer language string
+ *   lang_buf_size(in): size of buffer language string
  *
  *  Note : This function is called during server initialization, for this
  *	   reason, no locks are required on the class.
  */
 int
 catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
-				int *lang_id_p)
+				char *lang_buf, const int lang_buf_size)
 {
   OID class_oid;
   OID inst_oid;
@@ -5271,7 +5292,7 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
   int error = NO_ERROR;
 
   assert (charset_id_p != NULL);
-  assert (lang_id_p != NULL);
+  assert (lang_buf != NULL);
 
   OID_SET_NULL (&class_oid);
   OID_SET_NULL (&inst_oid);
@@ -5320,7 +5341,8 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
 	      break;
 	    }
 	}
-      if (strcmp ("lang_id", rec_attr_name_p) == 0)
+
+      if (strcmp ("lang", rec_attr_name_p) == 0)
 	{
 	  lang_att_id = i;
 	  if (charset_att_id != -1)
@@ -5339,7 +5361,8 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
   /* TODO: backward compatibility : support DB without lang */
   if (lang_att_id == -1)
     {
-      *lang_id_p = (int) INTL_LANG_ENGLISH;
+      assert (strlen (LANG_NAME_ENGLISH) < lang_buf_size);
+      strcpy (lang_buf, LANG_NAME_ENGLISH);
     }
 
   heap_scancache_end (thread_p, &scan_cache);
@@ -5381,10 +5404,18 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
 	    }
 	  else if (heap_value->attrid == lang_att_id)
 	    {
-	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
-		      == DB_TYPE_INTEGER);
+	      char *lang_str = NULL;
+	      int lang_str_len;
 
-	      *lang_id_p = DB_GET_INTEGER (&heap_value->dbvalue);
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_STRING);
+
+	      lang_str = DB_GET_STRING (&heap_value->dbvalue);
+	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
+
+	      assert (lang_str_len < lang_buf_size);
+	      strncpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
+	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
 	    }
 	}
     }

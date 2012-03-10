@@ -1355,9 +1355,11 @@
 #define ER_REGEX_COMPILE_ERROR			    -1085
 #define ER_REGEX_EXEC_ERROR			    -1086
 
-#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1087
+#define ER_LOC_INIT				    -1087
+#define ER_LOC_GEN				    -1088
+#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1089
 
-#define ER_LAST_ERROR                               -1088
+#define ER_LAST_ERROR                               -1090
 
 /*
  * CAUTION!

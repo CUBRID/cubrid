@@ -208,6 +208,11 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.insert.hint |= hint_table[i].hint;
 		  node->info.insert.waitsecs_hint = hint_table[i].arg_list;
 		}
+	      else if (node->node_type == PT_MERGE)
+		{
+		  node->info.merge.hint |= hint_table[i].hint;
+		  node->info.merge.waitsecs_hint = hint_table[i].arg_list;
+		}
 	      hint_table[i].arg_list = NULL;
 	      break;
 	    case PT_HINT_NO_LOGGING:	/* no logging */
@@ -223,6 +228,10 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.insert.hint |= hint_table[i].hint;
 		}
+	      else if (node->node_type == PT_MERGE)
+		{
+		  node->info.merge.hint |= hint_table[i].hint;
+		}
 	      hint_table[i].arg_list = NULL;
 	      break;
 	    case PT_HINT_REL_LOCK:	/* release lock */
@@ -237,6 +246,10 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      else if (node->node_type == PT_INSERT)
 		{
 		  node->info.insert.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_MERGE)
+		{
+		  node->info.merge.hint |= hint_table[i].hint;
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
@@ -303,6 +316,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.insert.hint |= hint_table[i].hint;
 		  node->info.insert.insert_mode = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      else if (node->node_type == PT_MERGE)
+		{
+		  node->info.merge.hint |= hint_table[i].hint;
+		  node->info.merge.insert.insert_mode = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
 	      break;

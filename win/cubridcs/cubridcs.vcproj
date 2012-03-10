@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;CS_MODE;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -65,7 +65,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -121,7 +121,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;CS_MODE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -141,7 +141,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -198,7 +198,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;CS_MODE;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -217,7 +217,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -277,7 +277,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;CS_MODE"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -296,7 +296,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib"
 				LinkIncremental="0"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="libcmt.lib"
@@ -405,6 +405,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\locale_support.c"
+					>
+				</File>				
+				<File
 					RelativePath="..\..\src\base\md5.c"
 					>
 				</File>
@@ -461,6 +465,14 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\uca_support.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\unicode_support.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\util_func.c"
 					>
 				</File>
@@ -468,6 +480,10 @@
 					RelativePath="..\..\src\base\variable_string.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\base\xml_parser.c"
+					>
+				</File>				
 			</Filter>
 			<Filter
 				Name="compat"

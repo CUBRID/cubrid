@@ -27,6 +27,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#if !defined(WINDOWS)
+#include <langinfo.h>
+#endif
 
 #include "chartype.h"
 #include "misc_string.h"
@@ -34,6 +37,7 @@
 #include "authenticate.h"
 #include "environment_variable.h"
 #include "db.h"
+#include "locale_support.h"
 /* this must be the last header file included! */
 #include "dbval.h"
 
@@ -41,16 +45,21 @@ static INTL_LANG lang_Loc_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static int lang_Loc_bytes_per_char = 1;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
+static char lang_Lang_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static DB_CURRENCY lang_Loc_currency = DB_CURRENCY_DOLLAR;
 
 /* locale data */
 static LANG_LOCALE_DATA lc_English_iso88591;
 static LANG_LOCALE_DATA lc_English_utf8;
-static LANG_LOCALE_DATA lc_Turkish;
-static LANG_LOCALE_DATA lc_Korean;
+static LANG_LOCALE_DATA lc_Turkish_iso88591;
+static LANG_LOCALE_DATA lc_Turkish_utf8;
+static LANG_LOCALE_DATA lc_Korean_iso88591;
+static LANG_LOCALE_DATA lc_Korean_utf8;
 static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 
 static bool lang_Initialized = false;
+static bool lang_Fully_Initialized = false;
+static bool lang_Init_w_error = false;
 
 typedef struct lang_defaults LANG_DEFAULTS;
 struct lang_defaults
@@ -58,53 +67,232 @@ struct lang_defaults
   const char *lang_name;
   const INTL_LANG lang;
   const INTL_CODESET codeset;
-  const DB_CURRENCY currency;
 };
 
-LANG_DEFAULTS lang_defaults[] = {
-  {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_ISO88591,
-   DB_CURRENCY_DOLLAR},		/* English - ISO-8859-1 - default lang and charset */
-  {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_UTF8,
-   DB_CURRENCY_DOLLAR},		/* English - UTF-8 */
-  {LANG_NAME_KOREAN, INTL_LANG_KOREAN, INTL_CODESET_KSC5601_EUC,
-   DB_CURRENCY_WON},		/* Korean - EUC-KR */
-  {LANG_NAME_TURKISH, INTL_LANG_TURKISH, INTL_CODESET_UTF8, DB_CURRENCY_TL}
+LANG_DEFAULTS builtin_langs[] = {
+  /* English - ISO-8859-1 - default lang and charset */
+  {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_ISO88591},
+  /* English - UTF-8 */
+  {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_UTF8},
+  /* Korean - EUC-KR */
+  {LANG_NAME_KOREAN, INTL_LANG_KOREAN, INTL_CODESET_KSC5601_EUC},
+  /* Turkish - UTF-8 */
+  {LANG_NAME_TURKISH, INTL_LANG_TURKISH, INTL_CODESET_UTF8}
 };
+
+
+static TEXT_CONVERSION *console_conv = NULL;
+extern TEXT_CONVERSION con_iso_8859_1_conv;
+extern TEXT_CONVERSION con_iso_8859_9_conv;
+
+/* all loaded locales */
+#define MAX_LOADED_LOCALES  32
+static LANG_LOCALE_DATA *lang_loaded_locales[MAX_LOADED_LOCALES] = { NULL };
+static int lang_count_locales = 0;
+
+static void set_current_locale (bool is_full_init);
+static void set_lang_from_env (void);
+static void set_default_lang (void);
+static int init_user_locales (void);
+static void register_lang_locale_data (LANG_LOCALE_DATA * lld);
 
 static bool lang_is_codeset_allowed (const INTL_LANG intl_id,
 				     const INTL_CODESET codeset);
 static int lang_get_lang_id_from_name (const char *lang_name,
 				       INTL_LANG * lang);
-static INTL_CODESET lang_get_default_currency (const INTL_LANG intl_id);
+static int lang_get_builtin_lang_id_from_name (const char *lang_name,
+					       INTL_LANG * lang_id);
 static INTL_CODESET lang_get_default_codeset (const INTL_LANG intl_id);
 
 /*
  * lang_init - Initializes any global state required by the multi-language
  *             module
  *   return: true if success
+ *
+ *  Note : this is a "light" language initialization. User defined locales
+ *	   are not loaded during this process and if environment cannot be
+ *	   resolved, the default language is set.
  */
 bool
 lang_init (void)
 {
-  const char *env, *s;
-
   if (lang_Initialized)
     {
       return lang_Initialized;
     }
 
-  /* if the language setting is unset or unrecognized, assume English settings
-   * and character sets. Allow an unrecognized language setting to be
-   * treated as an 8bit ascii language, but still keep lang_name set
-   */
-  strncpy (lang_Loc_name, LANG_NAME_ENGLISH, sizeof (lang_Loc_name));
-  lang_Loc_id = INTL_LANG_ENGLISH;
-  lang_Loc_bytes_per_char = 1;
-  lang_Loc_currency = DB_CURRENCY_DOLLAR;
-  lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
+  set_lang_from_env ();
 
+  /* register all built-in locales allowed in current charset 
+   * Support for multiple locales is required for switching function context
+   * string - data/time , string - number conversions */
+  if (lang_Loc_charset == INTL_CODESET_UTF8)
+    {
+      register_lang_locale_data (&lc_English_utf8);
+      register_lang_locale_data (&lc_Korean_utf8);
+      register_lang_locale_data (&lc_Turkish_utf8);
+    }
+  else
+    {
+      register_lang_locale_data (&lc_English_iso88591);
+      register_lang_locale_data (&lc_Korean_iso88591);
+      register_lang_locale_data (&lc_Turkish_iso88591);
+    }
+
+  /* set current locale */
+  set_current_locale (false);
+
+  lang_Initialized = true;
+
+  return (lang_Initialized);
+}
+
+/*
+ * lang_init_full - Initializes the language according to environment
+ *		    including user defined language
+ *
+ *   return: true if success
+ */
+bool
+lang_init_full (void)
+{
+  (void) lang_init ();
+
+  if (lang_Fully_Initialized)
+    {
+      return lang_Fully_Initialized;
+    }
+
+  assert (lang_Initialized == true);
+
+  /* re-get variables from environment */
+  set_lang_from_env ();
+
+  /* load & register user locales (only in UTF-8 codeset) */
+  if (lang_Loc_charset == INTL_CODESET_UTF8)
+    {
+      if (init_user_locales () != NO_ERROR)
+	{
+	  set_default_lang ();
+	  lang_Init_w_error = true;
+	  lang_Fully_Initialized = true;
+	  return lang_Fully_Initialized;
+	}
+    }
+
+  set_current_locale (true);
+
+  if (lang_Loc_data->txt_conv != NULL)
+    {
+      char *sys_id = NULL;
+      char *conv_sys_ids = NULL;
+#if defined(WINDOWS)
+      UINT cp;
+      char win_codepage_str[32];
+
+      cp = GetConsoleCP ();
+      snprintf (win_codepage_str, sizeof (win_codepage_str) - 1, "%d", cp);
+
+      sys_id = win_codepage_str;
+      conv_sys_ids = lang_Loc_data->txt_conv->win_codepages;
+#else
+      if (setlocale (LC_CTYPE, "") != NULL)
+	{
+	  sys_id = nl_langinfo (CODESET);
+	  conv_sys_ids = lang_Loc_data->txt_conv->nl_lang_str;
+	}
+#endif
+
+      if (sys_id != NULL && conv_sys_ids != NULL)
+	{
+	  char *conv_sys_end = conv_sys_ids + strlen (conv_sys_ids);
+	  char *found_token;
+
+	  /* supported system identifiers for conversion are separated by
+	   * comma */
+	  do
+	    {
+	      found_token = strstr (conv_sys_ids, sys_id);
+	      if (found_token == NULL)
+		{
+		  break;
+		}
+
+	      if (found_token + strlen (sys_id) >= conv_sys_end
+		  || *(found_token + strlen (sys_id)) == ','
+		  || *(found_token + strlen (sys_id)) == ' ')
+		{
+		  if (lang_Loc_data->txt_conv->init_conv_func != NULL)
+		    {
+		      lang_Loc_data->txt_conv->init_conv_func ();
+		    }
+		  console_conv = lang_Loc_data->txt_conv;
+		  break;
+		}
+	      else
+		{
+		  conv_sys_ids = conv_sys_ids + strlen (sys_id);
+		}
+	    }
+	  while (conv_sys_ids < conv_sys_end);
+	}
+    }
+
+  lang_Fully_Initialized = true;
+
+  return (lang_Fully_Initialized);
+}
+
+/*
+ * set_current_locale - sets the current locale according to 'lang_Lang_name'
+ *			and 'lang_Loc_charset'
+ *
+ *  is_full_init(in) : true if this is a full language initialization
+ */
+static void
+set_current_locale (bool is_full_init)
+{
+  lang_get_lang_id_from_name (lang_Lang_name, &lang_Loc_id);
+
+  lang_Loc_data = lang_loaded_locales[lang_Loc_id];
+
+  if (lang_Loc_data->codeset != lang_Loc_charset
+      || strcmp (lang_Lang_name,
+		 lang_get_lang_name_from_id (lang_Loc_id)) != 0)
+    {
+      /* when charset is not UTF-8, full init will not be required */
+      if (is_full_init || lang_Loc_charset != INTL_CODESET_UTF8)
+	{
+	  lang_Init_w_error = true;
+	}
+      set_default_lang ();
+    }
+
+  lang_Loc_currency = lang_Loc_data->default_currency_code;
+
+  /* static globals in db_date.c should also be initialized with the current
+   * locale (for parsing local am/pm strings for times) */
+  db_date_locale_init ();
+}
+
+/*
+ * set_lang_from_env - Initializes language variables from environment
+ *
+ *   return: true if success
+ *
+ *  Note : This function sets the following variables according to
+ *	   $CUBRID_LANG environment variable :
+ *	    lang_Loc_name : locale string: <lang>.<charset>; en_US.utf8
+ *	    lang_Lang_name : <lang> string part (without <charset>
+ *	    lang_Loc_charset : charset id : ISO-8859-1 or UTF-8 
+ *	    lang_Loc_bytes_per_char : maximum number of bytes per character
+ */
+static void
+set_lang_from_env (void)
+{
+  const char *env, *s;
   /*
-   * Determine the locale by examining environment varialbes.
+   * Determine the locale by examining environment variables.
    * First we check our internal variable CUBRID_LANG to allow CUBRID
    * to operate in a different locale than is set with LANG.  This is
    * necessary when lang must be set to something other than one of the
@@ -129,14 +317,13 @@ lang_init (void)
 	}
     }
 
-  /* Set up some internal constants based on the locale name */
-  (void) lang_get_lang_id_from_name (lang_Loc_name, &lang_Loc_id);
-  lang_Loc_currency = lang_get_default_currency (lang_Loc_id);
-
   /* allow environment to override the character set settings */
   s = strchr (lang_Loc_name, '.');
   if (s != NULL)
     {
+      strncpy (lang_Lang_name, lang_Loc_name, s - lang_Loc_name);
+      lang_Lang_name[s - lang_Loc_name] = '\0';
+
       s++;
       if (strcasecmp (s, LANG_CHARSET_EUCKR) == 0)
 	{
@@ -151,13 +338,22 @@ lang_init (void)
 	  lang_Loc_charset = INTL_CODESET_ISO88591;
 	}
 
-      if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
+      /* for UTF-8 charset we allow any user defined lang name */
+      if (lang_Loc_charset != INTL_CODESET_UTF8)
 	{
-	  lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
+	  (void) lang_get_builtin_lang_id_from_name (lang_Loc_name,
+						     &lang_Loc_id);
+	  if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
+	    {
+	      lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
+	    }
 	}
     }
   else
     {
+      /* no charset provided in $CUBRID_LANG */
+      (void) lang_get_builtin_lang_id_from_name (lang_Loc_name, &lang_Loc_id);
+      strcpy (lang_Lang_name, lang_Loc_name);
       lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
     }
 
@@ -172,68 +368,312 @@ lang_init (void)
     default:
       lang_Loc_bytes_per_char = 1;
     }
-
-  /* init locale */
-  lang_Loc_data = &lc_English_iso88591;
-  lang_Loc_data->initloc ();
-
-  if (lang_Loc_charset != INTL_CODESET_ISO88591)
-    {
-      /* if legacy charset : do not need these initilization */
-      lang_Loc_data = &lc_English_utf8;
-      lang_Loc_data->initloc ();
-
-      lang_Loc_data = &lc_Turkish;
-      lang_Loc_data->initloc ();
-
-      lang_Loc_data = &lc_Korean;
-      lang_Loc_data->initloc ();
-    }
-
-  switch (lang_Loc_id)
-    {
-    case INTL_LANG_ENGLISH:
-      if (lang_Loc_charset == INTL_CODESET_ISO88591)
-	{
-	  lang_Loc_data = &lc_English_iso88591;
-	}
-      else
-	{
-	  lang_Loc_data = &lc_English_utf8;
-	}
-      break;
-
-    case INTL_LANG_KOREAN:
-      lang_Loc_data = &lc_Korean;
-      break;
-
-    case INTL_LANG_TURKISH:
-      lang_Loc_data = &lc_Turkish;
-      break;
-
-    default:
-      /* unsupported locale, set to default (English) */
-      strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
-      lang_Loc_id = INTL_LANG_ENGLISH;
-      lang_Loc_currency = DB_CURRENCY_DOLLAR;
-      lang_Loc_data = &lc_English_iso88591;
-      lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
-    }
-
-  /* static globals in db_date.c should also be initialized with the current
-   * locale (for parsing local am/pm strings for times) */
-  db_date_locale_init ();
-
-  lang_Initialized = true;
-  return (lang_Initialized);
 }
 
 /*
- * lang_name - returns language name per env settings.
- *   return: language name string
+ * set_default_lang -
+ *   return:
+ *
+ */
+static void
+set_default_lang (void)
+{
+  lang_Loc_id = INTL_LANG_ENGLISH;
+  strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
+  strncpy (lang_Lang_name, LANG_NAME_DEFAULT, sizeof (lang_Lang_name));
+  lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
+  lang_Loc_bytes_per_char = 1;
+  lang_Loc_data = &lc_English_iso88591;
+  lang_Loc_currency = lang_Loc_data->default_currency_code;
+}
+
+/*
+ * lang_check_init -
+ *   return: error code if language initialization flag is set
+ *
+ */
+bool
+lang_check_init (void)
+{
+  return (!lang_Init_w_error);
+}
+
+/* if is a new locale, always assign the user defined string
+ * if locale already exists, assign the user defined string when there is no
+ * existing format, or the user defined string is not empty */
+#define SET_LOCALE_STRING(is_new,lf,uf)	\
+   do { \
+      if (is_new) \
+	{ \
+	  lf = uf; \
+	} \
+      else \
+	{ \
+	  lf = (lf == NULL) ? (uf) : ((*(uf) == '\0') ? (lf) : (uf)); \
+	} \
+   } while (0);
+
+/*
+ * init_user_locales -
+ *   return: error code
+ *
+ */
+static int
+init_user_locales (void)
+{
+  LOCALE_FILE *user_lf = NULL;
+  LOCALE_DATA *usr_loc = NULL;
+  int num_user_loc = 0, i;
+  int er_status = NO_ERROR;
+
+  er_status = locale_get_cfg_locales (&user_lf, &num_user_loc, true);
+  if (er_status != NO_ERROR)
+    {
+      goto error;
+    }
+
+  for (i = 0; i < num_user_loc; i++)
+    {
+      /* load user locale */
+      LANG_LOCALE_DATA *lld = NULL;
+      INTL_LANG l_id;
+      bool is_new_lang = false;
+      int j;
+
+      er_status = locale_check_and_set_default_files (&(user_lf[i]), true);
+      if (er_status != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      usr_loc = malloc (sizeof (LOCALE_DATA));
+      if (usr_loc == NULL)
+	{
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
+	  goto error;
+	}
+
+      memset (usr_loc, 0, sizeof (LOCALE_DATA));
+
+      er_status = locale_load_from_bin (&(user_lf[i]), usr_loc);
+      if (er_status != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (lang_get_lang_id_from_name (user_lf[i].locale_name, &l_id) == 0)
+	{
+	  /* language already found, overwrite with user defined */
+	  lld = lang_loaded_locales[(int) l_id];
+
+	  /* double user customization : remove previous one */
+	  if (lld->user_data != NULL)
+	    {
+	      locale_destroy_data (lld->user_data);
+	    }
+	}
+      else
+	{
+	  /* new language */
+	  l_id = lang_count_locales;
+
+	  assert (l_id >= INTL_LANG_USER_DEF_START);
+
+	  if (l_id >= MAX_LOADED_LOCALES)
+	    {
+	      er_status = ER_LOC_INIT;
+	      LOG_LOCALE_ERROR ("too many locales", er_status, true);
+	      goto error;
+	    }
+
+	  lld = malloc (sizeof (LANG_LOCALE_DATA));
+	  if (lld == NULL)
+	    {
+	      er_status = ER_LOC_INIT;
+	      LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
+	      goto error;
+	    }
+
+	  memset (lld, 0, sizeof (LANG_LOCALE_DATA));
+
+	  is_new_lang = true;
+	  register_lang_locale_data (lld);
+	}
+
+      /* initialize Language locale */
+      lld->lang_name = usr_loc->locale_name;
+      lld->lang_id = l_id;
+
+      /* user defined language is supported only with UTF-8 codeset */
+      lld->codeset = (is_new_lang) ? INTL_CODESET_UTF8 : lld->codeset;
+
+      /* calendar data */
+      SET_LOCALE_STRING (is_new_lang, lld->date_format, usr_loc->dateFormat);
+      SET_LOCALE_STRING (is_new_lang, lld->time_format, usr_loc->timeFormat);
+      SET_LOCALE_STRING (is_new_lang, lld->datetime_format,
+			 usr_loc->datetimeFormat);
+      SET_LOCALE_STRING (is_new_lang, lld->timestamp_format,
+			 usr_loc->timestampFormat);
+
+      for (j = 0; j < CAL_DAY_COUNT; j++)
+	{
+	  SET_LOCALE_STRING (is_new_lang, lld->day_short_name[j],
+			     usr_loc->day_names_abbreviated[j]);
+	  SET_LOCALE_STRING (is_new_lang, lld->day_name[j],
+			     usr_loc->day_names_wide[j]);
+	}
+
+      for (j = 0; j < CAL_MONTH_COUNT; j++)
+	{
+	  SET_LOCALE_STRING (is_new_lang, lld->month_short_name[j],
+			     usr_loc->month_names_abbreviated[j]);
+	  SET_LOCALE_STRING (is_new_lang, lld->month_name[j],
+			     usr_loc->month_names_wide[j]);
+	}
+
+      lld->day_short_parse_order = usr_loc->day_names_abbr_parse_order;
+      lld->day_parse_order = usr_loc->day_names_wide_parse_order;
+      lld->month_parse_order = usr_loc->month_names_wide_parse_order;
+      lld->month_short_parse_order = usr_loc->month_names_abbr_parse_order;
+      lld->am_pm_parse_order = usr_loc->am_pm_parse_order;
+
+      for (j = 0; j < CAL_AM_PM_COUNT; j++)
+	{
+	  SET_LOCALE_STRING (is_new_lang, lld->am_pm[j], usr_loc->am_pm[j]);
+	}
+
+      lld->number_decimal_sym = usr_loc->number_decimal_sym;
+      lld->number_group_sym = usr_loc->number_group_sym;
+      lld->default_currency_code = usr_loc->default_currency_code;
+
+      /* user alphabet */
+      memcpy (&(lld->alphabet), &(usr_loc->alphabet), sizeof (ALPHABET_DATA));
+      /* identifier alphabet */
+      memcpy (&(lld->ident_alphabet), &(usr_loc->identif_alphabet),
+	      sizeof (ALPHABET_DATA));
+
+      /* collation data */
+      memcpy (&(lld->coll), &(usr_loc->opt_coll), sizeof (COLL_DATA));
+
+      if (lld->coll.uca_exp_num > 1)
+	{
+	  lld->fastcmp = intl_strcmp_utf8_uca;
+	  lld->next_coll_seq = intl_next_coll_seq_utf8_w_contr;
+	}
+      else if (lld->coll.count_contr > 0)
+	{
+	  lld->fastcmp = intl_strcmp_utf8_w_contr;
+	  lld->next_coll_seq = intl_next_coll_seq_utf8_w_contr;
+	}
+      else
+	{
+	  lld->fastcmp = intl_strcmp_utf8;
+	  lld->next_coll_seq = intl_next_coll_char_utf8;
+	}
+
+      if (usr_loc->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
+	{
+	  lld->txt_conv = &(usr_loc->txt_conv);
+	  lld->txt_conv->init_conv_func = NULL;
+	  lld->txt_conv->text_to_utf8_func = intl_text_dbcs_to_utf8;
+	  lld->txt_conv->utf8_to_text_func = intl_text_utf8_to_dbcs;
+	}
+      else if (usr_loc->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE)
+	{
+	  lld->txt_conv = &(usr_loc->txt_conv);
+	  lld->txt_conv->init_conv_func = NULL;
+	  lld->txt_conv->text_to_utf8_func = intl_text_single_byte_to_utf8;
+	  lld->txt_conv->utf8_to_text_func = intl_text_utf8_to_single_byte;
+	}
+      else if (usr_loc->txt_conv.conv_type == TEXT_CONV_ISO_88591_BUILTIN)
+	{
+	  lld->txt_conv = &con_iso_8859_1_conv;
+	}
+      else if (usr_loc->txt_conv.conv_type == TEXT_CONV_ISO_88599_BUILTIN)
+	{
+	  lld->txt_conv = &con_iso_8859_9_conv;
+	}
+      else
+	{
+	  assert (usr_loc->txt_conv.conv_type == TEXT_CONV_NO_CONVERSION);
+	  lld->txt_conv = NULL;
+	}
+
+      lld->user_data = usr_loc;
+      lld->is_initialized = true;
+
+      usr_loc = NULL;
+    }
+
+  /* free user defined locale files struct */
+  for (i = 0; i < num_user_loc; i++)
+    {
+      free_and_init (user_lf[i].locale_name);
+      free_and_init (user_lf[i].ldml_file);
+      free_and_init (user_lf[i].bin_file);
+    }
+
+  if (user_lf != NULL)
+    {
+      free (user_lf);
+    }
+
+  return er_status;
+
+error:
+
+  if (usr_loc != NULL)
+    {
+      locale_destroy_data (usr_loc);
+      free (usr_loc);
+      usr_loc = NULL;
+    }
+
+  /* free user defined locale files struct */
+  for (i = 0; i < num_user_loc; i++)
+    {
+      free_and_init (user_lf[i].locale_name);
+      free_and_init (user_lf[i].ldml_file);
+      free_and_init (user_lf[i].bin_file);
+    }
+
+  if (user_lf != NULL)
+    {
+      free (user_lf);
+    }
+
+  return er_status;
+}
+
+/*
+ * register_lang_locale_data - registers a language locale data to the
+ *   return:
+ *   lld(in): language locale data
+ */
+static void
+register_lang_locale_data (LANG_LOCALE_DATA * lld)
+{
+  assert (lld != NULL);
+  assert (lang_count_locales < MAX_LOADED_LOCALES);
+
+  lang_loaded_locales[lang_count_locales++] = lld;
+
+  if (!(lld->is_initialized) && lld->initloc != NULL)
+    {
+      assert (lld->lang_id < (INTL_LANG) INTL_LANG_USER_DEF_START);
+      init_builtin_calendar_names (lld);
+      lld->initloc (lld);
+    }
+}
+
+/*
+ * lang_get_Loc_name - returns full locale name (language_name.codeset)
+ *		       according to environment
+ *   return: locale string
  */
 const char *
-lang_name (void)
+lang_get_Loc_name (void)
 {
   if (!lang_Initialized)
     {
@@ -241,6 +681,21 @@ lang_name (void)
     }
   return lang_Loc_name;
 }
+
+/*
+ * lang_get_Lang_name - returns the language name according to environment
+ *   return: language name string
+ */
+const char *
+lang_get_Lang_name (void)
+{
+  if (!lang_Initialized)
+    {
+      lang_init ();
+    }
+  return lang_Lang_name;
+}
+
 
 /*
  * lang_id - Returns language id per env settings
@@ -305,7 +760,24 @@ lang_loc_bytes_per_char (void)
 void
 lang_final (void)
 {
+  int i;
+
+  for (i = 0; i < lang_count_locales; i++)
+    {
+      assert (lang_loaded_locales[i] != NULL);
+      if (lang_loaded_locales[i]->user_data != NULL)
+	{
+	  locale_destroy_data (lang_loaded_locales[i]->user_data);
+	}
+
+      lang_loaded_locales[i]->is_initialized = false;
+    }
+
+  locale_destroy_shared_data ();
+
+  lang_count_locales = 0;
   lang_Initialized = false;
+  lang_Fully_Initialized = false;
 }
 
 /*
@@ -452,28 +924,48 @@ lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
     {
       lang_init ();
     }
-  switch (lang)
+
+  if (lang_charset () == codeset && (int) lang < lang_count_locales)
     {
-    case INTL_LANG_ENGLISH:
-      if (codeset == INTL_CODESET_ISO88591)
-	{
-	  return &lc_English_iso88591;
-	}
-      else
-	{
-	  assert (codeset == INTL_CODESET_UTF8);
-	  return &lc_English_utf8;
-	}
-    case INTL_LANG_KOREAN:
-      assert (codeset == INTL_CODESET_KSC5601_EUC);
-      return &lc_Korean;
-    case INTL_LANG_TURKISH:
-      assert (codeset == INTL_CODESET_UTF8);
-      return &lc_Turkish;
-    default:
-      return lang_Loc_data;
+      return lang_loaded_locales[lang];
     }
+
   return lang_Loc_data;
+}
+
+/*
+ * lang_get_builtin_lang_id_from_name - returns the builtin language id from a
+ *					language name
+ *
+ *   return: 0, if language name is accepted, non-zero otherwise
+ *   lang_name(in):
+ *   lang_id(out): language identifier
+ *
+ *  Note : INTL_LANG_ENGLISH is returned if name is not a valid language name
+ */
+static int
+lang_get_builtin_lang_id_from_name (const char *lang_name,
+				    INTL_LANG * lang_id)
+{
+  int i;
+
+  assert (lang_id != NULL);
+
+  *lang_id = INTL_LANG_ENGLISH;
+
+  for (i = 0; i < sizeof (builtin_langs) / sizeof (LANG_DEFAULTS); i++)
+    {
+      if (strncasecmp (lang_name, builtin_langs[i].lang_name,
+		       strlen (builtin_langs[i].lang_name)) == 0)
+	{
+	  *lang_id = builtin_langs[i].lang;
+	  return 0;
+	}
+    }
+
+  assert (*lang_id < INTL_LANG_USER_DEF_START);
+
+  return 1;
 }
 
 /*
@@ -488,18 +980,20 @@ lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
 static int
 lang_get_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id)
 {
-  unsigned int i;
+  int i;
 
   assert (lang_id != NULL);
 
   *lang_id = INTL_LANG_ENGLISH;
 
-  for (i = 0; i < sizeof (lang_defaults) / sizeof (LANG_DEFAULTS); i++)
+  for (i = 0; i < lang_count_locales; i++)
     {
-      if (strncasecmp (lang_name, lang_defaults[i].lang_name,
-		       strlen (lang_defaults[i].lang_name)) == 0)
+      assert (lang_loaded_locales[i] != NULL);
+
+      if (strcasecmp (lang_name, lang_loaded_locales[i]->lang_name) == 0)
 	{
-	  *lang_id = lang_defaults[i].lang;
+	  assert (i == (int) lang_loaded_locales[i]->lang_id);
+	  *lang_id = lang_loaded_locales[i]->lang_id;
 	  return 0;
 	}
     }
@@ -517,16 +1011,10 @@ lang_get_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id)
 const char *
 lang_get_lang_name_from_id (const INTL_LANG lang_id)
 {
-  switch (lang_id)
+  if ((int) lang_id < lang_count_locales)
     {
-    case INTL_LANG_ENGLISH:
-      return LANG_NAME_ENGLISH;
-    case INTL_LANG_KOREAN:
-      return LANG_NAME_KOREAN;
-    case INTL_LANG_TURKISH:
-      return LANG_NAME_TURKISH;
-    default:
-      return NULL;
+      assert (lang_loaded_locales[lang_id] != NULL);
+      return lang_loaded_locales[lang_id]->lang_name;
     }
 
   return NULL;
@@ -541,11 +1029,7 @@ lang_get_lang_name_from_id (const INTL_LANG lang_id)
  *   flag(out): bit flag : bit 0 is the user flag, bits 1 - 31 are for
  *		language identification
  *		Bit 0 : if set, the language was given by user
- *		Bit 1 : English
- *		Bit 2 : Koreean
- *		Bit 3 : Turkish
- *		Consider change this flag to store the language as value
- *		instead of as bit map
+ *		Bit 1 - 31 : INTL_LANG
  *
  *  Note : function is used in context of some date-string functions.
  *	   If lang_str cannot be solved, the language is assumed English.
@@ -580,9 +1064,7 @@ lang_set_flag_from_lang (const char *lang_str, bool user_format, int *flag)
  *   flag(out): bit flag : bit 0 is the user flag, bits 1 - 31 are for
  *		language identification
  *		Bit 0 : if set, the language was given by user
- *		Bit 1 : English
- *		Bit 2 : Koreean
- *		Bit 3 : Turkish
+ *		Bit 1 - 31 : INTL_LANG
  *		Consider change this flag to store the language as value
  *		instead of as bit map
  *
@@ -591,6 +1073,8 @@ lang_set_flag_from_lang (const char *lang_str, bool user_format, int *flag)
 int
 lang_set_flag_from_lang_id (const INTL_LANG lang, bool user_format, int *flag)
 {
+  int lang_val = (int) lang;
+
   if (user_format)
     {
       *flag = 0;
@@ -600,26 +1084,16 @@ lang_set_flag_from_lang_id (const INTL_LANG lang, bool user_format, int *flag)
       *flag = 0x1;
     }
 
-  if (lang == INTL_LANG_ENGLISH)
+  if (lang_val >= lang_count_locales)
     {
-      *flag |= 0x2;
-      return 0;
-    }
-  else if (lang == INTL_LANG_KOREAN)
-    {
-      *flag |= 0x4;
-      return 0;
-    }
-  else if (lang == INTL_LANG_TURKISH)
-    {
-      *flag |= 0x8;
-      return 0;
+      lang_val = (int) INTL_LANG_ENGLISH;
+      *flag |= lang_val << 1;
+      return 1;
     }
 
-  /* default en_US */
-  *flag |= 0x2;
+  *flag |= lang_val << 1;
 
-  return 1;
+  return 0;
 }
 
 /*
@@ -635,6 +1109,8 @@ lang_set_flag_from_lang_id (const INTL_LANG lang, bool user_format, int *flag)
 INTL_LANG
 lang_get_lang_id_from_flag (const int flag, bool * user_format)
 {
+  int lang_val = (int) flag;
+
   if (flag & 0x1)
     {
       *user_format = false;
@@ -644,13 +1120,11 @@ lang_get_lang_id_from_flag (const int flag, bool * user_format)
       *user_format = true;
     }
 
-  if (flag & 0x4)
+  lang_val = flag >> 1;
+
+  if (lang_val >= 0 && lang_val < lang_count_locales)
     {
-      return INTL_LANG_KOREAN;
-    }
-  else if (flag & 0x8)
-    {
-      return INTL_LANG_TURKISH;
+      return (INTL_LANG) lang_val;
     }
 
   return lang_id ();
@@ -692,31 +1166,6 @@ lang_date_format (const INTL_LANG lang_id, const DB_TYPE type)
 }
 
 /*
- * lang_get_default_currency - returns the default codeset to be used for a
- *			      given language identifier
- *   return: currency
- *   intl_id(in):
- *
- *  Note : DB_CURRENCY_DOLLAR is returned if language is invalid
- */
-static INTL_CODESET
-lang_get_default_currency (const INTL_LANG intl_id)
-{
-  unsigned int i;
-  DB_CURRENCY currency = DB_CURRENCY_DOLLAR;
-
-  for (i = 0; i < sizeof (lang_defaults) / sizeof (LANG_DEFAULTS); i++)
-    {
-      if (intl_id == lang_defaults[i].lang)
-	{
-	  currency = lang_defaults[i].currency;
-	  break;
-	}
-    }
-  return currency;
-}
-
-/*
  * lang_get_default_codeset - returns the default codeset to be used for a
  *			      given language identifier
  *   return: codeset
@@ -728,11 +1177,11 @@ lang_get_default_codeset (const INTL_LANG intl_id)
   unsigned int i;
   INTL_CODESET codeset = INTL_CODESET_UTF8;
 
-  for (i = 0; i < sizeof (lang_defaults) / sizeof (LANG_DEFAULTS); i++)
+  for (i = 0; i < sizeof (builtin_langs) / sizeof (LANG_DEFAULTS); i++)
     {
-      if (intl_id == lang_defaults[i].lang)
+      if (intl_id == builtin_langs[i].lang)
 	{
-	  codeset = lang_defaults[i].codeset;
+	  codeset = builtin_langs[i].codeset;
 	  break;
 	}
     }
@@ -751,10 +1200,10 @@ lang_is_codeset_allowed (const INTL_LANG intl_id, const INTL_CODESET codeset)
 {
   unsigned int i;
 
-  for (i = 0; i < sizeof (lang_defaults) / sizeof (LANG_DEFAULTS); i++)
+  for (i = 0; i < sizeof (builtin_langs) / sizeof (LANG_DEFAULTS); i++)
     {
-      if (intl_id == lang_defaults[i].lang &&
-	  codeset == lang_defaults[i].codeset)
+      if (intl_id == builtin_langs[i].lang &&
+	  codeset == builtin_langs[i].codeset)
 	{
 	  return true;
 	}
@@ -770,15 +1219,14 @@ lang_is_codeset_allowed (const INTL_LANG intl_id, const INTL_CODESET codeset)
 char
 lang_digit_grouping_symbol (const INTL_LANG lang_id)
 {
+  const LANG_LOCALE_DATA *lld =
+    lang_get_specific_locale (lang_id, lang_Loc_charset);
+
+  assert (lld != NULL);
+
   if (PRM_USE_LOCALE_NUMBER_FORMAT)
     {
-      switch (lang_id)
-	{
-	case INTL_LANG_TURKISH:
-	  return '.';
-	default:
-	  return ',';
-	}
+      return lld->number_group_sym;
     }
   return ',';
 }
@@ -791,80 +1239,33 @@ lang_digit_grouping_symbol (const INTL_LANG lang_id)
 char
 lang_digit_fractional_symbol (const INTL_LANG lang_id)
 {
+  const LANG_LOCALE_DATA *lld =
+    lang_get_specific_locale (lang_id, lang_Loc_charset);
+
+  assert (lld != NULL);
+
   if (PRM_USE_LOCALE_NUMBER_FORMAT)
     {
-      switch (lang_id)
-	{
-	case INTL_LANG_TURKISH:
-	  return ',';
-	default:
-	  return '.';
-	}
+      return lld->number_decimal_sym;
     }
+
   return '.';
 }
 
 /*
- * lang_get_unicode_case_ex_cp() - checks if a character has an exception
- *				   from the locale casing for lower case
- *
- *   return: codepoint of case character or 0xffffffff if the character is
- *	     not an case exception
- *   cp(in): unicode codepoint of character
- *
+ * lang_get_txt_conv - Returns the information required for console text
+ *		       conversion
  */
-unsigned int
-lang_unicode_lower_case_ex_cp (const unsigned int cp)
+TEXT_CONVERSION *
+lang_get_txt_conv (void)
 {
-  unsigned int i;
-  const unsigned int array_ex[][2] = {
-    {0x49, 0x69},		/* I -> i */
-    {0x130, 0x130}		/* capital I with dot -> unchanged */
-  };
-
-  for (i = 0; i < sizeof (array_ex) / sizeof (array_ex[0]); i++)
-    {
-      if (array_ex[i][0] == cp)
-	{
-	  return array_ex[i][1];
-	}
-    }
-
-  return 0xffffffff;
-}
-
-/*
- * lang_unicode_upper_case_ex_cp() - checks if a character has an exception
- *				     from the locale casing for upper case
- *
- *   return: codepoint of case character or 0xffffffff if the character is
- *	     not an case exception
- *   cp(in): unicode codepoint of character
- *
- */
-unsigned int
-lang_unicode_upper_case_ex_cp (const unsigned int cp)
-{
-  unsigned int i;
-  const unsigned int array_ex[][2] = {
-    {0x69, 0x49},		/* i -> I */
-    {0x131, 0x131}		/* small dotless i -> unchanged */
-  };
-
-  for (i = 0; i < sizeof (array_ex) / sizeof (array_ex[0]); i++)
-    {
-      if (array_ex[i][0] == cp)
-	{
-	  return array_ex[i][1];
-	}
-    }
-
-  return 0xffffffff;
+  return console_conv;
 }
 
 #if !defined (SERVER_MODE)
 static DB_CHARSET lang_Server_charset;
 static INTL_LANG lang_Server_lang_id;
+static char lang_Server_lang_name[LANG_MAX_LANGNAME + 1];
 
 static const DB_CHARSET lang_Db_charsets[] = {
   {"ascii", "US English charset - ASCII encoding", " ", INTL_CODESET_ASCII, 0,
@@ -928,13 +1329,34 @@ lang_server_charset_init (void)
 	  srvr_codeset = (INTL_CODESET) db_get_int (&value);
 	}
 
-      if (db_get (Au_root, "lang_id", &value) != NO_ERROR)
+      if (db_get (Au_root, "lang", &value) != NO_ERROR)
 	{
 	  lang_Server_lang_id = lang_id ();
+	  strcpy (lang_Server_lang_name,
+		  lang_get_lang_name_from_id (lang_Server_lang_id));
 	}
       else
 	{
-	  lang_Server_lang_id = (INTL_LANG) db_get_int (&value);
+	  char *db_lang;
+
+	  db_lang = db_get_string (&value);
+
+	  if (db_lang != NULL)
+	    {
+	      int lang_len = MIN (strlen (db_lang), LANG_MAX_LANGNAME);
+
+	      strncpy (lang_Server_lang_name, db_lang, lang_len);
+	      lang_Server_lang_name[lang_len] = '\0';
+
+	      lang_get_lang_id_from_name (lang_Server_lang_name,
+					  &lang_Server_lang_id);
+	    }
+	  else
+	    {
+	      lang_Server_lang_id = lang_id ();
+	      strcpy (lang_Server_lang_name,
+		      lang_get_lang_name_from_id (lang_Server_lang_id));
+	    }
 	}
     }
   else
@@ -984,10 +1406,10 @@ lang_set_national_charset (const char *charset_name)
     }
 
   server_lang = lang_id ();
-  db_make_int (&value, (int) server_lang);
-  if (db_put_internal (Au_root, "lang_id", &value) != NO_ERROR)
+  db_make_string (&value, lang_get_lang_name_from_id (server_lang));
+  if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
-      /* Error Setting the nchar codeset */
+      /* Error Setting the language */
     }
 
   db_make_int (&value, (int) server_codeset);
@@ -1174,7 +1596,6 @@ lang_charset_space_char (INTL_CODESET codeset, char *space_char,
 /* English collation */
 static unsigned int lang_upper_EN[LANG_CHAR_COUNT_EN];
 static unsigned int lang_lower_EN[LANG_CHAR_COUNT_EN];
-static unsigned char lang_is_letter_EN[LANG_CHAR_COUNT_EN];
 static unsigned int lang_weight_EN[LANG_CHAR_COUNT_EN];
 static unsigned int lang_next_alpha_char_EN[LANG_CHAR_COUNT_EN];
 
@@ -1188,9 +1609,11 @@ static int lang_w_map_EN[LANG_W_MAP_COUNT_EN];
  *   return:
  */
 static void
-lang_initloc_en_iso88591 (void)
+lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld)
 {
-  lang_Loc_data->is_initialized = true;
+  assert (ld != NULL);
+
+  ld->is_initialized = true;
 }
 
 /*
@@ -1198,19 +1621,17 @@ lang_initloc_en_iso88591 (void)
  *   return:
  */
 static void
-lang_initloc_en_utf8 (void)
+lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld)
 {
   int i;
 
-  assert (lang_Loc_data != NULL);
+  assert (ld != NULL);
 
   /* init alphabet */
   for (i = 0; i < LANG_CHAR_COUNT_EN; i++)
     {
       lang_upper_EN[i] = i;
       lang_lower_EN[i] = i;
-
-      lang_is_letter_EN[i] = 0;
 
       lang_weight_EN[i] = i;
 
@@ -1224,14 +1645,11 @@ lang_initloc_en_utf8 (void)
     {
       lang_upper_EN[i] = i - ('a' - 'A');
       lang_lower_EN[i - ('a' - 'A')] = i;
-
-      lang_is_letter_EN[i] = 1;
-      lang_is_letter_EN[i - ('a' - 'A')] = 1;
     }
 
   /* other initializations to follow here */
 
-  lang_Loc_data->is_initialized = true;
+  ld->is_initialized = true;
 }
 
 /*
@@ -1347,9 +1765,8 @@ lang_fastcmp_en_utf8 (const unsigned char *string1, const int size1,
   for (cmp = 0, i = 0; cmp == 0 && i < size; i++)
     {
       /* compare weights of the two chars */
-      cmp =
-	lang_Loc_data->alpha_weight[*string1++] -
-	lang_Loc_data->alpha_weight[*string2++];
+      cmp = lang_Loc_data->coll.weights[*string1++] -
+	lang_Loc_data->coll.weights[*string2++];
     }
   if (cmp != 0 || size1 == size2)
     {
@@ -1362,7 +1779,7 @@ lang_fastcmp_en_utf8 (const unsigned char *string1, const int size1,
       for (i = 0; i < size && cmp == 0; i++)
 	{
 	  /* ignore tailing white spaces */
-	  if (lang_Loc_data->alpha_weight[*string2++])
+	  if (lang_Loc_data->coll.weights[*string2++])
 	    {
 	      return -1;
 	    }
@@ -1374,7 +1791,7 @@ lang_fastcmp_en_utf8 (const unsigned char *string1, const int size1,
       for (i = 0; i < size && cmp == 0; i++)
 	{
 	  /* ignore trailing white spaces */
-	  if (lang_Loc_data->alpha_weight[*string1++])
+	  if (lang_Loc_data->coll.weights[*string1++])
 	    {
 	      return 1;
 	    }
@@ -1387,50 +1804,94 @@ lang_fastcmp_en_utf8 (const unsigned char *string1, const int size1,
 /*
  * lang_next_alpha_char_iso88591() - computes the next alphabetical char
  *   return: size in bytes of the next alphabetical char
- *   cur_char(in): pointer to current char
- *   next_char(in/out): buffer to return next alphabetical char
+ *   seq(in): pointer to current char
+ *   size(in): size in bytes for seq
+ *   next_seq(in/out): buffer to return next alphabetical char
+ *   len_next(in/out): length in chars for nex_seq
  *
  */
 static int
-lang_next_alpha_char_iso88591 (const unsigned char *cur_char,
-			       unsigned char *next_char)
+lang_next_alpha_char_iso88591 (const unsigned char *seq, const int size,
+			       unsigned char *next_seq, int *len_next)
 {
-  *next_char = *cur_char + 1;
+  assert (seq != NULL);
+  assert (next_seq != NULL);
+  assert (len_next != NULL);
+  assert (size > 0);
+
+  *next_seq = *seq + 1;
+  *len_next = 1;
   return 1;
 }
 
 static LANG_LOCALE_DATA lc_English_iso88591 = {
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  0,
+  LANG_NAME_ENGLISH,
+  INTL_LANG_ENGLISH,
+  INTL_CODESET_ISO88591,
+  {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet */
+  {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet identifiers */
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+   NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, 0, 0, NULL, 0, 0},	/* collation */
+  NULL,				/* console text conversion */
   false,
   NULL,				/* time, date, date-time, timestamp format */
   NULL,
   NULL,
   NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  '.',
+  ',',
+  DB_CURRENCY_DOLLAR,
   lang_initloc_en_iso88591,
   lang_fastcmp_iso_88591,
   lang_next_alpha_char_iso88591,
+  NULL
 };
 
 static LANG_LOCALE_DATA lc_English_utf8 = {
-  lang_upper_EN,
-  lang_lower_EN,
-  lang_is_letter_EN,
-  lang_weight_EN,
-  lang_next_alpha_char_EN,
-  LANG_CHAR_COUNT_EN,
+  LANG_NAME_ENGLISH,
+  INTL_LANG_ENGLISH,
+  INTL_CODESET_UTF8,
+  {ALPHABET_ASCII, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1, lang_upper_EN,
+   false},
+  {ALPHABET_ASCII, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1, lang_upper_EN,
+   false},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+   lang_weight_EN, lang_next_alpha_char_EN, LANG_CHAR_COUNT_EN,
+   0, NULL, NULL, NULL,
+   NULL, 0, 0, NULL, 0, 0},
+  &con_iso_8859_1_conv,		/* text conversion */
   false,
   NULL,				/* time, date, date-time, timestamp format */
   NULL,
   NULL,
   NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  '.',
+  ',',
+  DB_CURRENCY_DOLLAR,
   lang_initloc_en_utf8,
   lang_fastcmp_en_utf8,
-  intl_next_alpha_char_utf8
+  intl_next_coll_char_utf8,
+  NULL
 };
 
 
@@ -1441,7 +1902,8 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
 /* Turkish collation */
 static unsigned int lang_upper_TR[LANG_CHAR_COUNT_TR];
 static unsigned int lang_lower_TR[LANG_CHAR_COUNT_TR];
-static unsigned char lang_is_letter_TR[LANG_CHAR_COUNT_TR];
+static unsigned int lang_upper_i_TR[LANG_CHAR_COUNT_TR];
+static unsigned int lang_lower_i_TR[LANG_CHAR_COUNT_TR];
 static unsigned int lang_weight_TR[LANG_CHAR_COUNT_TR];
 static unsigned int lang_next_alpha_char_TR[LANG_CHAR_COUNT_TR];
 
@@ -1459,7 +1921,7 @@ static char lang_timestamp_format_TR[] = "HH24:MI:SS DD.MM.YYYY";
  *   size2(in):
  */
 static void
-lang_initloc_tr (void)
+lang_initloc_tr (LANG_LOCALE_DATA * ld)
 {
   int i;
 
@@ -1487,15 +1949,13 @@ lang_initloc_tr (void)
   const unsigned int special_prev_lower_cp[] =
     { 'c', 'g', 'h', 'o', 's', 'u' };
 
-  assert (lang_Loc_data != NULL);
+  assert (ld != NULL);
 
   /* init alphabet */
   for (i = 0; i < LANG_CHAR_COUNT_TR; i++)
     {
       lang_upper_TR[i] = i;
       lang_lower_TR[i] = i;
-
-      lang_is_letter_TR[i] = 0;
 
       lang_weight_TR[i] = i;
 
@@ -1511,9 +1971,6 @@ lang_initloc_tr (void)
 
       lang_lower_TR[i] = i;
       lang_upper_TR[i - ('a' - 'A')] = i - ('a' - 'A');
-
-      lang_is_letter_TR[i] = 1;
-      lang_is_letter_TR[i - ('a' - 'A')] = 1;
     }
 
   assert (DIM (special_lower_cp) == DIM (special_upper_cp));
@@ -1525,15 +1982,22 @@ lang_initloc_tr (void)
 
       lang_lower_TR[special_upper_cp[i]] = special_lower_cp[i];
       lang_upper_TR[special_upper_cp[i]] = special_upper_cp[i];
-
-      lang_is_letter_TR[special_upper_cp[i]] = 1;
-      lang_is_letter_TR[special_lower_cp[i]] = 1;
     }
-  /* exceptions in TR casing : 
+
+  memcpy (lang_upper_i_TR, lang_upper_TR,
+	  LANG_CHAR_COUNT_TR * sizeof (lang_upper_TR[0]));
+  memcpy (lang_lower_i_TR, lang_lower_TR,
+	  LANG_CHAR_COUNT_TR * sizeof (lang_lower_TR[0]));
+
+  /* identifiers alphabet : same as Unicode data */
+  lang_upper_i_TR[0x131] = 'I';	/* small letter dotless i */
+  lang_lower_i_TR[0x130] = 'i';	/* capital letter I with dot above */
+
+  /* exceptions in TR casing for user alphabet : 
    */
   lang_upper_TR[0x131] = 'I';	/* small letter dotless i */
   lang_lower_TR[0x131] = 0x131;	/* small letter dotless i */
-  lang_upper_TR['i'] = 0x130;	/* = capital letter I with dot above */
+  lang_upper_TR['i'] = 0x130;	/* capital letter I with dot above */
   lang_lower_TR['i'] = 'i';
 
   lang_lower_TR[0x130] = 'i';	/* capital letter I with dot above */
@@ -1603,26 +2067,80 @@ lang_initloc_tr (void)
 
   /* other initializations to follow here */
 
-  lang_Loc_data->is_initialized = true;
+  ld->is_initialized = true;
 }
 
-static LANG_LOCALE_DATA lc_Turkish = {
-  lang_upper_TR,
-  lang_lower_TR,
-  lang_is_letter_TR,
-  lang_weight_TR,
-  lang_next_alpha_char_TR,
-  LANG_CHAR_COUNT_TR,
+/* Turkish in ISO-8859-1 charset : limited support (only date - formats) */
+static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
+  LANG_NAME_TURKISH,
+  INTL_LANG_TURKISH,
+  INTL_CODESET_ISO88591,
+  {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet : same as English ISO */
+  {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* identifiers alphabet : same as English ISO */
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+   NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, 0, 0, NULL, 0, 0},	/* collation : same as English ISO */
+  NULL,				/* console text conversion */
   false,
   lang_time_format_TR,
   lang_date_format_TR,
   lang_datetime_format_TR,
   lang_timestamp_format_TR,
-  lang_initloc_tr,
-  intl_strcmp_utf8,
-  intl_next_alpha_char_utf8
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  ',',
+  '.',
+  DB_CURRENCY_TL,
+  lang_initloc_en_iso88591,	/* same as English with ISO charset */
+  lang_fastcmp_iso_88591,
+  lang_next_alpha_char_iso88591,
+  NULL
 };
 
+extern TEXT_CONVERSION con_iso_8859_9_conv;
+static LANG_LOCALE_DATA lc_Turkish_utf8 = {
+  LANG_NAME_TURKISH,
+  INTL_LANG_TURKISH,
+  INTL_CODESET_UTF8,
+  {ALPHABET_ASCII, LANG_CHAR_COUNT_TR, 1, lang_lower_TR, 1, lang_upper_TR,
+   false},
+  {ALPHABET_TAILORED, LANG_CHAR_COUNT_TR, 1, lang_lower_i_TR, 1,
+   lang_upper_i_TR, false},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+   lang_weight_TR, lang_next_alpha_char_TR, LANG_CHAR_COUNT_TR,
+   0, NULL, NULL, NULL,
+   NULL, 0, 0, NULL, 0, 0},
+  &con_iso_8859_9_conv,		/* console text conversion */
+  false,
+  lang_time_format_TR,
+  lang_date_format_TR,
+  lang_datetime_format_TR,
+  lang_timestamp_format_TR,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  ',',
+  '.',
+  DB_CURRENCY_TL,
+  lang_initloc_tr,
+  intl_strcmp_utf8,
+  intl_next_coll_char_utf8,
+  NULL
+};
 
 /*
  * Korean Locale Data
@@ -1633,13 +2151,13 @@ static LANG_LOCALE_DATA lc_Turkish = {
  *   return:
  */
 static void
-lang_initloc_ko (void)
+lang_initloc_ko (LANG_LOCALE_DATA * ld)
 {
-  assert (lang_Loc_data != NULL);
+  assert (ld != NULL);
 
   /* TODO: update this if EUC-KR is fully supported as standalone charset */
 
-  lang_Loc_data->is_initialized = true;
+  ld->is_initialized = true;
 }
 
 /*
@@ -1732,33 +2250,98 @@ lang_fastcmp_ko (const unsigned char *string1, const int size1,
 /*
  * lang_next_alpha_char_ko() - computes the next alphabetical char
  *   return: size in bytes of the next alphabetical char
- *   cur_char(in): pointer to current char
- *   next_char(in/out): buffer to return next alphabetical char
- *
+ *   seq(in): pointer to current char
+ *   size(in): size in bytes for seq
+ *   next_seq(in/out): buffer to return next alphabetical char
+ *   len_next(in/out): length in chars for nex_seq
  */
 static int
-lang_next_alpha_char_ko (const unsigned char *cur_char,
-			 unsigned char *next_char)
+lang_next_alpha_char_ko (const unsigned char *seq, const int size,
+			 unsigned char *next_seq, int *len_next)
 {
   /* TODO: update this if EUC-KR is fully supported as standalone charset */
-  *next_char = *cur_char + 1;
+  assert (seq != NULL);
+  assert (next_seq != NULL);
+  assert (len_next != NULL);
+  assert (size > 0);
+
+  *next_seq = *seq + 1;
+  *len_next = 1;
   return 1;
 }
 
 
-static LANG_LOCALE_DATA lc_Korean = {
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  0,
+static LANG_LOCALE_DATA lc_Korean_iso88591 = {
+  LANG_NAME_KOREAN,
+  INTL_LANG_KOREAN,
+  INTL_CODESET_ISO88591,
+  {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet : same as English ISO */
+  {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* identifiers alphabet : same as English ISO */
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+   NULL, NULL, 0,
+   0, NULL, NULL, NULL,
+   NULL, 0, 0, NULL, 0, 0},	/* collation : same as English ISO */
+  NULL,				/* console text conversion */
   false,
   NULL,				/* time, date, date-time, timestamp format */
   NULL,
   NULL,
   NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  ',',
+  '.',
+  DB_CURRENCY_WON,
   lang_initloc_ko,
   lang_fastcmp_ko,
-  lang_next_alpha_char_ko
+  lang_next_alpha_char_ko,
+  NULL
+};
+
+/* built-in support of Korean in UTF-8 : date-time conversions as in English
+ * collation : by codepoints
+ * this needs to be overriden by user defined locale */
+static LANG_LOCALE_DATA lc_Korean_utf8 = {
+  LANG_NAME_KOREAN,
+  INTL_LANG_KOREAN,
+  INTL_CODESET_UTF8,
+  {ALPHABET_ASCII, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1, lang_upper_EN,
+   false},
+  {ALPHABET_ASCII, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1, lang_upper_EN,
+   false},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+   lang_weight_EN, lang_next_alpha_char_EN, LANG_CHAR_COUNT_EN,
+   0, NULL, NULL, NULL,
+   NULL, 0, 0, NULL, 0, 0},
+  NULL,				/* console text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp format */
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  '.',
+  ',',
+  DB_CURRENCY_WON,
+  lang_initloc_ko,
+  intl_strcmp_utf8,
+  intl_next_coll_char_utf8,
+  NULL
 };

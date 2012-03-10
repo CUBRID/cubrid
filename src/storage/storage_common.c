@@ -253,14 +253,74 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
 	case DB_CURRENCY_DOLLAR:
 	  fprintf (fd, " dollars");
 	  break;
-	case DB_CURRENCY_POUND:
-	  fprintf (fd, " pounds");
-	  break;
 	case DB_CURRENCY_YEN:
 	  fprintf (fd, " yens");
 	  break;
 	case DB_CURRENCY_WON:
 	  fprintf (fd, " wons");
+	  break;
+	case DB_CURRENCY_TL:
+	  fprintf (fd, " turkish lira");
+	  break;
+	case DB_CURRENCY_BRITISH_POUND:
+	  fprintf (fd, " pounds");
+	  break;
+	case DB_CURRENCY_CAMBODIAN_RIEL:
+	  fprintf (fd, " riels");
+	  break;
+	case DB_CURRENCY_CHINESE_RENMINBI:
+	  fprintf (fd, " renminbi");
+	  break;
+	case DB_CURRENCY_INDIAN_RUPEE:
+	  fprintf (fd, " rupees");
+	  break;
+	case DB_CURRENCY_RUSSIAN_RUBLE:
+	  fprintf (fd, " rubles");
+	  break;
+	case DB_CURRENCY_AUSTRALIAN_DOLLAR:
+	  fprintf (fd, " Australian dollars");
+	  break;
+	case DB_CURRENCY_CANADIAN_DOLLAR:
+	  fprintf (fd, " Canadian dollars");
+	  break;
+	case DB_CURRENCY_BRASILIAN_REAL:
+	  fprintf (fd, " reals");
+	  break;
+	case DB_CURRENCY_ROMANIAN_LEU:
+	  fprintf (fd, " lei");
+	  break;
+	case DB_CURRENCY_EURO:
+	  fprintf (fd, " euros");
+	  break;
+	case DB_CURRENCY_SWISS_FRANC:
+	  fprintf (fd, " Swiss francs");
+	  break;
+	case DB_CURRENCY_DANISH_KRONE:
+	  fprintf (fd, " Danish crowns");
+	  break;
+	case DB_CURRENCY_NORWEGIAN_KRONE:
+	  fprintf (fd, " Norwegian crowns");
+	  break;
+	case DB_CURRENCY_BULGARIAN_LEV:
+	  fprintf (fd, " levs");
+	  break;
+	case DB_CURRENCY_VIETNAMESE_DONG:
+	  fprintf (fd, " Vietnamese dongs");
+	  break;
+	case DB_CURRENCY_CZECH_KORUNA:
+	  fprintf (fd, " Czech crowns");
+	  break;
+	case DB_CURRENCY_POLISH_ZLOTY:
+	  fprintf (fd, " zloty");
+	  break;
+	case DB_CURRENCY_SWEDISH_KRONA:
+	  fprintf (fd, " Swedish crowns");
+	  break;
+	case DB_CURRENCY_CROATIAN_KUNA:
+	  fprintf (fd, " kunas");
+	  break;
+	case DB_CURRENCY_SERBIAN_DINAR:
+	  fprintf (fd, " dinars");
 	  break;
 	default:
 	  break;

@@ -1456,6 +1456,16 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       }
       break;
 
+    case DB_TYPE_ENUMERATION:
+      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
+	{
+	  /* flush remaining buffer */
+	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	}
+      CHECK_PRINT_ERROR (itoa_print (tout, DB_GET_ENUM_SHORT (value),
+				     10 /* base */ ));
+      break;
+
     case DB_TYPE_DATE:
       db_date_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_DATE (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "date '%s'", buf));

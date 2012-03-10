@@ -36,7 +36,6 @@
 #include <sys/errno.h>
 #include <signal.h>
 #include <wctype.h>
-#include <langinfo.h>
 #endif /* !WINDOWS */
 #if defined(GNU_Readline)
 #include <readline/readline.h>
@@ -441,57 +440,13 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       if (lang_charset () == INTL_CODESET_UTF8)
 	{
-#if defined(WINDOWS)
-	  UINT cp;
+	  TEXT_CONVERSION *tc = lang_get_txt_conv ();
 
-	  cp = GetConsoleCP ();
-	  if (cp == 28599)	/* ISO 8859-9 (Turkish / Latin 5) */
+	  if (tc != NULL)
 	    {
-	      intl_init_conv_iso8859_9_to_utf8 ();
-	      csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
-	      csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
+	      csql_text_utf8_to_console = tc->utf8_to_text_func;
+	      csql_text_console_to_utf8 = tc->text_to_utf8_func;
 	    }
-	  else if (cp == 28591)	/* ISO 8859-1 Latin 1; Western European */
-	    {
-	      intl_init_conv_iso8859_1_to_utf8 ();
-	      csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
-	      csql_text_console_to_utf8 = intl_text_iso8859_1_to_utf8;
-	    }
-	  else
-	    {
-	      assert (csql_text_utf8_to_console == NULL);
-	      assert (csql_text_console_to_utf8 == NULL);
-	      intl_String_validation = true;
-	    }
-#else
-	  if (setlocale (LC_CTYPE, "") != NULL)
-	    {
-	      if (strcmp (nl_langinfo (CODESET), "iso88599") == 0 ||
-		  strcmp (nl_langinfo (CODESET), "ISO_8859-9") == 0 ||
-		  strcmp (nl_langinfo (CODESET), "ISO8859-9") == 0 ||
-		  strcmp (nl_langinfo (CODESET), "ISO-8859-9") == 0)
-		{
-		  intl_init_conv_iso8859_9_to_utf8 ();
-		  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_9;
-		  csql_text_console_to_utf8 = intl_text_iso8859_9_to_utf8;
-		}
-	      else if (strcmp (nl_langinfo (CODESET), "iso88591") == 0 ||
-		       strcmp (nl_langinfo (CODESET), "ISO_8859-1") == 0 ||
-		       strcmp (nl_langinfo (CODESET), "ISO8859-1") == 0 ||
-		       strcmp (nl_langinfo (CODESET), "ISO-8859-1") == 0)
-		{
-		  intl_init_conv_iso8859_1_to_utf8 ();
-		  csql_text_utf8_to_console = intl_text_utf8_to_iso8859_1;
-		  csql_text_console_to_utf8 = intl_text_iso8859_1_to_utf8;
-		}
-	      else
-		{
-		  assert (csql_text_utf8_to_console == NULL);
-		  assert (csql_text_console_to_utf8 == NULL);
-		  intl_String_validation = true;
-		}
-	    }
-#endif
 	}
     }
 
@@ -1788,6 +1743,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	case CUBRID_STMT_UPDATE:
 	case CUBRID_STMT_DELETE:
 	case CUBRID_STMT_INSERT:
+	case CUBRID_STMT_MERGE:
 	  {
 	    const char *msg_p;
 
@@ -2277,7 +2233,7 @@ csql_exit_init (void)
    * modules.  Would be nice to have a better encapsulation of
    * the dependencies for arg parsing.
    */
-  lang_init ();			/* for catalog location */
+  lang_init_full ();		/* for catalog location */
 }
 
 /*
@@ -2388,6 +2344,12 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* initialize message catalog for argument parsing and usage() */
   if (utility_initialize () != NO_ERROR)
     {
+      csql_exit (EXIT_FAILURE);
+    }
+
+  if (!lang_check_init ())
+    {
+      printf ("Failed to initialize language \n");
       csql_exit (EXIT_FAILURE);
     }
 

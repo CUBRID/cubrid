@@ -20,4 +20,4 @@
 
 msgdir = @CUBRID_LOCALEDIR@
 
-SUBDIRS = en_US ko_KR.euckr ko_KR.utf8 en_US.utf8 tr_TR.utf8
+SUBDIRS = en_US ko_KR.euckr ko_KR.utf8 en_US.utf8 tr_TR.utf8 de_DE.utf8 es_ES.utf8 fr_FR.utf8 it_IT.utf8 ja_JP.utf8 km_KH.utf8 vi_VN.utf8 zh_CN.utf8

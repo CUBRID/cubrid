@@ -950,7 +950,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
       return NULL;
     }
 
-  merge->info.query.q.select.flavor = PT_MERGE;
+  merge->info.query.q.select.flavor = PT_MERGE_SELECT;
   merge->info.query.correlation_level = merge_correlation_level;
   merge->info.query.is_subquery = PT_IS_SUBQUERY;
   merge->info.query.q.select.from = table1;
@@ -1151,7 +1151,7 @@ meth_collapse_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       !(merge = node->info.query.q.select.from->info.spec.derived_table) ||
       (node->info.query.q.select.from->info.spec.derived_table_type
        != PT_IS_SUBQUERY) ||
-      (merge->info.query.q.select.flavor != PT_MERGE) ||
+      (merge->info.query.q.select.flavor != PT_MERGE_SELECT) ||
       node->info.query.q.select.from->next)
     {
       return node;
@@ -1188,7 +1188,7 @@ meth_collapse_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
   node->info.query.q.select.where =
     meth_add_conj (parser, node->info.query.q.select.where,
 		   merge->info.query.q.select.where);
-  node->info.query.q.select.flavor = PT_MERGE;
+  node->info.query.q.select.flavor = PT_MERGE_SELECT;
 
   /* redo cnf, since collapsing may have munged the conjunct tags */
   node = pt_do_cnf (parser, node, void_arg, continue_walk);
@@ -1616,7 +1616,7 @@ meth_find_last_entity (PARSER_CONTEXT * parser, PT_NODE * node,
   if (node->info.spec.derived_table
       && node->info.spec.derived_table_type == PT_IS_SUBQUERY
       && (node->info.spec.derived_table->info.query.q.select.flavor ==
-	  PT_MERGE))
+	  PT_MERGE_SELECT))
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -1995,7 +1995,7 @@ meth_find_merge (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
   int *hand_rewritten = (int *) void_arg;
 
   if (node->node_type == PT_SELECT
-      && node->info.query.q.select.flavor == PT_MERGE)
+      && node->info.query.q.select.flavor == PT_MERGE_SELECT)
     {
       *hand_rewritten = 1;
     }
@@ -2030,7 +2030,7 @@ meth_is_method (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
    * they will be found in the leaves of merge nodes.
    */
   if (node->node_type == PT_SELECT
-      && node->info.query.q.select.flavor == PT_MERGE)
+      && node->info.query.q.select.flavor == PT_MERGE_SELECT)
     {
       *continue_walk = PT_LIST_WALK;
     }

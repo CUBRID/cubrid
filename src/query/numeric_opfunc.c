@@ -3201,6 +3201,15 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
 	break;
       }
 
+    case DB_TYPE_ENUMERATION:
+      {
+	int anint = DB_GET_ENUM_SHORT (src);
+	numeric_coerce_int_to_num (anint, num);
+	precision = 5;
+	scale = 0;
+	break;
+      }
+
     default:
       ret = ER_FAILED;
       break;

@@ -1091,7 +1091,7 @@ static TP_DOMAIN *
 or_get_domain_internal (char *ptr)
 {
   TP_DOMAIN *domain, *last, *new_;
-  int n_domains, offset, i;
+  int n_domains, offset, i, error = NO_ERROR;
   char *dstart, *fixed;
   DB_TYPE typeid_;
 
@@ -1113,9 +1113,11 @@ or_get_domain_internal (char *ptr)
       new_ = tp_domain_new (typeid_);
       if (new_ == NULL)
 	{
-	  if (domain != NULL)
+	  while (domain != NULL)
 	    {
+	      TP_DOMAIN *next = domain->next;
 	      tp_domain_free (domain);
+	      domain = next;
 	    }
 	  return NULL;
 	}
@@ -1148,6 +1150,31 @@ or_get_domain_internal (char *ptr)
 	  offset =
 	    OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SETDOMAIN_INDEX);
 	  new_->setdomain = or_get_domain_internal (dstart + offset);
+	}
+
+      DOM_SET_ENUM (new_, NULL, 0);
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_ENUMERATION_INDEX)
+	  != 0)
+	{
+	  OR_BUF buf;
+
+	  offset =
+	    OR_VAR_TABLE_ELEMENT_OFFSET (dstart,
+					 ORC_DOMAIN_ENUMERATION_INDEX);
+
+	  or_init (&buf, dstart + offset, 0);
+
+	  error = or_get_enumeration (&buf, &DOM_GET_ENUMERATION (new_));
+	  if (error != NO_ERROR)
+	    {
+	      while (domain != NULL)
+		{
+		  TP_DOMAIN *next = domain->next;
+		  tp_domain_free (domain);
+		  domain = next;
+		}
+	      return NULL;
+	    }
 	}
     }
 

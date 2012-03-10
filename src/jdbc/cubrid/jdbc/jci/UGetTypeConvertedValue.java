@@ -43,6 +43,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 
+import cubrid.jdbc.driver.CUBRIDEnum;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 
@@ -226,7 +227,8 @@ abstract public class UGetTypeConvertedValue {
 		else if (data instanceof String)
 			return ((String) data);
 		else if ((data instanceof Number) || (data instanceof Boolean)
-				|| (data instanceof Date) || (data instanceof Time)) {
+				|| (data instanceof Date) || (data instanceof Time)
+				|| (data instanceof CUBRIDEnum)) {
 			return data.toString();
 		} else if (data instanceof Timestamp) {
 			String form;

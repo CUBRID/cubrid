@@ -404,7 +404,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
          parser.  Otherwise, we may get a confusing error msg of the form:
          "so_and_so is not a class". */
       pt_record_error (parser, parser->statement_number - 1,
-		       alter->line_number, alter->column_number, er_msg ());
+		       alter->line_number, alter->column_number, er_msg (),
+		       NULL);
       return er_errid ();
     }
 
@@ -7163,6 +7164,14 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
       spec = stmt->info.delete_.spec;
       cond = stmt->info.delete_.search_cond;
       break;
+    case PT_MERGE:
+      {
+	assert (stmt->info.merge.into->next == NULL);
+	stmt->info.merge.into->next = stmt->info.merge.using;
+	spec = stmt->info.merge.into;
+	cond = stmt->info.merge.search_cond;
+      }
+      break;
     case PT_SPEC:		/* path expression */
       spec = stmt;
       cond = NULL;
@@ -7379,10 +7388,20 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
     }
 
+  if (stmt->node_type == PT_MERGE)
+    {
+      stmt->info.merge.into->next = NULL;
+    }
+
   AU_ENABLE (au_save);
   return;
 
 work_failed:
+  if (stmt->node_type == PT_MERGE)
+    {
+      stmt->info.merge.into->next = NULL;
+    }
+
   AU_ENABLE (au_save);
 
   pr_clear_value (&ptype);
@@ -9237,7 +9256,8 @@ validate_attribute_domain (PARSER_CONTEXT * parser,
     {
       pt_record_error (parser,
 		       parser->statement_number,
-		       __LINE__, 0, "system error - NULL attribute node");
+		       __LINE__, 0, "system error - NULL attribute node",
+		       NULL);
     }
   else
     {
@@ -9247,7 +9267,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser,
 			   parser->statement_number,
 			   attribute->line_number,
 			   attribute->column_number,
-			   "system error - attribute type not set");
+			   "system error - attribute type not set", NULL);
 	}
       else
 	{
@@ -11586,7 +11606,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
          parser.  Otherwise, we may get a confusing error msg of the form:
          "so_and_so is not a class". */
       pt_record_error (parser, parser->statement_number - 1,
-		       alter->line_number, alter->column_number, er_msg ());
+		       alter->line_number, alter->column_number, er_msg (),
+		       NULL);
       error = er_errid ();
       goto exit;
     }
@@ -11725,7 +11746,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	{
 	  pt_record_error (parser, parser->statement_number - 1,
 			   alter->line_number, alter->column_number,
-			   er_msg ());
+			   er_msg (), NULL);
 	  error = er_errid ();
 	  goto exit;
 	}

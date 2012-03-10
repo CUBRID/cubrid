@@ -7786,7 +7786,7 @@ au_install (void)
   smt_add_attribute (def, "triggers", "sequence of (string, object)",
 		     (DB_DOMAIN *) 0);
   smt_add_attribute (def, "charset", "integer", NULL);
-  smt_add_attribute (def, "lang_id", "integer", NULL);
+  smt_add_attribute (def, "lang", "string", NULL);
 
 
   /* need signatures for these ! */

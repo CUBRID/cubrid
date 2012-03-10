@@ -182,8 +182,9 @@ static PT_NODE *pt_undef_names (PARSER_CONTEXT * parser, PT_NODE * node,
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT *
 						       parser,
 						       PT_NODE * const node);
-static PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE
-						     expr_type);
+
+static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser,
+					PT_NODE * statement);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -1032,16 +1033,30 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
   switch (node->node_type)
     {
     case PT_UPDATE:
+    case PT_MERGE:
       {
-	PT_NODE *temp, *lhs;
+	PT_NODE *temp, *lhs, *assignments, *spec;
 	int error = NO_ERROR;
+
+	if (node->node_type == PT_UPDATE)
+	  {
+	    assignments = node->info.update.assignment;
+	    spec = node->info.update.spec;
+	  }
+	else if (node->node_type == PT_MERGE)
+	  {
+	    assignments = node->info.merge.update.assignment;
+	    assert (node->info.merge.into->next == NULL);
+	    node->info.merge.into->next = node->info.merge.using;
+	    spec = node->info.merge.into;
+	  }
 
 	/* this is only to eliminate oid names from lhs of assignments
 	 * per ANSI. This is because name resolution for OID's conflicts
 	 * with ANSI.
 	 */
-	for (temp = node->info.update.assignment;
-	     temp && error == NO_ERROR; temp = temp->next)
+	for (temp = assignments; temp && error == NO_ERROR;
+	     temp = temp->next)
 	  {
 	    lhs = temp->info.expr.arg1;
 	    if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
@@ -1059,9 +1074,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 			/* must re-resolve the name */
 			lhs->info.name.original = lhs->info.name.resolved;
 			lhs->info.name.spec_id = 0;
-			if (!pt_find_name_in_spec (parser,
-						   node->info.update.spec,
-						   lhs))
+			if (!pt_find_name_in_spec (parser, spec, lhs))
 			  {
 			    error = MSGCAT_SEMANTIC_IS_NOT_DEFINED;
 			    PT_ERRORmf (parser, lhs,
@@ -1071,6 +1084,10 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 		      }
 		  }
 	      }
+	  }
+	if (node->node_type == PT_MERGE)
+	  {
+	    node->info.merge.into->next = NULL;
 	  }
       }
 
@@ -1300,7 +1317,7 @@ pt_set_fill_default_in_path_expression (PT_NODE * node)
 /*
  * fill_in_insert_default_function_arguments () - Fills in the argument of the
  *                                                DEFAULT function when used
- *                                                for INSERT execution
+ *                                                for INSERT, MERGE INSERT
  *   parser(in):
  *   node(in):
  * Note: When parsing statements such as "INSERT INTO tbl VALUES (1, DEFAULT)"
@@ -1318,15 +1335,29 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
   SM_CLASS *smclass = NULL;
   SM_ATTRIBUTE *attr = NULL;
   PT_NODE *cls_name = NULL;
+  PT_NODE *values_list = NULL;
+  PT_NODE *attrs_list = NULL;
 
-  assert (node->node_type == PT_INSERT);
+  assert (node->node_type == PT_INSERT || node->node_type == PT_MERGE);
 
   /* if an attribute has a default expression as default value
    * and that expression refers to the current date and time,
    * then we make sure that we mark this statement as one that
    * needs the system datetime from the server 
    */
-  cls_name = node->info.insert.spec->info.spec.entity_name;
+  if (node->node_type == PT_INSERT)
+    {
+      cls_name = node->info.insert.spec->info.spec.entity_name;
+      values_list = node->info.insert.value_clauses;
+      attrs_list = node->info.insert.attr_list;
+    }
+  else
+    {
+      cls_name = node->info.merge.into->info.spec.entity_name;
+      values_list = node->info.merge.insert.value_clauses;
+      attrs_list = node->info.merge.insert.attr_list;
+    }
+
   au_fetch_class_force (cls_name->info.name.db_object, &smclass,
 			AU_FETCH_READ);
   if (smclass)
@@ -1343,8 +1374,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
 	}
     }
 
-  for (crt_list = node->info.insert.value_clauses;
-       crt_list != NULL; crt_list = crt_list->next)
+  for (crt_list = values_list; crt_list != NULL; crt_list = crt_list->next)
     {
       /*
        * If the statement such as "INSERT INTO tbl DEFAULT" is given,
@@ -1363,8 +1393,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
 
 	  assert (node->info.node_list.list == NULL);
 
-	  for (crt_attr = node->info.insert.attr_list;
-	       crt_attr != NULL; crt_attr = crt_attr->next)
+	  for (crt_attr = attrs_list; crt_attr != NULL;
+	       crt_attr = crt_attr->next)
 	    {
 	      crt_value = parser_new_node (parser, PT_EXPR);
 
@@ -1410,7 +1440,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
 	}
       else
 	{
-	  for (crt_attr = node->info.insert.attr_list,
+	  for (crt_attr = attrs_list,
 	       crt_value = crt_list->info.node_list.list;
 	       crt_attr != NULL && crt_value != NULL;
 	       crt_attr = crt_attr->next, crt_value = crt_value->next)
@@ -1464,6 +1494,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   PT_NODE *seq;
   PT_NODE *cnf, *prev, *next, *lhs, *rhs, *lhs_spec, *rhs_spec, *last, *save;
   PT_NODE *p_spec;
+  PT_NODE *result;
   short i, k, lhs_location, rhs_location;
   PT_JOIN_TYPE join_type;
 
@@ -2434,7 +2465,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       *continue_walk = PT_LIST_WALK;
       break;
 
-
     case PT_UPDATE:
       scopestack.specs = node->info.update.spec;
       bind_arg->scopes = &scopestack;
@@ -2495,6 +2525,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
+      result = pt_resolve_vclass_args (parser, node);
+      if (!result)
+	{
+	  /* error is handled */
+	  goto insert_end;
+	}
+      node = result;
+
       if (!node->info.insert.attr_list)
 	{
 	  node->info.insert.attr_list =
@@ -2510,6 +2548,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       parser_walk_tree (parser, node->info.insert.value_clauses,
 			pt_undef_names, node->info.insert.spec, NULL, NULL);
 
+    insert_end:
       /* pop the extra spec frame and add any extra specs
        * to the from list
        */
@@ -2523,6 +2562,50 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       /* don't revisit leaves */
       *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_MERGE:
+      {
+	if (node->info.merge.insert.value_clauses)
+	  {
+	    /* resolve missing attr_list as star */
+	    if (!node->info.merge.insert.attr_list)
+	      {
+		node->info.merge.insert.attr_list =
+		  pt_resolve_star (parser, node->info.merge.into, NULL);
+	      }
+	    /* resolve DEFAULT clauses */
+	    if (node->info.merge.into->info.spec.entity_name)
+	      {
+		fill_in_insert_default_function_arguments (parser, node);
+	      }
+	  }
+
+	assert (node->info.merge.into->next == NULL);
+	node->info.merge.into->next = node->info.merge.using;
+
+	scopestack.specs = node->info.merge.into;
+	bind_arg->scopes = &scopestack;
+	spec_frame.next = bind_arg->spec_frames;
+	spec_frame.extra_specs = NULL;
+	bind_arg->spec_frames = &spec_frame;
+	pt_bind_scope (parser, bind_arg);
+
+	parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
+			    pt_bind_names_post, bind_arg);
+
+	/* flag any "correlated" names as undefined. */
+	parser_walk_tree (parser, node->info.merge.insert.value_clauses,
+			  pt_undef_names, node->info.merge.into, NULL, NULL);
+
+	bind_arg->spec_frames = bind_arg->spec_frames->next;
+	bind_arg->scopes = bind_arg->scopes->next;
+
+	/* don't revisit leaves */
+	*continue_walk = PT_LIST_WALK;
+
+	node->info.merge.into->next = NULL;
+      }
       break;
 
     case PT_CREATE_INDEX:
@@ -3514,6 +3597,34 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  }
       break;
 
+    case PT_TYPE_ENUMERATION:
+      {
+	DB_ENUM_ELEMENT *db_enum = NULL;
+	int idx;
+
+	if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+	  {
+	    return NULL;
+	  }
+
+	result->type_enum = t;
+	result->info.data_type.enumeration = NULL;
+	for (idx = 1; idx <= DOM_GET_ENUM_ELEMS_COUNT (domain); idx++)
+	  {
+	    db_enum = &DOM_GET_ENUM_ELEM (domain, idx);
+	    s =
+	      pt_make_string_value (parser,
+				    DB_GET_ENUM_ELEM_STRING (db_enum));
+	    if (s == NULL)
+	      {
+		return NULL;
+	      }
+	    result->info.data_type.enumeration =
+	      parser_append_node (s, result->info.data_type.enumeration);
+	  }
+      }
+      break;
+
     default:
       if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
 	{
@@ -3561,6 +3672,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
     case PT_DELETE:
     case PT_GRANT:
     case PT_REVOKE:
+    case PT_MERGE:
       *spec_parent = node;
       break;
     default:
@@ -3765,6 +3877,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att,
     case PT_TYPE_VARCHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
+    case PT_TYPE_ENUMERATION:
       attr->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:
@@ -4680,7 +4793,8 @@ pt_expand_external_path (PARSER_CONTEXT * parser,
       && !PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_EXTERNAL))
     {
       entity = ((*p_entity) ? (*p_entity)->info.spec.entity_name : NULL);
-      if (entity && entity->info.name.db_object)
+      if (entity && entity->node_type == PT_NAME
+	  && entity->info.name.db_object)
 	{
 	  attr_obj =
 	    (DB_ATTRIBUTE *) db_get_attribute_force (entity->info.name.
@@ -5246,6 +5360,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 			       && spec_parent->node_type != PT_CREATE_INDEX
 			       && spec_parent->node_type != PT_DROP_INDEX
 			       && spec_parent->node_type != PT_ALTER_INDEX
+			       && spec_parent->node_type != PT_MERGE
 			       && (spec_parent->node_type != PT_UPDATE
 				   || !IS_UPDATE_OBJ (spec_parent)))
 			{
@@ -5651,6 +5766,211 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
     }
 
   return result;
+}
+
+/*
+ * pt_resolve_vclass_args () - modifies the attribute list in the insert 
+ *	  statement by adding to the specified attributes the ones missing with
+ *	  their default values (if not null). is applied only to views.
+ *
+ *    return: the modified statement
+ *    parser(in):
+ *    statement(in): insert statement
+ *
+ * NOTE: this step is needed because all information on the view is lost after
+ *	 translate (including default values for the missing attributes).
+ */
+static PT_NODE *
+pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *spec;
+  PT_NODE *entity_name;
+  PT_NODE *attr_list, *attr;
+  PT_NODE *value_clauses, *value_list;
+  PT_NODE *crt_node;
+  PT_NODE *rest_attrs, *rest_values;
+  SM_CLASS *sm_class;
+  DB_OBJECT *db_obj;
+  DB_ATTRIBUTE *db_attributes, *db_attr;
+  int is_values;
+  int is_subqery;
+
+  if (!statement || statement->node_type != PT_INSERT)
+    {
+      /* do nothing */
+      return statement;
+    }
+
+  spec = statement->info.insert.spec;
+  entity_name = spec->info.spec.entity_name;
+  if (!entity_name || entity_name->node_type != PT_NAME)
+    {
+      /* enitity_name should be resolved before going further */
+      return statement;
+    }
+  db_obj = entity_name->info.name.db_object;
+  if (!db_obj || !db_is_vclass (db_obj))
+    {
+      /* this applies only for views */
+      return statement;
+    }
+  value_clauses = statement->info.insert.value_clauses;
+  value_list = value_clauses->info.node_list.list;
+  attr_list = statement->info.insert.attr_list;
+  if (!attr_list)
+    {
+      return statement;
+    }
+
+  is_values = (value_clauses->info.node_list.list_type == PT_IS_VALUE);
+  is_subqery = (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY);
+
+  if (au_fetch_class_force (db_obj, &sm_class, AU_FETCH_READ))
+    {
+      return statement;
+    }
+  db_attributes = sm_class->attributes;
+
+  rest_attrs = NULL;
+  rest_values = NULL;
+
+  for (db_attr = db_attributes; db_attr; db_attr = db_attr->header.next)
+    {
+      char *name = db_attr->header.name;
+
+      if (!(&db_attr->default_value)
+	  || (DB_IS_NULL (&db_attr->default_value.value)
+	      && db_attr->default_value.default_expr == DB_DEFAULT_NONE))
+	{
+	  /* no default value */
+	  continue;
+	}
+
+      for (attr = attr_list; attr; attr = attr->next)
+	{
+	  if (pt_str_compare
+	      (name, attr->info.name.original, CASE_INSENSITIVE) == 0)
+	    {
+	      break;
+	    }
+	}
+      if (!attr)
+	{
+	  int name_length = strlen (name);
+	  /* create attribute & default value and update rest_lists */
+	  attr = parser_new_node (parser, PT_NAME);
+	  if (!attr)
+	    {
+	      PT_ERROR (parser, statement, "allocation error");
+	      goto error;
+	    }
+	  attr->info.name.original =
+	    malloc ((name_length + 1) * sizeof (char));
+	  if (!attr->info.name.original)
+	    {
+	      PT_ERROR (parser, statement, "allocation error");
+	      goto error;
+	    }
+	  memcpy (attr->info.name.original, name, name_length + 1);
+	  if (rest_attrs)
+	    {
+	      rest_attrs = parser_append_node (attr, rest_attrs);
+	    }
+	  else
+	    {
+	      rest_attrs = attr;
+	    }
+	  if (is_values)
+	    {
+	      PT_NODE *val = parser_new_node (parser, PT_EXPR);
+	      if (!val)
+		{
+		  PT_ERROR (parser, statement, "allocation error");
+		  goto error;
+		}
+	      val->info.expr.op = PT_DEFAULTF;
+	      if (rest_values)
+		{
+		  rest_values = parser_append_node (val, rest_values);
+		}
+	      else
+		{
+		  rest_values = val;
+		}
+	    }
+	  if (is_subqery)
+	    {
+	      PT_NODE *val = pt_sm_attribute_default_value_to_node (parser,
+								    db_attr);
+	      if (!val)
+		{
+		  /* error was already handled */
+		  goto error;
+		}
+
+	      if (rest_values)
+		{
+		  rest_values = parser_append_node (val, rest_values);
+		}
+	      else
+		{
+		  rest_values = val;
+		}
+	    }
+	}
+    }
+
+  if (!rest_attrs || !rest_values)
+    {
+      /* nothing to do */
+      return statement;
+    }
+
+  statement->info.insert.attr_list = parser_append_node (rest_attrs,
+							 attr_list);
+  if (is_values)
+    {
+      for (crt_node = value_clauses; crt_node; crt_node = crt_node->next)
+	{
+	  /* a different copy of rest_values is needed for each node in the
+	   * node list
+	   */
+	  PT_NODE *new_rest_values = parser_copy_tree_list (parser,
+							    rest_values);
+	  if (!new_rest_values)
+	    {
+	      goto error;
+	    }
+	  crt_node->info.node_list.list = parser_append_node (new_rest_values,
+							      crt_node->info.
+							      node_list.list);
+	}
+      /* only copied of rest_values are used, has to be freed */
+      parser_free_tree (parser, rest_values);
+    }
+  if (is_subqery)
+    {
+      statement->info.insert.value_clauses->info.node_list.list =
+	pt_append_query_select_list (parser, value_list, rest_values);
+    }
+
+  return statement;
+
+error:
+  if (rest_attrs)
+    {
+      parser_free_tree (parser, rest_attrs);
+    }
+  if (rest_values)
+    {
+      parser_free_tree (parser, rest_values);
+    }
+  if (!pt_has_error (parser))
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+    }
+
+  return NULL;
 }
 
 /*
@@ -6860,7 +7180,7 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser,
  *   return: a PT_OP_TYPE (the desired operation)
  *   expr_type(in): a DB_DEFAULT_EXPR_TYPE (the default expression)
  */
-static PT_OP_TYPE
+PT_OP_TYPE
 pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 {
   switch (expr_type)

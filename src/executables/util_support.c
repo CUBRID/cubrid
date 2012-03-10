@@ -208,6 +208,7 @@ util_parse_argument (UTIL_MAP * util_map, int argc, char **argv)
 	}
       else if (option_value == '?' || option_value == ':')
 	{
+	  status = ER_FAILED;
 	  return status;
 	}
       status = util_put_option_value (util_map, option_value, optarg);

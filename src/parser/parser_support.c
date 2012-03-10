@@ -679,37 +679,45 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
- * pt_find_spec_in_from_list () - find the node spec in from list
- *   return: the spec in the from list with same id as the name, or NULL
+ * pt_find_spec_in_statement () - find the node spec in given statement
+ *   return: the spec with same id as the name, or NULL
  *   parser(in):
- *   from(in):
+ *   stmt(in):
  *   name(in):
  */
 PT_NODE *
-pt_find_spec_in_from_list (PARSER_CONTEXT * parser, const PT_NODE * from,
+pt_find_spec_in_statement (PARSER_CONTEXT * parser, const PT_NODE * stmt,
 			   const PT_NODE * name)
 {
   PT_NODE *spec = NULL;
 
-  switch (from->node_type)
+  switch (stmt->node_type)
     {
     case PT_SPEC:
-      spec = pt_find_spec (parser, from, name);
+      spec = pt_find_spec (parser, stmt, name);
       break;
 
     case PT_DELETE:
-      spec = pt_find_spec (parser, from->info.delete_.spec, name);
+      spec = pt_find_spec (parser, stmt->info.delete_.spec, name);
       if (spec == NULL)
 	{
-	  spec = pt_find_spec (parser, from->info.delete_.class_specs, name);
+	  spec = pt_find_spec (parser, stmt->info.delete_.class_specs, name);
 	}
       break;
 
     case PT_UPDATE:
-      spec = pt_find_spec (parser, from->info.update.spec, name);
+      spec = pt_find_spec (parser, stmt->info.update.spec, name);
       if (spec == NULL)
 	{
-	  spec = pt_find_spec (parser, from->info.update.class_specs, name);
+	  spec = pt_find_spec (parser, stmt->info.update.class_specs, name);
+	}
+      break;
+
+    case PT_MERGE:
+      spec = pt_find_spec (parser, stmt->info.merge.into, name);
+      if (spec == NULL)
+	{
+	  spec = pt_find_spec (parser, stmt->info.merge.using, name);
 	}
       break;
 
@@ -6726,7 +6734,10 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
  *				    type_id=8 ,
  *				  CONCAT( ' OF ',
  *					  Types_t.Composed_types),
- *				  '')
+ *				  IF (type_id = 35,
+ *				      CONCAT('(',
+ *				      SELECT GROUP_CONCAT(CONCAT('''', EV.a, '''') SEPARATOR ', ')
+ *				      FROM TABLE(D.enumeration) as EV(a), ')'), ''))
  *			  )
  *	      ) AS Type
  *
@@ -6742,6 +6753,7 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
   PT_NODE *concat_node = NULL;
   PT_NODE *if_node = NULL;
   PT_NODE *if_node_types = NULL;
+  PT_NODE *if_node_enum = NULL;
 
   /* CONCAT(',',scale,')') */
   {
@@ -6872,6 +6884,78 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
       }
   }
 
+  /* IF (type_id = 35,
+   *     CONCAT('(',
+   *            SELECT GROUP_CONCAT(CONCAT('''', EV.a, '''') SEPARATOR ', ')
+   *            FROM TABLE (D.enumeration) as EV(a), ')'
+   *            ),
+   *     '')
+   */
+  {
+    PT_NODE *node1 = parser_new_node (parser, PT_FUNCTION);
+    PT_NODE *node2 = NULL;
+    PT_NODE *node3 = NULL;
+
+    if (node1 == NULL)
+      {
+	return NULL;
+      }
+
+    /* CONCAT('''', EV.a, '''') */
+    node2 = pt_make_string_value (parser, "'");
+    node3 = pt_make_dotted_identifier (parser, "EV.a");
+    node2 = parser_append_node (node3, node2);
+    node3 = pt_make_string_value (parser, "'");
+    node2 = parser_append_node (node3, node2);
+    node2 = parser_keyword_func ("concat", node2);
+
+    /* GROUP_CONCAT(EV.a SEPARATOR ', ') */
+    node1->info.function.function_type = PT_GROUP_CONCAT;
+    node1->info.function.all_or_distinct = PT_ALL;
+
+    node3 = pt_make_string_value (parser, ", ");
+    node1->info.function.arg_list = parser_append_node (node3, node2);
+    node1->info.function.order_by = NULL;
+
+    /* TABLE(D.enumeration) as EV(a) */
+    node2 = parser_new_node (parser, PT_SPEC);
+    if (node2 == NULL)
+      {
+	return NULL;
+      }
+    node2->info.spec.derived_table =
+      pt_make_dotted_identifier (parser, "D.enumeration");
+    node2->info.spec.derived_table_type = PT_IS_SET_EXPR;
+    node2->info.spec.range_var = pt_name (parser, "EV");
+    node2->info.spec.as_attr_list = pt_name (parser, "a");
+
+    /* SELECT GROUP_CONCAT(EV.a SEPARATOR ', ')
+     * FROM TABLE(D.enumeration) as EV(a)
+     */
+    node3 = parser_new_node (parser, PT_SELECT);
+    if (node3 == NULL)
+      {
+	return NULL;
+      }
+    node3->info.query.q.select.list = node1;
+    node3->info.query.q.select.from = node2;
+
+    /* CONCAT('(', SELECT ..., ')') */
+    node1 = pt_make_string_value (parser, "(");
+    node1 = parser_append_node (node3, node1);
+    node1 = parser_append_node (pt_make_string_value (parser, ")"), node1);
+    node2 = parser_keyword_func ("concat", node1);
+
+    /* IF (type_id = 35, CONCAT('(', SELECT ..., ')'), '') */
+    node1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 35);
+    node3 = pt_make_string_value (parser, "");
+    if_node_enum = parser_make_expression (PT_IF, node1, node2, node3);
+    if (if_node_enum == NULL)
+      {
+	return NULL;
+      }
+  }
+
   /* IF ( type_id = 6 OR type_id = 7 OR type_id=8 , CONCAT( .. ),'') */
   {
     PT_NODE *cond_item1 = NULL;
@@ -6891,7 +6975,7 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     pred_for_if = cond_item1;
     assert (concat_node != NULL);
     val1_node = concat_node;
-    val2_node = pt_make_string_value (parser, "");
+    val2_node = if_node_enum;
 
     assert (pred_for_if != NULL && val1_node != NULL && val2_node != NULL);
 
@@ -9214,7 +9298,7 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
   node = delete_statement->info.delete_.target_classes;
   while (node != NULL)
     {
-      from = pt_find_spec_in_from_list (parser, delete_statement, node);
+      from = pt_find_spec_in_statement (parser, delete_statement, node);
       if (from == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "invalid spec id");
@@ -9230,23 +9314,33 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
  * pt_mark_spec_list_for_update () - mark specs that will be updated
  *   return:  none
  *   parser(in): the parser context
- *   update_statement(in): an update statement
+ *   statement(in): an update/merge statement
  */
 void
 pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
-			      PT_NODE * update_statement)
+			      PT_NODE * statement)
 {
   PT_NODE *lhs, *node_tmp, *node;
+  PT_NODE *assignments = NULL;
+
+  if (statement->node_type == PT_UPDATE)
+    {
+      assignments = statement->info.update.assignment;
+    }
+  else if (statement->node_type == PT_MERGE)
+    {
+      assignments = statement->info.merge.update.assignment;
+    }
 
   /* set flags for updatable specs */
-  node = update_statement->info.update.assignment;
+  node = assignments;
   while (node != NULL)
     {
       lhs = node->info.expr.arg1;
       if (lhs->node_type == PT_NAME)
 	{
 	  node_tmp =
-	    pt_find_spec_in_from_list (parser, update_statement, lhs);
+	    pt_find_spec_in_statement (parser, statement, lhs);
 	  if (node_tmp == NULL)
 	    {
 	      PT_INTERNAL_ERROR (parser, "invalid spec id");
@@ -9260,7 +9354,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
 	  while (lhs != NULL)
 	    {
 	      node_tmp =
-		pt_find_spec_in_from_list (parser, update_statement, lhs);
+		pt_find_spec_in_statement (parser, statement, lhs);
 	      if (node_tmp == NULL)
 		{
 		  PT_INTERNAL_ERROR (parser, "invalid spec id");

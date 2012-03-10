@@ -1152,8 +1152,10 @@ $ LOADDB
 1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 Cannot compile regular expression: '%s'
 1086 Cannot execute regular expression: '%s'
-1087 Cannot prepare statement of type '%s' with host variables.
-1088 Last Error
+1087 Locale initialization : %s.
+1088 Locale generation : %s.
+1089 Cannot prepare statement of type '%s' with host variables.
+1090 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1523,6 +1525,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 233 Multiple or nested functions are not allowed in a function index definition.
 234 Invalid index specification.
 235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
+236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
+237 Duplicate values in enum type.
+238 Cannot MERGE into a derived table.
+239 Invalid MERGE update assignment.
+240 MERGE with class hierarchies is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

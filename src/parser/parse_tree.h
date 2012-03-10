@@ -131,7 +131,8 @@
 			(parser)->column, \
 			msgcat_message (MSGCAT_CATALOG_CUBRID, \
 			                MSGCAT_SET_PARSER_SEMANTIC, \
-				        MSGCAT_SEMANTIC_OUT_OF_MEMORY)); \
+				        MSGCAT_SEMANTIC_OUT_OF_MEMORY), \
+					NULL); \
 	(parser)->jmp_env_active = 0; \
 	if ((parser)->au_save) \
 	    AU_ENABLE((parser)->au_save); \
@@ -219,7 +220,8 @@
 	   ((t) == PT_TYPE_OBJECT)    || \
 	   ((t) == PT_TYPE_SET)       || \
 	   ((t) == PT_TYPE_MULTISET)  || \
-	   ((t) == PT_TYPE_SEQUENCE)) ? true : false )
+	   ((t) == PT_TYPE_SEQUENCE)  || \
+	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
 
 #define PT_IS_DATE_TIME_TYPE(t) \
         ( (((t) == PT_TYPE_DATE)       || \
@@ -248,7 +250,8 @@
 	   ((t) == PT_TYPE_VARNCHAR) || \
 	   ((t) == PT_TYPE_NCHAR)    || \
 	   ((t) == PT_TYPE_VARBIT)   || \
-	   ((t) == PT_TYPE_BIT))     ? true : false )
+	   ((t) == PT_TYPE_BIT)	     || \
+	   ((t) == PT_TYPE_ENUMERATION))     ? true : false )
 
 #define PT_IS_LOB_TYPE(t) \
         ( (((t) == PT_TYPE_BLOB)  || \
@@ -585,7 +588,7 @@ enum
 enum
 {
   PT_USER_SELECT = 0,
-  PT_MERGE
+  PT_MERGE_SELECT
 };
 
 enum pt_custom_print
@@ -664,6 +667,7 @@ enum pt_node_type
   PT_DO = CUBRID_STMT_DO,
   PT_SET_SESSION_VARIABLES = CUBRID_STMT_SET_SESSION_VARIABLES,
   PT_DROP_SESSION_VARIABLES = CUBRID_STMT_DROP_SESSION_VARIABLES,
+  PT_MERGE = CUBRID_STMT_MERGE,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be
 					   distinct from statements */
@@ -758,6 +762,8 @@ enum pt_type_enum
   PT_TYPE_BLOB,
   PT_TYPE_CLOB,
   PT_TYPE_ELO,
+
+  PT_TYPE_ENUMERATION,
 
   PT_TYPE_MAX
 };
@@ -1286,6 +1292,7 @@ typedef struct pt_grant_info PT_GRANT_INFO;
 typedef struct pt_host_var_info PT_HOST_VAR_INFO;
 typedef struct pt_insert_info PT_INSERT_INFO;
 typedef struct pt_isolation_lvl_info PT_ISOLATION_LVL_INFO;
+typedef struct pt_merge_info PT_MERGE_INFO;
 typedef struct pt_method_call_info PT_METHOD_CALL_INFO;
 typedef struct pt_method_def_info PT_METHOD_DEF_INFO;
 typedef struct pt_name_info PT_NAME_INFO;
@@ -1316,6 +1323,7 @@ typedef struct pt_set_session_variable_info PT_SET_SESSION_VARIABLE_INFO;
 typedef struct pt_use_info PT_USE_INFO;
 #endif
 typedef struct pt_monetary_value PT_MONETARY;
+typedef struct pt_enum_element_value PT_ENUM_ELEMENT;
 typedef union pt_data_value PT_DATA_VALUE;
 typedef struct pt_value_info PT_VALUE_INFO;
 typedef struct PT_ZZ_ERROR_MSG_INFO PT_ZZ_ERROR_MSG_INFO;
@@ -1668,6 +1676,7 @@ struct pt_parts_info
 struct pt_data_type_info
 {
   PT_NODE *entity;		/* class PT_NAME list for PT_TYPE_OBJECT */
+  PT_NODE *enumeration;		/* values list for PT_TYPE_ENUMERATION */
   DB_OBJECT *virt_object;	/* virt class object if a vclass */
   PT_NODE *virt_data_type;	/* for non-primitive types- sets, etc. */
   PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
@@ -2129,11 +2138,13 @@ struct pt_select_info
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
-#define PT_SELECT_INFO_ANSI_JOIN    1	/* has ANSI join? */
-#define PT_SELECT_INFO_ORACLE_OUTER 2	/* has Oracle's outer join operator? */
-#define PT_SELECT_INFO_DUMMY        4	/* is dummy (i.e., 'SELECT * FROM x') ? */
-#define PT_SELECT_INFO_HAS_AGG      8	/* has any type of aggregation? */
-#define PT_SELECT_INFO_HAS_ANALYTIC 16	/* has analytic functions */
+#define PT_SELECT_INFO_ANSI_JOIN	1	/* has ANSI join? */
+#define PT_SELECT_INFO_ORACLE_OUTER	2	/* has Oracle's outer join operator? */
+#define PT_SELECT_INFO_DUMMY		4	/* is dummy (i.e., 'SELECT * FROM x') ? */
+#define PT_SELECT_INFO_HAS_AGG		8	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
+#define PT_SELECT_INFO_MULTI_UPATE_AGG	32	/* is query for multi-table update
+						 * using aggregate */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))
@@ -2234,7 +2245,7 @@ struct pt_trigger_spec_list_info
   int all_triggers;		/* 1 iff ALL TRIGGERS */
 };
 
-
+/* Info for UPDATE node */
 struct pt_update_info
 {
   PT_NODE *spec;		/*  SPEC  */
@@ -2292,6 +2303,33 @@ struct pt_table_option_info
   PT_NODE *val;			/* PT_VALUE */
 };
 
+/* Info for MERGE statement */
+struct pt_merge_info
+{
+  PT_NODE *into;		/* INTO PT_SPEC */
+  PT_NODE *using;		/* USING PT_SPEC */
+  PT_NODE *search_cond;		/* PT_EXPR */
+  struct
+  {
+    PT_NODE *assignment;	/* PT_EXPR (list) */
+    PT_NODE *search_cond;	/* PT_EXPR */
+    PT_NODE *del_search_cond;	/* PT_EXPR */
+    bool has_unique;		/* whether there's an unique constraint */
+    bool server_update;		/* whether it can be server-side update */
+    bool do_class_attrs;	/* whether it is on class attributes */
+  } update;
+  struct
+  {
+    PT_NODE *attr_list;		/* PT_NAME */
+    PT_NODE *value_clauses;	/* PT_NODE_LIST(list) */
+    PT_NODE *search_cond;	/* PT_EXPR */
+    PT_NODE *insert_mode;	/* insert execution mode */
+  } insert;
+  PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_HINT_ENUM hint;		/* hint flag */
+  bool server_op;		/* whether it can be server-side operation */
+};
+
 /* Info for VALUE nodes
   these are intended to parallel the definitions in dbi.h and be
   identical whenever possible
@@ -2317,9 +2355,28 @@ typedef enum pt_currency_types
 {
   PT_CURRENCY_DOLLAR,
   PT_CURRENCY_YEN,
-  PT_CURRENCY_POUND,
+  PT_CURRENCY_BRITISH_POUND,
   PT_CURRENCY_WON,
   PT_CURRENCY_TL,
+  PT_CURRENCY_CAMBODIAN_RIEL,
+  PT_CURRENCY_CHINESE_RENMINBI,
+  PT_CURRENCY_INDIAN_RUPEE,
+  PT_CURRENCY_RUSSIAN_RUBLE,
+  PT_CURRENCY_AUSTRALIAN_DOLLAR,
+  PT_CURRENCY_CANADIAN_DOLLAR,
+  PT_CURRENCY_BRASILIAN_REAL,
+  PT_CURRENCY_ROMANIAN_LEU,
+  PT_CURRENCY_EURO,
+  PT_CURRENCY_SWISS_FRANC,
+  PT_CURRENCY_DANISH_KRONE,
+  PT_CURRENCY_NORWEGIAN_KRONE,
+  PT_CURRENCY_BULGARIAN_LEV,
+  PT_CURRENCY_VIETNAMESE_DONG,
+  PT_CURRENCY_CZECH_KORUNA,
+  PT_CURRENCY_POLISH_ZLOTY,
+  PT_CURRENCY_SWEDISH_KRONA,
+  PT_CURRENCY_CROATIAN_KUNA,
+  PT_CURRENCY_SERBIAN_DINAR,
   PT_CURRENCY_NULL
 } PT_CURRENCY;
 
@@ -2328,6 +2385,12 @@ struct pt_monetary_value
 {
   double amount;
   PT_CURRENCY type;
+};
+
+struct pt_enum_element_value
+{
+  unsigned short short_val;
+  PARSER_VARCHAR *str_val;
 };
 
 /* Union of datavalues */
@@ -2348,6 +2411,7 @@ union pt_data_value
   PT_NODE *set;			/* constant sets */
   DB_ELO elo;			/* ??? */
   int b;
+  PT_ENUM_ELEMENT enumeration;
 };
 
 
@@ -2531,6 +2595,7 @@ union pt_statement_info
   PT_INDEX_INFO index;
   PT_INSERT_INFO insert;
   PT_ISOLATION_LVL_INFO isolation_lvl;
+  PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;
   PT_NAME_INFO name;
@@ -2602,6 +2667,8 @@ struct parser_node
   int parser_id;		/* which parser did I come from */
   int line_number;		/* the user line number originating this  */
   int column_number;		/* the user column number originating this  */
+  int buffer_pos;		/* position in the parse buffer of the string
+				   originating this */
   PT_NODE *next;		/* forward link for NULL terminated list */
   PT_NODE *or_next;		/* forward link for DNF list */
   void *etc;			/* application specific info hook */
@@ -2672,6 +2739,7 @@ struct parser_context
   int id;			/* internal parser id */
   int statement_number;		/* user-initialized, incremented by parser */
 
+  const char *original_buffer;	/* pointer to the original parse buffer */
   const char *buffer;		/* for parse buffer */
   FILE *file;			/* for parse file */
   int stack_top;		/* parser stack top */
@@ -2771,6 +2839,12 @@ struct pt_assignments_helper
 				 * assignment */
 };
 
+typedef enum pt_composite_locking PT_COMPOSITE_LOCKING;
+enum pt_composite_locking
+{
+  PT_COMPOSITE_LOCKING_DELETE = 1,
+  PT_COMPOSITE_LOCKING_UPDATE
+};
 
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
 				     const int length, const int align);

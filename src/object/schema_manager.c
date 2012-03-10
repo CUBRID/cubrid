@@ -9557,6 +9557,17 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	  new_domain->scale = atts[i]->domain->scale;
 	  new_domain->codeset = atts[i]->domain->codeset;
 	  new_domain->is_parameterized = atts[i]->domain->is_parameterized;
+
+	  if (new_domain->type->id == DB_TYPE_ENUMERATION)
+	    {
+	      if (tp_domain_copy_enumeration
+		  (&DOM_GET_ENUMERATION (new_domain),
+		   &DOM_GET_ENUMERATION (atts[i]->domain)) != NO_ERROR)
+		{
+		  goto mem_error;
+		}
+	    }
+
 	  if (asc_desc && asc_desc[i] == 1)
 	    {			/* is descending order */
 	      new_domain->is_desc = true;

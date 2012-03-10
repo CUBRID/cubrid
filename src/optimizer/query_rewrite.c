@@ -1687,21 +1687,19 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	      else
 		{		/* too big literal string */
+		  PT_NODE *dt = NULL;
+		  if (arg1->type_enum == PT_TYPE_ENUMERATION)
+		    {
+		      /* be sure to cast to the same enumeration type */
+		      dt = arg1->data_type;
+		    }
 		  temp =
 		    pt_wrap_with_cast_op (parser,
 					  parser_copy_tree_list (parser,
 								 arg2),
 					  arg1->type_enum,
-					  ((arg1->
-					    data_type) ? arg1->data_type->
-					   info.
-					   data_type.precision :
-					   TP_FLOATING_PRECISION_VALUE),
-					  ((arg1->
-					    data_type) ? arg1->data_type->
-					   info.
-					   data_type.dec_precision :
-					   TP_FLOATING_PRECISION_VALUE));
+					  TP_FLOATING_PRECISION_VALUE,
+					  TP_FLOATING_PRECISION_VALUE, dt);
 		  if (temp == NULL)
 		    {
 		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,
@@ -1731,21 +1729,19 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	      else
 		{		/* create nested CAST node */
+		  PT_NODE *dt = NULL;
+		  if (arg1->type_enum == PT_TYPE_ENUMERATION)
+		    {
+		      /* be sure to cast to the same enumeration type */
+		      dt = arg1->data_type;
+		    }
 		  temp =
 		    pt_wrap_with_cast_op (parser,
 					  parser_copy_tree_list (parser,
 								 arg2),
 					  arg1->type_enum,
-					  ((arg1->
-					    data_type) ? arg1->data_type->
-					   info.
-					   data_type.precision :
-					   TP_FLOATING_PRECISION_VALUE),
-					  ((arg1->
-					    data_type) ? arg1->data_type->
-					   info.
-					   data_type.dec_precision :
-					   TP_FLOATING_PRECISION_VALUE));
+					  TP_FLOATING_PRECISION_VALUE,
+					  TP_FLOATING_PRECISION_VALUE, dt);
 		  if (temp == NULL)
 		    {
 		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,
@@ -3400,6 +3396,14 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
       assert (pattern_length >= 2
 	      && pattern_str[pattern_size - 1] == LIKE_WILDCARD_MATCH_MANY);
 
+      /* TODO : change this when we support collation per column
+       * do not rewrite for collations with expansions */
+      if (lang_locale ()->coll.uca_opt.sett_expansions)
+	{
+	  *perform_generic_rewrite = true;
+	  goto fast_exit;
+	}
+
       between_and = pt_expression_2 (parser, PT_BETWEEN_GE_LT, NULL, NULL);
       if (between_and == NULL)
 	{
@@ -3617,6 +3621,9 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
 
   between->next = like->next;
   like->next = between;
+
+  /* fold range bounds : this will allow auto-parametrization */
+  pt_semantic_type (parser, like, NULL);
 
   return;
 
@@ -6384,10 +6391,12 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   PT_NODE *t_node, *spec;
   PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
   PT_NODE *limit, *derived;
+  PT_NODE **merge_upd_wherep, **merge_ins_wherep;
   bool call_auto_parameterize = false;
 
   dummy = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
+  merge_upd_wherep = merge_ins_wherep = &dummy;
 
   switch (node->node_type)
     {
@@ -6498,6 +6507,12 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  }
 	wherep = &subquery_ptr->info.query.q.select.where;
       }
+      break;
+
+    case PT_MERGE:
+      wherep = &node->info.merge.search_cond;
+      merge_upd_wherep = &node->info.merge.update.search_cond;
+      merge_ins_wherep = &node->info.merge.insert.search_cond;
       break;
 
     case PT_UNION:
@@ -6631,7 +6646,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
        */
 
       if (!*wherep && !*havingp && !*aftercbfilterp && !*startwithp
-	  && !*connectbyp)
+	  && !*connectbyp && !*merge_upd_wherep && !*merge_ins_wherep)
 	{
 	  if (node->node_type != PT_SELECT)
 	    {
@@ -6668,6 +6683,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*aftercbfilterp)
 	{
 	  *aftercbfilterp = pt_cnf (parser, *aftercbfilterp);
+	}
+      if (*merge_upd_wherep)
+	{
+	  *merge_upd_wherep = pt_cnf (parser, *merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  *merge_ins_wherep = pt_cnf (parser, *merge_ins_wherep);
 	}
 
       /* in HAVING clause with GROUP BY,
@@ -6759,6 +6782,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_reduce_equality_terms (parser, node, aftercbfilterp);
 	}
+      if (*merge_upd_wherep)
+	{
+	  qo_reduce_equality_terms (parser, node, merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_reduce_equality_terms (parser, node, merge_ins_wherep);
+	}
 
       /* convert terms of the form 'const op attr' to 'attr op const' */
       if (*wherep)
@@ -6780,6 +6811,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*aftercbfilterp)
 	{
 	  qo_converse_sarg_terms (parser, *aftercbfilterp);
+	}
+      if (*merge_upd_wherep)
+	{
+	  qo_converse_sarg_terms (parser, *merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_converse_sarg_terms (parser, *merge_ins_wherep);
 	}
 
       /* reduce a pair of comparison terms into one BETWEEN term */
@@ -6803,6 +6842,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_reduce_comp_pair_terms (parser, aftercbfilterp);
 	}
+      if (*merge_upd_wherep)
+	{
+	  qo_reduce_comp_pair_terms (parser, merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_reduce_comp_pair_terms (parser, merge_ins_wherep);
+	}
 
       /* convert a leftmost LIKE term to a BETWEEN (GE_LT) term */
       if (*wherep)
@@ -6824,6 +6871,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*aftercbfilterp)
 	{
 	  qo_rewrite_like_terms (parser, aftercbfilterp);
+	}
+      if (*merge_upd_wherep)
+	{
+	  qo_rewrite_like_terms (parser, merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_rewrite_like_terms (parser, merge_ins_wherep);
 	}
 
       /* convert comparison terms to RANGE */
@@ -6847,6 +6902,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_convert_to_range (parser, aftercbfilterp);
 	}
+      if (*merge_upd_wherep)
+	{
+	  qo_convert_to_range (parser, merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_convert_to_range (parser, merge_ins_wherep);
+	}
 
       /* narrow search range by applying range intersection */
       if (*wherep)
@@ -6869,6 +6932,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_apply_range_intersection (parser, aftercbfilterp);
 	}
+      if (*merge_upd_wherep)
+	{
+	  qo_apply_range_intersection (parser, merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_apply_range_intersection (parser, merge_ins_wherep);
+	}
 
       /* remove meaningless IS NULL/IS NOT NULL terms */
       if (*wherep)
@@ -6890,6 +6961,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*aftercbfilterp)
 	{
 	  qo_fold_is_and_not_null (parser, aftercbfilterp);
+	}
+      if (*merge_upd_wherep)
+	{
+	  qo_fold_is_and_not_null (parser, merge_upd_wherep);
+	}
+      if (*merge_ins_wherep)
+	{
+	  qo_fold_is_and_not_null (parser, merge_ins_wherep);
 	}
 
       if (node->node_type == PT_SELECT)
@@ -6928,7 +7007,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (!node->partition_pruned
 	  && (node->node_type == PT_SELECT
 	      || node->node_type == PT_DELETE
-	      || node->node_type == PT_UPDATE))
+	      || node->node_type == PT_UPDATE
+	      || node->node_type == PT_MERGE))
 	{
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -6991,6 +7071,17 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
     {
       qo_do_auto_parameterize (parser, *aftercbfilterp);
     }
+  if (*merge_upd_wherep && (call_auto_parameterize ||
+			    (*merge_upd_wherep)->force_auto_parameterize))
+    {
+      qo_do_auto_parameterize (parser, *merge_upd_wherep);
+    }
+  if (*merge_ins_wherep && (call_auto_parameterize ||
+			    (*merge_ins_wherep)->force_auto_parameterize))
+    {
+      qo_do_auto_parameterize (parser, *merge_ins_wherep);
+    }
+
   if (node->node_type == PT_SELECT && node->info.query.orderby_for &&
       (call_auto_parameterize ||
        node->info.query.orderby_for->force_auto_parameterize))

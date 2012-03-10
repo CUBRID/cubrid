@@ -280,7 +280,7 @@ static void pt_check_function_index_expr (PARSER_CONTEXT * parser,
 					  PT_NODE * node);
 static void pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_coerce_insert_values (PARSER_CONTEXT * parser,
-					 PT_NODE * ins);
+					 PT_NODE * stmt);
 static void pt_check_xaction_list (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_count_iso_nodes (PARSER_CONTEXT * parser, PT_NODE * node,
 				    void *arg, int *continue_walk);
@@ -6229,6 +6229,10 @@ pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser,
 	    attr->data_type->info.data_type.dec_precision;
 	  new_dt->info.data_type.units =
 	    attr->data_type->info.data_type.units;
+	  new_dt->info.data_type.enumeration =
+	    parser_copy_tree_list (parser,
+				   attr->data_type->info.data_type.
+				   enumeration);
 	}
       new_col->type_enum = new_dt->type_enum;
       new_col->info.expr.op = PT_CAST;
@@ -6364,6 +6368,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *crt_qry = NULL;
   PT_NODE **prev_qry_link_ptr = NULL;
   PT_NODE **attr_def_list_ptr = NULL;
+  PT_NODE *prev_qry;
   const char *name = NULL;
   int attr_count = 0;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
@@ -6417,6 +6422,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return;
     }
 
+  prev_qry = NULL;
   for (crt_qry = *qry_specs_ptr, prev_qry_link_ptr = qry_specs_ptr;
        crt_qry != NULL;
        prev_qry_link_ptr = &crt_qry->next, crt_qry = crt_qry->next)
@@ -6442,8 +6448,15 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
       result_stmt = pt_semantic_check (parser, crt_qry);
       if (pt_has_error (parser))
 	{
+	  if (prev_qry)
+	    {
+	      prev_qry->next = save_next;
+	    }
+	  crt_qry = NULL;
+	  (*prev_qry_link_ptr) = crt_qry;
 	  return;
 	}
+
       if (result_stmt == NULL)
 	{
 	  assert (false);
@@ -6462,6 +6475,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
       crt_qry->next = save_next;
       (*prev_qry_link_ptr) = crt_qry;
+      prev_qry = crt_qry;
     }
 
   attr_count = pt_number_of_attributes (parser, stmt, &all_attrs);
@@ -7658,7 +7672,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       t_node = node->info.delete_.target_classes;
       while (t_node)
 	{
-	  entity = pt_find_spec_in_from_list (parser, node, t_node);
+	  entity = pt_find_spec_in_statement (parser, node, t_node);
 
 	  if (entity == NULL)
 	    {
@@ -7958,7 +7972,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
       while ((t_node = pt_get_next_assignment (&ea)) != NULL)
 	{
-	  entity = pt_find_spec_in_from_list (parser, node, t_node);
+	  entity = pt_find_spec_in_statement (parser, node, t_node);
 
 	  if (entity == NULL)
 	    {
@@ -8111,6 +8125,75 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	      }
 	  }
       }
+      break;
+
+    case PT_MERGE:
+      if (top_node->cannot_prepare == 1)
+	{
+	  node->cannot_prepare = 1;
+	}
+
+      if (pt_has_aggregate (parser, node))
+	{
+	  PT_ERRORm (parser, node,
+		     MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_WANT_NO_AGGREGATE);
+	}
+
+      pt_check_assignments (parser, node);
+      pt_no_double_updates (parser, node);
+
+      /* check destination derived table */
+      entity = node->info.merge.into;
+      if (entity->info.spec.derived_table != NULL)
+	{
+	  PT_ERRORm (parser, entity, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_MERGE_DERIVED_TABLE);
+	  break;
+	}
+
+      /* check update spec */
+      pt_init_assignments_helper (parser, &ea,
+				  node->info.merge.update.assignment);
+      while ((t_node = pt_get_next_assignment (&ea)) != NULL)
+	{
+	  entity = pt_find_spec_in_statement (parser, node, t_node);
+
+	  if (entity == NULL)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_RESOLUTION_FAILED,
+			  t_node->info.name.original);
+	      break;
+	    }
+	  /* update assign spec should be merge target */
+	  if (entity->info.spec.id != node->info.merge.into->info.spec.id)
+	    {
+	      PT_ERRORm (parser, t_node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_INVALID_ASSIGNMENT);
+	      break;
+	    }
+	}
+
+      if (node->info.merge.insert.value_clauses
+	  && node->info.merge.insert.value_clauses->next)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY, 0);
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORc (parser, node, db_error_string (3));
+	    }
+	  break;
+	}
+
+      node = pt_semantic_type (parser, node, info);
+
+      /* try to coerce insert_values into types indicated
+       * by insert_attributes */
+      if (node)
+	{
+	  pt_coerce_insert_values (parser, node);
+	}
       break;
 
     default:			/* other node types */
@@ -8408,6 +8491,7 @@ pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_SELECT:
     case PT_DELETE:
     case PT_UPDATE:
+    case PT_MERGE:
       if (chain->chain_length > 0)
 	{
 	  /* We are about to leave the scope where the chain was found,
@@ -8507,6 +8591,28 @@ pt_expand_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * node,
 
     case PT_SELECT:
       pred = &node->info.query.q.select.where;
+      break;
+
+    case PT_MERGE:
+      pred = &node->info.merge.insert.search_cond;
+      if (pred)
+	{
+	  *pred = parser_walk_tree (parser, *pred, NULL, NULL,
+				    pt_expand_isnull_preds_helper, statement);
+	}
+      pred = &node->info.merge.update.search_cond;
+      if (pred)
+	{
+	  *pred = parser_walk_tree (parser, *pred, NULL, NULL,
+				    pt_expand_isnull_preds_helper, statement);
+	}
+      pred = &node->info.merge.update.del_search_cond;
+      if (pred)
+	{
+	  *pred = parser_walk_tree (parser, *pred, NULL, NULL,
+				    pt_expand_isnull_preds_helper, statement);
+	}
+      pred = &node->info.merge.search_cond;
       break;
 
     default:
@@ -8663,6 +8769,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
     case PT_SCOPE:
     case PT_DO:
     case PT_SET_SESSION_VARIABLES:
+    case PT_MERGE:
 #if 0				/* to disable TEXT */
       /* we postpone TEXT resolution of a insert statement at '*' resolution
          if (node->node_type == PT_INSERT) {
@@ -8697,8 +8804,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	      || node->node_type == PT_UNION
 	      || node->node_type == PT_INTERSECTION
 	      || node->node_type == PT_DIFFERENCE
-	      || node->node_type == PT_SELECT || node->node_type == PT_DO
-	      || node->node_type == PT_SET_SESSION_VARIABLES)
+	      || node->node_type == PT_SELECT
+	      || node->node_type == PT_DO
+	      || node->node_type == PT_SET_SESSION_VARIABLES
+	      || node->node_type == PT_MERGE)
 	    {
 	      /* may have WHERE clause */
 	      int check = 0;
@@ -9136,13 +9245,6 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
     }
   else
     {
-      int p = 0, s = 0;
-
-      if (lhs->data_type)
-	{
-	  p = lhs->data_type->info.data_type.precision;
-	  s = lhs->data_type->info.data_type.dec_precision;
-	}
       if (rhs->node_type == PT_HOST_VAR)
 	{
 	  return rhs;
@@ -9177,11 +9279,19 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	{
 	  if (rhs->type_enum == PT_TYPE_MAYBE)
 	    {
-	      DB_TYPE lhs_dbtype;
 	      TP_DOMAIN *d;
 
-	      lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
-	      d = tp_domain_resolve_default (lhs_dbtype);
+	      if (lhs->type_enum == PT_TYPE_ENUMERATION)
+		{
+		  d =
+		    pt_data_type_to_db_domain (parser, lhs->data_type, NULL);
+		}
+	      else
+		{
+		  DB_TYPE lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
+		  d = tp_domain_resolve_default (lhs_dbtype);
+		}
+
 	      pt_set_expected_domain (rhs, d);
 	      if (rhs->node_type == PT_HOST_VAR)
 		{
@@ -9190,7 +9300,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	    }
 	  else
 	    {
-	      rhs = pt_wrap_with_cast_op (parser, rhs, lhs->type_enum, p, s);
+	      rhs =
+		pt_wrap_with_cast_op (parser, rhs, lhs->type_enum, 0, 0,
+				      lhs->data_type);
 	      /* the call to pt_wrap_with_cast_op might fail because
 	         a call to allocate memory failed. In this case, the error
 	         message is set by the calls inside pt_wrap_with_cast_op and
@@ -9210,20 +9322,26 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
  *      Also asserts that the right hand side is assignment compatible.
  *   return:  none
  *   parser(in): the parser context
- *   stmt(in): an update statement
+ *   stmt(in): an update or merge statement
  */
 
 static void
 pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *a, *next, *lhs, *rhs, *list;
+  PT_NODE *assignment_list;
 
   assert (parser != NULL);
 
-  if (!stmt || stmt->node_type != PT_UPDATE)
-    return;
+  if (!stmt || (stmt->node_type != PT_UPDATE && stmt->node_type != PT_MERGE))
+    {
+      return;
+    }
+  assignment_list =
+    (stmt->node_type == PT_UPDATE ? stmt->info.update.assignment
+    : stmt->info.merge.update.assignment);
 
-  for (a = stmt->info.update.assignment; a; a = next)
+  for (a = assignment_list; a; a = next)
     {
       next = a->next;		/* save next link */
       if (a->node_type == PT_EXPR
@@ -9378,20 +9496,29 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
 /*
  * pt_no_attr_and_meta_attr_updates () - check for mixed (class, non-class)
- *    assignments in the same update statement
+ *    assignments in the same update/merge statement
  *   return:  none
  *   parser(in): the parser context
- *   stmt(in): an update statement
+ *   stmt(in): an update/merge statement
  */
 void
 pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser,
-				  PT_NODE * update_statement)
+				  PT_NODE * statement)
 {
   bool has_attrib = false, has_meta_attrib = false;
   PT_ASSIGNMENTS_HELPER ea;
+  PT_NODE *assignments;
 
-  pt_init_assignments_helper (parser, &ea,
-			      update_statement->info.update.assignment);
+  if (statement->node_type == PT_UPDATE)
+    {
+      assignments = statement->info.update.assignment;
+    }
+  else
+    {
+      assignments = statement->info.merge.update.assignment;
+    }
+
+  pt_init_assignments_helper (parser, &ea, assignments);
   while (pt_get_next_assignment (&ea) && (!has_attrib || !has_meta_attrib))
     {
       if (ea.lhs->info.name.meta_class == PT_META_ATTR)
@@ -9405,30 +9532,36 @@ pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser,
     }
   if (has_attrib && has_meta_attrib)
     {
-      PT_ERRORm (parser, update_statement, MSGCAT_SET_PARSER_SEMANTIC,
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_UPDATE_MIX_CLASS_NON_CLASS);
     }
 }
 
 /*
  * pt_no_double_updates () - assert that there are no multiple assignments to
- *      the same attribute in the given update statement
+ *      the same attribute in the given update or merge statement
  *   return:  none
  *   parser(in): the parser context
- *   stmt(in): an update statement
+ *   stmt(in): an update or merge statement
  */
 
 void
 pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *a, *b, *att_a, *att_b;
+  PT_NODE *assignment_list;
 
   assert (parser != NULL);
 
-  if (!stmt || stmt->node_type != PT_UPDATE)
-    return;
+  if (!stmt || (stmt->node_type != PT_UPDATE && stmt->node_type != PT_MERGE))
+    {
+      return;
+    }
+  assignment_list =
+    (stmt->node_type == PT_UPDATE ? stmt->info.update.assignment
+    : stmt->info.merge.update.assignment);
 
-  for (a = stmt->info.update.assignment; a; a = a->next)
+  for (a = assignment_list; a; a = a->next)
     {
       if (!(a->node_type == PT_EXPR && a->info.expr.op == PT_ASSIGN
 	    && (att_a = a->info.expr.arg1)))
@@ -10814,18 +10947,21 @@ pt_cast_select_list_to_arg_list (PARSER_CONTEXT * parser, PT_NODE * query,
  * pt_coerce_insert_values () - try to coerce the insert values to the types
  *  	                        indicated by the insert attributes
  *   return:
- *   parser(in): handle to context used to parse the insert statement
- *   ins(in): the AST form of an insert statement
+ *   parser(in): handle to context used to parse the insert/merge statement
+ *   stmt(in): the AST form of an insert/merge statement
  */
 static PT_NODE *
-pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
+pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *v = NULL, *a = NULL, *crt_list = NULL;
   int a_cnt = 0, v_cnt = 0;
   PT_NODE *prev = NULL;
   PT_NODE_LIST_INFO *values_list = NULL;
+  PT_NODE *attr_list = NULL;
+  PT_NODE *value_clauses = NULL;
 
-  if (ins->node_type != PT_INSERT)	/* preconditions are not met */
+  if (stmt->node_type != PT_INSERT
+      && stmt->node_type != PT_MERGE)	/* preconditions are not met */
     {
       return NULL;
     }
@@ -10834,9 +10970,20 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
   pt_resolve_insert_external (parser, ins);
 #endif /* 0                              */
 
-  a_cnt = pt_length_of_list (ins->info.insert.attr_list);
+  if (stmt->node_type == PT_INSERT)
+    {
+      attr_list = stmt->info.insert.attr_list;
+      value_clauses = stmt->info.insert.value_clauses;
+    }
+  else
+    {
+      attr_list = stmt->info.merge.insert.attr_list;
+      value_clauses = stmt->info.merge.insert.value_clauses;
+    }
 
-  for (crt_list = ins->info.insert.value_clauses; crt_list != NULL;
+  a_cnt = pt_length_of_list (attr_list);
+
+  for (crt_list = value_clauses; crt_list != NULL;
        crt_list = crt_list->next)
     {
       if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
@@ -10850,14 +10997,14 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 	  v_cnt = pt_length_of_select_list (v, EXCLUDE_HIDDEN_COLUMNS);
 	  if (a_cnt != v_cnt)
 	    {
-	      PT_ERRORmf2 (parser, ins, MSGCAT_SET_PARSER_SEMANTIC,
+	      PT_ERRORmf2 (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, a_cnt, v_cnt);
 	    }
 	  else
 	    {
 	      pt_cast_select_list_to_arg_list (parser,
 					       crt_list->info.node_list.list,
-					       ins->info.insert.attr_list);
+					       attr_list);
 	      continue;
 	    }
 	}
@@ -10867,12 +11014,12 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 	  v_cnt = pt_length_of_list (v);
 	  if (a_cnt != v_cnt)
 	    {
-	      PT_ERRORmf2 (parser, ins, MSGCAT_SET_PARSER_SEMANTIC,
+	      PT_ERRORmf2 (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_ATT_CNT_VAL_CNT_NE, a_cnt, v_cnt);
 	    }
 	}
       prev = NULL;
-      for (a = ins->info.insert.attr_list; v != NULL && a != NULL;
+      for (a = attr_list; v != NULL && a != NULL;
 	   prev = v, v = v->next, a = a->next)
 	{
 	  /* test assignment compatibility. This sets parser->error_msgs */
@@ -10916,7 +11063,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 	    }
 	}
     }
-  return ins;
+  return stmt;
 }
 
 /*

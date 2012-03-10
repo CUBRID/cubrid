@@ -63,6 +63,8 @@ $       41      applylogdb
 $       43      statdump
 $       44      applyinfo
 $       45      acldb
+$       46      genlocale
+$       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 `%c'이(가) 데이터베이스 이름 `%s'에 포함되어 있습니다\n
@@ -107,6 +109,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     applylogdb\n\
     applyinfo\n\
     acldb\n\
+    genlocale\n\
+    dumplocale\n\
 \n\
 %s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
@@ -158,6 +162,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     copylogdb\n\
     applylogdb\n\
     applyinfo\n\
+    genlocale\n\
+    dumplocale\n\
 \n\
 %s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
@@ -905,4 +911,46 @@ usage: %s acldb [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
   -r, --reload       접근 권한 파일 다시 읽기.\n
+
+$set 46 MSGCAT_UTIL_SET_GENLOCALE
+60 \
+genlocale: Generates binary locale files using LDML input files.\n\
+usage: %s genlocale [OPTION] [language-string]\n\
+\n\
+language-string	      locale language string for which to generate binary file.\n\
+		      If no language-string is given all languages in 'cubrid_locales.txt'\n\
+		      will be processed.\n\
+valid options:\n\
+  -v, --verbose	              enable verbose status messages; default : disable\n\
+  -i, --input-ldml-file       path for input LDML file. Only when language-string is given.\n\
+  -o, --output-locale-file    path for output binary file. Only when language-string is given.\n
+
+$set 47 MSGCAT_UTIL_SET_DUMPLOCALE
+57 Cannot simultaneously use -i/--input-file and locale identifier.\n
+58 Invalid codepoint range (-s -e).\n
+59 Invalid locale name argument.\n
+60 \
+dumplocale: Dumps the parsed content of a binary locale files previously generated using LDML input files.\n\
+usage: %s dumplocale [OPTION] [language-string]\n\
+\n\
+language-string	 locale language string for which to parse and dump binary file.\n\
+		         If no language-string is given all languages in 'cubrid_locales.txt'\n\
+		         will be processed.\n\
+valid options:\n\
+  -i, --input-file    path for input binary locale file (previously generated).\n\
+                      Can be used only when language-string is not given.\n\
+  -d, --calendar      dump calendar and date/time information; default : disable\n\
+  -n, --numeric		  dump numeric information; default : disable\n\
+  -a, --alphabet=l|lower|u|upper|both	     dump alphabet and casing information; default : disable\n\
+      --identifier-alphabet=l|lower|u|upper	 dump alphabet and casing information for identifiers; default : disable\n\
+  -c, --codepoint-order	 dump collation info sorted based on codepoint values\n\
+                         (cp, char, weight, next-cp, char and weight);\n\
+                         default : disable\n\
+  -w, --weight-order  dump collation info sorted based on weight values\n\
+                      (weight, cp, char); default : disable\n\
+  -s, --start-value	  filtering option; starting codepoint for\n\
+                      -a, --identifier-alphabet, -c, -w; default : 0\n\
+  -e, --end-value     filtering option; ending codepoint for \n\
+                      -a, --identifier-alphabet, -c, -w; \n\
+                      default : maximum value read from binary file\n
 

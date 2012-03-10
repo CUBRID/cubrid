@@ -323,7 +323,14 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
    * environment variable, should return an appropriate error code even
    * if we can't actually print anything
    */
-  (void) lang_init ();
+  (void) lang_init_full ();
+
+  if (!lang_check_init ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "language failed");
+      return ER_LOC_INIT;
+    }
 
   /* database name must be specified */
   if (client_credential->db_name == NULL)
@@ -675,7 +682,14 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif /* WINDOWS */
 
   /* initialize language parameters */
-  (void) lang_init ();
+  (void) lang_init_full ();
+
+  if (!lang_check_init ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "language failed");
+      return ER_LOC_INIT;
+    }
 
   /* database name must be specified */
   if (client_credential->db_name == NULL)
@@ -1799,6 +1813,14 @@ boot_define_domain (MOP class_mop)
       return error_code;
     }
 
+  error_code =
+    smt_add_attribute (def, "enumeration",
+		       "sequence of character varying", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   sprintf (domain_string, "sequence of %s", CT_DOMAIN_NAME);
 
   error_code = smt_add_attribute (def, "set_domains", domain_string, NULL);
@@ -2556,7 +2578,7 @@ boot_add_data_type (MOP class_mop)
     "NCHAR", "VARNCHAR", NULL /* RESULTSET */ , NULL /* MIDXKEY */ ,
     NULL /* TABLE */ ,
     "BIGINT", "DATETIME",
-    "BLOB", "CLOB"
+    "BLOB", "CLOB", "ENUM"
   };
 
   for (i = 0; i < DB_TYPE_LAST; i++)

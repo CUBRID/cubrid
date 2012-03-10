@@ -625,6 +625,23 @@ static void lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
 static void lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
 						   int tran_index,
 						   int scanid_bit, LOCK lock);
+static int
+lock_internal_hold_object_instant_get_granted_mode (int tran_index,
+						    const OID * oid,
+						    const OID * class_oid,
+						    LOCK lock,
+						    LOCK * granted_mode);
+static int
+lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
+						    int tran_index,
+						    const OID * oid,
+						    const OID * class_oid,
+						    const BTID * btid,
+						    LOCK lock, int waitsecs,
+						    LK_ENTRY **
+						    entry_addr_ptr,
+						    LK_ENTRY * class_entry,
+						    LOCK * others_lock);
 #endif /* SERVER_MODE */
 
 
@@ -11077,7 +11094,7 @@ lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
 #if !defined (SERVER_MODE)
   return false;
 #else
-  if (class_lock < lock_escalation)
+  if (class_lock < lock_escalation && class_lock != X_LOCK)
     {
       return false;
     }
@@ -11238,5 +11255,1743 @@ lock_is_instant_lock_mode (int tran_index)
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   return tran_lock->is_instant_duration;
+#endif /* !SERVER_MODE */
+}
+
+#if defined(SERVER_MODE)
+/*
+ * lock_internal_hold_object_instant_get_granted_mode - Hold object lock with
+ *							instant duration and
+ *							get granted lock mode
+ *
+ * return: LK_GRANTED/LK_NOTGRANTED/LK_NOTGRANTED_DUE_ERROR
+ *
+ *   tran_index(in):
+ *   oid(in):
+ *   class_oid(in):
+ *   lock(in):
+ *   granted_mode(out): holded lock mode, obtained only when the lock
+ *			is granted
+ *
+ * Note:hold a lock on the given object with instant duration,
+ *      and get object granted lock mode
+ */
+static int
+lock_internal_hold_object_instant_get_granted_mode (int tran_index,
+						    const OID * oid,
+						    const OID * class_oid,
+						    LOCK lock,
+						    LOCK * granted_mode)
+{
+  unsigned int hash_index;
+  LK_HASH *hash_anchor;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr, *i;
+  LOCK new_mode;
+  LOCK group_mode, temp_mode;
+  int rv;
+  int compat1, compat2;
+
+  assert (granted_mode != NULL);
+  *granted_mode = NULL_LOCK;
+#if defined(LK_DUMP)
+  if (lk_Gl.dump_level >= 1)
+    {
+      fprintf (stderr,
+	       "LK_DUMP::lk_internal_lock_object_instant()\n"
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), "
+	       "LOCK(%7s)\n", tran_index,
+	       oid->volid, oid->pageid, oid->slotid,
+	       class_oid ? class_oid->volid : -1,
+	       class_oid ? class_oid->pageid : -1,
+	       class_oid ? class_oid->slotid : -1,
+	       LOCK_TO_LOCKMODE_STRING (lock));
+    }
+#endif /* LK_DUMP */
+
+#if defined(SERVER_MODE) && defined(DIAG_DEVEL)
+  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1,
+		  DIAG_VAL_SETTYPE_INC, NULL);
+#endif /* SERVER_MODE && DIAG_DEVEL */
+  if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+    {
+      /* instance lock request */
+      /* check if an implicit lock has been acquired */
+      temp_mode = lock_get_object_lock (class_oid, oid_Root_class_oid,
+					tran_index);
+      if (lock_is_class_lock_escalated (temp_mode, lock) == true)
+	{
+	  *granted_mode = temp_mode;
+	  return LK_GRANTED;
+	}
+    }
+
+  /* check if the lockable object is in object lock table */
+  hash_index = LK_OBJ_LOCK_HASH (oid);
+  hash_anchor = &lk_Gl.obj_hash_table[hash_index];
+
+  rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+
+  /* find the lockable object in the hash chain */
+  res_ptr = hash_anchor->hash_next;
+  for (; res_ptr != (LK_RES *) NULL; res_ptr = res_ptr->hash_next)
+    {
+      if (OID_EQ (&res_ptr->oid, oid))
+	break;
+    }
+  if (res_ptr == (LK_RES *) NULL)
+    {
+      /* the lockable object is NOT in the hash chain */
+      /* the request can be granted */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      /* NULL_LOCK holded mode */
+      return LK_GRANTED;
+    }
+
+  /* the lockable object exists in the hash chain */
+  /* So, check whether I am a holder of the object. */
+
+  /* hold lock resource mutex */
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  /* release lock hash mutex */
+  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+  /* Note: I am holding resource mutex only */
+
+  /* find the lock entry of current transaction */
+  entry_ptr = res_ptr->holder;
+  for (; entry_ptr != (LK_ENTRY *) NULL; entry_ptr = entry_ptr->next)
+    {
+      if (entry_ptr->tran_index == tran_index)
+	break;
+    }
+
+  /* I am not a lock holder of the lockable object. */
+  if (entry_ptr == (LK_ENTRY *) NULL)
+    {
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
+	      && res_ptr->total_holders_mode >= NULL_LOCK);
+
+      compat1 = lock_Comp[lock][res_ptr->total_waiters_mode];
+      compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
+      assert (compat1 != DB_NA && compat2 != DB_NA);
+
+      if (compat1 == true && compat2 == true)
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  /* NULL_LOCK holded mode */
+	  return LK_GRANTED;
+	}
+      else
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  return LK_NOTGRANTED;
+	}
+    }
+
+  /* I am a lock holder of the lockable object. */
+  assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
+  new_mode = lock_Conv[lock][entry_ptr->granted_mode];
+  assert (new_mode != NA_LOCK);
+
+  if (new_mode == entry_ptr->granted_mode)
+    {
+      /* a request with either a less exclusive or an equal mode of lock */
+      *granted_mode = entry_ptr->granted_mode;
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      return LK_GRANTED;
+    }
+  else
+    {
+      /* check the compatibility with other holders' granted mode */
+      group_mode = NULL_LOCK;
+      for (i = res_ptr->holder; i != (LK_ENTRY *) NULL; i = i->next)
+	{
+	  if (i != entry_ptr)
+	    {
+	      assert (i->granted_mode >= NULL_LOCK
+		      && group_mode >= NULL_LOCK);
+	      group_mode = lock_Conv[i->granted_mode][group_mode];
+	      assert (group_mode != NA_LOCK);
+	    }
+	}
+
+      assert (new_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+      compat1 = lock_Comp[new_mode][group_mode];
+      assert (compat1 != DB_NA);
+
+      if (compat1 == true)
+	{
+	  *granted_mode = entry_ptr->granted_mode;
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+	  return LK_GRANTED;
+	}
+      else
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  return LK_NOTGRANTED;
+	}
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_internal_lock_object_get_prev_total_hold_mode - Performs actual
+ *						       object lock operation
+ *						       and get the previous
+ *						       total hold lock mode
+ *
+ * return: one of following values
+ *              LK_GRANTED
+ *              LK_NOTGRANTED_DUE_ABORTED
+ *              LK_NOTGRANTED_DUE_TIMEOUT
+ *              LK_NOTGRANTED_DUE_ERROR
+ *
+ *   tran_index(in):
+ *   oid(in):
+ *   class_oid(in):
+ *   lock(in):
+ *   waitsecs(in):
+ *   entry_addr_ptr(in):
+ *   class_entry(in):
+ *   prv_tot_hold_mode(out): the previous total hold lock mode
+ *
+ * Note : lock an object whose id is pointed by oid with given lock mode
+ *     'lock'. prv_tot_hold_mode is computed only when the lock is granted
+ *
+ *     If cond_flag is true and the object has already been locked
+ *     by other transaction, then return LK_NOTGRANTED;
+ *     else this transaction is suspended until it can acquire the lock.
+ */
+int
+lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
+						    thread_p,
+						    int tran_index,
+						    const OID * oid,
+						    const OID *
+						    class_oid,
+						    const BTID * btid,
+						    LOCK lock,
+						    int waitsecs,
+						    LK_ENTRY **
+						    entry_addr_ptr,
+						    LK_ENTRY *
+						    class_entry,
+						    LOCK * prv_tot_hold_mode)
+{
+  TRAN_ISOLATION isolation;
+  unsigned int hash_index;
+  LK_HASH *hash_anchor;
+  int ret_val;
+  LOCK group_mode, old_mode, new_mode, temp_mode;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr = (LK_ENTRY *) NULL;
+  LK_ENTRY *wait_entry_ptr = (LK_ENTRY *) NULL;
+  LK_ENTRY *prev, *curr, *i;
+  bool lock_conversion = false;
+  THREAD_ENTRY *thrd_entry;
+  int rv;
+  LK_ACQUISITION_HISTORY *history;
+  LK_TRAN_LOCK *tran_lock;
+  bool is_instant_duration;
+  int compat1, compat2;
+
+  assert (!OID_ISNULL (oid));
+  assert (class_oid == NULL || !OID_ISNULL (class_oid));
+  assert (prv_tot_hold_mode != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thrd_entry = thread_p;
+
+  *prv_tot_hold_mode = new_mode = group_mode = old_mode = NULL_LOCK;
+#if defined(LK_DUMP)
+  if (lk_Gl.dump_level >= 1)
+    {
+      fprintf (stderr,
+	       "LK_DUMP::lk_internal_lock_object()\n"
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), "
+	       "LOCK(%7s) waitsecs(%d)\n", tran_index,
+	       oid->volid, oid->pageid, oid->slotid,
+	       class_oid ? class_oid->volid : -1,
+	       class_oid ? class_oid->pageid : -1,
+	       class_oid ? class_oid->slotid : -1,
+	       LOCK_TO_LOCKMODE_STRING (lock), waitsecs);
+    }
+#endif /* LK_DUMP */
+
+  /* isolation */
+  isolation = logtb_find_isolation (tran_index);
+
+  /* initialize */
+  *entry_addr_ptr = (LK_ENTRY *) NULL;
+
+#if defined(SERVER_MODE) && defined(DIAG_DEVEL)
+  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1,
+		  DIAG_VAL_SETTYPE_INC, NULL);
+#endif /* SERVER_MODE && DIAG_DEVEL */
+
+  /* get current locking phase */
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  is_instant_duration = tran_lock->is_instant_duration;
+
+start:
+
+  if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+    {
+      /* instance lock request */
+
+      /* do lock escalation if it is needed
+       * and check if an implicit lock has been acquired.
+       */
+      if (lock_escalate_if_needed (thread_p, class_entry,
+				   tran_index) == LK_GRANTED)
+	{
+	  temp_mode = lock_get_object_lock (class_oid, oid_Root_class_oid,
+					    tran_index);
+	  if (lock_is_class_lock_escalated (temp_mode, lock) == true)
+	    {
+	      mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
+	      *prv_tot_hold_mode =
+		lock_get_total_holders_mode (oid, class_oid);
+	      *prv_tot_hold_mode = lock_Conv[temp_mode][*prv_tot_hold_mode];
+	      return LK_GRANTED;
+	    }
+	}
+    }
+
+  /* check if the lockable object is in object lock table */
+  hash_index = LK_OBJ_LOCK_HASH (oid);
+  hash_anchor = &lk_Gl.obj_hash_table[hash_index];
+
+  /* hold hash_mutex */
+  rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+
+  /* find the lockable object in the hash chain */
+  res_ptr = hash_anchor->hash_next;
+  for (; res_ptr != (LK_RES *) NULL; res_ptr = res_ptr->hash_next)
+    {
+      if (OID_EQ (&res_ptr->oid, oid))
+	{
+	  break;
+	}
+    }
+
+  if (res_ptr == (LK_RES *) NULL)
+    {
+      /* the lockable object is NOT in the hash chain */
+      /* the lock request can be granted. */
+
+      /* allocate a lock resource entry */
+      res_ptr = lock_alloc_resource ();
+      if (res_ptr == (LK_RES *) NULL)
+	{
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		  1, "lock resource entry");
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      /* initialize the lock resource entry */
+      lock_initialize_resource_as_allocated (res_ptr, oid, class_oid,
+					     btid, NULL_LOCK);
+
+      /* hold res_mutex */
+      rv = pthread_mutex_lock (&res_ptr->res_mutex);
+
+      /* Note: I am holding hash_mutex and res_mutex. */
+      if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
+	{
+	  /* It might be requested by clients */
+	  entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index, lock);
+	  if (entry_ptr == (LK_ENTRY *) NULL)
+	    {
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      lock_free_resource (res_ptr);
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+	}
+      else
+	{
+	  /* allocate a lock entry */
+	  entry_ptr = lock_alloc_entry ();
+	  if (entry_ptr == (LK_ENTRY *) NULL)
+	    {
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      lock_free_resource (res_ptr);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		      1, "lock heap entry");
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+	  /* initialize the lock entry as granted state */
+	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr,
+					    lock);
+	  if (is_instant_duration)
+	    {
+	      entry_ptr->instant_lock_count++;
+	    }
+
+	  /* add the lock entry into the holder list */
+	  res_ptr->holder = entry_ptr;
+
+	  /* to manage granules */
+	  entry_ptr->class_entry = class_entry;
+	  if (class_entry)
+	    {
+	      class_entry->ngranules++;
+	    }
+
+	  /* add the lock entry into the transaction hold list */
+	  lock_insert_into_tran_hold_list (entry_ptr);
+
+	  /* prv_tot_hold_mode is NULL_LOCK */
+	  res_ptr->total_holders_mode = lock;
+
+	  /* Record number of acquired locks */
+	  mnt_lk_acquired_on_objects (thread_p);
+#if defined(LK_TRACE_OBJECT)
+	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
+#endif /* LK_TRACE_OBJECT */
+
+	  if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+	    {
+	      history = (LK_ACQUISITION_HISTORY *)
+		malloc (sizeof (LK_ACQUISITION_HISTORY));
+	      if (history == NULL)
+		{
+		  pthread_mutex_unlock (&res_ptr->res_mutex);
+		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+		  return LK_NOTGRANTED_DUE_ERROR;
+		}
+
+	      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	    }
+	}
+
+      /* connect the lock resource entry into the hash chain */
+      res_ptr->hash_next = hash_anchor->hash_next;
+      hash_anchor->hash_next = res_ptr;
+
+      /* release all mutexes */
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+      *entry_addr_ptr = entry_ptr;
+      /* prv_tot_hold_mode already set to NULL_LOCK */
+      return LK_GRANTED;
+    }
+
+  /* the lockable object exists in the hash chain
+   * So, check whether I am a holder of the object.
+   */
+
+  /* hold lock resource mutex */
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  /* release lock hash mutex */
+  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+  /* Note: I am holding res_mutex only */
+
+  /* find the lock entry of current transaction */
+  entry_ptr = res_ptr->holder;
+  while (entry_ptr != (LK_ENTRY *) NULL)
+    {
+      if (entry_ptr->tran_index == tran_index)
+	{
+	  break;
+	}
+      entry_ptr = entry_ptr->next;
+    }
+
+  if (entry_ptr == NULL)
+    {
+      /* The object exists in the hash chain &
+       * I am not a lock holder of the lockable object.
+       */
+      /* 1. I am not a holder & my request can be granted. */
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
+	      && res_ptr->total_holders_mode >= NULL_LOCK);
+      compat1 = lock_Comp[lock][res_ptr->total_waiters_mode];
+      compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
+      assert (compat1 != DB_NA && compat2 != DB_NA);
+
+      if (compat1 == true && compat2 == true)
+	{
+	  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
+	    {
+	      entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index, lock);
+	      if (entry_ptr == (LK_ENTRY *) NULL)
+		{
+		  pthread_mutex_unlock (&res_ptr->res_mutex);
+		  return LK_NOTGRANTED_DUE_ERROR;
+		}
+	      *prv_tot_hold_mode = res_ptr->total_holders_mode;
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      *entry_addr_ptr = entry_ptr;
+	      return LK_GRANTED;
+	    }
+
+	  /* allocate a lock entry */
+	  entry_ptr = lock_alloc_entry ();
+	  if (entry_ptr == (LK_ENTRY *) NULL)
+	    {
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		      1, "lock heap entry");
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+	  /* initialize the lock entry as granted state */
+	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr,
+					    lock);
+	  if (is_instant_duration)
+	    {
+	      entry_ptr->instant_lock_count++;
+	    }
+	  /* to manage granules */
+	  entry_ptr->class_entry = class_entry;
+	  if (class_entry)
+	    {
+	      class_entry->ngranules++;
+	    }
+
+	  /* add the lock entry into the holder list */
+	  lock_position_holder_entry (res_ptr, entry_ptr);
+
+	  /* change total_holders_mode (total mode of holder list) */
+	  assert (lock >= NULL_LOCK
+		  && res_ptr->total_holders_mode >= NULL_LOCK);
+	  /* save the old total_holders_mode */
+	  temp_mode = res_ptr->total_holders_mode;
+	  res_ptr->total_holders_mode = lock_Conv[lock][temp_mode];
+	  assert (res_ptr->total_holders_mode != NA_LOCK);
+
+	  /* add the lock entry into the transaction hold list */
+	  lock_insert_into_tran_hold_list (entry_ptr);
+
+	  lock_update_non2pl_list (res_ptr, tran_index, lock);
+
+	  /* Record number of acquired locks */
+	  mnt_lk_acquired_on_objects (thread_p);
+#if defined(LK_TRACE_OBJECT)
+	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
+#endif /* LK_TRACE_OBJECT */
+
+	  if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+	    {
+	      history = (LK_ACQUISITION_HISTORY *)
+		malloc (sizeof (LK_ACQUISITION_HISTORY));
+	      if (history == NULL)
+		{
+		  pthread_mutex_unlock (&res_ptr->res_mutex);
+		  return LK_NOTGRANTED_DUE_ERROR;
+		}
+
+	      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	    }
+
+	  *prv_tot_hold_mode = temp_mode;
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  *entry_addr_ptr = entry_ptr;
+	  return LK_GRANTED;
+	}
+
+      /* 2. I am not a holder & my request cannot be granted. */
+      if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
+	{
+	  entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index,
+					    INCON_NON_TWO_PHASE_LOCK);
+	  if (entry_ptr == (LK_ENTRY *) NULL)
+	    {
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+	  else
+	    {
+	      *prv_tot_hold_mode = res_ptr->total_holders_mode;
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      *entry_addr_ptr = entry_ptr;
+	      return LK_GRANTED;
+	    }
+	}
+
+      if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  if (waitsecs == LK_ZERO_WAIT)
+	    {
+	      if (entry_ptr == NULL)
+		{
+		  entry_ptr = lock_alloc_entry ();
+		  if (entry_ptr == (LK_ENTRY *) NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
+		      return LK_NOTGRANTED_DUE_ERROR;
+		    }
+		  lock_initialize_entry_as_blocked (entry_ptr, thread_p,
+						    tran_index, res_ptr,
+						    lock);
+		  if (is_instant_duration
+		      /* && lock_Comp[lock][NULL_LOCK] == true */ )
+		    {
+		      entry_ptr->instant_lock_count++;
+		    }
+		}
+	      (void) lock_set_error_for_timeout (thread_p, entry_ptr);
+
+	      lock_free_entry (entry_ptr);
+	    }
+	  return LK_NOTGRANTED_DUE_TIMEOUT;
+	}
+
+      /* check if another thread is waiting for the same resource
+       */
+      wait_entry_ptr = res_ptr->waiter;
+      while (wait_entry_ptr != (LK_ENTRY *) NULL)
+	{
+	  if (wait_entry_ptr->tran_index == tran_index)
+	    {
+	      break;
+	    }
+	  wait_entry_ptr = wait_entry_ptr->next;
+	}
+
+      if (wait_entry_ptr != NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
+	  thread_lock_entry (thrd_entry);
+	  thread_lock_entry (wait_entry_ptr->thrd_entry);
+	  if (wait_entry_ptr->thrd_entry->lockwait == NULL)
+	    {
+	      /*  */
+	      thread_unlock_entry (wait_entry_ptr->thrd_entry);
+	      thread_unlock_entry (thrd_entry);
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      goto start;
+	    }
+
+	  thrd_entry->tran_next_wait =
+	    wait_entry_ptr->thrd_entry->tran_next_wait;
+	  wait_entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
+
+	  thread_unlock_entry (wait_entry_ptr->thrd_entry);
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+	  thread_suspend_wakeup_and_unlock_entry (thrd_entry,
+						  THREAD_LOCK_SUSPENDED);
+	  if (entry_ptr)
+	    {
+	      if (entry_ptr->thrd_entry->resume_status ==
+		  THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  /* a shutdown thread wakes me up */
+		  return LK_NOTGRANTED_DUE_ERROR;
+		}
+	      else if (entry_ptr->thrd_entry->resume_status !=
+		       THREAD_LOCK_RESUMED)
+		{
+		  /* wake up with other reason */
+		  assert (0);
+
+		  return LK_NOTGRANTED_DUE_ERROR;
+		}
+	      else
+		{
+		  assert (entry_ptr->thrd_entry->resume_status ==
+			  THREAD_LOCK_RESUMED);
+		}
+	    }
+
+	  goto start;
+	}
+
+      /* allocate a lock entry. */
+      entry_ptr = lock_alloc_entry ();
+      if (entry_ptr == (LK_ENTRY *) NULL)
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		  1, "lock heap entry");
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      /* initialize the lock entry as blocked state */
+      lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index,
+					res_ptr, lock);
+      if (is_instant_duration)
+	{
+	  entry_ptr->instant_lock_count++;
+	}
+
+      /* append the lock request at the end of the waiter */
+      prev = (LK_ENTRY *) NULL;
+      for (i = res_ptr->waiter; i != (LK_ENTRY *) NULL;)
+	{
+	  prev = i;
+	  i = i->next;
+	}
+      if (prev == (LK_ENTRY *) NULL)
+	{
+	  res_ptr->waiter = entry_ptr;
+	}
+      else
+	{
+	  prev->next = entry_ptr;
+	}
+
+      /* change total_waiters_mode (total mode of waiting waiter) */
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
+      /* the previous total holders mode will be calculated when resume 
+         after suspension (old_mode=NULL_LOCK) */
+      res_ptr->total_waiters_mode =
+	lock_Conv[lock][res_ptr->total_waiters_mode];
+      assert (res_ptr->total_waiters_mode != NA_LOCK);
+
+      goto blocked;
+
+    }				/* end of a new lock request */
+
+  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
+    {
+      if (entry_ptr->granted_mode == NX_LOCK
+	  || entry_ptr->granted_mode == X_LOCK)
+	{
+	  /* The conversioned mode might be the same with the current mode. */
+	  /* The only exception case is followings.
+	     When the current mode is NX_LOCK and thr request mode is U_LOCK,
+	     the conversioned mode will be X_LOCK.
+	     In this case, however, the intention of U_LOCK of Uncommitted Read
+	     isolation is only having the intent of READ.
+	     Therefore, the U_LOCK request of this case can be granted
+	     without acquiring it.
+	   */
+
+	  /* since the current transaction already acquired the
+	     exclusive lock, the others transactions does not hold any lock,
+	     res_ptr->total_holders_mode = entry_ptr->granted_mode in this
+	     case */
+	  *prv_tot_hold_mode = res_ptr->total_holders_mode;
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
+	  *entry_addr_ptr = entry_ptr;
+	  return LK_GRANTED;
+	}
+      /* entry_ptr->granted_mode != NX_LOCK &&
+         entry_ptr->granted_mode != X_LOCK
+       */
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_FAULT_GRANTED_MODE, 5,
+	      res_ptr->oid.volid, res_ptr->oid.pageid, res_ptr->oid.slotid,
+	      entry_ptr->tran_index,
+	      LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
+    }
+
+  /* The object exists in the hash chain &
+   * I am a lock holder of the lockable object.
+   */
+  lock_conversion = true;
+  old_mode = entry_ptr->granted_mode;
+  assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
+  new_mode = lock_Conv[lock][entry_ptr->granted_mode];
+  assert (new_mode != NA_LOCK);
+
+  if (new_mode == entry_ptr->granted_mode)
+    {
+      /* a request with either a less exclusive or an equal mode of lock */
+      entry_ptr->count += 1;
+      if (is_instant_duration)
+	{
+	  compat1 = lock_Comp[lock][entry_ptr->granted_mode];
+	  assert (compat1 != DB_NA);
+
+	  if ((lock >= IX_LOCK
+	       && (entry_ptr->instant_lock_count == 0
+		   && entry_ptr->granted_mode >= IX_LOCK)) && compat1 != true)
+	    {
+	      /* if the lock is already aquired with incompatible mode by
+	         current transaction, remove instant instance locks */
+	      lock_stop_instant_lock_mode (thread_p, tran_index, false);
+	    }
+	  else
+	    {
+	      entry_ptr->instant_lock_count++;
+	    }
+	}
+
+      if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+	{
+	  history = (LK_ACQUISITION_HISTORY *)
+	    malloc (sizeof (LK_ACQUISITION_HISTORY));
+	  if (history == NULL)
+	    {
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+
+	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	}
+
+      /* res_ptr->total_holders_mode unchanged during this call */
+      *prv_tot_hold_mode = res_ptr->total_holders_mode;
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
+      *entry_addr_ptr = entry_ptr;
+
+      return LK_GRANTED;
+    }
+
+  /* check the compatibility with other holders' granted mode */
+  group_mode = NULL_LOCK;
+  for (i = res_ptr->holder; i != (LK_ENTRY *) NULL; i = i->next)
+    {
+      if (i != entry_ptr)
+	{
+	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+	  group_mode = lock_Conv[i->granted_mode][group_mode];
+	  assert (group_mode != NA_LOCK);
+	}
+    }
+
+  assert (new_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+  compat1 = lock_Comp[new_mode][group_mode];
+  assert (compat1 != DB_NA);
+
+  if (compat1 == true)
+    {
+      if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+	{
+	  history = (LK_ACQUISITION_HISTORY *)
+	    malloc (sizeof (LK_ACQUISITION_HISTORY));
+	  if (history == NULL)
+	    {
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+
+	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	}
+
+      entry_ptr->granted_mode = new_mode;
+      entry_ptr->count += 1;
+
+      assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
+      /* save the old total_holders_mode */
+      temp_mode = res_ptr->total_holders_mode;
+      res_ptr->total_holders_mode = lock_Conv[lock][temp_mode];
+      assert (res_ptr->total_holders_mode != NA_LOCK);
+
+      lock_update_non2pl_list (res_ptr, tran_index, lock);
+      *prv_tot_hold_mode = temp_mode;
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+
+      goto lock_conversion_treatement;
+    }
+
+  /* I am a holder & my request cannot be granted. */
+  if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+    {
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      if (waitsecs == LK_ZERO_WAIT)
+	{
+	  LK_ENTRY *p = lock_alloc_entry ();
+
+	  if (p != NULL)
+	    {
+	      lock_initialize_entry_as_blocked (p, thread_p, tran_index,
+						res_ptr, lock);
+	      lock_set_error_for_timeout (thread_p, p);
+	      lock_free_entry (p);
+	    }
+	}
+      return LK_NOTGRANTED_DUE_TIMEOUT;
+    }
+
+  /* Upgrader Positioning Rule (UPR) */
+
+  /* check if another thread is waiting for the same resource
+   */
+  if (entry_ptr->blocked_mode != NULL_LOCK)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN,
+	      1, tran_index);
+      thread_lock_entry (thrd_entry);
+      thread_lock_entry (entry_ptr->thrd_entry);
+
+      if (entry_ptr->thrd_entry->lockwait == NULL)
+	{
+	  thread_unlock_entry (entry_ptr->thrd_entry);
+	  thread_unlock_entry (thrd_entry);
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  goto start;
+	}
+
+      thrd_entry->tran_next_wait = entry_ptr->thrd_entry->tran_next_wait;
+      entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
+
+      thread_unlock_entry (entry_ptr->thrd_entry);
+
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+
+      thread_suspend_wakeup_and_unlock_entry (thrd_entry,
+					      THREAD_LOCK_SUSPENDED);
+      if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+	{
+	  /* a shutdown thread wakes me up */
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      else if (thrd_entry->resume_status != THREAD_LOCK_RESUMED)
+	{
+	  /* wake up with other reason */
+	  assert (0);
+
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      else
+	{
+	  assert (thrd_entry->resume_status == THREAD_LOCK_RESUMED);
+	}
+
+      goto start;
+    }
+
+  entry_ptr->blocked_mode = new_mode;
+  entry_ptr->count += 1;
+  entry_ptr->thrd_entry = thread_p;
+
+  /* change res_ptr->total_holders_mode (total mode of holder list).
+     The previous total holders mode will be calculated when resume 
+     after suspension */
+  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
+  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
+  assert (res_ptr->total_holders_mode != NA_LOCK);
+
+  /* remove the lock entry from the holder list */
+  prev = (LK_ENTRY *) NULL;
+  curr = res_ptr->holder;
+  while ((curr != (LK_ENTRY *) NULL) && (curr != entry_ptr))
+    {
+      prev = curr;
+      curr = curr->next;
+    }
+  if (prev == (LK_ENTRY *) NULL)
+    {
+      res_ptr->holder = entry_ptr->next;
+    }
+  else
+    {
+      prev->next = entry_ptr->next;
+    }
+
+  /* position the lock entry in the holder list according to UPR */
+  lock_position_holder_entry (res_ptr, entry_ptr);
+
+blocked:
+
+  /* LK_CANWAIT(waitsecs) : waitsecs > 0 */
+  mnt_lk_waited_on_objects (thread_p);
+#if defined(LK_TRACE_OBJECT)
+  LK_MSG_LOCK_WAITFOR (entry_ptr);
+#endif /* LK_TRACE_OBJECT */
+
+  (void) thread_lock_entry (entry_ptr->thrd_entry);
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  ret_val = lock_suspend (thread_p, entry_ptr, waitsecs);
+  if (ret_val != LOCK_RESUMED)
+    {
+      /* Following three cases are possible.
+       * 1. lock timeout 2. deadlock victim  3. interrupt
+       * In any case, current thread must remove the wait info.
+       */
+      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+
+      if (ret_val == LOCK_RESUMED_ABORTED)
+	{
+	  return LK_NOTGRANTED_DUE_ABORTED;
+	}
+      else if (ret_val == LOCK_RESUMED_INTERRUPT)
+	{
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      else			/* LOCK_RESUMED_TIMEOUT || LOCK_SUSPENDED */
+	{
+	  return LK_NOTGRANTED_DUE_TIMEOUT;
+	}
+    }
+
+  if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+    {
+      history = (LK_ACQUISITION_HISTORY *)
+	malloc (sizeof (LK_ACQUISITION_HISTORY));
+      if (history == NULL)
+	{
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+
+      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+    }
+
+  /* calculate the previous total hold mode */
+  *prv_tot_hold_mode =
+    lock_Conv[old_mode][lock_get_all_except_transaction (oid, class_oid,
+							 tran_index)];
+
+  /* The transaction now got the lock on the object */
+lock_conversion_treatement:
+
+  if (entry_ptr->res_head->type == LOCK_RESOURCE_CLASS
+      && lock_conversion == true)
+    {
+      new_mode = entry_ptr->granted_mode;
+      switch (old_mode)
+	{
+	case IS_LOCK:
+	  if (new_mode == X_LOCK
+	      || ((new_mode == S_LOCK || new_mode == SIX_LOCK)
+		  && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
+		      || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE)))
+	    {
+	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
+	    }
+	  break;
+
+	case IX_LOCK:
+	  if (new_mode == SIX_LOCK
+	      && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
+		  || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE))
+	    {
+	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
+	    }
+	  else if (new_mode == X_LOCK)
+	    {
+	      lock_remove_all_inst_locks (thread_p, tran_index, oid, X_LOCK);
+	    }
+	  break;
+
+	case SIX_LOCK:
+	  /* new_mode == X_LOCK */
+	  lock_remove_all_inst_locks (thread_p, tran_index, oid, X_LOCK);
+	  break;
+
+	default:
+	  break;
+	}
+
+      mnt_lk_converted_on_objects (thread_p);
+#if defined(LK_TRACE_OBJECT)
+      LK_MSG_LOCK_CONVERTED (entry_ptr);
+#endif /* LK_TRACE_OBJECT */
+    }
+
+  if (lock_conversion == false)
+    {
+      /* to manage granules */
+      entry_ptr->class_entry = class_entry;
+      if (class_entry)
+	{
+	  class_entry->ngranules++;
+	}
+    }
+
+  *entry_addr_ptr = entry_ptr;
+  return LK_GRANTED;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_hold_object_instant_get_granted_mode - Hold object lock with instant,
+ *					      get granted mode
+ *
+ * return: one of following values
+ *     LK_GRANTED
+ *     LK_NOTGRANTED
+ *     LK_NOTGRANTED_DUE_ERROR
+ *
+ *   oid(in):
+ *   class_oid(in):
+ *   lock(in):
+ *   granted_mode(out): granted lock mode, obtained only when the lock
+ *			is granted
+ */
+int
+lock_hold_object_instant_get_granted_mode (THREAD_ENTRY * thread_p,
+					   const OID * oid,
+					   const OID * class_oid, LOCK lock,
+					   LOCK * granted_mode)
+{
+#if !defined (SERVER_MODE)
+  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
+    {
+      lk_Standalone_has_xlock = true;
+    }
+  return LK_GRANTED;
+
+#else /* !SERVER_MODE */
+  int tran_index;
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lk_object_instant", "NULL OID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+  if (class_oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lk_object_instant", "NULL ClassOID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (lock == NULL_LOCK)
+    {
+      assert (granted_mode != NULL);
+      *granted_mode = lock_get_object_lock (oid, class_oid, tran_index);
+      return LK_GRANTED;
+    }
+
+  return
+    lock_internal_hold_object_instant_get_granted_mode (tran_index, oid,
+							class_oid, lock,
+							granted_mode);
+
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_object_with_btid_get_granted_mode - Lock an object, get transaction
+ *					   granted mode
+ *
+ * return: one of following values)
+ *     LK_GRANTED
+ *     LK_NOTGRANTED_DUE_ABORTED
+ *     LK_NOTGRANTED_DUE_TIMEOUT
+ *     LK_NOTGRANTED_DUE_ERROR
+ *
+ *   oid(in): Identifier of object(instance, class, root class) to lock
+ *   class_oid(in): Identifier of the class instance of the given object
+ *   btid(in) : B+tree index identifier
+ *   lock(in): Requested lock mode
+ *   cond_flag(in):
+ *   granted_mode(out): granted lock mode, obtained only when the lock
+ *			is granted
+ */
+int
+lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
+					const OID * oid,
+					const OID * class_oid,
+					const BTID * btid, LOCK lock,
+					int cond_flag, LOCK * granted_mode)
+{
+#if !defined (SERVER_MODE)
+  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
+    {
+      lk_Standalone_has_xlock = true;
+    }
+  return LK_GRANTED;
+
+#else /* !SERVER_MODE */
+  int tran_index;
+  int waitsecs;
+  TRAN_ISOLATION isolation;
+  LOCK new_class_lock;
+  LOCK old_class_lock;
+  int granted;
+  LK_ENTRY *root_class_entry = NULL;
+  LK_ENTRY *class_entry = NULL;
+  LK_ENTRY *inst_entry = NULL;
+  struct timeval start_time, end_time, elapsed_time;
+
+  assert (granted_mode != NULL);
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_object", "NULL OID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+  if (class_oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_object", "NULL ClassOID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (lock == NULL_LOCK)
+    {
+      *granted_mode = lock_get_object_lock (oid, class_oid, tran_index);
+      return LK_GRANTED;
+    }
+
+  *granted_mode = NULL_LOCK;
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
+    }
+
+  if (cond_flag == LK_COND_LOCK)	/* conditional request */
+    {
+      waitsecs = LK_FORCE_ZERO_WAIT;
+    }
+  else
+    {
+      waitsecs = logtb_find_wait_secs (tran_index);
+    }
+  isolation = logtb_find_isolation (tran_index);
+
+  /* check if the given oid is root class oid */
+  if (OID_IS_ROOTOID (oid))
+    {
+      /* case 1 : resource type is LOCK_RESOURCE_ROOT_CLASS
+       * acquire a lock on the root class oid.
+       * NOTE that in case of acquiring a lock on a class object,
+       * the higher lock granule of the class object must not be given.
+       */
+      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+	{
+	  /* demote S_LOCK of a class to IS_LOCK */
+	  if (lock == SIX_LOCK)
+	    {
+	      lock = IX_LOCK;
+	    }
+	  else if (lock == S_LOCK)
+	    {
+	      lock = IS_LOCK;
+	    }
+	}
+
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid,
+					   (OID *) NULL, btid, lock, waitsecs,
+					   &root_class_entry, NULL);
+      if (granted == LK_GRANTED)
+	{
+	  *granted_mode = root_class_entry->granted_mode;
+	}
+
+      goto end;
+    }
+
+  /* get the intentional lock mode to be acquired on class oid */
+  if (lock <= S_LOCK)
+    {
+      new_class_lock = IS_LOCK;
+    }
+  else
+    {
+      new_class_lock = IX_LOCK;
+    }
+
+  /* Check if current transaction has already held the class lock.
+   * If the class lock is not held, hold the class lock, now.
+   */
+  class_entry = lock_get_class_lock (class_oid, tran_index);
+  old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
+
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      if (old_class_lock < new_class_lock)
+	{
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index,
+					       class_oid, (OID *) NULL,
+					       btid, new_class_lock, waitsecs,
+					       &root_class_entry, NULL);
+	  if (granted != LK_GRANTED)
+	    {
+	      goto end;
+	    }
+	}
+      /* case 2 : resource type is LOCK_RESOURCE_CLASS */
+      /* acquire a lock on the given class object */
+      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+	{
+	  /* demote S_LOCK of a class to IS_LOCK */
+	  if (lock == SIX_LOCK)
+	    {
+	      lock = IX_LOCK;
+	    }
+	  else if (lock == S_LOCK)
+	    {
+	      lock = IS_LOCK;
+	    }
+	}
+      /* NOTE that in case of acquiring a lock on a class object,
+       * the higher lock granule of the class object must not be given.
+       */
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid,
+					   (OID *) NULL, btid, lock, waitsecs,
+					   &class_entry, root_class_entry);
+      if (granted == LK_GRANTED)
+	{
+	  *granted_mode = class_entry->granted_mode;
+	}
+      goto end;
+    }
+  else
+    {
+      if (old_class_lock < new_class_lock)
+	{
+	  root_class_entry =
+	    lock_get_class_lock (oid_Root_class_oid, tran_index);
+
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index,
+					       class_oid, (OID *) NULL, btid,
+					       new_class_lock, waitsecs,
+					       &class_entry,
+					       root_class_entry);
+	  if (granted != LK_GRANTED)
+	    {
+	      /* granted_mode is NULL_LOCK */
+	      goto end;
+	    }
+	}
+
+      /* case 3 : resource type is LOCK_RESOURCE_INSTANCE */
+      if (lock_is_class_lock_escalated (old_class_lock, lock) == true)
+	{			/* already granted on the class level */
+	  /* if incompatible old class lock with requested lock,
+	     remove instant class locks */
+	  lock_stop_instant_lock_mode (thread_p, tran_index, false);
+	  *granted_mode = old_class_lock;
+	  granted = LK_GRANTED;
+	  goto end;
+	}
+      /* acquire a lock on the given instance oid */
+      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+	{
+	  /* do not hold shared locks */
+	  if (lock <= S_LOCK)
+	    {
+	      *granted_mode = lock_get_object_lock (oid, class_oid,
+						    tran_index);
+	      granted = LK_GRANTED;
+	      goto end;
+	    }
+	}
+      /* NOTE that in case of acquiring a lock on an instance object,
+       * the class oid of the intance object must be given.
+       */
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid,
+					   class_oid, btid, lock, waitsecs,
+					   &inst_entry, class_entry);
+      if (granted == LK_GRANTED && inst_entry)
+	{
+	  *granted_mode = inst_entry->granted_mode;
+	}
+
+      goto end;
+    }
+
+end:
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_object_with_btid_get_granted_mode)",
+	      PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE,
+		    "lock_object_with_btid_get_granted_mode: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
+    }
+
+  return granted;
+#endif /* !SERVER_MODE */
+}
+
+
+/*
+ * lock_btid_object_get_prev_total_hold_mode - Lock an object and get
+ *					       the previous total
+ *					       hold lock mode
+ *
+ * return: one of following values)
+ *     LK_GRANTED
+ *     LK_NOTGRANTED_DUE_ABORTED
+ *     LK_NOTGRANTED_DUE_TIMEOUT
+ *     LK_NOTGRANTED_DUE_ERROR
+ *
+ *   oid(in): Identifier of object(instance, class, root class) to lock
+ *   class_oid(in): Identifier of the class instance of the given object
+ *   btid(in) :  btid(in) : B+tree index identifier
+ *   lock(in): Requested lock mode
+ *   cond_flag(in):
+ *   prv_total_hold_mode(out): the prevoious total hold lock mode
+ *
+ * Note : lock an object whose id is pointed by oid with given lock mode
+ *	'lock'. prv_total_hold_mode is computed only when the lock is granted
+ */
+int
+lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
+					   const OID * oid,
+					   const OID * class_oid,
+					   const BTID * btid, LOCK lock,
+					   int cond_flag,
+					   LOCK * prv_total_hold_mode)
+{
+#if !defined (SERVER_MODE)
+  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
+    {
+      lk_Standalone_has_xlock = true;
+    }
+  return LK_GRANTED;
+
+#else /* !SERVER_MODE */
+  int tran_index;
+  int waitsecs;
+  TRAN_ISOLATION isolation;
+  LOCK new_class_lock;
+  LOCK old_class_lock;
+  int granted;
+  LK_ENTRY *root_class_entry = NULL;
+  LK_ENTRY *class_entry = NULL;
+  LK_ENTRY *inst_entry = NULL;
+  struct timeval start_time, end_time, elapsed_time;
+
+  assert (prv_total_hold_mode != NULL);
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_object", "NULL OID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+  if (class_oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_object", "NULL ClassOID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (lock == NULL_LOCK)
+    {
+      *prv_total_hold_mode = lock_get_total_holders_mode (oid, class_oid);
+      return LK_GRANTED;
+    }
+
+  *prv_total_hold_mode = NULL_LOCK;
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
+    }
+
+  if (cond_flag == LK_COND_LOCK)	/* conditional request */
+    {
+      waitsecs = LK_FORCE_ZERO_WAIT;
+    }
+  else
+    {
+      waitsecs = logtb_find_wait_secs (tran_index);
+    }
+  isolation = logtb_find_isolation (tran_index);
+
+  /* check if the given oid is root class oid */
+  if (OID_IS_ROOTOID (oid))
+    {
+      /* case 1 : resource type is LOCK_RESOURCE_ROOT_CLASS
+       * acquire a lock on the root class oid.
+       * NOTE that in case of acquiring a lock on a class object,
+       * the higher lock granule of the class object must not be given.
+       */
+      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+	{
+	  /* demote S_LOCK of a class to IS_LOCK */
+	  if (lock == SIX_LOCK)
+	    {
+	      lock = IX_LOCK;
+	    }
+	  else if (lock == S_LOCK)
+	    {
+	      lock = IS_LOCK;
+	    }
+	}
+
+      granted = lock_internal_lock_object_get_prev_total_hold_mode
+	(thread_p, tran_index, oid, (OID *) NULL, btid, lock,
+	 waitsecs, &root_class_entry, NULL, prv_total_hold_mode);
+      goto end;
+    }
+
+  /* get the intentional lock mode to be acquired on class oid */
+  if (lock <= S_LOCK)
+    {
+      new_class_lock = IS_LOCK;
+    }
+  else
+    {
+      new_class_lock = IX_LOCK;
+    }
+
+  /* Check if current transaction has already held the class lock.
+   * If the class lock is not held, hold the class lock, now.
+   */
+  class_entry = lock_get_class_lock (class_oid, tran_index);
+  old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
+
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      if (old_class_lock < new_class_lock)
+	{
+	  /* lock the class of the given OID */
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index,
+					       class_oid, (OID *) NULL, btid,
+					       new_class_lock, waitsecs,
+					       &root_class_entry, NULL);
+	  if (granted != LK_GRANTED)
+	    {
+	      goto end;
+	    }
+	}
+      /* case 2 : resource type is LOCK_RESOURCE_CLASS */
+      /* acquire a lock on the given class object */
+      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+	{
+	  /* demote S_LOCK of a class to IS_LOCK */
+	  if (lock == SIX_LOCK)
+	    {
+	      lock = IX_LOCK;
+	    }
+	  else if (lock == S_LOCK)
+	    {
+	      lock = IS_LOCK;
+	    }
+	}
+      /* NOTE that in case of acquiring a lock on a class object,
+       * the higher lock granule of the class object must not be given.
+       */
+      granted =
+	lock_internal_lock_object_get_prev_total_hold_mode
+	(thread_p, tran_index, oid, (OID *) NULL, btid, lock, waitsecs,
+	 &class_entry, root_class_entry, prv_total_hold_mode);
+      goto end;
+    }
+  else
+    {
+      if (old_class_lock < new_class_lock)
+	{
+	  root_class_entry =
+	    lock_get_class_lock (oid_Root_class_oid, tran_index);
+
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index,
+					       class_oid, (OID *) NULL, btid,
+					       new_class_lock, waitsecs,
+					       &class_entry,
+					       root_class_entry);
+	  if (granted != LK_GRANTED)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* case 3 : resource type is LOCK_RESOURCE_INSTANCE */
+      if (lock_is_class_lock_escalated (old_class_lock, lock) == true)
+	{			/* already granted on the class level */
+	  /* if incompatible old class lock with requested lock,
+	     remove instant class locks */
+	  lock_stop_instant_lock_mode (thread_p, tran_index, false);
+	  *prv_total_hold_mode = lock_get_total_holders_mode (oid, class_oid);
+	  *prv_total_hold_mode =
+	    lock_Conv[old_class_lock][*prv_total_hold_mode];
+
+	  granted = LK_GRANTED;
+	  goto end;
+	}
+      /* acquire a lock on the given instance oid */
+      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+	{
+	  /* do not hold shared locks */
+	  if (lock <= S_LOCK)
+	    {
+	      *prv_total_hold_mode = lock_get_total_holders_mode (oid,
+								  class_oid);
+	      granted = LK_GRANTED;
+	      /* granted_mode is NULL_LOCK */
+	      goto end;
+	    }
+	}
+      /* NOTE that in case of acquiring a lock on an instance object,
+       * the class oid of the intance object must be given.
+       */
+      granted =
+	lock_internal_lock_object_get_prev_total_hold_mode
+	(thread_p, tran_index, oid, class_oid, btid, lock, waitsecs,
+	 &inst_entry, class_entry, prv_total_hold_mode);
+      goto end;
+    }
+
+end:
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_btid_object_get_prev_total_hold_mode)",
+	      PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE,
+		    "lock_btid_object_get_prev_total_hold_mode: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
+    }
+
+  return granted;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_get_total_holders_mode - Get the total holders mode
+ *
+ * return: the total holders mode
+ *
+ *   oid(in): target object ientifier
+ *   class_oid(in): class identifier of the target object 
+ */
+
+LOCK
+lock_get_total_holders_mode (const OID * oid, const OID * class_oid)
+{
+#if !defined (SERVER_MODE)
+  return X_LOCK;
+#else /* !SERVER_MODE */
+  unsigned int hash_index;
+  LK_HASH *hash_anchor;
+  LOCK total_hold_mode = NULL_LOCK;	/* lock mode */
+  LK_RES *res_ptr;
+
+  int rv;
+  bool is_class = false;
+
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_get_total_holders_mode", "NULL OID pointer");
+      return NULL_LOCK;
+    }
+
+  is_class = OID_EQ (oid, oid_Root_class_oid) || class_oid == NULL ||
+    OID_EQ (class_oid, oid_Root_class_oid);
+
+  hash_index = LK_OBJ_LOCK_HASH (oid);
+  hash_anchor = &lk_Gl.obj_hash_table[hash_index];
+
+  /* hold hash_mutex */
+  rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+
+  /* find the lockable object in the hash chain */
+  res_ptr = hash_anchor->hash_next;
+  for (; res_ptr != (LK_RES *) NULL; res_ptr = res_ptr->hash_next)
+    {
+      if (OID_EQ (&res_ptr->oid, oid))
+	{
+	  if (is_class || OID_EQ (&res_ptr->class_oid, class_oid))
+	    {
+	      total_hold_mode = res_ptr->total_holders_mode;
+	      break;
+	    }
+	}
+    }
+
+  /* release lock hash mutex */
+  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+  return total_hold_mode;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_get_all_except_transaction - Find the acquired lock mode of all except
+ *				     tran_index transactions
+ * return:
+ *
+ *   oid(in): target object ientifier
+ *   class_oid(in): class identifier of the target object
+ *   tran_index(in): the transaction index
+ */
+
+LOCK
+lock_get_all_except_transaction (const OID * oid, const OID * class_oid,
+				 int tran_index)
+{
+#if !defined (SERVER_MODE)
+  return X_LOCK;
+#else /* !SERVER_MODE */
+  unsigned int hash_index;
+  LK_HASH *hash_anchor;
+  LOCK group_mode;		/* lock mode */
+  LK_RES *res_ptr;
+  LK_ENTRY *i;
+  int rv;
+  bool is_class = false;
+
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_get_all_except_transaction", "NULL OID pointer");
+      return NULL_LOCK;
+    }
+
+  is_class = OID_EQ (oid, oid_Root_class_oid) || class_oid == NULL ||
+    OID_EQ (class_oid, oid_Root_class_oid);
+
+  hash_index = LK_OBJ_LOCK_HASH (oid);
+  hash_anchor = &lk_Gl.obj_hash_table[hash_index];
+
+  /* hold hash_mutex */
+  rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+
+  /* find the lockable object in the hash chain */
+  res_ptr = hash_anchor->hash_next;
+  for (; res_ptr != (LK_RES *) NULL; res_ptr = res_ptr->hash_next)
+    {
+      if (OID_EQ (&res_ptr->oid, oid))
+	{
+	  if (is_class || OID_EQ (&res_ptr->class_oid, class_oid))
+	    {
+	      break;
+	    }
+	}
+    }
+
+  if (res_ptr == (LK_RES *) NULL)
+    {
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      return NULL_LOCK;
+    }
+
+  /* hold lock resource mutex */
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  /* release lock hash mutex */
+  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+  /* Note: I am holding res_mutex only */
+
+  /* other holder's granted mode */
+  group_mode = NULL_LOCK;
+  for (i = res_ptr->holder; i != (LK_ENTRY *) NULL; i = i->next)
+    {
+      if (i->tran_index != tran_index)
+	{
+	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+	  group_mode = lock_Conv[i->granted_mode][group_mode];
+	  assert (group_mode != NA_LOCK);
+	}
+    }
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+  return group_mode;
 #endif /* !SERVER_MODE */
 }

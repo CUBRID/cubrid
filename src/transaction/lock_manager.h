@@ -202,4 +202,28 @@ extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
 extern bool lock_is_class_lock_escalated (LOCK class_lock,
 					  LOCK lock_escalation);
+extern int lock_hold_object_instant_get_granted_mode (THREAD_ENTRY * thread_p,
+						      const OID * oid,
+						      const OID * class_oid,
+						      LOCK lock,
+						      LOCK * granted_mode);
+extern int lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
+						   const OID * oid,
+						   const OID * class_oid,
+						   const BTID * btid,
+						   LOCK lock, int cond_flag,
+						   LOCK * granted_mode);
+extern int lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
+						      const OID * oid,
+						      const OID * class_oid,
+						      const BTID * btid,
+						      LOCK lock,
+						      int cond_flag,
+						      LOCK *
+						      prev_tot_hold_mode);
+extern LOCK lock_get_total_holders_mode (const OID * oid,
+					 const OID * class_oid);
+extern LOCK lock_get_all_except_transaction (const OID * oid,
+					     const OID * class_oid,
+					     int tran_index);
 #endif /* _LOCK_MANAGER_H_ */

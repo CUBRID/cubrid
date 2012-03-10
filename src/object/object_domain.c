@@ -170,6 +170,7 @@ extern unsigned int db_on_server;
   0,            /* scale */                            \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
+  {0, NULL},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
@@ -183,6 +184,7 @@ extern unsigned int db_on_server;
 #define DOMAIN_INIT2(codeset)                          \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
+  {0, NULL},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   (codeset),    /* codeset */                          \
@@ -202,6 +204,7 @@ extern unsigned int db_on_server;
   0,            /* scale */                            \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
+  {0, NULL},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
@@ -267,6 +270,8 @@ TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
 TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
 TP_DOMAIN tp_Oid_domain = { NULL, NULL, &tp_Oid, DOMAIN_INIT3 };
+TP_DOMAIN tp_Enumeration_domain =
+  { NULL, NULL, &tp_Enumeration, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric,
   DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE,
@@ -339,7 +344,7 @@ static TP_DOMAIN *tp_Domains[] = {
    */
   &tp_Blob_domain,
   &tp_Clob_domain,
-  &tp_Null_domain,
+  &tp_Enumeration_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -568,6 +573,9 @@ static TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type,
 					   TP_DOMAIN * setdomain);
 static TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain);
 
+static int tp_enumeration_match (const DB_ENUMERATION * db_enum1,
+				 const DB_ENUMERATION * db_enum2);
+
 /*
  * tp_init - Global initialization for this module.
  *    return: none
@@ -607,6 +615,7 @@ tp_init (void)
       d->class_mop = NULL;
       d->self_ref = 0;
       d->setdomain = NULL;
+      DOM_SET_ENUM (d, NULL, 0);
       d->class_oid.volid = d->class_oid.pageid = d->class_oid.slotid = -1;
       d->is_cached = 1;
       d->built_in_index = i + 1;
@@ -623,6 +632,7 @@ tp_init (void)
       d->class_mop = NULL;
       d->self_ref = 0;
       d->setdomain = NULL;
+      DOM_SET_ENUM (d, NULL, 0);
       d->class_oid.volid = d->class_oid.pageid = d->class_oid.slotid = -1;
       d->is_cached = 1;
       d->built_in_index = tp_Midxkey_domains[0]->built_in_index;
@@ -714,6 +724,77 @@ tp_final (void)
     }
 }
 
+/*
+ * tp_domain_clear_enumeration () - free memory allocated for an enumeration
+ *				    type
+ * return : void
+ * enumeration (in/out): enumeration
+ */
+void
+tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
+{
+  int i = 0;
+  if (enumeration == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < enumeration->count; i++)
+    {
+      if (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]) != NULL)
+	{
+	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]));
+	}
+    }
+  free_and_init (enumeration->elements);
+}
+
+/*
+ * tp_enumeration_match () check if two enumerations match
+ * return : 1 if the two enums match, 0 otherwise
+ * db_enum1 (in):
+ * db_enum2 (in);
+ */
+static int
+tp_enumeration_match (const DB_ENUMERATION * db_enum1,
+		      const DB_ENUMERATION * db_enum2)
+{
+  int i;
+  DB_ENUM_ELEMENT *enum1 = NULL, *enum2 = NULL;
+
+  if (db_enum1 == db_enum2)
+    {
+      return 1;
+    }
+
+  if (db_enum1 == NULL || db_enum2 == NULL)
+    {
+      return 0;
+    }
+
+  if (db_enum1->count != db_enum2->count)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < db_enum1->count; i++)
+    {
+      enum1 = &db_enum1->elements[i];
+      enum2 = &db_enum2->elements[i];
+      if (DB_GET_ENUM_ELEM_STRING_SIZE (enum1) !=
+	  DB_GET_ENUM_ELEM_STRING_SIZE (enum2))
+	{
+	  return 0;
+	}
+      if (memcmp (DB_GET_ENUM_ELEM_STRING (enum1),
+		  DB_GET_ENUM_ELEM_STRING (enum2),
+		  DB_GET_ENUM_ELEM_STRING_SIZE (enum1)) != 0)
+	{
+	  return 0;
+	}
+    }
+
+  return 1;
+}
 
 /*
  * tp_domain_free - free a hierarchical domain structure.
@@ -747,6 +828,11 @@ tp_domain_free (TP_DOMAIN * dom)
 	  tp_domain_free (d);
 	}
 
+      if (dom->type->id == DB_TYPE_ENUMERATION)
+	{
+	  tp_domain_clear_enumeration (&DOM_GET_ENUMERATION (dom));
+	}
+
       area_free (tp_Domain_area, dom);
     }
 }
@@ -774,6 +860,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
   domain->class_mop = NULL;
   domain->self_ref = 0;
   domain->setdomain = NULL;
+  DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
   domain->codeset = 0;		/* is there a better default for this ? */
   domain->is_cached = 0;
@@ -880,6 +967,110 @@ tp_domain_construct (DB_TYPE domain_type,
   return new_;
 }
 
+/*
+ * tp_domain_copy_enumeration () - copy an enumeration
+ * return: error code or NO_ERROR
+ * dest (in/out): destination enumeration
+ * src (in) : source enumeration
+ */
+int
+tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
+{
+  int error = NO_ERROR, i;
+  DB_ENUM_ELEMENT *dest_elem = NULL, *src_elem = NULL;
+  char *dest_str = NULL;
+
+  if (src == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (dest == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  dest->count = 0;
+  dest->elements = NULL;
+  if (src->count == 0 && src->elements == NULL)
+    {
+      /* nothing else to do */
+      return NO_ERROR;
+    }
+
+  /* validate source enumeration */
+  if (src->count == 0 && src->elements != NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  else if (src->count != 0 && src->elements == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  dest->count = src->count;
+
+  dest->elements = malloc (src->count * sizeof (DB_ENUM_ELEMENT));
+  if (dest->elements == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      src->count * sizeof (DB_ENUM_ELEMENT));
+      return ER_FAILED;
+    }
+
+  for (i = 0; i < src->count; i++)
+    {
+      src_elem = &src->elements[i];
+      dest_elem = &dest->elements[i];
+
+      DB_SET_ENUM_ELEM_SHORT (dest_elem, DB_GET_ENUM_ELEM_SHORT (src_elem));
+
+      if (DB_GET_ENUM_ELEM_STRING (src_elem) != NULL)
+	{
+	  dest_str = malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+	  if (dest_str == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_return;
+	    }
+	  memcpy (dest_str, DB_GET_ENUM_ELEM_STRING (src_elem),
+		  DB_GET_ENUM_ELEM_STRING_SIZE (src_elem));
+	  dest_str[DB_GET_ENUM_ELEM_STRING_SIZE (src_elem)] = 0;
+	  DB_SET_ENUM_ELEM_STRING (dest_elem, dest_str);
+	  DB_SET_ENUM_ELEM_STRING_SIZE (dest_elem,
+					DB_GET_ENUM_ELEM_STRING_SIZE
+					(src_elem));
+	}
+      else
+	{
+	  DB_SET_ENUM_ELEM_STRING (dest_elem, NULL);
+	}
+    }
+
+  return NO_ERROR;
+
+error_return:
+  if (dest->elements != NULL)
+    {
+      for (--i; i >= 0; i--)
+	{
+	  if (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]) != NULL)
+	    {
+	      free_and_init (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]));
+	    }
+	}
+      free_and_init (dest->elements);
+    }
+
+  return error;
+}
 
 /*
  * tp_domain_copy - copy a hierarcical domain structure
@@ -933,6 +1124,20 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
+
+	      if (d->type->id == DB_TYPE_ENUMERATION)
+		{
+		  int error;
+		  error =
+		    tp_domain_copy_enumeration (&DOM_GET_ENUMERATION
+						(new_domain),
+						&DOM_GET_ENUMERATION (d));
+		  if (error != NO_ERROR)
+		    {
+		      tp_domain_free (first);
+		      return NULL;
+		    }
+		}
 
 	      if (d->setdomain != NULL)
 		{
@@ -1431,6 +1636,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
        * just let them match without parameters.
        */
       match = 1;
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      match =
+	tp_enumeration_match (&DOM_GET_ENUMERATION (dom1),
+			      &DOM_GET_ENUMERATION (dom2));
       break;
 
     case DB_TYPE_RESULTSET:
@@ -2028,6 +2239,19 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	}
       break;
 
+    case DB_TYPE_ENUMERATION:
+      while (domain != NULL)
+	{
+	  if (tp_enumeration_match (&DOM_GET_ENUMERATION (domain),
+				    &DOM_GET_ENUMERATION (transient)) != 0)
+	    {
+	      match = 1;
+	      break;
+	    }
+	  domain = domain->next_list;
+	}
+      break;
+
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
@@ -2412,6 +2636,31 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 }
 
 /*
+ * tp_domain_find_enumeration () - Find a chached domain with this enumeration
+ * enumeration(in): enumeration to look for
+ * is_desc(in):
+ */
+TP_DOMAIN *
+tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
+{
+  TP_DOMAIN *dom = NULL;
+  DB_ENUM_ELEMENT *db_enum1 = NULL, *db_enum2 = NULL;
+
+  /* search the list for a domain that matches */
+  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL;
+       dom = dom->next_list)
+    {
+      if (dom->is_desc == is_desc
+	  && tp_enumeration_match (&DOM_GET_ENUMERATION (dom), enumeration))
+	{
+	  return dom;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * tp_domain_cache - caches a transient domain
  *    return: cached domain
  *    transient(in/out): transient domain
@@ -2770,6 +3019,13 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    {
 	      domain = tp_domain_cache (domain);
 	    }
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  /*
+	   * We have no choice but to return the default enumeration domain
+	   * because we cannot construct the domain from a DB_VALUE
+	   */
+	  domain = tp_domain_resolve_default (value_type);
 	  break;
 
 	case DB_TYPE_NUMERIC:
@@ -3593,6 +3849,92 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	      if (set_check_domain (set, d) == DOMAIN_COMPATIBLE)
 		{
 		  best = d;
+		}
+	    }
+	}
+    }
+  else if (vtype == DB_TYPE_ENUMERATION)
+    {
+      int val_idx, dom_size, val_size;
+      char *dom_str = NULL, *val_str = NULL;
+
+      if ((DB_GET_ENUM_SHORT (value) == 0
+	   && DB_GET_ENUM_STRING (value) != NULL))
+	{
+	  /* An enumeration should be NULL or should at least have an index */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return NULL;
+	}
+
+      val_idx = DB_GET_ENUM_SHORT (value);
+      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
+	   d = d->next)
+	{
+	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_ENUMERATION)
+	    {
+	      if (val_idx == 0)
+		{
+		  /* this is an invalid enum value so any domain matches */
+		  best = d;
+		  break;
+		}
+	      if (DOM_GET_ENUM_ELEMS_COUNT (d) == 0 && best == NULL)
+		{
+		  /* this is the default enum domain and we haven't found
+		   * any matching domain yet. This is our best candidate so
+		   * far
+		   */
+		  best = d;
+		  continue;
+		}
+	      if (DOM_GET_ENUM_ELEMS_COUNT (d) < val_idx)
+		{
+		  continue;
+		}
+	      if (val_str == NULL)
+		{
+		  /* The enumeration string value is not specified. This means
+		   * that the domain we have so far is the best match because
+		   * there is no way of deciding between other domains based
+		   * only on the short value
+		   */
+		  best = d;
+		  break;
+		}
+
+	      dom_str =
+		DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (d, val_idx));
+	      dom_size =
+		DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM
+					      (d, val_idx));
+	      val_str = DB_GET_ENUM_STRING (value);
+	      val_size = DB_GET_ENUM_STRING_SIZE (value);
+	      val_size = (dom_size < val_size ? dom_size : val_size);
+	      /* We have already checked that val_str is not null */
+	      if (dom_str == NULL)
+		{
+		  assert (false);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
+			  0);
+		  return NULL;
+		}
+	      if (memcmp (dom_str, val_str, val_size) == 0)
+		{
+		  if (best == NULL)
+		    {
+		      best = d;
+		    }
+		  else if (DOM_GET_ENUM_ELEMS_COUNT (best) <
+			   DOM_GET_ENUM_ELEMS_COUNT (d))
+		    {
+		      /* The best match is the domain that has the largest
+		       * element count. We're not interested in the value
+		       * of the exact_match argument since we cannot find
+		       * an exact enumeration match based on a DB_VALUE
+		       */
+		      best = d;
+		    }
 		}
 	    }
 	}
@@ -4735,6 +5077,52 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
     }
 }
 
+/*
+ * tp_enumeration_to_varchar  - Get the value of an enumeration as a varchar.
+ *    return: error code or NO_ERROR
+ *    src(in): enumeration
+ *    result(in/out): varchar
+ * Note:
+ *    The string value of the varchar value is not a copy of the enumeration
+ *    value, it just points to it
+ */
+int
+tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result)
+{
+  int error = NO_ERROR;
+
+  if (src == NULL || result == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (DB_GET_ENUM_STRING (src) == NULL)
+    {
+      if (DB_GET_ENUM_SHORT (src) != 0)
+	{
+	  /* we should never get into a situation where we only have
+	   * an index for our enum but we have to cast it to a
+	   * STRING type
+	   */
+	  assert (false);
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0);
+	}
+    }
+  else
+    {
+      db_make_varchar (result, DB_DEFAULT_PRECISION,
+		       DB_GET_ENUM_STRING (src),
+		       DB_GET_ENUM_STRING_SIZE (src));
+    }
+
+  return error;
+}
+
 #define BITS_IN_BYTE            8
 #define HEX_IN_BYTE             2
 #define BITS_IN_HEX             4
@@ -4835,9 +5223,9 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 #define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type)		\
    ((TP_IS_CHAR_STRING(src_type) && !(TP_IS_CHAR_STRING(dest_type) ||	\
 				      TP_IS_DATETIME_TYPE(dest_type) || \
-				      TP_IS_NUMERIC_TYPE(dest_type)))   \
-                                 ||					\
-    (!TP_IS_CHAR_STRING(src_type) && TP_IS_CHAR_STRING(dest_type)) ||   \
+				      TP_IS_NUMERIC_TYPE(dest_type))) ||\
+    (!TP_IS_CHAR_STRING(src_type) && src_type != DB_TYPE_ENUMERATION &&	\
+     TP_IS_CHAR_STRING(dest_type)) ||					\
     (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
 
 #define TP_STRICT_COERCION_ONLY_ALLOWED(src_type, dest_type)            \
@@ -5895,6 +6283,16 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    break;
 	  }
+	case DB_TYPE_ENUMERATION:
+	  if (OR_CHECK_SHORT_OVERFLOW (DB_GET_ENUM_SHORT (src)))
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  else
+	    {
+	      db_make_short (target, DB_GET_ENUM_SHORT (src));
+	    }
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -5989,6 +6387,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    break;
 	  }
+	case DB_TYPE_ENUMERATION:
+	  db_make_int (target, DB_GET_ENUM_SHORT (src));
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -6109,6 +6510,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    db_make_bigint (target, num_value);
 	    break;
 	  }
+	case DB_TYPE_ENUMERATION:
+	  db_make_bigint (target, DB_GET_ENUM_SHORT (src));
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -6178,6 +6582,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    break;
 	  }
+	case DB_TYPE_ENUMERATION:
+	  db_make_float (target, (float) DB_GET_ENUM_SHORT (src));
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -6241,6 +6648,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	    break;
 	  }
+	case DB_TYPE_ENUMERATION:
+	  db_make_double (target, (double) DB_GET_ENUM_SHORT (src));
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -6358,6 +6768,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    break;
 	  }
+	case DB_TYPE_ENUMERATION:
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
+			    DB_GET_ENUM_SHORT (src));
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -6376,6 +6790,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  else
 	    db_make_timestamp (target, v_utime);
 	  break;
+
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
 
 	case DB_TYPE_DATETIME:
 	  v_datetime = *DB_GET_DATETIME (src);
@@ -6436,6 +6864,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 	  break;
 
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
+
 	case DB_TYPE_UTIME:
 	  v_utime = *DB_GET_TIMESTAMP (src);
 	  db_timestamp_to_datetime (&v_utime, &v_datetime);
@@ -6479,6 +6921,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      return DOMAIN_ERROR;
 	    }
 	  break;
+
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
 
 	case DB_TYPE_UTIME:
 	  db_utime_decode ((DB_TIME *) DB_GET_UTIME (src), &v_date, NULL);
@@ -6582,6 +7038,19 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      return DOMAIN_ERROR;
 	    }
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -6859,6 +7328,19 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	  }
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
 	case DB_TYPE_BLOB:
 	  {
 	    DB_VALUE tmpval;
@@ -6928,6 +7410,28 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  else
 	    status = DOMAIN_COMPATIBLE;
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (desired_type == DB_TYPE_NCHAR
+		|| desired_type == DB_TYPE_VARNCHAR)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else if (tp_enumeration_to_varchar (src, &varchar_val) !=
+		     NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+	      }
+	    else
+	      {
+		status =
+		  tp_value_cast_internal (&varchar_val, target,
+					  desired_domain, coercion_mode,
+					  do_domain_select);
+	      }
+	    break;
+	  }
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_SMALLINT:
@@ -7218,6 +7722,19 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARNCHAR:
 	  err = db_char_to_blob (src, dest);
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -7235,6 +7752,19 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARCHAR:
 	  err = db_char_to_clob (src, dest);
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain,
+				      coercion_mode, do_domain_select);
+	    break;
+	  }
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -7253,6 +7783,246 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	char *val_str = NULL;
+	bool exit = false, alloc_string = true;
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	switch (original_type)
+	  {
+	  case DB_TYPE_SHORT:
+	    val_idx = (unsigned short) DB_GET_SHORT (src);
+	    break;
+	  case DB_TYPE_INTEGER:
+	    if (OR_CHECK_USHRT_OVERFLOW (DB_GET_INT (src)))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) DB_GET_INT (src);
+	      }
+	    break;
+	  case DB_TYPE_BIGINT:
+	    if (OR_CHECK_USHRT_OVERFLOW (DB_GET_BIGINT (src)))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) DB_GET_BIGINT (src);
+	      }
+	    break;
+	  case DB_TYPE_FLOAT:
+	    if (OR_CHECK_USHRT_OVERFLOW (floor (DB_GET_FLOAT (src))))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) floor (DB_GET_FLOAT (src));
+	      }
+	    break;
+	  case DB_TYPE_DOUBLE:
+	    if (OR_CHECK_USHRT_OVERFLOW (floor (DB_GET_DOUBLE (src))))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) floor (DB_GET_DOUBLE (src));
+	      }
+	    break;
+	  case DB_TYPE_NUMERIC:
+	    {
+	      DB_VALUE val;
+	      DB_DATA_STATUS stat = DATA_STATUS_OK;
+	      int err = NO_ERROR;
+
+	      DB_MAKE_DOUBLE (&val, 0);
+	      err =
+		numeric_db_value_coerce_from_num ((DB_VALUE *) src, &val,
+						  &stat);
+	      if (err != NO_ERROR)
+		{
+		  status = DOMAIN_ERROR;
+		}
+	      else
+		{
+		  if (OR_CHECK_USHRT_OVERFLOW (floor (DB_GET_DOUBLE (&val))))
+		    {
+		      status = DOMAIN_OVERFLOW;
+		    }
+		  else
+		    {
+		      val_idx = (unsigned short) floor (DB_GET_DOUBLE (&val));
+		    }
+		}
+	      break;
+	    }
+	  case DB_TYPE_MONETARY:
+	    v_money = DB_GET_MONETARY (src);
+	    if (OR_CHECK_USHRT_OVERFLOW (floor (v_money->amount)))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) floor (v_money->amount);
+	      }
+	    break;
+	  case DB_TYPE_UTIME:
+	  case DB_TYPE_DATETIME:
+	  case DB_TYPE_DATE:
+	  case DB_TYPE_TIME:
+	  case DB_TYPE_BIT:
+	  case DB_TYPE_VARBIT:
+	  case DB_TYPE_BLOB:
+	  case DB_TYPE_CLOB:
+	    {
+	      DB_VALUE val;
+	      status =
+		tp_value_cast_internal (src, &val,
+					tp_domain_resolve_default
+					(DB_TYPE_STRING), coercion_mode,
+					do_domain_select);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = DB_GET_STRING (&val);
+		  val_str_size = DB_GET_STRING_SIZE (&val);
+		  alloc_string = !val.need_clear;
+		  /* we will steal the string value from val and we do not
+		   * want somebody else to call pr_clear_value on val
+		   */
+		  val.need_clear = false;
+		}
+	    }
+	    break;
+	  case DB_TYPE_CHAR:
+	  case DB_TYPE_VARCHAR:
+	    val_str = DB_GET_STRING (src);
+	    val_str_size = DB_GET_STRING_SIZE (src);
+	    break;
+	  case DB_TYPE_ENUMERATION:
+	    if (DOM_GET_ENUM_ELEMS_COUNT (desired_domain) == 0)
+	      {
+		pr_clone_value (src, target);
+		exit = true;
+		break;
+	      }
+	    val_str = DB_GET_ENUM_STRING (src);
+	    val_str_size = DB_GET_ENUM_STRING_SIZE (src);
+	    if (val_str == NULL)
+	      {
+		/* src has a short value or a string value or both. We prefer
+		 * to use the string value when matching against the desired
+		 * domain but, if this is not set, we will use the value index
+		 */
+		val_idx = DB_GET_ENUM_SHORT (src);
+	      }
+	    break;
+	  default:
+	    status = DOMAIN_INCOMPATIBLE;
+	    break;
+	  }
+	if (exit)
+	  {
+	    break;
+	  }
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    if (val_str != NULL)
+	      {
+		/* We have to search through the elements of the desired
+		 * domain to find the index for val_str.
+		 */
+		int i, size;
+		DB_ENUM_ELEMENT *db_enum = NULL;
+		int elem_count = DOM_GET_ENUM_ELEMS_COUNT (desired_domain);
+		for (i = 1; i <= elem_count; i++)
+		  {
+		    db_enum = &DOM_GET_ENUM_ELEM (desired_domain, i);
+		    size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
+		    if (val_str_size != size)
+		      {
+			continue;
+		      }
+
+		    if (memcmp (val_str,
+				DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
+		      {
+			break;
+		      }
+		  }
+		val_idx = i;
+		if (i > elem_count)
+		  {
+		    status = DOMAIN_OVERFLOW;
+		  }
+	      }
+	    else
+	      {
+		/* We have the index, we need to get the actual string value
+		 * from the desired domain
+		 */
+		if (val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		  }
+		else if (val_idx == 0)
+		  {
+		    status = DOMAIN_ERROR;
+		  }
+		else
+		  {
+		    val_str_size =
+		      DB_GET_ENUM_ELEM_STRING_SIZE
+		      (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
+		    val_str =
+		      DB_GET_ENUM_ELEM_STRING
+		      (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
+		  }
+	      }
+	    if (status == DOMAIN_COMPATIBLE)
+	      {
+		char *enum_str;
+		assert (val_str != NULL);
+		if (alloc_string)
+		  {
+		    enum_str = db_private_alloc (NULL, val_str_size + 1);
+		    if (enum_str == NULL)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				val_str_size + 1);
+			status = DOMAIN_ERROR;
+			break;
+		      }
+		    else
+		      {
+			memcpy (enum_str, val_str, val_str_size);
+			enum_str[val_str_size] = 0;
+		      }
+		  }
+		else
+		  {
+		    enum_str = val_str;
+		  }
+		DB_MAKE_ENUMERATION (target, val_idx, enum_str, val_str_size);
+		target->need_clear = true;
+	      }
+	  }
+      }
       break;
 
     default:
@@ -8225,6 +8995,7 @@ tp_valid_indextype (DB_TYPE type)
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+    case DB_TYPE_ENUMERATION:
       return 1;
     default:
       return 0;

@@ -122,6 +122,10 @@ BASE_SOURCES = \
 	$(BASE_DIR)/md5.c \
 	$(BASE_DIR)/error_manager.c \
 	$(BASE_DIR)/language_support.c \
+	$(BASE_DIR)/locale_support.c \
+	$(BASE_DIR)/xml_parser.c \
+	$(BASE_DIR)/uca_support.c \
+	$(BASE_DIR)/unicode_support.c \
 	$(BASE_DIR)/memory_hash.c \
 	$(BASE_DIR)/perf_monitor.c \
 	$(BASE_DIR)/ini_parser.c \

@@ -1042,8 +1042,8 @@ $ LOADDB
 974 Archive log "%1$s" is created to archive pages from %2$lld to %3$lld.
 975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
 976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
-977 Checkpoint started (page %lld).
-978 Checkpoint finished (page %lld).
+977 Checkpoint started (previous checkpoint page id: %lld, previous redo page id: %lld).
+978 Checkpoint finished (checkpoint page id: %lld, checkpoint redo page id: %lld).
 979 CONNECT BY loop in user data.
 980 A thread is waiting in %1$s more than %2$d msec.
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
@@ -1152,8 +1152,10 @@ $ LOADDB
 1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 Cannot compile regular expression: '%s'
 1086 Cannot execute regular expression: '%s'
-1087 Cannot prepare statement of type '%s' with host variables.
-1088 Last Error
+1087 Locale initialization : %s.
+1088 Locale generation : %s.
+1089 Cannot prepare statement of type '%s' with host variables.
+1090 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1523,6 +1525,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 233 Multiple or nested functions are not allowed in a function index definition.
 234 Invalid index specification.
 235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
+236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
+237 Duplicate values in enum type.
+238 Cannot MERGE into a derived table.
+239 Invalid MERGE update assignment.
+240 MERGE with class hierarchies is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

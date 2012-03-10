@@ -53,6 +53,11 @@ extern int yycolumn_end;
 #undef YY_INPUT
 #define YY_INPUT(buffer, result, max_size) { result = parser_yyinput(buffer, max_size); result == 0 ? result = YY_NULL : result; }
 
+/*
+ * This action is executed each time a token is matched. Its position in the 
+ * buffer is saved as part of the location information.
+ */
+#define YY_USER_ACTION  {yybuffer_pos += csql_yyget_leng (); csql_yylloc.buffer_pos = yybuffer_pos;}
 
 
 %}
@@ -242,6 +247,7 @@ extern int yycolumn_end;
 												return ELT; 
 											}
 [eE][nN][dD]								{ begin_token(yytext);   return END; }
+[eE][nN][uU][mM]							{ begin_token(yytext);	 return ENUM; }
 [eE][qQ][uU][aA][lL][sS]						{ begin_token(yytext);   return EQUALS; }
 [eE][sS][cC][aA][pP][eE]						{ begin_token(yytext);   return ESCAPE; }
 [eE][vV][aA][lL][uU][aA][tT][eE]					{ begin_token(yytext);   return EVALUATE; }
@@ -396,6 +402,7 @@ extern int yycolumn_end;
 [lL][oO][oO][pP]							{ begin_token(yytext);   return LOOP; }
 [lL][oO][wW][eE][rR]							{ begin_token(yytext);   return LOWER; }
 [mM][aA][tT][cC][hH]							{ begin_token(yytext);   return MATCH; }
+[mM][aA][tT][cC][hH][eE][dD]						{ begin_token(yytext);	 return MATCHED; }
 [mM][aA][xX][iI][mM][uU][mM]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return MAXIMUM; }
@@ -406,6 +413,7 @@ extern int yycolumn_end;
 [mM][eE][mM][bB][eE][rR][sS]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return MEMBERS; }
+[mM][eE][rR][gG][eE]							{ begin_token(yytext);	 return MERGE; }
 [mM][eE][tT][hH][oO][dD]						{ begin_token(yytext);   return METHOD; }
 [mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]				{ begin_token(yytext);   return MILLISECOND_; }
 [mM][iI][nN][uU][tT][eE]						{ begin_token(yytext);   return MINUTE_; }
@@ -1063,17 +1071,36 @@ extern int yycolumn_end;
 					  }
 				}
 
-\xa1\xef			{ begin_token(yytext);   return YEN_SIGN; }
-\$				{ begin_token(yytext);   return DOLLAR_SIGN; }
-\\				{ begin_token(yytext);   return WON_SIGN; }
-\\[T][L]			{ begin_token(yytext);   return TURKISH_LIRA_SIGN; }
+\xa1\xef				{ begin_token(yytext);   return YEN_SIGN; }
+\$   					{ begin_token(yytext);   return DOLLAR_SIGN; }
+\\   					{ begin_token(yytext);   return WON_SIGN; }
+\\[T][L]				{ begin_token(yytext);   return TURKISH_LIRA_SIGN; }
+\\[J][P][Y]				{ begin_token(yytext);   return YEN_SIGN; }
+\\[U][S][D]				{ begin_token(yytext);   return DOLLAR_SIGN; }
+\\[K][R][W]				{ begin_token(yytext);   return WON_SIGN; }
+\\[T][R][Y]				{ begin_token(yytext);   return TURKISH_LIRA_SIGN; }
+\\[K][H][R]				{ begin_token(yytext);   return CAMBODIAN_RIEL_SIGN; }
+\\[C][N][Y]				{ begin_token(yytext);   return CHINESE_RENMINBI_SIGN; }
+\\[I][N][R]				{ begin_token(yytext);   return INDIAN_RUPEE_SIGN; }
+\\[R][U][B]				{ begin_token(yytext);   return RUSSIAN_RUBLE_SIGN; }
+\\[A][U][D]				{ begin_token(yytext);   return AUSTRALIAN_DOLLAR_SIGN; }
+\\[C][A][D]				{ begin_token(yytext);   return CANADIAN_DOLLAR_SIGN; }
+\\[B][R][L]				{ begin_token(yytext);   return BRASILIAN_REAL_SIGN; }
+\\[R][O][N]				{ begin_token(yytext);   return ROMANIAN_LEU_SIGN; }
+\\[E][U][R]				{ begin_token(yytext);   return EURO_SIGN; }
+\\[C][H][F]				{ begin_token(yytext);   return SWISS_FRANC_SIGN; }
+\\[D][K][K]				{ begin_token(yytext);   return DANISH_KRONE_SIGN; }
+\\[N][O][K]				{ begin_token(yytext);   return NORWEGIAN_KRONE_SIGN; }
+\\[B][G][N]				{ begin_token(yytext);   return BULGARIAN_LEV_SIGN; }
+\\[G][B][P]				{ begin_token(yytext);   return BRITISH_POUND_SIGN; }
+\\[V][N][D]				{ begin_token(yytext);   return VIETNAMESE_DONG_SIGN; }
+\\[C][Z][K]				{ begin_token(yytext);   return CZECH_KORUNA_SIGN; }
+\\[P][L][N]				{ begin_token(yytext);   return POLISH_ZLOTY_SIGN; }
+\\[S][E][K]				{ begin_token(yytext);   return SWEDISH_KRONA_SIGN; }
+\\[H][R][K]				{ begin_token(yytext);   return CROATIAN_KUNA_SIGN; }
+\\[R][S][D]				{ begin_token(yytext);   return SERBIAN_DINAR_SIGN; }
 
-\\[J][P][Y]			{ begin_token(yytext);   return YEN_SIGN; }
-\\[U][S][D]			{ begin_token(yytext);   return DOLLAR_SIGN; }
-\\[K][R][W]			{ begin_token(yytext);   return WON_SIGN; }
-\\[T][R][Y]			{ begin_token(yytext);   return TURKISH_LIRA_SIGN; }
-
-.				{ begin_token(yytext);   return yytext[0]; }
+.					{ begin_token(yytext);   return yytext[0]; }
 %%
 
 int parser_yyinput_single_mode = 0;
@@ -1089,6 +1116,18 @@ csql_yyerror_explicit (int line, int column)
 void
 csql_yyerror (const char *s)
 {
+  char *token_val = csql_yyget_text ();
+  char *next_ptr = csql_yyget_text () + csql_yyget_leng () + 1;
+  char saved_char = yy_hold_char; /* retain the character following the last
+				   * character of the current token */
+  int end_statement = 0;
+  
+  if (strlen (next_ptr) == 0)
+    {
+      end_statement = 1;
+      next_ptr = " END OF STATEMENT ";
+    }
+
   YY_FLUSH_BUFFER;
   parser_statement_OK = 0;
 
@@ -1103,6 +1142,15 @@ csql_yyerror (const char *s)
     {
       const char *cmp_str = ", expecting \'{\'";
       const char *cmp_str2 = ", expecting SELECT or \'(\'";
+
+      char *msg = NULL;
+      const char *before_token = "Syntax error: unexpected ";
+      const char *after_token = strstr (s, ", expecting");
+      int len = 0;
+      int fixed_len = 35 + /* size of fixed part of the context message
+			      "In line , column  before ''\n ''" */
+		      11 * 2; /* maximum size of printed line number and
+				 column number */
       PT_NODE *dummy;
 
       if ((strlen (s) > strlen (cmp_str)) &&
@@ -1116,12 +1164,44 @@ csql_yyerror (const char *s)
 	  *(char *) &s[strlen (s) - strlen (cmp_str2)] = 0;
 	}
 
+      msg = (char *) csql_yyalloc (fixed_len + strlen(s) + strlen (token_val)
+				   + strlen (next_ptr) + 1);
+      if (msg == NULL)
+	{
+	  YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+	}
+
+      if (end_statement == 0)
+	{
+	  sprintf (msg, "In line %d, column %d before '%c%s'\n", 
+		   csql_yylloc.first_line, csql_yylloc.first_column, 
+		   saved_char, next_ptr);
+	  msg[strlen (msg) - 3] = ' ';
+	}
+      else
+	{
+	  sprintf (msg, "In line %d, column %d before %s\n", 
+		   csql_yylloc.first_line, csql_yylloc.first_column, 
+		   next_ptr);
+	}
+
+      len = strlen (msg);
+      sprintf (msg + len, "%s'%s'", before_token, token_val);
+
+      if (after_token)
+	{
+	  strcat (msg, after_token);
+	}
+
       dummy = parser_new_node (this_parser, PT_EXPR);
       if (dummy == NULL)
-	return;
-      PT_ERRORf (this_parser, dummy, "%s", s);
+	{
+	  return;
+	}
+      PT_ERRORf (this_parser, dummy, "%s", msg);
       parser_free_tree (this_parser, dummy);
-    }
+      csql_yyfree (msg);
+   }
 }
 
 int

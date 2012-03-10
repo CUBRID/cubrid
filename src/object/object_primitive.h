@@ -146,6 +146,7 @@ extern PR_TYPE tp_NChar;
 extern PR_TYPE tp_VarNChar;
 extern PR_TYPE tp_ResultSet;
 extern PR_TYPE tp_Bigint;
+extern PR_TYPE tp_Enumeration;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;

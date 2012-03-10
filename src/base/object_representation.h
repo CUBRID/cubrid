@@ -790,8 +790,9 @@
 #define ORC_DOMAIN_CODESET_OFFSET 	12
 #define ORC_DOMAIN_CLASS_OFFSET 	16
 
-#define ORC_DOMAIN_VAR_ATT_COUNT        1
+#define ORC_DOMAIN_VAR_ATT_COUNT        2
 #define ORC_DOMAIN_SETDOMAIN_INDEX	0
+#define ORC_DOMAIN_ENUMERATION_INDEX	1
 
 /* method */
 #define ORC_METHOD_VAR_ATT_COUNT        3
@@ -1239,5 +1240,9 @@ extern char *or_pack_value (char *buf, DB_VALUE * value);
 extern char *or_pack_mem_value (char *buf, DB_VALUE * value);
 extern char *or_unpack_value (char *buf, DB_VALUE * value);
 extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
+
+extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
+extern int or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
+extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

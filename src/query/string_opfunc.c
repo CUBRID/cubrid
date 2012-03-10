@@ -159,8 +159,7 @@ typedef enum
  * format string len/size : maximum multiplier is given by:
  * - format element : DAY (3)
  * - result :Wednesday (9) */
-#define QSTR_TO_CHAR_LEN_MULTIPLIER_RATIO 3
-#define QSTR_TO_CHAR_SIZE_MULTIPLIER_RATIO 3
+#define QSTR_TO_CHAR_LEN_MULTIPLIER_RATIO LOC_PARSE_FRMT_TO_TOKEN_MULT
 
 #define MAX_TOKEN_SIZE 16000
 
@@ -423,7 +422,8 @@ static int db_get_next_like_pattern_character (const char *const pattern,
 					       char **crt_char_p,
 					       bool * const is_escaped);
 static bool is_safe_last_char_for_like_optimization (const char *chr,
-						     const bool is_escaped);
+						     const bool is_escaped,
+						     INTL_CODESET codeset);
 static int db_check_or_create_null_term_string (const DB_VALUE * str_val,
 						char *pre_alloc_buf,
 						int pre_alloc_buf_size,
@@ -432,11 +432,6 @@ static int db_check_or_create_null_term_string (const DB_VALUE * str_val,
 						char **str_out,
 						bool * do_alloc);
 
-/* reads cnt alphabetic characters until a non-alpha char reached,
- * returns nr of characters traversed
- */
-static int parse_characters (const INTL_LANG intl_id, char *s, char *res,
-			     int cnt, int res_size);
 /* reads cnt digits until non-digit char reached,
  * returns nr of characters traversed
  */
@@ -706,7 +701,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
   else
     {
       int size1, size2, result_size, pad_size = 0, n;
-      unsigned char *string1, *string2, *result, *key, pad[2], *t, *t2;
+      unsigned char *string1, *string2, *result, *key, pad[2], *t;
       INTL_CODESET codeset;
       int char_count;
       int num_bits = -1;
@@ -768,20 +763,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	    }
 	}
 
-      /* now find the first byte where the strings differ */
-      for (result_size = 0, t = string1, t2 = string2;
-	   result_size < size1 && result_size < size2 && *t++ == *t2++;
-	   result_size++)
-	{
-	  ;
-	}
-
-      /* find the size up to the first character where the strings differ */
-      if (result_type == DB_TYPE_VARCHAR || result_type == DB_TYPE_VARNCHAR)
-	{
-	  intl_char_count (string1, result_size, codeset, &char_count);
-	  intl_char_size (string1, char_count, codeset, &result_size);
-	}
+      intl_split_point (codeset, string1, size1, string2, size2,
+			&char_count, &result_size);
 
       if (!key_domain->is_desc)
 	{			/* normal index */
@@ -798,6 +781,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	    }
 	  else
 	    {
+	      assert (result_size < size2);
 	      if (result_type == DB_TYPE_VARCHAR
 		  || result_type == DB_TYPE_VARNCHAR)
 		{
@@ -836,6 +820,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	    }
 	  else
 	    {
+	      assert (result_size < size1);
 	      if (result_type == DB_TYPE_VARCHAR
 		  || result_type == DB_TYPE_VARNCHAR)
 		{
@@ -3080,12 +3065,13 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
   else
     {
       unsigned char *lower_str;
-      int lower_size, lower_length;
+      int lower_size;
+      int src_length;
 
-      lower_length = DB_GET_STRING_LENGTH (string);
+      src_length = DB_GET_STRING_LENGTH (string);
       lower_size =
 	intl_lower_string_size ((unsigned char *) DB_PULL_STRING (string),
-				DB_GET_STRING_SIZE (string), lower_length,
+				DB_GET_STRING_SIZE (string), src_length,
 				(INTL_CODESET)
 				DB_GET_STRING_CODESET (string));
 
@@ -3098,10 +3084,14 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
 	}
       else
 	{
+	  int lower_length;
 	  intl_lower_string ((unsigned char *) DB_PULL_STRING (string),
-			     lower_str, lower_length,
+			     lower_str, src_length,
 			     (INTL_CODESET) DB_GET_STRING_CODESET (string));
 	  lower_str[lower_size] = 0;
+	  intl_char_count (lower_str, lower_size,
+			   (INTL_CODESET) DB_GET_STRING_CODESET (string),
+			   &lower_length);
 	  qstr_make_typed_string (str_type, lower_string, lower_length,
 				  (char *) lower_str, lower_size);
 	  lower_string->need_clear = true;
@@ -3177,12 +3167,12 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
   else
     {
       unsigned char *upper_str;
-      int upper_size, upper_length;
+      int upper_size, src_length;
 
-      upper_length = DB_GET_STRING_LENGTH (string);
+      src_length = DB_GET_STRING_LENGTH (string);
       upper_size =
 	intl_upper_string_size ((unsigned char *) DB_PULL_STRING (string),
-				DB_GET_STRING_SIZE (string), upper_length,
+				DB_GET_STRING_SIZE (string), src_length,
 				(INTL_CODESET)
 				DB_GET_STRING_CODESET (string));
 
@@ -3195,10 +3185,14 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
 	}
       else
 	{
+	  int upper_length;
 	  intl_upper_string ((unsigned char *) DB_PULL_STRING (string),
-			     upper_str, upper_length,
+			     upper_str, src_length,
 			     (INTL_CODESET) DB_GET_STRING_CODESET (string));
 	  upper_str[upper_size] = 0;
+	  intl_char_count (upper_str, upper_size,
+			   (INTL_CODESET) DB_GET_STRING_CODESET (string),
+			   &upper_length);
 	  qstr_make_typed_string (str_type, upper_string, upper_length,
 				  (char *) upper_str, upper_size);
 	  upper_string->need_clear = true;
@@ -11316,9 +11310,8 @@ db_to_char (const DB_VALUE * src_value,
     }
 }
 
-/* TODO: extract the following messages */
-#define MAX_STRING_DATE_TOKEN_LEN   20
-const char *Month_name[][12] = {
+#define MAX_STRING_DATE_TOKEN_LEN  LOC_DATA_MONTH_WIDE_SIZE
+const char *Month_name_ISO[][12] = {
   {"January", "February", "March", "April",
    "May", "June", "July", "August", "September", "October",
    "November", "December"},	/* US */
@@ -11335,6 +11328,36 @@ const char *Month_name[][12] = {
    "11\xbf\xf9",
    "12\xbf\xf9"},		/* KR */
   {"Ocak",
+   "Subat",
+   "Mart",
+   "Nisan",
+   "Mayis",
+   "Haziran",
+   "Temmuz",
+   "Agustos",
+   "Eylul",
+   "Ekim",
+   "Kasim",
+   "Aralik"}			/* TR */
+};
+
+const char *Month_name_UTF8[][12] = {
+  {"January", "February", "March", "April",
+   "May", "June", "July", "August", "September", "October",
+   "November", "December"},	/* US */
+  {"1\xec\x9b\x94",
+   "2\xec\x9b\x94",
+   "3\xec\x9b\x94",
+   "4\xec\x9b\x94",
+   "5\xec\x9b\x94",
+   "6\xec\x9b\x94",
+   "7\xec\x9b\x94",
+   "8\xec\x9b\x94",
+   "9\xec\x9b\x94",
+   "10\xec\x9b\x94",
+   "11\xec\x9b\x94",
+   "12\xec\x9b\x94"},		/* KR */
+  {"Ocak",
    "\xc5\x9e" "ubat",
    "Mart",
    "Nisan",
@@ -11348,7 +11371,13 @@ const char *Month_name[][12] = {
    "Aral" "\xc4\xb1" "k"}	/* TR */
 };
 
-const char *Day_name[][7] = {
+const char Month_name_parse_order[][12] = {
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+};
+
+const char *Day_name_ISO[][7] = {
   {"Sunday", "Monday", "Tuesday", "Wednesday",
    "Thursday", "Friday", "Saturday"},	/* US */
   {"\xc0\xcf\xbf\xe4\xc0\xcf",
@@ -11358,14 +11387,35 @@ const char *Day_name[][7] = {
    "\xb8\xf1\xbf\xe4\xc0\xcf",
    "\xb1\xdd\xbf\xe4\xc0\xcf",
    "\xc5\xe4\xbf\xe4\xc0\xcf"},	/* KR */
+  {"Pazar", "Pazartesi", "Sali",
+   "Carsamba",
+   "Persembe", "Cuma",
+   "Cumartesi"}			/* TR */
+};
+
+const char *Day_name_UTF8[][7] = {
+  {"Sunday", "Monday", "Tuesday", "Wednesday",
+   "Thursday", "Friday", "Saturday"},	/* US */
+  {"\xec\x9d\xbc\xec\x9a\x94\xec\x9d\xbc",
+   "\xec\x9b\x94\xec\x9a\x94\xec\x9d\xbc",
+   "\xed\x99\x94\xec\x9a\x94\xec\x9d\xbc",
+   "\xec\x88\x98\xec\x9a\x94\xec\x9d\xbc",
+   "\xeb\xaa\xa9\xec\x9a\x94\xec\x9d\xbc",
+   "\xea\xb8\x88\xec\x9a\x94\xec\x9d\xbc",
+   "\xed\x86\xa0\xec\x9a\x94\xec\x9d\xbc"},	/* KR */
   {"Pazar", "Pazartesi", "Sal\xc4\xb1",
    "\xc3\x87" "ar" "\xc5\x9f" "amba",
    "Per" "\xc5\x9f" "embe", "Cuma",
    "Cumartesi"}			/* TR */
 };
 
-/* TODO: koreean short names */
-const char *Short_Month_name[][12] = {
+const char Day_name_parse_order[][7] = {
+  {0, 1, 2, 3, 4, 5, 6},
+  {0, 1, 2, 3, 4, 5, 6},
+  {1, 0, 2, 3, 4, 6, 5}
+};
+
+const char *Short_Month_name_ISO[][12] = {
   {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},	/* US */
   {"1\xbf\xf9",
@@ -11381,6 +11431,35 @@ const char *Short_Month_name[][12] = {
    "11\xbf\xf9",
    "12\xbf\xf9"},		/* KR */
   {"Ock",
+   "Sbt",
+   "Mrt",
+   "Nsn",
+   "Mys",
+   "Hzr",
+   "Tmz",
+   "Ags",
+   "Eyl",
+   "Ekm",
+   "Ksm",
+   "Arl"}			/* TR */
+};
+
+const char *Short_Month_name_UTF8[][12] = {
+  {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},	/* US */
+  {"1\xec\x9b\x94",
+   "2\xec\x9b\x94",
+   "3\xec\x9b\x94",
+   "4\xec\x9b\x94",
+   "5\xec\x9b\x94",
+   "6\xec\x9b\x94",
+   "7\xec\x9b\x94",
+   "8\xec\x9b\x94",
+   "9\xec\x9b\x94",
+   "10\xec\x9b\x94",
+   "11\xec\x9b\x94",
+   "12\xec\x9b\x94"},		/* KR */
+  {"Ock",
    "\xc5\x9e" "bt",
    "Mrt",
    "Nsn",
@@ -11394,7 +11473,13 @@ const char *Short_Month_name[][12] = {
    "Arl"}			/* TR */
 };
 
-const char *Short_Day_name[][7] = {
+const char Short_Month_name_parse_order[][12] = {
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+};
+
+const char *Short_Day_name_ISO[][7] = {
   {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},	/* US */
   {"\xc0\xcf",
    "\xbf\xf9",
@@ -11404,18 +11489,59 @@ const char *Short_Day_name[][7] = {
    "\xb1\xdd",
    "\xc5\xe4"},			/* KR */
   {"Pz", "Pt", "Sa",
+   "Ca",
+   "Pe", "Cu", "Ct"}		/* TR */
+};
+
+const char *Short_Day_name_UTF8[][7] = {
+  {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},	/* US */
+  {"\xec\x9d\xbc",
+   "\xec\x9b\x94",
+   "\xed\x99\x94",
+   "\xec\x88\x98",
+   "\xeb\xaa\xa9",
+   "\xea\xb8\x88",
+   "\xed\x86\xa0"},		/* KR */
+  {"Pz", "Pt", "Sa",
    "\xc3\x87" "a",
    "Pe", "Cu", "Ct"}		/* TR */
+};
+
+const char Short_Day_name_parse_order[][7] = {
+  {0, 1, 2, 3, 4, 5, 6},
+  {0, 1, 2, 3, 4, 5, 6},
+  {0, 1, 2, 3, 4, 5, 6}
 };
 
 #define AM_NAME_KR "\xbf\xc0\xc0\xfc"
 #define PM_NAME_KR "\xbf\xc0\xc8\xc4"
 
-const char *Am_Pm_name[][12] = {
+const char AM_PM_parse_order[][12] = {
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+};
+
+#define AM_NAME_KR_UTF8 "\xec\x98\xa4\xec\xa0\x84"
+#define PM_NAME_KR_UTF8 "\xec\x98\xa4\xed\x9b\x84"
+
+const char *Am_Pm_name_ISO[][12] = {
   {"am", "pm", "Am", "Pm", "AM", "PM",
    "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."},	/* US */
   {AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR,
    AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR},
+  /* KR */
+  {"am", "pm", "Am", "Pm", "AM", "PM",
+   "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."},	/* TR */
+};
+
+const char *Am_Pm_name_UTF8[][12] = {
+  {"am", "pm", "Am", "Pm", "AM", "PM",
+   "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."},	/* US */
+  {AM_NAME_KR_UTF8, PM_NAME_KR_UTF8, AM_NAME_KR_UTF8,
+   PM_NAME_KR_UTF8, AM_NAME_KR_UTF8, PM_NAME_KR_UTF8,
+   AM_NAME_KR_UTF8, PM_NAME_KR_UTF8, AM_NAME_KR_UTF8,
+   PM_NAME_KR_UTF8, AM_NAME_KR_UTF8, PM_NAME_KR_UTF8},
   /* KR */
   {"am", "pm", "Am", "Pm", "AM", "PM",
    "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."},	/* TR */
@@ -11610,7 +11736,7 @@ db_to_date (const DB_VALUE * src_str,
 
       while (cs < last_src)
 	{
-	  int token_size, cmp, cmp_len, cs_byte_size;
+	  int token_size, cmp, cs_byte_size;
 	  int k;
 
 	  cur_format = get_next_format (cur_format_str_ptr, DB_TYPE_DATE,
@@ -11798,16 +11924,12 @@ db_to_date (const DB_VALUE * src_str,
 	      break;
 
 	    case DT_TEXT:
-	      intl_char_count ((unsigned char *) (cur_format_str_ptr + 1),
-			       cur_format_size, lang_charset (), &cmp_len);
-	      cmp_len -= 2;
-
-	      assert (cmp_len >= 0);
-
 	      cmp =
-		intl_strcasecmp (date_lang_id,
-				 (unsigned char *) (cur_format_str_ptr + 1),
-				 cs, cmp_len, false);
+		intl_case_match_tok (date_lang_id,
+				     (unsigned char *) (cur_format_str_ptr +
+							1), cs,
+				     cur_format_size - 2, strlen (cs),
+				     &cs_byte_size);
 
 	      if (cmp != 0)
 		{
@@ -11815,8 +11937,6 @@ db_to_date (const DB_VALUE * src_str,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		  return error_status;
 		}
-
-	      intl_char_size (cs, cmp_len, lang_charset (), &cs_byte_size);
 
 	      cs += cs_byte_size;
 	      break;
@@ -12174,7 +12294,7 @@ db_to_time (const DB_VALUE * src_str,
 
       while (cs < last_src)
 	{
-	  int cmp, cmp_len, cs_byte_size, token_size;
+	  int cmp, cs_byte_size, token_size;
 	  int am_pm_id;
 	  int k;
 
@@ -12334,16 +12454,12 @@ db_to_time (const DB_VALUE * src_str,
 	      break;
 
 	    case DT_TEXT:
-	      intl_char_count ((unsigned char *) (cur_format_str_ptr + 1),
-			       cur_format_size, lang_charset (), &cmp_len);
-	      cmp_len -= 2;
-
-	      assert (cmp_len >= 0);
-
 	      cmp =
-		intl_strcasecmp (date_lang_id,
-				 (unsigned char *) (cur_format_str_ptr + 1),
-				 cs, cmp_len, false);
+		intl_case_match_tok (date_lang_id,
+				     (unsigned char *) (cur_format_str_ptr +
+							1), cs,
+				     cur_format_size - 2, strlen (cs),
+				     &cs_byte_size);
 
 	      if (cmp != 0)
 		{
@@ -12351,8 +12467,6 @@ db_to_time (const DB_VALUE * src_str,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		  return error_status;
 		}
-
-	      intl_char_size (cs, cmp_len, lang_charset (), &cs_byte_size);
 
 	      cs += cs_byte_size;
 	      break;
@@ -12647,7 +12761,7 @@ db_to_timestamp (const DB_VALUE * src_str,
 
       while (cs < last_src)
 	{
-	  int token_size, cmp, cmp_len, cs_byte_size;
+	  int token_size, cmp, cs_byte_size;
 	  int am_pm_id;
 	  int k;
 
@@ -12982,16 +13096,12 @@ db_to_timestamp (const DB_VALUE * src_str,
 	      break;
 
 	    case DT_TEXT:
-	      intl_char_count ((unsigned char *) (cur_format_str_ptr + 1),
-			       cur_format_size, lang_charset (), &cmp_len);
-	      cmp_len -= 2;
-
-	      assert (cmp_len >= 0);
-
 	      cmp =
-		intl_strcasecmp (date_lang_id,
-				 (unsigned char *) (cur_format_str_ptr + 1),
-				 cs, cmp_len, false);
+		intl_case_match_tok (date_lang_id,
+				     (unsigned char *) (cur_format_str_ptr +
+							1), cs,
+				     cur_format_size - 2, strlen (cs),
+				     &cs_byte_size);
 
 	      if (cmp != 0)
 		{
@@ -12999,8 +13109,6 @@ db_to_timestamp (const DB_VALUE * src_str,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		  return error_status;
 		}
-
-	      intl_char_size (cs, cmp_len, lang_charset (), &cs_byte_size);
 
 	      cs += cs_byte_size;
 	      break;
@@ -13416,7 +13524,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 
       while (cs < last_src)
 	{
-	  int token_size, cmp, cmp_len, cs_byte_size;
+	  int token_size, cmp, cs_byte_size;
 	  int am_pm_id;
 	  int k;
 
@@ -13772,16 +13880,12 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	      break;
 
 	    case DT_TEXT:
-	      intl_char_count ((unsigned char *) (cur_format_str_ptr + 1),
-			       cur_format_size, lang_charset (), &cmp_len);
-	      cmp_len -= 2;
-
-	      assert (cmp_len >= 0);
-
 	      cmp =
-		intl_strcasecmp (date_lang_id,
-				 (unsigned char *) (cur_format_str_ptr + 1),
-				 cs, cmp_len, false);
+		intl_case_match_tok (date_lang_id,
+				     (unsigned char *) (cur_format_str_ptr +
+							1), cs,
+				     cur_format_size - 2, strlen (cs),
+				     &cs_byte_size);
 
 	      if (cmp != 0)
 		{
@@ -13789,8 +13893,6 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		  return error_status;
 		}
-
-	      intl_char_size (cs, cmp_len, lang_charset (), &cs_byte_size);
 
 	      cs += cs_byte_size;
 	      break;
@@ -14676,8 +14778,7 @@ date_to_char (const DB_VALUE * src_value,
        * vs speed */
       result_len = (DB_GET_STRING_LENGTH (format_str)
 		    * QSTR_TO_CHAR_LEN_MULTIPLIER_RATIO);
-      result_size = DB_GET_STRING_SIZE (format_str) *
-	QSTR_TO_CHAR_SIZE_MULTIPLIER_RATIO;
+      result_size = result_len * INTL_UTF8_MAX_CHAR_SIZE;
       if (result_size > MAX_TOKEN_SIZE)
 	{
 	  error_status = ER_QSTR_FORMAT_TOO_LONG;
@@ -14901,112 +15002,130 @@ date_to_char (const DB_VALUE * src_value,
 
 	    case DT_AM:
 	    case DT_PM:
-	      if (0 <= hour && hour <= 11)
-		{
-		  if (*cur_format_str_ptr == 'a'
-		      || *cur_format_str_ptr == 'p')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][am_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][am_NAME]);
-		    }
-		  else if (*(cur_format_str_ptr + 1) == 'm')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][Am_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][Am_NAME]);
-		    }
-		  else
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][AM_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][AM_NAME]);
-		    }
-		}
-	      else if (12 <= hour && hour <= 23)
-		{
-		  if (*cur_format_str_ptr == 'p'
-		      || *cur_format_str_ptr == 'a')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][pm_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][pm_NAME]);
-		    }
-		  else if (*(cur_format_str_ptr + 1) == 'm')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][Pm_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][Pm_NAME]);
-		    }
-		  else
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][PM_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][PM_NAME]);
-		    }
-		}
-	      else
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  db_private_free_and_init (NULL, result_buf);
-		  goto exit;
-		}
+	      {
+		int am_pm_id = -1;
+		int am_pm_len = 0;
+
+		if (0 <= hour && hour <= 11)
+		  {
+		    if (*cur_format_str_ptr == 'a'
+			|| *cur_format_str_ptr == 'p')
+		      {
+			am_pm_id = (int) am_NAME;
+		      }
+		    else if (*(cur_format_str_ptr + 1) == 'm')
+		      {
+			am_pm_id = (int) Am_NAME;
+		      }
+		    else
+		      {
+			am_pm_id = (int) AM_NAME;
+		      }
+		  }
+		else if (12 <= hour && hour <= 23)
+		  {
+		    if (*cur_format_str_ptr == 'p'
+			|| *cur_format_str_ptr == 'a')
+		      {
+			am_pm_id = (int) pm_NAME;
+		      }
+		    else if (*(cur_format_str_ptr + 1) == 'm')
+		      {
+			am_pm_id = (int) Pm_NAME;
+		      }
+		    else
+		      {
+			am_pm_id = (int) PM_NAME;
+		      }
+		  }
+		else
+		  {
+		    error_status = ER_QSTR_INVALID_FORMAT;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status,
+			    0);
+		    db_private_free_and_init (NULL, result_buf);
+		    goto exit;
+		  }
+
+		assert (am_pm_id >= (int) am_NAME &&
+			am_pm_id <= (int) P_M_NAME);
+
+		error_status =
+		  print_string_date_token (SDT_AM_PM, date_lang_id, am_pm_id,
+					   0, &result_buf[i], &am_pm_len);
+
+		if (error_status != NO_ERROR)
+		  {
+		    db_private_free_and_init (NULL, result_buf);
+		    goto exit;
+		  }
+
+		i += am_pm_len;
+	      }
 	      break;
 
 	    case DT_A_M:
 	    case DT_P_M:
-	      if (0 <= hour && hour <= 11)
-		{
-		  if (*cur_format_str_ptr == 'a'
-		      || *cur_format_str_ptr == 'p')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][a_m_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][a_m_NAME]);
-		    }
-		  else if (*(cur_format_str_ptr + 2) == 'm')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][A_m_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][A_m_NAME]);
-		    }
-		  else
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][A_M_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][A_M_NAME]);
-		    }
-		}
-	      else if (12 <= hour && hour <= 23)
-		{
-		  if (*cur_format_str_ptr == 'p'
-		      || *cur_format_str_ptr == 'a')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][p_m_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][p_m_NAME]);
-		    }
-		  else if (*(cur_format_str_ptr + 2) == 'm')
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][P_m_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][P_m_NAME]);
-		    }
-		  else
-		    {
-		      strcpy (&result_buf[i],
-			      Am_Pm_name[date_lang_id][P_M_NAME]);
-		      i += strlen (Am_Pm_name[date_lang_id][P_M_NAME]);
-		    }
-		}
-	      else
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  db_private_free_and_init (NULL, result_buf);
-		  goto exit;
-		}
+	      {
+		int am_pm_id = -1;
+		int am_pm_len = 0;
+
+		if (0 <= hour && hour <= 11)
+		  {
+		    if (*cur_format_str_ptr == 'a'
+			|| *cur_format_str_ptr == 'p')
+		      {
+			am_pm_id = (int) a_m_NAME;
+		      }
+		    else if (*(cur_format_str_ptr + 2) == 'm')
+		      {
+			am_pm_id = (int) A_m_NAME;
+		      }
+		    else
+		      {
+			am_pm_id = (int) A_M_NAME;
+		      }
+		  }
+		else if (12 <= hour && hour <= 23)
+		  {
+		    if (*cur_format_str_ptr == 'p'
+			|| *cur_format_str_ptr == 'a')
+		      {
+			am_pm_id = (int) p_m_NAME;
+		      }
+		    else if (*(cur_format_str_ptr + 2) == 'm')
+		      {
+			am_pm_id = (int) P_m_NAME;
+		      }
+		    else
+		      {
+			am_pm_id = (int) P_M_NAME;
+		      }
+		  }
+		else
+		  {
+		    error_status = ER_QSTR_INVALID_FORMAT;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status,
+			    0);
+		    db_private_free_and_init (NULL, result_buf);
+		    goto exit;
+		  }
+
+		assert (am_pm_id >= (int) am_NAME &&
+			am_pm_id <= (int) P_M_NAME);
+
+		error_status =
+		  print_string_date_token (SDT_AM_PM, date_lang_id, am_pm_id,
+					   0, &result_buf[i], &am_pm_len);
+
+		if (error_status != NO_ERROR)
+		  {
+		    db_private_free_and_init (NULL, result_buf);
+		    goto exit;
+		  }
+
+		i += am_pm_len;
+	      }
 	      break;
 
 	    case DT_HH:
@@ -17699,6 +17818,7 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
 {
   int error_status = NO_ERROR;
   DB_TYPE str_type;
+  char *res = NULL;
 
   /*
    *  Assert that DB_VALUE structures have been allocated.
@@ -17726,15 +17846,33 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
    */
   else
     {
-      error_status = pr_clone_value ((DB_VALUE *) src_str, result_str);
+      res = (char *) db_private_alloc (NULL, 
+				       DB_GET_STRING_SIZE (src_str) + 1);
+      if (res == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
       if (error_status == NO_ERROR)
 	{
+	  memset (res, 0, DB_GET_STRING_SIZE (src_str) + 1);
 	  intl_reverse_string ((unsigned char *) DB_PULL_STRING (src_str),
-			       (unsigned char *) DB_PULL_STRING (result_str),
+			       (unsigned char *) res,
 			       DB_GET_STRING_LENGTH (src_str),
 			       DB_GET_STRING_SIZE (src_str),
 			       (INTL_CODESET)
 			       DB_GET_STRING_CODESET (src_str));
+	  if (QSTR_IS_CHAR (str_type))
+	    {
+	      DB_MAKE_VARCHAR (result_str, DB_GET_STRING_PRECISION (src_str),
+			       res, DB_GET_STRING_SIZE (src_str));
+	    }
+	  else
+	    {
+	      DB_MAKE_VARNCHAR (result_str, DB_GET_STRING_PRECISION (src_str),
+				res, DB_GET_STRING_SIZE (src_str));
+	    }
+	  result_str->need_clear = true;
 	}
     }
 
@@ -19337,6 +19475,9 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   int lang_Loc_id = lang_id ();
   int tu, tv, tx, weeks, ld_fw, days_counter;
   char och = -1, ch;
+  const LANG_LOCALE_DATA *lld = lang_locale ();
+
+  assert (lld != NULL);
 
   y = m = d = h = mi = s = ms = 0;
   memset (format_specifiers, 0, sizeof (format_specifiers));
@@ -19408,12 +19549,12 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   dow = db_get_day_of_week (y, m, d);
 
   /* %a       Abbreviated weekday name (Sun..Sat) */
-  strcpy (format_specifiers['a'], Short_Day_name[lang_Loc_id][dow]);
+  strcpy (format_specifiers['a'], lld->day_short_name[dow]);
 
   /* %b       Abbreviated m name (Jan..Dec) */
   if (m > 0)
     {
-      strcpy (format_specifiers['b'], Short_Month_name[lang_Loc_id][m - 1]);
+      strcpy (format_specifiers['b'], lld->month_short_name[m - 1]);
     }
 
   /* %c       Month, numeric (0..12) - actually (1..12) */
@@ -19479,7 +19620,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   /* %M       Month name (January..December) */
   if (m > 0)
     {
-      strcpy (format_specifiers['M'], Month_name[lang_Loc_id][m - 1]);
+      strcpy (format_specifiers['M'], lld->month_name[m - 1]);
     }
 
   /* %m       Month, numeric (00..12) */
@@ -19589,7 +19730,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   sprintf (format_specifiers['x'], "%04d", tx);
 
   /* %W       Weekday name (Sunday..Saturday) */
-  strcpy (format_specifiers['W'], Day_name[lang_Loc_id][dow]);
+  strcpy (format_specifiers['W'], lld->day_name[dow]);
 
   /* %w       Day of the week (0=Sunday..6=Saturday) */
   sprintf (format_specifiers['w'], "%d", dow);
@@ -19706,68 +19847,6 @@ error:
   /* do not free res as it was moved to result and will be freed later */
 
   return error_status;
-}
-
-/*
- * parse_characters ()
- *
- * Arguments:
- *	   intl_id: INTL identifier
- *         s: source string to parse
- *         res: output string with the parsed word
- *	   cnt: length at which we trim the string (-1 if none)
- *	   res_size : size of allocated output buffer
- *
- * Returns: int - actual number of bytes read
- *
- * Errors:
- *
- * Note:
- *    reads cnt alphabetic characters until a non-alpha char reached
- */
-int
-parse_characters (const INTL_LANG intl_id, char *s, char *res, int cnt,
-		  int res_size)
-{
-  char *ch;
-  int len = 0;
-  int s_size = strlen (s);
-  int r_size = 0;
-
-  ch = s;
-
-  memset (res, 0, sizeof (char) * res_size);
-  while (s_size > 0 && intl_is_letter (intl_id, lang_charset (), ch, s_size))
-    {
-      int char_size;
-      /* TODO: in Korean, 'intl_is_letter' accepts any character
-       * when fixed, this check will not be needed */
-      if (WHITESPACE (*ch))
-	{
-	  break;
-	}
-      intl_char_size ((unsigned char *) ch, 1, lang_charset (), &char_size);
-      if (r_size + char_size >= res_size - 1)
-	{
-	  break;
-	}
-      /* copy to res */
-      char_size = intl_strncat (res, ch, 1);
-
-      ch += char_size;
-      res += char_size;
-      r_size += char_size;
-      s_size -= char_size;
-      len++;
-
-      /* trim at cnt characters */
-      if (len == cnt)
-	{
-	  break;
-	}
-    }
-
-  return ch - s;
 }
 
 /*
@@ -20958,7 +21037,14 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value)
 
   sprintf (res_s, "%02d/%02d/%04d", m, d, y);
 
-  DB_MAKE_STRING (result, res_s);
+  if (QSTR_IS_NATIONAL_CHAR (type))
+    {
+      DB_MAKE_VARNCHAR (result, 10, res_s, 10);
+    }
+  else
+    {
+      DB_MAKE_STRING (result, res_s);
+    }
   result->need_clear = true;
 
   return error_status;
@@ -22175,7 +22261,8 @@ error_exit:
  */
 static bool
 is_safe_last_char_for_like_optimization (const char *chr,
-					 const bool is_escaped)
+					 const bool is_escaped,
+					 INTL_CODESET codeset)
 {
   assert (chr != NULL);
 
@@ -22183,7 +22270,9 @@ is_safe_last_char_for_like_optimization (const char *chr,
     {
       return false;
     }
-  if (*chr == (char) 255 || *chr == ' ')
+
+  if (intl_is_max_bound_chr (codeset, chr) ||
+      intl_is_min_bound_chr (codeset, chr))
     {
       return false;
     }
@@ -22342,7 +22431,10 @@ db_get_info_for_like_optimization (const DB_VALUE * const pattern,
 	}
 
       if (*num_match_many == 0
-	  && is_safe_last_char_for_like_optimization (crt_char_p, is_escaped))
+	  && is_safe_last_char_for_like_optimization (crt_char_p,
+						      is_escaped,
+						      DB_GET_STRING_CODESET
+						      (pattern)))
 	{
 	  *last_safe_logical_pos = *num_logical_chars;
 	}
@@ -22459,7 +22551,8 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
    * stored on the maximum character size */
   intl_char_count ((unsigned char *) original, original_size, lang_charset (),
 		   &char_count);
-  alloc_size = char_count * lang_loc_bytes_per_char ();
+  alloc_size = LOC_MAX_UCA_CHARS_SEQ *
+    char_count * lang_loc_bytes_per_char ();
   assert (alloc_size >= original_size);
 
   result = db_private_alloc (NULL, alloc_size + 1);
@@ -22489,7 +22582,7 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
       if (result_length == last_safe_logical_pos)
 	{
 	  assert (is_safe_last_char_for_like_optimization
-		  (crt_char_p, is_escaped));
+		  (crt_char_p, is_escaped, DB_GET_STRING_CODESET (pattern)));
 	}
 
       if (!is_escaped && *crt_char_p == LIKE_WILDCARD_MATCH_ONE)
@@ -22497,11 +22590,15 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
 	  assert (result_length < last_safe_logical_pos);
 	  if (compute_lower_bound)
 	    {
-	      result[result_size++] = ' ';
+	      result_size +=
+		intl_set_min_bound_chr (DB_GET_STRING_CODESET (pattern),
+					result + result_size);
 	    }
 	  else
 	    {
-	      result[result_size++] = 255;
+	      result_size +=
+		intl_set_max_bound_chr (DB_GET_STRING_CODESET (pattern),
+					result + result_size);
 	    }
 	  result_length++;
 	}
@@ -22509,19 +22606,24 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
 	{
 	  if (result_length == last_safe_logical_pos && !compute_lower_bound)
 	    {
-	      char *next_alpa_char_p = result + result_size;
+	      char *next_alpha_char_p = result + result_size;
+	      int next_len = 0;
 
 	      result_size +=
 		QSTR_NEXT_ALPHA_CHAR ((unsigned char *) crt_char_p,
-				      (unsigned char *) next_alpa_char_p);
+				      original + original_size - crt_char_p,
+				      (unsigned char *) next_alpha_char_p,
+				      &next_len);
+	      result_length += next_len;
 	    }
 	  else
 	    {
 	      result_size += intl_put_char ((unsigned char *) result +
 					    result_size,
 					    (unsigned char *) crt_char_p);
+	      result_length++;
 	    }
-	  result_length++;
+
 	}
     }
 
@@ -22964,21 +23066,24 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type,
 			  int *token_id, int *token_size)
 {
   const char **p;
-  int cs_len, token_len;
   INTL_CODESET codeset = lang_charset ();
   int error_status = NO_ERROR;
   int search_size;
+  const char *parse_order;
   int i;
-  int cs_token_size;
+  int cs_size;
   int skipped_leading_chars = 0;
-  char cs_token[MAX_STRING_DATE_TOKEN_LEN * 6];
+  const LANG_LOCALE_DATA *lld =
+    lang_get_specific_locale (intl_lang_id, codeset);
 
   assert (cs != NULL);
   assert (token_id != NULL);
   assert (token_size != NULL);
+  assert (lld != NULL);
 
   /* special case : korean short month name is read as digit */
-  if (intl_lang_id == INTL_LANG_KOREAN && token_type == SDT_MONTH_SHORT)
+  if (intl_lang_id == INTL_LANG_KOREAN && intl_lang_id != lang_id ()
+      && token_type == SDT_MONTH_SHORT)
     {
       i = parse_digits ((char *) cs, token_id, 2);
       if (i <= 0)
@@ -23003,23 +23108,28 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type,
   switch (token_type)
     {
     case SDT_DAY:
-      p = Day_name[intl_lang_id];
+      p = (const char **) lld->day_name;
+      parse_order = lld->day_parse_order;
       search_size = 7;
       break;
     case SDT_DAY_SHORT:
-      p = Short_Day_name[intl_lang_id];
+      p = (const char **) lld->day_short_name;
+      parse_order = lld->day_short_parse_order;
       search_size = 7;
       break;
     case SDT_MONTH:
-      p = Month_name[intl_lang_id];
+      p = (const char **) lld->month_name;
+      parse_order = lld->month_parse_order;
       search_size = 12;
       break;
     case SDT_MONTH_SHORT:
-      p = Short_Month_name[intl_lang_id];
+      p = (const char **) lld->month_short_name;
+      parse_order = lld->month_short_parse_order;
       search_size = 12;
       break;
     case SDT_AM_PM:
-      p = Am_Pm_name[intl_lang_id];
+      p = (const char **) lld->am_pm;
+      parse_order = lld->am_pm_parse_order;
       search_size = 12;
       break;
     default:
@@ -23036,61 +23146,27 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type,
       skipped_leading_chars++;
     }
 
-  /* TODO : refactor to use the same code for all token types when AM/PM
-   * tokens will contain non-ASCII chars */
-  if (token_type == SDT_AM_PM)
-    {
-      for (i = 0; i < search_size; i++)
-	{
-	  int curr_token_size = strlen (p[i]);
-
-	  if (strlen (cs) >= curr_token_size &&
-	      strncasecmp (p[i], (const char *) cs, curr_token_size) == 0)
-	    {
-	      *token_id = i + 1;
-	      *token_size = curr_token_size + skipped_leading_chars;
-	      break;
-	    }
-	}
-
-      return NO_ERROR;
-    }
-
-  assert (token_type != SDT_AM_PM);
-
-  /* get a token from 'cs' */
-  cs_token_size = parse_characters (intl_lang_id, (char *) cs, cs_token,
-				    MAX_STRING_DATE_TOKEN_LEN,
-				    sizeof (cs_token));
-  intl_char_count ((unsigned char *) cs_token, cs_token_size, codeset,
-		   &cs_len);
+  cs_size = strlen (cs);
 
   for (i = 0; i < search_size; i++)
     {
       int cmp = 0;
+      int token_index = parse_order[i];
+      cmp =
+	intl_case_match_tok (intl_lang_id, (unsigned char *) p[token_index],
+			     (unsigned char *) cs, strlen (p[token_index]),
+			     cs_size, token_size);
 
-      intl_char_count ((unsigned char *) p[i], strlen (p[i]), codeset,
-		       &token_len);
-
-      if (cs_len != token_len)
-	{
-	  cmp = (cs_len < token_len) ? -1 : 1;
-	}
-      else
-	{
-	  cmp = intl_strcasecmp (intl_lang_id, (unsigned char *) p[i],
-				 (unsigned char *) cs_token, token_len,
-				 false);
-	}
+      assert (*token_size <= cs_size);
 
       if (cmp == 0)
 	{
-	  intl_char_size ((unsigned char *) cs, cs_len, codeset, token_size);
-	  *token_id = i + 1;
+	  *token_id = token_index + 1;
 	  *token_size += skipped_leading_chars;
 	  break;
 	}
     }
+
   return NO_ERROR;
 }
 
@@ -23117,6 +23193,8 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
   int token_len;
   int token_bytes;
   int print_len = -1;
+  const LANG_LOCALE_DATA *lld =
+    lang_get_specific_locale (intl_lang_id, codeset);
 
   assert (buffer != NULL);
   assert (token_id >= 0);
@@ -23126,7 +23204,7 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
     {
     case SDT_DAY:
       assert (token_id < 7);
-      p = Day_name[intl_lang_id][token_id];
+      p = lld->day_name[token_id];
 
       /* day names for all language use at most 9 chars */
       print_len = 9;
@@ -23134,7 +23212,7 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
 
     case SDT_DAY_SHORT:
       assert (token_id < 7);
-      p = Short_Day_name[intl_lang_id][token_id];
+      p = lld->day_short_name[token_id];
 
       switch (intl_lang_id)
 	{
@@ -23145,7 +23223,6 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
 	  print_len = 2;
 	  break;
 	default:
-	  assert (intl_lang_id == INTL_LANG_KOREAN);
 	  print_len = -1;
 	  break;
 	}
@@ -23153,7 +23230,7 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
 
     case SDT_MONTH:
       assert (token_id < 12);
-      p = Month_name[intl_lang_id][token_id];
+      p = lld->month_name[token_id];
 
       switch (intl_lang_id)
 	{
@@ -23164,7 +23241,6 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
 	  print_len = 7;
 	  break;
 	default:
-	  assert (intl_lang_id == INTL_LANG_KOREAN);
 	  print_len = -1;
 	  break;
 	}
@@ -23173,10 +23249,18 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
 
     case SDT_MONTH_SHORT:
       assert (token_id < 12);
-      p = Short_Month_name[intl_lang_id][token_id];
+      p = lld->month_short_name[token_id];
 
       /* all short names for months have 3 chars */
       print_len = 3;
+      break;
+
+    case SDT_AM_PM:
+      assert (token_id < 12);
+      p = lld->am_pm[token_id];
+
+      /* AM/PM tokens are printed without padding */
+      print_len = -1;
       break;
 
     default:
@@ -23185,11 +23269,10 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
       return ER_GENERIC_ERROR;
     }
 
-  if (intl_lang_id == INTL_LANG_KOREAN)
+  if (intl_lang_id == INTL_LANG_KOREAN && intl_lang_id != lang_id ())
     {
       /* korean names dot not use compatible codeset, we use
        * specific code to print them */
-      /* TODO : consider refactor with generic code */
       switch (token_type)
 	{
 	case SDT_DAY:
@@ -23208,12 +23291,14 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
 	  sprintf (buffer, "%d", token_id + 1);
 	  *token_size = (token_id < 10) ? 1 : 2;
 	  break;
+	case SDT_AM_PM:
+	  sprintf (buffer, "%s", p);
+	  *token_size = strlen (p);
+	  break;
 	}
 
       return NO_ERROR;
     }
-
-  assert (intl_lang_id != INTL_LANG_KOREAN);
 
   /* determine length of token */
   token_bytes = strlen (p);
@@ -23241,6 +23326,7 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
       memcpy (buffer, p, *token_size);
     }
 
+  /* padding */
   if (token_len < print_len)
     {
       (void) qstr_pad_string (buffer + *token_size,
@@ -23801,4 +23887,64 @@ error:
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
   return error_code;
+}
+
+/*
+ * init_builtin_calendar_names() - initializes builtin localizations for
+ *				   calendar names
+ *   return: void
+ *   lld(in/out): locale data
+ *
+ */
+void
+init_builtin_calendar_names (LANG_LOCALE_DATA * lld)
+{
+  int i;
+
+  assert (lld != NULL);
+
+  if (lld->codeset == INTL_CODESET_UTF8)
+    {
+      for (i = 0; i < 7; i++)
+	{
+	  lld->day_short_name[i] = Short_Day_name_UTF8[lld->lang_id][i];
+	  lld->day_name[i] = Day_name_UTF8[lld->lang_id][i];
+	}
+
+      for (i = 0; i < 12; i++)
+	{
+	  lld->month_short_name[i] = Short_Month_name_UTF8[lld->lang_id][i];
+	  lld->month_name[i] = Month_name_UTF8[lld->lang_id][i];
+	}
+
+      for (i = 0; i < 12; i++)
+	{
+	  lld->am_pm[i] = Am_Pm_name_UTF8[lld->lang_id][i];
+	}
+    }
+  else
+    {
+      for (i = 0; i < 7; i++)
+	{
+	  lld->day_short_name[i] = Short_Day_name_ISO[lld->lang_id][i];
+	  lld->day_name[i] = Day_name_ISO[lld->lang_id][i];
+	}
+
+      for (i = 0; i < 12; i++)
+	{
+	  lld->month_short_name[i] = Short_Month_name_ISO[lld->lang_id][i];
+	  lld->month_name[i] = Month_name_ISO[lld->lang_id][i];
+	}
+
+      for (i = 0; i < 12; i++)
+	{
+	  lld->am_pm[i] = Am_Pm_name_ISO[lld->lang_id][i];
+	}
+    }
+
+  lld->month_parse_order = Month_name_parse_order[lld->lang_id];
+  lld->month_short_parse_order = Short_Month_name_parse_order[lld->lang_id];
+  lld->day_parse_order = Day_name_parse_order[lld->lang_id];
+  lld->day_short_parse_order = Short_Day_name_parse_order[lld->lang_id];
+  lld->am_pm_parse_order = AM_PM_parse_order[lld->lang_id];
 }

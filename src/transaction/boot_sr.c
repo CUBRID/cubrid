@@ -126,7 +126,8 @@ extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table ();
 extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
-					   int *charset_id_p, int *lang_id_p);
+					   int *charset_id_p, char *lang_buf,
+					   const int lang_buf_size);
 
 #if defined(SA_MODE)
 extern void boot_client_all_finalize (bool is_er_final);
@@ -2411,6 +2412,13 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       return NULL_TRAN_INDEX;
     }
 
+  if (!lang_check_init ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "language failed");
+      return NULL_TRAN_INDEX;
+    }
+
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
@@ -2934,7 +2942,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   const char *prev_err_msg;
 
 #if defined(SERVER_MODE)
-  if (!lang_init ())
+  if (!lang_init_full ())
     {
       return ER_FAILED;
     }
@@ -2944,6 +2952,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+    }
+
+  if (!lang_check_init ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "language failed");
+      return ER_LOC_INIT;
     }
 
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
@@ -3366,11 +3381,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
 #if defined(SERVER_MODE)
   {
-    int db_charset, db_lang;
+    int db_charset;
+    char db_lang[LANG_MAX_LANGNAME + 1];
 
-    catcls_get_server_lang_charset (thread_p, &db_charset, &db_lang);
+    catcls_get_server_lang_charset (thread_p, &db_charset, db_lang,
+				    LANG_MAX_LANGNAME);
 
-    if (db_charset != lang_charset () || db_lang != lang_id ())
+    if (db_charset != lang_charset () ||
+	strcmp (lang_get_Lang_name (), db_lang))
       {
 	error_code = ER_INVALID_SERVER_CHARSET;
 	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -3487,7 +3505,7 @@ int
 xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 			   const char *db_name, BO_RESTART_ARG * r_args)
 {
-  if (!lang_init ())
+  if (!lang_init_full ())
     {
       return NULL_TRAN_INDEX;
     }
@@ -3497,6 +3515,13 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
+      return NULL_TRAN_INDEX;
+    }
+
+  if (!lang_check_init ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "language failed");
       return NULL_TRAN_INDEX;
     }
 
@@ -5535,7 +5560,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
     }
 
 #if defined(SERVER_MODE)
-  if (!lang_init ())
+  if (!lang_init_full ())
     {
       return ER_FAILED;
     }
@@ -5545,6 +5570,13 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+    }
+
+  if (!lang_check_init ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "language failed");
+      return ER_LOC_INIT;
     }
 #endif /* SERVER_MODE */
 

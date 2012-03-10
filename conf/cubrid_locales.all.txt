@@ -1,0 +1,12 @@
+#locale 		LDML-file-path  	binary-file path
+de_DE
+es_ES
+fr_FR
+it_IT
+ja_JP
+km_KH
+ko_KR
+tr_TR
+vi_VN
+zh_CN
+

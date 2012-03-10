@@ -62,13 +62,6 @@
 #endif /* !LC_MESSAGE */
 #endif /* WINDOWS */
 
-/* maximum char size for UTF-8 */
-#define INTL_UTF8_MAX_CHAR_SIZE	4
-/* max multiplier for char size when performing lower / upper case on 
- * DB identifiers . Do not use for user string : see UTF-8 turkish for 
- * 'i' and 'I' */
-#define INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER	1
-
 /* next UTF-8 char */
 #define INTL_NEXTCHAR_UTF8(c) \
   (unsigned char*)((c) + intl_Len_utf8_char[*(unsigned char*)(c)])
@@ -102,12 +95,19 @@
 extern bool intl_Mbs_support;
 extern bool intl_String_validation;
 
-typedef enum intl_lang INTL_LANG;
-enum intl_lang
+/* language identifier : we support built-in languages and user defined
+ * languages (through locale definition);
+ * User defined languages are assigned IDs after built-in languages IDs
+ * It is not guaranteed that user defined languages keep their IDs */
+typedef unsigned int INTL_LANG;
+
+typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
+enum intl_builtin_lang
 {
-  INTL_LANG_ENGLISH,
+  INTL_LANG_ENGLISH = 0,
   INTL_LANG_KOREAN,
-  INTL_LANG_TURKISH
+  INTL_LANG_TURKISH,
+  INTL_LANG_USER_DEF_START
 };
 
 typedef enum intl_zone INTL_ZONE;
@@ -138,7 +138,7 @@ enum currency_check_mode
   CURRENCY_CHECK_MODE_CONSOLE = 0x1,
   CURRENCY_CHECK_MODE_UTF8 = 0x2,
   CURRENCY_CHECK_MODE_GRAMMAR = 0x4,
-  CURRENCY_CHECK_MODE_ISO = 0x5
+  CURRENCY_CHECK_MODE_ISO = 0x8
 };
 
 /* map of lengths of UTF-8 characters */
@@ -211,10 +211,36 @@ extern "C"
   extern int intl_reverse_string (unsigned char *src, unsigned char *dst,
 				  int length_in_chars, int size_in_bytes,
 				  INTL_CODESET codeset);
+  extern bool intl_is_max_bound_chr (INTL_CODESET codeset, const char *chr);
+  extern bool intl_is_min_bound_chr (INTL_CODESET codeset, const char *chr);
+  extern int intl_set_min_bound_chr (INTL_CODESET codeset, char *chr);
+  extern int intl_set_max_bound_chr (INTL_CODESET codeset, char *chr);
   extern int intl_strcmp_utf8 (const unsigned char *str1, const int size1,
 			       const unsigned char *str2, const int size2);
-  extern int intl_next_alpha_char_utf8 (const unsigned char *cur_char,
-					unsigned char *next_char);
+  extern int intl_strcmp_utf8_w_contr (const unsigned char *str1,
+				       const int size1,
+				       const unsigned char *str2,
+				       const int size2);
+  extern int intl_strcmp_utf8_uca (const unsigned char *str1, const int size1,
+				   const unsigned char *str2,
+				   const int size2);
+  extern int intl_strcmp_utf8_uca_w_coll_data (const void *collation,
+					       const unsigned char *str1,
+					       const int size1,
+					       const unsigned char *str2,
+					       const int size2);
+  extern int intl_next_coll_char_utf8 (const unsigned char *seq,
+				       const int size,
+				       unsigned char *next_seq,
+				       int *len_next);
+  extern int intl_next_coll_seq_utf8_w_contr (const unsigned char *seq,
+					      const int size,
+					      unsigned char *next_seq,
+					      int *len_next);
+  extern int intl_split_point (const INTL_CODESET codeset,
+			       const unsigned char *str1, const int size1,
+			       const unsigned char *str2, const int size2,
+			       int *char_pos, int *byte_pos);
   extern int intl_strcasecmp (const INTL_LANG lang_id, unsigned char *str1,
 			      unsigned char *str2, int len,
 			      bool identifier_mode);
@@ -222,6 +248,9 @@ extern "C"
 				     unsigned char *str1, unsigned char *str2,
 				     const int size_str1, const int size_str2,
 				     bool identifier_mode);
+  extern int intl_case_match_tok (const INTL_LANG lang_id, unsigned char *tok,
+				  unsigned char *src, const int size_tok,
+				  const int size_src, int *matched_size_src);
   extern int intl_identifier_casecmp (const char *str1, const char *str2);
   extern int intl_identifier_ncasecmp (const char *str1, const char *str2,
 				       const int len);
@@ -232,8 +261,10 @@ extern "C"
   extern int intl_identifier_upper_string_size (const char *src);
   extern int intl_identifier_upper (const char *src, char *dst);
   extern int intl_identifier_fix (char *name);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_strncat (unsigned char *dest, const unsigned char *src,
 			   int len);
+#endif
   extern int intl_put_char (unsigned char *dest, const unsigned char *char_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_mbs_lower (const char *mbs1, char *mbs2);
@@ -254,36 +285,44 @@ extern "C"
   extern int intl_mbs_cmp (const char *mbs1, const char *mbs2);
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
-  extern bool intl_is_letter (const INTL_LANG lang,
-			      const INTL_CODESET codeset,
-			      const unsigned char *s, const int size);
   extern int intl_check_string (const char *buf, int size, char **pos);
   extern bool intl_is_bom_magic (const char *buf, const int size);
-  extern unsigned int intl_utf8_to_codepoint (const unsigned char *utf8,
-					      const int size,
-					      unsigned char **next_char);
-  extern void intl_init_conv_iso8859_9_to_utf8 (void);
-  extern int intl_text_iso8859_9_to_utf8 (const char *in_buf,
-					  const int in_size, char **out_buf,
-					  int *out_size);
-  extern int intl_text_utf8_to_iso8859_9 (const char *in_buf,
-					  const int in_size, char **out_buf,
-					  int *out_size);
-  extern void intl_init_conv_iso8859_1_to_utf8 (void);
-  extern int intl_text_iso8859_1_to_utf8 (const char *in_buf,
-					  const int in_size,
-					  char **out_buf, int *out_size);
-  extern int intl_text_utf8_to_iso8859_1 (const char *in_buf,
-					  const int in_size, char **out_buf,
-					  int *out_size);
+  extern int intl_cp_to_utf8 (const unsigned int codepoint,
+			      unsigned char *utf8_seq);
+  extern int intl_cp_to_dbcs (const unsigned int codepoint,
+			      const unsigned char first_lead_byte,
+			      unsigned char *seq);
+  extern unsigned int intl_utf8_to_cp (const unsigned char *utf8,
+				       const int size,
+				       unsigned char **next_char);
+  extern unsigned int intl_dbcs_to_cp (const unsigned char *seq,
+				       const int size,
+				       const unsigned char first_lead_byte,
+				       unsigned char **next_char);
+  extern int intl_utf8_to_cp_list (const unsigned char *utf8, const int size,
+				   unsigned int *cp_array,
+				   const int max_array_size,
+				   int *array_count);
+  extern int intl_text_single_byte_to_utf8 (const char *in_buf,
+					    const int in_size, char **out_buf,
+					    int *out_size);
+  extern int intl_text_utf8_to_single_byte (const char *in_buf,
+					    const int in_size, char **out_buf,
+					    int *out_size);
+  extern int intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
+				     char **out_buf, int *out_size);
+  extern int intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
+				     char **out_buf, int *out_size);
   extern bool intl_is_currency_symbol (const char *src,
 				       DB_CURRENCY * currency,
 				       int *symbol_size,
 				       const CURRENCY_CHECK_MODE check_mode);
   extern char *intl_get_money_symbol (const DB_CURRENCY currency);
+  extern char *intl_get_money_ISO_symbol (const DB_CURRENCY currency);
   extern char *intl_get_money_symbol_console (const DB_CURRENCY currency);
   extern char *intl_get_money_symbol_grammar (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
+  extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
 
 #ifdef __cplusplus
 }

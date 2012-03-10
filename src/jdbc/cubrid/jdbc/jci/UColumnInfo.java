@@ -41,6 +41,7 @@ public class UColumnInfo {
 	private byte collectionBaseType;
 	private short scale;
 	private int precision;
+	private String[] enumValues;
 	private String name, className, attributeName;
 	// private String FQDN;
 	private boolean isNullable;
@@ -144,6 +145,14 @@ public class UColumnInfo {
 		return (findFQDN(type, precision, collectionBaseType));
 	}
 
+	public String getEnumValue (short index){
+		if (enumValues == null || index - 1 < 0
+				|| index - 1 > enumValues.length) {
+			return null;
+		}	
+		return enumValues[index - 1];
+	}
+
 	public String getRealColumnName() {
 		return attributeName;
 	}
@@ -186,7 +195,7 @@ public class UColumnInfo {
 
 	/* set the extra fields */
 	synchronized void setExtraData(String defValue, byte bAI, byte bUK,
-			byte bPK, byte bFK, byte bRI, byte bRU, byte sh) {
+			byte bPK, byte bFK, byte bRI, byte bRU, byte sh, String[] enumValues) {
 		defaultValue = defValue;
 		is_auto_increment = bAI;
 		is_unique_key = bUK;
@@ -195,6 +204,11 @@ public class UColumnInfo {
 		is_reverse_index = bRI;
 		is_reverse_unique = bRU;
 		is_shared = sh;
+		if (enumValues != null) {
+			this.enumValues = enumValues.clone();
+		} else {
+			this.enumValues = null;
+		}
 	}
 
 	private String findFQDN(byte cType, int cPrecision, byte cBaseType) {

@@ -251,7 +251,29 @@
 #define DB_GET_STRING_CODESET(v) \
     ((INTL_CODESET) ((v)->data.ch.info.codeset))
 
+#define DB_GET_ENUM_ELEM_SHORT(elem) \
+    ((elem)->short_val)
+#define DB_GET_ENUM_ELEM_DBCHAR(elem) \
+    ((elem)->str_val)
+#define DB_GET_ENUM_ELEM_STRING(elem) \
+    ((elem)->str_val.medium.buf)
+#define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
+    ((elem)->str_val.medium.size)
 
+#define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
+    ((elem)->short_val = sv)
+#define DB_SET_ENUM_ELEM_STRING(elem, str) \
+    ((elem)->str_val.medium.buf = (str),  \
+     (elem)->str_val.info.style = MEDIUM_STRING)
+#define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
+    ((elem)->str_val.medium.size = sz)
+
+#define DB_GET_ENUM_SHORT(v) \
+    ((v)->data.enumeration.short_val)
+#define DB_GET_ENUM_STRING(v) \
+    ((v)->data.enumeration.str_val.medium.buf)
+#define DB_GET_ENUM_STRING_SIZE(v) \
+    ((v)->data.enumeration.str_val.medium.size)
 
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_value_type(v) DB_VALUE_TYPE(v)
@@ -293,6 +315,9 @@
 #define db_get_string_size(v) DB_GET_STRING_SIZE(v)
 #define db_get_resultset(v) DB_GET_RESULTSET(v)
 #define db_get_string_codeset(v) DB_GET_STRING_CODESET(v)
+#define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
+#define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
+#define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
 
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
@@ -484,6 +509,16 @@
         (v)->data.midxkey.buf            = (m)->buf)), \
      (v)->need_clear = false, \
      NO_ERROR)
+
+#define db_make_enumeration(v, i, p, s) \
+  ((v)->domain.general_info.type		  = DB_TYPE_ENUMERATION, \
+    (v)->domain.general_info.is_null		  = 0, \
+    (v)->data.enumeration.short_val		  = i, \
+    (v)->data.enumeration.str_val.info.codeset	  = lang_charset (), \
+    (v)->data.enumeration.str_val.info.style	  = MEDIUM_STRING, \
+    (v)->data.enumeration.str_val.medium.size	  = s, \
+    (v)->data.enumeration.str_val.medium.buf	  = (char*)p, \
+    (v)->need_clear				  = false)
 
 #define DB_GET_NUMERIC_PRECISION(val) \
     ((val)->domain.numeric_info.precision)

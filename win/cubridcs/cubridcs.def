@@ -150,6 +150,9 @@ EXPORTS
     db_get_date
     db_get_datetime
     db_get_double
+	db_get_enum_short
+	db_get_enum_string
+	db_get_enum_string_size
     db_get_float
     db_get_foreign_key_action
     db_get_foreign_key_cache_object_attr
@@ -649,6 +652,7 @@ EXPORTS
     db_make_char
     db_make_collection
     db_make_elo
+    db_make_enumeration
     db_make_error
     db_make_method_error
     db_make_midxkey

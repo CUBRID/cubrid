@@ -2649,6 +2649,32 @@ emit_domain_def (DB_DOMAIN * domains)
 		       ? DB_MAX_STRING_LENGTH : precision);
 	      break;
 
+	    case DB_TYPE_ENUMERATION:
+	      {
+		int i = 0;
+		DB_ENUM_ELEMENT *elem = NULL;
+		int count = DOM_GET_ENUM_ELEMS_COUNT (domain);
+
+		if (count == 0)
+		  {
+		    /* empty enumeration */
+		    fprintf (output_file, "()");
+		    break;
+		  }
+
+		fprintf (output_file, "(");
+		for (i = 1; i < count; i++)
+		  {
+		    elem = &DOM_GET_ENUM_ELEM (domain, i);
+		    fprintf (output_file, "'%s', ",
+			     DB_GET_ENUM_ELEM_STRING (elem));
+		  }
+		elem = &DOM_GET_ENUM_ELEM (domain, count);
+		fprintf (output_file, "'%s')",
+			 DB_GET_ENUM_ELEM_STRING (elem));
+		break;
+	      }
+
 	    case DB_TYPE_NUMERIC:
 	      fprintf (output_file, "(%d,%d)",
 		       db_domain_precision (domain),

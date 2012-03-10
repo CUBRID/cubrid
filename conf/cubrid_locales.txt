@@ -1,0 +1,4 @@
+#locale 		LDML-file-path  	binary-file path
+# Add new locales here . See cubrid_locale.all.txt
+# Only first column is mandatory, the other two are optional ; the paths are by default assumed to be $CUBRID/conf
+

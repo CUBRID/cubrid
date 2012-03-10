@@ -307,6 +307,8 @@ static PT_NODE *pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p,
 				       PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p,
 				PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p,
+				PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -396,6 +398,7 @@ static PT_NODE *pt_init_union_stmt (PT_NODE * p);
 static PT_NODE *pt_init_update_stats (PT_NODE * p);
 static PT_NODE *pt_init_update (PT_NODE * p);
 static PT_NODE *pt_init_value (PT_NODE * p);
+static PT_NODE *pt_init_merge (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -556,6 +559,7 @@ static PARSER_VARCHAR *pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p);
 
 static PARSER_VARCHAR *pt_print_session_variables (PARSER_CONTEXT * parser,
 						   PT_NODE * p);
+static PARSER_VARCHAR *pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p,
 			      PT_NODE_FUNCTION g, void *arg);
@@ -1440,6 +1444,7 @@ pt_internal_error (PARSER_CONTEXT * parser, const char *file,
 
   node.line_number = 0;
   node.column_number = 0;
+  node.buffer_pos = -1;
 
   if (parser && !parser->error_msgs)
     {
@@ -1663,6 +1668,7 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
       return 0;
     }
   parser->buffer = buffer;
+  parser->original_buffer = buffer;
   parser->next_byte = buffgetin;
   if (LANG_VARIABLE_CHARSET (lang_charset ()))
     {
@@ -1856,7 +1862,7 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
  */
 void
 pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
-		 int col_no, const char *msg)
+		 int col_no, const char *msg, const char *context)
 {
   PT_NODE *node = parser_new_node (parser, PT_ZZ_ERROR_MSG);
   if (node == NULL)
@@ -1868,7 +1874,25 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
   node->info.error_msg.statement_number = stmt_no;
   node->line_number = line_no;
   node->column_number = col_no;
-  node->info.error_msg.error_message = pt_append_string (parser, NULL, msg);
+  node->info.error_msg.error_message = NULL;
+  if (context != NULL)
+    {
+      int context_len = 12;	/* size of constant string " before ' '\n" to be
+				   printed along with the actual context */
+      int str_len = strlen (context) + context_len;
+      char *s = parser_allocate_string_buffer (parser, str_len,
+					       sizeof (char));
+      if (s == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "insufficient memory");
+	  return;
+	}
+      sprintf (s, " before ' %s'\n", context);
+      s[str_len - 3] = ' ';
+      node->info.error_msg.error_message = s;
+    }
+  node->info.error_msg.error_message =
+    pt_append_string (parser, node->info.error_msg.error_message, msg);
 
   if (parser->error_msgs)
     {
@@ -1943,7 +1967,9 @@ pt_frob_error (PARSER_CONTEXT * parser,
   pt_record_error (parser,
 		   parser->statement_number,
 		   SAFENUM (stmt, line_number),
-		   SAFENUM (stmt, column_number), parser->error_buffer);
+		   SAFENUM (stmt, column_number), parser->error_buffer,
+		   (!stmt || stmt->buffer_pos == -1 ? NULL :
+		    parser->original_buffer + stmt->buffer_pos));
 }
 
 /*
@@ -2055,6 +2081,7 @@ parser_init_node (PT_NODE * node)
       node->do_not_fold = 0;
       node->is_cnf_start = 0;
       node->is_click_counter = 0;
+      node->buffer_pos = -1;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -2512,6 +2539,8 @@ pt_show_node_type (PT_NODE * node)
       return "INTERSECTION";
     case PT_ISOLATION_LVL:
       return "ISOLATION LEVEL";
+    case PT_MERGE:
+      return "MERGE";
     case PT_METHOD_CALL:
       return "METHOD CALL";
     case PT_METHOD_DEF:
@@ -3534,6 +3563,9 @@ pt_show_type_enum (PT_TYPE_ENUM t)
     case PT_TYPE_ELO:
       return "*elo*";
 
+    case PT_TYPE_ENUMERATION:
+      return "enum";
+
     case PT_TYPE_MAX:
     default:
       return "unknown";
@@ -4424,6 +4456,8 @@ pt_init_apply_f (void)
     pt_apply_set_session_variables;
   pt_apply_func_array[PT_DROP_SESSION_VARIABLES] =
     pt_apply_drop_session_variables;
+  pt_apply_func_array[PT_MERGE] = pt_apply_merge;
+
   pt_apply_f = pt_apply_func_array;
 }
 
@@ -4528,6 +4562,7 @@ pt_init_init_f (void)
     pt_init_set_session_variables;
   pt_init_func_array[PT_DROP_SESSION_VARIABLES] =
     pt_init_drop_session_variables;
+  pt_init_func_array[PT_MERGE] = pt_init_merge;
 
   pt_init_f = pt_init_func_array;
 }
@@ -4634,6 +4669,7 @@ pt_init_print_f (void)
     pt_print_set_session_variables;
   pt_print_func_array[PT_DROP_SESSION_VARIABLES] =
     pt_print_drop_session_variables;
+  pt_print_func_array[PT_MERGE] = pt_print_merge;
 
   pt_print_f = pt_print_func_array;
 }
@@ -4756,14 +4792,71 @@ pt_currency_to_db (const PT_CURRENCY t)
     case PT_CURRENCY_YEN:
       return DB_CURRENCY_YEN;
 
-    case PT_CURRENCY_POUND:
-      return DB_CURRENCY_POUND;
+    case PT_CURRENCY_BRITISH_POUND:
+      return DB_CURRENCY_BRITISH_POUND;
 
     case PT_CURRENCY_WON:
       return DB_CURRENCY_WON;
 
     case PT_CURRENCY_TL:
       return DB_CURRENCY_TL;
+
+    case PT_CURRENCY_CAMBODIAN_RIEL:
+      return DB_CURRENCY_CAMBODIAN_RIEL;
+
+    case PT_CURRENCY_CHINESE_RENMINBI:
+      return DB_CURRENCY_CHINESE_RENMINBI;
+
+    case PT_CURRENCY_INDIAN_RUPEE:
+      return DB_CURRENCY_INDIAN_RUPEE;
+
+    case PT_CURRENCY_RUSSIAN_RUBLE:
+      return DB_CURRENCY_RUSSIAN_RUBLE;
+
+    case PT_CURRENCY_AUSTRALIAN_DOLLAR:
+      return DB_CURRENCY_AUSTRALIAN_DOLLAR;
+
+    case PT_CURRENCY_CANADIAN_DOLLAR:
+      return DB_CURRENCY_CANADIAN_DOLLAR;
+
+    case PT_CURRENCY_BRASILIAN_REAL:
+      return DB_CURRENCY_BRASILIAN_REAL;
+
+    case PT_CURRENCY_ROMANIAN_LEU:
+      return DB_CURRENCY_ROMANIAN_LEU;
+
+    case PT_CURRENCY_EURO:
+      return DB_CURRENCY_EURO;
+
+    case PT_CURRENCY_SWISS_FRANC:
+      return DB_CURRENCY_SWISS_FRANC;
+
+    case PT_CURRENCY_DANISH_KRONE:
+      return DB_CURRENCY_DANISH_KRONE;
+
+    case PT_CURRENCY_NORWEGIAN_KRONE:
+      return DB_CURRENCY_NORWEGIAN_KRONE;
+
+    case PT_CURRENCY_BULGARIAN_LEV:
+      return DB_CURRENCY_BULGARIAN_LEV;
+
+    case PT_CURRENCY_VIETNAMESE_DONG:
+      return DB_CURRENCY_VIETNAMESE_DONG;
+
+    case PT_CURRENCY_CZECH_KORUNA:
+      return DB_CURRENCY_CZECH_KORUNA;
+
+    case PT_CURRENCY_POLISH_ZLOTY:
+      return DB_CURRENCY_POLISH_ZLOTY;
+
+    case PT_CURRENCY_SWEDISH_KRONA:
+      return DB_CURRENCY_SWEDISH_KRONA;
+
+    case PT_CURRENCY_CROATIAN_KUNA:
+      return DB_CURRENCY_CROATIAN_KUNA;
+
+    case PT_CURRENCY_SERBIAN_DINAR:
+      return DB_CURRENCY_SERBIAN_DINAR;
 
     default:
       return DB_CURRENCY_NULL;
@@ -5873,6 +5966,13 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TYPE_NONE:
       /* no type is a blank attr def, as in view creation */
+      break;
+    case PT_TYPE_ENUMERATION:
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      r1 = pt_print_bytes_l (parser, p->data_type);
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
@@ -7517,6 +7617,8 @@ pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.data_type.entity = g (parser, p->info.data_type.entity, arg);
   p->info.data_type.virt_data_type =
     g (parser, p->info.data_type.virt_data_type, arg);
+  p->info.data_type.enumeration =
+    g (parser, p->info.data_type.enumeration, arg);
   return p;
 }
 
@@ -7532,6 +7634,7 @@ pt_init_datatype (PT_NODE * p)
   p->info.data_type.precision = 0;
   p->info.data_type.dec_precision = 0;
   p->info.data_type.units = 0;
+  p->info.data_type.enumeration = NULL;
   return p;
 }
 
@@ -7617,6 +7720,13 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TYPE_DOUBLE:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      break;
+    case PT_TYPE_ENUMERATION:
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      q = pt_append_nulstring (parser, q, "(");
+      r1 = pt_print_bytes_l (parser, p->info.data_type.enumeration);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     default:
@@ -14567,6 +14677,27 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_OBJECT:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
+    case PT_TYPE_ENUMERATION:
+      q = pt_append_string_prefix (parser, q, p);
+      if (p->info.value.data_value.enumeration.str_val)
+	{
+	  /* prefer to print enumeration string value */
+	  q = pt_append_quoted_string
+	    (parser, q,
+	     (char *) p->info.value.data_value.enumeration.str_val->bytes,
+	     p->info.value.data_value.enumeration.str_val->length);
+	}
+      else if (p->info.value.data_value.enumeration.short_val != 0)
+	{
+	  /* print index if it is a valid value */
+	  sprintf (s, "%ld", p->info.value.data_value.i);
+	  q = pt_append_nulstring (parser, q, s);
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "''");
+	}
+      break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
       parser->print_type_ambiguity = 1;
@@ -15062,6 +15193,180 @@ pt_print_node_list (PARSER_CONTEXT * parser, PT_NODE * p)
   return b;
 }
 
+/* MERGE STATEMENT */
+/*
+ * pt_apply_merge () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
+		void *arg)
+{
+  p->info.merge.into = g (parser, p->info.merge.into, arg);
+  p->info.merge.using = g (parser, p->info.merge.using, arg);
+  p->info.merge.search_cond = g (parser, p->info.merge.search_cond, arg);
+  p->info.merge.insert.attr_list =
+    g (parser, p->info.merge.insert.attr_list, arg);
+  p->info.merge.insert.search_cond =
+    g (parser, p->info.merge.insert.search_cond, arg);
+  p->info.merge.insert.value_clauses =
+    g (parser, p->info.merge.insert.value_clauses, arg);
+  p->info.merge.update.assignment =
+    g (parser, p->info.merge.update.assignment, arg);
+  p->info.merge.update.search_cond =
+    g (parser, p->info.merge.update.search_cond, arg);
+  p->info.merge.update.del_search_cond =
+    g (parser, p->info.merge.update.del_search_cond, arg);
+  p->info.merge.waitsecs_hint = g (parser, p->info.merge.waitsecs_hint, arg);
+
+  return p;
+}
+
+/*
+ * pt_init_merge () -
+ *   return:
+ *   p(in):
+ */
+static PT_NODE *
+pt_init_merge (PT_NODE * p)
+{
+  p->info.merge.into = NULL;
+  p->info.merge.using = NULL;
+  p->info.merge.search_cond = NULL;
+  p->info.merge.insert.attr_list = NULL;
+  p->info.merge.insert.search_cond = NULL;
+  p->info.merge.insert.value_clauses = NULL;
+  p->info.merge.insert.insert_mode = NULL;
+  p->info.merge.update.assignment = NULL;
+  p->info.merge.update.search_cond = NULL;
+  p->info.merge.update.del_search_cond = NULL;
+  p->info.merge.update.has_unique = false;
+  p->info.merge.update.server_update = false;
+  p->info.merge.update.do_class_attrs = false;
+  p->info.merge.waitsecs_hint = NULL;
+  p->info.merge.hint = PT_HINT_NONE;
+  p->info.merge.server_op = false;
+
+  return p;
+}
+
+/*
+ * pt_print_merge () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r1;
+  PT_NODE_LIST_INFO *list_info = NULL;
+
+  q = pt_append_nulstring (parser, q, "merge ");
+
+  if (p->info.merge.hint != PT_HINT_NONE)
+    {
+      q = pt_append_nulstring (parser, q, "/*+");
+      if (p->info.merge.hint & PT_HINT_LK_TIMEOUT
+	  && p->info.merge.waitsecs_hint)
+	{
+	  q = pt_append_nulstring (parser, q, " LOCK_TIMEOUT(");
+	  r1 = pt_print_bytes (parser, p->info.merge.waitsecs_hint);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      if (p->info.merge.hint & PT_HINT_NO_LOGGING)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_LOGGING");
+	}
+      if (p->info.merge.hint & PT_HINT_REL_LOCK)
+	{
+	  q = pt_append_nulstring (parser, q, " RELEASE_LOCK");
+	}
+      if (p->info.merge.hint & PT_HINT_INSERT_MODE)
+	{
+	  PARSER_VARCHAR *vc;
+	  q = pt_append_nulstring (parser, q, " INSERT_EXECUTION_MODE(");
+	  vc = pt_print_bytes (parser, p->info.merge.insert.insert_mode);
+	  q = pt_append_varchar (parser, q, vc);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      q = pt_append_nulstring (parser, q, " */");
+    }
+
+  q = pt_append_nulstring (parser, q, " into ");
+  r1 = pt_print_bytes_spec_list (parser, p->info.merge.into);
+  q = pt_append_varchar (parser, q, r1);
+
+  q = pt_append_nulstring (parser, q, " using ");
+  r1 = pt_print_bytes_spec_list (parser, p->info.merge.using);
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.merge.search_cond)
+    {
+      q = pt_append_nulstring (parser, q, " on ");
+      r1 = pt_print_and_list (parser, p->info.merge.search_cond);
+      q = pt_append_varchar (parser, q, r1);
+    }
+  if (p->info.merge.update.assignment)
+    {
+      q = pt_append_nulstring (parser, q, " when matched then update set ");
+      r1 = pt_print_bytes_l (parser, p->info.merge.update.assignment);
+      q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.merge.update.search_cond)
+	{
+	  q = pt_append_nulstring (parser, q, " where ");
+	  r1 = pt_print_and_list (parser, p->info.merge.update.search_cond);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      if (p->info.merge.update.del_search_cond)
+	{
+	  q = pt_append_nulstring (parser, q, " delete where ");
+	  r1 =
+	    pt_print_and_list (parser, p->info.merge.update.del_search_cond);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+    }
+  if (p->info.merge.insert.value_clauses)
+    {
+      q = pt_append_nulstring (parser, q, " when not matched then insert ");
+      if (p->info.merge.insert.attr_list)
+	{
+	  q = pt_append_nulstring (parser, q, "(");
+	  r1 = pt_print_bytes_l (parser, p->info.merge.insert.attr_list);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ") ");
+	}
+
+      list_info = &p->info.merge.insert.value_clauses->info.node_list;
+      if (list_info->list_type == PT_IS_DEFAULT_VALUE)
+	{
+	  q = pt_append_nulstring (parser, q, "default values ");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "values (");
+	  r1 = pt_print_bytes_l (parser, list_info->list);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ") ");
+	}
+
+      if (p->info.merge.insert.search_cond)
+	{
+	  q = pt_append_nulstring (parser, q, "where ");
+	  r1 = pt_print_and_list (parser, p->info.merge.insert.search_cond);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+    }
+
+  return q;
+}
+
 /*
  * parser_init_func_vectors () -
  *   return:
@@ -15481,54 +15786,44 @@ pt_get_assignment_lists (PARSER_CONTEXT * parser, PT_NODE ** select_names,
 			 int *no_consts, PT_NODE * assign,
 			 PT_NODE *** old_links)
 {
-  int error = NO_ERROR, links_chunk = 10, links_alloc =
-    links_chunk, links_idx = 0;
-  PT_NODE *lhs;
-  PT_NODE *rhs;
-  PT_NODE *att;
-  PT_NODE **links =
-    (PT_NODE **) db_private_alloc (NULL, links_alloc * sizeof (PT_NODE *));
-  PT_NODE **new_links = NULL;
+#define ASSIGN_LINKS_EXTENT	10
 
+  int error = NO_ERROR;
+  int links_chunk = ASSIGN_LINKS_EXTENT, links_alloc = ASSIGN_LINKS_EXTENT;
+  int links_idx = 0;
+
+  PT_NODE *lhs, *rhs, *att;
+  PT_NODE **links, **new_links;
+
+  links =
+    (PT_NODE **) db_private_alloc (NULL, links_alloc * sizeof (PT_NODE *));
   if (!links)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
 
-  if (select_names)
+  if (!select_names || !select_values || !const_names || !const_values
+      || !no_vals || !no_consts)
     {
-      *select_names = NULL;
+      /* bullet proofing, should not get here */
+#if defined(CUBRID_DEBUG)
+      fprintf (stdout, "system error detected in %s, line %d.\n",
+	       __FILE__, __LINE__);
+#endif
+      error = ER_GENERIC_ERROR;
+      goto exit_on_error;
     }
-  if (select_values)
-    {
-      *select_values = NULL;
-    }
-  if (const_names)
-    {
-      *const_names = NULL;
-    }
-  if (const_values)
-    {
-      *const_values = NULL;
-    }
-  if (no_vals)
-    {
-      *no_vals = 0;
-    }
-  if (no_consts)
-    {
-      *no_consts = 0;
-    }
+
+  *select_names = *select_values = *const_names = *const_values = NULL;
+  *no_vals = *no_consts = 0;
 
   while (assign)
     {
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN
 	  || !(lhs = assign->info.expr.arg1)
 	  || !(rhs = assign->info.expr.arg2)
-	  || !(lhs->node_type == PT_NAME || PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
-	  || !select_values || !select_names || !const_values || !const_names
-	  || !no_vals || !no_consts)
+	  || !(lhs->node_type == PT_NAME || PT_IS_N_COLUMN_UPDATE_EXPR (lhs)))
 	{
 	  /* bullet proofing, should not get here */
 #if defined(CUBRID_DEBUG)

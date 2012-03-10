@@ -375,7 +375,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   TP_DOMAIN *temp_domain;
   char temp_buffer[27];
   char temp_buffer_numeric[50];
-  int precision = 0;
+  int precision = 0, idx, count;
 
   if (domain == NULL)
     {
@@ -479,6 +479,29 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		obj_print_describe_domain (parser, buffer,
 					   temp_domain->setdomain);
 	    }
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  strcpy (temp_buffer, temp_domain->type->name);
+	  ustr_upper (temp_buffer);
+	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
+	  buffer = pt_append_nulstring (parser, buffer, "(");
+	  count = DOM_GET_ENUM_ELEMS_COUNT (temp_domain);
+	  for (idx = 1; idx <= count; idx++)
+	    {
+	      if (idx > 1)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, "'");
+	      buffer =
+		pt_append_bytes (parser, buffer,
+				 DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM
+							  (temp_domain, idx)),
+				 DB_GET_ENUM_ELEM_STRING_SIZE
+				 (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
+	      buffer = pt_append_nulstring (parser, buffer, "'");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, ")");
 	  break;
 	default:
 	  break;
@@ -3988,6 +4011,33 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_ENUMERATION:
+	  if (DB_GET_ENUM_STRING (value) == NULL)
+	    {
+	      /* describe value should not be called on an enumeration
+	       * which is not fully constructed
+	       */
+	      assert (false);
+	      buffer = pt_append_nulstring (parser, buffer, "''");
+	    }
+	  else
+	    {
+	      DB_VALUE varchar_val;
+	      /* print enumerations as strings */
+	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
+		{
+		  buffer = describe_value (parser, buffer, &varchar_val);
+		}
+	      else
+		{
+		  /* tp_enumeration_to_varchar only fails if the enum
+		   * string is null which we already checked
+		   */
+		  assert (false);
+		}
+	    }
 	  break;
 
 	case DB_TYPE_DATE:

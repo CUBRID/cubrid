@@ -74,7 +74,9 @@ typedef enum
   MSGCAT_UTIL_SET_LOGFILEDUMP = 42,
   MSGCAT_UTIL_SET_STATDUMP = 43,
   MSGCAT_UTIL_SET_APPLYINFO = 44,
-  MSGCAT_UTIL_SET_ACLDB = 45
+  MSGCAT_UTIL_SET_ACLDB = 45,
+  MSGCAT_UTIL_SET_GENLOCALE = 46,
+  MSGCAT_UTIL_SET_DUMPLOCALE = 47
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -524,6 +526,21 @@ typedef enum
   ACLDB_MSG_USAGE = 60
 } MSGCAT_ACLDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_GENLOCALE */
+typedef enum
+{
+  GENLOCALE_MSG_USAGE = 60
+} MSGCAT_GENLOCALE_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_DUMPLOCALE */
+typedef enum
+{
+  DUMPLOCALE_MSG_INCOMPAT_INPUT_SEL = 57,
+  DUMPLOCALE_MSG_INVALID_CP_RANGE = 58,
+  DUMPLOCALE_MSG_INVALID_LOCALE = 59,
+  DUMPLOCALE_MSG_USAGE = 60
+} MSGCAT_DUMPLOCALE_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -557,6 +574,8 @@ typedef enum
   APPLYLOGDB,
   APPLYINFO,
   ACLDB,
+  GENLOCALE,
+  DUMPLOCALE,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -739,6 +758,8 @@ typedef struct _ha_config
 #define UTIL_OPTION_LOGFILEDUMP                 "logfiledump"
 #define UTIL_OPTION_APPLYINFO                   "applyinfo"
 #define UTIL_OPTION_ACLDB			"acldb"
+#define UTIL_OPTION_GENERATE_LOCALE		"genlocale"
+#define UTIL_OPTION_DUMP_LOCALE			"dumplocale"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1149,6 +1170,39 @@ typedef struct _ha_config
 #define APPLYINFO_VERBOSE_S                     'v'
 #define APPLYINFO_VERBOSE_L                     "verbose"
 
+/* genlocale option list */
+#define GENLOCALE_INPUT_PATH_S			'i'
+#define GENLOCALE_INPUT_PATH_L			"input-ldml-file"
+#define GENLOCALE_OUTPUT_PATH_S                 'o'
+#define GENLOCALE_OUTPUT_PATH_L                 "output-locale-file"
+#define GENLOCALE_VERBOSE_S                     'v'
+#define GENLOCALE_VERBOSE_L                     "verbose"
+
+/* dumplocale option list */
+#define DUMPLOCALE_INPUT_PATH_S			'i'
+#define DUMPLOCALE_INPUT_PATH_L			"input-file"
+#define DUMPLOCALE_CALENDAR_S                   'd'
+#define DUMPLOCALE_CALENDAR_L			"calendar"
+#define DUMPLOCALE_NUMBERING_S                  'n'
+#define DUMPLOCALE_NUMBERING_L                  "numbering"
+#define DUMPLOCALE_ALPHABET_S                   'a'
+#define DUMPLOCALE_ALPHABET_L                   "alphabet"
+#define DUMPLOCALE_ALPHABET_LOWER_S		"l"
+#define DUMPLOCALE_ALPHABET_LOWER_L		"lower"
+#define DUMPLOCALE_ALPHABET_UPPER_S		"u"
+#define DUMPLOCALE_ALPHABET_UPPER_L		"upper"
+#define DUMPLOCALE_ALPHABET_ALL_CASING		"both"
+#define DUMPLOCALE_IDENTIFIER_ALPHABET_S        13000
+#define DUMPLOCALE_IDENTIFIER_ALPHABET_L        "identifier-alphabet"
+#define DUMPLOCALE_COLLATION_S			'c'
+#define DUMPLOCALE_COLLATION_L                  "codepoint-order"
+#define DUMPLOCALE_WEIGHT_ORDER_S               'w'
+#define DUMPLOCALE_WEIGHT_ORDER_L		"weight-order"
+#define DUMPLOCALE_START_VALUE_S                's'
+#define DUMPLOCALE_START_VALUE_L                "start-value"
+#define DUMPLOCALE_END_VALUE_S			'e'
+#define DUMPLOCALE_END_VALUE_L			"end-value"
+
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
@@ -1216,6 +1270,7 @@ typedef struct
   const char *command_name;
   char *argv0;
   char **argv;
+  bool valid_arg;
 } UTIL_FUNCTION_ARG;
 typedef int (*UTILITY_FUNCTION) (UTIL_FUNCTION_ARG *);
 
@@ -1256,6 +1311,8 @@ extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int applyinfo (UTIL_FUNCTION_ARG * arg_map);
 extern int acldb (UTIL_FUNCTION_ARG * arg_map);
+extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
+extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

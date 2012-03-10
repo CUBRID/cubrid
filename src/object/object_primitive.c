@@ -1073,7 +1073,43 @@ static int pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey,
 					    int index, DB_VALUE * value,
 					    bool copy, int *prev_indexp,
 					    char **prev_ptrp);
-
+static void mr_initmem_enumeration (void *mem);
+static void mr_initval_enumeration (DB_VALUE * value, int precision,
+				    int scale);
+static int mr_setmem_enumeration (void *mem, TP_DOMAIN * domain,
+				  DB_VALUE * value);
+static int mr_getmem_enumeration (void *mem, TP_DOMAIN * domain,
+				  DB_VALUE * value, bool copy);
+static int mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src,
+				  bool copy);
+static void mr_data_writemem_enumeration (OR_BUF * buf, void *memptr,
+					  TP_DOMAIN * domain);
+static void mr_data_readmem_enumeration (OR_BUF * buf, void *mem,
+					 TP_DOMAIN * domain, int size);
+static int mr_setval_enumeration_internal (DB_VALUE * value,
+					   TP_DOMAIN * domain,
+					   unsigned short index, int size,
+					   bool copy, char *copy_buf,
+					   int copy_buf_len);
+static int mr_data_readval_enumeration (OR_BUF * buf, DB_VALUE * value,
+					TP_DOMAIN * domain, int size,
+					bool copy, char *copy_buf,
+					int copy_buf_len);
+static int mr_data_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_cmpdisk_enumeration (void *mem1, void *mem2,
+					TP_DOMAIN * domain, int do_coercion,
+					int total_order, int *start_colp);
+static int mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2,
+				  int do_coercion, int total_order,
+				  int *start_colp);
+static int mr_index_cmpdisk_enumeration (void *mem1, void *mem2,
+					 TP_DOMAIN * domain, int do_coercion,
+					 int total_order, int *start_colp);
+static int mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value,
+					 TP_DOMAIN * domain, int size,
+					 bool copy, char *copy_buf,
+					 int copy_buf_len);
 
 /*
  * Value_area
@@ -1805,6 +1841,35 @@ PR_TYPE tp_Numeric = {
 
 PR_TYPE *tp_Type_numeric = &tp_Numeric;
 
+PR_TYPE tp_Enumeration = {
+  "enum", DB_TYPE_ENUMERATION, 0, sizeof (unsigned short),
+  sizeof (unsigned short), sizeof (unsigned short),
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_enumeration,
+  mr_initval_enumeration,
+  mr_setmem_enumeration,
+  mr_getmem_enumeration,
+  mr_setval_enumeration,
+  NULL,				/* use disksize */
+  NULL,				/* use_disksize */
+  mr_data_writemem_enumeration,
+  mr_data_readmem_enumeration,
+  mr_data_writeval_enumeration,
+  mr_data_readval_enumeration,
+  NULL,				/* use disksize */
+  NULL,				/* use disksize */
+  mr_index_writeval_enumeration,
+  mr_index_readval_enumeration,
+  mr_index_cmpdisk_enumeration,
+  NULL,				/* free mem not deeded for short */
+  mr_data_cmpdisk_enumeration,
+  mr_cmpval_enumeration
+};
+
+PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
+
+
 /*
  * tp_Type_id_map
  *    This quickly maps a type identifier to a type structure.
@@ -1847,7 +1912,8 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Bigint,
   &tp_Datetime,
   &tp_Blob,
-  &tp_Clob
+  &tp_Clob,
+  &tp_Enumeration
 };
 
 PR_TYPE tp_ResultSet = {
@@ -1974,8 +2040,9 @@ pr_clear_value (DB_VALUE * value)
 	{
 	  if (value->need_clear)
 	    {			/* need to check */
-	      if (QSTR_IS_ANY_CHAR_OR_BIT (db_type)
-		  && value->data.ch.medium.buf != NULL)
+	      if ((QSTR_IS_ANY_CHAR_OR_BIT (db_type)
+		   && value->data.ch.medium.buf != NULL)
+		  || db_type == DB_TYPE_ENUMERATION)
 		{
 		  need_clear = true;	/* need to free Empty-string */
 		}
@@ -2050,6 +2117,17 @@ pr_clear_value (DB_VALUE * value)
 	{
 	  elo_free_structure (db_get_elo (value));
 	}
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      if (value->need_clear)
+	{
+	  if (DB_GET_ENUM_STRING (value) != NULL)
+	    {
+	      db_private_free_and_init (NULL, DB_GET_ENUM_STRING (value));
+	    }
+	}
+      db_make_enumeration (value, 0, NULL, 0);
       break;
 
     default:
@@ -14076,3 +14154,283 @@ PR_TYPE tp_VarBit = {
 };
 
 PR_TYPE *tp_Type_varbit = &tp_VarBit;
+
+
+static void
+mr_initmem_enumeration (void *mem)
+{
+  *(unsigned short *) mem = 0;
+}
+
+static void
+mr_initval_enumeration (DB_VALUE * value, int precision, int scale)
+{
+  db_value_domain_init (value, DB_TYPE_ENUMERATION, precision, scale);
+  db_make_enumeration (value, 0, NULL, 0);
+}
+
+static int
+mr_setmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  if (value == NULL)
+    {
+      mr_initmem_enumeration (mem);
+    }
+  else
+    {
+      *(unsigned short *) mem = DB_GET_ENUM_SHORT (value);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+		       bool copy)
+{
+  unsigned short short_val = 0;
+  int str_size = 0;
+  char *str_val = NULL, *copy_str = NULL;
+
+  short_val = *(short *) mem;
+
+  return mr_setval_enumeration_internal (value, domain, short_val, 0, copy,
+					 NULL, 0);
+}
+
+static int
+mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  char *str = NULL;
+  bool need_clear = false;
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return db_value_domain_init (dest, DB_TYPE_ENUMERATION,
+				   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+
+  if (DB_GET_ENUM_STRING (src) != NULL)
+    {
+      if (copy)
+	{
+	  str = db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
+	  if (str == NULL)
+	    {
+	      return er_errid ();
+	    }
+	  memcpy (str, DB_GET_ENUM_STRING (src),
+		  DB_GET_ENUM_STRING_SIZE (src));
+	  str[DB_GET_ENUM_STRING_SIZE (src)] = 0;
+	  need_clear = true;
+	}
+      else
+	{
+	  str = DB_GET_ENUM_STRING (src);
+	}
+    }
+
+  db_make_enumeration (dest, DB_GET_ENUM_SHORT (src), str,
+		       DB_GET_ENUM_STRING_SIZE (src));
+  dest->need_clear = need_clear;
+
+  return NO_ERROR;
+}
+
+static void
+mr_data_writemem_enumeration (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+  unsigned short *mem = (unsigned short *) memptr;
+
+  or_put_short (buf, *mem);
+}
+
+static void
+mr_data_readmem_enumeration (OR_BUF * buf, void *mem, TP_DOMAIN * domain,
+			     int size)
+{
+  int rc = NO_ERROR;
+  if (mem == NULL)
+    {
+      or_advance (buf, tp_Enumeration.disksize);
+    }
+  else
+    {
+      *(unsigned short *) mem = (unsigned short) or_get_short (buf, &rc);
+    }
+}
+
+/*
+ * mr_setval_enumeration_internal () - make an enumeration value based on
+ *	index and domain.
+ * return: NO_ERROR or error code.
+ * value(in/out):
+ * domain(in):
+ * index(in): index of enumeration string
+ * size(in):
+ * copy(in):
+ * copy_buf(in):
+ * copy_buf_len(in):
+ */
+static int
+mr_setval_enumeration_internal (DB_VALUE * value,
+				TP_DOMAIN * domain, unsigned short index,
+				int size, bool copy, char *copy_buf,
+				int copy_buf_len)
+{
+  bool need_clear = false;
+  int str_length;
+  char *str;
+  DB_ENUM_ELEMENT *db_elem = NULL;
+
+  if (domain == NULL || DOM_GET_ENUM_ELEMS_COUNT (domain) == 0)
+    {
+      db_make_enumeration (value, index, NULL, 0);
+      value->need_clear = false;
+      return NO_ERROR;
+    }
+
+  if (index > DOM_GET_ENUM_ELEMS_COUNT (domain)
+      && DOM_GET_ENUM_ELEMS_COUNT (domain) > 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  db_elem = &DOM_GET_ENUM_ELEM (domain, index);
+  str_length = DB_GET_ENUM_ELEM_STRING_SIZE (db_elem);
+  if (!copy)
+    {
+      str = DB_GET_ENUM_ELEM_STRING (db_elem);
+    }
+  else
+    {
+      if (copy_buf && copy_buf_len >= str_length + 1)
+	{
+	  /* read buf image into the copy_buf */
+	  str = copy_buf;
+	  need_clear = false;
+	}
+      else
+	{
+	  str = db_private_alloc (NULL, str_length + 1);
+	  if (str == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
+	      return ER_FAILED;
+	    }
+	  need_clear = true;
+	}
+      memcpy (str, DB_GET_ENUM_ELEM_STRING (db_elem), str_length);
+      str[str_length] = 0;
+    }
+
+  db_make_enumeration (value, index, str, str_length);
+  value->need_clear = need_clear;
+
+  return NO_ERROR;
+}
+
+static int
+mr_data_readval_enumeration (OR_BUF * buf, DB_VALUE * value,
+			     TP_DOMAIN * domain, int size, bool copy,
+			     char *copy_buf, int copy_buf_len)
+{
+  int rc = NO_ERROR;
+  unsigned short s;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Enumeration.disksize);
+      return rc;
+    }
+
+  s = (unsigned short) or_get_short (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  return mr_setval_enumeration_internal (value, domain, s, size, copy,
+					 copy_buf, copy_buf_len);
+}
+
+static int
+mr_data_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_short (buf, DB_GET_ENUM_SHORT (value));
+}
+
+static int
+mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
+{
+  unsigned short s = DB_GET_ENUM_SHORT (value);
+
+  return or_put_data (buf, (char *) (&s), tp_Enumeration.disksize);
+}
+
+static int
+mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value,
+			      TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len)
+{
+  int rc = NO_ERROR;
+  unsigned short s;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Enumeration.disksize);
+      return rc;
+    }
+
+  rc = or_get_data (buf, (char *) (&s), tp_Enumeration.disksize);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  return mr_setval_enumeration_internal (value, domain, s, size, copy,
+					 copy_buf, copy_buf_len);
+}
+
+static int
+mr_index_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain,
+			      int do_coercion, int total_order,
+			      int *start_colp)
+{
+  unsigned short s1, s2;
+
+  assert (domain != NULL);
+
+  COPYMEM (unsigned short, &s1, mem1);
+  COPYMEM (unsigned short, &s2, mem2);
+
+  return MR_CMP (s1, s2);
+}
+
+static int
+mr_data_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain,
+			     int do_coercion, int total_order,
+			     int *start_colp)
+{
+  unsigned short s1, s2;
+
+  assert (domain != NULL);
+
+  s1 = (unsigned short) OR_GET_SHORT (mem1);
+  s2 = (unsigned short) OR_GET_SHORT (mem2);
+
+  return MR_CMP (s1, s2);
+}
+
+static int
+mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+		       int total_order, int *start_colp)
+{
+  unsigned short s1, s2;
+
+  s1 = DB_GET_ENUM_SHORT (value1);
+  s2 = DB_GET_ENUM_SHORT (value2);
+
+  return MR_CMP (s1, s2);
+}

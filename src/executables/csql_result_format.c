@@ -1497,7 +1497,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       {
-	DB_ELO *elo = DB_GET_ELO (value);;
+	DB_ELO *elo = DB_GET_ELO (value);
 
 	if (elo != NULL)
 	  {
@@ -1509,6 +1509,12 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	    len = strlen (result);
 	  }
       }
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      result = string_to_string (db_get_enum_string (value),
+				 default_string_profile.string_delimiter,
+				 '\0', db_get_enum_string_size (value), &len);
       break;
 
     default:

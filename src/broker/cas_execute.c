@@ -163,6 +163,7 @@ static int prepare_column_list_info_set (DB_SESSION * session,
 					 T_BROKER_VERSION client_version);
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     short scale, int prec,
+				     const DB_ENUMERATION * enumeration,
 				     const char *col_name,
 				     const char *default_value,
 				     char auto_increment, char unique_key,
@@ -172,10 +173,12 @@ static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     const char *class_name, char nullable,
 				     T_BROKER_VERSION client_version);
 static void set_column_info (T_NET_BUF * net_buf, char ut, short scale,
-			     int prec, const char *col_name,
-			     const char *attr_name, const char *class_name,
-			     char is_non_null,
+			     int prec, const DB_ENUMERATION * enumeration,
+			     const char *col_name, const char *attr_name,
+			     const char *class_name, char is_non_null,
 			     T_BROKER_VERSION client_version);
+static void net_buf_cp_enumeration (T_NET_BUF * net_buf,
+				    const DB_ENUMERATION * enumeration);
 
 /*
   fetch_xxx prototype:
@@ -354,6 +357,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIME,		/* 32 */
   CCI_U_TYPE_BLOB,		/* 33 */
   CCI_U_TYPE_CLOB,		/* 34 */
+  CCI_U_TYPE_ENUMERATION	/* 35 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3435,12 +3439,14 @@ ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode,
 
 static void
 prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
+			 const DB_ENUMERATION * enumeration,
 			 const char *col_name, const char *default_value,
 			 char auto_increment, char unique_key,
 			 char primary_key, char reverse_index,
-			 char reverse_unique, char foreign_key, char shared,
-			 const char *attr_name, const char *class_name,
-			 char is_non_null, T_BROKER_VERSION client_version)
+			 char reverse_unique, char foreign_key,
+			 char shared, const char *attr_name,
+			 const char *class_name, char is_non_null,
+			 T_BROKER_VERSION client_version)
 {
   const char *attr_name_p, *class_name_p;
   int attr_name_len, class_name_len;
@@ -3493,11 +3499,17 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
       net_buf_cp_byte (net_buf, foreign_key);
       net_buf_cp_byte (net_buf, shared);
     }
+
+  if (client_version >= CAS_MAKE_VER (8, 4, 9) && enumeration != NULL)
+    {
+      net_buf_cp_enumeration (net_buf, enumeration);
+    }
 }
 
 static void
 set_column_info (T_NET_BUF * net_buf, char ut,
 		 short scale, int prec,
+		 const DB_ENUMERATION * enumeration,
 		 const char *col_name,
 		 const char *attr_name,
 		 const char *class_name,
@@ -3513,6 +3525,8 @@ set_column_info (T_NET_BUF * net_buf, char ut,
   char foreign_key = 0;
   char shared = 0;
   char *default_value_string = NULL;
+  char *enum_values = NULL;
+  int enum_values_cnt = 0;
   bool alloced_default_value_string = false;
   int def_size = 0;
   DB_VALUE default_value;
@@ -3584,6 +3598,7 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 			   ut,
 			   scale,
 			   prec,
+			   enumeration,
 			   col_name,
 			   default_value_string,
 			   auto_increment,
@@ -4084,6 +4099,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 			     &data_size);
       }
       break;
+    case DB_TYPE_ENUMERATION:
+      {
+	short shortVal = db_get_enum_short (val);
+	add_res_data_short (net_buf, shortVal, col_type, &data_size);
+	break;
+      }
     case DB_TYPE_SMALLINT:
       {
 	short smallint;
@@ -6002,6 +6023,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	  int precision;
 	  short scale;
 	  char *temp_column = NULL;
+	  DB_ENUMERATION *enumeration = NULL;
 
 	  temp_column = (char *) REALLOC (null_type_column, num_cols + 1);
 	  if (temp_column == NULL)
@@ -6077,6 +6099,10 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	    }
 	  else
 	    {
+	      if (db_type == DB_TYPE_ENUMERATION)
+		{
+		  enumeration = &DOM_GET_ENUMERATION (domain);
+		}
 	      cas_type = ux_db_type_to_cas_type (db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
@@ -6107,6 +6133,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 			   (char) cas_type,
 			   scale,
 			   precision,
+			   enumeration,
 			   col_name,
 			   attr_name,
 			   class_name,
@@ -6140,8 +6167,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
       updatable_flag = 0;
       net_buf_cp_byte (net_buf, updatable_flag);
       net_buf_cp_int (net_buf, 1, NULL);
-      prepare_column_info_set (net_buf, 0, 0, 0, "", "", 0, 0, 0, 0, 0, 0, 0,
-			       "", "", 0, client_version);
+      prepare_column_info_set (net_buf, 0, 0, 0, NULL, "", "", 0, 0, 0, 0, 0,
+			       0, 0, "", "", 0, client_version);
     }
   else
     {
@@ -8086,6 +8113,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       const char *col_name, *attr_name, *class_name;
       DB_DOMAIN *domain;
       DB_TYPE db_type;
+      DB_ENUMERATION *enumeration = NULL;
 
       if (col == NULL)
 	{
@@ -8115,6 +8143,10 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       else
 	{
+	  if (db_type == DB_TYPE_ENUMERATION)
+	    {
+	      enumeration = &DOM_GET_ENUMERATION (domain);
+	    }
 	  cas_type = ux_db_type_to_cas_type (db_type);
 	  precision = db_domain_precision (domain);
 	  scale = (short) db_domain_scale (domain);
@@ -8139,6 +8171,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 		       (char) cas_type,
 		       scale,
 		       precision,
+		       enumeration,
 		       col_name,
 		       attr_name,
 		       class_name,
@@ -8700,4 +8733,41 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
     }
 
   strcat (*out, "}");
+}
+
+/*
+ * net_buf_cp_enumeration () - serialize the elements of an enumeration
+ * return: void
+ * net_buf (in): buffer to serialize to
+ * enumeration (in): enumeration
+ *
+ * Note: this function serializes enumeration elements that are part of a
+ * domain
+ */
+static void
+net_buf_cp_enumeration (T_NET_BUF * net_buf,
+			const DB_ENUMERATION * enumeration)
+{
+  int i;
+  DB_ENUM_ELEMENT *elem = NULL;
+  char *str = NULL;
+  int str_size = 0;
+  /* enumeration is packed as: elements_count,elem1,elem2... */
+  if (enumeration == NULL || enumeration->count == 0)
+    {
+      net_buf_cp_int (net_buf, 0, NULL);
+      return;
+    }
+  net_buf_cp_int (net_buf, enumeration->count, NULL);
+
+  for (i = 0; i < enumeration->count; i++)
+    {
+      elem = &enumeration->elements[i];
+      /* TODO: should not know internals here ! */
+      str = elem->str_val.medium.buf;
+      str_size = elem->str_val.medium.size;
+      str_size++;		/* null terminated */
+      net_buf_cp_int (net_buf, str_size, NULL);
+      net_buf_cp_str (net_buf, str, str_size);
+    }
 }

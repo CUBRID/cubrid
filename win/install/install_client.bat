@@ -14,6 +14,14 @@ mkdir %DEST_DIR%\msg\en_US.utf8
 mkdir %DEST_DIR%\msg\ko_KR.euckr
 mkdir %DEST_DIR%\msg\ko_KR.utf8
 mkdir %DEST_DIR%\msg\tr_TR.utf8
+mkdir %DEST_DIR%\msg\de_DE.utf8
+mkdir %DEST_DIR%\msg\es_ES.utf8
+mkdir %DEST_DIR%\msg\fr_FR.utf8
+mkdir %DEST_DIR%\msg\it_IT.utf8
+mkdir %DEST_DIR%\msg\ja_JP.utf8
+mkdir %DEST_DIR%\msg\km_KH.utf8
+mkdir %DEST_DIR%\msg\vi_VN.utf8
+mkdir %DEST_DIR%\msg\zh_CN.utf8
 
 copy %SRC_DIR%\cubridservice.exe          %DEST_DIR%\bin
 copy %SRC_DIR%\ctrlservice.exe            %DEST_DIR%\bin
@@ -29,4 +37,11 @@ copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\m
 copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %DEST_DIR%\msg\ko_KR.euckr\cubridtray.msg
 copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %DEST_DIR%\msg\ko_KR.utf8\cubridtray.msg
 copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\tr_TR.utf8\cubridtray.msg
-
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\de_DE.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\es_ES.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\fr_FR.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\it_IT.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\ja_JP.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\km_KH.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\vi_VN.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\zh_CN.utf8\cubridtray.msg

@@ -313,6 +313,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
+    case DB_TYPE_ENUMERATION:
       break;
 
     default:
@@ -457,6 +458,9 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->domain.general_info.is_null = 0;
       break;
+    case DB_TYPE_ENUMERATION:
+      db_make_enumeration (value, 0, (char *) "\40", 1);
+      break;
       /* case DB_TYPE_TABLE: internal use only */
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
@@ -598,6 +602,9 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\377";	/* 255 */
       value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_ENUMERATION:
+      db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377", 1);
       break;
       /* case DB_TYPE_TABLE: internal use only */
     default:
@@ -2123,9 +2130,28 @@ db_make_monetary (DB_VALUE * value,
     {
     case DB_CURRENCY_DOLLAR:
     case DB_CURRENCY_YEN:
-    case DB_CURRENCY_POUND:
     case DB_CURRENCY_WON:
     case DB_CURRENCY_TL:
+    case DB_CURRENCY_BRITISH_POUND:
+    case DB_CURRENCY_CAMBODIAN_RIEL:
+    case DB_CURRENCY_CHINESE_RENMINBI:
+    case DB_CURRENCY_INDIAN_RUPEE:
+    case DB_CURRENCY_RUSSIAN_RUBLE:
+    case DB_CURRENCY_AUSTRALIAN_DOLLAR:
+    case DB_CURRENCY_CANADIAN_DOLLAR:
+    case DB_CURRENCY_BRASILIAN_REAL:
+    case DB_CURRENCY_ROMANIAN_LEU:
+    case DB_CURRENCY_EURO:
+    case DB_CURRENCY_SWISS_FRANC:
+    case DB_CURRENCY_DANISH_KRONE:
+    case DB_CURRENCY_NORWEGIAN_KRONE:
+    case DB_CURRENCY_BULGARIAN_LEV:
+    case DB_CURRENCY_VIETNAMESE_DONG:
+    case DB_CURRENCY_CZECH_KORUNA:
+    case DB_CURRENCY_POLISH_ZLOTY:
+    case DB_CURRENCY_SWEDISH_KRONA:
+    case DB_CURRENCY_CROATIAN_KUNA:
+    case DB_CURRENCY_SERBIAN_DINAR:
       error = NO_ERROR;		/* it's a type we expect */
       break;
     default:
@@ -2167,9 +2193,28 @@ db_value_put_monetary_currency (DB_VALUE * value, DB_CURRENCY const type)
     {
     case DB_CURRENCY_DOLLAR:
     case DB_CURRENCY_YEN:
-    case DB_CURRENCY_POUND:
     case DB_CURRENCY_WON:
     case DB_CURRENCY_TL:
+    case DB_CURRENCY_BRITISH_POUND:
+    case DB_CURRENCY_CAMBODIAN_RIEL:
+    case DB_CURRENCY_CHINESE_RENMINBI:
+    case DB_CURRENCY_INDIAN_RUPEE:
+    case DB_CURRENCY_RUSSIAN_RUBLE:
+    case DB_CURRENCY_AUSTRALIAN_DOLLAR:
+    case DB_CURRENCY_CANADIAN_DOLLAR:
+    case DB_CURRENCY_BRASILIAN_REAL:
+    case DB_CURRENCY_ROMANIAN_LEU:
+    case DB_CURRENCY_EURO:
+    case DB_CURRENCY_SWISS_FRANC:
+    case DB_CURRENCY_DANISH_KRONE:
+    case DB_CURRENCY_NORWEGIAN_KRONE:
+    case DB_CURRENCY_BULGARIAN_LEV:
+    case DB_CURRENCY_VIETNAMESE_DONG:
+    case DB_CURRENCY_CZECH_KORUNA:
+    case DB_CURRENCY_POLISH_ZLOTY:
+    case DB_CURRENCY_SWEDISH_KRONA:
+    case DB_CURRENCY_CROATIAN_KUNA:
+    case DB_CURRENCY_SERBIAN_DINAR:
       error = NO_ERROR;		/* it's a type we expect */
       break;
     default:
@@ -2248,6 +2293,32 @@ db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
     {
       db_datetime_encode (&value->data.datetime, 0, 0, 0, 0, 0, 0, 0);
     }
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_enumeration() -
+ * return :
+ * value(out):
+ * index(in):
+ * str(in):
+ * size(in):
+ */
+int
+db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
+		     int size)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_ENUMERATION;
+  value->data.enumeration.short_val = index;
+  value->data.enumeration.str_val.info.codeset = lang_charset ();
+  value->data.enumeration.str_val.info.style = MEDIUM_STRING;
+  value->data.enumeration.str_val.medium.size = size;
+  value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
 
@@ -2811,6 +2882,53 @@ db_value_get_monetary_amount_as_double (const DB_VALUE * value)
   CHECK_1ARG_ZERO (value);
 
   return value->data.money.amount;
+}
+
+/*
+ * db_get_enum_short () -
+ * return :
+ * value(in):
+ */
+short
+db_get_enum_short (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+  return value->data.enumeration.short_val;
+}
+
+/*
+ * db_get_enum_string () -
+ * return :
+ * value(in):
+ */
+char *
+db_get_enum_string (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  return value->data.enumeration.str_val.medium.buf;
+}
+
+/*
+ * db_get_enum_string_size () -
+ * return :
+ * value(in):
+ */
+int
+db_get_enum_string_size (const DB_VALUE * value)
+{
+  char *str = NULL;
+  int length = 0;
+  CHECK_1ARG_ZERO (value);
+  str = db_get_enum_string (value);
+  intl_char_count ((unsigned char *) str,
+		   value->data.enumeration.str_val.medium.size,
+		   lang_charset (), &length);
+  return length;
 }
 
 /*
