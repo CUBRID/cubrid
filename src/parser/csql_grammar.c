@@ -33089,6 +33089,8 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	  const char *lang_str;
 	  date_lang->type_enum = PT_TYPE_INTEGER;
 	  lang_str = envvar_get ("DATE_LANG");
+	  
+	  envvar_trim_char (lang_str, '\"');
 
 	  lang_set_flag_from_lang (lang_str, (arg_cnt == 1) ? 0 : 1,
 				   &(date_lang->info.value.data_value.i));

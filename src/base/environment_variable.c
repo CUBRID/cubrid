@@ -470,3 +470,30 @@ envvar_logdir_file (char *path, size_t size, const char *filename)
   path[size - 1] = '\0';
   return path;
 }
+
+void
+envvar_trim_char (char *env_val, const int c)
+{
+  char *buf;
+  int size;
+
+  if (env_val == NULL)
+    {
+      return;
+    }
+
+  size = strlen (env_val);
+
+  if (*env_val == c && size > 2)
+    {
+      buf = (char *) malloc (1 + size);
+      if (buf != NULL)
+	{
+	  strcpy (buf, env_val);
+	  strncpy (env_val, buf + 1, size - 2);
+	  env_val[size - 2] = '\0';
+
+	  free (buf);
+	}
+    }
+}

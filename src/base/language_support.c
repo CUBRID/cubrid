@@ -45,6 +45,7 @@ static INTL_LANG lang_Loc_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static int lang_Loc_bytes_per_char = 1;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
+static char lang_user_Loc_name[LANG_MAX_LANGNAME];
 static char lang_Lang_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static DB_CURRENCY lang_Loc_currency = DB_CURRENCY_DOLLAR;
 
@@ -257,8 +258,8 @@ set_current_locale (bool is_full_init)
   lang_Loc_data = lang_loaded_locales[lang_Loc_id];
 
   if (lang_Loc_data->codeset != lang_Loc_charset
-      || strcmp (lang_Lang_name,
-		 lang_get_lang_name_from_id (lang_Loc_id)) != 0)
+      || strcasecmp (lang_Lang_name,
+		     lang_get_lang_name_from_id (lang_Loc_id)) != 0)
     {
       /* when charset is not UTF-8, full init will not be required */
       if (is_full_init || lang_Loc_charset != INTL_CODESET_UTF8)
@@ -316,6 +317,11 @@ set_lang_from_env (void)
 	  strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
 	}
     }
+
+  strcpy (lang_user_Loc_name, lang_Loc_name);
+
+  /* strip quotas : */
+  envvar_trim_char (lang_Loc_name, (int) '\"');
 
   /* allow environment to override the character set settings */
   s = strchr (lang_Loc_name, '.');
@@ -680,6 +686,17 @@ lang_get_Loc_name (void)
       lang_init ();
     }
   return lang_Loc_name;
+}
+
+/*
+ * lang_get_user_loc_name - returns the string procided by user in CUBRID_LANG
+ *			    according to environment
+ *   return: locale user string
+ */
+const char *
+lang_get_user_loc_name (void)
+{
+  return lang_user_Loc_name;
 }
 
 /*

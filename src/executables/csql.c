@@ -2349,7 +2349,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (!lang_check_init ())
     {
-      printf ("Failed to initialize language \n");
+      printf ("Failed to initialize language (%s)\n",
+	      lang_get_user_loc_name ());
       csql_exit (EXIT_FAILURE);
     }
 

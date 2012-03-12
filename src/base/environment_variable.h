@@ -54,5 +54,6 @@ extern char *envvar_tmpdir_file (char *path, size_t size,
 				 const char *filename);
 extern char *envvar_logdir_file (char *path, size_t size,
 				 const char *filename);
+extern void envvar_trim_char (char *var, const int c);
 
 #endif /* _ENVIRONMENT_VARIABLE_H_ */

@@ -327,8 +327,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
   if (!lang_check_init ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
-	      "language failed");
+      char msg[ERR_MSG_SIZE];
+      sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
       return ER_LOC_INIT;
     }
 
@@ -686,8 +687,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   if (!lang_check_init ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
-	      "language failed");
+      char msg[ERR_MSG_SIZE];
+      sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
       return ER_LOC_INIT;
     }
 
