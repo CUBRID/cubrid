@@ -4665,14 +4665,30 @@ prm_tune_parameters (void)
 {
   SYSPRM_PARAM *max_plan_cache_entries_prm;
   SYSPRM_PARAM *ha_node_list_prm;
+  SYSPRM_PARAM *ha_mode_prm;
+  SYSPRM_PARAM *ha_process_dereg_confirm_interval_in_msecs_prm;
+  SYSPRM_PARAM *ha_max_process_dereg_confirm_prm;
+  SYSPRM_PARAM *shutdown_wait_time_in_secs_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
+
+  int ha_process_dereg_confirm_interval_in_msecs;
+  int ha_max_process_dereg_confirm;
+  int shutdown_wait_time_in_secs;
 
   /* Find the parameters that require tuning */
   max_plan_cache_entries_prm =
     prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
+
+  ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
+  ha_process_dereg_confirm_interval_in_msecs_prm =
+    prm_find (PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS, NULL);
+  ha_max_process_dereg_confirm_prm =
+    prm_find (PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM, NULL);
+  shutdown_wait_time_in_secs_prm =
+    prm_find (PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS, NULL);
 
   assert (max_plan_cache_entries_prm != NULL);
   if (max_plan_cache_entries_prm == NULL)
@@ -4698,6 +4714,42 @@ prm_tune_parameters (void)
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
       prm_set (ha_node_list_prm, newval, false);
     }
+
+  assert (ha_mode_prm != NULL);
+  if (ha_mode_prm != NULL && PRM_GET_INT (ha_mode_prm->value) != HA_MODE_OFF)
+    {
+      assert (ha_process_dereg_confirm_interval_in_msecs_prm != NULL);
+      assert (ha_max_process_dereg_confirm_prm != NULL);
+      assert (shutdown_wait_time_in_secs_prm != NULL);
+
+      if (ha_process_dereg_confirm_interval_in_msecs_prm != NULL
+	  && ha_max_process_dereg_confirm_prm != NULL
+	  && shutdown_wait_time_in_secs_prm != NULL)
+	{
+	  ha_process_dereg_confirm_interval_in_msecs =
+	    PRM_GET_INT (ha_process_dereg_confirm_interval_in_msecs_prm->
+			 value);
+	  ha_max_process_dereg_confirm =
+	    PRM_GET_INT (ha_max_process_dereg_confirm_prm->value);
+	  shutdown_wait_time_in_secs =
+	    PRM_GET_INT (shutdown_wait_time_in_secs_prm->value);
+
+	  if ((shutdown_wait_time_in_secs * 1000) >
+	      (ha_process_dereg_confirm_interval_in_msecs *
+	       ha_max_process_dereg_confirm))
+	    {
+	      ha_max_process_dereg_confirm =
+		((shutdown_wait_time_in_secs * 1000) /
+		 ha_process_dereg_confirm_interval_in_msecs) + 3;
+
+	      snprintf (newval, sizeof (newval) - 1, "%d",
+			ha_max_process_dereg_confirm);
+	      prm_set (ha_max_process_dereg_confirm_prm, newval, false);
+	    }
+	}
+    }
+
+  return;
 }
 #endif /* CS_MODE */
 
