@@ -13999,7 +13999,7 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       repl_schema.name = (char *) pt_get_varchar_bytes (name);
     }
-  repl_schema.ddl = parser_print_tree (parser, statement);
+  repl_schema.ddl = parser_print_tree_with_quotes (parser, statement);
 
   repl_info.info = (char *) &repl_schema;
 
