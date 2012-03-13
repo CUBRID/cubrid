@@ -817,7 +817,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   DB_VALUE *dest = NULL;
   DB_VALUE conv;
   bool use_conv = false;
-  int length = 0, scale = 0;
+  int length = 0, precision = 0, scale = 0;
   char *str = NULL;
   const char *src_str;
 
@@ -879,27 +879,28 @@ db_value_alloc_and_copy (const DB_VALUE * src)
       memcpy (str, src_str, length);
     }
 
-  db_value_domain_init (dest, src_dbtype, length, scale);
+  precision = db_value_precision (src);
+  db_value_domain_init (dest, src_dbtype, precision, scale);
   dest->need_clear = true;
   switch (src_dbtype)
     {
     case DB_TYPE_CHAR:
-      DB_MAKE_CHAR (dest, length, str, length);
+      DB_MAKE_CHAR (dest, precision, str, length);
       break;
     case DB_TYPE_NCHAR:
-      DB_MAKE_NCHAR (dest, length, str, length);
+      DB_MAKE_NCHAR (dest, precision, str, length);
       break;
     case DB_TYPE_VARCHAR:
-      DB_MAKE_VARCHAR (dest, length, str, length);
+      DB_MAKE_VARCHAR (dest, precision, str, length);
       break;
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_VARNCHAR (dest, length, str, length);
+      DB_MAKE_VARNCHAR (dest, precision, str, length);
       break;
     case DB_TYPE_BIT:
-      DB_MAKE_BIT (dest, length, str, length);
+      DB_MAKE_BIT (dest, precision, str, length);
       break;
     case DB_TYPE_VARBIT:
-      DB_MAKE_VARBIT (dest, length, str, length);
+      DB_MAKE_VARBIT (dest, precision, str, length);
       break;
     default:
       assert (false);
