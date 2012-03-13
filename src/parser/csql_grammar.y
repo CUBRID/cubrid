@@ -4991,16 +4991,59 @@ query_number_list
 	;
 
 alter_column_clause_mysql_specific
-	: normal_column_or_class_attribute SET DEFAULT literal_w_o_param
+	: normal_column_or_class_attribute SET DEFAULT expression_
 		{{
 
-			PT_NODE *node = parser_get_alter_node ();
+			PT_NODE *alter_node = parser_get_alter_node ();
 
-			if (node)
+			if (alter_node)
 			  {
-			    node->info.alter.code = PT_ALTER_DEFAULT;
-			    node->info.alter.alter_clause.ch_attr_def.attr_name_list = $1;
-			    node->info.alter.alter_clause.ch_attr_def.data_default_list = $4;
+			    PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
+			    
+			    if (node)
+			      {
+				PT_NODE *def;
+				node->info.data_default.default_value = $4;
+				node->info.data_default.shared = PT_DEFAULT;
+
+				def = node->info.data_default.default_value;
+
+				if (def && def->node_type == PT_EXPR)
+				  {
+				    switch (def->info.expr.op)
+				      {
+				      case PT_SYS_DATE:
+					node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+					break;
+				      case PT_SYS_DATETIME:
+					node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+					break;
+				      case PT_SYS_TIMESTAMP:
+					node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+					break;
+				      case PT_USER:
+					node->info.data_default.default_expr = DB_DEFAULT_USER;
+					break;
+				      case PT_CURRENT_USER:
+					node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+					break;
+				      case PT_UNIX_TIMESTAMP:
+					node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+					break;
+				      default:
+					node->info.data_default.default_expr = DB_DEFAULT_NONE;
+					break;
+				      }
+				  }
+				else
+				  {
+				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				  }
+			      }
+			    
+			    alter_node->info.alter.code = PT_ALTER_DEFAULT;
+			    alter_node->info.alter.alter_clause.ch_attr_def.attr_name_list = $1;
+			    alter_node->info.alter.alter_clause.ch_attr_def.data_default_list = node;
 			  }
 
 		DBG_PRINT}}

@@ -872,7 +872,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
-	  pt_evaluate_tree (parser, d, &src_val, 1);
+	  pt_evaluate_tree (parser, d->info.data_default.default_value,
+			    &src_val, 1);
 	  if (pt_has_error (parser))
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
