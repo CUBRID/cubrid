@@ -632,7 +632,7 @@ struct function_map
 static FUNCTION_MAP functions[] = {
   {"abs", PT_ABS},
   {"acos", PT_ACOS},
-  {"addtime", PT_ADDTIME},
+  {"addtime", PT_ADDTIME}, 
   {"asin", PT_ASIN},
   {"atan", PT_ATAN},
   {"atan2", PT_ATAN2},
@@ -661,7 +661,7 @@ static FUNCTION_MAP functions[] = {
   {"utc_time", PT_UTC_TIME},
   {"utc_date", PT_UTC_DATE},
   {"datediff", PT_DATEDIFF},
-  {"timediff", PT_TIMEDIFF},
+  {"timediff",PT_TIMEDIFF},
   {"date_format", PT_DATE_FORMAT},
   {"dayofmonth", PT_DAYOFMONTH},
   {"dayofyear", PT_DAYOFYEAR},
@@ -1080,7 +1080,7 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2616 of glr.c.  */
+/* Line 2604 of glr.c.  */
 #line 1085 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
@@ -1105,3 +1105,5 @@ typedef struct YYLTYPE
 extern YYSTYPE csql_yylval;
 
 extern YYLTYPE csql_yylloc;
+
+
