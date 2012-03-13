@@ -4558,9 +4558,12 @@ qstr_eval_like (const char *tar, int tar_length,
 
       if (status == IN_CHECK)
 	{
-	  if (escape != NULL &&
-	      intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
-			     &char_size) == 0)
+	  /* To keep MySQL compatibility, when the last character
+	   * is escape char, do not treat as escape character.*/
+	  if (escape != NULL
+	      && intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
+				&char_size) == 0
+	      && (expr_ptr + char_size) < end_expr)
 	    {
 	      expr_ptr += char_size;
 	      if (expr_ptr < end_expr
@@ -4699,10 +4702,12 @@ qstr_eval_like (const char *tar, int tar_length,
 	      continue;
 	    }
 
-	  if ((next_expr_ptr < end_expr) && escape != NULL &&
-	      (intl_cmp_char
-	       (next_expr_ptr, (unsigned char *) escape, codeset,
-		&dummy) == 0))
+	  /* To keep MySQL compatibility, when the last character
+	   * is escape char, do not treat as escape character.*/
+	  if ((next_expr_ptr < end_expr) && escape != NULL
+	      && intl_cmp_char (next_expr_ptr, (unsigned char *) escape,
+				codeset, &dummy) == 0
+	      && (next_expr_ptr + dummy) < end_expr)
 	    {
 	      expr_ptr = next_expr_ptr;
 	      next_expr_ptr = intl_next_char_pseudo_kor (expr_ptr, codeset,
@@ -4751,9 +4756,12 @@ qstr_eval_like (const char *tar, int tar_length,
 	}
       if (status == IN_PERCENT_UNDERSCORE)
 	{
-	  if (expr_ptr < end_expr && escape != NULL &&
-	      (intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
-			      &char_size) == 0))
+	  /* To keep MySQL compatibility, when the last character
+	   * is escape char, do not treat as escape character.*/
+	  if (expr_ptr < end_expr && escape != NULL
+	      && intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
+				&char_size) == 0
+	      && (expr_ptr + char_size) < end_expr)
 	    {
 	      expr_ptr += char_size;
 	      inescape = 1;
@@ -22229,11 +22237,10 @@ db_get_next_like_pattern_character (const char *const pattern,
       *position += char_size;
       if (*position >= length)
 	{
-	  /* For better MySQL compatibility we allow any character
-	     to be escaped, not just the wildcards. */
-	  error_code = ER_QSTR_INVALID_ESCAPE_SEQUENCE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	  goto error_exit;
+	  /* To keep MySQL compatibility, when the last character
+	   * is escape char, do not return error.*/
+	  *crt_char_p = (char *) (&(pattern[*position - char_size]));
+	  return error_code;
 	}
       *is_escaped = true;
     }
