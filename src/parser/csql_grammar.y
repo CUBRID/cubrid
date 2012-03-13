@@ -5005,6 +5005,7 @@ alter_column_clause_mysql_specific
 				PT_NODE *def;
 				node->info.data_default.default_value = $4;
 				node->info.data_default.shared = PT_DEFAULT;
+				PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
 
 				def = node->info.data_default.default_value;
 
@@ -8805,6 +8806,7 @@ column_shared_constraint_def
 			  {
 			    node->info.data_default.default_value = $2;
 			    node->info.data_default.shared = PT_SHARED;
+			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 			  }
 
 			attr_node = parser_get_attr_def_one ();
@@ -8826,6 +8828,7 @@ column_default_constraint_def
 			    PT_NODE *def;
 			    node->info.data_default.default_value = $2;
 			    node->info.data_default.shared = PT_DEFAULT;
+			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 
 			    def = node->info.data_default.default_value;
 
