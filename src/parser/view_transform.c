@@ -477,11 +477,6 @@ static const char *get_authorization_name (DB_AUTH auth);
 static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *arg,
 				       int *continue_walk);
-static PT_NODE *mq_add_dummy_from_post (PARSER_CONTEXT * parser,
-					PT_NODE * node, void *arg,
-					int *continue_walk);
-
-
 
 /*
  * mq_bump_corr_pre() -  Bump the correlation level of all matching
@@ -4682,48 +4677,12 @@ mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
 
-  if (node->info.query.is_subquery == PT_IS_SUBQUERY)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-
   fake_from = pt_add_table_name_to_from_list (parser, node, "db_root",
 					      NULL, DB_AUTH_NONE);
   if (fake_from == NULL)
     {
       *continue_walk = PT_STOP_WALK;
       return NULL;
-    }
-
-  return node;
-}
-
-/*
- * mq_add_dummy_from_post () - restore the PT_CONTINUE_WALK flag so that
- *			       subquery sibilings are also visited.
- *
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- *   continue_walk(in):
- */
-static PT_NODE *
-mq_add_dummy_from_post (PARSER_CONTEXT * parser, PT_NODE * node,
-			void *arg, int *continue_walk)
-{
-  /* set to PT_CONTINUE_WALK only for the nodes that set it to
-   * PT_STOP_WALK in mq_add_dummy_from_pre(). So the conditions
-   * below replicate the ones in that function: only select nodes without
-   * from and that are sub-queries.
-   */
-  if (node
-      && node->node_type == PT_SELECT
-      && node->info.query.q.select.from == NULL
-      && node->info.query.is_subquery == PT_IS_SUBQUERY)
-    {
-      *continue_walk = PT_CONTINUE_WALK;
     }
 
   return node;
@@ -4787,8 +4746,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
       query_spec = *result;
 
       query_spec = parser_walk_tree (parser, query_spec,
-				     mq_add_dummy_from_pre, NULL,
-				     mq_add_dummy_from_post, NULL);
+				     mq_add_dummy_from_pre, NULL, NULL, NULL);
       if (query_spec == NULL)
 	{
 	  return NULL;
