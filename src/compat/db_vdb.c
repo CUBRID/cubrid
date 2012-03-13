@@ -99,8 +99,8 @@ static int do_recompile_and_execute_prepared_statement (DB_SESSION * session,
 							result);
 static int do_process_deallocate_prepare (DB_SESSION * session,
 					  PT_NODE * statement);
-static bool is_allowed_as_prepared_statement (PT_NODE_TYPE node_type);
-static bool is_allowed_as_prepared_statement_with_hv (PT_NODE_TYPE node_type);
+static bool is_allowed_as_prepared_statement (PT_NODE * node);
+static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -2294,7 +2294,6 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   DB_SESSION *prepared_session = NULL;
   int prepared_statement_ndx = 0;
   PT_NODE *prepared_stmt = NULL;
-  PT_NODE_TYPE stmt_type = PT_NODE_NUMBER;
   int include_oids = 0;
   const char *const name = statement->info.prepare.name->info.name.original;
   const char *const statement_literal =
@@ -2332,9 +2331,9 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   assert (prepared_session->dimension == 1);
   assert (prepared_session->statements[0] != NULL);
 
-  stmt_type = prepared_session->statements[0]->node_type;
+  prepared_stmt = prepared_session->statements[0];
 
-  if (!is_allowed_as_prepared_statement (stmt_type))
+  if (!is_allowed_as_prepared_statement (prepared_stmt))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_IT_IS_DISALLOWED_AS_PREPARED, 0);
@@ -2343,7 +2342,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
     }
 
   if (prepared_session->parser->host_var_count > 0
-      && !is_allowed_as_prepared_statement_with_hv (stmt_type))
+      && !is_allowed_as_prepared_statement_with_hv (prepared_stmt))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_CANNOT_PREPARE_WITH_HOST_VAR, 1,
@@ -2351,8 +2350,6 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       err = ER_FAILED;
       goto cleanup;
     }
-
-  prepared_stmt = prepared_session->statements[0];
 
   /* set statement literal */
   prepare_info.statement = (char *) statement_literal;
@@ -2644,12 +2641,14 @@ do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
  * is_allowed_as_prepared_statement () - check if node type is a valid
  *					 prepared statement
  * return:    true if node is valid prepared statement, false otherwise
- *  node_type (in): parse tree node type to check
+ *  node (in): parse tree node to check
  */
 static bool
-is_allowed_as_prepared_statement (PT_NODE_TYPE node_type)
+is_allowed_as_prepared_statement (PT_NODE * node)
 {
-  switch (node_type)
+  assert (node);
+
+  switch (node->node_type)
     {
     case PT_PREPARE_STATEMENT:
     case PT_EXECUTE_PREPARE:
@@ -2666,12 +2665,14 @@ is_allowed_as_prepared_statement (PT_NODE_TYPE node_type)
  *					         prepared statement that can
  *						 accept hostvars
  * return:    true if node is valid prepared statement, false otherwise
- *  node_type (in): parse tree node type to check
+ *  node (in): parse tree node to check
  */
 static bool
-is_allowed_as_prepared_statement_with_hv (PT_NODE_TYPE node_type)
+is_allowed_as_prepared_statement_with_hv (PT_NODE * node)
 {
-  switch (node_type)
+  assert (node);
+
+  switch (node->node_type)
     {
     case PT_SELECT:
     case PT_UNION:
@@ -2687,6 +2688,9 @@ is_allowed_as_prepared_statement_with_hv (PT_NODE_TYPE node_type)
     case PT_SET_SESSION_VARIABLES:
     case PT_EVALUATE:
       return true;
+
+    case PT_CREATE_ENTITY:
+      return (node->info.create_entity.entity_type == PT_CLASS);
 
     default:
       return false;
