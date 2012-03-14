@@ -3017,6 +3017,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 		      MAX_FILTER_PREDICATE_STRING_LENGTH)
 		    {
 		      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+		      PT_ERRORmf ((PARSER_CONTEXT *) parser, where_predicate,
+				  MSGCAT_SET_ERROR,
+				  -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH),
+				  MAX_FILTER_PREDICATE_STRING_LENGTH);
 		      goto end;
 		    }
 		}
@@ -3593,6 +3597,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  MAX_FILTER_PREDICATE_STRING_LENGTH)
 		{
 		  error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+		  PT_ERRORmf ((PARSER_CONTEXT *) parser, where_predicate,
+			      MSGCAT_SET_ERROR,
+			      -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH),
+			      MAX_FILTER_PREDICATE_STRING_LENGTH);
 		  goto error_exit;
 		}
 	    }

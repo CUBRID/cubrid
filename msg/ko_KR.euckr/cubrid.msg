@@ -1145,7 +1145,7 @@ $ LOADDB
 1077 '%3$s' 파일 %2$d 줄의 '%1$s' 파라미터 : 알수 없는 파라미터
 1078 Character at offset %d is invalid with current codeset.
 1079 Codesets of database and server configuration are incompatible.
-1080 The maximum length of filter predicate string must be %1$s.
+1080 The maximum length of filter predicate string must be %1$d.
 1081 Cannot alter an attribute involved in a filter or function index.
 1082 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
 1083 교착상태에 대한 상세정보.
