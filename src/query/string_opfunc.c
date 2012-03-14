@@ -9563,6 +9563,43 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 }
 
 /*
+ * db_datetime_to_timestamp () - create a timestamp DB_VALUE from a datetime
+ *	  DB_VALUE
+ *
+ * src_datetime(in):
+ * result_timestamp(in);
+ * return: ERROR_CODE
+ */
+int
+db_datetime_to_timestamp (const DB_VALUE * src_datetime,
+			  DB_VALUE * result_timestamp)
+{
+  DB_DATETIME *tmp_datetime;
+  DB_DATE tmp_date;
+  DB_TIME tmp_time;
+  DB_TIMESTAMP tmp_timestamp;
+  int error;
+
+  error = db_value_domain_init (result_timestamp, DB_TYPE_TIMESTAMP, 0, 0);
+  if (error != NO_ERROR)
+    {
+      /* error message has been set */
+      return error;
+    }
+  tmp_datetime = db_get_datetime (src_datetime);
+  tmp_date = tmp_datetime->date;
+  tmp_time = tmp_datetime->time / 1000;
+  error = db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
+  if (error != NO_ERROR)
+    {
+      /* error message has been set */
+      return error;
+    }
+  db_make_timestamp (result_timestamp, tmp_timestamp);
+  return NO_ERROR;
+}
+
+/*
  * db_get_date_dayofyear () - compute day of year from a date type value
  *
  * Arguments:

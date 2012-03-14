@@ -250,6 +250,8 @@ extern int db_timestamp (const DB_VALUE * src_datetime1,
 			 DB_VALUE * result_datetime);
 extern int db_unix_timestamp (const DB_VALUE * src_date,
 			      DB_VALUE * result_timestamp);
+extern int db_datetime_to_timestamp (const DB_VALUE * src_datetime,
+				     DB_VALUE * result_timestamp);
 extern int db_months_between (const DB_VALUE * start_mon,
 			      const DB_VALUE * end_mon,
 			      DB_VALUE * result_mon);

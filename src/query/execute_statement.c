@@ -145,25 +145,54 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	  switch (att->default_value.default_expr)
 	    {
 	    case DB_DEFAULT_SYSDATE:
-	      db_value_put_encoded_date (&att->default_value.value,
-					 DB_GET_DATE (&parser->sys_datetime));
+	      error = db_value_put_encoded_date (&att->default_value.value,
+						 DB_GET_DATE (&parser->
+							      sys_datetime));
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
-	      pr_clone_value (&parser->sys_datetime,
-			      &att->default_value.value);
+	      error = pr_clone_value (&parser->sys_datetime,
+				      &att->default_value.value);
 	      break;
 	    case DB_DEFAULT_SYSTIMESTAMP:
+	      error = db_datetime_to_timestamp (&parser->sys_datetime,
+						&att->default_value.value);
+	      break;
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      db_unix_timestamp (&parser->sys_datetime,
-				 &att->default_value.value);
+	      error = db_unix_timestamp (&parser->sys_datetime,
+					 &att->default_value.value);
 	      break;
 	    case DB_DEFAULT_USER:
 	    case DB_DEFAULT_CURR_USER:
-	      DB_MAKE_STRING (&att->default_value.value, db_get_user_name ());
+	      error = DB_MAKE_STRING (&att->default_value.value,
+				      db_get_user_name ());
 	      break;
 
 	    default:
 	      break;
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (TP_DOMAIN_TYPE (att->domain) !=
+	      DB_VALUE_TYPE (&att->default_value.value))
+	    {
+	      /* make sure the default value can be used for this attribute */
+	      TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+	      status =
+		tp_value_cast (&att->default_value.value,
+			       &att->default_value.value, att->domain, false);
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
+			  2,
+			  pr_type_name (DB_VALUE_TYPE
+					(&att->default_value.value)),
+			  pr_type_name (TP_DOMAIN_TYPE (att->domain)));
+		  return ER_FAILED;
+		}
 	    }
 	}
     }
