@@ -48,6 +48,9 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+/* the multipler of long NUMERIC, internal used */
+#define DB_LONG_NUMERIC_MULTIPLER 2
+
 #define CARRYOVER(arg)		((arg) >> 8)
 #define GET_LOWER_BYTE(arg)	((arg) & 0xff)
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
@@ -103,7 +106,10 @@ FP_VALUE_TYPE;
 
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
+static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source,
+			       bool is_long_num);
 static void numeric_increase (DB_C_NUMERIC answer);
+static void numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num);
 static void numeric_decrease (DB_C_NUMERIC answer);
 static void numeric_zero (DB_C_NUMERIC answer, int size);
 static void numeric_zero_dec_str (DEC_STRING * answer);
@@ -121,9 +127,11 @@ static void numeric_init_pow_of_10 (void);
 static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
 static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
 				      int numbits,
-				      DB_C_NUMERIC lsb, DB_C_NUMERIC msb);
+				      DB_C_NUMERIC lsb, DB_C_NUMERIC msb,
+				      bool is_long_num);
 static int numeric_compare_pos (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
 static void numeric_negate (DB_C_NUMERIC answer);
+static void numeric_negate_long (DB_C_NUMERIC answer, bool is_long_num);
 static void numeric_shift_byte (DB_C_NUMERIC arg,
 				int numbytes, DB_C_NUMERIC answer,
 				int length);
@@ -140,22 +148,22 @@ static void numeric_mul (DB_C_NUMERIC a1,
 			 DB_C_NUMERIC a2,
 			 bool * positive_flag, DB_C_NUMERIC answer);
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2,
-			      DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
+			      DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
+			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
 			 DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
 static int numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
-static int numeric_scale_by_ten (DB_C_NUMERIC arg);
+static int numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num);
 static int numeric_scale_dec (DB_C_NUMERIC arg,
 			      int dscale, DB_C_NUMERIC answer);
-static int numeric_common_prec_scale (DB_VALUE * dbv1,
-				      DB_VALUE * dbv2,
+static int numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale,
+				   bool is_long_num);
+static int numeric_common_prec_scale (DB_VALUE * dbv1, DB_VALUE * dbv2,
 				      DB_VALUE * dbv1_common,
 				      DB_VALUE * dbv2_common);
-static int
-numeric_prec_scale_when_overflow (DB_VALUE * dbv1,
-				  DB_VALUE * dbv2,
-				  DB_VALUE * dbv1_common,
-				  DB_VALUE * dbv2_common);
+static int numeric_prec_scale_when_overflow (DB_VALUE * dbv1, DB_VALUE * dbv2,
+					     DB_VALUE * dbv1_common,
+					     DB_VALUE * dbv2_common);
 static void numeric_coerce_big_num_to_dec_str (unsigned char *num,
 					       char *dec_str);
 static int numeric_get_msb_for_dec (int src_prec, int src_scale,
@@ -178,6 +186,11 @@ static void numeric_get_fractional_part (const DB_C_NUMERIC num,
 					 DB_C_NUMERIC dest);
 static bool numeric_is_fraction_part_zero (const DB_C_NUMERIC num,
 					   const int scale);
+static bool numeric_is_longnum_value (DB_C_NUMERIC arg);
+static int numeric_longnum_to_shortnum (DB_C_NUMERIC answer,
+					DB_C_NUMERIC long_arg);
+static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer,
+					 DB_C_NUMERIC arg);
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -199,8 +212,30 @@ numeric_is_negative (DB_C_NUMERIC arg)
 static void
 numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source)
 {
+  numeric_copy_long (dest, source, false);
+}
+
+/*
+ * numeric_copy_long () -
+ *   return:
+ *   dest(out)  : DB_C_NUMERIC value
+ *   source(in) : DB_C_NUMERIC value
+ *   is_long_num(in): is long NUMERIC
+ * Note: This routine returns source copied into dest.
+ */
+static void
+numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num)
+{
+  int num_cnt = 1;
+
   if (dest != source)
-    memcpy (dest, source, DB_NUMERIC_BUF_SIZE);	/* sizeof(source[0]) == 1 */
+    {
+      if (is_long_num)
+	{
+	  num_cnt = DB_LONG_NUMERIC_MULTIPLER;
+	}
+      memcpy (dest, source, DB_NUMERIC_BUF_SIZE * num_cnt);
+    }
 }
 
 /*
@@ -213,11 +248,33 @@ numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source)
 static void
 numeric_increase (DB_C_NUMERIC answer)
 {
+  numeric_increase_long (answer, false);
+}
+
+/*
+ * numeric_increase_long () -
+ *   return:
+ *   answer(in/out) : DB_C_NUMERIC value
+ *   is_long_num(in): is long NUMERIC
+ *
+ * Note: This routine increments a numeric value.
+ */
+static void
+numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num)
+{
   int carry = 1;
   int digit;
 
+  if (is_long_num)
+    {
+      digit = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER - 1;
+    }
+  else
+    {
+      digit = DB_NUMERIC_BUF_SIZE - 1;
+    }
   /*  Loop through answer as long as there is a carry  */
-  for (digit = DB_NUMERIC_BUF_SIZE - 1; digit >= 0 && carry == 1; digit--)
+  for (; digit >= 0 && carry == 1; digit--)
     {
       answer[digit] += 1;
       carry = (answer[digit] == 0) ? 1 : 0;
@@ -257,6 +314,20 @@ static void
 numeric_zero (DB_C_NUMERIC answer, int size)
 {
   memset (answer, 0, size);	/* sizeof(answer[0]) == 1 */
+}
+
+/*
+ * numeric_negative_one () -
+ *   return:
+ *   answer(in) : DB_C_NUMERIC value
+ *   size(in)   :
+ *
+ * Note: This routine make a numeric value as -1
+ */
+static void
+numeric_negative_one (DB_C_NUMERIC answer, int size)
+{
+  memset (answer, 0xff, size);
 }
 
 /*
@@ -437,20 +508,34 @@ numeric_init_power_value_string (void)
  *   numbits(in): integer number of bits to shift
  *   lsb(out)   : DB_C_NUMERIC
  *   msb(out)   : DB_C_NUMERIC
+ *   is_long_num(in) : is long NUMERIC.
  *
  * Note: This routine returns lsb, msb shifted by numbits from arg1, arg2.
  *       Bits that are shifted out of arg1 are placed into LSB of arg2.
+ *       only arg1 and lsb may be long NUMERIC.
  */
 static void
 numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
-			  int numbits, DB_C_NUMERIC lsb, DB_C_NUMERIC msb)
+			  int numbits, DB_C_NUMERIC lsb, DB_C_NUMERIC msb,
+			  bool is_long_num)
 {
-  unsigned char local_arg1[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
+  /* the largest buf size of DB_C_NUMERIC */
+  unsigned char local_arg1[DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER];
   unsigned char local_arg2[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   unsigned int digit;
+  unsigned int buf_size;
+
+  if (is_long_num)
+    {
+      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+    }
+  else
+    {
+      buf_size = DB_NUMERIC_BUF_SIZE;
+    }
 
   /*  Copy args into local variables */
-  numeric_copy (local_arg1, arg1);
+  numeric_copy_long (local_arg1, arg1, is_long_num);
   numeric_copy (local_arg2, arg2);
 
   /*  Loop through all but last word of msb shifting bits  */
@@ -466,15 +551,14 @@ numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
     (local_arg1[0] >> (8 - numbits));
 
   /*  Loop through all but last word of lsb shifting bits  */
-  for (digit = 0; digit < DB_NUMERIC_BUF_SIZE - 1; digit++)
+  for (digit = 0; digit < buf_size - 1; digit++)
     {
       lsb[digit] = (local_arg1[digit] << numbits) |
 	(local_arg1[digit + 1] >> (8 - numbits));
     }
 
   /*  Do last word of lsb separately.  */
-  lsb[DB_NUMERIC_BUF_SIZE - 1] =
-    local_arg1[DB_NUMERIC_BUF_SIZE - 1] << numbits;
+  lsb[buf_size - 1] = local_arg1[buf_size - 1] << numbits;
 }
 
 /*
@@ -518,16 +602,41 @@ numeric_compare_pos (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2)
 static void
 numeric_negate (DB_C_NUMERIC answer)
 {
+  numeric_negate_long (answer, false);
+}
+
+/*
+ * numeric_negate_long () -
+ *   return:
+ *   answer(in/out) : DB_C_NUMERIC
+ *   is_long_num(in): is long NUMERIC
+ *
+ * Note: This routine returns the negative (2's complement) of arg in answer.
+ *       The argument answer is modified in place.
+ */
+static void
+numeric_negate_long (DB_C_NUMERIC answer, bool is_long_num)
+{
   unsigned int digit;
+  unsigned int buf_size;
+
+  if (is_long_num)
+    {
+      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+    }
+  else
+    {
+      buf_size = DB_NUMERIC_BUF_SIZE;
+    }
 
   /*  Complement all bits of answer  */
-  for (digit = 0; digit < DB_NUMERIC_BUF_SIZE; digit++)
+  for (digit = 0; digit < buf_size; digit++)
     {
       answer[digit] = ~(answer[digit]);
     }
 
   /*  Add one to answer  */
-  numeric_increase (answer);
+  numeric_increase_long (answer, is_long_num);
 }
 
 /*
@@ -843,30 +952,47 @@ numeric_mul (DB_C_NUMERIC a1,
  *   a2(in)     : DB_C_NUMERIC             (denominator)
  *   answer(in) : DB_C_NUMERIC
  *   remainder(in)      : DB_C_NUMERIC
+ *   is_long_num(in)    : is a1 and answer is long NUMERIC
  *
  * Note: This routine divides two numeric values and returns the
  *       result and remainder.  This algorithm is based on the algorithm in
  *       "<Mark's Book>".
+ *       Only a1(the dividend) and answer(the quotient) can be long numeric.
  */
 static void
 numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2,
-		  DB_C_NUMERIC answer, DB_C_NUMERIC remainder)
+		  DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
+		  bool is_long_num)
 {
-  unsigned int nbit;
-  unsigned char arg1[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
+  unsigned int nbit, total_bit;
+  unsigned int buf_size;
+  /* the largest buf size for DB_C_NUMERIC */
+  unsigned char arg1[DB_LONG_NUMERIC_MULTIPLER * DB_NUMERIC_BUF_SIZE];
   unsigned char arg2[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   unsigned char neg_arg2[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int neg_sign = 0;
   int neg_remainder = false;
 
+  /* calculate basic variables */
+  if (is_long_num)
+    {
+      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+    }
+  else
+    {
+      buf_size = DB_NUMERIC_BUF_SIZE;
+    }
+
+  total_bit = buf_size * 8;
+
   /*  Copy inputs to local variables */
-  numeric_copy (arg1, a1);
+  numeric_copy_long (arg1, a1, is_long_num);
   numeric_copy (arg2, a2);
 
   /*  If arg1 is negative, toggle sign and make arg1 positive  */
   if (numeric_is_negative (arg1))
     {
-      numeric_negate (arg1);
+      numeric_negate_long (arg1, is_long_num);
       neg_sign = ~neg_sign;
       neg_remainder = true;
     }
@@ -880,7 +1006,7 @@ numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2,
 
   /*  Initialize variables   */
   numeric_coerce_int_to_num (0, remainder);
-  numeric_copy (answer, arg1);
+  numeric_copy_long (answer, arg1, is_long_num);
   numeric_copy (neg_arg2, arg2);
   numeric_negate (neg_arg2);
 
@@ -889,23 +1015,24 @@ numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2,
     /*****  NEEDS TO BE UPGRADED TO SHIFT SO THAT FIRST NON-ZERO BIT OF *****/
     /*****  REMAINDER IS AT LEAST EQUAL TO FIRST NON_ZERO BIT OF ARG2.  *****/
     /*****  DON'T DO THIS ONE BIT AT A TIME.                            *****/
-  for (nbit = 0; nbit < DB_NUMERIC_BUF_SIZE * 8; nbit++)
+  for (nbit = 0; nbit < total_bit; nbit++)
     {
-      numeric_double_shift_bit (answer, remainder, 1, answer, remainder);
+      numeric_double_shift_bit (answer, remainder, 1, answer, remainder,
+				is_long_num);
 
       /* If remainder >= arg2, subtract arg2 from remainder and increment
        * the answer.  */
       if (numeric_compare_pos (remainder, arg2) >= 0)
 	{
 	  numeric_add (remainder, neg_arg2, remainder, DB_NUMERIC_BUF_SIZE);
-	  answer[DB_NUMERIC_BUF_SIZE - 1] += 1;
+	  answer[buf_size - 1] += 1;
 	}
     }
 
   /*  If the sign is negative,  negate the answer  */
   if (neg_sign)
     {
-      numeric_negate (answer);
+      numeric_negate_long (answer, is_long_num);
     }
 
   /*  If the remainder is negative, negate it */
@@ -975,8 +1102,113 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
   /* Default case: perform long division  */
   else
     {
-      numeric_long_div (arg1, arg2, answer, remainder);
+      numeric_long_div (arg1, arg2, answer, remainder, false);
     }
+}
+
+/*
+ * numeric_is_longnum_value ()
+ *   return:
+ *   arg(in)   : DB_C_NUMERIC
+ *
+ * Note: This routine check whether the value numeric is long NUMERIC.
+ *       Attention: the arg should be long NUMERIC.
+ */
+static bool
+numeric_is_longnum_value (DB_C_NUMERIC arg)
+{
+  int total_nums = (DB_LONG_NUMERIC_MULTIPLER - 1) * DB_NUMERIC_BUF_SIZE;
+  int i;
+
+  if (numeric_is_negative (arg))
+    {
+      for (i = 0; i < total_nums; i++)
+	{
+	  if (arg[i] != 0xff)
+	    {
+	      return true;
+	    }
+	}
+
+      if (!(arg[i] & 0x80))
+	{
+	  return true;
+	}
+
+    }
+  else
+    {
+      for (i = 0; i < total_nums; i++)
+	{
+	  if (arg[i] != 0)
+	    {
+	      return true;
+	    }
+	}
+
+      if (arg[i] & 0x80)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * numeric_shortnum_to_longnum ()
+ *   return:
+ *   long_answer(out): the long NUMERIC
+ *   arg(in)         : DB_C_NUMERIC
+ *
+ * Note: This routine translate a normal NUMERIC to long NUMERIC.
+ *       Attention: the long_answer should be long NUMERIC.
+ */
+static void
+numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC arg)
+{
+  bool is_negative;
+  int i;
+
+  is_negative = numeric_is_negative (arg);
+  for (i = 0; i < DB_LONG_NUMERIC_MULTIPLER - 1; i++)
+    {
+      if (is_negative)
+	{
+	  numeric_negative_one (long_answer + i * DB_NUMERIC_BUF_SIZE,
+				DB_NUMERIC_BUF_SIZE);
+	}
+      else
+	{
+	  numeric_zero (long_answer + i * DB_NUMERIC_BUF_SIZE,
+			DB_NUMERIC_BUF_SIZE);
+	}
+    }
+  numeric_copy (long_answer + i * DB_NUMERIC_BUF_SIZE, arg);
+}
+
+
+/*
+ * numeric_longnum_to_shortnum ()
+ *   return:
+ *  answer(out): DB_C_NUMERIC
+ *   arg(in)   : long NUMERIC
+ *
+ * Note: This routine translate a long NUMERIC to normal NUMERIC.
+ *       Attention: the long_answer should be long NUMERIC.
+ */
+static int
+numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_arg)
+{
+  if (numeric_is_longnum_value (long_arg))
+    {
+      return ER_NUM_OVERFLOW;
+    }
+
+  numeric_copy (answer,
+		long_arg + (DB_LONG_NUMERIC_MULTIPLER -
+			    1) * DB_NUMERIC_BUF_SIZE);
+  return NO_ERROR;
 }
 
 /*
@@ -1030,11 +1262,12 @@ numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2)
  * numeric_scale_by_ten () -
  *   return: NO_ERROR, or ER_code (ER_NUM_OVERFLOW)
  *   arg(in/out)    : ptr to a DB_NUMERIC structure
+ *   is_long_num(in): is long NUMERIC
  *
  * Note: This routine scales arg by a factor of ten.
  */
 static int
-numeric_scale_by_ten (DB_C_NUMERIC arg)
+numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num)
 {
   int i, answer;
   bool negative = false;
@@ -1043,10 +1276,17 @@ numeric_scale_by_ten (DB_C_NUMERIC arg)
   if (numeric_is_negative (arg))
     {
       negative = true;
-      numeric_negate (arg);
+      numeric_negate_long (arg, is_long_num);
     }
 
-  i = DB_NUMERIC_BUF_SIZE;
+  if (is_long_num)
+    {
+      i = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+    }
+  else
+    {
+      i = DB_NUMERIC_BUF_SIZE;
+    }
   while (i--)
     {
       answer = (10 * arg[i]) + CARRYOVER (answer);
@@ -1060,7 +1300,7 @@ numeric_scale_by_ten (DB_C_NUMERIC arg)
 
   if (negative)
     {
-      numeric_negate (arg);
+      numeric_negate_long (arg, is_long_num);
     }
 
   return NO_ERROR;
@@ -1079,15 +1319,38 @@ numeric_scale_by_ten (DB_C_NUMERIC arg)
 static int
 numeric_scale_dec (DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer)
 {
-  int loop;
   int ret = NO_ERROR;
 
   if (dscale >= 0)
     {
       numeric_copy (answer, arg);
+      ret = numeric_scale_dec_long (answer, dscale, false);
+    }
+
+  return ret;
+}
+
+/*
+ * numeric_scale_dec_long () -
+ *   return: NO_ERROR, or ER_code
+ *   answer(in/out) : ptr to a DB_C_NUMERIC structure
+ *   dscale(in) : integer scaling factor (positive)
+ *   is_long_num: is long NUMERIC
+ *
+ * Note: This routine returns a numeric value that has been scaled by the
+ *       given number of decimal places.  The result is returned in answer.
+ */
+static int
+numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num)
+{
+  int loop;
+  int ret = NO_ERROR;
+
+  if (dscale >= 0)
+    {
       for (loop = 0; loop < dscale && ret == NO_ERROR; loop++)
 	{
-	  ret = numeric_scale_by_ten (answer);
+	  ret = numeric_scale_by_ten (answer, is_long_num);
 	}
       if (ret != NO_ERROR)
 	{
@@ -1645,6 +1908,10 @@ numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int prec;
   int max_scale, scale1, scale2;
+  unsigned char long_dbv1_copy[DB_LONG_NUMERIC_MULTIPLER *
+			       DB_NUMERIC_BUF_SIZE];
+  unsigned char long_temp_quo[DB_LONG_NUMERIC_MULTIPLER *
+			      DB_NUMERIC_BUF_SIZE];
   unsigned char dbv1_copy[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_quo[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_rem[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
@@ -1679,23 +1946,18 @@ numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
    * find the maximum scale of the two args and make sure that the scale
    * of dbv1 exceeds the scale of dbv2 by that amount.
    */
-  numeric_copy (dbv1_copy, db_locate_numeric (dbv1));
+  numeric_shortnum_to_longnum (long_dbv1_copy, db_locate_numeric (dbv1));
   scale1 = DB_VALUE_SCALE (dbv1);
   scale2 = DB_VALUE_SCALE (dbv2);
   max_scale = MAX (scale1, scale2);
   if (scale2 > 0)
     {
       scaleup = (max_scale + scale2) - scale1;
-      ret = numeric_scale_dec (dbv1_copy, scaleup, dbv1_copy);
+      ret = numeric_scale_dec_long (long_dbv1_copy, scaleup, true);
       if (ret != NO_ERROR)
 	{			/* overflow */
 	  goto exit_on_error;
 	}
-    }
-
-  if (PRM_COMPAT_NUMERIC_DIVISION_SCALE)
-    {
-      numeric_div (dbv1_copy, db_locate_numeric (dbv2), temp_quo, temp_rem);
     }
 
   /*
@@ -1709,31 +1971,44 @@ numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
       prec = DB_MAX_NUMERIC_PRECISION;
     }
 
-  if (!PRM_COMPAT_NUMERIC_DIVISION_SCALE)
+  if (!PRM_COMPAT_NUMERIC_DIVISION_SCALE
+      && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
     {
-      if (scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
+      int new_scale, new_prec;
+      int scale_delta;
+      scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
+      new_scale = scale + scale_delta;
+      new_prec = prec + scale_delta;
+      if (new_prec > DB_MAX_NUMERIC_PRECISION)
 	{
-	  int new_scale, new_prec;
-	  int scale_delta;
-	  scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
-	  new_scale = scale + scale_delta;
-	  new_prec = prec + scale_delta;
-	  if (new_prec > DB_MAX_NUMERIC_PRECISION)
-	    {
-	      new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
-	      new_prec = DB_MAX_NUMERIC_PRECISION;
-	    }
-
-	  ret = numeric_scale_dec (dbv1_copy, new_scale - scale, dbv1_copy);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  scale = new_scale;
-	  prec = new_prec;
+	  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
+	  new_prec = DB_MAX_NUMERIC_PRECISION;
 	}
 
+      ret = numeric_scale_dec_long (long_dbv1_copy, new_scale - scale, true);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      scale = new_scale;
+      prec = new_prec;
+    }
+
+  if (numeric_is_longnum_value (long_dbv1_copy))
+    {
+      /* only the dividend and quotient maybe long numeric, divisor must be numeric */
+      numeric_long_div (long_dbv1_copy, db_locate_numeric (dbv2),
+			long_temp_quo, temp_rem, true);
+      ret = numeric_longnum_to_shortnum (temp_quo, long_temp_quo);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      numeric_longnum_to_shortnum (dbv1_copy, long_dbv1_copy);
       numeric_div (dbv1_copy, db_locate_numeric (dbv2), temp_quo, temp_rem);
     }
 
