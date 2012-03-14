@@ -11829,11 +11829,9 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	}
     }
 
-  if (is_srv_update_needed)
+  if (is_srv_update_needed ||
+      is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_PREC_INCR))
     {
-      assert (att_id >= 0);
-      assert (!OID_ISNULL (&class_oid));
-
       error = do_drop_att_constraints (class_mop, attr_chg_prop.constr_info);
       if (error != NO_ERROR)
 	{
@@ -11841,29 +11839,35 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	}
 
       /* perform UPDATE or each row */
-      if (has_partitions)
+      if (is_srv_update_needed)
 	{
-	  assert (user_count > 0);
-	  assert (usr_oid_array != NULL);
+	  assert (att_id >= 0);
+	  assert (!OID_ISNULL (&class_oid));
 
-	  for (i = 0; i < user_count; i++)
+	  if (has_partitions)
 	    {
-	      error = do_run_upgrade_instances_domain (parser,
-						       &(usr_oid_array[i]),
+	      assert (user_count > 0);
+	      assert (usr_oid_array != NULL);
+
+	      for (i = 0; i < user_count; i++)
+		{
+		  error = do_run_upgrade_instances_domain (parser,
+							   &(usr_oid_array
+							     [i]), att_id);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+	    }
+	  else
+	    {
+	      error = do_run_upgrade_instances_domain (parser, &class_oid,
 						       att_id);
 	      if (error != NO_ERROR)
 		{
 		  goto exit;
 		}
-	    }
-	}
-      else
-	{
-	  error =
-	    do_run_upgrade_instances_domain (parser, &class_oid, att_id);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit;
 	    }
 	}
 
@@ -12704,9 +12708,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
       /* remove "UNCHANGED" flag */
       attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_UNCHANGED;
 
-      if ((TP_DOMAIN_TYPE (attr_db_domain) == TP_DOMAIN_TYPE (att->domain)) &&
-	  (TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain))
-	   && TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (att->domain))))
+      if (TP_DOMAIN_TYPE (attr_db_domain) == TP_DOMAIN_TYPE (att->domain)
+	  && TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain)))
 	{
 	  if (tp_domain_match (attr_db_domain, att->domain, TP_STR_MATCH) !=
 	      0)
@@ -12737,6 +12740,19 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		}
 	    }
 	}
+      else if (TP_DOMAIN_TYPE (attr_db_domain) == TP_DOMAIN_TYPE (att->domain)
+	       && TP_DOMAIN_TYPE (attr_db_domain) == DB_TYPE_NUMERIC)
+	{
+	  if (attr_db_domain->scale == att->domain->scale
+	      && attr_db_domain->precision > att->domain->precision)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PREC_INCR;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	}
       else if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (attr_db_domain))
 	       && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
 	{
@@ -12753,9 +12769,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
       else
 	{
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_DIFF;
-	  error =
-	    build_att_type_change_map (att->domain, attr_db_domain,
-				       attr_chg_properties);
+	  error = build_att_type_change_map (att->domain, attr_db_domain,
+					     attr_chg_properties);
 	  if (error != NO_ERROR)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
@@ -13041,16 +13056,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	  if (req_prec >= cur_prec + 2)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	    }
-	  break;
-	case DB_TYPE_NUMERIC:
-	  if ((req_scale == cur_scale) && (req_prec >= cur_prec))
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PREC_INCR;
 	    }
 	  else
 	    {
