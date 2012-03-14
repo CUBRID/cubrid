@@ -49,7 +49,7 @@
 #include "dbval.h"
 
 /* the multipler of long NUMERIC, internal used */
-#define DB_LONG_NUMERIC_MULTIPLER 2
+#define DB_LONG_NUMERIC_MULTIPLIER 2
 
 #define CARRYOVER(arg)		((arg) >> 8)
 #define GET_LOWER_BYTE(arg)	((arg) & 0xff)
@@ -232,7 +232,7 @@ numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num)
     {
       if (is_long_num)
 	{
-	  num_cnt = DB_LONG_NUMERIC_MULTIPLER;
+	  num_cnt = DB_LONG_NUMERIC_MULTIPLIER;
 	}
       memcpy (dest, source, DB_NUMERIC_BUF_SIZE * num_cnt);
     }
@@ -267,7 +267,7 @@ numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num)
 
   if (is_long_num)
     {
-      digit = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER - 1;
+      digit = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER - 1;
     }
   else
     {
@@ -520,14 +520,14 @@ numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
 			  bool is_long_num)
 {
   /* the largest buf size of DB_C_NUMERIC */
-  unsigned char local_arg1[DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER];
+  unsigned char local_arg1[DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER];
   unsigned char local_arg2[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   unsigned int digit;
   unsigned int buf_size;
 
   if (is_long_num)
     {
-      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER;
     }
   else
     {
@@ -622,7 +622,7 @@ numeric_negate_long (DB_C_NUMERIC answer, bool is_long_num)
 
   if (is_long_num)
     {
-      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER;
     }
   else
     {
@@ -967,7 +967,7 @@ numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2,
   unsigned int nbit, total_bit;
   unsigned int buf_size;
   /* the largest buf size for DB_C_NUMERIC */
-  unsigned char arg1[DB_LONG_NUMERIC_MULTIPLER * DB_NUMERIC_BUF_SIZE];
+  unsigned char arg1[DB_LONG_NUMERIC_MULTIPLIER * DB_NUMERIC_BUF_SIZE];
   unsigned char arg2[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   unsigned char neg_arg2[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int neg_sign = 0;
@@ -976,7 +976,7 @@ numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2,
   /* calculate basic variables */
   if (is_long_num)
     {
-      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+      buf_size = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER;
     }
   else
     {
@@ -1117,7 +1117,7 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
 static bool
 numeric_is_longnum_value (DB_C_NUMERIC arg)
 {
-  int total_nums = (DB_LONG_NUMERIC_MULTIPLER - 1) * DB_NUMERIC_BUF_SIZE;
+  int total_nums = (DB_LONG_NUMERIC_MULTIPLIER - 1) * DB_NUMERIC_BUF_SIZE;
   int i;
 
   if (numeric_is_negative (arg))
@@ -1171,7 +1171,7 @@ numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC arg)
   int i;
 
   is_negative = numeric_is_negative (arg);
-  for (i = 0; i < DB_LONG_NUMERIC_MULTIPLER - 1; i++)
+  for (i = 0; i < DB_LONG_NUMERIC_MULTIPLIER - 1; i++)
     {
       if (is_negative)
 	{
@@ -1206,7 +1206,7 @@ numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_arg)
     }
 
   numeric_copy (answer,
-		long_arg + (DB_LONG_NUMERIC_MULTIPLER -
+		long_arg + (DB_LONG_NUMERIC_MULTIPLIER -
 			    1) * DB_NUMERIC_BUF_SIZE);
   return NO_ERROR;
 }
@@ -1281,7 +1281,7 @@ numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num)
 
   if (is_long_num)
     {
-      i = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLER;
+      i = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER;
     }
   else
     {
@@ -1908,9 +1908,9 @@ numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int prec;
   int max_scale, scale1, scale2;
-  unsigned char long_dbv1_copy[DB_LONG_NUMERIC_MULTIPLER *
+  unsigned char long_dbv1_copy[DB_LONG_NUMERIC_MULTIPLIER *
 			       DB_NUMERIC_BUF_SIZE];
-  unsigned char long_temp_quo[DB_LONG_NUMERIC_MULTIPLER *
+  unsigned char long_temp_quo[DB_LONG_NUMERIC_MULTIPLIER *
 			      DB_NUMERIC_BUF_SIZE];
   unsigned char dbv1_copy[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_quo[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
