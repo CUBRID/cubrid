@@ -2476,8 +2476,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else
 	{
-	  if (!qdata_copy_db_value (arithptr->value, peek_left))
+	  if (tp_value_coerce (peek_left, arithptr->value, regu_var->domain)
+	      != DOMAIN_COMPATIBLE)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
+		      pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
 	      goto error;
 	    }
 	}
@@ -2497,15 +2501,25 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else if (DB_IS_NULL (peek_left))
 	    {
-	      if (!qdata_copy_db_value (arithptr->value, peek_right))
+	      if (tp_value_coerce
+		  (peek_right, arithptr->value,
+		   regu_var->domain) != DOMAIN_COMPATIBLE)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
+			  2, pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
+			  pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
 		  goto error;
 		}
 	    }
 	  else if (DB_IS_NULL (peek_right))
 	    {
-	      if (!qdata_copy_db_value (arithptr->value, peek_left))
+	      if (tp_value_coerce
+		  (peek_left, arithptr->value,
+		   regu_var->domain) != DOMAIN_COMPATIBLE)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
+			  2, pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
+			  pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
 		  goto error;
 		}
 	    }
@@ -2533,8 +2547,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else
 	    {
-	      if (!qdata_copy_db_value (arithptr->value, peek_left))
+	      if (tp_value_coerce
+		  (peek_left, arithptr->value,
+		   regu_var->domain) != DOMAIN_COMPATIBLE)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
+			  2, pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
+			  pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
 		  goto error;
 		}
 	    }
