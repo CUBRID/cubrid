@@ -913,6 +913,9 @@ mht_create (const char *name, int est_size,
   ht = (MHT_TABLE *) malloc (DB_SIZEOF (MHT_TABLE));
   if (ht == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (MHT_TABLE));
+
       return NULL;
     }
 
@@ -921,6 +924,9 @@ mht_create (const char *name, int est_size,
 				      MAX (2, ht_estsize / 2 + 1));
   if (ht->heap_id == 0)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (HENTRY));
+
       free_and_init (ht);
       return NULL;
     }
@@ -930,6 +936,9 @@ mht_create (const char *name, int est_size,
   hvector = (HENTRY_PTR *) malloc (size);
   if (hvector == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+
       db_destroy_fixed_heap (ht->heap_id);
       free_and_init (ht);
       return NULL;

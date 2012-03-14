@@ -177,8 +177,4 @@ extern PGSLOTID spage_find_free_slot (PAGE_PTR page_p,
 				      SPAGE_SLOT ** out_slot_p,
 				      PGSLOTID start_id);
 
-extern int spage_find_empty_slot_at (THREAD_ENTRY * thread_p,
-				     PAGE_PTR pgptr, PGSLOTID slotid,
-				     int length, INT16 type,
-				     SPAGE_SLOT ** sptr, int *space);
 #endif /* _SLOTTED_PAGE_H_ */

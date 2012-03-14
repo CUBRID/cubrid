@@ -1611,7 +1611,7 @@ net_server_start (const char *server_name)
       printf ("Failed to intialize critical section\n");
       return -1;
     }
-  if (er_init (NULL, 0) != NO_ERROR)
+  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
     {
       printf ("Failed to initialize error manager\n");
       return -1;

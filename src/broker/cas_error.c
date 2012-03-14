@@ -96,9 +96,9 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
 
   switch (err_info.err_number)
     {
-    case -111:			/* ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED */
-    case -199:			/* ER_NET_SERVER_CRASHED */
-    case -224:			/* ER_OBJ_NO_CONNECT */
+    case ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED:
+    case ER_NET_SERVER_CRASHED:
+    case ER_OBJ_NO_CONNECT:
       /*case -581: *//* ER_DB_NO_MODIFICATIONS */
 #ifndef LIBCAS_FOR_JSP
       as_info->reset_flag = TRUE;
