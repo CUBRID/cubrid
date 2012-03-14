@@ -653,7 +653,7 @@ $ LOADDB
 585 알 수 없는 heap %1$s|%2$d|%3$d
 586 내부 에러: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
 587 "%1$s" volinfo 파일의 영구 볼륨 엔트리들이 정렬되어 있지 않습니다. 엔트리 %2$d: %3$d %4$s이(가) 순서를 벗어 났습니다.
-588 내부 에러: Failed optimizer assertion. Optimization aborted.
+588 내부 에러: Assertion '%1$s' failed.
 589 사용자 이름 "%1$s"이(가) 잘못되었습니다.
 590 클래스의 애트리뷰트 도메인 "%1$s"은(는) 가상 클래스 또는 프락시 가상 클래스일 수 없습니다. 
 591 프락시 가상 클래스의 애트리뷰트 도메인 "%1$s"은(는) 반드시 프락시 가상 클래스이어야 합니다.

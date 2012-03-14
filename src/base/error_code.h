@@ -687,7 +687,7 @@
 
 #define ER_BO_UNSORTED_VOLINFO                      -587
 
-#define ER_QO_FAILED_ASSERTION			    -588
+#define ER_FAILED_ASSERTION			    -588
 
 #define ER_AU_INVALID_USER_NAME			    -589
 

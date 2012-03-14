@@ -369,7 +369,7 @@ make_mergelist_proc (QO_ENV * env,
       if (left_order == NULL)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_QO_FAILED_ASSERTION, 0);
+		  ER_FAILED_ASSERTION, 1, "left_order != NULL");
 	  goto exit_on_error;
 	}
       left_order->s_order = S_ASC;
@@ -380,7 +380,7 @@ make_mergelist_proc (QO_ENV * env,
       if (rght_order == NULL)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_QO_FAILED_ASSERTION, 0);
+		  ER_FAILED_ASSERTION, 1, "rght_order != NULL");
 	  goto exit_on_error;
 	}
 
@@ -1565,7 +1565,8 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
       || merge->proc.mergelist.inner_xasl == NULL
       || merge->proc.mergelist.ls_merge.ls_column_cnt <= 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
+	      "false");
       xasl = NULL;
     }
 
@@ -1578,7 +1579,7 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
 	      || merge->proc.mergelist.ls_merge.ls_inner_column[i] < 0)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_QO_FAILED_ASSERTION, 0);
+		      ER_FAILED_ASSERTION, 1, "false");
 	      xasl = NULL;
 	      break;
 	    }
@@ -2458,7 +2459,8 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
   if (xasl == NULL)
     {
       int level;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
+	      "xasl != NULL");
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       if (PLAN_DUMP_ENABLED (level))
 	{
@@ -2653,7 +2655,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 		  sizeof (termp->index_seg) / sizeof (termp->index_seg[0]))
 		{
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			  ER_QO_FAILED_ASSERTION, 0);
+			  ER_FAILED_ASSERTION, 1, "false");
 		  goto error;
 		}
 
@@ -2670,7 +2672,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       if (pos < 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_QO_FAILED_ASSERTION, 0);
+		  ER_FAILED_ASSERTION, 1, "pos >= 0");
 	  goto error;
 	}
 

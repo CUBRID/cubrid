@@ -653,7 +653,7 @@ $ LOADDB
 585 Unknown heap %1$s|%2$d|%3$d
 586 Internal Error: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
 587 Entries of permanent volumes are unsorted in your "%1$s" volinfo file. Entry %2$d: %3$d %4$s is out of sequence.
-588 INTERNAL ERROR: Failed optimizer assertion. Optimization aborted.
+588 INTERNAL ERROR: Assertion '%1$s' failed.
 589 Invalid user name "%1$s".
 590 The attribute domain "%1$s" of a class may not be a \nvirtual class or a proxy virtual class.
 591 The attribute domain "%1$s" of a proxy virtual class \nmust be a proxy virtual class.

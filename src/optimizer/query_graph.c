@@ -447,7 +447,8 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
       /*
        * No clue.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
+	      "false");
       break;
     }
 
@@ -2857,7 +2858,8 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 
   if (pt_expr == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
+	      "pt_expr != NULL");
       return;
     }
 
@@ -5783,7 +5785,7 @@ qo_malloc (QO_ENV * env, unsigned size, const char *file, int line)
 void
 qo_abort (QO_ENV * env, const char *file, int line)
 {
-  er_set (ER_WARNING_SEVERITY, file, line, ER_QO_FAILED_ASSERTION, 0);
+  er_set (ER_WARNING_SEVERITY, file, line, ER_FAILED_ASSERTION, 1, "false");
   longjmp (env->catch_, 2);
 }
 
