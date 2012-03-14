@@ -5703,6 +5703,7 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
     }
 
   new_query->info.query.q.select.from = spec;
+  new_query->info.query.is_subquery = query->info.query.is_subquery;
 
 
   temp = pt_get_select_list (parser, spec->info.spec.derived_table);
@@ -5711,7 +5712,17 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
   while (temp)
     {
       /* generate as_attr_list */
-      node = pt_name (parser, mq_generate_name (parser, "a", &i));
+      if (temp->node_type == PT_NAME && temp->info.name.original != NULL)
+	{
+	  /* we have the original name */
+	  node = pt_name (parser, temp->info.name.original);
+	}
+      else
+	{
+	  /* don't have name for attribute; generate new name */
+	  node = pt_name (parser, mq_generate_name (parser, "a", &i));
+	}
+
       if (node == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -6089,11 +6100,19 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		  || arg2->node_type == PT_DIFFERENCE
 		  || pt_has_aggregate (parser, arg2))
 		{
+		  PT_NODE *rewritten = NULL;
+
 		  /* if it is composite query, rewrite to simple query */
-		  arg2 = qo_rewrite_query_as_derived (parser, arg2);
-		  if (arg2 == NULL)
+		  rewritten = qo_rewrite_query_as_derived (parser, arg2);
+		  if (rewritten == NULL)
 		    {
 		      return NULL;
+		    }
+		  else
+		    {
+		      /* fix list */
+		      PT_NODE_MOVE_NUMBER_OUTERLINK (rewritten, arg2);
+		      arg2 = rewritten;
 		    }
 
 		  /* set as uncorrelated subquery */
@@ -6549,6 +6568,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      derived = qo_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
+		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
 		  assert (derived->info.query.q.select.where == NULL);
 		  derived->info.query.q.select.where = limit;
 
