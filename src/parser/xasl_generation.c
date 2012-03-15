@@ -15217,9 +15217,9 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
   /* add table info for each spec that has non_null attributes */
   for (node = spec; node; node = node->next)
     {
-      for (next = non_null_attrs; next; next = next->next)
+      for (next = pt_pred; next; next = next->next)
 	{
-	  if (next->info.pointer.node->info.name.spec_id ==
+	  if (next->info.expr.arg1->info.pointer.node->info.name.spec_id ==
 	      node->info.spec.id)
 	    {
 	      break;
