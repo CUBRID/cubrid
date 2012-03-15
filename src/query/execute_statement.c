@@ -112,8 +112,10 @@
 	((node)->info.serial.no_min )
 #define PT_NODE_SR_NO_CYCLIC(node)		\
 	((node)->info.serial.no_cyclic )
-#define PT_NODE_SR_CACHED_NUM_VAL(node)        \
-        ((node)->info.serial.cached_num_val)
+#define PT_NODE_SR_CACHED_NUM_VAL(node)		\
+	((node)->info.serial.cached_num_val)
+#define PT_NODE_SR_NO_CACHE(node)		\
+	((node)->info.serial.no_cache)
 
 /*
  * do_evaluate_default_expr() - evaluates the default expressions, if any, for
@@ -1660,7 +1662,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   int new_inc_val_flag = 0, new_cyclic;
   int cur_val_change, inc_val_change, max_val_change, min_val_change,
-    cyclic_change;
+    cyclic_change, cached_num_change;
 
   int error = NO_ERROR;
   int found = 0, r = 0, save;
@@ -2216,6 +2218,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
 
+      cached_num_change = 1;
       cached_num = cached_num_node->info.value.data_value.i;
 
       /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
@@ -2269,6 +2272,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       pr_clear_value (&result_val);
+    }
+  else
+    {
+      if (PT_NODE_SR_NO_CACHE (statement) == 1)
+	{
+	  cached_num_change = 1;
+	  cached_num = 0;
+	}
+      else
+	{
+	  cached_num_change = 0;
+	}
     }
 
   /* now update serial object in db_serial */
@@ -2337,13 +2352,16 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* cached num */
-  DB_MAKE_INT (&value, cached_num);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
-  if (error < 0)
+  if (cached_num_change)
     {
-      goto end;
+      DB_MAKE_INT (&value, cached_num);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
+      if (error < 0)
+	{
+	  goto end;
+	}
+      pr_clear_value (&value);
     }
-  pr_clear_value (&value);
 
   serial_object = dbt_finish_object (obj_tmpl);
 

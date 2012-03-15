@@ -2896,7 +2896,7 @@ alter_stmt
 
 			if (!start_val && !increment_val && !max_val && !min_val
 			    && cyclic == 0 && no_max == 0 && no_min == 0
-			    && no_cyclic == 0)
+			    && no_cyclic == 0 && !cached_num_val && no_cache == 0)
 			  {
 			    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);

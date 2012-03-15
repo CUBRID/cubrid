@@ -11699,7 +11699,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			if (!start_val && !increment_val && !max_val && !min_val
 			    && cyclic == 0 && no_max == 0 && no_min == 0
-			    && no_cyclic == 0)
+			    && no_cyclic == 0 && !cached_num_val && no_cache == 0)
 			  {
 			    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
@@ -14064,7 +14064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				PARSER_SAVE_ERR_CONTEXT (node, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yyloc).buffer_pos)
 
 				def = node->info.data_default.default_value;
-				
+
 				if (def && def->node_type == PT_EXPR)
 				  {
 				    switch (def->info.expr.op)
@@ -31800,7 +31800,7 @@ yyparse (void)
   /* User initialization code.  */
   #line 532 "../../src/parser/csql_grammar.y"
 {yybuffer_pos = 0;}
-/* Line 2309 of glr.c.  */
+/* Line 2317 of glr.c.  */
 #line 31805 "../../src/parser/csql_grammar.c"
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;
