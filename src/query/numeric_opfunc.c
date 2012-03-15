@@ -3364,6 +3364,25 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
 	}
     }
 
+  /* only when all number are 9, round up will led overflow. */
+  if (round_up)
+    {
+      bool is_all_nine = true;
+      for (len = strlen (num_string), i = len - dest_prec; i < len; i++)
+	{
+	  if (num_string[i] != '9')
+	    {
+	      is_all_nine = false;
+	      break;
+	    }
+	}
+      if (is_all_nine)
+	{
+	  ret = ER_NUM_OVERFLOW;
+	  goto exit_on_error;
+	}
+    }
+
   /* Convert scaled string into destination */
   numeric_coerce_dec_str_to_num (num_string, dest_num);
   /* Round up, if necessary */
