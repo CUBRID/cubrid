@@ -205,6 +205,7 @@ static int enumeration_size (const DB_ENUMERATION * enumeration);
 static void put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
 static int get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration,
 			    int expected);
+static int tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
@@ -2838,30 +2839,6 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
 
   /* property list */
   or_put_offset (buf, offset);
-  /* formerly offset += att_extension_size(att); */
-  if (att->default_value.default_expr != DB_DEFAULT_NONE)
-    {
-      DB_VALUE val;
-      db_make_int (&val, att->default_value.default_expr);
-      if (att->properties == NULL)
-	{
-	  att->properties = classobj_make_prop ();
-	}
-      classobj_put_prop (att->properties, "default_expr", &val);
-      pr_clear_value (&val);
-    }
-  else
-    {
-      if (att->properties != NULL)
-	{
-	  classobj_drop_prop (att->properties, "default_expr");
-	  if (set_size (att->properties) == 0)
-	    {
-	      set_free (att->properties);
-	      att->properties = NULL;
-	    }
-	}
-    }
   offset += property_list_size (att->properties);
 
   /* end of object */
@@ -3694,6 +3671,7 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
       if (start + offset != buf->ptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
+	  or_abort (buf);
 	}
     }
 }
@@ -4416,6 +4394,13 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       pr_clear_value (&partval);
     }
 
+  header = (SM_CLASS_HEADER *) classobj;
+  if (header->type != Meta_root)
+    {
+      /* put all default_expr values in attribute properties */
+      rc = tf_attribute_default_expr_to_property (class_->attributes);
+    }
+
   /*
    * test - this isn't necessary but we've been having a class size related
    * bug that I want to try to catch - take this out when we're sure
@@ -4429,13 +4414,17 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       expected_size = tf_class_size (classobj);
     }
 
-  rc = _setjmp (buf->env);
+  /* if anything failed this far, no need to save stack context, return code
+     will be handled in the switch below */
+  if (rc == NO_ERROR)
+    {
+      rc = _setjmp (buf->env);
+    }
+
   switch (rc)
     {
     case 0:
       status = TF_SUCCESS;
-
-      header = (SM_CLASS_HEADER *) classobj;
 
       /* representation id, offset size */
       repid = 0;
@@ -4463,6 +4452,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_SIZE_MISMATCH, 2,
 		  expected_size, record->length);
+	  or_abort (buf);
 	}
 
       /* fprintf(stdout, "Saved class in %d bytes\n", record->length); */
@@ -4573,6 +4563,62 @@ get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration, int expected)
     }
   return or_get_enumeration (buf, enumeration);
 }
+
+
+/*
+ * tf_attribute_default_expr_to_property - transfer default_expr flag to a
+ *                                         disk stored property
+ *  returns: error code or NO_ERROR
+ *  attr_list(in): attribute list to process
+ */
+static int
+tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
+{
+  SM_ATTRIBUTE *attr = NULL;
+  int errc = NO_ERROR;
+
+  if (attr_list == NULL)
+    {
+      /* nothing to do */
+      return NO_ERROR;
+    }
+
+  for (attr = attr_list; attr; attr = (SM_ATTRIBUTE *) attr->header.next)
+    {
+      if (attr->default_value.default_expr != DB_DEFAULT_NONE)
+	{
+	  /* attr has expression as default value */
+	  DB_VALUE default_expr;
+
+	  if (attr->properties == NULL)
+	    {
+	      /* allocate new property sequence */
+	      attr->properties = classobj_make_prop ();
+
+	      if (attr->properties == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  return er_errid ();
+		}
+	    }
+
+	  /* add default_expr property to sequence */
+	  db_make_int (&default_expr, attr->default_value.default_expr);
+	  classobj_put_prop (attr->properties, "default_expr", &default_expr);
+	  pr_clear_value (&default_expr);
+	}
+      else if (attr->properties != NULL)
+	{
+	  /* make sure property is unset for existing attributes */
+	  classobj_drop_prop (attr->properties, "default_expr");
+	}
+    }
+
+  /* all ok */
+  return NO_ERROR;
+}
+
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*

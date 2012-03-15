@@ -12193,6 +12193,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
     {
       pr_clear_value (&(found_att->default_value.value));
+      found_att->default_value.default_expr = DB_DEFAULT_NONE;
+
+      if (found_att->properties != NULL)
+	{
+	  classobj_drop_prop (found_att->properties, "default_expr");
+	}
     }
 
   /* add or drop NOT NULL constraint */
@@ -12358,7 +12364,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
   if (!DB_IS_NULL (&(att->default_value.original_value)) ||
-      !DB_IS_NULL (&(att->default_value.value)))
+      !DB_IS_NULL (&(att->default_value.value)) ||
+      att->default_value.default_expr != DB_DEFAULT_NONE)
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
