@@ -5011,34 +5011,44 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
       for (temp = root->info.query.q.select.list; temp != NULL;
 	   temp = temp->next)
 	{
-	  if (node->node_type == PT_NAME)
+	  if (node->node_type == temp->node_type)
 	    {
-	      if (pt_name_equal (parser, temp, node))
+	      if (node->node_type == PT_NAME)
 		{
-		  pos_p->pos_no = i;
-		}
-	    }
-	  else if (node->node_type == PT_EXPR || node->node_type == PT_DOT_)
-	    {
-	      if (pt_str_compare (node_str, parser_print_tree (parser, temp),
-				  CASE_INSENSITIVE) == 0)
-		{
-		  pos_p->pos_no = i;
-		}
-	    }
-	  else
-	    {			/* node type must be an integer */
-	      if (node->node_type == PT_VALUE && node->alias_print == NULL)
-		{
-		  assert (node->node_type == PT_VALUE
-			  && node->type_enum == PT_TYPE_INTEGER);
-		  if (node->info.value.data_value.i == i)
+		  if (pt_name_equal (parser, node, temp))
 		    {
 		      pos_p->pos_no = i;
+		    }
+		}
+	      else if (node->node_type == PT_EXPR
+		       || node->node_type == PT_DOT_)
+		{
+		  if (pt_str_compare
+		      (node_str, parser_print_tree (parser, temp),
+		       CASE_INSENSITIVE) == 0)
+		    {
+		      pos_p->pos_no = i;
+		    }
+		}
+	    }
 
-		      if (referred_node != NULL)
+	  if (pos_p->pos_no == -1)
+	    {			/* not found match */
+	      if (node->node_type == PT_VALUE && node->alias_print == NULL)
+		{
+		  assert_release (node->node_type == PT_VALUE
+				  && node->type_enum == PT_TYPE_INTEGER);
+		  if (node->node_type == PT_VALUE
+		      && node->type_enum == PT_TYPE_INTEGER)
+		    {
+		      if (node->info.value.data_value.i == i)
 			{
-			  *referred_node = temp;
+			  pos_p->pos_no = i;
+
+			  if (referred_node != NULL)
+			    {
+			      *referred_node = temp;
+			    }
 			}
 		    }
 		}
@@ -20016,8 +20026,7 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   expr->info.function.function_type = PT_COUNT_STAR;
 
   corr_subq->info.query.q.select.list = expr;
-  corr_subq->info.query.q.select.from =
-    parser_copy_tree (parser, info->into);
+  corr_subq->info.query.q.select.from = parser_copy_tree (parser, info->into);
   corr_subq->info.query.q.select.where =
     parser_copy_tree_list (parser, info->search_cond);
 
@@ -20026,7 +20035,8 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   corr_subq->info.query.correlation_level = 1;
   corr_subq->info.query.single_tuple = 1;
 
-  subq->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
+  subq->info.query.q.select.list =
+    parser_copy_tree_list (parser, select_list);
   subq->info.query.q.select.from = parser_copy_tree (parser, info->using);
 
   expr = parser_new_node (parser, PT_EXPR);
@@ -20060,7 +20070,7 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
       if (and_expr == NULL)
 	{
 	  parser_free_tree (parser, subq);
-	  parser_free_tree (parser, expr); /* corr_subq is now in this tree */
+	  parser_free_tree (parser, expr);	/* corr_subq is now in this tree */
 	  goto error_exit;
 	}
 

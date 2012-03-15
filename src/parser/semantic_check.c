@@ -46,19 +46,6 @@
 
 #define PT_CHAIN_LENGTH 10
 
-#define PT_IS_SAME_TYPE(l, r) \
-  ((l)->type_enum == (r)->type_enum && (l)->data_type && (r)->data_type && \
-   (l)->data_type->info.data_type.precision == (r)->data_type->info.data_type.precision && \
-   (l)->data_type->info.data_type.dec_precision == (r)->data_type->info.data_type.dec_precision)
-#define PT_IS_COMPATIBLE_CHAR_TYPE(l, r) \
-  (PT_IS_CHAR_STRING_TYPE((r)->type_enum) && \
-   (l)->type_enum == (r)->type_enum && \
-   (l)->data_type && (r)->data_type && \
-   (r)->data_type->info.data_type.precision != -1 && \
-   (l)->data_type->info.data_type.precision >= (r)->data_type->info.data_type.precision)
-#define PT_IS_COMPATIBLE_TYPE(l, r) \
-  (PT_IS_SAME_TYPE((l), (r)) || PT_IS_COMPATIBLE_CHAR_TYPE((l), (r)))
-
 typedef enum
 { PT_CAST_VALID, PT_CAST_INVALID, PT_CAST_UNSUPPORTED } PT_CAST_VAL;
 
@@ -135,6 +122,10 @@ static PT_UNION_COMPATIBLE pt_union_compatible (PARSER_CONTEXT * parser,
 						bool view_definition_context,
 						bool * is_object_type,
 						bool has_nested_union_node);
+static bool pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
+					   PT_TYPE_ENUM dest_type_enum,
+					   int dest_prec, int dest_scale,
+					   PT_NODE * src);
 static PT_NODE *pt_to_compatible_cast (PARSER_CONTEXT * parser,
 				       PT_NODE * node,
 				       SEMAN_COMPATIBLE_INFO * cinfo,
@@ -1608,7 +1599,9 @@ pt_union_compatible (PARSER_CONTEXT * parser,
     }
 
   if (common_type == PT_TYPE_NONE)	/* not union compatible */
-    return PT_UNION_INCOMP_CANNOT_FIX;
+    {
+      return PT_UNION_INCOMP_CANNOT_FIX;
+    }
 
   if (item1->node_type == PT_VALUE || item2->node_type == PT_VALUE)
     {
@@ -1682,6 +1675,56 @@ pt_union_compatible (PARSER_CONTEXT * parser,
 }
 
 /*
+ * pt_is_compatible_without_cast () -
+ *   return: true/false
+ *   parser(in):
+ *   dest_type_enum(in):
+ *   dest_prec(in):
+ *   dest_scale(in):
+ *   src(in):
+ */
+static bool
+pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
+			       PT_TYPE_ENUM dest_type_enum, int dest_prec,
+			       int dest_scale, PT_NODE * src)
+{
+  if (dest_type_enum != src->type_enum)
+    {
+      return false;
+    }
+
+  if (PT_IS_STRING_TYPE (dest_type_enum))
+    {
+      assert_release (dest_prec != 0);
+      if (src->data_type
+	  && dest_prec == src->data_type->info.data_type.precision)
+	{
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
+    }
+  else if (dest_type_enum == PT_TYPE_NUMERIC)
+    {
+      assert_release (dest_prec != 0);
+      if (src->data_type
+	  && dest_prec == src->data_type->info.data_type.precision
+	  && dest_scale == src->data_type->info.data_type.dec_precision)
+	{
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
+    }
+
+  return true;			/* is compatible, no need to cast */
+}
+
+/*
  * pt_to_compatible_cast () -
  *   return:
  *   parser(in):
@@ -1724,36 +1767,25 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 	  /* find incompatible attr */
 	  if (cinfo[i].idx == i)
 	    {
-	      if (cinfo[i].type_enum != att->type_enum)
+	      if (!pt_is_compatible_without_cast (parser,
+						  cinfo[i].type_enum,
+						  cinfo[i].prec,
+						  cinfo[i].scale, att))
 		{
 		  need_to_cast = true;
-		}
-	      else if (PT_IS_STRING_TYPE (att->type_enum))
-		{
-		  if (att->data_type == NULL)
+
+		  /* assertion check */
+		  if (need_to_cast)
 		    {
-		      assert (false);
-		      return NULL;
-		    }
-		  else if (cinfo[i].prec !=
-			   att->data_type->info.data_type.precision)
-		    {
-		      need_to_cast = true;
-		    }
-		}
-	      else if (att->type_enum == PT_TYPE_NUMERIC)
-		{
-		  if (att->data_type == NULL)
-		    {
-		      assert (false);
-		      return NULL;
-		    }
-		  else if ((cinfo[i].prec !=
-			    att->data_type->info.data_type.precision)
-			   || (cinfo[i].scale !=
-			       att->data_type->info.data_type.dec_precision))
-		    {
-		      need_to_cast = true;
+		      if (PT_IS_STRING_TYPE (att->type_enum)
+			  || att->type_enum == PT_TYPE_NUMERIC)
+			{
+			  if (att->data_type == NULL)
+			    {
+			      assert_release (att->data_type != NULL);
+			      return NULL;
+			    }
+			}
 		    }
 		}
 	    }
@@ -9245,17 +9277,28 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
     }
   else
     {
+      int p = 0, s = 0;
+
+      if (lhs->data_type)
+	{
+	  p = lhs->data_type->info.data_type.precision;
+	  s = lhs->data_type->info.data_type.dec_precision;
+	}
+
       if (rhs->node_type == PT_HOST_VAR)
 	{
 	  return rhs;
 	}
-      if (PT_IS_COMPATIBLE_TYPE (lhs, rhs))
+      if (pt_is_compatible_without_cast (parser, lhs->type_enum, p, s, rhs))
 	{
 	  return rhs;
 	}
-      else if (rhs->type_enum == lhs->type_enum
-	       && PT_IS_BIT_STRING_TYPE (lhs->type_enum))
+
+      if (rhs->type_enum == lhs->type_enum
+	  && PT_IS_BIT_STRING_TYPE (lhs->type_enum))
 	{
+	  assert_release (!PT_IS_BIT_STRING_TYPE (lhs->type_enum)
+			  || lhs->data_type != NULL);
 	  /* only set scale and precision */
 	  rc = pt_coerce_value (parser, rhs, rhs, lhs->type_enum,
 				lhs->data_type);
@@ -9288,7 +9331,12 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 		}
 	      else
 		{
-		  DB_TYPE lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
+		  DB_TYPE lhs_dbtype;
+
+		  assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum)
+				    || lhs->type_enum == PT_TYPE_NUMERIC)
+				  || lhs->data_type != NULL);
+		  lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
 		  d = tp_domain_resolve_default (lhs_dbtype);
 		}
 
@@ -9300,6 +9348,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	    }
 	  else
 	    {
+	      assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum)
+				|| lhs->type_enum == PT_TYPE_NUMERIC)
+			      || lhs->data_type != NULL);
 	      rhs =
 		pt_wrap_with_cast_op (parser, rhs, lhs->type_enum, 0, 0,
 				      lhs->data_type);
@@ -9339,7 +9390,7 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
   assignment_list =
     (stmt->node_type == PT_UPDATE ? stmt->info.update.assignment
-    : stmt->info.merge.update.assignment);
+     : stmt->info.merge.update.assignment);
 
   for (a = assignment_list; a; a = next)
     {
@@ -9559,7 +9610,7 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
   assignment_list =
     (stmt->node_type == PT_UPDATE ? stmt->info.update.assignment
-    : stmt->info.merge.update.assignment);
+     : stmt->info.merge.update.assignment);
 
   for (a = assignment_list; a; a = a->next)
     {
@@ -10960,8 +11011,8 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *attr_list = NULL;
   PT_NODE *value_clauses = NULL;
 
-  if (stmt->node_type != PT_INSERT
-      && stmt->node_type != PT_MERGE)	/* preconditions are not met */
+  /* preconditions are not met */
+  if (stmt->node_type != PT_INSERT && stmt->node_type != PT_MERGE)
     {
       return NULL;
     }
@@ -10983,8 +11034,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   a_cnt = pt_length_of_list (attr_list);
 
-  for (crt_list = value_clauses; crt_list != NULL;
-       crt_list = crt_list->next)
+  for (crt_list = value_clauses; crt_list != NULL; crt_list = crt_list->next)
     {
       if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
 	{
