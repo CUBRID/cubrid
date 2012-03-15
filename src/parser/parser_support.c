@@ -6714,13 +6714,14 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
  * pt_make_field_type_expr_node() - builds the node required to print the type
  *                                  of column in SHOW COLUMNS
  *
- *    CONCAT(type_name, IF (type_id=27 OR
+ *    CONCAT(type_name, IF (prec > 0
+ *			    AND (type_id=27 OR
  *			      type_id=26 OR
  *			      type_id=25 OR
  *			      type_id=24 OR
  *			      type_id=23 OR
  * 			      type_id=4  OR
- *			      type_id=22,
+ *			      type_id=22),
  *			    CONCAT( '(',
  *				    prec ,
  *				    IF (type_id=22,
@@ -6820,8 +6821,8 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     if_node = NULL;
   }
 
-  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=24 OR
-     type_id=23 OR type_id=4 or type_id=22,
+  /* IF (prec > 0 AND (type_id=27 OR type_id=26 OR type_id=25 OR type_id=24 OR
+     type_id=23 OR type_id=4 or type_id=22),
      CONCAT(...)  ,
      '' )  */
   {
@@ -6850,6 +6851,11 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     /* NUMERIC */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
     cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1->info.expr.paren_type = 1;
+
+    /* prec */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_GT, "prec", 0);
+    cond_item1 = parser_make_expression (PT_AND, cond_item2, cond_item1, NULL);
 
     pred_for_if = cond_item1;
     assert (concat_node != NULL);
