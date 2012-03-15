@@ -9884,7 +9884,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 static int
 mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
-  int src_length;
+  int src_length, precision;
   char *str;
   int rc = NO_ERROR;
 
@@ -9894,6 +9894,13 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
       if (src_length < 0)
 	{
 	  src_length = strlen (str);
+	}
+
+      precision = DB_VALUE_PRECISION (value);
+      if (precision != TP_FLOATING_PRECISION_VALUE && src_length > precision)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
 	}
 
       if (align == INT_ALIGNMENT)
@@ -9947,12 +9954,17 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
       if (!copy)
 	{
 	  str_length = or_get_varchar_length (buf, &rc);
-	  if (rc == NO_ERROR)
+	  if (str_length < 0 || rc != NO_ERROR
+	      || (precision != TP_FLOATING_PRECISION_VALUE
+		  && str_length > precision))
 	    {
-	      db_make_varchar (value, precision, buf->ptr, str_length);
-	      value->need_clear = false;
-	      rc = or_skip_varchar_remainder (buf, str_length, align);
+	      /* The str_length is incorrect or the rc is not NO_ERROR. */
+	      assert_release (false);
+	      return ER_FAILED;
 	    }
+	  db_make_varchar (value, precision, buf->ptr, str_length);
+	  value->need_clear = false;
+	  rc = or_skip_varchar_remainder (buf, str_length, align);
 	}
       else
 	{
@@ -9980,8 +9992,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
 		}		/* size != -1 */
 
 	      str_length = or_get_varchar_length (buf, &rc);
-	      if (rc != NO_ERROR)
+	      if (str_length < 0 || rc != NO_ERROR
+		  || (precision != TP_FLOATING_PRECISION_VALUE
+		      && str_length > precision))
 		{
+		  /* The str_length is incorrect or the rc is not NO_ERROR. */
+		  assert_release (false);
 		  return ER_FAILED;
 		}
 
