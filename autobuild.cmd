@@ -11,17 +11,13 @@ if [ -d build ]; then
 fi
 
 mkdir -p build && cd build
-../configure --prefix=`pwd`/../../cubrid --enable-coverage --enable-debug --enable-64bit
-
-make -j 4
+../configure --prefix=`pwd`/../../deploy && make -j
 
 if [ $? = 0 ]
 	then
-	make install
 	echo "build success"
 	exit 0
 else
 	echo "build error"
 	exit -1 
 fi
-
