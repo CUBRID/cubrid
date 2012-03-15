@@ -6881,6 +6881,21 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
     }
+
+  if (!pt_has_error (parser))
+    {
+      PT_NODE *result;
+      for (attr = node->info.create_entity.attr_def_list; attr;
+	   attr = attr->next)
+	{
+	  result = pt_semantic_type (parser, attr->info.attr_def.data_default,
+				     NULL);
+	  if (result != NULL)
+	    {
+	      attr->info.attr_def.data_default = result;
+	    }
+	}
+    }
 }
 
 /*
