@@ -7477,9 +7477,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
-	  /* for each class update partitions and flush new values */
-	  for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
-	       class_oid_idx++)
+	  /* for each class update partitions and flush new values
+	     NOTE: the class list was built from right to left during XASL
+	     generation, so in order to maintain the correct update order
+	     specified in the query, we must iterate from right to left as
+	     well; this makes a difference only when we update the same
+	     attribute of the same class more than once. */
+	  for (class_oid_idx = class_oid_cnt - 1; class_oid_idx >= 0;
+	       class_oid_idx--)
 	    {
 	      int partition_unchanged = 1;
 
