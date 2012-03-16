@@ -2070,7 +2070,7 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      pgbuf_set_dirty (thread_p, page_p, FREE);
 	      catalog_update_max_space (&page_id, new_space);
 
-	      if (catalog_insert_representation_item (thread_p, &tmp_record,
+	      if (catalog_insert_representation_item (thread_p, &record,
 						      key) != NO_ERROR)
 		{
 		  recdes_free_data_area (&record);
