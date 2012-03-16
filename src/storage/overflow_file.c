@@ -66,6 +66,13 @@ typedef enum
   OVERFLOW_DO_FLUSH
 } OVERFLOW_DO_FUNC;
 
+typedef enum
+{
+  OVERFLOW_NORMAL_LOGGING,
+  OVERFLOW_SKIP_UNDO_LOGGING,
+  OVERFLOW_SKIP_LOGGING
+} OVERFLOW_LOGGING_TYPE;
+
 static void overflow_next_vpid (const VPID * ovf_vpid, VPID * vpid,
 				PAGE_PTR pgptr);
 static const VPID *overflow_traverse (THREAD_ENTRY * thread_p,
@@ -76,7 +83,10 @@ static int overflow_delete_internal (THREAD_ENTRY * thread_p,
 				     const VFID * ovf_vfid, VPID * vpid,
 				     PAGE_PTR pgptr);
 static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-
+static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p,
+				       const VFID * ovf_vfid,
+				       VPID * ovf_vpid, RECDES * recdes,
+				       OVERFLOW_LOGGING_TYPE logging_type);
 /*
  * overflow_insert () - Insert a multipage data in overflow
  *   return: ovf_vpid on success or NULL on failure
@@ -101,6 +111,24 @@ static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 VPID *
 overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 		 VPID * ovf_vpid, RECDES * recdes)
+{
+  return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid,
+				   recdes, OVERFLOW_NORMAL_LOGGING);
+}
+
+VPID *
+overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p,
+				      const VFID * ovf_vfid, VPID * ovf_vpid,
+				      RECDES * recdes)
+{
+  return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid,
+				   recdes, OVERFLOW_SKIP_UNDO_LOGGING);
+}
+
+static VPID *
+overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
+			  VPID * ovf_vpid, RECDES * recdes,
+			  OVERFLOW_LOGGING_TYPE logging_type)
 {
   PAGE_PTR vfid_fhdr_pgptr = NULL;
   OVERFLOW_FIRST_PART *first_part;
@@ -277,7 +305,8 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
       length -= copy_length;
 
       pgbuf_get_vpid (addr.pgptr, &undo_recv.new_vpid);
-      if (file_is_new_file (thread_p, ovf_vfid) == FILE_OLD_FILE)
+      if (file_is_new_file (thread_p, ovf_vfid) == FILE_OLD_FILE
+	  && logging_type == OVERFLOW_NORMAL_LOGGING)
 	{
 	  /* we don't do undo logging for new files */
 	  log_append_undo_data (thread_p, RVOVF_NEWPAGE_LOGICAL_UNDO,

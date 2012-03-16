@@ -36,6 +36,10 @@
 
 extern VPID *overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 			      VPID * ovf_vpid, RECDES * recdes);
+extern VPID *overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p,
+						   const VFID * ovf_vfid,
+						   VPID * ovf_vpid,
+						   RECDES * recdes);
 extern const VPID *overflow_update (THREAD_ENTRY * thread_p,
 				    const VFID * ovf_vfid,
 				    const VPID * ovf_vpid, RECDES * recdes);

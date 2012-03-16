@@ -767,7 +767,17 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
     {
       nleaf_rec.key_len = -1;
       key_type = BTREE_OVERFLOW_KEY;
+
+      if (VFID_ISNULL (&load_args->btid->ovfid))
+	{
+	  if (btree_create_overflow_key_file (thread_p,
+					      load_args->btid) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
     }
+
   if (btree_write_record (thread_p, load_args->btid, &nleaf_rec, key,
 			  BTREE_NON_LEAF_NODE, key_type, key_len, true, NULL,
 			  NULL, &load_args->out_recdes) != NO_ERROR)
@@ -1617,6 +1627,7 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
 {
   int key_len;
   int key_type;
+  int error;
 
   /* form the leaf record (create the header & insert the key) */
   key_len = load_args->cur_key_len = btree_get_key_length (this_key);
@@ -1627,15 +1638,24 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
   else
     {
       key_type = BTREE_OVERFLOW_KEY;
+      if (VFID_ISNULL (&load_args->btid->ovfid))
+	{
+	  error = btree_create_overflow_key_file (thread_p, load_args->btid);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
     }
-  if (btree_write_record (thread_p, load_args->btid, NULL, this_key,
-			  BTREE_LEAF_NODE, key_type, key_len, true, class_oid,
-			  first_oid, &load_args->out_recdes) != NO_ERROR)
+  error = btree_write_record (thread_p, load_args->btid, NULL, this_key,
+			      BTREE_LEAF_NODE, key_type, key_len, true,
+			      class_oid, first_oid, &load_args->out_recdes);
+  if (error != NO_ERROR)
     {
       /* this must be an overflow key insertion failure, we assume the
        * overflow manager has logged an error.
        */
-      return er_errid ();
+      return error;
     }
 
   /* Set the location where the new oid should be inserted */

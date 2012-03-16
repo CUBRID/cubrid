@@ -142,12 +142,9 @@ struct btree_stats_env
   DB_VALUE *pkeys;		/* partial key-value */
 };
 
-static int btree_create_overflow_key_file (THREAD_ENTRY * thread_p,
-					   BTID_INT * btid, bool loading);
 static int btree_store_overflow_key (THREAD_ENTRY * thread_p,
 				     BTID_INT * btid, DB_VALUE * key,
-				     int size, bool loading,
-				     VPID * firstpg_vpid);
+				     int size, VPID * firstpg_vpid);
 static int btree_load_overflow_key (THREAD_ENTRY * thread_p,
 				    BTID_INT * btid, VPID * firstpg_vpid,
 				    DB_VALUE * key);
@@ -466,19 +463,14 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
  * btree_create_overflow_key_file () -
  *   return: NO_ERROR
  *   btid(in):
- *   loading(in):
  *
  * Note: An overflow key file is created (permanently) and the VFID
  * is written to the root header for the btree.
  */
-static int
-btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid,
-				bool loading)
+int
+btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
   FILE_OVF_BTREE_DES btdes_ovf;
-  VPID P_vpid;
-  PAGE_PTR P = NULL;
-  char *header_ptr;
 
   /* Start a top system operation */
 
@@ -504,48 +496,6 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto error;
     }
 
-  /*
-   * if we are loading an index, we can't store the overflow
-   * VFID in the root header, since the root header is the last
-   * thing created during loading. In this case, the overflow
-   * VFID will be stored when the root record is written.
-   */
-  if (!loading)			/* not loading */
-    {
-      VFID ovfid;
-
-      P_vpid.volid = btid->sys_btid->vfid.volid;
-      P_vpid.pageid = btid->sys_btid->root_pageid;
-
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		     PGBUF_UNCONDITIONAL_LATCH);
-      if (P == NULL)
-	{
-	  goto error;
-	}
-
-      btree_get_header_ptr (P, &header_ptr);
-
-      /* read the root header */
-      BTREE_GET_OVFID (header_ptr, &ovfid);
-
-      /* undo logging */
-      log_append_undo_data2 (thread_p, RVBT_UPDATE_OVFID,
-			     &btid->sys_btid->vfid, P, HEADER, sizeof (VFID),
-			     &ovfid);
-      pgbuf_set_dirty (thread_p, P, DONT_FREE);
-
-      /* update the root header */
-      BTREE_PUT_OVFID (header_ptr, &btid->ovfid);
-
-      /* redo logging */
-      log_append_redo_data2 (thread_p, RVBT_UPDATE_OVFID,
-			     &btid->sys_btid->vfid, P, HEADER, sizeof (VFID),
-			     &btid->ovfid);
-      pgbuf_set_dirty (thread_p, P, FREE);
-      P = NULL;
-    }
-
   if (BTREE_IS_NEW_FILE (btid))
     {
       assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
@@ -563,11 +513,6 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 error:
 
-  if (P)
-    {
-      pgbuf_unfix_and_init (thread_p, P);
-    }
-
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   return ER_FAILED;
@@ -579,14 +524,13 @@ error:
  *   btid(in): B+tree index identifier
  *   key(in): Pointer to the overflow key memory area
  *   size(in): Overflow key memory area size
- *   loading(in):
  *   first_overflow_page_vpid(out): Set to the first overflow key page identifier
  *
  * Note: The overflow key given is stored in a chain of pages.
  */
 static int
 btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			  DB_VALUE * key, int size, bool loading,
+			  DB_VALUE * key, int size,
 			  VPID * first_overflow_page_vpid)
 {
   RECDES rec;
@@ -595,19 +539,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
   VFID overflow_file_vfid;
   int ret = NO_ERROR;
 
-  /* Check where we'll store the overflow key.  If this is an old style
-   * btree, we'll use the btree's vfid.  If its a new style btree, we'll
-   * use the ovfid in the btid.  If this is the first overflow key for
-   * the btree, we'll need to create the overflow file.
-   */
-  if (VFID_ISNULL (&btid->ovfid))
-    {
-      ret = btree_create_overflow_key_file (thread_p, btid, loading);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
-    }
+  assert (!VFID_ISNULL (&btid->ovfid));
 
   overflow_file_vfid = btid->ovfid;	/* structure copy */
 
@@ -629,8 +561,10 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   rec.length = (int) (buf.ptr - buf.buffer);
 
-  if (overflow_insert (thread_p, &overflow_file_vfid,
-		       first_overflow_page_vpid, &rec) == NULL)
+  /* don't need undo log because undo log of btree insert/delete is logical log */
+  if (overflow_insert_without_undo_logging (thread_p, &overflow_file_vfid,
+					    first_overflow_page_vpid,
+					    &rec) == NULL)
     {
       goto exit_on_error;
     }
@@ -1637,8 +1571,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
-      rc = btree_store_overflow_key (thread_p, btid, key, key_len,
-				     during_loading, &key_vpid);
+      rc = btree_store_overflow_key (thread_p, btid, key, key_len, &key_vpid);
       if (rc != NO_ERROR)
 	{
 	  goto end;
@@ -6909,7 +6842,7 @@ exit_on_error:
  *   offset(in): offset of oid(s) following the key
  *   first_ovfl_vpid(in): first overflow vpid of leaf record
  *   class_oid(in): class oid
- * 
+ *
  * Note:
  *  This function must be called by btree_delete if the following conditions
  * are satisfied:
@@ -10503,15 +10436,15 @@ exit_on_error:
  *   first_ovfl_vpid(in): first overflow vpid of leaf record
  *   oid (in): object OID
  *   class_oid(in): class oid
- * 
+ *
  * Note:
  *  This function must be called by btree_insert if the following conditions
  * are satisfied:
  *  1. current key locking require many pseudo-oids locks (non-unique B-tree,
- *     key already exists in B-tree, the total transactions hold mode is 
+ *     key already exists in B-tree, the total transactions hold mode is
  *     NS-lock on PSEUDO-OID attached to the first key buffer OID)
  *  2. the PSEUDO-OID attached to the first key buffer OID has been NS-locked
- *     by the current transaction 
+ *     by the current transaction
  *  3. next key not previously S-locked or NX-locked
  *
  *   The function iterate through OID-list starting with the second OID.
@@ -10791,6 +10724,30 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   max_key = root_header.node.max_key_len;
   key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (node_type, key_len);
+
+  if (VFID_ISNULL (&btid_int.ovfid)
+      && (key_len >= MIN (BTREE_MAX_KEYLEN_INPAGE,
+			  BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)))
+    {
+      if (btree_create_overflow_key_file (thread_p, &btid_int) != NO_ERROR)
+	{
+	  goto error;
+	}
+      log_append_undoredo_data2 (thread_p, RVBT_UPDATE_OVFID,
+				 &btid_int.sys_btid->vfid, P, HEADER,
+				 sizeof (VFID), sizeof (VFID),
+				 &root_header.ovfid, &btid_int.ovfid);
+
+      /* update the root header */
+      VFID_COPY (&root_header.ovfid, &btid_int.ovfid);
+      btree_write_root_header (&peek_rec, &root_header);
+      if (spage_update (thread_p, P, HEADER, &peek_rec) != SP_SUCCESS)
+	{
+	  goto error;
+	}
+
+      pgbuf_set_dirty (thread_p, P, DONT_FREE);
+    }
 
   if (key_len_in_page > max_key)
     {
@@ -11455,7 +11412,7 @@ start_point:
       key_found = true;
       if (!BTREE_IS_UNIQUE (&btid_int))
 	{
-	  /* key already exists, skip next key locking in non-unique 
+	  /* key already exists, skip next key locking in non-unique
 	     indexes */
 	  if (next_lock_flag == true)
 	    {
@@ -20297,7 +20254,7 @@ btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
       return ER_FAILED;
     }
 
-  /* get correct key to update value to (key1 for normal scan or key2 for 
+  /* get correct key to update value to (key1 for normal scan or key2 for
      reverse scan); the fetch range will have one of the keys NULLed */
   if (iss->skipped_range->key1 == NULL)
     {

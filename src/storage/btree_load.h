@@ -427,6 +427,8 @@ extern void btree_rv_dump_create_index (FILE * fp, int length_ignore,
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_write_overflow_header (RECDES * Rec,
 					 VPID * next_overflow_page);
+extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p,
+					   BTID_INT * btid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void btree_read_overflow_header (RECDES * Rec,
 					VPID * next_overflow_page);
