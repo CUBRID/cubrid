@@ -2288,7 +2288,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 			      ISCAN_OID_BUFFER_SIZE,
 			      &key_filter,
 			      iscan_id, false, iscan_id->need_count_only,
-			      key_limit_upper, key_limit_lower);
+			      key_limit_upper, key_limit_lower, true);
       key_vals[0].range = range;
       iscan_id->oid_list.oid_cnt = n;
       if (iscan_id->oid_list.oid_cnt == -1)
@@ -2380,7 +2380,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 			      ISCAN_OID_BUFFER_SIZE,
 			      &key_filter,
 			      iscan_id, false, iscan_id->need_count_only,
-			      key_limit_upper, key_limit_lower);
+			      key_limit_upper, key_limit_lower, true);
       key_vals[0].range = saved_range;
       iscan_id->oid_list.oid_cnt = n;
       if (iscan_id->oid_list.oid_cnt == -1)
@@ -2453,7 +2453,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				  ISCAN_OID_BUFFER_SIZE,
 				  &key_filter,
 				  iscan_id, false, iscan_id->need_count_only,
-				  key_limit_upper, key_limit_lower);
+				  key_limit_upper, key_limit_lower, true);
 	  key_vals[iscan_id->curr_keyno].range = range;
 	  iscan_id->oid_list.oid_cnt = n;
 	  if (iscan_id->oid_list.oid_cnt == -1)
@@ -2566,7 +2566,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				  ISCAN_OID_BUFFER_SIZE,
 				  &key_filter,
 				  iscan_id, false, iscan_id->need_count_only,
-				  key_limit_upper, key_limit_lower);
+				  key_limit_upper, key_limit_lower, true);
 	  key_vals[iscan_id->curr_keyno].range = saved_range;
 	  iscan_id->oid_list.oid_cnt = n;
 	  if (iscan_id->oid_list.oid_cnt == -1)

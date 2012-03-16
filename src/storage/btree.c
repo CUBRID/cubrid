@@ -279,7 +279,8 @@ static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p,
 					     BTREE_SCAN * bts,
 					     bool is_iss,
 					     bool * key_range_satisfied,
-					     bool * key_filter_satisfied);
+					     bool * key_filter_satisfied,
+					     bool need_to_check_null);
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p,
 				BTREE_SCAN * bts, FILTER_INFO * filter,
 				OID * oid, INDX_SCAN_ID * iscan_id);
@@ -8079,9 +8080,8 @@ curr_key_locking:
 
   if (curr_key_lock_commit_duration == true && !delete_first_key_oid)
     {
-      ret_val =
-	ret_val = lock_object_with_btid (thread_p, &C_oid, &C_class_oid, btid,
-					 NX_LOCK, LK_COND_LOCK);
+      ret_val = lock_object_with_btid (thread_p, &C_oid, &C_class_oid, btid,
+				       NX_LOCK, LK_COND_LOCK);
       if (ret_val == LK_NOTGRANTED_DUE_TIMEOUT)
 	{
 	  ret_val = LK_NOTGRANTED;
@@ -12612,7 +12612,7 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
   rc = btree_range_search (thread_p, btid, readonly_purpose, scan_op_type,
 			   LOCKHINT_NONE, btree_scan, &key_val_range,
 			   num_classes, class_oid, oids_ptr, oids_size,
-			   filter, isidp, true, false, NULL, NULL);
+			   filter, isidp, true, false, NULL, NULL, false);
 
   lock_unlock_scan (thread_p, class_oid, scanid_bit, END_SCAN);
 
@@ -13887,7 +13887,8 @@ exit_on_error:
 static int
 btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				  bool is_iss, bool * is_key_range_satisfied,
-				  bool * is_key_filter_satisfied)
+				  bool * is_key_filter_satisfied,
+				  bool need_to_check_null)
 {
   int c;			/* comparison result */
   DB_LOGICAL ev_res;		/* evaluation result */
@@ -13897,65 +13898,10 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   DB_TYPE type;
   int ret = NO_ERROR;
 
-  *is_key_range_satisfied = *is_key_filter_satisfied = true;	/* init as true  */
+  *is_key_range_satisfied = *is_key_filter_satisfied = false;
 #if defined(SERVER_MODE)
   bts->key_range_max_value_equal = false;	/* init as false */
 #endif /* SERVER_MODE */
-
-  if (bts->key_filter		/* caller: sc_get_index_oidset() */
-      && DB_VALUE_DOMAIN_TYPE (&bts->cur_key) == DB_TYPE_MIDXKEY
-      && bts->key_range.num_index_term > 0)
-    {
-      mkey = &(bts->cur_key.data.midxkey);
-      /* get the last element from key range elements */
-      ret = pr_midxkey_get_element_nocopy (mkey,
-					   bts->key_range.num_index_term - 1,
-					   &ep, NULL, NULL);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      if (DB_IS_NULL (&ep))
-	{
-	  bool is_desc = false;
-	  allow_null_in_midxkey = false;	/* init */
-	  if (PRM_ORACLE_STYLE_EMPTY_STRING)
-	    {
-	      if (ep.need_clear)
-		{		/* need to check */
-		  type = DB_VALUE_DOMAIN_TYPE (&ep);
-		  if (QSTR_IS_ANY_CHAR_OR_BIT (type)
-		      && ep.data.ch.medium.buf != NULL)
-		    {
-		      allow_null_in_midxkey = true;	/* is Empty-string */
-		    }
-		}
-	    }
-
-	  is_desc = (bts->use_desc_index ? true : false);
-	  if (bts->btid_int.key_type && bts->btid_int.key_type->setdomain
-	      && bts->btid_int.key_type->setdomain->is_desc)
-	    {
-	      is_desc = !is_desc;
-	    }
-
-	  if (is_iss && is_desc && bts->key_range.num_index_term == 1)
-	    {
-	      /* We're inside an INDEX SKIP SCAN doing a descending scan. We
-	       * allow the first term of a MIDXKEY to be NULL since ISS has
-	       * to return the results for which the first column of the index
-	       * is NULL.
-	       */
-	      allow_null_in_midxkey = true;
-	    }
-	  if (!allow_null_in_midxkey)
-	    {
-	      *is_key_filter_satisfied = false;
-	      goto end;		/* give up */
-	    }
-	}
-    }
 
   /* Key Range Checking */
   if (bts->key_range.upper_key == NULL)
@@ -14015,6 +13961,10 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 #endif /* SERVER_MODE */
 	    }
 	}
+      else
+	{
+	  assert (0);
+	}
     }
   else
     {
@@ -14023,30 +13973,92 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   if (*is_key_range_satisfied)
     {
-      /*
-       * Only in case that key_range_satisfied is true,
-       * the key filter can be applied to the current key value.
-       */
-      if (bts->key_filter && bts->key_filter->scan_pred->regu_list)
+      if (need_to_check_null
+	  && DB_VALUE_DOMAIN_TYPE (&bts->cur_key) == DB_TYPE_MIDXKEY
+	  && bts->key_range.num_index_term > 0)
 	{
-	  ev_res = eval_key_filter (thread_p, &bts->cur_key, bts->key_filter);
-	  if (ev_res == V_ERROR)
+	  mkey = &(bts->cur_key.data.midxkey);
+	  /* get the last element from key range elements */
+	  ret = pr_midxkey_get_element_nocopy (mkey,
+					       bts->key_range.num_index_term -
+					       1, &ep, NULL, NULL);
+	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 
-	  if (ev_res == V_TRUE)
+	  if (DB_IS_NULL (&ep))
 	    {
-	      *is_key_filter_satisfied = true;
+	      bool is_desc = false;
+	      allow_null_in_midxkey = false;	/* init */
+
+	      assert (bts->key_range.num_index_term == 1);
+
+	      if (PRM_ORACLE_STYLE_EMPTY_STRING)
+		{
+		  if (ep.need_clear)
+		    {		/* need to check */
+		      type = DB_VALUE_DOMAIN_TYPE (&ep);
+		      if (QSTR_IS_ANY_CHAR_OR_BIT (type)
+			  && ep.data.ch.medium.buf != NULL)
+			{
+			  allow_null_in_midxkey = true;	/* is Empty-string */
+			}
+		    }
+		}
+
+	      is_desc = (bts->use_desc_index ? true : false);
+	      if (bts->btid_int.key_type && bts->btid_int.key_type->setdomain
+		  && bts->btid_int.key_type->setdomain->is_desc)
+		{
+		  is_desc = !is_desc;
+		}
+
+	      if (is_iss && is_desc && bts->key_range.num_index_term == 1)
+		{
+		  /* We're inside an INDEX SKIP SCAN doing a descending scan. We
+		   * allow the first term of a MIDXKEY to be NULL since ISS has
+		   * to return the results for which the first column of
+		   * the index is NULL.
+		   */
+		  allow_null_in_midxkey = true;
+		}
+	      if (!allow_null_in_midxkey)
+		{
+		  *is_key_filter_satisfied = false;
+		  goto end;	/* give up */
+		}
 	    }
-	  else
-	    {			/* V_FALSE || V_UNKNOWN */
+	}
+
+      /*
+       * Only in case that key_range_satisfied is true,
+       * the key filter can be applied to the current key value.
+       */
+      *is_key_filter_satisfied = true;
+      if (bts->key_filter && bts->key_filter->scan_pred->regu_list)
+	{
+	  ev_res = eval_key_filter (thread_p, &bts->cur_key, bts->key_filter);
+	  if (ev_res != V_TRUE)
+	    {
 	      *is_key_filter_satisfied = false;
+	    }
+
+	  if (ev_res == V_ERROR)
+	    {
+	      goto exit_on_error;
 	    }
 	}
     }
 
 end:
+  assert ((*is_key_range_satisfied == false
+	   && *is_key_filter_satisfied == false)
+	  || (*is_key_range_satisfied == true
+	      && *is_key_filter_satisfied == false)
+	  || (*is_key_range_satisfied == true
+	      && *is_key_filter_satisfied == true));
+
   return ret;
 
 exit_on_error:
@@ -15374,7 +15386,8 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 		    int oids_size, FILTER_INFO * filter,
 		    INDX_SCAN_ID * index_scan_id_p,
 		    bool need_construct_btid_int, bool need_count_only,
-		    DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower)
+		    DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower,
+		    bool need_to_check_null)
 {
   OID *mem_oid_ptr;
   int pg_oid_cnt;
@@ -15825,7 +15838,8 @@ get_oidcnt_and_oidptr:
 	  if (btree_apply_key_range_and_filter (thread_p, bts,
 						index_scan_id_p->iss.use,
 						&is_key_range_satisfied,
-						&is_key_filter_satisfied)
+						&is_key_filter_satisfied,
+						need_to_check_null)
 	      != NO_ERROR)
 	    {
 	      goto error;

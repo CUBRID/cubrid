@@ -414,7 +414,8 @@ extern int btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 			       INDX_SCAN_ID * isidp, bool construct_BTID_INT,
 			       bool need_count_only,
 			       DB_BIGINT * key_limit_upper,
-			       DB_BIGINT * key_limit_lower);
+			       DB_BIGINT * key_limit_lower,
+			       bool need_to_check_null);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					 DB_VALUE * curr_key,
 					 int *btree_att_ids,
