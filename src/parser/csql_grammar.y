@@ -8679,13 +8679,12 @@ column_other_constraint_def
 
 		DBG_PRINT}}
 	| opt_constraint_id			/* 1 */
-	  FOREIGN				/* 2 */
-	  KEY					/* 3 */
-	  REFERENCES				/* 4 */
-	  class_name				/* 5 */
-	  opt_paren_attr_list			/* 6 */
-	  opt_ref_rule_list			/* 7 */
-	  opt_constraint_attr_list		/* 8 */
+	  opt_foreign_key			/* 2 */
+	  REFERENCES				/* 3 */
+	  class_name				/* 4 */
+	  opt_paren_attr_list			/* 5 */
+	  opt_ref_rule_list			/* 6 */
+	  opt_constraint_attr_list		/* 7 */
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -8694,12 +8693,12 @@ column_other_constraint_def
 
 			if (constraint)
 			  {
-			    constraint->info.constraint.un.foreign_key.referenced_attrs = $6;
+			    constraint->info.constraint.un.foreign_key.referenced_attrs = $5;
 			    constraint->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
-			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($7));	/* delete_action */
-			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
-			    constraint->info.constraint.un.foreign_key.cache_attr = CONTAINER_AT_2 ($7);	/* cache_attr */
-			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
+			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($6));	/* delete_action */
+			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($6));	/* update_action */
+			    constraint->info.constraint.un.foreign_key.cache_attr = CONTAINER_AT_2 ($6);	/* cache_attr */
+			    constraint->info.constraint.un.foreign_key.referenced_class = $4;
 			  }
 
 			if (constraint)
@@ -8710,16 +8709,16 @@ column_other_constraint_def
 
 			    constraint->info.constraint.name = $1;
 
-			    if (TO_NUMBER (CONTAINER_AT_0 ($8)))
+			    if (TO_NUMBER (CONTAINER_AT_0 ($7)))
 			      {
 				constraint->info.constraint.deferrable =
-				  (short)TO_NUMBER (CONTAINER_AT_1 ($8));
+				  (short)TO_NUMBER (CONTAINER_AT_1 ($7));
 			      }
 
-			    if (TO_NUMBER (CONTAINER_AT_2 ($8)))
+			    if (TO_NUMBER (CONTAINER_AT_2 ($7)))
 			      {
 				constraint->info.constraint.initially_deferred =
-				  (short)TO_NUMBER (CONTAINER_AT_3 ($8));
+				  (short)TO_NUMBER (CONTAINER_AT_3 ($7));
 			      }
 			  }
 
@@ -8742,6 +8741,11 @@ opt_of_index_key
 opt_key
 	: /* empty */
 	| KEY
+	;
+
+opt_foreign_key
+	: /* empty */
+	| FOREIGN KEY
 	;
 
 column_ai_constraint_def
