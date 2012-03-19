@@ -1569,8 +1569,9 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 
   if (slot_id == page_header_p->num_slots)
     {
-      assert (!(page_header_p->is_saving
-		&& !logtb_is_current_active (thread_p)));
+      assert (log_is_in_crash_recovery ()
+	      || !(page_header_p->is_saving
+		   && !logtb_is_current_active (thread_p)));
 
       status = spage_add_new_slot (thread_p, page_p, page_header_p, &space);
     }

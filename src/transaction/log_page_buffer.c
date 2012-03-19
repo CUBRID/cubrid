@@ -8788,10 +8788,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       act_tdes = LOG_FIND_TDES (i);
-
       if (act_tdes != NULL && act_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&act_tdes->tail_lsa))
 	{
+	  assert (ntrans < tmp_chkpt.ntrans);
+
 	  chkpt_one = &chkpt_trans[ntrans];
 	  chkpt_one->isloose_end = act_tdes->isloose_end;
 	  chkpt_one->trid = act_tdes->trid;
@@ -8858,10 +8859,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * operation is aborted as part of the transaction.
    */
 
+  chkpt_topops = NULL;
   if (ntops > 0)
     {
-      tmp_chkpt.ntops = ntops;
-      length_all_tops = sizeof (*chkpt_topops) * ntops;
+      tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
+      length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
       chkpt_topops =
 	(struct log_chkpt_topops_commit_posp *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
@@ -8893,6 +8895,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
 		    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
 		    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
+		      assert (ntops < tmp_chkpt.ntops);
+
 		      chkpt_topone = &chkpt_topops[ntops];
 		      chkpt_topone->trid = act_tdes->trid;
 		      LSA_COPY (&chkpt_topone->lastparent_lsa,
@@ -8912,11 +8916,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  else
-    {
-      tmp_chkpt.ntops = 0;
-      chkpt_topops = NULL;
-    }
+
+  tmp_chkpt.ntops = ntops;
+  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
 
   TR_TABLE_CS_EXIT ();
 
