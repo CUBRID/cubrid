@@ -2148,8 +2148,8 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       && (LOG_ISRESTARTED () == false
 	  || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
     {
-      if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL)
-	  == NULL)
+      if (logpb_fetch_from_archive (thread_p, pageid,
+				    log_pgptr, NULL, NULL, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -6618,7 +6618,9 @@ logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 {
   int arv_num = 0;
 
-  (void) logpb_fetch_from_archive (thread_p, pageid, NULL, &arv_num, NULL);
+  (void) logpb_fetch_from_archive (thread_p, pageid, NULL,
+				   &arv_num, NULL, true);
+
   if (arv_num < 0)
     {
       arv_num = 0;
@@ -6756,7 +6758,7 @@ logpb_is_archive_available (int arv_num)
 LOG_PAGE *
 logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 			  LOG_PAGE * log_pgptr, int *ret_arv_num,
-			  struct log_arv_header * ret_arv_hdr)
+			  struct log_arv_header * ret_arv_hdr, bool is_fatal)
 {
   char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -7111,8 +7113,11 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 		  logpb_set_unavailable_archive (*ret_arv_num);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_NOTIN_ARCHIVE, 1, pageid);
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				     "log_fetch_from_archive");
+		  if (is_fatal)
+		    {
+		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+					 "log_fetch_from_archive");
+		    }
 
 		  LOG_ARCHIVE_CS_EXIT ();
 
@@ -7694,7 +7699,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       LOG_PAGEID min_fpageid = logwr_get_min_copied_fpageid ();
       if (min_fpageid != NULL_PAGEID)
 	{
-	  int unneeded_arvnum;
+	  int unneeded_arvnum = -1;
 	  if (min_fpageid >= arvhdr->fpageid)
 	    {
 	      unneeded_arvnum = arvhdr->arv_num - 1;
@@ -7703,11 +7708,11 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	    {
 	      struct log_arv_header min_arvhdr;
 	      if (logpb_fetch_from_archive (thread_p, min_fpageid,
-					    NULL, NULL, &min_arvhdr) == NULL)
+					    NULL, NULL, &min_arvhdr,
+					    false) != NULL)
 		{
-		  goto error;
+		  unneeded_arvnum = min_arvhdr.arv_num - 1;
 		}
-	      unneeded_arvnum = min_arvhdr.arv_num - 1;
 	    }
 	  if (unneeded_arvnum >= 0)
 	    {
@@ -9055,7 +9060,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  int arv_num;
 
 	  if ((logpb_fetch_from_archive (thread_p, smallest_pageid,
-					 NULL, &arv_num, NULL) == NULL)
+					 NULL, &arv_num, NULL, true) == NULL)
 	      || (arv_num <= log_Gl.hdr.last_arv_num_for_syscrashes))
 	    {
 	      first_arv_num_not_needed = last_arv_num_not_needed = -1;

@@ -1598,7 +1598,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	  /* If the fpageid is in archive log,
 	     fetch the page and the header page in the archive */
 	  if (logpb_fetch_from_archive (thread_p, fpageid, NULL, NULL,
-					&arvhdr) == NULL)
+					&arvhdr, false) == NULL)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;

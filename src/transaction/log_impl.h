@@ -1643,7 +1643,8 @@ extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p,
 					   LOG_PAGEID pageid,
 					   LOG_PAGE * log_pgptr,
 					   int *ret_arv_num,
-					   struct log_arv_header *arv_hdr);
+					   struct log_arv_header *arv_hdr,
+					   bool is_fatal);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p,
 				       const char *info_reason);
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
