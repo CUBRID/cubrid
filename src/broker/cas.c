@@ -852,8 +852,11 @@ main (int argc, char *argv[])
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
 #endif /* WINDOWS */
-	memset (as_info->cas_clt_ip, 0x0, sizeof (as_info->cas_clt_ip));
-	as_info->cas_clt_port = 0;
+	if (as_info->con_status != CON_STATUS_CLOSE_AND_CONNECT)
+	  {
+	    memset (as_info->cas_clt_ip, 0x0, sizeof (as_info->cas_clt_ip));
+	    as_info->cas_clt_port = 0;
+	  }
 
 	as_info->transaction_start_time = (time_t) 0;
 	cas_log_write_and_end (0, true, "disconnect");
