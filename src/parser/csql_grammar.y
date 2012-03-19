@@ -2236,7 +2236,8 @@ create_stmt
 			      {
 				PT_NODE *expr = col->info.sort_spec.expr;
 				PT_NODE *arg_list = expr->info.function.arg_list;
-				if ((arg_list->next == NULL) 
+				if ((arg_list != NULL) 
+				    && (arg_list->next == NULL)
 				    && (arg_list->node_type == PT_VALUE))
 				  {
 				    if (node->info.index.reverse
@@ -8278,7 +8279,8 @@ attr_index_def
 			  {
 			    PT_NODE *expr = col->info.sort_spec.expr;
 			    PT_NODE *arg_list = expr->info.function.arg_list;
-			    if ((arg_list->next == NULL) 
+			    if ((arg_list != NULL)
+				&& (arg_list->next == NULL)
 				&& (arg_list->node_type == PT_VALUE))
 			      {
 				PT_NODE *p = parser_new_node (this_parser, PT_NAME);
