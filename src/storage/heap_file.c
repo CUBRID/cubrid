@@ -18948,10 +18948,11 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
 
   if ((attr_info->num_values == 0)
       || (attr_info->values
-	  && (&attr_info->values[0])->state == HEAP_UNINIT_ATTRVALUE))
+	  && (&attr_info->values[0])->state == HEAP_UNINIT_ATTRVALUE)
+      || (attr_info->num_values < nr_atts))
     {
-      if (heap_attrinfo_start (thread_p, &attr_info->class_oid, n_atts,
-			       att_ids, attr_info) != NO_ERROR)
+      if (heap_attrinfo_start (thread_p, &attr_info->class_oid, nr_atts,
+			       atts, attr_info) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
