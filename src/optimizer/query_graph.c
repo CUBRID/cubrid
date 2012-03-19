@@ -2210,13 +2210,17 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
       /* is LHS a type of name(attribute) of local database */
       lhs_indexable &= (lhs_indexable && is_local_name (env, lhs_expr));
-      if (!PT_IS_NAME_NODE (lhs_expr) && lhs_indexable)
+      if (lhs_indexable && (pt_is_function_index_expr (lhs_expr)
+			    || (lhs_expr && lhs_expr->info.expr.op == PT_PRIOR
+				&& pt_is_function_index_expr (lhs_expr->info.
+							      expr.arg1))))
 	{
 	  /* we should be dealing with a function indexable expression,
 	   * so we must check if a segment has been associated with it
 	   */
 	  n = bitset_first_member (&lhs_segs);
-	  if ((n != -1) && (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
+	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) 
+			    == false))
 	    {
 	      lhs_indexable = 0;
 	    }
@@ -2299,13 +2303,17 @@ qo_analyze_term (QO_TERM * term, int term_type)
       /* is RHS attribute and is LHS constant value ? */
       rhs_indexable &= (rhs_indexable && is_local_name (env, rhs_expr)
 			&& pt_is_pseudo_const (lhs_expr));
-      if (!PT_IS_NAME_NODE (rhs_expr) && rhs_indexable)
+      if (rhs_indexable && (pt_is_function_index_expr (rhs_expr)
+			    || (rhs_expr && rhs_expr->info.expr.op == PT_PRIOR
+				&& pt_is_function_index_expr (rhs_expr->info.
+							      expr.arg1))))
 	{
 	  /* we should be dealing with a function indexable expression,
 	   * so we must check if a segment has been associated with it
 	   */
 	  n = bitset_first_member (&rhs_segs);
-	  if ((n != -1) && (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
+	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n))
+			    == false))
 	    {
 	      rhs_indexable = 0;
 	    }
