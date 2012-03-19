@@ -182,6 +182,7 @@ typedef struct
   char *db_name;
   char *db_user;
   char *db_passwd;
+  char url[SRV_CON_URL_SIZE];
   SOCKET sock_fd;
   int ref_count;
   T_CCI_TRAN_ISOLATION isolation_level;

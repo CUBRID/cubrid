@@ -672,6 +672,10 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   ALLOC_COPY (con_handle->db_name, db_name);
   ALLOC_COPY (con_handle->db_user, db_user);
   ALLOC_COPY (con_handle->db_passwd, db_passwd);
+  snprintf (con_handle->url, SRV_CON_URL_SIZE,
+	    "cci:cubrid:%d.%d.%d.%d:%d:%s:%s:********:",
+	    ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3], port,
+	    (db_name ? db_name : ""), (db_user ? db_user : ""));
   con_handle->sock_fd = -1;
   con_handle->ref_count = 0;
   con_handle->isolation_level = TRAN_UNKNOWN_ISOLATION;
@@ -793,6 +797,7 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
   FREE_MEM (con_handle->db_name);
   FREE_MEM (con_handle->db_user);
   FREE_MEM (con_handle->db_passwd);
+  con_handle->url[0] = '\0';
   FREE_MEM (con_handle->req_handle_table);
   FREE_MEM (con_handle->deferred_close_handle_list);
   if (con_handle->stmt_pool != NULL)

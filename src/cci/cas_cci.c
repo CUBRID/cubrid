@@ -142,8 +142,6 @@ static int cas_connect_with_ret (T_CON_HANDLE * con_handle,
 				 T_CCI_ERROR * err_buf, int *connect);
 static int cas_connect_low (T_CON_HANDLE * con_handle,
 			    T_CCI_ERROR * err_buf, int *connect);
-static void cas_connect_set_info (T_CON_HANDLE * con_handle, SOCKET sock_fd,
-				  int alt_host_id, T_CCI_ERROR * err_buf);
 static int get_query_info (int req_h_id, char log_type, char **out_buf);
 static int next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf);
 
@@ -391,8 +389,9 @@ cci_connect_with_url (char *url, char *user, char *password)
   char *p, *q, *end;
   char *host, *dbname;
   int port;
-  int error;
+  int error, i;
   int con_handle_id;
+  int pos_pass = 0;
   T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
@@ -415,12 +414,14 @@ cci_connect_with_url (char *url, char *user, char *password)
 
   strncpy (buf, url, LINE_MAX);
 
-  conn_string = strtok_r (buf, "?", &property);
-  if (conn_string == NULL)
+  property = strchr (buf, '?');
+  if (property != NULL)
     {
-      return CCI_ER_INVALID_URL;
+      *property = '\0';		/* replace '?' to '\0' */
+      property += 1;
     }
 
+  conn_string = buf;
   if (strncasecmp (conn_string, "cci:cubrid:", 11) != 0)
     {
       return CCI_ER_INVALID_URL;
@@ -455,13 +456,20 @@ cci_connect_with_url (char *url, char *user, char *password)
   p = strtok_r (NULL, ":", &q);
   if (p != NULL)
     {
-      user = p;
+      if (user == NULL || user[0] == '\0')
+	{
+	  user = p;
+	}
     }
 
   p = strtok_r (NULL, ":", &q);
   if (p != NULL)
     {
-      password = p;
+      pos_pass = p - buf;
+      if (password == NULL || password[0] == '\0')
+	{
+	  password = p;
+	}
     }
 
   if (user == NULL || password == NULL)
@@ -479,6 +487,9 @@ cci_connect_with_url (char *url, char *user, char *password)
 	  goto ret;
 	}
 
+      snprintf (con_handle->url, SRV_CON_URL_SIZE,
+		"cci:cubrid:%s:%d:%s:%s:********:%c%s",
+		host, port, dbname, user, property ? '?' : '\0', property);
       if (property != NULL)
 	{
 	  error = cci_parse_url_property (con_handle, property);
@@ -4485,7 +4496,6 @@ static int
 cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 		 int *connect)
 {
-  SOCKET sock_fd;
   int error;
   int i;
   int host_id;
@@ -4520,58 +4530,21 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
       return CCI_ER_NO_ERROR;
     }
 
-  if (con_handle->alter_host_id < 0)
+  /* first, try to connect to a last connected host */
+  error = net_connect_srv (con_handle, con_handle->alter_host_id, err_buf,
+			   remained_time);
+  if (error == CCI_ER_NO_ERROR)
     {
-      host_id = -1;
-      error = net_connect_srv (con_handle->ip_addr,
-			       con_handle->port,
-			       con_handle->db_name,
-			       con_handle->db_user,
-			       con_handle->db_passwd,
-			       con_handle->is_retry,
-			       err_buf, con_handle->broker_info,
-			       con_handle->cas_info,
-			       &(con_handle->cas_pid), &sock_fd,
-			       &(con_handle->session_id), remained_time);
-    }
-  else
-    {
-      host_id = con_handle->alter_host_id;
-      error = net_connect_srv (con_handle->alter_hosts[host_id].ip_addr,
-			       con_handle->alter_hosts[host_id].port,
-			       con_handle->db_name,
-			       con_handle->db_user,
-			       con_handle->db_passwd,
-			       con_handle->is_retry,
-			       err_buf, con_handle->broker_info,
-			       con_handle->cas_info,
-			       &(con_handle->cas_pid), &sock_fd,
-			       &(con_handle->session_id), remained_time);
-    }
-
-  if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
-    {
-      cas_connect_set_info (con_handle, sock_fd, host_id, err_buf);
       *connect = 1;
       return CCI_ER_NO_ERROR;
     }
 
+  /* second, try to connect all hosts */
   for (i = 0; i < con_handle->alter_host_count; i++)
     {
-      error = net_connect_srv (con_handle->alter_hosts[i].ip_addr,
-			       con_handle->alter_hosts[i].port,
-			       con_handle->db_name,
-			       con_handle->db_user,
-			       con_handle->db_passwd,
-			       con_handle->is_retry,
-			       err_buf, con_handle->broker_info,
-			       con_handle->cas_info,
-			       &(con_handle->cas_pid), &sock_fd,
-			       &(con_handle->session_id), remained_time);
-
-      if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
+      error = net_connect_srv (con_handle, i, err_buf, remained_time);
+      if (error == CCI_ER_NO_ERROR)
 	{
-	  cas_connect_set_info (con_handle, sock_fd, i, err_buf);
 	  *connect = 1;
 	  return CCI_ER_NO_ERROR;
 	}
@@ -4583,36 +4556,6 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
     }
 
   return error;
-}
-
-static void
-cas_connect_set_info (T_CON_HANDLE * con_handle, SOCKET sock_fd,
-		      int alt_host_id, T_CCI_ERROR * err_buf)
-{
-  con_handle->sock_fd = sock_fd;
-  con_handle->alter_host_id = alt_host_id;
-
-  if (con_handle->alter_host_count > 0)
-    {
-      hm_set_ha_status (con_handle, false);
-      con_handle->is_retry = 0;
-    }
-  else
-    {
-      con_handle->is_retry = 1;
-    }
-
-  if (con_handle->isolation_level > TRAN_UNKNOWN_ISOLATION)
-    {
-      qe_set_db_parameter (con_handle, CCI_PARAM_ISOLATION_LEVEL,
-			   &(con_handle->isolation_level), err_buf);
-    }
-
-  if (con_handle->lock_timeout != CCI_LOCK_TIMEOUT_DEFAULT)
-    {
-      qe_set_db_parameter (con_handle, CCI_PARAM_LOCK_TIMEOUT,
-			   &(con_handle->lock_timeout), err_buf);
-    }
 }
 
 static int

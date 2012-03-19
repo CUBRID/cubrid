@@ -64,6 +64,7 @@
 #include "cas_cci.h"
 #include "cci_network.h"
 #include "cas_protocol.h"
+#include "cci_query_execute.h"
 #if defined(WINDOWS)
 #include "version.h"
 #endif
@@ -134,11 +135,8 @@ static char cci_client_type = CAS_CLIENT_CCI;
  ************************************************************************/
 
 int
-net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
-		 char *db_user, char *db_passwd, char is_retry,
-		 T_CCI_ERROR * err_buf, char *broker_info,
-		 char *cas_info, int *cas_pid, SOCKET * ret_sock,
-		 T_CCI_SESSION_ID * session_id, int login_timeout)
+net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
+		 T_CCI_ERROR * err_buf, int login_timeout)
 {
   SOCKET srv_sock_fd;
   char client_info[SRV_CON_CLIENT_INFO_SIZE];
@@ -147,7 +145,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   int err_code, ret_value;
   int err_indicator;
   int new_port;
-  char *msg_buf;
+  char *msg_buf, *info;
+  unsigned char *ip_addr;
+  int port;
 
   init_msg_header (&msg_header);
 
@@ -160,35 +160,41 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   client_info[SRV_CON_MSG_IDX_RESERVED1] = 0;
   client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
 
-  if (db_name)
+  info = db_info;
+  if (con_handle->db_name)
     {
-      strncpy (db_info, db_name, SRV_CON_DBNAME_SIZE - 1);
+      strncpy (info, con_handle->db_name, SRV_CON_DBNAME_SIZE);
     }
+  info += SRV_CON_DBNAME_SIZE;
 
-  if (db_user)
+  if (con_handle->db_user)
     {
-      strncpy (db_info + SRV_CON_DBNAME_SIZE, db_user,
-	       SRV_CON_DBUSER_SIZE - 1);
+      strncpy (info, con_handle->db_user, SRV_CON_DBUSER_SIZE);
     }
+  info += SRV_CON_DBUSER_SIZE;
 
-  if (db_passwd)
+  if (con_handle->db_passwd)
     {
-      strncpy (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE, db_passwd,
-	       SRV_CON_DBPASSWD_SIZE - 1);
+      strncpy (info, con_handle->db_passwd, SRV_CON_DBPASSWD_SIZE);
     }
+  info += SRV_CON_DBPASSWD_SIZE;
 
-  snprintf (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE +
-	    SRV_CON_DBPASSWD_SIZE, SRV_CON_URL_SIZE - 1,
-	    "cci:cubrid:%d.%d.%d.%d:%d:%s:%s::", ip_addr[0], ip_addr[1],
-	    ip_addr[2], ip_addr[3], port, (db_name ? db_name : ""),
-	    (db_user ? db_user : ""));
+  strncpy (info, con_handle->url, SRV_CON_URL_SIZE);
+  info += SRV_CON_URL_SIZE;
+  snprintf (info, SRV_CON_DBSESS_ID_SIZE, "%u", con_handle->session_id);
 
-  snprintf (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE +
-	    SRV_CON_DBPASSWD_SIZE + SRV_CON_URL_SIZE,
-	    SRV_CON_DBSESS_ID_SIZE - 1, "%u", *session_id);
-
-  ret_value =
-    connect_srv (ip_addr, port, is_retry, &srv_sock_fd, login_timeout);
+  if (host_id < 0)
+    {
+      ip_addr = con_handle->ip_addr;
+      port = con_handle->port;
+    }
+  else
+    {
+      ip_addr = con_handle->alter_hosts[host_id].ip_addr;
+      port = con_handle->alter_hosts[host_id].port;
+    }
+  ret_value = connect_srv (ip_addr, port, con_handle->is_retry, &srv_sock_fd,
+			   login_timeout);
   if (ret_value < 0)
     {
       return ret_value;
@@ -201,8 +207,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  ret_value =
-    net_recv_stream (srv_sock_fd, port, (char *) &err_code, 4, login_timeout);
+  ret_value = net_recv_stream (srv_sock_fd, port, (char *) &err_code, 4,
+			       login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -221,9 +227,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     {
       CLOSE_SOCKET (srv_sock_fd);
 
-      ret_value =
-	connect_srv (ip_addr, new_port, is_retry, &srv_sock_fd,
-		     login_timeout);
+      ret_value = connect_srv (ip_addr, new_port, con_handle->is_retry,
+			       &srv_sock_fd, login_timeout);
       if (ret_value < 0)
 	{
 	  return ret_value;
@@ -236,15 +241,15 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  ret_value =
-    net_recv_msg_header (srv_sock_fd, port, &msg_header, login_timeout);
+  ret_value = net_recv_msg_header (srv_sock_fd, port, &msg_header,
+				   login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
       goto connect_srv_error;
     }
 
-  memcpy (cas_info, msg_header.info_ptr, MSG_HEADER_INFO_SIZE);
+  memcpy (con_handle->cas_info, msg_header.info_ptr, MSG_HEADER_INFO_SIZE);
 
   msg_buf = (char *) MALLOC (*(msg_header.msg_body_size_ptr));
   if (msg_buf == NULL)
@@ -253,9 +258,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  ret_value =
-    net_recv_stream (srv_sock_fd, port, msg_buf,
-		     *(msg_header.msg_body_size_ptr), login_timeout);
+  ret_value = net_recv_stream (srv_sock_fd, port, msg_buf,
+			       *(msg_header.msg_body_size_ptr),
+			       login_timeout);
   if (ret_value < 0)
     {
       FREE_MEM (msg_buf);
@@ -294,15 +299,39 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  *cas_pid = err_indicator;
-  memcpy (broker_info, &msg_buf[CAS_PID_SIZE], BROKER_INFO_SIZE);
-  memcpy (session_id, &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE],
+  con_handle->cas_pid = err_indicator;
+  memcpy (con_handle->broker_info, &msg_buf[CAS_PID_SIZE], BROKER_INFO_SIZE);
+  memcpy (&con_handle->session_id, &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE],
 	  SESSION_ID_SIZE);
-  *session_id = ntohl (*session_id);
+  con_handle->session_id = ntohl (con_handle->session_id);
 
   FREE_MEM (msg_buf);
 
-  *ret_sock = srv_sock_fd;
+  con_handle->sock_fd = srv_sock_fd;
+  con_handle->alter_host_id = host_id;
+
+  if (con_handle->alter_host_count > 0)
+    {
+      hm_set_ha_status (con_handle, false);
+      con_handle->is_retry = 0;
+    }
+  else
+    {
+      con_handle->is_retry = 1;
+    }
+
+  if (con_handle->isolation_level > TRAN_UNKNOWN_ISOLATION)
+    {
+      qe_set_db_parameter (con_handle, CCI_PARAM_ISOLATION_LEVEL,
+			   &(con_handle->isolation_level), err_buf);
+    }
+
+  if (con_handle->lock_timeout != CCI_LOCK_TIMEOUT_DEFAULT)
+    {
+      qe_set_db_parameter (con_handle, CCI_PARAM_LOCK_TIMEOUT,
+			   &(con_handle->lock_timeout), err_buf);
+    }
+
   return CCI_ER_NO_ERROR;
 
 connect_srv_error:
