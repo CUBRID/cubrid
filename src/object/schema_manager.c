@@ -5000,13 +5000,14 @@ sm_att_info (MOP classop, const char *name, int *idp,
  *   classop(in): class object
  *   att_names(in):
  *   num_atts(in):
+ *   skip_prefix_index(in): true, if index with prefix length must be skipped
  *   unique_index_only(in):
  *   btid(out):
  */
 
 BTID *
 sm_find_index (MOP classop, char **att_names, int num_atts,
-	       bool unique_index_only, BTID * btid)
+	       bool unique_index_only, bool skip_prefix_index, BTID * btid)
 {
   int error = NO_ERROR;
   int i;
@@ -5034,6 +5035,13 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
 
 	  if (unique_index_only
 	      && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
+	    {
+	      continue;
+	    }
+
+	  if (skip_prefix_index && num_atts > 0 &&
+	      con->attributes[0] != NULL &&
+	      con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
 	    {
 	      continue;
 	    }

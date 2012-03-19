@@ -238,7 +238,8 @@ extern int sm_att_default_value (MOP classop, const char *name,
 extern int sm_class_check_uniques (MOP classop);
 extern BTID *sm_find_index (MOP classop, char **att_names,
 			    int num_atts,
-			    bool unique_index_only, BTID * btid);
+			    bool unique_index_only,
+			    bool skip_prefix_length_index, BTID * btid);
 
 
 /* Query processor support functions */

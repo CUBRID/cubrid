@@ -3949,7 +3949,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  if (aggregate_list->function == PT_COUNT_STAR)
 	    {
 	      (void) sm_find_index (classop, NULL, 0,
-				    need_unique_index, &aggregate_list->btid);
+				    need_unique_index, false,
+				    &aggregate_list->btid);
 	      /* If btree does not exist, optimize with heap */
 	      aggregate_list->flag_agg_optimize = true;
 	    }
@@ -3960,7 +3961,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  (void) sm_find_index (classop,
 					(char **) &tree->info.
 					function.arg_list->info.name.original,
-					1, need_unique_index,
+					1, need_unique_index, true,
 					&aggregate_list->btid);
 		  if (!BTID_IS_NULL (&aggregate_list->btid))
 		    {
