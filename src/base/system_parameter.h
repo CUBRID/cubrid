@@ -464,6 +464,12 @@ extern int PRM_HA_MAX_HEARTBEAT_GAP;
 #define PRM_NAME_HA_PING_HOSTS "ha_ping_hosts"
 extern const char *PRM_HA_PING_HOSTS;
 
+#define PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST "ha_applylogdb_retry_error_list"
+extern bool *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST;
+
+#define PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST "ha_applylogdb_ignore_error_list"
+extern bool *PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST;
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 extern bool PRM_JAVA_STORED_PROCEDURE;
 

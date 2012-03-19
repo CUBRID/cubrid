@@ -119,6 +119,19 @@
    select (0, 0, 0, 0, &sleep_time_val); \
  } while(0)
 
+#define LA_RETRY_ON_ERROR(error) \
+  ((error == ER_LK_UNILATERALLY_ABORTED)              || \
+   (error == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)         || \
+   (error == ER_LK_OBJECT_TIMEOUT_CLASS_MSG)          || \
+   (error == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG)        || \
+   (error == ER_LK_PAGE_TIMEOUT)                      || \
+   (error == ER_PAGE_LATCH_TIMEDOUT)                  || \
+   (error == ER_PAGE_LATCH_ABORTED)                   || \
+   (error == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG)      || \
+   (error == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG)       || \
+   (error == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)     || \
+   (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
+
 
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
@@ -336,6 +349,10 @@ static int la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
 				     LA_ACT_LOG * act_log);
 static int la_update_last_applied_lsa (LOG_LSA * lsa);
 static int la_update_applier_status (void);
+
+static bool la_ignore_on_error (int errid);
+static bool la_retry_on_error (int errid);
+
 static LA_CACHE_PB *la_init_cache_pb (void);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt,
 				     int slb_size);
@@ -1888,6 +1905,46 @@ la_update_applier_status (void)
 
   return error;
 #undef LA_IN_VALUE_COUNT
+}
+
+static bool
+la_ignore_on_error (int errid)
+{
+  assert_release (errid != NO_ERROR);
+
+  errid = abs (errid);
+
+  if (PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST)
+    {
+      if (PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST[errid] == true)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static bool
+la_retry_on_error (int errid)
+{
+  assert_release (errid != NO_ERROR);
+
+  if (LA_RETRY_ON_ERROR (errid))
+    {
+      return true;
+    }
+
+  errid = abs (errid);
+  if (PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST)
+    {
+      if (PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST[errid] == true)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -4082,9 +4139,12 @@ la_apply_delete_log (LA_ITEM * item)
 		    "apply_delete : error %d %s\n\tclass %s key %s\n",
 		    error, er_msg (), item->class_name, buf);
 #endif
+      er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 3,
-	      item->class_name, buf, error);
+	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 3, item->class_name, buf,
+	      error);
+      er_stack_pop ();
+
       la_Info.fail_counter++;
     }
 
@@ -4248,9 +4308,11 @@ error_rtn:
 		    "apply_update : error %d %s\n\tclass %s key %s\n",
 		    error, er_msg (), item->class_name, buf);
 #endif
+      er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HA_LA_FAILED_TO_APPLY_UPDATE, 3, item->class_name, buf,
 	      error);
+      er_stack_pop ();
 
       la_Info.fail_counter++;
     }
@@ -4434,9 +4496,11 @@ error_rtn:
 		    "apply_insert : error %d %s\n\tclass %s key %s\n",
 		    error, er_msg (), item->class_name, buf);
 #endif
+      er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HA_LA_FAILED_TO_APPLY_INSERT, 3, item->class_name, buf,
 	      error);
+      er_stack_pop ();
 
       la_Info.fail_counter++;
     }
@@ -4661,9 +4725,11 @@ la_apply_schema_log (LA_ITEM * item)
 		    "apply_schema : error %d class %s key %s\n", error,
 		    item->class_name, buf);
 #endif
+      er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HA_LA_FAILED_TO_APPLY_SCHEMA, 3, item->class_name, buf,
 	      error);
+      er_stack_pop ();
 
       la_Info.fail_counter++;
     }
@@ -4688,6 +4754,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
   LA_ITEM *item = NULL;
   LA_ITEM *next_item = NULL;
   int error = NO_ERROR;
+  int errid;
   LA_APPLY *apply;
   int apply_repl_log_cnt = 0;
   char error_string[1024];
@@ -4725,6 +4792,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
   item = apply->head;
   while (item)
     {
+      error = NO_ERROR;
+
       total_repl_items++;
       release_pb =
 	((total_repl_items % LA_MAX_REPL_ITEM_WITHOUT_RELEASE_PB) == 0)
@@ -4761,6 +4830,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	      er_log_debug (ARG_FILE_LINE,
 			    "apply_repl_log : log_type %d item_type %d\n",
 			    item->log_type, item->item_type);
+
+	      assert_release (false);
 	    }
 	}
       else if (item->log_type == LOG_REPLICATION_SCHEMA)
@@ -4772,6 +4843,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	  er_log_debug (ARG_FILE_LINE,
 			"apply_repl_log : log_type %d item_type\n",
 			item->log_type, item->item_type);
+
+	  assert_release (false);
 	}
 
       apply_repl_log_cnt++;
@@ -4784,11 +4857,25 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	  er_log_debug (ARG_FILE_LINE,
 			"Internal system failure: %s", error_string);
 
-	  if (er_errid () == ER_NET_CANT_CONNECT_SERVER
-	      || er_errid () == ER_OBJ_NO_CONNECT)
+	  errid = er_errid ();
+	  if (errid == ER_NET_CANT_CONNECT_SERVER
+	      || errid == ER_OBJ_NO_CONNECT)
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	      goto end;
+	    }
+	  else if (la_ignore_on_error (errid) == false
+		   && la_retry_on_error (errid) == true)
+	    {
+	      snprintf (buf, sizeof (buf),
+			"attempts to try applying failed replication log again. (error:%d)",
+			errid);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_HA_GENERIC_ERROR, 1, buf);
+
+	      /* try it again */
+	      LA_SLEEP (10, 0);
+	      continue;
 	    }
 	}
 

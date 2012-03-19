@@ -177,7 +177,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_GET_INTEGER_LIST(x) (*((int **) (x)))
 #define PRM_GET_SIZE(x)     (*((UINT64 *) (x)))
 
-static bool error_list_intial[1] = { false };
+static bool error_list_initial[1] = { false };
 static int int_list_initial[1] = { 0 };
 
 /*
@@ -532,10 +532,10 @@ static int prm_suppress_fsync_lower = 0;
 bool PRM_CALL_STACK_DUMP_ON_ERROR = false;
 static bool prm_call_stack_dump_on_error_default = false;
 
-bool *PRM_CALL_STACK_DUMP_ACTIVATION = error_list_intial;
+bool *PRM_CALL_STACK_DUMP_ACTIVATION = error_list_initial;
 static bool *prm_call_stack_dump_activation_default = NULL;
 
-bool *PRM_CALL_STACK_DUMP_DEACTIVATION = error_list_intial;
+bool *PRM_CALL_STACK_DUMP_DEACTIVATION = error_list_initial;
 static bool *prm_call_stack_dump_deactivation_default = NULL;
 
 bool PRM_COMPAT_NUMERIC_DIVISION_SCALE = false;
@@ -664,6 +664,12 @@ static int prm_ha_max_heartbeat_gap_default = HB_DEFAULT_MAX_HEARTBEAT_GAP;
 const char *PRM_HA_PING_HOSTS = "";
 static const char *prm_ha_ping_hosts_default = NULL;
 
+bool *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST = error_list_initial;
+static bool *prm_ha_applylogdb_retry_error_list_default = NULL;
+
+bool *PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST = error_list_initial;
+static bool *prm_ha_applylogdb_ignore_error_list_default = NULL;
+
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 
@@ -777,7 +783,7 @@ static bool prm_use_system_malloc_default = false;
 const char *PRM_EVENT_HANDLER = "";
 static const char *prm_event_handler_default = NULL;
 
-bool *PRM_EVENT_ACTIVATION = error_list_intial;
+bool *PRM_EVENT_ACTIVATION = error_list_initial;
 static bool *prm_event_activation_default = NULL;
 
 bool PRM_READ_ONLY_MODE = false;
@@ -1669,6 +1675,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_HA_PING_HOSTS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST,
+   (PRM_ERROR_LIST | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
+   (void *) &prm_ha_applylogdb_retry_error_list_default,
+   (void *) &PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
+   (PRM_ERROR_LIST | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
+   (void *) &prm_ha_applylogdb_ignore_error_list_default,
+   (void *) &PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER),
    (void *) &prm_java_stored_procedure_default,
@@ -2441,7 +2459,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 
   if (db_name == NULL)
     {
-      /* intialize message catalog at here because there could be a code path
+      /* initialize message catalog at here because there could be a code path
        * that did not call msgcat_init() before */
       if (msgcat_init () != NO_ERROR)
 	{
