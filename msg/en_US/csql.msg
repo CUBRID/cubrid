@@ -44,7 +44,7 @@ valid options:\n\
       --no-pager               do not use pager\n\
       --no-single-line         turn off single line oriented execution\n\
 \n\
-For addtional information, see http://www.cubrid.com\n
+For additional information, see http://www.cubrid.com\n
 41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
 42 %s: too many arguments given. maximum is %d.\n
 43 %s: The root directory environment variable ($CUBRID) should be set.\n
