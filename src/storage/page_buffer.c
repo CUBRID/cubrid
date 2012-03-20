@@ -5669,11 +5669,20 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 	    }
 	  else
 	    {
+	      pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].
+				    LRU_mutex);
 	      pgbuf_flush_victim_candidate (thread_p,
 					    PRM_PB_BUFFER_FLUSH_RATIO);
+	      MUTEX_LOCK_VIA_BUSY_WAIT (rv,
+					pgbuf_Pool.buf_LRU_list[lru_idx].
+					LRU_mutex);
 	    }
 #else
+	  pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 	  pgbuf_flush_victim_candidate (thread_p, PRM_PB_BUFFER_FLUSH_RATIO);
+	  MUTEX_LOCK_VIA_BUSY_WAIT (rv,
+				    pgbuf_Pool.buf_LRU_list[lru_idx].
+				    LRU_mutex);
 #endif /* SERVER_MODE */
 	}
 
