@@ -656,9 +656,6 @@ css_free_conn (CSS_CONN_ENTRY * conn)
       prev = p;
     }
 
-  assert (css_Active_conn_anchor == NULL
-	  || (css_Active_conn_anchor != NULL && p != NULL));
-
   css_shutdown_conn (conn);
   css_dealloc_conn (conn);
 
