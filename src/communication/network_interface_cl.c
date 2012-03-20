@@ -4099,6 +4099,7 @@ boot_unregister_client (int tran_index)
  *   zip_method(in):
  *   zip_level(in):
  *   skip_activelog(in):
+ *   sleep_msecs(in):
  *
  * NOTE:
  */
@@ -4107,7 +4108,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 	     bool delete_unneeded_logarchives,
 	     const char *backup_verbose_file, int num_threads,
 	     FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
-	     int skip_activelog)
+	     int skip_activelog, int sleep_msecs)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -4124,7 +4125,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 
   request_size = length_const_string (backup_path, &strlen1) + OR_INT_SIZE
     + OR_INT_SIZE + length_const_string (backup_verbose_file, &strlen2)
-    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
   if (request)
@@ -4137,6 +4138,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
       ptr = or_pack_int (ptr, zip_method);
       ptr = or_pack_int (ptr, zip_level);
       ptr = or_pack_int (ptr, skip_activelog);
+      ptr = or_pack_int (ptr, sleep_msecs);
       req_error = net_client_request_with_callback (NET_SERVER_BO_BACKUP,
 						    request, request_size,
 						    reply,
@@ -4165,7 +4167,8 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 
   success = xboot_backup (NULL, backup_path, backup_level,
 			  delete_unneeded_logarchives, backup_verbose_file,
-			  num_threads, zip_method, zip_level, skip_activelog);
+			  num_threads, zip_method, zip_level, skip_activelog,
+			  sleep_msecs);
 
   EXIT_SERVER ();
 

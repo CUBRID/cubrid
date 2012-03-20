@@ -1363,7 +1363,10 @@
 #define ER_LOC_GEN				    -1088
 #define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1089
 
-#define ER_LAST_ERROR                               -1090
+#define ER_LOG_BACKUP_CS_ENTER                      -1090
+#define ER_LOG_BACKUP_CS_EXIT                       -1091
+
+#define ER_LAST_ERROR                               -1092
 
 #define DB_TRUE 1
 #define DB_FALSE 0

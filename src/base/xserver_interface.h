@@ -67,7 +67,8 @@ extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
+			 int sleep_msecs);
 extern int xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag,
 				OID * oid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,

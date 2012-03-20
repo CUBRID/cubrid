@@ -228,6 +228,9 @@ extern int PRM_IO_BACKUP_NBUFFERS;
 #define PRM_NAME_IO_BACKUP_MAX_VOLUME_SIZE "backup_volume_max_size_bytes"
 extern int PRM_IO_BACKUP_MAX_VOLUME_SIZE;
 
+#define PRM_NAME_IO_BACKUP_SLEEP_MSECS "backup_sleep_msecs"
+extern int PRM_IO_BACKUP_SLEEP_MSECS;
+
 #define PRM_NAME_MAX_PAGES_IN_TEMP_FILE_CACHE "max_pages_in_temp_file_cache"
 extern int PRM_MAX_PAGES_IN_TEMP_FILE_CACHE;
 

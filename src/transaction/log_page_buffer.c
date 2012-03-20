@@ -9403,6 +9403,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
  *   zip_method(in): compression method
  *   zip_level(in): compression level
  *   skip_activelog(in):
+ *   sleep_msecs(in):
  *
  */
 int
@@ -9411,7 +9412,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 	      bool delete_unneeded_logarchives,
 	      const char *backup_verbose_file, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
-	      int skip_activelog)
+	      int skip_activelog, int sleep_msecs)
 {
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */
@@ -9574,7 +9575,7 @@ loop:
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
   if (fileio_initialize_backup (log_Db_fullname, allbackup_path,
 				&session, backup_level, backup_verbose_file,
-				num_threads) == NULL)
+				num_threads, sleep_msecs) == NULL)
     {
       error_code = ER_FAILED;
       goto error;
@@ -9699,20 +9700,22 @@ loop:
 
   if (session.verbose_fp)
     {
-      if (backup_level != 0)
+      if (backup_level != FILEIO_BACKUP_FULL_LEVEL)
 	{
 	  fprintf (session.verbose_fp, "\n\n\n");
 	}
 
       switch (backup_level)
 	{
-	case 0:
+	case FILEIO_BACKUP_FULL_LEVEL:
 	  str_tmp = "Full";
 	  break;
-	case 1:
+	case FILEIO_BACKUP_BIG_INCREMENT_LEVEL:
 	  str_tmp = "Incremental Level 1";
 	  break;
 	default:
+	  assert_release (backup_level ==
+			  FILEIO_BACKUP_SMALL_INCREMENT_LEVEL);
 	  str_tmp = "Incremental Level 2";
 	  break;
 	}
@@ -9739,6 +9742,33 @@ loop:
 	{
 	  fprintf (session.verbose_fp, "- not include active log.\n\n");
 	}
+
+#if defined(SERVER_MODE)
+      if (sleep_msecs > 0 || PRM_IO_BACKUP_SLEEP_MSECS > 0)
+	{
+	  int sleep_nsecs;
+
+	  if (sleep_msecs > 0)	/* priority 1 */
+	    {
+	      sleep_nsecs = sleep_msecs * 1000;
+	    }
+	  else if (PRM_IO_BACKUP_SLEEP_MSECS > 0)	/* priority 2 */
+	    {
+	      sleep_nsecs = PRM_IO_BACKUP_SLEEP_MSECS * 1000;
+	    }
+	  else
+	    {
+	      sleep_nsecs = 0;
+	    }
+
+	  if (sleep_nsecs > 0)
+	    {
+	      fprintf (session.verbose_fp,
+		       "- sleep %d millisecond per 1M read.\n\n",
+		       sleep_nsecs / 1000);
+	    }
+	}
+#endif
 
       backup_start_time = time (NULL);
       fprintf (session.verbose_fp, "- backup start time: %s\n",
@@ -9868,6 +9898,12 @@ loop:
   last_arv_needed = -1;
 #endif /* SERVER_MODE */
 
+  /* at here, diable multi-thread usage for fast Log copy */
+  session.read_thread_info.num_threads = 1;
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_ENTER,
+	  1, log_Name_active);
+
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
@@ -9880,6 +9916,9 @@ loop:
 						     1);
       if (error_code != NO_ERROR)
 	{
+	  LOG_CS_EXIT ();
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
 	}
 
@@ -9894,6 +9933,8 @@ loop:
       if (error_code != NO_ERROR)
 	{
 	  LOG_CS_EXIT ();
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
 	}
     }
@@ -9910,6 +9951,8 @@ loop:
   if (error_code != NO_ERROR)
     {
       LOG_CS_EXIT ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT,
+	      1, log_Name_active);
       goto error;
     }
 
@@ -9949,6 +9992,8 @@ loop:
       if (error_code != NO_ERROR)
 	{
 	  LOG_CS_EXIT ();
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
 	}
     }
@@ -9956,6 +10001,8 @@ loop:
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
       LOG_CS_EXIT ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT,
+	      1, log_Name_active);
       error_code = ER_FAILED;
       goto error;
     }
@@ -9972,6 +10019,9 @@ loop:
     }
 
   LOG_CS_EXIT ();
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT,
+	  1, log_Name_active);
 
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
@@ -9995,6 +10045,8 @@ loop:
 	  str_tmp = "Incremental Level 1";
 	  break;
 	default:
+	  assert_release (backup_level ==
+			  FILEIO_BACKUP_SMALL_INCREMENT_LEVEL);
 	  str_tmp = "Incremental Level 2";
 	  break;
 	}

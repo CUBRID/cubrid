@@ -1672,7 +1672,8 @@ extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 			 bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
+			 int sleep_msecs);
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *logpath, const char *prefix_logname,
 			  BO_RESTART_ARG * r_args);

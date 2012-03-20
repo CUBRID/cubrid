@@ -56,7 +56,8 @@
 
 #define FILEIO_FIRST_BACKUP_VOL_INFO      0
 #define FILEIO_SECOND_BACKUP_VOL_INFO     1
-#define FILEIO_NUM_THREADS_AUTO           0
+#define FILEIO_BACKUP_NUM_THREADS_AUTO    0
+#define FILEIO_BACKUP_SLEEP_MSECS_AUTO    0
 
 #if defined(WINDOWS)
 #define STR_PATH_SEPARATOR "\\"
@@ -70,7 +71,7 @@
 
 typedef enum
 {
-  FILEIO_BACKUP_FULL_LEVEL,	/* Full backup */
+  FILEIO_BACKUP_FULL_LEVEL = 0,	/* Full backup */
   FILEIO_BACKUP_BIG_INCREMENT_LEVEL,	/* Backup since last full backup */
   FILEIO_BACKUP_SMALL_INCREMENT_LEVEL,	/* Backup since last INCRBIG */
   FILEIO_BACKUP_UNDEFINED_LEVEL	/* Undefined (must be highest ordinal value) */
@@ -360,6 +361,7 @@ struct io_backup_session
   FILEIO_BACKUP_DB_BUFFER dbfile;	/* Buffer area for database files */
   FILEIO_THREAD_INFO read_thread_info;	/* read-threads info */
   FILE *verbose_fp;		/* Backupdb/Restoredb status msg */
+  int sleep_msecs;		/* sleep internval in msecs */
 };
 
 typedef struct token_bucket TOKEN_BUCKET;
@@ -497,7 +499,7 @@ extern FILEIO_BACKUP_SESSION
 			      FILEIO_BACKUP_SESSION * session,
 			      FILEIO_BACKUP_LEVEL level,
 			      const char *backup_verbose_file,
-			      int num_threads);
+			      int num_threads, int sleep_msecs);
 extern FILEIO_BACKUP_SESSION
   * fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_fullname,
 			 INT64 * db_creation,

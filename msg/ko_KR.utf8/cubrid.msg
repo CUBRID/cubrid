@@ -1155,7 +1155,9 @@ $ LOADDB
 1087 Locale initialization : %s.
 1088 Locale generation : %s.
 1089 Cannot prepare statement of type '%s' with host variables.
-1090 마지막 에러
+1090 Backup active log '%s' started.
+1091 Backup active log '%s' finished.
+1092 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

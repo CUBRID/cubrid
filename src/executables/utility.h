@@ -856,6 +856,8 @@ typedef struct _ha_config
 #define BACKUP_COMPRESS_L                       "compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
+#define BACKUP_SLEEP_MSECS_S                    10600
+#define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
 
 /* restoredb option list */
 #define RESTORE_UP_TO_DATE_S                    'd'

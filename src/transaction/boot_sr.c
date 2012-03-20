@@ -4197,6 +4197,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
  *                    num_threads: number of threads
  *                    zip_method: compression method
  *                    zip_level: compression level
+ *   sleep_msecs(in):
  *
  * Note: A fuzzy backup of the database is taken. The backup is written
  *       into the given backup_path location. If the backup_path
@@ -4210,14 +4211,14 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 	      bool delete_unneeded_logarchives,
 	      const char *backup_verbose_file, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
-	      int skip_activelog)
+	      int skip_activelog, int sleep_msecs)
 {
   int error_code;
 
   error_code = logpb_backup (thread_p, boot_Db_parm->nvols, backup_path,
 			     backup_level, delete_unneeded_logarchives,
 			     backup_verbose_file, num_threads, zip_method,
-			     zip_level, skip_activelog);
+			     zip_level, skip_activelog, sleep_msecs);
   return error_code;
 }
 

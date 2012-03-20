@@ -222,7 +222,8 @@ extern int boot_backup (const char *backup_path,
 			bool delete_unneeded_logarchives,
 			const char *backup_verbose_file, int num_threads,
 			FILEIO_ZIP_METHOD zip_method,
-			FILEIO_ZIP_LEVEL zip_level, int skip_activelog);
+			FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
+			int sleep_msecs);
 extern VOLID boot_add_volume_extension (const char *ext_path,
 					const char *ext_name,
 					const char *ext_comments,

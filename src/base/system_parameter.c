@@ -374,6 +374,10 @@ int PRM_IO_BACKUP_MAX_VOLUME_SIZE = -1;
 static int prm_io_backup_max_volume_size_default = -1;
 static int prm_io_backup_max_volume_size_lower = 1024 * 32;
 
+int PRM_IO_BACKUP_SLEEP_MSECS = 0;
+static int prm_io_backup_sleep_msecs_default = 0;
+static int prm_io_backup_sleep_msecs_lower = 0;
+
 int PRM_MAX_PAGES_IN_TEMP_FILE_CACHE = 1000;
 static int prm_max_pages_in_temp_file_cache_default = 1000;	/* pages */
 static int prm_max_pages_in_temp_file_cache_lower = 100;
@@ -1163,6 +1167,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_io_backup_max_volume_size_default,
    (void *) &PRM_IO_BACKUP_MAX_VOLUME_SIZE,
    (void *) NULL, (void *) &prm_io_backup_max_volume_size_lower,
+   (char *) NULL},
+  {PRM_NAME_IO_BACKUP_SLEEP_MSECS,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE | PRM_HIDDEN),
+   (void *) &prm_io_backup_sleep_msecs_default,
+   (void *) &PRM_IO_BACKUP_SLEEP_MSECS,
+   (void *) NULL, (void *) &prm_io_backup_sleep_msecs_lower,
    (char *) NULL},
   {PRM_NAME_MAX_PAGES_IN_TEMP_FILE_CACHE,
    (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_HIDDEN),

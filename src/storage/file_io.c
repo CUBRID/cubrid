@@ -148,6 +148,7 @@
 #define FILEIO_DISK_PROTECTION_MODE        0600
 #define FILEIO_MAX_WAIT_DBTXT              300
 #define FILEIO_FULL_LEVEL_EXP              32
+
 /*
  * Define a fixed size for backup and restore input/output of the volume
  * headers.  For most modern devices multiples of 512 or 1024 are needed.
@@ -520,7 +521,8 @@ static int fileio_get_primitive_way_max (const char *path,
 					 long int *pathname_max);
 static int fileio_flush_backup (THREAD_ENTRY * thread_p,
 				FILEIO_BACKUP_SESSION * session);
-static ssize_t fileio_read_backup (FILEIO_BACKUP_SESSION * session,
+static ssize_t fileio_read_backup (THREAD_ENTRY * thread_p,
+				   FILEIO_BACKUP_SESSION * session,
 				   int pageid);
 static int fileio_write_backup (THREAD_ENTRY * thread_p,
 				FILEIO_BACKUP_SESSION * session,
@@ -6076,7 +6078,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
   /* get the number of CPUs */
   num_cpus = fileio_os_sysconf ();
   /* check for the upper bound of threads */
-  if (num_threads == FILEIO_NUM_THREADS_AUTO)
+  if (num_threads == FILEIO_BACKUP_NUM_THREADS_AUTO)
     {
       thread_info_p->num_threads = num_cpus;
     }
@@ -6111,13 +6113,15 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
  *   level(in): The presumed backup level
  *   verbose_file(in): verbose mode file path
  *   num_threads(in): number of threads
+ *   sleep_msecs(in): sleep interval in msecs
  */
 FILEIO_BACKUP_SESSION *
 fileio_initialize_backup (const char *db_full_name_p,
 			  const char *backup_destination_p,
 			  FILEIO_BACKUP_SESSION * session_p,
 			  FILEIO_BACKUP_LEVEL level,
-			  const char *verbose_file_p, int num_threads)
+			  const char *verbose_file_p, int num_threads,
+			  int sleep_msecs)
 {
   int vol_fd;
   int size;
@@ -6351,6 +6355,8 @@ fileio_initialize_backup (const char *db_full_name_p,
     {
       session_p->verbose_fp = NULL;
     }
+
+  session_p->sleep_msecs = sleep_msecs;
 
   return session_p;
 }
@@ -7231,9 +7237,10 @@ exit_on_error:
 /*
  * fileio_write_backup_node () -
  *   return:
- *   session(in/out):
- *   node(in):
- *   backup_hdr(in):
+ *   thread_p(in):
+ *   session_p(in/out):
+ *   node_p(in):
+ *   backup_header_p(in):
  */
 static int
 fileio_write_backup_node (THREAD_ENTRY * thread_p,
@@ -7269,6 +7276,7 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p,
 exit_on_end:
 
   return error;
+
 exit_on_error:
 
   if (error == NO_ERROR)
@@ -7385,7 +7393,8 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
       session_p->dbfile.area = node_p->area;
       node_p->pageid = thread_info_p->pageid;
       node_p->writeable = false;	/* init */
-      node_p->nread = fileio_read_backup (session_p, node_p->pageid);
+      node_p->nread =
+	fileio_read_backup (thread_p, session_p, node_p->pageid);
       session_p->dbfile.area = save_area_p;	/* restore link */
       if (node_p->nread == -1)
 	{
@@ -7557,8 +7566,10 @@ fileio_write_backup_volume (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      save_area_p = session_p->dbfile.area;	/* save link */
-	      if (fileio_write_backup_node
-		  (thread_p, session_p, node_p, backup_header_p) != NO_ERROR)
+	      rv = fileio_write_backup_node (thread_p,
+					     session_p,
+					     node_p, backup_header_p);
+	      if (rv != NO_ERROR)
 		{
 		  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
 		}
@@ -7937,7 +7948,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
 	  save_area_p = session_p->dbfile.area;	/* save link */
 	  session_p->dbfile.area = node_p->area;
 	  node_p->pageid = page_id;
-	  node_p->nread = fileio_read_backup (session_p, node_p->pageid);
+	  node_p->nread =
+	    fileio_read_backup (thread_p, session_p, node_p->pageid);
 	  session_p->dbfile.area = save_area_p;	/* restore link */
 	  if (node_p->nread == -1)
 	    {
@@ -8303,7 +8315,8 @@ fileio_flush_backup (THREAD_ENTRY * thread_p,
  *       the whole volume/file is backed up.
  */
 static ssize_t
-fileio_read_backup (FILEIO_BACKUP_SESSION * session_p, int page_id)
+fileio_read_backup (THREAD_ENTRY * thread_p,
+		    FILEIO_BACKUP_SESSION * session_p, int page_id)
 {
   int io_page_size = session_p->bkup.bkuphdr->bkpagesize;
 #if defined(WINDOWS)
@@ -8372,6 +8385,44 @@ fileio_read_backup (FILEIO_BACKUP_SESSION * session_p, int page_id)
       nread += nbytes;
       buffer_p += nbytes;
     }
+
+#if defined(SERVER_MODE)
+  /* Backup Thread is reading data/log pages slowly to avoid IO burst */
+  if (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID
+      || (session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID
+	  && LOG_CS_OWN_WRITE_MODE (thread_p)))
+    {
+      ;				/* go ahead */
+    }
+  else
+    {
+      int sleep_nsecs;
+
+      if (session_p->sleep_msecs > 0)	/* priority 1 */
+	{
+	  sleep_nsecs = session_p->sleep_msecs * 1000;
+	}
+      else if (PRM_IO_BACKUP_SLEEP_MSECS > 0)	/* priority 2 */
+	{
+	  sleep_nsecs = PRM_IO_BACKUP_SLEEP_MSECS * 1000;
+	}
+      else
+	{
+	  sleep_nsecs = 0;
+	}
+
+      if (sleep_nsecs > 0)
+	{
+	  sleep_nsecs =
+	    (int) (((double) sleep_nsecs) / (ONE_M / io_page_size));
+
+	  if (sleep_nsecs > 0)
+	    {
+	      thread_sleep (0, sleep_nsecs);
+	    }
+	}
+    }
+#endif
 
   return nread;
 }
@@ -8540,7 +8591,7 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p,
   return (fileio_initialize_backup
 	  (db_full_name_p, (const char *) backup_source_p,
 	   session_p, level, restore_verbose_file_p,
-	   0 /* no multi-thread */ ));
+	   0 /* no multi-thread */ , 0 /* no sleep */ ));
 }
 
 /*

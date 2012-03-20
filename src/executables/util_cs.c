@@ -105,6 +105,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_NONE_METHOD;
   FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
   bool skip_activelog = false;
+  int sleep_msecs;
   char real_pathbuf[PATH_MAX];
   char verbose_file_realpath[PATH_MAX];
 
@@ -134,6 +135,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   compress_flag = utility_get_option_bool_value (arg_map, BACKUP_COMPRESS_S);
   skip_activelog =
     utility_get_option_bool_value (arg_map, BACKUP_EXCEPT_ACTIVE_LOG_S);
+  sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
 
   /* Range checking of input */
@@ -149,7 +151,12 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 				       BACKUPDB_INVALID_THREAD_NUM_OPT));
     }
 
-  if (backup_num_threads < FILEIO_NUM_THREADS_AUTO)
+  if (backup_num_threads < FILEIO_BACKUP_NUM_THREADS_AUTO)
+    {
+      goto print_backup_usage;
+    }
+
+  if (sleep_msecs < FILEIO_BACKUP_SLEEP_MSECS_AUTO)
     {
       goto print_backup_usage;
     }
@@ -242,7 +249,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 		       remove_log_archives, backup_verbose_file,
 		       backup_num_threads,
 		       backup_zip_method, backup_zip_level,
-		       skip_activelog) == NO_ERROR)
+		       skip_activelog, sleep_msecs) == NO_ERROR)
 	{
 	  if (db_commit_transaction () != NO_ERROR)
 	    {
