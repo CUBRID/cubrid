@@ -5115,11 +5115,15 @@ db_string_translate (const DB_VALUE * src_string,
     {
       if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
 	{
-	  db_value_domain_init (transed_string, DB_TYPE_VARCHAR, 0, 0);
+	  error_status =
+	    db_value_domain_init (transed_string, DB_TYPE_VARCHAR,
+				  DB_DEFAULT_PRECISION, 0);
 	}
       else
 	{
-	  db_value_domain_init (transed_string, DB_TYPE_VARNCHAR, 0, 0);
+	  error_status =
+	    db_value_domain_init (transed_string, DB_TYPE_VARNCHAR,
+				  DB_DEFAULT_PRECISION, 0);
 	}
       return error_status;
     }

@@ -15180,7 +15180,10 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
   int nr_const = 0, nr_attrs = 0, i = 0, k = 0;
   SM_FUNCTION_INFO *func_index_info;
   FUNC_PRED *func_pred;
-  assert (pt_is_function_index_expr (expr));
+  if (!pt_is_function_index_expr (expr))
+    {
+      return NULL;
+    }
   func_index_info = (SM_FUNCTION_INFO *)
     db_ws_alloc (sizeof (SM_FUNCTION_INFO));
 
@@ -15288,8 +15291,16 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       expr = (*stmt)->info.query.q.select.list;
       if (expr && !pt_is_function_index_expr (expr))
 	{
-	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+	  if (pt_is_const_expr_node (expr))
+	    {
+	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+	    }
+	  else
+	    {
+	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+	    }
 	  error = ER_FAILED;
 	  goto error;
 	}

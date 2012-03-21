@@ -17432,8 +17432,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && op != PT_CASE && op != PT_TO_CHAR
 		   && op != PT_TO_NUMBER && op != PT_TO_DATE
 		   && op != PT_TO_TIME && op != PT_TO_TIMESTAMP
-		   && op != PT_TO_DATETIME
-		   && op != PT_TRANSLATE && op != PT_REPLACE
+		   && op != PT_TO_DATETIME && op != PT_REPLACE
 		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN
 		   && op != PT_SYS_CONNECT_BY_PATH
 		   && op != PT_NULLIF && op != PT_COALESCE
@@ -17442,9 +17441,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && (op != PT_RANGE || !opd2->or_next))
 	       || (opd3 && (opd3->type_enum == PT_TYPE_NA
 			    || opd3->type_enum == PT_TYPE_NULL)
-		   && op != PT_TRANSLATE && op != PT_REPLACE
-		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN
-		   && op != PT_NVL2 && op != PT_IF)
+		   && op != PT_REPLACE && op != PT_BETWEEN
+		   && op != PT_NOT_BETWEEN && op != PT_NVL2 && op != PT_IF)
 	       || (opd2 && opd3 && op == PT_IF
 		   && (opd2->type_enum == PT_TYPE_NA
 		       || opd2->type_enum == PT_TYPE_NULL)

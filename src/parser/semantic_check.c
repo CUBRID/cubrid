@@ -8984,9 +8984,16 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	      if (node->info.index.function_expr &&
 		  !pt_is_function_index_expr (node->info.index.function_expr))
 		{
-		  PT_ERRORm (parser, node,
-			     MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+		  if (pt_is_const_expr_node (node->info.index.function_expr))
+		    {
+		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+		    }
+		  else
+		    {
+		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+		    }
 		}
 	    }
 
@@ -9108,9 +9115,19 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 			  && !pt_is_function_index_expr (p->info.index.
 							 function_expr))
 			{
-			  PT_ERRORm (parser, node,
-				     MSGCAT_SET_PARSER_SEMANTIC,
-				     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+			  if (pt_is_const_expr_node (p->info.index.
+						     function_expr))
+			    {
+			      PT_ERRORm (parser, node,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+			    }
+			  else
+			    {
+			      PT_ERRORm (parser, node,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+			    }
 			}
 		      if (p && !pt_has_error (parser))
 			{
@@ -12394,9 +12411,16 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      PT_ERRORm (parser, node,
-			 MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+	      if (pt_is_const_expr_node (col->info.sort_spec.expr))
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+		}
+	      else
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+		}
 	      return;
 	    }
 	  fnc_cnt++;
