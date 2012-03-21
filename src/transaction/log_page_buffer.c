@@ -143,15 +143,6 @@ static int rv;
 #define LOG_PRIOR_LSA_LIST_MAX_SIZE() \
   ((INT64) log_Pb.num_buffers * (INT64) LOG_PAGESIZE)	/* 1 is guessing factor */
 
-#if defined(SERVER_MODE)
-#define PRIOR_LSA_MUTEX_LOCK(m)   pthread_mutex_lock (m)
-#define PRIOR_LSA_MUTEX_UNLOCK(m) pthread_mutex_unlock (m)
-#else /* SERVER_MODE */
-#define PRIOR_LSA_MUTEX_LOCK(m)
-#define PRIOR_LSA_MUTEX_UNLOCK(m)
-#endif /* SERVER_MODE */
-
-
 #define LOG_PRIOR_LSA_LAST_APPEND_OFFSET()  LOGAREA_SIZE
 
 #define LOG_PRIOR_LSA_APPEND_ALIGN()                                       \
@@ -4475,7 +4466,7 @@ prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 {
   LOG_LSA start_lsa;
 
-  PRIOR_LSA_MUTEX_LOCK (&log_Gl.prior_info.prior_lsa_mutex);
+  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
 
   prior_lsa_start_append (thread_p, node, tdes);
 
@@ -4510,7 +4501,7 @@ prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 
   log_Gl.prior_info.list_size += (sizeof (LOG_PRIOR_NODE) + node->data_header_length + node->ulength + node->rlength);	/* bytes */
 
-  PRIOR_LSA_MUTEX_UNLOCK (&log_Gl.prior_info.prior_lsa_mutex);
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
 
   if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
     {
@@ -4671,10 +4662,10 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  PRIOR_LSA_MUTEX_LOCK (&log_Gl.prior_info.prior_lsa_mutex);
+  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
   current_size = log_Gl.prior_info.list_size;
   prior_list = prior_lsa_remove_prior_list (thread_p);
-  PRIOR_LSA_MUTEX_UNLOCK (&log_Gl.prior_info.prior_lsa_mutex);
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
 
   if (prior_list != NULL)
     {

@@ -3502,11 +3502,11 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   /* Don't need to log */
 
-  LOG_CS_ENTER (thread_p);
+  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
 
-  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.hdr.append_lsa);
+  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.prior_info.prior_lsa);
 
-  LOG_CS_EXIT ();
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
 
   return;
 }
