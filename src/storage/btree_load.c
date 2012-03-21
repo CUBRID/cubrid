@@ -2329,6 +2329,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   int next_size;
   int oid_size;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+  int result;
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
@@ -2453,11 +2454,16 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	      return (SORT_ERROR_OCCURRED);
 	    }
 
-	  if ((*sort_args->filter_eval_func) (thread_p,
-					      sort_args->filter->pred,
-					      NULL, &sort_args->cur_oid)
+	  if ((result =
+	       (*sort_args->filter_eval_func) (thread_p,
+					       sort_args->filter->pred, NULL,
+					       &sort_args->cur_oid))
 	      != V_TRUE)
 	    {
+	      if (result == V_ERROR)
+		{
+		  return (SORT_ERROR_OCCURRED);
+		}
 	      continue;
 	    }
 	}
