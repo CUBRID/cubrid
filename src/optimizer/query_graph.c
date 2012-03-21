@@ -1501,6 +1501,11 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 	  for (aux = func->info.function.arg_list; aux != NULL;
 	       aux = aux->next)
 	    {
+	      PT_NODE *save_aux = aux;
+	      if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
+		{
+		  aux = aux->info.expr.arg1;
+		}
 	      if (aux->node_type == PT_NAME)
 		{
 		  node = lookup_node (aux, env, entity);
@@ -1513,11 +1518,16 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 		      return node;
 		    }
 		}
+	      aux = save_aux;
 	    }
 	}
       else
 	{
 	  aux = attr->info.expr.arg1;
+	  if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
+	    {
+	      aux = aux->info.expr.arg1;
+	    }
 	  if (aux)
 	    {
 	      if (aux->node_type == PT_NAME)
@@ -1534,6 +1544,10 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 		}
 	    }
 	  aux = attr->info.expr.arg2;
+	  if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
+	    {
+	      aux = aux->info.expr.arg1;
+	    }
 	  if (aux)
 	    {
 	      if (aux->node_type == PT_NAME)
@@ -1550,6 +1564,10 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 		}
 	    }
 	  aux = attr->info.expr.arg3;
+	  if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
+	    {
+	      aux = aux->info.expr.arg1;
+	    }
 	  if (aux)
 	    {
 	      if (aux->node_type == PT_NAME)

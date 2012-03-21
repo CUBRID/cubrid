@@ -15971,18 +15971,30 @@ pt_is_nested_expr (const PT_NODE * node)
   if (node->info.expr.op != PT_FUNCTION_HOLDER)
     {
       arg = node->info.expr.arg1;
+      if (PT_IS_EXPR_NODE (arg) && arg->info.expr.op == PT_CAST)
+	{
+	  arg = arg->info.expr.arg1;
+	}
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{
 	  return true;
 	}
       arg = node->info.expr.arg2;
+      if (PT_IS_EXPR_NODE (arg) && arg->info.expr.op == PT_CAST)
+	{
+	  arg = arg->info.expr.arg1;
+	}
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{
 	  return true;
 	}
       arg = node->info.expr.arg3;
+      if (PT_IS_EXPR_NODE (arg) && arg->info.expr.op == PT_CAST)
+	{
+	  arg = arg->info.expr.arg1;
+	}
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{

@@ -697,6 +697,10 @@ static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p,
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
+static void heap_update_regu_var_cache_attrinfo (REGU_VARIABLE * regu_var,
+						 HEAP_CACHE_ATTRINFO *
+						 attr_info);
+
 static int heap_eval_function_index (THREAD_ENTRY * thread_p,
 				     FUNCTION_INDEX_INFO * func_index_info,
 				     int n_atts, int *att_ids,
@@ -18887,6 +18891,50 @@ exit:
 }
 
 /*
+ * heap_update_regu_var_chache_attrinfo () - set for all ATTR_ID regu_vars
+ *			    attribute cache info
+ *
+ * return	  :
+ * regu_var(in)	  :
+ * attr_info(in)  :
+ */
+static void
+heap_update_regu_var_cache_attrinfo (REGU_VARIABLE * regu_var,
+				     HEAP_CACHE_ATTRINFO * attr_info)
+{
+  if (regu_var == NULL)
+    {
+      return;
+    }
+  if (regu_var->type == TYPE_ATTR_ID)
+    {
+      regu_var->value.attr_descr.cache_attrinfo = attr_info;
+      return;
+    }
+  if (regu_var->type == TYPE_INARITH)
+    {
+      ARITH_TYPE *arith = regu_var->value.arithptr;
+      heap_update_regu_var_cache_attrinfo (arith->leftptr, attr_info);
+      heap_update_regu_var_cache_attrinfo (arith->rightptr, attr_info);
+      heap_update_regu_var_cache_attrinfo (arith->thirdptr, attr_info);
+    }
+  else
+    {
+      if (regu_var->type == TYPE_FUNC)
+	{
+	  FUNCTION_TYPE *funcp = regu_var->value.funcp;
+	  REGU_VARIABLE_LIST operand = funcp->operand;
+	  while (operand != NULL)
+	    {
+	      REGU_VARIABLE *rv = &operand->value;
+	      heap_update_regu_var_cache_attrinfo (rv, attr_info);
+	      operand = operand->next;
+	    }
+	}
+    }
+}
+
+/*
  * heap_eval_function_index - evaluate the result of the expression used in
  *			      a function index.
  *
@@ -18965,40 +19013,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
     }
 
   regu_var = func_pred->func_regu;
-  regu_var->value.attr_descr.cache_attrinfo = attr_info;
-  if (regu_var->type == TYPE_INARITH)
-    {
-      ARITH_TYPE *arith = regu_var->value.arithptr;
-      if (arith->leftptr && arith->leftptr->type == TYPE_ATTR_ID)
-	{
-	  arith->leftptr->value.attr_descr.cache_attrinfo = attr_info;
-	}
-      if (arith->rightptr && arith->rightptr->type == TYPE_ATTR_ID)
-	{
-	  arith->rightptr->value.attr_descr.cache_attrinfo = attr_info;
-	}
-      if (arith->thirdptr && arith->thirdptr->type == TYPE_ATTR_ID)
-	{
-	  arith->thirdptr->value.attr_descr.cache_attrinfo = attr_info;
-	}
-    }
-  else
-    {
-      if (regu_var->type == TYPE_FUNC)
-	{
-	  FUNCTION_TYPE *funcp = regu_var->value.funcp;
-	  REGU_VARIABLE_LIST operand = funcp->operand;
-	  while (operand != NULL)
-	    {
-	      REGU_VARIABLE *rv = &operand->value;
-	      if (rv->type == TYPE_ATTR_ID)
-		{
-		  rv->value.attr_descr.cache_attrinfo = attr_info;
-		}
-	      operand = operand->next;
-	    }
-	}
-    }
+  heap_update_regu_var_cache_attrinfo (regu_var, attr_info);
+
   error = fetch_peek_dbval (NULL, func_pred->func_regu, NULL,
 			    &attr_info->class_oid, &attr_info->inst_oid, NULL,
 			    &res);
