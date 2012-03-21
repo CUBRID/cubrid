@@ -2250,10 +2250,10 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	  fprintf (output_file, "SYS_TIMESTAMP");
 	  break;
 	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  fprintf (output_file, "UNIX_TIMESTAMP");
+	  fprintf (output_file, "UNIX_TIMESTAMP()");
 	  break;
 	case DB_DEFAULT_USER:
-	  fprintf (output_file, "USER");
+	  fprintf (output_file, "USER()");
 	  break;
 	case DB_DEFAULT_CURR_USER:
 	  fprintf (output_file, "CURRENT_USER");
