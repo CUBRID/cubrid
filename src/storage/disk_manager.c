@@ -1673,7 +1673,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   DISK_VAR_HEADER *vhdr;	/* Pointer to volume header    */
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data     */
-  PAGE_PTR save_pgptr = NULL;
 
 #if defined(CUBRID_DEBUG)
   if (DB_PAGESIZE < sizeof (DISK_VAR_HEADER))
@@ -1714,6 +1713,19 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
       return NULL_VOLID;
     }
 
+  /*
+   * Undo must be logical since we are going to remove the volume in the
+   * case of rollback (really a crash since we are in a top operation)
+   */
+  addr.offset = 0;
+  addr.pgptr = NULL;
+  log_append_undo_data (thread_p, RVDK_FORMAT, &addr,
+			(int) strlen (vol_fullname) + 1, vol_fullname);
+  /* This log must be flushed. */
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  LOG_CS_EXIT ();
+
   /* Create and initialize the volume. Recovery information is initialized in
      every page. */
 
@@ -1744,8 +1756,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (addr.pgptr == NULL)
     {
-      fileio_dismount (thread_p, vdes);
-      fileio_unformat (thread_p, vol_fullname);
       return NULL_VOLID;
     }
 
@@ -1769,8 +1779,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 			    &vhdr->page_alloctb_page1,
 			    &vhdr->sys_lastpage) != NO_ERROR)
     {
-      fileio_dismount (thread_p, vdes);
-      fileio_unformat (thread_p, vol_fullname);
       return NULL_VOLID;
     }
 
@@ -1779,8 +1787,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
       (void) pgbuf_invalidate_all (thread_p, volid);
-      fileio_dismount (thread_p, vdes);
-      fileio_unformat (thread_p, vol_fullname);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2,
 	      vol_fullname, npages);
       return NULL_VOLID;
@@ -1884,30 +1890,13 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
       (void) pgbuf_invalidate_all (thread_p, volid);
-      fileio_dismount (thread_p, vdes);
-      fileio_unformat (thread_p, vol_fullname);
       return NULL_VOLID;
     }
   else
     {
-      /*
-       * Undo must be logical since we are going to remove the volume in the
-       * case of rollback (really a crash since we are in a top operation)
-       * Save the page pointer, then restore it for redo purposes and the rest
-       * of the actions
-       */
-
       if (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE)
 	{
 	  addr.offset = 0;	/* Header is located at position zero */
-
-	  save_pgptr = addr.pgptr;
-	  addr.pgptr = NULL;
-	  log_append_undo_data (thread_p, RVDK_FORMAT, &addr,
-				(int) strlen (vol_fullname) + 1,
-				vol_fullname);
-
-	  addr.pgptr = save_pgptr;
 	  log_append_redo_data (thread_p, RVDK_FORMAT, &addr,
 				sizeof (*vhdr) +
 				disk_vhdr_length_of_varfields (vhdr), vhdr);
@@ -1960,8 +1949,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 		   * dismount and destroy the volume, and return
 		   */
 		  pgbuf_unfix_and_init (thread_p, addr.pgptr);
-		  fileio_dismount (thread_p, vdes);
-		  fileio_unformat (thread_p, vol_fullname);
 		  return NULL_VOLID;
 		}
 	    }
