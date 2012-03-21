@@ -5100,6 +5100,62 @@ csession_delete_prepared_statement (const char *name)
 }
 
 /*
+ * clogin_user () - login user
+ * return	  : error code or NO_ERROR
+ * username (in) : name of the user
+ */
+int
+clogin_user (const char *username)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = NULL;
+  int username_len, req_len;
+
+  req_len = length_const_string (username, &username_len);
+
+  request = (char *) malloc (req_len);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_len);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, username, username_len);
+
+  req_error = net_client_request (NET_SERVER_LOGIN_USER, request, req_len,
+				  OR_ALIGNED_BUF_START (a_reply),
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &req_error);
+
+  return req_error;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  result = xlogin_user (NULL, username);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
  * csession_set_session_variables () - set session variables
  * return	  : error code or NO_ERROR
  * variables (in) : variables

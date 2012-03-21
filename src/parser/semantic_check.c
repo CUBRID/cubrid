@@ -233,6 +233,7 @@ static PT_NODE *pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser,
 						PT_NODE * attrs);
 static void pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static void pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -6622,6 +6623,47 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 }
 
 /*
+ * pt_check_create_user () - semantic check a create user statement
+ * return	: none
+ * parser(in)	: the parser context
+ * node(in)	: create user node
+ */
+static void
+pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE * user_name;
+  char * name;
+  int name_upper_size;
+  
+  if (!node)
+    {
+      return;
+    }
+  if (node->node_type != PT_CREATE_USER)
+    {
+      return;
+    }
+
+  user_name = node->info.create_user.user_name;
+  if (user_name->node_type != PT_NAME)
+    {
+      return;
+    }
+
+  name = user_name->info.name.original;
+  if (name == NULL)
+    {
+      return;
+    }
+  name_upper_size = intl_identifier_upper_string_size (name);
+  if (name_upper_size >= DB_MAX_USER_LENGTH)
+    {
+      PT_ERRORm (parser, user_name, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_USER_NAME_TOO_LONG);
+    }
+}
+
+/*
  * pt_check_create_entity () - semantic check a create class/vclass
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -9085,6 +9127,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
 	case PT_CREATE_ENTITY:
 	  pt_check_create_entity (parser, node);
+	  break;
+
+	case PT_CREATE_USER:
+	  pt_check_create_user (parser, node);
 	  break;
 
 	default:

@@ -2004,9 +2004,15 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval,
   char *tmp;
 
   if (name != NULL && IS_STRING (name)
-      && !DB_IS_NULL (name) && db_get_string (name) != NULL)
+      && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
-
+      if (intl_identifier_upper_string_size (tmp) >= DB_MAX_USER_LENGTH)
+	{
+	  error = ER_USER_NAME_TOO_LONG;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  db_make_error (returnval, error);
+	  return;
+	}
       /*
        * although au_set_password will check this, check it out here before
        * we bother creating the user object
@@ -6268,7 +6274,15 @@ au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user,
 
   if (error == NO_ERROR)
     {
-      db_make_null (returnval);
+      error = clogin_user (db_get_user_name ());
+      if (error == NO_ERROR)
+	{
+	  db_make_null (returnval);
+	}
+      else
+	{
+	  db_make_error (returnval, error);
+	}
     }
   else
     {

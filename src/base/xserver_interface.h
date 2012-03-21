@@ -455,6 +455,8 @@ extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p,
 extern int xsession_delete_prepared_statement (THREAD_ENTRY * thread_p,
 					       const char *name);
 
+extern int xlogin_user (THREAD_ENTRY * thread_p, const char *username);
+
 extern int xsession_set_session_variables (THREAD_ENTRY * thread_p,
 					   DB_VALUE * values,
 					   const int count);

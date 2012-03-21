@@ -9202,6 +9202,43 @@ ssession_delete_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * slogin_user - login user
+ * return: error code or NO_ERROR
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ */
+void
+slogin_user (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+	     int reqlen)
+{
+  int err = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *username = NULL;
+
+  or_unpack_string_nocopy (request, &username);
+  if (username == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      err = ER_FAILED;
+    }
+  else
+    {
+      err = xlogin_user (thread_p, username);
+      if (err != NO_ERROR)
+	{
+	  return_error_to_client (thread_p, rid);
+	}
+    }
+
+  or_pack_int (reply, err);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * ssession_set_session_variables () - set session variables
  * return :void
  * thread_p (in) :

@@ -1362,7 +1362,9 @@
 #define ER_LOG_BACKUP_CS_ENTER 			    -1090
 #define ER_LOG_BACKUP_CS_EXIT			    -1091
 
-#define ER_LAST_ERROR                               -1092
+#define ER_USER_NAME_TOO_LONG			    -1092
+
+#define ER_LAST_ERROR                               -1093
 
 /*
  * CAUTION!

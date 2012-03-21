@@ -1157,7 +1157,8 @@ $ LOADDB
 1089 Cannot prepare statement of type '%s' with host variables.
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.
-1092 Last Error
+1092 User name is too long.
+1093 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1532,6 +1533,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 238 Cannot MERGE into a derived table.
 239 Invalid MERGE update assignment.
 240 MERGE with class hierarchies is not allowed.
+241 User name is too long.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

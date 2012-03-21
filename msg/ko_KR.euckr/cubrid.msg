@@ -1157,7 +1157,8 @@ $ LOADDB
 1089 Cannot prepare statement of type '%s' with host variables.
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.
-1092 마지막 에러
+1092 User name is too long.
+1093 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1529,6 +1530,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
 236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
 237 Duplicate values in enum type.
+238 Cannot MERGE into a derived table.
+239 Invalid MERGE update assignment.
+240 MERGE with class hierarchies is not allowed.
+241 User name is too long.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

@@ -195,6 +195,18 @@ xsession_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
 }
 
 /*
+ * xlogin_user () - login user
+ * return : error code or NO_ERROR
+ * thread_p (in)  :
+ * username (in)  : name of the prepared statement
+ */
+int
+xlogin_user (THREAD_ENTRY * thread_p, const char *username)
+{
+  return login_user (thread_p, username);
+}
+
+/*
  * xsession_set_session_variables () - set session variables
  * return : error code
  * thread_p (in) : worker thread

@@ -1152,6 +1152,9 @@ net_server_init (void)
   net_Requests[NET_SERVER_SES_DELETE_PREPARED_STATEMENT].processing_function =
     ssession_delete_prepared_statement;
 
+  net_Requests[NET_SERVER_LOGIN_USER].name = "NET_SERVER_SET_USERNAME";
+  net_Requests[NET_SERVER_LOGIN_USER].processing_function = slogin_user;
+
   net_Requests[NET_SERVER_SES_SET_SESSION_VARIABLES].name =
     "NET_SERVER_SES_SET_SESSION_VARIABLES";
   net_Requests[NET_SERVER_SES_SET_SESSION_VARIABLES].processing_function =

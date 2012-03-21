@@ -459,6 +459,8 @@ extern void ssession_get_prepared_statement (THREAD_ENTRY * thread_p,
 extern void ssession_delete_prepared_statement (THREAD_ENTRY * thread_p,
 						unsigned int rid,
 						char *request, int reqlen);
+extern void slogin_user (THREAD_ENTRY * thread_p, unsigned int rid,
+			 char *request, int reqlen);
 extern void ssession_set_session_variables (THREAD_ENTRY * thread_p,
 					    unsigned int rid, char *request,
 					    int reqlen);

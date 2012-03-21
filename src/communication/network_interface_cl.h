@@ -559,6 +559,8 @@ extern int csession_get_prepared_statement (const char *name,
 
 extern int csession_delete_prepared_statement (const char *name);
 
+extern int clogin_user (const char *username);
+
 extern int csession_set_session_variables (DB_VALUE * variables,
 					   const int count);
 extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);

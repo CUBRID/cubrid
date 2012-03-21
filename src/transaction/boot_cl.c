@@ -468,7 +468,28 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   /* Get the user name */
   if (client_credential->db_user == NULL)
     {
-      client_credential->db_user = au_user_name_dup ();
+      char *user_name = au_user_name_dup ();
+      int upper_case_name_size;
+      char *upper_case_name;
+
+      if (user_name != NULL)
+	{
+	  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+	  upper_case_name = (char *) malloc (upper_case_name_size + 1);
+	  if (upper_case_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		upper_case_name_size);
+	    }
+	  else
+	    {
+	      intl_identifier_upper (user_name, upper_case_name);
+	      client_credential->db_user = upper_case_name;
+	    }
+	  free_and_init (user_name);
+	}
+      upper_case_name = NULL;
+
       if (client_credential->db_user == NULL)
 	{
 	  client_credential->db_user = (char *) boot_Client_no_user_string;
@@ -777,7 +798,28 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Get the user name */
   if (client_credential->db_user == NULL)
     {
-      client_credential->db_user = au_user_name_dup ();
+      char *user_name = au_user_name_dup ();
+      int upper_case_name_size;
+      char *upper_case_name;
+
+      if (user_name != NULL)
+	{
+	  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+	  upper_case_name = (char *) malloc (upper_case_name_size + 1);
+	  if (upper_case_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		upper_case_name_size);
+	    }
+	  else
+	    {
+	      intl_identifier_upper (user_name, upper_case_name);
+	      client_credential->db_user = upper_case_name;
+	    }
+	  free_and_init (user_name);
+	}
+      upper_case_name = NULL;
+
       if (client_credential->db_user == NULL)
 	{
 	  client_credential->db_user = (char *) boot_Client_no_user_string;

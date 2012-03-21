@@ -1629,6 +1629,27 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
 }
 
 /*
+ * login_user () - login user
+ * return	  : error code
+ * thread_p	  : worker thread
+ * username(in)	  : name of the user
+ */
+int
+login_user (THREAD_ENTRY * thread_p, const char *username)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = NULL;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      strncpy (tdes->client.db_user, username, DB_MAX_USER_LENGTH);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * session_set_session_variables () - set session variables
  * return : error code
  * thread_p (in) : worker thread
