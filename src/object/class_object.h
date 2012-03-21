@@ -625,6 +625,8 @@ typedef struct sm_function_info SM_FUNCTION_INFO;
 struct sm_function_info
 {
   DB_TYPE type;			/* the domain of the function's result */
+  int precision;
+  int scale;
   char *expr_str;
   char *expr_stream;
   int expr_stream_size;

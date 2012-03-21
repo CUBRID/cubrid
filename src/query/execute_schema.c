@@ -3520,6 +3520,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      goto error_exit;
 	    }
 	  func_index_info->type = idx->func_index_info->type;
+	  func_index_info->precision = idx->func_index_info->precision;
+	  func_index_info->scale = idx->func_index_info->scale;
 	  func_index_info->expr_str = strdup (idx->func_index_info->expr_str);
 	  if (func_index_info->expr_str == NULL)
 	    {
@@ -3548,6 +3550,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  func_index_info->attr_index_start =
 	    idx->func_index_info->attr_index_start;
 	  func_index_info->type = idx->func_index_info->type;
+	  func_index_info->precision = idx->func_index_info->precision;
+	  func_index_info->scale = idx->func_index_info->scale;
 	}
     }
   else
@@ -15192,6 +15196,16 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
       return NULL;
     }
   func_index_info->type = pt_type_enum_to_db (expr->type_enum);
+  if (expr->data_type)
+    {
+      func_index_info->precision = expr->data_type->info.data_type.precision;
+      func_index_info->scale = expr->data_type->info.data_type.dec_precision;
+    }
+  else
+    {
+      func_index_info->precision = TP_FLOATING_PRECISION_VALUE;
+      func_index_info->scale = 0;
+    }
   func_index_info->expr_str = parser_print_tree_with_quotes (parser, expr);
   func_index_info->expr_stream = NULL;
   func_index_info->expr_stream_size = -1;

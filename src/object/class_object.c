@@ -7813,6 +7813,19 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   fi_info->type = DB_GET_INT (&val);
   pr_clear_value (&val);
 
+  if (set_get_element (func_seq, 5, &val))
+    {
+      goto error;
+    }
+  fi_info->precision = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
+  if (set_get_element (func_seq, 6, &val))
+    {
+      goto error;
+    }
+  fi_info->scale = DB_GET_INT (&val);
+  pr_clear_value (&val);
   return fi_info;
 
 error:
@@ -7840,7 +7853,7 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
       return NULL;
     }
 
-  fi_seq = set_create_sequence (5);
+  fi_seq = set_create_sequence (7);
 
   db_make_string (&val, func_index_info->expr_str);
   set_put_element (fi_seq, 0, &val);
@@ -7858,6 +7871,12 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
 
   db_make_int (&val, func_index_info->type);
   set_put_element (fi_seq, 4, &val);
+
+  db_make_int (&val, func_index_info->precision);
+  set_put_element (fi_seq, 5, &val);
+
+  db_make_int (&val, func_index_info->scale);
+  set_put_element (fi_seq, 6, &val);
 
   return fi_seq;
 }

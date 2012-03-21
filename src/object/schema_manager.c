@@ -9837,7 +9837,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 
       if (function_index)
 	{
-	  fi_domain = tp_domain_resolve_default (function_index->type);
+	  fi_domain = tp_domain_resolve (function_index->type, NULL,
+					 function_index->precision,
+					 function_index->scale, NULL);
 	  if (function_index->attr_index_start == 0)
 	    {
 	      /* if this is a single column function index, the key domain
@@ -13924,6 +13926,9 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	  goto error_exit;
 	}
       new_constraint->func_index_info->type = c->func_index_info->type;
+      new_constraint->func_index_info->precision =
+	c->func_index_info->precision;
+      new_constraint->func_index_info->scale = c->func_index_info->scale;
       new_constraint->func_index_info->expr_str =
 	(char *) calloc (len + 1, sizeof (char));
       if (new_constraint->func_index_info->expr_str == NULL)
@@ -13953,6 +13958,9 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
       new_constraint->func_index_info->attr_index_start =
 	c->func_index_info->attr_index_start;
       new_constraint->func_index_info->type = c->func_index_info->type;
+      new_constraint->func_index_info->precision =
+	c->func_index_info->precision;
+      new_constraint->func_index_info->scale = c->func_index_info->scale;
     }
   if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
     {
