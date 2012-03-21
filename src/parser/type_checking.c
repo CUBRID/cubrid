@@ -8128,6 +8128,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		node->info.expr.arg2 = new_arg2;
 		node->info.expr.op = (op == PT_IS_IN) ? PT_EQ : PT_NE;
 	      }
+	    else if (PT_IS_NULL_NODE (arg2))
+	      {
+		return node;
+	      }
 	  }
 
 	break;
