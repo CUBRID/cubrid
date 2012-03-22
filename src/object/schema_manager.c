@@ -10777,6 +10777,10 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		{
 		  error = drop_foreign_key_ref (classop, flat_constraints,
 						con);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 
 	      /* destroy the old index but only if we're the owner of it ! */
@@ -10817,6 +10821,10 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		    {
 		      error = drop_foreign_key_ref (classop, flat_constraints,
 						    con);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 
 		  deallocate_index (class_->constraints, &con->index);
@@ -10856,6 +10864,10 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		{
 		  error = drop_foreign_key_ref (classop, flat_constraints,
 						con);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 
 	      deallocate_index (class_->constraints, &con->index);
@@ -10932,6 +10944,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	}
     }
 
+end:
   /* This was used only for convenience here, be sure to free it.
    * Eventually, we'll just maintain these directly on the template.
    */

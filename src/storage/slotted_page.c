@@ -4138,7 +4138,7 @@ spage_has_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   assert (page_p != NULL);
   SPAGE_HEADER_CHECK (page_header_p);
 
-  if (space == 0)
+  if (space <= 0)
     {
       return true;
     }
