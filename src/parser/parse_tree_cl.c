@@ -5609,6 +5609,7 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.index.indexed_class = g (parser, p->info.index.indexed_class, arg);
   p->info.index.column_names = g (parser, p->info.index.column_names, arg);
   p->info.index.where = g (parser, p->info.index.where, arg);
+  p->info.index.function_expr = g (parser, p->info.index.function_expr, arg);
 
   return p;
 }
@@ -8099,6 +8100,7 @@ pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.index.indexed_class = g (parser, p->info.index.indexed_class, arg);
   p->info.index.column_names = g (parser, p->info.index.column_names, arg);
   p->info.index.where = g (parser, p->info.index.where, arg);
+  p->info.index.function_expr = g (parser, p->info.index.function_expr, arg);
 
   return p;
 }
