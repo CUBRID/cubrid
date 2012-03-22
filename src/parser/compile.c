@@ -1331,6 +1331,16 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 	mq_translate (parser,
 		      statement->info.scope.stmt->info.trigger_action.
 		      expression);
+      /* 
+       * Trigger statement node must use the datetime information of the
+       * node corresponding the action to be made.
+       */
+      if (statement->info.scope.stmt &&
+	  statement->info.scope.stmt->info.trigger_action.expression)
+	{
+	  statement->si_datetime = statement->info.scope.stmt->info.
+				    trigger_action.expression->si_datetime;
+	}
     }
 
   return statement;
