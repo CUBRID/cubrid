@@ -6,9 +6,10 @@ source $CURR_DIR/../common/common.sh
 #################################################################################
 # program variables
 #################################################################################
-prog_name='ha_repl_resume.sh'
+prog_name='ha_check_script.sh'
 
-input_file=
+ha_temp_home=
+output_file=
 
 #################################################################################
 # program function
@@ -18,43 +19,32 @@ function print_usage()
 	echo ""
 	echo "Usage: $prog_name [options]"
 	echo ""
-	echo "    -i [input_file]"
+	echo "    -t [ha_temp_home]"
+	echo "    -o [output_file]"
 	echo ""
 }
 
 function check_args()
 {
-	if [ -z $input_file ]; then
+	if [ -z $ha_temp_home ]; then
 		print_usage
-		error "Invalid input_file."
+		error "Invalid ha_temp_home."
+	elif [ -z $output_file ]; then
+		print_usage
+		error "Invalid output_file."
 	fi
-}
-
-function ha_repl_resume()
-{
-	while read line
-	do
-		echo "$current_host ]$ $line >/dev/null 2>&1 &"
-		echo "resume: $line"
-		eval "$line >/dev/null 2>&1 &"
-	done < $input_file
-
-	sleep 1
-
-	echo -ne "\n"
-	echo -ne " - check heartbeat list on $current_host(master).\n\n"
-	echo "$current_host ]$ cubrid heartbeat list" 
-	cubrid heartbeat list
-	echo -ne "\n\n"
+	
+	expect_home=$ha_temp_home/expect
 }
 
 #################################################################################
 # main function
 #################################################################################
-while getopts "i:" option
+while getopts "t:o:" option
 do
 	case "$option" in
-		"i") input_file="${OPTARG}";;
+		"t") ha_temp_home="${OPTARG}";;
+		"o") output_file="${OPTARG}";;
 		"?") print_usage;;
 		":") print_usage;;
 		*) print_usage;;
@@ -63,6 +53,4 @@ done
 
 check_args
 
-ha_repl_resume
-
-exit 0
+echo $(hostname) > $output_file

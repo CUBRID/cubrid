@@ -1,589 +1,1146 @@
 #!/bin/bash
 
-################################################################################
+CURR_DIR=$(dirname $0)
+source $CURR_DIR/common/common.sh
 
-# user specific options 
+#################################################################################
+# user configuration
+#################################################################################
 # mandatory
-master_host=
-db_name=
-repl_log_home=
-
-# conditional
-dba_password=
+target_host=
+repl_log_home=$CUBRID_DATABASES
 
 # optional
+db_name=
+
 backup_dest_path=
 backup_option=
 restore_option=
-scp_option="-l 131072"	# default - limit : 16M*1024*8=131072
+scp_option="-l 131072"		# default - limit : 16M*1024*8=131072
 
-
+#################################################################################
+# program variables
+#################################################################################
 # automatic - DO NOT CHANGE !!!
-slave_host=$(uname -n)
+prog_name="ha_make_slavedb.sh"
+repl_log_home_abs=
+master_host=
+slave_host=
+replica_hosts=
+current_host=$(uname -n)
+current_state=
+target_state=
 cubrid_user=$(whoami)
 now=$(date +"%Y%m%d_%H%M%S")
 
-# temp - DO NOT CHANGE !!!
-prog_name="ha_make_slavedb.sh"
-ret=0
 ha_temp_home=$HOME/.ha
-script_home=$ha_temp_home/scripts
+result_home=$ha_temp_home/result
+function_home=$ha_temp_home/functions
+expect_home=$ha_temp_home/expect
+install_output=$ha_temp_home/install.output
 repl_util_output=$ha_temp_home/repl_utils.output
+copylog_output=$ha_temp_home/copylog.output
 backupdb_output=
 db_vol_path=
 db_log_path=
-################################################################################
+
+step_no=1
+step_func=
+step_func_slave_from_master=(
+	"get_password"
+	"show_environment"
+	"copy_script_to_master"
+	"copy_script_to_replica"
+	"suspend_master_repl_util"
+	"init_ha_info_on_master"
+	"init_ha_info_on_replica"
+	"online_backup_db"
+	"copy_backup_db_from_target"
+	"restore_db_to_current"
+	"init_ha_info_on_slave"
+	"copy_active_log_from_master"
+	"start_cubrid_ha"
+	"restart_master_repl_util"
+	"show_complete"
+)
+step_func_slave_from_replica=(
+	"get_password"
+	"show_environment"
+	"copy_script_to_master"
+	"copy_script_to_replica"
+	"suspend_master_repl_util"
+	"init_ha_info_on_master"
+	"init_ha_info_on_replica"
+	"online_backup_db"
+	"copy_backup_db_from_target"
+	"restore_db_to_current"
+	"init_ha_info_on_slave"
+	"copy_active_log_from_master"
+	"restart_master_repl_util"
+	"show_complete"
+)
+step_func_replica_from_slave=(
+	"get_password"
+	"show_environment"
+	"copy_script_to_master"
+	"copy_script_to_slave"
+	"online_backup_db"
+	"copy_backup_db_from_target"
+	"restore_db_to_current"
+	"copy_active_log_from_master"
+	"copy_active_log_from_slave"
+	"show_complete"	
+)
+step_func_replica_from_replica=(
+	"get_password"
+	"show_environment"
+	"copy_script_to_target"
+	"online_backup_db"
+	"copy_backup_db_from_target"
+	"restore_db_to_current"
+	"suspend_target_repl_util"
+	"copy_active_log_from_target"
+	"restart_target_repl_util"
+	"show_complete"
+)
 
 
-function print_usage()
+#################################################################################
+# program functions
+#################################################################################
+function exec()
 {
-	echo ""
-	echo "Usage: $prog_name"
-	echo ""
+	if [ $# -ne 1 ]; then
+		error "Invalid exec call. $*"
+	fi
+	
+	command=$1
+	echo "[$cubrid_user@$current_host]$ $command"
+	eval $command >/dev/null 2>&1
 }
-
 
 function ssh_cubrid()
 {
-	[ "$#" -ne 1 ] && return
+	if [ $# -eq 2 ]; then
+		verbose=true
+	elif [ $# -lt 2 -o $# -gt 3 ]; then
+		error "Invalid ssh_cubrid call. $*"
+	else
+		verbose=$3
+	fi
+	
+	host=$1
+	command=$2
 
-	ssh $cubrid_user@$master_host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; sh -lc \"$1\""
+	if $verbose; then
+		echo "[$cubrid_user@$host]$ $command"
+	fi
+	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
 }
 
-
-function scp_cubrid_to_master()
+function ssh_expect()
 {
-	[ "$#" -ne 2 ] && return
+	if [ $# -lt 4 ]; then
+		error "Invalid ssh_expect call. $*"
+	fi
+	
+	user=$1
+	password=$2
+	host=$3
+	
+	command1=$4
+	command2=$5
+	command3=$6
+	command4=$7
+	command5=$8
 
-	scp $scp_option -r $1 $cubrid_user@$master_host:$2 
+	if [ ! -z "$command1" ]; then
+		echo "[$user@$host]$ $command1"
+	fi
+	if [ ! -z "$command2" ]; then
+		echo "[$user@$host]$ $command2"
+	fi
+	if [ ! -z "$command3" ]; then
+		echo "[$user@$host]$ $command3"
+	fi
+	if [ ! -z "$command4" ]; then
+		echo "[$user@$host]$ $command4"
+	fi
+	if [ ! -z "$command5" ]; then
+		echo "[$user@$host]$ $command5"
+	fi
+	./expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" > $result_home/$host.result 2>&1
 }
 
-function scp_cubrid_to_slave()
+function scp_cubrid_to()
 {
-	[ "$#" -ne 2 ] && return
+	[ "$#" -ne 3 ] && return
+	
+	host=$1
+	source=$2
+	target=$3
 
-	scp $scp_option -r $cubrid_user@$master_host:$1 $2
+	echo "[$cubrid_user@$host]$ scp $scp_option -r $source $cubrid_user@$host:$target"
+	scp $scp_option -r $source $cubrid_user@$host:$target
 }
 
-function is_invalid_option()
+function scp_to_expect()
 {
-	[ -z "$master_host" ] && echo " << ERROR >> Invalid master_host($master_host)." && return 0
-	[ -z "$db_name" ] && echo " << ERROR >> Invalid db_name($db_name)." && return 0
-	[ -z "$repl_log_home" ] && echo " << ERROR >> Invalid repl_log_home($repl_log_home)." && return 0
-	[ -z "$slave_host" ] && echo " << ERROR >> Invalid slave_host($slave_host)." && return 0
-	[ -z "$cubrid_user" ] && echo " << ERROR >> Invalid cubrid_user($cubrid_user)." && return 0
-
-	[ -z "$backup_dest_path" ] && backup_dest_path=$ha_temp_home/backup
-
-	return 1
+	if [ $# -ne 5 ]; then
+		error "Invalid scp_to_expect call. $*"
+	fi
+	
+	user=$1
+	password=$2
+	source=$3
+	host=$4
+	target=$5
+	
+	echo "[$user@$current_host]$ scp $scp_option -r $source $user@$host:$target"
+	./expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
 }
 
+function scp_from_expect()
+{
+	if [ $# -ne 5 ]; then
+		error "Invalid scp_from_expect call. $*"
+	fi
+	
+	user=$1
+	password=$2
+	source=$3
+	host=$4
+	target=$5
+	
+	echo "[$user@$current_host]$ scp $scp_option -r $user@$host:$source $target"
+	./expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+}
 
-# step 1
-function step_1()
+function scp_cubrid_from()
+{
+	if [ $# -ne 3 ]; then
+		error "Invalid scp_cubrid_from call. $*"
+	fi
+	
+	host=$1
+	source=$2
+	target=$3
+
+	scp $scp_option -r $cubrid_user@$host:$source $target
+}
+
+function get_output_from_replica()
+{
+	if [ $# -ne 1 ]; then
+		error "Invalid get_output_from_replica call. $*"
+	fi
+	
+	output=$1
+	
+	rm -rf $output
+	mkdir $output
+	
+	for replica_host in ${replica_hosts[@]}; do
+		scp_from_expect "$cubrid_user" "$server_password" $output $replica_host $output/$replica_host 
+	done
+}
+
+function check_args()
+{
+	if [ -z $target_host ]; then
+		error "Invalid target_host."
+	elif [ -z $repl_log_home ]; then
+		error "Invalid repl_log_home."
+	fi
+}
+
+function init_conf()
+{
+	# init path
+	mkdir -p $ha_temp_home
+	rm -rf $result_home
+	mkdir $result_home
+	if [ -n $backup_dest_path ]; then 
+		backup_dest_path=$ha_temp_home/backup
+		if [ ! -d $backup_dest_path ]; then
+			mkdir $backup_dest_path
+		fi
+	fi
+	repl_log_home=${repl_log_home%%/}
+	repl_log_home_abs=$(readlink -f $repl_log_home)
+	backup_dest_path=${backup_dest_path%%/}
+	backup_dest_path=$(readlink -f $backup_dest_path)
+	
+	# get conf from cubrid_ha.conf file
+	if [ ! -f $CUBRID/conf/cubrid_ha.conf ]; then
+		error "Not found cubrid_ha.conf on $CUBRID/conf."
+	fi
+	
+	node_index=1
+	while read line
+	do
+		if [[ "${line:0:1}" != "#" && "${line:0:1}" != "" ]]; then
+			OFS=$IFS
+			IFS="="
+			conf=($line)
+			IFS=$OFS
+			case ${conf[0]} in
+				"ha_node_list")
+					hosts=$(echo ${conf[1]} | cut -d '@' -f 2)
+					master_host=$(echo $hosts | cut -d ':' -f 1)
+					slave_host=$(echo $hosts | cut -d ':' -f 2)
+					if [ "$slave_host" == "$target_host" ]; then
+						node_index=2
+					fi
+					;;
+				"ha_replica_list") replica_hosts=$(echo ${conf[1]} | cut -d '@' -f 2);;
+				"ha_db_list")
+					if [ -z $db_name ]; then
+						db_name=${conf[1]}
+						db_name=$(echo $db_name | cut -d ',' -f 1)
+					fi
+					;;
+			esac
+		fi
+	done < $CUBRID/conf/cubrid_ha.conf
+
+	if [ -z $db_name ]; then
+		error "The db_name is null."
+	fi
+	
+	# check the master and slave host is valid
+	cubrid changemode $db_name@$master_host 2>/dev/null | grep active >/dev/null
+	if [ $? -ne $SUCCESS ]; then
+		cubrid changemode $db_name@$slave_host 2>/dev/null | grep active >/dev/null
+		if [ $? -ne $SUCCESS ]; then
+			error "Both the master and slave is not active state."
+		fi
+		tmp_host=$master_host
+		master_host=$slave_host
+		slave_host=$tmp_host
+	fi
+	
+	# get state of the current server (master / slave / replca)
+	if [ $current_host == "$master_host" ]; then
+		error "This script is not running on master server."
+	elif [ $current_host == "$slave_host" ]; then
+		current_state="slave"
+	else
+		current_state="replica"
+	fi
+	
+	# get state of the target server (master / slave / replca)
+	if [ "$target_host" == "$master_host" ]; then
+		target_state="master"
+	elif [ "$target_host" == "$slave_host" ]; then
+		target_state="slave"
+	elif [ "$(echo $replica_hosts | grep $target_host)" != "" ]; then
+		target_state="replica"
+	else
+		error "Could not find the target server."
+	fi
+	
+	# check the target server state and current server state is valid.
+	case $current_state in
+		"slave")
+			case $target_state in
+				"master") step_func=(${step_func_slave_from_master[@]});;
+				"replica") step_func=(${step_func_slave_from_replica[@]});;
+				*) error "Invalid target server state.";;
+			esac;;
+		"replica")
+			case $target_state in
+				"slave") step_func=(${step_func_replica_from_slave[@]});;
+				"replica") step_func=(${step_func_replica_from_replica[@]});;
+				*) error "Invalid target server state.";;
+			esac;;
+	esac
+	
+	# split replica_hosts to array.
+	OFS=$IFS
+	IFS=":"
+	replica_hosts=($replica_hosts)
+	IFS=$OFS
+	
+	if [ "$current_host" == "$target_host" ]; then
+		error "The current host($current_host) and target host($target_host) is equal." 
+	fi
+	
+	# check the db server is running on current host.
+	cubrid changemode $db_name@localhost >/dev/null 2>&1
+	if [ $? -eq $SUCCESS ]; then
+		cubrid heartbeat list
+		error "The db server is running on current host"
+	fi
+	
+	# check the replica host is running.
+	if [ "$replica_hosts" != "" ]; then
+		for replica_host in ${replica_hosts[@]}; do
+			if [ "$current_host" == "$replica_host" ]; then
+				continue
+			fi
+				
+			cubrid changemode $db_name@$replica_host 2>/dev/null | grep standby >/dev/null
+			if [ $? -ne $SUCCESS ]; then
+				error "$replica_host is not running."
+			fi
+		done
+	fi
+}
+
+function get_yesno()
 {
 	echo ""
-	echo "##### step 1 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  $prog_name is script for making slave database more easily                   "
-	echo "#                                                                               "
-	echo "#  * environment                                                                "
-	echo "#   - master_host       : $master_host                                          "
-	echo "#   - db_name           : $db_name                                              "
-	echo "#   - repl_log_home     : $repl_log_home                                        "
-	echo "#                                                                               "
-	echo "#   - slave_host        : $slave_host                                           "
-	echo "#   - cubrid_user       : $cubrid_user                                          "
-	echo "#                                                                               "
-	echo "#   - dba_password      : $dba_password                                         "
-	echo "#   - backup_dest_path  : $backup_dest_path                                     "
-	echo "#   - backup_option     : $backup_option                                        "
-	echo "#   - restore_option    : $restore_option                                       "
-	echo "#   - scp_option        : $scp_option                                           "
-	echo "#                                                                               "
-	echo "#  * warning !!!                                                                "
-	echo "#   - environment on slave must be same as master                               "
-	echo "#   - database and replication log on slave will be deleted                     "
-	echo "#                                                                               "
+	for ((i = 0; i < 10; i++ )) do
+		echo -ne "   continue ? ([y]es / [n]o / [s]kip) : "
+		read yesno
+		case $yesno in
+			"yes"|"y"|"Y")
+				STDIN=$YES
+				break;;
+			"skip"|"s"|"S")
+				echo -ne "\n      ............................ skipped .......\n\n"
+				STDIN=$SKIP
+				break;;
+			"no"|"n"|"N")
+				exit $SUCCESS;;
+		esac
+	done
+	echo ""
+}
+
+function get_password()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "# get HA/replica user password and DBA password"	
+	echo "#"
+	echo "#  * warning !!!"
+	echo "#   - Because $prog_name use expect (ssh, scp) to control HA/replica node,"
+	echo "#     the script has to know these passwords."
+	echo "#"
 	echo "################################################################################"
+	get_yesno
 
-	echo ""
-	echo -ne "\n                              - Please enter the master_host >> "
-	read in_master_host
-	if [ $master_host != "$in_master_host" ]; then
-		echo -ne "\n << ERROR >> $in_master_host is different from $master_host. \n\n" 
-		return 1
-	fi
-
-	echo -ne "\n                              - Please enter the db_name     >> "
-	read in_db_name
-	if [ $db_name != "$in_db_name" ]; then
-		echo -ne "\n << ERROR >> $in_db_name is different from $db_name. \n\n" 
-		return 1
-	fi
-
-	echo ""
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
-	fi
-
-
-	echo -ne "\n\n"
-	return 0
+	while true; do
+		echo -ne "\nHA/replica $cubrid_user's password : "
+		read -s server_password
+		echo -ne "\nHA/replica $cubrid_user's password : "
+		read -s re_server_password
+		
+		if [ "$server_password" == "$re_server_password" ]; then
+			break
+		else
+			echo "Sorry, passwords do not match."
+		fi
+	done
+	
+	while true; do
+		echo -ne "\n\n$db_name's DBA password : "
+		read -s dba_password
+		echo -ne "\nRetype $db_name's DBA password : "
+		read -s re_dba_password
+		
+		if [ "$dba_password" == "$re_dba_password" ]; then
+			break
+		else
+			echo "Sorry, passwords do not match."
+		fi
+	done
 }
 
-# step 2
-function step_2()
+function show_environment()
 {
 	echo ""
-	echo "##### step 2 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  copy scripts to master node                                                  "
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - scp scripts to '~/.ha' on $master_host(master)                            "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  $prog_name is the script for making slave database more easily"
+	echo "#"
+	echo "#  * environment"
+	echo "#   - db_name           : $db_name"
+	echo "#"
+	echo "#   - master_host       : $master_host"
+	echo "#   - slave_host        : $slave_host"
+	echo "#   - replica_hosts     : ${replica_hosts[@]}"
+	echo "#"
+	echo "#   - current_host      : $current_host"
+	echo "#   - current_state     : $current_state"
+	echo "#"
+	echo "#   - target_host       : $target_host"
+	echo "#   - target_state      : $target_state"
+	echo "#"
+	echo "#   - repl_log_home     : $repl_log_home"
+	echo "#   - backup_dest_path  : $backup_dest_path"
+	echo "#   - backup_option     : $backup_option"
+	echo "#   - restore_option    : $restore_option"
+	echo "#"
+	echo "#  * warning !!!"
+	echo "#   - environment on slave must be same as master"
+	echo "#   - database and replication log on slave will be deleted"
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
-
-	# make temporary directory 
-	echo -ne "\n\n"
-	echo -ne "1. scp scripts to '~/.ha' on $master_host.\n\n"
-
-	ssh_cubrid "ls $ha_temp_home" >/dev/null 2>&1
-	ret=$?
-	if [ $ret -eq 0 ]; then   
-
-		echo "$master_host ]$ rm -rf $ha_temp_home"
-		ssh_cubrid "rm -rf $ha_temp_home"
-	fi 
-
-	echo "$master_host ]$ mkdir -p $ha_temp_home"
-	ssh_cubrid "mkdir -p $ha_temp_home" 
-
-	echo "$master_host ]$ mkdir -p $script_home"
-	ssh_cubrid "mkdir -p $script_home" 
-
-	echo "$master_host ]$ mkdir -p $script_home/functions"
-	ssh_cubrid "mkdir -p $script_home/functions" 
-
-	echo "$master_host ]$ mkdir -p $backup_dest_path"
-	ssh_cubrid "mkdir -p $backup_dest_path" 
-
-	# copy scripts to master node
-	echo -ne "\n"
-	echo "$slave_host ]$ scp *.sh $cubrid_user@$master_host:$script_home"
-	scp_cubrid_to_master "*.sh" "$script_home"
-	echo "$slave_host ]$ scp functions/*.sh $cubrid_user@$master_host:$script_home/functions"
-	scp_cubrid_to_master "functions/*.sh" "$script_home/functions"
-
-	echo -ne "\n\n"
-	return 0
+	
+	command1='test "$CUBRID" == "'$CUBRID'" && echo SUCCESS'
+	command2='test "$CUBRID_DATABASES" == "'$CUBRID_DATABASES'" && echo SUCCESS'
+	command3="test -d $repl_log_home/$db_name && echo SUCCESS"
+	
+	for host in $master_host $slave_host ${replica_hosts[@]}; do
+		ssh_expect $cubrid_user "$server_password" $host "$command1" "$command2" "$command3"
+	done
+	
+	for host in $master_host $slave_host ${replica_hosts[@]}; do
+		if [ $(fgrep SUCCESS $result_home/$host.result | grep -v "echo SUCCESS" | wc -l) -ne 3 ]; then
+			error "$host's envirionment is different others."
+		fi
+	done
 }
 
-
-# step 3
-function step_3()
+function copy_script_to_master()
 {
 	echo ""
-	echo "##### step 3 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  suspend copylogdb/applylogdb on master if running                            "
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - deregister copylogdb/applylogdb on $master_host(master)                   "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  copy scripts to master node"
+	echo "#"
+	echo "#  * details"
+	echo "#   - scp scripts to '~/.ha' on $master_host(master)".
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
-
-	# suspend
-	ssh_cubrid "$script_home/functions/ha_repl_suspend.sh -l $repl_log_home -d $db_name -h $slave_host -o $repl_util_output"	
-	ret=$?
-	[ $ret -ne 0 ] && return 1
-
-	echo -ne "\n\n"
-
-	sleep 60
-
-	return 0
+	
+	exec "tar -zcf ha.tgz ../ha"
+	ssh_cubrid $master_host "rm -rf $ha_temp_home"
+	scp_cubrid_to $master_host "ha.tgz" "$HOME"
+	ssh_cubrid $master_host "tar -zxf ha.tgz"
+	ssh_cubrid $master_host "mv ha $ha_temp_home"
+	ssh_cubrid $master_host "mkdir $backup_dest_path"
 }
 
-
-# step 4
-function step_4()
+function copy_script_to_slave()
 {
 	echo ""
-	echo "##### step 4 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  online backup database $db_bame on master                                    "
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - run 'cubrid backupdb -C -D ... -o ... $db_name@localhost' on master       "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  copy scripts to slave node"
+	echo "#"
+	echo "#  * details"
+	echo "#   - scp scripts to '~/.ha' on $slave_host($slave_state)".
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
+	
+	exec "tar -zcf ha.tgz ../ha"
+	ssh_cubrid $slave_host "rm -rf $ha_temp_home"
+	scp_cubrid_to $slave_host "ha.tgz" "$HOME"
+	ssh_cubrid $slave_host "tar -zxf ha.tgz"
+	ssh_cubrid $slave_host "mv ha $ha_temp_home"
+	ssh_cubrid $slave_host "mkdir $backup_dest_path"
+}
 
-	# backupdb
-	echo -ne "\n\n"
-	echo -ne "1. online backup database $db_name on $master_host.\n\n"
+function copy_script_to_target()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  copy scripts to target node"
+	echo "#"
+	echo "#  * details"
+	echo "#   - scp scripts to '~/.ha' on $target_host($target_state)".
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	exec "tar -zcf ha.tgz ../ha"
+	ssh_cubrid $target_host "rm -rf $ha_temp_home"
+	scp_cubrid_to $target_host "ha.tgz" "$HOME"
+	ssh_cubrid $target_host "tar -zxf ha.tgz"
+	ssh_cubrid $target_host "mv ha $ha_temp_home"
+	ssh_cubrid $target_host "mkdir $backup_dest_path"
+}
+
+function copy_script_to_replica()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  copy scripts to replication node"
+	echo "#"
+	echo "#  * details"
+	echo "#   - scp scripts to '~/.ha' on replication node".
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	if [ "$replica_hosts" == "" ]; then
+		echo "There is no replication server to copy scripts."
+	else
+		exec "tar -zcf ha.tgz ../ha"
+		
+		# 1. scp ha.tgz to replications.
+		echo -ne "\n - 1. scp ha.tgz to replications.\n\n"
+		for replica_host in ${replica_hosts[@]}; do
+			if [ "$replica_host" != "$current_host" ]; then
+				scp_to_expect "$cubrid_user" "$server_password" "ha.tgz" $replica_host $HOME
+			fi	
+		done
+		
+		# 2. extract ha.tgz on replications and check if the script is copyied normally.
+		echo -ne "\n - 2. extract ha.tgz on replications and check if the script is copyied normally.\n\n"
+		command1="rm -rf ~/.ha"
+		command2="tar -zxf ha.tgz"
+		command3="mv ha $ha_temp_home"
+		command4="mkdir $backup_dest_path"
+		command5="sh $function_home/ha_check_script.sh -t $ha_temp_home -o $install_output"
+		for replica_host in ${replica_hosts[@]}; do
+			ssh_expect "$cubrid_user" "$server_password" $replica_host "$command1" "$command2" "$command3" "$command4" "$command5"
+		done
+		
+		get_output_from_replica $install_output
+		
+		is_exist_error=false
+		for replica_host in ${replica_hosts[@]}; do
+			if [ ! -f $install_output/$replica_host ]; then
+				error "The script is not properly installed on $replica_host." true
+				is_exist_error=true
+			fi
+		done
+		
+		exec "rm -f ha.tgz"
+		
+		if $is_exist_error; then
+			error "The script is not properly installed on some replications."
+		fi
+	fi
+}
+
+function suspend_master_repl_util()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  suspend copylogdb/applylogdb on master if running"
+	echo "#"
+	echo "#  * details"
+	echo "#   - deregister copylogdb/applylogdb on $master_host(master)."
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	ssh_cubrid $master_host "sh $function_home/ha_repl_suspend.sh -l $repl_log_home -d $db_name -h $slave_host -o $repl_util_output"
+	if [ $? -ne $SUCCESS ]; then   
+		error "Fail to suspend copylogdb/applylogdb." true
+	fi
+	echo "Wait for 60s to deregister coppylogdb/applylogdb."
+	for (( i = 0; i < 60; i++ )); do
+		echo -ne "."
+		sleep 1
+	done
+}
+
+function suspend_target_repl_util()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  suspend copylogdb/applylogdb on target server if running"
+	echo "#"
+	echo "#  * details"
+	echo "#   - deregister copylogdb/applylogdb on $target_host($target_state)."
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	# 1. suspend master repl util
+	echo -ne "\n - 1. suspend master repl util.\n\n" 
+	ssh_cubrid $target_host "sh $function_home/ha_repl_suspend.sh -l $repl_log_home -d $db_name -h $master_host -o $repl_util_output.m"
+	if [ $? -ne $SUCCESS ]; then   
+		error "Fail to suspend copylogdb/applylogdb."
+	fi
+		
+	# 2. suspend slave repl util
+	echo -ne "\n - 2. suspend slave repl util.\n\n"
+	ssh_cubrid $target_host "sh $function_home/ha_repl_suspend.sh -l $repl_log_home -d $db_name -h $slave_host -o $repl_util_output.s"
+	if [ $? -ne $SUCCESS ]; then   
+		error "Fail to suspend copylogdb/applylogdb."
+	fi
+	
+	echo "Wait for 60s to deregister coppylogdb/applylogdb."
+	for (( i = 0; i < 60; i++ )); do
+		echo -ne "."
+		sleep 1
+	done
+}
+
+function online_backup_db()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  online backup database $db_bame on $target_state"
+	echo "#"
+	echo "#  * details"
+	echo "#   - run 'cubrid backupdb -C -D ... -o ... $db_name@localhost' on $target_state"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
 	backupdb_output=$backup_dest_path/$db_name.bkup.output
 
-	echo "$master_host ]$ cubrid backupdb -C -D $backup_dest_path -o $backupdb_output $backup_option $db_name@localhost"
-	ssh_cubrid "cubrid backupdb -C -D $backup_dest_path -o $backupdb_output $backup_option $db_name@localhost"
-	ret=$?
-	[ $ret -ne 0 ] && return 1
-
-	echo -ne "\n\n"
-	echo -ne "2. check backup output file $backupdb_output.\n\n"
-	echo -ne "$master_host ]$ cat $backupdb_output\n"
-	ssh_cubrid "cat $backupdb_output"
-
-	echo -ne "\n\n\n"
-	return 0
+	ssh_cubrid $target_host "cubrid backupdb $backup_option -C -D $backup_dest_path -o $backupdb_output $db_name@localhost"
+	if [ $? -ne $SUCCESS ]; then
+		error "Fail to backup database."
+	fi
+	ssh_cubrid $target_host "cat $backupdb_output"
 }
 
-function step_5()
+function copy_backup_db_from_target()
 {
 	echo ""
-	echo "##### step 5 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  copy $db_name databases backup to slave                                      "
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - scp databases.txt from master if there's no $db_name info on slave        "
-	echo "#   - remove old database and replication log if exist                          "
-	echo "#   - make new database volume and replication path                             "
-	echo "#   - scp $db_nama database backup to slave                                     "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  copy $db_name databases backup to current host"
+	echo "#"
+	echo "#  * details"
+	echo "#   - scp databases.txt from target host if there's no $db_name info on current host"
+	echo "#   - remove old database and replication log if exist"
+	echo "#   - make new database volume and replication path"
+	echo "#   - scp $db_nama database backup to current host"
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
-
-	# prepare on slave 
-	echo -ne "\n\n"
-	echo -ne "1. scp databases.txt from $master_host if there's no $db_name info on slave.\n\n"
+	
+	# 1. check if the databases information is already registered.
+	echo -ne "\n - 1. check if the databases information is already registered.\n\n"
 	line=$(grep "^$db_name" $CUBRID_DATABASES/databases.txt) 
 	if [ -z "$line" ]; then
-		echo "$slave_host ]$ mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
-		mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now
-
-		echo "$slave_host ]$ scp $cubrid_user@$master_host:$CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/."
-		scp_cubrid_to_slave "$CUBRID_DATABASES/databases.txt" "$CUBRID_DATABASES/."
+		exec "mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
+		scp_cubrid_from $target_host "$CUBRID_DATABASES/databases.txt" "$CUBRID_DATABASES/."
 	else
-		echo " - thres's already $db_name information in $CUBRID_DATABASES/databases.txt" 
-		echo "$slave_host ]$ grep $db_name $CUBRID_DATABASES/databases.txt" 
+		echo -ne "\n - thres's already $db_name information in $CUBRID_DATABASES/databases.txt" 
+		echo "[$current_host]$ grep $db_name $CUBRID_DATABASES/databases.txt" 
 		echo "$line"
 	fi
 	
-	line=$(grep "^$db_name" $CUBRID_DATABASES/databases.txt) 
-	db_vol_path=$(echo $line | cut -d ' ' -f 2)
-	db_log_path=$(echo $line | cut -d ' ' -f 4)
-	[ -z "$db_vol_path" -o -z "$db_log_path" ] && return 1
-
-	# TODO : remove? is it ok...?
-	echo -ne "\n\n"
-	echo -ne "2. remove old database and replication log.\n\n"
-
-	echo "$slave_host ]$ rm -rf $db_log_path" 
-	rm -rf $db_log_path
-	echo "$slave_host ]$ rm -rf $db_vol_path"
-	rm -rf $db_vol_path
-	echo "$slave_host ]$ rm -rf $repl_log_home/${db_name}_*"
-	rm -rf $repl_log_home/${db_name}_*
-
-
-	echo -ne "\n\n"
-	echo -ne "3. make new database volume and replication log directory.\n\n"
-
-	echo "$slave_host ]$ mkdir -p $db_vol_path"
-	mkdir -p $db_vol_path
-	echo "$slave_host ]$ mkdir -p $db_log_path"
-	mkdir -p $db_log_path
-
-	echo "$slave_host ]$ mkdir -p $ha_temp_home"
-	mkdir -p $ha_temp_home
-	echo "$slave_host ]$ rm -rf $backup_dest_path"
-	rm -rf $backup_dest_path
-	echo "$slave_host ]$ mkdir -p $backup_dest_path"
-	mkdir -p $backup_dest_path
-
-
-	echo -ne "\n\n"
-	echo -ne "4. scp $db_name database backup to slave.\n\n"
-	# copy backup volume and log
-	echo "$slave_host ]$ scp $cubrid_user@$master_host:$db_log_path/${db_name}_bkvinf $db_log_path"
-	scp_cubrid_to_slave "$db_log_path/${db_name}_bkvinf" "$db_log_path"
-	ret=$?
-	[ $ret -ne 0 ] && return 1
-
-	echo "$slave_host ]$ scp $cubrid_user@$master_host:$backup_dest_path/* $backup_dest_path/."
-	scp_cubrid_to_slave "$backup_dest_path/*" "$backup_dest_path/."
-	ret=$?
-	[ $ret -ne 0 ] && return 1
-
-	echo -ne "\n\n"
-	return 0
-}
-
-function step_6()
-{
-	echo ""
-	echo "##### step 6 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  restore database $db_name on slave                                           "
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - cubrid restoredb -B ... $db_name on slave                                 "
-	echo "#                                                                               "
-	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	# 2. get db_vol_path and db_log_path from databases.txt.
+	echo -ne "\n - 2. get db_vol_path and db_log_path from databases.txt.\n\n"
+	line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+	db_vol_path=${line[1]}
+	db_log_path=${line[3]}
+	if [ -z "$db_vol_path" -o -z "$db_log_path" ]; then
+		error "Invalid db_vol_path/db_log_path."
+	fi
+	
+	# 3. remove old database and replication log.
+	echo -ne "\n - 3. remove old database and replication log.\n\n"
+	exec "rm -rf $db_log_path"
+	exec "rm -rf $db_vol_path"
+	exec "rm -rf $repl_log_home/${db_name}_*"
+	
+	# 4. make new database volume and replication log directory.
+	echo -ne "\n - 4. make new database volume and replication log directory.\n\n"
+	exec "mkdir -p $db_vol_path"
+	exec "mkdir -p $db_log_path"
+	exec "mkdir -p $ha_temp_home"
+	exec "rm -rf $backup_dest_path"
+	exec "mkdir -p $backup_dest_path"
+	
+	# 5. copy backup volume and log from target host
+	echo -ne "\n - 5. copy backup volume and log from target host\n\n"
+	scp_cubrid_from $target_host "$db_log_path/${db_name}_bkvinf" "$db_log_path"
+	if [ $? -ne $SUCCESS ]; then
+		error "Fail to copy backup volume and log from target host."
 	fi
 
-	# restore database
-	echo -ne "\n\n"
-	echo -ne "1. restore database $db_name on slave.\n\n"
-	echo "$slave_host ]$ cubrid restoredb -B $backup_dest_path $restore_option $db_name"
-	cubrid restoredb -B $backup_dest_path $restore_option $db_name
-
-	echo -ne "\n\n"
-	return 0
+	scp_cubrid_from $target_host "$backup_dest_path/*" "$backup_dest_path/."
+	if [ $? -ne $SUCCESS ]; then
+		error "Fail to copy backup volume and log from target host."
+	fi
 }
 
-function step_7()
+function restore_db_to_current()
 {
 	echo ""
-	echo "##### step 7 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  set db_ha_apply_info on slave                                                " 
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - insert db_ha_apply_info on slave                                          "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  restore database $db_name on current host"
+	echo "#"
+	echo "#  * details"
+	echo "#   - cubrid restoredb -B ... $db_name current host"
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	exec "cubrid restoredb -B $backup_dest_path $restore_option $db_name"
+}
 
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+function init_ha_info_on_master()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  remove old copy log of slave and init db_ha_apply_info on master" 
+	echo "#"
+	echo "#  * details"
+	echo "#   - remove old copy log of slave"
+	echo "#   - init db_ha_apply_info on master"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	# 1. remove old copy log.
+	echo -ne "\n - 1. remove old copy log.\n\n"
+	ssh_cubrid $master_host "rm -rf $CUBRID_DATABASES/$db_name\_$slave_host/*"
+	
+	# 2. init db_ha_apply_info.
+	echo -ne "\n - 2. init db_ha_apply_info.\n\n"
+	pw_option=""
+	if [ -n "$dba_password" ]; then
+		pw_option="-p $dba_password"
+	fi
+	ssh_cubrid $master_host "csql -C -u dba $pw_option --sysadm $db_name@localhost -c \"delete from db_ha_apply_info where db_name='$db_name'\""
+	ssh_cubrid $master_host "csql -C -u dba $pw_option --sysadm $db_name@localhost -c \"select * from db_ha_apply_info where db_name='$db_name'\""
+}
+	
+function init_ha_info_on_slave()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  set db_ha_apply_info on slave" 
+	echo "#"
+	echo "#  * details"
+	echo "#   - insert db_ha_apply_info on slave"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
 
-	# set db_ha_apply_info on slave 
+	repl_log_path=$repl_log_home_abs/${db_name}_${master_host}
+	
+	pw_option=""
+	if [ -n "$dba_password" ]; then
+		pw_option="-p $dba_password"
+	fi
+	exec "./functions/ha_set_apply_info.sh -r $repl_log_path -o $backupdb_output $pw_option"
+}
+
+function init_ha_info_on_replica()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  remove old copy log of slave and init db_ha_apply_info on replications" 
+	echo "#"
+	echo "#  * details"
+	echo "#   - remove old copy log of slave"
+	echo "#   - init db_ha_apply_info on master"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	if [ "$replica_hosts" == "" ]; then
+		echo "There is no replication server to init ha_info"
+	else
+		repl_log_path="$CUBRID_DATABASES/${db_name}_${slave_host}"
+		
+		command1="cubrid heartbeat stop"
+		command2="rm -rf $repl_log_path"
+		pw_option=""
+		if [ -n "$dba_password" ]; then
+			pw_option="-p $dba_password"
+		fi
+		command3="csql -S -u dba $pw_option --sysadm $db_name -c \"delete from db_ha_apply_info where db_name='$db_name' and copied_log_path='$repl_log_path'\""
+		command4="sh $function_home/ha_check_copylog.sh -t $ha_temp_home -d $db_name -r $repl_log_path $pw_option -o $copylog_output"
+		command5="cubrid heartbeat start"
+		
+		# 1. stop cubrid ha.
+		# 2. remove old copy log and init db_ha_apply_info.
+		# 3. check if the db_ha_apply_info is initialized.
+		# 4. start cubrid ha.
+		echo -ne "\n - 1. stop cubrid ha.\n\n"
+		echo -ne "\n - 2. remove old copy log and init db_ha_apply_info.\n\n"
+		echo -ne "\n - 3. check if the db_ha_apply_info is initialized.\n\n"
+		echo -ne "\n - 4. start cubrid ha.\n\n"
+		
+		for replica_host in ${replica_hosts[@]}; do
+			ssh_expect "$cubrid_user" "$server_password" $replica_host "$command1" "$command2" "$command3" "$command4" "$command5"
+		done
+		
+		get_output_from_replica $copylog_output
+		
+		is_exist_error=false
+		for replica_host in ${replica_hosts[@]}; do
+			if [ ! -f $copylog_output/$replica_host ]; then
+				error "The old copy log is not removed or db_ha_apply_info is not initialized on $replica_host." true
+				is_exist_error=true
+			fi
+		done
+		
+		if $is_exist_error; then
+			error "The old copy log is not removed or db_ha_apply_info is not initialized on some replications."
+		fi
+	fi
+}
+
+function copy_active_log_from_master()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  make initial replication active log on master, and copy archive logs from"
+	echo "#  master" 
+	echo "#"
+	echo "#  * details"
+	echo "#   - remove old replication log on master if exist"
+	echo "#   - start copylogdb to make replication active log"
+	echo "#   - copy archive logs from master"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
 	repl_log_path=$repl_log_home/${db_name}_${master_host}
-	./functions/ha_set_apply_info.sh -r $repl_log_path -o $backupdb_output -p "$dba_password"
 
-	echo -ne "\n\n"
-	return 0
+	# 1. remove old replicaton log.
+	echo -ne "\n - 1. remove old replicaton log.\n\n"
+	exec "rm -rf $repl_log_path"	
+	exec "mkdir -p $repl_log_path"
+
+	# 2. start copylogdb to initiate active log.
+	echo -ne "\n - 2. start copylogdb to initiate active log.\n\n"
+	exec "./$CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host"
+	./$CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host
+
+	# 3. copy archive log from target.
+	echo -ne "\n - 3. copy archive log from target.\n\n"
+	if [ -z $db_log_path ]; then
+		line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+		db_log_path=${line[3]}
+	fi
+	scp_cubrid_from $master_host "$db_log_path/${db_name}_lgar[0-9]*" "$repl_log_path/."	
 }
 
-
-function step_8()
+function copy_active_log_from_slave()
 {
 	echo ""
-	echo "##### step 8 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  make initial replication active log on slave, and copy archive logs from     "
-	echo "#  master                                                                       " 
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - remove old replication log on slave if exist                              "
-	echo "#   - start copylogdb to make replication active log                            "
-	echo "#   - copy archive logs from master                                             "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  make initial replication active log on slave, and copy archive logs from"
+	echo "#  slave" 
+	echo "#"
+	echo "#  * details"
+	echo "#   - remove old replication log on slave if exist"
+	echo "#   - start copylogdb to make replication active log"
+	echo "#   - copy archive logs from slave"
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
+	
+	repl_log_path=$repl_log_home/${db_name}_${slave_host}
 
-	# prepare
+	# 1. remove old replicaton log.
+	echo -ne "\n - 1. remove old replicaton log.\n\n"
+	exec "rm -rf $repl_log_path"	
+	exec "mkdir -p $repl_log_path"
+
+	# 2. start copylogdb to initiate active log.
+	echo -ne "\n - 2. start copylogdb to initiate active log.\n\n"
+	./functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $slave_host
+
+	# 3. copy archive log from target.
+	echo -ne "\n - 3. copy archive log from target.\n\n"
+	if [ -z $db_log_path ]; then
+		line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+		db_log_path=${line[3]}
+	fi
+	scp_cubrid_from $slave_host "$db_log_path/${db_name}_lgar[0-9]*" "$repl_log_path/."	
+}
+
+function copy_active_log_from_target()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  make initial replication active log on target, and copy archive logs from"
+	echo "#  target" 
+	echo "#"
+	echo "#  * details"
+	echo "#   - remove old replication log on target if exist"
+	echo "#   - start copylogdb to make replication active log"
+	echo "#   - copy archive logs from target"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	repl_log_path=$repl_log_home/${db_name}_${slave_host}
+
+	# 1. remove old replicaton log.
+	echo -ne "\n - 1. remove old slave replicaton log.\n\n"
+	exec "rm -rf $repl_log_path"	
+	exec "mkdir -p $repl_log_path"
+
+	# 2. start copylogdb to initiate active log.
+	echo -ne "\n - 2. start copylogdb to initiate slave active log.\n\n"
+	./functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $slave_host
+
+	# 3. copy archive log from target.
+	echo -ne "\n - 3. copy archive log from slave.\n\n"
+	if [ -z $db_log_path ]; then
+		line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+		db_log_path=${line[3]}
+	fi
+	scp_cubrid_from $slave_host "$db_log_path/${db_name}_lgar[0-9]*" "$repl_log_path/."
+	
 	repl_log_path=$repl_log_home/${db_name}_${master_host}
 
-	echo -ne "\n\n"
-	echo -ne "1. remove old replicaton log on slave.\n\n"
-	echo "$slave_host ]$ rm -rf $repl_log_path"
-	rm -rf $repl_log_path
-	echo "$slave_host ]$ mkdir -p $repl_log_path"
-	mkdir -p $repl_log_path
+	# 4. remove old replicaton log.
+	echo -ne "\n - 4. remove old master replicaton log.\n\n"
+	exec "rm -rf $repl_log_path"	
+	exec "mkdir -p $repl_log_path"
 
-	# copy replication log from master
-	echo -ne "\n\n"
-	echo -ne "2. start copylogdb to initiate active log on slave.\n\n"
+	# 5. start copylogdb to initiate active log.
+	echo -ne "\n - 5. start copylogdb to initiate master active log.\n\n"
 	./functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host
 
-
-	echo -ne "\n\n"
-	echo -ne "3. copy archive log from master.\n\n"
-	echo "$slave_host ]$ scp $cubrid_user@$master_host:$db_log_path/${db_name}_lgar[0-9]* $repl_log_path/."
-	scp_cubrid_to_slave "$db_log_path/${db_name}_lgar[0-9]*" "$repl_log_path/."	
-
-	echo -ne "\n\n"
-	return 0
+	# 6. copy archive log from target.
+	echo -ne "\n - 6. copy archive log from master.\n\n"
+	if [ -z $db_log_path ]; then
+		line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+		db_log_path=${line[3]}
+	fi
+	scp_cubrid_from $master_host "$db_log_path/${db_name}_lgar[0-9]*" "$repl_log_path/."	
 }
 
-function step_9()
+function restart_master_repl_util()
 {
 	echo ""
-	echo "##### step 9 ###################################################################"	
-	echo "#                                                                               "
-	echo "#  reset replication log and db_ha_apply_info, then restart copylogdb/applylogdb" 
-	echo "#  on master                                                                    "
-	echo "#                                                                               "
-	echo "#  * details                                                                    "
-	echo "#   - remove old replication log                                                "
-	echo "#   - reset db_ha_apply_info                                                    "
-	echo "#   - restart copylogdb/applylogdb                                              "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  restart copylogdb/applylogdb on master"
+	echo "#"
+	echo "#  * details"
+	echo "#   - restart copylogdb/applylogdb"
+	echo "#"
 	echo "################################################################################"
-	echo -ne "\n                                          continue ? (yes/no/skip): "
-
-	read yesno
-	if [ $yesno = "skip" ]; then
-		echo -ne "\n                              ............................ skipped .......\n"
-		return 0
-	elif [ $yesno != "yes" ]; then 
-		return 1
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
 	fi
-
-	# reset  
-	if [ -n "$dba_password" ]; then
-		ssh_cubrid "$script_home/functions/ha_repl_reset.sh -l $repl_log_home -d $db_name -h $slave_host -p $dba_password"	
-	else
-		ssh_cubrid "$script_home/functions/ha_repl_reset.sh -l $repl_log_home -d $db_name -h $slave_host"	
-	fi
-	ret=$?
-	[ $ret -ne 0 ] && return 1
-
-	# resume 
-	echo -ne "\n\n3. restart copylogdb/applylogdb on master.\n\n"
-
-	echo " - touch replication utils process arguments file"
-	echo "$master_host ]$ touch $repl_util_output"
-	ssh_cubrid "touch $repl_util_output"
-
-	echo ""
-	echo " - restart copylogdb/applylogdb on $master_host(master)"
-	ssh_cubrid "$script_home/functions/ha_repl_resume.sh -i $repl_util_output"	
-	ret=$?
-	[ $ret -ne 0 ] && return 1
 	
-	echo -ne "\n\n\n"
-	return 0
+	ssh_cubrid $master_host "sh $function_home/ha_repl_resume.sh -i $repl_util_output"
+	if [ $? -ne $SUCCESS ]; then   
+		error "Fail to restart copylogdb/applylogdb."
+	fi
 }
 
-
-function step_10()
+function restart_target_repl_util()
 {
 	echo ""
-	echo "##### step 10 ##################################################################"	
-	echo "#                                                                               "
-	echo "#  completed                                                                    "
-	echo "#                                                                               "
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  restart copylogdb/applylogdb on target"
+	echo "#"
+	echo "#  * details"
+	echo "#   - restart copylogdb/applylogdb"
+	echo "#"
 	echo "################################################################################"
-	echo ""
-
-	return 0
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	# 1. restart master repl util
+	echo -ne "\n - 1. restart master repl util.\n\n"
+	ssh_cubrid $target_host "sh $function_home/ha_repl_resume.sh -i $repl_util_output.m"
+	if [ $? -ne $SUCCESS ]; then   
+		error "Fail to restart copylogdb/applylogdb."
+	fi
+	sleep 1
+	
+	# 2. restart slave repl util
+	echo -ne "\n - 2. restart slave repl util.\n\n"
+	ssh_cubrid $target_host "sh $function_home/ha_repl_resume.sh -i $repl_util_output.s"
+	if [ $? -ne $SUCCESS ]; then   
+		error "Fail to restart copylogdb/applylogdb."
+	fi	
+	ssh_cubrid $target_host "cubrid heartbeat list"
 }
 
+function show_complete()
+{
+	echo ""
+	echo "##### step $step_no ##################################################################"	
+	echo "#"
+	echo "#  completed"
+	echo "#"
+	echo "################################################################################"
+}
 
-
-
-### main ##############################
-
+#################################################################################
+# main function
+#################################################################################
 clear
+check_args
+init_conf
 
-if is_invalid_option; then
-	exit 1
-fi
-
-if ! step_1; then
-	exit 1
-fi
-
-if ! step_2; then
-	exit 1
-fi
-
-if ! step_3; then 
-	exit 1
-fi 
-
-if ! step_4; then
-	exit 1
-fi
-
-if ! step_5; then
-	exit 1
-fi
-
-if ! step_6; then
-	exit 1
-fi
-
-if ! step_7; then
-	exit 1
-fi
-
-if ! step_8; then
-	exit 1
-fi
-
-if ! step_9; then
-	exit 1
-fi
-
-if ! step_10; then
-	exit 1
-fi
-
-exit 0
+echo -ne "\n\n###### START $now ######\n" >> time.output
+for ((n= 0, size = ${#step_func[@]}; n < size; n++)) do
+	step_no=$(($n + 1))
+	
+	start_time=$(date +%s)
+	eval ${step_func[$n]}
+	end_time=$(date +%s)
+	elapsed_time=$[ $end_time - $start_time ]
+	echo "[$step_no] ${step_func[$n]} : $elapsed_time" >> time.output
+	
+	echo -ne "\n\n"
+done
+echo -ne "###### END ######\n\n" >> time.output

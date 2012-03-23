@@ -1,7 +1,11 @@
 #!/bin/bash
 
-################################################################################
-# 
+CURR_DIR=$(dirname $0)
+source $CURR_DIR/../common/common.sh
+
+#################################################################################
+# program variables
+#################################################################################
 prog_name='ha_repl_reset.sh'
 
 log_home=
@@ -12,8 +16,10 @@ dba_password=
 log_path=
 now=$(date +"%Y%m%d_%H%M%S")
 current_host=$(uname -n)
-################################################################################
 
+#################################################################################
+# program function
+#################################################################################
 function print_usage()
 {
 	echo ""
@@ -26,15 +32,22 @@ function print_usage()
 	echo ""
 }
 
-function is_invalid_args()
+function check_args()
 {
-	[ -z "$log_home" ] && echo " << ERROR >> log_home is not specified" && return 0
-	[ -z "$db_name" ] && echo " << ERROR >> db_name is not specified" && return 0
-	[ -z "$host" ] && echo " << ERROR >> host is not specified" && return 0
+	if [ -z "$log_home" ]; then
+		print_usage
+		error "log_home is not specified."
+	elif [ -z "$db_name" ]; then
+		print_usage
+		error "db_name is not specified."
+	elif [ -z "$host" ]; then
+		print_usage
+		error "host is not specified."
+	fi
 
+	log_home=$(readlink -f $log_home)
 	log_path=${log_home}/${db_name}_${host}
 	new_log_path=${log_path}.${now}
-	return 1
 }
 
 function is_utils_running()
@@ -107,9 +120,9 @@ function ha_repl_reset()
 	ha_repl_reset_applylogdb
 }
 
-
-### main ##############################
-
+#################################################################################
+# main function
+#################################################################################
 while getopts "l:d:h:p:" optname
 do
         case "$optname" in
@@ -123,13 +136,10 @@ do
         esac
 done
 
-if is_invalid_args; then
-	print_usage 
-	exit 1
-fi
+check_args
 
 if is_utils_running; then
-	exit 1
+	exit 0
 fi
 
 ha_repl_reset

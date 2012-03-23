@@ -1,7 +1,11 @@
 #!/bin/bash
 
-################################################################################
-# 
+CURR_DIR=$(dirname $0)
+source $CURR_DIR/../common/common.sh
+
+#################################################################################
+# program variables
+#################################################################################
 prog_name='ha_set_apply_info.sh'
 
 dba_password=
@@ -18,8 +22,10 @@ ha_info_prefix='HA apply info:'
 csql_cmd=
 
 current_host=$(uname -n)
-################################################################################
 
+#################################################################################
+# program function
+#################################################################################
 function print_usage()
 {
 	echo ""
@@ -31,35 +37,17 @@ function print_usage()
 	echo ""
 }
 
-function is_opt_invalid()
+function check_args()
 {
-	[ -z "$repl_log_path" ] && echo " << ERROR >> repl_log_path is not specified" && return 0
-	[ -z "$db_backup_output_file" ] && echo " << ERROR >> db_backup_output_file is not specified" && return 0
-	return 1
-}
-
-function is_ha_apply_info_invalid()
-{
-	[ -z "$db_name" ] && echo " << ERROR >> db_name in $db_backup_output_file is invalid" && return 0
-	[ -z "$db_creation" ] && echo " << ERROR >> db_creation in $db_backup_output_file is invalid" && return 0
-	[ -z "$pageid" ] && echo " << ERROR >> pageid in $db_backup_output_file is invalid" && return 0
-	[ -z "$offset" ] && echo " << ERROR >> offset in $db_backup_output_file is invalid" && return 0
-	return 1
-}
-
-function print_ha_apply_info()
-{
-	echo ""
-	echo "*********************************************************************************"
-	echo "*  db_ha_apply_info                                                              "
-	echo "*         - db_name : $db_name                                                  "
-	echo "*         - db_creation : $db_creation                                          " 
-	echo "*         - log_path : $repl_log_path                                           "
-	echo "*         - pageid : $pageid                                                    "
-	echo "*         - offset : $offset                                                    "
-	echo "*                                                                               "
-	echo "*********************************************************************************"
-	return 0
+	if [ -z "$repl_log_path" ]; then
+		print_usage
+		error "repl_log_path is not specified."
+	elif [ -z "$db_backup_output_file" ]; then
+		print_usage
+		error "db_backup_output_file is not specified."
+	fi
+	
+	repl_log_path=$(readlink -f $repl_log_path)
 }
 
 function get_ha_apply_info()
@@ -74,6 +62,16 @@ function get_ha_apply_info()
 	db_creation=$(echo $ha_info | cut -d ' ' -f 6)
 	pageid=$(echo $ha_info | cut -d ' ' -f 7)
 	offset=$(echo $ha_info | cut -d ' ' -f 8)
+	
+	if [ -z "$db_name" ]; then
+		error "db_name in $db_backup_output_file is invalid."
+	elif [ -z "$db_creation" ]; then
+		error "db_creation in $db_backup_output_file is invalid."
+	elif [ -z "$pageid" ]; then
+		error "pageid in $db_backup_output_file is invalid."
+	elif [ -z "$offset" ]; then
+		error "offset in $db_backup_output_file is invalid."
+	fi
 
 	echo -ne "\n\n"
 	echo -ne "1. get db_ha_apply_info from backup output($db_backup_output_file). \n\n"
@@ -167,9 +165,9 @@ function insert_new_ha_apply_info()
 	fi
 }
 
-
-### main ##############################
-
+#################################################################################
+# main function
+#################################################################################
 while getopts "p:r:o:" optname
 do
 	case "$optname" in
@@ -182,20 +180,11 @@ do
 	esac
 done
 
-if is_opt_invalid; then
-	print_usage
-	exit 1
-fi
+check_args
 
 get_ha_apply_info
 
-if is_ha_apply_info_invalid; then
-	exit 1
-fi
-
 print_old_ha_apply_info
-
-# print_ha_apply_info 
 
 make_csql_cmd
 insert_new_ha_apply_info

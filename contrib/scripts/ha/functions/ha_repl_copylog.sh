@@ -1,7 +1,11 @@
 #!/bin/bash
 
-################################################################################
-# 
+CURR_DIR=$(dirname $0)
+source $CURR_DIR/../common/common.sh
+
+#################################################################################
+# program variables
+#################################################################################
 prog_name='ha_repl_copylog.sh'
 
 repl_log_path=
@@ -10,8 +14,10 @@ host=
 
 now=$(date +"%Y%m%d_%H%M%S")
 current_host=$(uname -n)
-################################################################################
 
+#################################################################################
+# program function
+#################################################################################
 function print_usage()
 {
 	echo ""
@@ -23,18 +29,24 @@ function print_usage()
 	echo ""
 }
 
-function is_invalid_args()
+function check_args()
 {
-	[ -z "$repl_log_path" ] && echo " << ERROR >>  repl_log_path is not specified" && return 0
-	[ -z "$db_name" ] && echo " << ERROR >>  db_name is not specified" && return 0
-	[ -z "$host" ] && echo " << ERROR >> host is not specified" && return 0
-
-	if [ -d "$repl_log_path" ]; then
-		return 1
-	else
-		echo " << ERROR >> repl_log_path($log_path) is not a directory" 
-		return 0
+	if [ -z "$repl_log_path" ]; then
+		print_usage
+		error "log_path is not specified."
+	elif [ -z "$db_name" ]; then
+		print_usage
+		error "db_name is not specified."
+	elif [ -z "$host" ]; then
+		print_usage
+		error "host is not specified."
 	fi
+
+	if [ ! -d "$repl_log_path" ]; then
+		error "log_path($repl_log_path) is not a directory"
+	fi
+	
+	repl_log_path=$(readlink -f $repl_log_path)
 }
 
 function ha_repl_copylog()
@@ -80,11 +92,15 @@ function ha_repl_copylog()
 	echo "$current_host ]$  cubrid applyinfo -L $repl_log_path $db_name | grep -wqs \"DB name\""
 	cubrid applyinfo -L $repl_log_path $db_name | grep -wqs "DB name"
 	ret=$?
+	
+	cubrid service stop >/dev/null 2>&1
+	
 	return $ret
 }
 
-### main ##############################
-
+#################################################################################
+# main function
+#################################################################################
 while getopts "r:d:h:" optname
 do
         case "$optname" in
@@ -97,10 +113,7 @@ do
         esac
 done
 
-if is_invalid_args; then
-	print_usage 
-	exit 1
-fi
+check_args
 
 ha_repl_copylog
 ret=$?
