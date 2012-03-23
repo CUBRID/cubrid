@@ -9402,7 +9402,7 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
       thrd = thread_find_entry_by_index (i);
 
       conn_p = thrd->conn_entry;
-      if ((stop_phase > THREAD_WORKER_STOP_PHASE_0 && conn_p == NULL)
+      if ((stop_phase == THREAD_STOP_LOGWR && conn_p == NULL)
 	  || (conn_p && conn_p->stop_phase != stop_phase))
 	{
 	  continue;

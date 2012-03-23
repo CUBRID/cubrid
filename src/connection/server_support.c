@@ -528,6 +528,8 @@ css_final_job_queue (void)
 static void
 css_setup_server_loop (void)
 {
+  THREAD_ENTRY *thread_p;
+
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* not WINDOWS */
@@ -547,8 +549,24 @@ css_setup_server_loop (void)
       css_master_thread ();
 
       /* stop threads */
-      thread_stop_active_workers (THREAD_WORKER_STOP_PHASE_0);
-      thread_stop_active_workers (THREAD_WORKER_STOP_PHASE_1);
+      thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+      /* we should flush all append pages before stop log writer */
+      thread_p = thread_get_thread_entry_info ();
+      assert_release (thread_p != NULL);
+
+      LOG_CS_ENTER (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+
+      pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+      assert_release (LSA_EQ
+		      (&log_Gl.append.nxio_lsa,
+		       &log_Gl.prior_info.prior_lsa));
+      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+      LOG_CS_EXIT ();
+
+      thread_stop_active_workers (THREAD_STOP_LOGWR);
+
       thread_stop_active_daemons ();
 
       css_close_server_connection_socket ();
@@ -2298,7 +2316,8 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
 
   /* sleep on the thrd's condition variable with the mutex of the job queue */
   pthread_cond_wait (&thrd->wakeup_cond, &css_Job_queue[jobq_index].job_lock);
-  if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN)
+  if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN
+      || thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
       return ER_FAILED;
     }

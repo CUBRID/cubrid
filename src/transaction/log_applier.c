@@ -6656,6 +6656,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      if (LSA_EQ (&final, &final_log_hdr.eof_lsa)
 		  && lrec->type != LOG_END_OF_LOG)
 		{
+		  la_Info.is_end_of_record = true;
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}

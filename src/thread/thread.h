@@ -75,7 +75,7 @@ enum
 { TT_MASTER, TT_SERVER, TT_WORKER, TT_DAEMON, TT_NONE };
 
 enum
-{ THREAD_WORKER_STOP_PHASE_0, THREAD_WORKER_STOP_PHASE_1 };
+{ THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
 
 struct thread_entry
 {
@@ -189,6 +189,10 @@ extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int
 								   suspended_reason);
 #endif
 extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
+extern int thread_check_suspend_reason_and_wakeup (THREAD_ENTRY * thread_p,
+						   int resume_reason,
+						   int suspend_reason);
+
 extern int thread_wakeup_already_had_mutex (THREAD_ENTRY * p,
 					    int resume_reason);
 extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);

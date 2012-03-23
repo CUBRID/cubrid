@@ -485,6 +485,8 @@ struct logwr_entry
   LOG_PAGEID fpageid;
   LOGWR_MODE mode;
   LOGWR_STATUS status;
+  LOG_LSA last_eof_lsa;
+  LOG_LSA tmp_last_eof_lsa;
   LOGWR_ENTRY *next;
 };
 
@@ -1569,12 +1571,14 @@ extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p,
 						  LOG_PAGEID pageid,
 						  LOG_PAGE * log_pgptr);
+extern LOG_PAGE *logpb_copy_page_from_file (THREAD_ENTRY * thread_p,
+					    LOG_PAGEID pageid,
+					    LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p,
 					    LOG_PAGEID pageid,
 					    LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p,
-					    LOG_PAGEID pageid,
-					    int num_pages,
+					    LOG_PAGEID pageid, int num_pages,
 					    LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_write_page_to_disk (THREAD_ENTRY * thread_p,
 					   LOG_PAGE * log_pgptr,

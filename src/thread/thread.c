@@ -784,13 +784,17 @@ int
 thread_stop_active_workers (unsigned short stop_phase)
 {
   int i, count;
+  int r;
   bool repeat_loop;
   THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn_p;
 
   assert (thread_Manager.initialized == true);
 
-  css_block_all_active_conn (stop_phase);
+  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
+    {
+      css_block_all_active_conn (stop_phase);
+    }
 
   count = 0;
 loop:
@@ -799,19 +803,40 @@ loop:
       thread_p = &thread_Manager.thread_array[i];
 
       conn_p = thread_p->conn_entry;
-      if ((stop_phase > THREAD_WORKER_STOP_PHASE_0 && conn_p == NULL) ||
-	  (conn_p && conn_p->stop_phase != stop_phase))
+      if ((stop_phase == THREAD_STOP_LOGWR && conn_p == NULL)
+	  || (conn_p && conn_p->stop_phase != stop_phase))
 	{
 	  continue;
 	}
 
       if (thread_p->tran_index != -1)
 	{
-	  logtb_set_tran_index_interrupt (NULL, thread_p->tran_index, 1);
+	  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
+	    {
+	      logtb_set_tran_index_interrupt (NULL, thread_p->tran_index, 1);
+	    }
+
 	  if (thread_p->status == TS_WAIT)
 	    {
-	      thread_p->interrupted = true;
-	      thread_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT);
+	      if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
+		{
+		  thread_p->interrupted = true;
+		  thread_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT);
+		}
+	      else if (stop_phase == THREAD_STOP_LOGWR)
+		{
+		  /* 
+		   * we can only wakeup LWT when waiting on THREAD_LOGWR_SUSPENDED.
+		   */
+		  r =
+		    thread_check_suspend_reason_and_wakeup (thread_p,
+							    THREAD_RESUME_DUE_TO_INTERRUPT,
+							    THREAD_LOGWR_SUSPENDED);
+		  if (r == NO_ERROR)
+		    {
+		      thread_p->interrupted = true;
+		    }
+		}
 	    }
 	  thread_sleep (0, 10000);	/* 10 msec */
 	}
@@ -829,8 +854,8 @@ loop:
       thread_p = &thread_Manager.thread_array[i];
 
       conn_p = thread_p->conn_entry;
-      if ((stop_phase > THREAD_WORKER_STOP_PHASE_0 && conn_p == NULL) ||
-	  (conn_p && conn_p->stop_phase != stop_phase))
+      if ((stop_phase == THREAD_STOP_LOGWR && conn_p == NULL)
+	  || (conn_p && conn_p->stop_phase != stop_phase))
 	{
 	  continue;
 	}
@@ -855,6 +880,14 @@ loop:
 	}
       thread_sleep (1, 0);
       goto loop;
+    }
+
+  /* 
+   * we must not block active connection before terminating log writer thread.
+   */
+  if (stop_phase == THREAD_STOP_LOGWR)
+    {
+      css_block_all_active_conn (stop_phase);
     }
 
   return NO_ERROR;
@@ -1575,6 +1608,54 @@ thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 }
 
 /*
+ * thread_check_suspend_reason_and_wakeup_internal () -
+ *   return:
+ *   thread_p(in):
+ *   resume_reason:
+ *   suspend_reason:
+ *   had_mutex:
+ */
+static int
+thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY * thread_p,
+						 int resume_reason,
+						 int suspend_reason,
+						 bool had_mutex)
+{
+  int r = NO_ERROR;
+
+  if (had_mutex == false)
+    {
+      r = thread_lock_entry (thread_p);
+      if (r != 0)
+	{
+	  return r;
+	}
+    }
+
+  if (thread_p->resume_status != suspend_reason)
+    {
+      r = thread_unlock_entry (thread_p);
+      return (r == NO_ERROR) ? ER_FAILED : r;
+    }
+
+  r = pthread_cond_signal (&thread_p->wakeup_cond);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_SIGNAL, 0);
+      thread_unlock_entry (thread_p);
+      return ER_CSS_PTHREAD_COND_SIGNAL;
+    }
+
+  thread_p->resume_status = resume_reason;
+
+  r = thread_unlock_entry (thread_p);
+
+  return r;
+}
+
+
+/*
  * thread_wakeup () -
  *   return:
  *   thread_p(in/out):
@@ -1584,6 +1665,16 @@ int
 thread_wakeup (THREAD_ENTRY * thread_p, int resume_reason)
 {
   return thread_wakeup_internal (thread_p, resume_reason, false);
+}
+
+int
+thread_check_suspend_reason_and_wakeup (THREAD_ENTRY * thread_p,
+					int resume_reason, int suspend_reason)
+{
+  return thread_check_suspend_reason_and_wakeup_internal (thread_p,
+							  resume_reason,
+							  suspend_reason,
+							  false);
 }
 
 /*
