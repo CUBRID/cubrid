@@ -11156,7 +11156,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
 
   if (plan == NULL)
     {
-      goto end;
+      return false;
     }
   if (plan->info)
     {
@@ -11165,14 +11165,19 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
 
   if (env == NULL)
     {
-      goto end;
+      return false;
     }
 
   tree = QO_ENV_PT_TREE (env);
 
   if (tree == NULL)
     {
-      goto end;
+      return false;
+    }
+
+  if (tree->info.query.q.select.hint & PT_HINT_NO_IDX_DESC)
+    {
+      return false;
     }
 
   order_by = tree->info.query.order_by;
@@ -11195,7 +11200,6 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
 	trav->info.sort_spec.asc_or_desc;
     }
 
-end:
   return orderby_skip;
 }
 
@@ -11854,8 +11858,9 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
 
   if (plan == NULL)
     {
-      goto end;
+      return false;
     }
+
   if (plan->info)
     {
       env = plan->info->env;
@@ -11863,14 +11868,19 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
 
   if (env == NULL)
     {
-      goto end;
+      return false;
     }
 
   tree = QO_ENV_PT_TREE (env);
 
   if (tree == NULL)
     {
-      goto end;
+      return false;
+    }
+
+  if (tree->info.query.q.select.hint & PT_HINT_NO_IDX_DESC)
+    {
+      return false;
     }
 
   group_by = tree->info.query.q.select.group_by;
@@ -11894,7 +11904,6 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
 	trav->info.sort_spec.asc_or_desc;
     }
 
-end:
   return groupby_skip;
 }
 

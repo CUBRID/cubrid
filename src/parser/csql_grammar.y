@@ -20211,6 +20211,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"INSERT_EXECUTION_MODE", NULL, PT_HINT_INSERT_MODE}
   ,
+  {"NO_DESC_IDX", NULL, PT_HINT_NO_IDX_DESC}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 

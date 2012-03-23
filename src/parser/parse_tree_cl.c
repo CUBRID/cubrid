@@ -13058,6 +13058,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "NO_COVERING_IDX ");
 	}
 
+      if (p->info.query.q.select.hint & PT_HINT_NO_IDX_DESC)
+	{
+	  q = pt_append_nulstring (parser, q, "NO_DESC_IDX ");
+	}
+
       q = pt_append_nulstring (parser, q, "*/ ");
     }
 

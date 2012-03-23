@@ -13254,6 +13254,18 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 		}
 	    }
 
+	  if (select_node->info.query.q.select.hint & PT_HINT_NO_IDX_DESC)
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  if (ptr->spec_list && ptr->spec_list->indexptr)
+		    {
+		      ptr->spec_list->indexptr->use_desc_index = 0;
+		    }
+		}
+	    }
+
 	  /* check direction of the first order by column.
 	   * see also scan_get_index_oidset() in scan_manager.c
 	   */

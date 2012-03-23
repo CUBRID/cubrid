@@ -306,6 +306,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      break;
 	    case PT_HINT_USE_IDX_DESC:	/* descending index scan */
 	    case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
+	    case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;

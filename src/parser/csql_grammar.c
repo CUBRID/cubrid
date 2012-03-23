@@ -31778,7 +31778,7 @@ yyparse (void)
   /* User initialization code.  */
   #line 532 "../../src/parser/csql_grammar.y"
 {yybuffer_pos = 0;}
-/* Line 2309 of glr.c.  */
+/* Line 2317 of glr.c.  */
 #line 31783 "../../src/parser/csql_grammar.c"
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;
@@ -33248,6 +33248,8 @@ PT_HINT parser_hint_table[] = {
   {"NO_COVERING_IDX", NULL, PT_HINT_NO_COVERING_IDX}
   ,
   {"INSERT_EXECUTION_MODE", NULL, PT_HINT_INSERT_MODE}
+  ,
+  {"NO_DESC_IDX", NULL, PT_HINT_NO_IDX_DESC}
   ,
   {NULL, NULL, -1}		/* mark as end */
 };

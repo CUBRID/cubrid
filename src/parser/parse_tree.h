@@ -972,6 +972,7 @@ typedef enum
   PT_HINT_USE_IDX_DESC = 0x10000,	/* 0001 0000 0000 0000 0000 *//* descending index scan */
   PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
   PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
+  PT_HINT_NO_IDX_DESC = 0x80000	/* 1000 0000 0000 0000 0000 *//* do not use descending index scan */
 } PT_HINT_ENUM;
 
 
