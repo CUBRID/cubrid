@@ -6287,25 +6287,17 @@ delete_name
 	: identifier
 		{{
 
-			$$ = $1;
+			PT_NODE *node = $1;
+			node->info.name.meta_class = PT_CLASS;
+
+			$$ = node;
 
 		DBG_PRINT}}
 	| identifier '.' '*'
 		{{
 
-			$$ = $1;
-
-		DBG_PRINT}}
-	| identifier '.' identifier
-		{{
-
-			PT_NODE *node = parser_new_node (this_parser, PT_DOT_);
-
-			if (node)
-			  {
-			    node->info.dot.arg1 = $1;
-			    node->info.dot.arg2 = $3;
-			  }
+			PT_NODE *node = $1;
+			node->info.name.meta_class = PT_CLASS;
 
 			$$ = node;
 
@@ -6337,7 +6329,7 @@ delete_from_using
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| FROM class_name_list USING extended_table_spec_list
+	| FROM delete_name_list USING extended_table_spec_list
 		{{
 
 			container_3 ctn;

@@ -3178,6 +3178,12 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       return 0;
     }
 
+  if (name->info.name.meta_class == PT_CLASS)
+    {
+      /* should resolve to a class name later, don't search attributes */
+      return 0;
+    }
+
   resolved_name = name->info.name.resolved;
   range_var = spec->info.spec.range_var;
   if (resolved_name && range_var)

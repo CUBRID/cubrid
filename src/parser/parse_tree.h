@@ -2009,7 +2009,7 @@ struct pt_name_info
   DB_OBJECT *partition_of;	/* _db_partition object */
   PT_NODE *path_correlation;	/* as in a.b.c [path_correlation].d.e.f */
   PT_TYPE_ENUM virt_type_enum;	/* type of oid's in ldb for proxies. */
-  PT_MISC_TYPE meta_class;	/* 0 or PT_META or PT_PARAMETER */
+  PT_MISC_TYPE meta_class;	/* 0 or PT_META or PT_PARAMETER or PT_CLASS */
   PT_NODE *default_value;	/* PT_VALUE the default value of the attribute */
   unsigned int custom_print;
   unsigned short correlation_level;	/* for correlated attributes */
