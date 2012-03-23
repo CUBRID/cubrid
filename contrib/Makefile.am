@@ -34,4 +34,20 @@ dist_hascripts_SCRIPTS = scripts/ha/ha_make_slavedb.sh
 dist_hascripts_DATA = scripts/ha/README
 
 hafuncdir = ${hascriptsdir}/functions
-dist_hafunc_SCRIPTS = scripts/ha/functions/ha_repl_copylog.sh scripts/ha/functions/ha_repl_reset.sh scripts/ha/functions/ha_repl_resume.sh scripts/ha/functions/ha_repl_suspend.sh scripts/ha/functions/ha_set_apply_info.sh
+dist_hafunc_SCRIPTS = \
+	scripts/ha/functions/ha_check_copylog.sh \
+	scripts/ha/functions/ha_check_script.sh \
+	scripts/ha/functions/ha_repl_copylog.sh \
+	scripts/ha/functions/ha_repl_reset.sh \
+	scripts/ha/functions/ha_repl_resume.sh \
+	scripts/ha/functions/ha_repl_suspend.sh \
+	scripts/ha/functions/ha_set_apply_info.sh
+
+haexpdir = ${hascriptsdir}/expect
+dist_haexp_SCRIPTS = \
+	scripts/ha/expect/scp_from.exp \
+	scripts/ha/expect/scp_to.exp \
+	scripts/ha/expect/ssh.exp
+	
+hacommondir = ${hascriptsdir}/common
+dist_hacommon_SCRIPTS = scripts/ha/common/common.sh
