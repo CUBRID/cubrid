@@ -391,7 +391,7 @@ cci_connect_with_url (char *url, char *user, char *password)
   int port;
   int error, i;
   int con_handle_id;
-  int pos_pass = 0;
+  bool use_url = false;
   T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
@@ -403,6 +403,26 @@ cci_connect_with_url (char *url, char *user, char *password)
   if (url == NULL)
     {
       return CCI_ER_CONNECT;
+    }
+
+  /* The NULL is same as "". */
+  if (user == NULL)
+    {
+      user = "";
+    }
+  if (password == NULL)
+    {
+      password = "";
+    }
+
+  if (user[0] == '\0' && password[0] != '\0')
+    {
+      /* error - cci_connect_with_url (url, "", "pass") */
+      return CCI_ER_CONNECT;
+    }
+  if (user[0] == '\0')
+    {
+      use_url = true;
     }
 
 #if defined(WINDOWS)
@@ -456,25 +476,21 @@ cci_connect_with_url (char *url, char *user, char *password)
   p = strtok_r (NULL, ":", &q);
   if (p != NULL)
     {
-      if (user == NULL || user[0] == '\0')
+      if (use_url)
 	{
 	  user = p;
 	}
     }
-
-  p = strtok_r (NULL, ":", &q);
-  if (p != NULL)
+  if (user[0] == '\0')
     {
-      pos_pass = p - buf;
-      if (password == NULL || password[0] == '\0')
-	{
-	  password = p;
-	}
+      /* A user don't exist in the parameter and url */
+      user = "public";
     }
 
-  if (user == NULL || password == NULL)
+  p = strtok_r (NULL, ":", &q);
+  if (use_url)
     {
-      return CCI_ER_CONNECT;
+      password = (p == NULL) ? "" : p;
     }
 
   con_handle_id = cci_get_new_handle_id (host, port, dbname, user, password);
