@@ -393,6 +393,7 @@ cci_connect_with_url (char *url, char *user, char *password)
   int con_handle_id;
   bool use_url = false;
   T_CON_HANDLE *con_handle = NULL;
+  CCI_AUTOCOMMIT_MODE saved_autocommit_mode = CCI_AUTOCOMMIT_FALSE;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -524,8 +525,10 @@ cci_connect_with_url (char *url, char *user, char *password)
 
       SET_START_TIME_FOR_LOGIN (con_handle);
 
+      saved_autocommit_mode = con_handle->autocommit_mode;
       con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
       error = cci_get_db_version (con_handle_id, NULL, 0);
+      con_handle->autocommit_mode = saved_autocommit_mode;
 
       if (error < 0)
 	{
@@ -534,7 +537,7 @@ cci_connect_with_url (char *url, char *user, char *password)
 	}
       else
 	{
-	  con_handle->autocommit_mode =
+	  con_handle->autocommit_mode &=
 	    con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
 	    & CAS_INFO_FLAG_MASK_AUTOCOMMIT;
 	  RESET_START_TIME (con_handle);
