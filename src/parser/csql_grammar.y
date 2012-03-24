@@ -2335,16 +2335,16 @@ create_stmt
 	| CREATE					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
-	  identifier 					/* 4 */
-	  opt_serial_option_list			/* 5 */
-		{ pop_msg(); }
+		{ pop_msg(); }				/* 4 */
+	  identifier 					/* 5 */
+	  opt_serial_option_list			/* 6 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERIAL);
 
 			if (node)
 			  {
-			    node->info.serial.serial_name = $4;
+			    node->info.serial.serial_name = $5;
 
 			    /* container order
 			     * 0: start_val
@@ -2359,16 +2359,16 @@ create_stmt
 			     * 9: no_cache,
 			     */
 
-			    node->info.serial.start_val = CONTAINER_AT_0($5);
-			    node->info.serial.increment_val = CONTAINER_AT_1($5);
-			    node->info.serial.max_val = CONTAINER_AT_2 ($5);
-			    node->info.serial.no_max = TO_NUMBER (CONTAINER_AT_3 ($5));
-			    node->info.serial.min_val = CONTAINER_AT_4 ($5);
-			    node->info.serial.no_min = TO_NUMBER (CONTAINER_AT_5 ($5));
-			    node->info.serial.cyclic = TO_NUMBER (CONTAINER_AT_6 ($5));
-			    node->info.serial.no_cyclic = TO_NUMBER (CONTAINER_AT_7 ($5));
-			    node->info.serial.cached_num_val = CONTAINER_AT_8 ($5);
-			    node->info.serial.no_cache = TO_NUMBER (CONTAINER_AT_9 ($5));
+			    node->info.serial.start_val = CONTAINER_AT_0($6);
+			    node->info.serial.increment_val = CONTAINER_AT_1($6);
+			    node->info.serial.max_val = CONTAINER_AT_2 ($6);
+			    node->info.serial.no_max = TO_NUMBER (CONTAINER_AT_3 ($6));
+			    node->info.serial.min_val = CONTAINER_AT_4 ($6);
+			    node->info.serial.no_min = TO_NUMBER (CONTAINER_AT_5 ($6));
+			    node->info.serial.cyclic = TO_NUMBER (CONTAINER_AT_6 ($6));
+			    node->info.serial.no_cyclic = TO_NUMBER (CONTAINER_AT_7 ($6));
+			    node->info.serial.cached_num_val = CONTAINER_AT_8 ($6);
+			    node->info.serial.no_cache = TO_NUMBER (CONTAINER_AT_9 ($6));
 			  }
 
 			$$ = node;
