@@ -12519,21 +12519,7 @@ search_condition_query
 	;
 
 search_condition_expression
-	: search_condition_expression table_op select_or_subquery
-		{{
-
-			PT_NODE *node = $2;
-			if (node)
-			  {
-			    node->info.query.q.union_.arg1 = $1;
-			    node->info.query.q.union_.arg2 = $3;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| search_condition
+	: search_condition
 		{{
 
 			$$ = $1;
