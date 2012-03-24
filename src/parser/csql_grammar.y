@@ -12470,21 +12470,6 @@ primary
 			  }
 
 		DBG_PRINT}}
-	| '(' search_condition_query ')' %dprec 2
-		{{
-
-			PT_NODE *exp = $2;
-
-			if (exp && exp->node_type == PT_EXPR)
-			  {
-			    exp->info.expr.paren_type = 1;
-			  }
-
-			$$ = exp;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			parser_groupby_exception = PT_EXPR;
-
-		DBG_PRINT}}
 	| subquery    %dprec 1
 		{{
 			parser_groupby_exception = PT_IS_SUBQUERY;
