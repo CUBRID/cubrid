@@ -3250,6 +3250,7 @@ extern int db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_reverse_unique (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_non_null (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_indexed (DB_ATTRIBUTE * attribute);
+extern int db_attribute_is_reverse_indexed (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_shared (DB_ATTRIBUTE * attribute);
 extern int db_attribute_length (DB_ATTRIBUTE * attribute);
 extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);

@@ -64,6 +64,7 @@ EXPORTS
     db_attribute_is_auto_increment
     db_attribute_is_foreign_key
     db_attribute_is_indexed
+    db_attribute_is_reverse_indexed
     db_attribute_is_non_null
     db_attribute_is_primary_key
     db_attribute_is_shared

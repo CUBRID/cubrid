@@ -1298,6 +1298,34 @@ db_attribute_is_indexed (DB_ATTRIBUTE * attribute)
 }
 
 /*
+ * db_attribute_is_reverse_indexed() - This function tests to see if an attribute is
+ *    reverse_indexed.
+ * return: non-zero if attribute is indexed
+ * attributre(in): attribute descriptor
+ */
+int
+db_attribute_is_reverse_indexed (DB_ATTRIBUTE * attribute)
+{
+  int status = 0;
+
+  if (attribute != NULL)
+    {
+      SM_CONSTRAINT *con;
+
+      for (con = attribute->constraints;
+	   con != NULL && !status; con = con->next)
+	{
+	  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type))
+	    {
+	      status = 1;
+	    }
+	}
+    }
+
+  return (status);
+}
+
+/*
  * db_attribute_is_shared() - This function tests to see if an attribute was
  *    defined as SHARED.
  * return: non-zero if shared is defined

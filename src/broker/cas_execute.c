@@ -3544,7 +3544,7 @@ set_column_info (T_NET_BUF * net_buf, char ut,
       auto_increment = db_attribute_is_auto_increment (attr);
       unique_key = db_attribute_is_unique (attr);
       primary_key = db_attribute_is_primary_key (attr);
-      reverse_index = db_attribute_is_indexed (attr);
+      reverse_index = db_attribute_is_reverse_indexed (attr);
       reverse_unique = db_attribute_is_reverse_unique (attr);
       shared = db_attribute_is_shared (attr);
       foreign_key = db_attribute_is_foreign_key (attr);
