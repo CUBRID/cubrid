@@ -3702,6 +3702,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	{
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
+		  logtb_release_tran_index (thread_p, tran_index);
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
 			    "css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
