@@ -264,6 +264,7 @@ struct la_info
   bool is_end_of_record;
   bool error_log_enable;
   int last_server_state;
+  bool is_role_changed;
 
   /* db_ha_apply_info */
   unsigned long insert_counter;
@@ -276,7 +277,8 @@ struct la_info
   bool required_lsa_changed;
   int status;
 
-  int lockf_vdes;
+  int log_path_lockf_vdes;
+  int db_lockf_vdes;
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -444,6 +446,10 @@ static int la_check_time_commit (struct timeval *time,
 static void la_init (const char *log_path);
 static int la_check_duplicated (const char *logpath, const char *dbname,
 				int *lockf_vdes, int *last_deleted_arv_num);
+static int la_lock_dbname (int *lockf_vdes, char *db_name, char *log_path);
+static int la_unlock_dbname (int *lockf_vdes, char *db_name,
+			     bool clear_owner);
+
 static void la_shutdown (void);
 
 static int la_remove_archive_logs (const char *db_name,
@@ -4102,6 +4108,33 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
   return error;
 }
 
+static int
+la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
+{
+  int error = NO_ERROR;
+  int state = HA_SERVER_STATE_NA;
+  LOG_PAGEID pageid;
+  PGLENGTH offset;
+  int length;
+  LOG_PAGE *pg;
+  struct log_ha_server_state *ha_server_state;
+
+  pageid = lsa->pageid;
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
+  pg = pgptr;
+
+  length = DB_SIZEOF (struct log_ha_server_state);
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pgptr);
+  if (error == NO_ERROR)
+    {
+      ha_server_state =
+	(struct log_ha_server_state *) ((char *) pg->area + offset);
+      state = ha_server_state->state;
+    }
+
+  return state;
+}
+
 /*
  * la_apply_delete_log() - apply the delete log to the target slave
  *   return: NO_ERROR or error code
@@ -4789,6 +4822,10 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
       return NO_ERROR;
     }
 
+  error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name,
+			  la_Info.log_path);
+  assert_release (error == NO_ERROR);
+
   item = apply->head;
   while (item)
     {
@@ -5131,6 +5168,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   LOG_LSA required_lsa;
   LOG_PAGEID final_pageid;
   int commit_list_count;
+  int ha_server_state;
   char buffer[256];
 
   if (lrec->trid == NULL_TRANID ||
@@ -5338,6 +5376,24 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       return ER_INTERRUPTED;
 
     case LOG_END_CHKPT:
+      break;
+
+    case LOG_DUMMY_HA_SERVER_STATE:
+      ha_server_state = la_get_ha_server_state (pg_ptr, final);
+      if (la_Info.db_lockf_vdes != NULL_VOLDES
+	  && ha_server_state != HA_SERVER_STATE_ACTIVE
+	  && ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY)
+	{
+	  snprintf (buffer, sizeof (buffer),
+		    "ha_server_state is changed to %s",
+		    css_ha_server_state_string (ha_server_state));
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_GENERIC_ERROR, 1, buffer);
+
+	  la_Info.is_role_changed = true;
+
+	  return ER_INTERRUPTED;
+	}
       break;
 
     default:
@@ -5756,7 +5812,8 @@ la_check_duplicated (const char *logpath, const char *dbname, int *lockf_vdes,
     }
 
   lockf_type =
-    fileio_lock_la (dbname, lock_path, *lockf_vdes, last_deleted_arv_num);
+    fileio_lock_la_log_path (dbname, lock_path, *lockf_vdes,
+			     last_deleted_arv_num);
   if (lockf_type == FILEIO_NOT_LOCKF)
     {
       er_log_debug (ARG_FILE_LINE, "unable to wlock lock_file (%s)",
@@ -5801,6 +5858,62 @@ la_update_last_deleted_arv_num (int lockf_vdes, int last_deleted_arv_num)
   return NO_ERROR;
 }
 
+static int
+la_lock_dbname (int *lockf_vdes, char *db_name, char *log_path)
+{
+  int error = NO_ERROR;
+  FILEIO_LOCKF_TYPE result;
+
+  if (*lockf_vdes != NULL_VOLDES)
+    {
+      return NO_ERROR;
+    }
+
+  while (1)
+    {
+      result = fileio_lock_la_dbname (lockf_vdes, db_name, log_path);
+      if (result == FILEIO_LOCKF)
+	{
+	  break;
+	}
+
+      LA_SLEEP (1, 0);
+    }
+
+  assert_release ((*lockf_vdes) != NULL_VOLDES);
+
+  la_Info.is_role_changed = false;
+
+  return error;
+}
+
+
+static int
+la_unlock_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
+{
+  int error = NO_ERROR;
+  int result;
+
+  if ((*lockf_vdes) == NULL_VOLDES)
+    {
+      return NO_ERROR;
+    }
+
+  result = fileio_unlock_la_dbname (lockf_vdes, db_name, clear_owner);
+  if (result == FILEIO_LOCKF)
+    {
+      return ER_FAILED;
+    }
+
+  la_Info.is_role_changed = false;
+
+  if (clear_owner)
+    {
+      LA_SLEEP (60, 0);
+    }
+
+  return error;
+}
 
 static void
 la_init (const char *log_path)
@@ -5819,12 +5932,14 @@ la_init (const char *log_path)
   LSA_SET_NULL (&la_Info.last_committed_lsa);
   LSA_SET_NULL (&la_Info.required_lsa);
   la_Info.last_deleted_archive_num = 0;
+  la_Info.is_role_changed = false;
   /* check vsize when it started */
   if (!start_vsize)
     {
       start_vsize = la_check_mem_size ();
     }
   la_Info.start_vsize = start_vsize;
+  la_Info.db_lockf_vdes = NULL_VOLDES;
 }
 
 static void
@@ -5845,10 +5960,28 @@ la_shutdown (void)
       fileio_close (la_Info.act_log.log_vdes);
       la_Info.act_log.log_vdes = NULL_VOLDES;
     }
-  if (la_Info.lockf_vdes != NULL_VOLDES)
+  if (la_Info.log_path_lockf_vdes != NULL_VOLDES)
     {
-      fileio_close (la_Info.lockf_vdes);
-      la_Info.lockf_vdes = NULL_VOLDES;
+      fileio_close (la_Info.log_path_lockf_vdes);
+      la_Info.log_path_lockf_vdes = NULL_VOLDES;
+    }
+
+  if (la_Info.db_lockf_vdes != NULL_VOLDES)
+    {
+      int error;
+      bool clear_owner = false;
+
+      error =
+	la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name,
+			  clear_owner);
+      if (error == NO_ERROR)
+	{
+	  la_Info.db_lockf_vdes = NULL_VOLDES;
+	}
+      else
+	{
+	  assert_release (false);
+	}
     }
 
   free_and_init (la_Info.log_data);
@@ -6267,6 +6400,10 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
   int last_nxarv_num = 0;
 
+  bool clear_owner;
+  int now = 0, last_eof_time = 0;
+  LOG_LSA last_eof_lsa;
+
   assert (database_name != NULL);
   assert (log_path != NULL);
 
@@ -6301,9 +6438,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
   error =
     la_check_duplicated (la_Info.log_path, la_slave_db_name,
-			 &la_Info.lockf_vdes,
+			 &la_Info.log_path_lockf_vdes,
 			 &la_Info.last_deleted_archive_num);
-
   if (error != NO_ERROR)
     {
       return error;
@@ -6365,6 +6501,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
     }
 
   gettimeofday (&time_commit, NULL);
+  last_eof_time = time (NULL);
+  LSA_SET_NULL (&last_eof_lsa);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 4,
 	  la_Info.required_lsa.pageid,
@@ -6414,7 +6552,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 					la_Info.act_log.log_hdr->nxarv_num);
 	      if (la_Info.last_deleted_archive_num > 0)
 		{
-		  la_update_last_deleted_arv_num (la_Info.lockf_vdes,
+		  la_update_last_deleted_arv_num (la_Info.log_path_lockf_vdes,
 						  la_Info.
 						  last_deleted_archive_num);
 		}
@@ -6424,6 +6562,32 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr,
 		  sizeof (struct log_header));
 
+	  if (PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS >= 0)
+	    {
+	      if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
+		  && LSA_EQ (&last_eof_lsa, &final_log_hdr.eof_lsa))
+		{
+		  now = time (NULL);
+		  assert_release (now >= last_eof_time);
+
+		  if ((now - last_eof_time) >=
+		      PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
+		    {
+		      clear_owner = true;
+		      error =
+			la_unlock_dbname (&la_Info.db_lockf_vdes,
+					  la_slave_db_name, clear_owner);
+		      assert_release (error == NO_ERROR);
+		    }
+		}
+	      else
+		{
+		  last_eof_time = time (NULL);
+		}
+
+	      LSA_COPY (&last_eof_lsa, &final_log_hdr.eof_lsa);
+	    }
+
 	  /* check log hdr's master state */
 	  if (la_Info.apply_state == HA_LOG_APPLIER_STATE_DONE
 	      && (final_log_hdr.ha_server_state !=
@@ -6431,20 +6595,16 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      && (final_log_hdr.ha_server_state !=
 		  HA_SERVER_STATE_TO_BE_STANDBY))
 	    {
-	      /* check server is connected now */
-	      error = db_ping_server (0, NULL);
-	      if (error != NO_ERROR)
-		{
-		  er_log_debug (ARG_FILE_LINE,
-				"we lost connection with standby DB server.");
-		  error = ER_NET_CANT_CONNECT_SERVER;
-		  la_applier_need_shutdown = true;
-		  break;
-		}
 
-	      /* skip record data and copy final lsa to eof_lsa */
-	      LSA_COPY (&final, &final_log_hdr.eof_lsa);
-	      LSA_COPY (&la_Info.final_lsa, &final_log_hdr.chkpt_lsa);
+	      /* if there's no replication log to be applied, 
+	       * we should release dbname lock */
+	      clear_owner = true;
+	      error =
+		la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name,
+				  clear_owner);
+	      assert_release (error == NO_ERROR);
+
+	      LSA_COPY (&la_Info.final_lsa, &final);
 
 	      if (LSA_GT (&la_Info.final_lsa, &la_Info.last_committed_lsa))
 		{
@@ -6462,7 +6622,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		    }
 		}
 
-	      sleep (1);
+	      la_Info.apply_state = HA_LOG_APPLIER_STATE_RECOVERING;
+
+	      LA_SLEEP (1, 0);
 	      continue;
 	    }
 
@@ -6731,6 +6893,15 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	    {
 	      /* it should be refetched and release */
 	      la_invalidate_page_buffer (log_buf);
+	    }
+
+	  if (la_Info.is_role_changed == true)
+	    {
+	      clear_owner = true;
+	      error =
+		la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name,
+				  clear_owner);
+	      assert_release (error == NO_ERROR);
 	    }
 
 	  /* there is no something new */

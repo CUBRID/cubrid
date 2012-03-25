@@ -674,6 +674,10 @@ static bool *prm_ha_applylogdb_retry_error_list_default = NULL;
 bool *PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST = error_list_initial;
 static bool *prm_ha_applylogdb_ignore_error_list_default = NULL;
 
+int PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS = -1;
+static int prm_ha_applylogdb_log_wait_time_in_secs_default = -1;
+static int prm_ha_applylogdb_log_wait_time_in_secs_lower = -1;
+
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 
@@ -1697,6 +1701,12 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_applylogdb_ignore_error_list_default,
    (void *) &PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA | PRM_HIDDEN),
+   (void *) &prm_ha_applylogdb_log_wait_time_in_secs_default,
+   (void *) &PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
+   (void *) NULL, (void *) &prm_ha_applylogdb_log_wait_time_in_secs_lower,
    (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER),

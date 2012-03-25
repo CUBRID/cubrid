@@ -473,6 +473,9 @@ extern bool *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST;
 #define PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST "ha_applylogdb_ignore_error_list"
 extern bool *PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST;
 
+#define PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS "ha_applylogdb_log_wait_time_in_secs"
+extern int PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS;
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 extern bool PRM_JAVA_STORED_PROCEDURE;
 

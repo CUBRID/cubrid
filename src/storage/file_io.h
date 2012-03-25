@@ -572,9 +572,17 @@ extern int fileio_request_user_response (THREAD_ENTRY * thread_p,
 					 int range_low, int range_high,
 					 const char *secondary_prompt,
 					 int reprompt_value);
-extern FILEIO_LOCKF_TYPE fileio_lock_la (const char *db_fullname,
-					 const char *lock_path, int vdes,
-					 int *last_deleted_arv_num);
+extern FILEIO_LOCKF_TYPE fileio_lock_la_log_path (const char *db_fullname,
+						  const char *lock_path,
+						  int vdes,
+						  int *last_deleted_arv_num);
+extern FILEIO_LOCKF_TYPE fileio_lock_la_dbname (int *lockf_vdes,
+						char *db_name,
+						char *log_path);
+extern FILEIO_LOCKF_TYPE fileio_unlock_la_dbname (int *lockf_vdes,
+						  char *db_name,
+						  bool clear_owner);
+
 #if !defined(WINDOWS)
 extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);

@@ -1438,7 +1438,7 @@ again:
 }
 
 /*
- * fileio_lock_la () - LOCKF A applylogdb lock
+ * fileio_lock_la_log_path () - LOCKF A applylogdb logpath lock
  *   return:
  *   db_fullname(in): Name of the database where the volume belongs
  *   lock_path(in): Lock file path
@@ -1447,8 +1447,8 @@ again:
  *
  */
 FILEIO_LOCKF_TYPE
-fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
-		int vol_fd, int *last_deleted_arv_num)
+fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p,
+			 int vol_fd, int *last_deleted_arv_num)
 {
   FILE *fp;
   char host[MAXHOSTNAMELEN];
@@ -1598,6 +1598,235 @@ fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
 			       ER_IO_MOUNT_FAIL, 1, lock_path_p);
 	  result = FILEIO_NOT_LOCKF;
 	}
+    }
+
+  return result;
+}
+
+/*
+ * fileio_lock_la_dbname () - LOCKF A applylogdb database lock
+ *   return:
+ *
+ *   lockf_vdes(in): lock file descriptor
+ *   db_name(in): database name 
+ *   log_path(in): log file path
+ *
+ */
+FILEIO_LOCKF_TYPE
+fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
+{
+  int error = NO_ERROR;
+  int fd = NULL_VOLDES;
+  int pid;
+  int r;
+  FILEIO_LOCKF_TYPE result = FILEIO_LOCKF;
+  FILE *fp = NULL;
+  char lock_dir[PATH_MAX], lock_path[PATH_MAX];
+  char tmp_db_name[DB_MAX_IDENTIFIER_LENGTH], tmp_log_path[PATH_MAX];
+  char format_string[PATH_MAX];
+
+  envvar_vardir_file (lock_dir, sizeof (lock_dir), "APPLYLOGDB");
+  snprintf (lock_path, sizeof (lock_path), "%s/%s", lock_dir, db_name);
+
+  if (access (lock_dir, F_OK) < 0)
+    {
+      if (mkdir (lock_dir, 0777) < 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "unable to create dir (%s)", lock_dir);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lock_dir);
+	  result = FILEIO_NOT_LOCKF;
+	  goto error_return;
+	}
+    }
+
+  snprintf (format_string, sizeof (format_string), "%%d %%%ds %%%ds",
+	    DB_MAX_IDENTIFIER_LENGTH - 1, PATH_MAX - 1);
+
+  fd = fileio_open (lock_path, O_RDWR | O_CREAT, 0644);
+  if (fd == NULL_VOLDES)
+    {
+      er_log_debug (ARG_FILE_LINE, "unable to open lock_file (%s)",
+		    lock_path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL,
+			   1, lock_path);
+
+      result = FILEIO_NOT_LOCKF;
+      goto error_return;
+    }
+
+  fp = fopen (lock_path, "r");
+  if (fp)
+    {
+      fseek (fp, (off_t) 0, SEEK_SET);
+
+      r = fscanf (fp, format_string, &pid, tmp_db_name, tmp_log_path);
+      if (r == 3)
+	{
+	  assert_release (strcmp (db_name, tmp_db_name) == 0);
+
+	  if (strcmp (db_name, tmp_db_name)
+	      || strcmp (log_path, tmp_log_path))
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_IO_MOUNT_LOCKED, 6, lock_path, db_name, "-", pid,
+		      "-", "-");
+
+	      fclose (fp);
+
+	      result = FILEIO_NOT_LOCKF;
+	      goto error_return;
+	    }
+	}
+
+      fclose (fp);
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "unable to open lock_file (%s)",
+		    lock_path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL,
+			   1, lock_path);
+
+      result = FILEIO_NOT_LOCKF;
+      goto error_return;
+    }
+
+  if (fileio_lock_file_write (fd, 0, SEEK_SET, 0) < 0)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_LOCKED, 6,
+	      lock_path, db_name, "-", 0, "-", "-");
+
+      result = FILEIO_NOT_LOCKF;
+      goto error_return;
+    }
+
+  fp = fopen (lock_path, "w+");
+  if (fp)
+    {
+      fseek (fp, (off_t) 0, SEEK_SET);
+
+      pid = getpid ();
+      fprintf (fp, "%-10d %s %s", pid, db_name, log_path);
+      fflush (fp);
+      fclose (fp);
+    }
+  else
+    {
+#if defined(WINDOWS)
+      fileio_unlock_file (fd, 0, SEEK_SET, 0);
+#else /* WINDOWS */
+      error = fileio_release_lock (fd);
+      assert_release (error == NO_ERROR);
+#endif /* !WINDOWS */
+
+      er_log_debug (ARG_FILE_LINE, "unable to open lock_file (%s)",
+		    lock_path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL,
+			   1, lock_path);
+
+      result = FILEIO_NOT_LOCKF;
+      goto error_return;
+    }
+
+  (*lockf_vdes) = fd;
+
+  return result;
+
+error_return:
+
+  if (fd != NULL_VOLDES)
+    {
+      fileio_close (fd);
+      fd = NULL_VOLDES;
+    }
+
+  (*lockf_vdes) = fd;
+
+  return result;
+}
+
+/*
+ * fileio_unlock_la_dbname () - UNLOCKF A applylogdb database lock
+ *   return:
+ *
+ *   lockf_vdes(in): lock file descriptor
+ *   db_name(in): database name 
+ *   clear_owner(in): clear lock owner
+ *
+ */
+FILEIO_LOCKF_TYPE
+fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
+{
+  int result;
+  int error;
+  off_t end_offset;
+  FILE *fp = NULL;
+  char lock_dir[PATH_MAX], lock_path[PATH_MAX];
+  char format_string[PATH_MAX];
+
+  envvar_vardir_file (lock_dir, sizeof (lock_dir), "APPLYLOGDB");
+  snprintf (lock_path, sizeof (lock_path), "%s/%s", lock_dir, db_name);
+
+  if (access (lock_dir, F_OK) < 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "lock directory does not exist (%s)",
+		    lock_dir);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST,
+	      1, lock_dir);
+      return FILEIO_NOT_LOCKF;
+    }
+
+  assert_release ((*lockf_vdes) != NULL_VOLDES);
+  if ((*lockf_vdes) == NULL_VOLDES)
+    {
+      return FILEIO_NOT_LOCKF;
+    }
+
+  if (clear_owner)
+    {
+      fp = fopen (lock_path, "w+");
+      if (fp == NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE, "unable to open lock_file (%s)",
+			lock_path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_MOUNT_FAIL, 1, lock_path);
+
+	  return FILEIO_LOCKF;
+	}
+
+      fseek (fp, (off_t) 0, SEEK_END);
+      end_offset = ftell (fp);
+      fseek (fp, (off_t) 0, SEEK_SET);
+
+      if (end_offset > 0)
+	{
+	  fprintf (fp, "%*s", end_offset, " ");
+	}
+      fflush (fp);
+      fclose (fp);
+    }
+
+#if defined(WINDOWS)
+  fileio_unlock_file ((*lockf_vdes), 0, SEEK_SET, 0);
+#else /* WINDOWS */
+  error = fileio_release_lock ((*lockf_vdes));
+  if (error == NO_ERROR)
+    {
+      result = FILEIO_NOT_LOCKF;
+    }
+  else
+    {
+      assert_release (error == NO_ERROR);
+      result = FILEIO_LOCKF;
+    }
+#endif /* !WINDOWS */
+
+  if (result == FILEIO_NOT_LOCKF)
+    {
+      fileio_close ((*lockf_vdes));
+      (*lockf_vdes) = NULL_VOLDES;
     }
 
   return result;
