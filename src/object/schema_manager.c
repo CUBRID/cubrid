@@ -13040,8 +13040,7 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
 	  for (con = att->constraints; ((con != NULL) && !found);
 	       con = con->next)
 	    {
-	      if (con->type == SM_CONSTRAINT_INDEX ||
-		  con->type == SM_CONSTRAINT_REVERSE_INDEX)
+	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
 		{
 		  *index = con->index;
 		  found = 1;
