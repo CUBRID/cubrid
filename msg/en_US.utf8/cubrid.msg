@@ -1535,6 +1535,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 240 MERGE with class hierarchies is not allowed.
 241 User name is too long.
 242 Constant expression cannot be used as function index.
+243 Class name or alias is not unique in list: '%s'
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

@@ -255,6 +255,7 @@ static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser,
 				     PT_NODE * select_statement);
 static void mq_check_update (PARSER_CONTEXT * parser,
 			     PT_NODE * update_statement);
+static void mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt);
 static PT_NODE *mq_translate_update (PARSER_CONTEXT * parser,
 				     PT_NODE * update_statement);
 static PT_NODE *mq_translate_insert (PARSER_CONTEXT * parser,
@@ -3463,6 +3464,48 @@ mq_check_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 }
 
 /*
+ * mq_check_delete() - checks for duplicate classes in table_list
+ *   parser(in): parser context
+ *   delete_stmt(in): delete statement
+ *
+ * NOTE: applies to multi-table delete statements:
+ *         DELETE <table_list> FROM <table_reference> ...
+ * NOTE: all errors will be returned as parser errors
+ */
+static void
+mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
+{
+  PT_NODE *table, *search;
+
+  if (delete_stmt == NULL)
+    {
+      return;
+    }
+
+  assert (delete_stmt->node_type == PT_DELETE);
+
+  for (table = delete_stmt->info.delete_.target_classes; table;
+       table = table->next)
+    {
+      for (search = table->next; search; search = search->next)
+	{
+	  /* check if search is duplicate of table */
+	  if (!pt_str_compare (table->info.name.resolved,
+			       search->info.name.resolved, CASE_INSENSITIVE)
+	      && table->info.name.spec_id == search->info.name.spec_id)
+	    {
+	      /* same class found twice in table_list */
+	      PT_ERRORmf (parser, search,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_DUPLICATE_CLASS_OR_ALIAS,
+			  search->info.name.resolved);
+	      return;
+	    }
+	}
+    }
+}
+
+/*
  * mq_translate_update() - leaf expansion or vclass/view expansion for update
  *   return:
  *   parser(in):
@@ -3724,6 +3767,15 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
 					from, NULL, DB_AUTH_DELETE);
   if (delete_statement != NULL)
     {
+      /* check delete statement */
+      mq_check_delete (parser, delete_statement);
+
+      if (pt_has_error (parser))
+	{
+	  /* checking failed */
+	  return NULL;
+	}
+
       /* set flags for deletable specs */
       pt_mark_spec_list_for_delete (parser, delete_statement);
     }
@@ -5413,7 +5465,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       break;
- 
+
     default:
       break;
     }
