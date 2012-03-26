@@ -40,6 +40,14 @@ extern "C"
   typedef enum
   { CASE_INSENSITIVE, CASE_SENSITIVE } CASE_SENSITIVENESS;
 
+  typedef enum view_handling
+  {
+    OID_NAME,
+    VIEW_OID,
+    CLASSOID_NAME,
+    HIDDEN_CLASSOID_NAME
+  } VIEW_HANDLING;
+
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
   extern void parser_final (void);
 
@@ -182,6 +190,8 @@ extern "C"
 					   DB_VALUE * db_value,
 					   int *more_type_info_needed);
 
+  extern PT_NODE *pt_spec_to_oid_attr (PARSER_CONTEXT * parser,
+				       PT_NODE * spec, VIEW_HANDLING how);
   extern int pt_length_of_list (const PT_NODE * list);
   extern int pt_length_of_select_list (PT_NODE * list, int hidden_col);
 

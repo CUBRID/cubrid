@@ -43,14 +43,6 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-typedef enum view_handling
-{
-  OID_NAME,
-  VIEW_OID,
-  CLASSOID_NAME,
-  HIDDEN_CLASSOID_NAME
-} VIEW_HANDLING;
-
 typedef struct trigger_exec_info TRIGGER_EXEC_INFO;
 struct trigger_exec_info
 {
@@ -90,8 +82,6 @@ struct pt_prefetch_helper_arg
   PT_NODE *name;		/* name of class to look for */
 };
 
-static PT_NODE *pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
-				     VIEW_HANDLING how);
 static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser,
 					   PT_NODE * statement,
 					   VIEW_HANDLING how);
@@ -138,7 +128,7 @@ static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser,
  *   how(in):
  */
 
-static PT_NODE *
+PT_NODE *
 pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 		     VIEW_HANDLING how)
 {
@@ -1753,7 +1743,7 @@ pt_fix_lck_classes_for_merge (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       PT_INTERNAL_ERROR (parser, "invalid spec");
       return ER_GENERIC_ERROR;
     }
-  
+
   /* check if this is a parenthesized entity list. If so then need special
    * treatment */
   if (spec->info.spec.entity_name

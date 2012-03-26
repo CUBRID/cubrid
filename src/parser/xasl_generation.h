@@ -137,6 +137,7 @@ extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser,
 					  const PT_NODE * node);
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
+				     PT_NODE * select_names,
 				     PT_NODE * select_list, PT_NODE * from,
 				     PT_NODE * class_specs, PT_NODE * where,
 				     PT_NODE * using_index,

@@ -15722,14 +15722,15 @@ pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * predicate,
  * not put in the list file
  */
 PT_NODE *
-pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
+pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
+		     PT_NODE * select_list,
 		     PT_NODE * from, PT_NODE * class_specs,
 		     PT_NODE * where, PT_NODE * using_index,
 		     PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
 		     PT_COMPOSITE_LOCKING composite_locking)
 {
   PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
-  PT_NODE *save_next = NULL;
+  PT_NODE *save_next = NULL, *spec = NULL;
 
   assert (parser != NULL);
 
@@ -15751,6 +15752,172 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 
       statement->info.query.q.select.where =
 	parser_copy_tree_list (parser, where);
+
+      if (composite_locking == PT_COMPOSITE_LOCKING_UPDATE
+	  && statement->info.query.q.select.from->next != NULL)
+	{
+	  /* this is a multi-table update statement */
+	  for (spec = statement->info.query.q.select.from; spec;
+	       spec = spec->next)
+	    {
+	      PT_NODE *name = NULL, *val = NULL, *last_val = NULL;
+	      PT_NODE *join_spec = NULL;
+	      bool must_rewrite = false;
+
+	      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+		{
+		  /* class will not be updated, nothing to do */
+		  continue;
+		}
+
+	      /* check for left join on left of spec */
+	      for (join_spec = statement->info.query.q.select.from->next;
+		   join_spec != NULL && join_spec != spec->next;
+		   join_spec = join_spec->next)
+		{
+		  must_rewrite |=
+		    (join_spec->info.spec.join_type & PT_JOIN_LEFT_OUTER);
+
+		  if (join_spec->info.spec.join_type == PT_JOIN_NONE
+		      || join_spec->info.spec.join_type == PT_JOIN_CROSS)
+		    {
+		      /* if it's a cross join, reset flag */
+		      must_rewrite = false;
+		    }
+		}
+
+	      /* check for right join on right of spec */
+	      for (join_spec = spec->next; join_spec;
+		   join_spec = join_spec->next)
+		{
+		  must_rewrite |=
+		    (join_spec->info.spec.join_type & PT_JOIN_RIGHT_OUTER);
+
+		  if (join_spec->info.spec.join_type == PT_JOIN_NONE
+		      || join_spec->info.spec.join_type == PT_JOIN_CROSS)
+		    {
+		      /* if it's a cross join, don't look further */
+		      break;
+		    }
+		}
+
+	      if (!must_rewrite)
+		{
+		  /* no need to rewrite */
+		  continue;
+		}
+
+	      /* 
+	       * Class will be updated and is on left side of a right
+	       * join or the right side of a left join.
+	       *
+	       * We must rewrite all expressions that will be assigned to
+	       * attributes of this class as
+	       *
+	       *     IF (class_oid IS NULL, NULL, expr) 
+	       *
+	       * so that expr will evaluate and/or fail only if an assignment
+	       * will be done.
+	       */
+
+	      name = select_names;
+	      val = statement->info.query.q.select.list;
+	      for (; name && val; name = name->next, val = val->next)
+		{
+		  PT_NODE *if_expr = NULL, *isnull_expr = NULL;
+		  PT_NODE *nv = NULL, *class_oid = NULL;
+		  SEMANTIC_CHK_INFO info;
+
+		  if (name->info.name.spec_id != spec->info.spec.id)
+		    {
+		      /* attribute does not belong to the class */
+		      last_val = val;
+		      continue;
+		    }
+
+		  /* build class oid node */
+		  class_oid = pt_spec_to_oid_attr (parser, spec, OID_NAME);
+		  if (class_oid == NULL)
+		    {
+		      assert (false);
+		      PT_INTERNAL_ERROR (parser, "error building oid attr");
+		      parser_free_tree (parser, statement);
+		      return NULL;
+		    }
+
+		  /* allocate new parser nodes */
+		  isnull_expr = parser_new_node (parser, PT_EXPR);
+		  if_expr = parser_new_node (parser, PT_EXPR);
+		  nv = parser_new_node (parser, PT_VALUE);
+		  if (isnull_expr == NULL || nv == NULL || if_expr == NULL)
+		    {
+		      /* free allocated nodes */
+		      if (isnull_expr != NULL)
+			{
+			  parser_free_node (parser, isnull_expr);
+			}
+
+		      if (if_expr != NULL)
+			{
+			  parser_free_node (parser, if_expr);
+			}
+
+		      if (nv != NULL)
+			{
+			  parser_free_node (parser, nv);
+			}
+
+		      assert (false);
+		      PT_INTERNAL_ERROR (parser, "out of memory");
+		      parser_free_tree (parser, statement);
+		      return NULL;
+		    }
+
+		  /* (class_oid IS NULL) logical expression */
+		  isnull_expr->info.expr.op = PT_ISNULL;
+		  isnull_expr->info.expr.arg1 = class_oid;
+
+		  /* NULL value node */
+		  DB_MAKE_NULL (&nv->info.value.db_value);
+		  nv->info.value.db_value_is_initialized = true;
+
+		  /* IF (class_oid IS NULL, NULL, val) expression */
+		  if_expr->info.expr.op = PT_IF;
+		  if_expr->info.expr.arg1 = isnull_expr;
+		  if_expr->info.expr.arg2 = nv;
+		  if_expr->info.expr.arg3 = val;
+
+		  /* rebuild links */
+		  PT_NODE_MOVE_NUMBER_OUTERLINK (if_expr, val);
+		  val = if_expr;
+
+		  if (last_val != NULL)
+		    {
+		      last_val->next = val;
+		    }
+		  else
+		    {
+		      statement->info.query.q.select.list = val;
+		    }
+
+		  /* set types of expression */
+		  info.top_node = statement;
+		  info.donot_fold = true;
+
+		  val = pt_semantic_type (parser, val, &info);
+		  if (val == NULL)
+		    {
+		      assert (false);
+		      PT_INTERNAL_ERROR (parser, "error setting expr types");
+		      parser_free_tree (parser, statement);
+		      return NULL;
+		    }
+		}
+
+	      /* remember this node as previous assignment node */
+	      last_val = val;
+	    }
+	}
 
       /* add the class and instance OIDs to the select list */
       from_temp = statement->info.query.q.select.from;
@@ -15924,7 +16091,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  node = node->next;
 	}
 
-      if (((aptr_statement = pt_to_upd_del_query (parser, select_list,
+      if (((aptr_statement = pt_to_upd_del_query (parser, NULL, select_list,
 						  from, class_specs,
 						  where, using_index,
 						  NULL, NULL, 1,
@@ -16193,9 +16360,9 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   aptr_statement =
-    pt_to_upd_del_query (parser, select_values, from, class_specs, where,
-			 using_index, order_by, orderby_for, 1,
-			 PT_COMPOSITE_LOCKING_UPDATE);
+    pt_to_upd_del_query (parser, select_names, select_values, from,
+			 class_specs, where, using_index, order_by,
+			 orderby_for, 1, PT_COMPOSITE_LOCKING_UPDATE);
   /* restore assignment list here because we need to iterate through
    * assignments later*/
   pt_restore_assignment_links (statement->info.update.assignment, links, -1);

@@ -5978,6 +5978,7 @@ static void unlink_list (PT_NODE * list);
 
 static QFILE_LIST_ID *get_select_list_to_update (PARSER_CONTEXT * parser,
 						 PT_NODE * from,
+						 PT_NODE * column_names,
 						 PT_NODE * column_values,
 						 PT_NODE * where,
 						 PT_NODE * order_by,
@@ -6065,20 +6066,21 @@ unlink_list (PT_NODE * list)
  */
 static QFILE_LIST_ID *
 get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
-			   PT_NODE * column_values, PT_NODE * where,
-			   PT_NODE * order_by, PT_NODE * orderby_for,
-			   PT_NODE * using_index, PT_NODE * class_specs)
+			   PT_NODE * column_names, PT_NODE * column_values,
+			   PT_NODE * where, PT_NODE * order_by,
+			   PT_NODE * orderby_for, PT_NODE * using_index,
+			   PT_NODE * class_specs)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
 
   if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
-      && ((statement = pt_to_upd_del_query (parser, column_values, from,
-					    class_specs, where, using_index,
-					    order_by, orderby_for,
-					    0 /* not server update */ ,
-					    PT_COMPOSITE_LOCKING_UPDATE))
-	  != NULL))
+      &&
+      ((statement =
+	pt_to_upd_del_query (parser, column_names, column_values, from,
+			     class_specs, where, using_index, order_by,
+			     orderby_for, 0 /* not server update */ ,
+			     PT_COMPOSITE_LOCKING_UPDATE)) != NULL))
     {
       /* If we are updating a proxy, the select is not yet fully translated.
        * If we are updating anything else, this is a no-op.
@@ -6621,14 +6623,14 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   assign_cnt = vals_cnt = 0;
   assignments = statement->node_type == PT_MERGE
-		? statement->info.merge.update.assignment
-		: statement->info.update.assignment;
+    ? statement->info.merge.update.assignment
+    : statement->info.update.assignment;
   spec = statement->node_type == PT_MERGE
-	 ? statement->info.merge.into : statement->info.update.spec;
+    ? statement->info.merge.into : statement->info.update.spec;
   class_spec = statement->node_type == PT_MERGE ? NULL
-	       : statement->info.update.class_specs;
+    : statement->info.update.class_specs;
   check_where = statement->node_type == PT_MERGE ? NULL
-		: statement->info.update.check_where;
+    : statement->info.update.check_where;
 
   pt_init_assignments_helper (parser, &ea, assignments);
   while (pt_get_next_assignment (&ea))
@@ -6895,10 +6897,10 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
     }
 
   check_where = statement->node_type == PT_MERGE ? NULL
-		: statement->info.update.check_where;
+    : statement->info.update.check_where;
   has_unique = statement->node_type == PT_MERGE
-	       ? statement->info.merge.update.has_unique
-	       : statement->info.update.has_unique;
+    ? statement->info.merge.update.has_unique
+    : statement->info.update.has_unique;
 
   /* load data in update structures */
   error = init_update_data (parser, statement, &assigns, &assign_count,
@@ -7087,8 +7089,8 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE *dbvals = NULL;
 
   assignments = statement->node_type == PT_MERGE
-		? statement->info.merge.update.assignment
-		: statement->info.update.assignment;
+    ? statement->info.merge.update.assignment
+    : statement->info.update.assignment;
 
   /* load data for update */
   error =
@@ -7361,8 +7363,8 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int * has_unique,
   DB_OBJECT *class_obj = NULL;
 
   assignment = statement->node_type == PT_MERGE
-	      ? statement->info.merge.update.assignment
-	      : statement->info.update.assignment;
+    ? statement->info.merge.update.assignment
+    : statement->info.update.assignment;
 
   *has_unique = 0;
   *not_nulls = NULL;
@@ -7461,8 +7463,8 @@ update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
   DB_OBJECT *class_obj = NULL;
 
   assignment = statement->node_type == PT_MERGE
-	      ? statement->info.merge.update.assignment
-	      : statement->info.update.assignment;
+    ? statement->info.merge.update.assignment
+    : statement->info.update.assignment;
 
   for (; assignment; assignment = assignment->next)
     {
@@ -7653,7 +7655,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      oid_list =
 		get_select_list_to_update (parser,
 					   statement->info.update.spec,
-					   select_values,
+					   select_names, select_values,
 					   statement->info.update.search_cond,
 					   statement->info.update.order_by,
 					   statement->info.update.orderby_for,
@@ -8218,19 +8220,15 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* make sure that lhs->info.name.meta_class != PT_META_ATTR */
-	  select_statement = pt_to_upd_del_query (parser, select_values,
-						  statement->info.update.spec,
-						  statement->info.update.
-						  class_specs,
-						  statement->info.update.
-						  search_cond,
-						  statement->info.update.
-						  using_index,
-						  statement->info.update.
-						  order_by,
-						  statement->info.update.
-						  orderby_for, 0,
-						  PT_COMPOSITE_LOCKING_UPDATE);
+	  select_statement =
+	    pt_to_upd_del_query (parser, select_names, select_values,
+				 statement->info.update.spec,
+				 statement->info.update.class_specs,
+				 statement->info.update.search_cond,
+				 statement->info.update.using_index,
+				 statement->info.update.order_by,
+				 statement->info.update.orderby_for, 0,
+				 PT_COMPOSITE_LOCKING_UPDATE);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.update.assignment,
@@ -8576,7 +8574,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
   statement =
-    pt_to_upd_del_query (parser, NULL, delete_stmt->info.delete_.spec,
+    pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec,
 			 delete_stmt->info.delete_.class_specs,
 			 delete_stmt->info.delete_.search_cond,
 			 delete_stmt->info.delete_.using_index, NULL, NULL,
@@ -9393,7 +9391,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_DELETE_INFO *delete_info;
 
 	  delete_info = &statement->info.delete_;
-	  select_statement = pt_to_upd_del_query (parser, NULL,
+	  select_statement = pt_to_upd_del_query (parser, NULL, NULL,
 						  delete_info->spec,
 						  delete_info->class_specs,
 						  delete_info->search_cond,
@@ -11764,8 +11762,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
       return ER_GENERIC_ERROR;
     }
   attrs = statement->node_type == PT_MERGE
-	  ? statement->info.merge.insert.attr_list
-	  : statement->info.insert.attr_list;
+    ? statement->info.merge.insert.attr_list
+    : statement->info.insert.attr_list;
   if (attrs == NULL)
     {
       return ER_GENERIC_ERROR;
@@ -14404,7 +14402,7 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
   state = NULL;
 
   flat = (statement->info.merge.into) ?
-	  statement->info.merge.into->info.spec.flat_entity_list : NULL;
+    statement->info.merge.into->info.spec.flat_entity_list : NULL;
   class_ = (flat) ? flat->info.name.db_object : NULL;
   if (class_ == NULL)
     {
@@ -14594,12 +14592,12 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  no_vals = 0;
 	  no_consts = 0;
 
-	  err = pt_get_assignment_lists (parser, &select_names, &select_values,
-					 &const_names, &const_values,
-					 &no_vals, &no_consts,
-					 statement->
-					 info.merge.update.assignment,
-					 &links);
+	  err =
+	    pt_get_assignment_lists (parser, &select_names, &select_values,
+				     &const_names, &const_values, &no_vals,
+				     &no_consts,
+				     statement->info.merge.update.assignment,
+				     &links);
 	  if (err != NO_ERROR)
 	    {
 	      PT_INTERNAL_ERROR (parser, "merge update");
@@ -14611,8 +14609,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 				      &statement->info.merge);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
-	  pt_restore_assignment_links (statement->info.merge.update.assignment,
-				       links, -1);
+	  pt_restore_assignment_links (statement->info.merge.update.
+				       assignment, links, -1);
 
 	  select_statement = mq_translate (parser, select_statement);
 	  if (select_statement == NULL)
@@ -14814,7 +14812,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (parser == NULL || statement == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -14965,9 +14964,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
     {
       /* The IX lock on the class is sufficient.
-      DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
-      if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE)
-	  == NULL)
+         DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
+      if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
 	{
 	  err = er_errid ();
 	  goto exit;
@@ -14978,14 +14976,14 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* Request that the server executes the stored XASL, which is
          the execution plan of the prepared query, with the host variables
-	 given by users as parameter values for the query.
-	 As a result, query id and result file id (QFILE_LIST_ID) will be
-	 returned.
-	 do_prepare_merge() has saved the XASL file id (XASL_ID) in
-	 'statement->xasl_id' */
+         given by users as parameter values for the query.
+         As a result, query id and result file id (QFILE_LIST_ID) will be
+         returned.
+         do_prepare_merge() has saved the XASL file id (XASL_ID) in
+         'statement->xasl_id' */
 
       int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
-      
+
       /* flush necessary objects before execute */
       if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	{
