@@ -1502,10 +1502,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 	       aux = aux->next)
 	    {
 	      PT_NODE *save_aux = aux;
-	      if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
-		{
-		  aux = aux->info.expr.arg1;
-		}
+	      aux = pt_function_index_skip_expr (aux);
 	      if (aux->node_type == PT_NAME)
 		{
 		  node = lookup_node (aux, env, entity);
@@ -1523,11 +1520,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 	}
       else
 	{
-	  aux = attr->info.expr.arg1;
-	  if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
-	    {
-	      aux = aux->info.expr.arg1;
-	    }
+	  aux = pt_function_index_skip_expr (attr->info.expr.arg1);
 	  if (aux)
 	    {
 	      if (aux->node_type == PT_NAME)
@@ -1543,11 +1536,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 		    }
 		}
 	    }
-	  aux = attr->info.expr.arg2;
-	  if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
-	    {
-	      aux = aux->info.expr.arg1;
-	    }
+	  aux = pt_function_index_skip_expr (attr->info.expr.arg2);
 	  if (aux)
 	    {
 	      if (aux->node_type == PT_NAME)
@@ -1563,11 +1552,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 		    }
 		}
 	    }
-	  aux = attr->info.expr.arg3;
-	  if (PT_IS_EXPR_NODE (aux) && aux->info.expr.op == PT_CAST)
-	    {
-	      aux = aux->info.expr.arg1;
-	    }
+	  aux = pt_function_index_skip_expr (attr->info.expr.arg3);
 	  if (aux)
 	    {
 	      if (aux->node_type == PT_NAME)
@@ -3674,6 +3659,24 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 	  for (arg = func->info.function.arg_list; arg != NULL;
 	       arg = arg->next)
 	    {
+	      PT_NODE *save_arg = arg;
+	      arg = pt_function_index_skip_expr (arg);
+	      if (arg->node_type == PT_NAME)
+		{
+		  if (is_local_name (env, arg) == false)
+		    {
+		      return false;
+		    }
+		}
+	      arg = save_arg;
+	    }
+	}
+      else
+	{
+	  PT_NODE *arg = NULL;
+	  if (expr->info.expr.arg1)
+	    {
+	      arg = pt_function_index_skip_expr (expr->info.expr.arg1);
 	      if (arg->node_type == PT_NAME)
 		{
 		  if (is_local_name (env, arg) == false)
@@ -3682,24 +3685,12 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 		    }
 		}
 	    }
-	}
-      else
-	{
-	  if (expr->info.expr.arg1)
-	    {
-	      if (expr->info.expr.arg1->node_type == PT_NAME)
-		{
-		  if (is_local_name (env, expr->info.expr.arg1) == false)
-		    {
-		      return false;
-		    }
-		}
-	    }
 	  if (expr->info.expr.arg2)
 	    {
-	      if (expr->info.expr.arg2->node_type == PT_NAME)
+	      arg = pt_function_index_skip_expr (expr->info.expr.arg2);
+	      if (arg->node_type == PT_NAME)
 		{
-		  if (is_local_name (env, expr->info.expr.arg2) == false)
+		  if (is_local_name (env, arg) == false)
 		    {
 		      return false;
 		    }
@@ -3707,9 +3698,10 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 	    }
 	  if (expr->info.expr.arg3)
 	    {
-	      if (expr->info.expr.arg3->node_type == PT_NAME)
+	      arg = pt_function_index_skip_expr (expr->info.expr.arg3);
+	      if (arg->node_type == PT_NAME)
 		{
-		  if (is_local_name (env, expr->info.expr.arg3) == false)
+		  if (is_local_name (env, arg) == false)
 		    {
 		      return false;
 		    }

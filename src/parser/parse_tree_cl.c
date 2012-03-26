@@ -15962,6 +15962,33 @@ exit_on_error:
 }
 
 /*
+ * pt_function_index_skip_expr () - Some expressions should not be counted in
+ *		the pt_is_nested_expr test as functions (e.g. cast expression).
+ *		as a consequence, these expressions should be also skipped
+ *		when the column names are searched (e.g. in lookup_node()).
+ *
+ * return     :	The node that needs to be verified after skipping expressions
+ * node(in)   : Function index expression
+ */
+PT_NODE *
+pt_function_index_skip_expr (const PT_NODE * node)
+{
+  if (node == NULL || !PT_IS_EXPR_NODE (node))
+    {
+      /* do nothing */
+      return node;
+    }
+  switch (node->info.expr.op)
+    {
+    case PT_CAST:
+    case PT_UNARY_MINUS:
+      return pt_function_index_skip_expr (node->info.expr.arg1);
+    default:
+      return node;
+    }
+}
+
+/*
  *   pt_is_nested_expr () : checks if the given PT_NODE is a complex 
  *				expression, that contains at least one 
  *				argument that is not a PT_VALUE or 
@@ -15977,31 +16004,19 @@ pt_is_nested_expr (const PT_NODE * node)
 
   if (node->info.expr.op != PT_FUNCTION_HOLDER)
     {
-      arg = node->info.expr.arg1;
-      if (PT_IS_EXPR_NODE (arg) && arg->info.expr.op == PT_CAST)
-	{
-	  arg = arg->info.expr.arg1;
-	}
+      arg = pt_function_index_skip_expr (node->info.expr.arg1);
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{
 	  return true;
 	}
-      arg = node->info.expr.arg2;
-      if (PT_IS_EXPR_NODE (arg) && arg->info.expr.op == PT_CAST)
-	{
-	  arg = arg->info.expr.arg1;
-	}
+      arg = pt_function_index_skip_expr (node->info.expr.arg2);
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{
 	  return true;
 	}
-      arg = node->info.expr.arg3;
-      if (PT_IS_EXPR_NODE (arg) && arg->info.expr.op == PT_CAST)
-	{
-	  arg = arg->info.expr.arg1;
-	}
+      arg = pt_function_index_skip_expr (node->info.expr.arg3);
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{
@@ -16014,11 +16029,14 @@ pt_is_nested_expr (const PT_NODE * node)
   func = node->info.expr.arg1;
   for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
     {
+      PT_NODE * save_arg = arg;
+      arg = pt_function_index_skip_expr (arg);
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
 	{
 	  return true;
 	}
+      arg = save_arg;
     }
   return false;
 }
@@ -16076,6 +16094,7 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
     case PT_POSITION:
     case PT_LOWER:
     case PT_UPPER:
+    case PT_CHAR_LENGTH:
     case PT_LTRIM:
     case PT_RTRIM:
     case PT_FROM_UNIXTIME:
@@ -16174,6 +16193,8 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
       func = expr->info.expr.arg1;
       for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
+	  PT_NODE * save_arg = arg;
+	  arg = pt_function_index_skip_expr (arg);
 	  if (PT_IS_NAME_NODE (arg))
 	    {
 	      PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
@@ -16187,11 +16208,14 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	      node = parser_append_node (srt_spec, node);
 	    }
+	  arg = save_arg;
 	}
     }
   else
     {
-      if (PT_IS_NAME_NODE (expr->info.expr.arg1))
+      PT_NODE * arg;
+      arg = pt_function_index_skip_expr (expr->info.expr.arg1);
+      if (PT_IS_NAME_NODE (arg))
 	{
 	  PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
 	  if (srt_spec == NULL)
@@ -16200,11 +16224,12 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      return NULL;
 	    }
 	  srt_spec->info.sort_spec.expr =
-	    parser_copy_tree (parser, expr->info.expr.arg1);
+	    parser_copy_tree (parser, arg);
 	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	  node = parser_append_node (srt_spec, node);
 	}
-      if (PT_IS_NAME_NODE (expr->info.expr.arg2))
+      arg = pt_function_index_skip_expr (expr->info.expr.arg2);
+      if (PT_IS_NAME_NODE (arg))
 	{
 	  PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
 	  if (srt_spec == NULL)
@@ -16213,11 +16238,12 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      return NULL;
 	    }
 	  srt_spec->info.sort_spec.expr =
-	    parser_copy_tree (parser, expr->info.expr.arg2);
+	    parser_copy_tree (parser, arg);
 	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	  node = parser_append_node (srt_spec, node);
 	}
-      if (PT_IS_NAME_NODE (expr->info.expr.arg3))
+      arg = pt_function_index_skip_expr (expr->info.expr.arg3);
+      if (PT_IS_NAME_NODE (arg))
 	{
 	  PT_NODE *srt_spec = parser_new_node (parser, PT_SORT_SPEC);
 	  if (srt_spec == NULL)
@@ -16226,7 +16252,7 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      return NULL;
 	    }
 	  srt_spec->info.sort_spec.expr =
-	    parser_copy_tree (parser, expr->info.expr.arg3);
+	    parser_copy_tree (parser, arg);
 	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	  node = parser_append_node (srt_spec, node);
 	}
