@@ -8679,6 +8679,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
   LOG_PRIOR_NODE *node;
+  void *ptr;
 
   LOG_CS_ENTER (thread_p);
 
@@ -8917,7 +8918,22 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
 		    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
 		    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-		      assert (ntops < tmp_chkpt.ntops);
+		      if (ntops >= tmp_chkpt.ntops)
+			{
+			  tmp_chkpt.ntops +=
+			    log_Gl.trantable.num_assigned_indices;
+			  length_all_tops =
+			    sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+			  ptr = realloc (chkpt_topops, length_all_tops);
+			  if (ptr == NULL)
+			    {
+			      free_and_init (chkpt_trans);
+			      TR_TABLE_CS_EXIT ();
+			      goto error_cannot_chkpt;
+			    }
+			  chkpt_topops =
+			    (struct log_chkpt_topops_commit_posp *) ptr;
+			}
 
 		      chkpt_topone = &chkpt_topops[ntops];
 		      chkpt_topone->trid = act_tdes->trid;
@@ -8939,6 +8955,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
     }
 
+  assert (sizeof (*chkpt_topops) * ntops <= length_all_tops);
   tmp_chkpt.ntops = ntops;
   length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
 
