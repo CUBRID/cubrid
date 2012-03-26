@@ -1549,6 +1549,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p,
 		    lock_path_p, strerror (lockf_errno));
 #endif /* CUBRID_DEBUG */
 
+      memset (io_timeval, 0, sizeof (io_timeval));
       fileio_ctime (&lock_time, io_timeval);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_LOCKED, 6,
 	      lock_path_p, db_full_name_p, user, pid, host,
@@ -1802,7 +1803,7 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
 
       if (end_offset > 0)
 	{
-	  fprintf (fp, "%*s", end_offset, " ");
+	  fprintf (fp, "%*s", (int) end_offset, " ");
 	}
       fflush (fp);
       fclose (fp);
