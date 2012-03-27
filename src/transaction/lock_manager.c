@@ -2459,7 +2459,6 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
-  int message_dump_level;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2468,112 +2467,53 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   assert (entry_ptr->granted_mode >= NULL_LOCK
 	  && entry_ptr->blocked_mode >= NULL_LOCK);
 
-  message_dump_level = PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL;
+  /* Dump all the tran. info. which this tran. is waiting for */
+  res_ptr = entry_ptr->res_head;
+  wait_for[0] = NULL_TRAN_INDEX;
 
-  if (message_dump_level == 0)
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  free_mutex_flag = true;
+  for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
     {
-      /* nothing to do */
+      if (entry == entry_ptr)
+	{
+	  continue;
+	}
+
+      assert (entry->granted_mode >= NULL_LOCK
+	      && entry->blocked_mode >= NULL_LOCK);
+      compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
+      compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
+      assert (compat1 != DB_NA && compat2 != DB_NA);
+
+      if (compat1 == false || compat2 == false)
+	{
+	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
+	  wait_for[nwaits++] = entry->tran_index;
+	}
     }
-  else if (message_dump_level == 1)
+
+  for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
     {
-      /* Dump only the first tran. info. which this tran. is waiting for */
-      res_ptr = entry_ptr->res_head;
-      wait_for[0] = NULL_TRAN_INDEX;
-
-      rv = pthread_mutex_lock (&res_ptr->res_mutex);
-      for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
+      if (entry == entry_ptr)
 	{
-	  if (entry == entry_ptr)
-	    {
-	      continue;
-	    }
-
-	  assert (entry->granted_mode >= NULL_LOCK
-		  && entry->blocked_mode >= NULL_LOCK);
-	  compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
-	  compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
-	  assert (compat1 != DB_NA && compat2 != DB_NA);
-
-	  if (compat1 == false || compat2 == false)
-	    {
-	      wait_for[nwaits++] = entry->tran_index;
-	      break;
-	    }
+	  continue;
 	}
 
-      if (wait_for[0] == NULL_TRAN_INDEX)
-	{
-	  for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
-	    {
-	      if (entry == entry_ptr)
-		{
-		  continue;
-		}
+      assert (entry->granted_mode >= NULL_LOCK
+	      && entry->blocked_mode >= NULL_LOCK);
+      compat1 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
+      assert (compat1 != DB_NA);
 
-	      assert (entry->granted_mode >= NULL_LOCK
-		      && entry->blocked_mode >= NULL_LOCK);
-	      compat1 =
-		lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
-	      assert (compat1 != DB_NA);
-	      if (compat1 == false)
-		{
-		  wait_for[nwaits++] = entry->tran_index;
-		  break;
-		}
-	    }
+      if (compat1 == false)
+	{
+	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
+	  wait_for[nwaits++] = entry->tran_index;
 	}
-      pthread_mutex_unlock (&res_ptr->res_mutex);
     }
-  else if (message_dump_level == 2)
-    {
-      /* Dump all the tran. info. which this tran. is waiting for */
-      res_ptr = entry_ptr->res_head;
-      wait_for[0] = NULL_TRAN_INDEX;
 
-      rv = pthread_mutex_lock (&res_ptr->res_mutex);
-      free_mutex_flag = true;
-      for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
-	{
-	  if (entry == entry_ptr)
-	    {
-	      continue;
-	    }
-
-	  assert (entry->granted_mode >= NULL_LOCK
-		  && entry->blocked_mode >= NULL_LOCK);
-	  compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
-	  compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
-	  assert (compat1 != DB_NA && compat2 != DB_NA);
-
-	  if (compat1 == false || compat2 == false)
-	    {
-	      EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
-	      wait_for[nwaits++] = entry->tran_index;
-	    }
-	}
-
-      for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
-	{
-	  if (entry == entry_ptr)
-	    {
-	      continue;
-	    }
-
-	  assert (entry->granted_mode >= NULL_LOCK
-		  && entry->blocked_mode >= NULL_LOCK);
-	  compat1 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
-	  assert (compat1 != DB_NA);
-
-	  if (compat1 == false)
-	    {
-	      EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
-	      wait_for[nwaits++] = entry->tran_index;
-	    }
-	}
-
-      pthread_mutex_unlock (&res_ptr->res_mutex);
-      free_mutex_flag = false;
-    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  free_mutex_flag = false;
 
   if (nwaits == 0
       || (waitfor_client_users =

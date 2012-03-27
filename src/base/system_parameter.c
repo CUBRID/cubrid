@@ -267,9 +267,6 @@ int PRM_BOSR_MAXTMP_PAGES = INT_MIN;
 static int prm_bosr_maxtmp_pages = -1;	/* Infinite */
 
 int PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL = 0;
-static int prm_lk_timeout_message_dump_level_default = 0;
-static int prm_lk_timeout_message_dump_level_lower = 0;
-static int prm_lk_timeout_message_dump_level_upper = 2;
 
 int PRM_LK_ESCALATION_AT = 100000;
 static int prm_lk_escalation_at_default = 100000;
@@ -982,12 +979,11 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LK_TIMEOUT_MESSAGE_DUMP_LEVEL,
-   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
-    PRM_USER_CHANGE),
-   (void *) &prm_lk_timeout_message_dump_level_default,
-   (void *) &PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL,
-   (void *) &prm_lk_timeout_message_dump_level_upper,
-   (void *) &prm_lk_timeout_message_dump_level_lower,
+   (PRM_OBSOLETED),
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LK_ESCALATION_AT,
    (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
