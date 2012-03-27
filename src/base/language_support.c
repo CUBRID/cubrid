@@ -970,7 +970,8 @@ lang_get_builtin_lang_id_from_name (const char *lang_name,
 
   *lang_id = INTL_LANG_ENGLISH;
 
-  for (i = 0; i < sizeof (builtin_langs) / sizeof (LANG_DEFAULTS); i++)
+  for (i = 0; i < (int) (sizeof (builtin_langs) / sizeof (LANG_DEFAULTS));
+       i++)
     {
       if (strncasecmp (lang_name, builtin_langs[i].lang_name,
 		       strlen (builtin_langs[i].lang_name)) == 0)
@@ -1847,7 +1848,7 @@ static LANG_LOCALE_DATA lc_English_iso88591 = {
   INTL_CODESET_ISO88591,
   {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet */
   {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet identifiers */
-  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE, false},
    NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, 0, 0, NULL, 0, 0},	/* collation */
   NULL,				/* console text conversion */
   false,
@@ -1860,11 +1861,11 @@ static LANG_LOCALE_DATA lc_English_iso88591 = {
   {NULL},
   {NULL},
   {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
   '.',
   ',',
   DB_CURRENCY_DOLLAR,
@@ -1882,7 +1883,7 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
    false},
   {ALPHABET_ASCII, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1, lang_upper_EN,
    false},
-  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE, false},
    lang_weight_EN, lang_next_alpha_char_EN, LANG_CHAR_COUNT_EN,
    0, NULL, NULL, NULL,
    NULL, 0, 0, NULL, 0, 0},
@@ -1897,11 +1898,11 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
   {NULL},
   {NULL},
   {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
   '.',
   ',',
   DB_CURRENCY_DOLLAR,
@@ -2094,7 +2095,7 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
   INTL_CODESET_ISO88591,
   {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet : same as English ISO */
   {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* identifiers alphabet : same as English ISO */
-  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE, false},
    NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, 0, 0, NULL, 0, 0},	/* collation : same as English ISO */
   NULL,				/* console text conversion */
   false,
@@ -2107,11 +2108,11 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
   {NULL},
   {NULL},
   {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
   ',',
   '.',
   DB_CURRENCY_TL,
@@ -2121,7 +2122,6 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
   NULL
 };
 
-extern TEXT_CONVERSION con_iso_8859_9_conv;
 static LANG_LOCALE_DATA lc_Turkish_utf8 = {
   LANG_NAME_TURKISH,
   INTL_LANG_TURKISH,
@@ -2130,7 +2130,7 @@ static LANG_LOCALE_DATA lc_Turkish_utf8 = {
    false},
   {ALPHABET_TAILORED, LANG_CHAR_COUNT_TR, 1, lang_lower_i_TR, 1,
    lang_upper_i_TR, false},
-  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE, false},
    lang_weight_TR, lang_next_alpha_char_TR, LANG_CHAR_COUNT_TR,
    0, NULL, NULL, NULL,
    NULL, 0, 0, NULL, 0, 0},
@@ -2145,11 +2145,11 @@ static LANG_LOCALE_DATA lc_Turkish_utf8 = {
   {NULL},
   {NULL},
   {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
   ',',
   '.',
   DB_CURRENCY_TL,
@@ -2294,7 +2294,7 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   INTL_CODESET_ISO88591,
   {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* alphabet : same as English ISO */
   {ALPHABET_TAILORED, 0, 0, NULL, 0, NULL, false},	/* identifiers alphabet : same as English ISO */
-  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE, false},
    NULL, NULL, 0,
    0, NULL, NULL, NULL,
    NULL, 0, 0, NULL, 0, 0},	/* collation : same as English ISO */
@@ -2309,11 +2309,11 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   {NULL},
   {NULL},
   {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
   ',',
   '.',
   DB_CURRENCY_WON,
@@ -2334,7 +2334,7 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
    false},
   {ALPHABET_ASCII, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1, lang_upper_EN,
    false},
-  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE},
+  {{TAILOR_UNDEFINED, false, false, 0, false, CONTR_IGNORE, false},
    lang_weight_EN, lang_next_alpha_char_EN, LANG_CHAR_COUNT_EN,
    0, NULL, NULL, NULL,
    NULL, 0, 0, NULL, 0, 0},
@@ -2349,11 +2349,11 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
   {NULL},
   {NULL},
   {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
   '.',
   ',',
   DB_CURRENCY_WON,

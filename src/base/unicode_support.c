@@ -130,7 +130,8 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
       int dummy;
       int dest_len;
 
-      dest_len = intl_utf8_to_cp_list (tf_rule->dest, tf_rule->dest_size,
+      dest_len = intl_utf8_to_cp_list ((unsigned char *) (tf_rule->dest),
+				       tf_rule->dest_size,
 				       &dummy_array, 1, &dummy);
 
       if (dest_len > INTL_CASING_EXPANSION_MULTIPLIER)
@@ -278,7 +279,8 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 
       /* source codepoints */
       /* TODO : allow casing compression (many CPs for source) */
-      src_len = intl_utf8_to_cp_list (tf_rule->src, tf_rule->src_size,
+      src_len = intl_utf8_to_cp_list ((unsigned char *) (tf_rule->src),
+				      tf_rule->src_size,
 				      &cp_src, 1, &src_cp_count);
 
       if (src_len != 1 || src_len != src_cp_count)
@@ -299,7 +301,8 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 
       /* destination codepoints */
       dest_len =
-	intl_utf8_to_cp_list (tf_rule->dest, tf_rule->dest_size, cp_dest,
+	intl_utf8_to_cp_list ((unsigned char *) (tf_rule->dest),
+			      tf_rule->dest_size, cp_dest,
 			      INTL_CASING_EXPANSION_MULTIPLIER,
 			      &dest_cp_count);
 
@@ -431,8 +434,8 @@ load_unicode_data (const char *file_path, const int max_letters)
 	      int cat_idx;
 
 	      for (cat_idx = 0;
-		   cat_idx < sizeof (list_gen_cat) / sizeof (list_gen_cat[0]);
-		   cat_idx++)
+		   cat_idx < (int) (sizeof (list_gen_cat) /
+				    sizeof (list_gen_cat[0])); cat_idx++)
 		{
 		  if (strcmp (list_gen_cat[cat_idx].val, str_p) == 0)
 		    {

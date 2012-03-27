@@ -810,7 +810,7 @@ util_byte_to_size_string (UINT64 size_num, char *buf, size_t len)
  *
  */
 int
-util_size_string_to_byte (char *size_str, UINT64 * size_num)
+util_size_string_to_byte (const char *size_str, UINT64 * size_num)
 {
   int len;
   double val;

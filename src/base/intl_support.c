@@ -143,8 +143,8 @@ static void intl_init_conv_iso8859_1_to_utf8 (void);
 
 TEXT_CONVERSION con_iso_8859_9_conv = {
   TEXT_CONV_GENERIC_1BYTE,	/* type */
-  "28599",			/* Windows Code page */
-  "iso88599",			/* Linux charset identifiers */
+  (char *) "28599",		/* Windows Code page */
+  (char *) "iso88599",		/* Linux charset identifiers */
   0,				/* first lead byte value : not used for ISO */
   0, 0, NULL,			/* UTF-8 to console : filled by init function */
   0, 0, NULL,			/* console to UTF-8 : filled by init function */
@@ -155,8 +155,8 @@ TEXT_CONVERSION con_iso_8859_9_conv = {
 
 TEXT_CONVERSION con_iso_8859_1_conv = {
   TEXT_CONV_GENERIC_1BYTE,	/* type */
-  "28591",			/* Windows Code page */
-  "iso88591",			/* Linux charset identifiers */
+  (char *) "28591",		/* Windows Code page */
+  (char *) "iso88591",		/* Linux charset identifiers */
   0,				/* first lead byte value : not used for ISO */
   0, 0, NULL,			/* UTF-8 to console : filled by init function */
   0, 0, NULL,			/* console to UTF-8 : filled by init function */
@@ -261,7 +261,7 @@ intl_mbs_nth (const char *mbs, size_t n)
 
   if (!intl_Mbs_support)
     {
-      if (strlen (mbs) < n)
+      if (strlen (mbs) < (int) n)
 	{
 	  errno = EINVAL;
 	  return NULL;
@@ -1938,7 +1938,7 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
  * chr(in) : upper bound, as UTF-8 bytes
  */
 bool
-intl_is_max_bound_chr (INTL_CODESET codeset, const char *chr)
+intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 {
   if (codeset == INTL_CODESET_UTF8)
     {
@@ -1951,7 +1951,7 @@ intl_is_max_bound_chr (INTL_CODESET codeset, const char *chr)
     }
 
   assert (codeset == INTL_CODESET_ISO88591);
-  if (*chr == (char) 255)
+  if (*chr == 0xff)
     {
       return true;
     }
@@ -1973,7 +1973,7 @@ intl_is_max_bound_chr (INTL_CODESET codeset, const char *chr)
  *	  one space char.
  */
 bool
-intl_is_min_bound_chr (INTL_CODESET codeset, const char *chr)
+intl_is_min_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 {
   if (*chr == ' ')
     {
@@ -3812,9 +3812,10 @@ intl_identifier_lower (const char *src, char *dst)
   switch (lang_charset ())
     {
     case INTL_CODESET_UTF8:
-      (void) intl_tolower_utf8 (true, (unsigned char *) src, dst,
+      (void) intl_tolower_utf8 (true, (unsigned char *) src,
+				(unsigned char *) dst,
 				length_in_bytes, &d_size);
-      d = dst + d_size;
+      d = (unsigned char *) dst + d_size;
       break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
@@ -3949,9 +3950,10 @@ intl_identifier_upper (const char *src, char *dst)
   switch (lang_charset ())
     {
     case INTL_CODESET_UTF8:
-      (void) intl_toupper_utf8 (true, (unsigned char *) src, dst,
+      (void) intl_toupper_utf8 (true, (unsigned char *) src,
+				(unsigned char *) dst,
 				length_in_bytes, &d_size);
-      d = dst + d_size;
+      d = (unsigned char *) dst + d_size;
       break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:

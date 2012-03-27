@@ -363,7 +363,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
   if (db_page_str != NULL)
     {
       UINT64 v;
-      if (util_size_string_to_byte (db_page_str, &v) != NO_ERROR)
+      if (util_size_string_to_byte ((const char *) db_page_str, &v) !=
+	  NO_ERROR)
 	{
 	  goto print_create_usage;
 	}
@@ -379,8 +380,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      if (util_size_string_to_byte (db_volume_str, &db_volume_size) !=
-	  NO_ERROR)
+      if (util_size_string_to_byte ((const char *) db_volume_str,
+				    &db_volume_size) != NO_ERROR)
 	{
 	  goto print_create_usage;
 	}
@@ -406,7 +407,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
   else
     {
       UINT64 v;
-      if (util_size_string_to_byte (log_page_str, &v) != NO_ERROR)
+      if (util_size_string_to_byte ((const char *) log_page_str, &v)
+	  != NO_ERROR)
 	{
 	  goto print_create_usage;
 	}
@@ -422,8 +424,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      if (util_size_string_to_byte (log_volume_str, &log_volume_size) !=
-	  NO_ERROR)
+      if (util_size_string_to_byte ((const char *) log_volume_str,
+				    &log_volume_size) != NO_ERROR)
 	{
 	  goto print_create_usage;
 	}

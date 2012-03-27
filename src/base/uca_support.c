@@ -304,7 +304,8 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 
   assert (RULE_POS_LAST_TRAIL <
 	  sizeof (logical_pos_cp) / sizeof (logical_pos_cp[0]));
-  for (i = 0; i < sizeof (logical_pos_cp) / sizeof (logical_pos_cp[0]); i++)
+  for (i = 0; i < (int) (sizeof (logical_pos_cp) /
+			 sizeof (logical_pos_cp[0])); i++)
     {
       logical_pos_cp[i] = -1;
     }
@@ -1178,9 +1179,9 @@ apply_tailoring_rules (LOCALE_DATA * ld)
 	  unsigned char *tailor_next;
 	  unsigned char *tailor_end;
 
-	  tailor_curr = t_rule->t_buf;
+	  tailor_curr = (unsigned char *) (t_rule->t_buf);
 	  tailor_next = tailor_curr;
-	  tailor_end = t_rule->t_buf + t_rule->t_buf_size;
+	  tailor_end = tailor_curr + t_rule->t_buf_size;
 
 	  while (tailor_next < tailor_end)
 	    {
@@ -1193,7 +1194,7 @@ apply_tailoring_rules (LOCALE_DATA * ld)
 		{
 		  err_status = ER_LOC_GEN;
 		  snprintf (er_msg, sizeof (er_msg) - 1,
-			    "Invalid tailoring in rule :%d.",
+			    "Invalid tailoring in rule :%d."
 			    "Codepoint : %4X too big", i, tailor_cp);
 		  LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		  goto exit;
@@ -1234,7 +1235,7 @@ apply_tailoring_rules (LOCALE_DATA * ld)
 	    {
 	      err_status = ER_LOC_GEN;
 	      snprintf (er_msg, sizeof (er_msg) - 1,
-			"Invalid tailoring in rule :%d.",
+			"Invalid tailoring in rule :%d."
 			"Invalid number of codepoints: %d", i, cp_found);
 	      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 	      goto exit;
@@ -2002,7 +2003,7 @@ optimize_coll_contractions (LOCALE_DATA * ld)
       unsigned char *c_buf =
 	(unsigned char *) ld->opt_coll.contr_list[i].c_buf;
       unsigned char *dummy;
-      int c_buf_size = strlen (c_buf);
+      int c_buf_size = strlen ((char *) c_buf);
       unsigned int cp;
 
       ld->opt_coll.contr_list[i].size = c_buf_size;
@@ -2030,8 +2031,6 @@ optimize_coll_contractions (LOCALE_DATA * ld)
 	  break;
 	}
     }
-
-  assert (ld->opt_coll.cp_first_contr_offset >= 0);
 
   for (cp = ld->opt_coll.w_count - 1; cp >= 0; cp--)
     {
@@ -2161,7 +2160,8 @@ add_opt_coll_contraction (LOCALE_DATA * ld, const UCA_COLL_KEY * contr_key,
 
   for (i = 0; i < uca_contr->cp_count; i++)
     {
-      int utf8_size = intl_cp_to_utf8 (uca_contr->cp_list[i], p_buf);
+      int utf8_size = intl_cp_to_utf8 (uca_contr->cp_list[i],
+				       (unsigned char *) p_buf);
       p_buf += utf8_size;
     }
   opt_contr->cp_count = uca_contr->cp_count;
@@ -2365,9 +2365,9 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
   new_ce.num = MAX (new_ce.num, ce_list_ref_key->num);
 
   /* overwrite with reference weights up to level */
-  for (j = 0; j < lvl; j++)
+  for (j = 0; j < (int) lvl; j++)
     {
-      for (i = 0; i < new_ce.num; i++)
+      for (i = 0; i < (int) (new_ce.num); i++)
 	{
 	  SET_UCA_WEIGHT (&(new_ce), i, j,
 			  GET_UCA_WEIGHT (ce_list_ref_key, i, j));
@@ -2419,15 +2419,15 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 	    }
 	  else
 	    {
-	      unsigned int ce_index = new_ce.num;
+	      int ce_index = (int) (new_ce.num);
 
-	      while (ce_index > -1
+	      while (ce_index > 0
 		     && GET_UCA_WEIGHT (&new_ce, ce_index - 1, lvl - 1) == 0)
 		{
 		  ce_index--;
 		}
 
-	      if (ce_index < 0)
+	      if (ce_index <= 0)
 		{
 		  err_status = ER_LOC_GEN;
 		  LOG_LOCALE_ERROR ("Applying before-rule. Collation element"
@@ -2840,13 +2840,13 @@ apply_absolute_tailoring_rules (LOCALE_DATA * ld)
 	}
 
       /* Parse the char buffers for start and end codepoint */
-      if (read_cp_from_tag (ct_rule->start_cp_buf,
+      if (read_cp_from_tag ((unsigned char *) (ct_rule->start_cp_buf),
 			    ct_rule->start_cp_buf_type,
 			    &start_cp) != NO_ERROR)
 	{
 	  goto exit;
 	}
-      if (read_cp_from_tag (ct_rule->end_cp_buf,
+      if (read_cp_from_tag ((unsigned char *) (ct_rule->end_cp_buf),
 			    ct_rule->end_cp_buf_type, &end_cp) != NO_ERROR)
 	{
 	  goto exit;
@@ -3264,7 +3264,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
   long temp_cp;
   int err_status = NO_ERROR;
   char **chr_ptr;
-  char *dummy;
+  unsigned char *dummy;
   char err_msg[ERR_MSG_SIZE];
 
   assert (buffer != NULL);
@@ -3280,7 +3280,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
   else if (type == BUF_TYPE_CHAR)
     {
       dummy = buffer;
-      if (intl_count_utf8_chars (dummy, strlen (dummy)) > 1)
+      if (intl_count_utf8_chars (dummy, strlen ((char *) dummy)) > 1)
 	{
 	  err_status = ER_LOC_GEN;
 	  snprintf (err_msg,
@@ -3292,7 +3292,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 	}
 
       dummy = buffer;
-      temp_cp = intl_utf8_to_cp (buffer, strlen (buffer), &dummy);
+      temp_cp = intl_utf8_to_cp (buffer, strlen ((char *) buffer), &dummy);
 
       if (temp_cp > 0xFFFF || temp_cp < 0)
 	{
@@ -3309,7 +3309,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
     {
       chr_ptr = NULL;
       errno = 0;
-      temp_cp = strtol (buffer, chr_ptr, 16);
+      temp_cp = strtol ((const char *) buffer, chr_ptr, 16);
 
       if (errno != NO_ERROR || temp_cp > 0xFFFF || temp_cp < 0)
 	{
@@ -3321,7 +3321,8 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
-      else if (temp_cp == 0 && (chr_ptr != NULL) && (*chr_ptr == buffer))
+      else if (temp_cp == 0 && (chr_ptr != NULL)
+	       && (*chr_ptr == (char *) buffer))
 	{
 	  /* If tag content does not start with a hex number. */
 	  err_status = ER_LOC_GEN;

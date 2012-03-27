@@ -10146,12 +10146,12 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2,
 
   if (size1 < 0)
     {
-      size1 = strlen (string1);
+      size1 = strlen ((char *) string1);
     }
 
   if (size2 < 0)
     {
-      size2 = strlen (string2);
+      size2 = strlen ((char *) string2);
     }
 
   c = QSTR_COMPARE (string1, size1, string2, size2);

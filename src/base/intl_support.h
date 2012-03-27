@@ -211,8 +211,10 @@ extern "C"
   extern int intl_reverse_string (unsigned char *src, unsigned char *dst,
 				  int length_in_chars, int size_in_bytes,
 				  INTL_CODESET codeset);
-  extern bool intl_is_max_bound_chr (INTL_CODESET codeset, const char *chr);
-  extern bool intl_is_min_bound_chr (INTL_CODESET codeset, const char *chr);
+  extern bool intl_is_max_bound_chr (INTL_CODESET codeset,
+				     const unsigned char *chr);
+  extern bool intl_is_min_bound_chr (INTL_CODESET codeset,
+				     const unsigned char *chr);
   extern int intl_set_min_bound_chr (INTL_CODESET codeset, char *chr);
   extern int intl_set_max_bound_chr (INTL_CODESET codeset, char *chr);
   extern int intl_strcmp_utf8 (const unsigned char *str1, const int size1,

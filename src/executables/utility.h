@@ -1246,7 +1246,7 @@ extern int util_get_ha_mode_for_sa_utils (void);
 extern void util_redirect_stdout_to_null (void);
 #endif /* !defined(WINDOWS) */
 extern int util_byte_to_size_string (UINT64 size_num, char *buf, size_t len);
-extern int util_size_string_to_byte (char *size_str, UINT64 * size_num);
+extern int util_size_string_to_byte (const char *size_str, UINT64 * size_num);
 extern void util_print_deprecated (const char *option);
 
 typedef struct

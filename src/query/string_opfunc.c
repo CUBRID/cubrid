@@ -5782,7 +5782,7 @@ db_bigint_to_binary_string (const DB_VALUE * src_bigint, DB_VALUE * result)
       i = 0;
       /* positive numbers have at most 8 * sizeof(DB_BIGINT) - 1 digits */
       while ((DB_BIGINT) 1 << i <= bigint_val
-	     && i < sizeof (DB_BIGINT) * 8 - 1)
+	     && i < (int) sizeof (DB_BIGINT) * 8 - 1)
 	{
 	  i++;
 	}
@@ -11976,7 +11976,8 @@ db_to_date (const DB_VALUE * src_str,
 	      cmp =
 		intl_case_match_tok (date_lang_id,
 				     (unsigned char *) (cur_format_str_ptr +
-							1), cs,
+							1),
+				     (unsigned char *) cs,
 				     cur_format_size - 2, strlen (cs),
 				     &cs_byte_size);
 
@@ -12506,7 +12507,8 @@ db_to_time (const DB_VALUE * src_str,
 	      cmp =
 		intl_case_match_tok (date_lang_id,
 				     (unsigned char *) (cur_format_str_ptr +
-							1), cs,
+							1),
+				     (unsigned char *) cs,
 				     cur_format_size - 2, strlen (cs),
 				     &cs_byte_size);
 
@@ -13148,7 +13150,8 @@ db_to_timestamp (const DB_VALUE * src_str,
 	      cmp =
 		intl_case_match_tok (date_lang_id,
 				     (unsigned char *) (cur_format_str_ptr +
-							1), cs,
+							1),
+				     (unsigned char *) cs,
 				     cur_format_size - 2, strlen (cs),
 				     &cs_byte_size);
 
@@ -13932,7 +13935,8 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	      cmp =
 		intl_case_match_tok (date_lang_id,
 				     (unsigned char *) (cur_format_str_ptr +
-							1), cs,
+							1),
+				     (unsigned char *) cs,
 				     cur_format_size - 2, strlen (cs),
 				     &cs_byte_size);
 
@@ -17514,8 +17518,8 @@ get_next_format (char *sp, DB_TYPE str_type,
 	    {
 	      return DT_INVALID;
 	    }
-	  intl_next_char_pseudo_kor (sp + (*format_length), lang_charset (),
-				     &char_size);
+	  intl_next_char_pseudo_kor ((unsigned char *) sp + (*format_length),
+				     lang_charset (), &char_size);
 	  *format_length += char_size;
 	}
       *format_length += 1;
@@ -17895,7 +17899,7 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
    */
   else
     {
-      res = (char *) db_private_alloc (NULL, 
+      res = (char *) db_private_alloc (NULL,
 				       DB_GET_STRING_SIZE (src_str) + 1);
       if (res == NULL)
 	{
@@ -22319,8 +22323,8 @@ is_safe_last_char_for_like_optimization (const char *chr,
       return false;
     }
 
-  if (intl_is_max_bound_chr (codeset, chr) ||
-      intl_is_min_bound_chr (codeset, chr))
+  if (intl_is_max_bound_chr (codeset, (const unsigned char *) chr) ||
+      intl_is_min_bound_chr (codeset, (const unsigned char *) chr))
     {
       return false;
     }
@@ -23377,7 +23381,7 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
   /* padding */
   if (token_len < print_len)
     {
-      (void) qstr_pad_string (buffer + *token_size,
+      (void) qstr_pad_string ((unsigned char *) buffer + *token_size,
 			      print_len - token_len, codeset);
       *token_size += intl_pad_size (codeset) * (print_len - token_len);
     }
@@ -23735,7 +23739,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
      terminator (1 byte) */
   unsigned char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
-  char *num_p_str = num_str, *res_p_str = NULL;
+  char *num_p_str = (char *) num_str, *res_p_str = NULL;
   unsigned char swap = 0;
   int num_size = 0, res_size = 0;
 
@@ -23843,12 +23847,12 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
          bytes, not the size of the hex string; also, we convert at most 64
          digits even if we need only 16 in order to let strtoll handle
          overflow (weird stuff happens there ...) */
-      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_p_str,
-				  num_size);
+      num_size = qstr_bin_to_hex ((char *) num_str, UINT64_MAX_BIN_DIGITS,
+				  num_p_str, num_size);
       num_str[num_size * 2] = '\0';
 
       /* set up variables for hex -> base10 conversion */
-      num_p_str = num_str;
+      num_p_str = (char *) num_str;
       from_base_int = 16;
       num_is_signed = false;
     }

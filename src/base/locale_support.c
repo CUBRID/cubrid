@@ -177,6 +177,7 @@ static int comp_func_coll_uca_exp (const void *arg1, const void *arg2);
 static int comp_func_coll_uca_simple_weights (const void *arg1,
 					      const void *arg2);
 static int comp_func_parse_order_index (const void *arg1, const void *arg2);
+static void locale_make_calendar_parse_order (LOCALE_DATA * ld);
 
 #define PRINT_DEBUG_START(d, a, m, s) \
    do { \
@@ -774,9 +775,9 @@ end_dateFormatCUBRID (void *data, const char *el_name)
   ld = XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
-  assert (ld->data_buf_count < sizeof (ld->dateFormat));
+  assert (ld->data_buf_count < (int) sizeof (ld->dateFormat));
 
-  if (ld->data_buf_count < sizeof (ld->dateFormat))
+  if (ld->data_buf_count < (int) sizeof (ld->dateFormat))
     {
       strcpy (ld->dateFormat, ld->data_buffer);
     }
@@ -812,9 +813,9 @@ end_timeFormatCUBRID (void *data, const char *el_name)
   ld = XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
-  assert (ld->data_buf_count < sizeof (ld->timeFormat));
+  assert (ld->data_buf_count < (int) sizeof (ld->timeFormat));
 
-  if (ld->data_buf_count < sizeof (ld->timeFormat))
+  if (ld->data_buf_count < (int) sizeof (ld->timeFormat))
     {
       strcpy (ld->timeFormat, ld->data_buffer);
     }
@@ -850,9 +851,9 @@ end_datetimeFormatCUBRID (void *data, const char *el_name)
   ld = XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
-  assert (ld->data_buf_count < sizeof (ld->datetimeFormat));
+  assert (ld->data_buf_count < (int) sizeof (ld->datetimeFormat));
 
-  if (ld->data_buf_count < sizeof (ld->datetimeFormat))
+  if (ld->data_buf_count < (int) sizeof (ld->datetimeFormat))
     {
       strcpy (ld->datetimeFormat, ld->data_buffer);
     }
@@ -888,9 +889,9 @@ end_timestampFormatCUBRID (void *data, const char *el_name)
   ld = XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
-  assert (ld->data_buf_count < sizeof (ld->timestampFormat));
+  assert (ld->data_buf_count < (int) sizeof (ld->timestampFormat));
 
-  if (ld->data_buf_count < sizeof (ld->timestampFormat))
+  if (ld->data_buf_count < (int) sizeof (ld->timestampFormat))
     {
       strcpy (ld->timestampFormat, ld->data_buffer);
     }
@@ -3097,7 +3098,8 @@ start_consoleconversion (void *data, const char **attr)
     {
       assert (att_val != NULL);
 
-      if (strlen (att_val) > sizeof (ld->txt_conv_prm.win_codepages) - 1)
+      if (strlen (att_val) > (int) sizeof (ld->txt_conv_prm.win_codepages)
+	  - 1)
 	{
 	  PRINT_DEBUG_START (data, attr, "Invalid attribute value", -1);
 	  return -1;
@@ -3111,7 +3113,7 @@ start_consoleconversion (void *data, const char **attr)
     {
       assert (att_val != NULL);
 
-      if (strlen (att_val) > sizeof (ld->txt_conv_prm.nl_lang_str) - 1)
+      if (strlen (att_val) > (int) sizeof (ld->txt_conv_prm.nl_lang_str) - 1)
 	{
 	  PRINT_DEBUG_START (data, attr, "Invalid attribute value", -1);
 	  return -1;
@@ -3125,7 +3127,7 @@ start_consoleconversion (void *data, const char **attr)
     {
       assert (att_val != NULL);
 
-      if (strlen (att_val) > sizeof (ld->txt_conv_prm.conv_file) - 1)
+      if (strlen (att_val) > (int) sizeof (ld->txt_conv_prm.conv_file) - 1)
 	{
 	  PRINT_DEBUG_START (data, attr, "Invalid attribute value", -1);
 	  return -1;
@@ -3819,7 +3821,7 @@ comp_func_parse_order_index (const void *arg1, const void *arg2)
  * return:
  * ld(in/out): LOCALE_DATA for which to do the processing
  */
-void
+static void
 locale_make_calendar_parse_order (LOCALE_DATA * ld)
 {
   int i;
@@ -3877,7 +3879,7 @@ locale_init_data (LOCALE_DATA * ld, const char *locale_name)
   memset (ld, 0, sizeof (LOCALE_DATA));
   ld->curr_period = -1;
 
-  assert (strlen (locale_name) < sizeof (ld->locale_name));
+  assert (strlen (locale_name) < (int) sizeof (ld->locale_name));
   strcpy (ld->locale_name, locale_name);
 
   /* default number symbols */
@@ -5056,7 +5058,7 @@ save_console_conv_to_bin (FILE * fp, TEXT_CONVERSION * tc)
 
   res = fwrite (tc->utf8_to_text, sizeof (CONV_CP_TO_BYTES),
 		tc->utf8_last_cp - tc->utf8_first_cp + 1, fp);
-  if (res != tc->utf8_last_cp - tc->utf8_first_cp + 1)
+  if (res != (int) (tc->utf8_last_cp - tc->utf8_first_cp + 1))
     {
       goto error;
     }
@@ -5078,7 +5080,7 @@ save_console_conv_to_bin (FILE * fp, TEXT_CONVERSION * tc)
 
   res = fwrite (tc->text_to_utf8, sizeof (CONV_CP_TO_BYTES),
 		tc->text_last_cp - tc->text_first_cp + 1, fp);
-  if (res != tc->text_last_cp - tc->text_first_cp + 1)
+  if (res != (int) (tc->text_last_cp - tc->text_first_cp + 1))
     {
       goto error;
     }
@@ -5187,7 +5189,7 @@ load_console_conv_from_bin (LOCALE_FILE * lf, FILE * fp, TEXT_CONVERSION * tc)
 
   res = fread (tc->utf8_to_text, sizeof (CONV_CP_TO_BYTES),
 	       (tc->utf8_last_cp - tc->utf8_first_cp + 1), fp);
-  if (res != tc->utf8_last_cp - tc->utf8_first_cp + 1)
+  if (res != (int) (tc->utf8_last_cp - tc->utf8_first_cp + 1))
     {
       goto error;
     }
@@ -5220,7 +5222,7 @@ load_console_conv_from_bin (LOCALE_FILE * lf, FILE * fp, TEXT_CONVERSION * tc)
 
   res = fread (tc->text_to_utf8, sizeof (CONV_CP_TO_BYTES),
 	       (tc->text_last_cp - tc->text_first_cp + 1), fp);
-  if (res != tc->text_last_cp - tc->text_first_cp + 1)
+  if (res != (int) (tc->text_last_cp - tc->text_first_cp + 1))
     {
       goto error;
     }
@@ -5814,7 +5816,7 @@ locale_save_to_bin (LOCALE_FILE * lf, LOCALE_DATA * ld)
 	  goto error;
 	}
 
-      assert (ld->opt_coll.cp_first_contr_offset >= 0);
+      assert (ld->opt_coll.cp_first_contr_count < 0xffff);
 
       res = save_int_to_bin (fp, ld->opt_coll.cp_first_contr_count);
       if (res != 0)
@@ -5826,7 +5828,7 @@ locale_save_to_bin (LOCALE_FILE * lf, LOCALE_DATA * ld)
 
       res = fwrite (ld->opt_coll.cp_first_contr_array, sizeof (int),
 		    ld->opt_coll.cp_first_contr_count, fp);
-      if (res != ld->opt_coll.cp_first_contr_count)
+      if (res != (int) (ld->opt_coll.cp_first_contr_count))
 	{
 	  goto error;
 	}
@@ -6221,7 +6223,7 @@ locale_load_from_bin (LOCALE_FILE * lf, LOCALE_DATA * ld)
 	  goto error;
 	}
 
-      assert (ld->opt_coll.cp_first_contr_offset >= 0);
+      assert (ld->opt_coll.cp_first_contr_offset < 0xffff);
 
       res = load_int_from_bin (fp,
 			       (int *) &(ld->opt_coll.cp_first_contr_count));
@@ -6242,7 +6244,7 @@ locale_load_from_bin (LOCALE_FILE * lf, LOCALE_DATA * ld)
 
       res = fread (ld->opt_coll.cp_first_contr_array, sizeof (int),
 		   ld->opt_coll.cp_first_contr_count, fp);
-      if (res != ld->opt_coll.cp_first_contr_count)
+      if (res != (int) (ld->opt_coll.cp_first_contr_count))
 	{
 	  goto error_load;
 	}
@@ -6383,7 +6385,8 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
     {
       memset (utf8_buf, 0, INTL_UTF8_MAX_CHAR_SIZE + 1);
       intl_cp_to_utf8 (cp, utf8_buf);
-      printf ("CP: Ux%04X | %-4s", cp, (cp > 0x0020 ? utf8_buf : ""));
+      printf ("CP: Ux%04X | %-4s", cp, (cp > 0x0020 ? utf8_buf :
+					(unsigned char *) ""));
       if ((dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER) != 0)
 	{
 	  bool print_case = true;
@@ -6506,10 +6509,10 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	{
 	  printf ("%d. %s = month %d\n",
 		  (i + 1),
-		  ld->month_names_abbreviated[ld->
-					      month_names_abbr_parse_order
-					      [i]],
-		  ld->month_names_abbr_parse_order[i] + 1);
+		  ld->month_names_abbreviated[(int) (ld->
+						     month_names_abbr_parse_order
+						     [i])],
+		  (int) (ld->month_names_abbr_parse_order[i]) + 1);
 	}
 
       printf ("\nWide month names:\n");
@@ -6522,8 +6525,10 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	{
 	  printf ("%d. %s = month %d\n",
 		  (i + 1),
-		  ld->month_names_wide[ld->month_names_wide_parse_order[i]],
-		  ld->month_names_wide_parse_order[i] + 1);
+		  ld->month_names_wide[(int) (ld->
+					      month_names_wide_parse_order
+					      [i])],
+		  (int) (ld->month_names_wide_parse_order[i]) + 1);
 	}
 
       printf ("\nAbbreviated weekday names:\n");
@@ -6536,9 +6541,10 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	{
 	  printf ("%d. %s = weekday %d\n",
 		  (i + 1),
-		  ld->day_names_abbreviated[ld->
-					    day_names_abbr_parse_order[i]],
-		  ld->day_names_abbr_parse_order[i] + 1);
+		  ld->day_names_abbreviated[(int) (ld->
+						   day_names_abbr_parse_order
+						   [i])],
+		  (int) (ld->day_names_abbr_parse_order[i]) + 1);
 	}
 
       printf ("\nWide weekday names:\n");
@@ -6551,8 +6557,9 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	{
 	  printf ("%d. %s = weekday %d\n",
 		  (i + 1),
-		  ld->day_names_wide[ld->day_names_wide_parse_order[i]],
-		  ld->day_names_wide_parse_order[i] + 1);
+		  ld->day_names_wide[(int) (ld->
+					    day_names_wide_parse_order[i])],
+		  (int) (ld->day_names_wide_parse_order[i]) + 1);
 	}
 
       printf ("\nDay periods:\n");
@@ -6565,8 +6572,8 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	{
 	  printf ("%d. %s = day period %d\n",
 		  (i + 1),
-		  ld->am_pm[ld->am_pm_parse_order[i]],
-		  ld->am_pm_parse_order[i] + 1);
+		  ld->am_pm[(int) (ld->am_pm_parse_order[i])],
+		  (int) (ld->am_pm_parse_order[i]) + 1);
 	}
     }
 
@@ -6873,8 +6880,8 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
   unsigned int pos1;
   unsigned int pos2;
   COLL_DATA *coll = dump_coll_data;
-  char utf8_buf_1[INTL_UTF8_MAX_CHAR_SIZE + 1];
-  char utf8_buf_2[INTL_UTF8_MAX_CHAR_SIZE + 1];
+  unsigned char utf8_buf_1[INTL_UTF8_MAX_CHAR_SIZE + 1];
+  unsigned char utf8_buf_2[INTL_UTF8_MAX_CHAR_SIZE + 1];
   char *str1;
   char *str2;
   int size1, size2;
@@ -6894,7 +6901,7 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
     {
       size1 = intl_cp_to_utf8 (pos1, utf8_buf_1);
       utf8_buf_1[size1] = '\0';
-      str1 = utf8_buf_1;
+      str1 = (char *) utf8_buf_1;
     }
 
   if (INTL_IS_NEXT_CONTR (pos2))
@@ -6906,10 +6913,13 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
     {
       size2 = intl_cp_to_utf8 (pos2, utf8_buf_2);
       utf8_buf_2[size2] = '\0';
-      str2 = utf8_buf_2;
+      str2 = (char *) utf8_buf_2;
     }
 
-  return intl_strcmp_utf8_uca_w_coll_data (coll, str1, size1, str2, size2);
+  return intl_strcmp_utf8_uca_w_coll_data (coll, (const unsigned char *) str1,
+					   size1,
+					   (const unsigned char *) str2,
+					   size2);
 }
 
 /*
@@ -7025,8 +7035,6 @@ static void
 dump_collation_codepoint (LOCALE_DATA * ld, const unsigned int cp,
 			  bool print_weight, bool print_cp)
 {
-  assert (cp >= 0);
-
   if (print_cp)
     {
       unsigned char utf8_buf[INTL_UTF8_MAX_CHAR_SIZE + 1];
@@ -7035,7 +7043,8 @@ dump_collation_codepoint (LOCALE_DATA * ld, const unsigned int cp,
 
       intl_cp_to_utf8 (cp, utf8_buf);
 
-      printf ("CP: Ux%04X | %-4s", cp, ((cp > 0x20) ? utf8_buf : ""));
+      printf ("CP: Ux%04X | %-4s", cp, ((cp > 0x20) ? utf8_buf :
+					(unsigned char *) ""));
     }
 
   if (!print_weight)

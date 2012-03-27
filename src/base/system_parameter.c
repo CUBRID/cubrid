@@ -4678,7 +4678,7 @@ prm_tune_parameters (void)
   if (call_stack_dump_activation_prm)
     {
       bool *val;
-      int i;
+      unsigned int i;
 
       if (!PRM_IS_ALLOCATED (call_stack_dump_activation_prm->flag))
 	{
