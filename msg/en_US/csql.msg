@@ -32,7 +32,7 @@ valid options:\n\
   -S, --SA-mode                standalone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
   -u, --user=ARG               alternate user name\n\
-  -p, --pasword=ARG            password string, give "" for none\n\
+  -p, --password=ARG           password string, give "" for none\n\
   -e, --error-continue         don't exit on statement error\n\
   -i, --input-file=ARG         input-file-name\n\
   -o, --output-file=ARG        output-file-name\n\
