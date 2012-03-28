@@ -2799,8 +2799,22 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
     }
   else
     {
-      btree_set_unknown_key_error (thread_p, btid, key_value,
-				   "xbtree_delete_with_unique_key");
+      char *err_key = pr_valstring (key_value);
+      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (key_value);
+      PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNKNOWN_KEY, 5,
+	      (err_key != NULL) ? err_key : "_NULL_KEY",
+	      btid->vfid.fileid, btid->vfid.volid, btid->root_pageid,
+	      (pr_type != NULL) ? pr_type->name : "INVALID KEY TYPE");
+
+      er_log_debug (ARG_FILE_LINE, "xbtree_delete_with_unique_key");
+
+      if (err_key != NULL)
+	{
+	  free_and_init (err_key);
+	}
+
       error = ER_BTREE_UNKNOWN_KEY;
     }
 
