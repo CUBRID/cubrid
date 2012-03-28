@@ -9363,10 +9363,6 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	  s = lhs->data_type->info.data_type.dec_precision;
 	}
 
-      if (rhs->node_type == PT_HOST_VAR)
-	{
-	  return rhs;
-	}
       if (pt_is_compatible_without_cast (parser, lhs->type_enum, p, s, rhs))
 	{
 	  return rhs;
