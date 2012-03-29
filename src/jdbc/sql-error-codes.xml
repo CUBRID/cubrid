@@ -15,7 +15,7 @@
 			<value>-2115, -2116, -2117</value>
 		</property>
 		<property name="duplicateKeyCodes">
-			<value>-670</value>
+			<value>-670, -886</value>
 		</property>
 		<property name="dataIntegrityViolationCodes">
 			<value>-631, -919, -920, -921, -922, -923, -924, -1063, -1067</value>
