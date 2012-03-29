@@ -1,6 +1,8 @@
 #!/bin/bash
 
 CURR_DIR=$(dirname $0)
+WORK_DIR=$(pwd)
+HA_DIR=$CURR_DIR/..
 source $CURR_DIR/common/common.sh
 
 #################################################################################
@@ -74,7 +76,6 @@ step_func_slave_from_replica=(
 	"online_backup_db"
 	"copy_backup_db_from_target"
 	"restore_db_to_current"
-	"init_ha_info_on_slave"
 	"copy_active_log_from_master"
 	"restart_master_repl_util"
 	"show_complete"
@@ -108,15 +109,15 @@ step_func_replica_from_replica=(
 #################################################################################
 # program functions
 #################################################################################
-function exec()
+function execute()
 {
 	if [ $# -ne 1 ]; then
-		error "Invalid exec call. $*"
+		error "Invalid execute call. $*"
 	fi
 	
 	command=$1
 	echo "[$cubrid_user@$current_host]$ $command"
-	eval $command >/dev/null 2>&1
+	eval $command > /dev/null 2>&1
 }
 
 function ssh_cubrid()
@@ -169,7 +170,7 @@ function ssh_expect()
 	if [ ! -z "$command5" ]; then
 		echo "[$user@$host]$ $command5"
 	fi
-	./expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" > $result_home/$host.result 2>&1
+	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" > $result_home/$host.result 2>&1
 }
 
 function scp_cubrid_to()
@@ -197,7 +198,7 @@ function scp_to_expect()
 	target=$5
 	
 	echo "[$user@$current_host]$ scp $scp_option -r $source $user@$host:$target"
-	./expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+	expect $CURR_DIR/expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
 }
 
 function scp_from_expect()
@@ -213,7 +214,7 @@ function scp_from_expect()
 	target=$5
 	
 	echo "[$user@$current_host]$ scp $scp_option -r $user@$host:$source $target"
-	./expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+	expect $CURR_DIR/expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
 }
 
 function scp_cubrid_from()
@@ -516,9 +517,11 @@ function copy_script_to_master()
 		return $SUCCESS
 	fi
 	
-	exec "tar -zcf ha.tgz ../ha"
+	cd $HA_DIR
+	execute "tar -zcf ha.tgz ha"
+	cd $WORK_DIR
 	ssh_cubrid $master_host "rm -rf $ha_temp_home"
-	scp_cubrid_to $master_host "ha.tgz" "$HOME"
+	scp_cubrid_to $master_host "$HA_DIR/ha.tgz" "$HOME"
 	ssh_cubrid $master_host "tar -zxf ha.tgz"
 	ssh_cubrid $master_host "mv ha $ha_temp_home"
 	ssh_cubrid $master_host "mkdir $backup_dest_path"
@@ -540,9 +543,11 @@ function copy_script_to_slave()
 		return $SUCCESS
 	fi
 	
-	exec "tar -zcf ha.tgz ../ha"
+	cd $HA_DIR
+	execute "tar -zcf ha.tgz ha"
+	cd $WORK_DIR
 	ssh_cubrid $slave_host "rm -rf $ha_temp_home"
-	scp_cubrid_to $slave_host "ha.tgz" "$HOME"
+	scp_cubrid_to $slave_host "$HA_DIR/ha.tgz" "$HOME"
 	ssh_cubrid $slave_host "tar -zxf ha.tgz"
 	ssh_cubrid $slave_host "mv ha $ha_temp_home"
 	ssh_cubrid $slave_host "mkdir $backup_dest_path"
@@ -564,9 +569,11 @@ function copy_script_to_target()
 		return $SUCCESS
 	fi
 	
-	exec "tar -zcf ha.tgz ../ha"
+	cd $HA_DIR
+	execute "tar -zcf ha.tgz ha"
+	cd $WORK_DIR
 	ssh_cubrid $target_host "rm -rf $ha_temp_home"
-	scp_cubrid_to $target_host "ha.tgz" "$HOME"
+	scp_cubrid_to $target_host "$HA_DIR/ha.tgz" "$HOME"
 	ssh_cubrid $target_host "tar -zxf ha.tgz"
 	ssh_cubrid $target_host "mv ha $ha_temp_home"
 	ssh_cubrid $target_host "mkdir $backup_dest_path"
@@ -591,13 +598,15 @@ function copy_script_to_replica()
 	if [ "$replica_hosts" == "" ]; then
 		echo "There is no replication server to copy scripts."
 	else
-		exec "tar -zcf ha.tgz ../ha"
+		cd $HA_DIR
+		execute "tar -zcf ha.tgz ha"
+		cd $WORK_DIR
 		
 		# 1. scp ha.tgz to replications.
 		echo -ne "\n - 1. scp ha.tgz to replications.\n\n"
 		for replica_host in ${replica_hosts[@]}; do
 			if [ "$replica_host" != "$current_host" ]; then
-				scp_to_expect "$cubrid_user" "$server_password" "ha.tgz" $replica_host $HOME
+				scp_to_expect "$cubrid_user" "$server_password" "$HA_DIR/ha.tgz" "$replica_host" "~"
 			fi	
 		done
 		
@@ -622,7 +631,7 @@ function copy_script_to_replica()
 			fi
 		done
 		
-		exec "rm -f ha.tgz"
+		execute "rm -f $HA_DIR/ha.tgz"
 		
 		if $is_exist_error; then
 			error "The script is not properly installed on some replications."
@@ -742,7 +751,7 @@ function copy_backup_db_from_target()
 	echo -ne "\n - 1. check if the databases information is already registered.\n\n"
 	line=$(grep "^$db_name" $CUBRID_DATABASES/databases.txt) 
 	if [ -z "$line" ]; then
-		exec "mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
+		execute "mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
 		scp_cubrid_from $target_host "$CUBRID_DATABASES/databases.txt" "$CUBRID_DATABASES/."
 	else
 		echo -ne "\n - thres's already $db_name information in $CUBRID_DATABASES/databases.txt" 
@@ -761,17 +770,17 @@ function copy_backup_db_from_target()
 	
 	# 3. remove old database and replication log.
 	echo -ne "\n - 3. remove old database and replication log.\n\n"
-	exec "rm -rf $db_log_path"
-	exec "rm -rf $db_vol_path"
-	exec "rm -rf $repl_log_home/${db_name}_*"
+	execute "rm -rf $db_log_path"
+	execute "rm -rf $db_vol_path"
+	execute "rm -rf $repl_log_home/${db_name}_*"
 	
 	# 4. make new database volume and replication log directory.
 	echo -ne "\n - 4. make new database volume and replication log directory.\n\n"
-	exec "mkdir -p $db_vol_path"
-	exec "mkdir -p $db_log_path"
-	exec "mkdir -p $ha_temp_home"
-	exec "rm -rf $backup_dest_path"
-	exec "mkdir -p $backup_dest_path"
+	execute "mkdir -p $db_vol_path"
+	execute "mkdir -p $db_log_path"
+	execute "mkdir -p $ha_temp_home"
+	execute "rm -rf $backup_dest_path"
+	execute "mkdir -p $backup_dest_path"
 	
 	# 5. copy backup volume and log from target host
 	echo -ne "\n - 5. copy backup volume and log from target host\n\n"
@@ -802,7 +811,7 @@ function restore_db_to_current()
 		return $SUCCESS
 	fi
 	
-	exec "cubrid restoredb -B $backup_dest_path $restore_option $db_name"
+	execute "cubrid restoredb -B $backup_dest_path $restore_option $db_name"
 }
 
 function init_ha_info_on_master()
@@ -858,7 +867,7 @@ function init_ha_info_on_slave()
 	if [ -n "$dba_password" ]; then
 		pw_option="-p $dba_password"
 	fi
-	exec "./functions/ha_set_apply_info.sh -r $repl_log_path -o $backupdb_output $pw_option"
+	sh $CURR_DIR/functions/ha_set_apply_info.sh -r $repl_log_path -o $backupdb_output $pw_option
 }
 
 function init_ha_info_on_replica()
@@ -881,7 +890,7 @@ function init_ha_info_on_replica()
 	if [ "$replica_hosts" == "" ]; then
 		echo "There is no replication server to init ha_info"
 	else
-		repl_log_path="$CUBRID_DATABASES/${db_name}_${slave_host}"
+		repl_log_path="$repl_log_home_abs/${db_name}_${slave_host}"
 		
 		command1="cubrid heartbeat stop"
 		command2="rm -rf $repl_log_path"
@@ -941,17 +950,16 @@ function copy_active_log_from_master()
 		return $SUCCESS
 	fi
 	
-	repl_log_path=$repl_log_home/${db_name}_${master_host}
+	repl_log_path=$repl_log_home_abs/${db_name}_${master_host}
 
 	# 1. remove old replicaton log.
 	echo -ne "\n - 1. remove old replicaton log.\n\n"
-	exec "rm -rf $repl_log_path"	
-	exec "mkdir -p $repl_log_path"
+	execute "rm -rf $repl_log_path"	
+	execute "mkdir -p $repl_log_path"
 
 	# 2. start copylogdb to initiate active log.
 	echo -ne "\n - 2. start copylogdb to initiate active log.\n\n"
-	exec "./$CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host"
-	./$CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host
+	sh $CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host
 
 	# 3. copy archive log from target.
 	echo -ne "\n - 3. copy archive log from target.\n\n"
@@ -981,16 +989,16 @@ function copy_active_log_from_slave()
 		return $SUCCESS
 	fi
 	
-	repl_log_path=$repl_log_home/${db_name}_${slave_host}
+	repl_log_path=$repl_log_home_abs/${db_name}_${slave_host}
 
 	# 1. remove old replicaton log.
 	echo -ne "\n - 1. remove old replicaton log.\n\n"
-	exec "rm -rf $repl_log_path"	
-	exec "mkdir -p $repl_log_path"
+	execute "rm -rf $repl_log_path"	
+	execute "mkdir -p $repl_log_path"
 
 	# 2. start copylogdb to initiate active log.
 	echo -ne "\n - 2. start copylogdb to initiate active log.\n\n"
-	./functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $slave_host
+	sh $CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $slave_host
 
 	# 3. copy archive log from target.
 	echo -ne "\n - 3. copy archive log from target.\n\n"
@@ -1020,16 +1028,16 @@ function copy_active_log_from_target()
 		return $SUCCESS
 	fi
 	
-	repl_log_path=$repl_log_home/${db_name}_${slave_host}
+	repl_log_path=$repl_log_home_abs/${db_name}_${slave_host}
 
 	# 1. remove old replicaton log.
 	echo -ne "\n - 1. remove old slave replicaton log.\n\n"
-	exec "rm -rf $repl_log_path"	
-	exec "mkdir -p $repl_log_path"
+	execute "rm -rf $repl_log_path"	
+	execute "mkdir -p $repl_log_path"
 
 	# 2. start copylogdb to initiate active log.
 	echo -ne "\n - 2. start copylogdb to initiate slave active log.\n\n"
-	./functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $slave_host
+	sh $CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $slave_host
 
 	# 3. copy archive log from target.
 	echo -ne "\n - 3. copy archive log from slave.\n\n"
@@ -1039,16 +1047,16 @@ function copy_active_log_from_target()
 	fi
 	scp_cubrid_from $slave_host "$db_log_path/${db_name}_lgar[0-9]*" "$repl_log_path/."
 	
-	repl_log_path=$repl_log_home/${db_name}_${master_host}
+	repl_log_path=$repl_log_home_abs/${db_name}_${master_host}
 
 	# 4. remove old replicaton log.
 	echo -ne "\n - 4. remove old master replicaton log.\n\n"
-	exec "rm -rf $repl_log_path"	
-	exec "mkdir -p $repl_log_path"
+	execute "rm -rf $repl_log_path"	
+	execute "mkdir -p $repl_log_path"
 
 	# 5. start copylogdb to initiate active log.
 	echo -ne "\n - 5. start copylogdb to initiate master active log.\n\n"
-	./functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host
+	sh $CURR_DIR/functions/ha_repl_copylog.sh -r $repl_log_path -d $db_name -h $master_host
 
 	# 6. copy archive log from target.
 	echo -ne "\n - 6. copy archive log from master.\n\n"

@@ -1,6 +1,6 @@
 #!/usr/bin/expect
 
-set timeout 60
+set timeout 30
 
 set user [lindex $argv 0]
 set passwd [lindex $argv 1]
@@ -16,24 +16,29 @@ expect {
 "(yes/no)?" {send "yes\r";exp_continue}
 "password:" {send "$passwd\r"}
 }
-expect "*@*\$"
+expect "*\$"
+sleep 0.3
 send "$command1\r"
 if {$command2 != ""} {
-	expect "*@*\$"
-	send "$command2\r"	
+	expect "*\$"
+	sleep 0.3
+	send "$command2\r"
 }
 if {$command3 != ""} {
-	expect "*@*\$"
+	expect "*\$"
+	sleep 0.3
 	send "$command3\r"	
 }
 if {$command4 != ""} {
-	expect "*@*\$"
+	expect "*\$"
+	sleep 0.3
 	send "$command4\r"	
 }
 if {$command5 != ""} {
-	expect "*@*\$"
-	send "$command5\r"	
+	expect "*\$"
+	sleep 0.3
+	send "$command5\r"
 }
-expect "*@*\$"
+expect "*\$"
 send "exit\r"
 expect eof
