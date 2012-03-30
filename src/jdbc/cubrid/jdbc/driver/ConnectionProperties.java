@@ -288,9 +288,14 @@ public class ConnectionProperties {
 
     IntegerConnectionProperty queryTimeout = new IntegerConnectionProperty(
 	    "queryTimeout", -1, -1, Integer.MAX_VALUE);
-    
+
+    private int getDefaultConnectTimeout() {
+	int timeout = java.sql.DriverManager.getLoginTimeout();
+	return timeout > 0 ? timeout : -1;
+    }
+
     IntegerConnectionProperty connectTimeout = new IntegerConnectionProperty(
-	    "connectTimeout", -1, -1, Integer.MAX_VALUE);
+	    "connectTimeout", getDefaultConnectTimeout(), -1, Integer.MAX_VALUE);
 
     StringConnectionProperty altHosts = new StringConnectionProperty(
 	    "altHosts", null);
