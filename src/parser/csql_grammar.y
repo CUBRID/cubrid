@@ -19091,7 +19091,7 @@ parser_make_expression (PT_OP_TYPE OP, PT_NODE * arg1, PT_NODE * arg2,
 
       if (OP == PT_SYS_TIME || OP == PT_SYS_DATE
 	  || OP == PT_SYS_DATETIME || OP == PT_SYS_TIMESTAMP 
-	  || OP == PT_UTC_TIME || OP == PT_UTC_DATE)
+	  || OP == PT_UTC_TIME || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP)
 	{
 	  parser_si_datetime = true;
 	  parser_cannot_cache = true;

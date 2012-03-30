@@ -1497,7 +1497,14 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	  db_make_null (&opd3);
 
 	  /* evaluate operands */
-	  pt_evaluate_tree_having_serial (parser, arg1, &opd1, 1);
+	  if (!arg1 && op == PT_UNIX_TIMESTAMP)
+	    {
+	      pr_clone_value (&parser->sys_datetime, &opd1);
+	    }
+	  else
+	    {
+	      pt_evaluate_tree_having_serial (parser, arg1, &opd1, 1);
+	    }
 	  type1 =
 	    (PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE) opd1.domain.
 					       general_info.type);

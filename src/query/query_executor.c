@@ -9012,6 +9012,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       OR_ATTRIBUTE *attr;
       DB_VALUE *new_val;
+      int error = NO_ERROR;
 
       attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
       if (attr == NULL)
@@ -9035,9 +9036,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
 	  break;
 	case DB_DEFAULT_SYSTIMESTAMP:
+	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
+	  break;
 	case DB_DEFAULT_UNIX_TIMESTAMP:
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  db_unix_timestamp (insert->vals[k], insert->vals[k]);
+	  error = db_unix_timestamp (insert->vals[k], insert->vals[k]);
 	  break;
 	case DB_DEFAULT_USER:
 	case DB_DEFAULT_CURR_USER:
@@ -9054,6 +9058,25 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    DB_MAKE_STRING (insert->vals[k], temp);
 	  }
 	  break;
+	}
+
+      if (error != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (TP_DOMAIN_TYPE (attr->domain) != DB_VALUE_TYPE (insert->vals[k]))
+	{
+	  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+	  status = tp_value_cast (insert->vals[k], insert->vals[k],
+				  attr->domain, false);
+	  if (status != DOMAIN_COMPATIBLE)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
+		      2, pr_type_name (DB_VALUE_TYPE (insert->vals[k])),
+		      pr_type_name (TP_DOMAIN_TYPE (attr->domain)));
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
     }
 

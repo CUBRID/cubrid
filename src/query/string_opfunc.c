@@ -9571,7 +9571,7 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
  *	  DB_VALUE
  *
  * src_datetime(in):
- * result_timestamp(in);
+ * result_timestamp(in):
  * return: ERROR_CODE
  */
 int
@@ -9583,8 +9583,25 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
   DB_TIME tmp_time;
   DB_TIMESTAMP tmp_timestamp;
   int error;
+  DB_VALUE temp, *temp_p;
+  bool same_argument = (src_datetime == result_timestamp);
 
-  error = db_value_domain_init (result_timestamp, DB_TYPE_TIMESTAMP, 0, 0);
+  if (same_argument)
+    {
+      /* if the result argument is the same with the source argument, then use
+       * a temporary value for creating the timestamp
+       */
+      temp_p = &temp;
+    }
+  else
+    {
+      /* the result_timestamp value can be used and no other temporary values
+       * are needed
+       */
+      temp_p = result_timestamp;
+    }
+  
+  error = db_value_domain_init (temp_p, DB_TYPE_TIMESTAMP, 0, 0);
   if (error != NO_ERROR)
     {
       /* error message has been set */
@@ -9599,7 +9616,15 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
       /* error message has been set */
       return error;
     }
-  db_make_timestamp (result_timestamp, tmp_timestamp);
+  db_make_timestamp (temp_p, tmp_timestamp);
+
+  if (same_argument)
+    {
+      /* if src_datetime was the same with result_timestamp, copy the result
+       * from temp, and release the temporary value
+       */
+      pr_clone_value (temp_p, result_timestamp);
+    }
   return NO_ERROR;
 }
 
