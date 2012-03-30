@@ -6141,9 +6141,12 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 
   if (cycle_info_string != NULL)
     {
+      int i;
+
       ptr = cycle_info_string;
 
-      for (v = s; v != -2; v = TWFG_node[v].ancestor)
+      for (i = 0, v = s; i < num_tran_in_cycle;
+	   i++, v = TWFG_node[v].ancestor)
 	{
 	  (void) logtb_find_client_name_host_pid (v,
 						  &client_prog_name,
@@ -6151,11 +6154,12 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 						  &client_host_name,
 						  &client_pid);
 
-	  n =
-	    sprintf (ptr, "%s%s@%s|%s(%d)", ((v == s) ? "" : ", "),
-		     client_user_name, client_host_name, client_prog_name,
-		     client_pid);
+	  n = snprintf (ptr, unit_size, "%s%s@%s|%s(%d)",
+			((v == s) ? "" : ", "), client_user_name,
+			client_host_name, client_prog_name, client_pid);
 	  ptr += n;
+	  assert_release (ptr <
+			  cycle_info_string + unit_size * num_tran_in_cycle);
 	}
     }
 
@@ -6163,7 +6167,10 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  ER_LK_DEADLOCK_CYCLE_DETECTED, 1,
 	  (cycle_info_string) ? cycle_info_string : "");
 
-  free_and_init (cycle_info_string);
+  if (cycle_info_string != NULL)
+    {
+      free_and_init (cycle_info_string);
+    }
 
   for (v = s; v != t;)
     {
