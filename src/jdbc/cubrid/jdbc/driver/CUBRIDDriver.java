@@ -58,7 +58,7 @@ import cubrid.jdbc.jci.UJCIUtil;
 
 public class CUBRIDDriver implements Driver {
 	// version
-	static final String version_string = "8.4.1.1000";
+	static final String version_string = "@JDBC_DRIVER_VERSION_STRING@";
 	public static final int major_version;
 	public static final int minor_version;
 	public static final int patch_version;
