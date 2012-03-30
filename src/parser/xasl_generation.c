@@ -14801,7 +14801,7 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
 				int *nump, int *sizep)
 {
   PT_NODE *flat;
-  OID *oid, *o_list;
+  OID *oid, *v_oid, *o_list;
   int *r_list;
   void *oldptr;
 #if defined(WINDOWS)
@@ -14834,45 +14834,54 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
       for (flat = spec->info.spec.flat_entity_list; flat; flat = flat->next)
 	{
 	  /* get the OID of the class object which is fetched before */
-	  if (flat->info.name.db_object)
+	  oid = ((flat->info.name.db_object != NULL)
+		 ? ws_identifier (flat->info.name.db_object) : NULL);
+	  v_oid = NULL;
+	  while (oid != NULL)
 	    {
-	      oid = ws_identifier (flat->info.name.db_object);
-	      if (oid != NULL)
+	      prev_t_num = t_num;
+	      (void) lsearch (oid, o_list, &t_num, sizeof (OID), oid_compare);
+
+	      if (t_num > prev_t_num && t_num > (ssize_t) (*nump))
 		{
-		  prev_t_num = t_num;
-		  (void) lsearch (oid, o_list, &t_num, sizeof (OID),
-				  oid_compare);
+		  *(r_list + t_num - 1) = -1;	/* dummy repr_id */
+		}
 
-		  if (t_num > prev_t_num && t_num > (ssize_t) (*nump))
+	      if (t_num >= t_size)
+		{
+		  t_size += OID_LIST_GROWTH;
+		  oldptr = (void *) o_list;
+		  o_list = (OID *) realloc (o_list, t_size * sizeof (OID));
+		  if (o_list == NULL)
 		    {
-		      *(r_list + t_num - 1) = -1;	/* dummy repr_id */
+		      free_and_init (oldptr);
+		      *oid_listp = NULL;
+		      goto error;
 		    }
 
-		  if (t_num >= t_size)
+		  oldptr = (void *) r_list;
+		  r_list = (int *) realloc (r_list, t_size * sizeof (int));
+		  if (r_list == NULL)
 		    {
-		      t_size += OID_LIST_GROWTH;
-		      oldptr = (void *) o_list;
-		      o_list =
-			(OID *) realloc (o_list, t_size * sizeof (OID));
-		      if (o_list == NULL)
-			{
-			  free_and_init (oldptr);
-			  *oid_listp = NULL;
-			  goto error;
-			}
-
-		      oldptr = (void *) r_list;
-		      r_list =
-			(int *) realloc (r_list, t_size * sizeof (int));
-		      if (r_list == NULL)
-			{
-			  free_and_init (oldptr);
-			  free_and_init (o_list);
-			  *oid_listp = NULL;
-			  *rep_listp = NULL;
-			  goto error;
-			}
+		      free_and_init (oldptr);
+		      free_and_init (o_list);
+		      *oid_listp = NULL;
+		      *rep_listp = NULL;
+		      goto error;
 		    }
+		}
+
+	      if (v_oid == NULL)
+		{
+		  /* get the OID of the view object */
+		  v_oid = ((flat->info.name.virt_object != NULL)
+			   ? ws_identifier (flat->info.name.
+					    virt_object) : NULL);
+		  oid = v_oid;
+		}
+	      else
+		{
+		  break;
 		}
 	    }
 	}
