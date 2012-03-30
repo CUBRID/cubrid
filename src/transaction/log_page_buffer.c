@@ -1880,6 +1880,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
   loghdr->ha_server_state = HA_SERVER_STATE_IDLE;
   loghdr->ha_file_status = -1;
   LSA_SET_NULL (&loghdr->eof_lsa);
+  LSA_SET_NULL (&loghdr->smallest_lsa_at_last_chkpt);
 
   return NO_ERROR;
 }

@@ -1819,6 +1819,8 @@ log_final (THREAD_ENTRY * thread_p)
     {
       log_Gl.hdr.is_shutdown = true;
       LSA_COPY (&log_Gl.hdr.chkpt_lsa, &log_Gl.hdr.append_lsa);
+      LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt,
+		&log_Gl.hdr.chkpt_lsa);
     }
   else
     {

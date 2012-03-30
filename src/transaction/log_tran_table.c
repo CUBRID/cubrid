@@ -1596,6 +1596,15 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->interrupt = false;
   tdes->waitsecs = TRAN_LOCK_INFINITE_WAIT;
   tdes->isolation = TRAN_SERIALIZABLE;
+  LSA_SET_NULL (&tdes->head_lsa);
+  LSA_SET_NULL (&tdes->tail_lsa);
+  LSA_SET_NULL (&tdes->undo_nxlsa);
+  LSA_SET_NULL (&tdes->posp_nxlsa);
+  LSA_SET_NULL (&tdes->savept_lsa);
+  LSA_SET_NULL (&tdes->topop_lsa);
+  LSA_SET_NULL (&tdes->tail_topresult_lsa);
+  LSA_SET_NULL (&tdes->client_undo_lsa);
+  LSA_SET_NULL (&tdes->client_posp_lsa);
 
   csect_initialize_critical_section (&tdes->cs_topop);
 
@@ -1611,6 +1620,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->append_repl_recidx = -1;
   tdes->fl_mark_repl_recidx = -1;
   tdes->repl_records = NULL;
+  LSA_SET_NULL (&tdes->repl_insert_lsa);
+  LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_tmp_files = 0;
