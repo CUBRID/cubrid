@@ -872,15 +872,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
-	  pt_evaluate_tree (parser, d->info.data_default.default_value,
-			    &src_val, 1);
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      error = er_errid ();
-	      break;
-	    }
-
 	  attr_name = n->info.name.original;
 	  if (n->info.name.meta_class == PT_META_ATTR)
 	    {
@@ -897,48 +888,91 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  db_desired_type = TP_DOMAIN_TYPE (def_domain);
 
-	  error = tp_value_coerce (&src_val, &dest_val, def_domain);
-	  if (error != NO_ERROR)
+	  if (d->info.data_default.default_expr == DB_DEFAULT_NONE)
 	    {
-	      DB_OBJECT *desired_class;
-	      const char *desired_type;
+	      pt_evaluate_tree (parser, d->info.data_default.default_value,
+				&src_val, 1);
 
-	      if ((db_desired_type == DB_TYPE_OBJECT)
-		  && (desired_class = db_domain_class (def_domain)))
+	      error = tp_value_coerce (&src_val, &dest_val, def_domain);
+	      if (error != NO_ERROR)
 		{
-		  desired_type = db_get_class_name (desired_class);
-		}
-	      else
-		{
-		  desired_type = db_get_type_name (db_desired_type);
-		}
-	      if (error != DOMAIN_COMPATIBLE)
-		{
-		  if (error == DOMAIN_OVERFLOW)
+		  DB_OBJECT *desired_class;
+		  const char *desired_type;
+
+		  if ((db_desired_type == DB_TYPE_OBJECT)
+		      && (desired_class = db_domain_class (def_domain)))
 		    {
-		      PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-				   pt_short_print (parser, d), desired_type);
+		      desired_type = db_get_class_name (desired_class);
 		    }
 		  else
 		    {
-		      PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   pt_short_print (parser, d), desired_type);
+		      desired_type = db_get_type_name (db_desired_type);
 		    }
-		  error = er_errid ();
+		  if (error != DOMAIN_COMPATIBLE)
+		    {
+		      if (error == DOMAIN_OVERFLOW)
+			{
+			  PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				       pt_short_print (parser, d),
+				       desired_type);
+			}
+		      else
+			{
+			  PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				       pt_short_print (parser, d),
+				       desired_type);
+			}
+		      error = er_errid ();
+		    }
+		  break;
 		}
-	      break;
-	    }
-
-	  if (n->info.name.meta_class == PT_META_ATTR)
-	    {
-	      error = dbt_change_default (ctemplate, attr_name, 1, &dest_val);
+	      if (n->info.name.meta_class == PT_META_ATTR)
+		{
+		  error = dbt_change_default (ctemplate, attr_name, 1,
+					      &dest_val);
+		}
+	      else
+		{
+		  error = dbt_change_default (ctemplate, attr_name, 0,
+					      &dest_val);
+		}
 	    }
 	  else
 	    {
-	      error = dbt_change_default (ctemplate, attr_name, 0, &dest_val);
+	      PT_NODE *def_val = d->info.data_default.default_value;
+	      def_val = pt_semantic_type (parser, def_val, NULL);
+	      if (pt_has_error (parser) || def_val == NULL)
+		{
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
+		}
+
+	      pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
+	      if (tp_value_coerce (&src_val, &dest_val, def_domain)
+		  != DOMAIN_COMPATIBLE)
+		{
+		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, def_val),
+			       pt_show_type_enum ((PT_TYPE_ENUM)
+						  db_desired_type));
+		  error = ER_IT_INCOMPATIBLE_DATATYPE;
+		  break;
+		}
+	      DB_MAKE_NULL (&dest_val);
+	      smt_set_attribute_default (ctemplate, attr_name, 0, &dest_val,
+					 d->info.data_default.default_expr);
 	    }
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      error = er_errid ();
+	      break;
+	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -14090,16 +14124,17 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
 	}
       else
 	{
-	  PT_TYPE_ENUM common_type;
+	  DB_VALUE src, dest;
 	  def_val = pt_semantic_type (parser, def_val, NULL);
 	  if (pt_has_error (parser) || def_val == NULL)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      return er_errid ();
 	    }
-
-	  common_type = pt_common_type (def_val->type_enum, desired_type);
-	  if (common_type != desired_type)
+	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
+	  if (tp_value_coerce (&src, &dest, (TP_DOMAIN *)
+			       pt_type_enum_to_db_domain (desired_type))
+	      != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,

@@ -184,6 +184,14 @@ static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser,
 #endif /* ENABLE_UNUSED_FUNCTION */
 static void pt_resolve_default_external (PARSER_CONTEXT * parser,
 					 PT_NODE * alter);
+static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser,
+				       PT_NODE * data_default_list);
+static PT_NODE *pt_find_default_expression (PARSER_CONTEXT * parser,
+					    PT_NODE * tree, void *arg,
+					    int *continue_walk);
+static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser,
+					    PT_NODE * tree, void *arg,
+					    int *continue_walk);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser,
 				       PT_NODE * attr_defs,
 				       PT_MISC_TYPE class_type,
@@ -3174,6 +3182,162 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 }
 
 /*
+ * pt_check_data_default () - checks data_default for semantic errors
+ *
+ * result	    	 : modified data_default
+ * parser(in)	    	 : parser context
+ * data_default_list(in) : data default node
+ */
+static PT_NODE *
+pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
+{
+  PT_NODE *result;
+  PT_NODE *default_value;
+  PT_NODE *save_next;
+  PT_NODE *node_ptr;
+  PT_NODE *data_default;
+  PT_NODE *prev;
+
+  if (pt_has_error (parser))
+    {
+      /* do nothing */
+      return data_default_list;
+    }
+
+  if (data_default_list == NULL
+      || data_default_list->node_type != PT_DATA_DEFAULT)
+    {
+      /* do nothing */
+      return data_default_list;
+    }
+
+  prev = NULL;
+  for (data_default = data_default_list; data_default;
+       data_default = data_default->next)
+    {
+      save_next = data_default->next;
+      data_default->next = NULL;
+
+      result = pt_semantic_type (parser, data_default, NULL);
+      if (result != NULL)
+	{
+	  /* change data_default */
+	  if (prev)
+	    {
+	      prev->next = result;
+	    }
+	  else
+	    {
+	      data_default_list = result;
+	    }
+	  data_default = result;
+	}
+      else
+	{
+	  /* an error has occurred, skip other checks */
+	  goto end;
+	}
+
+      default_value = data_default->info.data_default.default_value;
+
+      node_ptr = NULL;
+      (void) parser_walk_tree (parser, default_value,
+			       pt_find_default_expression, &node_ptr, NULL,
+			       NULL);
+      if (node_ptr != NULL && node_ptr != default_value)
+	{
+	  /* nested default expressions are not supported */
+	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
+		      pt_show_binopcode (node_ptr->info.expr.op));
+	  goto end;
+	}
+
+      node_ptr = NULL;
+      (void) parser_walk_tree (parser, default_value,
+			       pt_find_aggregate_function, &node_ptr, NULL,
+			       NULL);
+      if (node_ptr != NULL)
+	{
+	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		      pt_show_function (node_ptr->info.function.
+					function_type));
+	  goto end;
+	}
+    end:
+      data_default->next = save_next;
+      prev = data_default;
+    }
+
+  return data_default_list;
+}
+
+/*
+ * pt_find_default_expression () - find a default expression
+ *
+ * result	  :
+ * parser(in)	  :
+ * tree(in)	  :
+ * arg(in)	  : will point to default expression if any is found
+ * continue_walk  :
+ */
+static PT_NODE *
+pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree,
+			    void *arg, int *continue_walk)
+{
+  PT_NODE **default_expr = (PT_NODE **) arg;
+  if (tree == NULL || !PT_IS_EXPR_NODE (tree))
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  switch (tree->info.expr.op)
+    {
+    case PT_SYS_DATE:
+    case PT_SYS_DATETIME:
+    case PT_SYS_TIMESTAMP:
+    case PT_USER:
+    case PT_CURRENT_USER:
+    case PT_UNIX_TIMESTAMP:
+      *default_expr = tree;
+      *continue_walk = PT_STOP_WALK;
+    default:
+      break;
+    }
+  return tree;
+}
+
+/*
+ * pt_find_aggregate_function () - check if current expression contains an
+ *				    aggregate function
+ *
+ * result	  :
+ * parser(in)	  :
+ * tree(in)	  :
+ * arg(in)	  : will point to an aggregate function if any is found
+ * continue_walk  :
+ */
+static PT_NODE *
+pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree,
+			    void *arg, int *continue_walk)
+{
+  PT_NODE **agg_function = (PT_NODE **) arg;
+  if (tree == NULL || (!PT_IS_EXPR_NODE (tree) && !PT_IS_FUNCTION (tree)))
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  if (pt_is_aggregate_function (parser, tree))
+    {
+      *agg_function = tree;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_check_attribute_domain () - enforce composition hierarchy restrictions
  *      on a given list of attribute type definitions
  *   return:  none
@@ -3453,7 +3617,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   DB_OBJECT *db, *super;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
-  PT_NODE *name, *sup, *att, *qry, *attr;
+  PT_NODE *name, *sup, *att, *qry, *attr, *data_default;
   const char *cls_nam, *sup_nam, *att_nam;
   DB_ATTRIBUTE *db_att;
   DB_METHOD *db_mthd;
@@ -3537,6 +3701,12 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				 alter->info.alter.alter_clause.
 				 attr_mthd.attr_def_list, type, NULL,
 				 reuse_oid, alter);
+      for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	   attr; attr = attr->next)
+	{
+	  attr->info.attr_def.data_default =
+	    pt_check_data_default (parser, attr->info.attr_def.data_default);
+	}
       break;
     case PT_ALTER_DEFAULT:
       for (attr = alter->info.alter.alter_clause.ch_attr_def.attr_name_list;
@@ -3556,6 +3726,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      return;
 	    }
 	}
+      alter->info.alter.alter_clause.ch_attr_def.data_default_list =
+	pt_check_data_default (parser, alter->info.alter.alter_clause.
+			       ch_attr_def.data_default_list);
       /* fall through, no break */
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -3580,6 +3753,13 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	pt_check_attribute_domain (parser, att_def, type, NULL, reuse_oid,
 				   alter);
+	for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	     attr; attr = attr->next)
+	  {
+	    attr->info.attr_def.data_default =
+	      pt_check_data_default (parser,
+				     attr->info.attr_def.data_default);
+	  }
       }
       break;
     case PT_MODIFY_ATTR_MTHD:
@@ -3590,6 +3770,12 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       pt_check_mutable_attributes (parser, db,
 				   alter->info.alter.alter_clause.
 				   attr_mthd.attr_def_list);
+      for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	   attr; attr = attr->next)
+	{
+	  attr->info.attr_def.data_default =
+	    pt_check_data_default (parser, attr->info.attr_def.data_default);
+	}
       break;
     case PT_RENAME_ATTR_MTHD:
       if (is_partitioned && keyattr[0]
@@ -6631,10 +6817,10 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 static void
 pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE * user_name;
-  char * name;
+  PT_NODE *user_name;
+  char *name;
   int name_upper_size;
-  
+
   if (!node)
     {
       return;
@@ -6924,19 +7110,10 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (!pt_has_error (parser))
+  for (attr = node->info.create_entity.attr_def_list; attr; attr = attr->next)
     {
-      PT_NODE *result;
-      for (attr = node->info.create_entity.attr_def_list; attr;
-	   attr = attr->next)
-	{
-	  result = pt_semantic_type (parser, attr->info.attr_def.data_default,
-				     NULL);
-	  if (result != NULL)
-	    {
-	      attr->info.attr_def.data_default = result;
-	    }
-	}
+      attr->info.attr_def.data_default =
+	pt_check_data_default (parser, attr->info.attr_def.data_default);
     }
 }
 

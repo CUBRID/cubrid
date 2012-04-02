@@ -1536,6 +1536,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 241 User name is too long.
 242 Constant expression cannot be used as function index.
 243 Class name or alias is not unique in list: '%s'
+244 Invalid DEFAULT clause. '%s' cannot be used in a nested expression.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
