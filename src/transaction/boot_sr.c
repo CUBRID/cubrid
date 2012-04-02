@@ -1089,14 +1089,13 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
     {
       volid = boot_add_volume (thread_p, vol_fullname, "Volume Extension",
 			       ext_npages, ext_purpose, ext_overwrite);
+      if (volid != NULL_VOLID)
+	{
+	  (void) disk_goodvol_refresh_with_new (thread_p, volid);
+	}
     }
 
   csect_exit (CSECT_BOOT_SR_DBPARM);
-
-  if (volid != NULL_VOLID)
-    {
-      (void) disk_goodvol_refresh_with_new (thread_p, volid);
-    }
 
   return volid;
 }
@@ -1417,7 +1416,6 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   const char *temp_name;
   char temp_path_buf[PATH_MAX];
   DKNPAGES ext_npages, part_npages;
-  bool temp_is_added = false;
 
   if (boot_Temp_volumes_max_pages == -2)
     {
@@ -1571,18 +1569,12 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	  if (temp_volid != NULL_VOLID)
 	    {
 	      boot_Temp_volumes_tpgs += ext_npages;
-	      temp_is_added = true;
+	      (void) disk_goodvol_refresh_with_new (thread_p, temp_volid);
 	    }
 	}
     }
 
   csect_exit (CSECT_BOOT_SR_DBPARM);
-
-  if (temp_is_added == true)
-    {
-      assert (temp_volid != NULL_VOLID);
-      (void) disk_goodvol_refresh_with_new (thread_p, temp_volid);
-    }
 
   return temp_volid;
 }

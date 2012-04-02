@@ -520,9 +520,19 @@ disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p, INT16 volid)
 {
   bool answer;
 
+  /*
+   * using csect_enter() for the safety instead of an assert()
+   * assert (csect_check_own (thread_p, CSECT_BOOT_SR_DBPARM) == 1)
+   */
+  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
+    {
+      return false;
+    }
+
   if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
       NO_ERROR)
     {
+      csect_exit (CSECT_BOOT_SR_DBPARM);
       return false;
     }
 
@@ -536,6 +546,7 @@ disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p, INT16 volid)
     }
 
   csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (CSECT_BOOT_SR_DBPARM);
 
   return answer;
 }
@@ -2025,6 +2036,8 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
 
   vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  assert (csect_check_own (thread_p, CSECT_BOOT_SR_DBPARM) == 1);
 
   if (min_pages < DISK_EXPAND_TMPVOL_INCREMENTS
       && max_pages > DISK_EXPAND_TMPVOL_INCREMENTS)

@@ -140,6 +140,7 @@ extern void csect_dump_statistics (FILE * fp);
 #define csect_enter_critical_section_as_reader(a, b, c)
 #define csect_exit_critical_section(a)
 #define csect_check_own_critical_section(a, b)
+#define csect_check_own(a, b) 1
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */
