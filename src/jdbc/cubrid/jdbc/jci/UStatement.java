@@ -446,10 +446,6 @@ public class UStatement {
 
 	public void addBatch() {
 		errorHandler = new UError();
-		if (isClosed == true) {
-			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-			return;
-		}
 
 		if (bindParameter == null)
 			return;
