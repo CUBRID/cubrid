@@ -1740,6 +1740,9 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		  if (long_recdes.data == NULL)
 		    {
 		      error = ER_OUT_OF_VIRTUAL_MEMORY;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      long_recdes.area_size);
 		      goto exit_on_error;
 		    }
 		}
@@ -1937,7 +1940,10 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	  error = NO_ERROR;
 	  temp_recdes.data = NULL;
 	  long_recdes.area_size = 0;
-	  long_recdes.data = NULL;
+	  if (long_recdes.data)
+	    {
+	      free_and_init (long_recdes.data);
+	    }
 
 	  if (sort_read_area (thread_p, &sort_param->temp[0], 0, 1,
 			      output_buffer) != NO_ERROR
