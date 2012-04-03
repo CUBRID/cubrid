@@ -2715,12 +2715,15 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	    {
 	      (void) pr_clone_value (val, hv);
 	    }
-	  else if (DB_VALUE_TYPE (hv) != DB_TYPE_NULL)
+	  else
 	    {
-	      /* hv: value is null || (value is not null && type is null)
+	      /* hv: type is not null
 	         the user are setting new host variables;
 	         host variable place holders were used before */
-	      (void) pr_clear_value (hv);
+	      if (!DB_IS_NULL (hv))
+		{
+		  pr_clear_value (hv);
+		}
 	      hv_dom = tp_domain_resolve_value (hv, NULL);
 	      val_dom = tp_domain_resolve_value (val, NULL);
 	      if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_ENUMERATION)
@@ -2734,8 +2737,9 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	      else
 		{
 		  if (!hv_dom ||
-		      tp_value_cast (val, hv, hv_dom,
-				     false) != DOMAIN_COMPATIBLE)
+		      tp_value_cast_preserve_domain (val, hv, hv_dom, false,
+						     true) !=
+		      DOMAIN_COMPATIBLE)
 		    {
 		      typ = DB_VALUE_DOMAIN_TYPE (hv);
 		      PT_ERRORmf2 (parser, NULL,
@@ -2752,42 +2756,6 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 						hv_dom->precision,
 						hv_dom->scale);
 			}
-		    }
-		}
-	    }
-	  else
-	    {
-	      /* hv: value is not null && type is not null
-	         host variable place holders are preset
-	         with the expected domains */
-	      typ = DB_VALUE_DOMAIN_TYPE (hv);
-	      val_typ = DB_VALUE_DOMAIN_TYPE (val);
-	      hv_dom = tp_domain_resolve_value (hv, NULL);
-	      if (typ == DB_TYPE_ENUMERATION)
-		{
-		  (void) pr_clone_value (val, hv);
-		}
-	      else if (typ == DB_TYPE_NUMERIC && typ == val_typ && hv_dom
-		       && (hv_dom->precision < DB_VALUE_PRECISION (val)
-			   || hv_dom->scale < DB_VALUE_SCALE (val)))
-		{
-		  /* we had made a miss prediction for numeric type */
-		  (void) pr_clone_value (val, hv);
-		}
-	      else if (!hv_dom ||
-		       tp_value_cast (val, hv, hv_dom,
-				      false) != DOMAIN_COMPATIBLE)
-		{
-		  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-			       pt_type_enum_to_db_domain_name
-			       (pt_db_to_type_enum (typ)));
-		  num_errors++;
-		  if (hv_dom)
-		    {
-		      /* restore original type */
-		      db_value_domain_init (hv, TP_DOMAIN_TYPE (hv_dom),
-					    hv_dom->precision, hv_dom->scale);
 		    }
 		}
 	    }

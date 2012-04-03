@@ -561,7 +561,7 @@ static TP_DOMAIN_STATUS
 tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 			const TP_DOMAIN * desired_domain,
 			TP_COERCION_MODE coercion_mode,
-			bool do_domain_select);
+			bool do_domain_select, bool preserve_domain);
 static int oidcmp (OID * oid1, OID * oid2);
 static int tp_domain_match_internal (const TP_DOMAIN * dom1,
 				     const TP_DOMAIN * dom2, TP_MATCH exact,
@@ -6076,12 +6076,13 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
  *    coercion_mode(in): flag for the coercion mode
  *    do_domain_select(in): flag for select appropriate domain from
  *                          'desired_domain'
+ *    preserve_domain(in): flag to preserve dest's domain
  */
 static TP_DOMAIN_STATUS
 tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 			const TP_DOMAIN * desired_domain,
 			const TP_COERCION_MODE coercion_mode,
-			bool do_domain_select)
+			bool do_domain_select, bool preserve_domain)
 {
   DB_TYPE desired_type, original_type;
   int err;
@@ -6100,13 +6101,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
   err = NO_ERROR;
   status = DOMAIN_COMPATIBLE;
 
-  /* A NULL src is allowed but destination remains NULL, not desired_domain */
-  if (src == NULL || (original_type = DB_VALUE_TYPE (src)) == DB_TYPE_NULL)
-    {
-      db_make_null (dest);
-      return (status);
-    }
-
   if (desired_domain == NULL)
     {
       db_make_null (dest);
@@ -6124,6 +6118,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	}
     }
   desired_type = TP_DOMAIN_TYPE (desired_domain);
+
+  /* A NULL src is allowed but destination remains NULL, not desired_domain */
+  if (src == NULL || (original_type = DB_VALUE_TYPE (src)) == DB_TYPE_NULL)
+    {
+      if (preserve_domain)
+	{
+	  db_value_domain_init (dest, desired_type, desired_domain->precision,
+				desired_domain->scale);
+	  db_value_put_null (dest);
+	}
+      else
+	{
+	  db_make_null (dest);
+	}
+      return (status);
+    }
 
   if (desired_type == original_type)
     {
@@ -6174,7 +6184,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
     {
       if (TP_IMPLICIT_COERCION_NOT_ALLOWED (original_type, desired_type))
 	{
-	  db_make_null (dest);
+	  if (preserve_domain)
+	    {
+	      db_value_domain_init (dest, desired_type,
+				    desired_domain->precision,
+				    desired_domain->scale);
+	      db_value_put_null (dest);
+	    }
+	  else
+	    {
+	      db_make_null (dest);
+	    }
 	  return DOMAIN_INCOMPATIBLE;
 	}
     }
@@ -6183,7 +6203,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
     {
       if (TP_STRICT_COERCION_ONLY_ALLOWED (original_type, desired_type))
 	{
-	  db_make_null (dest);
+	  if (preserve_domain)
+	    {
+	      db_value_domain_init (dest, desired_type,
+				    desired_domain->precision,
+				    desired_domain->scale);
+	      db_value_put_null (dest);
+	    }
+	  else
+	    {
+	      db_make_null (dest);
+	    }
 	  return DOMAIN_INCOMPATIBLE;
 	}
     }
@@ -6801,7 +6831,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -6874,7 +6904,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -6932,7 +6962,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -7048,7 +7078,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -7338,7 +7368,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	case DB_TYPE_BLOB:
@@ -7349,7 +7379,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      {
 		err = tp_value_cast_internal (&tmpval, dest, desired_domain,
 					      coercion_mode,
-					      do_domain_select);
+					      do_domain_select, false);
 	      }
 	  }
 	  break;
@@ -7428,7 +7458,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		status =
 		  tp_value_cast_internal (&varchar_val, target,
 					  desired_domain, coercion_mode,
-					  do_domain_select);
+					  do_domain_select, false);
 	      }
 	    break;
 	  }
@@ -7693,7 +7723,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    err =
 		      tp_value_cast_internal (&tmpval, dest, desired_domain,
 					      coercion_mode,
-					      do_domain_select);
+					      do_domain_select, false);
 		  }
 	      }
 	      break;
@@ -7732,7 +7762,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -7762,7 +7792,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    status =
 	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select);
+				      coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -7895,7 +7925,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		tp_value_cast_internal (src, &val,
 					tp_domain_resolve_default
 					(DB_TYPE_STRING), coercion_mode,
-					do_domain_select);
+					do_domain_select, false);
 	      if (status == DOMAIN_COMPATIBLE)
 		{
 		  val_str = DB_GET_STRING (&val);
@@ -8038,7 +8068,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
       if (src != dest)
 	{
 	  /* make sure this doesn't have any partial results */
-	  db_make_null (dest);
+	  if (preserve_domain)
+	    {
+	      db_value_domain_init (dest, desired_type,
+				    desired_domain->precision,
+				    desired_domain->scale);
+	      db_value_put_null (dest);
+	    }
+	  else
+	    {
+	      db_make_null (dest);
+	    }
 	}
     }
   else if (src == dest)
@@ -8068,7 +8108,30 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest,
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  return tp_value_cast_internal (src, dest, desired_domain, mode, true);
+  return tp_value_cast_internal (src, dest, desired_domain, mode, true,
+				 false);
+}
+
+/*
+ * tp_value_cast_preserve_domain - Coerce a value into one of another domain.
+ *    return: TP_DOMAIN_STATUS
+ *    src(in): src DB_VALUE
+ *    dest(out): dest DB_VALUE
+ *    desired_domain(in):
+ *    implicit_coercion(in): flag for the coercion is implicit
+ *    preserve_domain(in): flag to preserve dest's domain
+ * Note:
+ *    This function dose not change the domain type of dest to a DB_NULL_TYPE.
+ */
+TP_DOMAIN_STATUS
+tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
+			       const TP_DOMAIN * desired_domain,
+			       bool implicit_coercion, bool preserve_domain)
+{
+  TP_COERCION_MODE mode;
+
+  mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
+  return tp_value_cast_internal (src, dest, desired_domain, mode, true, true);
 }
 
 /*
@@ -8089,7 +8152,8 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  return tp_value_cast_internal (src, dest, desired_domain, mode, false);
+  return tp_value_cast_internal (src, dest, desired_domain, mode, false,
+				 false);
 }
 
 /*
@@ -8106,7 +8170,7 @@ tp_value_strict_cast (const DB_VALUE * src, DB_VALUE * dest,
 		      const TP_DOMAIN * desired_domain)
 {
   return tp_value_cast_internal (src, dest, desired_domain,
-				 TP_STRICT_COERCION, true);
+				 TP_STRICT_COERCION, true, false);
 }
 
 /*
