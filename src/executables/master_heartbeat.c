@@ -2505,6 +2505,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
+  proc->conn = NULL;
 
   if (proc->state < HB_PSTATE_REGISTERED)
     {
@@ -2546,7 +2547,6 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   proc->state = HB_PSTATE_DEAD;
   proc->pid = 0;
   proc->sfd = INVALID_SOCKET;
-  proc->conn = NULL;
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
