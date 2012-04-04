@@ -244,6 +244,8 @@ session_states_init (THREAD_ENTRY * thread_p)
 {
   sessions.last_sesson_id = 0;
 
+  er_log_debug (ARG_FILE_LINE, "creating session states table\n");
+
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
@@ -254,8 +256,6 @@ session_states_init (THREAD_ENTRY * thread_p)
       csect_exit (CSECT_SESSION_STATE);
       return NO_ERROR;
     }
-
-  er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 
   sessions.sessions_table = mht_create ("Sessions_State_Table",
 					SESSIONS_HASH_SIZE, sessions_hash,
@@ -290,12 +290,12 @@ session_states_finalize (THREAD_ENTRY * thread_p)
       session_states_dump (thread_p);
     }
 
+  er_log_debug (ARG_FILE_LINE, "deleting session state table\n");
+
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return;
     }
-
-  er_log_debug (ARG_FILE_LINE, "deleting session state table\n");
 
   if (sessions.sessions_table != NULL)
     {
@@ -500,12 +500,12 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
 {
   int error = NO_ERROR;
 
+  er_log_debug (ARG_FILE_LINE, "removing session %u", session_id);
+
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
-
-  er_log_debug (ARG_FILE_LINE, "removing session %u", session_id);
 
   error = mht_rem (sessions.sessions_table, &session_id,
 		   session_free_session, NULL);
@@ -536,31 +536,30 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
   SESSION_STATE *session_p = NULL;
   int error = NO_ERROR;
 
+  er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n",
+		session_id);
+
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n",
-		session_id);
-
   session_p = (SESSION_STATE *) mht_get (sessions.sessions_table,
 					 &session_id);
   if (session_p == NULL)
     {
+      csect_exit (CSECT_SESSION_STATE);
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      error = ER_SES_SESSION_EXPIRED;
-      goto cleanup;
+      return ER_SES_SESSION_EXPIRED;
     }
 
   /* update the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
     {
-      error = ER_FAILED;
-      goto cleanup;
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
     }
 
-cleanup:
   csect_exit (CSECT_SESSION_STATE);
 
   return error;
@@ -1111,11 +1110,13 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
     }
+
   if (force == false && state_p->is_last_insert_id_generated == true)
     {
       csect_exit (CSECT_SESSION_STATE);
       return NO_ERROR;
     }
+
   if (!need_coercion)
     {
       pr_clone_value ((DB_VALUE *) value, &state_p->last_insert_id);
@@ -1321,6 +1322,8 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
       goto error;
     }
 
+  er_log_debug (ARG_FILE_LINE, "create statement %s(%d)\n", name, id);
+
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       err = ER_FAILED;
@@ -1334,14 +1337,13 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
       goto error;
     }
 
-  er_log_debug (ARG_FILE_LINE, "create statement %s(%d)\n", name, id);
-
   state_p = mht_get (sessions.sessions_table, &id);
   if (state_p == NULL)
     {
+      csect_exit (CSECT_SESSION_STATE);
+
       er_log_debug (ARG_FILE_LINE, "session with id %d not found\n", id);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      csect_exit (CSECT_SESSION_STATE);
       err = ER_FAILED;
       goto error;
     }
@@ -1381,9 +1383,9 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
 
       if (cnt >= MAX_PREPARED_STATEMENTS_COUNT)
 	{
+	  csect_exit (CSECT_SESSION_STATE);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_SES_TOO_MANY_STATEMENTS, 0);
-	  csect_exit (CSECT_SESSION_STATE);
 	  err = ER_FAILED;
 	  goto error;
 	}
@@ -1399,9 +1401,9 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, id);
-
   csect_exit (CSECT_SESSION_STATE);
+
+  er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, id);
 
   return NO_ERROR;
 
@@ -1460,6 +1462,9 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       return ER_FAILED;
     }
 
+  er_log_debug (ARG_FILE_LINE, "getting info for %s from session_id %d\n",
+		name, id);
+
   if (csect_enter_as_reader (thread_p, CSECT_SESSION_STATE, INF_WAIT)
       != NO_ERROR)
     {
@@ -1472,14 +1477,11 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       return ER_FAILED;
     }
 
-  er_log_debug (ARG_FILE_LINE, "getting info for %s from session_id %d\n",
-		name, id);
-
   state_p = mht_get (sessions.sessions_table, &id);
   if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
 
@@ -1494,9 +1496,9 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
   if (stmt_p == NULL)
     {
       /* prepared statement not found */
+      csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_PREPARED_NAME_NOT_FOUND,
 	      1, name);
-      csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
     }
 
@@ -1513,9 +1515,11 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       data = (char *) malloc (stmt_p->info_length);
       if (data == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, stmt_p->info_length);
+	  int len = stmt_p->info_length;
+
 	  csect_exit (CSECT_SESSION_STATE);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, len);
 	  return ER_FAILED;
 	}
       memcpy (data, stmt_p->info, stmt_p->info_length);
@@ -1574,6 +1578,8 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
       return ER_FAILED;
     }
 
+  er_log_debug (ARG_FILE_LINE, "dropping %s from session_id %d\n", name, id);
+
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
@@ -1585,13 +1591,11 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
       return ER_FAILED;
     }
 
-  er_log_debug (ARG_FILE_LINE, "dropping %s from session_id %d\n", name, id);
-
   state_p = mht_get (sessions.sessions_table, &id);
   if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
 
@@ -1739,8 +1743,8 @@ session_define_variable (THREAD_ENTRY * thread_p, DB_VALUE * name,
   state_p = mht_get (sessions.sessions_table, &id);
   if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
 
@@ -1800,8 +1804,8 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   state_p = mht_get (sessions.sessions_table, &id);
   if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
 
@@ -1831,6 +1835,8 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 	  var_name[name_len] = 0;
 	}
 
+      csect_exit (CSECT_SESSION_STATE);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_VARIABLE_NOT_FOUND, 1,
 	      var_name);
 
@@ -1839,7 +1845,6 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 	  free_and_init (var_name);
 	}
 
-      csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
     }
 
@@ -2399,6 +2404,7 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
+
   sentry_p = state_p->queries;
   while (sentry_p != NULL)
     {
@@ -2410,10 +2416,11 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p,
 	}
       sentry_p = sentry_p->next;
     }
+
   csect_exit (CSECT_SESSION_STATE);
+
   return ER_FAILED;
 }
-
 
 /*
  * session_remove_query_entry_info () - remove a query entry from the holdable
@@ -2454,6 +2461,7 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
+
   sentry_p = state_p->queries;
   while (sentry_p != NULL)
     {
@@ -2476,7 +2484,9 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p,
       prev = sentry_p;
       sentry_p = sentry_p->next;
     }
+
   csect_exit (CSECT_SESSION_STATE);
+
   return NO_ERROR;
 }
 
@@ -2520,6 +2530,7 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
+
   sentry_p = state_p->queries;
   while (sentry_p != NULL)
     {
@@ -2540,6 +2551,8 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p,
       prev = sentry_p;
       sentry_p = sentry_p->next;
     }
+
   csect_exit (CSECT_SESSION_STATE);
+
   return NO_ERROR;
 }
