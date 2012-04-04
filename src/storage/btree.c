@@ -13305,13 +13305,16 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	{
 	  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE,
 				   PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
-
 	  if (bts->C_page == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DESC_ISCAN_ABORTED,
-		      3, bts->btid_int.sys_btid->vfid.volid,
-		      bts->btid_int.sys_btid->vfid.fileid,
-		      bts->btid_int.sys_btid->root_pageid);
+	      if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_DESC_ISCAN_ABORTED, 3,
+			  bts->btid_int.sys_btid->vfid.volid,
+			  bts->btid_int.sys_btid->vfid.fileid,
+			  bts->btid_int.sys_btid->root_pageid);
+		}
 	      goto exit_on_error;
 	    }
 	}
