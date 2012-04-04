@@ -802,7 +802,7 @@ la_log_fetch_from_archive (LOG_PAGEID pageid, char *data)
   int arv_log_num;
   bool need_guess = true;
   struct log_arv_header *log_hdr = NULL;
-  int fpageid;
+  LOG_PAGEID fpageid;
   int npages;
 
   if (la_Info.arv_log.log_vdes != NULL_VOLDES
@@ -2550,7 +2550,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid,
   struct log_replication *repl_log;
   LOG_PAGE *repl_log_pgptr;
   PGLENGTH offset;
-  int pageid;
+  LOG_PAGEID pageid;
   int length;			/* type change PGLENGTH -> int */
   char *ptr;
 
