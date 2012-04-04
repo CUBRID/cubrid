@@ -3617,7 +3617,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   DB_OBJECT *db, *super;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
-  PT_NODE *name, *sup, *att, *qry, *attr, *data_default;
+  PT_NODE *name, *sup, *att, *qry, *attr;
   const char *cls_nam, *sup_nam, *att_nam;
   DB_ATTRIBUTE *db_att;
   DB_METHOD *db_mthd;

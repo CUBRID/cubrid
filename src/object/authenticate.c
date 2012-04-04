@@ -65,6 +65,7 @@
 #include "object_print.h"
 #include "execute_statement.h"
 #include "optimizer.h"
+#include "network_interface_cl.h"
 #include "dbval.h"		/* this must be the last header file included */
 
 #if defined(SA_MODE)

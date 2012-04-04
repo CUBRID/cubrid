@@ -19176,13 +19176,11 @@ pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
 {
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
-  int nterms;
   TP_DOMAIN *key_type;
-  ATTR_STATS *attr_stats;
-  int idx;
+  int nterms;
   int i;
-  bool desc;
   int seg_idx;
+  bool desc;
   PT_NODE *cur_node;
   QO_ENV *env;
 

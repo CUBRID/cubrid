@@ -389,7 +389,7 @@ cci_connect_with_url (char *url, char *user, char *password)
   char *p, *q, *end;
   char *host, *dbname;
   int port;
-  int error, i;
+  int error;
   int con_handle_id;
   bool use_url = false;
   T_CON_HANDLE *con_handle = NULL;
@@ -4517,7 +4517,6 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 {
   int error;
   int i;
-  int host_id;
   int remained_time = 0;
 
   *connect = 0;

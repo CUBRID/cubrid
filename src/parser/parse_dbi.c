@@ -405,14 +405,14 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser,
   SM_DEFAULT_VALUE *default_value;
   PT_NODE *data_type;
 
-  if (!sm_attr || !(&sm_attr->default_value))
+  if (sm_attr == NULL || &sm_attr->default_value == NULL)
     {
       return NULL;
     }
 
   default_value = &sm_attr->default_value;
 
-  if (!default_value)
+  if (default_value == NULL)
     {
       return NULL;
     }
@@ -420,13 +420,8 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser,
   if (default_value->default_expr == DB_DEFAULT_NONE)
     {
       result = pt_dbval_to_value (parser, &default_value->value);
-      if (!result)
+      if (result == NULL)
 	{
-	  if (!pt_has_error (parser))
-	    {
-	      PT_ERRORm (parser, sm_attr, MSGCAT_SET_ERROR,
-			 -(ER_GENERIC_ERROR));
-	    }
 	  return NULL;
 	}
     }
@@ -443,7 +438,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser,
     }
 
   data_type = parser_new_node (parser, PT_DATA_TYPE);
-  if (!data_type)
+  if (data_type == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
       parser_free_tree (parser, result);
@@ -2638,7 +2633,7 @@ void
 pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 {
   DB_VALUE *val, *hv;
-  DB_TYPE typ, val_typ;
+  DB_TYPE typ;
   TP_DOMAIN *hv_dom, *val_dom;
   int num_errors, i;
 

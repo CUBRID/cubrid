@@ -5797,7 +5797,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *rest_attrs, *rest_values;
   SM_CLASS *sm_class;
   DB_OBJECT *db_obj;
-  DB_ATTRIBUTE *db_attributes, *db_attr;
+  SM_ATTRIBUTE *db_attributes, *db_attr;
   int is_values;
   int is_subqery;
 
@@ -5840,7 +5840,8 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   rest_attrs = NULL;
   rest_values = NULL;
 
-  for (db_attr = db_attributes; db_attr; db_attr = db_attr->header.next)
+  for (db_attr = db_attributes; db_attr; 
+       db_attr = (SM_ATTRIBUTE *) db_attr->header.next)
     {
       char *name = db_attr->header.name;
 

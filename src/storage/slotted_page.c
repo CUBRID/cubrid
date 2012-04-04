@@ -1709,7 +1709,6 @@ int
 spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 		   RECDES * record_descriptor_p, void *slot_p)
 {
-  SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *tmp_slot_p;
 
   assert (page_p != NULL);
@@ -1826,7 +1825,6 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
-  int waste;
   int status;
 
   assert (page_p != NULL);

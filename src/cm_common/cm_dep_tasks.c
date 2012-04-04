@@ -44,6 +44,7 @@
 #include "utility.h"
 #include "environment_variable.h"
 #include "cm_stat.h"
+#include "intl_support.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);

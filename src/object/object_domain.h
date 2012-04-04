@@ -93,7 +93,6 @@ typedef struct tp_domain
 
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
-
 } TP_DOMAIN;
 
 
@@ -114,12 +113,10 @@ typedef struct tp_domain
 
 typedef struct tp_alloc_context
 {
-
   void *(*alloc_func) (int size, ...);	/* optional second argument */
   void *alloc_args;
   void (*free_func) (void *mem, ...);	/* optional second argument */
   void *free_args;
-
 } TP_ALLOC_CONTEXT;
 
 #define TP_ALLOC(con, size) \
@@ -179,7 +176,6 @@ extern TP_DOMAIN tp_Enumeration_domain;
 
 typedef enum tp_domain_status
 {
-
   DOMAIN_COMPATIBLE = 0,	/* success */
   DOMAIN_INCOMPATIBLE,		/* can't be coerced */
   DOMAIN_OVERFLOW,		/* value out of range */
@@ -193,7 +189,6 @@ typedef enum tp_domain_status
  */
 typedef enum tp_match
 {
-
   TP_ANY_MATCH,			/* Any coercible domain matches. */
   TP_EXACT_MATCH,		/* Domain must match exactly.  */
   TP_STR_MATCH,			/* "String" domains match subject to length

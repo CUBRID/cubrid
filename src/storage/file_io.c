@@ -1715,11 +1715,11 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
   else
     {
 #if defined(WINDOWS)
-      fileio_unlock_file (fd, 0, SEEK_SET, 0);
+      error = fileio_unlock_file (fd, 0, SEEK_SET, 0);
 #else /* WINDOWS */
       error = fileio_release_lock (fd);
-      assert_release (error == NO_ERROR);
 #endif /* !WINDOWS */
+      assert_release (error == NO_ERROR);
 
       er_log_debug (ARG_FILE_LINE, "unable to open lock_file (%s)",
 		    lock_path);
@@ -1764,7 +1764,6 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
   off_t end_offset;
   FILE *fp = NULL;
   char lock_dir[PATH_MAX], lock_path[PATH_MAX];
-  char format_string[PATH_MAX];
 
   envvar_vardir_file (lock_dir, sizeof (lock_dir), "APPLYLOGDB");
   snprintf (lock_path, sizeof (lock_path), "%s/%s", lock_dir, db_name);
@@ -1810,9 +1809,10 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
     }
 
 #if defined(WINDOWS)
-  fileio_unlock_file ((*lockf_vdes), 0, SEEK_SET, 0);
+  error = fileio_unlock_file ((*lockf_vdes), 0, SEEK_SET, 0);
 #else /* WINDOWS */
   error = fileio_release_lock ((*lockf_vdes));
+#endif /* !WINDOWS */
   if (error == NO_ERROR)
     {
       result = FILEIO_NOT_LOCKF;
@@ -1822,7 +1822,6 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
       assert_release (error == NO_ERROR);
       result = FILEIO_LOCKF;
     }
-#endif /* !WINDOWS */
 
   if (result == FILEIO_NOT_LOCKF)
     {

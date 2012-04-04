@@ -12721,7 +12721,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  {
 	    TP_DOMAIN *arg1_domain, *arg2_domain, *arg3_domain;
 	    TP_DOMAIN tmp_arg1_domain, tmp_arg2_domain, tmp_arg3_domain;
-	    PT_NODE *target_node;
 
 	    arg1_domain = tp_domain_resolve_value (arg1, &tmp_arg1_domain);
 	    arg2_domain = tp_domain_resolve_value (arg2, &tmp_arg2_domain);
