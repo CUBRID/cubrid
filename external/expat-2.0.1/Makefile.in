@@ -181,7 +181,12 @@ run-xmltest: xmlwf/xmlwf tests/XML-Test-Suite
 .c.lo:
 	$(LTCOMPILE) -o $@ -c $<
 
+distdir:
+	if test -n "$(distdir)"; then \
+		cp -pR $(srcdir)/* $(distdir)/; \
+	fi
+
 .PHONY: buildlib all \
 	clean distclean extraclean maintainer-clean \
-	dist distdir \
+	dist distdir dvi installcheck distuninstallcheck distcleancheck \
 	install uninstall

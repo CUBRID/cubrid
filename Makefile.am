@@ -30,7 +30,8 @@ endif
 
 dist-hook: 
 	@list='@EXTERNAL_PKGS@'; for subdir in $$list; do \
-	  if [ -f $(top_srcdir)/external/$$subdir/configure.gnu ]; then \
+	  if test -f $(top_srcdir)/external/$$subdir/configure.gnu \
+	     -a ! -f $(distdir)/external/$$subdir/configure.gnu; then \
 	    cp $(top_srcdir)/external/$$subdir/configure.gnu $(distdir)/external/$$subdir; \
 	  fi; \
 	done;
