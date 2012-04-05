@@ -274,6 +274,7 @@ static int pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain);
 static int pt_init_pred_expr_context (PARSER_CONTEXT * parser,
 				      PT_NODE * predicate, PT_NODE * spec,
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
+static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
@@ -287,10 +288,16 @@ static int pt_init_pred_expr_context (PARSER_CONTEXT * parser,
         xasl_head = xasl_tail;                                          \
     }
 
+#define VALIDATE_REGU_KEY_HELPER(r) ((r)->type == TYPE_CONSTANT  || \
+				     (r)->type == TYPE_DBVAL     || \
+				     (r)->type == TYPE_POS_VALUE || \
+				     (r)->type == TYPE_INARITH)
+
 #define VALIDATE_REGU_KEY(r) ((r)->type == TYPE_CONSTANT  || \
                               (r)->type == TYPE_DBVAL     || \
                               (r)->type == TYPE_POS_VALUE || \
-                              (r)->type == TYPE_INARITH)
+                              ((r)->type == TYPE_INARITH \
+				&& validate_regu_key_function_index ((r))))
 
 typedef struct xasl_supp_info
 {
@@ -20279,4 +20286,114 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 error_exit:
   PT_INTERNAL_ERROR (parser, "allocate new node");
   return NULL;
+}
+
+static bool 
+validate_regu_key_function_index (REGU_VARIABLE * regu_var)
+{
+  if (regu_var->type == TYPE_INARITH)
+    {
+      switch (regu_var->value.arithptr->opcode)
+	{
+	case T_MOD:
+	case T_LEFT:
+	case T_RIGHT:
+	case T_REPEAT:
+	case T_SPACE:
+	case T_MID:
+	case T_STRCMP:
+	case T_REVERSE:
+	case T_BIT_COUNT:
+	case T_FLOOR:
+	case T_CEIL:
+	case T_ABS:
+	case T_POWER:
+	case T_ROUND:
+	case T_LOG:
+	case T_EXP:
+	case T_SQRT:
+	case T_SIN:
+	case T_COS:
+	case T_TAN:
+	case T_COT:
+	case T_ACOS:
+	case T_ASIN:
+	case T_ATAN:
+	case T_ATAN2:
+	case T_DEGREES:
+	case T_DATE:
+	case T_TIME:
+	case T_RADIANS:
+	case T_LN:
+	case T_LOG2:
+	case T_LOG10:
+	case T_TRUNC:
+	case T_CHR:
+	case T_INSTR:
+	case T_LEAST:
+	case T_GREATEST:
+	case T_POSITION:
+	case T_LOWER:
+	case T_UPPER:
+	case T_LTRIM:
+	case T_RTRIM:
+	case T_FROM_UNIXTIME:
+	case T_SUBSTRING_INDEX:
+	case T_MD5:
+	case T_LPAD:
+	case PT_RPAD:
+	case T_REPLACE:
+	case T_TRANSLATE:
+	case T_ADD_MONTHS:
+	case T_LAST_DAY:
+	case T_UNIX_TIMESTAMP:
+	case T_STR_TO_DATE:
+	case T_TIME_FORMAT:
+	case T_TIMESTAMP:
+	case T_YEAR:
+	case T_MONTH:
+	case T_DAY:
+	case T_HOUR:
+	case PT_MINUTE:
+	case T_SECOND:
+	case T_QUARTER:
+	case T_WEEKDAY:
+	case T_DAYOFWEEK:
+	case T_DAYOFYEAR:
+	case T_TODAYS:
+	case T_FROMDAYS:
+	case T_TIMETOSEC:
+	case T_SECTOTIME:
+	case T_MAKEDATE:
+	case T_MAKETIME:
+	case T_WEEK:
+	case T_MONTHS_BETWEEN:
+	case T_FORMAT:
+	case T_DATE_FORMAT:
+	case T_ADDDATE:
+	case T_DATEDIFF:
+	case T_TIMEDIFF:
+	case T_SUBDATE:
+	  break;
+	default:
+	  return true;
+	}
+      if (regu_var->value.arithptr->leftptr && 
+	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->leftptr))
+	{
+	  return false;
+	}
+      if (regu_var->value.arithptr->rightptr && 
+	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->rightptr))
+	{
+	  return false;
+	}
+      if (regu_var->value.arithptr->thirdptr && 
+	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->thirdptr))
+	{
+	  return false;
+	}
+      return true;
+    }
+  return true;
 }
