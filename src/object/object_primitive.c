@@ -9884,8 +9884,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 static int
 mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
-  int src_length, precision;
-  int src_chars;
+  int src_length;
   char *str;
   int rc = NO_ERROR;
 
@@ -9896,18 +9895,6 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  src_length = strlen (str);
 	}
-
-#if !defined(NDEBUG)
-      intl_char_count ((unsigned char *) str, src_length, lang_charset (),
-		       &src_chars);
-
-      precision = DB_VALUE_PRECISION (value);
-      if (precision != TP_FLOATING_PRECISION_VALUE && src_chars > precision)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
-#endif
 
       if (align == INT_ALIGNMENT)
 	{
@@ -9929,7 +9916,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
 {
   int pad, precision;
   char *new_, *start = NULL;
-  int str_length, str_chars;
+  int str_length;
   int rc = NO_ERROR;
 
   if (value == NULL)
@@ -9960,27 +9947,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
       if (!copy)
 	{
 	  str_length = or_get_varchar_length (buf, &rc);
-#if !defined(NDEBUG)
-	  if (str_length >= 0)
+	  if (rc == NO_ERROR)
 	    {
-	      intl_char_count ((unsigned char *) buf->ptr, str_length,
-			       lang_charset (), &str_chars);
+	      db_make_varchar (value, precision, buf->ptr, str_length);
+	      value->need_clear = false;
+	      rc = or_skip_varchar_remainder (buf, str_length, align);
 	    }
-#endif
-	  if (str_length < 0 || rc != NO_ERROR
-#if !defined(NDEBUG)
-	      || (precision != TP_FLOATING_PRECISION_VALUE
-		  && str_chars > precision)
-#endif
-	    )
-	    {
-	      /* The str_length is incorrect or the rc is not NO_ERROR. */
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
-	  db_make_varchar (value, precision, buf->ptr, str_length);
-	  value->need_clear = false;
-	  rc = or_skip_varchar_remainder (buf, str_length, align);
 	}
       else
 	{
@@ -10008,23 +9980,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
 		}		/* size != -1 */
 
 	      str_length = or_get_varchar_length (buf, &rc);
-#if !defined(NDEBUG)
-	      if (str_length >= 0)
+	      if (rc != NO_ERROR)
 		{
-		  intl_char_count ((unsigned char *) buf->ptr, str_length,
-				   lang_charset (), &str_chars);
-		}
-#endif
-
-	      if (str_length < 0 || rc != NO_ERROR
-#if !defined(NDEBUG)
-		  || (precision != TP_FLOATING_PRECISION_VALUE
-		      && str_chars > precision)
-#endif
-		)
-		{
-		  /* The str_length is incorrect or the rc is not NO_ERROR. */
-		  assert_release (false);
 		  return ER_FAILED;
 		}
 
