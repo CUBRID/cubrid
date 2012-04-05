@@ -3909,8 +3909,7 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush,
       locator_free_copy_area (mflush->copy_area);
     }
 
-  mflush->copy_area = locator_allocate_copy_area_by_length (minsize,
-							    CLEAR_MEM);
+  mflush->copy_area = locator_allocate_copy_area_by_length (minsize);
   if (mflush->copy_area == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;

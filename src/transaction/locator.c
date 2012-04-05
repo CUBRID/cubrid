@@ -48,10 +48,13 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
-#define LC_NKEEP_LIMIT (50)
+#define LOCATOR_NKEEP_LIMIT (50)
 #else /* SERVER_MODE */
-#define LC_NKEEP_LIMIT (2)
+#define LOCATOR_NKEEP_LIMIT (2)
 #endif /* SERVER_MODE */
+
+#define LOCATOR_CACHED_COPYAREA_SIZE_LIMIT \
+  (IO_MAX_PAGE_SIZE * 2 + sizeof (LC_COPYAREA))
 
 typedef struct locator_global LOCATOR_GLOBAL;
 struct locator_global
@@ -59,7 +62,7 @@ struct locator_global
   struct locator_global_copyareas
   {
     int number;			/* Num of copy areas that has been kept */
-    LC_COPYAREA *areas[LC_NKEEP_LIMIT];	/* Array of free copy areas */
+    LC_COPYAREA *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free copy areas */
 #if defined(SERVER_MODE)
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
@@ -68,7 +71,7 @@ struct locator_global
   struct locator_global_lockset_areas
   {
     int number;			/* Num of requested areas that has been kept */
-    LC_LOCKSET *areas[LC_NKEEP_LIMIT];	/* Array of free lockset areas */
+    LC_LOCKSET *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free lockset areas */
 #if defined(SERVER_MODE)
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
@@ -77,7 +80,7 @@ struct locator_global
   struct locator_global_lockhint_areas
   {
     int number;			/* Num of lockhinted areas that has been kept */
-    LC_LOCKHINT *areas[LC_NKEEP_LIMIT];	/* Array of free lockhinted */
+    LC_LOCKHINT *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free lockhinted */
 #if defined(SERVER_MODE)
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
@@ -86,7 +89,7 @@ struct locator_global
   struct locator_global_packed_areas
   {
     int number;			/* Num of packed areas that have been kept */
-    LC_COPYAREA *areas[LC_NKEEP_LIMIT];	/* Array of free packed areas */
+    LC_COPYAREA *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free packed areas */
 #if defined(SERVER_MODE)
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
@@ -95,7 +98,7 @@ struct locator_global
 
 static LOCATOR_GLOBAL locator_Keep;
 
-static LC_COPYAREA packed_req_area_ptrs[LC_NKEEP_LIMIT];
+static LC_COPYAREA packed_req_area_ptrs[LOCATOR_NKEEP_LIMIT];
 
 static bool locator_Is_initialized = false;
 
@@ -199,7 +202,7 @@ locator_initialize_areas (void)
   pthread_mutex_init (&locator_Keep.packed_areas.lock, NULL);
 #endif /* SERVER_MODE */
 
-  for (i = 0; i < LC_NKEEP_LIMIT; i++)
+  for (i = 0; i < LOCATOR_NKEEP_LIMIT; i++)
     {
       locator_Keep.copy_areas.areas[i] = NULL;
       locator_Keep.lockset_areas.areas[i] = NULL;
@@ -290,8 +293,8 @@ locator_free_areas (void)
 static char *
 locator_allocate_packed (int packed_size)
 {
-  int i;
   char *packed_area = NULL;
+  int i, tail;
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -315,12 +318,12 @@ locator_allocate_packed (int packed_size)
 	  locator_Keep.packed_areas.number--;
 
 	  /* Move the tail to current location */
+	  tail = locator_Keep.packed_areas.number;
+
 	  locator_Keep.packed_areas.areas[i]->mem =
-	    locator_Keep.packed_areas.areas[locator_Keep.packed_areas.
-					    number]->mem;
+	    locator_Keep.packed_areas.areas[tail]->mem;
 	  locator_Keep.packed_areas.areas[i]->length =
-	    locator_Keep.packed_areas.areas[locator_Keep.packed_areas.
-					    number]->length;
+	    locator_Keep.packed_areas.areas[tail]->length;
 
 	  break;
 	}
@@ -365,28 +368,26 @@ locator_reallocate_packed (char *packed, int packed_size)
 static void
 locator_free_packed (char *packed_area, int packed_size)
 {
+  int tail;
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
   rv = pthread_mutex_lock (&locator_Keep.packed_areas.lock);
 
-  if (locator_Keep.packed_areas.number < LC_NKEEP_LIMIT)
+  if (locator_Keep.packed_areas.number < LOCATOR_NKEEP_LIMIT)
     {
-      locator_Keep.packed_areas.areas[locator_Keep.packed_areas.number]->mem =
-	packed_area;
-      locator_Keep.packed_areas.areas[locator_Keep.packed_areas.number]->
-	length = packed_size;
+      tail = locator_Keep.packed_areas.number;
+
+      locator_Keep.packed_areas.areas[tail]->mem = packed_area;
+      locator_Keep.packed_areas.areas[tail]->length = packed_size;
 
       /*
        * Scramble the memory, so that the developer detects invalid references
        * to free'd areas
        */
-      MEM_REGION_SCRAMBLE (locator_Keep.packed_areas.
-			   areas[locator_Keep.packed_areas.number]->mem,
-			   locator_Keep.packed_areas.areas[locator_Keep.
-							   packed_areas.
-							   number]->length);
+      MEM_REGION_SCRAMBLE (locator_Keep.packed_areas.areas[tail]->mem,
+			   locator_Keep.packed_areas.areas[tail]->length);
       locator_Keep.packed_areas.number++;
     }
   else
@@ -410,8 +411,7 @@ locator_free_packed (char *packed_area, int packed_size)
 LC_COPYAREA *
 locator_allocate_copyarea (DKNPAGES npages)
 {
-  return locator_allocate_copy_area_by_length (npages * IO_PAGESIZE,
-					       CLEAR_MEM);
+  return locator_allocate_copy_area_by_length (npages * IO_PAGESIZE);
 }
 #endif
 
@@ -422,13 +422,11 @@ locator_allocate_copyarea (DKNPAGES npages)
  * return: LC_COPYAREA *
  *
  *   min_length(in):Length of the copy area
- *   clear_mem(in):true for clear allocated memory
  *
  * NOTE: Allocate a flush/fetch area of the given length.
  */
 LC_COPYAREA *
-locator_allocate_copy_area_by_length (int min_length,
-				      CLEAR_MEM_FLAG clear_mem)
+locator_allocate_copy_area_by_length (int min_length)
 {
   LC_COPYAREA *copyarea = NULL;
   int network_pagesize;
@@ -480,10 +478,6 @@ locator_allocate_copy_area_by_length (int min_length,
 	}
     }
 
-  if (clear_mem == CLEAR_MEM)
-    {
-      memset (copyarea, 0, min_length + sizeof (*copyarea));
-    }
   copyarea->mem = (char *) copyarea + sizeof (*copyarea);
   copyarea->length = min_length;
 
@@ -506,24 +500,30 @@ locator_free_copy_area (LC_COPYAREA * copyarea)
   int rv;
 #endif /* SERVER_MODE */
 
-  rv = pthread_mutex_lock (&locator_Keep.copy_areas.lock);
-
-  if (locator_Keep.copy_areas.number < LC_NKEEP_LIMIT)
+  if (LOCATOR_CACHED_COPYAREA_SIZE_LIMIT < copyarea->length)
     {
-      /*
-       * Scramble the memory, so that the developer detects invalid references
+      free_and_init (copyarea);
+      return;
+    }
+
+  rv = pthread_mutex_lock (&locator_Keep.copy_areas.lock);
+  if (locator_Keep.copy_areas.number < LOCATOR_NKEEP_LIMIT)
+    {
+      /* Scramble the memory, so that the developer detects invalid references
        * to free'd areas
        */
       MEM_REGION_SCRAMBLE (copyarea->mem, copyarea->length);
       locator_Keep.copy_areas.areas[locator_Keep.copy_areas.number++] =
 	copyarea;
+
+      pthread_mutex_unlock (&locator_Keep.copy_areas.lock);
     }
   else
     {
+      pthread_mutex_unlock (&locator_Keep.copy_areas.lock);
+
       free_and_init (copyarea);
     }
-
-  pthread_mutex_unlock (&locator_Keep.copy_areas.lock);
 }
 
 /*
@@ -721,7 +721,7 @@ locator_recv_allocate_copyarea (int num_objs,
 
   length = contents_length + desc_length + sizeof (LC_COPYAREA);
 
-  copyarea = locator_allocate_copy_area_by_length (length, CLEAR_MEM);
+  copyarea = locator_allocate_copy_area_by_length (length);
   if (copyarea == NULL)
     {
       *contents_ptr = NULL;
@@ -1134,7 +1134,7 @@ locator_free_lockset (LC_LOCKSET * lockset)
 
   rv = pthread_mutex_lock (&locator_Keep.lockset_areas.lock);
 
-  if (locator_Keep.lockset_areas.number < LC_NKEEP_LIMIT)
+  if (locator_Keep.lockset_areas.number < LOCATOR_NKEEP_LIMIT)
     {
       /*
        * Scramble the memory, so that the developer detects invalid references
@@ -1792,7 +1792,7 @@ locator_free_lockhint (LC_LOCKHINT * lockhint)
 
   rv = pthread_mutex_lock (&locator_Keep.lockhint_areas.lock);
 
-  if (locator_Keep.lockhint_areas.number < LC_NKEEP_LIMIT)
+  if (locator_Keep.lockhint_areas.number < LOCATOR_NKEEP_LIMIT)
     {
       /*
        * Scramble the memory, so that the developer detects invalid references

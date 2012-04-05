@@ -93,7 +93,7 @@ struct locator_tmp_classname_action
   LC_FIND_CLASSNAME action;	/* The transient operation, delete or reserve
 				 * name
 				 */
-  OID oid;			/* The class identifier of classname             */
+  OID oid;			/* The class identifier of classname */
   LOG_LSA savep_lsa;		/* A top action LSA address (likely a savepoint)
 				 * for return NULL is for current
 				 */
@@ -103,8 +103,8 @@ struct locator_tmp_classname_action
 typedef struct locator_tmp_classname_entry LOCATOR_TMP_CLASSNAME_ENTRY;
 struct locator_tmp_classname_entry
 {
-  char *name;			/* Name of the class                               */
-  int tran_index;		/* Transaction of entry                            */
+  char *name;			/* Name of the class */
+  int tran_index;		/* Transaction of entry */
   LOCATOR_TMP_CLASSNAME_ACTION current;	/* The most current action */
 };
 
@@ -118,8 +118,9 @@ struct locator_tmp_desired_classname_entries
 
 typedef struct locator_return_nxobj LOCATOR_RETURN_NXOBJ;
 struct locator_return_nxobj
-{				/* Location of next object to return in communication
-				   (fetch) area */
+{				/* Location of next object to return in 
+				 * communication (fetch) area 
+				 */
   LC_COPYAREA *comm_area;	/* Communication area where objects are
 				 * returned and described
 				 */
@@ -270,9 +271,7 @@ locator_initialize (THREAD_ENTRY * thread_p, EHID * classname_table)
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) !=
       NO_ERROR)
     {
-      /*
-       * Some kind of failure. We must notify the error to the caller.
-       */
+      /* Some kind of failure. We must notify the error to the caller. */
       return NULL;
     }
 
@@ -316,9 +315,7 @@ locator_finalize (THREAD_ENTRY * thread_p)
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) !=
       NO_ERROR)
     {
-      /*
-       * Some kind of failure. We will leak resources.
-       */
+      /* Some kind of failure. We will leak resources. */
       return;
     }
 
@@ -779,9 +776,8 @@ start:
 
 	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
-	  if (lock_object
-	      (thread_p, &tmp_classoid, oid_Root_class_oid, X_LOCK,
-	       LK_UNCOND_LOCK) != LK_GRANTED)
+	  if (lock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
+			   X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	    {
 	      /*
 	       * Unable to acquired lock
@@ -2291,7 +2287,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   while (true)
     {
       nxobj.comm_area = *fetch_area =
-	locator_allocate_copy_area_by_length (copyarea_length, NO_CLEAR_MEM);
+	locator_allocate_copy_area_by_length (copyarea_length);
       if (nxobj.comm_area == NULL)
 	{
 	  nxobj.mobjs = NULL;
@@ -2593,8 +2589,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 
   while (true)
     {
-      *fetch_area = locator_allocate_copy_area_by_length (copyarea_length,
-							  CLEAR_MEM);
+      *fetch_area = locator_allocate_copy_area_by_length (copyarea_length);
       if (*fetch_area == NULL)
 	{
 	  (void) heap_scancache_end (thread_p, &scan_cache);
@@ -2842,9 +2837,8 @@ xlocator_fetch_lockset (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset,
 	      < lockset->num_classes_of_reqobjs)
 	     || (lockset->num_reqobjs_processed < lockset->num_reqobjs)))
     {
-      nxobj.comm_area = locator_allocate_copy_area_by_length (copyarea_length,
-							      CLEAR_MEM);
-
+      nxobj.comm_area =
+	locator_allocate_copy_area_by_length (copyarea_length);
       if (nxobj.comm_area == NULL)
 	{
 	  (void) heap_scancache_end (thread_p, &nxobj.area_scancache);
@@ -3834,8 +3828,7 @@ locator_set_foreign_key_object_cache (THREAD_ENTRY * thread_p,
 
   while (scan == S_DOESNT_FIT)
     {
-      copyarea = locator_allocate_copy_area_by_length (copyarea_length,
-						       CLEAR_MEM);
+      copyarea = locator_allocate_copy_area_by_length (copyarea_length);
       if (copyarea == NULL)
 	{
 	  break;
@@ -6126,8 +6119,7 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p,
 
   while (scan == S_DOESNT_FIT)
     {
-      copyarea = locator_allocate_copy_area_by_length (copyarea_length,
-						       CLEAR_MEM);
+      copyarea = locator_allocate_copy_area_by_length (copyarea_length);
       if (copyarea == NULL)
 	{
 	  break;
@@ -6415,8 +6407,7 @@ locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 
   while (scan == S_DOESNT_FIT)
     {
-      copyarea = locator_allocate_copy_area_by_length (copyarea_length,
-						       CLEAR_MEM);
+      copyarea = locator_allocate_copy_area_by_length (copyarea_length);
       if (copyarea == NULL)
 	{
 	  break;
@@ -7830,7 +7821,7 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
   int offset;			/* Place to store next object in area */
   bool more_synch = false;
 
-  *synch_area = locator_allocate_copy_area_by_length (DB_PAGESIZE, CLEAR_MEM);
+  *synch_area = locator_allocate_copy_area_by_length (DB_PAGESIZE);
   if (*synch_area == NULL)
     {
       return false;
@@ -10018,8 +10009,8 @@ xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
   while (scan == S_SUCCESS
 	 && (lockhint->num_classes_processed < lockhint->num_classes))
     {
-      nxobj.comm_area = locator_allocate_copy_area_by_length (copyarea_length,
-							      CLEAR_MEM);
+      nxobj.comm_area =
+	locator_allocate_copy_area_by_length (copyarea_length);
       if (nxobj.comm_area == NULL)
 	{
 	  (void) heap_scancache_end (thread_p, &nxobj.area_scancache);
@@ -10523,8 +10514,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   while (true)
     {
-      *fetch_area = locator_allocate_copy_area_by_length (copyarea_length,
-							  CLEAR_MEM);
+      *fetch_area = locator_allocate_copy_area_by_length (copyarea_length);
       if (*fetch_area == NULL)
 	{
 	  (void) heap_scancache_end (thread_p, &scan_cache);

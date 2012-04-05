@@ -81,9 +81,6 @@
    LC_LOCKHINT_CLASS_PACKED_SIZE * lockhint->max_classes)
 
 typedef enum
-{ NO_CLEAR_MEM = 0, CLEAR_MEM } CLEAR_MEM_FLAG;
-
-typedef enum
 {
   LC_FETCH,
   LC_FETCH_DELETED,
@@ -303,9 +300,7 @@ struct lc_oidset
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_COPYAREA *locator_allocate_copyarea (DKNPAGES npages);
 #endif
-extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length,
-							  CLEAR_MEM_FLAG
-							  clear_mem);
+extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length);
 
 extern void locator_free_copy_area (LC_COPYAREA * copyarea);
 extern char *locator_pack_copy_area_descriptor (int num_objs,
