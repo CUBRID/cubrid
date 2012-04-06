@@ -853,8 +853,9 @@ function build_package ()
 	  package_name="NONE"
 	else
 	  package_name="JDBC-$build_number-$product_name_lower"
+	  jar_files=$(cd $build_dir/jdbc && ls $package_name*.jar)
 	  cp $build_dir/jdbc/$package_name*.jar $output_dir
-	  [ $? -eq 0 ] && output_packages="$output_packages $package_name"
+	  [ $? -eq 0 ] && output_packages="$output_packages $jar_files"
 	fi
       ;;
       srpm)
