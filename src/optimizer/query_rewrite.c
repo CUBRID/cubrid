@@ -1846,11 +1846,11 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
 	  goto exit_on_error;
 	}
 
-      ord_num->type_enum = PT_TYPE_INTEGER;
+      ord_num->type_enum = PT_TYPE_BIGINT;
       ord_num->info.expr.op = PT_ORDERBY_NUM;
       PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
 
-      grp_num->type_enum = PT_TYPE_INTEGER;
+      grp_num->type_enum = PT_TYPE_BIGINT;
       grp_num->info.function.function_type = PT_GROUPBY_NUM;
       grp_num->info.function.arg_list = NULL;
       grp_num->info.function.all_or_distinct = PT_ALL;
@@ -1858,6 +1858,15 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       /* replace orderby_num() to groupby_num() */
       node->info.query.orderby_for =
 	pt_lambda_with_arg (parser, node->info.query.orderby_for,
+			    ord_num, grp_num, false /* loc_check: DEFAULT */ ,
+			    0 /* type: DEFAULT */ ,
+			    false /* dont_replace: DEFAULT */ );
+
+      /* Even though node->info.q.query.q.select has no orderby_num so far,
+       * it is a safe guard to prevent potential rewrite problem.
+       */
+      node->info.query.q.select.list =
+	pt_lambda_with_arg (parser, node->info.query.q.select.list,
 			    ord_num, grp_num, false /* loc_check: DEFAULT */ ,
 			    0 /* type: DEFAULT */ ,
 			    false /* dont_replace: DEFAULT */ );
@@ -1906,6 +1915,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   int i, j;
   int const_order_count, order_move_count;
   bool need_merge_check;
+  bool has_orderbynum_with_groupby;
 
   /* do not reduce order by siblings */
   if (node->node_type != PT_SELECT || node->info.query.q.select.connect_by)
@@ -1916,6 +1926,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   /* init */
   const_order_count = order_move_count = 0;
   need_merge_check = false;
+  has_orderbynum_with_groupby = false;
 
   /* check for merge order by to group by( without DISTINCT and HAVING clause)
    */
@@ -1941,7 +1952,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (ordbynum_flag)
 	    {			/* found orderby_num() in the select list */
-	      ;			/* give up */
+	      has_orderbynum_with_groupby = true;	/* give up */
 	    }
 	  else
 	    {
@@ -2151,17 +2162,25 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto exit_on_error;
 		    }
 
-		  ord_num->type_enum = PT_TYPE_INTEGER;
+		  ord_num->type_enum = PT_TYPE_BIGINT;
 		  ord_num->info.expr.op = PT_ORDERBY_NUM;
 		  PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
 
-		  ins_num->type_enum = PT_TYPE_INTEGER;
+		  ins_num->type_enum = PT_TYPE_BIGINT;
 		  ins_num->info.expr.op = PT_INST_NUM;
 		  PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
 
 		  /* replace orderby_num() to inst_num() */
 		  node->info.query.orderby_for =
 		    pt_lambda_with_arg (parser, node->info.query.orderby_for,
+					ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
+
+		  node->info.query.q.select.list =
+		    pt_lambda_with_arg (parser,
+					node->info.query.q.select.list,
 					ord_num, ins_num,
 					false /* loc_check: DEFAULT */ ,
 					0 /* type: DEFAULT */ ,
@@ -2175,6 +2194,47 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 
 		  parser_free_tree (parser, ord_num);
 		  parser_free_tree (parser, ins_num);
+		}
+	      else if (has_orderbynum_with_groupby == true)
+		{
+		  PT_NODE *ord_num, *grp_num;
+
+		  ord_num = NULL;
+		  grp_num = NULL;
+
+		  /* generate orderby_num(), groupby_num() */
+		  if (!(ord_num = parser_new_node (parser, PT_EXPR))
+		      || !(grp_num = parser_new_node (parser, PT_FUNCTION)))
+		    {
+		      if (ord_num)
+			{
+			  parser_free_tree (parser, ord_num);
+			}
+		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto exit_on_error;
+		    }
+
+		  ord_num->type_enum = PT_TYPE_BIGINT;
+		  ord_num->info.expr.op = PT_ORDERBY_NUM;
+		  PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+
+		  grp_num->type_enum = PT_TYPE_BIGINT;
+		  grp_num->info.function.function_type = PT_GROUPBY_NUM;
+		  grp_num->info.function.arg_list = NULL;
+		  grp_num->info.function.all_or_distinct = PT_ALL;
+
+		  /* replace orderby_num() to groupby_num() */
+		  node->info.query.q.select.list =
+		    pt_lambda_with_arg (parser,
+					node->info.query.q.select.list,
+					ord_num, grp_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
+
+		  parser_free_tree (parser, ord_num);
+		  parser_free_tree (parser, grp_num);
 		}
 	    }
 	}
@@ -7027,8 +7087,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (!node->partition_pruned
 	  && (node->node_type == PT_SELECT
 	      || node->node_type == PT_DELETE
-	      || node->node_type == PT_UPDATE
-	      || node->node_type == PT_MERGE))
+	      || node->node_type == PT_UPDATE || node->node_type == PT_MERGE))
 	{
 	  if (node->node_type == PT_SELECT)
 	    {

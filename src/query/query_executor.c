@@ -2862,7 +2862,7 @@ qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
   /* groupby numbering; increase the value of groupby_num() by 1 */
   if (gbstate->grbynum_val)
     {
-      gbstate->grbynum_val->data.i++;
+      gbstate->grbynum_val->data.bigint++;
     }
 
   if (gbstate->grbynum_pred)
@@ -3250,7 +3250,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	  if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
 	    {
 	      /* reset grbynum_val for next use */
-	      DB_MAKE_INT (gbstate->grbynum_val, 0);
+	      DB_MAKE_BIGINT (gbstate->grbynum_val, 0);
 	      /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing;
 	         the caller, 'qexec_gby_put_next()', returns 'gbstate->state' */
 	      gbstate->state = SORT_PUT_STOP;
@@ -3650,7 +3650,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* initialize groupby_num() value */
   if (buildlist->g_grbynum_val && DB_IS_NULL (buildlist->g_grbynum_val))
     {
-      DB_MAKE_INT (buildlist->g_grbynum_val, 0);
+      DB_MAKE_BIGINT (buildlist->g_grbynum_val, 0);
     }
 
   /*late binding : resolve group_by (buildlist) */
@@ -10516,7 +10516,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	/* initialize groupby_num() value for BUILDLIST_PROC */
 	if (buildlist->g_grbynum_val)
 	  {
-	    DB_MAKE_INT (buildlist->g_grbynum_val, 0);
+	    DB_MAKE_BIGINT (buildlist->g_grbynum_val, 0);
 	  }
 
 	if (xasl->list_id->type_list.type_cnt == 0)
@@ -10584,7 +10584,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	/* set groupby_num() value as 1 for BUILDVALUE_PROC */
 	if (buildvalue->grbynum_val)
 	  {
-	    DB_MAKE_INT (buildvalue->grbynum_val, 1);
+	    DB_MAKE_BIGINT (buildvalue->grbynum_val, 1);
 	  }
 
 	/* initialize aggregation list */
@@ -16431,9 +16431,11 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p,
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p,
 						s_id.curr_pgptr,
-						&s_id.curr_vpid, tuple_rec.tpl,
-						list_id_p->type_list.type_cnt 
-						- PCOL_PARENTPOS_TUPLE_OFFSET,
+						&s_id.curr_vpid,
+						tuple_rec.tpl,
+						list_id_p->type_list.
+						type_cnt -
+						PCOL_PARENTPOS_TUPLE_OFFSET,
 						&parent_pos_dbval,
 						&tp_Bit_domain) != NO_ERROR)
 		{
@@ -16510,9 +16512,11 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p,
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p,
 						s_id.curr_pgptr,
-						&s_id.curr_vpid, tuple_rec.tpl,
-						list_id_p->type_list.type_cnt 
-						- PCOL_PARENTPOS_TUPLE_OFFSET,
+						&s_id.curr_vpid,
+						tuple_rec.tpl,
+						list_id_p->type_list.
+						type_cnt -
+						PCOL_PARENTPOS_TUPLE_OFFSET,
 						&parent_pos_dbval,
 						&tp_Bit_domain) != NO_ERROR)
 		{

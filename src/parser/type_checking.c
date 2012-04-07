@@ -11692,8 +11692,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_ROW_NUMBER:
 	case PT_RANK:
 	case PT_DENSE_RANK:
-	case PT_GROUPBY_NUM:
 	  node->type_enum = PT_TYPE_INTEGER;
+	  break;
+
+	case PT_GROUPBY_NUM:
+	  node->type_enum = PT_TYPE_BIGINT;
 	  break;
 
 	case PT_AGG_BIT_AND:
