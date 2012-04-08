@@ -239,6 +239,12 @@ static float prm_pb_buffer_flush_ratio_upper = 0.95f;
 UINT64 PRM_PAGE_BUFFER_SIZE = 536870912;
 static UINT64 prm_page_buffer_size_default = 536870912;
 static UINT64 prm_page_buffer_size_lower = 16777216;
+#if __WORDSIZE == 32
+#define MAX_PAGE_BUFFER_SIZE INT_MAX
+#else
+#define MAX_PAGE_BUFFER_SIZE LONG_MAX
+#endif
+static UINT64 prm_page_buffer_size_upper = MAX_PAGE_BUFFER_SIZE;
 
 float PRM_HF_UNFILL_FACTOR = 0.10f;
 static float prm_hf_unfill_factor_default = 0.10f;
@@ -938,7 +944,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
    (void *) &prm_page_buffer_size_default,
    (void *) &PRM_PAGE_BUFFER_SIZE,
-   (void *) NULL, (void *) &prm_page_buffer_size_lower,
+   (void *) &prm_page_buffer_size_upper, (void *) &prm_page_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_HF_UNFILL_FACTOR,
    (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER),
