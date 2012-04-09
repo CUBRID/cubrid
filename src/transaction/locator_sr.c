@@ -4915,23 +4915,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
   *force_count = 0;
-
-  if (has_index && !locator_Dont_check_foreign_key)
-    {
-      error_code = locator_check_foreign_key (thread_p, hfid, class_oid,
-					      oid, recdes, &new_recdes,
-					      &is_cached,
-					      &cache_attr_copyarea);
-      if (error_code != NO_ERROR)
-	{
-	  goto error2;
-	}
-    }
-
-  if (is_cached)
-    {
-      recdes = &new_recdes;
-    }
   /*
    * This is a new object. The object must be locked in exclusive mode,
    * once its OID is assigned. We just do it for the classes, the new
@@ -4995,6 +4978,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  error_code = ER_FAILED;
 	  goto error1;
 	}
+
+      /* system class do not include foreign keys, we need not check here. */
     }
   else
     {
@@ -5008,6 +4993,37 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	{
 	  error_code = ER_FAILED;
 	  goto error1;
+	}
+
+      /* check the foreign key constrants */
+      if (has_index && !locator_Dont_check_foreign_key)
+	{
+	  error_code =
+	    locator_check_foreign_key (thread_p, hfid,
+				       class_oid, oid, recdes,
+				       &new_recdes,
+				       &is_cached, &cache_attr_copyarea);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error1;
+	    }
+
+	  if (is_cached)
+	    {
+	      bool isold_object;
+
+	      recdes = &new_recdes;
+	      /* Cache object has been updated, we need update the value again */
+	      if (heap_update
+		  (thread_p, hfid, class_oid, oid, recdes, &isold_object,
+		   scan_cache) == NULL)
+		{
+		  error_code = ER_FAILED;
+		  goto error1;
+		}
+
+	      assert (isold_object == true);
+	    }
 	}
 
       /* increase the counter of the catalog */
@@ -5036,15 +5052,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
   *force_count = 1;
 
-  if (cache_attr_copyarea != NULL)
-    {
-      locator_free_copy_area (cache_attr_copyarea);
-    }
-
-  return error_code;
-
 error1:
-  lock_unlock_object (thread_p, oid, class_oid, X_LOCK, false);
+  if (error_code != NO_ERROR)
+    {
+      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, false);
+    }
 
 error2:
   if (cache_attr_copyarea != NULL)
@@ -5108,23 +5120,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   copy_recdes.data = NULL;
 
   *force_count = 0;
-
-  if (has_index && !not_check_fk && !locator_Dont_check_foreign_key)
-    {
-      error_code = locator_check_foreign_key (thread_p, hfid, class_oid,
-					      oid, recdes, &new_recdes,
-					      &is_cached,
-					      &cache_attr_copyarea);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  if (is_cached)
-    {
-      recdes = &new_recdes;
-    }
 
   if (OID_IS_ROOTOID (class_oid))
     {
@@ -5234,6 +5229,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	}
 
+      /* system class do not include foreign keys. we need not check here. */
+
       /* remove XASL cache entries which is relevant with that class */
       if (!OID_IS_ROOTOID (oid)
 	  && PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
@@ -5330,6 +5327,26 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 		  error_code = ER_FAILED;
 		  goto error;
+		}
+	    }
+
+	  /* check the foreign key constrants */
+	  if (!not_check_fk && !locator_Dont_check_foreign_key)
+	    {
+	      error_code =
+		locator_check_foreign_key (thread_p, hfid,
+					   class_oid, oid,
+					   recdes,
+					   &new_recdes,
+					   &is_cached, &cache_attr_copyarea);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      if (is_cached)
+		{
+		  recdes = &new_recdes;
 		}
 	    }
 	}
