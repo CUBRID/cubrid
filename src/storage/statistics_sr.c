@@ -611,6 +611,11 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  OR_PUT_BTID (buf_p, &btree_stats_p->btid);
 	  buf_p += OR_BTID_ALIGNED_SIZE;
 
+	  /* defense for not gathered statistics */
+	  btree_stats_p->leafs = MAX (1, btree_stats_p->leafs);
+	  btree_stats_p->pages = MAX (1, btree_stats_p->pages);
+	  btree_stats_p->height = MAX (1, btree_stats_p->height);
+
 	  /* If the btree file has currently more pages than when we gathered
 	     statistics, assume that all growth happen at the leaf level. If
 	     the btree is smaller, we use the gathered statistics since the
@@ -654,6 +659,11 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      OR_PUT_INT (buf_p, btree_stats_p->keys);
 	      buf_p += OR_INT_SIZE;
 	    }
+
+	  assert_release (btree_stats_p->leafs >= 1);
+	  assert_release (btree_stats_p->pages >= 1);
+	  assert_release (btree_stats_p->height >= 1);
+	  assert_release (btree_stats_p->keys >= 0);
 
 	  OR_PUT_INT (buf_p, btree_stats_p->oids);
 	  buf_p += OR_INT_SIZE;
