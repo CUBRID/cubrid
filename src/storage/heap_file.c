@@ -5282,6 +5282,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid,
   int is_header_page;
   int npages = 0;
   int i;
+  int need_update;
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -5385,7 +5386,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid,
 	{
 	  heap_hdr->estimates.best[npages].vpid = vpid;
 	  heap_hdr->estimates.best[npages].freespace =
-	    spage_max_space_for_new_record (thread_p, pgptr);
+	    spage_get_free_space_without_saving (thread_p, pgptr,
+						 &need_update);
 	}
 
       npages++;
@@ -9179,6 +9181,9 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   void *ptr;
   int nunits;
+
+  /* from now on, we do not allocate bulk pages */
+  return NO_ERROR;
 
   if (nobjs <= 0 || scan_cache == NULL)
     {
