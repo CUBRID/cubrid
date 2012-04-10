@@ -991,7 +991,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 		  expected_db_type = DB_TYPE_NULL;
 		}
 
-	      val_type = DB_VALUE_TYPE (db_value);
+	      val_type = DB_VALUE_DOMAIN_TYPE (db_value);
 	      /* if "value" has expected domain but its type is different from
 	         the supplied value, we need to deduce from the supplied value */
 	      if ((value->type_enum == PT_TYPE_MAYBE)
@@ -1013,9 +1013,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 			  /* to prevent padding, skip these cases */
 			}
 		      /* cast db_value */
-		      else if (tp_value_cast (db_value, db_value,
-					      value->expected_domain, false)
-			       != DOMAIN_COMPATIBLE)
+		      else
+			if (tp_value_cast_preserve_domain
+			    (db_value, db_value, value->expected_domain,
+			     false, true) != DOMAIN_COMPATIBLE)
 			{
 			  PT_ERRORmf2 (parser, value,
 				       MSGCAT_SET_PARSER_SEMANTIC,
@@ -2375,13 +2376,13 @@ pt_bind_helper (PARSER_CONTEXT * parser,
   *data_type_added = 0;
   dt = NULL;
 
-  if (DB_IS_NULL (val))
+  val_type = DB_VALUE_DOMAIN_TYPE (val);
+  if (DB_IS_NULL (val) && val_type == DB_TYPE_NULL)
     {
       node->type_enum = PT_TYPE_NULL;
       return node;
     }
 
-  val_type = DB_VALUE_DOMAIN_TYPE (val);
   pt_type = pt_db_to_type_enum (val_type);
   if (pt_type == PT_TYPE_NONE)
     {
