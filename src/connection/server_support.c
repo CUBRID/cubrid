@@ -528,8 +528,6 @@ css_final_job_queue (void)
 static void
 css_setup_server_loop (void)
 {
-  THREAD_ENTRY *thread_p;
-
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* not WINDOWS */
@@ -548,33 +546,6 @@ css_setup_server_loop (void)
       /* execute master thread. */
       css_master_thread ();
 
-      /* stop threads */
-      thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
-
-      /* we should flush all append pages before stop log writer */
-      thread_p = thread_get_thread_entry_info ();
-      assert_release (thread_p != NULL);
-
-      LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
-
-      pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-      assert_release (LSA_EQ
-		      (&log_Gl.append.nxio_lsa,
-		       &log_Gl.prior_info.prior_lsa));
-      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
-      LOG_CS_EXIT ();
-
-      thread_stop_active_workers (THREAD_STOP_LOGWR);
-
-      thread_stop_active_daemons ();
-
-      css_close_server_connection_socket ();
-
-#if defined(WINDOWS)
-      /* since this will exit, we have to make sure and shut down Winsock */
-      css_windows_shutdown ();
-#endif /* WINDOWS */
     }
   else
     {
@@ -1675,13 +1646,22 @@ css_initialize_server_interfaces (int (*request_handler)
 int
 css_init (char *server_name, int name_length, int port_id)
 {
+  THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn;
-  int status = -1;
+  int status = ER_FAILED;
 
   if (server_name == NULL || port_id <= 0)
     {
-      return -1;
+      return ER_FAILED;
     }
+
+#if defined(WINDOWS)
+  if (css_windows_startup () < 0)
+    {
+      fprintf (stderr, "Winsock startup error\n");
+      return ER_FAILED;
+    }
+#endif /* WINDOWS */
 
   /* startup worker/daemon threads */
   status = thread_start_workers ();
@@ -1693,16 +1673,8 @@ css_init (char *server_name, int name_length, int port_id)
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK,
 		  1, PRM_CSS_MAX_CLIENTS);
 	}
-      return -1;
+      return ER_FAILED;
     }
-
-#if defined(WINDOWS)
-  if (css_windows_startup () < 0)
-    {
-      printf ("Winsock startup error\n");
-      return -1;
-    }
-#endif /* WINDOWS */
 
   css_Server_connection_socket = INVALID_SOCKET;
 
@@ -1724,15 +1696,42 @@ css_init (char *server_name, int name_length, int port_id)
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
-	      return status;
+	      goto shutdown;
 	    }
 	}
 #endif
 
       css_setup_server_loop ();
 
-      status = 0;
+      status = NO_ERROR;
     }
+
+  /*
+   * start to shutdown server
+   */
+shutdown:
+
+  /* stop threads */
+  thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  /* we should flush all append pages before stop log writer */
+  thread_p = thread_get_thread_entry_info ();
+  assert_release (thread_p != NULL);
+
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+
+  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  assert_release (LSA_EQ (&log_Gl.append.nxio_lsa,
+			  &log_Gl.prior_info.prior_lsa));
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  LOG_CS_EXIT ();
+
+  thread_stop_active_workers (THREAD_STOP_LOGWR);
+
+  thread_stop_active_daemons ();
+
+  css_close_server_connection_socket ();
 
   if (css_Master_server_name)
     {
