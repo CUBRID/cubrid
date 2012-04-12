@@ -1457,7 +1457,7 @@ PR_TYPE tp_Object = {
 PR_TYPE *tp_Type_object = &tp_Object;
 
 PR_TYPE tp_Elo = {
-  "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO), 0, 8,
+  "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 8,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_elo,
@@ -1484,7 +1484,7 @@ PR_TYPE tp_Elo = {
 PR_TYPE *tp_Type_elo = &tp_Elo;
 
 PR_TYPE tp_Blob = {
-  "blob", DB_TYPE_BLOB, 1, sizeof (DB_ELO), 0, 8,
+  "blob", DB_TYPE_BLOB, 1, sizeof (DB_ELO *), 0, 8,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_elo,
@@ -1511,7 +1511,7 @@ PR_TYPE tp_Blob = {
 PR_TYPE *tp_Type_blob = &tp_Blob;
 
 PR_TYPE tp_Clob = {
-  "clob", DB_TYPE_CLOB, 1, sizeof (DB_ELO), 0, 8,
+  "clob", DB_TYPE_CLOB, 1, sizeof (DB_ELO *), 0, 8,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_elo,
@@ -5228,10 +5228,10 @@ pr_write_mop (OR_BUF * buf, MOP mop)
 static void
 mr_initmem_elo (void *memptr)
 {
-  DB_ELO *elo = (DB_ELO *) memptr;
-
-  assert (elo != NULL);
-  elo_init_structure (elo);
+  if (memptr != NULL)
+    {
+      *((DB_ELO **) memptr) = NULL;
+    }
 }
 
 static void
@@ -5260,17 +5260,37 @@ mr_initval_clob (DB_VALUE * value, int precision, int scale)
 static int
 mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  DB_ELO *elo = (DB_ELO *) memptr;
-  DB_ELO *e;
+  int rc;
+  DB_ELO *elo, *e;
 
-  assert (elo != NULL);
-
-  elo_free_structure (elo);
-  mr_initmem_elo (elo);
-
-  if (value != NULL && (e = db_get_elo (value)) != NULL)
+  if (memptr != NULL)
     {
-      return elo_copy_structure (e, elo);
+      mr_freemem_elo (memptr);
+      mr_initmem_elo (memptr);
+
+      if (value != NULL && (e = db_get_elo (value)) != NULL)
+	{
+	  elo = db_private_alloc (NULL, sizeof (DB_ELO));
+	  if (elo == NULL)
+	    {
+	      return ((er_errid () == NO_ERROR) ? ER_FAILED : er_errid ());
+	    }
+	  rc = elo_copy_structure (e, elo);
+	  if (rc != NO_ERROR)
+	    {
+	      if (elo != NULL)
+		{
+		  db_private_free_and_init (NULL, elo);
+		}
+	      return rc;
+	    }
+
+	  *((DB_ELO **) memptr) = elo;
+	}
+    }
+  else
+    {
+      assert_release (0);
     }
 
   return NO_ERROR;
@@ -5280,10 +5300,23 @@ static int
 getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value,
 		      bool copy, DB_TYPE type)
 {
-  DB_ELO *elo = (DB_ELO *) memptr;
+  DB_ELO *elo;
   int r = NO_ERROR;
 
-  assert (elo != NULL);
+  if (memptr == NULL)
+    {
+      PRIM_SET_NULL (value);
+      return r;
+    }
+
+  elo = *((DB_ELO **) memptr);
+
+  if (elo == NULL || elo->size < 0)
+    {
+      PRIM_SET_NULL (value);
+      return r;
+    }
+
   if (copy)
     {
       DB_ELO e;
@@ -5385,9 +5418,9 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
       assert (tp_Blob.size == tp_Clob.size);
       len = tp_Elo.size;
     }
-  else
+  else if (memptr != NULL)
     {
-      DB_ELO *elo = (DB_ELO *) memptr;
+      DB_ELO *elo = *((DB_ELO **) memptr);
 
       if (elo != NULL && elo->type != ELO_NULL)
 	{
@@ -5396,6 +5429,10 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
 	    or_packed_string_length (elo->locator, NULL) +
 	    or_packed_string_length (elo->meta_data, NULL) + OR_INT_SIZE;
 	}
+    }
+  else
+    {
+      assert_release (0);
     }
 
   return len;
@@ -5409,7 +5446,7 @@ mr_data_lengthval_elo (DB_VALUE * value, int disk)
   if (value != NULL)
     {
       elo = db_get_elo (value);
-      return mr_data_lengthmem_elo (elo, NULL, disk);
+      return mr_data_lengthmem_elo ((void *) &elo, NULL, disk);
     }
   else
     {
@@ -5420,7 +5457,15 @@ mr_data_lengthval_elo (DB_VALUE * value, int disk)
 static void
 mr_data_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  DB_ELO *elo = (DB_ELO *) memptr;
+  DB_ELO *elo;
+
+  if (memptr == NULL)
+    {
+      assert_release (0);
+      return;
+    }
+
+  elo = *((DB_ELO **) memptr);
 
   if (elo != NULL && elo->type != ELO_NULL)
     {
@@ -5497,28 +5542,39 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
 static void
 mr_data_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  DB_ELO *elo = (DB_ELO *) memptr;
+  DB_ELO *elo;
   DB_ELO e;
   int rc = NO_ERROR;
-
-  if (elo == NULL)
-    {
-      or_advance (buf, size);
-      return;
-    }
 
   if (size == 0)
     {
       return;
     }
 
-  peekmem_elo (buf, &e);
+  if (memptr == NULL)
+    {
+      or_advance (buf, size);
+      return;
+    }
 
-  rc = elo_copy_structure (&e, elo);
-  if (rc != NO_ERROR)
+  elo = (DB_ELO *) db_private_alloc (NULL, sizeof (DB_ELO));
+  if (elo == NULL)
     {
       or_abort (buf);
     }
+  else
+    {
+      peekmem_elo (buf, &e);
+
+      rc = elo_copy_structure (&e, elo);
+      if (rc != NO_ERROR)
+	{
+	  db_private_free_and_init (NULL, elo);
+	  or_abort (buf);
+	}
+    }
+
+  *((DB_ELO **) memptr) = elo;
 }
 
 static int
@@ -5527,7 +5583,7 @@ mr_data_writeval_elo (OR_BUF * buf, DB_VALUE * value)
   DB_ELO *elo;
 
   elo = db_get_elo (value);
-  mr_data_writemem_elo (buf, elo, NULL);
+  mr_data_writemem_elo (buf, (void *) &elo, NULL);
   return NO_ERROR;
 }
 
@@ -5546,17 +5602,25 @@ readval_elo_with_type (OR_BUF * buf, DB_VALUE * value,
 
   if (size != 0)
     {
-      DB_ELO e;
-
       if (copy)
 	{
-	  mr_data_readmem_elo (buf, &e, NULL, size);
-	  rc = db_make_elo (value, type, &e);
+	  DB_ELO *e = NULL;
+
+	  mr_data_readmem_elo (buf, (void *) &e, NULL, size);
+	  /* structure copy - to value->data.elo */
+	  rc = db_make_elo (value, type, e);
+	  if (e != NULL)
+	    {
+	      db_private_free_and_init (NULL, e);
+	    }
 	}
       else
 	{
-	  peekmem_elo (buf, &e);
-	  rc = db_make_elo (value, type, &e);
+	  DB_ELO elo;
+
+	  peekmem_elo (buf, &elo);
+	  /* structure copy - to value->data.elo */
+	  rc = db_make_elo (value, type, &elo);
 	}
     }
 
@@ -5594,11 +5658,17 @@ mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value,
 static void
 mr_freemem_elo (void *memptr)
 {
-  DB_ELO *elo = (DB_ELO *) memptr;
+  DB_ELO *elo;
 
-  if (elo != NULL)
+  if (memptr != NULL)
     {
-      elo_free_structure (elo);
+      elo = *((DB_ELO **) memptr);
+
+      if (elo != NULL)
+	{
+	  elo_free_structure (elo);
+	  db_private_free_and_init (NULL, elo);
+	}
     }
 }
 

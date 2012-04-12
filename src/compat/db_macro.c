@@ -1973,7 +1973,7 @@ db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = type;
-  if (elo == NULL)
+  if (elo == NULL || elo->size < 0 || elo->type == ELO_NULL)
     {
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;

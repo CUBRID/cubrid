@@ -386,7 +386,8 @@
      NO_ERROR)
 
 #define db_make_elo(v, t, n) \
-     (((n) == NULL) ? ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
+     (((n) == NULL || ((n)->size < 0) || ((n)->type == ELO_NULL)) ? \
+          ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
       db_push_elo((v), (t), (n)))
 
 #define db_make_timestamp(v, n) \
