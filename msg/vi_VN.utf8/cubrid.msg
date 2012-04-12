@@ -417,7 +417,7 @@ $set 5 MSGCAT_SET_ERROR
 350 Error getting local host by name for host "%1$s". Host not found.
 351 Cannot create TCP socket.
 352 tcp_open: cannot get a reserved TCP port.
-353 Cannot make connection to master server.
+353 Cannot make connection to master server on host "%1$s".
 354 Cannot set new process owner for socket.
 355 Cannot create socket stream.
 356 '%1$s' file for UNIX domain socket exist.

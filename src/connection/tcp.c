@@ -119,7 +119,7 @@ css_tcp_client_open (const char *host, int port)
   if (IS_INVALID_SOCKET (fd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
+			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host);
     }
   return fd;
 }

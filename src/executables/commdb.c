@@ -639,8 +639,9 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
 
 #if !defined(WINDOWS)
   strcpy (send_data.args, args);
-  rid = send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) &send_data,
-			      send_len);
+  rid =
+    send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) &send_data,
+			  send_len);
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
@@ -848,7 +849,7 @@ main (int argc, char **argv)
   int status = EXIT_SUCCESS;
   int port_id;
   unsigned short rid;
-  char hostname[NAME_MAX];
+  const char *hostname = "localhost";
   CSS_CONN_ENTRY *conn;
 
   static struct option commdb_options[] = {
@@ -977,15 +978,6 @@ main (int argc, char **argv)
     }
 
   er_init (NULL, ER_NEVER_EXIT);
-
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COMMDB,
-				       COMMDB_STRING9));
-      status = EXIT_FAILURE;
-      goto error;
-    }
 
   if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
 				  &port_id) == false)

@@ -814,7 +814,8 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
   else
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
+			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1,
+			   host_name);
 
     }
   return NULL;
@@ -1200,17 +1201,10 @@ css_connect_to_master_for_info (const char *host_name, int port_id,
 bool
 css_does_master_exist (int port_id)
 {
-  char hostname[MAXHOSTNAMELEN];
   SOCKET fd;
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-    {
-      /* unknown error */
-      return false;
-    }
-
   /* Don't waste time retrying between master to master connections */
-  fd = css_tcp_client_open_with_retry (hostname, port_id, false);
+  fd = css_tcp_client_open_with_retry ("localhost", port_id, false);
   if (!IS_INVALID_SOCKET (fd))
     {
       css_shutdown_socket (fd);
