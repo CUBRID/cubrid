@@ -4626,11 +4626,11 @@ prm_tune_parameters (void)
       return;
     }
 
-#if defined (SA_MODE)
+#if defined (SA_MODE) || defined (WINDOWS)
   /* we should save original PRM_HA_MODE value before tuning */
   PRM_HA_MODE_FOR_SA_UTILS_ONLY = PRM_HA_MODE;
 
-  /* reset to default 'active mode' for SA */
+  /* reset to default 'active mode' */
   (void) prm_set_default (ha_mode_prm);
   (void) prm_set (ha_server_state_prm, HA_SERVER_STATE_ACTIVE_STR, false);
   if (force_remove_log_archives_prm != NULL
@@ -4743,6 +4743,11 @@ prm_tune_parameters (void)
       /* 0 means disable plan cache */
       (void) prm_set (max_plan_cache_entries_prm, "-1", false);
     }
+
+#if defined (WINDOWS)
+  /* reset to default 'active mode' */
+  (void) prm_set_default (ha_mode_prm);
+#endif
 
   if (ha_node_list_prm == NULL
       || PRM_DEFAULT_VAL_USED (ha_node_list_prm->flag))
