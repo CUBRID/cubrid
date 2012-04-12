@@ -790,22 +790,32 @@ pgbuf_finalize (void)
     }
 
   /* final task for LRU list */
-  for (i = 0; i < pgbuf_Pool.num_LRU_list; i++)
+  if (pgbuf_Pool.num_LRU_list != NULL)
     {
-      pthread_mutex_destroy (&pgbuf_Pool.buf_LRU_list[i].LRU_mutex);
+      for (i = 0; i < pgbuf_Pool.num_LRU_list; i++)
+	{
+	  pthread_mutex_destroy (&pgbuf_Pool.buf_LRU_list[i].LRU_mutex);
+	}
+      free_and_init (pgbuf_Pool.buf_LRU_list);
     }
-  free_and_init (pgbuf_Pool.buf_LRU_list);
 
   /* final task for invalid BCB list */
   pthread_mutex_destroy (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
 
   /* final task for tran_holder_info */
-  for (i = 0; i < MAX_NTRANS; i++)
+  if (pgbuf_Pool.tran_holder_info != NULL)
     {
-      pthread_mutex_destroy (&pgbuf_Pool.tran_holder_info[i].list_mutex);
+      for (i = 0; i < MAX_NTRANS; i++)
+	{
+	  pthread_mutex_destroy (&pgbuf_Pool.tran_holder_info[i].list_mutex);
+	}
+      free_and_init (pgbuf_Pool.tran_holder_info);
     }
-  free_and_init (pgbuf_Pool.tran_holder_info);
-  free_and_init (pgbuf_Pool.tran_reserved_holder);
+
+  if (pgbuf_Pool.tran_reserved_holder != NULL)
+    {
+      free_and_init (pgbuf_Pool.tran_reserved_holder);
+    }
 
   /* final task for free holder set */
   pthread_mutex_destroy (&pgbuf_Pool.free_holder_set_mutex);
