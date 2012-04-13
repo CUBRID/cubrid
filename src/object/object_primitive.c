@@ -7623,7 +7623,7 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2,
 
   if (midxkey1 == NULL || midxkey2 == NULL)
     {
-      assert (false);		/* error */
+      assert_release (false);	/* error */
       return DB_UNK;
     }
 
@@ -7634,15 +7634,21 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2,
 	  return DB_EQ;
 	}
 
-      assert (false);		/* error */
+      assert_release (false);	/* error */
       return DB_UNK;
     }
+
+  assert_release (midxkey1->domain != NULL);
+  assert_release (midxkey1->domain->precision == midxkey1->ncolumns);
+  assert_release (midxkey2->domain != NULL);
+  assert_release (midxkey2->domain->precision == midxkey2->ncolumns);
 
   c = pr_midxkey_compare (midxkey1, midxkey2, do_coercion,
 			  total_order, start_colp,
 			  &dummy_size1, &dummy_size2, &dummy_diff_column,
 			  &dummy_dom_is_desc, &dummy_next_dom_is_desc);
-  assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
+
+  assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
   return c;
 }

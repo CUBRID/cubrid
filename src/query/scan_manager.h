@@ -75,11 +75,7 @@ struct key_val_range
   DB_VALUE key1;
   DB_VALUE key2;
   bool is_truncated;
-  int num_index_term;		/* #terms associated with index key range.
-				 * only used for multi-column index
-				 * with PRM_ORACLE_STYLE_EMPTY_STRING,
-				 * otherwise set as zero
-				 */
+  int num_index_term;		/* #terms associated with index key range */
 };
 
 typedef struct indx_cov INDX_COV;

@@ -245,7 +245,7 @@ scan_init_iss (INDX_SCAN_ID * isidp)
 
   if (isidp == NULL)
     {
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return ER_FAILED;
@@ -282,7 +282,7 @@ scan_init_iss (INDX_SCAN_ID * isidp)
       != TYPE_DBVAL)
     {
       /* this should never happen */
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return ER_FAILED;
@@ -402,7 +402,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (isidp == NULL)
     {
       /* null pointer was passed to function */
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return S_ERROR;
@@ -411,7 +411,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (!isidp->iss.use)
     {
       /* not using iss but function was called; should not be here */
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return S_ERROR;
@@ -425,7 +425,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       TYPE_DBVAL)
     {
       /* the fetch range is corrupted; should not be here */
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return S_ERROR;
@@ -437,7 +437,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       /* key type is not midxkey so this is not a multi-column index; should
          not be here */
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return S_ERROR;
@@ -491,7 +491,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       /* operator is neither ISS_OP_NONE nor ISS_OP_DO_RANGE_SEARCH; we
          shouldn't be here */
-      assert (false);
+      assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return S_ERROR;
@@ -581,9 +581,10 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
       if (kr->key1 != NULL)
 	{
-	  assert (kr->key1->type == TYPE_FUNC
-		  && TP_DOMAIN_TYPE (kr->key1->domain) == DB_TYPE_MIDXKEY);
-	  assert (kr->key1->value.funcp->operand);
+	  assert_release (kr->key1->type == TYPE_FUNC
+			  && TP_DOMAIN_TYPE (kr->key1->domain) ==
+			  DB_TYPE_MIDXKEY);
+	  assert_release (kr->key1->value.funcp->operand);
 
 	  if (kr->key1->value.funcp->operand != NULL)
 	    {
@@ -600,9 +601,10 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
       if (kr->key2 != NULL)
 	{
-	  assert (kr->key2->type == TYPE_FUNC
-		  && TP_DOMAIN_TYPE (kr->key2->domain) == DB_TYPE_MIDXKEY);
-	  assert (kr->key2->value.funcp->operand);
+	  assert_release (kr->key2->type == TYPE_FUNC
+			  && TP_DOMAIN_TYPE (kr->key2->domain) ==
+			  DB_TYPE_MIDXKEY);
+	  assert_release (kr->key2->value.funcp->operand);
 
 	  if (kr->key2->value.funcp->operand != NULL)
 	    {
@@ -1609,7 +1611,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 	  else
 	    {
 	      /* impossible case */
-	      assert (false);
+	      assert_release (false);
 	      goto end;
 	    }
 	}
@@ -1694,7 +1696,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 	  else
 	    {
 	      /* impossible case */
-	      assert (false);
+	      assert_release (false);
 	      goto end;
 	    }
 	}
@@ -1825,8 +1827,12 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	    {
 	      count++;
 	    }
-	  key_val_range->num_index_term = count;
 	}
+      else
+	{
+	  count = 1;
+	}
+      key_val_range->num_index_term = count;
     }
 
   if (key_ranges->key2)
@@ -1839,9 +1845,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	    {
 	      count++;
 	    }
-	  key_val_range->num_index_term = MAX (key_val_range->num_index_term,
-					       count);
 	}
+      else
+	{
+	  assert_release (key_val_range->num_index_term <= 1);
+	  count = 1;
+	}
+      key_val_range->num_index_term = MAX (key_val_range->num_index_term,
+					   count);
     }
 
   if (key_ranges->key1)
@@ -2035,7 +2046,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 		if (c == DB_UNK)
 		  {
 		    /* impossible case */
-		    assert (false);
+		    assert_release (false);
 
 		    key_val_range->range = NA_NA;
 
@@ -2169,6 +2180,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  assert_release (key_vals[i].num_index_term > 0);
 	}
 
       /* eliminating duplicated keys and merging ranges are required even
@@ -2251,7 +2264,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       return NO_ERROR;
     }
 
-  /* call 'btree_keyval_search()' or 'btree_range_search()' according to the range type */
   switch (indx_infop->range_type)
     {
     case R_KEY:
@@ -2364,6 +2376,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  pr_clear_value (&key_vals[0].key2);
 	  PRIM_SET_NULL (&key_vals[0].key1);
 	  PRIM_SET_NULL (&key_vals[0].key2);
+
+	  assert_release (key_vals[0].num_index_term == 0);
 	}
 
       key_vals[0].range = range;
@@ -4529,8 +4543,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  /* Either we are not using ISS, or we are using it, and
 		   * in this case, we are supposed to be here for the
 		   * first time */
-		  assert (!isidp->iss.use
-			  || isidp->iss.current_op == ISS_OP_NONE);
+		  assert_release (!isidp->iss.use
+				  || isidp->iss.current_op == ISS_OP_NONE);
 
 		  ret = call_get_next_index_oidset (thread_p, scan_id, isidp,
 						    true);
