@@ -1848,8 +1848,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  pt_reset_error (parser);
 
 	  /* retry the statement by calling do_prepare/execute_statement() */
-	  err = do_prepare_statement (parser, statement);
-	  if (!(err < 0))
+	  if (do_prepare_statement (parser, statement) == NO_ERROR)
 	    {
 	      err = do_execute_statement (parser, statement);
 	    }
@@ -1918,8 +1917,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  pt_free_query_etc_area (statement);
 	}
     }
-  /* so now, the statement is executed */
-  session->stage[stmt_ndx] = StatementExecutedStage;
+  else
+    {
+      /* so now, the statement is executed */
+      session->stage[stmt_ndx] = StatementExecutedStage;
+    }
 
   /* execution succeeded, maybe. process result of the query */
   if (result && !(err < 0))

@@ -1103,7 +1103,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	    int *clt_cache_reusable)
 {
   int err_code;
-  int err_in_push_values = NO_ERROR;
   DB_VALUE *value_list = NULL;
   int num_bind = 0;
   int i;
@@ -1161,7 +1160,12 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_error;
 	}
 
-      err_in_push_values = db_push_values (session, num_bind, value_list);
+      err_code = db_push_values (session, num_bind, value_list);
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
     }
 
   if (srv_handle->is_prepared == FALSE)
@@ -1286,8 +1290,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   if (n < 0)
     {
       if (srv_handle->is_pooled
-	  && (n == ER_QPROC_INVALID_XASLNODE || n == ER_HEAP_UNKNOWN_OBJECT
-	      || err_in_push_values == ER_PT_SEMANTIC))
+	  && (n == ER_QPROC_INVALID_XASLNODE || n == ER_HEAP_UNKNOWN_OBJECT))
 	{
 	  err_code =
 	    ERROR_INFO_SET_FORCE (CAS_ER_STMT_POOLING, CAS_ERROR_INDICATOR);
@@ -1386,7 +1389,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 		int *clt_cache_reusable)
 {
   int err_code;
-  int err_in_push_values = NO_ERROR;
   DB_VALUE *value_list = NULL;
   int num_bind = 0;
   int i;
@@ -1434,7 +1436,12 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_all_error;
 	}
 
-      err_in_push_values = db_push_values (session, num_bind, value_list);
+      err_code = db_push_values (session, num_bind, value_list);
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto execute_all_error;
+	}
     }
 
 #if 0				/* yaw */
@@ -1497,8 +1504,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	{
 	  if (srv_handle->is_pooled
 	      && (n == ER_QPROC_INVALID_XASLNODE
-		  || n == ER_HEAP_UNKNOWN_OBJECT
-		  || err_in_push_values == ER_PT_SEMANTIC))
+		  || n == ER_HEAP_UNKNOWN_OBJECT))
 	    {
 	      err_code =
 		ERROR_INFO_SET_FORCE (CAS_ER_STMT_POOLING,
