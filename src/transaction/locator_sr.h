@@ -41,6 +41,12 @@
 #include "replication.h"
 #include "thread.h"
 
+enum
+{
+  LOB_FLAG_EXCLUDE_LOB,
+  LOB_FLAG_INCLUDE_LOB
+};
+
 extern bool locator_Dont_check_foreign_key;
 
 extern EHID *locator_initialize (THREAD_ENTRY * thread_p,
@@ -87,7 +93,9 @@ extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY *
 							     RECDES *
 							     new_recdes,
 							     const int
-							     copyarea_length_hint);
+							     copyarea_length_hint,
+							     int
+							     lob_create_flag);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 					OID * oid, HFID * newhfid,
 					OID * newoid,

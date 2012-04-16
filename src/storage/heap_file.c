@@ -727,6 +727,12 @@ static int heap_rv_redo_newpage_internal (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv,
 					  const bool reuse_oid);
 
+static SCAN_CODE
+heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
+					  HEAP_CACHE_ATTRINFO * attr_info,
+					  RECDES * old_recdes,
+					  RECDES * new_recdes,
+					  int lob_create_flag);
 /*
  * Scan page buffer and latch page manipulation
  */
@@ -5914,7 +5920,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* This means there is no lockable (or add) slot even if 
+  /* This means there is no lockable (or add) slot even if
    * there is enough space. Impossible case */
   assert (false);
   OID_SET_NULL (oid);
@@ -14040,6 +14046,56 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 				 HEAP_CACHE_ATTRINFO * attr_info,
 				 RECDES * old_recdes, RECDES * new_recdes)
 {
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info,
+						   old_recdes, new_recdes,
+						   LOB_FLAG_INCLUDE_LOB);
+}
+
+/*
+ * heap_attrinfo_transform_to_disk_except_lob () -
+ *                           Transform to disk an attribute information
+ *                           kind of instance. Do not create lob.
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT,
+ *                      S_ERROR)
+ *   attr_info(in/out): The attribute information structure
+ *   old_recdes(in): where the object's disk format is deposited
+ *   new_recdes(in):
+ *
+ * Note: Transform the object represented by attr_info to disk format
+ */
+SCAN_CODE
+heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p,
+					    HEAP_CACHE_ATTRINFO * attr_info,
+					    RECDES * old_recdes,
+					    RECDES * new_recdes)
+{
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info,
+						   old_recdes, new_recdes,
+						   LOB_FLAG_EXCLUDE_LOB);
+}
+
+/*
+ * heap_attrinfo_transform_to_disk_internal () -
+ *                         Transform to disk an attribute information
+ *                         kind of instance.
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT,
+ *                      S_ERROR)
+ *   attr_info(in/out): The attribute information structure
+ *   old_recdes(in): where the object's disk format is deposited
+ *   new_recdes(in):
+ *   lob_create_flag(in):
+ *
+ * Note: Transform the object represented by attr_info to disk format
+ */
+static SCAN_CODE
+heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
+					  HEAP_CACHE_ATTRINFO * attr_info,
+					  RECDES * old_recdes,
+					  RECDES * new_recdes,
+					  int lob_create_flag)
+{
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
@@ -14240,9 +14296,10 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 		   */
 		  buf->ptr = ptr_varvals;
 
-		  if (value->state == HEAP_WRITTEN_ATTRVALUE &&
-		      (pr_type->id == DB_TYPE_BLOB ||
-		       pr_type->id == DB_TYPE_CLOB))
+		  if (lob_create_flag == LOB_FLAG_INCLUDE_LOB
+		      && value->state == HEAP_WRITTEN_ATTRVALUE
+		      && (pr_type->id == DB_TYPE_BLOB
+			  || pr_type->id == DB_TYPE_CLOB))
 		    {
 		      DB_ELO dest_elo, *elo_p;
 		      char *save_meta_data;
@@ -14321,23 +14378,26 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 
       status = S_DOESNT_FIT;
 
-      for (i = 0; i < attr_info->num_values; i++)
+      if (lob_create_flag == LOB_FLAG_INCLUDE_LOB)
 	{
-	  value = &attr_info->values[i];
-	  if (value->last_attrepr->type == DB_TYPE_BLOB ||
-	      value->last_attrepr->type == DB_TYPE_CLOB)
+	  for (i = 0; i < attr_info->num_values; i++)
 	    {
-	      break;
+	      value = &attr_info->values[i];
+	      if (value->last_attrepr->type == DB_TYPE_BLOB ||
+		  value->last_attrepr->type == DB_TYPE_CLOB)
+		{
+		  break;
+		}
 	    }
-	}
 
-      if (i < attr_info->num_values)
-	{
-	  if (heap_attrinfo_delete_lob (thread_p, NULL, attr_info) !=
-	      NO_ERROR)
+	  if (i < attr_info->num_values)
 	    {
-	      status = S_ERROR;
-	      break;
+	      if (heap_attrinfo_delete_lob (thread_p, NULL, attr_info) !=
+		  NO_ERROR)
+		{
+		  status = S_ERROR;
+		  break;
+		}
 	    }
 	}
 

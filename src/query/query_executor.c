@@ -7835,7 +7835,7 @@ exit_on_error:
  * qexec_update_btree_unique_stats_info () - updates statistical information
  *	structure
  *   return: NO_ERROR or ER_code
- *   thread_p(in)   : 
+ *   thread_p(in)   :
  *   info(in)     : structure to update
  */
 static int
@@ -7969,8 +7969,8 @@ qexec_adjust_update_partition_info (THREAD_ENTRY * thread_p,
 				     &upd_cls->partition[i1]->
 				     parts[parts_idx]->class_oid))
 			{
-			  /* We found a subclass that matches one of the 
-			   * partitions of the master class. Update its 
+			  /* We found a subclass that matches one of the
+			   * partitions of the master class. Update its
 			   * partition information */
 			  upd_cls->partition[i2] = upd_cls->partition[i1];
 
@@ -7980,7 +7980,7 @@ qexec_adjust_update_partition_info (THREAD_ENTRY * thread_p,
 			       * partitions from a class:
 			       * ALTER name REMOVE PARTITIONING
 			       * this means that we will move all the tuples
-			       * from partitions to the master class. Set 
+			       * from partitions to the master class. Set
 			       * the first partition as the master class.
 			       */
 			      upd_cls->partition[i2]->parts[0]->class_oid =
@@ -8530,8 +8530,10 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info,
-						      NULL, &new_recdes, -1);
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info,
+					     NULL, &new_recdes, -1,
+					     LOB_FLAG_EXCLUDE_LOB);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -8647,15 +8649,15 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	  pr_clear_value (&dbvalue);
 	  key_dbvalue = NULL;
 	}
+
+      if (*removed_count != 0)
+	{
+	  break;
+	}
     }
 
   if (copyarea != NULL)
     {
-      if (locator_delete_lob_force (thread_p, &attr_info->class_oid, NULL,
-				    &new_recdes) != NO_ERROR)
-	{
-	  goto error_exit;
-	}
       locator_free_copy_area (copyarea);
       copyarea = NULL;
       new_recdes.data = NULL;
@@ -8672,11 +8674,6 @@ error_exit:
     }
   if (copyarea != NULL)
     {
-      if (locator_delete_lob_force (thread_p, &attr_info->class_oid, NULL,
-				    &new_recdes) != NO_ERROR)
-	{
-	  goto error_exit;
-	}
       locator_free_copy_area (copyarea);
       copyarea = NULL;
       new_recdes.data = NULL;
@@ -8726,8 +8723,10 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info,
-						      NULL, &new_recdes, -1);
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info,
+					     NULL, &new_recdes, -1,
+					     LOB_FLAG_INCLUDE_LOB);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -19322,7 +19321,7 @@ qexec_dump_filter_pred_cache_internal (THREAD_ENTRY * thread_p, FILE * fp,
 }
 
 /*
- * qexec_alloc_filter_pred_cache_ent () - Allocate the entry or get one 
+ * qexec_alloc_filter_pred_cache_ent () - Allocate the entry or get one
  *					from the pool
  *   return:
  *   req_size(in)       :
@@ -19532,7 +19531,7 @@ qexec_alloc_filter_pred_cache_clo (XASL_CACHE_ENTRY * ent)
 }
 
 /*
- * qexec_free_filter_pred_cache_clo () - Push the clone to free_list and free 
+ * qexec_free_filter_pred_cache_clo () - Push the clone to free_list and free
  *				       filter predicate tree
  *   return: NO_ERROR, or ER_code
  *   cache_clone_p(in)    :
@@ -19704,8 +19703,8 @@ qexec_delete_LRU_filter_pred_cache_clo (XASL_CACHE_CLONE * clo)
 }
 
 /*
- * qexec_free_filter_pred_cache_ent () - Remove the entry from the hash 
- *				       and free it. Can be used by 
+ * qexec_free_filter_pred_cache_ent () - Remove the entry from the hash
+ *				       and free it. Can be used by
  *				       mht_map_no_key() function
  *   return:
  *   data(in)   :
@@ -19763,7 +19762,7 @@ qexec_free_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data,
 }				/* qexec_free_filter_pred_cache_ent() */
 
 /*
- * qexec_lookup_filter_pred_cache_ent () - Lookup the XASL cache with the 
+ * qexec_lookup_filter_pred_cache_ent () - Lookup the XASL cache with the
  *					 query string
  *   return:
  *   qstr(in)   :
@@ -20247,7 +20246,7 @@ qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 }
 
 /*
- * qexec_check_filter_pred_cache_ent_by_xasl () - Check the filter predicatecache 
+ * qexec_check_filter_pred_cache_ent_by_xasl () - Check the filter predicatecache
  *						with the XASL ID
  *   return:
  *   xasl_id(in)        :
@@ -20385,7 +20384,7 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 }
 
 /*
- * qexec_remove_filter_pred_cache_ent_by_class () - Remove the filter predicatecache 
+ * qexec_remove_filter_pred_cache_ent_by_class () - Remove the filter predicatecache
  *					     entries by class OID
  *   return: NO_ERROR, or ER_code
  *   class_oid(in)      :

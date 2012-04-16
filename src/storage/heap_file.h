@@ -380,6 +380,12 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 						  attr_info,
 						  RECDES * old_recdes,
 						  RECDES * new_recdes);
+extern SCAN_CODE
+heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p,
+					    HEAP_CACHE_ATTRINFO * attr_info,
+					    RECDES * old_recdes,
+					    RECDES * new_recdes);
+
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p,
 					     int n_atts, int *att_ids,
 					     int *atts_prefix_length,
