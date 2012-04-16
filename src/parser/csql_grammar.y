@@ -2199,13 +2199,13 @@ create_stmt
 	  opt_reverse					/* 4 */
 	  opt_unique					/* 5 */
 	  INDEX						/* 6 */
-	  opt_identifier				/* 7 */
-	  ON_						/* 8 */
-	  only_class_name				/* 9 */
-	  index_column_name_list			/* 10 */
-	  opt_where_clause				/* 11 */
-		{ pop_msg(); }
-		{{
+		{ pop_msg(); }  			/* 7 */
+	  opt_identifier				/* 8 */
+	  ON_						/* 9 */
+	  only_class_name				/* 10 */
+	  index_column_name_list			/* 11 */
+	  opt_where_clause				/* 12 */
+	{{
 
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
@@ -2215,22 +2215,22 @@ create_stmt
 			  {
 			    PT_NODE *col;
 
-			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.entity_name = $10;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
 
-			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @10.buffer_pos)
 
 			    node->info.index.indexed_class = ocs;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
-			    node->info.index.index_name = $7;
+			    node->info.index.index_name = $8;
 			    if (node->info.index.index_name)
 			      {
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			      }
 
-			    col = $10;
+			    col = $11;
 			    if ((parser_count_list (col) == 1)
 				&& (col->info.sort_spec.expr->node_type == PT_FUNCTION))
 			      {
@@ -2268,7 +2268,7 @@ create_stmt
 					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 				  }
 			      }
-			     node->info.index.where = $11;
+			     node->info.index.where = $12;
 			     node->info.index.column_names = col;
 			  }
 		      $$ = node;
