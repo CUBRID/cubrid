@@ -230,7 +230,7 @@ extern int yycolumn_end;
 [dD][iI][fF][fF][eE][rR][eE][nN][cC][eE]				{ begin_token(yytext);   return DIFFERENCE_; }
 [dD][iI][sS][cC][oO][nN][nN][eE][cC][tT]				{ begin_token(yytext);   return DISCONNECT; }
 [dD][iI][sS][tT][iI][nN][cC][tT]					{ begin_token(yytext);   return DISTINCT; }
-[dD][iI][sS][tT][iI][nN][cC][tT][rR][oO][wW]				{ begin_token(yytext);   return DISTINCTROW; }
+[dD][iI][sS][tT][iI][nN][cC][tT][rR][oO][wW]				{ begin_token(yytext);   return DISTINCT; }
 [dD][iI][vV]								{ begin_token(yytext);	 return DIV; }
 [dD][oO]								{ begin_token(yytext);	 return DO; }
 [dD][oO][mM][aA][iI][nN]						{ begin_token(yytext);   return Domain; }

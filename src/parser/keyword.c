@@ -153,7 +153,6 @@ static KEYWORD_RECORD keywords[] = {
   {DIFFERENCE_, "DIFFERENCE", 0},
   {DISCONNECT, "DISCONNECT", 0},
   {DISTINCT, "DISTINCT", 0},
-  {DISTINCTROW, "DISTINCTROW", 0},
   {DIV, "DIV", 0},
   {DO, "DO", 0},
   {Domain, "DOMAIN", 0},

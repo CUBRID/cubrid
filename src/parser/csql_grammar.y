@@ -569,7 +569,6 @@ typedef struct YYLTYPE
 %type <number> event_type
 %type <number> opt_of_data_type_cursor
 %type <number> all_distinct
-%type <number> all_distinct_distinctrow
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
@@ -1028,7 +1027,6 @@ typedef struct YYLTYPE
 %token DIFFERENCE_
 %token DISCONNECT
 %token DISTINCT
-%token DISTINCTROW
 %token DIV
 %token DO
 %token Domain
@@ -10423,7 +10421,7 @@ select_stmt
 
 		DBG_PRINT}}
 	opt_hint_list 		/* $3 */
-	all_distinct_distinctrow/* $4 */
+	all_distinct            /* $4 */
 	select_list 		/* $5 */
 	opt_select_param_list	/* $6 */
 		{{
@@ -10709,21 +10707,6 @@ hint_list
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $1;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-
-		DBG_PRINT}}
-	;
-
-all_distinct_distinctrow
-	: all_distinct
-		{{
-
-			$$ = $1;
-
-		DBG_PRINT}}
-	| DISTINCTROW
-		{{
-
-			$$ = PT_DISTINCT;
 
 		DBG_PRINT}}
 	;

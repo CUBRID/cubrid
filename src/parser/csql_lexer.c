@@ -3096,7 +3096,7 @@ YY_RULE_SETUP
 case 117:
 YY_RULE_SETUP
 #line 233 "../../src/parser/csql_lexer.l"
-{ begin_token(csql_yytext);   return DISTINCTROW; }
+{ begin_token(csql_yytext);   return DISTINCT; }
 	YY_BREAK
 case 118:
 YY_RULE_SETUP
