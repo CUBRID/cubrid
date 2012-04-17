@@ -2502,11 +2502,22 @@ emit_index_def (DB_OBJECT * class_)
 	  continue;		/* same index skip */
 	}
 
-      fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-	       (ctype ==
-		DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
-	       PRINT_IDENTIFIER (constraint->name),
-	       PRINT_IDENTIFIER (cls_name));
+      if (constraint->func_index_info)
+	{
+	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
+		  (ctype ==
+		    DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
+		  PRINT_FUNCTION_INDEX_NAME (constraint->name),
+		  PRINT_IDENTIFIER (cls_name));
+	}
+      else
+	{
+	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
+		  (ctype ==
+		    DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
+		  PRINT_IDENTIFIER (constraint->name),
+		  PRINT_IDENTIFIER (cls_name));
+	}
 
       asc_desc = NULL;		/* init */
       prefix_length = NULL;
