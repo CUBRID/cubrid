@@ -220,7 +220,8 @@ static int add_union_query (PARSER_CONTEXT * parser,
 static int add_query_to_virtual_class (PARSER_CONTEXT * parser,
 				       DB_CTMPL * ctemplate,
 				       const PT_NODE * queries);
-static int do_copy_indexes (MOP classmop, SM_CLASS * src_class);
+static int do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop,
+			    SM_CLASS * src_class);
 
 static int do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 					     PT_NODE * const alter);
@@ -316,10 +317,16 @@ static SM_FUNCTION_INFO *pt_node_to_function_index (PARSER_CONTEXT *
 						    DO_INDEX do_index);
 static int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 					  SM_CONSTRAINT_INFO * constr,
-					  PT_NODE * alter);
+					  PT_NODE * alter,
+					  const char * src_cls_name,
+					  const char * new_cls_name);
 static int do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 					    SM_CONSTRAINT_INFO * constr,
-					    PT_NODE * alter);
+					    PT_NODE * alter,
+					    const char * src_cls_name,
+					    const char * new_cls_name);
+
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -3902,6 +3909,9 @@ static PT_NODE *replace_name_with_value (PARSER_CONTEXT * parser,
 static PT_NODE *replace_names_alter_chg_attr (PARSER_CONTEXT * parser,
 					      PT_NODE * node, void *void_arg,
 					      int *continue_walk);
+static PT_NODE *replace_names_copy_indexes (PARSER_CONTEXT * parser,
+					    PT_NODE * node, void *void_arg,
+					    int *continue_walk);
 static PT_NODE *adjust_name_with_type (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *void_arg,
 				       int *continue_walk);
@@ -11317,7 +11327,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (create_like)
     {
-      error = do_copy_indexes (class_obj, class_);
+      error = do_copy_indexes (parser, class_obj, class_);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -11406,18 +11416,21 @@ error_exit:
  * do_copy_indexes() - Copies all the indexes of a given class to another
  *                     class.
  *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in): Parser context
  *   classmop(in): the class to copy the indexes to
  *   class_(in): the class to copy the indexes from
  */
 static int
-do_copy_indexes (MOP classmop, SM_CLASS * src_class)
+do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 {
   int error = NO_ERROR;
   const char **att_names = NULL;
   SM_CLASS_CONSTRAINT *c;
   char *auto_cons_name = NULL;
   char *new_cons_name = NULL;
+  SM_CONSTRAINT_INFO *index_save_info = NULL;
   DB_CONSTRAINT_TYPE constraint_type;
+  int free_constraint = 0;
 
   assert (src_class != NULL);
 
@@ -11466,16 +11479,62 @@ do_copy_indexes (MOP classmop, SM_CLASS * src_class)
 	  sm_free_constraint_name (auto_cons_name);
 	}
 
-      error =
-	sm_add_index (classmop, constraint_type, new_cons_name, att_names,
-		      c->asc_desc, c->attrs_prefix_length,
-		      c->filter_predicate, c->func_index_info);
+      if (c->func_index_info || c->filter_predicate)
+	{
+	  /* we need to recompile the expression need for function index */
+	  error = sm_save_constraint_info (&index_save_info, c);
+	  if (error == NO_ERROR)
+	    {
+	      free_constraint = 1;
+	      if (c->func_index_info)
+		{
+		  error = 
+		    do_recreate_func_index_constr (parser, index_save_info,
+						   NULL, 
+						   src_class->header.name,
+						   sm_class_name (classmop));
+		}
+	      else
+		{
+		  /* filter index predicate available */
+		  error = 
+		    do_recreate_filter_index_constr (parser, index_save_info,
+						     NULL,
+						     src_class->header.name,
+						    sm_class_name (classmop));
+		}
+	    }
+	}
+
+      if (error == NO_ERROR)
+	{
+	  if (c->func_index_info || c->filter_predicate)
+	    {
+	      error = sm_add_index (classmop, constraint_type, new_cons_name,
+				    att_names, index_save_info->asc_desc,
+				    index_save_info->prefix_length,
+				    index_save_info->filter_predicate,
+				    index_save_info->func_index_info);
+	    }
+	  else
+	    {
+	      error = sm_add_index (classmop, constraint_type, new_cons_name,
+				    att_names, c->asc_desc,
+				    c->attrs_prefix_length,
+				    c->filter_predicate, c->func_index_info);
+	    }
+	}
 
       free_and_init (att_names);
 
       if (new_cons_name != NULL && new_cons_name != c->name)
 	{
 	  sm_free_constraint_name (new_cons_name);
+	}
+
+      if (free_constraint)
+	{
+	  sm_free_constraint_info (&index_save_info);
 	}
 
       if (error != NO_ERROR)
@@ -11819,7 +11878,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		{
 		  error =
 		    do_recreate_func_index_constr (parser, saved_constr,
-						   alter);
+						   alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
@@ -11829,7 +11888,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		{
 		  error = do_recreate_filter_index_constr (parser,
 							   saved_constr,
-							   alter);
+							   alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
@@ -15267,12 +15326,18 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
  * do_recreate_func_index_constr () - rebuilds the function index expression
  *   parser(in): parser context
  *   constr(in): constraint info, must be a function index
+ *   alter (in): information regarding changes made by an ALTER statement
+ *   src_cls_name (in): current table name holding the constraint
+ *   new_cls_name (in): new table name holding the constraint
+ *			(when CREATE TABLE ... LIKE statement is used)
  *   return: NO_ERROR or error code
  *
  */
 static int
 do_recreate_func_index_constr (PARSER_CONTEXT * parser,
-			       SM_CONSTRAINT_INFO * constr, PT_NODE * alter)
+			       SM_CONSTRAINT_INFO * constr, PT_NODE * alter,
+			       const char * src_cls_name,
+			       const char * new_cls_name)
 {
   PT_NODE **stmt;
   PT_NODE *expr;
@@ -15285,15 +15350,21 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   char *expr_str = NULL;
   int expr_str_len = 0;
 
-  assert (alter->node_type == PT_ALTER);
-  if (alter->info.alter.entity_name)
+  if (alter && alter->node_type == PT_ALTER)
     {
-      class_name = alter->info.alter.entity_name->info.name.original;
+      /* rebuilding the index due to ALTER CHANGE statement */
+      if (alter->info.alter.entity_name)
+	{
+	  class_name = alter->info.alter.entity_name->info.name.original;
+	}
     }
   else
     {
-      error = ER_FAILED;
-      goto error;
+      /* rebuilding the index due to CREATE TABLE ... LIKE statement */
+      if (src_cls_name)
+	{
+	  class_name = src_cls_name;
+	}
     }
   if (class_name == NULL)
     {
@@ -15322,8 +15393,32 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
     }
   expr = (*stmt)->info.query.q.select.list;
 
-  (void) parser_walk_tree (parser, expr, replace_names_alter_chg_attr, alter,
-			   NULL, NULL);
+  if (alter)
+    {
+      (void) parser_walk_tree (parser, expr, replace_names_alter_chg_attr,
+			       alter, NULL, NULL);
+    }
+  else
+    {
+      PT_NODE *new_node = pt_name (parser, new_cls_name);
+      PT_NODE *old_name = (*stmt)->info.query.q.select.from->info.spec.
+								  entity_name;
+      if (!old_name)
+	{
+	  error = ER_FAILED;
+	  goto error;
+	}
+
+      if (new_node)
+	{
+	  new_node->next = old_name->next;
+	  old_name->next = NULL;
+	  parser_free_tree (parser, old_name);
+	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
+	}
+      (void) parser_walk_tree (parser, expr, replace_names_copy_indexes,
+			       new_cls_name, NULL, NULL);
+    }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
   if (*stmt != NULL && !pt_has_error (parser))
@@ -15434,12 +15529,18 @@ error:
  * do_recreate_filter_index_constr () - rebuilds the filter index expression
  *   parser(in): parser context
  *   constr(in): constraint info, must be a filter index
+ *   alter (in): information regarding changes made by an ALTER statement
+ *   src_cls_name (in): current table name holding the constraint
+ *   new_cls_name (in): new table name holding the constraint
+ *			(when CREATE TABLE ... LIKE statement is used)
  *   return: NO_ERROR or error code
  *
  */
 static int
 do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
-				 SM_CONSTRAINT_INFO * constr, PT_NODE * alter)
+				 SM_CONSTRAINT_INFO * constr, PT_NODE * alter,
+				 const char * src_cls_name,
+				 const char * new_cls_name)
 {
   PT_NODE **stmt;
   PT_NODE *where_predicate;
@@ -15453,15 +15554,21 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
   char *pred_str = NULL;
   int pred_str_len = 0;
 
-  assert (alter->node_type == PT_ALTER);
-  if (alter->info.alter.entity_name)
+  if (alter && alter->node_type == PT_ALTER)
     {
-      class_name = alter->info.alter.entity_name->info.name.original;
+      /* rebuilding the index due to ALTER CHANGE statement */
+      if (alter->info.alter.entity_name)
+	{
+	  class_name = alter->info.alter.entity_name->info.name.original;
+	}
     }
   else
     {
-      error = ER_FAILED;
-      goto error;
+      /* rebuilding the index due to CREATE TABLE ... LIKE statement */
+      if (src_cls_name)
+	{
+	  class_name = src_cls_name;
+	}
     }
   if (class_name == NULL)
     {
@@ -15491,8 +15598,34 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     }
   where_predicate = (*stmt)->info.query.q.select.where;
 
-  (void) parser_walk_tree (parser, where_predicate,
-			   replace_names_alter_chg_attr, alter, NULL, NULL);
+  if (alter)
+    {
+      (void) parser_walk_tree (parser, where_predicate,
+			       replace_names_alter_chg_attr, alter,
+			       NULL, NULL);
+    }
+  else
+    {
+      PT_NODE *new_node = pt_name (parser, new_cls_name);
+      PT_NODE *old_name = (*stmt)->info.query.q.select.from->info.spec.
+								  entity_name;
+      if (!old_name)
+	{
+	  error = ER_FAILED;
+	  goto error;
+	}
+
+      if (new_node)
+	{
+	  new_node->next = old_name->next;
+	  old_name->next = NULL;
+	  parser_free_tree (parser, old_name);
+	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
+	}
+      (void) parser_walk_tree (parser, where_predicate,
+			       replace_names_copy_indexes, new_cls_name,
+			       NULL, NULL);
+    }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
   if (*stmt != NULL && !pt_has_error (parser))
@@ -15643,6 +15776,45 @@ replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 	      node->next = NULL;
 	      parser_free_tree (parser, node);
 	      node = new_node;
+	    }
+	}
+    }
+
+  return node;
+}
+
+/*
+ * replace_names_copy_indexes() - Replaces the table name in a given
+ *				  expression, based on the name required
+ *				  when copying index on CREATE TABLE ... LIKE
+ *   return: PT_NODE pointer
+ *   parser(in): Parser context
+ *   node(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ *
+ * Note:
+ */
+static PT_NODE *
+replace_names_copy_indexes (PARSER_CONTEXT * parser, PT_NODE * node,
+			    void *void_arg, int *continue_walk)
+{
+  const char * new_name = (char *) void_arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_DOT_)
+    {
+      if (PT_IS_NAME_NODE (node->info.dot.arg1))
+	{
+	  PT_NODE *new_node = pt_name (parser, new_name);
+	  PT_NODE *dot_arg = node->info.dot.arg1;
+	  if (new_node)
+	    {
+	      new_node->next = dot_arg->next;
+	      dot_arg->next = NULL;
+	      parser_free_tree (parser, dot_arg);
+	      node->info.dot.arg1 = new_node;
 	    }
 	}
     }
