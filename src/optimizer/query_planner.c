@@ -8338,7 +8338,7 @@ qo_search_planner (QO_PLANNER * planner)
 		       || qo_has_is_not_null_term (node))))
 #endif
 		{
-		  normal_index_plan_n =
+		  normal_index_plan_n +=
 		    qo_generate_index_scan (info, node, ni_entry);
 		}
 
