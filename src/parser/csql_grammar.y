@@ -4662,7 +4662,7 @@ opt_of_column_attribute
 	;
 
 add_partition_clause
-	: PARTITIONS unsigned_integer
+	: PARTITIONS literal_w_o_param
 		{{
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -18725,7 +18725,7 @@ create_as_clause
 	;
 
 partition_clause
-	: PARTITION opt_by HASH '(' expression_ ')' PARTITIONS unsigned_integer
+	: PARTITION opt_by HASH '(' expression_ ')' PARTITIONS literal_w_o_param
 		{{
 
 			PT_NODE *qc = parser_new_node (this_parser, PT_PARTITION);

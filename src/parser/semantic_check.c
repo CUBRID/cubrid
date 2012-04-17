@@ -4641,6 +4641,13 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       return;
     }
 
+  if (0 < parser->host_var_count)
+    {
+      PT_ERRORm (parser, pinfo, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+      return;
+    }
+
   pcol = pinfo->info.partition.expr;
   if (pcol->node_type != PT_NAME && pcol->node_type != PT_EXPR)
     {
@@ -5286,6 +5293,13 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   else
     {
       name_list = NULL;
+    }
+
+  if (0 < parser->host_var_count)
+    {
+      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+      return;
     }
 
   if (cmd == PT_ADD_HASHPARTITION || cmd == PT_COALESCE_PARTITION)
