@@ -16804,7 +16804,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    /* create index node */
 			    
 			    if (parser_count_list (sort_spec_cols) == 1
-				&& (sort_spec_cols->info.sort_spec.expr->node_type != PT_NAME))
+				&& (sort_spec_cols->info.sort_spec.expr->node_type != PT_EXPR))
 			      {
 				/* unique index with prefix length not allowed */
 				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
