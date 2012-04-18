@@ -12339,7 +12339,8 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *crt_list = NULL;
   bool has_default_values_list = false;
   bool is_multiple_tuples_insert = false;
-  bool has_odku_and_upd_trigger = false;
+  bool need_savepoint = false;
+  int has_trigger = 0;
 
   if (!statement
       || statement->node_type != PT_INSERT
@@ -12382,6 +12383,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       is_multiple_tuples_insert = true;
     }
+
   if (crt_list->info.node_list.list_type == PT_IS_SUBQUERY
       && (vc = crt_list->info.node_list.list) && pt_false_where (parser, vc))
     {
@@ -12389,46 +12391,89 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       return 0;
     }
 
-  statement = parser_walk_tree (parser, statement, NULL, NULL,
-				test_check_option, &has_check_option);
-
-  if (statement->info.insert.on_dup_key_update != NULL)
-    {
-      int has_trigger = 0;
-      error = sm_class_has_triggers (class_->info.name.db_object,
-				     &has_trigger, TR_EVENT_UPDATE);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      if (has_trigger != 0)
-	{
-	  has_odku_and_upd_trigger = true;
-	}
-    }
-  /* if the insert statement contains more than one insert component,
-     we savepoint the insert components to try to guarantee insert
-     statement atomicity.
+  /*
+   * It is necessary to add savepoint in the cases as below.
+   *
+   * 1. when multiple tuples were inserted (ex: insert into ... values(), (), ();)
+   * 2. the REPLACE statement (ex: replace into ... values ..;)
+   * 3. view having 'with check option'
+   * 4. class/view having trigger
    */
-  if (has_check_option || is_multiple_tuples_insert
-      || statement->info.insert.do_replace || has_odku_and_upd_trigger)
+
+  if (is_multiple_tuples_insert == true
+      || statement->info.insert.do_replace == true)
     {
-      savepoint_name =
-	mq_generate_name (parser, "UisP", &insert_savepoint_number);
-      if (savepoint_name == NULL)
+      need_savepoint = true;
+    }
+
+  if (need_savepoint == false)
+    {
+      statement = parser_walk_tree (parser, statement, NULL, NULL,
+				    test_check_option, &has_check_option);
+      if (has_check_option)
 	{
-	  return ER_GENERIC_ERROR;
-	}
-      error = tran_savepoint (savepoint_name, false);
-      if (error != NO_ERROR)
-	{
-	  return error;
+	  need_savepoint = true;
 	}
     }
 
   /* DO NOT RETURN UNTIL AFTER AU_ENABLE! */
   AU_DISABLE (save);
   parser->au_save = save;
+
+  if (need_savepoint == false
+      && statement->info.insert.on_dup_key_update != NULL)
+    {
+      has_trigger = 0;
+      error = sm_class_has_triggers (class_->info.name.db_object,
+				     &has_trigger, TR_EVENT_UPDATE);
+      if (error != NO_ERROR)
+	{
+	  AU_ENABLE (save);
+	  return error;
+	}
+      if (has_trigger != 0)
+	{
+	  need_savepoint = true;
+	}
+    }
+
+  if (need_savepoint == false)
+    {
+      has_trigger = 0;
+      error = sm_class_has_triggers (class_->info.name.db_object,
+				     &has_trigger, TR_EVENT_INSERT);
+      if (error != NO_ERROR)
+	{
+	  AU_ENABLE (save);
+	  return error;
+	}
+      if (has_trigger != 0)
+	{
+	  need_savepoint = true;
+	}
+    }
+
+  /*
+   *  if the insert statement contains more than one insert component,
+   *  we savepoint the insert components to try to guarantee insert
+   *  statement atomicity.
+   */
+  if (need_savepoint == true)
+    {
+      savepoint_name =
+	mq_generate_name (parser, "UisP", &insert_savepoint_number);
+      if (savepoint_name == NULL)
+	{
+	  AU_ENABLE (save);
+	  return ER_GENERIC_ERROR;
+	}
+      error = tran_savepoint (savepoint_name, false);
+      if (error != NO_ERROR)
+	{
+	  AU_ENABLE (save);
+	  return error;
+	}
+    }
 
   obt_begin_insert_values ();
 
