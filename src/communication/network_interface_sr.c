@@ -7586,16 +7586,18 @@ void
 sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 		       char *request, int reqlen)
 {
-  BTID btid;
   BTREE_STATS stat_info;
   int success;
   OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
-  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_btid (request, &stat_info.btid);
+  assert_release (!BTID_IS_NULL (&stat_info.btid));
 
-  success = (btree_get_stats (thread_p, &btid, &stat_info, false) == NO_ERROR)
+  stat_info.key_size = 0;	/* do not request pkeys info */
+
+  success = (btree_get_stats (thread_p, &stat_info) == NO_ERROR)
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {

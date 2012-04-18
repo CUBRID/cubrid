@@ -2025,7 +2025,7 @@ db_constraint_index (DB_CONSTRAINT * constraint, BTID * index)
 {
   if (constraint != NULL)
     {
-      BTID_COPY (index, &(constraint->index));
+      BTID_COPY (index, &(constraint->index_btid));
     }
 
   return index;
@@ -2313,8 +2313,10 @@ db_get_btree_statistics (DB_CONSTRAINT * cons,
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  btid = &cons->index;
+  btid = &cons->index_btid;
+  assert_release (!BTID_IS_NULL (btid));
 
+  stat.key_size = 0;		/* do not request pkeys info */
   errcode = btree_get_statistics (btid, &stat);
   if (errcode != NO_ERROR)
     {

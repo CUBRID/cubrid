@@ -2758,7 +2758,9 @@ qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info)
        ((i < n_classes) && (btid == NULL)); i++, index = index->next)
     {
       if (classop == (index->class_)->mop)
-	btid = &(index->constraints->index);
+	{
+	  btid = &(index->constraints->index_btid);
+	}
     }
 
   return btid;

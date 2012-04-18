@@ -191,21 +191,23 @@ struct btree_scan
 #endif				/* SERVER_MODE */
 };
 
-#define BTREE_INIT_SCAN(btree_scan) {                                            \
-   (btree_scan)->P_vpid.pageid = NULL_PAGEID;                                 \
-   (btree_scan)->C_vpid.pageid = NULL_PAGEID;                                 \
-   (btree_scan)->O_vpid.pageid = NULL_PAGEID;                                 \
-   (btree_scan)->slot_id = -1;                                                \
-   (btree_scan)->oid_pos = 0;                                                 \
-}
+#define BTREE_INIT_SCAN(bts)			\
+  do {						\
+    (bts)->P_vpid.pageid = NULL_PAGEID;		\
+    (bts)->C_vpid.pageid = NULL_PAGEID;		\
+    (bts)->O_vpid.pageid = NULL_PAGEID;		\
+    (bts)->P_page = NULL;			\
+    (bts)->C_page = NULL;			\
+    (bts)->O_page = NULL;			\
+    (bts)->slot_id = -1;			\
+    (bts)->oid_pos = 0;				\
+  } while (0);
 
-#define BTREE_END_OF_SCAN(btree_scan) \
-   ((btree_scan)->C_vpid.pageid == NULL_PAGEID && \
-    (btree_scan)->O_vpid.pageid == NULL_PAGEID)
+#define BTREE_END_OF_SCAN(bts) \
+   ((bts)->C_vpid.pageid == NULL_PAGEID && \
+    (bts)->O_vpid.pageid == NULL_PAGEID)
 
-#define BTREE_START_OF_SCAN(btree_scan) \
-	((btree_scan)->C_vpid.pageid == NULL_PAGEID && \
-	 (btree_scan)->O_vpid.pageid == NULL_PAGEID)
+#define BTREE_START_OF_SCAN(bts) BTREE_END_OF_SCAN(bts)
 
 typedef struct btree_checkscan BTREE_CHECKSCAN;
 struct btree_checkscan
@@ -253,8 +255,7 @@ extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
 					int *oid_cnt, int *null_cnt,
 					int *key_cnt);
 
-extern int btree_get_stats (THREAD_ENTRY * thread_p, BTID * btid,
-			    BTREE_STATS * stat_info, bool get_pkeys);
+extern int btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info);
 extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p,
 				      const OID * class_oid_p, BTID * btid,
 				      const char *btname);

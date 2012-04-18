@@ -3030,6 +3030,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   BTS = &isidp->bt_scan;
 
+  /* index scan info */
+  BTREE_INIT_SCAN (BTS);
+
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p,
@@ -3066,9 +3069,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* indicator whether covering index is used or not */
   coverage_enabled = (indx_info->coverage != 0) && (scan_op_type == S_SELECT);
-
-  /* index scan info */
-  BTREE_INIT_SCAN (&isidp->bt_scan);
 
   /* is a single range? */
   isidp->one_range = false;

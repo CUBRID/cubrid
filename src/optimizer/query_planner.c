@@ -1980,10 +1980,10 @@ qo_iscan_cost (QO_PLAN * planp)
   /* number of objects to be selected */
   objects = sel * (double) QO_NODE_NCARD (nodep);
   /* height of the B+tree */
-  height = (double) cum_statsp->height - 1.0;
-  if (height < 0.0)
+  height = (double) cum_statsp->height - 1;
+  if (height < 0)
     {
-      height = 0.0;
+      height = 0;
     }
   /* number of leaf pages to be accessed */
   leaves = ceil (sel * (double) cum_statsp->leafs);

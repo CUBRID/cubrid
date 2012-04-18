@@ -258,8 +258,9 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  if (btree_get_stats (thread_p, &btree_stats_p->btid, btree_stats_p,
-			       true) != NO_ERROR)
+	  assert_release (!BTID_IS_NULL (&btree_stats_p->btid));
+	  assert_release (btree_stats_p->key_size > 0);
+	  if (btree_get_stats (thread_p, btree_stats_p) != NO_ERROR)
 	    {
 	      goto error;
 	    }

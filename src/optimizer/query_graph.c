@@ -2222,8 +2222,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	   * so we must check if a segment has been associated with it
 	   */
 	  n = bitset_first_member (&lhs_segs);
-	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) 
-			    == false))
+	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
 	    {
 	      lhs_indexable = 0;
 	    }
@@ -2315,8 +2314,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	   * so we must check if a segment has been associated with it
 	   */
 	  n = bitset_first_member (&rhs_segs);
-	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n))
-			    == false))
+	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
 	    {
 	      rhs_indexable = 0;
 	    }
@@ -5175,7 +5173,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	       consp; consp = consp->next)
 	    {
 	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (consp->type)
-		  && BTID_IS_EQUAL (&bt_statsp->btid, &consp->index))
+		  && BTID_IS_EQUAL (&bt_statsp->btid, &consp->index_btid))
 		{
 		  break;
 		}
@@ -5470,8 +5468,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  for (k = 0, bt_statsp = attr_statsp->bt_stats;
 	       k < attr_statsp->n_btstats; k++, bt_statsp++)
 	    {
-	      if (BTID_IS_EQUAL
-		  (&bt_statsp->btid, &(index_entryp->constraints->index)))
+	      if (BTID_IS_EQUAL (&bt_statsp->btid,
+				 &(index_entryp->constraints->index_btid)))
 		{
 		  index_entryp->key_type = attr_statsp->bt_stats[k].key_type;
 		  break;

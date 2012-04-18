@@ -8530,7 +8530,16 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 
   ENTER_SERVER ();
 
-  success = btree_get_stats (NULL, btid, stat_info, false);
+  assert_release (!BTID_IS_NULL (btid));
+  assert_release (stat_info->key_size == 0);
+
+  BTID_COPY (&stat_info->btid, btid);
+  if (stat_info->key_size != 0)
+    {
+      stat_info->key_size = 0;	/* do not request pkeys info */
+    }
+
+  success = btree_get_stats (NULL, stat_info);
 
   EXIT_SERVER ();
 

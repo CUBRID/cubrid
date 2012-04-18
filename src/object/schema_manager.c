@@ -5078,7 +5078,7 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
 
   if (con)
     {
-      BTID_COPY (btid, &con->index);
+      BTID_COPY (btid, &con->index_btid);
       index = btid;
     }
 
@@ -5306,7 +5306,7 @@ sm_class_check_uniques (MOP classop)
 		  bufp = buf_start + buf_len;
 		}
 
-	      bufp = or_pack_btid (bufp, &(con->index));
+	      bufp = or_pack_btid (bufp, &(con->index_btid));
 	      buf_len += OR_BTID_ALIGNED_SIZE;
 	    }
 	}
@@ -8794,7 +8794,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			  pr_clear_value (&btid_val);
 
 			  /* Raise an error if the B-trees are not equal */
-			  if (!BTID_IS_EQUAL (&btid, &c->index))
+			  if (!BTID_IS_EQUAL (&btid, &c->index_btid))
 			    {
 			      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS,
 				      c->name);
@@ -8804,7 +8804,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			{
 			  if (classobj_put_index
 			      (&(flat->properties), c->type, c->name, attrs,
-			       c->asc_desc, &c->index,
+			       c->asc_desc, &c->index_btid,
 			       c->filter_predicate,
 			       c->fk_info, NULL,
 			       c->func_index_info) != NO_ERROR)
@@ -10048,7 +10048,7 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 
   for (con = cons; con != NULL; con = con->next)
     {
-      if (BTID_IS_EQUAL (index, &con->index))
+      if (BTID_IS_EQUAL (index, &con->index_btid))
 	{
 	  ref_count++;
 	}
@@ -10228,7 +10228,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 	  shared_con = classobj_find_constraint_by_name (class_->constraints,
 							 con->
 							 shared_cons_name);
-	  con->index = shared_con->index;
+	  con->index_btid = shared_con->index_btid;
 	}
       else
 	{
@@ -10248,7 +10248,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 	  if (allocate_index (classop, class_, subclasses, con->attributes,
 			      asc_desc, con->attrs_prefix_length,
 			      unique, reverse, con->name,
-			      &con->index, NULL, NULL, -1, NULL,
+			      &con->index_btid, NULL, NULL, -1, NULL,
 			      con->filter_predicate, con->func_index_info))
 	    {
 	      return er_errid ();
@@ -10268,7 +10268,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 						  con->type, con->name);
       if (super_con != NULL)
 	{
-	  con->index = super_con->index;
+	  con->index_btid = super_con->index_btid;
 	}
       else
 	{
@@ -10309,7 +10309,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, class_->header.name);
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
-      con->fk_info->ref_class_pk_btid = pk->index;
+      con->fk_info->ref_class_pk_btid = pk->index_btid;
     }
 
   if (con->fk_info->cache_attr && con->fk_info->cache_attr_id < 0)
@@ -10331,7 +10331,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
     {
       shared_con = classobj_find_constraint_by_name (class_->constraints,
 						     con->shared_cons_name);
-      con->index = shared_con->index;
+      con->index_btid = shared_con->index_btid;
 
       if (con->fk_info->cache_attr_id >= 0
 	  && build_fk_obj_cache (classop, class_, con->attributes,
@@ -10348,7 +10348,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
     {
       if (allocate_index (classop, class_, NULL, con->attributes, NULL,
 			  con->attrs_prefix_length, false,
-			  false, con->name, &con->index,
+			  false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid),
 			  &(con->fk_info->ref_class_pk_btid),
 			  con->fk_info->cache_attr_id, con->fk_info->name,
@@ -10359,7 +10359,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
     }
 
   con->fk_info->self_oid = *(ws_oid (classop));
-  con->fk_info->self_btid = con->index;
+  con->fk_info->self_btid = con->index_btid;
 
   ref_clsop = ws_mop (&(con->fk_info->ref_class_oid), NULL);
 
@@ -10406,7 +10406,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
       return NO_ERROR;
     }
 
-  if (BTID_IS_NULL (&con->index))
+  if (BTID_IS_NULL (&con->index_btid))
     {
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
 	{
@@ -10421,7 +10421,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 				  con->asc_desc,
 				  con->attrs_prefix_length,
 				  false, reverse, con->name,
-				  &con->index, NULL, NULL, -1, NULL,
+				  &con->index_btid, NULL, NULL, -1, NULL,
 				  con->filter_predicate,
 				  con->func_index_info);
 	}
@@ -10437,7 +10437,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 	}
 
       /* check for safe guard */
-      if (BTID_IS_NULL (&con->index))
+      if (BTID_IS_NULL (&con->index_btid))
 	{
 	  return ER_FAILED;	/* unknown error */
 	}
@@ -10449,7 +10449,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
    */
   if (classobj_put_index_id
       (&(class_->properties), con->type, con->name, con->attributes,
-       con->asc_desc, con->attrs_prefix_length, &(con->index),
+       con->asc_desc, con->attrs_prefix_length, &(con->index_btid),
        con->filter_predicate,
        con->fk_info, NULL, con->func_index_info) != NO_ERROR)
     {
@@ -10594,7 +10594,7 @@ drop_foreign_key_ref (MOP classop,
 	    {
 	      for (fk = con->fk_info; fk != NULL; fk = fk->next)
 		{
-		  if (BTID_IS_EQUAL (&fk->self_btid, &cons->index))
+		  if (BTID_IS_EQUAL (&fk->self_btid, &cons->index_btid))
 		    {
 		      fk->is_dropped = true;
 		      break;
@@ -10614,7 +10614,7 @@ drop_foreign_key_ref (MOP classop,
 
       if ((err =
 	   classobj_drop_foreign_key_ref (&(refcls_template->properties),
-					  &cons->index)) != NO_ERROR)
+					  &cons->index_btid)) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -10658,7 +10658,7 @@ is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con)
 
   if (sm_exist_index (origin_classop, con->name, &btid) == NO_ERROR)
     {
-      if (BTID_IS_EQUAL (&btid, &con->index))
+      if (BTID_IS_EQUAL (&btid, &con->index_btid))
 	{
 	  return false;
 	}
@@ -10703,7 +10703,7 @@ inherit_constraint (MOP classop, SM_CLASS_CONSTRAINT * con)
 	  else
 	    {
 	      /* copy the index */
-	      con->index = super_con->index;
+	      con->index_btid = super_con->index_btid;
 	    }
 	}
     }
@@ -10786,27 +10786,27 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	      /* destroy the old index but only if we're the owner of it ! */
 	      if (is_index_owner (classop, con))
 		{
-		  deallocate_index (class_->constraints, &con->index);
+		  deallocate_index (class_->constraints, &con->index_btid);
 		}
 	      /* If we're not the owner of it, then only remove this class
 	         from the B-tree (the B-tree will still exist) */
 	      else
 		{
-		  rem_class_from_index (WS_OID (classop), &con->index,
+		  rem_class_from_index (WS_OID (classop), &con->index_btid,
 					&class_->header.heap);
 		}
 
-	      BTID_SET_NULL (&con->index);
+	      BTID_SET_NULL (&con->index_btid);
 	    }
 	}
-      else if (!BTID_IS_EQUAL (&con->index, &new_con->index))
+      else if (!BTID_IS_EQUAL (&con->index_btid, &new_con->index_btid))
 	{
-	  if (BTID_IS_NULL (&(new_con->index)))
+	  if (BTID_IS_NULL (&(new_con->index_btid)))
 	    {
 	      /* Template index isn't set, transfer the old one
 	       * Can this happen, it should have been transfered by now.
 	       */
-	      new_con->index = con->index;
+	      new_con->index_btid = con->index_btid;
 	    }
 	  else
 	    {
@@ -10827,8 +10827,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 			}
 		    }
 
-		  deallocate_index (class_->constraints, &con->index);
-		  BTID_SET_NULL (&con->index);
+		  deallocate_index (class_->constraints, &con->index_btid);
+		  BTID_SET_NULL (&con->index_btid);
 		}
 	    }
 	}
@@ -10858,7 +10858,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    }
 
 	  con->next = NULL;
-	  if (!BTID_IS_NULL (&con->index))
+	  if (!BTID_IS_NULL (&con->index_btid))
 	    {
 	      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 		{
@@ -10870,8 +10870,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		    }
 		}
 
-	      deallocate_index (class_->constraints, &con->index);
-	      BTID_SET_NULL (&con->index);
+	      deallocate_index (class_->constraints, &con->index_btid);
+	      BTID_SET_NULL (&con->index_btid);
 	    }
 	  classobj_free_class_constraints (con);
 	}
@@ -10892,7 +10892,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type) ||
 	  con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
-	  if (BTID_IS_NULL (&(con->index)))
+	  if (BTID_IS_NULL (&(con->index_btid)))
 	    {
 	      error = inherit_constraint (classop, con);
 	    }
@@ -10919,8 +10919,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    {
 	      if (classobj_put_index_id
 		  (&(flat->properties), con->type, con->name, con->attributes,
-		   con->asc_desc, con->attrs_prefix_length, &(con->index),
-		   con->filter_predicate,
+		   con->asc_desc, con->attrs_prefix_length,
+		   &(con->index_btid), con->filter_predicate,
 		   con->fk_info, con->shared_cons_name,
 		   con->func_index_info) != NO_ERROR)
 		{
@@ -10933,8 +10933,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    {
 	      if (classobj_put_index_id
 		  (&(flat->properties), con->type, con->name, con->attributes,
-		   con->asc_desc, con->attrs_prefix_length, &(con->index),
-		   con->filter_predicate,
+		   con->asc_desc, con->attrs_prefix_length,
+		   &(con->index_btid), con->filter_predicate,
 		   NULL, NULL, con->func_index_info) != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -12509,7 +12509,7 @@ sm_exist_index (MOP classop, const char *idxname, BTID * btid)
 	{
 	  if (btid)
 	    {
-	      BTID_COPY (btid, &cons->index);
+	      BTID_COPY (btid, &cons->index_btid);
 	    }
 
 	  return NO_ERROR;
@@ -12934,12 +12934,12 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	   *  then we back propagate the changes to the class property list.
 	   *  We do this backwards because it's easier, go figure.
 	   */
-	  if (deallocate_index (class_->constraints, &found->index))
+	  if (deallocate_index (class_->constraints, &found->index_btid))
 	    {
 	      goto severe_error;
 	    }
 
-	  BTID_SET_NULL (&found->index);
+	  BTID_SET_NULL (&found->index_btid);
 	  classobj_remove_class_constraint_node (&class_->constraints, found);
 	  classobj_free_class_constraints (found);
 

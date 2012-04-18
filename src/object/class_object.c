@@ -594,7 +594,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
 	    {
 	      if (classobj_put_index_id
 		  (new_properties, c->type, c->name, c->attributes,
-		   c->asc_desc, c->attrs_prefix_length, &(c->index),
+		   c->asc_desc, c->attrs_prefix_length, &(c->index_btid),
 		   c->filter_predicate,
 		   c->fk_info, c->shared_cons_name,
 		   c->func_index_info) == ER_FAILED)
@@ -2323,7 +2323,7 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->attributes = NULL;
   new_->asc_desc = NULL;
   new_->attrs_prefix_length = NULL;
-  BTID_SET_NULL (&new_->index);
+  BTID_SET_NULL (&new_->index_btid);
   new_->fk_info = NULL;
   new_->shared_cons_name = NULL;
   new_->filter_predicate = NULL;
@@ -2917,7 +2917,8 @@ classobj_make_class_constraints (DB_SET * class_props,
 		  goto structure_error;
 		}
 	      if (classobj_btid_from_property_value
-		  (&bvalue, &new_->index, (char **) &new_->shared_cons_name))
+		  (&bvalue, &new_->index_btid,
+		   (char **) &new_->shared_cons_name))
 		{
 		  goto structure_error;
 		}
@@ -3710,7 +3711,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons,
       bt_statsp = attr_statsp->bt_stats;
       for (j = 0; j < attr_statsp->n_btstats && !key_type; j++, bt_statsp++)
 	{
-	  if (BTID_IS_EQUAL (&bt_statsp->btid, &cons->index))
+	  if (BTID_IS_EQUAL (&bt_statsp->btid, &cons->index_btid))
 	    {
 	      key_type = bt_statsp->key_type;
 	    }
@@ -3871,7 +3872,7 @@ classobj_populate_class_properties (DB_SET ** properties,
 	}
       if (classobj_put_index_id
 	  (properties, type, con->name, con->attributes, con->asc_desc,
-	   con->attrs_prefix_length, &(con->index),
+	   con->attrs_prefix_length, &(con->index_btid),
 	   con->filter_predicate,
 	   con->fk_info, con->shared_cons_name,
 	   con->func_index_info) == ER_FAILED)

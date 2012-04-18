@@ -7548,7 +7548,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf,
 	{
 	  if (db_constraint_type (fk_const) == SM_CONSTRAINT_FOREIGN_KEY
 	      && BTID_IS_EQUAL (&(fk_const->fk_info->ref_class_pk_btid),
-				&(pk->index)))
+				&(pk->index_btid)))
 	    {
 	      fk_attr = db_constraint_attributes (fk_const);
 	      if (fk_attr == NULL)

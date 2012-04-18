@@ -647,7 +647,7 @@ struct sm_class_constraint
   SM_PREDICATE_INFO *filter_predicate;	/* CREATE INDEX ... WHERE filter_predicate */
   SM_FOREIGN_KEY_INFO *fk_info;
   char *shared_cons_name;
-  BTID index;
+  BTID index_btid;
   SM_CONSTRAINT_TYPE type;
   SM_FUNCTION_INFO *func_index_info;
 };

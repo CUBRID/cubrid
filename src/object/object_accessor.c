@@ -4083,8 +4083,8 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
 	}
     }
 
-  if (btree_find_unique (&cons->index, key, ws_oid (classop), &unique_oid) ==
-      BTREE_KEY_FOUND)
+  if (btree_find_unique (&cons->index_btid, key,
+			 ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
       /*
@@ -4281,13 +4281,13 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
 
   if (is_replication == true)
     {
-      btree_search = repl_btree_find_unique (&cons->index, key,
+      btree_search = repl_btree_find_unique (&cons->index_btid, key,
 					     ws_oid (classop), &unique_oid);
     }
   else
     {
-      btree_search = btree_find_unique (&cons->index, key, ws_oid (classop),
-					&unique_oid);
+      btree_search = btree_find_unique (&cons->index_btid, key,
+					ws_oid (classop), &unique_oid);
     }
   if (btree_search == BTREE_KEY_FOUND)
     {
@@ -4393,8 +4393,8 @@ obj_repl_delete_object_by_pkey (MOP classop, DB_VALUE * key_value)
 	}
     }
 
-  error =
-    btree_delete_with_unique_key (&cons->index, ws_oid (classop), key_value);
+  error = btree_delete_with_unique_key (&cons->index_btid,
+					ws_oid (classop), key_value);
 
   return error;
 

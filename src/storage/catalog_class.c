@@ -5101,7 +5101,7 @@ catcls_get_cardinality (THREAD_ENTRY * thread_p, const char *class_name,
 
   if (!is_btree_found)
     {
-      assert (p_stat_info == NULL);
+      assert_release (p_stat_info == NULL);
       /* not found, repeat the search for variable attributes */
       for (att_cnt = 0, disk_attr_p = disk_repr_p->variable;
 	   att_cnt < disk_repr_p->n_variable; att_cnt++, disk_attr_p++)
@@ -5131,15 +5131,18 @@ catcls_get_cardinality (THREAD_ENTRY * thread_p, const char *class_name,
       error = ER_UNEXPECTED;
       goto exit_cleanup;
     }
-  assert (p_stat_info != NULL);
+
+  assert_release (p_stat_info != NULL);
+  assert_release (BTID_IS_EQUAL (&(p_stat_info->btid), &found_btid));
+  assert_release (p_stat_info->key_size > 0);
+
   /* get the BTREE_STATS only for the concerned BTID */
-  error = btree_get_stats (thread_p, &found_btid, p_stat_info, true);
+  error = btree_get_stats (thread_p, p_stat_info);
   if (error != NO_ERROR)
     {
       goto exit_cleanup;
     }
 
-  assert (BTID_IS_EQUAL (&(p_stat_info->btid), &found_btid));
   if (key_pos >= p_stat_info->key_size || key_pos < 0)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,

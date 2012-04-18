@@ -1711,7 +1711,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 	}
 
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
-      fk_info->ref_class_pk_btid = pk->index;
+      fk_info->ref_class_pk_btid = pk->index_btid;
       ref_cls_name = ref_cls->header.name;
     }
 
