@@ -14302,7 +14302,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
 			  || pr_type->id == DB_TYPE_CLOB))
 		    {
 		      DB_ELO dest_elo, *elo_p;
-		      char *save_meta_data;
+		      char *save_meta_data, *new_meta_data;
 		      int error;
 
 		      assert (db_value_type (dbvalue) == DB_TYPE_BLOB ||
@@ -14310,16 +14310,22 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
 
 		      elo_p = db_get_elo (dbvalue);
 
-		      save_meta_data = elo_p->meta_data;
-		      elo_p->meta_data = heap_get_class_name (thread_p,
-							      &
-							      (attr_info->
-							       class_oid));
-		      if (elo_p->meta_data == NULL)
+		      if (elo_p == NULL)
+			{
+			  continue;
+			}
+
+		      new_meta_data = heap_get_class_name (thread_p,
+							   &(attr_info->
+							     class_oid));
+
+		      if (new_meta_data == NULL)
 			{
 			  status = S_ERROR;
 			  break;
 			}
+		      save_meta_data = elo_p->meta_data;
+		      elo_p->meta_data = new_meta_data;
 		      error = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
 
 		      free_and_init (elo_p->meta_data);
