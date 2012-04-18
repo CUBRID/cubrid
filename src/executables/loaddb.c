@@ -453,6 +453,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       sysprm_set_force (PRM_NAME_SR_NBUFFERS,
 			LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
+
+  if (Error_file[0] != '\0')
+    {
+      /* set flush interval to 1 */
+      sysprm_set_force (PRM_NAME_LOADDB_FLUSH_INTERVAL, "1");
+    }
+
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   /* login */

@@ -4356,8 +4356,20 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 		  if (!context->validation_only)
 		    {
 		      ldr_flush (context);
-		      err = er_filter_errid (true);	/* ignore warning */
-		      CHECK_ERR (err, err);
+		      err = er_errid ();
+		      if (err != NO_ERROR)
+			{
+			  /* flush failed */
+			  err = er_filter_errid (true);	/* ignore warning */
+			  if (err == NO_ERROR)
+			    {
+			      /* Flush error was ignored.
+			       * Objects in workspace must be decached
+			       * for later flush */
+			      ws_decache_all_instances (context->cls);
+			    }
+			}
+		      CHECK_ERR (err, er_errid ());
 		    }
 		}
 	      else
