@@ -4086,6 +4086,7 @@ mq_translate_local (PARSER_CONTEXT * parser,
   int line, column;
   PT_NODE *next;
   PT_NODE *indexp, *spec, *using_index;
+  bool aggregate_rewrote_as_derived = false;
 
   if (statement == NULL)
     {
@@ -4115,6 +4116,7 @@ mq_translate_local (PARSER_CONTEXT * parser,
 	       * for correlated subqueries on aggregate queries.
 	       */
 	      statement = mq_rewrite_aggregate_as_derived (parser, statement);
+	      aggregate_rewrote_as_derived = true;
 	    }
 	}
 
@@ -4181,8 +4183,18 @@ mq_translate_local (PARSER_CONTEXT * parser,
       switch (statement->node_type)
 	{
 	case PT_SELECT:
-	  using_index = statement->info.query.q.select.using_index;
 	  spec = statement->info.query.q.select.from;
+	  if (aggregate_rewrote_as_derived && spec != NULL)
+	    {
+	      PT_NODE * derived_table = spec->info.spec.derived_table;
+	      assert (derived_table != NULL);
+	      using_index = derived_table->info.query.q.select.using_index;
+	      spec = derived_table->info.query.q.select.from;
+	    }
+	  else
+	    {
+	      using_index = statement->info.query.q.select.using_index;
+	    }
 	  break;
 
 	case PT_UPDATE:
