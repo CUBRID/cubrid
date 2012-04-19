@@ -2211,6 +2211,11 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p,
     }
   if (qentry_p->list_id->page_cnt == 0)
     {
+      /* make sure temp_file is not cyclic */
+      if (qentry_p->temp_file)
+	{
+	  qentry_p->temp_file->prev->next = NULL;
+	}
       return NO_ERROR;
     }
   if (qentry_p->temp_file)

@@ -3843,6 +3843,9 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p,
   QMGR_TEMP_FILE *temp = NULL;
   int rc = NO_ERROR, fd_ret = NO_ERROR;
 
+  /* make sure temp file list is not cyclic */
+  assert (tfile_vfid_p->prev == NULL || tfile_vfid_p->prev->next == NULL);
+
   while (tfile_vfid_p)
     {
       fd_ret = NO_ERROR;
