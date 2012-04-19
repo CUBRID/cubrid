@@ -5742,7 +5742,7 @@ void
 locator_synch_isolation_incons (void)
 {
   LC_COPYAREA *fetch_area;	/* Area where objects are received */
-  int more_synch = true;
+  int more_synch;
 
   if (TM_TRAN_ISOLATION () == TRAN_REP_CLASS_REP_INSTANCE
       || TM_TRAN_ISOLATION () == TRAN_SERIALIZABLE)
@@ -5750,7 +5750,7 @@ locator_synch_isolation_incons (void)
       return;
     }
 
-  while (more_synch)
+  do
     {
       more_synch = locator_notify_isolation_incons (&fetch_area);
       if (fetch_area == NULL)
@@ -5760,6 +5760,7 @@ locator_synch_isolation_incons (void)
       (void) locator_cache (fetch_area, NULL, NULL, NULL, NULL);
       locator_free_copy_area (fetch_area);
     }
+  while (more_synch);
 
 }
 

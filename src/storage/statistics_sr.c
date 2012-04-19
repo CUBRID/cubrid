@@ -456,9 +456,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	    + OR_INT_SIZE	/* pages of BTREE_STATS */
 	    + OR_INT_SIZE	/* height of BTREE_STATS */
 	    + OR_INT_SIZE	/* keys of BTREE_STATS */
-	    + OR_INT_SIZE	/* oids of BTREE_STATS */
-	    + OR_INT_SIZE	/* nulls of BTREE_STATS */
-	    + OR_INT_SIZE	/* ukeys of BTREE_STATS */
 	   ) * tot_n_btstats);	/* total number of indexes */
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
@@ -665,15 +662,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  assert_release (btree_stats_p->pages >= 1);
 	  assert_release (btree_stats_p->height >= 1);
 	  assert_release (btree_stats_p->keys >= 0);
-
-	  OR_PUT_INT (buf_p, btree_stats_p->oids);
-	  buf_p += OR_INT_SIZE;
-
-	  OR_PUT_INT (buf_p, btree_stats_p->nulls);
-	  buf_p += OR_INT_SIZE;
-
-	  OR_PUT_INT (buf_p, btree_stats_p->ukeys);
-	  buf_p += OR_INT_SIZE;
 
 	  buf_p = or_pack_domain (buf_p, btree_stats_p->key_type, 0, 0);
 

@@ -201,7 +201,7 @@ struct btree_scan
     (bts)->O_page = NULL;			\
     (bts)->slot_id = -1;			\
     (bts)->oid_pos = 0;				\
-  } while (0);
+  } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
    ((bts)->C_vpid.pageid == NULL_PAGEID && \

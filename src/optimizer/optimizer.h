@@ -122,9 +122,6 @@ typedef struct
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
   int keys;			/* number of keys */
-  int oids;			/* number of OIDs */
-  int nulls;			/* number of NULL values */
-  int ukeys;			/* number of unique keys */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int *pkeys;			/* partial keys info
 				   for example: index (a, b, ..., x)

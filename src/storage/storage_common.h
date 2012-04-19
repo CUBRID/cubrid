@@ -73,7 +73,7 @@ enum
     } else { \
       snprintf(buf, buf_size - 1, "%s%s", path, name); \
     } \
-  } while (0);
+  } while (0)
 
 /* Type definitions related to disk information	*/
 

@@ -128,9 +128,9 @@ static int rv;
 #define CATALOG_BT_STATS_PAGES_OFF       16
 #define CATALOG_BT_STATS_HEIGHT_OFF      20
 #define CATALOG_BT_STATS_KEYS_OFF        24
-#define CATALOG_BT_STATS_OIDS_OFF        28
-#define CATALOG_BT_STATS_NULLS_OFF       32
-#define CATALOG_BT_STATS_UKEYS_OFF       36
+#define CATALOG_BT_STATS_RESERVED_1_OFF  28
+#define CATALOG_BT_STATS_RESERVED_2_OFF  32
+#define CATALOG_BT_STATS_RESERVED_3_OFF  36
 #define CATALOG_BT_STATS_PKEYS_OFF       40
 #define CATALOG_BT_STATS_RESERVED_OFF    (CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * BTREE_STATS_PKEYS_NUM))	/* 72 */
 #define CATALOG_BT_STATS_SIZE            (CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * BTREE_STATS_RESERVED_NUM))	/* 80 */
@@ -463,20 +463,24 @@ catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
   stat_p->pages = OR_GET_INT (rec_p + CATALOG_BT_STATS_PAGES_OFF);
   stat_p->height = OR_GET_INT (rec_p + CATALOG_BT_STATS_HEIGHT_OFF);
   stat_p->keys = OR_GET_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF);
-  stat_p->oids = OR_GET_INT (rec_p + CATALOG_BT_STATS_OIDS_OFF);
-  stat_p->nulls = OR_GET_INT (rec_p + CATALOG_BT_STATS_NULLS_OFF);
-  stat_p->ukeys = OR_GET_INT (rec_p + CATALOG_BT_STATS_UKEYS_OFF);
+#if 0				/* reserved for future use */
+  stat_p->reserved_1 = OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_1_OFF);
+  stat_p->reserved_2 = OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_2_OFF);
+  stat_p->reserved_3 = OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_3_OFF);
+#endif
   for (i = 0; i < MIN (stat_p->key_size, BTREE_STATS_PKEYS_NUM); i++)
     {
       stat_p->pkeys[i] = OR_GET_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF +
 				     (OR_INT_SIZE * i));
     }
+#if 0				/* reserved for future use */
   for (i = 0; i < BTREE_STATS_RESERVED_NUM; i++)
     {
       stat_p->reserved[i] =
 	OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_OFF +
 		    (OR_INT_SIZE * i));
     }
+#endif
 }
 
 static void
@@ -507,20 +511,24 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_PAGES_OFF, stat_p->pages);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_HEIGHT_OFF, stat_p->height);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF, stat_p->keys);
-  OR_PUT_INT (rec_p + CATALOG_BT_STATS_OIDS_OFF, stat_p->oids);
-  OR_PUT_INT (rec_p + CATALOG_BT_STATS_NULLS_OFF, stat_p->nulls);
-  OR_PUT_INT (rec_p + CATALOG_BT_STATS_UKEYS_OFF, stat_p->ukeys);
+#if 1				/* reserved for future use */
+  OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_1_OFF, 0);
+  OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_2_OFF, 0);
+  OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_3_OFF, 0);
+#endif
 
   for (i = 0; i < MIN (stat_p->key_size, BTREE_STATS_PKEYS_NUM); i++)
     {
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * i),
 		  stat_p->pkeys[i]);
     }
+#if 1				/* reserved for future use */
   for (i = 0; i < BTREE_STATS_RESERVED_NUM; i++)
     {
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * i),
-		  stat_p->reserved[i]);
+		  0);
     }
+#endif
 }
 
 static void
@@ -2369,9 +2377,11 @@ catalog_copy_btree_statistic (BTREE_STATS * new_btree_stats_p,
 	  new_stats_p->pages = pre_stats_p->pages;
 	  new_stats_p->height = pre_stats_p->height;
 	  new_stats_p->keys = pre_stats_p->keys;
-	  new_stats_p->oids = pre_stats_p->oids;
-	  new_stats_p->nulls = pre_stats_p->nulls;
-	  new_stats_p->ukeys = pre_stats_p->ukeys;
+#if 0				/* reserved for future use */
+	  new_stats_p->reserved_1 = pre_stats_p->reserved_1;
+	  new_stats_p->reserved_2 = pre_stats_p->reserved_2;
+	  new_stats_p->reserved_3 = pre_stats_p->reserved_3;
+#endif
 	  new_stats_p->key_type = pre_stats_p->key_type;
 	  new_stats_p->key_size = pre_stats_p->key_size;
 
@@ -2379,10 +2389,12 @@ catalog_copy_btree_statistic (BTREE_STATS * new_btree_stats_p,
 	    {
 	      new_stats_p->pkeys[k] = pre_stats_p->pkeys[k];
 	    }
+#if 0				/* reserved for future use */
 	  for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
 	    {
 	      new_stats_p->reserved[k] = pre_stats_p->reserved[k];
 	    }
+#endif
 
 	  break;
 	}

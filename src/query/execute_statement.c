@@ -3302,10 +3302,11 @@ do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list,
 typedef enum
 {
   CST_UNDEFINED,
-  CST_NOBJECTS, CST_NPAGES, CST_NATTRIBUTES,
-  CST_ATTR_MIN, CST_ATTR_MAX, CST_ATTR_NINDEXES,
-  CST_BT_NLEAFS, CST_BT_NPAGES, CST_BT_HEIGHT, CST_BT_NKEYS,
-  CST_BT_NOIDS, CST_BT_NNULLS, CST_BT_NUKEYS
+  CST_NOBJECTS, CST_NPAGES, CST_NATTRIBUTES, CST_ATTR_MIN, CST_ATTR_MAX,
+#if 0
+  CST_ATTR_NINDEXES, CST_BT_NLEAFS, CST_BT_HEIGHT,
+#endif
+  CST_BT_NKEYS,
 } CST_ITEM_ENUM;
 
 typedef struct cst_item CST_ITEM;
@@ -3330,11 +3331,6 @@ static CST_ITEM cst_item_tbl[] = {
   {CST_BT_HEIGHT, "index_height", 0, 0},
 #endif
   {CST_BT_NKEYS, "#keys", 0, 0},
-#if 0
-  {CST_BT_NOIDS, "#oids", 0, 0},
-  {CST_BT_NNULLS, "#nulls", 0, 0},
-  {CST_BT_NUKEYS, "#unique_keys", 0, 0},
-#endif
   {CST_UNDEFINED, "", 0, 0}
 };
 
@@ -3669,6 +3665,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	    }
 	}
       break;
+#if 0
     case CST_ATTR_NINDEXES:
       if (!attr_statsp)
 	{
@@ -3709,6 +3706,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	  db_make_int (db_val, bt_statsp->height);
 	}
       break;
+#endif
     case CST_BT_NKEYS:
       if (!attr_statsp || !bt_statsp)
 	{
@@ -3717,36 +3715,6 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
       else
 	{
 	  db_make_int (db_val, bt_statsp->keys);
-	}
-      break;
-    case CST_BT_NOIDS:
-      if (!attr_statsp || !bt_statsp)
-	{
-	  db_make_null (db_val);
-	}
-      else
-	{
-	  db_make_int (db_val, bt_statsp->oids);
-	}
-      break;
-    case CST_BT_NNULLS:
-      if (!attr_statsp || !bt_statsp)
-	{
-	  db_make_null (db_val);
-	}
-      else
-	{
-	  db_make_int (db_val, bt_statsp->nulls);
-	}
-      break;
-    case CST_BT_NUKEYS:
-      if (!attr_statsp || !bt_statsp)
-	{
-	  db_make_null (db_val);
-	}
-      else
-	{
-	  db_make_int (db_val, bt_statsp->ukeys);
 	}
       break;
     default:
@@ -7354,7 +7322,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
  * Note:
  */
 static int
-update_check_for_constraints (PARSER_CONTEXT * parser, int * has_unique,
+update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 			      PT_NODE ** not_nulls, const PT_NODE * statement)
 {
   int error = NO_ERROR;

@@ -47,9 +47,11 @@ struct btree_stats
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
   int keys;			/* number of keys */
-  int oids;			/* number of OIDs */
-  int nulls;			/* number of NULL values */
-  int ukeys;			/* number of unique keys */
+#if 0				/* reserved for future use */
+  int reserved_1;
+  int reserved_2;
+  int reserved_3;
+#endif
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int key_size;			/* number of key columns */
   int *pkeys;			/* partial keys info
@@ -59,7 +61,9 @@ struct btree_stats
 				   ...
 				   pkeys[key_size-1] -> # of {a, b, ..., x}
 				 */
-  int reserved[BTREE_STATS_RESERVED_NUM];	/* reserved space for future use */
+#if 0				/* reserved for future use */
+  int reserved[BTREE_STATS_RESERVED_NUM];
+#endif
 };
 
 /* Statistical Information about the attribute */

@@ -5045,9 +5045,8 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   OR_PUT_INT (&cum_statsp->min_value, 0);
   OR_PUT_INT (&cum_statsp->max_value, 0);
   cum_statsp->is_indexed = true;
-  cum_statsp->leafs = cum_statsp->pages = cum_statsp->height =
-    cum_statsp->keys = cum_statsp->oids = cum_statsp->nulls =
-    cum_statsp->ukeys = 0;
+  cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
+  cum_statsp->keys = 0;
   cum_statsp->key_type = NULL;
   cum_statsp->key_size = 0;
   cum_statsp->pkeys = NULL;
@@ -5184,11 +5183,8 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      /* is class hierarchy index: set unique index statistics */
 	      cum_statsp->leafs = bt_statsp->leafs;
 	      cum_statsp->pages = bt_statsp->pages;
-	      cum_statsp->oids = bt_statsp->oids;
-	      cum_statsp->nulls = bt_statsp->nulls;
 	      cum_statsp->height = bt_statsp->height;
 	      cum_statsp->keys = bt_statsp->keys;
-	      cum_statsp->ukeys = bt_statsp->ukeys;
 	      cum_statsp->key_type = bt_statsp->key_type;
 	      cum_statsp->key_size = bt_statsp->key_size;
 	      /* alloc pkeys[] within the current optimizer environment */
@@ -5220,8 +5216,6 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       /* keep cumulative totals of index statistics */
       cum_statsp->leafs += bt_statsp->leafs;
       cum_statsp->pages += bt_statsp->pages;
-      cum_statsp->oids += bt_statsp->oids;
-      cum_statsp->nulls += bt_statsp->nulls;
       /* Assume that the key distributions overlap here, so that the
          number of distinct keys in all of the attributes equal to the
          maximum number of distinct keys in any one of the attributes.
@@ -5232,7 +5226,6 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  cum_statsp->keys < bt_statsp->keys)
 	{
 	  cum_statsp->keys = bt_statsp->keys;
-	  cum_statsp->ukeys = bt_statsp->ukeys;
 	  cum_statsp->key_type = bt_statsp->key_type;
 	  cum_statsp->key_size = bt_statsp->key_size;
 	  /* alloc pkeys[] within the current optimizer environment */
@@ -5493,11 +5486,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  /* is class hierarchy index: set unique index statistics */
 		  cum_statsp->leafs = bt_statsp->leafs;
 		  cum_statsp->pages = bt_statsp->pages;
-		  cum_statsp->oids = bt_statsp->oids;
-		  cum_statsp->nulls = bt_statsp->nulls;
 		  cum_statsp->height = bt_statsp->height;
 		  cum_statsp->keys = bt_statsp->keys;
-		  cum_statsp->ukeys = bt_statsp->ukeys;
 		  cum_statsp->key_type = bt_statsp->key_type;
 		  cum_statsp->key_size = bt_statsp->key_size;
 		  /* alloc pkeys[] within the current optimizer environment */
@@ -5530,8 +5520,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  /* keep cumulative totals of index statistics */
 	  cum_statsp->leafs += bt_statsp->leafs;
 	  cum_statsp->pages += bt_statsp->pages;
-	  cum_statsp->oids += bt_statsp->oids;
-	  cum_statsp->nulls += bt_statsp->nulls;
 	  /* Assume that the key distributions overlap here, so that the
 	     number of distinct keys in all of the attributes equal to the
 	     maximum number of distinct keys in any one of the attributes.
@@ -5543,7 +5531,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	      cum_statsp->keys < bt_statsp->keys)
 	    {
 	      cum_statsp->keys = bt_statsp->keys;
-	      cum_statsp->ukeys = bt_statsp->ukeys;
 	      cum_statsp->key_type = bt_statsp->key_type;
 	      cum_statsp->key_size = bt_statsp->key_size;
 	      /* alloc pkeys[] within the current optimizer environment */

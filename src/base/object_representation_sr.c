@@ -292,17 +292,21 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->pages = 0;
 	      bt_statsp->height = 0;
 	      bt_statsp->keys = 0;
-	      bt_statsp->oids = 0;
-	      bt_statsp->nulls = 0;
-	      bt_statsp->ukeys = 0;
+#if 0				/* reserved for future use */
+	      bt_statsp->reserved_1 = 0;
+	      bt_statsp->reserved_2 = 0;
+	      bt_statsp->reserved_3 = 0;
+#endif
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->key_size = 0;
 	      bt_statsp->pkeys = NULL;
 
+#if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
 		{
 		  bt_statsp->reserved[k] = 0;
 		}
+#endif
 
 	      /* read B+tree Root page header info */
 	      root_vpid.pageid = bt_statsp->btid.root_pageid;

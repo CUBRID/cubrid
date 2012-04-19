@@ -151,7 +151,7 @@
 	{ \
 	  fprintf (stderr, "Error processing locales : %s\n", msg); \
 	} \
-    } while (0);
+    } while (0)
 
 #define LOC_FILE_PATH_SIZE  256
 

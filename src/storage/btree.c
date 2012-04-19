@@ -3550,11 +3550,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 	}
     }
 
-  /* get number of OIDs, NULLs and unique keys from the root page root_header */
-  stat_info->oids = root_header.num_oids;
-  stat_info->nulls = root_header.num_nulls;
-  stat_info->ukeys = root_header.num_keys;
-
   /* initialize environment stat_info structure */
   env->stat_info->leafs = 0;
   env->stat_info->pages = 0;

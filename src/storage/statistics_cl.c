@@ -253,15 +253,6 @@ stats_client_unpack_statistics (char *buf_p)
 	  btree_stats_p->keys = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
 
-	  btree_stats_p->oids = OR_GET_INT (buf_p);
-	  buf_p += OR_INT_SIZE;
-
-	  btree_stats_p->nulls = OR_GET_INT (buf_p);
-	  buf_p += OR_INT_SIZE;
-
-	  btree_stats_p->ukeys = OR_GET_INT (buf_p);
-	  buf_p += OR_INT_SIZE;
-
 	  buf_p = or_unpack_domain (buf_p, &btree_stats_p->key_type, 0);
 
 	  if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
