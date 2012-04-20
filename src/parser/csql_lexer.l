@@ -30,7 +30,7 @@
 #include "csql_grammar.h"
 #include "parse_tree.h"
 #include "system_parameter.h"
-
+#include "message_catalog.h"
 
 #define CSQL_MAXNAME	256
 
@@ -1120,12 +1120,22 @@ csql_yyerror (const char *s)
   char *next_ptr = csql_yyget_text () + csql_yyget_leng () + 1;
   char saved_char = yy_hold_char; /* retain the character following the last
 				   * character of the current token */
+  char *end_of_stmt_str = NULL;
+  char *context_saved_char_str = NULL;
   int end_statement = 0;
+  int free_msg = 0;
   
+  end_of_stmt_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SYNTAX,
+				    MSGCAT_SYNTAX_END_OF_STMT);
+  context_saved_char_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_CONTEXT_SAVED_CHAR);
+
   if (strlen (next_ptr) == 0)
     {
       end_statement = 1;
-      next_ptr = " END OF STATEMENT ";
+      next_ptr = end_of_stmt_str;
     }
 
   YY_FLUSH_BUFFER;
@@ -1140,17 +1150,30 @@ csql_yyerror (const char *s)
     }
   else
     {
-      const char *cmp_str = ", expecting \'{\'";
-      const char *cmp_str2 = ", expecting SELECT or \'(\'";
+      const char *cmp_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_EXPECTING_BRACKET);
+      const char *cmp_str2 = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					     MSGCAT_SET_PARSER_SYNTAX,
+					     MSGCAT_SYNTAX_EXPECTING_SELECT);
 
       char *msg = NULL;
-      const char *before_token = "Syntax error: unexpected ";
-      const char *after_token = strstr (s, ", expecting");
+      const char *before_token = msgcat_message (MSGCAT_CATALOG_CUBRID,
+						 MSGCAT_SET_PARSER_SYNTAX,
+						 MSGCAT_SYNTAX_YYERROR);
+      const char *after_token =
+	strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_PARSER_SYNTAX,
+				   MSGCAT_SYNTAX_EXPECTING));
+      const char *token_type =
+	strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_PARSER_SYNTAX,
+				   MSGCAT_SYNTAX_UNEXPECTED));
       int len = 0;
-      int fixed_len = 35 + /* size of fixed part of the context message
-			      "In line , column  before ''\n ''" */
-		      11 * 2; /* maximum size of printed line number and
-				 column number */
+      int fixed_len = strlen (context_saved_char_str) /* size of fixed part of
+						         the context message */
+		      + 11 * 2; /* maximum size of printed line number and
+				   column number */
       PT_NODE *dummy;
 
       if ((strlen (s) > strlen (cmp_str)) &&
@@ -1164,33 +1187,66 @@ csql_yyerror (const char *s)
 	  *(char *) &s[strlen (s) - strlen (cmp_str2)] = 0;
 	}
 
-      msg = (char *) csql_yyalloc (fixed_len + strlen(s) + strlen (token_val)
-				   + strlen (next_ptr) + 1);
-      if (msg == NULL)
+      if (strlen (token_val) == 0)
 	{
-	  YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+	  token_type = NULL;
 	}
-
-      if (end_statement == 0)
+      if (token_type)
 	{
-	  sprintf (msg, "In line %d, column %d before '%c%s'\n", 
-		   csql_yylloc.first_line, csql_yylloc.first_column, 
-		   saved_char, next_ptr);
-	  msg[strlen (msg) - 3] = ' ';
+	  msg = (char *) csql_yyalloc (fixed_len + strlen(s) 
+				       + strlen (token_val) 
+				       + strlen (next_ptr) + 2);
+	  if (msg == NULL)
+	    {
+	      YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+	    }
+	  free_msg = 1;
+	  if (end_statement == 0)
+	    {
+	      sprintf (msg, context_saved_char_str,
+		       csql_yylloc.first_line, csql_yylloc.first_column,
+		       (saved_char ? saved_char : ' '), next_ptr);
+	    }
+	  else
+	    {
+	      sprintf (msg, msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_CONTEXT),
+		       csql_yylloc.first_line, csql_yylloc.first_column,
+		       next_ptr);
+	    }
+
+	  len = strlen (msg);
+	  
+	  if (msg[len - 3] == '\n')
+	    {
+	      msg[len - 3] = ' ';
+	    }
+	  sprintf (msg + len, "%s '%s'", before_token, token_val);
+
+	  if (after_token)
+	    {
+	      strcat (msg, after_token);
+	    }
 	}
       else
 	{
-	  sprintf (msg, "In line %d, column %d before %s\n", 
-		   csql_yylloc.first_line, csql_yylloc.first_column, 
-		   next_ptr);
-	}
-
-      len = strlen (msg);
-      sprintf (msg + len, "%s'%s'", before_token, token_val);
-
-      if (after_token)
-	{
-	  strcat (msg, after_token);
+	  if (strstr (s, "$end"))
+	    {
+	      next_ptr = end_of_stmt_str;
+	      msg = (char *) csql_yyalloc (strlen (before_token)
+					   + strlen (next_ptr) + 2);
+	      if (msg == NULL)
+		{
+		  YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+		}
+	      sprintf (msg, "%s %s", before_token, next_ptr);
+	      free_msg = 1;
+	    }
+	  else
+	    {
+	      msg = s;
+	    }
 	}
 
       dummy = parser_new_node (this_parser, PT_EXPR);
@@ -1200,7 +1256,10 @@ csql_yyerror (const char *s)
 	}
       PT_ERRORf (this_parser, dummy, "%s", msg);
       parser_free_tree (this_parser, dummy);
-      csql_yyfree (msg);
+      if (free_msg)
+	{
+	  csql_yyfree (msg);
+	}
    }
 }
 

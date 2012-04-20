@@ -14961,9 +14961,8 @@ predicate_expr_sub
 		DBG_PRINT}}
 	| pred_lhs IdName
 		{{
-
-			push_msg (MSGCAT_SYNTAX_INVALID_RELATIONAL_OP);
-			csql_yyerror_explicit (@2.first_line, @2.first_column);
+			PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX,
+				    MSGCAT_SYNTAX_INVALID_RELATIONAL_OP);
 
 		DBG_PRINT}}
 	;

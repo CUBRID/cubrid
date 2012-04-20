@@ -1877,18 +1877,47 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
   node->info.error_msg.error_message = NULL;
   if (context != NULL)
     {
-      int context_len = 12;	/* size of constant string " before ' '\n" to be
-				   printed along with the actual context */
-      int str_len = strlen (context) + context_len;
-      char *s = parser_allocate_string_buffer (parser, str_len,
-					       sizeof (char));
+      char *before_context_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_BEFORE_CONTEXT);
+      char *before_end_of_stmt_str =
+	msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX,
+			MSGCAT_SYNTAX_BEFORE_END_OF_STMT);
+      /* size of constant string "before ' '\n" to be printed along with the
+         actual context - do not count format parameter "%s", of size 2*/
+      int context_len = strlen (before_context_str) - 2;
+      int end_of_statement = 0;
+      int str_len = 0;
+      char *s = NULL;
+
+      if ((strlen (context) == 1) && (*context <= 32))
+	{
+	  end_of_statement = 1;
+	  /* size of constant string "before END OF STATEMENT\n" */
+	  str_len = strlen (before_end_of_stmt_str);
+	}
+      else
+	{
+	  str_len = strlen (context) + context_len;
+	}
+      s = parser_allocate_string_buffer (parser, str_len, sizeof (char));
       if (s == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "insufficient memory");
 	  return;
 	}
-      sprintf (s, " before ' %s'\n", context);
-      s[str_len - 3] = ' ';
+      if (end_of_statement == 0)
+	{
+	  sprintf (s, before_context_str, context);
+	  if (s[str_len - 3] == '\n')
+	    {
+	      s[str_len - 3] = ' ';
+	    }
+	}
+      else
+	{
+	  sprintf (s, before_end_of_stmt_str);
+	}
       node->info.error_msg.error_message = s;
     }
   node->info.error_msg.error_message =
@@ -16160,6 +16189,10 @@ pt_is_function_index_expr (PT_NODE * expr)
 {
   PT_NODE *func = NULL;
   PT_NODE *arg = NULL;
+  if (!expr)
+    {
+      return false;
+    }
   if (expr->node_type != PT_EXPR)
     {
       return false;

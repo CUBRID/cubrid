@@ -1291,6 +1291,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 잘못된 형식의 group_concat 함수입니다.\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 잘못된 형식의 인덱스 힌트입니다.
 104 바이트 문자열의 최대 크기는 %d 바이트입니다.
+105 Syntax error: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
+110 END OF STATEMENT
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

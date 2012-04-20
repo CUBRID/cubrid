@@ -1291,6 +1291,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 invalid use of index hint
 104 Maximum byte string length is %d bytes.
+105 Syntax error: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
+110 END OF STATEMENT
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
