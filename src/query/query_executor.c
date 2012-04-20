@@ -1023,28 +1023,28 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      typ = DB_VALUE_DOMAIN_TYPE (dbval);
-      if (typ == DB_TYPE_VOBJ)
-	{
-	  /* grab the real oid */
-	  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
-	  if (ret != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  dbval = &element;
-	  typ = DB_VALUE_DOMAIN_TYPE (dbval);
-	}
-
-      if (typ != DB_TYPE_OID)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
       reg_var_list = reg_var_list->next;
 
       if (!DB_IS_NULL (dbval))
 	{
+	  typ = DB_VALUE_DOMAIN_TYPE (dbval);
+	  if (typ == DB_TYPE_VOBJ)
+	    {
+	      /* grab the real oid */
+	      ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	      if (ret != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      dbval = &element;
+	      typ = DB_VALUE_DOMAIN_TYPE (dbval);
+	    }
+
+	  if (typ != DB_TYPE_OID)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
 	  COPY_OID (&instance_oid, DB_GET_OID (dbval));
 
 	  ret =

@@ -5152,7 +5152,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 
   /* check if a hidden column is in the select list; if it is the case, store
      the position in 'adjust_for_hidden_col_from' - index starting from 1
-     !! Only PT_FUNCTION nodes are checked, and only one column is supported!
+     !! Only one column is supported!
      This adjustement is needed for UPDATE statements with SELECT subqueries,
      executed on broker (ex: on tables with triggers); in this case,
      the class OID field in select list is marked as hidden, and the
@@ -5163,15 +5163,28 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
     {
       for (col = col_list, k = 1; col; col = col->next, k++)
 	{
-	  if (col->node_type == PT_FUNCTION)
+	  switch (col->node_type)
 	    {
-	      if (col->info.function.hidden_column &&
-		  col->info.function.function_type == F_CLASS_OF)
+	    case PT_FUNCTION:
+	      if (col->info.function.hidden_column
+		  && col->info.function.function_type == F_CLASS_OF)
 		{
 		  assert (adjust_for_hidden_col_from == -1);
 		  adjust_for_hidden_col_from = k;
 		  break;
 		}
+	      break;
+
+	    case PT_NAME:
+	      if (col->info.name.hidden_column)
+		{
+		  assert (adjust_for_hidden_col_from == -1);
+		  adjust_for_hidden_col_from = k;
+		  break;
+		}
+
+	    default:
+	      break;
 	    }
 	}
     }
@@ -8875,6 +8888,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      else
 		{
 		  regu = pt_attribute_to_regu (parser, node);
+		}
+
+	      if (regu)
+		{
+		  regu->hidden_column = node->info.name.hidden_column;
 		}
 
 	      break;
@@ -15778,7 +15796,6 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 	    {
 	      PT_NODE *name = NULL, *val = NULL, *last_val = NULL;
 	      PT_NODE *join_spec = NULL;
-	      bool must_rewrite = false;
 
 	      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 		{
@@ -15786,46 +15803,14 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 		  continue;
 		}
 
-	      /* check for left join on left of spec */
-	      for (join_spec = statement->info.query.q.select.from->next;
-		   join_spec != NULL && join_spec != spec->next;
-		   join_spec = join_spec->next)
+	      if (!mq_is_outer_join_spec (parser, spec))
 		{
-		  must_rewrite |=
-		    (join_spec->info.spec.join_type & PT_JOIN_LEFT_OUTER);
-
-		  if (join_spec->info.spec.join_type == PT_JOIN_NONE
-		      || join_spec->info.spec.join_type == PT_JOIN_CROSS)
-		    {
-		      /* if it's a cross join, reset flag */
-		      must_rewrite = false;
-		    }
-		}
-
-	      /* check for right join on right of spec */
-	      for (join_spec = spec->next; join_spec;
-		   join_spec = join_spec->next)
-		{
-		  must_rewrite |=
-		    (join_spec->info.spec.join_type & PT_JOIN_RIGHT_OUTER);
-
-		  if (join_spec->info.spec.join_type == PT_JOIN_NONE
-		      || join_spec->info.spec.join_type == PT_JOIN_CROSS)
-		    {
-		      /* if it's a cross join, don't look further */
-		      break;
-		    }
-		}
-
-	      if (!must_rewrite)
-		{
-		  /* no need to rewrite */
+		  /* spec is not outer joined in list; no need to rewrite */
 		  continue;
 		}
 
 	      /* 
-	       * Class will be updated and is on left side of a right
-	       * join or the right side of a left join.
+	       * Class will be updated and is outer joined.
 	       *
 	       * We must rewrite all expressions that will be assigned to
 	       * attributes of this class as

@@ -2013,6 +2013,8 @@ struct pt_name_info
   PT_NODE *default_value;	/* PT_VALUE the default value of the attribute */
   unsigned int custom_print;
   unsigned short correlation_level;	/* for correlated attributes */
+  char hidden_column;		/* used for updates and deletes for
+				 * the class OID column */
 
 #define PT_NAME_INFO_DOT_SPEC        1	/* x, y of x.y.z */
 #define PT_NAME_INFO_DOT_NAME        2	/* z of x.y.z */

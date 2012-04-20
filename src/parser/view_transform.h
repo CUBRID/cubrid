@@ -64,6 +64,8 @@ extern PT_NODE *mq_clear_ids (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PT_NODE *mq_set_references (PARSER_CONTEXT * parser,
 				   PT_NODE * statement, PT_NODE * spec);
 
+extern bool mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec);
+
 extern bool mq_is_updatable (DB_OBJECT * vclass_object);
 
 extern bool mq_is_updatable_attribute (DB_OBJECT * vclass,

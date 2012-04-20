@@ -142,6 +142,39 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
   flat = spec->info.spec.flat_entity_list;
   range = spec->info.spec.range_var;
 
+  if (spec->info.spec.derived_table
+      && spec->info.spec.flat_entity_list && spec->info.spec.as_attr_list)
+    {
+      PT_NODE *oid_attr;
+
+      /* this spec should have come from a vclass that was rewritten as a
+         derived table; pull ROWOID/CLASSOID from as_attr_list
+         NOTE: see mq_rewrite_derived_table_for_update () */
+      switch (how)
+	{
+	case OID_NAME:
+	  return parser_copy_tree (parser, spec->info.spec.as_attr_list);
+
+	case CLASSOID_NAME:
+	case HIDDEN_CLASSOID_NAME:
+	  node =
+	    parser_copy_tree (parser, spec->info.spec.as_attr_list->next);
+
+	  if (node && how == HIDDEN_CLASSOID_NAME)
+	    {
+	      assert (node->node_type == PT_NAME);
+
+	      /* we are sure this is a PT_NAME */
+	      node->info.name.hidden_column = 1;
+	    }
+	  return node;
+
+	default:
+	  /* should not be here */
+	  return NULL;
+	}
+    }
+
   if (how == OID_NAME || how == CLASSOID_NAME
       || how == HIDDEN_CLASSOID_NAME || !flat ||
       (!flat->info.name.virt_object
@@ -1047,6 +1080,22 @@ pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       while (pt_get_next_assignment (&ea))
 	{
 	  found_spec = pt_find_spec_in_statement (parser, statement, ea.lhs);
+
+	  if (found_spec != NULL && found_spec->info.spec.entity_name == NULL
+	      && found_spec->info.spec.derived_table != NULL)
+	    {
+	      /* found_spec is a derived table from view rewrite; go deeper and
+	         find real spec to lock */
+	      found_spec = found_spec->info.spec.derived_table;
+	      if (found_spec == NULL || found_spec->node_type != PT_SELECT)
+		{
+		  PT_INTERNAL_ERROR (parser, "invalid spec");
+		  return ER_GENERIC_ERROR;
+		}
+
+	      found_spec = found_spec->info.query.q.select.from;
+	    }
+
 	  if (found_spec == NULL || found_spec->info.spec.entity_name == NULL)
 	    {
 	      PT_INTERNAL_ERROR (parser, "invalid spec");

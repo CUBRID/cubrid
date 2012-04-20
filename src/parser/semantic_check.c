@@ -7950,26 +7950,49 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       /* Make sure that none of the classes that are subject for delete is a
        * derived table */
       t_node = node->info.delete_.target_classes;
-      while (t_node)
+
+      if (t_node == NULL)
 	{
-	  entity = pt_find_spec_in_statement (parser, node, t_node);
+	  /* this is not a multi-table delete; check all specs for derived
+	     tables */
+	  entity = node->info.delete_.spec;
 
-	  if (entity == NULL)
+	  while (entity)
 	    {
-	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_RESOLUTION_FAILED,
-			  t_node->info.name.original);
-	      break;
-	    }
+	      assert (entity->node_type == PT_SPEC);
 
-	  if (entity->info.spec.derived_table != NULL)
+	      if (entity->info.spec.derived_table != NULL)
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_DELETE_DERIVED_TABLE);
+		  break;
+		}
+	    }
+	}
+      else
+	{
+	  /* multi-table delete */
+	  while (t_node)
 	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_DELETE_DERIVED_TABLE);
-	      break;
-	    }
+	      entity = pt_find_spec_in_statement (parser, node, t_node);
 
-	  t_node = t_node->next;
+	      if (entity == NULL)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_RESOLUTION_FAILED,
+			      t_node->info.name.original);
+		  break;
+		}
+
+	      if (entity->info.spec.derived_table != NULL)
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_DELETE_DERIVED_TABLE);
+		  break;
+		}
+
+	      t_node = t_node->next;
+	    }
 	}
 
       node = pt_semantic_type (parser, node, info);

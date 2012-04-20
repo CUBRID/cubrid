@@ -235,6 +235,10 @@ static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
 				      void *arg, int *continue_walk);
 static bool pt_sargable_term (PARSER_CONTEXT * parser, PT_NODE * term,
 			      FIND_ID_INFO * infop);
+static bool mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
+				     bool is_only_spec);
+static PT_NODE *mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser,
+						     PT_NODE * spec);
 static int pt_check_copypush_subquery (PARSER_CONTEXT * parser,
 				       PT_NODE * query);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec,
@@ -478,6 +482,54 @@ static const char *get_authorization_name (DB_AUTH auth);
 static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *arg,
 				       int *continue_walk);
+
+
+/*
+ * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
+ *  returns: boolean
+ *   parser(in): parser context
+ *   spec(in): table spec to check
+ */
+bool
+mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  if (spec == NULL)
+    {
+      /* should not be here */
+      PT_INTERNAL_ERROR (parser, "function called with wrong arguments");
+      return false;
+    }
+
+  assert (spec->node_type == PT_SPEC);
+
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+    {
+      /* directly on the right side of a left outer join */
+      return true;
+    }
+
+  spec = spec->next;
+  while (spec)
+    {
+      switch (spec->info.spec.join_type)
+	{
+	case PT_JOIN_NONE:
+	case PT_JOIN_CROSS:
+	  /* joins from this point forward do not matter */
+	  return false;
+
+	case PT_JOIN_RIGHT_OUTER:
+	  /* right outer joined */
+	  return true;
+	}
+
+      spec = spec->next;
+    }
+
+  /* if we reached this point, it's not outer joined */
+  return false;
+}
+
 
 /*
  * mq_bump_corr_pre() -  Bump the correlation level of all matching
@@ -1277,10 +1329,10 @@ mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
  *      for each class
  *   return: PT_NODE *, parse tree with local db table/class queries
  * 	    expanded to local db expressions
- *   parser(in):
- *   statement(in/out):
- *   query_spec(in):
- *   class(in):
+ *   parser(in): parser context
+ *   statement(in/out): statement into which class will be expanded
+ *   query_spec(in): query of class that will be expanded
+ *   class(in): class name of class that will be expanded
  */
 static PT_NODE *
 mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
@@ -1407,6 +1459,269 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser,
 }
 
 /*
+ * mq_is_pushable_subquery () - check if a subquery is pushable
+ *  returns: true if pushable, false otherwise
+ *   parser(in): parser context
+ *   query(in): query to check
+ *   is_only_spec(in): true if query is not joined in parent statement
+ *
+ * NOTE: a subquery is pushable if it's select list can be "pushed" up in it's
+ *   parent query without altering the output. For example, the following:
+ *       SELECT * FROM (SELECT * FROM t WHERE t.i > 2), u
+ *   can be rewritten as
+ *       SELECT * FROM t, u WHERE t.i > 2
+ *   thus, "SELECT * FROM t WHERE t.i > 2" is called "pushable".
+ *
+ * NOTE: inst_num(), groupby_num() and rownum are only pushable if the
+ *   query is not joined in the parent statement.
+ *
+ * NOTE: a query with joins is only pushable if it's not joined in the parent
+ *   statement
+ */
+static bool
+mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
+			 bool is_only_spec)
+{
+  CHECK_PUSHABLE_INFO cpi;
+  PT_NODE *node;
+
+  /* check nulls */
+  if (query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "wrong arguments passed to function");
+      return false;
+    }
+
+  assert (parser);
+  assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
+
+  /* check for non-SELECTs */
+  if (query->node_type != PT_SELECT)
+    {
+      /* not pushable */
+      return false;
+    }
+
+  /* check for joins */
+  if (!is_only_spec && query->info.query.q.select.from
+      && query->info.query.q.select.from->next)
+    {
+      /* parent statement and subquery both have joins; not pushable */
+      return false;
+    }
+
+  /* check for CONNECT BY */
+  if (query->node_type == PT_SELECT && query->info.query.q.select.connect_by)
+    {
+      /* not pushable */
+      return false;
+    }
+
+  /* check for DISTINCT */
+  if (pt_is_distinct (query))
+    {
+      /* not pushable */
+      return false;
+    }
+
+  /* check for aggregate or orderby_for */
+  if (pt_has_aggregate (parser, query) || query->info.query.orderby_for)
+    {
+      /* not pushable */
+      return false;
+    }
+
+  /* check select list */
+  cpi.check_query = false;	/* subqueries are pushable */
+  cpi.check_method = true;	/* methods are non-pushable */
+  cpi.check_xxxnum = !is_only_spec;
+  cpi.method_found = cpi.query_found = cpi.xxxnum_found = false;
+
+  parser_walk_tree (parser, query->info.query.q.select.list,
+		    pt_check_pushable, (void *) &cpi, NULL, NULL);
+
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+    {
+      /* query not pushable */
+      return false;
+    }
+
+  /* check where clause */
+  cpi.check_query = false;	/* subqueries are pushable */
+  cpi.check_method = true;	/* methods are non-pushable */
+  cpi.check_xxxnum = !is_only_spec;
+  cpi.method_found = cpi.query_found = cpi.xxxnum_found = false;
+
+  parser_walk_tree (parser, query->info.query.q.select.where,
+		    pt_check_pushable, (void *) &cpi, NULL, NULL);
+
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+    {
+      /* query not pushable */
+      return false;
+    }
+
+  /* if we got this far, query is pushable */
+  return true;
+}
+
+/*
+ * mq_rewrite_derived_table_for_update () - adds CLASSOID and ROWOID to select
+ *                                          list of query so they can be later
+ *                                          pulled when building the SELECT
+ *                                          statement for UPDATEs and DELETEs
+ *   returns: rewritten subquery or NULL on error
+ *   parser(in): parser context
+ *   spec(in): spec whose derived table will be rewritten
+ *
+ * NOTE: query must be a SELECT statement and must have only one spec
+ */
+static PT_NODE *
+mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  PT_NODE *derived_table, *as_attr, *col, *inner_spec;
+  char *spec_name = NULL;
+
+  if (spec == NULL)
+    {
+      /* bad pointer */
+      assert (false);
+      return NULL;
+    }
+
+  derived_table = spec->info.spec.derived_table;
+  if (derived_table == NULL || derived_table->node_type != PT_SELECT)
+    {
+      /* only SELECT statements allowed */
+      assert (false);
+      return NULL;
+    }
+
+  inner_spec = derived_table->info.query.q.select.from;
+  if (inner_spec == NULL)
+    {
+      /* no specs; error */
+      PT_INTERNAL_ERROR (parser, "subquery with no specs");
+      return NULL;
+    }
+
+  if (inner_spec && inner_spec->next)
+    {
+      /* only a single spec allowed in an updatable query */
+      PT_INTERNAL_ERROR (parser, "subquery not updatable");
+      return NULL;
+    }
+
+  /* retrieve spec's name, which will be appended to OID attribute names */
+  if (spec->info.spec.range_var
+      && spec->info.spec.range_var->node_type == PT_NAME)
+    {
+      spec_name = spec->info.spec.range_var->info.name.original;
+    }
+
+  /* add classoid and rowoid to select list of derived table and as_attr_list
+   * of spec; these will be pulled later on when building the select statement
+   * for OID retrieval */
+
+  /* add classoid (this is a vclass, server_op is false) */
+  derived_table = pt_add_row_classoid_name (parser, derived_table, false);
+  if (derived_table == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "failed to add spec classoid");
+	}
+
+      return NULL;
+    }
+
+  col = derived_table->info.query.q.select.list;
+  switch (col->node_type)
+    {
+    /* col must not be hidden within derived table */
+    case PT_FUNCTION:
+      col->info.function.hidden_column = 0;
+      break;
+
+    case PT_NAME:
+      col->info.name.hidden_column = 0;
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
+
+  if (col->data_type && col->data_type->info.data_type.virt_object)
+    {
+      /* no longer comes from a vobj */
+      parser_free_tree (parser, col->data_type->info.data_type.virt_object);
+      col->data_type->info.data_type.virt_object = NULL;
+      col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
+    }
+
+  as_attr = pt_name (parser, "classoid_");
+  as_attr->info.name.original =
+    pt_append_string (parser, as_attr->info.name.original, spec_name);
+  as_attr->info.name.spec_id = spec->info.spec.id;
+  as_attr->info.name.meta_class = PT_OID_ATTR;
+  as_attr->type_enum = col->type_enum;
+  as_attr->data_type = parser_copy_tree (parser, col->data_type);
+
+  as_attr->next = spec->info.spec.as_attr_list;
+  spec->info.spec.as_attr_list = as_attr;
+
+  /* add row oid */
+  derived_table = pt_add_row_oid_name (parser, derived_table);
+  if (derived_table == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "failed to add spec rowoid");
+	}
+
+      return NULL;
+    }
+
+  col = derived_table->info.query.q.select.list;
+  if (col->data_type && col->data_type->info.data_type.virt_object)
+    {
+      /* no longer comes from a vobj */
+      parser_free_tree (parser, col->data_type->info.data_type.virt_object);
+      col->data_type->info.data_type.virt_object = NULL;
+      col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
+    }
+
+  as_attr = pt_name (parser, "rowoid_");
+  as_attr->info.name.original =
+    pt_append_string (parser, as_attr->info.name.original, spec_name);
+  as_attr->info.name.spec_id = spec->info.spec.id;
+  as_attr->info.name.meta_class = PT_OID_ATTR;
+  as_attr->type_enum = col->type_enum;
+  as_attr->data_type = parser_copy_tree (parser, col->data_type);
+
+  as_attr->next = spec->info.spec.as_attr_list;
+  spec->info.spec.as_attr_list = as_attr;
+
+  /* set derived table of spec (should be redundant) */
+  spec->info.spec.derived_table = derived_table;
+
+  /* copy flat_entity_list of derivate table's only spec to parent spec so it
+     will be correctly handled further on */
+  spec->info.spec.flat_entity_list =
+    parser_copy_tree_list (parser, inner_spec->info.spec.flat_entity_list);
+  if (spec->info.spec.flat_entity_list
+      && spec->info.spec.flat_entity_list->node_type == PT_NAME)
+    {
+      spec->info.spec.flat_entity_list->info.name.spec_id =
+	spec->info.spec.id;
+    }
+
+  /* all ok */
+  return spec;
+}
+
+/*
  * mq_substitute_subquery_in_statement() - This takes a subquery expansion of
  *      a class_, in the form of a select, or union of selects,
  *      and a parse tree containing references to the class and its attributes,
@@ -1425,7 +1740,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser,
  * 1) Order-by is passed down into sub portions of the unions, intersections and
  *    differences.
  *    This gives better algorithmic order when order by is present, allowing
- *    sorting on smaller peices, followed by linear merges.
+ *    sorting on smaller pieces, followed by linear merges.
  *
  * 2) All/distinct is NOT similarly passed down, since it is NOT a transitive
  *    operation with mixtures of union, intersection and difference.
@@ -1441,114 +1756,103 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				     PT_NODE * order_by, int what_for)
 {
   PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
-  PT_NODE *spec, **specptr;
-  bool rewrite_as_derived;
+  PT_NODE *class_spec, *statement_spec;
   PT_NODE *derived_table, *derived_spec, *derived_class;
+  bool is_pushable_query, is_outer_joined;
+  bool is_only_spec, is_upd_del_spec, rewrite_as_derived;
 
   result = tmp_result = NULL;	/* init */
-  spec = NULL;
+  class_spec = NULL;
   rewrite_as_derived = false;
 
   statement_next = statement->next;
   switch (query_spec->node_type)
     {
     case PT_SELECT:
+      /* make a local copy of the statement */
       tmp_result = parser_copy_tree (parser, statement);
       if (tmp_result == NULL)
 	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_INTERNAL_ERROR (parser, "failed to copy node tree");
+	    }
+
 	  goto exit_on_error;
 	}
 
-      if (pt_has_aggregate (parser, query_spec)
-	  || pt_is_distinct (query_spec)
-	  || query_spec->info.query.orderby_for)
+      /* get statement spec */
+      switch (tmp_result->node_type)
 	{
-	  rewrite_as_derived = true;
-	}
-      else if (query_spec->node_type == PT_SELECT
-	       && query_spec->info.query.q.select.connect_by)
-	{
-	  rewrite_as_derived = true;
-	}
-      else if (tmp_result->node_type == PT_SELECT)
-	{
-	  /* check for outer join */
-	  specptr = &tmp_result->info.query.q.select.from;
-	  spec = *specptr;
-	  while (spec && class_->info.name.spec_id != spec->info.spec.id)
-	    {
-	      specptr = &spec->next;
-	      spec = *specptr;
-	    }
+	case PT_SELECT:
+	  statement_spec = tmp_result->info.query.q.select.from;
+	  break;
 
-	  if (spec == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	case PT_UPDATE:
+	  statement_spec = tmp_result->info.update.spec;
+	  break;
 
-	  if (MQ_IS_OUTER_JOIN_SPEC (spec))
-	    {
-	      rewrite_as_derived = true;
-	    }
-	  else
-	    {
-	      /* check for non-pushable term (i.e., subquery, method) */
-	      FIND_ID_INFO info;
-	      PT_NODE *term;
+	case PT_DELETE:
+	  statement_spec = tmp_result->info.delete_.spec;
+	  break;
 
-	      info.type = FIND_ID_VCLASS;	/* vclass */
-	      /* init input section */
-	      info.in.spec = spec;
-	      info.in.others_spec_list = statement->info.query.q.select.from;
-	      info.in.attr_list = mq_fetch_attributes (parser, class_);
-	      info.in.query_list = query_spec;
+	case PT_INSERT:
+	  /* since INSERT can not have a spec list or statement conditions,
+	     there is nothing to check */
+	  statement_spec = tmp_result->info.insert.spec;
+	  break;
 
-	      for (term = statement->info.query.q.select.where; term;
-		   term = term->next)
-		{
-		  /* found non-pushable term */
-		  if (pt_sargable_term (parser, term, &info)
-		      && !PT_PUSHABLE_TERM (&info))
-		    {
-		      rewrite_as_derived = true;
-		      break;
-		    }
-		}
-	    }
+	default:
+	  /* should not get here */
+	  assert (false);
+	  break;
 	}
 
-      if (rewrite_as_derived == true)
+      /* iterate trough specs and find the spec of class_ */
+      class_spec = statement_spec;
+      while (class_spec
+	     && class_->info.name.spec_id != class_spec->info.spec.id)
 	{
+	  class_spec = class_spec->next;
+	}
+
+      if (class_spec == NULL)
+	{
+	  /* class_'s spec was not found in spec list */
+	  PT_INTERNAL_ERROR (parser, "class spec not found");
+	  goto exit_on_error;
+	}
+
+      /* determine if class_spec is the only spec in the statement */
+      is_only_spec = (statement_spec->next == NULL ? true : false);
+
+      /* determine if spec is used for update/delete */
+      is_upd_del_spec = class_spec->info.spec.flag
+	& (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE);
+
+      /* determine if spec is outer joined */
+      is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
+
+      /* determine if vclass_query is pushable */
+      is_pushable_query = mq_is_pushable_subquery (parser, query_spec,
+						   is_only_spec);
+
+      /* determine if we have to rewrite vclass_query as a derived table */
+      rewrite_as_derived = !is_pushable_query || is_outer_joined;
+
+      if (rewrite_as_derived)
+	{
+	  /* rewrite vclass query as a derived table */
 	  PT_NODE *tmp_class = NULL;
 
-	  /* rewrite the spec of tmp_result as dervied */
-	  if (tmp_result->node_type != PT_SELECT)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  if (spec == NULL)
-	    {
-	      specptr = &tmp_result->info.query.q.select.from;
-	      spec = *specptr;
-	      while (spec && class_->info.name.spec_id != spec->info.spec.id)
-		{
-		  specptr = &spec->next;
-		  spec = *specptr;
-		}
-	    }
-
-	  if (spec == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, spec,
-						    query_spec);
+	  /* rewrite vclass spec */
+	  class_spec =
+	    mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec,
+					       query_spec);
 
 	  /* get derived expending spec node */
-	  if (!spec
-	      || !(derived_table = spec->info.spec.derived_table)
+	  if (!class_spec
+	      || !(derived_table = class_spec->info.spec.derived_table)
 	      || !(derived_spec = derived_table->info.query.q.select.from)
 	      || !(derived_class = derived_spec->info.spec.flat_entity_list))
 	    {
@@ -1642,17 +1946,31 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	    }
 	  tmp_class->info.name.spec_id = derived_class->info.name.spec_id;
 
-	  spec->info.spec.derived_table =
+	  class_spec->info.spec.derived_table =
 	    mq_substitute_select_in_statement (parser,
-					       spec->info.spec.derived_table,
-					       query_spec, tmp_class);
+					       class_spec->info.spec.
+					       derived_table, query_spec,
+					       tmp_class);
+
+	  if ((tmp_result->node_type == PT_UPDATE
+	       || tmp_result->node_type == PT_DELETE) && is_upd_del_spec)
+	    {
+	      /* add rowoid and classoid to derived table */
+	      class_spec =
+		mq_rewrite_derived_table_for_update (parser, class_spec);
+
+	      if (class_spec == NULL)
+		{
+		  goto exit_on_error;
+		}
+	    }
 
 	  if (tmp_class)
 	    {
 	      parser_free_tree (parser, tmp_class);
 	    }
 
-	  if (!(derived_table = spec->info.spec.derived_table))
+	  if (!(derived_table = class_spec->info.spec.derived_table))
 	    {			/* error */
 	      goto exit_on_error;
 	    }
@@ -1666,10 +1984,10 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	    }
 
 	  result = tmp_result;
-
 	}
       else
 	{
+	  /* expand vclass_query in parent statement */
 	  if (tmp_result->node_type == PT_SELECT)
 	    {
 	      /* merge HINT of vclass spec */
@@ -2645,7 +2963,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
 		      void *arg, int *continue_walk)
 {
   FIND_ID_INFO *infop = (FIND_ID_INFO *) arg;
-  PT_NODE *spec;
+  PT_NODE *spec, *node = tree;
 
   /* do not need to traverse anymore */
   if (!tree || *continue_walk == PT_STOP_WALK)
@@ -2653,7 +2971,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
       return tree;
     }
 
-  switch (tree->node_type)
+  switch (node->node_type)
     {
     case PT_SELECT:
     case PT_UNION:
@@ -2670,10 +2988,27 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
       infop->out.others_found = true;
       break;
 
+    case PT_DOT_:
+      /* only check left side of DOT expression, right side is of no interest */
+      *continue_walk = PT_LIST_WALK;
+
+      do
+	{
+	  node = node->info.dot.arg1;
+	}
+      while (node && node->node_type == PT_DOT_);
+
+      if (node == NULL)
+	{
+	  /* nothing found ... */
+	  break;
+	}
+      /* fall trough */
+
     case PT_NAME:
       spec = infop->in.spec;
       /* match specified spec */
-      if (tree->info.name.spec_id == spec->info.spec.id)
+      if (node->info.name.spec_id == spec->info.spec.id)
 	{
 	  infop->out.found = true;
 	  /* check for subquery, method: does not pushable if we find
@@ -2696,10 +3031,10 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    }
 
 		  save_spec_id = attr->info.name.spec_id;	/* save */
-		  attr->info.name.spec_id = tree->info.name.spec_id;
+		  attr->info.name.spec_id = node->info.name.spec_id;
 
 		  /* found match in as_attr_list */
-		  if (pt_name_equal (parser, tree, attr))
+		  if (pt_name_equal (parser, node, attr))
 		    {
 		      /* check for each query */
 		      for (query = infop->in.query_list;
@@ -2726,7 +3061,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  /* check for other spec */
 	  for (spec = infop->in.others_spec_list; spec; spec = spec->next)
 	    {
-	      if (tree->info.name.spec_id == spec->info.spec.id)
+	      if (node->info.name.spec_id == spec->info.spec.id)
 		{
 		  infop->out.others_found = true;
 		  break;
@@ -2746,9 +3081,9 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
       /* simply give up when we find rownum, inst_num(), orderby_num()
        * in predicate
        */
-      if (tree->info.expr.op == PT_ROWNUM
-	  || tree->info.expr.op == PT_INST_NUM
-	  || tree->info.expr.op == PT_ORDERBY_NUM)
+      if (node->info.expr.op == PT_ROWNUM
+	  || node->info.expr.op == PT_INST_NUM
+	  || node->info.expr.op == PT_ORDERBY_NUM)
 	{
 	  infop->out.others_found = true;
 	}
@@ -2757,15 +3092,20 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
     case PT_FUNCTION:
       /* simply give up when we find groupby_num() in predicate
        */
-      if (tree->info.function.function_type == PT_GROUPBY_NUM)
+      if (node->info.function.function_type == PT_GROUPBY_NUM)
 	{
 	  infop->out.others_found = true;
 	}
       break;
 
+    case PT_DATA_TYPE:
+      /* don't walk data type */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
     default:
       break;
-    }				/* switch (tree->node_type) */
+    }				/* switch (node->node_type) */
 
   if (infop->out.others_found)
     {
@@ -3197,7 +3537,8 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
 
   /* move sargable terms */
-  if ((from = new_query->info.query.q.select.from)
+  if ((statement->node_type == PT_SELECT)
+      && (from = new_query->info.query.q.select.from)
       && (entity_name = from->info.spec.entity_name))
     {
       info.type = FIND_ID_VCLASS;	/* vclass */
@@ -3519,15 +3860,15 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 
   from = update_statement->info.update.spec;
 
+  /* set flags for updatable specs */
+  pt_mark_spec_list_for_update (parser, update_statement);
+
   update_statement = mq_translate_tree (parser, update_statement,
 					from, NULL, DB_AUTH_UPDATE);
 
   if (update_statement)
     {
       mq_check_update (parser, update_statement);
-
-      /* set flags for updatable specs */
-      pt_mark_spec_list_for_update (parser, update_statement);
     }
   if (!update_statement && !parser->error_msgs)
     {
@@ -3761,8 +4102,10 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
   PT_NODE *from;
   PT_NODE save = *delete_statement;
 
-  from = delete_statement->info.delete_.spec;
+  /* set flags for deletable specs */
+  pt_mark_spec_list_for_delete (parser, delete_statement);
 
+  from = delete_statement->info.delete_.spec;
   delete_statement = mq_translate_tree (parser, delete_statement,
 					from, NULL, DB_AUTH_DELETE);
   if (delete_statement != NULL)
@@ -3775,9 +4118,6 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
 	  /* checking failed */
 	  return NULL;
 	}
-
-      /* set flags for deletable specs */
-      pt_mark_spec_list_for_delete (parser, delete_statement);
     }
   else if (!parser->error_msgs)
     {
@@ -7749,6 +8089,9 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  newspec->info.spec.on_cond = spec->info.spec.on_cond;
 		  spec->info.spec.on_cond = NULL;
 		}
+
+	      /* move spec flag */
+	      newspec->info.spec.flag = spec->info.spec.flag;
 	    }
 	  parser_free_tree (parser, spec);
 

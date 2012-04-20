@@ -833,7 +833,11 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 
 	      /* tag it as resolved */
 	      col->info.name.spec_id = spec->info.spec.id;
-	      col->info.name.meta_class = PT_NORMAL;
+	      if (col->info.name.meta_class == 0)
+		{
+		  /* only set it to PT_NORMAL if it wasn't set before */
+		  col->info.name.meta_class = PT_NORMAL;
+		}
 	    }
 	}
     }

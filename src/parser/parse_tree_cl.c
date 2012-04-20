@@ -10996,6 +10996,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.is_analytic = false;
   p->info.function.analytic.partition_by = NULL;
   p->info.function.analytic.order_by = NULL;
+  p->info.function.hidden_column = 0;
   return p;
 }
 
@@ -12106,6 +12107,7 @@ pt_init_name (PT_NODE * p)
   p->info.name.location = 0;
   p->info.name.partition_of = NULL;
   p->info.name.indx_key_limit = NULL;
+  p->info.name.hidden_column = 0;
   return p;
 }
 
