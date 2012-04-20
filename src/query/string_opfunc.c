@@ -4561,6 +4561,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	  /* To keep MySQL compatibility, when the last character
 	   * is escape char, do not treat as escape character.*/
 	  if (escape != NULL
+	      && inescape == 0
 	      && intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
 				&char_size) == 0
 	      && (expr_ptr + char_size) < end_expr)
@@ -4682,6 +4683,8 @@ qstr_eval_like (const char *tar, int tar_length,
 							 &dummy);
 
 	  if ((next_expr_ptr < end_expr)
+	      && (escape == NULL
+		  || (escape != NULL && *escape != LIKE_WILDCARD_MATCH_ONE))
 	      && *next_expr_ptr == LIKE_WILDCARD_MATCH_ONE)
 	    {
 	      if (stackp >= STACK_SIZE - 1)
@@ -4705,6 +4708,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	  /* To keep MySQL compatibility, when the last character
 	   * is escape char, do not treat as escape character.*/
 	  if ((next_expr_ptr < end_expr) && escape != NULL
+	      && inescape == 0
 	      && intl_cmp_char (next_expr_ptr, (unsigned char *) escape,
 				codeset, &dummy) == 0
 	      && (next_expr_ptr + dummy) < end_expr)
@@ -4759,6 +4763,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	  /* To keep MySQL compatibility, when the last character
 	   * is escape char, do not treat as escape character.*/
 	  if (expr_ptr < end_expr && escape != NULL
+	      && inescape == 0
 	      && intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
 				&char_size) == 0
 	      && (expr_ptr + char_size) < end_expr)
@@ -9600,7 +9605,7 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
        */
       temp_p = result_timestamp;
     }
-  
+
   error = db_value_domain_init (temp_p, DB_TYPE_TIMESTAMP, 0, 0);
   if (error != NO_ERROR)
     {
