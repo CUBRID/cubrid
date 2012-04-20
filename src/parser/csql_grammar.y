@@ -4386,7 +4386,7 @@ alter_auto_increment_mysql_specific
 	;
 
 alter_rename_clause_allow_multiple
-	: opt_of_attr_column_method opt_class identifier AS identifier
+	: opt_of_attr_column_method opt_class identifier as_or_to identifier
 		{{
 
 			PT_NODE *node = parser_get_alter_node ();
