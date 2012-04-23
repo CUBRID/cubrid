@@ -576,11 +576,11 @@ net_server_init (void)
   /*
    * log
    */
-  net_Requests[NET_SERVER_LOG_RESET_WAITSECS].action_attribute = 0;
-  net_Requests[NET_SERVER_LOG_RESET_WAITSECS].processing_function =
-    slogtb_reset_wait_secs;
-  net_Requests[NET_SERVER_LOG_RESET_WAITSECS].name =
-    "NET_SERVER_LOG_RESET_WAITSECS";
+  net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS].processing_function =
+    slogtb_reset_wait_msecs;
+  net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS].name =
+    "NET_SERVER_LOG_RESET_WAIT_MSECS";
 
   net_Requests[NET_SERVER_LOG_RESET_ISOLATION].action_attribute = 0;
   net_Requests[NET_SERVER_LOG_RESET_ISOLATION].processing_function =

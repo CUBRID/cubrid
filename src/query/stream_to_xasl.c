@@ -3563,7 +3563,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  ptr = or_unpack_int (ptr, &update_info->waitsecs);
+  ptr = or_unpack_int (ptr, &update_info->wait_msecs);
   ptr = or_unpack_int (ptr, &update_info->no_logging);
   ptr = or_unpack_int (ptr, &update_info->release_lock);
   ptr = or_unpack_int (ptr, &(update_info->no_orderby_keys));
@@ -3621,7 +3621,7 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  ptr = or_unpack_int (ptr, &delete_info->waitsecs);
+  ptr = or_unpack_int (ptr, &delete_info->wait_msecs);
   ptr = or_unpack_int (ptr, &delete_info->no_logging);
   ptr = or_unpack_int (ptr, &delete_info->release_lock);
 
@@ -3693,7 +3693,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   ptr = or_unpack_int (ptr, &insert_info->has_uniques);
-  ptr = or_unpack_int (ptr, &insert_info->waitsecs);
+  ptr = or_unpack_int (ptr, &insert_info->wait_msecs);
   ptr = or_unpack_int (ptr, &insert_info->no_logging);
   ptr = or_unpack_int (ptr, &insert_info->release_lock);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
@@ -3764,7 +3764,7 @@ stx_build_selupd_list (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_oid (ptr, &selupd_list->class_oid);
   ptr = or_unpack_hfid (ptr, &selupd_list->class_hfid);
   ptr = or_unpack_int (ptr, &selupd_list->select_list_size);
-  ptr = or_unpack_int (ptr, &selupd_list->waitsecs);
+  ptr = or_unpack_int (ptr, &selupd_list->wait_msecs);
 
   ptr = or_unpack_int (ptr, &offset);
   selupd_list->select_list =

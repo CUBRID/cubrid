@@ -58,7 +58,7 @@ static int do_reclaim_addresses (const OID ** const class_oids,
 				 const int num_class_oids,
 				 int *const num_classes_fully_processed,
 				 const bool verbose,
-				 const float class_lock_timeout);
+				 const int class_lock_timeout);
 static int do_reclaim_class_addresses (const OID class_oid,
 				       char **clas_name,
 				       bool * const
@@ -110,9 +110,9 @@ compactdb_usage (const char *argv0)
 }
 
 /*
- * get_num_requested_class - Get the number of class from specified 
+ * get_num_requested_class - Get the number of class from specified
  * input file
- *    return: error code 
+ *    return: error code
  *    input_filename(in): input file name
  *    num_class(out) : pointer to returned number of classes
  */
@@ -230,7 +230,7 @@ error:
  * get_class_mops_from_file - Get a list of class mops from specified file
  *    return: error code
  *    input_filename(in): input file name
- *    class_list(out): pointer to returned list of class mops  
+ *    class_list(out): pointer to returned list of class mops
  *    num_class_mops(out): pointer to returned number of mops
  */
 static int
@@ -378,11 +378,11 @@ find_oid (OID * oid, OID ** oids_list, int num_oids)
 
 /*
  * show_statistics - show the statistics for specified class oids
- *    return:  
+ *    return:
  *    class_oid(in) : class oid
  *    unlocked_class(in) : true if the class was not locked
- *    valid_class(in): true if the class was valid 
- *    processed_class(in): true if the class was processed 
+ *    valid_class(in): true if the class was valid
+ *    processed_class(in): true if the class was processed
  *    total_objects(in): total class objects
  *    failed_objects(in): failed class objects
  *    modified_objects(in): modified class objects
@@ -522,7 +522,7 @@ get_name_from_class_oid (OID * class_oid)
 }
 
 /*
- * compactdb_start - Compact classes   
+ * compactdb_start - Compact classes
  *    return: error code
  *    verbose_flag(in):
  *    delete_old_repr_flag(in): delete old class representations from catalog
@@ -575,7 +575,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
       return ER_FAILED;
     }
 
-  tran_reset_wait_times ((float) class_lock_timeout);
+  tran_reset_wait_times (class_lock_timeout);
+
   if (input_class_names && input_class_length > 0)
     {
       status = get_class_mops (input_class_names, input_class_length,
@@ -788,8 +789,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
 
       status = boot_compact_classes (class_oids, num_classes,
 				     max_processed_space,
-				     instance_lock_timeout * 1000,
-				     class_lock_timeout * 1000,
+				     instance_lock_timeout,
+				     class_lock_timeout,
 				     delete_old_repr_flag,
 				     &last_processed_class_oid,
 				     &last_processed_oid,
@@ -887,7 +888,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
 		  goto error;
 		}
 
-	      tran_reset_wait_times ((float) class_lock_timeout);
+	      tran_reset_wait_times (class_lock_timeout);
+
 	      show_statistics
 		(class_oids[i],
 		 incomplete_processing[i] != COMPACTDB_LOCKED_CLASS,
@@ -918,7 +920,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
     }
   status = do_reclaim_addresses (class_oids, num_classes,
 				 &num_classes_fully_compacted, verbose_flag,
-				 (float) class_lock_timeout);
+				 class_lock_timeout);
   if (status != NO_ERROR)
     {
       goto error;
@@ -948,7 +950,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
 	  goto error;
 	}
 
-      tran_reset_wait_times ((float) class_lock_timeout);
+      tran_reset_wait_times (class_lock_timeout);
 
       status = boot_heap_compact (class_oids[i]);
       switch (status)
@@ -1231,6 +1233,14 @@ compactdb (UTIL_FUNCTION_ARG * arg)
       status = db_set_isolation (TRAN_REP_CLASS_UNCOMMIT_INSTANCE);
       if (status == NO_ERROR)
 	{
+	  if (class_lock_timeout > 0)
+	    {
+	      class_lock_timeout = class_lock_timeout * 1000;
+	    }
+	  if (instance_lock_timeout > 0)
+	    {
+	      instance_lock_timeout = instance_lock_timeout * 1000;
+	    }
 	  status = compactdb_start (verbose_flag, delete_old_repr_flag,
 				    input_filename, tables, table_size - 1,
 				    maximum_processed_space,
@@ -1260,7 +1270,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 static int
 do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids,
 		      int *const num_classes_fully_processed,
-		      const bool verbose, const float class_lock_timeout)
+		      const bool verbose, const int class_lock_timeout)
 {
   bool any_class_can_be_referenced = false;
   int i = 0;

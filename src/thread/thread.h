@@ -124,7 +124,7 @@ struct thread_entry
 
   void *lockwait;
   double lockwait_stime;	/* time in milliseconds */
-  int lockwait_nsecs;
+  int lockwait_msecs;		/* time in milliseconds */
   int lockwait_state;
   void *query_entry;
   struct thread_entry *tran_next_wait;

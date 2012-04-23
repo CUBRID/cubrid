@@ -1171,7 +1171,15 @@ db_set_lock_timeout (int seconds)
   CHECK_CONNECT_MINUSONE ();
   CHECK_MODIFICATION_MINUSONE ();
 
-  retval = (int) (tran_reset_wait_times ((float) seconds));
+  if (seconds > 0)
+    {
+      retval = tran_reset_wait_times (seconds * 1000);
+    }
+  else
+    {
+      retval = tran_reset_wait_times (seconds);
+    }
+
 
   return (retval);
 }
@@ -1217,13 +1225,20 @@ void
 db_get_tran_settings (int *lock_wait, DB_TRAN_ISOLATION * tran_isolation)
 {
   bool dummy;
-  float lock_timeout = -1;
+  int lock_timeout_in_msecs = -1;
 
   CHECK_CONNECT_VOID ();
   /* API does not support ASYNC WORKSPACE */
-  tran_get_tran_settings (&lock_timeout, tran_isolation,
+  tran_get_tran_settings (&lock_timeout_in_msecs, tran_isolation,
 			  &dummy /* async_ws */ );
-  *lock_wait = (int) lock_timeout;
+  if (lock_timeout_in_msecs > 0)
+    {
+      *lock_wait = lock_timeout_in_msecs / 1000;
+    }
+  else
+    {
+      *lock_wait = lock_timeout_in_msecs;
+    }
 }
 
 /*

@@ -2326,7 +2326,7 @@ boot_ctrl_c_in_init_server (int ignore_signo)
  *   client_host_name(in): Name of the client host or NULL
  *   client_process_id(in): Identifier of the process of the host where the client
  *          client transaction runs.
- *   client_lock_wait(in): Wait for at least this number of seconds to acquire a
+ *   client_lock_wait(in): Wait for at least this number of milliseconds to acquire a
  *          lock. Negative value is infinite
  *   client_isolation(in): Isolation level. One of the following:
  *                         TRAN_REP_CLASS_REP_INSTANCE
@@ -3603,7 +3603,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
  * return : transaction index or NULL_TRAN_INDEX in the case of error.
  *
  *   client_credential(in): Client's credential (see boot.h)
- *   client_lock_wait(in): Wait for at least this number of seconds to acquire
+ *   client_lock_wait(in): Wait for at least this number of milliseconds to acquire
  *                         a lock. Negative value is infinite
  *   client_isolation(in): Isolation level. One of the following:
  *                         TRAN_REP_CLASS_REP_INSTANCE
@@ -3694,7 +3694,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	{
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
-		  logtb_release_tran_index (thread_p, tran_index);
+	      logtb_release_tran_index (thread_p, tran_index);
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
 			    "css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;

@@ -80,8 +80,8 @@ extern int lock_Comp[11][11];
         ((thrd)->lockwait != NULL                               \
          && (thrd)->lockwait_state == (int)LOCK_SUSPENDED)
 
-/* transaction wait for only some secs ? */
-#define LK_CAN_TIMEOUT(secs)    ((secs) != LK_INFINITE_WAIT)
+/* transaction wait for only some msecs ? */
+#define LK_CAN_TIMEOUT(msecs)    ((msecs) != LK_INFINITE_WAIT)
 
 /* is younger transaction ? */
 #define LK_ISYOUNGER(young_tranid, old_tranid) (young_tranid > old_tranid)
@@ -274,7 +274,7 @@ typedef struct lk_lockcomp LK_LOCKCOMP;
 struct lk_lockcomp
 {
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   LK_ENTRY *root_class_ptr;
   LK_LOCKCOMP_CLASS *class_list;
 };
@@ -556,7 +556,7 @@ static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p,
 					LK_ENTRY * entry_ptr);
 static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
 static LOCK_WAIT_STATE lock_suspend (THREAD_ENTRY * thread_p,
-				     LK_ENTRY * entry_ptr, int waitsecs);
+				     LK_ENTRY * entry_ptr, int wait_msecs);
 static void lock_resume (LK_ENTRY * entry_ptr, int state);
 static bool lock_wakeup_deadlock_victim_timeout (int tran_index);
 static bool lock_wakeup_deadlock_victim_aborted (int tran_index);
@@ -577,7 +577,7 @@ static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p,
 					      int tran_index, const OID * oid,
 					      const OID * class_oid,
 					      const BTID * btid,
-					      LOCK lock, int waitsecs,
+					      LOCK lock, int wait_msecs,
 					      LK_ENTRY ** entry_addr_ptr,
 					      LK_ENTRY * class_entry);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
@@ -610,6 +610,7 @@ static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p,
 					FILE * outfile);
 static int lock_compare_lock_info (const void *lockinfo1,
 				   const void *lockinfo2);
+static float lock_wait_msecs_to_secs (int msecs);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp,
 				LK_RES * res_ptr);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -637,7 +638,7 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 						    const OID * oid,
 						    const OID * class_oid,
 						    const BTID * btid,
-						    LOCK lock, int waitsecs,
+						    LOCK lock, int wait_msecs,
 						    LK_ENTRY **
 						    entry_addr_ptr,
 						    LK_ENTRY * class_entry,
@@ -2670,10 +2671,10 @@ lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
  * return: LOCK_WAIT_STATE (state of resumption)
  *
  *   entry_ptr(in): lock entry for lock waiting
- *   waitsecs(in): lock wait seconds
+ *   wait_msecs(in): lock wait milliseconds
  */
 static LOCK_WAIT_STATE
-lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
+lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 {
   THREAD_ENTRY *p;
   struct timeval tv;
@@ -2708,7 +2709,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
   gettimeofday (&tv, NULL);
   entry_ptr->thrd_entry->lockwait_stime =
     ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
-  entry_ptr->thrd_entry->lockwait_nsecs = waitsecs;
+  entry_ptr->thrd_entry->lockwait_msecs = wait_msecs;
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime =
@@ -2847,7 +2848,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
        * it from the list.
        *
        * An error is ONLY set when the caller was willing to wait.
-       * entry_ptr->thrd_entry->lockwait_nsecs > 0 */
+       * entry_ptr->thrd_entry->lockwait_msecs > 0 */
       (void) lock_set_error_for_timeout (thread_p, entry_ptr);
       return LOCK_RESUMED_TIMEOUT;
 
@@ -3517,7 +3518,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
   int s_count, x_count;
   LOCK max_class_lock = NULL_LOCK;	/* escalated class lock mode */
   int granted;
-  int waitsecs;
+  int wait_msecs;
   int rv;
 
   /* It cannot do lock escalation if class_entry is NULL */
@@ -3612,11 +3613,11 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
        * lock escalation is performed
        * 1. hold a lock on the class with the escalated lock mode
        */
-      waitsecs = LK_FORCE_ZERO_WAIT;	/* Conditional Locking */
+      wait_msecs = LK_FORCE_ZERO_WAIT;	/* Conditional Locking */
       granted = lock_internal_perform_lock_object (thread_p, tran_index,
 						   &class_entry->res_head->
 						   oid, (OID *) NULL, NULL,
-						   max_class_lock, waitsecs,
+						   max_class_lock, wait_msecs,
 						   &class_entry, NULL);
       if (granted != LK_GRANTED)
 	{
@@ -3833,7 +3834,7 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid,
  *   oid(in):
  *   class_oid(in):
  *   lock(in):
- *   waitsecs(in):
+ *   wait_msecs(in):
  *   entry_addr_ptr(in):
  *   class_entry(in):
  *
@@ -3847,7 +3848,7 @@ static int
 lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
 				   const OID * oid, const OID * class_oid,
 				   const BTID * btid, LOCK lock,
-				   int waitsecs, LK_ENTRY ** entry_addr_ptr,
+				   int wait_msecs, LK_ENTRY ** entry_addr_ptr,
 				   LK_ENTRY * class_entry)
 {
   TRAN_ISOLATION isolation;
@@ -3883,13 +3884,13 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
     {
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_lock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) waitsecs(%d)\n",
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) wait_msecs(%d)\n",
 	       tran_index,
 	       oid->volid, oid->pageid, oid->slotid,
 	       class_oid ? class_oid->volid : -1,
 	       class_oid ? class_oid->pageid : -1,
 	       class_oid ? class_oid->slotid : -1,
-	       LOCK_TO_LOCKMODE_STRING (lock), waitsecs);
+	       LOCK_TO_LOCKMODE_STRING (lock), wait_msecs);
     }
 #endif /* LK_DUMP */
 
@@ -4177,10 +4178,10 @@ start:
 	    }
 	}
 
-      if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+      if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  if (waitsecs == LK_ZERO_WAIT)
+	  if (wait_msecs == LK_ZERO_WAIT)
 	    {
 	      if (entry_ptr == NULL)
 		{
@@ -4437,10 +4438,10 @@ start:
     }
 
   /* I am a holder & my request cannot be granted. */
-  if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
       pthread_mutex_unlock (&res_ptr->res_mutex);
-      if (waitsecs == LK_ZERO_WAIT)
+      if (wait_msecs == LK_ZERO_WAIT)
 	{
 	  LK_ENTRY *p = lock_alloc_entry ();
 
@@ -4533,7 +4534,7 @@ start:
 
 blocked:
 
-  /* LK_CANWAIT(waitsecs) : waitsecs > 0 */
+  /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
   mnt_lk_waited_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
   LK_MSG_LOCK_WAITFOR (entry_ptr);
@@ -4541,7 +4542,7 @@ blocked:
 
   (void) thread_lock_entry (entry_ptr->thrd_entry);
   pthread_mutex_unlock (&res_ptr->res_mutex);
-  ret_val = lock_suspend (thread_p, entry_ptr, waitsecs);
+  ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
   if (ret_val != LOCK_RESUMED)
     {
       /* Following three cases are possible.
@@ -6118,7 +6119,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  victims[victim_count].tran_index = t;
 	  victims[victim_count].tranid = tranid;
 	  victims[victim_count].can_timeout =
-	    LK_CAN_TIMEOUT (logtb_find_wait_secs (t));
+	    LK_CAN_TIMEOUT (logtb_find_wait_msecs (t));
 	  lock_holder_found = true;
 	}
     }
@@ -6201,7 +6202,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  else
 	    {
 	      lock_holder_found = true;
-	      can_timeout = LK_CAN_TIMEOUT (logtb_find_wait_secs (v));
+	      can_timeout = LK_CAN_TIMEOUT (logtb_find_wait_msecs (v));
 	      if (victims[victim_count].tran_index == NULL_TRAN_INDEX
 		  || (victims[victim_count].can_timeout == false
 		      && can_timeout == true)
@@ -6371,6 +6372,26 @@ lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2)
   oid2 = &(((LK_LOCKINFO *) (lockinfo2))->oid);
 
   return oid_compare (oid1, oid2);
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_wait_msecs_to_secs -
+ *
+ * return: seconds
+ *
+ *   msecs(in): milliseconds
+ */
+static float
+lock_wait_msecs_to_secs (int msecs)
+{
+  if (msecs > 0)
+    {
+      return (float) msecs / 1000;
+    }
+
+  return (float) msecs;
 }
 #endif /* SERVER_MODE */
 
@@ -6591,7 +6612,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			   entry_ptr->count, "",
 			   LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 			   "", time_val, "",
-			   entry_ptr->thrd_entry->lockwait_nsecs);
+			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->
+						    lockwait_msecs));
 		}
 	      else
 		{
@@ -6604,7 +6626,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			   entry_ptr->count, entry_ptr->ngranules, "",
 			   LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 			   "", time_val, "",
-			   entry_ptr->thrd_entry->lockwait_nsecs);
+			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->
+						    lockwait_msecs));
 		}
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -6636,7 +6659,9 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 					  MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
 		   "", entry_ptr->tran_index,
 		   LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "",
-		   time_val, "", entry_ptr->thrd_entry->lockwait_nsecs);
+		   time_val, "",
+		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->
+					    lockwait_msecs));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -7213,7 +7238,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
@@ -7250,11 +7275,11 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
-      waitsecs = LK_FORCE_ZERO_WAIT;
+      wait_msecs = LK_FORCE_ZERO_WAIT;
     }
   else
     {
-      waitsecs = logtb_find_wait_secs (tran_index);
+      wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
 
@@ -7281,8 +7306,9 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   (OID *) NULL, btid, lock, waitsecs,
-					   &root_class_entry, NULL);
+					   (OID *) NULL, btid, lock,
+					   wait_msecs, &root_class_entry,
+					   NULL);
 
       goto end;
     }
@@ -7310,8 +7336,9 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
-					       btid, new_class_lock, waitsecs,
-					       &root_class_entry, NULL);
+					       btid, new_class_lock,
+					       wait_msecs, &root_class_entry,
+					       NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      goto end;
@@ -7336,8 +7363,9 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   (OID *) NULL, btid, lock, waitsecs,
-					   &class_entry, root_class_entry);
+					   (OID *) NULL, btid, lock,
+					   wait_msecs, &class_entry,
+					   root_class_entry);
       goto end;
     }
   else
@@ -7350,8 +7378,8 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
-					       btid, new_class_lock, waitsecs,
-					       &class_entry,
+					       btid, new_class_lock,
+					       wait_msecs, &class_entry,
 					       root_class_entry);
 	  if (granted != LK_GRANTED)
 	    {
@@ -7383,7 +7411,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   class_oid, btid, lock, waitsecs,
+					   class_oid, btid, lock, wait_msecs,
 					   &inst_entry, class_entry);
 
       goto end;
@@ -7432,7 +7460,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 }
 
 /*
- * lock_object_waitsecs - Lock an object
+ * lock_object_wait_msecs - Lock an object
  *
  * return: one of following values)
  *     LK_GRANTED
@@ -7444,13 +7472,13 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
  *   class_oid(in): Identifier of the class instance of the given object
  *   lock(in): Requested lock mode
  *   cond_flag(in):
- *   waitsecs(in):
+ *   wait_msecs(in):
  *
  */
 int
-lock_object_waitsecs (THREAD_ENTRY * thread_p, const OID * oid,
-		      const OID * class_oid, LOCK lock, int cond_flag,
-		      int waitsecs)
+lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid,
+			const OID * class_oid, LOCK lock, int cond_flag,
+			int wait_msecs)
 {
 #if !defined (SERVER_MODE)
   if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
@@ -7460,10 +7488,10 @@ lock_object_waitsecs (THREAD_ENTRY * thread_p, const OID * oid,
   return LK_GRANTED;
 
 #else /* !SERVER_MODE */
-  int old_waitsecs = xlogtb_reset_wait_secs (thread_p, waitsecs);
+  int old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
   int lock_result = lock_object (thread_p, oid, class_oid, lock, cond_flag);
 
-  xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 
   return lock_result;
 #endif
@@ -7498,7 +7526,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
@@ -7535,11 +7563,11 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
-      waitsecs = LK_FORCE_ZERO_WAIT;
+      wait_msecs = LK_FORCE_ZERO_WAIT;
     }
   else
     {
-      waitsecs = logtb_find_wait_secs (tran_index);
+      wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
 
@@ -7566,8 +7594,9 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   (OID *) NULL, btid, lock, waitsecs,
-					   &root_class_entry, NULL);
+					   (OID *) NULL, btid, lock,
+					   wait_msecs, &root_class_entry,
+					   NULL);
       goto end;
     }
 
@@ -7594,7 +7623,8 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
-					       btid, new_class_lock, waitsecs,
+					       btid, new_class_lock,
+					       wait_msecs,
 					       &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
@@ -7620,7 +7650,8 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   (OID *) NULL, btid, lock, waitsecs,
+					   (OID *) NULL, btid, lock,
+					   wait_msecs,
 					   &class_entry, root_class_entry);
     }
   else
@@ -7633,8 +7664,8 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
-					       btid, new_class_lock, waitsecs,
-					       &class_entry,
+					       btid, new_class_lock,
+					       wait_msecs, &class_entry,
 					       root_class_entry);
 	  if (granted != LK_GRANTED)
 	    {
@@ -7666,7 +7697,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   class_oid, btid, lock, waitsecs,
+					   class_oid, btid, lock, wait_msecs,
 					   &inst_entry, class_entry);
       if (scanid_bit >= 0 && granted == LK_GRANTED && inst_entry != NULL)
 	{
@@ -7719,7 +7750,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LK_LOCKINFO cls_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
   LK_LOCKINFO *cls_lockinfo;
@@ -7755,16 +7786,16 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  waitsecs = logtb_find_wait_secs (tran_index);
+  wait_msecs = logtb_find_wait_msecs (tran_index);
   isolation = logtb_find_isolation (tran_index);
 
   /* We do not want to rollback the transaction in the event of a deadlock.
    * For now, let's just wait a long time. If deadlock, the transaction is
    * going to be notified of lock timeout instead of aborted.
    */
-  if (lockset->quit_on_errors == false && waitsecs == LK_INFINITE_WAIT)
+  if (lockset->quit_on_errors == false && wait_msecs == LK_INFINITE_WAIT)
     {
-      waitsecs = INT_MAX;	/* will be notified of lock timeout */
+      wait_msecs = INT_MAX;	/* will be notified of lock timeout */
     }
 
   /* prepare cls_lockinfo and ins_lockinfo array */
@@ -7885,7 +7916,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 							   oid_Root_class_oid,
 							   (OID *) NULL, NULL,
 							   intention_mode,
-							   waitsecs,
+							   wait_msecs,
 							   &root_class_entry,
 							   NULL);
 	      if (granted != LK_GRANTED)
@@ -7906,7 +7937,8 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 						       &cls_lockinfo[i].oid,
 						       (OID *) NULL, NULL,
 						       cls_lockinfo[i].lock,
-						       waitsecs, &class_entry,
+						       wait_msecs,
+						       &class_entry,
 						       root_class_entry);
 	  if (granted != LK_GRANTED)
 	    {
@@ -7947,7 +7979,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 							   class_oid,
 							   (OID *) NULL, NULL,
 							   intention_mode,
-							   waitsecs,
+							   wait_msecs,
 							   &class_entry,
 							   root_class_entry);
 	      if (granted != LK_GRANTED)
@@ -7969,7 +8001,8 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 						       &ins_lockinfo[i].
 						       class_oid, NULL,
 						       ins_lockinfo[i].lock,
-						       waitsecs, &inst_entry,
+						       wait_msecs,
+						       &inst_entry,
 						       class_entry);
 	  if (granted != LK_GRANTED)
 	    {
@@ -8051,7 +8084,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK class_lock;
   int granted;
@@ -8072,7 +8105,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  waitsecs = logtb_find_wait_secs (tran_index);
+  wait_msecs = logtb_find_wait_msecs (tran_index);
   isolation = logtb_find_isolation (tran_index);
 
   /* get the class lock mode to be acquired */
@@ -8118,7 +8151,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   root_class_entry = lock_get_class_lock (oid_Root_class_oid, tran_index);
   granted = lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
-					       NULL, class_lock, waitsecs,
+					       NULL, class_lock, wait_msecs,
 					       &class_entry,
 					       root_class_entry);
   if (granted == LK_GRANTED)
@@ -8183,7 +8216,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LK_LOCKINFO cls_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
   LK_LOCKINFO *cls_lockinfo;
@@ -8215,16 +8248,16 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  waitsecs = logtb_find_wait_secs (tran_index);
+  wait_msecs = logtb_find_wait_msecs (tran_index);
   isolation = logtb_find_isolation (tran_index);
 
   /* We do not want to rollback the transaction in the event of a deadlock.
    * For now, let's just wait a long time. If deadlock, the transaction is
    * going to be notified of lock timeout instead of aborted.
    */
-  if (lockhint->quit_on_errors == false && waitsecs == LK_INFINITE_WAIT)
+  if (lockhint->quit_on_errors == false && wait_msecs == LK_INFINITE_WAIT)
     {
-      waitsecs = INT_MAX;	/* to be notified of lock timeout  */
+      wait_msecs = INT_MAX;	/* to be notified of lock timeout  */
     }
 
   /* prepare cls_lockinfo array */
@@ -8279,7 +8312,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       root_oidp, (OID *) NULL,
-					       NULL, root_lock, waitsecs,
+					       NULL, root_lock, wait_msecs,
 					       &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
@@ -8346,7 +8379,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 						       oid_Root_class_oid,
 						       (OID *) NULL,
 						       NULL, intention_mode,
-						       waitsecs,
+						       wait_msecs,
 						       &root_class_entry,
 						       NULL);
 	  if (granted != LK_GRANTED)
@@ -8366,7 +8399,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 						   &cls_lockinfo[i].oid,
 						   (OID *) NULL, NULL,
 						   cls_lockinfo[i].lock,
-						   waitsecs, &class_entry,
+						   wait_msecs, &class_entry,
 						   root_class_entry);
 
       if (granted != LK_GRANTED)
@@ -9414,8 +9447,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	  double etime;
 	  (void) gettimeofday (&tv, NULL);
 	  etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
-	  if ((LK_CAN_TIMEOUT (thrd->lockwait_nsecs)
-	       && etime - thrd->lockwait_stime > thrd->lockwait_nsecs)
+	  if ((LK_CAN_TIMEOUT (thrd->lockwait_msecs)
+	       && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 	      || logtb_is_interrupted_tran (NULL, true, &ignore,
 					    thrd->tran_index))
 	    {
@@ -9458,8 +9491,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	      double etime;
 	      (void) gettimeofday (&tv, NULL);
 	      etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
-	      if ((LK_CAN_TIMEOUT (thrd->lockwait_nsecs)
-		   && etime - thrd->lockwait_stime > thrd->lockwait_nsecs)
+	      if ((LK_CAN_TIMEOUT (thrd->lockwait_msecs)
+		   && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 		  || logtb_is_interrupted_tran (NULL, true, &ignore,
 						thrd->tran_index))
 		{
@@ -10154,7 +10187,7 @@ lk_global_deadlock_detection (void)
 		    {
 		      tranid = logtb_find_tranid (tran_index);
 		      can_timeout =
-			LK_CAN_TIMEOUT (logtb_find_wait_secs (tran_index));
+			LK_CAN_TIMEOUT (logtb_find_wait_msecs (tran_index));
 		      /* Victim selection:
 		         1) Avoid unactive transactions.
 		         2) Prefer a waiter of TG resources.
@@ -10529,8 +10562,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   int client_pid;		/* Client process id for tran   */
   TRAN_ISOLATION isolation;	/* Isolation for client tran    */
   TRAN_STATE state;
-  int waitsecs;
-  int old_waitsecs = 0;		/* Old transaction lock wait    */
+  int wait_msecs;
+  int old_wait_msecs = 0;	/* Old transaction lock wait    */
   int tran_index;
   int num_res;
   LK_RES_BLOCK *res_block;
@@ -10553,7 +10586,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 	   PRM_LK_ESCALATION_AT, PRM_LK_RUN_DEADLOCK_INTERVAL);
 
   /* Don't get block from anything when dumping object lock table. */
-  old_waitsecs = xlogtb_reset_wait_secs (thread_p, LK_FORCE_ZERO_WAIT);
+  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 
   /* Dump some information about all transactions */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -10570,7 +10603,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 	}
       isolation = logtb_find_isolation (tran_index);
       state = logtb_find_state (tran_index);
-      waitsecs = logtb_find_wait_secs (tran_index);
+      wait_msecs = logtb_find_wait_msecs (tran_index);
 
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				      MSGCAT_SET_LOCK,
@@ -10588,7 +10621,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				      MSGCAT_SET_LOCK,
 				      MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
-	       waitsecs);
+	       lock_wait_msecs_to_secs (wait_msecs));
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				      MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
     }
@@ -10658,7 +10691,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     }
 
   /* Reset the wait back to the way it was */
-  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 
   return;
 #endif /* !SERVER_MODE */
@@ -10749,7 +10782,7 @@ lock_initialize_composite_lock (THREAD_ENTRY * thread_p,
     }
   lockcomp = (LK_LOCKCOMP *) comp_lock->lockcomp;
   lockcomp->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lockcomp->waitsecs = logtb_find_wait_secs (lockcomp->tran_index);
+  lockcomp->wait_msecs = logtb_find_wait_msecs (lockcomp->tran_index);
   lockcomp->class_list = (LK_LOCKCOMP_CLASS *) NULL;
   lockcomp->root_class_ptr = NULL;
   return NO_ERROR;
@@ -10811,10 +10844,12 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 	}
       /* initialize lockcomp_class */
       COPY_OID (&lockcomp_class->class_oid, class_oid);
-      if (lock_internal_perform_lock_object
-	  (thread_p, lockcomp->tran_index, class_oid, (OID *) NULL, NULL,
-	   IX_LOCK, lockcomp->waitsecs, &lockcomp_class->class_lock_ptr,
-	   lockcomp->root_class_ptr) != LK_GRANTED)
+      if (lock_internal_perform_lock_object (thread_p, lockcomp->tran_index,
+					     class_oid, (OID *) NULL, NULL,
+					     IX_LOCK, lockcomp->wait_msecs,
+					     &lockcomp_class->class_lock_ptr,
+					     lockcomp->root_class_ptr)
+	  != LK_GRANTED)
 	{
 	  db_private_free_and_init (thread_p, lockcomp_class);
 	  return ER_FAILED;
@@ -10937,7 +10972,7 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 	    lock_internal_perform_lock_object (thread_p, lockcomp->tran_index,
 					       &lockcomp_class->class_oid,
 					       (OID *) NULL, NULL, X_LOCK,
-					       lockcomp->waitsecs, &dummy,
+					       lockcomp->wait_msecs, &dummy,
 					       lockcomp->root_class_ptr);
 	  if (value != LK_GRANTED)
 	    {
@@ -10956,7 +10991,8 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 						   inst_oid_space[i],
 						   &lockcomp_class->class_oid,
 						   NULL, X_LOCK,
-						   lockcomp->waitsecs, &dummy,
+						   lockcomp->wait_msecs,
+						   &dummy,
 						   lockcomp_class->
 						   class_lock_ptr);
 	      if (value != LK_GRANTED)
@@ -10972,7 +11008,7 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
     }
 
   lockcomp->tran_index = NULL_TRAN_INDEX;
-  lockcomp->waitsecs = 0;
+  lockcomp->wait_msecs = 0;
   while (lockcomp->class_list != NULL)
     {
       lockcomp_class = lockcomp->class_list;
@@ -11012,7 +11048,7 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
 
   lockcomp = (LK_LOCKCOMP *) comp_lock->lockcomp;
   lockcomp->tran_index = NULL_TRAN_INDEX;
-  lockcomp->waitsecs = 0;
+  lockcomp->wait_msecs = 0;
   while (lockcomp->class_list != NULL)
     {
       lockcomp_class = lockcomp->class_list;
@@ -11400,7 +11436,7 @@ lock_internal_hold_object_instant_get_granted_mode (int tran_index,
  *   oid(in):
  *   class_oid(in):
  *   lock(in):
- *   waitsecs(in):
+ *   wait_msecs(in):
  *   entry_addr_ptr(in):
  *   class_entry(in):
  *   prv_tot_hold_mode(out): the previous total hold lock mode
@@ -11421,7 +11457,7 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
 						    class_oid,
 						    const BTID * btid,
 						    LOCK lock,
-						    int waitsecs,
+						    int wait_msecs,
 						    LK_ENTRY **
 						    entry_addr_ptr,
 						    LK_ENTRY *
@@ -11463,12 +11499,12 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_lock_object()\n"
 	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), "
-	       "LOCK(%7s) waitsecs(%d)\n", tran_index,
+	       "LOCK(%7s) wait_msecs(%d)\n", tran_index,
 	       oid->volid, oid->pageid, oid->slotid,
 	       class_oid ? class_oid->volid : -1,
 	       class_oid ? class_oid->pageid : -1,
 	       class_oid ? class_oid->slotid : -1,
-	       LOCK_TO_LOCKMODE_STRING (lock), waitsecs);
+	       LOCK_TO_LOCKMODE_STRING (lock), wait_msecs);
     }
 #endif /* LK_DUMP */
 
@@ -11767,10 +11803,10 @@ start:
 	    }
 	}
 
-      if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+      if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  if (waitsecs == LK_ZERO_WAIT)
+	  if (wait_msecs == LK_ZERO_WAIT)
 	    {
 	      if (entry_ptr == NULL)
 		{
@@ -11894,7 +11930,7 @@ start:
 
       /* change total_waiters_mode (total mode of waiting waiter) */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
-      /* the previous total holders mode will be calculated when resume 
+      /* the previous total holders mode will be calculated when resume
          after suspension (old_mode=NULL_LOCK) */
       res_ptr->total_waiters_mode =
 	lock_Conv[lock][res_ptr->total_waiters_mode];
@@ -12040,10 +12076,10 @@ start:
     }
 
   /* I am a holder & my request cannot be granted. */
-  if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
       pthread_mutex_unlock (&res_ptr->res_mutex);
-      if (waitsecs == LK_ZERO_WAIT)
+      if (wait_msecs == LK_ZERO_WAIT)
 	{
 	  LK_ENTRY *p = lock_alloc_entry ();
 
@@ -12111,7 +12147,7 @@ start:
   entry_ptr->thrd_entry = thread_p;
 
   /* change res_ptr->total_holders_mode (total mode of holder list).
-     The previous total holders mode will be calculated when resume 
+     The previous total holders mode will be calculated when resume
      after suspension */
   assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
   res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
@@ -12139,7 +12175,7 @@ start:
 
 blocked:
 
-  /* LK_CANWAIT(waitsecs) : waitsecs > 0 */
+  /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
   mnt_lk_waited_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
   LK_MSG_LOCK_WAITFOR (entry_ptr);
@@ -12147,7 +12183,7 @@ blocked:
 
   (void) thread_lock_entry (entry_ptr->thrd_entry);
   pthread_mutex_unlock (&res_ptr->res_mutex);
-  ret_val = lock_suspend (thread_p, entry_ptr, waitsecs);
+  ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
   if (ret_val != LOCK_RESUMED)
     {
       /* Following three cases are possible.
@@ -12341,7 +12377,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
@@ -12380,11 +12416,11 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
-      waitsecs = LK_FORCE_ZERO_WAIT;
+      wait_msecs = LK_FORCE_ZERO_WAIT;
     }
   else
     {
-      waitsecs = logtb_find_wait_secs (tran_index);
+      wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
 
@@ -12411,8 +12447,9 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   (OID *) NULL, btid, lock, waitsecs,
-					   &root_class_entry, NULL);
+					   (OID *) NULL, btid, lock,
+					   wait_msecs, &root_class_entry,
+					   NULL);
       if (granted == LK_GRANTED)
 	{
 	  *granted_mode = root_class_entry->granted_mode;
@@ -12444,8 +12481,9 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
-					       btid, new_class_lock, waitsecs,
-					       &root_class_entry, NULL);
+					       btid, new_class_lock,
+					       wait_msecs, &root_class_entry,
+					       NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      goto end;
@@ -12470,8 +12508,9 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   (OID *) NULL, btid, lock, waitsecs,
-					   &class_entry, root_class_entry);
+					   (OID *) NULL, btid, lock,
+					   wait_msecs, &class_entry,
+					   root_class_entry);
       if (granted == LK_GRANTED)
 	{
 	  *granted_mode = class_entry->granted_mode;
@@ -12488,7 +12527,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL, btid,
-					       new_class_lock, waitsecs,
+					       new_class_lock, wait_msecs,
 					       &class_entry,
 					       root_class_entry);
 	  if (granted != LK_GRANTED)
@@ -12525,7 +12564,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   class_oid, btid, lock, waitsecs,
+					   class_oid, btid, lock, wait_msecs,
 					   &inst_entry, class_entry);
       if (granted == LK_GRANTED && inst_entry)
 	{
@@ -12595,7 +12634,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 
 #else /* !SERVER_MODE */
   int tran_index;
-  int waitsecs;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
@@ -12634,11 +12673,11 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
-      waitsecs = LK_FORCE_ZERO_WAIT;
+      wait_msecs = LK_FORCE_ZERO_WAIT;
     }
   else
     {
-      waitsecs = logtb_find_wait_secs (tran_index);
+      wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
 
@@ -12665,7 +12704,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 
       granted = lock_internal_lock_object_get_prev_total_hold_mode
 	(thread_p, tran_index, oid, (OID *) NULL, btid, lock,
-	 waitsecs, &root_class_entry, NULL, prv_total_hold_mode);
+	 wait_msecs, &root_class_entry, NULL, prv_total_hold_mode);
       goto end;
     }
 
@@ -12693,7 +12732,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL, btid,
-					       new_class_lock, waitsecs,
+					       new_class_lock, wait_msecs,
 					       &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
@@ -12719,7 +12758,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
        */
       granted =
 	lock_internal_lock_object_get_prev_total_hold_mode
-	(thread_p, tran_index, oid, (OID *) NULL, btid, lock, waitsecs,
+	(thread_p, tran_index, oid, (OID *) NULL, btid, lock, wait_msecs,
 	 &class_entry, root_class_entry, prv_total_hold_mode);
       goto end;
     }
@@ -12733,7 +12772,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL, btid,
-					       new_class_lock, waitsecs,
+					       new_class_lock, wait_msecs,
 					       &class_entry,
 					       root_class_entry);
 	  if (granted != LK_GRANTED)
@@ -12773,7 +12812,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
        */
       granted =
 	lock_internal_lock_object_get_prev_total_hold_mode
-	(thread_p, tran_index, oid, class_oid, btid, lock, waitsecs,
+	(thread_p, tran_index, oid, class_oid, btid, lock, wait_msecs,
 	 &inst_entry, class_entry, prv_total_hold_mode);
       goto end;
     }
@@ -12805,7 +12844,7 @@ end:
  * return: the total holders mode
  *
  *   oid(in): target object ientifier
- *   class_oid(in): class identifier of the target object 
+ *   class_oid(in): class identifier of the target object
  */
 
 LOCK

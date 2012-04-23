@@ -3374,7 +3374,7 @@ exit_on_error:
 #endif
 
 /*
- * btree_get_midxkey_stats () - 
+ * btree_get_midxkey_stats () -
  *   return: NO_ERROR
  *   thread_p(in);
  *   key(in);
@@ -17277,7 +17277,7 @@ start_locking:
 	}
 
       /*
-       * CONDITIONAL lock request (current waitsecs : 0)
+       * CONDITIONAL lock request (current wait_msecs : 0)
        */
       lock_ret = lock_object_on_iscan (thread_p, &inst_oid, &class_oid,
 				       btid, lock_mode, LK_COND_LOCK,

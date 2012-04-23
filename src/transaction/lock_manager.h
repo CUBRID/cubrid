@@ -129,9 +129,9 @@ extern int lock_initialize (void);
 extern void lock_finalize (void);
 extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid,
 				     const OID * class_oid, LOCK lock);
-extern int lock_object_waitsecs (THREAD_ENTRY * thread_p, const OID * oid,
-				 const OID * class_oid, LOCK lock,
-				 int cond_flag, int waitsecs);
+extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid,
+				   const OID * class_oid, LOCK lock,
+				   int cond_flag, int wait_msecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid,
 			const OID * class_oid, LOCK lock, int cond_flag);
 extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,

@@ -3042,7 +3042,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
   int idx_worstspace;
   int worstspace;
   HEAP_FINDSPACE found = HEAP_FINDSPACE_NOTFOUND;
-  int old_waitsecs;
+  int old_wait_msecs;
   int bk_errid = NO_ERROR;	/* backup of previous errid */
 
   worstspace = PGLENGTH_MAX;
@@ -3058,7 +3058,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
    */
 
   /* LK_FORCE_ZERO_WAIT doesn't set error when deadlock occurrs */
-  old_waitsecs = xlogtb_reset_wait_secs (thread_p, LK_FORCE_ZERO_WAIT);
+  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 
   /* backup previous error */
   bk_errid = er_errid ();
@@ -3147,7 +3147,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
   /*
    * Reset back the timeout value of the transaction
    */
-  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 
   if (bk_errid != NO_ERROR && er_errid () == NO_ERROR)
     {

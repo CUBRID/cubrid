@@ -10581,9 +10581,9 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      else
 		{
 		  lock_result =
-		    lock_object_waitsecs (thread_p, &oid, class_oid,
-					  *instance_lock, LK_UNCOND_LOCK,
-					  *instance_lock_timeout);
+		    lock_object_wait_msecs (thread_p, &oid, class_oid,
+					    *instance_lock, LK_UNCOND_LOCK,
+					    *instance_lock_timeout);
 		}
 
 	      if (lock_result != LK_GRANTED)

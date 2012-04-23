@@ -933,7 +933,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
   int buf_lock_acquired;
-  int waitsecs;
+  int wait_msecs;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -957,13 +957,13 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 
   if (condition == PGBUF_UNCONDITIONAL_LATCH)
     {
-      /* Check the waitsecs of current transaction.
-       * If the waitsecs is zero wait that means no wait,
+      /* Check the wait_msecs of current transaction.
+       * If the wait_msecs is zero wait that means no wait,
        * change current request as a conditional request.
        */
-      waitsecs = logtb_find_current_wait_secs (thread_p);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
 
-      if (waitsecs == LK_ZERO_WAIT || waitsecs == LK_FORCE_ZERO_WAIT)
+      if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  condition = PGBUF_CONDITIONAL_LATCH;
 	}
@@ -3843,11 +3843,11 @@ do_block:
     {
       /* reject the request */
       int tran_index;
-      int waitsec;
+      int wait_msec;
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      waitsec = logtb_find_wait_secs (tran_index);
+      wait_msec = logtb_find_wait_msecs (tran_index);
 
-      if (waitsec == LK_ZERO_WAIT)
+      if (wait_msec == LK_ZERO_WAIT)
 	{
 	  char *waitfor_client_users;	/* Waitfor users */
 	  char *client_prog_name;	/* Client program name for transaction */
@@ -3855,7 +3855,7 @@ do_block:
 	  char *client_host_name;	/* Client host for transaction */
 	  int client_pid;	/* Client process identifier for transaction */
 
-	  /* setup timeout error, if waitsec == LK_ZERO_WAIT */
+	  /* setup timeout error, if wait_msec == LK_ZERO_WAIT */
 #if defined(SERVER_MODE)
 	  waitfor_client_users =
 	    pgbuf_get_waiting_tran_users_as_string (bufptr->holder_list);
@@ -4328,8 +4328,8 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 {
   int r;
   struct timespec to;
-  int waitsecs;
-  int old_waitsecs;
+  int wait_secs;
+  int old_wait_msecs;
   int save_request_latch_mode;
   char *waitfor_client_users;	/* Waitfor users */
   char *client_prog_name;	/* Client program name for transaction */
@@ -4342,18 +4342,22 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   thread_lock_entry (thrd_entry);
   pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-  old_waitsecs = waitsecs = logtb_find_current_wait_secs (thread_p);
+  old_wait_msecs = wait_secs = logtb_find_current_wait_msecs (thread_p);
 
-  assert (waitsecs == LK_INFINITE_WAIT || waitsecs == LK_ZERO_WAIT
-	  || waitsecs == LK_FORCE_ZERO_WAIT || waitsecs > 0);
+  assert (wait_secs == LK_INFINITE_WAIT || wait_secs == LK_ZERO_WAIT
+	  || wait_secs == LK_FORCE_ZERO_WAIT || wait_secs > 0);
 
-  if (waitsecs != LK_ZERO_WAIT && waitsecs != LK_FORCE_ZERO_WAIT)
+  if (wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT)
     {
-      waitsecs = PGBUF_TIMEOUT;
+      wait_secs = 0;
+    }
+  else
+    {
+      wait_secs = PGBUF_TIMEOUT;
     }
 
 try_again:
-  to.tv_sec = time (NULL) + waitsecs;
+  to.tv_sec = time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
@@ -4439,7 +4443,7 @@ try_again:
 
 er_set_return:
   /* error setting */
-  if (old_waitsecs == LK_INFINITE_WAIT)
+  if (old_wait_msecs == LK_INFINITE_WAIT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_PAGE_LATCH_TIMEDOUT, 2, bufptr->vpid.volid,
@@ -4477,7 +4481,7 @@ er_set_return:
 	  /* We can release all the page latches held by current thread. */
 	}
     }
-  else if (old_waitsecs > 0)
+  else if (old_wait_msecs > 0)
     {
       waitfor_client_users =
 	pgbuf_get_waiting_tran_users_as_string (bufptr->holder_list);

@@ -36,26 +36,26 @@
 #include "dbdef.h"
 
 
-#define TM_TRAN_INDEX()     (tm_Tran_index)
-#define TM_TRAN_ISOLATION() (tm_Tran_isolation)
-#define TM_TRAN_ASYNC_WS()  (tm_Tran_async_ws)
-#define TM_TRAN_WAITSECS()  (tm_Tran_waitsecs)
-#define TM_TRAN_ID()        (tm_Tran_ID)
+#define TM_TRAN_INDEX()      (tm_Tran_index)
+#define TM_TRAN_ISOLATION()  (tm_Tran_isolation)
+#define TM_TRAN_ASYNC_WS()   (tm_Tran_async_ws)
+#define TM_TRAN_WAIT_MSECS() (tm_Tran_wait_msecs)
+#define TM_TRAN_ID()         (tm_Tran_ID)
 
 
 extern int tm_Tran_index;
 extern TRAN_ISOLATION tm_Tran_isolation;
 extern bool tm_Tran_async_ws;
-extern int tm_Tran_waitsecs;
+extern int tm_Tran_wait_msecs;
 extern int tm_Tran_ID;
 extern bool tm_Use_OID_preflush;
 
-extern void tran_cache_tran_settings (int tran_index, float lock_timeout,
+extern void tran_cache_tran_settings (int tran_index, int lock_timeout,
 				      TRAN_ISOLATION tran_isolation);
-extern void tran_get_tran_settings (float *lock_timeout,
+extern void tran_get_tran_settings (int *lock_timeout_in_msecs,
 				    TRAN_ISOLATION * tran_isolation,
 				    bool * async_ws);
-extern float tran_reset_wait_times (float waitsecs);
+extern int tran_reset_wait_times (int wait_in_msecs);
 extern int tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws);
 extern TRAN_STATE tran_commit_client_loose_ends (void);
 extern TRAN_STATE tran_abort_client_loose_ends (bool isknown_state);
@@ -85,7 +85,7 @@ extern int tran_internal_abort_upto_savepoint (const char *savepoint_name,
 					       client_decache_only_insts);
 extern void tran_set_query_timeout (int query_timeout);
 extern int tran_get_query_timeout (void);
-extern void tran_begin_libcas_function(void);
-extern void tran_end_libcas_function(void);
-extern bool tran_is_in_libcas(void);
+extern void tran_begin_libcas_function (void);
+extern void tran_end_libcas_function (void);
+extern bool tran_is_in_libcas (void);
 #endif /* _TRANSACTION_CL_H_ */

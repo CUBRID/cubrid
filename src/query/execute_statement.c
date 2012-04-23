@@ -3995,7 +3995,7 @@ do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  float lock_timeout = 0;
+  int lock_timeout_in_msecs = 0;
   DB_TRAN_ISOLATION tran_isolation = TRAN_UNKNOWN_ISOLATION;
   bool async_ws;
   int tran_num;
@@ -4004,7 +4004,8 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *into_var;
   int error = NO_ERROR;
 
-  (void) tran_get_tran_settings (&lock_timeout, &tran_isolation, &async_ws);
+  (void) tran_get_tran_settings (&lock_timeout_in_msecs, &tran_isolation,
+				 &async_ws);
 
   /* create a DB_VALUE to hold the result */
   ins_val = db_value_create ();
@@ -4027,7 +4028,14 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_LOCK_TIMEOUT:
-      db_make_float (ins_val, lock_timeout);
+      if (lock_timeout_in_msecs > 0)
+	{
+	  db_make_float (ins_val, (float) lock_timeout_in_msecs / 1000);
+	}
+      else
+	{
+	  db_make_float (ins_val, (float) lock_timeout_in_msecs);
+	}
       break;
 
     default:
@@ -4065,7 +4073,14 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_LOCK_TIMEOUT:
-	  db_make_float (ins_val, lock_timeout);
+	  if (lock_timeout_in_msecs > 0)
+	    {
+	      db_make_float (ins_val, lock_timeout_in_msecs / 1000);
+	    }
+	  else
+	    {
+	      db_make_float (ins_val, lock_timeout_in_msecs);
+	    }
 	  break;
 
 	default:
@@ -4097,6 +4112,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *mode = statement->info.set_xaction.xaction_modes;
   int error = NO_ERROR;
   bool async_ws;
+  float wait_secs;
 
   while ((error == NO_ERROR) && (mode != NULL))
     {
@@ -4142,7 +4158,12 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      (void) tran_reset_wait_times (DB_GET_FLOAT (&val));
+	      wait_secs = DB_GET_FLOAT (&val);
+	      if (wait_secs > 0)
+		{
+		  wait_secs *= 1000;
+		}
+	      (void) tran_reset_wait_times (wait_secs);
 	    }
 	  break;
 	default:
@@ -4519,7 +4540,7 @@ set_iso_level (PARSER_CONTEXT * parser,
     case 0:
       if (*async_ws == true)
 	{			/* only async workspace is given */
-	  float dummy_lktimeout;
+	  int dummy_lktimeout;
 	  bool dummy_aws;
 	  tran_get_tran_settings (&dummy_lktimeout, tran_isolation,
 				  &dummy_aws);
@@ -7584,8 +7605,9 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
       QFILE_LIST_ID *oid_list = NULL;
       int no_vals = 0;
       int no_consts = 0;
-      float waitsecs = -2;
-      float old_waitsecs = -2;
+      int wait_msecs = -2;
+      int old_wait_msecs = -2;
+      float hint_waitsecs;
 
       /* do update on client */
       lhs = statement->info.update.assignment->info.expr.arg1;
@@ -7600,11 +7622,19 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (waitsecs >= -1)
+	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	      if (hint_waitsecs > 0)
 		{
-		  old_waitsecs = (float) TM_TRAN_WAITSECS ();
-		  (void) tran_reset_wait_times (waitsecs);
+		  wait_msecs = (int) (hint_waitsecs * 1000);
+		}
+	      else
+		{
+		  wait_msecs = (int) hint_waitsecs;
+		}
+	      if (wait_msecs >= -1)
+		{
+		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+		  (void) tran_reset_wait_times (wait_msecs);
 		}
 	    }
 	  if (error == NO_ERROR)
@@ -7635,9 +7665,9 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      pt_restore_assignment_links (statement->info.update.assignment,
 					   links, -1);
 	    }
-	  if (old_waitsecs >= -1)
+	  if (old_wait_msecs >= -1)
 	    {
-	      (void) tran_reset_wait_times (old_waitsecs);
+	      (void) tran_reset_wait_times (old_wait_msecs);
 	    }
 
 	  if (!oid_list)
@@ -8258,7 +8288,8 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   int au_save;
-  float waitsecs = -2, old_waitsecs = -2;
+  int wait_msecs = -2, old_wait_msecs = -2;
+  float hint_waitsecs;
   PT_NODE *hint_arg;
 
   CHECK_MODIFICATION_ERROR ();
@@ -8396,11 +8427,19 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (waitsecs >= -1)
+	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	      if (hint_waitsecs > 0)
 		{
-		  old_waitsecs = (float) TM_TRAN_WAITSECS ();
-		  (void) tran_reset_wait_times (waitsecs);
+		  wait_msecs = (int) (hint_waitsecs * 1000);
+		}
+	      else
+		{
+		  wait_msecs = (int) hint_waitsecs;
+		}
+	      if (wait_msecs >= -1)
+		{
+		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+		  (void) tran_reset_wait_times (wait_msecs);
 		}
 	    }
 	  AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization
@@ -8417,9 +8456,9 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  AU_RESTORE (au_save);
-	  if (old_waitsecs >= -1)
+	  if (old_wait_msecs >= -1)
 	    {
-	      (void) tran_reset_wait_times (old_waitsecs);
+	      (void) tran_reset_wait_times (old_wait_msecs);
 	    }
 	}
 
@@ -8971,7 +9010,8 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   int trigger_involved = 0;
   MOBJ class_;
   DB_OBJECT *class_obj;
-  float waitsecs = -2, old_waitsecs = -2;
+  int wait_msecs = -2, old_wait_msecs = -2;
+  float hint_waitsecs;
   PT_NODE *hint_arg = NULL, *node = NULL, *spec = NULL;
   bool has_virt_object = false;
 
@@ -9023,11 +9063,19 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (waitsecs >= -1)
+	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (hint_waitsecs > 0)
 	    {
-	      old_waitsecs = (float) TM_TRAN_WAITSECS ();
-	      (void) tran_reset_wait_times (waitsecs);
+	      wait_msecs = (int) (hint_waitsecs * 1000);
+	    }
+	  else
+	    {
+	      wait_msecs = (int) hint_waitsecs;
+	    }
+	  if (wait_msecs >= -1)
+	    {
+	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	      (void) tran_reset_wait_times (wait_msecs);
 	    }
 	}
       if (error >= NO_ERROR)
@@ -9035,9 +9083,9 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* get the oid's and new values */
 	  error = select_delete_list (parser, &oid_list, statement);
 	}
-      if (old_waitsecs >= -1)
+      if (old_wait_msecs >= -1)
 	{
-	  (void) tran_reset_wait_times (old_waitsecs);
+	  (void) tran_reset_wait_times (old_wait_msecs);
 	}
 
       if (!oid_list)
@@ -9416,7 +9464,8 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   int au_save, isvirt = 0;
-  float waitsecs = -2, old_waitsecs = -2;
+  int wait_msecs = -2, old_wait_msecs = -2;
+  float hint_waitsecs;
   PT_NODE *hint_arg;
   int query_flag;
 
@@ -9523,11 +9572,19 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 		  && PT_IS_HINT_NODE (hint_arg))
 		{
-		  waitsecs = (float) atof (hint_arg->info.name.original);
-		  if (waitsecs >= -1)
+		  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+		  if (hint_waitsecs > 0)
 		    {
-		      old_waitsecs = (float) TM_TRAN_WAITSECS ();
-		      (void) tran_reset_wait_times (waitsecs);
+		      wait_msecs = (int) (hint_waitsecs * 1000);
+		    }
+		  else
+		    {
+		      wait_msecs = (int) hint_waitsecs;
+		    }
+		  if (wait_msecs >= -1)
+		    {
+		      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+		      (void) tran_reset_wait_times (wait_msecs);
 		    }
 		}
 	      AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization
@@ -9535,9 +9592,9 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* delete each oid */
 	      err = delete_list_by_oids (parser, list_id);
 	      AU_RESTORE (au_save);
-	      if (old_waitsecs >= -1)
+	      if (old_wait_msecs >= -1)
 		{
-		  (void) tran_reset_wait_times (old_waitsecs);
+		  (void) tran_reset_wait_times (old_wait_msecs);
 		}
 	    }
 	}
@@ -11215,7 +11272,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   PARTITION_SELECT_INFO *psi = NULL;
   PARTITION_INSERT_CACHE *pic = NULL, *picwork;
   MOP retobj;
-  float waitsecs = -2, old_waitsecs = -2;
+  int wait_msecs = -2, old_wait_msecs = -2;
+  float hint_waitsecs;
   PT_NODE *hint_arg;
   SM_CLASS *smclass = NULL;
 
@@ -11390,11 +11448,20 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       if (statement->info.insert.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (waitsecs >= -1)
+	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (hint_waitsecs > 0)
 	    {
-	      old_waitsecs = (float) TM_TRAN_WAITSECS ();
-	      (void) tran_reset_wait_times (waitsecs);
+	      wait_msecs = (int) (hint_waitsecs * 1000);
+	    }
+	  else
+	    {
+	      wait_msecs = (int) hint_waitsecs;
+	    }
+	  if (wait_msecs >= -1)
+	    {
+	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+
+	      (void) tran_reset_wait_times (wait_msecs);
 	    }
 	}
       i = 0;
@@ -11539,9 +11606,9 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  vc = vc->next;
 	  i++;
 	}
-      if (old_waitsecs >= -1)
+      if (old_wait_msecs >= -1)
 	{
-	  (void) tran_reset_wait_times (old_waitsecs);
+	  (void) tran_reset_wait_times (old_wait_msecs);
 	}
       if (pic)
 	{
@@ -14396,7 +14463,7 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   parser(in): Parser context used by do_func
  *   statement(in): Parse tree of a statement used by do_func
  *
- * Note: The function checks if there is any active trigger for UPDATE, 
+ * Note: The function checks if there is any active trigger for UPDATE,
  *       INSERT, or DELETE statements of a MERGE statement.
  */
 static int
@@ -14542,7 +14609,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE **links = NULL;
   PT_NODE *hint_arg;
   int no_vals, no_consts;
-  float waitsecs = -2, old_waitsecs = -2;
+  int wait_msecs = -2, old_wait_msecs = -2;
+  float hint_waitsecs;
   int result = 0;
 
   CHECK_MODIFICATION_ERROR ();
@@ -14683,11 +14751,19 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (waitsecs >= -1)
+	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (hint_waitsecs > 0)
 	    {
-	      old_waitsecs = (float) TM_TRAN_WAITSECS ();
-	      (void) tran_reset_wait_times (waitsecs);
+	      wait_msecs = (int) (hint_waitsecs * 1000);
+	    }
+	  else
+	    {
+	      wait_msecs = (int) hint_waitsecs;
+	    }
+	  if (wait_msecs >= -1)
+	    {
+	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	      (void) tran_reset_wait_times (wait_msecs);
 	    }
 	}
 
@@ -14702,9 +14778,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = update_objs_for_list_file (parser, list_id, statement);
 	}
 
-      if (old_waitsecs >= -1)
+      if (old_wait_msecs >= -1)
 	{
-	  (void) tran_reset_wait_times (old_waitsecs);
+	  (void) tran_reset_wait_times (old_wait_msecs);
 	}
 
       if (!statement->info.merge.update.do_class_attrs)
@@ -14947,7 +15023,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
   int au_save;
-  float waitsecs = -2, old_waitsecs = -2;
+  int wait_msecs = -2, old_wait_msecs = -2;
+  float hint_waitsecs;
   PT_NODE *hint_arg;
 
   CHECK_MODIFICATION_ERROR ();
@@ -15034,11 +15111,19 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
       && PT_IS_HINT_NODE (hint_arg))
     {
-      waitsecs = (float) atof (hint_arg->info.name.original);
-      if (waitsecs >= -1)
+      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+      if (hint_waitsecs > 0)
 	{
-	  old_waitsecs = (float) TM_TRAN_WAITSECS ();
-	  (void) tran_reset_wait_times (waitsecs);
+	  wait_msecs = (int) (hint_waitsecs * 1000);
+	}
+      else
+	{
+	  wait_msecs = (int) hint_waitsecs;
+	}
+      if (wait_msecs >= -1)
+	{
+	  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	  (void) tran_reset_wait_times (wait_msecs);
 	}
     }
 
@@ -15060,9 +15145,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_RESTORE (au_save);
     }
 
-  if (old_waitsecs >= -1)
+  if (old_wait_msecs >= -1)
     {
-      (void) tran_reset_wait_times (old_waitsecs);
+      (void) tran_reset_wait_times (old_wait_msecs);
     }
 
   if (statement->info.merge.update.assignment

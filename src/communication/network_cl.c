@@ -555,8 +555,8 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LARGEOBJMGR_LENGTH].name =
     "NET_SERVER_LARGEOBJMGR_LENGTH";
 
-  net_Req_buffer[NET_SERVER_LOG_RESET_WAITSECS].name =
-    "NET_SERVER_LOG_RESET_WAITSECS";
+  net_Req_buffer[NET_SERVER_LOG_RESET_WAIT_MSECS].name =
+    "NET_SERVER_LOG_RESET_WAIT_MSECS";
   net_Req_buffer[NET_SERVER_LOG_RESET_ISOLATION].name =
     "NET_SERVER_LOG_RESET_ISOLATION";
   net_Req_buffer[NET_SERVER_LOG_SET_INTERRUPT].name =

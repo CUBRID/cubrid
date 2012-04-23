@@ -6305,7 +6305,7 @@ au_start (void)
   int error = NO_ERROR;
   MOPLIST mops;
   MOP class_mop;
-  float save_lock_wait;
+  int save_lock_wait_in_msecs;
   TRAN_ISOLATION save_tran_isolation;
   bool async_ws;
 
@@ -6364,7 +6364,8 @@ au_start (void)
     }
   Au_password_class = class_mop;
 
-  tran_get_tran_settings (&save_lock_wait, &save_tran_isolation, &async_ws);
+  tran_get_tran_settings (&save_lock_wait_in_msecs,
+			  &save_tran_isolation, &async_ws);
   (void) tran_reset_isolation (TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE, async_ws);
   mops = db_get_all_objects (Au_authorizations_class);
   (void) tran_reset_isolation (save_tran_isolation, async_ws);

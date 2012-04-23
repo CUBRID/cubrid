@@ -6485,6 +6485,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   int i;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
+  int wait_msecs;
 
   state = tdes->state;
 
@@ -6568,11 +6569,17 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	     */
 	    if (LOG_ISRESTARTED () && tdes->isloose_end == false)
 	      {
-		new_tran_index =
-		  logtb_assign_tran_index (thread_p, NULL_TRANID,
-					   TRAN_RECOVERY, NULL, NULL,
-					   PRM_LK_TIMEOUT_SECS,
-					   TRAN_SERIALIZABLE);
+		wait_msecs = PRM_LK_TIMEOUT_SECS;
+
+		if (wait_msecs > 0)
+		  {
+		    wait_msecs = wait_msecs * 1000;
+		  }
+		new_tran_index = logtb_assign_tran_index (thread_p,
+							  NULL_TRANID,
+							  TRAN_RECOVERY, NULL,
+							  NULL, wait_msecs,
+							  TRAN_SERIALIZABLE);
 		new_tdes = LOG_FIND_TDES (new_tran_index);
 		if (new_tran_index == NULL_TRAN_INDEX || new_tdes == NULL)
 		  {
@@ -9618,7 +9625,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   VPID rcv_vpid;		/* VPID of data to recover        */
   LOG_RCVINDEX rcvindex;	/* Recovery index                 */
   bool isdone;
-  int old_waitsecs = 0;		/* Old transaction lock wait   */
+  int old_wait_msecs = 0;	/* Old transaction lock wait   */
   LOG_ZIP *log_unzip_ptr = NULL;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -9639,7 +9646,8 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
    * end up with database corruption problems. That is, no timeouts during
    * rollback.
    */
-  old_waitsecs = xlogtb_reset_wait_secs (thread_p, TRAN_LOCK_INFINITE_WAIT);
+  old_wait_msecs =
+    xlogtb_reset_wait_msecs (thread_p, TRAN_LOCK_INFINITE_WAIT);
 
   LSA_COPY (&prev_tranlsa, &tdes->undo_nxlsa);
   /*
@@ -9675,7 +9683,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
       if ((logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr)) == NULL)
 	{
-	  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
 	  if (log_unzip_ptr != NULL)
 	    {
@@ -9873,7 +9881,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   /* Remember the undo next lsa for partial rollbacks */
   LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
-  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 
   if (log_unzip_ptr != NULL)
     {

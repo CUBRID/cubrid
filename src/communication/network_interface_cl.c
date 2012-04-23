@@ -2368,16 +2368,16 @@ log_has_finished_client_undo (void)
 }
 
 /*
- * log_reset_waitsecs -
+ * log_reset_wait_msecs -
  *
  * return:
  *
- *   waitsecs(in):    in milliseconds
+ *   wait_msecs(in):    in milliseconds
  *
  * NOTE:
  */
 int
-log_reset_waitsecs (int waitsecs)
+log_reset_wait_msecs (int wait_msecs)
 {
 #if defined(CS_MODE)
   int wait = -1;
@@ -2390,9 +2390,9 @@ log_reset_waitsecs (int waitsecs)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_pack_int (request, waitsecs);
+  (void) or_pack_int (request, wait_msecs);
 
-  req_error = net_client_request (NET_SERVER_LOG_RESET_WAITSECS,
+  req_error = net_client_request (NET_SERVER_LOG_RESET_WAIT_MSECS,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
 				  reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
@@ -2408,7 +2408,7 @@ log_reset_waitsecs (int waitsecs)
 
   ENTER_SERVER ();
 
-  wait = xlogtb_reset_wait_secs (NULL, waitsecs);
+  wait = xlogtb_reset_wait_msecs (NULL, wait_msecs);
 
   EXIT_SERVER ();
 
@@ -5363,7 +5363,7 @@ cleanup:
   DB_VALUE *val_ref = NULL;
 
   ENTER_SERVER ();
-  /* we cannot use the allocation methods from the server context so 
+  /* we cannot use the allocation methods from the server context so
    * we will just get a reference here
    */
   err = xsession_get_session_variable_no_copy (NULL, name, &val_ref);

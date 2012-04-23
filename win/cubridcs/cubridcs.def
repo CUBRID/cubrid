@@ -384,6 +384,7 @@ EXPORTS
     tran_reset_wait_times
     tran_is_in_libcas
     tran_set_query_timeout
+    tran_get_tran_settings
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils

@@ -245,7 +245,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 }
 
 /*
- * desc_disk_to_attr_info - convert RECDES for specified oid to 
+ * desc_disk_to_attr_info - convert RECDES for specified oid to
  * HEAP_CACHE_ATTRINFO structure
  *    return: error status
  *    oid(in): the oid of the object
@@ -280,7 +280,7 @@ desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
  * HEAP_CACHE_ATTRINFO structure
  *    return: error status
  *    class_oid(in): the class OID
- *    hfid(in): the class HFID 
+ *    hfid(in): the class HFID
  *    max_space_to_process(in): maximum space to process
  *    instance_lock_timeout(in): the lock timeout for instances
  *    space_to_process(in, out): space to process
@@ -474,7 +474,7 @@ end:
   *    failed_objects(out): count failed objects for each class
   *    modified_objects(out): count modified objects for each class
   *    big_objects(out): count big objects for each class
-  *    initial_last_repr_id(in, out): the list of initial last class 
+  *    initial_last_repr_id(in, out): the list of initial last class
   * representation
   */
 int
@@ -533,9 +533,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
   max_space_to_process = space_to_process;
   for (i = start_index; i < n_classes; i++)
     {
-      lock_ret = lock_object_waitsecs (thread_p, class_oids + i,
-				       oid_Root_class_oid, IX_LOCK,
-				       LK_UNCOND_LOCK, class_lock_timeout);
+      lock_ret = lock_object_wait_msecs (thread_p, class_oids + i,
+					 oid_Root_class_oid, IX_LOCK,
+					 LK_UNCOND_LOCK, class_lock_timeout);
 
       if (lock_ret != LK_GRANTED)
 	{
@@ -576,12 +576,12 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 	    }
 	}
 
-      if (process_class
-	  (thread_p, class_oids + i, &hfid, max_space_to_process,
-	   &instance_lock_timeout, &space_to_process,
-	   last_processed_oid, total_objects + i,
-	   failed_objects + i, modified_objects + i, big_objects + i) !=
-	  NO_ERROR)
+      if (process_class (thread_p, class_oids + i, &hfid,
+			 max_space_to_process,
+			 &instance_lock_timeout, &space_to_process,
+			 last_processed_oid, total_objects + i,
+			 failed_objects + i, modified_objects + i,
+			 big_objects + i) != NO_ERROR)
 	{
 	  OID_SET_NULL (last_processed_oid);
 	  for (j = start_index; j <= i; j++)
@@ -601,10 +601,10 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 	  heap_get_class_repr_id (thread_p, class_oids + i) ==
 	  initial_last_repr_id[i])
 	{
-	  lock_ret = lock_object_waitsecs (thread_p, class_oids + i,
-					   oid_Root_class_oid, X_LOCK,
-					   LK_UNCOND_LOCK,
-					   class_lock_timeout);
+	  lock_ret = lock_object_wait_msecs (thread_p, class_oids + i,
+					     oid_Root_class_oid, X_LOCK,
+					     LK_UNCOND_LOCK,
+					     class_lock_timeout);
 	  if (lock_ret == LK_GRANTED)
 	    {
 	      if (catalog_drop_old_representations (thread_p, class_oids + i)
@@ -656,7 +656,7 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 
 /*
  * heap_compact_pages () - compact all pages from hfid of specified class OID
- *   return: error_code 
+ *   return: error_code
  *   class_oid(out):  the class oid
  */
 int

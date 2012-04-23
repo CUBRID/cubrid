@@ -11046,7 +11046,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   bool iscan_oid_order;
-  int old_waitsecs;
+  int old_wait_msecs;
   int error;
 
   /* create new instant heap memory and save old */
@@ -11070,16 +11070,16 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      old_waitsecs = XASL_WAITSECS_NOCHANGE;
-      if (xasl->proc.update.waitsecs != XASL_WAITSECS_NOCHANGE)
+      old_wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+      if (xasl->proc.update.wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
-	  old_waitsecs =
-	    xlogtb_reset_wait_secs (thread_p, xasl->proc.update.waitsecs);
+	  old_wait_msecs =
+	    xlogtb_reset_wait_msecs (thread_p, xasl->proc.update.wait_msecs);
 	}
       error = qexec_execute_update (thread_p, xasl, xasl_state);
-      if (old_waitsecs != XASL_WAITSECS_NOCHANGE)
+      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
-	  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	}
       if (error != NO_ERROR)
 	{
@@ -11099,16 +11099,16 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      old_waitsecs = XASL_WAITSECS_NOCHANGE;
-      if (xasl->proc.delete_.waitsecs != XASL_WAITSECS_NOCHANGE)
+      old_wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+      if (xasl->proc.delete_.wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
-	  old_waitsecs =
-	    xlogtb_reset_wait_secs (thread_p, xasl->proc.delete_.waitsecs);
+	  old_wait_msecs =
+	    xlogtb_reset_wait_msecs (thread_p, xasl->proc.delete_.wait_msecs);
 	}
       error = qexec_execute_delete (thread_p, xasl, xasl_state);
-      if (old_waitsecs != XASL_WAITSECS_NOCHANGE)
+      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
-	  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	}
       if (error != NO_ERROR)
 	{
@@ -11128,16 +11128,16 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      old_waitsecs = XASL_WAITSECS_NOCHANGE;
-      if (xasl->proc.insert.waitsecs != XASL_WAITSECS_NOCHANGE)
+      old_wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+      if (xasl->proc.insert.wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
-	  old_waitsecs =
-	    xlogtb_reset_wait_secs (thread_p, xasl->proc.insert.waitsecs);
+	  old_wait_msecs =
+	    xlogtb_reset_wait_msecs (thread_p, xasl->proc.insert.wait_msecs);
 	}
       error = qexec_execute_insert (thread_p, xasl, xasl_state);
-      if (old_waitsecs != XASL_WAITSECS_NOCHANGE)
+      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
-	  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	}
       if (error != NO_ERROR)
 	{
@@ -11598,19 +11598,20 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	  else if (xasl->list_id->tuple_cnt == 1)
 	    {
-	      old_waitsecs = XASL_WAITSECS_NOCHANGE;
-	      if (xasl->selected_upd_list->waitsecs != XASL_WAITSECS_NOCHANGE)
+	      old_wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+	      if (xasl->selected_upd_list->wait_msecs !=
+		  XASL_WAIT_MSECS_NOCHANGE)
 		{
-		  old_waitsecs =
-		    xlogtb_reset_wait_secs (thread_p,
-					    xasl->
-					    selected_upd_list->waitsecs);
+		  old_wait_msecs =
+		    xlogtb_reset_wait_msecs (thread_p,
+					     xasl->
+					     selected_upd_list->wait_msecs);
 		}
 
 	      error = qexec_execute_selupd_list (thread_p, xasl, xasl_state);
-	      if (old_waitsecs != XASL_WAITSECS_NOCHANGE)
+	      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 		{
-		  (void) xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+		  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 		}
 
 	      if (error != NO_ERROR)

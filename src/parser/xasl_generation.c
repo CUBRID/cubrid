@@ -5007,7 +5007,7 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
 	}
 
       /* when do lex analysis, will CHECK nodes in groupby or orderby list
-       * whether in select_item list by alias and positions,if yes,some 
+       * whether in select_item list by alias and positions,if yes,some
        * substitution will done,so can not just compare by node_type,
        * alias_print also be considered. As function resolve_alias_in_name_node(),
        * two round comparison will be done : first compare with node_type, if not
@@ -9533,17 +9533,17 @@ op_type_to_range (const PT_OP_TYPE op_type, const int nterms)
 }
 
 /*
- * pt_create_iss_range () - Create a range to be used by Index Skip Scan 
+ * pt_create_iss_range () - Create a range to be used by Index Skip Scan
  *   return:             NO_ERROR or error code
  *   indx_infop(in,out): the index info structure that holds the special
  *                       range used by Index Skip Scan
  *   domain(in):         domain of the first range element
  *
  * Note :
- * Index Skip Scan (ISS) uses an alternative range to scan the btree for 
+ * Index Skip Scan (ISS) uses an alternative range to scan the btree for
  * the next suitable value of the first column. It looks similar to
  * "col1 > cur_col1_value". Although it is used on the server side, it must
- * be created on the broker and serialized via XASL, because the server 
+ * be created on the broker and serialized via XASL, because the server
  * cannot create regu variables.
  * The actual range (INF_INF, GT_INF, INF_LE) will be changed dynamically
  * at runtime, as well as the comparison value (left to NULL for now),
@@ -10979,10 +10979,10 @@ exit_on_error:
  * For instance for an index on c1,c2,c3 and the condition
  * ... WHERE C2 = 5 and C3 > 10, we will have to generate a range similar to
  * [C1=?, C2=5, C3 > 10] and fill up the "?" at each successive run with a
- * new value for C1. This is taken care of on the server, in 
+ * new value for C1. This is taken care of on the server, in
  * obtain_next_iss_value() & co. However, the code that generates the range,
  * here in XASL generation, assumes that there ARE terms for all of C1,C2, C3.
- * 
+ *
  * Therefore, we must generate a "fake" term [C1=?], and just allow the range
  * generation code to do its job, knowing that once it gets to the server
  * side, we will replace the "?" with proper values for C1.
@@ -13917,16 +13917,23 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	{
 	  /* set lock timeout hint if specified */
 	  PT_NODE *hint_arg;
-	  float waitsecs;
+	  float hint_wait_secs;
 
-	  xasl->selected_upd_list->waitsecs = XASL_WAITSECS_NOCHANGE;
+	  xasl->selected_upd_list->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
 	  hint_arg = select_node->info.query.q.select.waitsecs_hint;
 	  if (select_node->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
-	      xasl->selected_upd_list->waitsecs =
-		(waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
+	      hint_wait_secs = (float) atof (hint_arg->info.name.original);
+	      if (hint_wait_secs > 0)
+		{
+		  xasl->selected_upd_list->wait_msecs =
+		    (int) (hint_wait_secs * 1000);
+		}
+	      else
+		{
+		  xasl->selected_upd_list->wait_msecs = (int) hint_wait_secs;
+		}
 	    }
 	}
 
@@ -14278,16 +14285,23 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     {
       /* set lock timeout hint if specified */
       PT_NODE *hint_arg;
-      float waitsecs;
+      float hint_wait_secs;
 
-      xasl->selected_upd_list->waitsecs = XASL_WAITSECS_NOCHANGE;
+      xasl->selected_upd_list->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
       hint_arg = select_node->info.query.q.select.waitsecs_hint;
       if (select_node->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
-	  xasl->selected_upd_list->waitsecs =
-	    (waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
+	  hint_wait_secs = (float) atof (hint_arg->info.name.original);
+	  if (hint_wait_secs > 0)
+	    {
+	      xasl->selected_upd_list->wait_msecs =
+		(int) (hint_wait_secs * 1000);
+	    }
+	  else
+	    {
+	      xasl->selected_upd_list->wait_msecs = (int) hint_wait_secs;
+	    }
 	}
     }
 
@@ -15362,7 +15376,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   int a;
   int error = NO_ERROR;
   PT_NODE *hint_arg;
-  float waitsecs;
+  float hint_wait_secs;
 
   assert (parser != NULL && statement != NULL);
 
@@ -15422,14 +15436,20 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
 
       insert->has_uniques = has_uniques;
-      insert->waitsecs = XASL_WAITSECS_NOCHANGE;
+      insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
       hint_arg = statement->info.insert.waitsecs_hint;
       if (statement->info.insert.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
-	  insert->waitsecs =
-	    ((waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE);
+	  hint_wait_secs = (float) atof (hint_arg->info.name.original);
+	  if (hint_wait_secs > 0)
+	    {
+	      insert->wait_msecs = (int) (hint_wait_secs * 1000);
+	    }
+	  else
+	    {
+	      insert->wait_msecs = (int) hint_wait_secs;
+	    }
 	}
       insert->no_logging = (statement->info.insert.hint & PT_HINT_NO_LOGGING);
       insert->release_lock = (statement->info.insert.hint & PT_HINT_REL_LOCK);
@@ -15442,7 +15462,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  insert->att_id = regu_int_array_alloc (no_vals + no_default_expr);
 	  if (insert->att_id)
 	    {
-	      /* the identifiers of the attributes that have a default 
+	      /* the identifiers of the attributes that have a default
 	         expression are placed first
 	       */
 	      for (attr = default_expr_attrs, a = 0; error >= 0 &&
@@ -15809,13 +15829,13 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 		  continue;
 		}
 
-	      /* 
+	      /*
 	       * Class will be updated and is outer joined.
 	       *
 	       * We must rewrite all expressions that will be assigned to
 	       * attributes of this class as
 	       *
-	       *     IF (class_oid IS NULL, NULL, expr) 
+	       *     IF (class_oid IS NULL, NULL, expr)
 	       *
 	       * so that expr will evaluate and/or fail only if an assignment
 	       * will be done.
@@ -16040,7 +16060,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   int no_classes = 0, cl;
   int error = NO_ERROR;
   PT_NODE *hint_arg, *node;
-  float waitsecs;
+  float hint_wait_secs;
 
   assert (parser != NULL && statement != NULL);
 
@@ -16208,13 +16228,19 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       hint_arg = statement->info.delete_.waitsecs_hint;
-      delete_->waitsecs = XASL_WAITSECS_NOCHANGE;
+      delete_->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
       if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
-	  delete_->waitsecs =
-	    (waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
+	  hint_wait_secs = (float) atof (hint_arg->info.name.original);
+	  if (hint_wait_secs > 0)
+	    {
+	      delete_->wait_msecs = (int) (hint_wait_secs * 1000);
+	    }
+	  else
+	    {
+	      delete_->wait_msecs = (int) hint_wait_secs;
+	    }
 	}
       delete_->no_logging =
 	(statement->info.delete_.hint & PT_HINT_NO_LOGGING);
@@ -16302,7 +16328,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *hint_arg = NULL;
   PT_NODE *order_by = NULL;
   PT_NODE *orderby_for = NULL;
-  float waitsecs = XASL_WAITSECS_NOCHANGE;
   PT_ASSIGNMENTS_HELPER assign_helper;
   PT_NODE **links = NULL;
   UPDATE_ASSIGNMENT *assign = NULL;
@@ -16311,6 +16336,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *const_names = NULL;
   PT_NODE *const_values = NULL;
   OID *oid = NULL;
+  float hint_wait_secs;
 
 
   assert (parser != NULL && statement != NULL);
@@ -16606,14 +16632,20 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
 
-  update->waitsecs = XASL_WAITSECS_NOCHANGE;
+  update->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
   hint_arg = statement->info.update.waitsecs_hint;
   if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
       && PT_IS_HINT_NODE (hint_arg))
     {
-      waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
-      update->waitsecs =
-	(waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
+      hint_wait_secs = (float) atof (hint_arg->info.name.original);
+      if (hint_wait_secs > 0)
+	{
+	  update->wait_msecs = (int) (hint_wait_secs * 1000);
+	}
+      else
+	{
+	  update->wait_msecs = (int) hint_wait_secs;
+	}
     }
   update->no_logging = (statement->info.update.hint & PT_HINT_NO_LOGGING);
   update->release_lock = (statement->info.update.hint & PT_HINT_REL_LOCK);
@@ -20273,7 +20305,7 @@ error_exit:
   return NULL;
 }
 
-static bool 
+static bool
 validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 {
   if (regu_var->type == TYPE_INARITH)
@@ -20363,17 +20395,17 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	default:
 	  return true;
 	}
-      if (regu_var->value.arithptr->leftptr && 
+      if (regu_var->value.arithptr->leftptr &&
 	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->leftptr))
 	{
 	  return false;
 	}
-      if (regu_var->value.arithptr->rightptr && 
+      if (regu_var->value.arithptr->rightptr &&
 	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->rightptr))
 	{
 	  return false;
 	}
-      if (regu_var->value.arithptr->thirdptr && 
+      if (regu_var->value.arithptr->thirdptr &&
 	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->thirdptr))
 	{
 	  return false;

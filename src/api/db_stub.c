@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -3487,7 +3487,7 @@ ci_conn_set_option_impl (COMMON_API_STRUCTURE * pst,
 			 CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   int retval;
-  int waitsecs, autocommit, isol_lv;
+  int wait_msecs, autocommit, isol_lv;
   CI_CONN_STRUCTURE *pconn;
 
   pconn = (CI_CONN_STRUCTURE *) pst;
@@ -3501,8 +3501,8 @@ ci_conn_set_option_impl (COMMON_API_STRUCTURE * pst,
 	{
 	  ER_SET_AND_RETURN (ER_INTERFACE_INVALID_ARGUMENT);
 	}
-      memcpy (&waitsecs, arg, sizeof (int));
-      tran_reset_wait_times ((float) (waitsecs / 1000));
+      memcpy (&wait_msecs, arg, sizeof (int));
+      tran_reset_wait_times (wait_msecs);
       break;
     case CI_CONNECTION_OPTION_TRAN_ISOLATION_LV:
       if (size != sizeof (int))
@@ -3547,7 +3547,7 @@ static int
 ci_conn_get_option_impl (COMMON_API_STRUCTURE * pst,
 			 CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
-  float waitsec;
+  int wait_msecs;
   int intval;
   CI_CONN_STRUCTURE *pconn;
   DB_TRAN_ISOLATION isol_lv;
@@ -3562,12 +3562,8 @@ ci_conn_get_option_impl (COMMON_API_STRUCTURE * pst,
 	{
 	  ER_SET_AND_RETURN (ER_INTERFACE_INVALID_ARGUMENT);
 	}
-      tran_get_tran_settings (&waitsec, &isol_lv, &dummy);
-      intval = (int) waitsec;
-      if (intval > 0)
-	{
-	  intval *= 1000;
-	}
+      tran_get_tran_settings (&wait_msecs, &isol_lv, &dummy);
+      intval = wait_msecs;
       memcpy (arg, &intval, sizeof (int));
       break;
     case CI_CONNECTION_OPTION_TRAN_ISOLATION_LV:
@@ -3575,7 +3571,7 @@ ci_conn_get_option_impl (COMMON_API_STRUCTURE * pst,
 	{
 	  ER_SET_AND_RETURN (ER_INTERFACE_INVALID_ARGUMENT);
 	}
-      tran_get_tran_settings (&waitsec, &isol_lv, &dummy);
+      tran_get_tran_settings (&wait_msecs, &isol_lv, &dummy);
       intval = (int) isol_lv;
       memcpy (arg, &intval, sizeof (int));
       pconn->opt.isolation = isol_lv;

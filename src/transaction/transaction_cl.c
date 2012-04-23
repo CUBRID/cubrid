@@ -66,7 +66,7 @@
 int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_DEFAULT_ISOLATION;
 bool tm_Tran_async_ws = false;
-int tm_Tran_waitsecs = TRAN_LOCK_INFINITE_WAIT;
+int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 int tm_Tran_ID = -1;
 
 /* Timeout(seconds) for queries.
@@ -108,11 +108,11 @@ static void tran_free_list_upto_savepoint (const char *savept_name);
  *       database connect flag can be turned off. i.e., db_Connect_status=0
  */
 void
-tran_cache_tran_settings (int tran_index, float lock_timeout,
+tran_cache_tran_settings (int tran_index, int lock_timeout,
 			  TRAN_ISOLATION tran_isolation)
 {
   tm_Tran_index = tran_index;
-  tm_Tran_waitsecs = (int) (lock_timeout * 1000);	/* lock timeout in milliseconds */
+  tm_Tran_wait_msecs = lock_timeout;
   tm_Tran_isolation = tran_isolation;
 
   /* This is a dirty, but quick, method by which we can flag that
@@ -138,22 +138,21 @@ tran_cache_tran_settings (int tran_index, float lock_timeout,
  * Note: Retrieve transaction settings.
  */
 void
-tran_get_tran_settings (float *lock_wait, TRAN_ISOLATION * tran_isolation,
-			bool * async_ws)
+tran_get_tran_settings (int *lock_wait_in_msecs,
+			TRAN_ISOLATION * tran_isolation, bool * async_ws)
 {
-  *lock_wait = (float) TM_TRAN_WAITSECS () / 1000;
+  *lock_wait_in_msecs = TM_TRAN_WAIT_MSECS ();
   /* lock timeout in milliseconds */ ;
   *tran_isolation = TM_TRAN_ISOLATION ();
   *async_ws = TM_TRAN_ASYNC_WS ();
-
 }
 
 /*
  * tran_reset_wait_times - Reset future waiting times for client transactions
  *
- * return: The old waitsecs.
+ * return: The old wait_msecs.
  *
- *   waitsecs(in): Wait for at least this number of seconds to acquire a lock
+ *   wait_in_msecs(in): Wait for at least this number of milliseconds to acquire a lock
  *               before the transaction is timed out.
  *               A negative value (e.g., -1) means wait forever until a lock
  *               is granted or transaction is selected as a victim of a
@@ -162,21 +161,12 @@ tran_get_tran_settings (float *lock_wait, TRAN_ISOLATION * tran_isolation,
  *
  * NOTE: Reset the default waiting time for the client transactions.
  */
-float
-tran_reset_wait_times (float waitsecs)
+int
+tran_reset_wait_times (int wait_in_msecs)
 {
-  if (waitsecs > 0)
-    {
-      /* set lock timeout in milliseconds */
-      tm_Tran_waitsecs = (int) (waitsecs * 1000);
-    }
-  else
-    {
-      /* special value like -1 (LK_INFINITE_WAIT) */
-      tm_Tran_waitsecs = (int) waitsecs;
-    }
+  tm_Tran_wait_msecs = wait_in_msecs;
 
-  return (float) log_reset_waitsecs (tm_Tran_waitsecs);
+  return log_reset_wait_msecs (tm_Tran_wait_msecs);
 }
 
 /*
@@ -702,7 +692,7 @@ tran_has_updated (void)
 }
 
 /*
- * tran_is_active_and_has_updated - Find if transaction is active and 
+ * tran_is_active_and_has_updated - Find if transaction is active and
  *				    has updated the database ?
  *
  * return:

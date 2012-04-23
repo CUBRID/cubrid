@@ -2004,7 +2004,7 @@ slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 
 
 /*
- * slogtb_reset_wait_secs -
+ * slogtb_reset_wait_msecs -
  *
  * return:
  *
@@ -2015,18 +2015,18 @@ slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
  * NOTE:
  */
 void
-slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
-			char *request, int reqlen)
+slogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, unsigned int rid,
+			 char *request, int reqlen)
 {
-  int waitsecs;
+  int wait_msecs;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_int (request, &waitsecs);
+  (void) or_unpack_int (request, &wait_msecs);
 
-  waitsecs = xlogtb_reset_wait_secs (thread_p, waitsecs);
+  wait_msecs = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
 
-  (void) or_pack_int (reply, waitsecs);
+  (void) or_pack_int (reply, wait_msecs);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }

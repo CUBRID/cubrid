@@ -97,7 +97,7 @@
  * Macros for xasl structure
  */
 
-#define XASL_WAITSECS_NOCHANGE  -2
+#define XASL_WAIT_MSECS_NOCHANGE  -2
 
 #define XASL_ORDBYNUM_FLAG_SCAN_CONTINUE    0x01
 #define XASL_ORDBYNUM_FLAG_SCAN_CHECK       0x02
@@ -382,7 +382,7 @@ struct update_proc_node
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
   int no_assigns;		/* total no. of assignments */
   UPDATE_ASSIGNMENT *assigns;	/* assignments array */
-  int waitsecs;			/* lock timeout in milliseconds */
+  int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int no_orderby_keys;		/* no of keys for ORDER_BY */
@@ -398,7 +398,7 @@ struct insert_proc_node
   DB_VALUE **vals;		/* values (array)                       */
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
   int has_uniques;		/* whether there are unique constraints */
-  int waitsecs;			/* lock timeout in milliseconds */
+  int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int do_replace;		/* duplicate tuples should be replaced */
@@ -416,7 +416,7 @@ struct delete_proc_node
   OID *class_oid;		/* OID's of the classes                 */
   HFID *class_hfid;		/* Heap file ID's of the classes        */
   int no_classes;		/* total number of classes involved     */
-  int waitsecs;			/* lock timeout in milliseconds */
+  int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
 };
@@ -476,7 +476,7 @@ struct selupd_list
   HFID class_hfid;		/* Heap file ID of the class */
   int select_list_size;		/* Size of select_list */
   REGU_VARLIST_LIST select_list;	/* Regu list to be selected */
-  int waitsecs;			/* lock timeout in milliseconds */
+  int wait_msecs;		/* lock timeout in milliseconds */
 };
 
 struct xasl_node

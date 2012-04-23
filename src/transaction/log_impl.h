@@ -662,8 +662,8 @@ struct log_tdes
 				   aborted)
 				 */
   TRAN_ISOLATION isolation;	/* Isolation level                       */
-  int waitsecs;			/* Wait until this number of milliseconds
-				   for locks; also see xlogtb_reset_wait_secs
+  int wait_msecs;		/* Wait until this number of milliseconds
+				   for locks; also see xlogtb_reset_wait_msecs
 				 */
   LOG_LSA head_lsa;		/* First log address of transaction      */
   LOG_LSA tail_lsa;		/* Last log record address of
@@ -1595,7 +1595,7 @@ extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
 					  LOG_FLUSH_TYPE flush_type,
-					  LOG_LSA *lsa);
+					  LOG_LSA * lsa);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p,
 				     const LOG_LSA * lsa_ptr);
@@ -1830,7 +1830,7 @@ extern int
 logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 			 TRAN_STATE state,
 			 const BOOT_CLIENT_CREDENTIAL * client_credential,
-			 TRAN_STATE * current_state, int waitsecs,
+			 TRAN_STATE * current_state, int wait_msecs,
 			 TRAN_ISOLATION isolation);
 extern LOG_TDES *logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p,
 						    TRANID trid,
@@ -1877,8 +1877,8 @@ extern char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
 extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
-extern int logtb_find_wait_secs (int tran_index);
-extern int logtb_find_current_wait_secs (THREAD_ENTRY * thread_p);
+extern int logtb_find_wait_msecs (int tran_index);
+extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p,

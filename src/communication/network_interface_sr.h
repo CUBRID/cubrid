@@ -114,8 +114,9 @@ extern void slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 						     unsigned int rid,
 						     char *request,
 						     int reqlen);
-extern void slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
-				    char *request, int reqlen);
+extern void slogtb_reset_wait_msecs (THREAD_ENTRY * thread_p,
+				     unsigned int rid, char *request,
+				     int reqlen);
 extern void slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -125,10 +126,9 @@ extern void slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void slog_add_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void slog_change_state_of_locator (THREAD_ENTRY * thread_p,
-					  unsigned int rid,
-					  char *request, int reqlen);
-extern void slog_drop_lob_locator (THREAD_ENTRY * thread_p,
-				   unsigned int rid,
+					  unsigned int rid, char *request,
+					  int reqlen);
+extern void slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
 extern void sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid,
 			 char *request, int reqlen);

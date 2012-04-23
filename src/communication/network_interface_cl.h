@@ -158,7 +158,7 @@ extern void log_append_client_postpone (LOG_RCVCLIENT_INDEX rcv_index,
 					int length, void *data);
 extern TRAN_STATE log_has_finished_client_postpone (void);
 extern TRAN_STATE log_has_finished_client_undo (void);
-extern int log_reset_waitsecs (int waitsecs);
+extern int log_reset_wait_msecs (int wait_msecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation,
 				bool unlock_by_isolation);
 extern void log_set_interrupt (int set);

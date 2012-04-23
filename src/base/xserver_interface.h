@@ -260,7 +260,7 @@ extern LOG_COPY *xlog_client_get_next_undo (THREAD_ENTRY * thread_p,
 					    LOG_LSA * next_lsa);
 extern TRAN_STATE xlog_client_complete_undo (THREAD_ENTRY * thread_p);
 
-extern int xlogtb_reset_wait_secs (THREAD_ENTRY * thread_p, int waitsecs);
+extern int xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
 extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p,
 				   TRAN_ISOLATION isolation,
 				   bool unlock_by_isolation);

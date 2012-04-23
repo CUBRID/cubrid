@@ -1231,7 +1231,7 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
    */
   tdes->isloose_end = false;
   tdes->isolation = client_tdes->isolation;
-  tdes->waitsecs = client_tdes->waitsecs;
+  tdes->wait_msecs = client_tdes->wait_msecs;
   /*
    * The client identification remains the same. So there is not a need
    * to set clientids.

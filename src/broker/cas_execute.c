@@ -59,6 +59,7 @@
 #include "perf_monitor.h"
 #include "intl_support.h"
 #include "language_support.h"
+#include "transaction_cl.h"
 
 #include "dbi.h"
 
@@ -2204,8 +2205,10 @@ ux_get_tran_setting (int *lock_wait, int *isol_level)
 {
   int tmp_lock_wait;
   DB_TRAN_ISOLATION tmp_isol_level;
+  bool dummy;
 
-  db_get_tran_settings (&tmp_lock_wait, &tmp_isol_level);
+  tran_get_tran_settings (&tmp_lock_wait, &tmp_isol_level,
+			  &dummy /* async_ws */ );
 
   if (lock_wait)
     *lock_wait = (int) tmp_lock_wait;
@@ -2231,17 +2234,7 @@ ux_set_isolation_level (int new_isol_level, T_NET_BUF * net_buf)
 void
 ux_set_lock_timeout (int lock_timeout)
 {
-  extern float tran_reset_wait_times (float);
-  if (lock_timeout > 0)
-    {
-      /* set lock timeout in milliseconds */
-      (void) tran_reset_wait_times ((float) lock_timeout / 1000);
-    }
-  else
-    {
-      /* special value like -1 (LK_INFINITE_WAIT) */
-      (void) tran_reset_wait_times ((float) lock_timeout);
-    }
+  (void) tran_reset_wait_times (lock_timeout);
 }
 
 int

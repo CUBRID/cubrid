@@ -3761,8 +3761,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* waitsecs */
-  ptr = or_pack_int (ptr, update_info->waitsecs);
+  /* wait_msecs */
+  ptr = or_pack_int (ptr, update_info->wait_msecs);
 
   /* no_logging */
   ptr = or_pack_int (ptr, update_info->no_logging);
@@ -3799,7 +3799,7 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, delete_info->waitsecs);
+  ptr = or_pack_int (ptr, delete_info->wait_msecs);
 
   ptr = or_pack_int (ptr, delete_info->no_logging);
 
@@ -3835,7 +3835,7 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->has_uniques);
 
-  ptr = or_pack_int (ptr, insert_info->waitsecs);
+  ptr = or_pack_int (ptr, insert_info->wait_msecs);
 
   ptr = or_pack_int (ptr, insert_info->no_logging);
 
@@ -3885,7 +3885,7 @@ xts_process_selupd_list (char *ptr, const SELUPD_LIST * selupd_list)
 
   ptr = or_pack_int (ptr, selupd_list->select_list_size);
 
-  ptr = or_pack_int (ptr, selupd_list->waitsecs);
+  ptr = or_pack_int (ptr, selupd_list->wait_msecs);
 
   offset = xts_save_regu_varlist_list (selupd_list->select_list);
   if (offset == ER_FAILED)
@@ -5555,7 +5555,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
     PTR_SIZE +			/* cons_pred */
     OR_INT_SIZE +		/* no_assigns */
     PTR_SIZE +			/* assigns */
-    OR_INT_SIZE +		/* waitsecs */
+    OR_INT_SIZE +		/* wait_msecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
     OR_INT_SIZE;		/* no_orderby_keys */
@@ -5576,7 +5576,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
   size += OR_INT_SIZE +		/* no_classes */
     PTR_SIZE +			/* class_oid */
     PTR_SIZE +			/* class_hfid */
-    OR_INT_SIZE +		/* waitsecs */
+    OR_INT_SIZE +		/* wait_msecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE;		/* release_lock */
 
@@ -5599,7 +5599,7 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
     PTR_SIZE +			/* array pointer: att_id */
     PTR_SIZE +			/* constraint predicate: cons_pred */
     OR_INT_SIZE +		/* has_uniques */
-    OR_INT_SIZE +		/* waitsecs */
+    OR_INT_SIZE +		/* wait_msecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
     OR_INT_SIZE +		/* do_replace */
@@ -5720,7 +5720,7 @@ xts_sizeof_selupd_list (const SELUPD_LIST * selupd_list)
     OR_HFID_SIZE +		/* class_hfid */
     OR_INT_SIZE +		/* select_list_size */
     PTR_SIZE +			/* select_list */
-    OR_INT_SIZE +		/* waitsecs */
+    OR_INT_SIZE +		/* wait_msecs */
     PTR_SIZE;			/* next */
 
   return size;
@@ -5894,7 +5894,7 @@ xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * like_eval_term)
 /*
  * xts_sizeof_rlike_eval_term () -
  *   return: size of rlike eval term
- *   rlike_eval_term(in): 
+ *   rlike_eval_term(in):
  */
 static int
 xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * rlike_eval_term)

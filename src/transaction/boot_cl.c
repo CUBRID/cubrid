@@ -209,7 +209,7 @@ static int catcls_vclass_install (void);
 static int
 boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 {
-  tran_cache_tran_settings (tran_index, (float) lock_wait, tran_isolation);
+  tran_cache_tran_settings (tran_index, lock_wait, tran_isolation);
 
   if (boot_Set_client_at_exit)
     {
@@ -290,7 +290,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   HFID rootclass_hfid;		/* Heap for classes */
   int tran_index;		/* Assigned transaction index */
   TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
-  int tran_lock_waitsecs;	/* Default lock waiting */
+  int tran_lock_wait_msecs;	/* Default lock waiting */
   unsigned int length;
   int error_code = NO_ERROR;
   DB_INFO *db;
@@ -474,12 +474,13 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
       if (user_name != NULL)
 	{
-	  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+	  upper_case_name_size =
+	    intl_identifier_upper_string_size (user_name);
 	  upper_case_name = (char *) malloc (upper_case_name_size + 1);
 	  if (upper_case_name == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		upper_case_name_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
 	    }
 	  else
 	    {
@@ -550,20 +551,24 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 #endif /* CS_MODE */
   boot_User_volid = 0;
   tran_isolation = (TRAN_ISOLATION) PRM_LOG_ISOLATION_LEVEL;
-  tran_lock_waitsecs = PRM_LK_TIMEOUT_SECS;
+  tran_lock_wait_msecs = PRM_LK_TIMEOUT_SECS;
 
   /* this must be done before the init_server because recovery steps
    * may need domains.
    */
   tp_init ();
 
+  if (tran_lock_wait_msecs > 0)
+    {
+      tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
+    }
   /* Initialize the disk and the server part */
   tran_index = boot_initialize_server (client_credential, db_path_info,
 				       db_overwrite, file_addmore_vols,
 				       npages, db_desired_pagesize,
 				       log_npages, db_desired_log_page_size,
 				       &rootclass_oid, &rootclass_hfid,
-				       tran_lock_waitsecs, tran_isolation);
+				       tran_lock_wait_msecs, tran_isolation);
   /* free the thing get from au_user_name_dup() */
   if (client_credential->db_user != boot_Client_no_user_string)
     {
@@ -629,7 +634,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     }
   else
     {
-      boot_client (tran_index, tran_lock_waitsecs, tran_isolation);
+      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 #if defined (CS_MODE)
       /* print version string */
       strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -672,7 +677,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   int tran_index;
   TRAN_ISOLATION tran_isolation;
-  int tran_lock_waitsecs;
+  int tran_lock_wait_msecs;
   TRAN_STATE transtate;
   int error_code;
   DB_INFO *db = NULL;
@@ -804,12 +809,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
       if (user_name != NULL)
 	{
-	  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+	  upper_case_name_size =
+	    intl_identifier_upper_string_size (user_name);
 	  upper_case_name = (char *) malloc (upper_case_name_size + 1);
 	  if (upper_case_name == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		upper_case_name_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
 	    }
 	  else
 	    {
@@ -984,7 +990,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    */
 
   tran_isolation = TRAN_DEFAULT_ISOLATION;
-  tran_lock_waitsecs = TRAN_LOCK_INFINITE_WAIT;
+  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
   er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 		"register client { type %d db %s user %s password %s "
@@ -998,7 +1004,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		client_credential->host_name, client_credential->process_id);
 
   tran_index = boot_register_client (client_credential,
-				     tran_lock_waitsecs, tran_isolation,
+				     tran_lock_wait_msecs, tran_isolation,
 				     &transtate, &boot_Server_credential);
 
   /* free the thing get from au_user_name_dup() */
@@ -1030,7 +1036,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif /* CS_MODE */
 
   /* Initialize client modules for execution */
-  boot_client (tran_index, tran_lock_waitsecs, tran_isolation);
+  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();
@@ -1110,7 +1116,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    * do it at this moment
    */
   tran_isolation = (TRAN_ISOLATION) PRM_LOG_ISOLATION_LEVEL;
-  tran_lock_waitsecs = PRM_LK_TIMEOUT_SECS;
+  tran_lock_wait_msecs = PRM_LK_TIMEOUT_SECS;
   if (tran_isolation != TRAN_DEFAULT_ISOLATION)
     {
       error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
@@ -1119,9 +1125,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  goto error;
 	}
     }
-  if (tran_lock_waitsecs != TRAN_LOCK_INFINITE_WAIT)
+  if (tran_lock_wait_msecs >= 0)
     {
-      (void) tran_reset_wait_times ((float) tran_lock_waitsecs);
+      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
     }
 
   return error_code;
@@ -1304,7 +1310,8 @@ boot_server_die_or_changed (void)
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       (void) tran_abort_only_client (true);
-      boot_client (NULL_TRAN_INDEX, -1, TRAN_DEFAULT_ISOLATION);
+      boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT,
+		   TRAN_DEFAULT_ISOLATION);
       boot_Is_client_all_final = false;
 #if defined(CS_MODE)
       css_terminate (true);
@@ -1381,7 +1388,8 @@ boot_client_all_finalize (bool is_er_final)
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
 
-      boot_client (NULL_TRAN_INDEX, -1, TRAN_DEFAULT_ISOLATION);
+      boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT,
+		   TRAN_DEFAULT_ISOLATION);
       boot_Is_client_all_final = true;
     }
 

@@ -1700,16 +1700,16 @@ $set 14 MSGCAT_SET_LOCK
 24 NON_2PL_RELEASED:\n
 25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
 26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_nsecs = %d\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_nsecs = %d\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_nsecs = %d\n
+27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
+28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
+29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
 32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %d\n
 33 Transaction (index %2d, %s, %s@%s|%d)\n
 34 Isolation %s\n
 35 State %s\n
-36 Timeout_period %d\n
+36 Timeout_period %.2f\n
 37 Unilaterally aborted transactions with indices:\n
 38 %d ,
 39 Timed_out transactions with indices:\n

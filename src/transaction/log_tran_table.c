@@ -103,7 +103,8 @@ static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 				      const BOOT_CLIENT_CREDENTIAL *
 				      client_credential,
 				      TRAN_STATE * current_state,
-				      int waitsecs, TRAN_ISOLATION isolation);
+				      int wait_msecs,
+				      TRAN_ISOLATION isolation);
 static void logtb_initialize_tdes (LOG_TDES * tdes, int tran_index);
 static LOG_ADDR_TDESAREA *logtb_allocate_tdes_area (int num_indices);
 static void logtb_initialize_trantable (TRANTABLE * trantable_p);
@@ -125,7 +126,7 @@ static void logtb_dump_top_operations (FILE * out_fp,
 static void logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes);
 static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			    const BOOT_CLIENT_CREDENTIAL * client_credential,
-			    int waitsecs, TRAN_ISOLATION isolation);
+			    int wait_msecs, TRAN_ISOLATION isolation);
 
 
 /*
@@ -540,7 +541,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->tran_index = LOG_SYSTEM_TRAN_INDEX;
   tdes->trid = LOG_SYSTEM_TRANID;
   tdes->isloose_end = true;
-  tdes->waitsecs = TRAN_LOCK_INFINITE_WAIT;
+  tdes->wait_msecs = TRAN_LOCK_INFINITE_WAIT;
   tdes->isolation = TRAN_DEFAULT_ISOLATION;
   tdes->client_id = -1;
   logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL,
@@ -764,7 +765,7 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
  *                      client transaction runs.
  *   current_state(in/out): Set as a side effect to state of transaction, when
  *                      a valid pointer is given.
- *   waitsecs(in): Wait for at least this number of seconds to acquire a
+ *   wait_msecs(in): Wait for at least this number of milliseconds to acquire a
  *                      lock. Negative value is infinite
  *   isolation(in): Isolation level. One of the following:
  *                         TRAN_SERIALIZABLE
@@ -788,7 +789,7 @@ int
 logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 			 TRAN_STATE state,
 			 const BOOT_CLIENT_CREDENTIAL * client_credential,
-			 TRAN_STATE * current_state, int waitsecs,
+			 TRAN_STATE * current_state, int wait_msecs,
 			 TRAN_ISOLATION isolation)
 {
   int tran_index;		/* The allocated transaction index */
@@ -805,7 +806,8 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
   TR_TABLE_CS_ENTER (thread_p);
   tran_index = logtb_allocate_tran_index (thread_p, trid, state,
 					  client_credential,
-					  current_state, waitsecs, isolation);
+					  current_state, wait_msecs,
+					  isolation);
   TR_TABLE_CS_EXIT ();
 
   if (tran_index != NULL_TRAN_INDEX)
@@ -830,13 +832,13 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
  *   client_host_name(in): the name of the client host
  *   client_user_name(in): the name of the client user
  *   client_process_id(in): the process id of the client
- *   waitsecs(in): Wait for at least this number of seconds to acquire a lock.
+ *   wait_msecs(in): Wait for at least this number of milliseconds to acquire a lock.
  *   isolation(in): Isolation level
  */
 static void
 logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		const BOOT_CLIENT_CREDENTIAL * client_credential,
-		int waitsecs, TRAN_ISOLATION isolation)
+		int wait_msecs, TRAN_ISOLATION isolation)
 {
 #if defined(SERVER_MODE)
   CSS_CONN_ENTRY *conn;
@@ -871,7 +873,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 #else /* SERVER_MODE */
   tdes->client_id = -1;
 #endif /* SERVER_MODE */
-  tdes->waitsecs = waitsecs;
+  tdes->wait_msecs = wait_msecs;
   tdes->isolation = isolation;
   tdes->isloose_end = false;
   tdes->interrupt = false;
@@ -902,7 +904,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *                      client transaction runs.
  *   current_state(in/out): Set as a side effect to state of transaction, when
  *                      a valid pointer is given.
- *   waitsecs(in): Wait for at least this number of seconds to acquire a
+ *   wait_msecs(in): Wait for at least this number of milliseconds to acquire a
  *                      lock. That is, wait this much before the transaction
  *                      is timed out. Negative value is infinite.
  *   isolation(in): Isolation level. One of the following:
@@ -930,7 +932,7 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 			   TRAN_STATE state,
 			   const BOOT_CLIENT_CREDENTIAL * client_credential,
 			   TRAN_STATE * current_state,
-			   int waitsecs, TRAN_ISOLATION isolation)
+			   int wait_msecs, TRAN_ISOLATION isolation)
 {
   int i;
   int visited_loop_start_pos;
@@ -967,7 +969,7 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 	       * A client loose end transaction for current user.
 	       */
 	      log_Gl.trantable.num_client_loose_end_indices--;
-	      logtb_set_tdes (thread_p, tdes, client_credential, waitsecs,
+	      logtb_set_tdes (thread_p, tdes, client_credential, wait_msecs,
 			      isolation);
 
 	      if (current_state != NULL)
@@ -1044,7 +1046,8 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 
       tdes->tran_index = tran_index;
       logtb_clear_tdes (thread_p, tdes);
-      logtb_set_tdes (thread_p, tdes, client_credential, waitsecs, isolation);
+      logtb_set_tdes (thread_p, tdes, client_credential, wait_msecs,
+		      isolation);
 
       if (trid == NULL_TRANID)
 	{
@@ -1339,7 +1342,7 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
   fprintf (out_fp, "Tran_index = %2d, Trid = %d,\n"
 	   "    State = %s,\n"
 	   "    Isolation = %s,\n"
-	   "    Waitsecs = %d, isloose_end = %d,\n"
+	   "    Wait_msecs = %d, isloose_end = %d,\n"
 	   "    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
 	   " Postpone_lsa = %lld|%d,\n"
 	   "    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
@@ -1350,7 +1353,7 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   tdes->tran_index, tdes->trid,
 	   log_state_string (tdes->state),
 	   log_isolation_string (tdes->isolation),
-	   tdes->waitsecs, tdes->isloose_end,
+	   tdes->wait_msecs, tdes->isloose_end,
 	   tdes->head_lsa.pageid, tdes->head_lsa.offset,
 	   tdes->tail_lsa.pageid, tdes->tail_lsa.offset,
 	   tdes->posp_nxlsa.pageid, tdes->posp_nxlsa.offset,
@@ -1594,7 +1597,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->gtrinfo.info_length = 0;
   tdes->gtrinfo.info_data = NULL;
   tdes->interrupt = false;
-  tdes->waitsecs = TRAN_LOCK_INFINITE_WAIT;
+  tdes->wait_msecs = TRAN_LOCK_INFINITE_WAIT;
   tdes->isolation = TRAN_SERIALIZABLE;
   LSA_SET_NULL (&tdes->head_lsa);
   LSA_SET_NULL (&tdes->tail_lsa);
@@ -1894,8 +1897,8 @@ logtb_count_clients (THREAD_ENTRY * thread_p)
 
 /*
  * logtb_count_not_allowed_clients_in_maintenance_mode -
- *                        count number of transaction indices 
- *                        connection not allowed client in maintenancemode. 
+ *                        count number of transaction indices
+ *                        connection not allowed client in maintenancemode.
  *   return: number of clients
  */
 int
@@ -2193,11 +2196,11 @@ logtb_find_state (int tran_index)
 }
 
 /*
- * xlogtb_reset_wait_secs - reset future waiting times
+ * xlogtb_reset_wait_msecs - reset future waiting times
  *
- * return: The old waitsecs.
+ * return: The old wait_msecs.
  *
- *   waitsecs(in): Wait for at least this number of seconds to acquire a lock
+ *   wait_msecs(in): Wait for at least this number of milliseconds to acquire a lock
  *               before the transaction is timed out.
  *               A negative value (e.g., -1) means wait forever until a lock
  *               is granted or transaction is selected as a victim of a
@@ -2208,10 +2211,10 @@ logtb_find_state (int tran_index)
  * Note:Reset the default waiting time for the current transaction index(client).
  */
 int
-xlogtb_reset_wait_secs (THREAD_ENTRY * thread_p, int waitsecs)
+xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
-  int old_waitsecs;		/* The old waiting time to be returned */
+  int old_wait_msecs;		/* The old waiting time to be returned */
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2223,28 +2226,28 @@ xlogtb_reset_wait_secs (THREAD_ENTRY * thread_p, int waitsecs)
       return -1;
     }
 
-  old_waitsecs = tdes->waitsecs;
-  tdes->waitsecs = waitsecs;
+  old_wait_msecs = tdes->wait_msecs;
+  tdes->wait_msecs = wait_msecs;
 
-  return old_waitsecs;
+  return old_wait_msecs;
 }
 
 /*
- * logtb_find_wait_secs -  find waiting times for given transaction
+ * logtb_find_wait_msecs -  find waiting times for given transaction
  *
- * return: waitsecs...
+ * return: wait_msecs...
  *
  *   tran_index(in): Index of transaction
  */
 int
-logtb_find_wait_secs (int tran_index)
+logtb_find_wait_msecs (int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL)
     {
-      return tdes->waitsecs;
+      return tdes->wait_msecs;
     }
   else
     {
@@ -2254,14 +2257,14 @@ logtb_find_wait_secs (int tran_index)
 }
 
 /*
- * logtb_find_current_wait_secs - find waiting times for current transaction
+ * logtb_find_current_wait_msecs - find waiting times for current transaction
  *
- * return : waitsecs...
+ * return : wait_msecs...
  *
  * Note: Find the waiting time for the current transaction.
  */
 int
-logtb_find_current_wait_secs (THREAD_ENTRY * thread_p)
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -2270,7 +2273,7 @@ logtb_find_current_wait_secs (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL)
     {
-      return tdes->waitsecs;
+      return tdes->wait_msecs;
     }
   else
     {
