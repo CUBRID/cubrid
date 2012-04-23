@@ -318,13 +318,13 @@ static SM_FUNCTION_INFO *pt_node_to_function_index (PARSER_CONTEXT *
 static int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 					  SM_CONSTRAINT_INFO * constr,
 					  PT_NODE * alter,
-					  const char * src_cls_name,
-					  const char * new_cls_name);
+					  const char *src_cls_name,
+					  const char *new_cls_name);
 static int do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 					    SM_CONSTRAINT_INFO * constr,
 					    PT_NODE * alter,
-					    const char * src_cls_name,
-					    const char * new_cls_name);
+					    const char *src_cls_name,
+					    const char *new_cls_name);
 
 
 /*
@@ -11136,7 +11136,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_OBJECT *class_obj = NULL;
   const char *class_name = NULL;
   const char *create_like = NULL;
-  SM_CLASS *class_ = NULL;
+  SM_CLASS *source_class = NULL;
   PT_NODE *create_select = NULL;
   PT_NODE *create_index = NULL;
   DB_QUERY_TYPE *query_columns = NULL;
@@ -11188,7 +11188,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       if (create_like)
 	{
-	  ctemplate = dbt_copy_class (class_name, create_like, &class_);
+	  ctemplate = dbt_copy_class (class_name, create_like, &source_class);
 	}
       else
 	{
@@ -11285,8 +11285,21 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	     tbl_opt != NULL; tbl_opt = tbl_opt->next)
 	  {
 	    assert (tbl_opt->node_type == PT_TABLE_OPTION);
-	    if (tbl_opt->info.table_option.option
-		== PT_TABLE_OPTION_REUSE_OID)
+	    switch (tbl_opt->info.table_option.option)
+	      {
+	      case PT_TABLE_OPTION_REUSE_OID:
+		reuse_oid = true;
+		break;
+	      default:
+		break;
+	      }
+	  }
+
+	if (create_like)
+	  {
+	    assert (source_class != NULL);
+
+	    if (!reuse_oid && (source_class->flags & SM_CLASSFLAG_REUSE_OID))
 	      {
 		reuse_oid = true;
 	      }
@@ -11327,7 +11340,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (create_like)
     {
-      error = do_copy_indexes (parser, class_obj, class_);
+      error = do_copy_indexes (parser, class_obj, source_class);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -11488,20 +11501,21 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	      free_constraint = 1;
 	      if (c->func_index_info)
 		{
-		  error = 
+		  error =
 		    do_recreate_func_index_constr (parser, index_save_info,
-						   NULL, 
+						   NULL,
 						   src_class->header.name,
 						   sm_class_name (classmop));
 		}
 	      else
 		{
 		  /* filter index predicate available */
-		  error = 
+		  error =
 		    do_recreate_filter_index_constr (parser, index_save_info,
 						     NULL,
 						     src_class->header.name,
-						    sm_class_name (classmop));
+						     sm_class_name
+						     (classmop));
 		}
 	    }
 	}
@@ -15336,8 +15350,8 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
 static int
 do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 			       SM_CONSTRAINT_INFO * constr, PT_NODE * alter,
-			       const char * src_cls_name,
-			       const char * new_cls_name)
+			       const char *src_cls_name,
+			       const char *new_cls_name)
 {
   PT_NODE **stmt;
   PT_NODE *expr;
@@ -15402,7 +15416,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
     {
       PT_NODE *new_node = pt_name (parser, new_cls_name);
       PT_NODE *old_name = (*stmt)->info.query.q.select.from->info.spec.
-								  entity_name;
+	entity_name;
       if (!old_name)
 	{
 	  error = ER_FAILED;
@@ -15539,8 +15553,8 @@ error:
 static int
 do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 				 SM_CONSTRAINT_INFO * constr, PT_NODE * alter,
-				 const char * src_cls_name,
-				 const char * new_cls_name)
+				 const char *src_cls_name,
+				 const char *new_cls_name)
 {
   PT_NODE **stmt;
   PT_NODE *where_predicate;
@@ -15608,7 +15622,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     {
       PT_NODE *new_node = pt_name (parser, new_cls_name);
       PT_NODE *old_name = (*stmt)->info.query.q.select.from->info.spec.
-								  entity_name;
+	entity_name;
       if (!old_name)
 	{
 	  error = ER_FAILED;
@@ -15799,7 +15813,7 @@ static PT_NODE *
 replace_names_copy_indexes (PARSER_CONTEXT * parser, PT_NODE * node,
 			    void *void_arg, int *continue_walk)
 {
-  const char * new_name = (char *) void_arg;
+  const char *new_name = (char *) void_arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
