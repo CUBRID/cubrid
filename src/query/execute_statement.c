@@ -8721,6 +8721,11 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
   DB_OBJECT *mop = NULL;
   bool has_savepoint = false, is_cursor_open = false;
 
+  if (list_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
   /* if the list file contains more than 1 object we need to savepoint
      the statement to guarantee statement atomicity. */
   if (list_id->tuple_cnt >= 1)
@@ -11184,10 +11189,13 @@ do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
       goto cleanup;
     }
 
-  AU_SAVE_AND_DISABLE (au_save);
-  retval = delete_list_by_oids (parser, (QFILE_LIST_ID *) select->etc);
-  AU_RESTORE (au_save);
-  regu_free_listid ((QFILE_LIST_ID *) select->etc);
+  if (select->etc)
+    {
+      AU_SAVE_AND_DISABLE (au_save);
+      retval = delete_list_by_oids (parser, (QFILE_LIST_ID *) select->etc);
+      AU_RESTORE (au_save);
+      regu_free_listid ((QFILE_LIST_ID *) select->etc);
+    }
 
   pt_end_query (parser);
 
