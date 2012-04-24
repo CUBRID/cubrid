@@ -230,9 +230,9 @@ static const char *method_file_extension = ".o";
 
 
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  *    This is the root of the currently active attribute/method descriptors.
  *    These are kept on a list so we can quickly invalidate them during
@@ -422,11 +422,11 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   SM_FUNCTION_INFO * function_index);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
 static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
-static int build_fk_obj_cache (MOP classop, SM_CLASS * class_,
-			       SM_ATTRIBUTE ** key_attrs,
-			       const int *asc_desc, OID * pk_cls_oid,
-			       BTID * pk_btid, int cache_attr_id,
-			       char *fk_name);
+static int check_fk_validity (MOP classop, SM_CLASS * class_,
+			      SM_ATTRIBUTE ** key_attrs,
+			      const int *asc_desc, OID * pk_cls_oid,
+			      BTID * pk_btid, int cache_attr_id,
+			      char *fk_name);
 static int update_foreign_key_ref (MOP ref_clsop,
 				   SM_FOREIGN_KEY_INFO * fk_info);
 static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
@@ -441,8 +441,7 @@ static int allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 					   bool * recache_cls_cons);
 static int allocate_disk_structures (MOP classop, SM_CLASS * class_,
 				     DB_OBJLIST * subclasses);
-static int drop_foreign_key_ref (MOP classop,
-				 SM_CLASS_CONSTRAINT * flat_cons,
+static int drop_foreign_key_ref (MOP classop, SM_CLASS_CONSTRAINT * flat_cons,
 				 SM_CLASS_CONSTRAINT * cons);
 static bool is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con);
 static int inherit_constraint (MOP classop, SM_CLASS_CONSTRAINT * con);
@@ -494,6 +493,7 @@ static int sm_check_index_exist (MOP classop,
 				 DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name,
 				 const char **att_names, const int *asc_desc,
+				 SM_PREDICATE_INFO * filter_index,
 				 SM_FUNCTION_INFO * func_info);
 
 static void sm_reset_descriptors (MOP class_);
@@ -10092,7 +10092,7 @@ rem_class_from_index (OID * oid, BTID * index, HFID * heap)
 }
 
 /*
- * build_fk_obj_cache()
+ * check_fk_validity()
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
  *   class(in): class structure
@@ -10105,9 +10105,9 @@ rem_class_from_index (OID * oid, BTID * index, HFID * heap)
  */
 
 static int
-build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
-		    const int *asc_desc, OID * pk_cls_oid, BTID * pk_btid,
-		    int cache_attr_id, char *fk_name)
+check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
+		   const int *asc_desc, OID * pk_cls_oid, BTID * pk_btid,
+		   int cache_attr_id, char *fk_name)
 {
   int error = NO_ERROR;
   int i, n_attrs;
@@ -10144,9 +10144,9 @@ build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 	  attr_ids[i] = key_attrs[i]->id;
 	}
 
-      error = locator_build_fk_obj_cache (cls_oid, hfid, domain, n_attrs,
-					  attr_ids, pk_cls_oid, pk_btid,
-					  cache_attr_id, fk_name);
+      error = locator_check_fk_validity (cls_oid, hfid, domain, n_attrs,
+					 attr_ids, pk_cls_oid, pk_btid,
+					 cache_attr_id, fk_name);
 
       free_and_init (attr_ids);
     }
@@ -10294,7 +10294,7 @@ static int
 allocate_foreign_key (MOP classop, SM_CLASS * class_,
 		      SM_CLASS_CONSTRAINT * con, bool * recache_cls_cons)
 {
-  SM_CLASS_CONSTRAINT *pk, *shared_con;
+  SM_CLASS_CONSTRAINT *pk, *existing_con;
   MOP ref_clsop;
   SM_ATTRIBUTE *cache_attr;
 
@@ -10329,19 +10329,27 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 
   if (con->shared_cons_name)
     {
-      shared_con = classobj_find_constraint_by_name (class_->constraints,
-						     con->shared_cons_name);
-      con->index_btid = shared_con->index_btid;
+      existing_con = classobj_find_constraint_by_name (class_->constraints,
+						       con->shared_cons_name);
+      con->index_btid = existing_con->index_btid;
 
-      if (con->fk_info->cache_attr_id >= 0
-	  && build_fk_obj_cache (classop, class_, con->attributes,
+      assert (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY
+	      || existing_con->type == SM_CONSTRAINT_UNIQUE
+	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY
+	      || existing_con->type == SM_CONSTRAINT_INDEX);
+      if ((con->fk_info->cache_attr_id < 0
+	   && existing_con->type != SM_CONSTRAINT_FOREIGN_KEY)
+	  || con->fk_info->cache_attr_id >= 0)
+	{
+	  if (check_fk_validity (classop, class_, con->attributes,
 				 con->asc_desc,
 				 &(con->fk_info->ref_class_oid),
 				 &(con->fk_info->ref_class_pk_btid),
 				 con->fk_info->cache_attr_id,
 				 (char *) con->fk_info->name) != NO_ERROR)
-	{
-	  return er_errid ();
+	    {
+	      return er_errid ();
+	    }
 	}
     }
   else
@@ -12550,13 +12558,15 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
   int use_prefix_length;
   SM_CONSTRAINT_TYPE constraint_type;
   int reverse_index;
+  char *out_shared_cons_name = NULL;
 
   assert (db_constraint_type == DB_CONSTRAINT_INDEX
 	  || db_constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
-  error = sm_check_index_exist (classop, NULL, db_constraint_type,
-				constraint_name, attnames, asc_desc,
-				function_index);
+  error =
+    sm_check_index_exist (classop, &out_shared_cons_name, db_constraint_type,
+			  constraint_name, attnames, asc_desc,
+			  filter_index, function_index);
   if (error != NO_ERROR)
     {
       return error;
@@ -12570,7 +12580,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 				      &sub_partitions);
   if (error != NO_ERROR)
     {
-      return error;
+      goto fail_end;
     }
 
   if (is_partition == 1)
@@ -12710,18 +12720,31 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       if (locator_flush_class (classop) != NO_ERROR ||
 	  locator_flush_all_instances (classop, true) != NO_ERROR)
 	{
-	  free_and_init (attrs);
-	  return er_errid ();
+	  goto general_error;
 	}
 
-      /* allocate the index - this will result in a btree load if there
-         are existing instances */
-      BTID_SET_NULL (&index);
-      error = allocate_index (classop, class_, NULL, attrs, asc_desc,
-			      attrs_prefix_length, false,
-			      reverse_index, constraint_name, &index, NULL,
-			      NULL, -1, NULL, filter_index, function_index);
+      if (out_shared_cons_name)
+	{
+	  /* only normal index can share with foreign key */
+	  SM_CLASS_CONSTRAINT *existing_con;
+	  existing_con =
+	    classobj_find_constraint_by_name (class_->constraints,
+					      out_shared_cons_name);
+	  assert (existing_con != NULL);
 
+	  BTID_COPY (&index, &existing_con->index_btid);
+	}
+      else
+	{
+	  /* allocate the index - this will result in a btree load if there
+	     are existing instances */
+	  BTID_SET_NULL (&index);
+	  error = allocate_index (classop, class_, NULL, attrs, asc_desc,
+				  attrs_prefix_length, false,
+				  reverse_index, constraint_name, &index,
+				  NULL, NULL, -1, NULL, filter_index,
+				  function_index);
+	}
       if (error == NO_ERROR)
 	{
 	  /* must bump the representation in order to get the index into
@@ -12740,7 +12763,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	  if (classobj_put_index_id
 	      (&(class_->properties), constraint_type, constraint_name, attrs,
 	       asc_desc, attrs_prefix_length, &index,
-	       filter_index, NULL, NULL, function_index) != NO_ERROR)
+	       filter_index, NULL, out_shared_cons_name,
+	       function_index) != NO_ERROR)
 	    {
 	      error = er_errid ();
 	      goto general_error;
@@ -12802,6 +12826,10 @@ fail_end:
     {
       free_and_init (sub_partitions);
     }
+  if (out_shared_cons_name)
+    {
+      free_and_init (out_shared_cons_name);
+    }
 
   return error;
 
@@ -12809,6 +12837,10 @@ general_error:
   if (attrs != NULL)
     {
       free_and_init (attrs);
+    }
+  if (out_shared_cons_name)
+    {
+      free_and_init (out_shared_cons_name);
     }
 
   return error;
@@ -12823,6 +12855,10 @@ severe_error:
   if (attrs != NULL)
     {
       free_and_init (attrs);
+    }
+  if (out_shared_cons_name)
+    {
+      free_and_init (out_shared_cons_name);
     }
 
   error = er_errid ();
@@ -13359,6 +13395,8 @@ sm_free_constraint_name (char *constraint_name)
  *   constraint_name(in): Constraint name.
  *   att_names(in): array of attribute names
  *   asc_desc(in): asc/desc info list
+ *   filter_index(in): expression from CREATE INDEX idx
+ *		       ON tbl(col1, ...) WHERE filter_predicate
  *   func_info(in): function info pointer
  */
 static int
@@ -13367,6 +13405,7 @@ sm_check_index_exist (MOP classop,
 		      DB_CONSTRAINT_TYPE constraint_type,
 		      const char *constraint_name,
 		      const char **att_names, const int *asc_desc,
+		      SM_PREDICATE_INFO * filter_index,
 		      SM_FUNCTION_INFO * func_info)
 {
   int error = NO_ERROR;
@@ -13387,7 +13426,7 @@ sm_check_index_exist (MOP classop,
 				     out_shared_cons_name,
 				     class_->header.name, constraint_type,
 				     constraint_name, att_names, asc_desc,
-				     func_info);
+				     filter_index, func_info);
 }
 
 /*

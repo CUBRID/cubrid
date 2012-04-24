@@ -9001,7 +9001,7 @@ repl_set_info (REPL_INFO * repl_info)
 }
 
 /*
- * locator_build_fk_obj_cache -
+ * locator_check_fk_validity -
  *
  * return:
  *
@@ -9018,9 +9018,9 @@ repl_set_info (REPL_INFO * repl_info)
  * NOTE:
  */
 int
-locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
-			    int n_attrs, int *attr_ids, OID * pk_cls_oid,
-			    BTID * pk_btid, int cache_attr_id, char *fk_name)
+locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
+			   int n_attrs, int *attr_ids, OID * pk_cls_oid,
+			   BTID * pk_btid, int cache_attr_id, char *fk_name)
 {
 #if defined(CS_MODE)
   int error, req_error, request_size, domain_size;
@@ -9055,7 +9055,7 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
       ptr = or_pack_int (ptr, cache_attr_id);
       ptr = or_pack_string_with_length (ptr, fk_name, strlen);
 
-      req_error = net_client_request (NET_SERVER_LC_BUILD_FK_OBJECT_CACHE,
+      req_error = net_client_request (NET_SERVER_LC_CHECK_FK_VALIDITY,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
 				      NULL, 0);
@@ -9079,9 +9079,9 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 
   ENTER_SERVER ();
 
-  error = xlocator_build_fk_object_cache (NULL, cls_oid, hfid, key_type,
-					  n_attrs, attr_ids, pk_cls_oid,
-					  pk_btid, cache_attr_id, fk_name);
+  error = xlocator_check_fk_validity (NULL, cls_oid, hfid, key_type,
+				      n_attrs, attr_ids, pk_cls_oid,
+				      pk_btid, cache_attr_id, fk_name);
 
   EXIT_SERVER ();
   return error;

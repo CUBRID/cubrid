@@ -10351,7 +10351,7 @@ xrepl_log_get_append_lsa (void)
 }
 
 /*
- * xlocator_build_fk_object_cache () -
+ * xlocator_check_fk_validity () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -10366,11 +10366,11 @@ xrepl_log_get_append_lsa (void)
  *   fk_name(in):
  */
 int
-xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
-				HFID * hfid, TP_DOMAIN * key_type,
-				int n_attrs, int *attr_ids,
-				OID * pk_cls_oid, BTID * pk_btid,
-				int cache_attr_id, char *fk_name)
+xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
+			    HFID * hfid, TP_DOMAIN * key_type,
+			    int n_attrs, int *attr_ids,
+			    OID * pk_cls_oid, BTID * pk_btid,
+			    int cache_attr_id, char *fk_name)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -10430,11 +10430,16 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 	{
 	  pr_clear_value (&tmpval);
 	}
+
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
 end:
 
-  error_code = heap_scancache_end (thread_p, &scan_cache);
+  (void) heap_scancache_end (thread_p, &scan_cache);
   heap_attrinfo_end (thread_p, &attr_info);
 
   return error_code;

@@ -2009,12 +2009,7 @@ smt_check_index_exist (SM_TEMPLATE * template_,
   error = classobj_check_index_exist (check_cons, out_shared_cons_name,
 				      template_->name, constraint_type,
 				      constraint_name, att_names, asc_desc,
-				      NULL);
-
-  if (*out_shared_cons_name != NULL)
-    {
-      *out_shared_cons_name = strdup (*out_shared_cons_name);
-    }
+				      NULL, NULL);
 
   if (temp_cons != NULL)
     {

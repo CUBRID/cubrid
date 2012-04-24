@@ -439,12 +439,12 @@ net_server_init (void)
   net_Requests[NET_SERVER_LC_ASSIGN_OID_BATCH].name =
     "NET_SERVER_LC_ASSIGN_OID_BATCH";
 
-  net_Requests[NET_SERVER_LC_BUILD_FK_OBJECT_CACHE].action_attribute =
+  net_Requests[NET_SERVER_LC_CHECK_FK_VALIDITY].action_attribute =
     CHECK_DB_MODIFICATION | IN_TRANSACTION;
-  net_Requests[NET_SERVER_LC_BUILD_FK_OBJECT_CACHE].processing_function =
-    slocator_build_fk_object_cache;
-  net_Requests[NET_SERVER_LC_BUILD_FK_OBJECT_CACHE].name =
-    "NET_SERVER_LC_BUILD_FK_OBJECT_CACHE";
+  net_Requests[NET_SERVER_LC_CHECK_FK_VALIDITY].processing_function =
+    slocator_check_fk_validity;
+  net_Requests[NET_SERVER_LC_CHECK_FK_VALIDITY].name =
+    "NET_SERVER_LC_CHECK_FK_VALIDITY";
 
   net_Requests[NET_SERVER_LC_REM_CLASS_FROM_INDEX].action_attribute =
     CHECK_DB_MODIFICATION | IN_TRANSACTION;

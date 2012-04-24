@@ -123,11 +123,11 @@ locator_find_lockhint_class_oids (int num_classes,
 				  LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint,
 					   LC_COPYAREA ** fetch_area);
-extern int locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid,
-				       TP_DOMAIN * key_type, int n_attrs,
-				       int *attr_ids, OID * pk_cls_oid,
-				       BTID * pk_btid, int cache_attr_id,
-				       char *fk_name);
+extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid,
+				      TP_DOMAIN * key_type, int n_attrs,
+				      int *attr_ids, OID * pk_cls_oid,
+				      BTID * pk_btid, int cache_attr_id,
+				      char *fk_name);
 extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);

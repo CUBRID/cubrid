@@ -398,9 +398,9 @@ extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p,
 				      unsigned int rid, char *request,
 				      int reqlen);
-extern void slocator_build_fk_object_cache (THREAD_ENTRY * thread_p,
-					    unsigned int rid, char *request,
-					    int reqlen);
+extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p,
+					unsigned int rid, char *request,
+					int reqlen);
 extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 /* external storage supports */

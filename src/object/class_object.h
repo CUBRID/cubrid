@@ -118,6 +118,13 @@
           (c) == SM_CONSTRAINT_REVERSE_INDEX)     \
           ? true : false )
 
+#define SM_IS_SHARE_WITH_FOREIGN_KEY(cons) \
+	(((cons)->type == SM_CONSTRAINT_FOREIGN_KEY || \
+	  (cons)->type == SM_CONSTRAINT_UNIQUE      || \
+	  (cons)->type == SM_CONSTRAINT_PRIMARY_KEY || \
+	  (cons)->type == SM_CONSTRAINT_INDEX)      \
+	  ? true : false)
+
 #define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) \
         classobj_complist_search((SM_COMPONENT *)complist, name)
 
@@ -1267,5 +1274,6 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 				       const char *constraint_name,
 				       const char **att_names,
 				       const int *asc_desc,
+				       SM_PREDICATE_INFO * filter_index,
 				       SM_FUNCTION_INFO * func_index_info);
 #endif /* _CLASS_OBJECT_H_ */

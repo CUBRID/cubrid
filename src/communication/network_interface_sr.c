@@ -8037,7 +8037,7 @@ srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * slocator_build_fk_object_cache -
+ * slocator_check_fk_validity -
  *
  * return:
  *
@@ -8048,8 +8048,8 @@ srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
-				char *request, int reqlen)
+slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid,
+			    char *request, int reqlen)
 {
   OID class_oid;
   HFID hfid;
@@ -8079,10 +8079,10 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &cache_attr_id);
   ptr = or_unpack_string (ptr, &fk_name);
 
-  if (xlocator_build_fk_object_cache (thread_p, &class_oid, &hfid, key_type,
-				      n_attrs, attr_ids, &pk_cls_oid,
-				      &pk_btid, cache_attr_id,
-				      fk_name) != NO_ERROR)
+  if (xlocator_check_fk_validity (thread_p, &class_oid, &hfid, key_type,
+				  n_attrs, attr_ids, &pk_cls_oid,
+				  &pk_btid, cache_attr_id,
+				  fk_name) != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }

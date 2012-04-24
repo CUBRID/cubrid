@@ -167,12 +167,12 @@ extern int xlocator_remove_class_from_index (THREAD_ENTRY * thread_p,
 					     OID * oid, BTID * btid,
 					     HFID * hfid);
 
-extern int xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p,
-					   OID * cls_oid, HFID * hfid,
-					   TP_DOMAIN * key_type, int n_attrs,
-					   int *attr_ids, OID * pk_cls_oid,
-					   BTID * pk_btid, int cache_attr_id,
-					   char *fk_name);
+extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p,
+				       OID * cls_oid, HFID * hfid,
+				       TP_DOMAIN * key_type, int n_attrs,
+				       int *attr_ids, OID * pk_cls_oid,
+				       BTID * pk_btid, int cache_attr_id,
+				       char *fk_name);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 

@@ -53,6 +53,14 @@
 #define SM_SPRINTF_UNIQUE_PROPERTY_VALUE(buffer, volid, fileid, pageid) \
   sprintf(buffer, "%d|%d|%d", (int)volid, (int)fileid, (int)pageid)
 
+typedef enum
+{
+  SM_CREATE_NEW_INDEX = 0,
+  SM_SHARE_INDEX = 1,
+  SM_NOT_SHARE_INDEX_AND_WARNING = 2,
+  SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING = 3
+} SM_CONSTRAINT_COMPATIBILITY;
+
 const int SM_MAX_STRING_LENGTH = 1073741823;	/* 0x3fffffff */
 
 static SM_CONSTRAINT_TYPE Constraint_types[] = {
@@ -167,6 +175,13 @@ static SM_FUNCTION_INFO *classobj_make_function_index_info (DB_SEQ *
 							    func_seq);
 static DB_SEQ *classobj_make_function_index_info_seq (SM_FUNCTION_INFO *
 						      func_index_info);
+static SM_CONSTRAINT_COMPATIBILITY
+classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
+				    DB_CONSTRAINT_TYPE constraint_type,
+				    SM_PREDICATE_INFO * filter_predicate,
+				    SM_FUNCTION_INFO * func_index_info,
+				    SM_CLASS_CONSTRAINT * existing_con,
+				    SM_CLASS_CONSTRAINT ** primary_con);
 
 void
 classobj_area_init (void)
@@ -7633,6 +7648,134 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
 }
 
 /*
+ * classobj_check_index_compatibility() - Check whether indexes are compatible.
+ *   return: share, not share, create new index.
+ *   constraint(in): the constraints list
+ *   constraint_type(in): the new constraint type
+ *   filter_predicate(in): the new expression from CREATE INDEX idx
+ *		       ON tbl(col1, ...) WHERE filter_predicate
+ *   func_index_info (in): the new function index information
+ *   existing_con(in): the existed relative constraint
+ *   primary_con(out): the reference of existed primary key
+ *
+ *   There are some rules about index compatibility.
+ *      1.There is only one primary key allowed in a table.
+ *      2 The Basic rules of index compatibility are defined in below table.
+ *          share  : share index with existed index;
+ *          new idx: create new index;
+ *          error  : not share index and return error msg.
+ *      3 filter_predicate and func_index_info should be checked.
+ * +---------------+-------------------------------------------------------+
+ * |               |              Existed constraint or index              |
+ * |               +----------+-----------+---------+----------+-----------+
+ * |               | PK(asc)  | PK(desc)  |   FK    | Idx(asc) | Idx(desc) |
+ * |               | /UK(asc) | /UK(desc) |         |          |  /R-Idx   |
+ * |               |          |   /R-UK   |         |          |           |
+ * +---+-----------+----------+-----------+---------+----------+-----------+
+ * |   |   PK(asc) |  share   |  new idx  |  error  |  error   |  new idx  |
+ * | n | /UK(asc): |          |           |         |          |           |
+ * | e +-----------+----------+-----------+---------+----------+-----------+
+ * | w |  PK(desc) |          |           |         |          |           |
+ * |   | /UK(desc) | new idx  |   share   | new idx | new idx  |   error   |
+ * | i |    /R-UK: |          |           |         |          |           |
+ * | n +-----------+----------+-----------+---------+----------+-----------+
+ * | d |       FK: |  share   |  new idx  |  share  |  share   |   share   |
+ * | e +-----------+----------+-----------+---------+----------+-----------+
+ * | x | idx(asc): |  error   |  new idx  |  share  |  error   |  new idx  |
+ * |   +-----------+----------+-----------+---------+----------+-----------+
+ * |   | idx(desc) | new idx  |   error   | new idx | new idx  |   error   |
+ * |   |   /R-idx: |          |           |         |          |           |
+ * +---+-----------+----------+-----------+---------+----------+-----------+
+ */
+static SM_CONSTRAINT_COMPATIBILITY
+classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
+				    DB_CONSTRAINT_TYPE constraint_type,
+				    SM_PREDICATE_INFO * filter_predicate,
+				    SM_FUNCTION_INFO * func_index_info,
+				    SM_CLASS_CONSTRAINT * existing_con,
+				    SM_CLASS_CONSTRAINT ** primary_con)
+{
+  SM_CONSTRAINT_COMPATIBILITY ret;
+
+  /* only one primary key is allowed in a table. */
+  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY)
+    {
+      SM_CLASS_CONSTRAINT *prim_con;
+      prim_con = classobj_find_cons_primary_key (constraints);
+      if (prim_con != NULL)
+	{
+	  *primary_con = prim_con;
+	  return SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING;
+	}
+    }
+
+  if (existing_con == NULL)
+    {
+      return SM_CREATE_NEW_INDEX;
+    }
+
+  assert (existing_con != NULL);
+  if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type)
+      && SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+    {
+      ret = SM_SHARE_INDEX;
+      goto check_filter_function;
+    }
+
+  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY
+      && SM_IS_SHARE_WITH_FOREIGN_KEY (existing_con))
+    {
+      ret = SM_SHARE_INDEX;
+      if (existing_con->filter_predicate != NULL
+	  || existing_con->func_index_info != NULL)
+	{
+	  ret = SM_CREATE_NEW_INDEX;
+	}
+      return ret;
+    }
+
+  if (constraint_type == DB_CONSTRAINT_INDEX
+      && existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
+    {
+      ret = SM_SHARE_INDEX;
+      if (filter_predicate != NULL || func_index_info != NULL)
+	{
+	  ret = SM_CREATE_NEW_INDEX;
+	}
+      return ret;
+    }
+
+  ret = SM_NOT_SHARE_INDEX_AND_WARNING;
+
+check_filter_function:
+  if (func_index_info && existing_con->func_index_info)
+    {
+      if (!intl_identifier_casecmp (func_index_info->expr_str,
+				    existing_con->func_index_info->expr_str)
+	  && (func_index_info->attr_index_start ==
+	      existing_con->func_index_info->attr_index_start)
+	  && (func_index_info->col_id ==
+	      existing_con->func_index_info->col_id))
+	{
+	  return ret;
+	}
+      else
+	{
+	  return SM_CREATE_NEW_INDEX;
+	}
+    }
+  if ((func_index_info != NULL) && (existing_con->func_index_info == NULL))
+    {
+      return SM_CREATE_NEW_INDEX;
+    }
+  if ((func_index_info == NULL) && (existing_con->func_index_info != NULL))
+    {
+      return SM_CREATE_NEW_INDEX;
+    }
+  return ret;
+}
+
+/*
  * classobj_check_index_exist() - Check index is duplicated.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   constraint(in): the constraints list
@@ -7641,6 +7784,8 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
  *   constraint_name(in): Constraint name.
  *   att_names(in): array of attribute names
  *   asc_desc(in): asc/desc info list
+ *   filter_index(in): expression from CREATE INDEX idx
+ *		       ON tbl(col1, ...) WHERE filter_predicate
  *   func_index_info (in): function index information
  */
 int
@@ -7650,10 +7795,12 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 			    DB_CONSTRAINT_TYPE constraint_type,
 			    const char *constraint_name,
 			    const char **att_names, const int *asc_desc,
+			    SM_PREDICATE_INFO * filter_index,
 			    SM_FUNCTION_INFO * func_index_info)
 {
   int error = NO_ERROR;
-  SM_CLASS_CONSTRAINT *cons;
+  SM_CLASS_CONSTRAINT *existing_con, *prim_con = NULL;
+  SM_CONSTRAINT_COMPATIBILITY compat_state;
 
   if (constraints == NULL)
     {
@@ -7661,76 +7808,61 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
     }
 
   /* check index name uniqueness */
-  cons = classobj_find_constraint_by_name (constraints, constraint_name);
-  if (cons)
+  existing_con =
+    classobj_find_constraint_by_name (constraints, constraint_name);
+  if (existing_con)
     {
-      ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
+      ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, existing_con->name);
       return error;
     }
 
-  cons = classobj_find_constraint_by_attrs (constraints, constraint_type,
-					    att_names, asc_desc);
-  if (cons != NULL)
+  existing_con =
+    classobj_find_constraint_by_attrs (constraints, constraint_type,
+				       att_names, asc_desc);
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
+  if (existing_con != NULL)
     {
-      if (cons->name && strstr (cons->name, TEXT_CONSTRAINT_PREFIX))
+      if (existing_con->name
+	  && strstr (existing_con->name, TEXT_CONSTRAINT_PREFIX))
 	{
 	  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
 		  rel_major_release_string ());
 	  return error;
 	}
-
-      if ((DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type)
-	   && SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type))
-	  || constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
-	{
-	  if (out_shared_cons_name != NULL)
-	    {
-	      *out_shared_cons_name = (char *) cons->name;
-	    }
-	}
-      else
-	{
-	  if (func_index_info && cons->func_index_info)
-	    {
-	      if (!intl_identifier_casecmp (func_index_info->expr_str,
-					    cons->func_index_info->expr_str)
-		  && (func_index_info->attr_index_start
-		      == cons->func_index_info->attr_index_start)
-		  && (func_index_info->col_id
-		      == cons->func_index_info->col_id))
-		{
-		  ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
-		  return error;
-		}
-	      else
-		{
-		  return NO_ERROR;
-		}
-	    }
-	  if ((func_index_info != NULL) && (cons->func_index_info == NULL))
-	    {
-	      return NO_ERROR;
-	    }
-	  if ((func_index_info == NULL) && (cons->func_index_info != NULL))
-	    {
-	      return NO_ERROR;
-	    }
-	  ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
-	  return error;
-	}
     }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
-  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY)
+  compat_state =
+    classobj_check_index_compatibility (constraints, constraint_type,
+					filter_index, func_index_info,
+					existing_con, &prim_con);
+  switch (compat_state)
     {
-      cons = classobj_find_cons_primary_key (constraints);
-      if (cons != NULL)
+    case SM_CREATE_NEW_INDEX:
+      break;
+
+    case SM_SHARE_INDEX:
+      if (out_shared_cons_name != NULL)
 	{
-	  ERROR2 (error, ER_SM_PRIMARY_KEY_EXISTS, class_name, cons->name);
-	  return error;
+	  *out_shared_cons_name = strdup (existing_con->name);
 	}
+      break;
+
+    case SM_NOT_SHARE_INDEX_AND_WARNING:
+      ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, existing_con->name);
+      break;
+
+    case SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING:
+      assert (prim_con != NULL);
+      ERROR2 (error, ER_SM_PRIMARY_KEY_EXISTS, class_name, prim_con->name);
+      break;
+
+    default:
+      /* not suppose to here */
+      assert (false);
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
