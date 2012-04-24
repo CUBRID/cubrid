@@ -735,7 +735,7 @@ function build_rpm ()
       fi
     ;;
     rpm)
-      rpmbuild --define="_topdir $install_dir/rpmbuild" --clean -tb --target=$build_target $source_tarball
+      rpmbuild --define="_topdir $install_dir/rpmbuild" --define="_tmppath $install_dir/rpmbuild/tmp" --clean -tb --target=$build_target $source_tarball
       if [ $? -eq 0 ]; then
 	mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name-$build_number-*.$build_target.rpm $rpm_output_dir
       fi
