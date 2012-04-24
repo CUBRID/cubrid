@@ -7808,17 +7808,17 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
     }
 
   /* check index name uniqueness */
-  existing_con =
-    classobj_find_constraint_by_name (constraints, constraint_name);
+  existing_con = classobj_find_constraint_by_name (constraints,
+						   constraint_name);
   if (existing_con)
     {
       ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, existing_con->name);
       return error;
     }
 
-  existing_con =
-    classobj_find_constraint_by_attrs (constraints, constraint_type,
-				       att_names, asc_desc);
+  existing_con = classobj_find_constraint_by_attrs (constraints,
+						    constraint_type,
+						    att_names, asc_desc);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   if (existing_con != NULL)
     {
@@ -7832,10 +7832,11 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
     }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-  compat_state =
-    classobj_check_index_compatibility (constraints, constraint_type,
-					filter_index, func_index_info,
-					existing_con, &prim_con);
+  compat_state = classobj_check_index_compatibility (constraints,
+						     constraint_type,
+						     filter_index,
+						     func_index_info,
+						     existing_con, &prim_con);
   switch (compat_state)
     {
     case SM_CREATE_NEW_INDEX:

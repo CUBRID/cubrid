@@ -12760,11 +12760,11 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	    }
 
 	  /* modify the class to point at the new index */
-	  if (classobj_put_index_id
-	      (&(class_->properties), constraint_type, constraint_name, attrs,
-	       asc_desc, attrs_prefix_length, &index,
-	       filter_index, NULL, out_shared_cons_name,
-	       function_index) != NO_ERROR)
+	  if (classobj_put_index_id (&(class_->properties), constraint_type,
+				     constraint_name, attrs, asc_desc,
+				     attrs_prefix_length, &index,
+				     filter_index, NULL, out_shared_cons_name,
+				     function_index) != NO_ERROR)
 	    {
 	      error = er_errid ();
 	      goto general_error;
