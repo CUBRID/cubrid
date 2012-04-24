@@ -211,6 +211,7 @@ typedef struct
   int deferred_max_close_handle_count;
   int *deferred_close_handle_list;
   int deferred_close_handle_count;
+  int con_handle_id;
 } T_CON_HANDLE;
 
 /************************************************************************
