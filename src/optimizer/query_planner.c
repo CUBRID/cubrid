@@ -1423,14 +1423,9 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
 
   fprintf (f,
 	   "\n" INDENTED_TITLE_FMT
-	   "fixed %.0f(%.1f/%.1f) var %.0f(%.1f/%.1f) card %.0f",
+	   "%.0f card %.0f",
 	   (int) howfar, ' ', "cost:",
-	   fixed,
-	   plan->fixed_cpu_cost,
-	   plan->fixed_io_cost,
-	   variable,
-	   plan->variable_cpu_cost,
-	   plan->variable_io_cost, (plan->info)->cardinality);
+	   fixed + variable, (plan->info)->cardinality);
 }
 
 
