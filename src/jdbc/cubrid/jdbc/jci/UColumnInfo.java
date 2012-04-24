@@ -225,10 +225,7 @@ public class UColumnInfo {
 		case UUType.U_TYPE_VARNCHAR:
 			return "java.lang.String";
 		case UUType.U_TYPE_NUMERIC:
-			if (UJCIUtil.isMysqlMode(this.getClass())) {
-				return "java.math.BigDecimal";
-			}
-			return "java.lang.Double";
+			return "java.math.BigDecimal";
 		case UUType.U_TYPE_SHORT:
 			return "java.lang.Short";
 		case UUType.U_TYPE_INT:
