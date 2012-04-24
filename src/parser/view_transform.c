@@ -1655,7 +1655,6 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
   if (col->data_type && col->data_type->info.data_type.virt_object)
     {
       /* no longer comes from a vobj */
-      parser_free_tree (parser, col->data_type->info.data_type.virt_object);
       col->data_type->info.data_type.virt_object = NULL;
       col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
     }
@@ -1687,7 +1686,6 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
   if (col->data_type && col->data_type->info.data_type.virt_object)
     {
       /* no longer comes from a vobj */
-      parser_free_tree (parser, col->data_type->info.data_type.virt_object);
       col->data_type->info.data_type.virt_object = NULL;
       col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
     }
