@@ -1446,6 +1446,19 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = PRM_LOG_CHECKPOINT_NPAGES;
 
+  if (!LSA_EQ (&log_Gl.append.prev_lsa, &log_Gl.prior_info.prev_lsa))
+    {
+      assert (0);
+      /* defense code */
+      LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+    }
+  if (!LSA_EQ (&log_Gl.hdr.append_lsa, &log_Gl.prior_info.prior_lsa))
+    {
+      assert (0);
+      /* defense code */
+      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+    }
+
   /*
    *
    * Don't checkpoint to sizes smaller than the number of log buffers

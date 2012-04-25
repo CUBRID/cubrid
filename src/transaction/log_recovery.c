@@ -5387,7 +5387,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 	}
     }
 
-  LSA_COPY (&log_Gl.append.prev_lsa, last_lsa);
+  LOG_RESET_PREV_LSA (last_lsa);
 
   logpb_flush_header (thread_p);
   logpb_decache_archive_info (thread_p);
