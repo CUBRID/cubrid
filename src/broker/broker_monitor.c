@@ -795,7 +795,9 @@ appl_monitor (char *br_vector)
 				sprintf (line_buf + col_len, "%-12s ",
 					 "CLOSE WAIT");
 			    }
-			  else if (shm_appl->as_info[j].log_msg[0] == '\0')
+			  else if ((shm_appl->as_info[j].con_status ==
+				    CON_STATUS_OUT_TRAN_HOLDABLE)
+				   || shm_appl->as_info[j].log_msg[0] == '\0')
 			    {
 			      col_len +=
 				sprintf (line_buf + col_len, "%-12s ",
@@ -1146,7 +1148,9 @@ br_monitor (char *br_vector)
 
 		      if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY
 			  && shm_appl->as_info[j].con_status !=
-			  CON_STATUS_OUT_TRAN)
+			  CON_STATUS_OUT_TRAN
+			  && shm_appl->as_info[j].con_status !=
+			  CON_STATUS_OUT_TRAN_HOLDABLE)
 			{
 			  if (shm_appl->as_info[j].log_msg[0] == '\0')
 			    {

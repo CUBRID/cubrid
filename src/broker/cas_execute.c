@@ -1024,7 +1024,15 @@ ux_end_tran (int tran_type, bool reset_con_status)
 #ifndef LIBCAS_FOR_JSP
       if (reset_con_status)
 	{
-	  as_info->con_status = CON_STATUS_OUT_TRAN;
+	  if (hm_has_holdable_results ())
+	    {
+	      as_info->con_status = CON_STATUS_OUT_TRAN_HOLDABLE;
+	    }
+	  else
+	    {
+	      as_info->con_status = CON_STATUS_OUT_TRAN;
+	    }
+
 	  as_info->transaction_start_time = (time_t) 0;
 	}
 #endif /* !LIBCAS_FOR_JSP */

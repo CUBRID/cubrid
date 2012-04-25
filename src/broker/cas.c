@@ -1060,7 +1060,8 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
       err_code = net_read_header (clt_sock_fd, &client_msg_header);
 
       if ((as_info->cur_keep_con == KEEP_CON_ON)
-	  && (as_info->con_status == CON_STATUS_OUT_TRAN))
+	  && (as_info->con_status == CON_STATUS_OUT_TRAN
+	      || as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE))
 	{
 	  as_info->con_status = CON_STATUS_IN_TRAN;
 	  as_info->transaction_start_time = time (0);
@@ -1360,10 +1361,12 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
     }
 
 #ifndef LIBCAS_FOR_JSP
-  if (as_info->reset_flag && as_info->con_status != CON_STATUS_IN_TRAN)
+  if (as_info->reset_flag && as_info->con_status != CON_STATUS_IN_TRAN
+      && as_info->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
     {
       cas_log_debug (ARG_FILE_LINE,
-		     "process_request: reset_flag && !CON_STATUS_IN_TRAN");
+		     "process_request: reset_flag && !CON_STATUS_IN_TRAN "
+		     "&& !CON_STATUS_OUT_TRAN_HOLDABLE");
       fn_ret = FN_CLOSE_CONN;
       goto exit_on_end;
     }
@@ -1430,8 +1433,10 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
 
-  if (as_info->con_status == CON_STATUS_IN_TRAN)
+  if (as_info->con_status == CON_STATUS_IN_TRAN
+      || as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE)
     {
+      /* holdable results have the same lifespan of a normal session */
       net_timeout_set (shm_appl->session_timeout);
     }
   else
@@ -1461,6 +1466,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 	{
 	  /* if in-transaction state, return network error */
 	  if (as_info->con_status == CON_STATUS_IN_TRAN
+	      || as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE
 	      || !is_net_timed_out ())
 	    {
 	      ret_value = -1;
@@ -1503,7 +1509,8 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
     }
   else
     {
-      if (as_info->con_status != CON_STATUS_IN_TRAN)
+      if (as_info->con_status != CON_STATUS_IN_TRAN
+	  && as_info->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
 	{
 	  as_info->con_status = CON_STATUS_IN_TRAN;
 	  as_info->transaction_start_time = time (0);

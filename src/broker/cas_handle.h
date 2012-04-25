@@ -204,6 +204,7 @@ extern void hm_session_free (T_SRV_HANDLE * srv_handle);
 extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
 extern void hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle, bool hold);
 extern bool hm_has_holdable_results (void);
+extern int hm_get_holdable_results_count (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
 #endif

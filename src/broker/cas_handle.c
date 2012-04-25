@@ -62,7 +62,6 @@ static int current_handle_count = 0;
 static T_SRV_HANDLE **active_handle_table = NULL;
 static int active_handle_table_size = 0;
 static int active_handle_count = 0;
-static int holdable_count = 0;
 
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
@@ -157,10 +156,6 @@ hm_srv_handle_free (int h_id)
   srv_handle = srv_handle_table[h_id - 1];
   if (srv_handle == NULL)
     return;
-  if (srv_handle->is_holdable)
-    {
-      holdable_count--;
-    }
 
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
@@ -196,7 +191,6 @@ hm_srv_handle_free_all ()
   max_handle_id = 0;
 #if !defined(LIBCAS_FOR_JSP)
   current_handle_count = 0;
-  holdable_count = 0;
 #endif
 }
 
@@ -235,7 +229,6 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  hm_qresult_end (srv_handle, FALSE);
 	  if (srv_handle->is_holdable)
 	    {
-	      holdable_count--;
 	      srv_handle->is_holdable = false;
 	    }
 	}
@@ -518,14 +511,31 @@ hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle, bool hold)
       return;
     }
   srv_handle->is_holdable = hold;
-  if (hold)
-    {
-      holdable_count++;
-    }
 }
 
 bool
-hm_has_holdable_results ()
+hm_has_holdable_results (void)
 {
-  return (holdable_count != 0);
+  return (hm_get_holdable_results_count () > 0);
+}
+
+int
+hm_get_holdable_results_count (void)
+{
+  int i, cnt = 0;
+
+  if (srv_handle_table == NULL)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < max_srv_handle; i++)
+    {
+      if (srv_handle_table[i] != NULL)
+	{
+	  cnt += (srv_handle_table[i]->is_holdable ? 1 : 0);
+	}
+    }
+
+  return cnt;
 }

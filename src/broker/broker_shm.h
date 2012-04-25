@@ -161,7 +161,8 @@ enum t_con_status
   CON_STATUS_OUT_TRAN = 0,
   CON_STATUS_IN_TRAN = 1,
   CON_STATUS_CLOSE = 2,
-  CON_STATUS_CLOSE_AND_CONNECT = 3
+  CON_STATUS_CLOSE_AND_CONNECT = 3,
+  CON_STATUS_OUT_TRAN_HOLDABLE = 4	/* OUT_TRAN with holdable result sets */
 };
 
 #if defined(WINDOWS)
