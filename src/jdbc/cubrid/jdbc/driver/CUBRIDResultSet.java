@@ -93,6 +93,7 @@ public class CUBRIDResultSet implements ResultSet {
 	private boolean is_scrollable;
 	private boolean is_updatable;
 	private boolean is_sensitive;
+	private boolean is_holdable;
 
 	private int fetch_direction;
 	private int fetch_size;
@@ -105,7 +106,7 @@ public class CUBRIDResultSet implements ResultSet {
 	private String main_table_name;
 
 	protected CUBRIDResultSet(CUBRIDConnection c, CUBRIDStatement s, int t,
-			int concur) throws SQLException {
+			int concur, boolean holdable) throws SQLException {
 		con = c;
 		stmt = s;
 		u_stmt = s.u_stmt;
@@ -125,6 +126,7 @@ public class CUBRIDResultSet implements ResultSet {
 		is_scrollable = t != TYPE_FORWARD_ONLY;
 		is_updatable = concur == CONCUR_UPDATABLE;
 		is_sensitive = t == TYPE_SCROLL_SENSITIVE;
+		is_holdable = holdable;
 
 		fetch_direction = s.getFetchDirection();
 		u_stmt.setFetchDirection(fetch_direction);
@@ -170,6 +172,7 @@ public class CUBRIDResultSet implements ResultSet {
 		is_scrollable = false;
 		is_updatable = false;
 		is_sensitive = false;
+		is_holdable = false;
 
 		fetch_direction = FETCH_FORWARD;
 		fetch_size = 0;
@@ -267,6 +270,7 @@ public class CUBRIDResultSet implements ResultSet {
 						column_info = null;
 						col_name_to_index = null;
 						error = null;
+						is_holdable = false;
 					}
 				}
 			}
@@ -1845,7 +1849,8 @@ public class CUBRIDResultSet implements ResultSet {
 
 	/* JDK 1.6 */
 	public int getHoldability() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		return (is_holdable ? ResultSet.HOLD_CURSORS_OVER_COMMIT :
+				ResultSet.CLOSE_CURSORS_AT_COMMIT);
 	}
 
 	/* JDK 1.6 */

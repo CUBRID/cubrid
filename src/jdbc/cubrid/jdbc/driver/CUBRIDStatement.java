@@ -317,7 +317,7 @@ public class CUBRIDStatement implements Statement {
 								&& u_stmt.isOIDIncluded() == false)
 							rs_concurrency = ResultSet.CONCUR_READ_ONLY;
 						current_result_set = new CUBRIDResultSet(con, this,
-								rs_type, rs_concurrency);
+								rs_type, rs_concurrency, is_holdable);
 					} else {
 						update_count = result_info[result_index]
 								.getResultCount();
