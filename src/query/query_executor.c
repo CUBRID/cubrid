@@ -10341,14 +10341,16 @@ exit_on_error:
 
   /* clear some kinds of error code; it's click counter! */
   err = er_errid ();
-  if (err == ER_LK_UNILATERALLY_ABORTED ||
-      err == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG ||
-      err == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG ||
-      err == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG ||
-      err == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)
+  if (err == ER_LK_UNILATERALLY_ABORTED
+      || err == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG
+      || err == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG
+      || err == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG
+      || err == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "qexec_execute_selupd_list: ignore error %d\n", err);
+
+      lock_clear_deadlock_victim (tran_index);
       er_clear ();
       err = NO_ERROR;
     }

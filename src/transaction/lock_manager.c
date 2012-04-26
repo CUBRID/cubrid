@@ -8953,17 +8953,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
       lock_remove_non2pl (entry_ptr, tran_index);
     }
 
-  /* communication with deadlock detector */
-  if (lk_Gl.TWFG_node[tran_index].checked_by_deadlock_detector)
-    {
-      lk_Gl.TWFG_node[tran_index].checked_by_deadlock_detector = false;
-    }
-  if (lk_Gl.TWFG_node[tran_index].DL_victim)
-    {
-      rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
-      lk_Gl.TWFG_node[tran_index].DL_victim = false;
-      pthread_mutex_unlock (&lk_Gl.DL_detection_mutex);
-    }
+  lock_clear_deadlock_victim (tran_index);
 
   pgbuf_unfix_all (thread_p);
 #endif /* !SERVER_MODE */
@@ -11218,6 +11208,32 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
   /* change locking phase as normal */
   tran_lock->is_instant_duration = false;
   return;
+#endif /* !SERVER_MODE */
+}
+
+/* lock_clear_deadlock_victim:
+ *
+ * tran_index(in):
+ */
+void
+lock_clear_deadlock_victim (int tran_index)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  int rv;
+
+  /* communication with deadlock detector */
+  if (lk_Gl.TWFG_node[tran_index].checked_by_deadlock_detector)
+    {
+      lk_Gl.TWFG_node[tran_index].checked_by_deadlock_detector = false;
+    }
+  if (lk_Gl.TWFG_node[tran_index].DL_victim)
+    {
+      rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
+      lk_Gl.TWFG_node[tran_index].DL_victim = false;
+      pthread_mutex_unlock (&lk_Gl.DL_detection_mutex);
+    }
 #endif /* !SERVER_MODE */
 }
 
