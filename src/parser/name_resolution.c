@@ -529,9 +529,16 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
 
   if (!node)
     {
-      PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_IS_NOT_DEFINED, pt_short_print (parser,
-								  in_node));
+      if (er_errid () != NO_ERROR)
+	{
+	  PT_ERRORc (parser, in_node, er_msg ());
+	}
+      else
+	{
+	  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_IS_NOT_DEFINED, pt_short_print (parser,
+								      in_node));
+	}
     }
   else
     {
@@ -1059,8 +1066,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 	 * per ANSI. This is because name resolution for OID's conflicts
 	 * with ANSI.
 	 */
-	for (temp = assignments; temp && error == NO_ERROR;
-	     temp = temp->next)
+	for (temp = assignments; temp && error == NO_ERROR; temp = temp->next)
 	  {
 	    lhs = temp->info.expr.arg1;
 	    if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
@@ -5844,7 +5850,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   rest_attrs = NULL;
   rest_values = NULL;
 
-  for (db_attr = db_attributes; db_attr; 
+  for (db_attr = db_attributes; db_attr;
        db_attr = (SM_ATTRIBUTE *) db_attr->header.next)
     {
       char *name = db_attr->header.name;

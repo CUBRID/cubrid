@@ -12690,6 +12690,13 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       for (i = 0; i < n_attrs; i++)
 	{
 	  attrs[i] = classobj_find_attribute (class_, attnames[i], 0);
+
+	  if (attrs[i] != NULL
+	      && attrs[i]->header.name_space == ID_SHARED_ATTRIBUTE)
+	    {
+	      ERROR1 (error, ER_SM_INDEX_ON_SHARED, attnames[i]);
+	      goto general_error;
+	    }
 	  if (attrs[i] == NULL || attrs[i]->header.name_space != ID_ATTRIBUTE)
 	    {
 	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, attnames[i]);
