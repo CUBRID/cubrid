@@ -78,6 +78,7 @@
 #include "cas_protocol.h"
 #include "cci_net_buf.h"
 #include "cci_util.h"
+#include "cci_log.h"
 #include "error_code.h"
 
 #if defined(WINDOWS)
@@ -92,7 +93,17 @@ int wsa_initialize ();
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
+#define API_SLOG(con) \
+  do { \
+    if ((con)->log_trace_api) \
+      cci_log_write ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
+  } while (false)
 
+#define API_ELOG(con, err) \
+  do { \
+    if ((con)->log_trace_api) \
+      cci_log_write ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
+  } while (false)
 
 #ifdef CCI_DEBUG
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)		DEBUG_MSG_FUNC
@@ -100,6 +111,9 @@ int wsa_initialize ();
 #else
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)
 #endif
+
+#define ELAPSED_MSECS(e, s) \
+    ((e).tv_sec - (s).tv_sec) * 1000 + ((e).tv_usec - (s).tv_usec) / 1000
 
 #define IS_OUT_TRAN_STATUS(CON_HANDLE) \
         (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) || \
@@ -168,19 +182,8 @@ static int connect_prepare_again (T_CON_HANDLE * con_handle,
 				  T_CCI_ERROR * err_buf);
 static const char *cci_get_err_msg_internal (int err_code);
 
-static int cci_parse_url_property (T_CON_HANDLE * con_handle, char *property);
-static int cci_parse_url_alter_host (T_CON_HANDLE * con_handle,
-				     char *alter_host);
-static int cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime);
-static int cci_parse_url_autocommit (T_CON_HANDLE * con_handle, char *mode);
 static int cci_get_new_handle_id (char *ip, int port, char *db_name,
 				  char *db_user, char *dbpasswd);
-static int cci_parse_url_login_timeout (T_CON_HANDLE * con_handle,
-					char *login_timeout);
-static int cci_parse_url_query_timeout (T_CON_HANDLE * con_handle,
-					char *query_timeout);
-static int cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE *
-						      con_handle, char *mode);
 static bool cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url,
 				     char *url, T_CCI_ERROR * err_buf);
 
@@ -379,8 +382,6 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 		 & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 	      RESET_START_TIME (con_handle);
 	    }
-
-	  con_handle->con_handle_id = con_handle_id;
 	}
       else
 	{
@@ -427,11 +428,11 @@ cci_connect_with_url (char *url, char *user, char *password)
   /* The NULL is same as "". */
   if (user == NULL)
     {
-      user = "";
+      user = (char *) "";
     }
   if (password == NULL)
     {
-      password = "";
+      password = (char *) "";
     }
 
   if (user[0] == '\0' && password[0] != '\0')
@@ -503,13 +504,13 @@ cci_connect_with_url (char *url, char *user, char *password)
   if (user[0] == '\0')
     {
       /* A user don't exist in the parameter and url */
-      user = "public";
+      user = (char *) "public";
     }
 
   p = strtok_r (NULL, ":", &q);
   if (use_url)
     {
-      password = (p == NULL) ? "" : p;
+      password = (p == NULL) ? (char *) "" : p;
     }
 
   con_handle_id = cci_get_new_handle_id (host, port, dbname, user, password);
@@ -527,7 +528,12 @@ cci_connect_with_url (char *url, char *user, char *password)
 		host, port, dbname, user, property ? '?' : '\0', property);
       if (property != NULL)
 	{
-	  error = cci_parse_url_property (con_handle, property);
+	  error = cci_conn_set_properties (con_handle, property);
+	  API_SLOG (con_handle);
+	  if (con_handle->log_trace_api)
+	    {
+	      cci_log_write (con_handle->logger, "URL[%s]", url);
+	    }
 	  if (error < 0)
 	    {
 	      hm_con_handle_free (con_handle_id);
@@ -568,293 +574,20 @@ ret:
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_connect_with_url return %d", con_handle_id));
 #endif
+  if (con_handle_id >= 0)
+    {
+      API_ELOG (con_handle, con_handle_id);
+    }
 
   return con_handle_id;
 }
 
 static int
-cci_parse_url_property (T_CON_HANDLE * con_handle, char *property)
-{
-  char *p, *q = NULL;
-
-  p = strtok_r (property, "&", &q);
-
-  while (p != NULL)
-    {
-      if (strncasecmp (p, "althosts", 8) == 0)
-	{
-	  if (cci_parse_url_alter_host (con_handle, p) < 0)
-	    {
-	      return CCI_ER_INVALID_URL;
-	    }
-	}
-      else if (strncasecmp (p, "rctime", 6) == 0)
-	{
-	  if (cci_parse_url_rctime (con_handle, p) < 0)
-	    {
-	      return CCI_ER_INVALID_URL;
-	    }
-	}
-      else if (strncasecmp (p, "autocommit", 10) == 0)
-	{
-	  if (cci_parse_url_autocommit (con_handle, p) < 0)
-	    {
-	      return CCI_ER_INVALID_URL;
-	    }
-	}
-      else if (strncasecmp (p, "login_timeout", 13) == 0)
-	{
-	  if (cci_parse_url_login_timeout (con_handle, p) < 0)
-	    {
-	      return CCI_ER_INVALID_URL;
-	    }
-	}
-      else if (strncasecmp (p, "query_timeout", 13) == 0)
-	{
-	  if (cci_parse_url_query_timeout (con_handle, p) < 0)
-	    {
-	      return CCI_ER_INVALID_URL;
-	    }
-	}
-      else if (strncasecmp (p, "disconnect_on_query_timeout", 27) == 0)
-	{
-	  if (cci_parse_url_disconnect_on_query_timeout (con_handle, p) < 0)
-	    {
-	      return CCI_ER_INVALID_URL;
-	    }
-	}
-      else
-	{
-	  return CCI_ER_INVALID_URL;
-	}
-
-      p = strtok_r (NULL, "&", &q);
-    }
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
-cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
-{
-  char *p, *q = NULL, *end;
-  int count = 1;
-  int error;
-  int port;
-
-  p = strtok_r (alter_host, "=", &q);
-  if (p == NULL || q == NULL)
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  memcpy (con_handle->alter_hosts[0].ip_addr, con_handle->ip_addr, 4);
-  con_handle->alter_hosts[0].port = con_handle->port;
-
-  do
-    {
-      p = strtok_r (NULL, ":", &q);
-      if (p == NULL)
-	{
-	  return CCI_ER_INVALID_URL;
-	}
-
-      error = hm_ip_str_to_addr (p, con_handle->alter_hosts[count].ip_addr);
-      if (error < 0)
-	{
-	  return error;
-	}
-
-      p = strtok_r (NULL, ",", &q);
-      if (p == NULL)
-	{
-	  return CCI_ER_INVALID_URL;
-	}
-
-      end = NULL;
-      port = (int) strtol (p, &end, 10);
-      if (port <= 0 || (end != NULL && end[0] != '\0'))
-	{
-	  return CCI_ER_INVALID_URL;
-	}
-      con_handle->alter_hosts[count].port = port;
-
-      count++;
-      if (count >= ALTER_HOST_MAX_SIZE)
-	{
-	  return CCI_ER_INVALID_URL;
-	}
-    }
-  while (q != NULL && q[0] != '\0');
-
-  con_handle->alter_host_count = count;
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
-cci_parse_url_login_timeout (T_CON_HANDLE * con_handle, char *str)
-{
-  char *p, *q = NULL, *end;
-  int login_timeout;
-
-  p = strtok_r (str, "=", &q);
-  if (p == NULL || q == NULL || q[0] == '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  end = NULL;
-  login_timeout = (int) strtol (q, &end, 10);
-  if (end != NULL && end[0] != '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  con_handle->login_timeout = login_timeout;
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
-cci_parse_url_query_timeout (T_CON_HANDLE * con_handle, char *str)
-{
-  char *p, *q = NULL, *end;
-  int query_timeout;
-
-  p = strtok_r (str, "=", &q);
-  if (p == NULL || q == NULL || q[0] == '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  end = NULL;
-  query_timeout = (int) strtol (q, &end, 10);
-  if (end != NULL && end[0] != '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  con_handle->query_timeout = query_timeout;
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
-cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime)
-{
-  char *p, *q = NULL, *end;
-  int rc_time;
-
-  p = strtok_r (rctime, "=", &q);
-  if (p == NULL || q == NULL || q[0] == '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  end = NULL;
-  rc_time = (int) strtol (q, &end, 10);
-  if (rc_time < 0 || (end != NULL && end[0] != '\0'))
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  con_handle->rc_time = rc_time;
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
-cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE * con_handle,
-					   char *mode)
-{
-  char *p, *q = NULL;
-
-  p = strtok_r (mode, "=", &q);
-  if (p == NULL || q == NULL || q[0] == '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  if (strncasecmp (q, "true", 4) == 0)
-    {
-      con_handle->disconnect_on_query_timeout = true;
-    }
-  else if (strncasecmp (q, "on", 2) == 0)
-    {
-      con_handle->disconnect_on_query_timeout = true;
-    }
-  else if (strncasecmp (q, "yes", 3) == 0)
-    {
-      con_handle->disconnect_on_query_timeout = true;
-    }
-  else if (strncasecmp (q, "false", 5) == 0)
-    {
-      con_handle->disconnect_on_query_timeout = false;
-    }
-  else if (strncasecmp (q, "off", 3) == 0)
-    {
-      con_handle->disconnect_on_query_timeout = false;
-    }
-  else if (strncasecmp (q, "no", 2) == 0)
-    {
-      con_handle->disconnect_on_query_timeout = false;
-    }
-  else
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
-cci_parse_url_autocommit (T_CON_HANDLE * con_handle, char *mode)
-{
-  char *p, *q = NULL;
-
-  p = strtok_r (mode, "=", &q);
-  if (p == NULL || q == NULL || q[0] == '\0')
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  if (strncasecmp (q, "true", 5) == 0)
-    {
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-    }
-  else if (strncasecmp (q, "on", 3) == 0)
-    {
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-    }
-  else if (strncasecmp (q, "yes", 4) == 0)
-    {
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-    }
-  else if (strncasecmp (q, "false", 6) == 0)
-    {
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
-    }
-  else if (strncasecmp (q, "off", 4) == 0)
-    {
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
-    }
-  else if (strncasecmp (q, "no", 3) == 0)
-    {
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
-    }
-  else
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  return CCI_ER_NO_ERROR;
-}
-
-static int
 cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 {
-  int err;
+  int err = CCI_ER_NO_ERROR;
+
+  API_SLOG (con_handle);
 
   err = qe_end_session (con_handle, err_buf);
   if (IS_ER_COMMUNICATION (err) &&
@@ -873,6 +606,7 @@ cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 	}
     }
 
+  API_ELOG (con_handle, err);
   return err;
 }
 
@@ -912,11 +646,18 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 	}
     }
 
+  API_SLOG (con_handle);
+
   if (con_handle->datasource)
     {
       con_handle->ref_count = 0;
       cas_end_session (con_handle, err_buf);
       cci_datasource_release (con_handle->datasource, con_h_id, err_buf);
+      if (con_handle->log_trace_api)
+	{
+	  cci_log_write (con_handle->logger,
+			 "[%04d][API][E][cci_datasource_release]", con_h_id);
+	}
     }
   else if (con_handle->broker_info[BROKER_INFO_CCI_PCONNECT]
 	   && hm_put_con_to_pool (con_h_id) >= 0)
@@ -929,6 +670,7 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
        * do about it at this point
        */
       cas_end_session (con_handle, err_buf);
+      API_ELOG (con_handle, 0);
     }
   else
     {
@@ -937,6 +679,8 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
        * do about it at this point.
        */
       err_code = qe_con_close (con_handle);
+      API_ELOG (con_handle, err_code);
+
       if (err_code >= 0)
 	{
 	  MUTEX_LOCK (con_handle_table_mutex);
@@ -958,6 +702,7 @@ cci_cancel (int con_h_id)
 {
   T_CON_HANDLE *con_handle;
   int ref_count;
+  int err;
 
   MUTEX_LOCK (con_handle_table_mutex);
 
@@ -977,7 +722,11 @@ cci_cancel (int con_h_id)
       return 0;
     }
 
-  return net_cancel_request (con_handle);
+  API_SLOG (con_handle);
+  err = net_cancel_request (con_handle);
+  API_ELOG (con_handle, err);
+
+  return err;
 }
 
 int
@@ -1017,10 +766,12 @@ cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
 	}
     }
 
+  API_SLOG (con_handle);
   if (con_handle->con_status != CCI_CON_STATUS_OUT_TRAN)
     {
       err_code = qe_end_tran (con_handle, type, err_buf);
     }
+  API_ELOG (con_handle, err_code);
 
   con_handle->ref_count = 0;
 
@@ -1066,6 +817,12 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	  MUTEX_UNLOCK (con_handle_table_mutex);
 	  break;
 	}
+    }
+
+  API_SLOG (con_handle);
+  if (con_handle->log_trace_api)
+    {
+      cci_log_write (con_handle->logger, "FLAG[%d],SQL[%s]", flag, sql_stmt);
     }
 
   if (IS_STMT_POOL (con_handle))
@@ -1129,6 +886,7 @@ prepare_end:
   RESET_START_TIME (con_handle);
   con_handle->ref_count = 0;
 
+  API_ELOG (con_handle, req_handle_id);
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("(%d:%d)pre: %d %s", con_id,
@@ -1153,6 +911,7 @@ prepare_error:
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
 
+  API_ELOG (con_handle, err_code);
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("(%d:%d)cci_prepare error: code(%d), flag(%d) %s", con_id,
@@ -1449,6 +1208,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
   int err_code = 0;
+  struct timeval st, et;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1481,6 +1241,18 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 	  MUTEX_UNLOCK (con_handle_table_mutex);
 	  break;
 	}
+    }
+
+  if (con_handle->log_slow_queries)
+    {
+      cci_gettimeofday (&st, NULL);
+    }
+
+  API_SLOG (con_handle);
+  if (con_handle->log_trace_api)
+    {
+      cci_log_write (con_handle->logger, "FLAG[%d], MAX_COL_SIZE[%d]",
+		     flag, max_col_size);
     }
 
   if (flag & CCI_EXEC_ONLY_QUERY_PLAN)
@@ -1570,6 +1342,20 @@ execute_end:
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
 
+  API_ELOG (con_handle, err_code);
+  if (con_handle->log_slow_queries)
+    {
+      long elapsed;
+
+      cci_gettimeofday (&et, NULL);
+      elapsed = ELAPSED_MSECS (et, st);
+      if (elapsed > con_handle->slow_query_threshold_millis)
+	{
+	  cci_log_write (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
+			 con_handle->id, elapsed, req_handle->sql_text);
+	}
+    }
+
   return err_code;
 }
 
@@ -1582,6 +1368,7 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
   T_REQ_HANDLE *req_handle = NULL;
   int err_code = 0;
   int req_handle_id;
+  struct timeval st, et;
 
   if (exec_retval != NULL)
     {
@@ -1625,6 +1412,18 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
 	}
     }
 
+  if (con_handle->log_slow_queries)
+    {
+      cci_gettimeofday (&st, NULL);
+    }
+
+  API_SLOG (con_handle);
+  if (con_handle->log_trace_api)
+    {
+      cci_log_write (con_handle->logger, "MAX_COL_SIZE[%d], SQL[%s]",
+		     max_col_size, sql_stmt);
+    }
+
   req_handle_id = hm_req_handle_alloc (con_id, &req_handle);
   if (req_handle_id < 0)
     {
@@ -1642,9 +1441,23 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
       *exec_retval = err_code;
     }
 
+  API_ELOG (con_handle, err_code);
   if (err_code < 0)
     {
       goto prepare_execute_error;
+    }
+
+  if (con_handle->log_slow_queries)
+    {
+      long elapsed;
+
+      cci_gettimeofday (&et, NULL);
+      elapsed = ELAPSED_MSECS (et, st);
+      if (elapsed > con_handle->slow_query_threshold_millis)
+	{
+	  cci_log_write (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
+			 con_handle->id, elapsed, sql_stmt);
+	}
     }
 
   RESET_START_TIME (con_handle);
@@ -1965,6 +1778,8 @@ cci_close_req_handle (int req_h_id)
 	}
     }
 
+  API_SLOG (con_handle);
+
   if (IS_STMT_POOL (con_handle))
     {
       if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE &&
@@ -1986,6 +1801,8 @@ cci_close_req_handle (int req_h_id)
   hm_req_handle_free (con_handle, req_h_id, req_handle);
 
   con_handle->ref_count = 0;
+
+  API_ELOG (con_handle, err_code);
   return err_code;
 }
 
@@ -2551,6 +2368,7 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 	}
     }
 
+  API_SLOG (con_handle);
   if (IS_OUT_TRAN_STATUS (con_handle))
     {
       err_code = cas_connect (con_handle, NULL);
@@ -2562,6 +2380,8 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
     }
 
   con_handle->ref_count = 0;
+
+  API_ELOG (con_handle, err_code);
   return err_code;
 }
 
@@ -4614,9 +4434,8 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("(%d)cas_connect_with_ret",
-				    con_handle->con_handle_id));
+				    con_handle->id));
 #endif
-
   err_code = cas_connect_internal (con_handle, err_buf, connect);
 
   /* req_handle_table should be managed by list too. */
@@ -5530,11 +5349,13 @@ cci_disconnect_force (int con_h_id, bool try_close)
       return;
     }
 
+  API_SLOG (con_handle);
   if (try_close)
     {
       qe_con_close (con_handle);
     }
 
+  API_ELOG (con_handle, 0);
   hm_req_handle_free_all (con_handle);
   if (!IS_INVALID_SOCKET (con_handle->sock_fd))
     {

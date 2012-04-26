@@ -67,13 +67,12 @@
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
 
-#define CON_HANDLE_ID_FACTOR            1000000
-
 #define MAX_CON_HANDLE                  1024
 
 #define REQ_HANDLE_ALLOC_SIZE           256
 
 #define CCI_MAX_CONNECTION_POOL         256
+
 
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
@@ -239,6 +238,7 @@ hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user,
     }
 
   con_handle_table[handle_id - 1] = con_handle;
+  con_handle->id = handle_id;
 
   return (handle_id);
 
@@ -303,7 +303,7 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
   ++(con_handle->req_handle_count);
 
   *ret_req_handle = req_handle;
-  return (con_id * CON_HANDLE_ID_FACTOR + req_handle_id);
+  return MAKE_REQ_ID (con_id, req_handle_id);
 }
 
 int
@@ -373,8 +373,8 @@ hm_find_req_handle (int req_handle_id, T_CON_HANDLE ** ret_con_h)
       return NULL;
     }
 
-  con_id = req_handle_id / CON_HANDLE_ID_FACTOR;
-  req_id = req_handle_id % CON_HANDLE_ID_FACTOR;
+  con_id = GET_CON_ID (req_handle_id);
+  req_id = GET_REQ_ID (req_handle_id);
 
   if (con_id < 1 || req_id < 1)
     {
@@ -406,7 +406,7 @@ hm_req_handle_free (T_CON_HANDLE * con_handle, int req_h_id,
 {
   req_handle_content_free (req_handle, 0);
   FREE_MEM (req_handle);
-  con_handle->req_handle_table[req_h_id % CON_HANDLE_ID_FACTOR - 1] = NULL;
+  con_handle->req_handle_table[GET_REQ_ID (req_h_id) - 1] = NULL;
   --(con_handle->req_handle_count);
 }
 
@@ -804,6 +804,7 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
     {
       mht_destroy (con_handle->stmt_pool, true, true);
     }
+  FREE_MEM (con_handle->log_filename);
 }
 
 static void

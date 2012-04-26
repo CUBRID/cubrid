@@ -71,6 +71,12 @@
 
 #define DEFERRED_CLOSE_HANDLE_ALLOC_SIZE        256
 
+#define CON_HANDLE_ID_FACTOR			1000000
+
+#define GET_CON_ID(H) ((H) / CON_HANDLE_ID_FACTOR)
+#define GET_REQ_ID(H) ((H) % CON_HANDLE_ID_FACTOR)
+#define MAKE_REQ_ID(C,R) ((C) * CON_HANDLE_ID_FACTOR + (R))
+
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
@@ -174,6 +180,7 @@ typedef struct
 
 typedef struct
 {
+  int id;
   char is_retry;
   char con_status;
   CCI_AUTOCOMMIT_MODE autocommit_mode;
@@ -185,8 +192,6 @@ typedef struct
   char url[SRV_CON_URL_SIZE];
   SOCKET sock_fd;
   int ref_count;
-  T_CCI_TRAN_ISOLATION isolation_level;
-  int lock_timeout;
   int max_req_handle;
   T_EXEC_THR_ARG thr_arg;
   T_REQ_HANDLE **req_handle_table;
@@ -194,24 +199,39 @@ typedef struct
   int cas_pid;
   char broker_info[BROKER_INFO_SIZE];
   char cas_info[CAS_INFO_SIZE];
-  char *charset;
   T_CCI_SESSION_ID session_id;
-  /* HA */
-  T_ALTER_HOST alter_hosts[ALTER_HOST_MAX_SIZE];
-  int alter_host_count;
-  int alter_host_id;		/* current connected alternative host id */
-  int rc_time;			/* failback try duration */
   T_CCI_DATASOURCE *datasource;
   MHT_TABLE *stmt_pool;
+
+  /* HA */
+  int alter_host_count;
+  int alter_host_id;		/* current connected alternative host id */
+
+  /* The connection properties are not supported by the URL */
+  T_CCI_TRAN_ISOLATION isolation_level;
+  int lock_timeout;
+  char *charset;
+
+  /* connection properties */
+  T_ALTER_HOST alter_hosts[ALTER_HOST_MAX_SIZE];
+  int rc_time;			/* failback try duration */
   int login_timeout;
   int query_timeout;
   char disconnect_on_query_timeout;
+  char *log_filename;
+  char log_on_exception;
+  char log_slow_queries;
+  int slow_query_threshold_millis;
+  char log_trace_api;
+  char log_trace_network;
+
+  /* to check timeout */
   struct timeval start_time;	/* function start time to check timeout */
   int current_timeout;		/* login_timeout or query_timeout */
   int deferred_max_close_handle_count;
   int *deferred_close_handle_list;
   int deferred_close_handle_count;
-  int con_handle_id;
+  void *logger;
 } T_CON_HANDLE;
 
 /************************************************************************
@@ -250,6 +270,8 @@ extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
 
 extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
 extern int hm_req_get_from_pool (T_CON_HANDLE * con, char *sql);
+
+extern int cci_conn_set_properties (T_CON_HANDLE * handle, char *properties);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/
