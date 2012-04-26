@@ -58,6 +58,18 @@
  * PUBLIC DEFINITIONS							*
  ************************************************************************/
 
+#define API_SLOG(con) \
+  do { \
+    if ((con)->log_trace_api) \
+      cci_log_write ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
+  } while (false)
+
+#define API_ELOG(con, err) \
+  do { \
+    if ((con)->log_trace_api) \
+      cci_log_write ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
+  } while (false)
+
 #define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)
 

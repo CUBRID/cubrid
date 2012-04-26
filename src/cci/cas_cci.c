@@ -93,18 +93,6 @@ int wsa_initialize ();
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
-#define API_SLOG(con) \
-  do { \
-    if ((con)->log_trace_api) \
-      cci_log_write ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
-  } while (false)
-
-#define API_ELOG(con, err) \
-  do { \
-    if ((con)->log_trace_api) \
-      cci_log_write ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
-  } while (false)
-
 #ifdef CCI_DEBUG
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)		DEBUG_MSG_FUNC
 #define DEBUG_STR(STR)			((STR) == NULL ? "NULL" : (STR))
