@@ -3965,6 +3965,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_UTC_DATE:
 	case PT_LOCAL_TRANSACTION_ID:
 	case PT_CURRENT_USER:
+	case PT_EVALUATE_VARIABLE:
 	  return true;
 	case PT_TO_CHAR:
 	case PT_TO_DATE:
