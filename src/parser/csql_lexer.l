@@ -462,6 +462,9 @@ extern int yycolumn_end;
 [oO][cC][tT][eE][tT]_[lL][eE][nN][gG][tT][hH]				{ begin_token(yytext);   return OCTET_LENGTH; }
 [oO][fF]								{ begin_token(yytext);   return OF; }
 [oO][fF][fF]								{ begin_token(yytext);   return OFF_; }
+[oO][fF][fF][sS][eE][tT]				                { begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return OFFSET; }
 [oO][iI][dD]								{ begin_token(yytext);   return OID_; }
 [oO][nN]								{ begin_token(yytext);   return ON_; }
 [oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }

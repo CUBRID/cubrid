@@ -304,6 +304,7 @@ static KEYWORD_RECORD keywords[] = {
   {OBJECT, "OBJECT", 0},
   {OCTET_LENGTH, "OCTET_LENGTH", 0},
   {OF, "OF", 0},
+  {OFFSET, "OFFSET", 1},
   {OFF_, "OFF", 0},
   {OID_, "OID", 0},
   {ON_, "ON", 0},

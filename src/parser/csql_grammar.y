@@ -861,6 +861,8 @@ typedef struct YYLTYPE
 %type <node> search_condition_query
 %type <node> search_condition_expression
 %type <node> opt_uint_or_host_input
+%type <node> opt_select_limit_clause
+%type <node> limit_options
 %type <node> opt_upd_del_limit_clause
 %type <node> truncate_stmt
 %type <node> do_stmt
@@ -1392,6 +1394,7 @@ typedef struct YYLTYPE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
+%token <cptr> OFFSET
 %token <cptr> PARTITION
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
@@ -11860,14 +11863,12 @@ opt_uint_or_host_input
 
 opt_select_limit_clause
 	: /* empty */
-	| LIMIT opt_uint_or_host_input
-		{{
+	| LIMIT limit_options
+	        {{
 
-			PT_NODE *node = parser_top_orderby_node ();
+			PT_NODE *node = $2;
 			if (node)
 			  {
-			    node->info.query.limit = $2;
-
 			    if (node->node_type == PT_SELECT) 
 			      {
 				if (!node->info.query.q.select.from)
@@ -11924,81 +11925,59 @@ opt_select_limit_clause
 					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "ORDERBY_NUM()");
 				  }
 			      }
-
 			  }
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| LIMIT opt_uint_or_host_input ',' opt_uint_or_host_input
+	;
+
+limit_options
+	: opt_uint_or_host_input
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
 			if (node)
 			  {
-			    PT_NODE *limit1 = $2;
-			    PT_NODE *limit2 = $4;
+			    node->info.query.limit = $1;
+			    $$ = node;
+			  }
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| opt_uint_or_host_input ',' opt_uint_or_host_input
+		{{
+
+			PT_NODE *node = parser_top_orderby_node ();
+			if (node)
+			  {
+			    PT_NODE *limit1 = $1;
+			    PT_NODE *limit2 = $3;
 			    if (limit1)
 			      {
 				limit1->next = limit2;
 			      }
 			    node->info.query.limit = limit1;
-
-			    if (node->node_type == PT_SELECT)
-			      {
-				if (!node->info.query.q.select.from)
-				  {
-				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				    	   MSGCAT_SEMANTIC_NO_TABLES_USED);
-				  }
-				  
-				/* not dummy */
-				PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_DUMMY);
-
-				/* For queries that have LIMIT clause don't allow
-				 * inst_num, groupby_num, orderby_num in where, having, for
-				 * respectively.
-				 */
-				if (node->info.query.q.select.having)
-				  {
-				    bool grbynum_flag = false;
-				    (void) parser_walk_tree (this_parser, node->info.query.q.select.having,
-				    			 pt_check_groupbynum_pre, NULL,
-				    			 pt_check_groupbynum_post, &grbynum_flag);
-				    if (grbynum_flag)
-				      {
-				        PT_ERRORmf(this_parser, node->info.query.q.select.having,
-				    	       MSGCAT_SET_PARSER_SEMANTIC,
-				    	       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "GROUPBY_NUM()");
-				      }
-				  }
-				if (node->info.query.q.select.where)
-				  {
-				    bool instnum_flag = false;
-				    (void) parser_walk_tree (this_parser, node->info.query.q.select.where,
-				    			 pt_check_instnum_pre, NULL,
-				    			 pt_check_instnum_post, &instnum_flag);
-				    if (instnum_flag)
-				      {
-				        PT_ERRORmf(this_parser, node->info.query.q.select.where,
-				    	       MSGCAT_SET_PARSER_SEMANTIC,
-				    	       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
-				      }
-				  }
-			      }
-
-			    if (node->info.query.orderby_for)
-			      {
-				bool ordbynum_flag = false;
-				(void) parser_walk_tree (this_parser, node->info.query.orderby_for,
-							 pt_check_orderbynum_pre, NULL,
-							 pt_check_orderbynum_post, &ordbynum_flag);
-				if (ordbynum_flag)
-				  {
-				    PT_ERRORmf(this_parser, node->info.query.orderby_for,
-					       MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "ORDERBY_NUM()");
-				  }
-			      }
+			    $$ = node;
 			  }
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| opt_uint_or_host_input OFFSET opt_uint_or_host_input
+		{{
+
+			PT_NODE *node = parser_top_orderby_node ();
+			if (node)
+			  {
+			    PT_NODE *limit1 = $3;
+			    PT_NODE *limit2 = $1;
+			    if (limit1)
+			      {
+				limit1->next = limit2;
+			      }
+			    node->info.query.limit = limit1;
+			    $$ = node;
+			  }
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
@@ -17345,6 +17324,16 @@ identifier
 
 		DBG_PRINT}}
 	| NOMINVALUE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| OFFSET
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
