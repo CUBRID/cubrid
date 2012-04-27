@@ -370,6 +370,14 @@
 					RelativePath="..\..\src\cci\cci_common.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_log.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_properties.c"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter

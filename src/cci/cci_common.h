@@ -36,6 +36,11 @@
 #ifndef	_CCI_COMMON_H_
 #define	_CCI_COMMON_H_
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #ident "$Id$"
 
 /************************************************************************
@@ -57,6 +62,13 @@
 /************************************************************************
  * PUBLIC DEFINITIONS							*
  ************************************************************************/
+
+#if defined(WINDOWS)
+#define __func__		__FUNCTION__
+#define PATH_MAX		256
+#define mkdir(dir, mode)        _mkdir(dir)
+#define localtime_r(time, tm)   localtime_s((tm), (const time_t *)(time))
+#endif
 
 #define API_SLOG(con) \
   do { \
@@ -458,5 +470,9 @@ extern CCI_MALLOC_FUNCTION cci_malloc;
 extern CCI_FREE_FUNCTION cci_free;
 extern CCI_REALLOC_FUNCTION cci_realloc;
 extern CCI_CALLOC_FUNCTION cci_calloc;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _CCI_COMMON_H_ */

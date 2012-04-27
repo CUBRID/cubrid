@@ -35,7 +35,11 @@
 
 #include <errno.h>
 #include <stdarg.h>
+#if defined(WINDOWS)
+#include <time.h>
+#else
 #include <sys/time.h>
+#endif
 
 #include <iostream>
 #include <fstream>
@@ -50,6 +54,7 @@
 
 using namespace std;
 
+namespace cci {
 class _Mutex
 {
 private:
@@ -78,13 +83,14 @@ public:
     return cci_mutex_unlock(&mutex);
   }
 };
+}
 
 class _Logger
 {
 private:
   // members
   ofstream out;
-  _Mutex critical;
+  cci::_Mutex critical;
   string base;
   time_t roleTime;
 
@@ -96,7 +102,7 @@ private:
     struct tm cal;
     char buf[32];
 
-    gettimeofday(&tv, NULL);
+    cci_gettimeofday(&tv, NULL);
     localtime_r(&tv.tv_sec, &cal);
     cal.tm_year += 1900;
     cal.tm_mon += 1;
@@ -121,7 +127,6 @@ private:
   bool
   isRole(int secs)
   {
-    struct tm cal;
     time_t role = roleTime / secs * secs;
     time_t now = time(0);
 
@@ -236,7 +241,7 @@ cci_log_add(const char *path)
     {
       logger = new _Logger(path);
     }
-  catch (int e)
+  catch (...)
     {
       if (logger != NULL)
         {

@@ -40,8 +40,10 @@
  */
 #include "config.h"
 #include <string.h>
-#include <strings.h>
 #include <stdlib.h>
+#if defined(WINDOWS)
+#include <direct.h>
+#endif
 
 /*
  * OTHER IMPORTED HEADER FILES
