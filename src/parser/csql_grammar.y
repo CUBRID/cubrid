@@ -3241,7 +3241,6 @@ drop_stmt
 	  ON_						/* 7 */
 	  only_class_name				/* 8 */
 	  index_column_name_list			/* 9 */
-	  opt_where_clause				/* 10 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3260,7 +3259,6 @@ drop_stmt
 
 			    node->info.index.indexed_class = ocs;
 			    node->info.index.column_names = $9;
-			    node->info.index.where = $10;
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
@@ -3279,7 +3277,6 @@ drop_stmt
 	  ON_						/* 8 */
 	  only_class_name				/* 9 */
 	  opt_index_column_name_list			/* 10 */
-	  opt_where_clause				/* 11 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3301,7 +3298,6 @@ drop_stmt
 			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
 			    node->info.index.indexed_class = ocs;
 			    node->info.index.column_names = $10;
-			    node->info.index.where = $11;
 
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)

@@ -3284,10 +3284,8 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 				 statement->info.index.reverse,
 				 statement->info.index.unique,
 				 statement->info.index.indexed_class,
-				 statement->info.index.column_names,
-				 statement->info.index.prefix_length,
-				 statement->info.index.where,
-				 statement->info.index.func_pos,
+				 statement->info.index.column_names, NULL,
+				 NULL, statement->info.index.func_pos,
 				 statement->info.index.func_no_args,
 				 statement->info.index.function_expr,
 				 obj, DO_INDEX_DROP);
