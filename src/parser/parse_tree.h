@@ -1344,6 +1344,8 @@ typedef struct pt_check_option_info PT_CHECK_OPTION_INFO;
 
 typedef struct pt_agg_info PT_AGG_INFO;
 
+typedef struct pt_filter_index_info PT_FILTER_INDEX_INFO;
+
 typedef struct pt_host_vars PT_HOST_VARS;
 
 typedef struct cursor_id PT_CURSOR_ID;
@@ -2650,6 +2652,12 @@ struct pt_agg_info
   int arg_list_spec_num;	/* for all       */
   int depth;			/* for all          */
   bool agg_found;		/* for all          */
+};
+
+struct pt_filter_index_info
+{
+  int depth;			/* expression depth */
+  bool is_valid_expr;		/* true, if invalid filter index expression */
 };
 
 /*

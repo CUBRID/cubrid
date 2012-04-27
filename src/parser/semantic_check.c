@@ -315,11 +315,16 @@ static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser,
 static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser,
 					    PT_NODE * node, void *arg,
 					    int *continue_walk);
-static PT_NODE *pt_check_filter_index_expr (PARSER_CONTEXT * parser,
-					    PT_NODE * node,
-					    void *arg, int *continue_walk);
-static void pt_check_filter_index_expr_tree (PARSER_CONTEXT * parser,
-					     PT_NODE * node);
+static PT_NODE *pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser,
+						PT_NODE * node,
+						void *arg,
+						int *continue_walk);
+static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser,
+						 PT_NODE * node,
+						 void *arg,
+						 int *continue_walk);
+static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
+					PT_NODE * node);
 
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
@@ -7232,7 +7237,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* if this is a filter index, check that the filter is a valid filter
      expression. */
-  pt_check_filter_index_expr_tree (parser, node->info.index.where);
+  pt_check_filter_index_expr (parser, node->info.index.where);
 }
 
 /*
@@ -9184,13 +9189,31 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
 	  if (!pt_has_error (parser) && node->node_type == PT_ALTER_INDEX)
 	    {
-	      pt_check_filter_index_expr_tree (parser,
-					       node->info.index.where);
+	      pt_check_filter_index_expr (parser, node->info.index.where);
 	    }
 
 	  if (!pt_has_error (parser))
 	    {
 	      node = pt_semantic_type (parser, node, info);
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      if (node->info.index.where &&
+		  node->info.index.where->node_type == PT_VALUE &&
+		  node->info.index.where->info.value.db_value_is_initialized)
+		{
+		  DB_VALUE *db_value =
+		    &(node->info.index.where->info.value.db_value);
+		  if (DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER)
+		    {
+		      if (DB_GET_INT (db_value) == 0)
+			{
+			  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+			}
+		    }
+		}
 	    }
 
 	  if (node && !pt_has_error (parser))
@@ -12674,17 +12697,17 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_check_filter_index_expr_tree () - verify if an expression tree is
- *				        allowed to be used in the filter
- *				        expression of an index
+ * pt_check_filter_index_expr () - verify if an expression tree is allowed
+ *				   to be used in the filter expression of an
+ *				   index
  * return : true if expression tree is valid, false otherwise
  * parser (in)	: parser context
  * node (in)	: root node of expression tree
  */
 static void
-pt_check_filter_index_expr_tree (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  bool is_filter_valid = false;
+  PT_FILTER_INDEX_INFO info;
 
   if (node == NULL)
     {
@@ -12692,14 +12715,40 @@ pt_check_filter_index_expr_tree (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  (void) parser_walk_tree (parser, node, pt_check_filter_index_expr,
-			   &is_filter_valid, NULL, NULL);
+  info.is_valid_expr = true;
+  info.depth = 0;
+  (void) parser_walk_tree (parser, node, pt_check_filter_index_expr_pre,
+			   &info, pt_check_filter_index_expr_post, &info);
 
-  if (!is_filter_valid)
+  if (info.is_valid_expr == false)
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
     }
+}
+
+/*
+ * pt_check_filter_index_expr_post () 
+ *
+ * return : current node
+ * parser (in)	: parser context
+ * node (in)	: node
+ * arg (in/out)	: (is_valid_expr, expression depth)
+ * continue_walk (in) : continue walk
+ */
+static PT_NODE *
+pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node,
+				 void *arg, int *continue_walk)
+{
+  PT_FILTER_INDEX_INFO *info = (PT_FILTER_INDEX_INFO *) arg;
+  assert (info != NULL);
+
+  if (node->node_type == PT_EXPR || node->node_type == PT_FUNCTION)
+    {
+      info->depth--;
+    }
+
+  return node;
 }
 
 /*
@@ -12708,19 +12757,19 @@ pt_check_filter_index_expr_tree (PARSER_CONTEXT * parser, PT_NODE * node)
  * return : current node
  * parser (in)	: parser context
  * node (in)	: node
- * arg (in/out)	: boolean value which is true if a node may be used in a
- *		  filter expression
+ * arg (in/out)	: (is_valid_expr, expression depth)
  * continue_walk (in) : continue walk
  */
 static PT_NODE *
-pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
-			    void *arg, int *continue_walk)
+pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+				void *arg, int *continue_walk)
 {
   bool *is_valid = (bool *) arg;
+  PT_FILTER_INDEX_INFO *info = (PT_FILTER_INDEX_INFO *) arg;
+  assert (info != NULL);
 
-  if (node == NULL || *continue_walk == PT_STOP_WALK)
+  if (node == NULL || info->is_valid_expr == false)
     {
-      *is_valid = false;
       return node;
     }
   *continue_walk = PT_CONTINUE_WALK;
@@ -12728,6 +12777,7 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
   switch (node->node_type)
     {
     case PT_EXPR:
+      info->depth++;
       /* only allow expressions that have a deterministic result */
       switch (node->info.expr.op)
 	{
@@ -12920,17 +12970,16 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_HEX:
 	case PT_ASCII:
 	case PT_CONV:
-	  *is_valid = true;
-	  *continue_walk = PT_CONTINUE_WALK;
+	  /* valid expression, nothing to do */
 	  break;
 	default:
-	  *is_valid = false;
-	  *continue_walk = PT_STOP_WALK;
+	  info->is_valid_expr = false;
 	  break;
 	}
       break;
 
     case PT_FUNCTION:
+      info->depth++;
       /* do not allow aggregates and analytic functions */
       switch (node->info.function.function_type)
 	{
@@ -12941,40 +12990,49 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
 	     argument IN (values list) expression */
 	case F_ELT:
 	case F_INSERT_SUBSTRING:
-	  *is_valid = true;
-	  *continue_walk = PT_CONTINUE_WALK;
+	  /* valid expression, nothing to do */
+	  break;
 	default:
-	  *is_valid = false;
-	  *continue_walk = PT_STOP_WALK;
+	  info->is_valid_expr = false;
 	  break;
 	}
       break;
 
     case PT_NAME:
       /* only allow attribute names */
-      if (node->info.name.meta_class == PT_META_ATTR
-	  || node->info.name.meta_class == PT_NORMAL)
+      if (node->info.name.meta_class != PT_META_ATTR
+	  && node->info.name.meta_class != PT_NORMAL)
 	{
-	  *is_valid = true;
-	  *continue_walk = PT_CONTINUE_WALK;
-	}
-      else
-	{
-	  *is_valid = false;
-	  *continue_walk = PT_STOP_WALK;
+	  /* valid expression, nothing to do */
+	  info->is_valid_expr = false;
 	}
       break;
 
     case PT_VALUE:
+      if (info->depth == 0)
+	{
+	  if (node->info.value.db_value_is_initialized &&
+	      DB_VALUE_TYPE (&node->info.value.db_value) == DB_TYPE_INTEGER)
+	    {
+	      if (DB_GET_INT (&node->info.value.db_value) == 0)
+		{
+		  info->is_valid_expr = false;
+		}
+	    }
+	}
+      break;
     case PT_DATA_TYPE:
-      *is_valid = true;
-      *continue_walk = PT_CONTINUE_WALK;
+      /* valid expression, nothing to do */
       break;
 
     default:
-      *is_valid = false;
-      *continue_walk = PT_STOP_WALK;
+      info->is_valid_expr = false;
       break;
+    }
+
+  if (info->is_valid_expr == false)
+    {
+      *continue_walk = PT_STOP_WALK;
     }
 
   return node;
