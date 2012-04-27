@@ -143,7 +143,7 @@ cci_url_get_int (char *str, int *value)
 static int
 cci_url_set_value (T_URL_PROPERTY * property, char *value)
 {
-  int error;
+  int error = CCI_ER_NO_ERROR;
 
   switch (property->type)
     {
@@ -251,6 +251,10 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 	}
 
       host = strtok_r (token, ":", &save_alter);
+      if (host == NULL)
+	{
+	  return CCI_ER_INVALID_URL;
+	}
       error = hm_ip_str_to_addr (host, hosts[i].ip_addr);
       if (error < 0)
 	{
@@ -258,6 +262,10 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 	}
 
       port = strtok_r (NULL, ":", &save_alter);
+      if (port == NULL)
+	{
+	  return CCI_ER_INVALID_URL;
+	}
       v = strtol (port, &end, 10);
       if (v <= 0 || (end != NULL && end[0] != '\0'))
 	{

@@ -441,7 +441,7 @@ cci_connect_with_url (char *url, char *user, char *password)
 #endif
 
   strncpy (buf, url, LINE_MAX);
-
+  buf[LINE_MAX - 1] = '\0';
   property = strchr (buf, '?');
   if (property != NULL)
     {
