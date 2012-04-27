@@ -33,35 +33,6 @@ remember_CXXFLAGS="$CXXFLAGS"
 remember_LDFLAGS="$LDFLAGS"
 AC_PROG_CC
 AC_PROG_CXX
-AC_PROG_LIBTOOL
-AC_PROG_RANLIB
-AC_PROG_INSTALL
-AC_PROG_YACC
-AC_PROG_LEX
-CFLAGS="$remember_CFLAGS"
-CXXFLAGS="$remember_CXXFLAGS"
-LDFLAGS="$remember_LDFLAGS"
-
-# Patch libtool to not use rpath
-sed < libtool > libtool-2 's/^hardcode_libdir_flag_spec.*$'/'hardcode_libdir_flag_spec=" -D__LIBTOOL_NO_RPATH__ "/'
-mv libtool-2 libtool
-chmod 755 libtool
-
-# System type
-SYSTEM_TYPE="$host_vendor-$host_os"
-MACHINE_TYPE="$host_cpu"
-
-case $SYSTEM_TYPE in
-	*linux*) SYS_DEFS="-DGCC -DLINUX -D_GNU_SOURCE -DI386"
-		 SYS_LIBS="" ;;
-	*)       SYS_DEFS=""
-		 SYS_LIBS="" ;;
-esac
-
-case $MACHINE_TYPE in
-	x86*|i*86)	SYS_DEFS="$SYS_DEFS -DX86" ;;
-	*)		;;
-esac
 
 # Checks bit model feature.
 AC_ARG_ENABLE([64bit],
@@ -93,6 +64,36 @@ fi
 AM_CONDITIONAL([BUILD_64], [test "$enable_64bit" = "yes"])
 
 export BIT_MODEL SYSTEM_TYPE MACHINE_TYPE CC CXX
+
+AC_PROG_LIBTOOL
+AC_PROG_RANLIB
+AC_PROG_INSTALL
+AC_PROG_YACC
+AC_PROG_LEX
+CFLAGS="$remember_CFLAGS"
+CXXFLAGS="$remember_CXXFLAGS"
+LDFLAGS="$remember_LDFLAGS"
+
+# Patch libtool to not use rpath
+sed < libtool > libtool-2 's/^hardcode_libdir_flag_spec.*$'/'hardcode_libdir_flag_spec=" -D__LIBTOOL_NO_RPATH__ "/'
+mv libtool-2 libtool
+chmod 755 libtool
+
+# System type
+SYSTEM_TYPE="$host_vendor-$host_os"
+MACHINE_TYPE="$host_cpu"
+
+case $SYSTEM_TYPE in
+	*linux*) SYS_DEFS="-DGCC -DLINUX -D_GNU_SOURCE -DI386"
+		 SYS_LIBS="" ;;
+	*)       SYS_DEFS=""
+		 SYS_LIBS="" ;;
+esac
+
+case $MACHINE_TYPE in
+	x86*|i*86)	SYS_DEFS="$SYS_DEFS -DX86" ;;
+	*)		;;
+esac
 
 # Checks for libraries.
 AC_CHECK_LIB([m], [main])
