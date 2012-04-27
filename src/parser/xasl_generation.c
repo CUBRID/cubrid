@@ -10349,6 +10349,8 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
   REGU_VARIABLE **regu_var_list1, **regu_var_list2, *regu_var;
   RANGE *range_list = NULL;
   int i, j, n_elem;
+  int list_count1, list_count2;
+  int num_index_term;
 
   midxkey_list1 = midxkey_list2 = NULL;
   regu_var_list1 = regu_var_list2 = NULL;
@@ -10674,6 +10676,50 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
       free_and_init (midxkey_list2);
     }
 
+  /* assertion block */
+  if (multi_col == true)
+    {
+      REGU_VARIABLE_LIST requ_list;
+
+      for (i = 0; i < n_elem; i++)
+	{
+	  list_count1 = list_count2 = 0;
+
+	  if (regu_var_list1[i] != NULL)
+	    {
+	      for (requ_list =
+		   regu_var_list1[i]->value.funcp->operand;
+		   requ_list; requ_list = requ_list->next)
+		{
+		  list_count1++;
+		}
+	    }
+
+	  if (regu_var_list2[i] != NULL)
+	    {
+	      for (requ_list =
+		   regu_var_list2[i]->value.funcp->operand;
+		   requ_list; requ_list = requ_list->next)
+		{
+		  list_count2++;
+		}
+	    }
+
+	  if (i == 0)
+	    {
+	      num_index_term = MAX (list_count1, list_count2);
+	    }
+	  else
+	    {
+	      if (num_index_term != MAX (list_count1, list_count2))
+		{
+		  assert_release (0);
+		  goto error;
+		}
+	    }
+	}
+    }
+
   /* set KEY_INFO structure */
   key_infop->key_cnt = n_elem;	/* n_elem ranges */
   key_infop->key_ranges = regu_keyrange_array_alloc (n_elem);
@@ -10681,6 +10727,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
     {
       goto error;
     }
+
   for (i = 0; i < n_elem; i++)
     {
       key_infop->key_ranges[i].range = range_list[i];

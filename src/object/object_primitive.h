@@ -316,6 +316,7 @@ extern int pr_free_ext_value (DB_VALUE * value);
 
 extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 			       int do_coercion, int total_order,
+			       int num_index_term,
 			       int *start_colp, int *result_size1,
 			       int *result_size2, int *diff_column,
 			       bool * dom_is_desc, bool * next_dom_is_desc);

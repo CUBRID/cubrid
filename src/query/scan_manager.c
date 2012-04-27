@@ -79,7 +79,7 @@ static int rv;
 /* ISS_RANGE_DETAILS stores information about the two ranges we use
  * interchangeably in Index Skip Scan mode: along with the real range, we
  * use a "fake" one to obtain the next value for the index's first column.
- * 
+ *
  * ISS_RANGE_DETAILS tries to completely encapsulate one of these ranges, so
  * that whenever the need arises, we can "swap" them. */
 typedef struct iss_range_details ISS_RANGE_DETAILS;
@@ -170,7 +170,8 @@ static void scan_free_iscan_oid_buf_list (OID * oid_buf_p);
 static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
 static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1,
-				DB_VALUE * val2, ROP_TYPE op2);
+				DB_VALUE * val2, ROP_TYPE op2,
+				int num_index_term);
 static int key_val_compare (const void *p1, const void *p2);
 static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt);
 static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt);
@@ -231,6 +232,8 @@ static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p,
 					     SCAN_ID * scan_id,
 					     INDX_SCAN_ID * isidp,
 					     bool should_go_to_next_value);
+static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2,
+			     int num_index_term);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -477,7 +480,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	      return S_END;
 	    }
 
-	  /* set the upper bound to last used key value and lower bound to 
+	  /* set the upper bound to last used key value and lower bound to
 	     NULL (i.e. infinity) */
 	  iss->skipped_range->key2 = iss->skipped_range->key1;
 	  iss->skipped_range->key1 = NULL;
@@ -528,7 +531,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       iss->skipped_range->key2 = NULL;
     }
 
-  /* as soon as the scan returned, convert the midxkey dbvalue to real db 
+  /* as soon as the scan returned, convert the midxkey dbvalue to real db
      value (if necessary) */
   if (scan_id->s.isid.oid_list.oid_cnt == 0)
     {
@@ -556,7 +559,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  return ret;
 	}
 
-      /* first_midxkey_val holds pointer to first value from last_key, which 
+      /* first_midxkey_val holds pointer to first value from last_key, which
        * we actually want to place in last_key. steps:
        * 1. clone first_midxkey_val to a temp variable so we have a DB_VALUE
        *    independent of last_key
@@ -1091,15 +1094,74 @@ range_to_rop (ROP_TYPE * left, ROP_TYPE * right, RANGE range)
 }
 
 /*
+ * scan_key_compare ()
+ *   val1(in):
+ *   val2(in):
+ *   num_index_term(in):
+ *   return:
+ */
+static int
+scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
+{
+  int rc = DB_UNK;
+  DB_TYPE key_type;
+  int dummy_size1, dummy_size2, dummy_diff_column;
+  bool dummy_dom_is_desc, dummy_next_dom_is_desc;
+
+  if (val1 == NULL || val2 == NULL)
+    {
+      assert_release (0);
+      return rc;
+    }
+
+  if (DB_IS_NULL (val1))
+    {
+      if (DB_IS_NULL (val2))
+	{
+	  rc = DB_EQ;
+	}
+      else
+	{
+	  rc = DB_LT;
+	}
+    }
+  else if (DB_IS_NULL (val2))
+    {
+      rc = DB_GT;
+    }
+  else
+    {
+      key_type = DB_VALUE_DOMAIN_TYPE (val1);
+      if (key_type == DB_TYPE_MIDXKEY)
+	{
+	  rc = pr_midxkey_compare (DB_GET_MIDXKEY (val1),
+				   DB_GET_MIDXKEY (val2), 1, 1,
+				   num_index_term, NULL, &dummy_size1,
+				   &dummy_size2, &dummy_diff_column,
+				   &dummy_dom_is_desc,
+				   &dummy_next_dom_is_desc);
+	}
+      else
+	{
+	  rc = tp_value_compare (val1, val2, 1, 1);
+	}
+    }
+
+  return rc;
+}
+
+/*
  * compare_val_op () - compare two values specified by range operator
  *   return:
  *   val1(in):
  *   op1(in):
  *   val2(in):
  *   op2(in):
+ *   num_index_term(in):
  */
 static ROP_TYPE
-compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2)
+compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2,
+		int num_index_term)
 {
   int rc;
 
@@ -1120,7 +1182,8 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2)
       return (op2 == op1) ? ROP_EQ : ROP_LT;
     }
 
-  rc = tp_value_compare (val1, val2, 1, 1);
+  rc = scan_key_compare (val1, val2, num_index_term);
+
   if (rc == DB_EQ)
     {
       /* (val1, op1) == (val2, op2) */
@@ -1177,8 +1240,18 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2)
 static int
 key_val_compare (const void *p1, const void *p2)
 {
-  return tp_value_compare (&((KEY_VAL_RANGE *) p1)->key1,
-			   &((KEY_VAL_RANGE *) p2)->key1, 1, 1);
+  int rc = DB_UNK;
+  int p1_num_index_term, p2_num_index_term;
+  DB_VALUE *p1_key, *p2_key;
+
+  p1_num_index_term = ((KEY_VAL_RANGE *) p1)->num_index_term;
+  p2_num_index_term = ((KEY_VAL_RANGE *) p2)->num_index_term;
+  assert_release (p1_num_index_term == p2_num_index_term);
+
+  p1_key = &((KEY_VAL_RANGE *) p1)->key1;
+  p2_key = &((KEY_VAL_RANGE *) p2)->key1;
+
+  return scan_key_compare (p1_key, p2_key, p1_num_index_term);
 }
 
 /*
@@ -1253,7 +1326,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	  if (is_mergeable == true)
 	    {
 	      cmp_1 =
-		compare_val_op (&curp->key2, cur_op2, &nextp->key1, next_op1);
+		compare_val_op (&curp->key2, cur_op2, &nextp->key1, next_op1,
+				curp->num_index_term);
 	      if (cmp_1 == ROP_NA || cmp_1 == ROP_LT)
 		{
 		  is_mergeable = false;	/* error or disjoint */
@@ -1263,7 +1337,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	  if (is_mergeable == true)
 	    {
 	      cmp_2 =
-		compare_val_op (&curp->key1, cur_op1, &nextp->key2, next_op2);
+		compare_val_op (&curp->key1, cur_op1, &nextp->key2, next_op2,
+				curp->num_index_term);
 	      if (cmp_2 == ROP_NA || cmp_2 == ROP_GT)
 		{
 		  is_mergeable = false;	/* error or disjoint */
@@ -1274,7 +1349,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    {
 	      /* determine the lower bound of the merged key range */
 	      cmp_3 =
-		compare_val_op (&curp->key1, cur_op1, &nextp->key1, next_op1);
+		compare_val_op (&curp->key1, cur_op1, &nextp->key1, next_op1,
+				curp->num_index_term);
 	      if (cmp_3 == ROP_NA)
 		{
 		  is_mergeable = false;
@@ -1285,7 +1361,8 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    {
 	      /* determine the upper bound of the merged key range */
 	      cmp_4 =
-		compare_val_op (&curp->key2, cur_op2, &nextp->key2, next_op2);
+		compare_val_op (&curp->key2, cur_op2, &nextp->key2, next_op2,
+				curp->num_index_term);
 	      if (cmp_4 == ROP_NA)
 		{
 		  is_mergeable = false;
@@ -4120,7 +4197,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note:
  * This function tries to obtain the next set of OIDs for the scan to consume.
- * The real heavy-lifting function is get_next_index_oidset(), which we call, 
+ * The real heavy-lifting function is get_next_index_oidset(), which we call,
  * this one is a wrapper.
  * If the "Index Skip Scan" optimization is used, we cycle through successive
  * values of the first index column until we find one that lets
@@ -4667,7 +4744,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				}
 			    }
 			  /* if this the current scan is not done (i.e.
-			   * the buffer was full and we need to fetch 
+			   * the buffer was full and we need to fetch
 			   * more rows, do not go to the next value */
 			  go_to_next_iss_value =
 			    BTREE_END_OF_SCAN (&isidp->bt_scan) &&

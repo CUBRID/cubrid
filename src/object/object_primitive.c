@@ -7389,7 +7389,7 @@ pr_midxkey_compare_element (char *mem1, char *mem2,
 
 int
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
-		    int do_coercion, int total_order,
+		    int do_coercion, int total_order, int num_index_term,
 		    int *start_colp, int *result_size1,
 		    int *result_size2, int *diff_column,
 		    bool * dom_is_desc, bool * next_dom_is_desc)
@@ -7401,6 +7401,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
   TP_DOMAIN *dom1, *dom2;
   char *bitptr1, *bitptr2;
   char *mem1, *mem2;
+  int last;
 
   assert (mul1->domain != NULL);
   assert (TP_DOMAIN_TYPE (mul1->domain) == DB_TYPE_MIDXKEY);
@@ -7472,7 +7473,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
   dom1 = mul1->domain->setdomain;
   dom2 = mul2->domain->setdomain;
 
-  for (i = 0; i < mul1->ncolumns; i++)
+  if (num_index_term > 0)
+    {
+      last = num_index_term;
+    }
+  else
+    {
+      last = mul1->ncolumns;
+    }
+
+  for (i = 0; i < last; i++)
     {
       if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
 	{
@@ -7644,7 +7654,7 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2,
   assert_release (midxkey2->domain->precision == midxkey2->ncolumns);
 
   c = pr_midxkey_compare (midxkey1, midxkey2, do_coercion,
-			  total_order, start_colp,
+			  total_order, -1, start_colp,
 			  &dummy_size1, &dummy_size2, &dummy_diff_column,
 			  &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 
@@ -7715,7 +7725,7 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain,
   midxkey1.domain = midxkey2.domain = domain;
 
   c = pr_midxkey_compare (&midxkey1, &midxkey2, do_coercion,
-			  total_order, start_colp,
+			  total_order, -1, start_colp,
 			  &dummy_size1, &dummy_size2, &dummy_diff_column,
 			  &dummy_dom_is_desc, &dummy_next_dom_is_desc);
   assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
@@ -8885,7 +8895,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
   assert (midxkey1->domain->setdomain == midxkey2->domain->setdomain);
 
   c = pr_midxkey_compare (midxkey1, midxkey2,
-			  0, 1, NULL, &size1, &size2,
+			  0, 1, -1, NULL, &size1, &size2,
 			  &diff_column, &dom_is_desc, &next_dom_is_desc);
   if (dom_is_desc)
     {
@@ -8943,7 +8953,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 #if !defined(NDEBUG)
       /* midxkey1 <= result_midxkey */
       c = pr_midxkey_compare (midxkey1, &result_midxkey,
-			      0, 1, NULL, &size1, &size2,
+			      0, 1, -1, NULL, &size1, &size2,
 			      &diff_column, &dom_is_desc, &next_dom_is_desc);
       assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
       if (dom_is_desc)
@@ -8954,7 +8964,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 
       /* result_midxkey < midxkey2 */
       c = pr_midxkey_compare (&result_midxkey, midxkey2,
-			      0, 1, NULL, &size1, &size2,
+			      0, 1, -1, NULL, &size1, &size2,
 			      &diff_column, &dom_is_desc, &next_dom_is_desc);
       assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
       if (dom_is_desc)
