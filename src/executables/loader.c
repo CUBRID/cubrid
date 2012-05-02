@@ -80,7 +80,7 @@ extern int loader_yylineno;
 
 /* filter out ignorable errid */
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
-  ( err = ((expr) == NO_ERROR ? NO_ERROR : er_filter_errid(false)) )
+  ( err = ((expr) == NO_ERROR ? NO_ERROR : er_filter_errid(true)) )
 
 #define CHECK_ERR(err, expr)                                            \
   do {                                                                  \
@@ -4395,7 +4395,7 @@ error_exit:
 static int
 ldr_finish_context (LDR_CONTEXT * context)
 {
-  int err = er_errid ();
+  int err = er_filter_errid (true);
 
   if (err != NO_ERROR)
     {
