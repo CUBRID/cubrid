@@ -1878,13 +1878,13 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
   if (context != NULL)
     {
       char *before_context_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARSER_SYNTAX,
-					   MSGCAT_SYNTAX_BEFORE_CONTEXT);
+						 MSGCAT_SET_PARSER_SYNTAX,
+						 MSGCAT_SYNTAX_BEFORE_CONTEXT);
       char *before_end_of_stmt_str =
 	msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX,
 			MSGCAT_SYNTAX_BEFORE_END_OF_STMT);
       /* size of constant string "before ' '\n" to be printed along with the
-         actual context - do not count format parameter "%s", of size 2*/
+         actual context - do not count format parameter "%s", of size 2 */
       int context_len = strlen (before_context_str) - 2;
       int end_of_statement = 0;
       int str_len = 0;
@@ -1983,6 +1983,7 @@ pt_frob_error (PARSER_CONTEXT * parser,
 	       const PT_NODE * stmt, const char *fmt, ...)
 {
   va_list ap;
+  char *context = NULL;
   char *old_buf = parser->error_buffer;
 
   va_start (ap, fmt);
@@ -1993,12 +1994,18 @@ pt_frob_error (PARSER_CONTEXT * parser,
     {
       free (old_buf);
     }
+
+  if (parser->original_buffer != NULL
+      && stmt != NULL && stmt->buffer_pos != -1)
+    {
+      context = parser->original_buffer + stmt->buffer_pos;
+    }
+
   pt_record_error (parser,
 		   parser->statement_number,
 		   SAFENUM (stmt, line_number),
 		   SAFENUM (stmt, column_number), parser->error_buffer,
-		   (!stmt || stmt->buffer_pos == -1 ? NULL :
-		    parser->original_buffer + stmt->buffer_pos));
+		   context);
 }
 
 /*
@@ -15754,7 +15761,7 @@ pt_is_const_expr_node (PT_NODE * node)
 /*
  * pt_restore_assignment_links - restore assignments links after a call to
  *  get_assignments_lists.
- *   return: 
+ *   return:
  *   assigns(in): first node of original assignment list
  *   links(in): The links array returned by get_assignment lists
  *   count(in): count of links in links array. This is used in
@@ -16020,9 +16027,9 @@ pt_function_index_skip_expr (const PT_NODE * node)
 }
 
 /*
- *   pt_is_nested_expr () : checks if the given PT_NODE is a complex 
- *				expression, that contains at least one 
- *				argument that is not a PT_VALUE or 
+ *   pt_is_nested_expr () : checks if the given PT_NODE is a complex
+ *				expression, that contains at least one
+ *				argument that is not a PT_VALUE or
  *				PT_NAME node
  *   return:
  *   node(in): PT_EXPR
@@ -16060,7 +16067,7 @@ pt_is_nested_expr (const PT_NODE * node)
   func = node->info.expr.arg1;
   for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
     {
-      PT_NODE * save_arg = arg;
+      PT_NODE *save_arg = arg;
       arg = pt_function_index_skip_expr (arg);
       if ((arg != NULL) && (PT_IS_NAME_NODE (arg) == false)
 	  && (PT_IS_VALUE_NODE (arg) == false))
@@ -16179,7 +16186,7 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
  *				    is allowed in the structure of a
  *				    function index. This is true if the
  *				    operator is allowed and the expression
- *				    is a simple one, with at least one 
+ *				    is a simple one, with at least one
  *				    attribute name as an argument
  *   return:
  *   expr(in): PT_EXPR
@@ -16228,7 +16235,7 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
       func = expr->info.expr.arg1;
       for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
-	  PT_NODE * save_arg = arg;
+	  PT_NODE *save_arg = arg;
 	  arg = pt_function_index_skip_expr (arg);
 	  if (PT_IS_NAME_NODE (arg))
 	    {
@@ -16248,7 +16255,7 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
     }
   else
     {
-      PT_NODE * arg;
+      PT_NODE *arg;
       arg = pt_function_index_skip_expr (expr->info.expr.arg1);
       if (PT_IS_NAME_NODE (arg))
 	{
@@ -16258,8 +16265,7 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      PT_INTERNAL_ERROR (parser, "allocate new node");
 	      return NULL;
 	    }
-	  srt_spec->info.sort_spec.expr =
-	    parser_copy_tree (parser, arg);
+	  srt_spec->info.sort_spec.expr = parser_copy_tree (parser, arg);
 	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	  node = parser_append_node (srt_spec, node);
 	}
@@ -16272,8 +16278,7 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      PT_INTERNAL_ERROR (parser, "allocate new node");
 	      return NULL;
 	    }
-	  srt_spec->info.sort_spec.expr =
-	    parser_copy_tree (parser, arg);
+	  srt_spec->info.sort_spec.expr = parser_copy_tree (parser, arg);
 	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	  node = parser_append_node (srt_spec, node);
 	}
@@ -16286,8 +16291,7 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      PT_INTERNAL_ERROR (parser, "allocate new node");
 	      return NULL;
 	    }
-	  srt_spec->info.sort_spec.expr =
-	    parser_copy_tree (parser, arg);
+	  srt_spec->info.sort_spec.expr = parser_copy_tree (parser, arg);
 	  srt_spec->info.sort_spec.asc_or_desc = PT_ASC;
 	  node = parser_append_node (srt_spec, node);
 	}
@@ -16296,9 +16300,9 @@ pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr)
 }
 
 /*
- *   pt_is_join_expr () : checks if the given expression has non-constant 
+ *   pt_is_join_expr () : checks if the given expression has non-constant
  *                        arguments from only one class
- *   return: true if more than one classes are involved in the expression, 
+ *   return: true if more than one classes are involved in the expression,
  *	     false otherwise
  *   expr(in): PT_EXPR
  *   spec_id(out): the spec id of the PT_SPEC used (if false is returned)
