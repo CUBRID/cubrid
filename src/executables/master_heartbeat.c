@@ -2864,7 +2864,7 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
-      proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
+      proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
       break;
 
     default:
