@@ -9137,6 +9137,25 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	else
 	  {
+	    /* if we got here, we have a type incompatibility; however, if one
+	       of the arguments is of type MAYBE, the error will not be caught.
+	       NOTE: see label 'error' at end of function */
+	    if (arg1 && arg1->type_enum == PT_TYPE_MAYBE)
+	      {
+		arg1 = NULL;
+	      }
+
+	    if (arg2 && arg2->type_enum == PT_TYPE_MAYBE)
+	      {
+		arg2 = NULL;
+	      }
+
+	    if (arg3 && arg3->type_enum == PT_TYPE_MAYBE)
+	      {
+		arg3 = NULL;
+	      }
+
+	    /* set type to NONE so error message is shown */
 	    node->type_enum = PT_TYPE_NONE;
 	  }
 	break;
