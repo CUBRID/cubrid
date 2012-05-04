@@ -15980,10 +15980,10 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 		      parser_free_tree (parser, statement);
 		      return NULL;
 		    }
-		}
 
-	      /* remember this node as previous assignment node */
-	      last_val = val;
+		  /* remember this node as previous assignment node */
+	          last_val = val;
+		}
 	    }
 	}
 
