@@ -219,6 +219,10 @@ struct mnt_server_exec_stats
   UINT64 prior_lsa_list_maxed;
   UINT64 prior_lsa_list_removed;
 
+  /* best space info */
+  UINT64 hf_num_stats_entries;
+  UINT64 hf_num_stats_maxed;
+
   /* Other statistics */
   UINT64 pb_hit_ratio;
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
@@ -227,7 +231,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 58
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 60
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -524,6 +528,12 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_prior_lsa_list_removed(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_removed(thread_p)
 
+/* Heap best space info */
+#define mnt_hf_stats_bestspace_entries(thread_p, num_entries) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_hf_stats_bestspace_entries(thread_p, num_entries)
+#define mnt_hf_stats_bestspace_maxed(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_hf_stats_bestspace_maxed(thread_p)
+
 /* Statistics at Flush Control */
 #define mnt_fc_stats(thread_p, num_pages, num_overflows, tokens) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_fc_stats(thread_p, num_pages, num_overflows, tokens)
@@ -598,6 +608,11 @@ extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p,
 				       unsigned int list_size);
 extern void mnt_x_prior_lsa_list_maxed (THREAD_ENTRY * thread_p);
 extern void mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p);
+
+extern void mnt_x_hf_stats_bestspace_entries (THREAD_ENTRY * thread_p,
+					      unsigned int num_entries);
+extern void mnt_x_hf_stats_bestspace_maxed (THREAD_ENTRY * thread_p);
+
 extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 			    unsigned int num_log_pages, unsigned int tokens);
 extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
@@ -666,6 +681,10 @@ extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 #define mnt_prior_lsa_list_size (thread_p, list_size)
 #define mnt_prior_lsa_list_maxed (thread_p)
 #define mnt_prior_lsa_list_removed (thread_p)
+
+#define mnt_hf_stats_bestspace_entries (thread_p, num_entries)
+#define mnt_hf_stats_bestspace_maxed (thread_p)
+
 #define mnt_fc_stats (thread_p, num_pages, num_log_pages, num_tokens)
 #endif /* CS_MODE */
 

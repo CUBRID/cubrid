@@ -331,6 +331,9 @@ extern "C"
     unsigned int prior_lsa_list_size;
     unsigned int prior_lsa_list_maxed;
     unsigned int prior_lsa_list_removed;
+
+    unsigned int hf_stats_bestspace_entries;
+    unsigned int hf_stats_bestspace_maxed;
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,

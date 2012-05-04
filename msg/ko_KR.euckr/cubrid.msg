@@ -1158,7 +1158,8 @@ $ LOADDB
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.
 1092 User name is too long.
-1093 마지막 에러
+1093 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
+1094 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

@@ -1158,7 +1158,8 @@ $ LOADDB
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.
 1092 User name is too long.
-1093 ¸¶Áö¸· ¿¡·¯
+1093 'max_bestspace_entries=%1$d'ë¥¼ ì´ˆê³¼í•˜ì—¬ ìì› í• ë‹¹ì´ ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤.
+1094 ¸¶Áö¸· ¿¡·¯
 
 $set 6 MSGCAT_SET_INTERNAL
 1 ¿¡·¯ ¼­ºê ½Ã½ºÅÛ¿¡ ¿¡·¯ ¹ß»ı(¶óÀÎ %d):

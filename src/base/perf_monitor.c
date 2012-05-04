@@ -403,6 +403,11 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
   CALC_STAT_DIFF (stats_diff->prior_lsa_list_removed,
 		  p->prior_lsa_list_removed, q->prior_lsa_list_removed);
 
+  CALC_STAT_DIFF (stats_diff->hf_num_stats_entries, p->hf_num_stats_entries,
+		  q->hf_num_stats_entries);
+  CALC_STAT_DIFF (stats_diff->hf_num_stats_maxed, p->hf_num_stats_maxed,
+		  q->hf_num_stats_maxed);
+
   CALC_STAT_DIFF (stats_diff->log_num_ioreads, p->log_num_ioreads,
 		  q->log_num_ioreads);
   CALC_STAT_DIFF (stats_diff->log_num_iowrites, p->log_num_iowrites,
@@ -558,6 +563,11 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
   stats_diff->prior_lsa_list_removed =
     CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_removed,
 			   q->prior_lsa_list_removed);
+
+  stats_diff->hf_num_stats_entries =
+    CALC_GLOBAL_STAT_DIFF (p->hf_num_stats_entries, q->hf_num_stats_entries);
+  stats_diff->hf_num_stats_maxed =
+    CALC_GLOBAL_STAT_DIFF (p->hf_num_stats_maxed, q->hf_num_stats_maxed);
 
   stats_diff->log_num_ioreads =
     CALC_GLOBAL_STAT_DIFF (p->log_num_ioreads, q->log_num_ioreads);
@@ -1798,6 +1808,8 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_prior_lsa_list_size",
   "Num_prior_lsa_list_maxed",
   "Num_prior_lsa_list_removed",
+  "Num_heap_stats_bestspace_entries",
+  "Num_heap_stats_bestspace_maxed",
   "Data_page_buffer_hit_ratio"
 };
 
@@ -1805,8 +1817,10 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
 int mnt_Num_tran_exec_stats = 0;
 
 #if defined(SERVER_MODE) && defined(HAVE_ATOMIC_BUILTINS)
+#define ATOMIC_TAS(A,VAL)   ATOMIC_TAS_64(&(A),(VAL))
 #define ATOMIC_INC(A,VAL)   ATOMIC_INC_64(&(A),(VAL))
 #else /* SERVER_MODE && HAVE_ATOMIC_BUILTINS */
+#define ATOMIC_TAS(A,VAL)          (A)=(VAL)
 #define ATOMIC_INC(A,VAL)          (A)+=(VAL)
 #if defined (SERVER_MODE)
 pthread_mutex_t mnt_Num_tran_stats_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1820,6 +1834,15 @@ do {                                                     \
       (STAT)->VAR += (VALUE);                            \
     }                                                    \
   ATOMIC_INC(mnt_Server_table.global_stats->VAR, VALUE); \
+} while (0)
+
+#define SET_STATS(STAT,VAR,VALUE)                        \
+do {                                                     \
+  if ((STAT)->enable_local_stat)                         \
+    {                                                    \
+      (STAT)->VAR = (VALUE);                             \
+    }                                                    \
+  ATOMIC_TAS(mnt_Server_table.global_stats->VAR, VALUE); \
 } while (0)
 
 /* Server execution statistics on each transactions */
@@ -2332,6 +2355,39 @@ mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p)
   if (stats != NULL)
     {
       ADD_STATS (stats, prior_lsa_list_removed, 1);
+    }
+}
+
+/*
+ * mnt_x_hf_stats_bestspace_entries -
+ *   return: none
+ */
+void
+mnt_x_hf_stats_bestspace_entries (THREAD_ENTRY * thread_p,
+				  unsigned int num_entries)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      SET_STATS (stats, hf_num_stats_entries, num_entries);
+    }
+}
+
+/*
+ * mnt_x_hf_stats_bestspace_maxed -
+ *   return: none
+ */
+void
+mnt_x_hf_stats_bestspace_maxed (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, hf_num_stats_maxed, 1);
     }
 }
 

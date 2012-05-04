@@ -267,10 +267,10 @@ extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p,
 						     scan_cache);
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p,
 				       HEAP_SCANCACHE * scan_cache);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
 					   HEAP_SCANCACHE * scan_cache,
 					   int nobjs, int avg_objsize);
-#if defined (ENABLE_UNUSED_FUNCTION)
 extern int heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid);
 #endif
 extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,

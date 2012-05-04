@@ -9123,13 +9123,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  return ER_FAILED;
 	}
 
-      if (heap_hint_expected_num_objects (thread_p, &scan_cache,
-					  specp->s.list_node.xasl_node->
-					  list_id->tuple_cnt, -1) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
       while ((xb_scan = qexec_next_scan_block_iterations (thread_p,
 							  xasl)) == S_SUCCESS)
 	{

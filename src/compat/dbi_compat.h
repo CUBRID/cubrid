@@ -1368,7 +1368,9 @@
 
 #define ER_USER_NAME_TOO_LONG			    -1092
 
-#define ER_LAST_ERROR                               -1093
+#define ER_HF_MAX_BESTSPACE_ENTRIES                 -1093
+
+#define ER_LAST_ERROR                               -1094
 
 #define DB_TRUE 1
 #define DB_FALSE 0

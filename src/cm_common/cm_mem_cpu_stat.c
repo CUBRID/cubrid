@@ -988,6 +988,10 @@ static STATDUMP_PROP statdump_offset[] = {
    offsetof (T_CM_DB_EXEC_STAT, prior_lsa_list_maxed)},
   {"Num_prior_lsa_list_removed",
    offsetof (T_CM_DB_EXEC_STAT, prior_lsa_list_removed)},
+  {"Num_heap_stats_bestspace_entries",
+   offsetof (T_CM_DB_EXEC_STAT, hf_stats_bestspace_entries)},
+  {"Num_heap_stats_bestspace_maxed",
+   offsetof (T_CM_DB_EXEC_STAT, hf_stats_bestspace_maxed)},
   {"Data_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, pb_hit_ratio)},
 };
 

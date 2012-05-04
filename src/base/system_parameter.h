@@ -126,6 +126,9 @@ extern UINT64 PRM_PAGE_BUFFER_SIZE;
 #define PRM_NAME_HF_UNFILL_FACTOR "unfill_factor"
 extern float PRM_HF_UNFILL_FACTOR;
 
+#define PRM_NAME_HF_MAX_BESTSPACE_ENTRIES "max_bestspace_entries"
+extern int PRM_HF_MAX_BESTSPACE_ENTRIES;
+
 #define PRM_NAME_BT_UNFILL_FACTOR "index_unfill_factor"
 extern float PRM_BT_UNFILL_FACTOR;
 

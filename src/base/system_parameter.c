@@ -251,6 +251,9 @@ static float prm_hf_unfill_factor_default = 0.10f;
 static float prm_hf_unfill_factor_lower = 0.0f;
 static float prm_hf_unfill_factor_upper = 0.3f;
 
+int PRM_HF_MAX_BESTSPACE_ENTRIES = 1000000;
+static int prm_hf_max_bestspace_entries_default = 1000000;	/* 110 M */
+
 float PRM_BT_UNFILL_FACTOR = 0.05f;
 static float prm_bt_unfill_factor_default = 0.05f;
 static float prm_bt_unfill_factor_lower = 0.0f;
@@ -951,6 +954,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_hf_unfill_factor_default,
    (void *) &PRM_HF_UNFILL_FACTOR,
    (void *) &prm_hf_unfill_factor_upper, (void *) &prm_hf_unfill_factor_lower,
+   (char *) NULL},
+  {PRM_NAME_HF_MAX_BESTSPACE_ENTRIES,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_HIDDEN |
+    PRM_USER_CHANGE),
+   (void *) &prm_hf_max_bestspace_entries_default,
+   (void *) &PRM_HF_MAX_BESTSPACE_ENTRIES,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_BT_UNFILL_FACTOR,
    (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER),

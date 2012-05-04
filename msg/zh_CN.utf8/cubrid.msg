@@ -1158,7 +1158,8 @@ $ LOADDB
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.
 1092 User name is too long.
-1093 Last Error
+1093 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
+1094 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
