@@ -156,7 +156,7 @@ struct walk_info
   QO_TERM *term;
 };
 
-#define INDEX_SKIP_SCAN_FACTOR 1000.0
+#define INDEX_SKIP_SCAN_FACTOR 1000
 
 double QO_INFINITY = 0.0;
 
@@ -5556,14 +5556,37 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    }
 	}			/* for (j = 0, ... ) */
 
-      if (j == 1 &&		/* no class hierarchy index */
-	  is_iss_and_cover &&
-	  cum_statsp->key_size > 0 &&
-	  cum_statsp->pkeys[0] > 0 &&
-	  cum_statsp->keys >= 0 &&
-	  cum_statsp->pkeys[0] < (cum_statsp->keys / INDEX_SKIP_SCAN_FACTOR))
+      /* if index skip scan is possible, check the statistics and confirm or
+         infirm it's use */
+      if (j == 1 && (ni_entryp->head->is_iss_candidate || is_iss_and_cover)
+	  && cum_statsp->key_size > 1 && cum_statsp->keys > 0)
 	{
-	  ni_entryp->head->is_iss_candidate = true;
+	  CLASS_STATS *stats;
+	  long long int first_pkey_card;
+	  long long int row_count;
+
+	  stats = QO_GET_CLASS_STATS (class_info_entryp);
+	  if (stats != NULL && stats->num_objects > 0)
+	    {
+	      /* we have what seems like valid statistics; fetch row count */
+	      row_count = stats->num_objects;
+	    }
+	  else
+	    {
+	      /* class statistics are not present; we'll consider the card
+	         of the index for calculating selectivity. this should only
+	         give us some false negatives in ISS usage */
+	      row_count = cum_statsp->keys;
+	    }
+
+	  /* fetch the cardinality of the first partial key. NULL values are
+	     not counted when the index statistics are built, so a zero card
+	     pkey is possible; we must avoid this case */
+	  first_pkey_card = cum_statsp->pkeys[0];
+	  first_pkey_card = (first_pkey_card != 0 ? first_pkey_card : 1);
+
+	  ni_entryp->head->is_iss_candidate =
+	    (row_count > first_pkey_card * INDEX_SKIP_SCAN_FACTOR);
 	}
     }				/* for (i = 0, ...) */
 }
