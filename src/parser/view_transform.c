@@ -2418,6 +2418,23 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
        * in a parse tree or in xasl.
        */
       bool skip_auth_check = false;
+      int update_flag = class_spec->info.spec.flag & PT_SPEC_FLAG_UPDATE;
+      int delete_flag = class_spec->info.spec.flag & PT_SPEC_FLAG_DELETE;
+      bool fetch_for_update;
+
+      if ((what_for == DB_AUTH_SELECT)
+	  || (what_for == DB_AUTH_UPDATE && !update_flag)
+	  || (what_for == DB_AUTH_DELETE && !delete_flag))
+	{
+	  /* used either in a query or an UPDATE/DELETE that does not alter the
+	     subquery */
+	  fetch_for_update = false;
+	}
+      else
+	{
+	  fetch_for_update = true;
+	}
+
       had_some_virtual_classes = 0;
       real_classes = NULL;
       tree_union = NULL;
@@ -2480,7 +2497,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      else
 		{
 		  had_some_virtual_classes = 1;
-		  if (what_for == DB_AUTH_SELECT)
+		  if (!fetch_for_update)
 		    {
 		      subquery = mq_fetch_subqueries (parser, entity);
 		    }
