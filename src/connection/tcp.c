@@ -424,8 +424,7 @@ css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
   struct sockaddr *saddr;
   socklen_t slen;
   int n;
-  struct timeval tv;
-  fd_set wfds, efds;
+  struct pollfd po[1] = { {0, 0, 0} };
   union
   {
     struct sockaddr_in in;
@@ -474,15 +473,9 @@ again_eintr:
       return INVALID_SOCKET;
     }
 
-
-  FD_ZERO (&wfds);
-  FD_SET (sd, &wfds);
-  FD_ZERO (&efds);
-  FD_SET (sd, &efds);
-  /* wait milli-seconds of the timeout */
-  tv.tv_sec = timeout / 1000;
-  tv.tv_usec = (timeout % 1000) * 1000;
-  if ((n = select (sd + 1, NULL, &wfds, &efds, &tv)) == 0)
+  po[0].fd = sd;
+  po[0].events = POLLOUT;
+  if ((n == poll (po, 1, timeout)) == 0)
     {
       /* 0 means it timed out and no fd is changed */
       errno = ETIMEDOUT;
@@ -1264,6 +1257,7 @@ in_cksum (u_short * addr, int len)
   return (answer);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * css_ping() - ping implementation
  *              Send a ICMP_ECHO_REQUEST packet every second until either the
@@ -1366,6 +1360,7 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
   close (sd);
   return ETIME;
 }
+#endif
 
 /*
  * css_peer_alive() - check if the peer is alive or not
@@ -1382,8 +1377,7 @@ css_peer_alive (SOCKET sd, int timeout)
   socklen_t size;
   struct sockaddr_in saddr;
   socklen_t slen;
-  struct timeval tv;
-  fd_set wfds, efds;
+  struct pollfd po[1] = { {0, 0, 0} };
 
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
@@ -1452,14 +1446,9 @@ css_peer_alive (SOCKET sd, int timeout)
 	  return false;
 	}
 
-      FD_ZERO (&wfds);
-      FD_SET (nsd, &wfds);
-      FD_ZERO (&efds);
-      FD_SET (nsd, &efds);
-      /* wait milli-seconds of the timeout */
-      tv.tv_sec = timeout / 1000;
-      tv.tv_usec = (timeout % 1000) * 1000;
-      n = select (nsd + 1, NULL, &wfds, &efds, &tv);
+      po[0].fd = nsd;
+      po[0].events = POLLOUT;
+      n = poll (po, 1, timeout);
       if (n < 0 && errno != EINTR)
 	{
 	  er_log_debug (ARG_FILE_LINE,

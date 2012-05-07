@@ -360,7 +360,7 @@ static bool prm_qo_dump_default = false;
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
-static int prm_css_max_clients_upper = 1024;
+static int prm_css_max_clients_upper = 10000;
 
 int PRM_THREAD_STACKSIZE = (1024 * 1024);
 static int prm_thread_stacksize_default = (1024 * 1024);

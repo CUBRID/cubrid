@@ -253,46 +253,6 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 CSS_CONN_ENTRY *
 css_find_exception_conn (void)
 {
-  CSS_CONN_ENTRY *p;
-  fd_set fd_var;
-  struct timeval timeout;
-  int rc;
-  int max_fd = 0;
-
-  FD_ZERO (&fd_var);
-  for (p = css_Conn_anchor; p; p = p->next)
-    {
-      if (!IS_INVALID_SOCKET (p->fd))
-	{
-	  if (p->fd > max_fd)
-	    {
-	      max_fd = p->fd;
-	    }
-
-	  FD_SET (p->fd, &fd_var);
-	}
-    }
-
-  timeout.tv_sec = 0;
-  timeout.tv_usec = 0;
-
-  rc = select (max_fd + 1, NULL, NULL, &fd_var, &timeout);
-  switch (rc)
-    {
-    case 0:
-      break;
-    case -1:
-      break;
-    default:
-      for (p = css_Conn_anchor; p; p = p->next)
-	{
-	  if (!IS_INVALID_SOCKET (p->fd) && FD_ISSET (p->fd, &fd_var))
-	    {
-	      return p;
-	    }
-	}
-    }
-
   return NULL;
 }
 

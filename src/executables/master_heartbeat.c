@@ -2942,10 +2942,9 @@ hb_thread_cluster_reader (void *arg)
 {
   int error, rv;
   SOCKET sfd;
-  fd_set rfds;
-  struct timeval tv;
   char buffer[HB_BUFFER_SZ + MAX_ALIGNMENT], *aligned_buffer;
   int len;
+  struct pollfd po[1] = { {0, 0, 0} };
 
   struct sockaddr_in from;
   socklen_t from_len;
@@ -2959,18 +2958,15 @@ hb_thread_cluster_reader (void *arg)
   sfd = hb_Cluster->sfd;
   while (hb_Cluster->shutdown == false)
     {
-      FD_ZERO (&rfds);
-      FD_SET (sfd, &rfds);
-
-      tv.tv_sec = 0;
-      tv.tv_usec = 1000;
-      error = select (sfd + 1, &rfds, NULL, NULL, &tv);
+      po[0].fd = sfd;
+      po[0].events = POLLIN;
+      error = poll (po, 1, 1);
       if (error <= 0)
 	{
 	  continue;
 	}
 
-      if (FD_ISSET (sfd, &rfds) && sfd == hb_Cluster->sfd)
+      if ((po[0].revents & POLLIN) && sfd == hb_Cluster->sfd)
 	{
 	  from_len = sizeof (from);
 	  len =

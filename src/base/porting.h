@@ -105,6 +105,14 @@
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
 
+/* poll */
+#define POLLIN 0x01
+#define POLLPRI 0x02
+#define POLLOUT 0x04
+
+typedef unsigned long int nfds_t;
+extern int poll (struct pollfd *fds, nfds_t nfds, int timeout);
+
 #if 0
 #define O_RDONLY                _O_RDONLY
 #endif

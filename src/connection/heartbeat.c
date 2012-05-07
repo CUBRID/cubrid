@@ -413,8 +413,7 @@ hb_process_master_request (void)
 {
   int error;
   int r, status = 0;
-  fd_set read_fdset, exception_fdset;
-  struct timeval timeout;
+  struct pollfd po[1] = { {0, 0, 0} };
 
   if (NULL == hb_Conn)
     {
@@ -424,22 +423,9 @@ hb_process_master_request (void)
 
   while (false == hb_Proc_shutdown)
     {
-      int max_fd = 0;
-      FD_ZERO (&read_fdset);
-      FD_ZERO (&exception_fdset);
-
-      if (!IS_INVALID_SOCKET (hb_Conn->fd))
-	{
-	  FD_SET (hb_Conn->fd, &read_fdset);
-	  FD_SET (hb_Conn->fd, &exception_fdset);
-	  max_fd = hb_Conn->fd;
-	}
-
-      /* select() sets timeout value to 0 or waited time */
-      timeout.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
-      timeout.tv_usec = 0;
-
-      r = select (max_fd + 1, &read_fdset, NULL, &exception_fdset, &timeout);
+      po[0].fd = hb_Conn->fd;
+      po[0].events = POLLIN;
+      r = poll (po, 1, PRM_TCP_CONNECTION_TIMEOUT * 1000);
       switch (r)
 	{
 	case 0:

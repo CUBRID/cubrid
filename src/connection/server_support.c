@@ -162,13 +162,9 @@ static void css_empty_job_queue (void);
 static void css_setup_server_loop (void);
 static int css_check_conn (CSS_CONN_ENTRY * p);
 static int css_get_master_request (SOCKET master_fd);
-static int css_process_master_request (SOCKET master_fd,
-				       fd_set * read_fd_var,
-				       fd_set * exception_fd_var);
+static int css_process_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
-static void css_process_new_client (SOCKET master_fd,
-				    fd_set * read_fd_var,
-				    fd_set * exception_fd_var);
+static void css_process_new_client (SOCKET master_fd);
 static void css_process_get_server_ha_mode_request (SOCKET master_fd);
 static void css_process_change_server_ha_mode_request (SOCKET master_fd);
 
@@ -597,13 +593,8 @@ void *
 css_master_thread (void)
 #endif				/* WINDOWS */
 {
-  fd_set read_fdset, exception_fdset;
-  struct timeval timeout;
-  int r, run_code = 1, status = 0;
-  int max_fd = 0;
-
-  timeout.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
-  timeout.tv_usec = 0;
+  int r, run_code = 1, status = 0, nfds;
+  struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
 
   while (run_code)
     {
@@ -615,39 +606,28 @@ css_master_thread (void)
 	  css_Pipe_to_master = INVALID_SOCKET;
 	}
 
-      FD_ZERO (&read_fdset);
-      FD_ZERO (&exception_fdset);
       if (!IS_INVALID_SOCKET (css_Pipe_to_master))
 	{
-	  FD_SET (css_Pipe_to_master, &read_fdset);
-	  FD_SET (css_Pipe_to_master, &exception_fdset);
-	  if (css_Pipe_to_master > max_fd)
-	    {
-	      max_fd = css_Pipe_to_master;
-	    }
+	  po[0].fd = css_Pipe_to_master;
+	  po[0].events = POLLIN;
+	  nfds = 1;
 	}
 #if defined(WINDOWS)
       if (!IS_INVALID_SOCKET (css_Server_connection_socket))
 	{
-	  FD_SET (css_Server_connection_socket, &read_fdset);
-	  FD_SET (css_Server_connection_socket, &exception_fdset);
-	  if (css_Server_connection_socket > max_fd)
-	    {
-	      max_fd = css_Server_connection_socket;
-	    }
+	  po[1].fd = css_Server_connection_socket;
+	  po[1].events = POLLIN;
+	  nfds = 2;
 	}
 #endif /* WINDOWS */
 
       /* select() sets timeout value to 0 or waited time */
-      timeout.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
-      timeout.tv_usec = 0;
-      r = select (max_fd + 1, &read_fdset, NULL, &exception_fdset, &timeout);
-      if (r > 0
-	  && (IS_INVALID_SOCKET (css_Pipe_to_master)
-	      || !FD_ISSET (css_Pipe_to_master, &read_fdset))
+      r = poll (po, nfds, PRM_TCP_CONNECTION_TIMEOUT * 1000);
+      if (r > 0 && (IS_INVALID_SOCKET (css_Pipe_to_master)
+		    || !(po[0].revents & POLLIN))
 #if defined(WINDOWS)
 	  && (IS_INVALID_SOCKET (css_Server_connection_socket)
-	      || !FD_ISSET (css_Server_connection_socket, &read_fdset))
+	      || !(po[1].revents & POLLIN))
 #endif /* WINDOWS */
 	)
 	{
@@ -672,11 +652,9 @@ css_master_thread (void)
       else if (r > 0)
 	{
 	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
-	      && FD_ISSET (css_Pipe_to_master, &read_fdset))
+	      && (po[0].revents & POLLIN))
 	    {
-	      run_code = css_process_master_request (css_Pipe_to_master,
-						     &read_fdset,
-						     &exception_fdset);
+	      run_code = css_process_master_request (css_Pipe_to_master);
 	      if (run_code == -1)
 		{
 		  css_close_connection_to_master ();
@@ -699,7 +677,7 @@ css_master_thread (void)
 
 #else /* !WINDOWS */
 	  if (!IS_INVALID_SOCKET (css_Server_connection_socket)
-	      && FD_ISSET (css_Server_connection_socket, &read_fdset))
+	      && (po[1].revents & POLLIN))
 	    {
 	      css_process_new_connection_request ();
 	    }
@@ -755,8 +733,7 @@ css_get_master_request (SOCKET master_fd)
  *   exception_fd_var(in):
  */
 static int
-css_process_master_request (SOCKET master_fd, fd_set * read_fd_var,
-			    fd_set * exception_fd_var)
+css_process_master_request (SOCKET master_fd)
 {
   int request, r;
 
@@ -766,7 +743,7 @@ css_process_master_request (SOCKET master_fd, fd_set * read_fd_var,
   switch (request)
     {
     case SERVER_START_NEW_CLIENT:
-      css_process_new_client (master_fd, read_fd_var, exception_fd_var);
+      css_process_new_client (master_fd);
       break;
 
     case SERVER_START_SHUTDOWN:
@@ -848,8 +825,7 @@ css_process_shutdown_request (SOCKET master_fd)
  *   exception_fd_var(in/out):
  */
 static void
-css_process_new_client (SOCKET master_fd, fd_set * read_fd_var,
-			fd_set * exception_fd_var)
+css_process_new_client (SOCKET master_fd)
 {
   SOCKET new_fd;
   int reason;
@@ -885,11 +861,6 @@ css_process_new_client (SOCKET master_fd, fd_set * read_fd_var,
       er_clear ();
       return;
     }
-
-  if (read_fd_var != NULL)
-    FD_CLR (new_fd, read_fd_var);
-  if (exception_fd_var != NULL)
-    FD_CLR (new_fd, exception_fd_var);
 
   conn = css_make_conn (new_fd);
   if (conn == NULL)
@@ -1244,11 +1215,10 @@ dummy_sigurg_handler (int sig)
 static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
-  fd_set rfds, efds;
-  struct timeval tv;
   CSS_JOB_ENTRY *job;
   int n, type, rv, status;
   SOCKET fd;
+  struct pollfd po[1] = { {0, 0, 0} };
 
   if (thread_p == NULL)
     {
@@ -1272,13 +1242,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	  break;
 	}
 
-      FD_ZERO (&rfds);
-      FD_ZERO (&efds);
-      FD_SET (fd, &rfds);
-      FD_SET (fd, &efds);
-      tv.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
-      tv.tv_usec = 0;
-      n = select (fd + 1, &rfds, NULL, &efds, &tv);
+      po[0].fd = fd;
+      po[0].events = POLLIN;
+      n = poll (po, 1, PRM_TCP_CONNECTION_TIMEOUT * 1000);
 #if 0
       if (n > 0 && !FD_ISSET (fd, &rfds) && !FD_ISSET (fd, &efds))
 	{
@@ -1327,14 +1293,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      status = ERROR_ON_READ;
 	      break;
 	    }
-	}
-      if (FD_ISSET (fd, &efds))
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"css_connection_handler_thread: "
-			"exception fd in select()\n");
-	  status = ERROR_ON_READ;
-	  break;
 	}
       if (n > 0)
 	{
@@ -3077,7 +3035,7 @@ css_set_accessible_ip_info ()
   if (PRM_ACCESS_IP_CONTROL_FILE[0] == PATH_SEPARATOR)
 #endif
     {
-      ip_list_file_name = PRM_ACCESS_IP_CONTROL_FILE;
+      ip_list_file_name = (char *) PRM_ACCESS_IP_CONTROL_FILE;
     }
   else
     {

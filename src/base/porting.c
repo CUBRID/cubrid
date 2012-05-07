@@ -50,6 +50,87 @@
 
 #if defined (WINDOWS)
 /*
+ * poll() -
+ *    return: return poll result
+ *    fds(in): socket descriptors to wait
+ *    nfds(in): number of descriptors
+ *    timeout(in): timeout in milliseconds
+ */
+int
+poll (struct pollfd *fds, nfds_t nfds, int timeout)
+{
+  struct timeval to, *tp;
+  fd_set rset, wset, eset;
+  fd_set *rp, *wp, *ep;
+  unsigned long int i;
+  int r, max_fd;
+
+  tp = NULL;
+  if (timeout >= 0)
+    {
+      to.tv_sec = timeout / 1000;
+      to.tv_usec = (timeout % 1000) * 1000;
+      tp = &to;
+    }
+
+  FD_ZERO (&rset);
+  FD_ZERO (&wset);
+  FD_ZERO (&eset);
+  rp = wp = ep = NULL;
+  max_fd = 0;
+
+  for (i = 0; i < nfds; i++)
+    {
+      if (fds[i].events & POLLIN)
+	{
+	  if (rp == NULL)
+	    {
+	      rp = &rset;
+	    }
+	  FD_SET (fds[i].fd, rp);
+	  max_fd = MAX (fds[i].fd, max_fd);
+	}
+      if (fds[i].events & POLLOUT)
+	{
+	  if (wp == NULL)
+	    {
+	      wp = &wset;
+	    }
+	  FD_SET (fds[i].fd, wp);
+	  max_fd = MAX (fds[i].fd, max_fd);
+	}
+      if (fds[i].events & POLLPRI)
+	{
+	  if (ep == NULL)
+	    {
+	      ep = &eset;
+	    }
+	  FD_SET (fds[i].fd, ep);
+	  max_fd = MAX (fds[i].fd, max_fd);
+	}
+    }
+
+  r = select (max_fd + 1, rp, wp, ep, tp);
+  for (i = 0; i < nfds; i++)
+    {
+      if ((fds[i].events & POLLIN) && FD_ISSET (fds[i].fd, rp))
+	{
+	  fds[i].revents |= POLLIN;
+	}
+      if ((fds[i].events & POLLOUT) && FD_ISSET (fds[i].fd, wp))
+	{
+	  fds[i].revents |= POLLOUT;
+	}
+      if ((fds[i].events & POLLPRI) && FD_ISSET (fds[i].fd, ep))
+	{
+	  fds[i].revents |= POLLPRI;
+	}
+    }
+
+  return r;
+}
+
+/*
  * gettimeofday - Windows port of Unix gettimeofday()
  *   return: none
  *   tp(out): where time is stored

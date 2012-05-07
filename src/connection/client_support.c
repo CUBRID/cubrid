@@ -603,9 +603,8 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 {
   CSS_MAP_ENTRY *entry;
   int errid;
+  struct pollfd po[1] = { {0, 0, 0} };
 #if !defined (WINDOWS)
-  struct timeval tv;
-  fd_set rfds;
   int n;
 #endif /* WINDOWS */
 
@@ -616,11 +615,9 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
       if ((timeout > 0) && (entry->conn != NULL)
 	  && (entry->conn->status == CONN_OPEN))
 	{
-	  FD_ZERO (&rfds);
-	  FD_SET (entry->conn->fd, &rfds);
-	  tv.tv_sec = timeout / 1000;
-	  tv.tv_usec = (timeout % 1000) * 1000;
-	  n = select (entry->conn->fd + 1, &rfds, NULL, NULL, &tv);
+	  po[0].fd = entry->conn->fd;
+	  po[0].events = POLLIN;
+	  n = poll (po, 1, timeout);
 	  if (n == 0)
 	    {
 	      if (css_peer_alive (entry->conn->fd, timeout))

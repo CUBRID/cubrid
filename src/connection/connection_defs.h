@@ -32,6 +32,8 @@
 #if defined(WINDOWS)
 #include <dos.h>
 #include <process.h>
+#else
+#include <poll.h>
 #endif /* WINDOWS */
 #if !defined(WINDOWS) && defined(SERVER_MODE)
 #include <pthread.h>

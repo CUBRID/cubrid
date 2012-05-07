@@ -42,6 +42,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <poll.h>
 #endif /* !WINDOWS */
 
 #if defined(_AIX)
@@ -389,10 +390,9 @@ int
 css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 {
   int nleft, n;
-#if !defined (WINDOWS)
-  fd_set rfds, efds;
-  struct timeval tv;
-#else /* !WINDOWS */
+  struct pollfd po[1] = { {0, 0, 0} };
+
+#if defined (WINDOWS)
   int winsock_error;
 #endif /* WINDOWS */
 
@@ -412,14 +412,10 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #if !defined (WINDOWS)
       if (timeout >= 0)
 	{
-	  FD_ZERO (&rfds);
-	  FD_SET (fd, &rfds);
-	  FD_ZERO (&efds);
-	  FD_SET (fd, &efds);
-	  tv.tv_sec = timeout / 1000;
-	  tv.tv_usec = (timeout % 1000) * 1000;
+	  po[0].fd = fd;
+	  po[0].events = POLLIN;
 	select_again:
-	  n = select (fd + 1, &rfds, NULL, &efds, &tv);
+	  n = poll (po, 1, timeout);
 	  if (n == 0)
 	    {
 	      /*
@@ -442,10 +438,6 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 		{
 		  goto select_again;
 		}
-	      return -1;
-	    }
-	  if (FD_ISSET (fd, &efds))
-	    {
 	      return -1;
 	    }
 	}
@@ -897,8 +889,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 		 int timeout)
 {
   int i, n;
-  fd_set wfds, efds;
-  struct timeval tv;
+  struct pollfd po[1] = { {0, 0, 0} };
 
   if (fd < 0)
     {
@@ -935,13 +926,9 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
     {
       if (timeout >= 0)
 	{
-	  FD_ZERO (&wfds);
-	  FD_SET (fd, &wfds);
-	  FD_ZERO (&efds);
-	  FD_SET (fd, &efds);
-	  tv.tv_sec = timeout / 1000;
-	  tv.tv_usec = (timeout % 1000) * 1000;
-	  n = select (fd + 1, NULL, &wfds, &efds, &tv);
+	  po[0].fd = fd;
+	  po[0].events = POLLOUT;
+	  n = poll (po, 1, timeout);
 	  if (n == 0)
 	    {
 	      /*
@@ -959,10 +946,6 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 		}
 	    }
 	  if (n < 0 && errno != EINTR)
-	    {
-	      return -1;
-	    }
-	  if (FD_ISSET (fd, &efds))
 	    {
 	      return -1;
 	    }
