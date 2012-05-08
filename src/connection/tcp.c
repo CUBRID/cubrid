@@ -453,7 +453,8 @@ css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
     }
 
 again_eintr:
-  if ((n = connect (sd, saddr, slen)) == 0)
+  n = connect (sd, saddr, slen);
+  if (n == 0)
     {
       /* connection is established immediately */
       return sd;
@@ -475,7 +476,8 @@ again_eintr:
 
   po[0].fd = sd;
   po[0].events = POLLOUT;
-  if ((n == poll (po, 1, timeout)) == 0)
+  n = poll (po, 1, timeout);
+  if (n == 0)
     {
       /* 0 means it timed out and no fd is changed */
       errno = ETIMEDOUT;
