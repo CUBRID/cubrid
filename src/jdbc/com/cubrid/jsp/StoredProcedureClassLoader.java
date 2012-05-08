@@ -40,7 +40,7 @@ import java.util.HashMap;
 public class StoredProcedureClassLoader extends URLClassLoader {
 	private static StoredProcedureClassLoader instance = null;
 
-	private HashMap files = new HashMap();
+	private HashMap<String, Long> files = new HashMap<String, Long>();
 
 	private File root;
 
@@ -72,22 +72,20 @@ public class StoredProcedureClassLoader extends URLClassLoader {
 		});
 
 		for (int i = 0; i < classes.length; i++) {
-			files
-					.put(classes[i].getName(), new Long(classes[i]
-							.lastModified()));
+			files.put(classes[i].getName(), new Long(classes[i].lastModified()));
 		}
 
 		try {
-			addURL(root.toURL());
+			addURL(root.toURI().toURL()); 
 			for (int i = 0; i < jars.length; i++) {
-				addURL(jars[i].toURL());
+				addURL(jars[i].toURI().toURL());
 			}
 		} catch (MalformedURLException e) {
 			Server.log(e);
 		}
 	}
 
-	public Class loadClass(String name) throws ClassNotFoundException {
+	public Class<?> loadClass(String name) throws ClassNotFoundException {
 		try {
 			if (!modified())
 				return super.loadClass(name);

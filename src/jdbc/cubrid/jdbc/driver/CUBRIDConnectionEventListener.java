@@ -39,11 +39,11 @@ import javax.sql.ConnectionEventListener;
 import javax.sql.PooledConnection;
 
 class CUBRIDConnectionEventListener implements ConnectionEventListener {
-	private Vector availableConnections;
+	private Vector<PooledConnection> availableConnections;
 	private CUBRIDConnectionPoolDataSource cpds;
 
 	CUBRIDConnectionEventListener(CUBRIDConnectionPoolDataSource ds) {
-		availableConnections = new Vector();
+		availableConnections = new Vector<PooledConnection>();
 		cpds = ds;
 	}
 

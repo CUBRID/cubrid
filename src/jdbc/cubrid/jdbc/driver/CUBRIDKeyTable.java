@@ -35,10 +35,10 @@ import java.util.Hashtable;
 abstract public class CUBRIDKeyTable {
 	public static final String sessionKeyName = "CUBRIDConnectionKey";
 
-	static private Hashtable ht;
+	static private Hashtable<String, CUBRIDConnectionKey> ht;
 
 	static {
-		ht = new Hashtable();
+		ht = new Hashtable<String, CUBRIDConnectionKey>();
 	}
 
 	public static void putValue(String key, CUBRIDConnectionKey value) {
@@ -57,7 +57,7 @@ abstract public class CUBRIDKeyTable {
 
 	public static CUBRIDConnectionKey getValue(String key) {
 		synchronized (ht) {
-			return ((CUBRIDConnectionKey) (ht.get(key)));
+			return ht.get(key);
 		}
 	}
 

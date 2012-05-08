@@ -76,9 +76,9 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 	private int current_row;
 	private boolean was_null;
 	private boolean is_closed;
-	private ArrayList rows;
+	private ArrayList<Object[]> rows;
 	private CUBRIDResultSetMetaData meta_data;
-	private ArrayList streams;
+	private ArrayList<InputStream> streams;
 	private int fetch_size;
 
 	protected CUBRIDResultSetWithoutQuery(int columns, int[] types,
@@ -101,9 +101,9 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 		this.num_of_rows = 0;
 		this.was_null = false;
 		this.is_closed = false;
-		this.rows = new ArrayList(10);
+		this.rows = new ArrayList<Object[]>(10);
 		this.meta_data = null;
-		this.streams = new ArrayList();
+		this.streams = new ArrayList<InputStream>();
 		this.fetch_size = 0;
 	}
 
@@ -840,7 +840,7 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 		return null;
 	}
 
-	public Object getObject(int i, Map map) throws SQLException {
+	public Object getObject(int i, Map<String, Class<?>> map) throws SQLException {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.not_supported);
 	}
 
@@ -860,7 +860,7 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.not_supported);
 	}
 
-	public synchronized Object getObject(String colName, Map map)
+	public synchronized Object getObject(String colName, Map<String, Class<?>> map)
 			throws SQLException {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.not_supported);
 	}
@@ -968,11 +968,11 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 
 	// 3.0
 
-	synchronized void sortTuples(Comparator com) {
+	synchronized void sortTuples(Comparator<Object> com) {
 		Object[] temp = rows.toArray();
 		Arrays.sort(temp, com);
 		for (int i = 0; i < temp.length; i++) {
-			rows.set(i, temp[i]);
+			rows.set(i, (Object[]) temp[i]);
 		}
 	}
 
@@ -1013,7 +1013,7 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 	}
 
 	private void clearAllStreams() throws SQLException {
-		Iterator iter = streams.iterator();
+		Iterator<InputStream> iter = streams.iterator();
 		try {
 			while (iter.hasNext()) {
 				((InputStream) iter.next()).close();

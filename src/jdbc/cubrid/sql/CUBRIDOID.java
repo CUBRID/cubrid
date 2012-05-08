@@ -147,7 +147,7 @@ public class CUBRIDOID {
 
 		UConnection u_con = cur_con.getUConnection();
 		synchronized (u_con) {
-			u_con.oidCmd(this, u_con.GET_READ_LOCK_BY_OID);
+			u_con.oidCmd(this, UConnection.GET_READ_LOCK_BY_OID);
 			error = u_con.getRecentError();
 		}
 
@@ -159,7 +159,7 @@ public class CUBRIDOID {
 
 		UConnection u_con = cur_con.getUConnection();
 		synchronized (u_con) {
-			u_con.oidCmd(this, u_con.GET_WRITE_LOCK_BY_OID);
+			u_con.oidCmd(this, UConnection.GET_WRITE_LOCK_BY_OID);
 			error = u_con.getRecentError();
 		}
 

@@ -36,15 +36,15 @@ import java.util.Hashtable;
 public class UStmtCache {
 	String key;
 
-	private Hashtable res_cache_table;
-	private ArrayList res_cache_remove_list;
+	private Hashtable<UBindKey, UResCache> res_cache_table;
+	private ArrayList<UResCache> res_cache_remove_list;
 	int ref_count;
 
 	UStmtCache(String key) {
 		this.key = key;
 
-		res_cache_table = new Hashtable(30);
-		res_cache_remove_list = new ArrayList(100);
+		res_cache_table = new Hashtable<UBindKey, UResCache>(30);
+		res_cache_remove_list = new ArrayList<UResCache>(100);
 		ref_count = 0;
 	}
 
@@ -52,7 +52,7 @@ public class UStmtCache {
 		UResCache res_cache;
 
 		synchronized (res_cache_table) {
-			res_cache = (UResCache) res_cache_table.get(key);
+			res_cache = res_cache_table.get(key);
 			if (res_cache == null) {
 				res_cache = new UResCache(key);
 				res_cache_table.put(key, res_cache);
@@ -85,12 +85,12 @@ public class UStmtCache {
 		UResCache rc;
 
 		for (int i = 0; i < res_cache_remove_list.size(); i++) {
-			rc = (UResCache) res_cache_remove_list.get(i);
+			rc = res_cache_remove_list.get(i);
 			if (rc.isExpired(checkTime)) {
 				res_cache_table.remove(rc.key);
 
 				synchronized (res_cache_remove_list) {
-					Object lastObj = res_cache_remove_list
+				    	UResCache lastObj = res_cache_remove_list
 							.remove(res_cache_remove_list.size() - 1);
 					if (i < res_cache_remove_list.size()) {
 						res_cache_remove_list.set(i, lastObj);

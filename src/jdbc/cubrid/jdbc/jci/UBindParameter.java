@@ -45,6 +45,7 @@ public class UBindParameter extends UParameter {
 	private final static byte PARAM_MODE_UNKNOWN = 0;
 	private final static byte PARAM_MODE_IN = 1;
 	private final static byte PARAM_MODE_OUT = 2;
+	@SuppressWarnings("unused")
 	private final static byte PARAM_MODE_INOUT = 3;
 
 	byte paramMode[];

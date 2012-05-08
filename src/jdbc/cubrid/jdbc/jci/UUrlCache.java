@@ -34,18 +34,18 @@ import java.util.ArrayList;
 import java.util.Hashtable;
 
 public class UUrlCache {
-	private Hashtable stmt_cache_table;
-	private ArrayList stmt_cache_remove_list;
+	private Hashtable<String, UStmtCache> stmt_cache_table;
+	private ArrayList<UStmtCache> stmt_cache_remove_list;
 
 	UUrlCache() {
-		stmt_cache_table = new Hashtable(100, 5);
-		stmt_cache_remove_list = new ArrayList(100);
+		stmt_cache_table = new Hashtable<String, UStmtCache>(100, 5);
+		stmt_cache_remove_list = new ArrayList<UStmtCache>(100);
 	}
 
 	UStmtCache getStmtCache(String sql) {
 		UStmtCache stmt_cache;
 		synchronized (stmt_cache_table) {
-			stmt_cache = (UStmtCache) stmt_cache_table.get(sql);
+			stmt_cache = stmt_cache_table.get(sql);
 			if (stmt_cache == null) {
 				stmt_cache = new UStmtCache(sql);
 				stmt_cache_table.put(sql, stmt_cache);
@@ -63,14 +63,14 @@ public class UUrlCache {
 		UStmtCache sc;
 
 		for (int i = 0; i < stmt_cache_remove_list.size(); i++) {
-			sc = (UStmtCache) stmt_cache_remove_list.get(i);
+			sc = stmt_cache_remove_list.get(i);
 			int res_count = sc.remove_expired_res(checkTime);
 			synchronized (stmt_cache_table) {
 				if (res_count <= 0 && sc.ref_count <= 0) {
 					stmt_cache_table.remove(sc.key);
 
 					synchronized (stmt_cache_remove_list) {
-						Object lastObj = stmt_cache_remove_list
+					    	UStmtCache lastObj = stmt_cache_remove_list
 								.remove(stmt_cache_remove_list.size() - 1);
 						if (i < stmt_cache_remove_list.size()) {
 							stmt_cache_remove_list.set(i, lastObj);

@@ -54,7 +54,6 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 	private String passwd;
 
 	private CUBRIDXAResource xares;
-	private CUBRIDXADataSource xads;
 
 	private boolean xa_started;
 	private String xacon_key;
@@ -71,7 +70,6 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 
 		u_con = createUConnection();
 
-		this.xads = xads;
 		xares = null;
 
 		xa_started = false;

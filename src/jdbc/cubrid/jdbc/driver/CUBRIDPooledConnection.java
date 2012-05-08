@@ -46,11 +46,11 @@ public class CUBRIDPooledConnection implements PooledConnection {
 	protected boolean isClosed;
 	protected CUBRIDConnection curConnection;
 
-	private Vector eventListeners;
+	private Vector<ConnectionEventListener> eventListeners;
 
 	protected CUBRIDPooledConnection(UConnection c) {
 		curConnection = null;
-		eventListeners = new Vector();
+		eventListeners = new Vector<ConnectionEventListener>();
 		isClosed = false;
 		u_con = c;
 	}
@@ -110,8 +110,7 @@ public class CUBRIDPooledConnection implements PooledConnection {
 		ConnectionEvent e = new ConnectionEvent(this);
 
 		for (int i = 0; i < eventListeners.size(); i++) {
-			((ConnectionEventListener) eventListeners.elementAt(i))
-					.connectionClosed(e);
+			eventListeners.elementAt(i).connectionClosed(e);
 		}
 	}
 
@@ -120,8 +119,7 @@ public class CUBRIDPooledConnection implements PooledConnection {
 		ConnectionEvent e = new ConnectionEvent(this, ex);
 
 		for (int i = 0; i < eventListeners.size(); i++) {
-			((ConnectionEventListener) eventListeners.elementAt(i))
-					.connectionErrorOccurred(e);
+			eventListeners.elementAt(i).connectionErrorOccurred(e);
 		}
 	}
 

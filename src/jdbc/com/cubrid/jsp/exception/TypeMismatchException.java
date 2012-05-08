@@ -31,6 +31,8 @@
 package com.cubrid.jsp.exception;
 
 public class TypeMismatchException extends Exception {
+    	private static final long serialVersionUID = -2825869847996279057L;
+
 	public TypeMismatchException() {
 		super();
 	}

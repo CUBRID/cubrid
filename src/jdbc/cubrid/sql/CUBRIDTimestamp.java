@@ -33,7 +33,9 @@ package cubrid.sql;
 import java.sql.Timestamp;
 
 public class CUBRIDTimestamp extends Timestamp {
-	public static final boolean TIMESTAMP = false;
+    	private static final long serialVersionUID = 8413186757763082411L;
+
+    	public static final boolean TIMESTAMP = false;
 	public static final boolean DATETIME = true;
 
 	boolean isDatetime = true;

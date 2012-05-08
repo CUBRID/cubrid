@@ -44,16 +44,16 @@ import java.util.Hashtable;
 abstract public class UJCIManager {
 	// static Vector connectionList;
 	static String sysCharsetName;
-	static Hashtable url_cache_table;
-	static ArrayList url_cache_remove_list;
+	static Hashtable<UUrlHostKey, UUrlCache> url_cache_table;
+	static ArrayList<UUrlCache> url_cache_remove_list;
 	static JdbcCacheWorker CACHE_Manager;
 	static boolean result_cache_enable = true;
 
 	static {
 		// connectionList = new Vector();
 		sysCharsetName = System.getProperty("file.encoding");
-		url_cache_table = new Hashtable(10);
-		url_cache_remove_list = new ArrayList(10);
+		url_cache_table = new Hashtable<UUrlHostKey, UUrlCache>(10);
+		url_cache_remove_list = new ArrayList<UUrlCache>(10);
 
 		try {
 			CACHE_Manager = new JdbcCacheWorker();
@@ -75,7 +75,7 @@ abstract public class UJCIManager {
 		return connection;
 	}
 
-	public static UConnection connect(ArrayList aConList, String name,
+	public static UConnection connect(ArrayList<String> aConList, String name,
 			String user, String passwd, String url)
 			throws java.sql.SQLException {
 		UConnection connection;
@@ -87,12 +87,12 @@ abstract public class UJCIManager {
 
 	static UUrlCache getUrlCache(UUrlHostKey key) {
 		UUrlCache url_cache;
-		url_cache = (UUrlCache) url_cache_table.get(key);
+		url_cache = url_cache_table.get(key);
 		if (url_cache != null)
 			return url_cache;
 
 		synchronized (url_cache_table) {
-			url_cache = (UUrlCache) url_cache_table.get(key);
+			url_cache = url_cache_table.get(key);
 			if (url_cache == null) {
 				url_cache = new UUrlCache();
 				url_cache_table.put(key, url_cache);
@@ -128,10 +128,8 @@ class JdbcCacheWorker extends Thread {
 			try {
 				long curTime = System.currentTimeMillis();
 				synchronized (UJCIManager.url_cache_remove_list) {
-					for (int i = 0; i < UJCIManager.url_cache_remove_list
-							.size(); i++) {
-						UUrlCache uc = (UUrlCache) UJCIManager.url_cache_remove_list
-								.get(i);
+					for (int i = 0; i < UJCIManager.url_cache_remove_list.size(); i++) {
+						UUrlCache uc = (UUrlCache) UJCIManager.url_cache_remove_list.get(i);
 						uc.remove_expired_stmt(curTime);
 					}
 				}

@@ -48,11 +48,11 @@ public class TargetMethod {
 
 	private String methodName;
 
-	private Class[] argsTypes;
+	private Class<?>[] argsTypes;
 
-	private static HashMap argClassMap = new HashMap();
+	private static HashMap<String, Class<?>> argClassMap = new HashMap<String, Class<?>>();
 
-	private static HashMap descriptorMap = new HashMap();
+	private static HashMap<String, String> descriptorMap = new HashMap<String, String>();
 
 	static {
 		initArgClassMap();
@@ -81,12 +81,12 @@ public class TargetMethod {
 		argsTypes = classesFor(args);
 	}
 
-	private Class getClass(String name) throws ClassNotFoundException {
+	private Class<?> getClass(String name) throws ClassNotFoundException {
 		ClassLoader cl = StoredProcedureClassLoader.getInstance();
 		return cl.loadClass(name);
 	}
 
-	private Class[] classesFor(String args) throws ClassNotFoundException,
+	private Class<?>[] classesFor(String args) throws ClassNotFoundException,
 			ExecuteException {
 		args = args.trim();
 		if (args.length() == 0) {
@@ -99,7 +99,7 @@ public class TargetMethod {
 				semiColons++;
 			}
 		}
-		Class[] classes = new Class[semiColons + 1];
+		Class<?>[] classes = new Class[semiColons + 1];
 
 		int index = 0;
 		for (int i = 0; i < semiColons; i++) {
@@ -112,7 +112,7 @@ public class TargetMethod {
 		return classes;
 	}
 
-	private Class classFor(String className) throws ClassNotFoundException,
+	private Class<?> classFor(String className) throws ClassNotFoundException,
 			ExecuteException {
 		int arrayIndex = className.indexOf("[]");
 		if (arrayIndex >= 0) {
@@ -131,7 +131,7 @@ public class TargetMethod {
 		}
 
 		if (argClassMap.containsKey(className)) {
-			return (Class) argClassMap.get(className);
+			return argClassMap.get(className);
 		} else {
 			return getClass(className);
 		}
@@ -214,7 +214,7 @@ public class TargetMethod {
 		// return targetClass.getMethod(methodName, argsTypes);
 	}
 
-	public Class[] getArgsTypes() {
+	public Class<?>[] getArgsTypes() {
 		return argsTypes;
 	}
 }

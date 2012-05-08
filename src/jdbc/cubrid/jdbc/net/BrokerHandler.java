@@ -7,7 +7,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 
-import cubrid.jdbc.driver.CUBRIDDriver;
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UJciException;

@@ -80,15 +80,12 @@ public class UStatement {
 	private int parameterNumber;
 	private int columnNumber;
 	private UBindParameter bindParameter;
-	private ArrayList batchParameter;
+	private ArrayList<UBindParameter> batchParameter;
 	private UColumnInfo columnInfo[];
 	private HashMap<String, Integer> colNameToIndex;
 	private UResultInfo resultInfo[];
 	private byte commandTypeIs;
 	private byte executeFlag;
-
-	// private String oidString;
-	private String className;
 
 	private int fetchDirection;
 	private int fetchSize;
@@ -124,7 +121,7 @@ public class UStatement {
 
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
 			boolean assign_only, String sql, byte _prepare_flag)
-			throws IOException, UJciException {
+			throws UJciException {
 		errorHandler = new UError();
 		if (assign_only) {
 			relatedConnection = relatedC;
@@ -144,8 +141,7 @@ public class UStatement {
 	}
 
 	private void init(UConnection relatedC, UInputBuffer inBuffer, String sql,
-			byte _prepare_flag, boolean clear_bind_info) throws IOException,
-			UJciException {
+			byte _prepare_flag, boolean clear_bind_info) throws UJciException {
 		sql_stmt = sql;
 		prepare_flag = _prepare_flag;
 		outBuffer = relatedC.outBuffer;
@@ -185,7 +181,7 @@ public class UStatement {
 	}
 
 	UStatement(UConnection relatedC, CUBRIDOID oid, String attributeName[],
-			UInputBuffer inBuffer) throws IOException, UJciException {
+			UInputBuffer inBuffer) throws UJciException {
 		outBuffer = relatedC.outBuffer;
 		statementType = GET_BY_OID;
 		relatedConnection = relatedC;
@@ -195,8 +191,7 @@ public class UStatement {
 
 		serverHandler = -1;
 
-		className = inBuffer.readString(inBuffer.readInt(),
-				relatedConnection.getCharset());
+		inBuffer.readString(inBuffer.readInt(), relatedConnection.getCharset());
 		columnNumber = inBuffer.readInt();
 		readColumnInfo(inBuffer);
 		fetchSize = 1;
@@ -220,11 +215,10 @@ public class UStatement {
 	}
 
 	UStatement(UConnection relatedC, String cName, String attributePattern,
-			int type, UInputBuffer inBuffer) throws IOException, UJciException {
+			int type, UInputBuffer inBuffer) throws UJciException {
 		outBuffer = relatedC.outBuffer;
 		statementType = GET_SCHEMA_INFO;
 		relatedConnection = relatedC;
-		className = cName;
 		schemaType = type;
 
 		errorHandler = new UError();
@@ -249,7 +243,7 @@ public class UStatement {
 		 */
 	}
 
-	public UStatement(UConnection u_con, int srv_handle) throws Exception {
+	public UStatement(UConnection u_con, int srv_handle) throws UJciException, IOException {
 		relatedConnection = u_con;
 		outBuffer = u_con.outBuffer;
 		statementType = NORMAL;
@@ -456,7 +450,7 @@ public class UStatement {
 		}
 
 		if (batchParameter == null) {
-			batchParameter = new ArrayList();
+			batchParameter = new ArrayList<UBindParameter>();
 		}
 		batchParameter.add(bindParameter);
 
@@ -479,8 +473,10 @@ public class UStatement {
 		try {
 			relatedConnection.cancel();
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(localError);
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			localError.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 		return localError;
@@ -579,8 +575,10 @@ public class UStatement {
 			outBuffer.addInt(serverHandler);
 			relatedConnection.send_recv_msg();
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -640,10 +638,6 @@ public class UStatement {
 							prepare_flag, false);
 				} catch (UJciException e) {
 					e.toUError(errorHandler);
-					return;
-				} catch (IOException e) {
-					if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
-						errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 					return;
 				}
 			} else {
@@ -733,8 +727,10 @@ public class UStatement {
 
 			readResultInfo(inBuffer);
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} finally {
 			relatedConnection.skip_checkcas = false;
@@ -750,10 +746,7 @@ public class UStatement {
 					close();
 				} else if (relatedConnection.need_checkcas
 						&& relatedConnection.check_cas() == false) {
-					try {
-						relatedConnection.clientSocketClose();
-					} catch (Exception e) {
-					}
+				    	relatedConnection.clientSocketClose();
 				} else {
 					return;
 					// close();
@@ -795,12 +788,11 @@ public class UStatement {
 		try {
 			if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
 					&& totalTupleNumber > 0) {
-				int fetch_rescode = inBuffer.readInt();
+				inBuffer.readInt(); // fetch_rescode
 				read_fetch_data(inBuffer);
 			}
-		} catch (IOException e) {
-			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		}
 
@@ -868,11 +860,6 @@ public class UStatement {
 						} catch (UJciException e) {
 							e.toUError(errorHandler);
 							return null;
-						} catch (IOException e) {
-							if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
-								errorHandler
-										.setErrorCode(UErrorCode.ER_COMMUNICATION);
-							return null;
 						}
 					} else {
 						errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -919,9 +906,11 @@ public class UStatement {
 			}
 			return batchResult;
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
@@ -1443,10 +1432,12 @@ public class UStatement {
 
 			totalTupleNumber = inBuffer.readInt();
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			cursorPosition = currentCursor;
 			e.toUError(errorHandler);
 			return;
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			cursorPosition = currentCursor;
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return;
@@ -1478,17 +1469,18 @@ public class UStatement {
 				inBuffer = relatedConnection.send_recv_msg();
 			}
 
-			closeInternal();
 			executeResult = inBuffer.readInt();
 			commandTypeIs = inBuffer.readByte();
 			isUpdatable = (inBuffer.readByte() == 1) ? true : false;
 			columnNumber = inBuffer.readInt();
 			readColumnInfo(inBuffer);
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			closeInternal();
 			e.toUError(errorHandler);
 			return false;
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			closeInternal();
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return false;
@@ -1569,8 +1561,10 @@ public class UStatement {
 			read_fetch_data(inBuffer);
 			realFetched = true;
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -1610,8 +1604,6 @@ public class UStatement {
 
 	synchronized public void updateRows(int cursorPosition, int[] indexes,
 			Object[] values) {
-		UInputBuffer inBuffer;
-
 		errorHandler = new UError();
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -1628,11 +1620,13 @@ public class UStatement {
 				outBuffer.addInt(cursorPosition + 1);
 				updateParameter.writeParameter(outBuffer);
 
-				inBuffer = relatedConnection.send_recv_msg();
+				relatedConnection.send_recv_msg();
 			}
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -1682,10 +1676,12 @@ public class UStatement {
 			plan = inBuffer.readString(inBuffer.remainedCapacity(),
 					relatedConnection.getCharset());
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			closeInternal();
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			closeInternal();
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
@@ -1719,10 +1715,12 @@ public class UStatement {
 				read_fetch_data(inBuffer);
 			}
 		} catch (UJciException e) {
+		    	relatedConnection.logException(e);
 			closeInternal();
 			e.toUError(errorHandler);
 			return false;
 		} catch (IOException e) {
+		    	relatedConnection.logException(e);
 			closeInternal();
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return false;
@@ -1857,7 +1855,7 @@ public class UStatement {
 	}
 
 	private Object readAAttribute(int index, UInputBuffer inBuffer)
-			throws IOException, UJciException {
+			throws UJciException {
 		int size;
 		int localType;
 
@@ -1881,8 +1879,7 @@ public class UStatement {
 	}
 
 	private Object readData(UInputBuffer inBuffer, int dataType, int dataSize)
-			throws IOException, UJciException
-	// throws IOException, UJciException
+			throws UJciException
 	{
 		switch (dataType) {
 		case UUType.U_TYPE_CHAR:
@@ -1946,8 +1943,7 @@ public class UStatement {
 		}
 	}
 
-	private void read_fetch_data(UInputBuffer inBuffer) throws IOException,
-			UJciException {
+	private void read_fetch_data(UInputBuffer inBuffer) throws UJciException {
 		fetchedTupleNumber = inBuffer.readInt();
 		if (fetchedTupleNumber < 0)
 			fetchedTupleNumber = 0;
@@ -1957,7 +1953,7 @@ public class UStatement {
 	}
 
 	private void readATupleByOid(CUBRIDOID oid, UInputBuffer inBuffer)
-			throws IOException, UJciException {
+			throws UJciException {
 		tuples[0] = new UResultTuple(1, columnNumber);
 		tuples[0].setOid(oid);
 		for (int i = 0; i < columnNumber; i++) {
@@ -1967,7 +1963,7 @@ public class UStatement {
 	}
 
 	private void readATuple(int index, UInputBuffer inBuffer)
-			throws IOException, UJciException {
+			throws UJciException {
 		tuples[index] = new UResultTuple(inBuffer.readInt(), columnNumber);
 		tuples[index].setOid(inBuffer.readOID(relatedConnection.cubridcon));
 		for (int i = 0; i < columnNumber; i++) {
@@ -1980,8 +1976,7 @@ public class UStatement {
 			currentFirstCursor = tuples[index].tupleNumber() - 1;
 	}
 
-	private void readColumnInfo(UInputBuffer inBuffer) throws IOException,
-			UJciException {
+	private void readColumnInfo(UInputBuffer inBuffer) throws UJciException {
 		byte type;
 		short scale;
 		int precision;

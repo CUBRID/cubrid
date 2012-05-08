@@ -48,6 +48,8 @@ import cubrid.jdbc.jci.UJCIManager;
 
 public class CUBRIDDataSource extends CUBRIDDataSourceBase implements
 		javax.sql.DataSource, javax.naming.Referenceable, java.io.Serializable {
+    	private static final long serialVersionUID = -1038542340147556509L;
+
 	public CUBRIDDataSource() {
 		super();
 	}

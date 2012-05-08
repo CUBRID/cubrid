@@ -45,7 +45,7 @@ import javax.naming.spi.ObjectFactory;
 
 public class CUBRIDDataSourceObjectFactory implements ObjectFactory {
 	public Object getObjectInstance(Object refObj, Name name, Context nameCtx,
-			Hashtable env) throws Exception {
+			Hashtable<?, ?> env) throws Exception {
 		Reference ref = (Reference) refObj;
 
 		if (ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDDataSource")

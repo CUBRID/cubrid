@@ -32,7 +32,7 @@ package cubrid.jdbc.driver;
 
 import java.util.Comparator;
 
-class CUBRIDComparator implements Comparator {
+class CUBRIDComparator implements Comparator<Object> {
 	private String dbmd_method;
 
 	CUBRIDComparator(String whatfor) {

@@ -85,7 +85,7 @@ public class CUBRIDResultSet implements ResultSet {
 	private boolean close_u_stmt_on_close;
 	protected UError error;
 	private CUBRIDResultSetMetaData meta_data;
-	protected ArrayList streams;
+	protected ArrayList<Object> streams;
 
 	private int type;
 	private int concurrency;
@@ -119,7 +119,7 @@ public class CUBRIDResultSet implements ResultSet {
 		complete_on_close = false;
 		close_u_stmt_on_close = false;
 		meta_data = null;
-		streams = new ArrayList();
+		streams = new ArrayList<Object>();
 
 		type = t;
 		concurrency = concur;
@@ -165,7 +165,7 @@ public class CUBRIDResultSet implements ResultSet {
 		was_null = false;
 		complete_on_close = false;
 		close_u_stmt_on_close = true;
-		streams = new ArrayList();
+		streams = new ArrayList<Object>();
 
 		type = TYPE_FORWARD_ONLY;
 		concurrency = CONCUR_READ_ONLY;
@@ -1438,7 +1438,7 @@ public class CUBRIDResultSet implements ResultSet {
 		return stmt;
 	}
 
-	public Object getObject(int i, Map map) throws SQLException {
+	public Object getObject(int i, Map<String, Class<?>> map) throws SQLException {
 		throw new UnsupportedOperationException();
 	}
 
@@ -1478,7 +1478,7 @@ public class CUBRIDResultSet implements ResultSet {
 		throw new UnsupportedOperationException();
 	}
 
-	public Object getObject(String colName, Map map) throws SQLException {
+	public Object getObject(String colName, Map<String, Class<?>> map) throws SQLException {
 		throw new UnsupportedOperationException();
 	}
 
@@ -1739,7 +1739,7 @@ public class CUBRIDResultSet implements ResultSet {
 	}
 
 	protected void clearCurrentRow() throws SQLException {
-		Iterator iter = streams.iterator();
+		Iterator<Object> iter = streams.iterator();
 		try {
 			while (iter.hasNext()) {
 				Object stream = iter.next();

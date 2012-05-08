@@ -78,7 +78,7 @@ public class SpSecurityManager extends SecurityManager {
 	public void checkListen(int port) {
 	}
 
-	public void checkMemberAccess(Class clazz, int which) {
+	public void checkMemberAccess(Class<?> clazz, int which) {
 	}
 
 	public void checkMulticast(InetAddress maddr, byte ttl) {

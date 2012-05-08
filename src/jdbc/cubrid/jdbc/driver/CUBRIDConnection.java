@@ -857,25 +857,25 @@ public class CUBRIDConnection implements Connection {
 
 	CUBRIDException createCUBRIDException(String msg, int errCode) {
 	    CUBRIDException e = new CUBRIDException(msg, errCode);
-	    u_con.logCUBRIDException(e);
+	    u_con.logException(e);
 	    return e;
 	}
 
 	CUBRIDException createCUBRIDException(UError error) {
 	    CUBRIDException e = new CUBRIDException(error);
-	    u_con.logCUBRIDException(e);
+	    u_con.logException(e);
 	    return e;
 	}
 
 	CUBRIDException createCUBRIDException(int errCode) {
 	    CUBRIDException e = new CUBRIDException(errCode);
-	    u_con.logCUBRIDException(e);
+	    u_con.logException(e);
 	    return e;
 	}
 
 	CUBRIDException createCUBRIDException(int errCode, String msg) {
 	    CUBRIDException e = new CUBRIDException(errCode, msg);
-	    u_con.logCUBRIDException(e);
+	    u_con.logException(e);
 	    return e;
 	}
 

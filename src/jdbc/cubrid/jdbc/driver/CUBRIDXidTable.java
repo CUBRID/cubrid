@@ -36,27 +36,27 @@ import java.util.Vector;
 import javax.transaction.xa.Xid;
 
 abstract class CUBRIDXidTable {
-	private static Hashtable xaTable;
+	private static Hashtable<String, Vector<CUBRIDXidInfo>> xaTable;
 
 	static {
-		xaTable = new Hashtable();
+		xaTable = new Hashtable<String, Vector<CUBRIDXidInfo>>();
 	}
 
 	static boolean putXidInfo(String key, CUBRIDXidInfo xidInfo) {
-		Vector xidArray;
+		Vector<CUBRIDXidInfo> xidArray;
 
 		synchronized (xaTable) {
-			xidArray = (Vector) xaTable.get(key);
+			xidArray = xaTable.get(key);
 
 			if (xidArray == null) {
-				xidArray = new Vector();
+				xidArray = new Vector<CUBRIDXidInfo>();
 				xaTable.put(key, xidArray);
 			}
 		}
 
 		synchronized (xidArray) {
 			for (int i = 0; i < xidArray.size(); i++) {
-				if (xidInfo.compare((CUBRIDXidInfo) xidArray.get(i)))
+				if (xidInfo.compare(xidArray.get(i)))
 					return false;
 			}
 			xidArray.add(xidInfo);
@@ -65,10 +65,10 @@ abstract class CUBRIDXidTable {
 	}
 
 	static CUBRIDXidInfo getXid(String key, Xid xid) {
-		Vector xidArray;
+		Vector<CUBRIDXidInfo> xidArray;
 
 		synchronized (xaTable) {
-			xidArray = (Vector) xaTable.get(key);
+			xidArray = xaTable.get(key);
 			if (xidArray == null)
 				return null;
 		}
@@ -76,7 +76,7 @@ abstract class CUBRIDXidTable {
 		synchronized (xidArray) {
 			CUBRIDXidInfo xidInfo;
 			for (int i = 0; i < xidArray.size(); i++) {
-				xidInfo = (CUBRIDXidInfo) xidArray.get(i);
+				xidInfo = xidArray.get(i);
 				if (xidInfo.compare(xid))
 					return xidInfo;
 			}
@@ -86,10 +86,10 @@ abstract class CUBRIDXidTable {
 	}
 
 	static void removeXid(String key, Xid xid) {
-		Vector xidArray;
+		Vector<CUBRIDXidInfo> xidArray;
 
 		synchronized (xaTable) {
-			xidArray = (Vector) xaTable.get(key);
+			xidArray = xaTable.get(key);
 			if (xidArray == null)
 				return;
 		}
@@ -97,7 +97,7 @@ abstract class CUBRIDXidTable {
 		synchronized (xidArray) {
 			CUBRIDXidInfo xidInfo;
 			for (int i = 0; i < xidArray.size(); i++) {
-				xidInfo = (CUBRIDXidInfo) xidArray.get(i);
+				xidInfo = xidArray.get(i);
 				if (xidInfo.compare(xid)) {
 					xidArray.remove(i);
 					return;

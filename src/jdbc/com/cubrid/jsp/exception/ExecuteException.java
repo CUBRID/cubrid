@@ -31,6 +31,8 @@
 package com.cubrid.jsp.exception;
 
 public class ExecuteException extends Exception {
+    	private static final long serialVersionUID = -8286926436211901696L;
+
 	public ExecuteException() {
 		super();
 	}

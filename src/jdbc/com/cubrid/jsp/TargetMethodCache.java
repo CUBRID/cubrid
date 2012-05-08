@@ -33,18 +33,18 @@ package com.cubrid.jsp;
 import java.util.HashMap;
 
 public class TargetMethodCache {
-	private HashMap methods;
+	private HashMap<String, TargetMethod> methods;
 
 	private static TargetMethodCache instance = null;
 
 	private TargetMethodCache() {
-		methods = new HashMap();
+		methods = new HashMap<String, TargetMethod>();
 	}
 
 	public TargetMethod get(String signature) throws Exception {
 		TargetMethod method = null;
 
-		method = (TargetMethod) methods.get(signature);
+		method = methods.get(signature);
 		if (method == null) {
 			method = new TargetMethod(signature);
 			methods.put(signature, method);

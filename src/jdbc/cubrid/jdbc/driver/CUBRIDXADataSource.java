@@ -48,6 +48,8 @@ import javax.sql.XADataSource;
 
 public class CUBRIDXADataSource extends CUBRIDPoolDataSourceBase implements
 		XADataSource, Referenceable, Serializable {
+    	private static final long serialVersionUID = -7015869630223848825L;
+
 	public CUBRIDXADataSource() {
 		super();
 	}

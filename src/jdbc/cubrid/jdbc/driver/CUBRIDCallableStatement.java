@@ -502,11 +502,11 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 		throw new UnsupportedOperationException();
 	}
 
-	public Object getObject(int i, Map map) throws SQLException {
+	public Object getObject(int i, Map<String, Class<?>> map) throws SQLException {
 		throw new UnsupportedOperationException();
 	}
 
-	public Object getObject(String pName, Map map) throws SQLException {
+	public Object getObject(String pName, Map<String, Class<?>> map) throws SQLException {
 		throw new UnsupportedOperationException();
 	}
 

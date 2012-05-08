@@ -33,6 +33,7 @@ package com.cubrid.jsp.value;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.Calendar;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
 
@@ -43,16 +44,20 @@ public class DatetimeValue extends Value {
 			int sec, int msec) {
 		super();
 
-		this.timestamp = new Timestamp(year, mon, day, hour, min, sec,
-				msec * 1000000);
+		Calendar c = Calendar.getInstance();
+		c.set(year, mon, day, hour, min, sec);
+		c.set(Calendar.MILLISECOND, msec);
+		timestamp = new Timestamp(c.getTimeInMillis());
 	}
 
 	public DatetimeValue(int year, int mon, int day, int hour, int min,
 			int sec, int msec, int mode, int dbType) {
 		super(mode);
 
-		this.timestamp = new Timestamp(year, mon, day, hour, min, sec,
-				msec * 1000000);
+		Calendar c = Calendar.getInstance();
+		c.set(year, mon, day, hour, min, sec);
+		c.set(Calendar.MILLISECOND, msec);
+		timestamp = new Timestamp(c.getTimeInMillis());
 		this.dbType = dbType;
 	}
 

@@ -33,10 +33,10 @@ package cubrid.jdbc.driver;
 import java.util.Hashtable;
 
 abstract public class CUBRIDJdbcInfoTable {
-	static private Hashtable ht;
+	static private Hashtable<String, String> ht;
 
 	static {
-		ht = new Hashtable();
+		ht = new Hashtable<String, String>();
 	}
 
 	public static void putValue(String key, String value) {
@@ -50,12 +50,12 @@ abstract public class CUBRIDJdbcInfoTable {
 	}
 
 	public static String getValue() {
-		return (getValue(Thread.currentThread().getName()));
+		return getValue(Thread.currentThread().getName());
 	}
 
 	public static String getValue(String key) {
 		synchronized (ht) {
-			return ((String) (ht.get(key)));
+			return ht.get(key);
 		}
 	}
 

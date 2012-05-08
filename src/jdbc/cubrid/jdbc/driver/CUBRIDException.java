@@ -35,6 +35,7 @@ import java.sql.SQLException;
 import cubrid.jdbc.jci.UError;
 
 public class CUBRIDException extends SQLException {
+    	private static final long serialVersionUID = -1902040094322313271L;
 
 	protected CUBRIDException(String msg, int errCode) {
 		super(msg, null, errCode);

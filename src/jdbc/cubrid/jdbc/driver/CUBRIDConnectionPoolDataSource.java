@@ -45,6 +45,8 @@ import cubrid.jdbc.jci.UJCIManager;
 
 public class CUBRIDConnectionPoolDataSource extends CUBRIDPoolDataSourceBase
 		implements ConnectionPoolDataSource, Referenceable, Serializable {
+    	private static final long serialVersionUID = 3418532804994248021L;
+
 	public CUBRIDConnectionPoolDataSource() {
 		super();
 	}

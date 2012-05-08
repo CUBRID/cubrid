@@ -35,7 +35,9 @@ import java.io.Serializable;
 import javax.transaction.xa.Xid;
 
 public class CUBRIDXid implements Xid, Serializable {
-	private int formatId;
+    	private static final long serialVersionUID = 641629560291850549L;
+
+    	private int formatId;
 	private byte[] globalTransactionId;
 	private byte[] branchQualifier;
 

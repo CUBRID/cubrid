@@ -39,12 +39,12 @@ import javax.naming.InitialContext;
 import javax.naming.NamingException;
 
 abstract class CUBRIDConnectionPoolManager {
-	private static Hashtable connectionPooltable;
-	private static Hashtable poolDataSourceTable;
+	private static Hashtable<String, CUBRIDConnectionEventListener> connectionPooltable;
+	private static Hashtable<String, CUBRIDConnectionPoolDataSource> poolDataSourceTable;
 
 	static {
-		connectionPooltable = new Hashtable();
-		poolDataSourceTable = new Hashtable();
+		connectionPooltable = new Hashtable<String, CUBRIDConnectionEventListener>();
+		poolDataSourceTable = new Hashtable<String, CUBRIDConnectionPoolDataSource>();
 	}
 
 	static Connection getConnection(CUBRIDConnectionPoolDataSource pds,
@@ -54,14 +54,14 @@ abstract class CUBRIDConnectionPoolManager {
 		String key = pds.getDataSourceID(user);
 
 		synchronized (connectionPooltable) {
-			cp = (CUBRIDConnectionEventListener) connectionPooltable.get(key);
+			cp = connectionPooltable.get(key);
 
 			if (cp == null) {
 				cp = addConnectionPool(key, pds);
 			}
 		}
 
-		return (cp.getConnection(user, passwd));
+		return cp.getConnection(user, passwd);
 	}
 
 	static CUBRIDConnectionPoolDataSource getConnectionPoolDataSource(
@@ -69,8 +69,7 @@ abstract class CUBRIDConnectionPoolManager {
 		CUBRIDConnectionPoolDataSource cpds;
 
 		synchronized (poolDataSourceTable) {
-			cpds = (CUBRIDConnectionPoolDataSource) poolDataSourceTable
-					.get(dsName);
+			cpds = poolDataSourceTable.get(dsName);
 
 			if (cpds == null) {
 				try {
@@ -90,8 +89,7 @@ abstract class CUBRIDConnectionPoolManager {
 
 	static private CUBRIDConnectionEventListener addConnectionPool(String key,
 			CUBRIDConnectionPoolDataSource pds) {
-		CUBRIDConnectionEventListener cp = new CUBRIDConnectionEventListener(
-				pds);
+		CUBRIDConnectionEventListener cp = new CUBRIDConnectionEventListener(pds);
 		connectionPooltable.put(key, cp);
 		return cp;
 	}

@@ -110,7 +110,7 @@ abstract public class UJCIUtil {
 		System.arraycopy(b, 0, dest, dIndex, cpSize);
 	}
 
-	public static boolean isMysqlMode(Class c) {
+	public static boolean isMysqlMode(Class<?> c) {
 		String split[] = c.getName().split("\\.");
 		if (split.length > 2 && split[2].equals("mysql")) {
 			return true;
@@ -118,7 +118,7 @@ abstract public class UJCIUtil {
 		return false;
 	}
 
-	public static boolean isOracleMode(Class c) {
+	public static boolean isOracleMode(Class<?> c) {
 		String split[] = c.getName().split("\\.");
 		if (split.length > 2 && split[2].equals("oracle")) {
 			return true;
@@ -147,9 +147,9 @@ abstract public class UJCIUtil {
 	}
 
 	public static Object invoke(String cls_name, String method,
-			Class[] param_cls, Object cls, Object[] params) {
+			Class<?>[] param_cls, Object cls, Object[] params) {
 		try {
-			Class c = Class.forName(cls_name);
+			Class<?> c = Class.forName(cls_name);
 			Method m = c.getMethod(method, param_cls);
 			return m.invoke(cls, params);
 		} catch (Exception e) {
@@ -157,9 +157,9 @@ abstract public class UJCIUtil {
 		}
 	}
 
-	public static Constructor getConstructor(String cls_name, Class[] param_cls) {
+	public static Constructor<?> getConstructor(String cls_name, Class<?>[] param_cls) {
 		try {
-			Class c = Class.forName(cls_name);
+			Class<?> c = Class.forName(cls_name);
 			return c.getConstructor(param_cls);
 		} catch (Exception e) {
 			return null;

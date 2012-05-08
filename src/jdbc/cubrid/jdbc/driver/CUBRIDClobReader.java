@@ -32,7 +32,6 @@ package cubrid.jdbc.driver;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.nio.CharBuffer;
 import java.sql.SQLException;
 
 class CUBRIDClobReader extends Reader {

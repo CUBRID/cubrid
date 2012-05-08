@@ -91,21 +91,21 @@
     </target>
 
     <target name="compile-cubrid" depends="src-cubrid">
-        <javac destdir="${bin-cubrid}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off">
+        <javac destdir="${bin-cubrid}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
             <src path="${src-cubrid}"/>
             <include name="**/*.java"/>
         </javac>
     </target>
 
     <target name="compile-mysql" depends="src-mysql">
-        <javac destdir="${bin-mysql}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off">
+        <javac destdir="${bin-mysql}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
             <src path="${src-mysql}"/>
             <include name="**/*.java"/>
         </javac>
     </target>
 
     <target name="compile-oracle" depends="src-oracle">
-        <javac destdir="${bin-oracle}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off">
+        <javac destdir="${bin-oracle}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
             <src path="${src-oracle}"/>
             <include name="**/*.java"/>
         </javac>

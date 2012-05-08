@@ -326,9 +326,11 @@ public class UConnection {
 			manageElementOfSet(oid, attributeName, value,
 					UConnection.ADD_ELEMENT_TO_SET);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return;
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return;
 		}
@@ -383,8 +385,10 @@ public class UConnection {
 			update_executed = true;
 			return batchResult;
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 		return null;
@@ -408,13 +412,8 @@ public class UConnection {
 		 */
 
 		if (!isServerSideJdbc) {
-			try {
-				if (client != null)
-					clientSocketClose();
-			} catch (IOException e) {
-				errorHandler.setErrorMessage(UErrorCode.ER_COMMUNICATION,
-						e.getMessage() + "in close");
-			}
+		    	if (client != null)
+		    	    	clientSocketClose();
 		}
 		// System.gc();
 		// UJCIManager.deleteInList(this);
@@ -444,8 +443,10 @@ public class UConnection {
 
 			send_recv_msg();
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -461,9 +462,11 @@ public class UConnection {
 			manageElementOfSet(oid, attributeName, value,
 					UConnection.DROP_ELEMENT_IN_SET);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return;
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return;
 		}
@@ -509,10 +512,13 @@ public class UConnection {
 				}
 			}
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} catch (Exception e) {
+		    	logException(e);
 			errorHandler.setErrorMessage(UErrorCode.ER_UNKNOWN, e.getMessage());
 		}
 
@@ -536,10 +542,7 @@ public class UConnection {
 			if (type == false)
 				errorHandler.clear();
 
-			try {
-				clientSocketClose();
-			} catch (IOException e) {
-			}
+			clientSocketClose();
 			needReconnection = true;
 		}
 
@@ -579,9 +582,11 @@ public class UConnection {
 
 			returnValue = new UStatement(this, oid, attributeName, inBuffer);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
 		}
@@ -613,8 +618,10 @@ public class UConnection {
 			return inBuffer.readString(inBuffer.remainedCapacity(),
 					UJCIManager.sysCharsetName);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 		return null;
@@ -643,8 +650,10 @@ public class UConnection {
 
 				return inBuffer.readInt();
 			} catch (UJciException e) {
+			    	logException(e);
 				e.toUError(errorHandler);
 			} catch (IOException e) {
+			    	logException(e);
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			}
 			return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
@@ -680,9 +689,11 @@ public class UConnection {
 			ret_val = inBuffer.readString(inBuffer.remainedCapacity(),
 					connectionProperties.getCharSet());
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
+		    	logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
@@ -734,9 +745,11 @@ public class UConnection {
 
 			returnValue = new UStatement(this, arg1, arg2, type, inBuffer);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
+		    	logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
@@ -774,8 +787,10 @@ public class UConnection {
 
 			return inBuffer.readInt();
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 		return 0;
@@ -792,9 +807,11 @@ public class UConnection {
 			manageElementOfSequence(oid, attributeName, index, value,
 					UConnection.INSERT_ELEMENT_INTO_SEQUENCE);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return;
 		} catch (IOException e) {
+		    	logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return;
@@ -847,8 +864,10 @@ public class UConnection {
 				returnValue = new UStatement(this, inBuffer, false,
 						sqlStatement, prepareFlag);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} finally {
@@ -860,10 +879,7 @@ public class UConnection {
 				need_checkcas = true;
 			if (need_checkcas) {
 				if (check_cas() == false) {
-					try {
-						clientSocketClose();
-					} catch (Exception e) {
-					}
+					clientSocketClose();
 				}
 				return (prepare(sqlStatement, prepareFlag, recompile_flag));
 			} else {
@@ -911,8 +927,10 @@ public class UConnection {
 				turnOnAutoCommitBySelf();
 			}
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -928,9 +946,11 @@ public class UConnection {
 			manageElementOfSequence(oid, attributeName, index, value,
 					UConnection.PUT_ELEMENT_ON_SEQUENCE);
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 			return;
 		} catch (IOException e) {
+		    	logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return;
@@ -963,8 +983,10 @@ public class UConnection {
 
 				lastIsolationLevel = level;
 			} catch (UJciException e) {
+			    	logException(e);
 				e.toUError(errorHandler);
 			} catch (IOException e) {
+			    	logException(e);
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			}
 		}
@@ -994,8 +1016,10 @@ public class UConnection {
 			else
 				lastLockTimeout = timeout;
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -1079,11 +1103,8 @@ public class UConnection {
 		} catch (Exception e) {
 			errorHandler.setErrorCode(UErrorCode.ER_UNKNOWN);
 		} finally {
-			try {
-				clientSocketClose();
-				needReconnection = true;
-			} catch (IOException e) {
-			}
+		    	clientSocketClose();
+		    	needReconnection = true;
 		}
 	}
 
@@ -1212,6 +1233,7 @@ public class UConnection {
 					return false;
 			}
 		} catch (IOException e) {
+		    	logException(e);
 			return false;
 		}
 
@@ -1270,8 +1292,10 @@ public class UConnection {
 					connectionProperties.getCharSet());
 			}
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 
@@ -1306,10 +1330,13 @@ public class UConnection {
 			inBuffer.readBytes(packedLobHandle);
 			return packedLobHandle;
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} catch (Exception e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_UNKNOWN);
 		}
 		return null;
@@ -1343,10 +1370,13 @@ public class UConnection {
 			}
 			return res_code;
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} catch (Exception e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_UNKNOWN);
 		}
 		return -1;
@@ -1382,10 +1412,13 @@ public class UConnection {
 
 			return res_code;
 		} catch (UJciException e) {
+		    	logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} catch (Exception e) {
+		    	logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_UNKNOWN);
 		}
 		return -1;
@@ -1420,7 +1453,7 @@ public class UConnection {
 		return lastIsolationLevel;
 	}
 
-	void clientSocketClose() throws IOException {
+	void clientSocketClose() {
 		try {
 			needReconnection = true;
 			if (client != null) {
@@ -1429,6 +1462,7 @@ public class UConnection {
 			}
 			client = null;
 		} catch (IOException e) {
+		    	logException(e);
 		}
 		clearPooledUStatements();
 		deferred_close_handle.clear();
@@ -1448,7 +1482,7 @@ public class UConnection {
 	}
 
 	UInputBuffer send_recv_msg() throws UJciException, IOException {
-		return (send_recv_msg(true));
+		return send_recv_msg(true);
 	}
 
 	void cancel() throws UJciException, IOException {
@@ -1572,8 +1606,10 @@ public class UConnection {
 					connectedHostId = hostId;
 					return; // success to connect
 				} catch (IOException e) {
+				    	logException(e);
 					// continue to connect to next host
 				} catch (UJciException e) {
+				    	logException(e);
 					int errno = e.getJciError();
 					if (errno == UErrorCode.ER_COMMUNICATION ||
 					// errno == UErrorCode.ER_DBMS ||
@@ -1807,7 +1843,6 @@ public class UConnection {
 	    return e;
 	}
 
-
 	StringBuffer b = new StringBuffer();
 	b.append("DUMP EXCEPTION\n");
 	b.append("[JCI EXCEPTION]");
@@ -1820,38 +1855,22 @@ public class UConnection {
 
     public UJciException createJciException(int err, int indicator, int srv_err, String msg) {
 	UJciException e = new UJciException(err, indicator, srv_err, msg);
-	if (connectionProperties == null || !connectionProperties.getLogOnException()) {
-	    return e;
-	}
-
-
-	StringBuffer b = new StringBuffer();
-	b.append("DUMP EXCEPTION\n");
-	b.append("[JCI EXCEPTION]");
-
-	synchronized (this) {
-	    getLogger().logInfo(b.toString(), e);
-	}
+	logException(e);
 	return e;
     }
 
-    public CUBRIDException logCUBRIDException(CUBRIDException e) {
+    public void logException(Throwable t) {
 	if (connectionProperties == null || !connectionProperties.getLogOnException()) {
-	    return e;
+	    return;
 	}
 
 	StringBuffer b = new StringBuffer();
 	b.append("DUMP EXCEPTION\n");
-	if (e instanceof CUBRIDException) {
-	    b.append("[CUBRID EXCEPTION]");
-	} else {
-	    b.append("[EXCEPTION]");
-	}
+	b.append("[" + t.getClass().getName() + "]");
 
 	synchronized (this) {
-	    getLogger().logInfo(b.toString(), e);
+	    getLogger().logInfo(b.toString(), t);
 	}
-	return e;
     }
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
