@@ -730,6 +730,13 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->start_time.tv_usec = 0;
   con_handle->current_timeout = 0;
 
+  con_handle->log_filename = NULL;
+  con_handle->log_on_exception = false;
+  con_handle->log_slow_queries = false;
+  con_handle->slow_query_threshold_millis = 60000;
+  con_handle->log_trace_api = false;
+  con_handle->log_trace_network = false;
+
   con_handle->deferred_max_close_handle_count =
     DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
   con_handle->deferred_close_handle_list =

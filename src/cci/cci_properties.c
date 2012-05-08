@@ -155,7 +155,7 @@ cci_url_set_value (T_URL_PROPERTY * property, char *value)
 	error = cci_url_get_bool (value, &v);
 	if (error == CCI_ER_NO_ERROR)
 	  {
-	    property->data = (void *) v;
+	    *((char *) property->data) = v;
 	  }
 	break;
       }
@@ -165,13 +165,17 @@ cci_url_set_value (T_URL_PROPERTY * property, char *value)
 	error = cci_url_get_int (value, &v);
 	if (error == CCI_ER_NO_ERROR)
 	  {
-	    property->data = (void *) v;
+	    *((int *) property->data) = v;
 	  }
 	break;
       }
     case STRING_PROPERTY:
       {
-	property->data = value;
+	*((char **) property->data) = strdup (value);
+	if (*((char **) property->data) == NULL)
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
 	break;
       }
     default:
@@ -283,20 +287,23 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 int
 cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
 {
+  char *base = NULL, *althosts = NULL;
   T_URL_PROPERTY props[] = {
-    {"altHosts", STRING_PROPERTY, NULL},
-    {"rcTime", INT_PROPERTY, (void *) 600},
-    {"autoCommit", BOOL_PROPERTY, (void *) true},
-    {"loginTimeout", INT_PROPERTY, (void *) 0},
-    {"queryTimeout", INT_PROPERTY, (void *) 0},
-    {"disconnectOnQueryTimeout", BOOL_PROPERTY, (void *) false},
-    {"logFile", STRING_PROPERTY, NULL},
-    {"logOnException", BOOL_PROPERTY, (void *) false},
-    {"logSlowQueries", BOOL_PROPERTY, (void *) false},
-    {"slowQueryThresholdMillis", INT_PROPERTY, (void *) 60000},
-    {"logTraceApi", BOOL_PROPERTY, (void *) false},
-    {"logTraceNetwork", BOOL_PROPERTY, (void *) false},
-    {"logBaseDir", STRING_PROPERTY, (void *) "logs"}
+    {"altHosts", STRING_PROPERTY, &althosts},
+    {"rcTime", INT_PROPERTY, &handle->rc_time},
+    {"autoCommit", BOOL_PROPERTY, &handle->autocommit_mode},
+    {"loginTimeout", INT_PROPERTY, &handle->login_timeout},
+    {"queryTimeout", INT_PROPERTY, &handle->query_timeout},
+    {"disconnectOnQueryTimeout", BOOL_PROPERTY,
+     &handle->disconnect_on_query_timeout},
+    {"logFile", STRING_PROPERTY, &handle->log_filename},
+    {"logOnException", BOOL_PROPERTY, &handle->log_on_exception},
+    {"logSlowQueries", BOOL_PROPERTY, &handle->log_slow_queries},
+    {"slowQueryThresholdMillis", INT_PROPERTY,
+     &handle->slow_query_threshold_millis},
+    {"logTraceApi", BOOL_PROPERTY, &handle->log_trace_api},
+    {"logTraceNetwork", BOOL_PROPERTY, &handle->log_trace_network},
+    {"logBaseDir", STRING_PROPERTY, &base}
   };
   int error = CCI_ER_NO_ERROR;
 
@@ -306,40 +313,39 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       goto set_properties_end;
     }
 
-  error = cci_url_set_althosts (handle, props[0].data);
-  if (error != CCI_ER_NO_ERROR)
+  if (althosts != NULL)
     {
-      goto set_properties_end;
+      error = cci_url_set_althosts (handle, althosts);
+      free (althosts);
+      if (error != CCI_ER_NO_ERROR)
+        {
+          goto set_properties_end;
+        }
     }
-  handle->rc_time = (int) props[1].data;
-  handle->autocommit_mode = (bool) props[2].data;
-  handle->login_timeout = (int) props[3].data;
-  handle->query_timeout = (int) props[4].data;
-  handle->disconnect_on_query_timeout = (bool) props[5].data;
 
   /* for logging */
-  if (handle->log_filename)
-    {
-      handle->log_filename = strdup (props[6].data);
-    }
-  else
-    {
-      char file[PATH_MAX];
-      snprintf (file, PATH_MAX, "%s/cci_%04d.log", (char *) props[12].data,
-		handle->id);
-      mkdir (props[12].data, 0755);
-      handle->log_filename = strdup (file);
-    }
   if (handle->log_filename == NULL)
     {
-      error = CCI_ER_NO_MORE_MEMORY;
-      goto set_properties_end;
+      char file[PATH_MAX];
+
+      if (base == NULL)
+	{
+          snprintf (file, PATH_MAX, "logs/cci_%04d.log", handle->id);
+          mkdir ("logs", 0755);
+	}
+      else
+        {
+          snprintf (file, PATH_MAX, "%s/cci_%04d.log", base, handle->id);
+          mkdir (base, 0755);
+          free (base);
+        }
+      handle->log_filename = strdup (file);
+      if (handle->log_filename == NULL)
+	{
+	  error = CCI_ER_NO_MORE_MEMORY;
+	  goto set_properties_end;
+	}
     }
-  handle->log_on_exception = (bool) props[7].data;
-  handle->log_slow_queries = (bool) props[8].data;
-  handle->slow_query_threshold_millis = (int) props[9].data;
-  handle->log_trace_api = (bool) props[10].data;
-  handle->log_trace_network = (bool) props[11].data;
 
   if (handle->log_on_exception || handle->log_slow_queries
       || handle->log_trace_api || handle->log_trace_network)
