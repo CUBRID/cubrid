@@ -105,10 +105,26 @@
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
 
-/* poll */
-#define POLLIN 0x01
-#define POLLPRI 0x02
-#define POLLOUT 0x04
+#if (_WIN32_WINNT < 0x0600)
+#define POLLRDNORM  0x0100
+#define POLLRDBAND  0x0200
+#define POLLIN      (POLLRDNORM | POLLRDBAND)
+#define POLLPRI     0x0400
+
+#define POLLWRNORM  0x0010
+#define POLLOUT     (POLLWRNORM)
+#define POLLWRBAND  0x0020
+
+#define POLLERR     0x0001
+#define POLLHUP     0x0002
+#define POLLNVAL    0x0004
+
+struct pollfd {
+    SOCKET  fd;
+    SHORT   events;
+    SHORT   revents;
+};
+#endif // (_WIN32_WINNT < 0x0600)
 
 typedef unsigned long int nfds_t;
 extern int poll (struct pollfd *fds, nfds_t nfds, int timeout);
