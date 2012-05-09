@@ -72,11 +72,11 @@ extern int loader_yylineno;
 
 #define LDR_MAX_ARGS 32
 
-#  define LDR_INCREMENT_ERR_TOTAL(context) ldr_increment_err_total(context)
-#  define LDR_INCREMENT_ERR_COUNT(context, i) \
+#define LDR_INCREMENT_ERR_TOTAL(context) ldr_increment_err_total(context)
+#define LDR_INCREMENT_ERR_COUNT(context, i) \
                                            ldr_increment_err_count(context, i)
-#  define LDR_CLEAR_ERR_TOTAL(context)     ldr_clear_err_total(context)
-#  define LDR_CLEAR_ERR_COUNT(context)     ldr_clear_err_count(context)
+#define LDR_CLEAR_ERR_TOTAL(context)     ldr_clear_err_total(context)
+#define LDR_CLEAR_ERR_COUNT(context)     ldr_clear_err_count(context)
 
 /* filter out ignorable errid */
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
@@ -2603,7 +2603,8 @@ ldr_nstr_elem (LDR_CONTEXT * context,
 	       const char *str, int len, DB_VALUE * val)
 {
 
-  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len);
+  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len,
+		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 
@@ -5038,8 +5039,7 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
       attdesc = &(context->attrs[i]);
       CHECK_ERR (err, db_get_attribute_descriptor (context->cls,
 						   attdesc->attdesc->name,
-						   context->
-						   attribute_type ==
+						   context->attribute_type ==
 						   LDR_ATTRIBUTE_CLASS,
 						   true, &db_attdesc));
       /* Free existing descriptor */
@@ -5798,8 +5798,10 @@ ldr_init_loader (LDR_CONTEXT * context)
    */
   db_make_int (&ldr_int_tmpl, 0);
   db_make_bigint (&ldr_bigint_tmpl, 0);
-  db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1);
-  db_make_varchar (&ldr_varchar_tmpl, 1, (char *) "a", 1);
+  db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET,
+		LANG_SYS_COLLATION);
+  db_make_varchar (&ldr_varchar_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
   db_make_float (&ldr_float_tmpl, (float) 0.0);
   db_make_double (&ldr_double_tmpl, (double) 0.0);
   db_make_date (&ldr_date_tmpl, 1, 1, 1996);

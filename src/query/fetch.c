@@ -597,6 +597,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_TO_ENUMERATION_VALUE:
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -963,7 +971,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_date_dbval (arithptr->value, peek_right) != NO_ERROR)
+      else if (db_date_dbval (arithptr->value, peek_right, arithptr->domain)
+	       != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -974,7 +983,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_time_dbval (arithptr->value, peek_right) != NO_ERROR)
+      else if (db_time_dbval (arithptr->value, peek_right, arithptr->domain)
+	       != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1431,8 +1441,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_time_format (peek_left, peek_right, arithptr->value) !=
-	       NO_ERROR)
+      else if (db_time_format (peek_left, peek_right, arithptr->value,
+			       arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1768,7 +1778,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_format (peek_left, peek_right, arithptr->value) != NO_ERROR)
+      else if (db_format (peek_left, peek_right, arithptr->value,
+			  arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1780,10 +1791,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_date_format (peek_left, peek_right,
-			       arithptr->value) != NO_ERROR)
+			       arithptr->value, arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
+
       break;
 
     case T_STR_TO_DATE:
@@ -1965,7 +1977,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_to_char (peek_left, peek_right, peek_third,
-			   arithptr->value) != NO_ERROR)
+			   arithptr->value, arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3186,7 +3198,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_LIST_DBS:
-      if (qdata_list_dbs (thread_p, arithptr->value) != NO_ERROR)
+      if (qdata_list_dbs (thread_p, arithptr->value, arithptr->domain)
+	  != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3221,6 +3234,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    goto error;
 	  }
       }
+      break;
+
+    case T_TO_ENUMERATION_VALUE:
+      if (db_value_to_enumeration_value (peek_right, arithptr->value,
+					 arithptr->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
       break;
 
     default:

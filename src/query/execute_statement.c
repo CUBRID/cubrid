@@ -5457,7 +5457,8 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_TRIGGER_TIME cond_time, action_time;
   const char *cond_source, *action_source;
   DB_OBJECT *trigger;
-
+  SM_CLASS *smclass = NULL;
+  int error = NO_ERROR;
   CHECK_MODIFICATION_ERROR ();
 
   if (PRM_BLOCK_DDL_STATEMENT)
@@ -5546,7 +5547,29 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = (void *) value;
 #endif
 
-  return NO_ERROR;
+  if (class_ == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (smclass->users != NULL)
+    {
+      /* We have to flush the newly created trigger if the class it belongs to
+       * has subclasses. This is because the same trigger is assigned to the
+       * whole hierarchy and we have to make sure it does not remain a
+       * temporary object when it is first compiled.
+       * Since the class that this trigger belongs to might also be a
+       * temporary object, we actually have to flush the whole workspace
+       */
+      error = locator_all_flush ();
+    }
+
+  return error;
 }
 
 /*
@@ -6156,10 +6179,8 @@ update_object_tuple (PARSER_CONTEXT * parser,
   DB_OTMPL *otemplate = NULL, *otmpl = NULL;
   int idx = 0, upd_tpl_cnt = 0;
   DB_OBJECT *real_object = NULL, *object = NULL;
-  MOP newobj = NULL;
   SM_CLASS *smclass = NULL;
   SM_ATTRIBUTE *att = NULL;
-  DB_VALUE retval;
   char flag_att = 0;
   int exist_active_triggers = false;
   CLIENT_UPDATE_INFO *assign = NULL;
@@ -6217,205 +6238,88 @@ update_object_tuple (PARSER_CONTEXT * parser,
 	  smclass = cls_info->smclass;
 	}
 
-      /* if class has partitions then check if updated tuple will remain in
-       * current partition */
-      newobj = NULL;
-      if (smclass->partition_of)
+      otemplate = dbt_edit_object (real_object);
+      if (otemplate == NULL)
 	{
-	  newobj = do_is_partition_changed (parser, smclass,
-					    object->class_mop,
-					    cls_info->first_assign);
+	  return er_errid ();
 	}
 
-      /* check if updated tuple needs to be moved to another partition */
-      if (newobj)
+      if (turn_off_unique_check)
 	{
-	  /* partition */
-	  exist_active_triggers = sm_active_triggers (smclass, TR_EVENT_ALL);
-	  if (exist_active_triggers)
-	    {
-	      if (exist_active_triggers < 0)
-		{
-		  error = er_errid ();
-		  return ((error != NO_ERROR) ? error : ER_GENERIC_ERROR);
-		}
-	      else
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
-		  return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
-		}
-	    }
-	  /* partition change - new insert & old delete */
-	  otmpl = dbt_create_object_internal (newobj);
-	  if (otmpl == NULL)
-	    {
-	      error = er_errid ();
-	      return ((error != NO_ERROR) ? error : ER_GENERIC_ERROR);
-	    }
+	  obt_disable_unique_checking (otemplate);
+	}
 
-	  /* this is an update - force NOT NULL constraint check */
-	  otmpl->force_check_not_null = 1;
+      /* this is an update - force NOT NULL constraint check */
+      otemplate->force_check_not_null = 1;
 
-	  /* because the tuple needs to be moved to another partition we will
-	   * update the template with new values for attributes that need to
-	   * be updated and with old values the other attributes */
-	  for (att = smclass->attributes, flag_att = 0; att != NULL;)
+      /* If this update came from INSERT ON DUPLICATE KEY UPDATE,
+       * flush the object on updating it.
+       */
+      if (update_type == ON_DUPLICATE_KEY_UPDATE
+	  || smclass->partition_of != NULL)
+	{
+	  obt_set_force_flush (otemplate);
+	}
+
+      /* iterate through class assignments and update template with new
+       * values */
+      for (assign = cls_info->first_assign;
+	   assign != NULL && error == NO_ERROR; assign = assign->next)
+	{
+	  /* if this is the first update, get the attribute descriptor */
+	  if (assign->attr_desc == NULL
+	      /* don't get descriptors for shared attrs of views */
+	      && (assign->upd_col_name->info.name.db_object == NULL
+		  || !db_is_vclass (assign->upd_col_name->info.
+				    name.db_object)))
 	    {
-	      /* check if the attribute needs to be updated and update it with
-	       * new value */
-	      for (assign = cls_info->first_assign; assign != NULL;
-		   assign = assign->next)
-		{
-		  if (SM_COMPARE_NAMES
-		      (att->header.name,
-		       assign->upd_col_name->info.name.original) == 0)
-		    {
-		      error =
-			dbt_put_internal (otmpl, att->header.name,
-					  assign->db_val);
-		      break;
-		    }
-		}
-
-	      /* if attribute doesn't need to be updated then get the old
-	       * value and put it in template */
-	      if (assign == NULL)
-		{
-		  error = db_get (real_object, att->header.name, &retval);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-		  error = dbt_put_internal (otmpl, att->header.name, &retval);
-		  db_value_clear (&retval);
-		}
-	      att = (SM_ATTRIBUTE *) att->header.next;
-	      if (att == NULL && flag_att == 0)
-		{
-		  flag_att++;
-		  att = smclass->shared;
-		}
+	      error = db_get_attribute_descriptor (real_object,
+						   assign->upd_col_name->info.
+						   name.original, 0, 1,
+						   &assign->attr_desc);
 	    }
 
-	  /* clear not constant values */
-	  for (assign = cls_info->first_assign; assign != NULL;
-	       assign = assign->next)
+	  if (error == NO_ERROR)
 	    {
+	      /* update tuple's template */
+	      error =
+		update_object_attribute (parser, otemplate,
+					 assign->upd_col_name,
+					 assign->attr_desc, assign->db_val);
+
+	      /* clear not constant values */
 	      if (!assign->is_const)
 		{
 		  db_value_clear (assign->db_val);
 		}
 	    }
+	}
 
-	  if (error != NO_ERROR)
-	    {
-	      /* abort if an error has occurred */
-	      (void) dbt_abort_object (otmpl);
-	      return error;
-	    }
-
-	  /* delete object from current partition */
-	  error = obj_delete (real_object);
-	  /* insert object into new partition */
-	  object = dbt_finish_object (otmpl);
-	  if (object == NULL)
-	    {
-	      /* abort if an error has occurred */
-	      error = er_errid ();
-	      (void) dbt_abort_object (otmpl);
-	      return error;
-	    }
+      if (error != NO_ERROR)
+	{
+	  /* abort if an error has occurred */
+	  (void) dbt_abort_object (otemplate);
 	}
       else
 	{
-	  /* the tuple doesn't need to be moved to another partition */
-
-	  otemplate = dbt_edit_object (real_object);
-	  if (otemplate == NULL)
+	  /* update tuple with new values */
+	  object = dbt_finish_object (otemplate);
+	  if (object == NULL)
 	    {
-	      return er_errid ();
-	    }
-
-	  if (turn_off_unique_check)
-	    {
-	      obt_disable_unique_checking (otemplate);
-	    }
-
-	  /* this is an update - force NOT NULL constraint check */
-	  otemplate->force_check_not_null = 1;
-
-	  /* If this update came from INSERT ON DUPLICATE KEY UPDATE,
-	   * flush the object on updating it.
-	   */
-	  if (update_type == ON_DUPLICATE_KEY_UPDATE)
-	    {
-	      obt_set_force_flush (otemplate);
-	    }
-
-	  /* iterate through class assignments and update template with new
-	   * values */
-	  for (assign = cls_info->first_assign;
-	       assign != NULL && error == NO_ERROR; assign = assign->next)
-	    {
-	      /* if this is the first update, get the attribute descriptor */
-	      if (assign->attr_desc == NULL
-		  /* don't get descriptors for shared attrs of views */
-		  && (assign->upd_col_name->info.name.db_object == NULL
-		      || !db_is_vclass (assign->upd_col_name->info.name.
-					db_object)))
-		{
-		  error = db_get_attribute_descriptor (real_object,
-						       assign->upd_col_name->
-						       info.name.original, 0,
-						       1, &assign->attr_desc);
-		}
-
-	      if (error == NO_ERROR)
-		{
-		  /* update tuple's template */
-		  error =
-		    update_object_attribute (parser, otemplate,
-					     assign->upd_col_name,
-					     assign->attr_desc,
-					     assign->db_val);
-
-		  /* clear not constant values */
-		  if (!assign->is_const)
-		    {
-		      db_value_clear (assign->db_val);
-		    }
-		}
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      /* abort if an error has occurred */
+	      error = er_errid ();
 	      (void) dbt_abort_object (otemplate);
+	      return error;
 	    }
 	  else
 	    {
-	      /* update tuple with new values */
-	      object = dbt_finish_object (otemplate);
-	      if (object == NULL)
-		{
-		  /* abort if error */
-		  error = er_errid ();
-		  (void) dbt_abort_object (otemplate);
-		  return error;
-		}
-	      else
-		{
-		  /* check condition for 'with check option' */
-		  error =
-		    mq_evaluate_check_option (parser,
-					      cls_info->check_where !=
-					      NULL ? cls_info->check_where->
-					      info.check_option.expr : NULL,
-					      object,
-					      cls_info->spec->info.spec.
-					      flat_entity_list);
-		}
+	      /* check condition for 'with check option' */
+	      error =
+		mq_evaluate_check_option (parser,
+					  cls_info->check_where !=
+					  NULL ? cls_info->check_where->info.
+					  check_option.expr : NULL, object,
+					  cls_info->spec->info.
+					  spec.flat_entity_list);
 	    }
 	}
       upd_tpl_cnt++;
@@ -6888,7 +6792,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   check_where = statement->node_type == PT_MERGE ? NULL
     : statement->info.update.check_where;
   has_unique = statement->node_type == PT_MERGE
-    ? statement->info.merge.update.has_unique
+    ? statement->info.merge.has_unique
     : statement->info.update.has_unique;
 
   /* load data in update structures */
@@ -7219,14 +7123,13 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 		  int has_uniques)
 {
   int error = NO_ERROR;
-  int i, j, k;
+  int i;
   XASL_NODE *xasl = NULL;
   int size, count = 0;
   char *stream = NULL;
   QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
   PT_NODE *cl_name_node = NULL, *spec = NULL;
-  UPDATE_CLASS_INFO *upd_cls = NULL;
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -7248,21 +7151,6 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 	  if (update->assigns[i].constant)
 	    {
 	      pr_clear_value (update->assigns[i].constant);
-	    }
-	}
-      for (i = 0; i < update->no_classes; i++)
-	{
-	  upd_cls = &update->classes[i];
-
-	  for (k = 0; k < upd_cls->no_subclasses; k++)
-	    {
-	      if (upd_cls->partition[k])
-		{
-		  for (j = 0; j < upd_cls->partition[k]->no_parts; j++)
-		    {
-		      pr_clear_value (upd_cls->partition[k]->parts[j]->vals);
-		    }
-		}
 	    }
 	}
     }
@@ -8092,9 +7980,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      stream = NULL;
 	      if (xasl && (err >= NO_ERROR))
 		{
-		  int i, j, k;
+		  int i;
 		  UPDATE_PROC_NODE *update = &xasl->proc.update;
-		  UPDATE_CLASS_INFO *upd_cls = NULL;
 
 		  /* convert the created XASL tree to the byte stream for
 		     transmission to the server */
@@ -8109,24 +7996,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      if (update->assigns[i].constant)
 			{
 			  pr_clear_value (update->assigns[i].constant);
-			}
-		    }
-
-		  for (i = 0; i < update->no_classes; i++)
-		    {
-		      upd_cls = &update->classes[i];
-
-		      for (k = 0; k < upd_cls->no_subclasses; k++)
-			{
-			  if (upd_cls->partition[k])
-			    {
-			      for (j = 0; j < upd_cls->partition[k]->no_parts;
-				   j++)
-				{
-				  pr_clear_value (upd_cls->partition[k]->
-						  parts[j]->vals);
-				}
-			    }
 			}
 		    }
 		}
@@ -9635,7 +9504,9 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (parser->query_id > 0)
 	{
 	  if (er_errid () != ER_LK_UNILATERALLY_ABORTED)
-	    qmgr_end_query (parser->query_id);
+	    {
+	      qmgr_end_query (parser->query_id);
+	    }
 	  parser->query_id = -1;
 	}
 
@@ -9788,7 +9659,8 @@ static int insert_subquery_results (PARSER_CONTEXT * parser,
 static int is_attr_not_in_insert_list (const PARSER_CONTEXT * parser,
 				       PT_NODE * name_list, const char *name);
 static int check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
-					 const PT_NODE * statement,
+					 const PT_NODE * spec,
+					 PT_NODE *attr_list,
 					 const bool has_default_values_list);
 static PT_NODE *make_vmops (PARSER_CONTEXT * parser, PT_NODE * node,
 			    void *arg, int *continue_walk);
@@ -9924,7 +9796,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
   statement->info.insert.value_clauses->info.node_list.list = head;
 
-
   /* make query string */
   parser->dont_prt_long_string = 1;
   parser->long_string_skipped = 0;
@@ -9955,8 +9826,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 				    ws_identifier (db_get_user ()), NULL,
 				    true);
     }
-
-
 
   if (!xasl_id && error == NO_ERROR)
     {
@@ -9996,20 +9865,11 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		}
 	    }
-
-	  if (insert->partition)
-	    {
-	      for (i = 0; i < insert->partition->no_parts; i++)
-		{
-		  pr_clear_value (insert->partition->parts[i]->vals);
-		}
-	    }
 	}
       else
 	{
 	  error = er_errid ();
 	}
-
 
       /* mark the end of another level of xasl packing */
       pt_exit_packing_buf ();
@@ -10158,40 +10018,15 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 	    }
 	}
 
-      if (insert->partition)
-	{
-	  for (i = 0; i < insert->partition->no_parts; i++)
-	    {
-	      pr_clear_value (insert->partition->parts[i]->vals);
-	    }
-	}
-
       if (xasl->dptr_list != NULL)
 	{
 	  UPDATE_PROC_NODE *update = &xasl->dptr_list->proc.update;
-	  UPDATE_CLASS_INFO *upd_cls = NULL;
 
 	  for (i = update->no_classes - 1; i >= 0; i--)
 	    {
 	      if (update->assigns[i].constant)
 		{
 		  pr_clear_value (update->assigns[i].constant);
-		}
-	    }
-	  for (i = 0; i < update->no_classes; i++)
-	    {
-	      upd_cls = &update->classes[i];
-
-	      for (k = 0; k < upd_cls->no_subclasses; k++)
-		{
-		  if (upd_cls->partition[k])
-		    {
-		      for (j = 0; j < upd_cls->partition[k]->no_parts; j++)
-			{
-			  pr_clear_value (upd_cls->partition[k]->parts[j]->
-					  vals);
-			}
-		    }
 		}
 	    }
 	}
@@ -11264,7 +11099,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		    bool is_first_value)
 {
   const char *into_label;
-  DB_VALUE *ins_val, *val, db_value, partcol;
+  DB_VALUE *ins_val, *val, db_value;
   int error = NO_ERROR;
   PT_NODE *attr, *vc;
   PT_NODE *into;
@@ -11277,16 +11112,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   int server_allowed = 0;
   int has_uniques = 0;
   int upd_has_uniques = 0;
-  PARTITION_SELECT_INFO *psi = NULL;
-  PARTITION_INSERT_CACHE *pic = NULL, *picwork;
-  MOP retobj;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   PT_NODE *hint_arg;
   SM_CLASS *smclass = NULL;
 
   db_make_null (&db_value);
-  db_make_null (&partcol);
 
   if (row_count_ptr != NULL)
     {
@@ -11401,40 +11232,32 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
          no values put in. */
       row_count = 1;
 
-      /* partition adjust */
-      if (class_->info.name.partition_of != NULL)
+
+      /* now create the object using templates, and then dbt_put
+         each value for each corresponding attribute.
+         Of course, it is presumed that
+         the order in which attributes are defined in the class as
+         well as in the actual insert statement is preserved. */
+      *otemplate = dbt_create_object_internal (class_->info.name.db_object);
+      if (*otemplate == NULL)
 	{
-	  if (do_init_partition_select (class_->info.name.db_object, &psi) ||
-	      set_get_element (psi->pattr->data.set, 0, &partcol) != NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_PARTITION_WORK_FAILED, 0);
-	      error = er_errid ();
-	      if (psi != NULL)
-		{
-		  do_clear_partition_select (psi);
-		  psi = NULL;
-		}
-	      goto cleanup;
-	    }
-	  *otemplate = NULL;	/*  for delayed insert */
-	}
-      else
-	{
-	  /* now create the object using templates, and then dbt_put
-	     each value for each corresponding attribute.
-	     Of course, it is presumed that
-	     the order in which attributes are defined in the class as
-	     well as in the actual insert statement is preserved. */
-	  *otemplate =
-	    dbt_create_object_internal (class_->info.name.db_object);
-	  if (*otemplate == NULL)
-	    {
-	      error = er_errid ();
-	      goto cleanup;
-	    }
+	  error = er_errid ();
+	  goto cleanup;
 	}
 
+      if (sm_is_partitioned_class (class_->info.name.db_object))
+	{
+	  /* The reason we're forcing a flush here is to throw an error
+	   * if the object does belong to any partition. If we don't do it
+	   * here, the error will be thrown when the object is flushed either
+	   * by the next statement or by a commit/rollback call. However,
+	   * there cases when we don't need to do this. Hash partitioning 
+	   * algorithm guarantees that there always is a partition for each
+	   * record and range partitioning using maxvalue/minvalue does the
+	   * same. This flushing should be refined
+	   */
+	  obt_set_force_flush (*otemplate);
+	}
       vc = values_list->info.node_list.list;
       attr = statement->info.insert.attr_list;
       degree = pt_length_of_list (attr);
@@ -11518,77 +11341,20 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		}
 	    }
 
-	  if (!*otemplate)
-	    {			/* partition adjust */
-	      const char *mbs2;
-	      if (error < NO_ERROR)
-		{
-		  db_make_null (&db_value);
-		}
-
-	      mbs2 = DB_GET_STRING (&partcol);
-	      if (mbs2 == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_PARTITION_WORK_FAILED, 0);
-		  break;
-		}
-
-	      if (intl_identifier_casecmp (attr->info.name.original, mbs2) ==
-		  0)
-		{
-		  /* partition column */
-		  error = do_select_partition (psi, &db_value, &retobj);
-		  if (error != NO_ERROR)
-		    break;
-
-		  *otemplate = dbt_create_object_internal (retobj);
-		  if (*otemplate == NULL)
-		    {
-		      break;
-		    }
-
-		  /* cache back & insert */
-		  for (picwork = pic; picwork; picwork = picwork->next)
-		    {
-		      error = insert_object_attr (parser, *otemplate,
-						  picwork->val,
-						  picwork->attr,
-						  picwork->desc);
-		      if (error != NO_ERROR)
-			{
-			  break;
-			}
-		    }
-		}
+	  /* don't get descriptors for shared attrs of views */
+	  if (!attr->info.name.db_object
+	      || !db_is_vclass (attr->info.name.db_object))
+	    {
+	      error =
+		db_get_attribute_descriptor (class_->info.name.db_object,
+					     attr->info.name.original, 0,
+					     1, &attr_descs[i]);
 	    }
-
 	  if (error >= NO_ERROR)
 	    {
-	      /* don't get descriptors for shared attrs of views */
-	      if (!attr->info.name.db_object
-		  || !db_is_vclass (attr->info.name.db_object))
-		{
-		  error =
-		    db_get_attribute_descriptor (class_->info.name.db_object,
-						 attr->info.name.original, 0,
-						 1, &attr_descs[i]);
-		}
-	      if (error >= NO_ERROR)
-		{
-		  if (*otemplate)
-		    {
-		      error =
-			insert_object_attr (parser, *otemplate, &db_value,
-					    attr, attr_descs[i]);
-		    }
-		  else
-		    {
-		      error = do_insert_partition_cache (&pic, attr,
-							 attr_descs[i],
-							 &db_value);
-		    }
-		}
+	      error =
+		insert_object_attr (parser, *otemplate, &db_value,
+				    attr, attr_descs[i]);
 	    }
 	  /* else vc is a SELECT query whose result is empty */
 
@@ -11617,26 +11383,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       if (old_wait_msecs >= -1)
 	{
 	  (void) tran_reset_wait_times (old_wait_msecs);
-	}
-      if (pic)
-	{
-	  if (*otemplate == NULL && (error >= NO_ERROR))
-	    {
-	      /* key is not specified */
-	      error =
-		insert_predefined_values_into_partition (parser,
-							 otemplate,
-							 class_->info.
-							 name.db_object,
-							 &partcol, psi, pic);
-	    }
-	  do_clear_partition_cache (pic);
-	}
-      db_value_clear (&partcol);
-      if (psi != NULL)
-	{
-	  do_clear_partition_select (psi);
-	  psi = NULL;
 	}
     }
 
@@ -11746,12 +11492,6 @@ cleanup:
       free_and_init (attr_descs);
     }
 
-  if (psi != NULL)
-    {
-      do_clear_partition_select (psi);
-      psi = NULL;
-    }
-
   if (row_count_ptr != NULL)
     {
       *row_count_ptr = row_count;
@@ -11789,12 +11529,9 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   DB_OTMPL *otemplate = NULL;
   DB_OBJECT *obj = NULL;
   PT_NODE *attr, *qry, *attrs;
-  DB_VALUE *vals = NULL, *val = NULL, *ins_val = NULL, partcol;
+  DB_VALUE *vals = NULL, *val = NULL, *ins_val = NULL;
   int degree, k, first, cnt, i;
   DB_ATTDESC **attr_descs = NULL;
-  PARTITION_SELECT_INFO *psi = NULL;
-  PARTITION_INSERT_CACHE *pic = NULL, *picwork;
-  MOP retobj;
 
   if (values_list == NULL || values_list->node_type != PT_NODE_LIST
       || values_list->info.node_list.list_type != PT_IS_SUBQUERY
@@ -11813,7 +11550,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     }
 
   cnt = 0;
-  db_make_null (&partcol);
 
   switch (qry->node_type)
     {
@@ -11880,20 +11616,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 
 	  if (error >= NO_ERROR)
 	    {
-	      if (class_->info.name.partition_of != NULL)
-		{
-		  if (do_init_partition_select (class_->info.name.db_object,
-						&psi)
-		      || set_get_element (psi->pattr->data.set, 0,
-					  &partcol) != NO_ERROR)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_PARTITION_WORK_FAILED, 0);
-		      cnt = er_errid ();
-		      goto cleanup;
-		    }
-		}
-
 	      /* for each tuple in subquery result do */
 	      first = 1;
 	      while (cursor_next_tuple (&cursor_id) == DB_CURSOR_SUCCESS)
@@ -11906,21 +11628,17 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		    }
 
 		  /* create an instance of the target class using templates */
-		  if (psi)
+		  otemplate =
+		    dbt_create_object_internal (class_->info.name.db_object);
+		  if (otemplate == NULL)
 		    {
-		      otemplate = NULL;	/* for delayed insert */
+		      break;
 		    }
-		  else
+		  if (otemplate->class_->partition_of != NULL &&
+		      otemplate->class_->users != NULL)
 		    {
-		      otemplate =
-			dbt_create_object_internal (class_->info.
-						    name.db_object);
-		      if (otemplate == NULL)
-			{
-			  break;
-			}
+		      obt_set_force_flush (otemplate);
 		    }
-
 		  /* update new instance with current tuple of subquery result */
 		  for (attr = attrs, val = vals, k = 0;
 		       attr != NULL && k < degree;
@@ -11944,63 +11662,11 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			    }
 			}
 
-		      if (!otemplate)
-			{	/* partition adjust */
-			  const char *mbs2 = DB_GET_STRING (&partcol);
-			  if (mbs2 == NULL)
-			    {
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_PARTITION_WORK_FAILED, 0);
-			      break;
-			    }
-
-			  if (intl_identifier_casecmp
-			      (attr->info.name.original, mbs2) == 0)
-			    {
-			      /* partition column */
-			      error = do_select_partition (psi, val, &retobj);
-			      if (error)
-				{
-				  break;
-				}
-
-			      otemplate = dbt_create_object_internal (retobj);
-			      if (otemplate == NULL)
-				{
-				  break;
-				}
-
-			      /* cache back & insert */
-			      for (picwork = pic; picwork;
-				   picwork = picwork->next)
-				{
-				  error = insert_object_attr (parser,
-							      otemplate,
-							      picwork->val,
-							      picwork->attr,
-							      picwork->desc);
-				  if (error)
-				    {
-				      break;
-				    }
-				}
-			    }
-			}
-
 		      if (error >= NO_ERROR)
 			{
-			  if (otemplate)
-			    {
-			      error = insert_object_attr (parser, otemplate,
-							  val, attr,
-							  attr_descs[k]);
-			    }
-			  else
-			    {
-			      error = do_insert_partition_cache (&pic, attr,
-								 attr_descs
-								 [k], val);
-			    }
+			  error = insert_object_attr (parser, otemplate,
+						      val, attr,
+						      attr_descs[k]);
 			}
 
 		      if (error < NO_ERROR)
@@ -12010,15 +11676,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			  cnt = er_errid ();
 			  goto cleanup;
 			}
-		    }
-
-		  if (pic && !otemplate && error >= NO_ERROR)
-		    {
-		      /* key is not sepcified */
-		      error =
-			insert_predefined_values_into_partition
-			(parser, &otemplate, class_->info.name.db_object,
-			 &partcol, psi, pic);
 		    }
 
 		  if (statement->node_type == PT_INSERT
@@ -12095,9 +11752,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			    {
 			      dbt_abort_object (otemplate);
 			    }
-
-			  db_value_clear (&partcol);
-
 			  cnt = er_errid ();
 			  goto cleanup;
 			}
@@ -12120,18 +11774,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 
 		  /* keep track of how many we have inserted */
 		  cnt++;
-
-		  if (pic != NULL)
-		    {
-		      do_clear_partition_cache (pic);
-		      pic = NULL;
-		    }
-		}
-	      db_value_clear (&partcol);
-	      if (psi != NULL)
-		{
-		  do_clear_partition_select (psi);
-		  psi = NULL;
 		}
 	    }
 
@@ -12161,20 +11803,6 @@ cleanup:
 	}
       free_and_init (attr_descs);
     }
-
-  if (pic != NULL)
-    {
-      do_clear_partition_cache (pic);
-      pic = NULL;
-    }
-
-  if (psi != NULL)
-    {
-      do_clear_partition_select (psi);
-      psi = NULL;
-    }
-
-  db_value_clear (&partcol);
 
   regu_free_listid ((QFILE_LIST_ID *) qry->etc);
   pt_end_query (parser);
@@ -12217,27 +11845,23 @@ is_attr_not_in_insert_list (const PARSER_CONTEXT * parser,
  *              the class that have a NOT NULL constraint AND have no default
  *              value are present in the inserts assign list.
  *   return: Error code
- *   parser(in): Short description of the param1
- *   statement(in): Short description of the param2
+ *   parser(in):
+ *   spec(in):
+ *   attr_list(in):
  *   has_default_values_list(in): whether this statement is used to insert
  *                                default values
  */
 static int
 check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
-			      const PT_NODE * statement,
+			      const PT_NODE * spec, PT_NODE * attr_list,
 			      const bool has_default_values_list)
 {
   DB_ATTRIBUTE *attr;
   DB_OBJECT *class_;
   int error = NO_ERROR;
 
-  if (!parser
-      || !statement
-      || !statement->info.insert.spec
-      || !statement->info.insert.spec->info.spec.entity_name
-      || !(class_ =
-	   statement->info.insert.spec->info.spec.entity_name->info.name.
-	   db_object))
+  if (!spec || !spec->info.spec.entity_name
+      || !(class_ = spec->info.spec.entity_name->info.name.db_object))
     {
       return ER_GENERIC_ERROR;
     }
@@ -12247,8 +11871,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
     {
       if (db_attribute_is_non_null (attr)
 	  && (db_value_type (db_attribute_default (attr)) == DB_TYPE_NULL)
-	  && (is_attr_not_in_insert_list (parser,
-					  statement->info.insert.attr_list,
+	  && (is_attr_not_in_insert_list (parser, attr_list,
 					  db_attribute_name (attr))
 	      || (has_default_values_list
 		  && db_value_is_null (db_attribute_default (attr))
@@ -12414,7 +12037,8 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  error = check_missing_non_null_attrs (parser, statement,
+  error = check_missing_non_null_attrs (parser, statement->info.insert.spec,
+					statement->info.insert.attr_list,
 					has_default_values_list);
   if (error != NO_ERROR)
     {
@@ -12738,7 +12362,8 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       has_default_values_list = true;
     }
 
-  error = check_missing_non_null_attrs (parser, statement,
+  error = check_missing_non_null_attrs (parser, statement->info.insert.spec,
+					statement->info.insert.attr_list,
 					has_default_values_list);
   if (error != NO_ERROR)
     {
@@ -14508,6 +14133,16 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
 	{
 	  goto exit;
 	}
+      /* DELETE statement triggers */
+      if (statement->info.merge.update.del_search_cond)
+	{
+	  result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_DELETE,
+					 class_, 0, NULL);
+	  if (result != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
     }
   if (statement->info.merge.insert.value_clauses)
     {
@@ -14610,7 +14245,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
-  PT_NODE *select_statement = NULL;
+  PT_NODE *upd_select_stmt = NULL;
+  PT_NODE *ins_select_stmt = NULL;
+  PT_NODE *del_select_stmt = NULL;
   PT_NODE *select_names = NULL, *select_values = NULL;
   PT_NODE *const_names = NULL, *const_values = NULL;
   PT_NODE *flat, *values_list = NULL;
@@ -14640,6 +14277,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   class_obj = flat->info.name.db_object;
 
+  /* check update part */
   if (statement->info.merge.update.assignment)
     {
       err = update_check_for_fk_cache_attr (parser, statement);
@@ -14652,7 +14290,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* check if the target class has UNIQUE constraint */
       err = update_check_for_constraints (parser, &has_unique, &not_nulls,
 					  statement);
-      /* currently not needed */
+      /* not needed */
       if (not_nulls)
 	{
 	  parser_free_tree (parser, not_nulls);
@@ -14662,8 +14300,10 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_INTERNAL_ERROR (parser, "merge update");
 	  goto exit;
 	}
-
-      statement->info.merge.update.has_unique = (bool) has_unique;
+      if (!statement->info.merge.has_unique)
+	{
+	  statement->info.merge.has_unique = (bool) has_unique;
+	}
 
       lhs = statement->info.merge.update.assignment->info.expr.arg1;
       if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
@@ -14693,16 +14333,17 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto exit;
 	    }
 
-	  select_statement =
-	    pt_to_merge_update_query (parser, select_values,
-				      &statement->info.merge);
+	  upd_select_stmt =
+	    pt_to_merge_upd_del_query (parser, select_values,
+				       &statement->info.merge,
+				       PT_COMPOSITE_LOCKING_UPDATE);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.
 				       assignment, links, -1);
 
-	  select_statement = mq_translate (parser, select_statement);
-	  if (select_statement == NULL)
+	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
+	  if (upd_select_stmt == NULL)
 	    {
 	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
 			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
@@ -14711,70 +14352,122 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      if (statement->info.merge.update.del_search_cond)
 	{
-	  /* The IX lock on the class is sufficient.
-	     DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
-	  if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE)
-	      == NULL)
+	  /* make the SELECT statement for OID list to be deleted */
+	  del_select_stmt =
+	    pt_to_merge_upd_del_query (parser, NULL, &statement->info.merge,
+				       PT_COMPOSITE_LOCKING_DELETE);
+	  del_select_stmt = mq_translate (parser, del_select_stmt);
+	  if (del_select_stmt == NULL)
 	    {
+	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	      err = er_errid ();
-	      if (err == NO_ERROR)
-		{
-		  err = ER_GENERIC_ERROR;
-		}
-	      goto exit;
+	      goto exit;	      
 	    }
 	}
+    }
 
+  /* check insert part */
+  if (statement->info.merge.insert.value_clauses)
+    {
+      PT_NODE *attrs = statement->info.merge.insert.attr_list;
+
+      err = insert_check_for_fk_cache_attr (parser, attrs,
+					    flat->info.name.db_object);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge insert");
+	  goto exit;
+	}
+
+      err = check_for_cons (parser, &has_unique, &not_nulls, attrs,
+			    flat->info.name.db_object);
+      if (not_nulls)
+	{
+	  parser_free_tree (parser, not_nulls);
+	}
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge insert");
+	  goto exit;
+	}
+      if (!statement->info.merge.has_unique)
+	{
+	  statement->info.merge.has_unique = (bool) has_unique;
+	}
+
+      /* check not nulls attrs are present in attr list */
+      err = check_missing_non_null_attrs (parser, spec, attrs, false);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge insert");
+	  goto exit;
+	}
+    }
+
+  /* IX lock on the class */
+  if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
+    {
+      err = er_errid ();
+      if (err == NO_ERROR)
+	{
+	  err = ER_GENERIC_ERROR;
+	}
+      goto exit;
+    }
+
+  if (statement->info.merge.update.assignment)
+    {
       if (!statement->info.merge.update.do_class_attrs)
 	{
 	  /* flush necessary objects before execute */
-	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	  err = sm_flush_objects (class_obj);
+	  if (err != NO_ERROR)
 	    {
-	      err = sm_flush_objects (class_obj);
-	      if (err != NO_ERROR)
-		{
-		  goto exit;
-		}
+	      goto exit;
 	    }
 
-	  /* This enables authorization checking during methods in queries */
+	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
-	  err = do_select (parser, select_statement);
+	  err = do_select (parser, upd_select_stmt);
 	  AU_DISABLE (parser->au_save);
 	  if (err < NO_ERROR)
 	    {
 	      /* query failed, an error has already been set */
-	      select_statement = NULL;
 	      goto exit;
 	    }
 
-	  list_id = (QFILE_LIST_ID *) select_statement->etc;
-	  parser_free_tree (parser, select_statement);
-	  select_statement = NULL;
+	  list_id = (QFILE_LIST_ID *) upd_select_stmt->etc;
+	  parser_free_tree (parser, upd_select_stmt);
+	  upd_select_stmt = NULL;
 	}
+    }
 
-      hint_arg = statement->info.merge.waitsecs_hint;
-      if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
-	  && PT_IS_HINT_NODE (hint_arg))
+  hint_arg = statement->info.merge.waitsecs_hint;
+  if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT)
+      && PT_IS_HINT_NODE (hint_arg))
+    {
+      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+      if (hint_waitsecs > 0)
 	{
-	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (hint_waitsecs > 0)
-	    {
-	      wait_msecs = (int) (hint_waitsecs * 1000);
-	    }
-	  else
-	    {
-	      wait_msecs = (int) hint_waitsecs;
-	    }
-	  if (wait_msecs >= -1)
-	    {
-	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	      (void) tran_reset_wait_times (wait_msecs);
-	    }
+	  wait_msecs = (int) (hint_waitsecs * 1000);
 	}
+      else
+	{
+	  wait_msecs = (int) hint_waitsecs;
+	}
+      if (wait_msecs >= -1)
+	{
+	  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	  (void) tran_reset_wait_times (wait_msecs);
+	}
+    }
 
+  /* do update part */
+  if (statement->info.merge.update.assignment)
+    {
       if (statement->info.merge.update.do_class_attrs)
 	{
 	  /* update class attributes */
@@ -14784,19 +14477,18 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* OID list update */
 	  err = update_objs_for_list_file (parser, list_id, statement);
-	}
-
-      if (old_wait_msecs >= -1)
-	{
-	  (void) tran_reset_wait_times (old_wait_msecs);
-	}
-
-      if (!statement->info.merge.update.do_class_attrs)
-	{
 	  /* free returned QFILE_LIST_ID */
 	  if (list_id)
 	    {
+	      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		{
+		  err = sm_flush_and_decache_objects (class_obj, true);
+		}
 	      regu_free_listid (list_id);
+	    }
+	  if (err >= NO_ERROR)
+	    {
+	      pt_end_query (parser);
 	    }
 	}
 
@@ -14806,31 +14498,67 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  result += err;
 	}
 
-      if (err != NO_ERROR && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+      /* do delete part */
+      if (statement->info.merge.update.del_search_cond)
 	{
-	  if (class_obj && db_is_vclass (class_obj))
+	  /* flush necessary objects before execute */
+	  err = sm_flush_objects (class_obj);
+	  if (err != NO_ERROR)
 	    {
-	      err = sm_flush_objects (class_obj);
+	      goto exit;
 	    }
+
+	  /* enable authorization checking during methods in queries */
+	  AU_ENABLE (parser->au_save);
+	  err = do_select (parser, del_select_stmt);
+	  AU_DISABLE (parser->au_save);
+
+	  if (err >= NO_ERROR)
+	    {
+	      list_id = (QFILE_LIST_ID  *) del_select_stmt->etc;
+	      if (list_id)
+		{
+		  /* delete each oid */
+		  err = delete_list_by_oids (parser, list_id);
+		  /* set result count */
+		  if (err >= NO_ERROR)
+		    {
+		      result += err;
+		    }
+		  if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		    {
+		      err = sm_flush_and_decache_objects (class_obj, true);
+		    }
+		  regu_free_listid (list_id);
+		}
+	      pt_end_query (parser);
+	    }
+	  parser_free_tree (parser, del_select_stmt);
+	  del_select_stmt = NULL;
 	}
     }
 
-  values_list = statement->info.merge.insert.value_clauses;
-  if (values_list != NULL)
+  /* do insert part */
+  if (err >= NO_ERROR
+      && (values_list = statement->info.merge.insert.value_clauses) != NULL)
     {
-      PT_NODE *subq, *save_list;
+      PT_NODE *save_list;
       PT_MISC_TYPE save_type;
 
-      subq =
+      ins_select_stmt =
 	pt_to_merge_insert_query (parser, values_list->info.node_list.list,
 				  &statement->info.merge);
-      subq = mq_translate (parser, subq);
-      if (subq == NULL)
+      ins_select_stmt = mq_translate (parser, ins_select_stmt);
+      if (ins_select_stmt == NULL)
 	{
 	  err = er_errid ();
 	  if (err == NO_ERROR)
 	    {
 	      err = ER_GENERIC_ERROR;
+	    }
+	  if (old_wait_msecs >= -1)
+	    {
+	      (void) tran_reset_wait_times (old_wait_msecs);
 	    }
 	  goto exit;
 	}
@@ -14840,7 +14568,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       save_list = values_list->info.node_list.list;
 
       values_list->info.node_list.list_type = PT_IS_SUBQUERY;
-      values_list->info.node_list.list = subq;
+      values_list->info.node_list.list = ins_select_stmt;
 
       obt_begin_insert_values ();
       /* execute subquery & insert its results into target class */
@@ -14859,13 +14587,32 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       values_list->info.node_list.list_type = save_type;
       values_list->info.node_list.list = save_list;
 
-      parser_free_tree (parser, subq);
+      parser_free_tree (parser, ins_select_stmt);
+      ins_select_stmt = NULL;
+    }
+
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
+  if (err >= NO_ERROR && db_is_vclass (class_obj))
+    {
+      err = sm_flush_objects (class_obj);
     }
 
 exit:
-  if (select_statement != NULL)
+  if (upd_select_stmt != NULL)
     {
-      parser_free_tree (parser, select_statement);
+      parser_free_tree (parser, upd_select_stmt);
+    }
+  if (ins_select_stmt != NULL)
+    {
+      parser_free_tree (parser, ins_select_stmt);
+    }
+  if (del_select_stmt != NULL)
+    {
+      parser_free_tree (parser, del_select_stmt);
     }
 
   if ((err < NO_ERROR) && er_errid () != NO_ERROR)
@@ -14898,13 +14645,18 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *not_nulls, *lhs, *spec = NULL;
-  int has_unique, au_save;
+  PT_NODE *not_nulls = NULL, *lhs, *flat, *spec;
+  int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
+  bool server_insert, server_update, server_op;
 
   PT_NODE *select_statement = NULL;
   PT_NODE *select_names = NULL, *select_values = NULL;
   PT_NODE *const_names = NULL, *const_values = NULL;
   PT_NODE **links = NULL;
+  PT_NODE *default_expr_attrs = NULL;
+  DB_OBJECT *class_obj;
+
+  const char *qstr = NULL;
   int no_vals, no_consts;
 
   if (parser == NULL || statement == NULL)
@@ -14914,104 +14666,390 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  if (pt_false_where (parser, statement)
-      || !statement->info.merge.update.assignment)
+  if (pt_false_where (parser, statement))
     {
       /* nothing to merge */
       statement->xasl_id = NULL;
-      return err;
+      goto cleanup;
     }
 
   if (statement->xasl_id)
     {
       /* already prepared */
-      return err;
+      goto cleanup;
     }
 
-  err = update_check_for_fk_cache_attr (parser, statement);
-  if (err != NO_ERROR)
-    {
-      PT_INTERNAL_ERROR (parser, "merge update");
-      return err;
-    }
-
-  /* check if the target class has UNIQUE constraint */
-  err = update_check_for_constraints (parser, &has_unique, &not_nulls,
-				      statement);
-  /* currently not needed */
-  if (not_nulls)
-    {
-      parser_free_tree (parser, not_nulls);
-    }
-  if (err != NO_ERROR)
-    {
-      PT_INTERNAL_ERROR (parser, "merge update");
-      return err;
-    }
-
-  statement->info.merge.update.has_unique = (bool) has_unique;
-
-  lhs = statement->info.merge.update.assignment->info.expr.arg1;
-  if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
-    {
-      lhs = lhs->info.expr.arg1;
-    }
-
-  /* if we are updating class attributes, not need to prepare */
-  if (lhs->info.name.meta_class == PT_META_ATTR)
-    {
-      statement->info.merge.update.do_class_attrs = true;
-      return err;
-    }
-
-  /* make the SELECT statement for OID list to be updated */
-  no_vals = 0;
-  no_consts = 0;
-
-  err = pt_get_assignment_lists (parser, &select_names, &select_values,
-				 &const_names, &const_values,
-				 &no_vals, &no_consts,
-				 statement->info.merge.update.assignment,
-				 &links);
-  if (err != NO_ERROR)
-    {
-      PT_INTERNAL_ERROR (parser, "merge update");
-      return err;
-    }
-
-  select_statement =
-    pt_to_merge_update_query (parser, select_values, &statement->info.merge);
-
-  /* restore tree structure; pt_get_assignment_lists() */
-  pt_restore_assignment_links (statement->info.merge.update.assignment,
-			       links, -1);
-
-  /* translate views or virtual classes into base classes;
-     If we are updating a proxy, the SELECT is not yet fully
-     translated. If we are updating anything else, this is a no-op. */
-
-  /* this prevents authorization checking during view transformation */
+  /* check into for triggers and virtual class */
   AU_SAVE_AND_DISABLE (au_save);
-  select_statement = mq_translate (parser, select_statement);
-  AU_RESTORE (au_save);
-  if (select_statement)
+
+  spec = statement->info.merge.into;
+  flat = spec->info.spec.flat_entity_list;
+  class_obj = (flat) ? flat->info.name.db_object : NULL;
+
+  if (statement->info.merge.update.assignment)
     {
-      /* get XASL_ID by calling do_prepare_select() */
-      err = do_prepare_select (parser, select_statement);
-      /* save the XASL_ID to be used by do_execute_merge() */
-      statement->xasl_id = select_statement->xasl_id;
-      /* deallocate the SELECT statement */
-      parser_free_tree (parser, select_statement);
+      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
+      if (err == NO_ERROR && !has_trigger)
+	{
+	  err = sm_class_has_triggers (class_obj, &has_trigger,
+				       TR_EVENT_STATEMENT_UPDATE);
+	}
+      if (err == NO_ERROR && !has_trigger
+	  && statement->info.merge.update.del_search_cond)
+	{
+	  err =
+	    sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
+	  if (err == NO_ERROR && !has_trigger)
+	    {
+	      err = sm_class_has_triggers (class_obj, &has_trigger,
+					   TR_EVENT_STATEMENT_DELETE);
+	    }
+	}
+    }
+  if (err == NO_ERROR && !has_trigger
+      && statement->info.merge.insert.value_clauses)
+    {
+      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_INSERT);
+      if (err == NO_ERROR && !has_trigger)
+	{
+	  err = sm_class_has_triggers (class_obj, &has_trigger,
+				       TR_EVENT_STATEMENT_INSERT);
+	}
+    }
+
+  has_virt = db_is_vclass (class_obj);
+
+  AU_RESTORE (au_save);
+
+  if (err != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge triggers check");
+      goto cleanup;
+    }
+
+  err = do_evaluate_default_expr (parser, flat);
+  if (err != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge default check");
+      goto cleanup;
+    }
+
+  /* check update part */
+  if (statement->info.merge.update.assignment)
+    {
+      err = update_check_for_fk_cache_attr (parser, statement);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge update");
+	  goto cleanup;
+	}
+
+      /* check if the target class has UNIQUE constraint */
+      err = update_check_for_constraints (parser, &has_unique, &not_nulls,
+					  statement);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge update");
+	  goto cleanup;
+	}
+      if (!statement->info.merge.has_unique)
+	{
+	  statement->info.merge.has_unique = (bool) has_unique;
+	}
+
+      server_update = !has_trigger && !has_virt
+		      && !update_check_having_meta_attr (parser,
+							 statement->info.merge.
+							 update.assignment);
+
+      lhs = statement->info.merge.update.assignment->info.expr.arg1;
+      if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+	{
+	  lhs = lhs->info.expr.arg1;
+	}
+
+      /* if we are updating class attributes, not need to prepare */
+      if (lhs->info.name.meta_class == PT_META_ATTR)
+	{
+	  statement->info.merge.update.do_class_attrs = true;
+	  goto cleanup;
+	}
     }
   else
     {
-      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-      err = er_errid ();
+      server_update = !has_trigger && !has_virt;
     }
 
-  /* nothing to prepare for merge insert part */
+  /* check insert part */
+  if (statement->info.merge.insert.value_clauses)
+    {
+      PT_NODE *value_clauses = statement->info.merge.insert.value_clauses;
+      PT_NODE *attr, *attrs = statement->info.merge.insert.attr_list;
+      PT_NODE *non_nulls_ins = NULL;
 
+      if (PRM_INSERT_MODE & INSERT_SELECT)
+	{
+	  /* server insert cannot handle insert into a shared attribute */
+	  server_insert = true;
+	  attr = attrs;
+	  while (attr)
+	    {
+	      if (attr->node_type != PT_NAME
+		  || attr->info.name.meta_class != PT_NORMAL)
+		{
+		  server_insert = false;
+		  break;
+		}
+	      attr = attr->next;
+	    }
+	}
+      else
+	{
+	  server_insert = false;
+	}
+
+      err = insert_check_for_fk_cache_attr (parser, attrs,
+					    flat->info.name.db_object);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge insert");
+	  goto cleanup;
+	}
+
+      err = check_for_cons (parser, &has_unique, &non_nulls_ins, attrs,
+			    flat->info.name.db_object);
+      if (not_nulls)
+	{
+	  not_nulls = parser_append_node (non_nulls_ins, not_nulls);
+	}
+      else
+	{
+	  not_nulls = non_nulls_ins;
+	}
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge insert");
+	  goto cleanup;
+	}
+      if (!statement->info.merge.has_unique)
+	{
+	  statement->info.merge.has_unique = (bool) has_unique;
+	}
+
+      /* check not nulls attrs are present in attr list */
+      err = check_missing_non_null_attrs (parser, spec, attrs, false);
+      if (err != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge insert");
+	  goto cleanup;
+	}
+    }
+  else
+    {
+      server_insert = !has_trigger && !has_virt;
+    }
+
+  server_op = (server_insert && server_update);
+  statement->info.merge.server_op = server_op;
+
+  if (server_op)
+    {
+      XASL_ID *xasl_id = NULL;
+      XASL_NODE *xasl;
+      char *stream;
+      int size;
+
+      /* make query string */
+      parser->dont_prt_long_string = 1;
+      parser->long_string_skipped = 0;
+      parser->print_type_ambiguity = 0;
+      PT_NODE_PRINT_TO_ALIAS (parser, statement,
+			      (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+      qstr = statement->alias_print;
+      parser->dont_prt_long_string = 0;
+      if (parser->long_string_skipped || parser->print_type_ambiguity)
+	{
+	  statement->cannot_prepare = 1;
+	  goto cleanup;
+	}
+
+      /* lookup in XASL cache */
+      if (statement->recompile == 0)
+	{
+	  err = query_prepare (qstr, NULL, 0, &xasl_id);
+	  if (err != NO_ERROR)
+	    {
+	      err = er_errid ();
+	    }
+	}
+      else
+	{
+	  err = qmgr_drop_query_plan (qstr, ws_identifier (db_get_user ()),
+				      NULL, true);
+	}
+
+      if (!xasl_id && err == NO_ERROR)
+	{
+	  if (statement->info.merge.insert.value_clauses)
+	    {
+	      err =
+		check_for_default_expr (parser,
+					statement->info.merge.insert.attr_list,
+					&default_expr_attrs,
+					flat->info.name.db_object);
+	      if (err != NO_ERROR)
+		{
+		  statement->use_plan_cache = 0;
+		  statement->xasl_id = NULL;
+		  goto cleanup;
+		}
+	    }
+
+	  /* mark the beginning of another level of xasl packing */
+	  pt_enter_packing_buf ();
+
+	  AU_SAVE_AND_DISABLE (au_save);
+
+	  /* generate MERGE XASL */
+	  xasl = pt_to_merge_xasl (parser, statement, &not_nulls,
+				   default_expr_attrs);
+
+	  AU_RESTORE (au_save);
+
+	  stream = NULL;
+
+	  if (xasl && (err >= NO_ERROR))
+	    {
+	      err = xts_map_xasl_to_stream (xasl, &stream, &size);
+	      if (err != NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		}
+
+	      /* clear constant values */
+	      if (xasl->proc.merge.update_xasl)
+		{
+		  int i;
+		  UPDATE_PROC_NODE *update =
+		    &xasl->proc.merge.update_xasl->proc.update;
+		  for (i = update->no_assigns - 1; i >= 0; i--)
+		    {
+		      if (update->assigns[i].constant)
+			{
+			  pr_clear_value (update->assigns[i].constant);
+			}
+		    }
+		}
+	    }
+	  else
+	    {
+	      err = er_errid ();
+	      pt_record_error (parser, parser->statement_number,
+			       statement->line_number,
+			       statement->column_number, er_msg (), NULL);
+	    }
+
+	  /* mark the end of another level of xasl packing */
+	  pt_exit_packing_buf ();
+
+	  /* cache the XASL */
+	  if (stream && (err >= NO_ERROR))
+	    {
+	      err = query_prepare (qstr, stream, size, &xasl_id);
+	      if (err != NO_ERROR)
+		{
+		  err = er_errid ();
+		}
+	    }
+
+	  /* free 'stream' that is allocated inside of
+	     xts_map_xasl_to_stream() */
+	  if (stream)
+	    {
+	      free_and_init (stream);
+	    }
+	  statement->use_plan_cache = 0;
+	  statement->xasl_id = xasl_id;
+	}
+      else
+	{
+	  if (err == NO_ERROR)
+	    {
+	      statement->use_plan_cache = 1;
+	      statement->xasl_id = xasl_id;
+	    }
+	  else
+	    {
+	      statement->use_plan_cache = 0;
+	    }
+
+	  goto cleanup;
+	}
+    }
+  else
+    {
+      if (statement->info.merge.update.assignment)
+	{
+	  /* make the SELECT statement for OID list to be updated */
+	  no_vals = 0;
+	  no_consts = 0;
+
+	  err = pt_get_assignment_lists (parser, &select_names, &select_values,
+					 &const_names, &const_values,
+					 &no_vals, &no_consts,
+					 statement->info.merge.update.
+					 assignment,
+					 &links);
+	  if (err != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "merge update");
+	      goto cleanup;
+	    }
+
+	  select_statement =
+	    pt_to_merge_upd_del_query (parser, select_values,
+				       &statement->info.merge,
+				       PT_COMPOSITE_LOCKING_UPDATE);
+
+	  /* restore tree structure; pt_get_assignment_lists() */
+	  pt_restore_assignment_links (statement->info.merge.update.assignment,
+				       links, -1);
+
+	  /* translate views or virtual classes into base classes;
+	     If we are updating a proxy, the SELECT is not yet fully
+	     translated. If we are updating anything else, this is a no-op. */
+
+	  /* this prevents authorization checking during view transformation */
+	  AU_SAVE_AND_DISABLE (au_save);
+	  select_statement = mq_translate (parser, select_statement);
+	  AU_RESTORE (au_save);
+	  if (select_statement)
+	    {
+	      /* get XASL_ID by calling do_prepare_select() */
+	      err = do_prepare_select (parser, select_statement);
+	      /* save the XASL_ID to be used by do_execute_merge() */
+	      statement->xasl_id = select_statement->xasl_id;
+	      /* deallocate the SELECT statement */
+	      parser_free_tree (parser, select_statement);
+	    }
+	  else
+	    {
+	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      err = er_errid ();
+	    }
+	}
+
+      /* nothing to do for merge delete and insert parts */
+    }
+
+cleanup:
+  if (not_nulls)
+    {
+      parser_free_tree (parser, not_nulls);
+      not_nulls = NULL;
+    }
   return err;
 }
 
@@ -15037,13 +15075,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* If the UPDATE statement contains more than one update component,
-     we savepoint the update components to try to guarantee UPDATE statement
-     atomicity. */
+  /* savepoint for statement atomicity */
   savepoint_name = NULL;
 
-  if (!statement->info.merge.update.do_class_attrs && !statement->xasl_id
-      && !statement->info.merge.insert.value_clauses)
+  if (!statement->info.merge.update.assignment
+      && !statement->info.merge.insert.value_clauses
+      && !statement->xasl_id)
     {
       /* nothing to execute */
       statement->etc = NULL;
@@ -15059,37 +15096,25 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   class_obj = flat->info.name.db_object;
 
-  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+  /* The IX lock on the class is sufficient.
+   * DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
+  if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
     {
-      /* The IX lock on the class is sufficient.
-         DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
-      if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
-	{
-	  err = er_errid ();
-	  goto exit;
-	}
+      err = er_errid ();
+      goto exit;
     }
 
-  if (!statement->info.merge.update.do_class_attrs && statement->xasl_id)
+  if (statement->info.merge.server_op)
     {
-      /* Request that the server executes the stored XASL, which is
-         the execution plan of the prepared query, with the host variables
-         given by users as parameter values for the query.
-         As a result, query id and result file id (QFILE_LIST_ID) will be
-         returned.
-         do_prepare_merge() has saved the XASL file id (XASL_ID) in
-         'statement->xasl_id' */
+      /* server side execution */
 
       int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
 
       /* flush necessary objects before execute */
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      err = sm_flush_objects (class_obj);
+      if (err != NO_ERROR)
 	{
-	  err = sm_flush_objects (class_obj);
-	  if (err != NO_ERROR)
-	    {
-	      goto exit;
-	    }
+	  goto exit;
 	}
 
       if (statement->do_not_keep == 0)
@@ -15101,6 +15126,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
+      if (statement->info.merge.insert.value_clauses)
+	{
+	  obt_begin_insert_values ();
+	}
+
       list_id = NULL;
       parser->query_id = -1;
 
@@ -15113,127 +15143,245 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto exit;
 	}
-    }
 
-  hint_arg = statement->info.merge.waitsecs_hint;
-  if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
-      && PT_IS_HINT_NODE (hint_arg))
-    {
-      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-      if (hint_waitsecs > 0)
-	{
-	  wait_msecs = (int) (hint_waitsecs * 1000);
-	}
-      else
-	{
-	  wait_msecs = (int) hint_waitsecs;
-	}
-      if (wait_msecs >= -1)
-	{
-	  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	  (void) tran_reset_wait_times (wait_msecs);
-	}
-    }
-
-  if (statement->info.merge.update.assignment)
-    {
-      AU_SAVE_AND_DISABLE (au_save);
-
-      if (statement->info.merge.update.do_class_attrs)
-	{
-	  /* update class attributes */
-	  err = update_class_attributes (parser, statement);
-	}
-      else
-	{
-	  /* OID list update */
-	  err = update_objs_for_list_file (parser, list_id, statement);
-	}
-
-      AU_RESTORE (au_save);
-    }
-
-  if (old_wait_msecs >= -1)
-    {
-      (void) tran_reset_wait_times (old_wait_msecs);
-    }
-
-  if (statement->info.merge.update.assignment
-      && !statement->info.merge.update.do_class_attrs)
-    {
       /* free returned QFILE_LIST_ID */
       if (list_id)
 	{
+	  if (list_id->tuple_cnt > 0)
+	    {
+	      err = sm_flush_and_decache_objects (class_obj, true);
+	    }
+	  if (err >= NO_ERROR)
+	    {
+	      result += list_id->tuple_cnt;
+	    }
 	  regu_free_listid (list_id);
 	}
       /* end the query; reset query_id and call qmgr_end_query() */
       pt_end_query (parser);
     }
-
-  /* set result count */
-  if (err >= NO_ERROR)
+  else
     {
-      result += err;
-    }
+      /* client side execution */
 
-  if (err != NO_ERROR && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
-    {
-      if (class_obj && db_is_vclass (class_obj))
+      if (statement->info.merge.update.assignment
+	  && !statement->info.merge.update.do_class_attrs)
+	{
+	  int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+
+	  /* flush necessary objects before execute */
+	  err = sm_flush_objects (class_obj);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  if (statement->do_not_keep == 0)
+	    {
+	      query_flag |= KEEP_PLAN_CACHE;
+	    }
+	  query_flag |= NOT_FROM_RESULT_CACHE;
+	  query_flag |= RESULT_CACHE_INHIBITED;
+
+	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
+					       checking for method */
+	  list_id = NULL;
+	  parser->query_id = -1;
+	  err =
+	    query_execute (statement->xasl_id, &parser->query_id,
+			   parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag,
+			   NULL, NULL);
+	  AU_RESTORE (au_save);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      hint_arg = statement->info.merge.waitsecs_hint;
+      if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT)
+	  && PT_IS_HINT_NODE (hint_arg))
+	{
+	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (hint_waitsecs > 0)
+	    {
+	      wait_msecs = (int) (hint_waitsecs * 1000);
+	    }
+	  else
+	    {
+	      wait_msecs = (int) hint_waitsecs;
+	    }
+	  if (wait_msecs >= -1)
+	    {
+	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	      (void) tran_reset_wait_times (wait_msecs);
+	    }
+	}
+
+      /* update part */
+      if (statement->info.merge.update.assignment)
+	{
+	  AU_SAVE_AND_DISABLE (au_save);
+
+	  if (statement->info.merge.update.do_class_attrs)
+	    {
+	      /* update class attributes */
+	      err = update_class_attributes (parser, statement);
+	    }
+	  else
+	    {
+	      /* OID list update */
+	      err = update_objs_for_list_file (parser, list_id, statement);
+	    }
+
+	  AU_RESTORE (au_save);
+
+	  /* set result count */
+	  if (err >= NO_ERROR)
+	    {
+	      result += err;
+	    }
+
+	  if (!statement->info.merge.update.do_class_attrs)
+	    {
+	      /* free returned QFILE_LIST_ID */
+	      if (list_id)
+		{
+		  if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		    {
+		      err = sm_flush_and_decache_objects (class_obj, true);
+		    }
+		  regu_free_listid (list_id);
+		}
+	      /* end the query; reset query_id and call qmgr_end_query() */
+	      pt_end_query (parser);
+	    }
+
+	  /* delete part */
+	  if (err >= NO_ERROR && statement->info.merge.update.del_search_cond)
+	    {
+	      PT_NODE *select_stmt;
+
+	      select_stmt =
+		pt_to_merge_upd_del_query (parser, NULL,
+					   &statement->info.merge,
+					   PT_COMPOSITE_LOCKING_DELETE);
+	      select_stmt = mq_translate (parser, select_stmt);
+	      if (select_stmt == NULL)
+		{
+		  if (select_stmt == NULL)
+		    {
+		      err = er_errid ();
+		      if (err == NO_ERROR)
+			{
+			  err = ER_GENERIC_ERROR;
+			}
+		      if (old_wait_msecs >= -1)
+			{
+			  (void) tran_reset_wait_times (old_wait_msecs);
+			}
+		      goto exit;
+		    }
+		}
+
+	      AU_SAVE_AND_ENABLE (au_save);
+	      err = do_select (parser, select_stmt);
+	      AU_RESTORE (au_save);
+
+	      if (err >= NO_ERROR)
+		{
+		  list_id = (QFILE_LIST_ID  *) select_stmt->etc;
+		  if (list_id)
+		    {
+		      /* delete each oid */
+		      AU_SAVE_AND_DISABLE (au_save);
+		      err = delete_list_by_oids (parser, list_id);
+		      AU_RESTORE (au_save);
+		      /* set result count */
+		      if (err >= NO_ERROR)
+			{
+			  result += err;
+			}
+		      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+			{
+			  err = sm_flush_and_decache_objects (class_obj, true);
+			}
+		      regu_free_listid (list_id);
+		    }
+		  pt_end_query (parser);
+		}
+	      parser_free_tree (parser, select_stmt);
+	    }
+	}
+
+      /* insert part */
+      if (err >= NO_ERROR
+	  && (values_list = statement->info.merge.insert.value_clauses)
+	      != NULL)
+	{
+	  PT_NODE *select_stmt, *save_list;
+	  PT_MISC_TYPE save_type;
+
+	  select_stmt =
+	    pt_to_merge_insert_query (parser, values_list->info.node_list.list,
+				      &statement->info.merge);
+	  select_stmt = mq_translate (parser, select_stmt);
+
+	  if (select_stmt == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_GENERIC_ERROR;
+		}
+	      if (old_wait_msecs >= -1)
+		{
+		  (void) tran_reset_wait_times (old_wait_msecs);
+		}
+	      goto exit;
+	    }
+
+	  /* save node list */
+	  save_type = values_list->info.node_list.list_type;
+	  save_list = values_list->info.node_list.list;
+
+	  values_list->info.node_list.list_type = PT_IS_SUBQUERY;
+	  values_list->info.node_list.list = select_stmt;
+
+	  AU_SAVE_AND_DISABLE (au_save);
+
+	  obt_begin_insert_values ();
+	  /* execute subquery & insert its results into target class */
+	  err = insert_subquery_results (parser, statement, values_list, flat,
+					 &savepoint_name);
+	  if (parser->abort)
+	    {
+	      err = er_errid ();
+	    }
+	  else if (err >= NO_ERROR)
+	    {
+	      result += err;
+	    }
+
+	  AU_RESTORE (au_save);
+
+	  /* restore node list */
+	  values_list->info.node_list.list_type = save_type;
+	  values_list->info.node_list.list = save_list;
+
+	  parser_free_tree (parser, select_stmt);
+	}
+
+      if (old_wait_msecs >= -1)
+	{
+	  (void) tran_reset_wait_times (old_wait_msecs);
+	}
+
+      if (err >= NO_ERROR && db_is_vclass (class_obj))
 	{
 	  err = sm_flush_objects (class_obj);
 	}
-    }
-
-  values_list = statement->info.merge.insert.value_clauses;
-  if (values_list != NULL)
-    {
-      PT_NODE *subq, *save_list;
-      PT_MISC_TYPE save_type;
-
-      subq =
-	pt_to_merge_insert_query (parser, values_list->info.node_list.list,
-				  &statement->info.merge);
-      subq = mq_translate (parser, subq);
-
-      if (subq == NULL)
-	{
-	  err = er_errid ();
-	  if (err == NO_ERROR)
-	    {
-	      err = ER_GENERIC_ERROR;
-	    }
-	  goto exit;
-	}
-
-      /* save node list */
-      save_type = values_list->info.node_list.list_type;
-      save_list = values_list->info.node_list.list;
-
-      values_list->info.node_list.list_type = PT_IS_SUBQUERY;
-      values_list->info.node_list.list = subq;
-
-      AU_SAVE_AND_DISABLE (au_save);
-
-      obt_begin_insert_values ();
-      /* execute subquery & insert its results into target class */
-      err = insert_subquery_results (parser, statement, values_list, flat,
-				     &savepoint_name);
-      if (parser->abort)
-	{
-	  err = er_errid ();
-	}
-      else if (err >= NO_ERROR)
-	{
-	  result += err;
-	}
-
-      AU_RESTORE (au_save);
-
-      /* restore node list */
-      values_list->info.node_list.list_type = save_type;
-      values_list->info.node_list.list = save_list;
-
-      parser_free_tree (parser, subq);
     }
 
 exit:

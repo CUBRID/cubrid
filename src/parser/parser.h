@@ -392,6 +392,10 @@ extern "C"
 			     PT_NODE * expression,
 			     PT_NODE * name, PT_NODE * named_expression);
 
+  extern int pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec,
+				     PT_NODE ** node,
+				     SEMANTIC_CHK_INFO * sc_info);
+
   extern PT_NODE *pt_resolve_names (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
 				    SEMANTIC_CHK_INFO * sc_info);
@@ -776,7 +780,8 @@ extern "C"
   extern PT_NODE *pt_make_query_show_columns (PARSER_CONTEXT * parser,
 					      PT_NODE * original_cls_id,
 					      int like_where_syntax,
-					      PT_NODE * like_or_where_expr);
+					      PT_NODE * like_or_where_expr,
+					      int is_show_full);
   extern PT_NODE *pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 						  PT_NODE * view_identifier);
   extern PT_NODE *pt_make_query_show_grants_curr_usr (PARSER_CONTEXT *

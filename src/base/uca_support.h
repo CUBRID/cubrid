@@ -35,7 +35,7 @@ extern "C"
 {
 #endif
 
-  int uca_process_collation (LOCALE_DATA * ld, bool is_verbose);
+  int uca_process_collation (LOCALE_COLLATION * lc, bool is_verbose);
   void uca_free_data (void);
 
 #ifdef __cplusplus

@@ -208,6 +208,8 @@ extern int log_mark_modified_class_as_update_stats_required (THREAD_ENTRY *
 							     thread_p,
 							     const OID *
 							     class_oid);
+extern bool log_is_class_being_modified (THREAD_ENTRY * thread_p,
+					 const OID * class_oid);
 extern void log_increase_num_transient_classnames (int tran_index);
 extern void log_decrease_num_transient_classnames (int tran_index);
 extern int log_get_num_transient_classnames (int tran_index);

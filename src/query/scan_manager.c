@@ -3322,6 +3322,7 @@ exit_on_error:
   if (isidp->oid_list.oidp)
     {
       scan_free_iscan_oid_buf_list (isidp->oid_list.oidp);
+      isidp->oid_list.oidp = NULL;
     }
   if (isidp->copy_buf)
     {
@@ -4104,6 +4105,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (isidp->oid_list.oidp)
 	{
 	  scan_free_iscan_oid_buf_list (isidp->oid_list.oidp);
+	  isidp->oid_list.oidp = NULL;
 	}
 
       /* free index key copy_buf */

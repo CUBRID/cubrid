@@ -170,6 +170,15 @@ struct sm_attr_properties_chg
 				 * it has subclasses*/
 };
 
+typedef struct sm_partition_alter_info SM_PARTITION_ALTER_INFO;
+struct sm_partition_alter_info
+{
+  MOP root_op;			/* MOP of the root class */
+  DB_CTMPL *root_tmpl;		/* template of the root class */
+  char keycol[DB_MAX_IDENTIFIER_LENGTH];	/* partition key column */
+  char **promoted_names;	/* promoted partition names */
+  int promoted_count;		/* number of promoted partition */
+};
 
 static int drop_class_name (const char *name);
 
@@ -242,6 +251,9 @@ static int build_attr_change_map (PARSER_CONTEXT * parser,
 				  SM_ATTR_PROP_CHG * attr_chg_properties);
 
 static int build_att_type_change_map (TP_DOMAIN * curr_domain,
+				      DB_DOMAIN * req_domain,
+				      SM_ATTR_PROP_CHG * attr_chg_properties);
+static int build_att_coll_change_map (TP_DOMAIN * curr_domain,
 				      DB_DOMAIN * req_domain,
 				      SM_ATTR_PROP_CHG * attr_chg_properties);
 
@@ -327,6 +339,54 @@ static int do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 					    const char *new_cls_name);
 
 
+static int do_create_partition_constraints (PARSER_CONTEXT * parser,
+					    PT_NODE * alter,
+					    SM_PARTITION_ALTER_INFO * pinfo);
+static int do_create_partition_constraint (PT_NODE * alter,
+					   SM_CLASS * root_class,
+					   SM_CLASS_CONSTRAINT * constraint);
+static int do_alter_partitioning_pre (PARSER_CONTEXT * parser,
+				      PT_NODE * alter,
+				      SM_PARTITION_ALTER_INFO * pinfo);
+static int do_alter_partitioning_post (PARSER_CONTEXT * parser,
+				       PT_NODE * alter,
+				       SM_PARTITION_ALTER_INFO * pinfo);
+static int do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
+				SM_PARTITION_ALTER_INFO * pinfo);
+static int do_remove_partition_pre (PARSER_CONTEXT * parser,
+				    PT_NODE * alter,
+				    SM_PARTITION_ALTER_INFO * pinfo);
+static int do_remove_partition_post (PARSER_CONTEXT * parser,
+				     PT_NODE * alter,
+				     SM_PARTITION_ALTER_INFO * pinfo);
+static int do_coalesce_partition_pre (PARSER_CONTEXT * parser,
+				      PT_NODE * alter,
+				      SM_PARTITION_ALTER_INFO * pinfo);
+static int do_coalesce_partition_post (PARSER_CONTEXT * parser,
+				       PT_NODE * alter,
+				       SM_PARTITION_ALTER_INFO * pinfo);
+static int do_reorganize_partition_pre (PARSER_CONTEXT * parser,
+					PT_NODE * alter,
+					SM_PARTITION_ALTER_INFO * pinfo);
+static int do_reorganize_partition_post (PARSER_CONTEXT * parser,
+					 PT_NODE * alter,
+					 SM_PARTITION_ALTER_INFO * pinfo);
+static int do_promote_partition_list (PARSER_CONTEXT * parser,
+				      PT_NODE * alter,
+				      SM_PARTITION_ALTER_INFO * pinfo);
+static int do_promote_partition_by_name (const char *class_name,
+					 const char *part_num,
+					 char **partition_name);
+static int do_promote_partition (SM_CLASS * class_);
+static int do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
+				 SM_PARTITION_ALTER_INFO * pinfo);
+static int do_redistribute_partitions_data (const char *class_name,
+					    const char *keyname,
+					    char **promoted,
+					    int promoted_count,
+					    bool should_update,
+					    bool should_insert);
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -364,27 +424,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *vlist, *p, *n, *d;
   PT_NODE *node, *nodelist;
   PT_NODE *data_type, *data_default, *path;
-  PT_NODE *slist, *parts, *coalesce_list, *names, *delnames = NULL;
+  PT_NODE *slist;
   PT_NODE *tmp_node = NULL;
   PT_NODE *create_index = NULL;
   PT_TYPE_ENUM pt_desired_type;
 #if 0
   HFID *hfid;
 #endif
-  char keycol[DB_MAX_IDENTIFIER_LENGTH], partnum_str[32];
-  MOP classop;
-  SM_CLASS *class_, *subcls;
-  DB_OBJLIST *objs;
-  SM_CLASS_CONSTRAINT *cons;
-  SM_ATTRIBUTE **attp;
-  char **namep = NULL, **attrnames;
-  int *asc_desc = NULL;
-  int i, partnum = 0, coalesce_num = 0;
-  SM_CLASS *smclass;
-  TP_DOMAIN *key_type;
+  SM_PARTITION_ALTER_INFO pinfo;
   bool partition_savepoint = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
-  bool need_partition_post_work = false;
 
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
@@ -1138,146 +1187,25 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_ADD_HASHPARTITION:
     case PT_COALESCE_PARTITION:
     case PT_REORG_PARTITION:
+    case PT_DROP_PARTITION:
     case PT_ANALYZE_PARTITION:
+    case PT_PROMOTE_PARTITION:
+      /* initialize partition alteration context */
+      pinfo.promoted_count = 0;
+      pinfo.promoted_names = NULL;
+      pinfo.root_tmpl = ctemplate;
+      pinfo.root_op = vclass;
+      pinfo.keycol[0] = 0;
 
       error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER, false);
       if (error != NO_ERROR)
 	{
-	  break;
+	  dbt_abort_class (ctemplate);
+	  return error;
 	}
       partition_savepoint = true;
 
-      switch (alter_code)
-	{
-	case PT_APPLY_PARTITION:
-	case PT_ADD_PARTITION:
-	case PT_ADD_HASHPARTITION:
-	  need_partition_post_work = true;
-
-	  error = do_create_partition (parser, alter, vclass, ctemplate);
-	  if (error == NO_ERROR)
-	    {
-	      error =
-		do_check_fk_constraints (ctemplate,
-					 alter->info.alter.constraint_list);
-	    }
-	  break;
-
-	case PT_REORG_PARTITION:
-	  need_partition_post_work = true;
-
-	  error = do_create_partition (parser, alter, vclass, ctemplate);
-	  if (error == NO_ERROR)
-	    {
-	      coalesce_num = 0;
-	      names = alter->info.alter.alter_clause.partition.name_list;
-	      for (; names; names = names->next)
-		{
-		  if (names->partition_pruned)
-		    {
-		      coalesce_num++;
-		    }
-		}
-	      sprintf (partnum_str, "$%d", coalesce_num);
-	      error = do_remove_partition_pre (ctemplate, keycol,
-					       partnum_str);
-	    }
-	  break;
-
-	case PT_REMOVE_PARTITION:
-	  need_partition_post_work = true;
-
-	  error = do_remove_partition_pre (ctemplate, keycol, "*");
-	  break;
-
-	case PT_COALESCE_PARTITION:
-	  need_partition_post_work = true;
-
-	  error = do_get_partition_keycol (keycol, vclass);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-
-	  error = do_get_partition_size (vclass);
-	  if (error < 0)
-	    {
-	      break;
-	    }
-	  partnum = error;
-	  coalesce_num = (partnum
-			  -
-			  (alter->info.alter.alter_clause.partition.
-			   size->info.value.data_value.i));
-	  sprintf (partnum_str, "#%d", coalesce_num);
-
-	  error = do_remove_partition_pre (ctemplate, keycol, partnum_str);
-	  break;
-
-	case PT_ANALYZE_PARTITION:
-	  names = alter->info.alter.alter_clause.partition.name_list;
-	  if (names == NULL)
-	    {			/* ALL */
-	      error = au_fetch_class (vclass, &class_, AU_FETCH_READ,
-				      AU_SELECT);
-	      if (error != NO_ERROR)
-		{
-		  break;
-		}
-
-	      error = sm_update_statistics (vclass, false);
-	      if (error != NO_ERROR)
-		{
-		  break;
-		}
-
-	      for (objs = class_->users; objs; objs = objs->next)
-		{
-		  error = au_fetch_class (objs->op, &subcls,
-					  AU_FETCH_READ, AU_SELECT);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-
-		  if (!subcls->partition_of)
-		    {
-		      continue;	/* not partitioned */
-		    }
-
-		  error = sm_update_statistics (objs->op, false);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-		}
-	    }
-	  else
-	    {
-	      for (; names; names = names->next)
-		{
-		  if (!names->info.name.db_object)
-		    {
-		      break;
-		    }
-
-		  error =
-		    sm_update_statistics (names->info.name.db_object, false);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-		}
-	    }
-	  break;
-
-	default:
-	  break;
-	}
-      break;
-
-    case PT_DROP_PARTITION:	/* post work */
-      need_partition_post_work = true;
+      error = do_alter_partitioning_pre (parser, alter, &pinfo);
       break;
 
     default:
@@ -1354,334 +1282,47 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  return error;
 	}
     }
-
-
-  if (need_partition_post_work == false)
-    {
-      return NO_ERROR;
-    }
-
   switch (alter_code)
     {
     case PT_APPLY_PARTITION:
-    case PT_ADD_HASHPARTITION:
-    case PT_ADD_PARTITION:
-    case PT_REORG_PARTITION:
-      if (alter_code == PT_APPLY_PARTITION)
-	{
-	  error = do_update_partition_newly (entity_name,
-					     alter->info.alter.alter_clause.
-					     partition.info->info.partition.
-					     keycol->info.name.original);
-	}
-      else if (alter_code == PT_ADD_HASHPARTITION
-	       || alter_code == PT_REORG_PARTITION)
-	{
-	  error = do_get_partition_keycol (keycol, vclass);
-	  if (error == NO_ERROR)
-	    {
-	      error = do_update_partition_newly (entity_name, keycol);
-	    }
-	}
-
-      if (error == NO_ERROR)
-	{
-	  /* index propagate */
-	  classop = db_find_class (entity_name);
-	  if (classop == NULL)
-	    {
-	      error = er_errid ();
-	      goto fail_end;
-	    }
-	  if (au_fetch_class (classop, &class_, AU_FETCH_READ,
-			      AU_SELECT) != NO_ERROR)
-	    {
-	      error = er_errid ();
-	      goto fail_end;
-	    }
-
-	  smclass = sm_get_class_with_statistics (classop);
-	  if (smclass == NULL)
-	    {
-	      if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
-		{
-		  error = ER_PARTITION_WORK_FAILED;
-		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_PARTITION_WORK_FAILED, 0);
-	      goto fail_end;
-	    }
-
-	  if (smclass->stats == NULL)
-	    {
-	      if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
-		{
-		  error = ER_PARTITION_WORK_FAILED;
-		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_PARTITION_WORK_FAILED, 0);
-	      goto fail_end;
-	    }
-
-	  for (cons = class_->constraints; cons; cons = cons->next)
-	    {
-	      if (cons->type != SM_CONSTRAINT_INDEX
-		  && cons->type != SM_CONSTRAINT_REVERSE_INDEX)
-		{
-		  continue;
-		}
-
-	      attp = cons->attributes;
-	      i = 0;
-	      while (*attp)
-		{
-		  attp++;
-		  i++;
-		}
-
-	      if (i <= 0
-		  || ((namep = (char **) malloc (sizeof (char *) * (i + 1)))
-		      == NULL)
-		  || (asc_desc = (int *) malloc (sizeof (int) * (i))) == NULL)
-		{
-		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
-		    {
-		      error = ER_PARTITION_WORK_FAILED;
-		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_PARTITION_WORK_FAILED, 0);
-		  goto fail_end;
-		}
-
-	      attp = cons->attributes;
-	      attrnames = namep;
-
-	      /* need to get asc/desc info */
-	      key_type = classobj_find_cons_index2_col_type_list (cons,
-								  smclass->
-								  stats);
-	      if (key_type == NULL)
-		{
-		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
-		    {
-		      error = ER_PARTITION_WORK_FAILED;
-		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_PARTITION_WORK_FAILED, 0);
-		  goto fail_end;
-		}
-
-	      i = 0;
-	      while (*attp && key_type)
-		{
-		  *attrnames = (char *) (*attp)->header.name;
-		  attrnames++;
-
-		  asc_desc[i] = 0;	/* guess as Asc */
-		  if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type)
-		      || key_type->is_desc)
-		    {
-		      asc_desc[i] = 1;	/* Desc */
-		    }
-		  i++;
-
-		  attp++;
-		  key_type = key_type->next;
-		}
-
-	      if (*attp || key_type)
-		{
-		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
-		    {
-		      error = ER_PARTITION_WORK_FAILED;
-		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_PARTITION_WORK_FAILED, 0);
-		  goto fail_end;
-		}
-
-	      *attrnames = NULL;
-
-	      for (objs = class_->users; objs; objs = objs->next)
-		{
-		  error = au_fetch_class (objs->op, &subcls,
-					  AU_FETCH_READ, AU_SELECT);
-		  if (error != NO_ERROR)
-		    {
-		      error = er_errid ();
-		      goto fail_end;
-		    }
-
-		  if (!subcls->partition_of)
-		    {
-		      continue;	/* not partitioned */
-		    }
-
-		  if (alter_code == PT_ADD_PARTITION
-		      || alter_code == PT_REORG_PARTITION
-		      || alter_code == PT_ADD_HASHPARTITION)
-		    {
-		      parts = alter->info.alter.alter_clause.partition.parts;
-		      for (; parts; parts = parts->next)
-			{
-			  if (alter_code == PT_REORG_PARTITION
-			      && parts->partition_pruned)
-			    {
-			      continue;	/* reused partition */
-			    }
-			  if (ws_mop_compare (objs->op,
-					      parts->info.parts.name->info.
-					      name.db_object) == 0)
-			    {
-			      break;
-			    }
-			}
-		      if (parts == NULL)
-			{
-			  continue;
-			}
-		    }
-		  error =
-		    sm_add_index (objs->op, db_constraint_type (cons),
-				  cons->name, (const char **) namep, asc_desc,
-				  cons->attrs_prefix_length,
-				  cons->filter_predicate,
-				  cons->func_index_info);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-		}
-
-	      free_and_init (namep);
-	      free_and_init (asc_desc);
-	    }
-
-	fail_end:
-
-	  if (namep != NULL)
-	    {
-	      free_and_init (namep);
-	    }
-	  if (asc_desc != NULL)
-	    {
-	      free_and_init (asc_desc);
-	    }
-	}
-
-      if (error != NO_ERROR)
-	{
-	  goto alter_partition_fail;
-	}
-
-      if (alter_code == PT_REORG_PARTITION)
-	{
-	  delnames = NULL;
-	  names = alter->info.alter.alter_clause.partition.name_list;
-
-	  for (; names; names = names->next)
-	    {
-	      if (names->partition_pruned)
-		{
-		  /* for delete partition */
-		  tmp_node = parser_copy_tree (parser, names);
-		  if (tmp_node == NULL)
-		    {
-		      goto alter_partition_fail;
-		    }
-		  tmp_node->next = delnames;
-		  delnames = tmp_node;
-		}
-	    }
-
-	  if (delnames != NULL)
-	    {
-	      error = do_drop_partition_list (vclass, delnames);
-	      if (error != NO_ERROR)
-		{
-		  goto alter_partition_fail;
-		}
-	    }
-
-	  if (delnames != NULL)
-	    {
-	      parser_free_tree (parser, delnames);
-	      delnames = NULL;
-	    }
-	}
-      break;
-
-    case PT_COALESCE_PARTITION:
-      error = do_update_partition_newly (entity_name, keycol);
-      if (error != NO_ERROR)
-	{
-	  goto alter_partition_fail;
-	}
-
-      slist = NULL;
-      coalesce_list = NULL;
-      for (; coalesce_num < partnum; coalesce_num++)
-	{
-	  sprintf (partnum_str, "p%d", coalesce_num);
-	  parts = pt_name (parser, partnum_str);
-	  if (parts == NULL)
-	    {
-	      goto alter_partition_fail;
-	    }
-	  parts->next = NULL;
-	  if (coalesce_list == NULL)
-	    {
-	      coalesce_list = parts;
-	    }
-	  else
-	    {
-	      slist->next = parts;
-	    }
-	  slist = parts;
-	}
-
-      error = do_drop_partition_list (vclass, coalesce_list);
-      parser_free_tree (parser, coalesce_list);
-
-      if (error != NO_ERROR)
-	{
-	  goto alter_partition_fail;
-	}
-
-      break;
-
     case PT_REMOVE_PARTITION:
-      error = do_remove_partition_post (parser, entity_name, keycol);
-      if (error != NO_ERROR)
-	{
-	  goto alter_partition_fail;
-	}
-      break;
-
+    case PT_ADD_PARTITION:
+    case PT_ADD_HASHPARTITION:
+    case PT_COALESCE_PARTITION:
+    case PT_REORG_PARTITION:
     case PT_DROP_PARTITION:
-      error =
-	do_drop_partition_list (vclass,
-				alter->info.alter.alter_clause.
-				partition.name_list);
-      if (error != NO_ERROR)
+    case PT_ANALYZE_PARTITION:
+    case PT_PROMOTE_PARTITION:
+      /* root class template has been edited and finished, update the 
+       * references in the pinfo object
+       */
+      pinfo.root_op = vclass;
+      pinfo.root_tmpl = NULL;
+      error = do_alter_partitioning_post (parser, alter, &pinfo);
+
+      if (pinfo.promoted_names != NULL)
+	{
+	  /* cleanup promoted names if any */
+	  int i;
+	  for (i = 0; i < pinfo.promoted_count; i++)
+	    {
+	      free_and_init (pinfo.promoted_names[i]);
+	    }
+	  free_and_init (pinfo.promoted_names);
+	}
+
+      if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
 	{
 	  goto alter_partition_fail;
 	}
       break;
-
     default:
       break;
     }
 
-  return NO_ERROR;
+  return error;
 
 alter_partition_fail:
-  if (delnames != NULL)
-    {
-      parser_free_tree (parser, delnames);
-      delnames = NULL;
-    }
-
   if (partition_savepoint && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
@@ -3899,8 +3540,12 @@ typedef enum
 
 static int insert_partition_catalog (PARSER_CONTEXT * parser,
 				     DB_CTMPL * clstmpl, PT_NODE * node,
-				     char *base_obj, char *cata_obj,
-				     DB_VALUE * minval);
+				     PT_NODE * entity, char *base_obj,
+				     char *cata_obj, DB_VALUE * minval);
+static SM_FUNCTION_INFO *compile_partition_expression (PARSER_CONTEXT *
+						       parser,
+						       PT_NODE * entity_name,
+						       PT_NODE * pinfo);
 static PT_NODE *replace_name_with_value (PARSER_CONTEXT * parser,
 					 PT_NODE * node, void *void_arg,
 					 int *continue_walk);
@@ -3980,28 +3625,26 @@ static int execute_create_select_query (PARSER_CONTEXT * parser,
  * do_create_partition() -  Creates partitions
  *   return: Error code if partitions are not created
  *   parser(in): Parser context
- *   node(in): The parse tree of a create class
- *   class_obj(in):
- *   clstmpl(in):
+ *   alter(in): The parse tree of a create class
+ *   pinfo(in): partition alter context
  *
  * Note:
  */
-int
-do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
-		     DB_OBJECT * class_obj, DB_CTMPL * clstmpl)
+static int
+do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
+		     SM_PARTITION_ALTER_INFO * pinfo)
 {
   int error;
-  PT_NODE *pinfo, *hash_parts, *newparts, *hashtail;
+  PT_NODE *alter_info, *hash_parts, *newparts, *hashtail;
   PT_NODE *parts, *parts_save, *fmin;
-  PT_NODE *parttemp, *names;
+  PT_NODE *parttemp, *entity_name = NULL;
   PART_CLASS_INFO pci = { NULL, NULL, NULL, NULL };
   PART_CLASS_INFO *newpci, *wpci;
   char class_name[DB_MAX_IDENTIFIER_LENGTH *
 		  INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
-  DB_VALUE *minval, *parts_val, *fmin_val, partsize, delval;
+  DB_VALUE *minval, *parts_val, *fmin_val, partsize;
   int part_cnt = 0, part_add = -1;
   int size;
-  int save;
   SM_CLASS *smclass;
   bool reuse_oid = false;
 
@@ -4014,31 +3657,32 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  pinfo = hash_parts = newparts = hashtail = NULL;
+  alter_info = hash_parts = newparts = hashtail = NULL;
   parts = parts_save = fmin = NULL;
 
-  if (node->node_type == PT_ALTER)
+  if (alter->node_type == PT_ALTER)
     {
-      pinfo = node->info.alter.alter_clause.partition.info;
-      if (node->info.alter.code == PT_ADD_PARTITION
-	  || node->info.alter.code == PT_REORG_PARTITION)
+      alter_info = alter->info.alter.alter_clause.partition.info;
+      if (alter->info.alter.code == PT_ADD_PARTITION
+	  || alter->info.alter.code == PT_REORG_PARTITION)
 	{
-	  parts = node->info.alter.alter_clause.partition.parts;
+	  parts = alter->info.alter.alter_clause.partition.parts;
 	  part_add = parts->info.parts.type;
 	}
-      else if (node->info.alter.code == PT_ADD_HASHPARTITION)
+      else if (alter->info.alter.code == PT_ADD_HASHPARTITION)
 	{
 	  part_add = PT_PARTITION_HASH;
 	}
-
-      intl_identifier_lower ((char *) node->info.alter.entity_name->info.
-			     name.original, class_name);
+      entity_name = alter->info.alter.entity_name;
+      intl_identifier_lower ((char *) entity_name->info.name.original,
+			     class_name);
     }
-  else if (node->node_type == PT_CREATE_ENTITY)
+  else if (alter->node_type == PT_CREATE_ENTITY)
     {
-      pinfo = node->info.create_entity.partition_info;
-      intl_identifier_lower ((char *) node->info.create_entity.entity_name->
-			     info.name.original, class_name);
+      entity_name = alter->info.create_entity.entity_name;
+      alter_info = alter->info.create_entity.partition_info;
+      intl_identifier_lower ((char *) entity_name->info.name.original,
+			     class_name);
     }
   else
     {
@@ -4047,12 +3691,12 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (part_add == -1)
     {				/* create or apply partition */
-      if (!pinfo)
+      if (!alter_info)
 	{
 	  return NO_ERROR;
 	}
 
-      parts = pinfo->info.partition.parts;
+      parts = alter_info->info.partition.parts;
     }
 
   parts_save = parts;
@@ -4063,7 +3707,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
       goto end_create;
     }
 
-  error = au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+  error = au_fetch_class (pinfo->root_op, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
       error = er_errid ();
@@ -4083,13 +3727,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
       error = er_errid ();
       goto end_create;
     }
-  parttemp->info.create_entity.supclass_list->info.name.db_object = class_obj;
+  parttemp->info.create_entity.supclass_list->info.name.db_object =
+    pinfo->root_op;
 
   error = NO_ERROR;
   if (part_add == PT_PARTITION_HASH
-      || (pinfo
-	  && pinfo->node_type != PT_VALUE
-	  && pinfo->info.partition.type == PT_PARTITION_HASH))
+      || (alter_info
+	  && alter_info->node_type != PT_VALUE
+	  && alter_info->info.partition.type == PT_PARTITION_HASH))
     {
       int pi, org_hashsize, new_hashsize;
 
@@ -4109,7 +3754,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
       hash_parts->info.parts.type = PT_PARTITION_HASH;
       if (part_add == PT_PARTITION_HASH)
 	{
-	  org_hashsize = do_get_partition_size (class_obj);
+	  org_hashsize = do_get_partition_size (pinfo->root_op);
 	  if (org_hashsize < 0)
 	    {
 	      error = er_errid ();
@@ -4117,14 +3762,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	  new_hashsize
 	    =
-	    node->info.alter.alter_clause.partition.size->info.
+	    alter->info.alter.alter_clause.partition.size->info.
 	    value.data_value.i;
 	}
       else
 	{
 	  org_hashsize = 0;
 	  new_hashsize =
-	    pinfo->info.partition.hashsize->info.value.data_value.i;
+	    alter_info->info.partition.hashsize->info.value.data_value.i;
 	}
 
       for (pi = 0; pi < new_hashsize; pi++)
@@ -4205,7 +3850,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	    + strlen (PARTITIONED_SUB_CLASS_TAG);
 	  hash_parts->info.parts.values = NULL;
 
-	  error = insert_partition_catalog (parser, NULL, hash_parts,
+	  error = insert_partition_catalog (parser, NULL, hash_parts, NULL,
 					    class_name, newpci->pname, NULL);
 	  if (error != NO_ERROR)
 	    {
@@ -4216,9 +3861,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	      hash_parts->next = NULL;
 	      hash_parts->info.parts.name->info.name.db_object = newpci->obj;
 	      newparts = parser_copy_tree (parser, hash_parts);
-	      if (node->info.alter.alter_clause.partition.parts == NULL)
+	      if (alter->info.alter.alter_clause.partition.parts == NULL)
 		{
-		  node->info.alter.alter_clause.partition.parts = newparts;
+		  alter->info.alter.alter_clause.partition.parts = newparts;
 		}
 	      else
 		{
@@ -4270,12 +3915,12 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	      goto end_create;
 	    }
 
-	  if (node->info.alter.code == PT_REORG_PARTITION
+	  if (alter->info.alter.code == PT_REORG_PARTITION
 	      && parts->partition_pruned)
 	    {			/* reused partition */
-	      error = insert_partition_catalog (parser, NULL, parts,
-						class_name,
-						newpci->pname, NULL);
+	      error = insert_partition_catalog (parser, NULL, parts, NULL,
+						class_name, newpci->pname,
+						NULL);
 	      if (error != NO_ERROR)
 		{
 		  goto end_create;	/* reorg partition info update */
@@ -4331,9 +3976,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	  /* RANGE-MIN VALUE search */
 	  minval = NULL;
-	  if ((pinfo
-	       && pinfo->node_type != PT_VALUE
-	       && pinfo->info.partition.type == PT_PARTITION_RANGE)
+	  if ((alter_info
+	       && alter_info->node_type != PT_VALUE
+	       && alter_info->info.partition.type == PT_PARTITION_RANGE)
 	      || part_add == PT_PARTITION_RANGE)
 	    {
 	      parts_val = pt_value_to_db (parser, parts->info.parts.values);
@@ -4370,13 +4015,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	    }
 	  if (part_add == PT_PARTITION_RANGE
-	      && minval == NULL && pinfo && pinfo->node_type == PT_VALUE)
+	      && minval == NULL && alter_info
+	      && alter_info->node_type == PT_VALUE)
 	    {
 	      /* set in pt_check_alter_partition */
-	      minval = pt_value_to_db (parser, pinfo);
+	      minval = pt_value_to_db (parser, alter_info);
 	    }
 	  parts->info.parts.name->info.name.db_object = newpci->obj;
-	  error = insert_partition_catalog (parser, NULL, parts,
+	  error = insert_partition_catalog (parser, NULL, parts, NULL,
 					    class_name, newpci->pname,
 					    minval);
 	  if (error != NO_ERROR)
@@ -4389,50 +4035,28 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (part_add != -1)
     {				/* partition size update */
-      adjust_partition_size (class_obj);
+      adjust_partition_size (pinfo->root_op);
 
-      if (node->info.alter.code == PT_REORG_PARTITION)
+      if (alter->info.alter.code == PT_REORG_PARTITION
+	  && part_add == PT_PARTITION_RANGE)
 	{
-	  AU_DISABLE (save);
-	  db_make_string (&delval, "DEL");
-	  for (names = node->info.alter.alter_clause.partition.name_list;
-	       names; names = names->next)
-	    {
-	      if (names->partition_pruned)
-		{		/* for delete partition */
-		  error =
-		    db_put_internal (names->info.name.db_object,
-				     PARTITION_ATT_PEXPR, &delval);
-		  if (error != NO_ERROR)
-		    {
-		      break;
-		    }
-		}
-	    }
-	  pr_clear_value (&delval);
-	  AU_ENABLE (save);
+	  error
+	    = au_fetch_class (pinfo->root_op, &smclass, AU_FETCH_READ,
+			      AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
 	      goto end_create;
 	    }
-	  if (part_add == PT_PARTITION_RANGE)
-	    {
-	      error
-		= au_fetch_class (class_obj, &smclass, AU_FETCH_READ,
-				  AU_SELECT);
-	      if (error != NO_ERROR)
-		{
-		  goto end_create;
-		}
-	      adjust_partition_range (smclass->users);
-	    }
+	  adjust_partition_range (smclass->users);
 	}
     }
   else
     {				/* set parent's partition info */
       db_make_int (&partsize, part_cnt);
-      error = insert_partition_catalog (parser, clstmpl, pinfo, class_name,
-					class_name, &partsize);
+      error =
+	insert_partition_catalog (parser, pinfo->root_tmpl, alter_info,
+				  entity_name, class_name, class_name,
+				  &partsize);
     }
 
 end_create:
@@ -4458,6 +4082,55 @@ end_create:
 }
 
 /*
+ * compile_partition_expression () - compile the partition expression and
+ *				     serialize it to a stream
+ *
+ * return : serialized expression or NULL
+ * parser (in)	    : parser context
+ * entity_name (in) : the name of the partitioned table
+ * pinfo (in)	    : partition information node
+ *
+ */
+static SM_FUNCTION_INFO *
+compile_partition_expression (PARSER_CONTEXT * parser, PT_NODE * entity_name,
+			      PT_NODE * pinfo)
+{
+  PT_NODE *spec = NULL, *expr = NULL;
+  SM_FUNCTION_INFO *part_expr = NULL;
+
+  if (pinfo->node_type != PT_PARTITION)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return NULL;
+    }
+
+  spec = pt_entity (parser, entity_name, NULL, NULL);
+  if (spec == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      sizeof (PT_NODE));
+      return NULL;
+    }
+
+  /* perform semantic check on the expression */
+  expr = pinfo->info.partition.expr;
+  if (pt_semantic_quick_check_node (parser, &spec, &expr) == NULL)
+    {
+      return NULL;
+    }
+
+  /* pack the partition expression */
+  pt_enter_packing_buf ();
+  part_expr = pt_node_to_function_index (parser, spec, expr, DO_INDEX_CREATE);
+  pt_exit_packing_buf ();
+
+  parser_free_node (parser, spec);
+
+  return part_expr;
+}
+
+/*
  * insert_partition_catalog() -
  *   return: Error code
  *   parser(in): Parser context
@@ -4471,8 +4144,8 @@ end_create:
  */
 static int
 insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
-			  PT_NODE * node, char *base_obj,
-			  char *cata_obj, DB_VALUE * minval)
+			  PT_NODE * node, PT_NODE * entity_name,
+			  char *base_obj, char *cata_obj, DB_VALUE * minval)
 {
   MOP partcata, classcata, newpart, newclass;
   DB_OTMPL *otmpl;
@@ -4492,7 +4165,8 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
     {
       goto fail_return;
     }
-  db_make_varchar (&val, PARTITION_VARCHAR_LEN, base_obj, strlen (base_obj));
+  db_make_varchar (&val, PARTITION_VARCHAR_LEN, base_obj, strlen (base_obj),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   newclass = db_find_unique (classcata, CLASS_ATT_NAME, &val);
   if (newclass == NULL)
     {
@@ -4524,7 +4198,8 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
   else
     {
       p = (char *) node->info.parts.name->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p));
+      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
     }
   if (dbt_put_internal (otmpl, PARTITION_ATT_PNAME, &val) < 0)
     {
@@ -4566,7 +4241,8 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 	}
       sprintf (query_str, "SELECT %s FROM [%s]", query, base_obj);
       db_make_varchar (&val, PARTITION_VARCHAR_LEN, query_str,
-		       strlen (query_str));
+		       strlen (query_str), LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
     }
   else
     {
@@ -4589,8 +4265,12 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
     }
   if (node->node_type == PT_PARTITION)
     {
+      DB_VALUE expr;
+      SM_FUNCTION_INFO *part_expr = NULL;
+
       p = (char *) node->info.partition.keycol->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p));
+      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       set_add_element (dbc, &val);
       if (node->info.partition.type == PT_PARTITION_HASH)
 	{
@@ -4601,6 +4281,24 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 	{
 	  set_add_element (dbc, minval);
 	}
+
+      /* Now compile the partition expression and add it to the end of the
+       * collection
+       */
+      part_expr = compile_partition_expression (parser, entity_name, node);
+      if (part_expr == NULL)
+	{
+	  goto fail_return;
+	}
+      db_make_char (&expr, part_expr->expr_stream_size,
+		    part_expr->expr_stream, part_expr->expr_stream_size,
+		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      set_add_element (dbc, &expr);
+
+      /* Notice that we're not calling pr_clear_value on expr here because
+       * memory allocated for expr_stream will be deallocated later.
+       */
+      db_ws_free (part_expr);
     }
   else
     {
@@ -4662,6 +4360,15 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 	{
 	  goto fail_return;
 	}
+      if (ctmpl->partition_of != NULL)
+	{
+	  /* delete old partition information if any */
+	  if (obj_delete (ctmpl->partition_of) != NO_ERROR)
+	    {
+	      dbt_abort_class (ctmpl);
+	      goto fail_return;
+	    }
+	}
       ctmpl->partition_of = newpart;
       if (dbt_finish_class (ctmpl) == NULL)
 	{
@@ -4706,7 +4413,7 @@ replace_name_with_value (PARSER_CONTEXT * parser, PT_NODE * node,
   DB_VALUE *ival = (DB_VALUE *) void_arg;
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_NAME)
+  if (node->node_type == PT_NAME || node->node_type == PT_DOT_)
     {
       newval = pt_dbval_to_value (parser, ival);
       if (newval)
@@ -4741,7 +4448,7 @@ adjust_name_with_type (PARSER_CONTEXT * parser, PT_NODE * node,
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_NAME)
+  if (node->node_type == PT_NAME || node->node_type == PT_DOT_)
     {
       node->type_enum = (PT_TYPE_ENUM) * key_type;
       node->data_type = pt_domain_to_data_type (parser,
@@ -4782,7 +4489,7 @@ evaluate_partition_expr (DB_VALUE * expr, DB_VALUE * ival)
   if (newnode && *newnode)
     {
       pcol = (*newnode)->info.query.q.select.list;
-      if (pcol->node_type == PT_NAME)
+      if (pcol->node_type == PT_NAME || pcol->node_type == PT_DOT_)
 	{
 	  parser_free_parser (expr_parser);
 	  return ival;
@@ -5101,88 +4808,6 @@ get_partition_parts (MOP * class_obj, SM_CLASS * smclass, int ptype,
   return NO_ERROR;
 }
 
-/*
- * do_insert_partition_cache() -
- *   return: Error code
- *   pic(in):
- *   attr(in):
- *   desc(in):
- *   val(in):
- *
- * Note:
- */
-int
-do_insert_partition_cache (PARTITION_INSERT_CACHE ** pic, PT_NODE * attr,
-			   DB_ATTDESC * desc, DB_VALUE * val)
-{
-  PARTITION_INSERT_CACHE *picnext;
-
-  if (*pic == NULL)
-    {
-      *pic =
-	(PARTITION_INSERT_CACHE *) malloc (sizeof (PARTITION_INSERT_CACHE));
-      if (*pic == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED,
-		  0);
-	  return er_errid ();
-	}
-      picnext = *pic;
-    }
-  else
-    {
-      for (picnext = *pic; picnext && picnext->next; picnext = picnext->next)
-	;
-
-      picnext->next =
-	(PARTITION_INSERT_CACHE *) malloc (sizeof (PARTITION_INSERT_CACHE));
-      if (picnext->next == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED,
-		  0);
-	  return er_errid ();
-	}
-      picnext = picnext->next;
-    }
-
-  picnext->next = NULL;
-  picnext->attr = attr;
-  picnext->desc = desc;
-  picnext->val = pr_copy_value (val);
-
-  return NO_ERROR;
-}
-
-/*
- * do_insert_partition_cache() -
- *   return: Error code
- *   pic(in):
- *   attr(in):
- *   desc(in):
- *   val(in):
- *
- * Note:
- */
-void
-do_clear_partition_cache (PARTITION_INSERT_CACHE * pic)
-{
-  PARTITION_INSERT_CACHE *picnext, *tmp;
-
-  picnext = pic;
-  while (picnext)
-    {
-      if (picnext->val)
-	{
-	  pr_free_value (picnext->val);
-	}
-      tmp = picnext;
-      picnext = picnext->next;
-      if (tmp)
-	{
-	  free_and_init (tmp);
-	}
-    }
-}
 
 /*
  * do_init_partition_select() -
@@ -5390,7 +5015,7 @@ find_partition_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	  intl_char_count ((unsigned char *) p_att_name,
 			   DB_GET_STRING_SIZE (ppi->attr),
-			   lang_charset (), &len_p_att_name);
+			   LANG_SYS_CODESET, &len_p_att_name);
 
 	  if (intl_identifier_ncasecmp (node->info.name.original, p_att_name,
 					len_p_att_name) == 0)
@@ -7183,291 +6808,6 @@ apply_no_pruning (PT_NODE * spec, PRUNING_INFO * ppi)
 }
 
 /*
- * do_apply_partition_pruning() -
- *   return:
- *   parser(in): Parser context
- *   stmt(in):
- *
- * Note:
- */
-void
-do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
-{
-  PRUNING_INFO pi = { NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0, 0L };
-  PT_NODE *spec, *cond, *name, *retflat;
-  PT_NODE **enode;
-  DB_VALUE ptype, pname, pexpr, pattr;
-  DB_VALUE attr, hashsize;
-  int is_all = 0, au_save;
-  MOP classop;
-  PARSER_CONTEXT *expr_parser = NULL;
-
-  AU_DISABLE (au_save);
-
-  spec = cond = name = retflat = NULL;
-  switch (stmt->node_type)
-    {
-    case PT_SELECT:
-      spec = stmt->info.query.q.select.from;
-      cond = stmt->info.query.q.select.where;
-      break;
-    case PT_UPDATE:
-      spec = stmt->info.update.spec;
-      cond = stmt->info.update.search_cond;
-      break;
-    case PT_DELETE:
-      spec = stmt->info.delete_.spec;
-      cond = stmt->info.delete_.search_cond;
-      break;
-    case PT_MERGE:
-      {
-	assert (stmt->info.merge.into->next == NULL);
-	stmt->info.merge.into->next = stmt->info.merge.using;
-	spec = stmt->info.merge.into;
-	cond = stmt->info.merge.search_cond;
-      }
-      break;
-    case PT_SPEC:		/* path expression */
-      spec = stmt;
-      cond = NULL;
-      break;
-    default:
-      break;
-    }
-
-  if (spec == NULL)
-    {
-      AU_ENABLE (au_save);
-      return;
-    }
-
-  db_make_null (&ptype);
-  db_make_null (&pname);
-  db_make_null (&pexpr);
-  db_make_null (&pattr);
-
-  /* partitioned table search */
-  for (; spec; spec = spec->next)
-    {
-      for (name = spec->info.spec.flat_entity_list; name; name = name->next)
-	{
-	  if (name->info.name.partition_of == NULL)
-	    {
-	      continue;
-	    }
-
-	  is_all = 0;
-
-	  classop = db_find_class (name->info.name.original);
-	  if (classop != NULL)
-	    {
-	      if (au_fetch_class (classop, &pi.smclass, AU_FETCH_READ,
-				  AU_SELECT) != NO_ERROR)
-		{
-		  goto work_failed;
-		}
-	    }
-	  else
-	    {
-	      goto work_failed;
-	    }
-
-	  db_make_null (&ptype);
-	  db_make_null (&pname);
-	  db_make_null (&pexpr);
-	  db_make_null (&pattr);
-	  db_make_null (&attr);
-	  db_make_null (&hashsize);
-
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PNAME,
-		      &pname) != NO_ERROR)
-	    {
-	      continue;
-	    }
-	  if (!DB_IS_NULL (&pname))
-	    {
-	      goto clear_loop;	/* partitioned sub-class */
-	    }
-
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PTYPE,
-		      &ptype) != NO_ERROR)
-	    {
-	      goto clear_loop;
-	    }
-
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PEXPR,
-		      &pexpr) != NO_ERROR)
-	    {
-	      goto clear_loop;
-	    }
-	  if (DB_IS_NULL (&pexpr))
-	    {
-	      goto clear_loop;
-	    }
-
-	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PVALUES,
-		      &pattr) != NO_ERROR)
-	    {
-	      goto clear_loop;
-	    }
-	  if (DB_IS_NULL (&pattr))
-	    {
-	      goto clear_loop;
-	    }
-	  if (set_get_element (pattr.data.set, 0, &attr) != NO_ERROR)
-	    {
-	      goto clear_loop;
-	    }
-
-	  if (ptype.data.i == PT_PARTITION_HASH)
-	    {
-	      if (set_get_element (pattr.data.set, 1, &hashsize) != NO_ERROR)
-		{
-		  goto clear_loop;
-		}
-	      pi.size = hashsize.data.i;
-	    }
-	  else
-	    {
-	      pi.size = 0;
-	    }
-
-	  expr_parser = parser_create_parser ();
-	  if (expr_parser == NULL)
-	    {
-	      goto clear_loop;
-	    }
-
-	  enode = parser_parse_string (expr_parser, DB_GET_STRING (&pexpr));
-	  if (enode == NULL)
-	    {
-	      goto clear_loop;
-	    }
-
-
-	  if (*enode != NULL)
-	    {
-	      pi.expr = (*enode)->info.query.q.select.list;
-	    }
-
-	  if (pi.expr)
-	    {
-	      pi.parser = parser;
-	      pi.attr = &attr;
-	      pi.ppart = NULL;
-	      pi.type = ptype.data.i;
-	      pi.spec = name->info.name.spec_id;
-	      pi.expr_cnt = 0;
-
-	      /* search condition search & value list make */
-	      if (cond != NULL && cond->node_type == PT_EXPR)
-		{
-		  if (make_attr_search_value (0, cond, &pi))
-		    {
-		      stmt->cannot_prepare = 1;	/* unbound HOSTVAR exists */
-		      goto clear_loop;
-		    }
-		}
-	      else
-		{
-		  is_all = 1;
-		}
-
-	      if (pi.expr_cnt <= 0)
-		{
-		  is_all = 1;
-		}
-
-	      if (!is_all)
-		{		/* pruned partition adjust */
-		  if (pi.expr_cnt > 0 && pi.ppart == NULL)
-		    {
-		      is_all = -1;	/* no partitions */
-		    }
-		  else
-		    {
-		      if (!adjust_pruned_partition (spec, &pi))
-			{
-			  is_all = -1;
-			}
-		    }
-		}
-
-	      if (is_all != -1)
-		{
-		  if (is_all)
-		    {
-		      retflat = apply_no_pruning (spec, &pi);
-		    }
-		  else
-		    {
-		      retflat = pi.ppart;
-		    }
-		  parser_append_node (retflat,
-				      spec->info.spec.flat_entity_list);
-		  spec->partition_pruned = 1;
-		  stmt->partition_pruned = 1;
-		  if (cond != NULL)
-		    {
-		      cond->partition_pruned = 1;
-		    }
-		}
-	    }
-
-	clear_loop:
-	  pr_clear_value (&ptype);
-	  pr_clear_value (&pname);
-	  pr_clear_value (&pexpr);
-	  pr_clear_value (&pattr);
-	  pr_clear_value (&attr);
-	  pr_clear_value (&hashsize);
-
-	  if (expr_parser)
-	    {
-	      parser_free_parser (expr_parser);
-	      expr_parser = NULL;
-	    }
-	}
-
-      for (name = spec->info.spec.path_entities; name; name = name->next)
-	{
-	  if (name->info.spec.meta_class == PT_PATH_OUTER ||
-	      name->info.spec.meta_class == PT_PATH_INNER)
-	    {
-	      do_apply_partition_pruning (parser, name);
-	      if (name->partition_pruned)
-		{
-		  stmt->partition_pruned = 1;
-		}
-	    }
-	}
-    }
-
-  if (stmt->node_type == PT_MERGE)
-    {
-      stmt->info.merge.into->next = NULL;
-    }
-
-  AU_ENABLE (au_save);
-  return;
-
-work_failed:
-  if (stmt->node_type == PT_MERGE)
-    {
-      stmt->info.merge.into->next = NULL;
-    }
-
-  AU_ENABLE (au_save);
-
-  pr_clear_value (&ptype);
-  pr_clear_value (&pname);
-  pr_clear_value (&pexpr);
-  pr_clear_value (&pattr);
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-}
-
-/*
  * check_range_merge() - Compare two DB_VALUEs specified by range operator
  *   return:
  *   val1(in):
@@ -7657,334 +6997,6 @@ is_in_range (DB_VALUE * aval1, PT_OP_TYPE aop1,
 }
 
 /*
- * do_build_partition_xasl() -
- *   return: Error code
- *   parser(in): Parser context
- *   xasl(in/out): XASL tree to be built
- *   class_obj(in):
- *
- * Note:
- */
-int
-do_build_partition_xasl (PARSER_CONTEXT * parser, MOP class_obj,
-			 XASL_PARTITION_INFO ** xasl_part_info)
-{
-  DB_VALUE ptype, pname, pexpr, pattr, pval, partname;
-  PT_NODE **enode, *expr;
-  DB_OBJLIST *objs;
-  SM_CLASS *smclass, *subcls;
-  DB_VALUE attr, hashsize;
-  int is_error = 1, pi, au_save, partition_remove_mode = 0;
-  int partition_coalesce_mode = 0, coalesce_part, partnum;
-  int partition_reorg_mode = 0;
-  XASL_PARTITION_INFO *xpi = NULL;
-  OID *class_oid;
-  HFID *hfid;
-  MOBJ class_;
-  PT_TYPE_ENUM key_type;
-  PARSER_CONTEXT *expr_parser = NULL;
-  int delete_flag;
-
-  if (!parser || !class_obj)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-      return ER_PARTITION_WORK_FAILED;
-    }
-
-  if (au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT)
-      != NO_ERROR)
-    {
-      return er_errid ();
-    }
-
-  db_make_null (&ptype);
-  db_make_null (&pname);
-  db_make_null (&pexpr);
-  db_make_null (&pattr);
-  db_make_null (&attr);
-  db_make_null (&hashsize);
-  db_make_null (&pval);
-  db_make_null (&partname);
-
-  AU_DISABLE (au_save);
-
-  /* partitioned sub-class */
-  if (db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname) != NO_ERROR
-      || !DB_IS_NULL (&pname))
-    {
-      goto work_end;
-    }
-
-  if (db_get (smclass->partition_of, PARTITION_ATT_PTYPE, &ptype) != NO_ERROR)
-    {
-      goto work_end;
-    }
-
-  if (db_get (smclass->partition_of, PARTITION_ATT_PEXPR, &pexpr) != NO_ERROR
-      || DB_IS_NULL (&pexpr))
-    {
-      goto work_end;
-    }
-
-  if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr) !=
-      NO_ERROR || DB_IS_NULL (&pattr))
-    {
-      goto work_end;
-    }
-
-  if (set_size (pattr.data.set) >= 3)
-    {
-      char *p = NULL;
-
-      if (set_get_element (pattr.data.set, 2, &attr) != NO_ERROR
-	  || DB_IS_NULL (&attr) || (p = DB_GET_STRING (&attr)) == NULL)
-	{
-	  goto work_end;
-	}
-      if (p[0] == '*')
-	{
-	  partition_remove_mode = 1;
-	}
-      else if (p[0] == '#')
-	{
-	  partition_coalesce_mode = 1;
-	  coalesce_part = atoi (&p[1]);
-	  if (coalesce_part <= 0 ||
-	      set_drop_seq_element (pattr.data.set, 2) != NO_ERROR)
-	    {
-	      goto work_end;
-	    }
-	  if (db_put_internal (smclass->partition_of,
-			       PARTITION_ATT_PVALUES, &pattr) != NO_ERROR)
-	    {
-	      goto work_end;
-	    }
-	}
-      else if (p[0] == '$')
-	{
-	  partition_reorg_mode = 1;
-	  coalesce_part = atoi (&p[1]);
-	  if (coalesce_part < 0
-	      || set_drop_seq_element (pattr.data.set, 2) != NO_ERROR)
-	    {
-	      goto work_end;
-	    }
-	  if (db_put_internal (smclass->partition_of,
-			       PARTITION_ATT_PVALUES, &pattr) != NO_ERROR)
-	    goto work_end;
-	}
-    }
-
-  if (set_get_element (pattr.data.set, 0, &attr) != NO_ERROR
-      || set_get_element (pattr.data.set, 1, &hashsize) != NO_ERROR)
-    {
-      goto work_end;
-    }
-
-  if (hashsize.data.i <= 0)
-    {
-      goto work_end;
-    }
-
-  expr_parser = parser_create_parser ();
-  if (expr_parser == NULL)
-    {
-      goto work_end;
-    }
-
-  enode = parser_parse_string (expr_parser, DB_GET_STRING (&pexpr));
-  if (enode == NULL || *enode == NULL)
-    {
-      goto work_end;
-    }
-
-  expr = (*enode)->info.query.q.select.list;
-  if (expr == NULL)
-    {
-      goto work_end;
-    }
-
-  key_type =
-    pt_db_to_type_enum (sm_att_type_id (class_obj, DB_GET_STRING (&attr)));
-
-  parser_walk_tree (expr_parser, expr, adjust_name_with_type, &key_type, NULL,
-		    NULL);
-  pt_semantic_type (expr_parser, expr, NULL);
-
-  xpi = regu_partition_info_alloc ();
-  if (xpi == NULL)
-    {
-      goto work_end;
-    }
-
-  xpi->no_parts = hashsize.data.i;
-  if (partition_coalesce_mode)
-    {
-      xpi->act_parts = coalesce_part;
-    }
-  else if (partition_reorg_mode)
-    {
-      xpi->act_parts = hashsize.data.i - coalesce_part;
-    }
-  else
-    {
-      xpi->act_parts = hashsize.data.i;
-    }
-  xpi->type = ptype.data.i;
-  db_make_null (&pval);
-
-  /* partition key to NULL-value replace */
-  if (expr->node_type == PT_NAME)
-    {
-      parser_free_tree (expr_parser, expr);
-      expr = pt_dbval_to_value (parser, &pval);
-    }
-  else
-    {
-      parser_walk_tree (expr_parser, expr, replace_name_with_value, &pval,
-			NULL, NULL);
-    }
-
-  xpi->expr = pt_to_regu_variable (parser, expr, UNBOX_AS_VALUE);
-  xpi->parts = regu_parts_array_alloc (xpi->no_parts);
-  if (xpi->parts == NULL)
-    {
-      goto work_end;
-    }
-  if (partition_remove_mode)
-    {
-      xpi->key_attr = -1;
-    }
-  else
-    {
-      xpi->key_attr = sm_att_id (class_obj, DB_GET_STRING (&attr));
-    }
-
-  for (pi = 0, objs = smclass->users; objs; objs = objs->next)
-    {
-      bool reuse_oid = false;
-
-      if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ, AU_SELECT)
-	  != NO_ERROR)
-	{
-	  goto work_end;
-	}
-
-      if (!subcls->partition_of)
-	{
-	  continue;
-	}
-
-      delete_flag = 0;
-      if (partition_coalesce_mode)
-	{
-	  if (db_get (subcls->partition_of, PARTITION_ATT_PNAME, &partname)
-	      != NO_ERROR)
-	    {
-	      goto work_end;
-	    }
-	  partnum = atoi (DB_GET_STRING (&partname) + 1);
-	  pr_clear_value (&partname);
-	  if (partnum >= coalesce_part)
-	    {
-	      delete_flag = 1;
-	    }
-	}
-
-      if (partition_reorg_mode)
-	{
-	  if (db_get (subcls->partition_of, PARTITION_ATT_PEXPR, &pval)
-	      != NO_ERROR)
-	    {
-	      goto work_end;
-	    }
-	  if (!DB_IS_NULL (&pval))
-	    {
-	      delete_flag = 1;
-	    }
-	  pr_clear_value (&pval);
-	}
-
-      reuse_oid = (subcls->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
-      class_ = locator_create_heap_if_needed (objs->op, reuse_oid);
-      if (class_ == NULL || (hfid = sm_heap (class_)) == NULL
-	  || (locator_flush_class (objs->op) != NO_ERROR))
-	{
-	  goto work_end;
-	}
-
-      class_oid = ws_identifier (objs->op);
-      if (!class_oid)
-	{
-	  goto work_end;
-	}
-
-      if (delete_flag)
-	{
-	  db_make_null (&pval);
-	}
-      else
-	{
-	  if (db_get (subcls->partition_of, PARTITION_ATT_PVALUES, &pval)
-	      != NO_ERROR)
-	    {
-	      goto work_end;
-	    }
-
-	  if (DB_IS_NULL (&pval) || set_size (pval.data.set) <= 0)
-	    {
-	      goto work_end;
-	    }
-	}
-
-      xpi->parts[pi] = regu_parts_info_alloc ();
-      if (xpi->parts[pi] == NULL)
-	{
-	  goto work_end;
-	}
-
-      xpi->parts[pi]->class_oid = *class_oid;
-      xpi->parts[pi]->class_hfid = *hfid;
-      xpi->parts[pi]->vals = regu_dbval_alloc ();
-      regu_dbval_type_init (xpi->parts[pi]->vals, DB_VALUE_TYPE (&pval));
-      db_value_clone (&pval, xpi->parts[pi]->vals);
-      pr_clear_value (&pval);
-      pi++;
-    }
-
-  is_error = 0;
-
-  *xasl_part_info = xpi;
-
-work_end:
-  AU_ENABLE (au_save);
-
-  pr_clear_value (&ptype);
-  pr_clear_value (&pname);
-  pr_clear_value (&pexpr);
-  pr_clear_value (&pattr);
-  pr_clear_value (&attr);
-  pr_clear_value (&hashsize);
-  pr_clear_value (&pval);
-  if (expr_parser)
-    parser_free_parser (expr_parser);
-
-  if (is_error)
-    {
-      if (er_errid ())
-	{
-	  return er_errid ();
-	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-      return ER_PARTITION_WORK_FAILED;
-    }
-  else
-    {
-      return NO_ERROR;
-    }
-}
-
-/*
  * do_check_partitioned_class() - Checks partitioned class
  *   return: Error code if check_map or keyattr is checked
  *   classop(in): MOP of class
@@ -8012,7 +7024,9 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
   error = do_is_partitioned_classobj (&is_partition, classop,
 				      (keyattr) ? attr_name : NULL, NULL);
   if (error != NO_ERROR)
-    return error;
+    {
+      return error;
+    }
 
   if (is_partition > 0)
     {
@@ -8663,153 +7677,108 @@ end_partition:
 }
 
 /*
- * do_update_partition_newly() -
- *   return: Error code
+ * do_redistribute_partitions_data() -
+ *   return: error code or NO_ERROR
  *   classname(in):
  *   keyname(in):
- *
+ *   promoted(in):
+ *   promoted_count(in):
+ *   should_update(in):
+ *   should_insert(in):
  * Note:
  */
-int
-do_update_partition_newly (const char *classname, const char *keyname)
+static int
+do_redistribute_partitions_data (const char *classname, const char *keyname,
+				 char **promoted, int promoted_count,
+				 bool should_update, bool should_insert)
 {
   int error = NO_ERROR;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
-  char *sqlbuf;
+  char *query_buf;
+  size_t query_size;
+  int i = 0;
 
-  sqlbuf = (char *) malloc (20 + strlen (classname) + strlen (keyname) * 2);
-  if (sqlbuf == NULL)
+  if (should_update)
     {
-      return -1;
-    }
-  sprintf (sqlbuf, "UPDATE %s SET %s=%s;", classname, keyname, keyname);
-
-  error = db_execute (sqlbuf, &query_result, &query_error);
-  if (error >= 0)
-    {
-      error = NO_ERROR;
-      db_query_end (query_result);
-    }
-  free_and_init (sqlbuf);
-
-  return error;
-}
-
-/*
- * do_remove_partition_pre() -
- *   return: Error code
- *   clstmp(in):
- *   keynattr(in):
- *   magic_word(in):
- *
- * Note:
- */
-int
-do_remove_partition_pre (DB_CTMPL * clstmpl, char *keyattr,
-			 const char *magic_word)
-{
-  int error = NO_ERROR;
-  DB_VALUE pattr, attrname, star;
-  int au_save;
-
-  if (clstmpl && keyattr)
-    {
-      if (clstmpl->partition_of)
+      query_size = 0;
+      query_size += 7;		/* 'UPDATE ' */
+      query_size += strlen (classname);
+      query_size += 5;		/* ' SET ' */
+      query_size += strlen (keyname) * 2 + 2;	/* keyname=keyname; */
+      query_buf = (char *) malloc (query_size + 1);
+      if (query_buf == NULL)
 	{
-	  char *p = NULL;
-
-	  AU_DISABLE (au_save);
-
-	  keyattr[0] = 0;
-	  db_make_null (&pattr);
-	  error = db_get (clstmpl->partition_of, PARTITION_ATT_PVALUES,
-			  &pattr);
-	  if (error == NO_ERROR
-	      && ((error = set_get_element (pattr.data.set, 0, &attrname)) ==
-		  NO_ERROR) && !DB_IS_NULL (&attrname)
-	      && (p = DB_GET_STRING (&attrname)))
-	    {
-	      strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
-
-	      /* '*' set to 3rd element - partition remove mode update */
-	      /* '#Number' set to 3rd element - partition coalesce mode update */
-	      db_make_string (&star, magic_word);
-	      error = set_add_element (pattr.data.set, &star);
-	      if (error == NO_ERROR)
-		{
-		  error = db_put_internal (clstmpl->partition_of,
-					   PARTITION_ATT_PVALUES, &pattr);
-		}
-
-	      pr_clear_value (&pattr);
-	      pr_clear_value (&attrname);
-	      pr_clear_value (&star);
-	    }
-
-	  AU_ENABLE (au_save);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, query_size + 1);
+	  return ER_FAILED;
 	}
-    }
+      sprintf (query_buf, "UPDATE %s SET %s=%s;", classname, keyname,
+	       keyname);
 
-  return error;
-}
-
-/*
- * do_remove_partition_post() -
- *   return: Error code
- *   parser(in): Parser context
- *   classname(in):
- *   keyname(in):
- *
- * Note:
- */
-int
-do_remove_partition_post (PARSER_CONTEXT * parser, const char *classname,
-			  const char *keyname)
-{
-  int error = NO_ERROR;
-  DB_CTMPL *ctmpl;
-  MOP vclass;
-
-  error = do_update_partition_newly (classname, keyname);
-  if (error == NO_ERROR)
-    {
-      vclass = db_find_class (classname);
-      if (vclass == NULL)
+      error = db_execute (query_buf, &query_result, &query_error);
+      if (error >= 0)
 	{
-	  error = er_errid ();
-	  return error;
+	  error = NO_ERROR;
+	  db_query_end (query_result);
 	}
-
-      error = do_drop_partition (vclass, 1);
-      if (error != NO_ERROR)
+      free_and_init (query_buf);
+      if (error < 0)
 	{
 	  return error;
 	}
+    }
 
-      ctmpl = dbt_edit_class (vclass);
-      if (ctmpl != NULL)
+  if (should_insert)
+    {
+      query_size = 0;
+      query_size += 12;		/* 'INSERT INTO ' */
+      query_size += strlen (classname);
+      query_size += 1;		/* ' ' */
+      for (i = 0; i < promoted_count - 1; i++)
 	{
-	  ctmpl->partition_of = NULL;
-
-	  if (dbt_finish_class (ctmpl) == NULL)
-	    {
-	      error = er_errid ();
-	      dbt_abort_class (ctmpl);
-	    }
-	  else if (locator_flush_class (vclass) != NO_ERROR)
-	    {
-	      error = er_errid ();
-	    }
-
+	  /* add size for 'SELECT * FROM table_name UNION ALL ' */
+	  query_size += 14;	/* 'SELECT * FROM ' */
+	  query_size += strlen (promoted[i]);
+	  query_size += 11;	/* ' UNION ALL ' */
 	}
-      else
+      query_size += 14;		/* 'SELECT * FROM ' */
+      query_size += strlen (promoted[promoted_count - 1]);
+      query_size += 1;		/* ';' */
+
+      query_buf = (char *) malloc (query_size + 1);
+      if (query_buf == NULL)
 	{
-	  error = er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, query_size + 1);
+	  return ER_FAILED;
+	}
+      memset (query_buf, 0, query_size + 1);
+      sprintf (query_buf, "INSERT INTO %s ", classname);
+      for (i = 0; i < promoted_count - 1; i++)
+	{
+	  strcat (query_buf, "SELECT * FROM ");
+	  strcat (query_buf, promoted[i]);
+	  strcat (query_buf, " UNION ALL ");
+	}
+      strcat (query_buf, "SELECT * FROM ");
+      strcat (query_buf, promoted[promoted_count - 1]);
+      strcat (query_buf, ";");
+
+      error = db_execute (query_buf, &query_result, &query_error);
+      if (error >= 0)
+	{
+	  error = NO_ERROR;
+	  db_query_end (query_result);
+	}
+      free_and_init (query_buf);
+      if (error < 0)
+	{
+	  return error;
 	}
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 /*
@@ -9288,6 +8257,1422 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
   adjust_partition_range (smclass->users);
   adjust_partition_size (class_);
   return NO_ERROR;
+}
+
+/*
+ * do_create_partition_constraints () - copy indexes from the root table to
+ *					partitions
+ * return : error code or NO_ERROR
+ * parser (in)	: parser context
+ * alter (in)	: alter node
+ * pinfo (in)	: partition alter context
+ *
+ * Note: At the moment the following constraints are added to partitions:
+ *    - SM_CONSTRAINT_INDEX
+ *    - SM_CONSTRAINT_REVERSE_INDEX
+ */
+static int
+do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter,
+				 SM_PARTITION_ALTER_INFO * pinfo)
+{
+  SM_CLASS *smclass = NULL;
+  SM_CLASS_CONSTRAINT *cons = NULL;
+  int error = NO_ERROR, i = 0;
+
+  /* sanity check */
+  assert (parser != NULL && alter != NULL && pinfo != NULL);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  smclass = sm_get_class_with_statistics (pinfo->root_op);
+  if (smclass == NULL)
+    {
+      return er_errid ();
+    }
+
+  if (smclass->stats == NULL)
+    {
+      if ((error = er_errid ()) == NO_ERROR)
+	{
+	  /* set an error if none was set yet */
+	  error = ER_PARTITION_WORK_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED,
+		  0);
+	}
+      return error;
+    }
+
+  for (cons = smclass->constraints; cons != NULL; cons = cons->next)
+    {
+      if (cons->type != SM_CONSTRAINT_INDEX
+	  && cons->type != SM_CONSTRAINT_REVERSE_INDEX)
+	{
+	  continue;
+	}
+      error = do_create_partition_constraint (alter, smclass, cons);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return error;
+}
+
+/*
+ * do_create_partition_constraint () - copy a constraint from the root class
+ *				       to the new partitions
+ * return : error code or NO_ERROR
+ * alter (in)	   : alter node
+ * root_class (in) : root class
+ * constraint (in) : root constraint
+ */
+static int
+do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
+				SM_CLASS_CONSTRAINT * constraint)
+{
+  int error = NO_ERROR, i = 0;
+  char **namep = NULL, **attrnames = NULL;
+  int *asc_desc = NULL;
+  SM_CLASS *subclass = NULL;
+  SM_ATTRIBUTE **attp = NULL;
+  TP_DOMAIN *key_type = NULL;
+  DB_OBJLIST *objs = NULL;
+  PT_ALTER_CODE alter_op;
+  PT_NODE *parts;
+
+  alter_op = alter->info.alter.code;
+  attp = constraint->attributes;
+  i = 0;
+  /* count attributes in constraint */
+  while (*attp)
+    {
+      attp++;
+      i++;
+    }
+  if (i == 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  namep = (char **) malloc ((i + 1) * sizeof (char *));
+  if (namep == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (i + 1) * sizeof (char *));
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  asc_desc = (int *) malloc (i * sizeof (int));
+  if (asc_desc == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, i * sizeof (int *));
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  attp = constraint->attributes;
+  attrnames = namep;
+  key_type =
+    classobj_find_cons_index2_col_type_list (constraint, root_class->stats);
+  if (key_type == NULL)
+    {
+      if ((error = er_errid ()) == NO_ERROR)
+	{
+	  /* set an error if none was set yet */
+	  error = ER_PARTITION_WORK_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PARTITION_WORK_FAILED, 0);
+	}
+      goto cleanup;
+    }
+
+  i = 0;
+  while (*attp && key_type)
+    {
+      *attrnames = (char *) (*attp)->header.name;
+      attrnames++;
+      asc_desc[i] = 0;		/* guess as Asc */
+      if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint->type)
+	  || key_type->is_desc)
+	{
+	  asc_desc[i] = 1;	/* Desc */
+	}
+      i++;
+      attp++;
+      key_type = key_type->next;
+    }
+
+  *attrnames = NULL;
+
+  if (alter_op == PT_ADD_PARTITION || alter_op == PT_REORG_PARTITION
+      || alter_op == PT_ADD_HASHPARTITION)
+    {
+      /* only create constraint for new partitions */
+      parts = alter->info.alter.alter_clause.partition.parts;
+      for (; parts; parts = parts->next)
+	{
+	  MOP subclass_op = parts->info.parts.name->info.name.db_object;
+	  if (alter_op == PT_REORG_PARTITION && parts->partition_pruned)
+	    {
+	      continue;		/* reused partition */
+	    }
+	  error =
+	    au_fetch_class (subclass_op, &subclass, AU_FETCH_READ, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      error = er_errid ();
+	      goto cleanup;
+	    }
+
+	  if (subclass->partition_of == NULL)
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PARTITION_WORK_FAILED, 0);
+	      goto cleanup;
+	    }
+	  error =
+	    sm_add_index (objs->op, db_constraint_type (constraint),
+			  constraint->name, (const char **) namep, asc_desc,
+			  constraint->attrs_prefix_length,
+			  constraint->filter_predicate,
+			  constraint->func_index_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+    }
+  else
+    {
+      for (objs = root_class->users; objs; objs = objs->next)
+	{
+	  error =
+	    au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      error = er_errid ();
+	      goto cleanup;
+	    }
+
+	  if (subclass->partition_of == NULL)
+	    {
+	      /* not partitioned */
+	      continue;
+	    }
+
+	  error =
+	    sm_add_index (objs->op, db_constraint_type (constraint),
+			  constraint->name, (const char **) namep, asc_desc,
+			  constraint->attrs_prefix_length,
+			  constraint->filter_predicate,
+			  constraint->func_index_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+    }
+
+cleanup:
+  if (namep != NULL)
+    {
+      free_and_init (namep);
+    }
+  if (asc_desc != NULL)
+    {
+      free_and_init (asc_desc);
+    }
+  return error;
+}
+
+/*
+ * do_alter_partitioning_pre () - perform partition manipulation
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : partition alter context
+ *
+ * Note: Altering a partitioned class is an action that that involves two
+ *  steps: 
+ *    1. modifying the schema of the partitioned class
+ *    2. redistributing the data to the new schema
+ *  The "pre" action is the action responsible for schema modification.
+ *  We must ensure that the result of this action is a valid schema because
+ *  the redistributing action can only be performed on a valid schema.
+ *  The pre action performs the following actions:
+ *  PT_APPLY_PARTITION
+ *  PT_ADD_PARTITION
+ *  PT_ADD_HASHPARTITION
+ *    - create [new] partitions and update the root class with this info
+ *  PT_REMOVE_PARTITION
+ *    - promote all partitions from the schema to normal classes
+ *  PT_COALESCE_PARTITION
+ *    - promote partitions which will be dropped
+ *  PT_REORG_PARTITION
+ *    - promote partitions which will be reorganized
+ *  PT_ANALYZE_PARTITION
+ *    - N/A
+ *  PT_DROP_PARTITION
+ *    - drop partitions
+ *  PT_PROMOTE_PARTITION:
+ *    - promote partitions
+ */
+static int
+do_alter_partitioning_pre (PARSER_CONTEXT * parser,
+			   PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
+{
+  PT_ALTER_CODE alter_op;
+  int error = NO_ERROR;
+  const char *entity_name = NULL;
+
+  /* sanity check */
+  assert (parser != NULL && alter != NULL && pinfo != NULL);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+  assert (pinfo->root_op != NULL && pinfo->root_tmpl != NULL);
+
+  entity_name = alter->info.alter.entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      ERROR1 (error, ER_UNEXPECTED,
+	      "Expecting a class or virtual class name.");
+      return ER_FAILED;
+    }
+
+  alter_op = alter->info.alter.code;
+  if (alter_op != PT_ANALYZE_PARTITION && alter_op != PT_ADD_PARTITION)
+    {
+      /* Check to see if the root class is referenced by foreign keys. If the
+       * class is referenced by a foreign key, we only allow PT_ADD_PARTITION
+       * and PT_ANALYZE_PARTITION alter operations. All other alter operations
+       * will probably move data through different classes which is hard to
+       * track and can cause the foreign key constraint to be violated.
+       */
+      SM_CLASS *root_class = NULL;
+      SM_CLASS_CONSTRAINT *pk;
+      error =
+	au_fetch_class (pinfo->root_op, &root_class, AU_FETCH_READ,
+			AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      pk = classobj_find_cons_primary_key (root_class->constraints);
+      if (pk != NULL && pk->fk_info != NULL
+	  && classobj_is_pk_referred (pinfo->root_op, pk->fk_info, true,
+				      NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ALTER_PARTITIONS_FK_NOT_ALLOWED, 0);
+	  return ER_FAILED;
+	}
+    }
+
+  if (alter_op != PT_APPLY_PARTITION)
+    {
+      /* get partition key, we're going to need it later on */
+      error = do_get_partition_keycol (pinfo->keycol, pinfo->root_op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  switch (alter_op)
+    {
+    case PT_APPLY_PARTITION:
+    case PT_ADD_PARTITION:
+    case PT_ADD_HASHPARTITION:
+      /* create new partitions */
+      error = do_create_partition (parser, alter, pinfo);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error =
+	do_check_fk_constraints (pinfo->root_tmpl,
+				 alter->info.alter.constraint_list);
+      break;
+    case PT_REMOVE_PARTITION:
+      error = do_remove_partition_pre (parser, alter, pinfo);
+      break;
+    case PT_COALESCE_PARTITION:
+      error = do_coalesce_partition_pre (parser, alter, pinfo);
+      break;
+    case PT_REORG_PARTITION:
+      error = do_reorganize_partition_pre (parser, alter, pinfo);
+      break;
+    case PT_ANALYZE_PARTITION:
+      break;
+    case PT_DROP_PARTITION:
+      error =
+	do_drop_partition_list (pinfo->root_op,
+				alter->info.alter.alter_clause.partition.
+				name_list);
+      break;
+    case PT_PROMOTE_PARTITION:
+      error = do_promote_partition_list (parser, alter, pinfo);
+      break;
+    default:
+      error = ER_FAILED;
+      break;
+    }
+
+  return error;
+}
+
+/*
+ * do_alter_partitioning_post () - redistribute data for partition
+ *				   manipulation
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : partition alter context
+ *
+ * Note: Altering a partitioned class is an action that that involves two
+ *  steps: 
+ *    1. modifying the schema of the partitioned class
+ *    2. redistributing the data to the new schema
+ *  The "post" action is the action responsible for redistributing data.
+ *  The post action performs the following actions:
+ *  PT_APPLY_PARTITION
+ *  PT_ADD_HASHPARTITION
+ *    - redistribute data from the root table [and the old partitions] to the
+ *	new partitioning schema by performing "UPDATE t SET * = *"
+ *  PT_REMOVE_PARTITION
+ *  PT_COALESCE_PARTITION
+ *  PT_REORG_PARTITION
+ *    - redistribute data from the partitions promoted in the pre action to
+ *	the new schema (using INSERT SELECT)and drop the promoted partitions
+ *  PT_ANALYZE_PARTITION
+ *    - update statistics on partitions
+ *  PT_ADD_PARTITION
+ *  PT_DROP_PARTITION
+ *  PT_PROMOTE_PARTITION:
+ *    - N/A
+ */
+static int
+do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter,
+			    SM_PARTITION_ALTER_INFO * pinfo)
+{
+  PT_ALTER_CODE alter_op;
+  int error = NO_ERROR;
+  const char *entity_name = NULL;
+  const char *keyname = NULL;
+  char **names = NULL;
+  int names_count = 0;
+
+  assert (parser != NULL && alter != NULL && pinfo != NULL);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  assert (alter != NULL);
+  assert (alter->node_type == PT_ALTER);
+
+  alter_op = alter->info.alter.code;
+
+  entity_name = alter->info.alter.entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      ERROR1 (error, ER_UNEXPECTED,
+	      "Expecting a class or virtual class name.");
+      return ER_FAILED;
+    }
+
+  switch (alter_op)
+    {
+    case PT_APPLY_PARTITION:
+      error = do_get_partition_keycol (pinfo->keycol, pinfo->root_op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      /* fall through */
+    case PT_ADD_HASHPARTITION:
+      error =
+	do_redistribute_partitions_data (entity_name, pinfo->keycol, NULL,
+					 0, true, false);
+      break;
+    case PT_COALESCE_PARTITION:
+      error = do_coalesce_partition_post (parser, alter, pinfo);
+      break;
+    case PT_REORG_PARTITION:
+      error = do_reorganize_partition_post (parser, alter, pinfo);
+      break;
+    case PT_REMOVE_PARTITION:
+      error = do_remove_partition_post (parser, alter, pinfo);
+      break;
+    case PT_ANALYZE_PARTITION:
+    case PT_ADD_PARTITION:
+    case PT_DROP_PARTITION:
+    case PT_PROMOTE_PARTITION:
+      /* nothing to do */
+      break;
+    default:
+      error = NO_ERROR;
+      break;
+    }
+
+  /* if we created new partitions, we need to propagate indexes here */
+  switch (alter_op)
+    {
+    case PT_APPLY_PARTITION:
+    case PT_ADD_PARTITION:
+    case PT_REORG_PARTITION:
+    case PT_ADD_HASHPARTITION:
+      error = do_create_partition_constraints (parser, alter, pinfo);
+      break;
+    default:
+      break;
+    }
+  return error;
+}
+
+
+/*
+ * do_remove_partition_pre () - perform schema actions for partition removing
+ *
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : the partition context for the alter operation
+ *
+ * Note: The "pre" action for removing partitions from a class is to promote
+ *	 all partitions to stand alone tables.
+ *	 See notes for do_alter_partitioning_pre, do_alter_partitioning_post
+ *	 to understand the nature of post/pre actions
+ */
+static int
+do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
+			 SM_PARTITION_ALTER_INFO * pinfo)
+{
+  SM_CLASS *class_ = NULL, *subclass = NULL;
+  DB_OBJLIST *obj = NULL, *obj_next = NULL;
+  int error;
+  char **names = NULL;
+  int names_count = 0, allocated = 0, i = 0, au_save = 0;
+  DB_CTMPL *class_tmpl = NULL;
+
+  /* sanity checks */
+  assert (parser && alter && pinfo);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+  assert (alter->node_type == PT_ALTER);
+
+  error = au_fetch_class (pinfo->root_op, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (class_->partition_of == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  /* preallocate 10 elements for the names array */
+  names = (char **) malloc (10 * sizeof (char *));
+  if (names == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      10 * sizeof (char *));
+      return ER_FAILED;
+    }
+  allocated = 10;
+  names_count = 0;
+
+  obj = class_->users;
+  while (obj != NULL)
+    {
+      /* save next because obj will be modified by the promote call below */
+      obj_next = obj->next;
+      error = au_fetch_class (obj->op, &subclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      if (subclass->partition_of == NULL)
+	{
+	  /* not a partition */
+	  obj = obj_next;
+	  continue;
+	}
+
+      if (names_count >= allocated - 1)
+	{
+	  /* If the names array is to small to accept a new element,
+	   * reallocate it
+	   */
+	  char **buf = (char **) realloc (names, 10 * sizeof (char *));
+	  if (buf == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
+	      error = ER_FAILED;
+	      goto error_return;
+	    }
+	  names = buf;
+	  allocated += 10;
+	}
+      names[names_count] = strdup (subclass->header.name);
+      if (names[names_count] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
+	  error = ER_FAILED;
+	  goto error_return;
+	}
+      names_count++;
+      error = do_promote_partition (subclass);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      obj = obj_next;
+    }
+
+  /* keep the promoted names in the partition alter context */
+  pinfo->promoted_names = names;
+  pinfo->promoted_count = names_count;
+
+  /* mark this class as not partitioned */
+  AU_DISABLE (au_save);
+  error = obj_delete (pinfo->root_tmpl->partition_of);
+  if (error != NO_ERROR)
+    {
+      AU_ENABLE (au_save);
+      goto error_return;
+    }
+  AU_ENABLE (au_save);
+
+  pinfo->root_tmpl->partition_of = NULL;
+
+  return NO_ERROR;
+
+error_return:
+  if (names != NULL)
+    {
+      for (i = 0; i < names_count; i++)
+	{
+	  free_and_init (names[i]);
+	}
+      free_and_init (names);
+    }
+  return error;
+}
+
+/*
+ * do_remove_partition_post () - redistribute data from removed partitions
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : the partition context for the alter operation
+ *
+ * Note: The "post" action for removing partitions from a class is to
+ *	 redistribute data from promoted partitions in pre action to the root
+ *	 table and drop the promoted partitions
+ *	 See notes for do_alter_partitioning_pre, do_alter_partitioning_post
+ *	 to understand the nature of post/pre actions
+ */
+static int
+do_remove_partition_post (PARSER_CONTEXT * parser,
+			  PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
+{
+  int error = NO_ERROR, i = 0;
+  const char *root_name = NULL;
+  MOP subclass_mop = NULL;
+
+  /* sanity checks */
+  assert (parser && alter && pinfo);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  /* At this point, the root class of the partitioned table has been modified
+   * not to be partitioned anymore and the all the promoted partition names
+   * are stored in pinfo->promoted_names.
+   * step 1: do an INSERT ... SELECT to move all data from promoted classes
+   *         into  the root class
+   * step 2: drop promoted classes;
+   */
+  root_name = alter->info.alter.entity_name->info.name.original;
+
+  error =
+    do_redistribute_partitions_data (root_name, pinfo->keycol,
+				     pinfo->promoted_names,
+				     pinfo->promoted_count, false, true);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  for (i = 0; i < pinfo->promoted_count; i++)
+    {
+      subclass_mop = sm_find_class (pinfo->promoted_names[i]);
+      if (subclass_mop == NULL)
+	{
+	  error = er_errid ();
+	  return error;
+	}
+      error = sm_delete_class_mop (subclass_mop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return error;
+}
+
+/*
+ * do_coalesce_partition_pre () - perform schema actions for partition
+ *				  coalescing
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : the partition context for the alter operation
+ *
+ *  Note: The "pre" action for coalescing partitions from a class is to
+ *	promote the number of partitions requested by the user to stand alone
+ *	tables. This request is only valid for HASH partitions. For this type
+ *	of partitioning, the name of the partition classes is given
+ *	automatically by CUBRID and we will promote the last created ones.
+ *	See notes for do_alter_partitioning_pre, do_alter_partitioning_post
+ *	to understand the nature of post/pre actions
+ */
+static int
+do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
+			   SM_PARTITION_ALTER_INFO * pinfo)
+{
+  SM_CLASS *class_ = NULL, *subclass = NULL;
+  MOP subclass_op = NULL;
+  int error;
+  char **names = NULL;
+  int names_count = 0, i = 0;
+  int coalesce_count = 0, partitions_count = 0;
+
+  /* sanity checks */
+  assert (parser && alter && pinfo);
+  assert (parser && alter && pinfo);
+  assert (alter->node_type == PT_ALTER);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  partitions_count = do_get_partition_size (pinfo->root_op);
+  if (partitions_count < 0)
+    {
+      return ER_FAILED;
+    }
+  else if (partitions_count == 0)
+    {
+      /* cannot coalesce partitions of a class which is not partitioned */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  coalesce_count =
+    alter->info.alter.alter_clause.partition.size->info.value.data_value.i;
+  if (coalesce_count >= partitions_count)
+    {
+      /* cannot coalesce partitions of a class which is not partitioned */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  error = au_fetch_class (pinfo->root_op, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (class_->partition_of == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  /* Promote the last (partition_count - coalesce_count) partitions */
+  names = (char **) malloc (coalesce_count * sizeof (char *));
+  if (names == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      10 * sizeof (char *));
+      return ER_FAILED;
+    }
+
+  names_count = 0;
+  for (i = partitions_count - 1; i >= partitions_count - coalesce_count; i--)
+    {
+      names[names_count] = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + 1);
+      if (names[names_count] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, DB_MAX_IDENTIFIER_LENGTH + 1);
+	  error = ER_FAILED;
+	  goto error_return;
+	}
+      sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d",
+	       class_->header.name, i);
+      subclass_op = sm_find_class (names[names_count]);
+      names_count++;
+      if (subclass_op == NULL)
+	{
+	  error = er_errid ();
+	  goto error_return;
+	}
+      error =
+	au_fetch_class (subclass_op, &subclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = do_promote_partition (subclass);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+    }
+
+  error = adjust_partition_size (pinfo->root_op);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+  /* keep the promoted names in the partition alter context */
+  pinfo->promoted_names = names;
+  pinfo->promoted_count = names_count;
+
+  return NO_ERROR;
+
+error_return:
+  if (names != NULL)
+    {
+      for (i = 0; i < names_count; i++)
+	{
+	  free_and_init (names[i]);
+	}
+      free_and_init (names);
+    }
+  return error;
+}
+
+/*
+ * do_coalesce_partition_post () - redistribute data from removed partitions
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : the partition context for the alter operation
+ *
+ * Note: The "post" action for coalescing partitions from a class is to
+ *	 redistribute data from partitions promoted in pre action to the root
+ *	 table and drop the promoted partitions
+ *	 See notes for do_alter_partitioning_pre, do_alter_partitioning_post
+ *	 to understand the nature of post/pre actions
+ */
+static int
+do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
+			    SM_PARTITION_ALTER_INFO * pinfo)
+{
+  int error = NO_ERROR, i = 0;
+  const char *root_name = NULL;
+  MOP subclass_mop = NULL;
+
+  /* sanity checks */
+  assert (parser && alter && pinfo);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  /* At this point, the root class of the partitioned table has been modified
+   * and contains only the final partitions. The promoted partition names
+   * are stored in pinfo->promoted_names.
+   * step 1: redistribute data
+   * step 2: drop promoted classes;
+   */
+  root_name = alter->info.alter.entity_name->info.name.original;
+
+  error =
+    do_redistribute_partitions_data (root_name, pinfo->keycol,
+				     pinfo->promoted_names,
+				     pinfo->promoted_count, true, true);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  for (i = 0; i < pinfo->promoted_count; i++)
+    {
+      subclass_mop = sm_find_class (pinfo->promoted_names[i]);
+      if (subclass_mop == NULL)
+	{
+	  error = er_errid ();
+	  return error;
+	}
+      error = sm_delete_class_mop (subclass_mop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return error;
+}
+
+/*
+ * do_reorganize_partition_pre () - perform schema actions for partition
+ *				    reorganizing
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : the partition context for the alter operation
+ *
+ *  Note: The "pre" action for reorganizing partitions from a class is to
+ *	promote the partitions that will be reorganized to alone tables and
+ *	to create the new partitions.
+ *	See notes for do_alter_partitioning_pre, do_alter_partitioning_post
+ *	to understand the nature of post/pre actions
+ */
+static int
+do_reorganize_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
+			     SM_PARTITION_ALTER_INFO * pinfo)
+{
+  PT_NODE *old_part = NULL, *new_part = NULL;
+  int error = NO_ERROR;
+  char **names = NULL;
+  int names_count = 0, allocated = 0, i;
+  const char *old_name = NULL, *new_name = NULL, *class_name = NULL;
+  bool found = false;
+
+  /* sanity checks */
+  assert (parser && alter && pinfo);
+  assert (alter->node_type == PT_ALTER);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  class_name = alter->info.alter.entity_name->info.name.original;
+  old_part = alter->info.alter.alter_clause.partition.name_list;
+  new_part = alter->info.alter.alter_clause.partition.parts;
+
+  /* Reorganize partitions might mean that we're dropping some of the
+   * curent partitions and changing some others to contain a new range/list
+   * We only want to promote partitions which will be deleted, not the ones
+   * which will be changed.
+   */
+  while (old_part != NULL)
+    {
+      /* search old_part through new_part */
+      found = false;
+      old_name = old_part->info.name.original;
+      while (new_part != NULL)
+	{
+	  new_name = new_part->info.parts.name->info.name.original;
+	  if (intl_identifier_casecmp (old_name, new_name) == 0)
+	    {
+	      found = true;
+	      break;
+	    }
+	  new_part = new_part->next;
+	}
+      new_part = alter->info.alter.alter_clause.partition.parts;
+      if (!found)
+	{
+	  /* we will drop this partition so we have to promote it first */
+	  if (names == NULL)
+	    {
+	      /* allocate */
+	      names = (char **) malloc (10 * sizeof (char *));
+	      if (names == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
+		  error = ER_FAILED;
+		  goto error_return;
+		}
+	      allocated = 10;
+	    }
+	  else if (names_count >= allocated - 1)
+	    {
+	      /* need to reallocate */
+	      char **new_buf = realloc (names, 10 * sizeof (char *));
+	      if (new_buf == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
+		  error = ER_FAILED;
+		  goto error_return;
+		}
+	      names = new_buf;
+	      allocated += 10;
+	    }
+	  error =
+	    do_promote_partition_by_name (class_name, old_name,
+					  &names[names_count]);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+	  names_count++;
+	}
+
+      old_part = old_part->next;
+    }
+
+  /* create new partitions */
+  error = do_create_partition (parser, alter, pinfo);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  pinfo->promoted_names = names;
+  pinfo->promoted_count = names_count;
+  return NO_ERROR;
+
+error_return:
+  if (names != NULL)
+    {
+      for (i = 0; i < names_count; i++)
+	{
+	  free_and_init (names[i]);
+	}
+      free_and_init (names);
+    }
+  return error;
+}
+
+/*
+ * do_reorganize_partition_post () - redistribute data from removed partitions
+ * return : error code or NO_ERROR
+ * parser (in)	  : parser context
+ * alter (in)	  : the alter node
+ * pinfo (in/out) : the partition context for the alter operation
+ *
+ * Note: The "post" action for reorganizing partitions from a class is to
+ *	 redistribute data from promoted partitions in pre action to the new
+ *	 partitions and drop the promoted ones.
+ *	 See notes for do_alter_partitioning_pre, do_alter_partitioning_post
+ *	 to understand the nature of post/pre actions
+ */
+static int
+do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
+			      SM_PARTITION_ALTER_INFO * pinfo)
+{
+  int error = NO_ERROR, i = 0;
+  const char *root_name = NULL;
+  MOP subclass_mop = NULL;
+  PT_NODE *name = NULL;
+  bool insert = false, update = false;
+
+  /* sanity checks */
+  assert (parser && alter && pinfo);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  /* At this point, the root class of the partitioned table has been modified
+   * to the new partitioning schema. We might have promoted some partitions
+   * and also changed other partitions to a new range or list. We have to run
+   * an INSERT ... SELECT for the promoted partitions and an UPDATE for the
+   * ones that we only changed the schema (in order to redistribute the data)
+   */
+  root_name = alter->info.alter.entity_name->info.name.original;
+
+  if (pinfo->promoted_names != NULL)
+    {
+      /* we have at least one promoted partition */
+      insert = true;
+    }
+
+  name = alter->info.alter.alter_clause.partition.parts;
+  while (name)
+    {
+      if (name->partition_pruned != 0)
+	{
+	  /* at least one partitions has been changed */
+	  update = true;
+	  break;
+	}
+      name = name->next;
+    }
+
+  error =
+    do_redistribute_partitions_data (root_name, pinfo->keycol,
+				     pinfo->promoted_names,
+				     pinfo->promoted_count, update, insert);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (i = 0; i < pinfo->promoted_count; i++)
+    {
+      subclass_mop = sm_find_class (pinfo->promoted_names[i]);
+      if (subclass_mop == NULL)
+	{
+	  error = er_errid ();
+	  return error;
+	}
+      error = sm_delete_class_mop (subclass_mop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_analyze_partition () - update statistics on partitions
+ * return : error code or NO_ERROR
+ * parser (in) : parser context
+ * alter (in)  : alter node
+ */
+static int
+do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
+		      SM_PARTITION_ALTER_INFO * pinfo)
+{
+  PT_NODE *name = NULL;
+  int error = NO_ERROR;
+
+  /* sanity check */
+  assert (parser != NULL && alter != NULL);
+  CHECK_2ARGS_ERROR (parser, alter);
+
+  name = alter->info.alter.alter_clause.partition.name_list;
+  if (name != NULL)
+    {
+      /* update statistics for given names */
+      while (name)
+	{
+	  assert (name->info.name.db_object != NULL);
+	  error = sm_update_statistics (name->info.name.db_object, false);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  name = name->next;
+	}
+    }
+  else
+    {
+      /* update statistics on all partitions */
+      SM_CLASS *class_ = NULL, *subclass = NULL;
+      DB_OBJLIST *obj = NULL;
+      error = au_fetch_class (pinfo->root_op, &class_, AU_FETCH_READ,
+			      AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = sm_update_statistics (pinfo->root_op, false);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      for (obj = class_->users; obj != NULL; obj = obj->next)
+	{
+	  error =
+	    au_fetch_class (obj->op, &subclass, AU_FETCH_READ, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (subclass->partition_of == NULL)
+	    {
+	      /* not partitioned */
+	      continue;
+	    }
+
+	  error = sm_update_statistics (obj->op, false);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
+ * do_promote_partition_list () -
+ *   return: error code or NO_ERROR
+ *   class_(in)	  : root class mop
+ *   name_list(in): partition names
+ *
+ * Note: Currently, only the "local" indexes are promoted. After this
+ *  operation, global indexes (like unique indexes and primary keys)
+ *  will not be automatically created on the promoted table
+ */
+static int
+do_promote_partition_list (PARSER_CONTEXT * parser,
+			   PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
+{
+  int error = NO_ERROR;
+  char subclass_name[DB_MAX_IDENTIFIER_LENGTH];
+  SM_CLASS *smclass = NULL, *smsubclass = NULL;
+  MOP subclass = NULL;
+  PT_NODE *name = NULL;
+  PT_NODE *name_list = NULL;
+  DB_OBJLIST *obj = NULL;
+  int promoted_count = 0, partitions_count = 0;
+
+  /* sanity check */
+  assert (parser != NULL && alter != NULL && pinfo != NULL);
+  CHECK_3ARGS_ERROR (parser, alter, pinfo);
+
+  name_list = alter->info.alter.alter_clause.partition.name_list;
+  if (name_list == NULL)
+    {
+      /* nothing to do */
+      return NO_ERROR;
+    }
+
+  if (pinfo->root_op == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = au_fetch_class (pinfo->root_op, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (!smclass->partition_of)
+    {
+      error = ER_INVALID_PARTITION_REQUEST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  /* count the total number of partitions */
+  partitions_count = 0;
+  for (obj = smclass->users; obj != NULL; obj = obj->next)
+    {
+      error = au_fetch_class (obj->op, &smsubclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (!smsubclass->partition_of)
+	{
+	  continue;
+	}
+      partitions_count++;
+    }
+
+  promoted_count = 0;
+  for (name = name_list; name != NULL; name = name->next)
+    {
+      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
+	       smclass->header.name, name->info.name.original);
+      subclass = sm_find_class (subclass_name);
+      if (subclass == NULL)
+	{
+	  return er_errid ();
+	}
+      error =
+	au_fetch_class (subclass, &smsubclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = do_promote_partition (smsubclass);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      promoted_count++;
+    }
+  assert (partitions_count >= promoted_count);
+  if (partitions_count - promoted_count == 0)
+    {
+      /* All partitions were promoted so mark this class as not being
+       * partitioned. Through the pinfo object, we have access to the root
+       * class template on which an edit operation was started. We can use
+       * it to perform the update.
+       */
+      MOP partition_info = NULL;
+      int au_save = 0;
+      assert (pinfo->root_tmpl != NULL);
+
+      partition_info = pinfo->root_tmpl->partition_of;
+      AU_DISABLE (au_save);
+      error = obj_delete (partition_info);
+      AU_ENABLE (au_save);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      pinfo->root_tmpl->partition_of = NULL;
+    }
+  else
+    {
+      /* smclass might not be valid here, we need to re fetch it */
+      error =
+	au_fetch_class (pinfo->root_op, &smclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      adjust_partition_range (smclass->users);
+      adjust_partition_size (pinfo->root_op);
+    }
+  return error;
+}
+
+/*
+ * do_promote_partition_by_name () - promote a partition
+ * return : error code or NO_ERROR
+ * class_name (in) :  root class name
+ * part_num (in)   :  partition number/indicator
+ * partition_name (in/out) : full partition name
+ */
+static int
+do_promote_partition_by_name (const char *class_name, const char *part_num,
+			      char **partition_name)
+{
+  int error = NO_ERROR;
+  MOP subclass = NULL;
+  SM_CLASS *smsmclass = NULL;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
+
+  assert (class_name != NULL && part_num != NULL);
+  CHECK_2ARGS_ERROR (class_name, part_num);
+  sprintf (name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", class_name, part_num);
+  subclass = sm_find_class (name);
+  if (subclass == NULL)
+    {
+      return er_errid ();
+    }
+  error = au_fetch_class (subclass, &smsmclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = do_promote_partition (smsmclass);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_name != NULL)
+    {
+      *partition_name = strdup (name);
+      if (*partition_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, strlen (name));
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_promote_partition () - promote a partition
+ * return : error code or NO_ERROR
+ * class_ (in) : class to promote
+ */
+static int
+do_promote_partition (SM_CLASS * class_)
+{
+  MOP subclass_mop = NULL;
+  MOP delpart = NULL;
+  int error = NO_ERROR, au_save = 0;
+  SM_CLASS *current = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  SM_ATTRIBUTE *smattr = NULL;
+
+  CHECK_1ARG_ERROR (class_);
+
+  if (class_->partition_of == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
+      return ER_PARTITION_NOT_EXIST;
+    }
+
+  subclass_mop = sm_find_class (class_->header.name);
+  if (subclass_mop == NULL)
+    {
+      return er_errid ();
+    }
+
+  /* delpart is an OID pointing into _db_partition which needs to be 
+   * deleted when we complete the promotion process
+   */
+  delpart = class_->partition_of;
+  ctemplate = dbt_edit_class (subclass_mop);
+  if (ctemplate == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  current = ctemplate->current;
+  assert (current != NULL);
+
+  /* Copy attributes in the order in which they were defined in order to
+   * preserve the order from the root class
+   */
+  classobj_copy_attlist (current->ordered_attributes, NULL, 1,
+			 &ctemplate->attributes);
+  if (error != NO_ERROR)
+    {
+      dbt_abort_class (ctemplate);
+      return error;
+    }
+  for (smattr = ctemplate->attributes; smattr != NULL;
+       smattr = (SM_ATTRIBUTE *) smattr->header.next)
+    {
+      /* make attributes point to the subclass, not the parent */
+      smattr->class_mop = subclass_mop;
+    }
+
+  error =
+    classobj_copy_attlist (current->class_attributes, NULL, 0,
+			   &ctemplate->class_attributes);
+  if (error != NO_ERROR)
+    {
+      dbt_abort_class (ctemplate);
+      return error;
+    }
+  /* Make sure we do not copy anything that actually belongs to the 
+   * root class (the class to which this partition belongs to)
+   */
+  ctemplate->inheritance = NULL;
+  ctemplate->methods = NULL;
+  ctemplate->resolutions = NULL;
+  ctemplate->class_attributes = NULL;
+  ctemplate->class_methods = NULL;
+  ctemplate->class_resolutions = NULL;
+  ctemplate->method_files = NULL;
+  ctemplate->loader_commands = NULL;
+  ctemplate->query_spec = NULL;
+  ctemplate->instance_attributes = NULL;
+  ctemplate->shared_attributes = NULL;
+  ctemplate->partition_of = NULL;
+  ctemplate->partition_parent_atts = NULL;
+  ctemplate->triggers = NULL;
+
+  if (ctemplate->properties != NULL)
+    {
+      /* remove the partition information from properties */
+      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PARTITION);
+    }
+
+  if (dbt_finish_class (ctemplate) == NULL)
+    {
+      dbt_abort_class (ctemplate);
+      error = er_errid ();
+    }
+
+  /* delete the tuple from _db_partition which indicates to this 
+   * partition
+   */
+  AU_DISABLE (au_save);
+  error = obj_delete (delpart);
+  AU_ENABLE (au_save);
+  return error;
 }
 
 /*
@@ -11325,7 +11710,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->info.create_entity.partition_info != NULL)
     {
-      error = do_create_partition (parser, node, class_obj, NULL);
+      SM_PARTITION_ALTER_INFO info;
+      info.keycol[0] = 0;
+      info.promoted_count = 0;
+      info.promoted_names = NULL;
+      info.root_tmpl = NULL;
+      info.root_op = class_obj;
+      error = do_create_partition (parser, node, &info);
       if (error != NO_ERROR)
 	{
 	  if (error == ER_LK_UNILATERALLY_ABORTED)
@@ -12846,10 +13237,17 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	      if (attr_db_domain->precision > att->domain->precision)
 		{
 		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+
+		  (void) build_att_coll_change_map (att->domain,
+						    attr_db_domain,
+						    attr_chg_properties);
 		}
 	      else
 		{
-		  assert (attr_db_domain->precision < att->domain->precision);
+		  assert (attr_db_domain->precision < att->domain->precision
+			  || (TP_DOMAIN_COLLATION (attr_db_domain) !=
+			      TP_DOMAIN_COLLATION (att->domain)));
+
 		  if (QSTR_IS_FIXED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
 		      && PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
 		    {
@@ -12860,6 +13258,10 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		    {
 		      attr_chg_properties->p[P_TYPE] |=
 			ATT_CHG_TYPE_NEED_ROW_CHECK;
+
+		      (void) build_att_coll_change_map (att->domain,
+							attr_db_domain,
+							attr_chg_properties);
 		    }
 		}
 	    }
@@ -13640,7 +14042,57 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
       break;
     }
 
+  (void) build_att_coll_change_map (curr_domain, req_domain,
+				    attr_chg_properties);
+
   return error;
+}
+
+/*
+ * build_att_coll_change_map() - This checks the attribute collation and
+ *				 codeset change
+ *
+ *   return: Error code
+ *   parser(in): Parser context
+ *   curr_domain(in): Current domain of the atribute
+ *   req_domain(in): Requested (new) domain of the attribute
+ *   attr_chg_properties(out): structure summarizing the changed properties
+ *   of attribute
+ */
+static int
+build_att_coll_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
+			   SM_ATTR_PROP_CHG * attr_chg_properties)
+{
+  /* check collation change */
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (curr_domain))
+      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (req_domain)))
+    {
+      const int curr_coll_id = TP_DOMAIN_COLLATION (curr_domain);
+      const int req_coll_id = TP_DOMAIN_COLLATION (req_domain);
+      const INTL_CODESET curr_cs = TP_DOMAIN_CODESET (curr_domain);
+      const INTL_CODESET req_cs = TP_DOMAIN_CODESET (req_domain);
+
+      if (curr_coll_id != req_coll_id)
+	{
+	  if (curr_cs != req_cs)
+	    {
+	      /* change of codeset not supported */
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	    }
+	  else
+	    {
+	      /* change of collation allowed : requires index recreation */
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
+	    }
+	}
+      else
+	{
+	  /* collation and codeset unchanged */
+	  assert (curr_cs == req_cs);
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -13916,7 +14368,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
 	}
     }
 
-  /*we should not have multiple primary keys defined */
+  /* we should not have multiple primary keys defined */
   assert ((is_att_prop_set
 	   (attr_chg_prop->p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_OLD)) ?
 	  (is_att_prop_set
@@ -13924,7 +14376,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
 	   false : true) : true);
 
   /* ALTER .. CHANGE <attribute> syntax should not allow to define PK on
-   * multiple rows*/
+   * multiple rows */
   assert (!is_att_prop_set
 	  (attr_chg_prop->p[P_M_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_NEW));
 
@@ -15290,10 +15742,6 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
   int nr_const = 0, nr_attrs = 0, i = 0, k = 0;
   SM_FUNCTION_INFO *func_index_info;
   FUNC_PRED *func_pred;
-  if (!pt_is_function_index_expr (expr))
-    {
-      return NULL;
-    }
   func_index_info = (SM_FUNCTION_INFO *)
     db_ws_alloc (sizeof (SM_FUNCTION_INFO));
 

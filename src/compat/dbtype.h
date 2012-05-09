@@ -229,19 +229,27 @@
 #define DB_MAKE_VARBIT(value, max_bit_length, bit_str, bit_str_bit_size)\
         db_make_varbit(value, max_bit_length, bit_str, bit_str_bit_size)
 
-#define DB_MAKE_CHAR(value, char_length, str, char_str_byte_size) \
-        db_make_char(value, char_length, str, char_str_byte_size)
+#define DB_MAKE_CHAR(value, char_length, str, char_str_byte_size, \
+		     codeset, collation) \
+        db_make_char(value, char_length, str, char_str_byte_size, \
+		     codeset, collation)
 
-#define DB_MAKE_VARCHAR(value, max_char_length, str, char_str_byte_size) \
-        db_make_varchar(value, max_char_length, str, char_str_byte_size)
+#define DB_MAKE_VARCHAR(value, max_char_length, str, char_str_byte_size, \
+		        codeset, collation) \
+        db_make_varchar(value, max_char_length, str, char_str_byte_size, \
+			codeset, collation)
 
 #define DB_MAKE_STRING(value, str) db_make_string(value, str)
 
-#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size) \
-        db_make_nchar(value, nchar_length, str, nchar_str_byte_size)
+#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size, \
+		      codeset, collation) \
+        db_make_nchar(value, nchar_length, str, nchar_str_byte_size, \
+		      codeset, collation)
 
-#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size)\
-        db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size)
+#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size, \
+			 codeset, collation)\
+        db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, \
+			 codeset, collation)
 
 #define DB_MAKE_ENUMERATION(value, index, str, size) \
 	db_make_enumeration(value, index, str, size)
@@ -336,6 +344,8 @@
 #define DB_GET_STRING_LENGTH(value) db_get_string_length(value)
 
 #define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
+
+#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
@@ -441,6 +451,7 @@ union db_domain_info
     unsigned char is_null;
     unsigned char type;
     int length;
+    int collation_id;
   } char_info;
 };
 
@@ -841,11 +852,15 @@ extern int db_value_compare (const DB_VALUE * value1,
 extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type,
 				 const int precision, const int scale);
 extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale);
+				const int precision, const int scale,
+				const int codeset, const int collation_id);
 extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale);
+				const int precision, const int scale,
+				const int codeset, const int collation_id);
 extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
-				    const int precision, const int scale);
+				    const int precision, const int scale,
+				    const int codeset,
+				    const int collation_id);
 extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
 				 const int precision, const int scale);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);
@@ -924,20 +939,23 @@ extern int db_make_varbit (DB_VALUE * value, const int max_bit_length,
 			   const int bit_str_bit_size);
 extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
 extern int db_make_char (DB_VALUE * value, const int char_length,
-			 const DB_C_CHAR str, const int char_str_byte_size);
+			 const DB_C_CHAR str, const int char_str_byte_size,
+			 const int codeset, const int collation_id);
 extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
 extern int db_make_varchar (DB_VALUE * value, const int max_char_length,
-			    const DB_C_CHAR str,
-			    const int char_str_byte_size);
+			    const DB_C_CHAR str, const int char_str_byte_size,
+			    const int codeset, const int collation_id);
 extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
 extern int db_make_nchar (DB_VALUE * value, const int nchar_length,
 			  const DB_C_NCHAR str,
-			  const int nchar_str_byte_size);
+			  const int nchar_str_byte_size, const int codeset,
+			  const int collation_id);
 extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 extern int db_make_varnchar (DB_VALUE * value,
 			     const int max_nchar_length,
 			     const DB_C_NCHAR str,
-			     const int nchar_str_byte_size);
+			     const int nchar_str_byte_size, const int codeset,
+			     const int collation_id);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
 extern int db_make_enumeration (DB_VALUE * value, unsigned short index,

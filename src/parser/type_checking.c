@@ -89,13 +89,6 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
 };
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-/* ENUM TYPE is compatible with string types, numeric types and host
-   variables */
-#define PT_ENUM_TYPE_COMPATIBLE_WITH(typ1, typ2)			      \
-  (typ1 == PT_TYPE_ENUMERATION && (PT_IS_SIMPLE_CHAR_STRING_TYPE (typ2) ||    \
-				   PT_IS_NUMERIC_TYPE (typ2) ||		      \
-				   typ2 == PT_TYPE_MAYBE))
-
 #define PT_ARE_COMPARABLE_CHAR_TYPE(typ1, typ2)				      \
    ((PT_IS_SIMPLE_CHAR_STRING_TYPE (typ1) &&				      \
     PT_IS_SIMPLE_CHAR_STRING_TYPE (typ2)) ||				      \
@@ -314,6 +307,40 @@ static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 					   DB_VALUE * arg1, DB_VALUE * arg2,
 					   DB_VALUE * arg3);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
+static bool pt_is_op_w_collation (const PT_OP_TYPE op);
+static bool pt_get_collation_info (PT_NODE * node, int *coll_id,
+				   INTL_CODESET * codeset,
+				   PT_COLL_COERC_LEV * coerc_level);
+static int pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
+						      PT_NODE * node,
+						      int *coll_id,
+						      INTL_CODESET * codeset,
+						      PT_COLL_COERC_LEV *
+						      coerc_level);
+static PT_NODE *pt_coerce_node_collation (PARSER_CONTEXT * parser,
+					  PT_NODE * node, const int coll_id,
+					  const INTL_CODESET codeset,
+					  bool force_mode);
+static int pt_common_collation (const int arg1_coll,
+				const INTL_CODESET arg1_cs,
+				PT_COLL_COERC_LEV arg1_coerc_level,
+				const int arg2_coll,
+				const INTL_CODESET arg2_cs,
+				PT_COLL_COERC_LEV arg2_coerc_level,
+				const int arg3_coll,
+				const INTL_CODESET arg3_cs,
+				PT_COLL_COERC_LEV arg3_coerc_level,
+				const int args_w_coll, bool op_has_3_args,
+				int *common_coll, INTL_CODESET * common_cs);
+static int pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node);
+static PT_NODE *pt_node_to_enumeration_expr (PARSER_CONTEXT * parser,
+					     PT_NODE * data_type,
+					     PT_NODE * node);
+static PT_NODE *pt_select_list_to_enumeration_expr (PARSER_CONTEXT * parser,
+						    PT_NODE * data_type,
+						    PT_NODE * node);
+static PT_NODE *pt_fix_enumeration_comparison (PARSER_CONTEXT * parser,
+					       PT_NODE * expr);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -3673,6 +3700,24 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_TO_ENUMERATION_VALUE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_ENUMERATION;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -4850,7 +4895,8 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	{
 	  /* cast value when comparing column with value */
 	  if (PT_IS_NAME_NODE (arg1) && PT_IS_VALUE_NODE (arg2)
-	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)))
+	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3))
+	      && arg1_type != PT_TYPE_ENUMERATION)
 	    {
 	      arg1_eq_type = arg2_eq_type = arg1_type;
 	      if (arg3_type != PT_TYPE_NONE)
@@ -4875,7 +4921,8 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 		}
 	    }
 	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1)
-		   && arg3_type == PT_TYPE_NONE)
+		   && arg3_type == PT_TYPE_NONE
+		   && arg2_type != PT_TYPE_ENUMERATION)
 	    {
 	      arg1_eq_type = arg2_eq_type = arg2_type;
 	      if (arg1_type != arg2_type
@@ -5225,7 +5272,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       expr = NULL;
       return ER_FAILED;
     }
-
+  *node = expr;
   return NO_ERROR;
 }
 
@@ -5642,6 +5689,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_NVL:
     case PT_NVL2:
     case PT_COALESCE:
+    case PT_TO_ENUMERATION_VALUE:
       return false;
 
     default:
@@ -7489,6 +7537,14 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
       new_dt->type_enum = new_type;
       new_dt->info.data_type.precision = p;
       new_dt->info.data_type.dec_precision = s;
+      if (arg->data_type != NULL
+	  && PT_HAS_COLLATION (arg->data_type->type_enum))
+	{
+	  new_dt->info.data_type.units = arg->data_type->info.data_type.units;
+	  new_dt->info.data_type.collation_id =
+	    arg->data_type->info.data_type.collation_id;
+	}
+
     }
   else
     {
@@ -7545,6 +7601,14 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 	{
 	  PT_INTERNAL_ERROR (parser, "cannot coerce host var");
 	}
+    }
+
+  if (TP_TYPE_HAS_COLLATION (DB_VALUE_DOMAIN_TYPE (hv_val)))
+    {
+      db_put_cs_and_collation (hv_val,
+			       TP_DOMAIN_CODESET (hv_node->expected_domain),
+			       TP_DOMAIN_COLLATION
+			       (hv_node->expected_domain));
     }
 }
 
@@ -7686,6 +7750,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_HEX:
     case PT_ASCII:
     case PT_CONV:
+    case PT_TO_ENUMERATION_VALUE:
       return true;
 
     default:
@@ -7791,7 +7856,17 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
    */
 
   op = node->info.expr.op;
-
+  if (op == PT_EQ || op == PT_NULLSAFE_EQ || op == PT_IS_IN
+      || op == PT_EQ_SOME)
+    {
+      /* handle special cases for the enumeration type */
+      node = pt_fix_enumeration_comparison (parser, node);
+      if (node == NULL)
+	{
+	  return NULL;
+	}
+      op = node->info.expr.op;
+    }
   /* shortcut for FUNCTION HOLDER */
   if (op == PT_FUNCTION_HOLDER)
     {
@@ -7801,6 +7876,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  func = pt_eval_function_type (parser, node->info.expr.arg1);
 	  node->type_enum = func->type_enum;
+	  if (node->data_type == NULL && func->data_type != NULL)
+	    {
+	      node->data_type = parser_copy_tree (parser, func->data_type);
+	    }
 	}
       else
 	{
@@ -8170,6 +8249,16 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       expr = NULL;
       node->type_enum = PT_TYPE_NONE;
       goto error;
+    }
+
+  if (expr != NULL)
+    {
+      if (pt_check_expr_collation (parser, &expr) != NO_ERROR)
+	{
+	  expr = NULL;
+	  node->type_enum = PT_TYPE_NONE;
+	  return node;
+	}
     }
 
   if (expr != NULL)
@@ -10716,6 +10805,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_LPAD:
     case PT_RPAD:
     case PT_HEX:
+    case PT_SUBSTRING:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -10842,6 +10932,34 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	  break;
 	}
 
+      /* Basic collation inference, add specific code in 
+       * 'pt_check_expr_collation' */
+      if (PT_HAS_COLLATION (common_type))
+	{
+	  if (arg1 != NULL && PT_HAS_COLLATION (arg1->type_enum)
+	      && arg2 != NULL && !PT_HAS_COLLATION (arg2->type_enum)
+	      && arg1->data_type != NULL)
+	    {
+	      dt->info.data_type.units =
+		arg1->data_type->info.data_type.units;
+	      dt->info.data_type.collation_id =
+		arg1->data_type->info.data_type.collation_id;
+	    }
+	  else if (arg2 != NULL && PT_HAS_COLLATION (arg2->type_enum)
+		   && arg2 != NULL && !PT_HAS_COLLATION (arg1->type_enum)
+		   && arg2->data_type != NULL)
+	    {
+	      dt->info.data_type.units =
+		arg2->data_type->info.data_type.units;
+	      dt->info.data_type.collation_id =
+		arg2->data_type->info.data_type.collation_id;
+	    }
+	  else
+	    {
+	      dt->info.data_type.units = (int) LANG_SYS_CODESET;
+	      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
+	    }
+	}
       node->data_type = dt;
       node->data_type->type_enum = common_type;
     }
@@ -12139,6 +12257,227 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	}
     }
+
+  /* collation checking */
+  arg_list = node->info.function.arg_list;
+  switch (fcode)
+    {
+    case PT_GROUP_CONCAT:
+      {
+	INTL_CODESET arg1_cs = LANG_SYS_CODESET;
+	int arg1_coll = LANG_SYS_COLLATION;
+	PT_COLL_COERC_LEV arg1_coerc_level = PT_COLLATION_NOT_COERC;
+	PT_NODE *new_node;
+	PT_TYPE_ENUM sep_type;
+
+	(void) pt_get_collation_info (arg_list, &arg1_coll, &arg1_cs,
+				      &arg1_coerc_level);
+
+	sep_type = (arg_list->next) ? arg_list->next->type_enum :
+	  PT_TYPE_NONE;
+	if (PT_HAS_COLLATION (sep_type))
+	  {
+	    assert (arg_list->next != NULL);
+
+	    new_node = pt_coerce_node_collation (parser, arg_list->next,
+						 arg1_coll, arg1_cs, false);
+
+	    if (new_node == NULL)
+	      {
+		goto error_collation;
+	      }
+
+	    arg_list->next = new_node;
+	  }
+
+	new_node = pt_coerce_node_collation (parser, node, arg1_coll,
+					     arg1_cs, false);
+
+	if (new_node == NULL)
+	  {
+	    goto error_collation;
+	  }
+
+	node = new_node;
+      }
+      break;
+
+    case F_INSERT_SUBSTRING:
+      {
+	PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg4_type = PT_TYPE_NONE;
+	PT_NODE *arg_array[NUM_F_INSERT_SUBSTRING_ARGS];
+	int num_args = 0;
+	INTL_CODESET arg1_cs = LANG_SYS_CODESET;
+	INTL_CODESET arg4_cs = LANG_SYS_CODESET;
+	INTL_CODESET common_cs = LANG_SYS_CODESET;
+	int arg1_coll = LANG_SYS_COLLATION;
+	int arg4_coll = LANG_SYS_COLLATION;
+	int common_coll = LANG_SYS_COLLATION;
+	PT_COLL_COERC_LEV arg1_coerc_level = PT_COLLATION_NOT_COERC;
+	PT_COLL_COERC_LEV arg4_coerc_level = PT_COLLATION_NOT_COERC;
+	PT_NODE *new_node;
+	int args_w_coll = 0;
+
+	if (pt_node_list_to_array (parser, arg_list, arg_array,
+				   NUM_F_INSERT_SUBSTRING_ARGS,
+				   &num_args) != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	if (num_args != NUM_F_INSERT_SUBSTRING_ARGS)
+	  {
+	    assert (false);
+	    break;
+	  }
+
+	arg1_type = arg_array[0]->type_enum;
+	arg4_type = arg_array[3]->type_enum;
+
+	if (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE)
+	  {
+	    if (pt_get_collation_info (arg_array[0], &arg1_coll, &arg1_cs,
+				       &arg1_coerc_level))
+	      {
+		args_w_coll++;
+	      }
+
+	    if (arg1_type != PT_TYPE_MAYBE)
+	      {
+		common_coll = arg1_coll;
+		common_cs = arg1_cs;
+	      }
+	  }
+
+	if (PT_HAS_COLLATION (arg4_type) || arg4_type == PT_TYPE_MAYBE)
+	  {
+	    if (pt_get_collation_info (arg_array[3], &arg4_coll, &arg4_cs,
+				       &arg4_coerc_level))
+	      {
+		args_w_coll++;
+	      }
+
+	    if (arg1_type != PT_TYPE_MAYBE)
+	      {
+		common_coll = arg4_coll;
+		common_cs = arg4_cs;
+	      }
+	  }
+
+	if (arg1_coll == arg4_coll)
+	  {
+	    assert (arg1_cs == arg4_cs);
+	    break;
+	  }
+
+	if (pt_common_collation (arg1_coll, arg1_cs, arg1_coerc_level,
+				 arg4_coll, arg4_cs, arg4_coerc_level,
+				 0, 0, 0,
+				 args_w_coll, false, &common_coll,
+				 &common_cs) != 0)
+	  {
+	    goto error_collation;
+	  }
+
+	/* coerce collation of arguments */
+	if ((common_coll != arg1_coll || common_cs != arg1_cs)
+	    && (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE))
+	  {
+	    new_node = pt_coerce_node_collation (parser, arg_array[0],
+						 common_coll, common_cs,
+						 false);
+	    if (new_node == NULL)
+	      {
+		goto error_collation;
+	      }
+
+	    node->info.function.arg_list = arg_array[0] = new_node;
+	  }
+
+	/* coerce collation of arguments */
+	if ((common_coll != arg4_coll || common_cs != arg4_cs)
+	    && (PT_HAS_COLLATION (arg4_type) || arg4_type == PT_TYPE_MAYBE))
+	  {
+	    new_node = pt_coerce_node_collation (parser, arg_array[3],
+						 common_coll, common_cs,
+						 false);
+	    if (new_node == NULL)
+	      {
+		goto error_collation;
+	      }
+
+	    arg_array[2]->next = arg_array[3] = new_node;
+	  }
+
+	new_node = pt_coerce_node_collation (parser, node, common_coll,
+					     common_cs, true);
+	if (new_node == NULL)
+	  {
+	    goto error_collation;
+	  }
+
+	node = new_node;
+      }
+      break;
+
+    default:
+      {
+	PT_TYPE_ENUM arg_type = PT_TYPE_NONE, func_res_type = PT_TYPE_NONE;
+	INTL_CODESET arg_cs = LANG_SYS_CODESET;
+	INTL_CODESET func_cs = LANG_SYS_CODESET;
+	int arg_coll = LANG_SYS_COLLATION, func_coll = LANG_SYS_COLLATION;
+	PT_COLL_COERC_LEV arg_coerc_level = PT_COLLATION_NOT_COERC;
+	PT_COLL_COERC_LEV func_coerc_level = PT_COLLATION_NOT_COERC;
+	PT_NODE *new_node;
+
+	arg_type = (arg_list != NULL) ? arg_list->type_enum : PT_TYPE_NONE;
+	func_res_type = node->type_enum;
+
+	if (!PT_HAS_COLLATION (arg_type) && !PT_IS_COLLECTION_TYPE (arg_type))
+	  {
+	    break;
+	  }
+
+	if (!PT_HAS_COLLATION (func_res_type)
+	    && !PT_IS_COLLECTION_TYPE (func_res_type))
+	  {
+	    break;
+	  }
+
+	if (!pt_get_collation_info (arg_list, &arg_coll, &arg_cs,
+				    &arg_coerc_level))
+	  {
+	    break;
+	  }
+
+	if (!pt_get_collation_info (node, &func_coll, &func_cs,
+				    &func_coerc_level))
+	  {
+	    break;
+	  }
+
+	if (arg_coll == func_coll)
+	  {
+	    assert (arg_cs == func_cs);
+	    break;
+	  }
+
+	new_node =
+	  pt_coerce_node_collation (parser, node, arg_coll, arg_cs, true);
+	if (new_node == NULL)
+	  {
+	    goto error_collation;
+	  }
+
+	node = new_node;
+      }
+    }
+
+  return node;
+
+error_collation:
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_COLLATION_OP_ERROR, pt_show_function (fcode));
 
   return node;
 }
@@ -14911,7 +15250,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_DATEF:
-      error = db_date_dbval (result, arg1);
+      error = db_date_dbval (result, arg1, NULL);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -14920,7 +15259,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_TIMEF:
-      error = db_time_dbval (result, arg1);
+      error = db_time_dbval (result, arg1, NULL);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -15448,7 +15787,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_TIME_FORMAT:
-      error = db_time_format (arg1, arg2, result);
+      error = db_time_format (arg1, arg2, result, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -15729,7 +16068,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_FORMAT:
-      error = db_format (arg1, arg2, result);
+      error = db_format (arg1, arg2, result, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -15741,7 +16080,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_DATE_FORMAT:
-      error = db_date_format (arg1, arg2, result);
+      error = db_date_format (arg1, arg2, result, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16021,7 +16360,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       return 1;
 
     case PT_TO_CHAR:
-      error = db_to_char (arg1, arg2, arg3, result);
+      error = db_to_char (arg1, arg2, arg3, result, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16597,11 +16936,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    DB_MAKE_NCHAR (esc_char, 1, slash_str, 1);
+		    DB_MAKE_NCHAR (esc_char, 1, slash_str, 1,
+				   DB_GET_STRING_CODESET (arg1),
+				   DB_GET_STRING_COLLATION (arg1));
 		  }
 		else
 		  {
-		    DB_MAKE_CHAR (esc_char, 1, slash_str, 1);
+		    DB_MAKE_CHAR (esc_char, 1, slash_str, 1,
+				  DB_GET_STRING_CODESET (arg1),
+				  DB_GET_STRING_COLLATION (arg1));
 		  }
 
 		esc_char->need_clear = false;
@@ -16749,6 +17092,42 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_BETWEEN_GT_INF:
       /* these don't need to be handled */
       return 0;
+
+    case PT_TO_ENUMERATION_VALUE:
+      {
+	TP_DOMAIN *enum_domain = NULL;
+	assert (expr->info.expr.arg1 != NULL);
+	assert (expr->data_type != NULL);
+	enum_domain =
+	  pt_data_type_to_db_domain (parser, expr->data_type, NULL);
+	if (enum_domain == NULL)
+	  {
+	    return 0;
+	  }
+
+	enum_domain = tp_domain_cache (enum_domain);
+
+	error = db_value_to_enumeration_value (arg1, result, enum_domain);
+	if (error < 0)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    if (DB_GET_ENUM_SHORT (result) == 0)
+	      {
+		/* To avoid coercing result to enumeration type later on, we
+		 * consider that this expression cannot be folded
+		 */
+		return 0;
+	      }
+	    else
+	      {
+		return 1;
+	      }
+	  }
+      }
 
     default:
       break;
@@ -16984,7 +17363,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_RTRIM:
 	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 	    {
-	      db_make_varnchar (&dummy, 1, (char *) " ", 1);
+	      db_make_varnchar (&dummy, 1, (char *) " ", 1,
+				DB_GET_STRING_CODESET (arg1),
+				DB_GET_STRING_COLLATION (arg1));
 	      type2 = PT_TYPE_VARNCHAR;
 	    }
 	  else
@@ -17219,7 +17600,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_TRANSLATE:
 	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 	    {
-	      db_make_varnchar (&dummy, 1, (char *) "", 0);
+	      db_make_varnchar (&dummy, 1, (char *) "", 0,
+				DB_GET_STRING_CODESET (arg1),
+				DB_GET_STRING_COLLATION (arg1));
 	      type3 = PT_TYPE_VARNCHAR;
 	    }
 	  else
@@ -17234,7 +17617,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_RPAD:
 	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 	    {
-	      db_make_varnchar (&dummy, 1, (char *) " ", 1);
+	      db_make_varnchar (&dummy, 1, (char *) " ", 1,
+				DB_GET_STRING_CODESET (arg1),
+				DB_GET_STRING_COLLATION (arg1));
 	      type3 = PT_TYPE_VARNCHAR;
 	    }
 	  else
@@ -18024,13 +18409,15 @@ pt_set_default_data_type (PARSER_CONTEXT * parser,
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-      dt->info.data_type.units = lang_charset ();
+      dt->info.data_type.units = (int) LANG_SYS_CODESET;
+      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
       break;
 
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-      dt->info.data_type.units = lang_charset ();
+      dt->info.data_type.units = (int) LANG_SYS_CODESET;
+      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
       break;
 
     case PT_TYPE_BIT:
@@ -19219,4 +19606,1375 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op,
     }
 
   return true;
+}
+
+/*
+ * pt_is_op_w_collation () - check if is required to check collation or 
+ *			     codeset of this operator
+ *
+ *   return:
+ *   node(in): a parse tree node
+ *
+ */
+static bool
+pt_is_op_w_collation (const PT_OP_TYPE op)
+{
+  bool has_collation = false;
+  bool has_codeset = false;
+
+  switch (op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GE:
+    case PT_GT:
+    case PT_LT:
+    case PT_LE:
+    case PT_NULLSAFE_EQ:
+    case PT_BETWEEN:
+    case PT_BETWEEN_GE_LE:
+    case PT_BETWEEN_GE_LT:
+    case PT_BETWEEN_GT_LE:
+    case PT_BETWEEN_GT_LT:
+    case PT_CONCAT:
+    case PT_CONCAT_WS:
+    case PT_PLUS:
+    case PT_LIKE:
+    case PT_NOT_LIKE:
+    case PT_SUBSTRING_INDEX:
+    case PT_RPAD:
+    case PT_LPAD:
+    case PT_MID:
+    case PT_SUBSTRING:
+    case PT_REPLACE:
+    case PT_TRANSLATE:
+    case PT_COALESCE:
+    case PT_STRCAT:
+    case PT_TIME_FORMAT:
+    case PT_DATE_FORMAT:
+    case PT_TIMEF:
+    case PT_DATEF:
+    case PT_SETEQ:
+    case PT_SETNEQ:
+    case PT_SUBSET:
+    case PT_SUBSETEQ:
+    case PT_SUPERSET:
+    case PT_SUPERSETEQ:
+    case PT_GREATEST:
+    case PT_LEAST:
+    case PT_NULLIF:
+    case PT_LOWER:
+    case PT_UPPER:
+    case PT_RTRIM:
+    case PT_LTRIM:
+    case PT_TRIM:
+    case PT_LEFT:
+    case PT_RIGHT:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_IFNULL:
+      has_collation = true;
+    case PT_LOCATE:
+    case PT_POSITION:
+    case PT_STRCMP:
+      has_codeset = true;
+      break;
+    default:
+      return false;
+    }
+  return has_collation || has_codeset;
+}
+
+/*
+ * pt_get_collation_info () - get the collation info of parse tree node
+ *
+ *   return: true if node has collation
+ *   node(in): a parse tree node
+ *   coll_id(out): collation of node
+ *   codeset(out): codeset of node
+ *   coerc_level: collation coercibility level of node
+ *
+ */
+static bool
+pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
+		       PT_COLL_COERC_LEV * coerc_level)
+{
+  bool has_collation = false;
+  assert (node != NULL);
+
+  *coerc_level = PT_COLLATION_NOT_COERC;
+  *codeset = LANG_COERCIBLE_CODESET;
+  *coll_id = LANG_COERCIBLE_COLL;
+
+  if (node->data_type != NULL && PT_HAS_COLLATION (node->type_enum))
+    {
+      *coll_id = node->data_type->info.data_type.collation_id;
+      *codeset = node->data_type->info.data_type.units;
+      has_collation = true;
+    }
+  else if (node->expected_domain != NULL
+	   && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (node->expected_domain)))
+    {
+      *coll_id = TP_DOMAIN_COLLATION (node->expected_domain);
+      *codeset = TP_DOMAIN_CODESET (node->expected_domain);
+      has_collation = true;
+    }
+  else
+    {
+      return has_collation;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+    case PT_HOST_VAR:
+      assert (has_collation);
+      *coerc_level = PT_COLLATION_FULLY_COERC;
+      break;
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_CURRENT_USER
+	  || node->info.expr.op == PT_USER
+	  || node->info.expr.op == PT_DATABASE
+	  || node->info.expr.op == PT_SCHEMA
+	  || node->info.expr.op == PT_VERSION)
+	{
+	  *coerc_level = PT_COLLATION_L3_COERC;
+	  break;
+	}
+      /* fall through */
+    case PT_SELECT:
+    case PT_FUNCTION:
+      assert (has_collation);
+      *coerc_level = PT_COLLATION_L4_COERC;
+      break;
+
+    case PT_NAME:
+    case PT_DOT_:
+      assert (has_collation);
+      *coerc_level = PT_COLLATION_L1_COERC;
+      break;
+
+    default:
+      assert (!has_collation);
+      *coerc_level = PT_COLLATION_NOT_COERC;
+    }
+
+  return has_collation;
+}
+
+/*
+ * pt_get_collation_info_for_collection_type () - get the collation info of a
+ *	    parse tree node with collection type
+ *
+ *   return:  0 = node doesn't have collation;
+ *	      1 = node has collation
+ *	     -1 = node has multiple component types with collation and
+ *		  collations are not compatible
+ *
+ *   node(in): a parse tree node
+ *   coll_id(out): collation of node
+ *   codeset(out): codeset of node
+ *   coerc_level: collation coercibility level of node
+ *
+ */
+static int
+pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
+					   PT_NODE * node, int *coll_id,
+					   INTL_CODESET * codeset,
+					   PT_COLL_COERC_LEV * coerc_level)
+{
+  bool has_collation = false;
+  assert (node != NULL);
+
+  *coerc_level = PT_COLLATION_NOT_COERC;
+  *codeset = LANG_COERCIBLE_CODESET;
+  *coll_id = LANG_COERCIBLE_COLL;
+
+  assert (PT_IS_COLLECTION_TYPE (node->type_enum));
+
+  if (node->data_type != NULL)
+    {
+      PT_NODE *dt_node = node->data_type;
+
+      /* check all collatable types of collection */
+      do
+	{
+	  if (PT_HAS_COLLATION (dt_node->type_enum))
+	    {
+	      if ((!LANG_IS_COERCIBLE_COLL (*coll_id)
+		   || *codeset != LANG_COERCIBLE_CODESET)
+		  && (*coll_id != dt_node->info.data_type.collation_id
+		      || *codeset != dt_node->info.data_type.units))
+		{
+		  /* error : different collations in same collection */
+		  goto error;
+		}
+
+	      *codeset = (INTL_CODESET) dt_node->info.data_type.units;
+	      *coll_id = dt_node->info.data_type.collation_id;
+	      has_collation = true;
+	    }
+
+	  dt_node = dt_node->next;
+	}
+      while (dt_node != NULL);
+    }
+
+  if (!has_collation)
+    {
+      return 0;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      assert (has_collation);
+    case PT_HOST_VAR:
+      *coerc_level = PT_COLLATION_FULLY_COERC;
+      break;
+
+    case PT_EXPR:
+    case PT_FUNCTION:
+    case PT_SELECT:
+      *coerc_level =
+	(has_collation) ? PT_COLLATION_L4_COERC : PT_COLLATION_FULLY_COERC;
+      break;
+
+    case PT_NAME:
+    case PT_DOT_:
+      assert (has_collation);
+      *coerc_level = PT_COLLATION_L1_COERC;
+      break;
+
+    default:
+      assert (!has_collation);
+      *coerc_level = PT_COLLATION_NOT_COERC;
+    }
+
+  return has_collation ? 1 : 0;
+
+error:
+  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	     MSGCAT_SEMANTIC_COLLECTION_EL_COLLATION_ERROR);
+
+  return -1;
+}
+
+/*
+ * pt_coerce_node_collation () - get the collation info of parse tree node
+ *
+ *   return: parse node after coercion
+ *   node(in): a parse tree node
+ *   coll_id(in): collation
+ *   codeset(in): codeset
+ *   force_mode(in): true if codeset and collation have to forced
+ *
+ *  Note : 'force_mode' controlls how new collation and charset are applied:
+ *	   When 'force_mode' in set, collation and charset are forced;
+ *	   if not set, and codeset change is detected, then collation
+ *	   coercion will require a CAST (wrap with cast) or a value coerce
+ *	   in order to ensure charset conversion. If charset doesn't change,
+ *	   it is safe to force directly the new collation.
+ *	   When 'node' is an argument of an expression 'force_mode' is false;
+ *	   'force_mode' is on when 'node' is a result (expression) : for this
+ *	   case it is assumed the algorithm ensures the result's collation and
+ *	   codeset by previously applying the coercion on its arguments.
+ *
+ */
+static PT_NODE *
+pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
+			  const int coll_id, const INTL_CODESET codeset,
+			  bool force_mode)
+{
+  assert (node != NULL);
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+    case PT_EXPR:
+    case PT_SELECT:
+    case PT_FUNCTION:
+      if (!PT_HAS_COLLATION (node->type_enum)
+	  && !PT_IS_COLLECTION_TYPE (node->type_enum))
+	{
+	  goto cannot_coerce;
+	}
+      break;
+    case PT_VALUE:
+    case PT_HOST_VAR:
+      break;
+    default:
+      /* by default, no not coerce */
+      goto cannot_coerce;
+    }
+
+  if (node->data_type != NULL)
+    {
+      if (PT_IS_COLLECTION_TYPE (node->type_enum))
+	{
+	  PT_NODE *dt_node;
+	  PT_NODE *dt = NULL;
+	  bool apply_wrap_cast = false;
+
+	  dt_node = node->data_type;
+
+	  /* check if wrap with cast is necessary */
+	  if (!force_mode
+	      || node->node_type != PT_EXPR || node->info.expr.op != PT_CAST)
+	    {
+	      do
+		{
+		  if (PT_HAS_COLLATION (dt_node->type_enum)
+		      && dt_node->info.data_type.units != (int) codeset)
+		    {
+		      apply_wrap_cast = true;
+		      break;
+		    }
+
+		  dt_node = dt_node->next;
+		}
+	      while (dt_node != NULL);
+	    }
+
+	  if (apply_wrap_cast)
+	    {
+	      dt = parser_copy_tree_list (parser, node->data_type);
+	      dt_node = dt;
+	    }
+	  else
+	    {
+	      dt_node = node->data_type;
+	    }
+
+	  /* apply new collation and codeset for all collatable sub-types */
+	  do
+	    {
+	      if (PT_HAS_COLLATION (dt_node->type_enum))
+		{
+		  dt_node->info.data_type.collation_id = coll_id;
+		  dt_node->info.data_type.units = (int) codeset;
+		}
+
+	      dt_node = dt_node->next;
+	    }
+	  while (dt_node != NULL);
+
+	  if (apply_wrap_cast)
+	    {
+	      node = pt_wrap_collection_with_cast_op (parser, node,
+						      node->type_enum, dt);
+	      parser_free_node (parser, dt);
+	    }
+	}
+      else
+	{
+	  assert (PT_HAS_COLLATION (node->type_enum));
+
+	  /* wrap with cast when codeset changes and the node is not a CAST */
+	  if (!force_mode
+	      && (node->data_type->info.data_type.units != (int) codeset)
+	      && (node->node_type != PT_EXPR
+		  || node->info.expr.op != PT_CAST))
+	    {
+	      PT_NODE *dt = parser_copy_tree_list (parser, node->data_type);
+
+	      dt->info.data_type.collation_id = coll_id;
+	      dt->info.data_type.units = (int) codeset;
+
+	      if (node->node_type == PT_VALUE)
+		{
+		  /* avoid a CAST around PT_VALUE */
+		  if (pt_coerce_value (parser, node, node, node->type_enum,
+				       dt) != NO_ERROR)
+		    {
+		      parser_free_node (parser, dt);
+		      goto cannot_coerce;
+		    }
+		}
+	      else
+		{
+		  node =
+		    pt_wrap_with_cast_op (parser, node, node->type_enum,
+					  dt->info.data_type.precision,
+					  dt->info.data_type.dec_precision,
+					  dt);
+		}
+
+	      parser_free_node (parser, dt);
+	    }
+	  else
+	    {
+	      node->data_type->info.data_type.collation_id = coll_id;
+	      node->data_type->info.data_type.units = (int) codeset;
+	    }
+	}
+    }
+  else if (node->expected_domain != NULL
+	   && (TP_DOMAIN_CODESET (node->expected_domain) != codeset
+	       || TP_DOMAIN_COLLATION (node->expected_domain) != coll_id))
+    {
+      TP_DOMAIN *new_domain;
+
+      if (PT_IS_COLLECTION_TYPE (node->type_enum))
+	{
+	  goto cannot_coerce;
+	}
+
+      assert (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (node->expected_domain)));
+
+      if (node->expected_domain->is_cached)
+	{
+	  /* create new domain */
+	  new_domain = tp_domain_copy (node->expected_domain, false);
+	  new_domain->codeset = (unsigned char) codeset;
+	  new_domain->collation_id = coll_id;
+
+	  /* the existing 'expected_domain' may have been created for this
+	   * specific node and cached, it will remain cached */
+	  new_domain = tp_domain_cache (new_domain);
+	  node->expected_domain = new_domain;
+	}
+      else
+	{
+	  /* safe to change the domain directly */
+	  node->expected_domain->codeset = (unsigned char) codeset;
+	  node->expected_domain->collation_id = coll_id;
+	}
+    }
+  else
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      if (node->info.value.db_value_is_initialized && node->data_type != NULL)
+	{
+	  if (PT_IS_COLLECTION_TYPE (node->type_enum))
+	    {
+	      int i;
+	      DB_VALUE *sub_value = NULL;
+	      SETREF *setref = DB_PULL_SET (&(node->info.value.db_value));
+	      int set_size = setobj_size (setref->set);
+
+	      for (i = 0; i < set_size; i++)
+		{
+		  setobj_get_element_ptr (setref->set, i, &sub_value);
+		  if (sub_value != NULL
+		      && TP_TYPE_HAS_COLLATION (DB_VALUE_TYPE (sub_value)))
+		    {
+		      db_put_cs_and_collation (sub_value,
+					       (unsigned char) codeset,
+					       coll_id);
+		    }
+		}
+	    }
+	  else
+	    {
+	      assert (PT_HAS_COLLATION (node->type_enum));
+	      db_put_cs_and_collation (&(node->info.value.db_value),
+				       (unsigned char) codeset, coll_id);
+	    }
+	}
+      break;
+    case PT_HOST_VAR:
+      if (node->expected_domain != NULL)
+	{
+	  pt_preset_hostvar (parser, node);
+	}
+      else if (node->data_type != NULL
+	       && PT_HAS_COLLATION (node->data_type->type_enum))
+	{
+	  /* this is a HV from an auto-parametrization */
+	  node->data_type->info.data_type.collation_id = coll_id;
+	  node->data_type->info.data_type.units = (int) codeset;
+	}
+      break;
+    case PT_EXPR:
+      /* special case : CAST */
+      if (node->info.expr.op == PT_CAST && node->info.expr.cast_type != NULL)
+	{
+	  /* propagate the collation and codeset to cast */
+	  PT_NODE *cast_type = node->info.expr.cast_type;
+
+	  assert (PT_HAS_COLLATION (cast_type->type_enum));
+
+	  cast_type->info.data_type.collation_id = coll_id;
+	  cast_type->info.data_type.units = (int) codeset;
+	}
+      break;
+    default:
+      break;
+    }
+
+  return node;
+
+cannot_coerce:
+  if (codeset != LANG_COERCIBLE_CODESET || !LANG_IS_COERCIBLE_COLL (coll_id))
+    {
+      return NULL;
+    }
+  return node;
+}
+
+
+
+/*
+ * pt_common_collation () - compute common collation of an operation
+ *
+ *   return: 0 comon collation and codeset have been detected, -1 otherwise
+ *   arg1_coll(in): collation id of arg1
+ *   arg1_cs(in): codeset of arg1
+ *   arg1_coerc_level(in): coercibility level of arg1
+ *   arg2_coll(in): collation id of arg2
+ *   arg2_cs(in): codeset of arg2
+ *   arg2_coerc_level(in): coercibility level of arg2
+ *   arg3_coll(in): collation id of arg3
+ *   arg3_cs(in): codeset of arg3
+ *   arg3_coerc_level(in): coercibility level of arg3
+ *   args_w_coll(in): how many arguments have collation
+ *   op_has_3_args(in): true operation has 3 arguments
+ *   common_coll(out): common collation detected
+ *   common_cs(out): common codeset detected
+ *
+ */
+static int
+pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
+		     PT_COLL_COERC_LEV arg1_coerc_level,
+		     const int arg2_coll, const INTL_CODESET arg2_cs,
+		     PT_COLL_COERC_LEV arg2_coerc_level,
+		     const int arg3_coll, const INTL_CODESET arg3_cs,
+		     PT_COLL_COERC_LEV arg3_coerc_level,
+		     const int args_w_coll, bool op_has_3_args,
+		     int *common_coll, INTL_CODESET * common_cs)
+{
+  assert (common_coll != NULL);
+  assert (common_cs != NULL);
+
+  if (!op_has_3_args && arg1_coerc_level == arg2_coerc_level)
+    {
+      if (arg1_coerc_level != PT_COLLATION_FULLY_COERC)
+	{
+	  assert (args_w_coll == 2);
+
+	  if (LANG_IS_COERCIBLE_COLL (arg1_coll))
+	    {
+	      arg1_coerc_level = PT_COLLATION_FULLY_COERC;
+	    }
+	  else if (LANG_IS_COERCIBLE_COLL (arg2_coll))
+	    {
+	      arg2_coerc_level = PT_COLLATION_FULLY_COERC;
+	    }
+	  else
+	    {
+	      /* cannot coerce : error */
+	      goto error;
+	    }
+	}
+      else
+	{
+	  assert (arg1_coerc_level == PT_COLLATION_FULLY_COERC);
+
+	  if (LANG_IS_COERCIBLE_COLL (arg1_coll))
+	    {
+	      *common_coll = arg2_coll;
+	      *common_cs = arg2_cs;
+	      return 0;
+	    }
+	  else if (LANG_IS_COERCIBLE_COLL (arg2_coll))
+	    {
+	      *common_coll = arg1_coll;
+	      *common_cs = arg1_cs;
+	      return 0;
+	    }
+	  else
+	    {
+	      /* cannot coerce : error */
+	      goto error;
+	    }
+	}
+    }
+
+  if (arg1_coerc_level > arg2_coerc_level)
+    {
+      /* coerce arg1 collation */
+      if (arg1_cs != arg2_cs && !LANG_IS_COERCIBLE_COLL (arg1_coll))
+	{
+	  goto error;
+	}
+      *common_coll = arg2_coll;
+      *common_cs = arg2_cs;
+
+      /* check arg3 */
+      if (op_has_3_args)
+	{
+	  if (arg2_coerc_level > arg3_coerc_level)
+	    {
+	      /* coerce arg2 collation */
+	      if (arg2_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg2_coll))
+		{
+		  goto error;
+		}
+
+	      *common_coll = arg3_coll;
+	      *common_cs = arg3_cs;
+	    }
+	  else if (arg2_coerc_level < arg3_coerc_level)
+	    {
+	      /* coerce arg3 collation */
+	      if (arg2_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg3_coll))
+		{
+		  goto error;
+		}
+
+	      assert (*common_coll == arg2_coll);
+	      assert (*common_cs == arg2_cs);
+	    }
+	  else
+	    {
+	      assert (arg2_coerc_level == arg3_coerc_level);
+	      goto error;
+	    }
+	}
+    }
+  else
+    {
+      assert ((arg1_coll == arg2_coll)
+	      || (arg1_coerc_level <= arg2_coerc_level));
+
+      /* coerce arg2 collation */
+      if (arg1_coll != arg2_coll && !LANG_IS_COERCIBLE_COLL (arg2_coll))
+	{
+	  goto error;
+	}
+
+      *common_coll = arg1_coll;
+      *common_cs = arg1_cs;
+
+      /* check arg3 */
+      if (op_has_3_args && arg3_coll != *common_coll)
+	{
+	  if (arg1_coerc_level > arg3_coerc_level)
+	    {
+	      /* coerce arg1 collation */
+	      if (arg1_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg1_coll))
+		{
+		  goto error;
+		}
+
+	      *common_coll = arg3_coll;
+	      *common_cs = arg3_cs;
+	    }
+	  else if (arg1_coerc_level < arg3_coerc_level)
+	    {
+	      /* coerce arg3 collation */
+	      if (arg1_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg3_coll))
+		{
+		  goto error;
+		}
+
+	      assert (*common_coll == arg1_coll);
+	      assert (*common_cs == arg1_cs);
+	    }
+	  else
+	    {
+	      assert (arg1_coerc_level == arg3_coerc_level);
+	      goto error;
+	    }
+	}
+    }
+
+  return 0;
+
+error:
+
+  return -1;
+}
+
+/*
+ * pt_check_expr_collation () - checks the collation of an expression node
+ *
+ *   return: error code
+ *   parser(in): parser context
+ *   node(in): a parse tree expression node
+ *
+ */
+static int
+pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
+{
+  PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE;
+  PT_TYPE_ENUM arg3_type = PT_TYPE_NONE;
+  PT_OP_TYPE op;
+  int arg1_coll = LANG_COERCIBLE_COLL, arg2_coll = LANG_COERCIBLE_COLL;
+  int arg3_coll = LANG_COERCIBLE_COLL;
+  INTL_CODESET arg1_cs = LANG_COERCIBLE_CODESET;
+  INTL_CODESET arg2_cs = LANG_COERCIBLE_CODESET;
+  INTL_CODESET arg3_cs = LANG_COERCIBLE_CODESET;
+  PT_COLL_COERC_LEV arg1_coerc_level = PT_COLLATION_NOT_COERC;
+  PT_COLL_COERC_LEV arg2_coerc_level = PT_COLLATION_NOT_COERC;
+  PT_COLL_COERC_LEV arg3_coerc_level = PT_COLLATION_NOT_COERC;
+  PT_NODE *expr = *node;
+  PT_NODE *arg1, *arg2, *arg3;
+  PT_NODE *new_node;
+  int common_coll = LANG_COERCIBLE_COLL;
+  INTL_CODESET common_cs = LANG_COERCIBLE_CODESET;
+  int args_w_coll = 0;
+  bool op_has_3_args;
+  bool reverse_arg2_arg3;
+
+  assert (expr != NULL);
+  assert (expr->node_type == PT_EXPR);
+
+  op = expr->info.expr.op;
+
+  if (!pt_is_op_w_collation (op))
+    {
+      return NO_ERROR;
+    }
+
+  op_has_3_args =
+    (op == PT_CONCAT_WS || op == PT_REPLACE || op == PT_TRANSLATE);
+  reverse_arg2_arg3 = (op == PT_RPAD || op == PT_LPAD);
+
+  /* step 1 : get info */
+  arg1 = expr->info.expr.arg1;
+  arg2 = expr->info.expr.arg2;
+  arg3 = expr->info.expr.arg3;
+
+  if (reverse_arg2_arg3)
+    {
+      PT_NODE *tmp = arg2;
+      arg2 = arg3;
+      arg3 = tmp;
+    }
+
+  if (arg1)
+    {
+      arg1_type = arg1->type_enum;
+    }
+
+  if (arg2)
+    {
+      arg2_type = arg2->type_enum;
+    }
+
+  if (arg3)
+    {
+      arg3_type = arg3->type_enum;
+    }
+
+  if (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE)
+    {
+      if (pt_get_collation_info (arg1, &arg1_coll, &arg1_cs,
+				 &arg1_coerc_level))
+	{
+	  args_w_coll++;
+	}
+
+      if (arg1_type != PT_TYPE_MAYBE)
+	{
+	  common_coll = arg1_coll;
+	  common_cs = arg1_cs;
+	}
+    }
+  else if (PT_IS_COLLECTION_TYPE (arg1_type))
+    {
+      int status =
+	pt_get_collation_info_for_collection_type (parser, arg1, &arg1_coll,
+						   &arg1_cs,
+						   &arg1_coerc_level);
+
+      if (status == -1)
+	{
+	  goto exit;
+	}
+      else if (status == 1)
+	{
+	  args_w_coll++;
+	  common_coll = arg1_coll;
+	  common_cs = arg1_cs;
+	}
+    }
+
+  if (PT_HAS_COLLATION (arg2_type) || arg2_type == PT_TYPE_MAYBE)
+    {
+      if (pt_get_collation_info (arg2, &arg2_coll, &arg2_cs,
+				 &arg2_coerc_level))
+	{
+	  args_w_coll++;
+	}
+
+      if (arg2_type != PT_TYPE_MAYBE)
+	{
+	  common_coll = arg2_coll;
+	  common_cs = arg2_cs;
+	}
+    }
+  else if (PT_IS_COLLECTION_TYPE (arg2_type))
+    {
+      int status =
+	pt_get_collation_info_for_collection_type (parser, arg2, &arg2_coll,
+						   &arg2_cs,
+						   &arg2_coerc_level);
+
+      if (status == -1)
+	{
+	  goto exit;
+	}
+      else if (status == 1)
+	{
+	  args_w_coll++;
+	  common_coll = arg2_coll;
+	  common_cs = arg2_cs;
+	}
+    }
+
+  if (op_has_3_args)
+    {
+      if (PT_HAS_COLLATION (arg3_type) || arg3_type == PT_TYPE_MAYBE)
+	{
+	  if (pt_get_collation_info (arg3, &arg3_coll, &arg3_cs,
+				     &arg3_coerc_level))
+	    {
+	      args_w_coll++;
+	    }
+
+	  if (arg3_type != PT_TYPE_MAYBE)
+	    {
+	      common_coll = arg3_coll;
+	      common_cs = arg3_cs;
+	    }
+	}
+      else if (PT_IS_COLLECTION_TYPE (arg3_type))
+	{
+	  int status =
+	    pt_get_collation_info_for_collection_type (parser, arg3,
+						       &arg3_coll,
+						       &arg3_cs,
+						       &arg3_coerc_level);
+
+	  if (status == -1)
+	    {
+	      goto exit;
+	    }
+	  else if (status == 1)
+	    {
+	      args_w_coll++;
+	      common_coll = arg3_coll;
+	      common_cs = arg3_cs;
+	    }
+	}
+    }
+
+  if (args_w_coll <= 1)
+    {
+      goto coerce_result;
+    }
+
+  /* step 2 : compute collation to use */
+  assert (args_w_coll >= 2);
+
+  if (op_has_3_args)
+    {
+      if (args_w_coll < 3)
+	{
+	  if (!(PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE
+		|| PT_IS_COLLECTION_TYPE (arg1_type)))
+	    {
+	      arg1_coll = common_coll;
+	      arg1_cs = common_cs;
+	    }
+
+	  if (!(PT_HAS_COLLATION (arg2_type) || arg2_type == PT_TYPE_MAYBE
+		|| PT_IS_COLLECTION_TYPE (arg2_type)))
+	    {
+	      arg2_coll = common_coll;
+	      arg2_cs = common_cs;
+	    }
+
+	  if (!(PT_HAS_COLLATION (arg3_type) || arg3_type == PT_TYPE_MAYBE
+		|| PT_IS_COLLECTION_TYPE (arg3_type)))
+	    {
+	      arg3_coll = common_coll;
+	      arg3_cs = common_cs;
+	    }
+	}
+
+      if (arg1_coll == arg2_coll && arg2_coll == arg3_coll)
+	{
+	  assert (arg1_cs == arg2_cs && arg2_cs == arg3_cs);
+	  goto coerce_result;
+	}
+    }
+  else
+    {
+      if (arg1_coll == arg2_coll)
+	{
+	  assert (arg1_cs == arg2_cs);
+	  goto coerce_result;
+	}
+    }
+
+  assert (arg1_coll != arg2_coll || arg1_coll != arg3_coll);
+
+  if (pt_common_collation (arg1_coll, arg1_cs, arg1_coerc_level,
+			   arg2_coll, arg2_cs, arg2_coerc_level,
+			   arg3_coll, arg3_cs, arg3_coerc_level,
+			   args_w_coll, op_has_3_args, &common_coll,
+			   &common_cs) != 0)
+    {
+      goto error;
+    }
+
+  /* step 3 : coerce collation of expression arguments */
+  if ((common_coll != arg1_coll || common_cs != arg1_cs)
+      && (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE
+	  || PT_IS_COLLECTION_TYPE (arg1_type)))
+    {
+      new_node = pt_coerce_node_collation (parser, arg1, common_coll,
+					   common_cs, false);
+
+      if (new_node == NULL)
+	{
+	  goto error;
+	}
+
+      expr->info.expr.arg1 = new_node;
+    }
+
+  if ((common_coll != arg2_coll || common_cs != arg2_cs)
+      && (PT_HAS_COLLATION (arg2_type) || arg2_type == PT_TYPE_MAYBE
+	  || PT_IS_COLLECTION_TYPE (arg2_type)))
+    {
+      new_node = pt_coerce_node_collation (parser, arg2, common_coll,
+					   common_cs, false);
+
+      if (new_node == NULL)
+	{
+	  goto error;
+	}
+
+      if (reverse_arg2_arg3)
+	{
+	  expr->info.expr.arg3 = new_node;
+	}
+      else
+	{
+	  expr->info.expr.arg2 = new_node;
+	}
+    }
+
+  if (op_has_3_args && (common_coll != arg3_coll || common_cs != arg3_cs)
+      && (PT_HAS_COLLATION (arg3_type) || arg3_type == PT_TYPE_MAYBE))
+    {
+      new_node = pt_coerce_node_collation (parser, arg3, common_coll,
+					   common_cs, false);
+
+      if (new_node == NULL)
+	{
+	  goto error;
+	}
+
+      expr->info.expr.arg3 = new_node;
+    }
+
+  /* step 4: update collation of expression result */
+coerce_result:
+  switch (op)
+    {
+    case PT_COALESCE:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_IFNULL:
+      if (expr->type_enum == PT_TYPE_MAYBE
+	  && !LANG_IS_COERCIBLE_COLL (common_coll))
+	{
+	  PT_NODE *dt;
+	  PT_TYPE_ENUM expr_type;
+
+	  assert (args_w_coll > 0);
+
+	  dt = parser_new_node (parser, PT_DATA_TYPE);
+	  if (dt == NULL)
+	    {
+	      goto error;
+	    }
+
+	  if (op == PT_NVL2)
+	    {
+	      if (arg2_type == PT_TYPE_MAYBE)
+		{
+		  expr_type = arg3_type;
+		}
+	      else
+		{
+		  expr_type = arg2_type;
+		}
+	    }
+	  else
+	    {
+	      if (arg1_type == PT_TYPE_MAYBE)
+		{
+		  expr_type = arg2_type;
+		}
+	      else
+		{
+		  expr_type = arg1_type;
+		}
+	    }
+
+	  assert (PT_HAS_COLLATION (expr_type));
+	  dt->type_enum = expr_type;
+	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	  dt->info.data_type.collation_id = common_coll;
+	  dt->info.data_type.units = common_cs;
+
+	  new_node = pt_wrap_with_cast_op (parser, expr, expr->type_enum,
+					   dt->info.data_type.precision,
+					   dt->info.data_type.dec_precision,
+					   dt);
+	  parser_free_node (parser, dt);
+	  if (new_node == NULL)
+	    {
+	      goto error;
+	    }
+
+	  expr = new_node;
+
+	  break;
+	}
+      /* fall through */
+    case PT_PLUS:
+      if (expr->type_enum == PT_TYPE_MAYBE)
+	{
+	  break;
+	}
+      /* fall through */
+    case PT_CONCAT:
+    case PT_CONCAT_WS:
+    case PT_RPAD:
+    case PT_LPAD:
+    case PT_SUBSTRING:
+    case PT_MID:
+    case PT_REPLACE:
+    case PT_TRANSLATE:
+    case PT_STRCAT:
+    case PT_DATE_FORMAT:
+    case PT_TIME_FORMAT:
+    case PT_GREATEST:
+    case PT_LEAST:
+    case PT_NULLIF:
+    case PT_LOWER:
+    case PT_UPPER:
+    case PT_REPEAT:
+    case PT_RTRIM:
+    case PT_LTRIM:
+    case PT_TRIM:
+    case PT_LEFT:
+    case PT_RIGHT:
+    case PT_SUBSTRING_INDEX:
+    case PT_DATEF:
+    case PT_TIMEF:
+      new_node = pt_coerce_node_collation (parser, expr, common_coll,
+					   common_cs, true);
+      if (new_node == NULL)
+	{
+	  goto error;
+	}
+
+      expr = new_node;
+      break;
+    default:
+      break;
+    }
+
+  *node = expr;
+
+  return NO_ERROR;
+
+error:
+  PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_COLLATION_OP_ERROR, pt_show_binopcode (op));
+
+exit:
+  return ER_FAILED;
+}
+
+/*
+* pt_node_to_enumeration_expr () - wrap node with PT_TO_ENUMERATION_VALUE
+*				    expression
+* return : new node or null
+* parser (in) :
+* data_type (in) :
+* node (in) :
+*/
+static PT_NODE *
+pt_node_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type,
+			     PT_NODE * node)
+{
+  PT_NODE *expr = NULL;
+  if (parser == NULL || data_type == NULL || node == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  expr = parser_new_node (parser, PT_EXPR);
+  if (expr == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+  expr->info.expr.arg1 = node;
+  expr->type_enum = PT_TYPE_ENUMERATION;
+  expr->data_type = parser_copy_tree (parser, data_type);
+  expr->info.expr.op = PT_TO_ENUMERATION_VALUE;
+  return expr;
+}
+
+/*
+* pt_select_list_to_enumeration_expr () - wrap select list with
+*					   PT_TO_ENUMERATION_VALUE expression
+* return : new node or null
+* parser (in) :
+* data_type (in) :
+* node (in) :
+*/
+static PT_NODE *
+pt_select_list_to_enumeration_expr (PARSER_CONTEXT * parser,
+				    PT_NODE * data_type, PT_NODE * node)
+{
+  int i = 0;
+  PT_NODE *new_node = NULL;
+
+  if (node == NULL || data_type == NULL)
+    {
+      return node;
+    }
+
+  if (!PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      return node;
+    }
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      {
+	PT_NODE *item = NULL;
+	PT_NODE *prev = NULL;
+	PT_NODE *select_list = pt_get_select_list (parser, node);
+	for (item = select_list; item != NULL; prev = item, item = item->next)
+	  {
+	    if (item->type_enum == PT_TYPE_ENUMERATION)
+	      {
+		/* nothing to do here */
+		continue;
+	      }
+	    new_node = pt_node_to_enumeration_expr (parser, data_type, item);
+	    if (new_node == NULL)
+	      {
+		return NULL;
+	      }
+	    item = new_node;
+	    /* first node in the list */
+	    if (prev == NULL)
+	      {
+		node->info.query.q.select.list = item;
+	      }
+	    else
+	      {
+		prev->next = item;
+	      }
+	  }
+	break;
+      }
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_UNION:
+      new_node =
+	pt_select_list_to_enumeration_expr (parser, data_type,
+					    node->info.query.q.union_.arg1);
+      if (new_node == NULL)
+	{
+	  return NULL;
+	}
+      node->info.query.q.union_.arg1 = new_node;
+      new_node =
+	pt_select_list_to_enumeration_expr (parser, data_type,
+					    node->info.query.q.union_.arg2);
+      if (new_node == NULL)
+	{
+	  return NULL;
+	}
+      node->info.query.q.union_.arg2 = new_node;
+      break;
+    default:
+      break;
+    }
+  return node;
+}
+
+/*
+* pt_fix_enumeration_comparison () - fix comparisons for enumeration type
+* return : modified node or NULL
+* parser (in) :
+* expr (in) :
+*/
+static PT_NODE *
+pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *arg1 = NULL, *arg2 = NULL;
+  PT_NODE *node = NULL, *save_next = NULL;
+  PT_NODE *list = NULL, *list_prev = NULL, **list_start = NULL;
+  PT_OP_TYPE op;
+  if (expr == NULL || expr->node_type != PT_EXPR)
+    {
+      return expr;
+    }
+  op = expr->info.expr.op;
+
+  switch (op)
+    {
+    case PT_EQ:
+    case PT_NULLSAFE_EQ:
+      arg1 = expr->info.expr.arg1;
+      arg2 = expr->info.expr.arg2;
+
+      if ((arg1->type_enum != PT_TYPE_ENUMERATION
+	   && arg2->type_enum != PT_TYPE_ENUMERATION)
+	  || (!PT_IS_CONST (arg1) && !PT_IS_CONST (arg2)))
+	{
+	  /* we're only handling enumeration comp const */
+	  return expr;
+	}
+      if (PT_IS_CONST (arg1))
+	{
+	  if (PT_IS_CONST (arg2))
+	    {
+	      /* const op const does not need special handling */
+	      return expr;
+	    }
+	  /* switch arg1 with arg2 so that we have non cost operand on the 
+	   * left side
+	   */
+	  node = expr->info.expr.arg1;
+	  expr->info.expr.arg1 = expr->info.expr.arg2;
+	  expr->info.expr.arg2 = node;
+	}
+      break;
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+      break;
+    default:
+      return expr;
+    }
+
+  arg1 = expr->info.expr.arg1;
+  arg2 = expr->info.expr.arg2;
+  op = expr->info.expr.op;
+
+  if (arg1->data_type == NULL
+      || arg1->data_type->info.data_type.enumeration == NULL)
+    {
+      /* we don't know the actual enumeration type */
+      return expr;
+    }
+
+  switch (op)
+    {
+    case PT_EQ:
+    case PT_NULLSAFE_EQ:
+      node = pt_node_to_enumeration_expr (parser, arg1->data_type, arg2);
+      if (node == NULL)
+	{
+	  return NULL;
+	}
+      expr->info.expr.arg2 = node;
+      break;
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+      if (PT_IS_QUERY_NODE_TYPE (arg2->node_type))
+	{
+	  node =
+	    pt_select_list_to_enumeration_expr (parser, arg1->data_type,
+						arg2);
+	  if (node == NULL)
+	    {
+	      return NULL;
+	    }
+	  expr->info.expr.arg2 = node;
+	  return expr;
+	}
+      /* not a subquery */
+      switch (arg2->node_type)
+	{
+	case PT_VALUE:
+	  /* convert this value to a multiset */
+	  node = parser_new_node (parser, PT_FUNCTION);
+	  if (node == NULL)
+	    {
+	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return NULL;
+	    }
+	  node->info.function.function_type = F_SET;
+	  node->info.function.arg_list = arg2->info.value.data_value.set;
+	  node->type_enum = arg2->type_enum;
+
+	  arg2->info.value.data_value.set = NULL;
+	  parser_free_tree (parser, arg2);
+	  expr->info.expr.arg2 = arg2 = node;
+
+	  /* fall through */
+
+	case PT_FUNCTION:
+	  list = arg2->info.function.arg_list;
+	  list_start = &arg2->info.function.arg_list;
+	  break;
+
+	default:
+	  return expr;
+	}
+
+      while (list != NULL)
+	{
+	  save_next = list->next;
+	  list->next = NULL;
+	  node = pt_node_to_enumeration_expr (parser, arg1->data_type, list);
+	  if (node == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  node->next = save_next;
+	  if (list_prev == NULL)
+	    {
+	      *list_start = node;
+	    }
+	  else
+	    {
+	      list_prev->next = node;
+	    }
+	  list_prev = node;
+	  list = node->next;
+	}
+      if (arg2->data_type != NULL)
+	{
+	  parser_free_tree (parser, arg2->data_type);
+	  arg2->data_type = NULL;
+	}
+      (void) pt_add_type_to_set (parser,
+				 arg2->info.function.arg_list,
+				 &arg2->data_type);
+      break;
+
+    default:
+      break;
+    }
+
+  return expr;
 }

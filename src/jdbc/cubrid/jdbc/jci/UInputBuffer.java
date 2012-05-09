@@ -44,7 +44,6 @@ import java.util.Calendar;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
-import cubrid.jdbc.driver.CUBRIDEnum;
 import cubrid.jdbc.driver.CUBRIDXid;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
@@ -314,11 +313,6 @@ class UInputBuffer {
 			}
 		}
 		return null;
-	}
-
-	CUBRIDEnum readEnum(CUBRIDConnection con) throws UJciException {
-		short val = readShort();
-		return new CUBRIDEnum(con, val);
 	}
 
 	CUBRIDBlob readBlob(int packedLobHandleSize, CUBRIDConnection conn)

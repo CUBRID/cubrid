@@ -351,6 +351,13 @@ extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
 						char *guess_classname);
 extern char *heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
 					      const OID * inst_oid);
+extern int heap_get_class_partitions (THREAD_ENTRY * thread_p,
+				      const OID * class_oid,
+				      OR_PARTITION ** parts,
+				      int *parts_count);
+extern int heap_get_class_supers (THREAD_ENTRY * thread_p,
+				  const OID * class_oid, OID ** super_oids,
+				  int *count);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern char *heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p,
 						const OID * oid,
@@ -435,6 +442,9 @@ extern int heap_indexinfo_get_attrs_prefix_length (int btid_index,
 						   int *attrs_prefix_length,
 						   int
 						   len_attrs_prefix_length);
+extern int heap_get_index_with_name (THREAD_ENTRY * thread_p,
+				     OID * class_oid, const char *index_name,
+				     BTID * btid);
 extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p,
 				       OID * class_oid, BTID * btid,
 				       BTREE_TYPE * type, int *num_attrs,

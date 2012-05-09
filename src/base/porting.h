@@ -124,7 +124,7 @@ struct pollfd {
     SHORT   events;
     SHORT   revents;
 };
-#endif // (_WIN32_WINNT < 0x0600)
+#endif /* (_WIN32_WINNT < 0x0600) */
 
 typedef unsigned long int nfds_t;
 extern int poll (struct pollfd *fds, nfds_t nfds, int timeout);

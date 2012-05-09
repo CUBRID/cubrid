@@ -90,6 +90,7 @@
 #include "xserver_interface.h"
 #include "es.h"
 #include "session.h"
+#include "partition.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -3437,6 +3438,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 			      HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
+  /* initialize partitions cache */
+  error_code = partition_cache_init (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   cfg_free_directory (dir);
 
   if (print_restart)
@@ -4145,6 +4153,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
   serial_finalize_cache_pool ();
 
   session_states_finalize (thread_p);
+  partition_cache_finalize (thread_p);
 #if defined(SERVER_MODE)
 #if defined(DIAG_DEVEL)
   close_diag_mgr ();

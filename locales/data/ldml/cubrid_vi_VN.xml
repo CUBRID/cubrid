@@ -97,7 +97,7 @@
 		</currencies>
 	</numbers>
 	<collations validSubLocales="vi_VN">
-		<collation type="standard">
+		<collation type="utf8_vi_cs">
 			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
@@ -129,10 +129,20 @@
 				<t>Ư</t>
 			</rules>
 		</collation>
+		<collation type="utf8_gen">
+			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+		</collation>		
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
+	<normalization enabled="false" />
 	<consoleconversion type="ISO" windows_codepage="1258" linux_charset="8859-12" file="CP1258.TXT" />	
 </ldml>

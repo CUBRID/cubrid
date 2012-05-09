@@ -136,8 +136,6 @@ static int classobj_domain_size (TP_DOMAIN * domain);
 static void classobj_filter_attribute_props (DB_SEQ * props);
 static int classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest,
 				    int copy);
-static int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class,
-				  int ordered, SM_ATTRIBUTE ** copy_ptr);
 static void classobj_clear_attribute_value (DB_VALUE * value);
 static void classobj_clear_attribute (SM_ATTRIBUTE * att);
 static int classobj_attribute_size (SM_ATTRIBUTE * att);
@@ -851,7 +849,8 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
     {
       db_make_char (&value, filter_index_info->pred_stream_size,
 		    filter_index_info->pred_stream,
-		    filter_index_info->pred_stream_size);
+		    filter_index_info->pred_stream_size,
+		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
     }
   else
     {
@@ -4218,7 +4217,7 @@ classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias)
  *   copy_ptr(out): new attribute list
  */
 
-static int
+int
 classobj_copy_attlist (SM_ATTRIBUTE * attlist,
 		       MOP filter_class, int ordered,
 		       SM_ATTRIBUTE ** copy_ptr)
@@ -6288,6 +6287,7 @@ classobj_make_class (const char *name)
   class_->new_ = NULL;
   class_->stats = NULL;
   class_->owner = NULL;
+  class_->collation_id = LANG_SYS_COLLATION;
   class_->auth_cache = NULL;
   class_->flags = 0;
 
@@ -7994,7 +7994,8 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
 
   db_make_char (&val, func_index_info->expr_stream_size,
 		func_index_info->expr_stream,
-		func_index_info->expr_stream_size);
+		func_index_info->expr_stream_size, LANG_SYS_CODESET,
+		LANG_SYS_COLLATION);
   set_put_element (fi_seq, 1, &val);
 
   db_make_int (&val, func_index_info->col_id);

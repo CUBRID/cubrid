@@ -66,6 +66,7 @@
 #undef DB_GET_STRING_SIZE
 #undef DB_GET_RESULTSET
 #undef DB_GET_STRING_CODESET
+#undef DB_GET_STRING_COLLATION
 
 
 #define DB_IS_NULL(v) \
@@ -251,6 +252,9 @@
 #define DB_GET_STRING_CODESET(v) \
     ((INTL_CODESET) ((v)->data.ch.info.codeset))
 
+#define DB_GET_STRING_COLLATION(v) \
+    (((v)->domain.char_info.collation_id))
+
 #define DB_GET_ENUM_ELEM_SHORT(elem) \
     ((elem)->short_val)
 #define DB_GET_ENUM_ELEM_DBCHAR(elem) \
@@ -315,6 +319,7 @@
 #define db_get_string_size(v) DB_GET_STRING_SIZE(v)
 #define db_get_resultset(v) DB_GET_RESULTSET(v)
 #define db_get_string_codeset(v) DB_GET_STRING_CODESET(v)
+#define db_get_string_collation(v) DB_GET_STRING_COLLATION(v)
 #define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
 #define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
 #define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
@@ -418,7 +423,7 @@
      (v)->need_clear = false, \
      NO_ERROR)
 
-#define db_make_db_char(v, c, p, s) \
+#define db_make_db_char(v, c, coll, p, s) \
     ((v)->data.ch.info.style = MEDIUM_STRING, \
      (v)->data.ch.medium.codeset = (c), \
      (v)->data.ch.medium.size = (s), \
@@ -426,6 +431,7 @@
      (v)->domain.general_info.is_null = ((p) ? 0 : 1), \
      (v)->domain.general_info.is_null = \
          (PRM_ORACLE_STYLE_EMPTY_STRING && (s) == 0) ? 1 : DB_IS_NULL(v), \
+     (v)->domain.char_info.collation_id = (coll), \
      (v)->need_clear = false, \
      NO_ERROR)
 
@@ -437,7 +443,7 @@
       TP_FLOATING_PRECISION_VALUE : (l), \
      (v)->domain.general_info.type = DB_TYPE_BIT, \
      (v)->need_clear = false, \
-     db_make_db_char((v), INTL_CODESET_RAW_BITS, (p), (s)), \
+     db_make_db_char((v), INTL_CODESET_RAW_BITS, 0, (p), (s)), \
      NO_ERROR)
 
 #define db_make_varbit(v, l, p, s) \
@@ -445,46 +451,47 @@
       DB_MAX_VARBIT_PRECISION : (l), \
      (v)->domain.general_info.type = DB_TYPE_VARBIT, \
      (v)->need_clear = false, \
-     db_make_db_char((v), INTL_CODESET_RAW_BITS, (p), (s)), \
+     db_make_db_char((v), INTL_CODESET_RAW_BITS, 0, (p), (s)), \
      NO_ERROR)
 
 #define db_make_string(v, p) \
     ((v)->domain.char_info.length = DB_MAX_VARCHAR_PRECISION, \
      (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), lang_charset(), (p), ((p) ? strlen(p) : 0)), \
+     db_make_db_char((v), LANG_SYS_CODESET, LANG_SYS_COLLATION, \
+		     (p), ((p) ? strlen(p) : 0)), \
      NO_ERROR)
 
-#define db_make_char(v, l, p, s) \
+#define db_make_char(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       TP_FLOATING_PRECISION_VALUE : (l), \
      (v)->domain.general_info.type = DB_TYPE_CHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), lang_charset(), (p), (s)), \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
 
-#define db_make_varchar(v, l, p, s) \
+#define db_make_varchar(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       DB_MAX_VARCHAR_PRECISION : (l), \
      (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), lang_charset(), (p), (s)), \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
 
-#define db_make_nchar(v, l, p, s) \
+#define db_make_nchar(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       TP_FLOATING_PRECISION_VALUE : (l), \
      (v)->domain.general_info.type = DB_TYPE_NCHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), lang_charset(), (p), (s)), \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
 
-#define db_make_varnchar(v, l, p, s) \
+#define db_make_varnchar(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       DB_MAX_VARNCHAR_PRECISION : (l), \
      (v)->domain.general_info.type = DB_TYPE_VARNCHAR, \
      (v)->need_clear = false, \
-     db_make_db_char((v), lang_charset(), (p), (s)), \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
 
 #define db_make_resultset(v, n) \
@@ -515,7 +522,7 @@
   ((v)->domain.general_info.type		  = DB_TYPE_ENUMERATION, \
     (v)->domain.general_info.is_null		  = 0, \
     (v)->data.enumeration.short_val		  = i, \
-    (v)->data.enumeration.str_val.info.codeset	  = lang_charset (), \
+    (v)->data.enumeration.str_val.info.codeset	  = LANG_SYS_CODESET, \
     (v)->data.enumeration.str_val.info.style	  = MEDIUM_STRING, \
     (v)->data.enumeration.str_val.medium.size	  = s, \
     (v)->data.enumeration.str_val.medium.buf	  = (char*)p, \
@@ -526,6 +533,11 @@
 
 #define DB_GET_NUMERIC_SCALE(val) \
     ((val)->domain.numeric_info.scale)
+
+#define db_put_cs_and_collation(v, cs, coll) \
+    ((v)->data.ch.info.codeset = (cs), \
+     (v)->domain.char_info.collation_id = (coll), \
+     NO_ERROR)
 
 typedef enum
 {

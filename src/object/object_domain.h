@@ -78,6 +78,7 @@ typedef struct tp_domain
   int built_in_index;
 
   unsigned char codeset;	/* codeset if national char */
+  int collation_id;		/* collation identifier */
 
   unsigned self_ref:1;		/* object self reference */
   /*
@@ -346,6 +347,12 @@ typedef enum tp_match
 #define TP_DOMAIN_TYPE(dom) \
    ((dom) ? (dom)->type->id : DB_TYPE_NULL)
 
+#define TP_TYPE_HAS_COLLATION(typeid) TP_IS_CHAR_TYPE(typeid)
+
+#define TP_DOMAIN_CODESET(dom) ((dom) ? (dom)->codeset : LANG_SYS_CODESET)
+#define TP_DOMAIN_COLLATION(dom) \
+    ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
+
 /*
  * FUNCTIONS
  */
@@ -413,7 +420,8 @@ extern TP_DOMAIN_STATUS tp_domain_check (const TP_DOMAIN * domain,
 TP_DOMAIN *tp_domain_find_noparam (DB_TYPE type, bool is_desc);
 TP_DOMAIN *tp_domain_find_numeric (DB_TYPE type, int precision, int scale,
 				   bool is_desc);
-TP_DOMAIN *tp_domain_find_charbit (DB_TYPE type, int codeset, int precision,
+TP_DOMAIN *tp_domain_find_charbit (DB_TYPE type, int codeset,
+				   int collation_id, int precision,
 				   bool is_desc);
 TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid,
 				  struct db_object *class_, bool is_desc);

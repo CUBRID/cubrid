@@ -91,7 +91,8 @@ static const char *css_Csect_name[] = {
   "COMPACTDB_ONE_INSTANCE",
   "SESSION_STATE",
   "ACL",
-  "QPROC_FILTER_PRED_CACHE"
+  "QPROC_FILTER_PRED_CACHE",
+  "PARTITION_CACHE"
 };
 
 static int csect_initialize_entry (int cs_index);

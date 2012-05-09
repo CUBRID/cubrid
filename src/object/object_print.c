@@ -376,6 +376,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   char temp_buffer[27];
   char temp_buffer_numeric[50];
   int precision = 0, idx, count;
+  int has_collation;
 
   if (domain == NULL)
     {
@@ -388,6 +389,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   for (temp_domain = domain; temp_domain != NULL;
        temp_domain = temp_domain->next)
     {
+      has_collation = 0;
       switch (TP_DOMAIN_TYPE (temp_domain))
 	{
 	case DB_TYPE_INTEGER:
@@ -431,6 +433,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_VARCHAR:
+	  has_collation = 1;
 	  if (temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, "STRING");
@@ -440,6 +443,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
+	  has_collation = 1;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -505,6 +509,15 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 	default:
 	  break;
+	}
+
+      if (has_collation && temp_domain->collation_id != LANG_SYS_COLLATION)
+	{
+	  buffer = pt_append_nulstring (parser, buffer, " COLLATE ");
+	  buffer =
+	    pt_append_nulstring (parser, buffer,
+				 lang_get_collation_name
+				 (temp_domain->collation_id));
 	}
       if (temp_domain->next != NULL)
 	{

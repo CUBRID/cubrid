@@ -1483,7 +1483,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
 			 bool is_only_spec)
 {
   CHECK_PUSHABLE_INFO cpi;
-  PT_NODE *node;
 
   /* check nulls */
   if (query == NULL)
@@ -4163,29 +4162,43 @@ static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   PT_NODE *from, *flat;
-  PT_NODE *save = merge_statement;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
-  assert (merge_statement->info.merge.into->next == NULL);
-  merge_statement->info.merge.into->next = merge_statement->info.merge.using;
-
-  mq_check_merge (parser, merge_statement);
-
-  /* set flags for updatable specs */
-  pt_mark_spec_list_for_update (parser, merge_statement);
-
+  /* flag spec for update/delete */
   from = merge_statement->info.merge.into;
-  flat = from->info.spec.flat_entity_list;
-  if (flat)
+  if (merge_statement->info.merge.update.assignment)
     {
-      if (db_is_class (flat->info.name.db_object))
+      (void) pt_mark_spec_list_for_update (parser, merge_statement);
+      if (merge_statement->info.merge.update.del_search_cond)
 	{
-	  sc_info.top_node = merge_statement;
-	  sc_info.donot_fold = false;
-	  pt_semantic_type (parser, merge_statement, &sc_info);
+	  from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
 	}
     }
 
+  /* no need to actually translate, this will be performed later on
+   * the generated insert/update/delete subqueries */
+
+  /* check statement */
+  if (merge_statement)
+    {
+      (void) mq_check_merge (parser, merge_statement);
+    }
+
+  from->next = merge_statement->info.merge.using;
+  while (from)
+    {
+      flat = from->info.spec.flat_entity_list;
+      if (flat)
+	{
+	  if (db_is_class (flat->info.name.db_object))
+	    {
+	      sc_info.top_node = merge_statement;
+	      sc_info.donot_fold = false;
+	      pt_semantic_type (parser, merge_statement, &sc_info);
+	    }
+	}
+      from = from->next;
+    }
   merge_statement->info.merge.into->next = NULL;
 
   return merge_statement;
@@ -8787,13 +8800,8 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
 
     case PT_MERGE:
       {
-	bool link_spec = false;
-	if (statement->info.merge.into->next == NULL)
-	  {
-	    statement->info.merge.into->next = statement->info.merge.using;
-	    link_spec = true;
-	  }
 	spec = statement->info.merge.into;
+	spec->next = statement->info.merge.using;
 
 	while (spec && spec->info.spec.id != spec_id)
 	  {
@@ -8808,7 +8816,7 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    PT_INTERNAL_ERROR (parser, "translate");
 	  }
 
-	if (link_spec)
+	if (statement)
 	  {
 	    statement->info.merge.into->next = NULL;
 	  }

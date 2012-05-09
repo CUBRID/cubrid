@@ -842,6 +842,12 @@ static bool prm_use_locale_number_format_default = true;
 bool PRM_USE_LOCALE_DATE_FORMAT = true;
 static bool prm_use_locale_date_format_default = true;
 
+bool PRM_UNICODE_INPUT_NORMALIZATION = false;
+static bool prm_unicode_input_normalization_default = false;
+
+bool PRM_UNICODE_OUTPUT_NORMALIZATION = false;
+static bool prm_unicode_output_normalization_default = false;
+
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
 {
@@ -2034,6 +2040,20 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_LOG_VOLUME_SIZE,
    (void *) &prm_log_volume_size_upper,
    (void *) &prm_log_volume_size_lower,
+   (char *) NULL},
+  {PRM_NAME_UNICODE_INPUT_NORMALIZATION,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_TEST_CHANGE),
+   (void *) &prm_unicode_input_normalization_default,
+   (void *) &PRM_UNICODE_INPUT_NORMALIZATION,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_UNICODE_OUTPUT_NORMALIZATION,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_TEST_CHANGE),
+   (void *) &prm_unicode_output_normalization_default,
+   (void *) &PRM_UNICODE_OUTPUT_NORMALIZATION,
+   (void *) NULL, (void *) NULL,
    (char *) NULL}
 };
 

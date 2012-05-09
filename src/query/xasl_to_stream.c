@@ -97,10 +97,6 @@ static int xts_save_indx_info (const INDX_INFO * indx_info);
 static int xts_save_outptr_list (const OUTPTR_LIST * outptr_list);
 static int xts_save_selupd_list (const SELUPD_LIST * selupd_list);
 static int xts_save_pred_expr (const PRED_EXPR * ptr);
-static int xts_save_partition_info (const XASL_PARTITION_INFO * ptr);
-static int xts_save_parts_info (const XASL_PARTS_INFO * ptr);
-static int xts_save_parts_array (XASL_PARTS_INFO ** ptr, int size);
-static int xts_save_partition_array (XASL_PARTITION_INFO ** ptr, int size);
 static int xts_save_regu_variable (const REGU_VARIABLE * ptr);
 static int xts_save_regu_variable_list (const REGU_VARIABLE_LIST ptr);
 static int xts_save_regu_varlist_list (const REGU_VARLIST_LIST ptr);
@@ -128,7 +124,7 @@ static int xts_save_hfid_array (HFID * ptr, int size);
 static int xts_save_oid_array (OID * ptr, int size);
 static int xts_save_method_sig_list (const METHOD_SIG_LIST * ptr);
 static int xts_save_key_range_array (const KEY_RANGE * ptr, int size);
-static int xts_save_update_class_info_array (const UPDATE_CLASS_INFO *
+static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO *
 					     classes, int nelements);
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT *
 					     assigns, int nelements);
@@ -156,8 +152,8 @@ static char *xts_process_mergelist_proc (char *ptr,
 static char *xts_process_ls_merge_info (char *ptr,
 					const QFILE_LIST_MERGE_INFO *
 					qfile_list_merge_info);
-static char *xts_save_update_class_info (char *ptr,
-					 const UPDATE_CLASS_INFO * upd_cls);
+static char *xts_save_upddel_class_info (char *ptr,
+					 const UPDDEL_CLASS_INFO * upd_cls);
 static char *xts_save_update_assignment (char *ptr,
 					 const UPDATE_ASSIGNMENT * assign);
 static char *xts_process_update_proc (char *ptr,
@@ -166,16 +162,13 @@ static char *xts_process_delete_proc (char *ptr,
 				      const DELETE_PROC_NODE * delete_proc);
 static char *xts_process_insert_proc (char *ptr,
 				      const INSERT_PROC_NODE * insert_proc);
+static char *xts_process_merge_proc (char *ptr,
+				     const MERGE_PROC_NODE * merge_info);
 static char *xts_process_outptr_list (char *ptr,
 				      const OUTPTR_LIST * outptr_list);
 static char *xts_process_selupd_list (char *ptr,
 				      const SELUPD_LIST * selupd_list);
 static char *xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr);
-static char *xts_process_partition_info (char *ptr,
-					 const XASL_PARTITION_INFO *
-					 partition_info);
-static char *xts_process_parts_info (char *ptr,
-				     const XASL_PARTS_INFO * parts_info);
 static char *xts_process_pred (char *ptr, const PRED * pred);
 static char *xts_process_eval_term (char *ptr, const EVAL_TERM * eval_term);
 static char *xts_process_comp_eval_term (char *ptr,
@@ -243,16 +236,15 @@ static int xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * ptr);
 static int xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * ptr);
 static int xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * ptr);
 static int xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
-static int xts_sizeof_update_class_info (const UPDATE_CLASS_INFO * upd_cls);
+static int xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls);
 static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
 static int xts_sizeof_update_proc (const UPDATE_PROC_NODE * ptr);
 static int xts_sizeof_delete_proc (const DELETE_PROC_NODE * ptr);
 static int xts_sizeof_insert_proc (const INSERT_PROC_NODE * ptr);
+static int xts_sizeof_merge_proc (const MERGE_PROC_NODE * ptr);
 static int xts_sizeof_outptr_list (const OUTPTR_LIST * ptr);
 static int xts_sizeof_selupd_list (const SELUPD_LIST * ptr);
 static int xts_sizeof_pred_expr (const PRED_EXPR * ptr);
-static int xts_sizeof_partition_info (const XASL_PARTITION_INFO * ptr);
-static int xts_sizeof_parts_info (const XASL_PARTS_INFO * ptr);
 static int xts_sizeof_pred (const PRED * ptr);
 static int xts_sizeof_eval_term (const EVAL_TERM * ptr);
 static int xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * ptr);
@@ -1205,201 +1197,6 @@ end:
       free_and_init (buf_p);
     }
 
-  return offset;
-}
-
-static int
-xts_save_partition_info (const XASL_PARTITION_INFO * partition_info)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*partition_info) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (partition_info == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (partition_info);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_partition_info (partition_info);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED
-      || xts_mark_ptr_visited (partition_info, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  if (xts_process_partition_info (buf_p, partition_info) == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
-static int
-xts_save_parts_info (const XASL_PARTS_INFO * parts_info)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*parts_info) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (parts_info == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (parts_info);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_parts_info (parts_info);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED
-      || xts_mark_ptr_visited (parts_info, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  if (xts_process_parts_info (buf_p, parts_info) == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
-static int
-xts_save_parts_array (XASL_PARTS_INFO ** parts_info_array, int nelements)
-{
-  int offset;
-  int *offset_array;
-  int i;
-
-  offset_array = (int *) malloc (sizeof (int) * nelements);
-  if (offset_array == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < nelements; i++)
-    {
-      offset_array[i] = xts_save_parts_info (parts_info_array[i]);
-      if (offset_array[i] == ER_FAILED)
-	{
-	  free_and_init (offset_array);
-	  return ER_FAILED;
-	}
-    }
-
-  offset = xts_save_int_array (offset_array, nelements);
-
-  free_and_init (offset_array);
-  return offset;
-}
-
-static int
-xts_save_partition_array (XASL_PARTITION_INFO ** partition_info_array,
-			  int nelements)
-{
-  int offset;
-  int *offset_array;
-  int i;
-
-  offset_array = (int *) malloc (sizeof (int) * nelements);
-  if (offset_array == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < nelements; i++)
-    {
-      offset_array[i] = ((partition_info_array[i] == NULL) ?
-			 0 :
-			 xts_save_partition_info (partition_info_array[i]));
-      if (offset_array[i] == ER_FAILED)
-	{
-	  free_and_init (offset_array);
-	  return ER_FAILED;
-	}
-    }
-
-  offset = xts_save_int_array (offset_array, nelements);
-
-  free_and_init (offset_array);
   return offset;
 }
 
@@ -3109,6 +2906,10 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     case DO_PROC:
       break;
 
+    case MERGE_PROC:
+      ptr = xts_process_merge_proc (ptr, &xasl->proc.merge);
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -3556,7 +3357,7 @@ xts_process_ls_merge_info (char *ptr,
 }
 
 static char *
-xts_save_update_class_info (char *ptr, const UPDATE_CLASS_INFO * upd_cls)
+xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
 {
   int offset = 0;
 
@@ -3591,16 +3392,8 @@ xts_save_update_class_info (char *ptr, const UPDATE_CLASS_INFO * upd_cls)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-
-  /* partition */
-  offset = xts_save_partition_array (upd_cls->partition,
-				     upd_cls->no_subclasses);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
+  /* pruning info */
+  ptr = or_pack_int (ptr, upd_cls->needs_pruning);
   /* has_uniques */
   ptr = or_pack_int (ptr, upd_cls->has_uniques);
 
@@ -3608,12 +3401,12 @@ xts_save_update_class_info (char *ptr, const UPDATE_CLASS_INFO * upd_cls)
 }
 
 static int
-xts_save_update_class_info_array (const UPDATE_CLASS_INFO * classes,
+xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO * classes,
 				  int nelements)
 {
   char *ptr = NULL, *buf = NULL;
   int idx, offset = ER_FAILED;
-  int size = xts_sizeof_update_class_info (classes) * nelements;
+  int size = xts_sizeof_upddel_class_info (classes) * nelements;
 
   assert (nelements > 0);
   assert (size > 0);
@@ -3634,7 +3427,7 @@ xts_save_update_class_info_array (const UPDATE_CLASS_INFO * classes,
 
   for (idx = 0; idx < nelements; idx++)
     {
-      ptr = xts_save_update_class_info (ptr, &classes[idx]);
+      ptr = xts_save_upddel_class_info (ptr, &classes[idx]);
       if (ptr == NULL)
 	{
 	  offset = ER_FAILED;
@@ -3734,7 +3527,7 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   /* classes */
   ptr = or_pack_int (ptr, update_info->no_classes);
   offset =
-    xts_save_update_class_info_array (update_info->classes,
+    xts_save_upddel_class_info_array (update_info->classes,
 				      update_info->no_classes);
   if (offset == ER_FAILED)
     {
@@ -3784,15 +3577,8 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   ptr = or_pack_int (ptr, delete_info->no_classes);
 
   offset =
-    xts_save_oid_array (delete_info->class_oid, delete_info->no_classes);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset =
-    xts_save_hfid_array (delete_info->class_hfid, delete_info->no_classes);
+    xts_save_upddel_class_info_array (delete_info->classes,
+				      delete_info->no_classes);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3847,7 +3633,31 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->is_first_value);
 
-  offset = xts_save_partition_info (insert_info->partition);
+  ptr = or_pack_int (ptr, insert_info->needs_pruning);
+
+  return ptr;
+}
+
+static char *
+xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE *merge_info)
+{
+  int offset;
+
+  offset = xts_save_xasl_node (merge_info->update_xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_xasl_node (merge_info->delete_xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_xasl_node (merge_info->insert_xasl);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3934,57 +3744,6 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
     }
-
-  return ptr;
-}
-
-static char *
-xts_process_partition_info (char *ptr,
-			    const XASL_PARTITION_INFO * partition_info)
-{
-  int offset;
-
-  ptr = or_pack_int (ptr, partition_info->key_attr);
-
-  ptr = or_pack_int (ptr, partition_info->type);
-
-  ptr = or_pack_int (ptr, partition_info->no_parts);
-
-  ptr = or_pack_int (ptr, partition_info->act_parts);
-
-  offset = xts_save_regu_variable (partition_info->expr);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_parts_array (partition_info->parts,
-				 partition_info->no_parts);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  return ptr;
-}
-
-static char *
-xts_process_parts_info (char *ptr, const XASL_PARTS_INFO * parts_info)
-{
-  int offset;
-
-  ptr = or_pack_oid (ptr, (OID *) & parts_info->class_oid);
-
-  ptr = or_pack_hfid (ptr, &parts_info->class_hfid);
-
-  offset = xts_save_db_value (parts_info->vals);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -4267,6 +4026,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->qualified_block);
 
   ptr = or_pack_int (ptr, access_spec->single_fetch);
+
+  ptr = or_pack_int (ptr, access_spec->needs_pruning);
 
   offset = xts_save_db_value (access_spec->s_dbval);
   if (offset == ER_FAILED)
@@ -5297,6 +5058,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     case DO_PROC:
       break;
 
+    case MERGE_PROC:
+      size += xts_sizeof_merge_proc (&xasl->proc.merge);
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
@@ -5503,12 +5268,12 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
 }
 
 /*
- * xts_sizeof_update_class_info () -
+ * xts_sizeof_upddel_class_info () -
  *   return:
  *   ptr(in)    :
  */
 static int
-xts_sizeof_update_class_info (const UPDATE_CLASS_INFO * upd_cls)
+xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls)
 {
   int size = 0;
 
@@ -5517,7 +5282,7 @@ xts_sizeof_update_class_info (const UPDATE_CLASS_INFO * upd_cls)
     PTR_SIZE +			/* class_hfid */
     OR_INT_SIZE +		/* no_attrs */
     PTR_SIZE +			/* att_id */
-    PTR_SIZE +			/* PARTITION INFO array */
+    OR_INT_SIZE +		/* needs pruning */
     OR_INT_SIZE;		/* has_uniques */
 
   return size;
@@ -5573,9 +5338,8 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* no_classes */
-    PTR_SIZE +			/* class_oid */
-    PTR_SIZE +			/* class_hfid */
+  size += PTR_SIZE +		/* classes */
+    OR_INT_SIZE +		/* no_classes */
     OR_INT_SIZE +		/* wait_msecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE;		/* release_lock */
@@ -5604,7 +5368,24 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
     OR_INT_SIZE +		/* release_lock */
     OR_INT_SIZE +		/* do_replace */
     OR_INT_SIZE +		/* dup_key_oid_var_index */
-    PTR_SIZE;			/* partition_info */
+    OR_INT_SIZE;		/* needs pruning */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_merge_proc () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
+{
+  int size = 0;
+
+  size += PTR_SIZE +		/* update_xasl */
+    PTR_SIZE +			/* delete_xasl */
+    PTR_SIZE;			/* insert_xasl */
 
   return size;
 }
@@ -5665,43 +5446,6 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
     }
-
-  return size;
-}
-
-/*
- * xts_sizeof_partition_info () -
- *   return:
- *   ptr(in)    :
- */
-static int
-xts_sizeof_partition_info (const XASL_PARTITION_INFO * partition_info)
-{
-  int size = 0;
-
-  size = OR_INT_SIZE +		/* key_attr */
-    OR_INT_SIZE +		/* type */
-    OR_INT_SIZE +		/* no_parts */
-    OR_INT_SIZE +		/* act_parts */
-    PTR_SIZE +			/* expr */
-    PTR_SIZE;			/* parts */
-
-  return size;
-}
-
-/*
- * xts_sizeof_parts_info () -
- *   return:
- *   ptr(in)    :
- */
-static int
-xts_sizeof_parts_info (const XASL_PARTS_INFO * parts_info)
-{
-  int size = 0;
-
-  size = OR_OID_SIZE +		/* cls_oid */
-    OR_HFID_SIZE +		/* hfid */
-    PTR_SIZE;			/* vals */
 
   return size;
 }
@@ -5979,6 +5723,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
     OR_INT_SIZE +		/* fixed_scan */
     OR_INT_SIZE +		/* qualified_scan */
     OR_INT_SIZE +		/* single_fetch */
+    OR_INT_SIZE +		/* needs pruning */
     PTR_SIZE;			/* s_dbval */
 
   return size;

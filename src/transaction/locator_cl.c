@@ -73,7 +73,15 @@ struct locator_mflush_cache
 				 */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe one object               */
   LOCATOR_MFLUSH_TEMP_OID *mop_toids;	/* List of objects with temp. OIDs   */
+  LOCATOR_MFLUSH_TEMP_OID *mop_uoids;	/* List of object which we're updating
+					 * in a partitioned class. We have to
+					 * keep track of this because they 
+					 * might return with a different class
+					 * and we have to mark them
+					 * accordingly
+					 */
   MOP mop_tail_toid;
+  MOP mop_tail_uoid;
   MOP class_mop;		/* Class_mop of last mflush object   */
   MOBJ class_obj;		/* The class of last mflush object   */
   HFID *hfid;			/* Instance heap of last mflush obj  */
@@ -3878,7 +3886,9 @@ locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush)
   assert (mflush != NULL);
 
   mflush->mop_toids = NULL;
+  mflush->mop_uoids = NULL;
   mflush->mop_tail_toid = NULL;
+  mflush->mop_tail_uoid = NULL;
   mflush->mobjs->start_multi_update = 0;
   mflush->mobjs->end_multi_update = 0;
   mflush->mobjs->num_objs = 0;
@@ -3917,6 +3927,8 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush,
 
   mflush->mop_toids = NULL;
   mflush->mop_tail_toid = NULL;
+  mflush->mop_uoids = NULL;
+  mflush->mop_tail_uoid = NULL;
   mflush->mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (mflush->copy_area);
   mflush->mobjs->start_multi_update = 0;
   mflush->mobjs->end_multi_update = 0;
@@ -4043,6 +4055,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs,
 						    mop_toid->obj);
 	      COPY_OID (&obj->oid, oid);
+	      /* TODO: see if you need to look for partitions here */
 	      obj->operation = LC_FLUSH_UPDATE;
 	      mop_toid->mop = NULL;
 	    }
@@ -4057,6 +4070,18 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	{
 	  /* Free the memory ... and finish */
 	  mop_toid = mflush->mop_toids;
+	  while (mop_toid != NULL)
+	    {
+	      next_mop_toid = mop_toid->next;
+	      /*
+	       * Set mop to NULL before freeing the structure, so that it does not
+	       * become a GC root for this mop..
+	       */
+	      mop_toid->mop = NULL;
+	      free_and_init (mop_toid);
+	      mop_toid = next_mop_toid;
+	    }
+	  mop_toid = mflush->mop_uoids;
 	  while (mop_toid != NULL)
 	    {
 	      next_mop_toid = mop_toid->next;
@@ -4089,7 +4114,41 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 		}
 	      else if (!(OID_ISTEMP (&obj->oid)))
 		{
-		  ws_perm_oid (mop_toid->mop, &obj->oid);
+		  ws_perm_oid_and_class (mop_toid->mop, &obj->oid,
+					 &obj->class_oid);
+		}
+	    }
+	  next_mop_toid = mop_toid->next;
+	  /*
+	   * Set mop to NULL before freeing the structure, so that it does not
+	   * become a GC root for this mop..
+	   */
+	  mop_toid->mop = NULL;
+	  free_and_init (mop_toid);
+	  mop_toid = next_mop_toid;
+	}
+
+      /* Notify the workspace about the changes that were made to objects
+       * belonging to partitioned classes. In the case of a partition change,
+       * what the server returns here is a new object (not an updated one) and
+       * the object that we sent was deleted
+       */
+      mop_toid = mflush->mop_uoids;
+      while (mop_toid != NULL)
+	{
+	  if (mop_toid->mop != NULL)
+	    {
+	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs,
+						    mop_toid->obj);
+	      if (!OID_EQ (WS_OID (mop_toid->mop->class_mop),
+			   &obj->class_oid))
+		{
+		  assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
+		  error_code =
+		    ws_update_oid_and_class (mop_toid->mop, &obj->oid,
+					     &obj->class_oid);
+		  /* Do not return in case of error. Allow the allocated
+		   * memory to be freed first */
 		}
 	    }
 	  next_mop_toid = mop_toid->next;
@@ -4120,7 +4179,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	}
     }
 
-  /* Now reset the flusing area... and continue flushing */
+  /* Now reset the flushing area... and continue flushing */
   locator_mflush_reset (mflush);
 
   return error_code;
@@ -4361,7 +4420,7 @@ locator_mflush (MOP mop, void *mf)
   int status;
   bool decache;
   WS_MAP_STATUS map_status;
-
+  bool is_owner_partitioned = false;
   mflush = (LOCATOR_MFLUSH_CACHE *) mf;
 
   /* Flush the instance only if it is dirty */
@@ -4403,7 +4462,7 @@ locator_mflush (MOP mop, void *mf)
 #endif /* CUBRID_DEBUG */
 
   class_mop = ws_class_mop (mop);
-  if (class_mop == NULL)
+  if (class_mop == NULL || class_mop->object == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE, 3, oid->volid, oid->pageid,
@@ -4416,6 +4475,9 @@ locator_mflush (MOP mop, void *mf)
 #endif /* CUBRID_DEBUG */
       return WS_MAP_FAIL;
     }
+
+  is_owner_partitioned =
+    (((SM_CLASS *) class_mop->object)->partition_of != NULL);
 
   if (WS_ISDIRTY (class_mop) && class_mop != mop)
     {
@@ -4509,11 +4571,13 @@ locator_mflush (MOP mop, void *mf)
     {
       if (OID_ISTEMP (oid))
 	{
-	  operation = LC_FLUSH_INSERT;
+	  operation =
+	    is_owner_partitioned ? LC_FLUSH_INSERT_PRUNE : LC_FLUSH_INSERT;
 	}
       else
 	{
-	  operation = LC_FLUSH_UPDATE;
+	  operation =
+	    is_owner_partitioned ? LC_FLUSH_UPDATE_PRUNE : LC_FLUSH_UPDATE;
 	}
 
       /* Is the object a class ? */
@@ -4567,7 +4631,7 @@ locator_mflush (MOP mop, void *mf)
 
   /* Now update the mflush structure */
 
-  if (operation == LC_FLUSH_INSERT)
+  if (LC_IS_FLUSH_INSERT (operation))
     {
       /*
        * For new objects, make sure that its OID is still a temporary
@@ -4600,9 +4664,42 @@ locator_mflush (MOP mop, void *mf)
 	}
       else
 	{
-	  operation = LC_FLUSH_UPDATE;
+	  operation =
+	    (operation ==
+	     LC_FLUSH_INSERT) ? LC_FLUSH_UPDATE : LC_FLUSH_UPDATE_PRUNE;
 	  oid = ws_oid (mop);
 	}
+    }
+  else if (operation == LC_FLUSH_UPDATE_PRUNE)
+    {
+      /* We have to keep track of updated objects from partitioned classes.
+       * If this object will be moved in another partition we have to mark it
+       * like this (a delete/insert operation). This means that the current
+       * mop will be deleted and the partition that received this object will
+       * have a new mop in its obj list.
+       */
+      LOCATOR_MFLUSH_TEMP_OID *mop_uoid;
+
+      mop_uoid = (LOCATOR_MFLUSH_TEMP_OID *) malloc (sizeof (*mop_uoid));
+      if (mop_uoid == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*mop_uoid));
+	  return WS_MAP_FAIL;
+	}
+
+      assert (mflush->mop_tail_uoid != mop);
+
+      if (mflush->mop_tail_uoid == NULL)
+	{
+	  mflush->mop_tail_uoid = mop;
+	}
+
+      mop_uoid->mop = mop;
+      mop_uoid->obj = mflush->mobjs->num_objs;
+      mop_uoid->next = mflush->mop_uoids;
+      mflush->mop_uoids = mop_uoid;
+
     }
 
   if (HFID_IS_NULL (hfid))
@@ -4914,7 +5011,7 @@ locator_flush_all_instances (MOP class_mop, bool decache)
     }
   hfid = sm_heap (class_obj);
   /*
-   * Flush all intances of the class
+   * Flush all instances of the class
    */
   /* TODO this code should flush all the partitions of a partitioned class. */
   error_code = locator_mflush_initialize (&mflush, class_mop, class_obj,
@@ -6362,12 +6459,31 @@ locator_add_to_oidset_when_temp_oid (MOP mop, void *data)
   OID *oid;
   int map_status;
   MOBJ object;
+  MOP class_mop = NULL;
 
   map_status = WS_MAP_CONTINUE;
   if (WS_ISVID (mop))
     {
       return map_status;
     }
+  class_mop = ws_class_mop (mop);
+  if (class_mop != NULL)
+    {
+      SM_CLASS *class_ = (SM_CLASS *) class_mop->object;
+      if (class_->partition_of != NULL && class_->users != NULL)
+	{
+	  /* do not assign permanent OIDs to objects inserted into partitioned
+	   * classes yet because we don't know in which partition they will
+	   * end up */
+	  return WS_MAP_CONTINUE;
+	}
+    }
+  else
+    {
+      /* can this actually happen? */
+      assert (false);
+    }
+
   oid = ws_oid (mop);
 
   if (OID_ISTEMP (oid) && ws_find (mop, &object) != WS_FIND_MOP_DELETED)

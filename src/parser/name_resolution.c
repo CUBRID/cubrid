@@ -3368,7 +3368,9 @@ pt_check_same_datatype (const PARSER_CONTEXT * parser, const PT_NODE * p,
 	  if (dt1->info.data_type.precision != dt2->info.data_type.precision
 	      || dt1->info.data_type.dec_precision !=
 	      dt2->info.data_type.dec_precision
-	      || dt1->info.data_type.units != dt2->info.data_type.units)
+	      || dt1->info.data_type.units != dt2->info.data_type.units
+	      || dt1->info.data_type.collation_id !=
+	      dt2->info.data_type.collation_id)
 	    {
 	      return 0;
 	    }
@@ -3543,6 +3545,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->info.data_type.precision = db_domain_precision (domain);
       result->info.data_type.dec_precision = db_domain_scale (domain);
       result->info.data_type.units = db_domain_codeset (domain);
+      result->info.data_type.collation_id = db_domain_collation_id (domain);
+      assert (result->info.data_type.collation_id >= 0);
       break;
     case PT_TYPE_OBJECT:
       /* get the object */
@@ -6350,6 +6354,71 @@ pt_unique_id (PARSER_CONTEXT * parser, UINTPTR t)
   char c[40];
   sprintf (c, "a%lld", (long long) t);
   return pt_append_string (parser, 0, c);
+}
+
+/*
+ * pt_quick_resolve_names () - resolve names in node_p based on the spec
+ *			       spec_p
+ * return : error code or NO_ERROR
+ * parser (in) : parser context
+ * spec_p (in/out) : PT_SPEC for the table containing the names in node_p
+ * node_p (in/out) : the node to resolve
+ * sc_info (in): semantic check info
+ *
+ * Note: Call this function to resolve the names in a node outside of a
+ * statement context
+ */
+int
+pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
+			PT_NODE ** node_p, SEMANTIC_CHK_INFO * sc_info)
+{
+  PT_BIND_NAMES_ARG bind_arg;
+  PT_NODE *chk_parent = NULL;
+  PT_NODE *spec = NULL, *node = NULL, *parent = NULL;
+  int walk = 0;
+  SCOPES scopestack;
+  PT_EXTRA_SPECS_FRAME spec_frame;
+
+  if (node_p == NULL || spec_p == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  spec = *spec_p;
+  node = *node_p;
+  if (spec == NULL || node == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* convert spec to a flat entity list */
+  spec = pt_flat_spec_pre (parser, spec, &parent, &walk);
+
+  /* bind spec in scope */
+  bind_arg.scopes = NULL;
+  bind_arg.spec_frames = NULL;
+  bind_arg.sc_info = sc_info;
+
+  scopestack.next = bind_arg.scopes;
+  scopestack.specs = spec;
+  scopestack.correlation_level = 0;
+  scopestack.location = 0;
+
+  bind_arg.scopes = &scopestack;
+  spec_frame.next = bind_arg.spec_frames;
+  spec_frame.extra_specs = NULL;
+  bind_arg.spec_frames = &spec_frame;
+
+  *spec_p = spec;
+  node = *node_p;
+  /* resolve expression */
+  node = parser_walk_tree (parser, node, pt_bind_names, &bind_arg,
+			   pt_bind_names_post, &bind_arg);
+
+  node_p = &node;
+  return NO_ERROR;
 }
 
 /*

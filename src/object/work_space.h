@@ -474,6 +474,9 @@ extern bool ws_rehash_vmop (MOP mop, MOBJ class_obj, DB_VALUE * newkey);
 extern MOP ws_new_mop (OID * oid, MOP class_mop);
 #endif
 extern void ws_perm_oid (MOP mop, OID * newoid);
+extern int ws_perm_oid_and_class (MOP mop, OID * new_oid,
+				  OID * new_class_oid);
+extern int ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class);
 extern DB_VALUE *ws_keys (MOP vid, unsigned int *flags);
 
 /* Reference mops */

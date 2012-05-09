@@ -94,42 +94,19 @@ static wchar_t *intl_copy_lowercase (const wchar_t * ws, size_t n);
 static int intl_is_korean (unsigned char ch);
 
 /* UTF-8 string manipulations */
-static int intl_tolower_utf8 (bool is_identifier,
+static int intl_tolower_utf8 (const ALPHABET_DATA * a,
 			      unsigned char *s, unsigned char *d,
 			      int length_in_chars, int *d_size);
-static int intl_toupper_utf8 (bool is_identifier,
+static int intl_toupper_utf8 (const ALPHABET_DATA * a,
 			      unsigned char *s, unsigned char *d,
 			      int length_in_chars, int *d_size);
 static int intl_count_utf8_bytes (unsigned char *s, int length_in_chars);
-static int intl_char_tolower_utf8 (bool is_identifier,
+static int intl_char_tolower_utf8 (const ALPHABET_DATA * a,
 				   unsigned char *s, const int size,
 				   unsigned char *d, unsigned char **next);
-static int intl_char_toupper_utf8 (bool is_identifier,
+static int intl_char_toupper_utf8 (const ALPHABET_DATA * a,
 				   unsigned char *s, const int size,
 				   unsigned char *d, unsigned char **next);
-static COLL_CONTRACTION *intl_get_contr_for_string (const
-						    COLL_DATA * coll_data,
-						    const unsigned char *str,
-						    const int str_size,
-						    unsigned int cp);
-static void intl_get_uca_w_l13 (const COLL_DATA * coll_data,
-				const unsigned char *str, const int size,
-				UCA_L13_W ** uca_w_l13, int *num_ce,
-				unsigned char **str_next);
-static void intl_get_uca_w_l4 (const COLL_DATA * coll_data,
-			       const unsigned char *str, const int size,
-			       UCA_L4_W ** uca_w_l4, int *num_ce,
-			       unsigned char **str_next);
-static int intl_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data,
-					 const int level,
-					 const unsigned char *str1,
-					 const int size1,
-					 const unsigned char *str2,
-					 const int size2);
-static int intl_strcmp_check_trail_spaces (const unsigned char *str1,
-					   const int size1,
-					   const unsigned char *str2,
-					   const int size2);
 static int intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
 					unsigned char *str1,
 					unsigned char *str2,
@@ -142,7 +119,7 @@ static void intl_init_conv_iso8859_1_to_utf8 (void);
 
 
 TEXT_CONVERSION con_iso_8859_9_conv = {
-  TEXT_CONV_GENERIC_1BYTE,	/* type */
+  TEXT_CONV_ISO_88599_BUILTIN,	/* type */
   (char *) "28599",		/* Windows Code page */
   (char *) "iso88599",		/* Linux charset identifiers */
   0,				/* first lead byte value : not used for ISO */
@@ -154,7 +131,7 @@ TEXT_CONVERSION con_iso_8859_9_conv = {
 };
 
 TEXT_CONVERSION con_iso_8859_1_conv = {
-  TEXT_CONV_GENERIC_1BYTE,	/* type */
+  TEXT_CONV_ISO_88591_BUILTIN,	/* type */
   (char *) "28591",		/* Windows Code page */
   (char *) "iso88591",		/* Linux charset identifiers */
   0,				/* first lead byte value : not used for ISO */
@@ -1064,6 +1041,7 @@ intl_char_count (unsigned char *src, int length_in_bytes,
       break;
 
     default:
+      assert (false);
       *char_count = 0;
       break;
     }
@@ -1102,6 +1080,7 @@ intl_char_size (unsigned char *src, int length_in_chars,
       break;
 
     default:
+      assert (false);
       *byte_count = 0;
       break;
     }
@@ -1165,6 +1144,7 @@ intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars,
       break;
 
     default:
+      assert (false);
       *byte_count = 0;
       break;
     }
@@ -1196,6 +1176,7 @@ intl_prev_char (unsigned char *s, INTL_CODESET codeset, int *prev_char_size)
       return intl_prevchar_utf8 (s, prev_char_size);
 
     default:
+      assert (false);
       *prev_char_size = 0;
       return s;
     }
@@ -1239,6 +1220,7 @@ intl_prev_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
       return intl_prevchar_utf8 (s, prev_char_size);
 
     default:
+      assert (false);
       *prev_char_size = 0;
       return s;
     }
@@ -1272,6 +1254,7 @@ intl_next_char (unsigned char *s, INTL_CODESET codeset,
       return intl_nextchar_utf8 (s, current_char_size);
 
     default:
+      assert (false);
       *current_char_size = 0;
       return s;
     }
@@ -1315,6 +1298,7 @@ intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
       return intl_nextchar_utf8 (s, current_char_size);
 
     default:
+      assert (false);
       *current_char_size = 0;
       return s;
     }
@@ -1357,6 +1341,7 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
       }
 
     default:
+      assert (false);
       *char_size = 1;
       return 0;
     }
@@ -1410,6 +1395,7 @@ intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
       }
 
     default:
+      assert (false);
       *char_size = 1;
       return 0;
     }
@@ -1506,6 +1492,7 @@ intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char,
       break;
 
     default:
+      assert (false);
       break;
     }
 }
@@ -1545,19 +1532,21 @@ intl_pad_size (INTL_CODESET codeset)
  * intl_upper_string_size() - determine the size required for holding
  *			     upper case of the input string
  *   return: required size
+ *   alphabet(in): alphabet data
  *   src(in): string to uppercase
  *   src_size(in): buffer size
  *   src_length(in): length of the string measured in characters
- *   src_codeset(in): enumeration of src string
  */
 int
-intl_upper_string_size (unsigned char *src, int src_size, int src_length,
-			INTL_CODESET src_codeset)
+intl_upper_string_size (const void *alphabet, unsigned char *src,
+			int src_size, int src_length)
 {
   int char_count;
   int req_size = src_size;
 
-  switch (src_codeset)
+  assert (alphabet != NULL);
+
+  switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
     case INTL_CODESET_ISO88591:
       break;
@@ -1574,8 +1563,8 @@ intl_upper_string_size (unsigned char *src, int src_size, int src_length,
 	for (char_count = 0; char_count < src_length && src_size > 0;
 	     char_count++)
 	  {
-	    req_size += intl_char_toupper_utf8 (false, src, src_size, upper,
-						&next);
+	    req_size += intl_char_toupper_utf8 (alphabet, src, src_size,
+						upper, &next);
 	    src_size -= (next - src);
 	    src = next;
 	  }
@@ -1583,6 +1572,7 @@ intl_upper_string_size (unsigned char *src, int src_size, int src_length,
       break;
 
     default:
+      assert (false);
       break;
     }
 
@@ -1593,18 +1583,20 @@ intl_upper_string_size (unsigned char *src, int src_size, int src_length,
  * intl_upper_string() - replace all lower case ASCII characters with their
  *                      upper case characters
  *   return: character counts
+ *   alphabet(in): alphabet data
  *   src(in/out): string source to uppercase
  *   dst(in/out): output string
  *   length_in_chars(in): length of the string measured in characters
- *   src_codeset(in): codeset of string
  */
 int
-intl_upper_string (unsigned char *src, unsigned char *dst,
-		   int length_in_chars, INTL_CODESET src_codeset)
+intl_upper_string (const void *alphabet, unsigned char *src,
+		   unsigned char *dst, int length_in_chars)
 {
   int char_count = 0;
 
-  switch (src_codeset)
+  assert (alphabet != NULL);
+
+  switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
     case INTL_CODESET_ISO88591:
       {
@@ -1635,12 +1627,13 @@ intl_upper_string (unsigned char *src, unsigned char *dst,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_toupper_utf8 (false, src, dst, length_in_chars,
+	char_count = intl_toupper_utf8 (alphabet, src, dst, length_in_chars,
 					&dummy_size);
       }
       break;
 
     default:
+      assert (false);
       break;
     }
 
@@ -1651,19 +1644,21 @@ intl_upper_string (unsigned char *src, unsigned char *dst,
  * intl_lower_string_size() - determine the size required for holding
  *			     lower case of the input string
  *   return: required size
+ *   alphabet(in): alphabet data
  *   src(in): string to lowercase
  *   src_size(in): buffer size
  *   src_length(in): length of the string measured in characters
- *   src_codeset(in): enumeration of src string
  */
 int
-intl_lower_string_size (unsigned char *src, int src_size, int src_length,
-			INTL_CODESET src_codeset)
+intl_lower_string_size (const void *alphabet, unsigned char *src,
+			int src_size, int src_length)
 {
   int char_count;
   int req_size = src_size;
 
-  switch (src_codeset)
+  assert (alphabet != NULL);
+
+  switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
     case INTL_CODESET_ISO88591:
       break;
@@ -1680,7 +1675,7 @@ intl_lower_string_size (unsigned char *src, int src_size, int src_length,
 	for (char_count = 0; char_count < src_length && src_size > 0;
 	     char_count++)
 	  {
-	    req_size += intl_char_tolower_utf8 (false, src, src_size,
+	    req_size += intl_char_tolower_utf8 (alphabet, src, src_size,
 						lower, &next);
 	    src_size -= (next - src);
 	    src = next;
@@ -1689,6 +1684,7 @@ intl_lower_string_size (unsigned char *src, int src_size, int src_length,
       break;
 
     default:
+      assert (false);
       break;
     }
 
@@ -1699,18 +1695,20 @@ intl_lower_string_size (unsigned char *src, int src_size, int src_length,
  * intl_lower_string() - replace all upper case characters with their
  *                      lower case characters
  *   return: character counts
+ *   alphabet(in): alphabet data
  *   src(in/out): string to lowercase
  *   dst(out): output string
  *   length_in_chars(in): length of the string measured in characters
- *   src_codeset(in): codeset of string
  */
 int
-intl_lower_string (unsigned char *src, unsigned char *dst,
-		   int length_in_chars, INTL_CODESET src_codeset)
+intl_lower_string (const void *alphabet, unsigned char *src,
+		   unsigned char *dst, int length_in_chars)
 {
   int char_count = 0;
 
-  switch (src_codeset)
+  assert (alphabet != NULL);
+
+  switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
     case INTL_CODESET_ISO88591:
       {
@@ -1741,12 +1739,13 @@ intl_lower_string (unsigned char *src, unsigned char *dst,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_tolower_utf8 (false, src, dst, length_in_chars,
+	char_count = intl_tolower_utf8 (alphabet, src, dst, length_in_chars,
 					&dummy_size);
       }
       break;
 
     default:
+      assert (false);
       break;
     }
 
@@ -1921,6 +1920,7 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
       break;
 
     default:
+      assert (false);
       break;
     }
 
@@ -2055,6 +2055,7 @@ static const unsigned char len_utf8_char[256] = {
   3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5,
   5, 5, 5, 6, 6, 1, 1
 };
+
 const unsigned char *const intl_Len_utf8_char = len_utf8_char;
 
 /*
@@ -2089,15 +2090,15 @@ intl_prevchar_utf8 (unsigned char *s, int *prev_char_length)
  * intl_tolower_utf8() - Replaces all upper case characters inside an UTF-8
  *			 encoded string with their lower case codes.
  *   return: character counts
- *   is_identifier(in): true if is identifier context
+ *   alphabet(in): alphabet to use
  *   s(in): UTF-8 string to lowercase
  *   d(out): output string
  *   length_in_chars(in): length of the string measured in characters
  *   d_size(out): size in bytes of destination
  */
 static int
-intl_tolower_utf8 (bool is_identifier, unsigned char *s, unsigned char *d,
-		   int length_in_chars, int *d_size)
+intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
+		   unsigned char *d, int length_in_chars, int *d_size)
 {
   int char_count, size;
   int s_size;
@@ -2115,7 +2116,7 @@ intl_tolower_utf8 (bool is_identifier, unsigned char *s, unsigned char *d,
 	{
 	  break;
 	}
-      size = intl_char_tolower_utf8 (is_identifier, s, s_size, d, &next);
+      size = intl_char_tolower_utf8 (alphabet, s, s_size, d, &next);
       d += size;
       *d_size += size;
 
@@ -2130,15 +2131,15 @@ intl_tolower_utf8 (bool is_identifier, unsigned char *s, unsigned char *d,
  * intl_toupper_utf8() - Replaces all lower case characters inside an UTF-8
  *			 encoded string with their upper case codes.
  *   return: character counts
- *   is_identifier(in): true if is identifier context
+ *   alphabet(in): alphabet to use
  *   s(in): UTF-8 string to uppercase
  *   d(out): output string
  *   length_in_chars(in): length of the string measured in characters
  *   d_size(out): size in bytes of destination
  */
 static int
-intl_toupper_utf8 (bool is_identifier, unsigned char *s, unsigned char *d,
-		   int length_in_chars, int *d_size)
+intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
+		   unsigned char *d, int length_in_chars, int *d_size)
 {
   int char_count, size;
   int s_size;
@@ -2156,7 +2157,7 @@ intl_toupper_utf8 (bool is_identifier, unsigned char *s, unsigned char *d,
 	{
 	  break;
 	}
-      size = intl_char_toupper_utf8 (is_identifier, s, s_size, d, &next);
+      size = intl_char_toupper_utf8 (alphabet, s, s_size, d, &next);
       d += size;
       *d_size += size;
 
@@ -2231,7 +2232,7 @@ intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
 /*
  * intl_char_tolower_utf8() - convert uppercase character to lowercase
  *   return: size of UTF-8 lowercase character corresponding to the argument
- *   is_identifier(in): true if is called in identifier context
+ *   alphabet(in): alphabet to use
  *   s (in): the UTF-8 buffer holding character to be converted
  *   size(in): size of UTF-8 buffer
  *   d (out): output buffer
@@ -2241,13 +2242,13 @@ intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
  *	   UTF-8 character
  */
 static int
-intl_char_tolower_utf8 (bool is_identifier, unsigned char *s, const int size,
-			unsigned char *d, unsigned char **next)
+intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
+			const int size, unsigned char *d,
+			unsigned char **next)
 {
-  const LANG_LOCALE_DATA *locale = lang_locale ();
-  const ALPHABET_DATA *alphabet =
-    is_identifier ? &(locale->ident_alphabet) : &(locale->alphabet);
   unsigned int cp = intl_utf8_to_cp (s, size, next);
+
+  assert (alphabet != NULL);
 
   if (cp < (unsigned int) (alphabet->l_count))
     {
@@ -2297,7 +2298,7 @@ intl_char_tolower_utf8 (bool is_identifier, unsigned char *s, const int size,
 /*
  * intl_char_toupper_utf8() - convert lowercase character to uppercase
  *   return: size of UTF-8 uppercase character corresponding to the argument
- *   is_identifier(in): true if is called in identifier context
+ *   alphabet(in): alphabet to use
  *   s (in): the UTF-8 buffer holding character to be converted
  *   size(in): size of UTF-8 buffer
  *   d (out): output buffer
@@ -2307,13 +2308,13 @@ intl_char_tolower_utf8 (bool is_identifier, unsigned char *s, const int size,
  *	   UTF-8 character
  */
 static int
-intl_char_toupper_utf8 (bool is_identifier, unsigned char *s, const int size,
-			unsigned char *d, unsigned char **next)
+intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
+			const int size, unsigned char *d,
+			unsigned char **next)
 {
-  const LANG_LOCALE_DATA *locale = lang_locale ();
-  const ALPHABET_DATA *alphabet =
-    is_identifier ? &(locale->ident_alphabet) : &(locale->alphabet);
   unsigned int cp = intl_utf8_to_cp (s, size, next);
+
+  assert (alphabet != NULL);
 
   if (cp < (unsigned int) (alphabet->l_count))
     {
@@ -2357,935 +2358,6 @@ intl_char_toupper_utf8 (bool is_identifier, unsigned char *s, const int size,
     }
 
   return intl_cp_to_utf8 (cp, d);
-}
-
-/*
- * intl_strcmp_utf8() - string compare for UTF8
- *   return:
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
- */
-int
-intl_strcmp_utf8 (const unsigned char *str1, const int size1,
-		  const unsigned char *str2, const int size2)
-{
-  const unsigned char *str1_end;
-  const unsigned char *str2_end;
-  unsigned char *str1_next, *str2_next;
-  unsigned int cp1, cp2, w_cp1, w_cp2;
-  const LANG_LOCALE_DATA *loc = lang_locale ();
-  const int alpha_cnt = loc->coll.w_count;
-  const unsigned int *weight_ptr = loc->coll.weights;
-
-  str1_end = str1 + size1;
-  str2_end = str2 + size2;
-
-  for (; str1 < str1_end && str2 < str2_end;)
-    {
-      assert (str1_end - str1 > 0);
-      assert (str2_end - str2 > 0);
-
-      cp1 = intl_utf8_to_cp (str1, str1_end - str1, &str1_next);
-      cp2 = intl_utf8_to_cp (str2, str2_end - str2, &str2_next);
-
-      if (cp1 < (unsigned int) alpha_cnt)
-	{
-	  w_cp1 = weight_ptr[cp1];
-	}
-      else
-	{
-	  w_cp1 = cp1;
-	}
-
-      if (cp2 < (unsigned int) alpha_cnt)
-	{
-	  w_cp2 = weight_ptr[cp2];
-	}
-      else
-	{
-	  w_cp2 = cp2;
-	}
-
-      if (w_cp1 != w_cp2)
-	{
-	  return (w_cp1 < w_cp2) ? (-1) : 1;
-	}
-
-      str1 = str1_next;
-      str2 = str2_next;
-    }
-
-  if (size1 == size2)
-    {
-      return 0;
-    }
-  else if (size1 < size2)
-    {
-      for (; str2 < str2_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str2 != 32 && *str2 != 0)
-	    {
-	      return -1;
-	    }
-	  str2 += intl_Len_utf8_char[*str2];
-	}
-    }
-  else
-    {
-      for (; str1 < str1_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str1 != 32 && *str1 != 0)
-	    {
-	      return 1;
-	    }
-	  str1 += intl_Len_utf8_char[*str1];
-	}
-    }
-
-  return 0;
-}
-
-/*
- * intl_strcmp_utf8_w_contr() - string compare for UTF8 for a locale
- *				having UCA contractions
- *   return:
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
- */
-int
-intl_strcmp_utf8_w_contr (const unsigned char *str1, const int size1,
-			  const unsigned char *str2, const int size2)
-{
-  const unsigned char *str1_end;
-  const unsigned char *str2_end;
-  unsigned char *str1_next, *str2_next;
-  unsigned int cp1, cp2, w_cp1, w_cp2;
-  const LANG_LOCALE_DATA *loc = lang_locale ();
-  const int alpha_cnt = loc->coll.w_count;
-  const unsigned int *weight_ptr = loc->coll.weights;
-
-  str1_end = str1 + size1;
-  str2_end = str2 + size2;
-
-  for (; str1 < str1_end && str2 < str2_end;)
-    {
-      assert (str1_end - str1 > 0);
-      assert (str2_end - str2 > 0);
-
-      cp1 = intl_utf8_to_cp (str1, str1_end - str1, &str1_next);
-      cp2 = intl_utf8_to_cp (str2, str2_end - str2, &str2_next);
-
-      if (cp1 < (unsigned int) alpha_cnt)
-	{
-	  COLL_CONTRACTION *contr = NULL;
-
-	  if (str1_end - str1 >= loc->coll.contr_min_size &&
-	      cp1 >= loc->coll.cp_first_contr_offset &&
-	      cp1 < (loc->coll.cp_first_contr_offset +
-		     loc->coll.cp_first_contr_count) &&
-	      ((contr =
-		intl_get_contr_for_string (&(loc->coll), str1,
-					   str1_end - str1, cp1)) != NULL))
-	    {
-	      assert (contr != NULL);
-
-	      w_cp1 = contr->wv;
-	      str1 += contr->size;
-	    }
-	  else
-	    {
-	      w_cp1 = weight_ptr[cp1];
-	      str1 = str1_next;
-	    }
-	}
-      else
-	{
-	  w_cp1 = cp1;
-	  str1 = str1_next;
-	}
-
-      if (cp2 < (unsigned int) alpha_cnt)
-	{
-	  COLL_CONTRACTION *contr = NULL;
-
-	  if (str2_end - str2 >= loc->coll.contr_min_size &&
-	      cp2 >= loc->coll.cp_first_contr_offset &&
-	      cp2 < (loc->coll.cp_first_contr_offset +
-		     loc->coll.cp_first_contr_count) &&
-	      ((contr =
-		intl_get_contr_for_string (&(loc->coll), str2,
-					   str2_end - str2, cp2)) != NULL))
-	    {
-	      assert (contr != NULL);
-
-	      w_cp2 = contr->wv;
-	      str2 += contr->size;
-	    }
-	  else
-	    {
-	      w_cp2 = weight_ptr[cp2];
-	      str2 = str2_next;
-	    }
-	}
-      else
-	{
-	  w_cp2 = cp2;
-	  str2 = str2_next;
-	}
-
-      if (w_cp1 != w_cp2)
-	{
-	  return (w_cp1 < w_cp2) ? (-1) : 1;
-	}
-    }
-
-  if (size1 == size2)
-    {
-      return 0;
-    }
-  else if (size1 < size2)
-    {
-      for (; str2 < str2_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str2 != 32 && *str2 != 0)
-	    {
-	      return -1;
-	    }
-	  str2 += intl_Len_utf8_char[*str2];
-	}
-    }
-  else
-    {
-      for (; str1 < str1_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str1 != 32 && *str1 != 0)
-	    {
-	      return 1;
-	    }
-	  str1 += intl_Len_utf8_char[*str1];
-	}
-    }
-
-  return 0;
-}
-
-/*
- * intl_get_contr_for_string() - searches the contraction for a given string
- *   return: contraction pointer or NULL if no contraction is found
- *   coll_data(in): collation data
- *   str(in): buffer to check for contractions
- *   str_size(in): size of buffer (bytes)
- *   cp(in): codepoint of first character in 'str'
- *
- */
-static COLL_CONTRACTION *
-intl_get_contr_for_string (const COLL_DATA * coll_data,
-			   const unsigned char *str, const int str_size,
-			   unsigned int cp)
-{
-  const int *first_contr;
-  int contr_id;
-  COLL_CONTRACTION *contr;
-  int cmp;
-
-  assert (coll_data != NULL);
-  assert (coll_data->count_contr > 0);
-
-  assert (str != NULL);
-  assert (str_size >= coll_data->contr_min_size);
-
-  first_contr = coll_data->cp_first_contr_array;
-  assert (first_contr != NULL);
-  contr_id = first_contr[cp - coll_data->cp_first_contr_offset];
-
-  if (contr_id == -1)
-    {
-      return NULL;
-    }
-
-  assert (contr_id >= 0 && contr_id < coll_data->count_contr);
-  contr = &(coll_data->contr_list[contr_id]);
-
-  do
-    {
-      if (contr->size > str_size)
-	{
-	  cmp = memcmp (contr->c_buf, str, str_size);
-	  if (cmp == 0)
-	    {
-	      cmp = 1;
-	    }
-	}
-      else
-	{
-	  cmp = memcmp (contr->c_buf, str, contr->size);
-	}
-
-      if (cmp >= 0)
-	{
-	  break;
-	}
-
-      assert (cmp < 0);
-
-      contr++;
-      contr_id++;
-
-    }
-  while (contr_id < coll_data->count_contr);
-
-  if (cmp != 0)
-    {
-      contr = NULL;
-    }
-
-  return contr;
-}
-
-static UCA_L13_W uca_l13_max_weight = 0xffffffff;
-static UCA_L4_W uca_l4_max_weight = 0xffff;
-
-/*
- * intl_get_uca_w_l13() - returns pointer to array of CEs of first collatable
- *			  element in string (codepoint or contraction) and
- *			  number of CEs in this array
- *   return:
- *   coll_data(in): collation data
- *   str(in): string to get weights for
- *   size(in): size of string (bytes)
- *   uca_w_l13(out): pointer to weight array
- *   num_ce(out): number of Collation Elements
- *   str_next(out): pointer to next collatable element in string
- *
- */
-static void
-intl_get_uca_w_l13 (const COLL_DATA * coll_data,
-		    const unsigned char *str, const int size,
-		    UCA_L13_W ** uca_w_l13, int *num_ce,
-		    unsigned char **str_next)
-{
-  unsigned int cp;
-  const int alpha_cnt = coll_data->w_count;
-  const int exp_num = coll_data->uca_exp_num;
-
-  assert (size > 0);
-
-  cp = intl_utf8_to_cp (str, size, str_next);
-
-  if (cp < (unsigned int) alpha_cnt)
-    {
-      COLL_CONTRACTION *contr = NULL;
-
-      if (coll_data->count_contr > 0
-	  && size >= coll_data->contr_min_size
-	  && cp >= coll_data->cp_first_contr_offset
-	  && cp < (coll_data->cp_first_contr_offset
-		   + coll_data->cp_first_contr_count)
-	  && ((contr = intl_get_contr_for_string (coll_data, str, size, cp))
-	      != NULL))
-	{
-	  assert (contr != NULL);
-	  *uca_w_l13 = contr->uca_w_l13;
-	  *num_ce = contr->uca_num;
-	  *str_next = (unsigned char *) str + contr->size;
-	}
-      else
-	{
-	  *uca_w_l13 = &(coll_data->uca_w_l13[cp * exp_num]);
-	  *num_ce = coll_data->uca_num[cp];
-	  /* leave next pointer to the one returned by 'intl_utf8_to_cp' */
-	}
-    }
-  else
-    {
-      *uca_w_l13 = &uca_l13_max_weight;
-      *num_ce = 1;
-      /* leave next pointer to the one returned by 'intl_utf8_to_cp' */
-    }
-}
-
-/*
- * intl_get_uca_w_l4() - returns pointer to array of CEs of first collatable
- *			 element in string (codepoint or contraction) and
- *			 number of CEs in this array
- *   return:
- *   coll_data(in): collation data
- *   str(in): string to get weights for
- *   size(in): size of string (bytes)
- *   uca_w_l13(out): pointer to weight array
- *   num_ce(out): number of Collation Elements
- *   str_next(out): pointer to next collatable element in string
- *
- */
-static void
-intl_get_uca_w_l4 (const COLL_DATA * coll_data,
-		   const unsigned char *str, const int size,
-		   UCA_L4_W ** uca_w_l4, int *num_ce,
-		   unsigned char **str_next)
-{
-  unsigned int cp;
-  const int alpha_cnt = coll_data->w_count;
-  const int exp_num = coll_data->uca_exp_num;
-
-  assert (size > 0);
-
-  cp = intl_utf8_to_cp (str, size, str_next);
-
-  if (cp < (unsigned int) alpha_cnt)
-    {
-      COLL_CONTRACTION *contr = NULL;
-
-      if (coll_data->count_contr > 0
-	  && size >= coll_data->contr_min_size
-	  && cp >= coll_data->cp_first_contr_offset
-	  && cp < (coll_data->cp_first_contr_offset
-		   + coll_data->cp_first_contr_count)
-	  && ((contr = intl_get_contr_for_string (coll_data, str, size, cp))
-	      != NULL))
-	{
-	  assert (contr != NULL);
-	  *uca_w_l4 = contr->uca_w_l4;
-	  *num_ce = contr->uca_num;
-	  *str_next = (unsigned char *) str + contr->size;
-	}
-      else
-	{
-	  *uca_w_l4 = &(coll_data->uca_w_l4[cp * exp_num]);
-	  *num_ce = coll_data->uca_num[cp];
-	  /* leave next pointer to the one returned by 'intl_utf8_to_cp' */
-	}
-    }
-  else
-    {
-      *uca_w_l4 = &uca_l4_max_weight;
-      *num_ce = 1;
-      /* leave next pointer to the one returned by 'intl_utf8_to_cp' */
-    }
-}
-
-
-/*
- * intl_strcmp_utf8_uca_w_level() - string compare for UTF8 for a locale using
- *			    full UCA weights (expansions and contractions)
- *   return:
- *   coll_data(in):
- *   level(in):
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
- */
-static int
-intl_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
-			      const unsigned char *str1, const int size1,
-			      const unsigned char *str2, const int size2)
-{
-  const unsigned char *str1_end;
-  const unsigned char *str2_end;
-  unsigned char *str1_next, *str2_next;
-  UCA_L13_W *uca_w_l13_1;
-  UCA_L13_W *uca_w_l13_2;
-  UCA_L4_W *uca_w_l4_1;
-  UCA_L4_W *uca_w_l4_2;
-  int num_ce1 = 0, num_ce2 = 0;
-  int ce_index1 = 0, ce_index2 = 0;
-  unsigned int w1, w2;
-
-  str1_end = str1 + size1;
-  str2_end = str2 + size2;
-  str1_next = (unsigned char *) str1;
-  str2_next = (unsigned char *) str2;
-
-  for (;;)
-    {
-    read_weights1:
-      if (num_ce1 == 0)
-	{
-	  str1 = str1_next;
-	  if (str1 >= str1_end)
-	    {
-	      goto read_weights2;
-	    }
-
-	  if (level == 3)
-	    {
-	      intl_get_uca_w_l4 (coll_data, str1, str1_end - str1,
-				 &uca_w_l4_1, &num_ce1, &str1_next);
-	    }
-	  else
-	    {
-	      intl_get_uca_w_l13 (coll_data, str1, str1_end - str1,
-				  &uca_w_l13_1, &num_ce1, &str1_next);
-	    }
-	  assert (num_ce1 > 0);
-
-	  ce_index1 = 0;
-	}
-
-    read_weights2:
-      if (num_ce2 == 0)
-	{
-	  str2 = str2_next;
-	  if (str2 >= str2_end)
-	    {
-	      goto compare;
-	    }
-
-	  if (level == 3)
-	    {
-	      intl_get_uca_w_l4 (coll_data, str2, str2_end - str2,
-				 &uca_w_l4_2, &num_ce2, &str2_next);
-	    }
-	  else
-	    {
-	      intl_get_uca_w_l13 (coll_data, str2, str2_end - str2,
-				  &uca_w_l13_2, &num_ce2, &str2_next);
-	    }
-
-	  assert (num_ce2 > 0);
-
-	  ce_index2 = 0;
-	}
-
-    compare:
-      if ((num_ce1 == 0 && str1 >= str1_end)
-	  || (num_ce2 == 0 && str2 >= str2_end))
-	{
-	  break;
-	}
-
-      if (level == 0)
-	{
-	  w1 = UCA_GET_L1_W (uca_w_l13_1[ce_index1]);
-	  w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
-	}
-      else if (level == 1)
-	{
-	  w1 = UCA_GET_L2_W (uca_w_l13_1[ce_index1]);
-	  w2 = UCA_GET_L2_W (uca_w_l13_2[ce_index2]);
-	}
-      else if (level == 2)
-	{
-	  w1 = UCA_GET_L3_W (uca_w_l13_1[ce_index1]);
-	  w2 = UCA_GET_L3_W (uca_w_l13_2[ce_index2]);
-	}
-      else if (level == 3)
-	{
-	  w1 = uca_w_l4_1[ce_index1];
-	  w2 = uca_w_l4_2[ce_index2];
-	}
-
-      /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != 0x20)
-	{
-	  ce_index1++;
-	  num_ce1--;
-
-	  if (w2 == 0 && *str2 != 0x20)
-	    {
-	      ce_index2++;
-	      num_ce2--;
-	    }
-
-	  goto read_weights1;
-	}
-      else if (w2 == 0 && *str2 != 0x20)
-	{
-	  ce_index2++;
-	  num_ce2--;
-
-	  goto read_weights1;
-	}
-      else if (w1 > w2)
-	{
-	  return 1;
-	}
-      else if (w1 < w2)
-	{
-	  return -1;
-	}
-
-      ce_index1++;
-      ce_index2++;
-
-      num_ce1--;
-      num_ce2--;
-    }
-
-  if (str1_end - str1 > 0 || str2_end - str2 > 0)
-    {
-      return intl_strcmp_check_trail_spaces (str1, str1_end - str1,
-					     str2, str2_end - str2);
-    }
-  else
-    {
-      if (num_ce1 > num_ce2)
-	{
-	  return 1;
-	}
-      else if (num_ce1 < num_ce2)
-	{
-	  return -1;
-	}
-    }
-
-  return 0;
-}
-
-/*
- * intl_strcmp_utf8_uca() - string compare for UTF8 for a locale using
- *			    full UCA weights (expansions and contractions)
- *   return:
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
- */
-int
-intl_strcmp_utf8_uca (const unsigned char *str1, const int size1,
-		      const unsigned char *str2, const int size2)
-{
-  const LANG_LOCALE_DATA *loc = lang_locale ();
-
-  return intl_strcmp_utf8_uca_w_coll_data (&(loc->coll), str1, size1, str2,
-					   size2);
-}
-
-/*
- * intl_strcmp_utf8_uca_w_coll_data() - string compare for UTF8 using
- *		a full UCA collation (expansions and contractions)
- *   return:
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
- */
-int
-intl_strcmp_utf8_uca_w_coll_data (const void *collation,
-				  const unsigned char *str1, const int size1,
-				  const unsigned char *str2, const int size2)
-{
-  int res;
-  COLL_DATA *coll_data = (COLL_DATA *) collation;
-
-  assert (coll_data != NULL);
-
-  /* compare level 1 */
-  res = intl_strcmp_utf8_uca_w_level (coll_data, 0, str1, size1, str2, size2);
-  if (res != 0)
-    {
-      return res;
-    }
-
-  if (coll_data->uca_opt.sett_strength == TAILOR_PRIMARY)
-    {
-      if (coll_data->uca_opt.sett_caseLevel)
-	{
-	  /* compare level 3 (casing) */
-	  res = intl_strcmp_utf8_uca_w_level (coll_data, 2, str1, size1,
-					      str2, size2);
-	  if (res != 0)
-	    {
-	      /* reverse order when caseFirst == UPPER */
-	      return (coll_data->uca_opt.sett_caseFirst == 1) ? -res : res;
-	    }
-	}
-      return 0;
-    }
-
-  assert (coll_data->uca_opt.sett_strength >= TAILOR_SECONDARY);
-
-  /* compare level 2 */
-  res = intl_strcmp_utf8_uca_w_level (coll_data, 1, str1, size1, str2, size2);
-  if (res != 0)
-    {
-      /* TODO : this is not full "frech order"
-       * full french order requires that all CEs (entire string) of level 2
-       * are reversed (this requires more complex algorithm) */
-      return (coll_data->uca_opt.sett_backwards == 1) ? -res : res;
-    }
-
-  if (coll_data->uca_opt.sett_strength == TAILOR_SECONDARY)
-    {
-      return 0;
-    }
-
-  /* compare level 3 */
-  res = intl_strcmp_utf8_uca_w_level (coll_data, 2, str1, size1, str2, size2);
-  if (res != 0)
-    {
-      /* reverse order when caseFirst == UPPER */
-      return (coll_data->uca_opt.sett_caseFirst == 1) ? -res : res;
-    }
-
-  if (coll_data->uca_opt.sett_strength == TAILOR_TERTIARY)
-    {
-      return 0;
-    }
-
-  /* compare level 4 */
-  res = intl_strcmp_utf8_uca_w_level (coll_data, 3, str1, size1, str2, size2);
-  if (res != 0)
-    {
-      /* reverse order when caseFirst == UPPER */
-      return res;
-    }
-
-  return 0;
-}
-
-/*
- * intl_strcmp_check_trail_spaces() - string compare the trailing spaces
- *				      of UTF-8 sequence
- *   return:
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
- */
-static int
-intl_strcmp_check_trail_spaces (const unsigned char *str1, const int size1,
-				const unsigned char *str2, const int size2)
-{
-  if (size1 == size2)
-    {
-      assert (size1 == 0);
-      return 0;
-    }
-  else if (size1 < size2)
-    {
-      const unsigned char *str2_end = str2 + size2;
-
-      for (; str2 < str2_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str2 != 32 && *str2 != 0)
-	    {
-	      return -1;
-	    }
-	  str2 += intl_Len_utf8_char[*str2];
-	}
-    }
-  else
-    {
-      const unsigned char *str1_end = str1 + size1;
-
-      for (; str1 < str1_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str1 != 32 && *str1 != 0)
-	    {
-	      return 1;
-	    }
-	  str1 += intl_Len_utf8_char[*str1];
-	}
-    }
-
-  return 0;
-}
-
-/*
- * intl_next_coll_char_utf8() - computes the next collatable char
- *   return: size in bytes of the next collatable char
- *   seq(in): pointer to current char
- *   size(in): available bytes for current char
- *   next_seq(in/out): buffer to return next alphabetical char
- *   len_next(in/out): length in chars of next char (always 1 for this func)
- *
- *  Note :  It is assumed that the input buffer (cur_char) contains at least
- *	    one UTF-8 character.
- */
-int
-intl_next_coll_char_utf8 (const unsigned char *seq, const int size,
-			  unsigned char *next_seq, int *len_next)
-{
-  unsigned int cp_alpha_char, cp_next_alpha_char;
-  const LANG_LOCALE_DATA *loc = lang_locale ();
-  const int alpha_cnt = loc->coll.w_count;
-  const unsigned int *next_alpha_char = loc->coll.next_cp;
-  unsigned char *dummy = NULL;
-
-  assert (seq != NULL);
-  assert (next_seq != NULL);
-  assert (len_next != NULL);
-  assert (size > 0);
-
-  cp_alpha_char = intl_utf8_to_cp (seq, size, &dummy);
-
-  if (cp_alpha_char < (unsigned int) alpha_cnt)
-    {
-      cp_next_alpha_char = next_alpha_char[cp_alpha_char];
-    }
-  else
-    {
-      cp_next_alpha_char = cp_alpha_char + 1;
-    }
-
-  *len_next = 1;
-
-  return intl_cp_to_utf8 (cp_next_alpha_char, next_seq);
-}
-
-/*
- * intl_next_coll_seq_utf8_w_contr() - computes the next collatable sequence
- *				       for locales having contractions
- *   return: size in bytes of the next collatable sequence
- *   seq(in): pointer to current sequence
- *   size(in): available bytes for current sequence
- *   next_seq(in/out): buffer to return next collatable sequence
- *   len_next(in/out): length in chars of next sequence
- *
- *  Note :  It is assumed that the input buffer (cur_char) contains at least
- *	    one UTF-8 character.
- */
-int
-intl_next_coll_seq_utf8_w_contr (const unsigned char *seq, const int size,
-				 unsigned char *next_seq, int *len_next)
-{
-  unsigned int cp_first_char;
-  unsigned int next_seq_id;
-  unsigned int cp_next_char;
-  const LANG_LOCALE_DATA *loc = lang_locale ();
-  const int alpha_cnt = loc->coll.w_count;
-  const unsigned int *next_alpha_char = loc->coll.next_cp;
-  unsigned char *dummy = NULL;
-  COLL_CONTRACTION *contr = NULL;
-
-  assert (seq != NULL);
-  assert (next_seq != NULL);
-  assert (len_next != NULL);
-  assert (size > 0);
-
-  cp_first_char = intl_utf8_to_cp (seq, size, &dummy);
-
-  if (cp_first_char < (unsigned int) alpha_cnt)
-    {
-      if (size >= loc->coll.contr_min_size
-	  && cp_first_char >= loc->coll.cp_first_contr_offset
-	  && cp_first_char < (loc->coll.cp_first_contr_offset
-			      + loc->coll.cp_first_contr_count))
-	{
-	  contr = intl_get_contr_for_string (&(loc->coll), seq, size,
-					     cp_first_char);
-	}
-
-      if (contr == NULL)
-	{
-	  next_seq_id = next_alpha_char[cp_first_char];
-	}
-      else
-	{
-	  next_seq_id = contr->next;
-	}
-
-      if (INTL_IS_NEXT_CONTR (next_seq_id))
-	{
-	  contr =
-	    &(loc->coll.contr_list[INTL_GET_NEXT_CONTR_ID (next_seq_id)]);
-	  memcpy (next_seq, contr->c_buf, contr->size);
-	  *len_next = contr->cp_count;
-	  return contr->cp_count;
-	}
-      else
-	{
-	  cp_next_char = next_seq_id;
-	}
-    }
-  else
-    {
-      /* codepoint is not collated in current locale */
-      cp_next_char = cp_first_char + 1;
-    }
-
-  *len_next = 1;
-  return intl_cp_to_utf8 (cp_next_char, next_seq);
-}
-
-/*
- * intl_split_point() - find position where strings are different
- *   return:  error status
- *   lang_id(in):
- *   str1(in):
- *   size1(in):
- *   str2(in):
- *   size2(in):
- *   char_pos(out): position at which to split (character)
- *   byte_pos(out): position at which to split (byte)
- *
- */
-int
-intl_split_point (const INTL_CODESET codeset, const unsigned char *str1,
-		  const int size1, const unsigned char *str2, const int size2,
-		  int *char_pos, int *byte_pos)
-{
-  unsigned char *str1_next, *str2_next;
-  unsigned int cp1, cp2;
-  int rem1, rem2;
-  int pos;
-  const LANG_LOCALE_DATA *loc = lang_locale ();
-  bool has_expansions = false;
-
-  if (codeset != INTL_CODESET_UTF8)
-    {
-      const unsigned char *t, *t2;
-      for (pos = 0, t = str1, t2 = str2;
-	   pos < size1 && pos < size2 && *t++ == *t2++; pos++)
-	{
-	  ;
-	}
-
-      *byte_pos = pos;
-      *char_pos = pos;
-
-      return NO_ERROR;
-    }
-
-  assert (codeset == INTL_CODESET_UTF8);
-
-  rem1 = size1;
-  rem2 = size2;
-
-  /* TODO : elaborate the algorithm for this case.
-   * At this time, the split key will be the same as string1.
-   * Possible algorithm  : compare until a L1 weight difference is found,
-   * and replace the last character with 'next_seq' or 'prev_seq' according 
-   * to desc/asc index property */
-  if (loc->coll.uca_opt.sett_expansions)
-    {
-      *byte_pos = size1;
-      intl_char_count ((unsigned char *) str1, size1, codeset, char_pos);
-      return NO_ERROR;
-    }
-
-  for (*char_pos = 0; rem1 > 0 && rem2 > 0; (*char_pos)++)
-    {
-      cp1 = intl_utf8_to_cp (str1, rem1, &str1_next);
-      cp2 = intl_utf8_to_cp (str2, rem2, &str2_next);
-
-      if (cp1 != cp2)
-	{
-	  break;
-	}
-
-      assert (str1_next - str1 == str2_next - str2);
-
-      rem1 -= str1_next - str1;
-      rem2 -= str1_next - str1;
-      str1 = (unsigned char *) str1_next;
-      str2 = (unsigned char *) str2_next;
-    }
-
-  *byte_pos = size1 - rem1;
-
-  return NO_ERROR;
 }
 
 /*
@@ -3812,10 +2884,14 @@ intl_identifier_lower (const char *src, char *dst)
   switch (lang_charset ())
     {
     case INTL_CODESET_UTF8:
-      (void) intl_tolower_utf8 (true, (unsigned char *) src,
-				(unsigned char *) dst,
-				length_in_bytes, &d_size);
-      d = (unsigned char *) dst + d_size;
+      {
+	const LANG_LOCALE_DATA *locale = lang_locale ();
+	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
+	(void) intl_tolower_utf8 (alphabet, (unsigned char *) src,
+				  (unsigned char *) dst,
+				  length_in_bytes, &d_size);
+	d = dst + d_size;
+      }
       break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
@@ -3950,10 +3026,14 @@ intl_identifier_upper (const char *src, char *dst)
   switch (lang_charset ())
     {
     case INTL_CODESET_UTF8:
-      (void) intl_toupper_utf8 (true, (unsigned char *) src,
-				(unsigned char *) dst,
-				length_in_bytes, &d_size);
-      d = (unsigned char *) dst + d_size;
+      {
+	const LANG_LOCALE_DATA *locale = lang_locale ();
+	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
+	(void) intl_toupper_utf8 (alphabet, (unsigned char *) src,
+				  (unsigned char *) dst,
+				  length_in_bytes, &d_size);
+	d = dst + d_size;
+      }
       break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
@@ -4899,9 +3979,8 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
 	{
 	  assert (txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].size
 		  == 1);
-	  cp = (unsigned int) *(txt_conv->utf8_to_text[cp -
-						       txt_conv->
-						       utf8_first_cp].bytes);
+	  cp = (unsigned int) *(txt_conv->utf8_to_text
+				[cp - txt_conv->utf8_first_cp].bytes);
 	}
 
       if (cp > 0xff)
@@ -5251,6 +4330,59 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
   *out_size = p_out - (unsigned char *) *(out_buf);
 
   return NO_ERROR;
+}
+
+/*
+ * intl_fast_iso88591_to_utf8() - converts a buffer containing text with ISO
+ *				  8859-1 encoding to UTF-8
+ *
+ *   return: 0 if no conversion perfomed, 1 conversion ok, 2 conversion done,
+ *	     but invalid characters where found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer; NULL if conversion
+ *			is not required
+ *   out_size(out): size of string (NUL terminator not included)
+ */
+int
+intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size,
+			    unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p_in = NULL;
+  const unsigned char *p_end;
+  unsigned char *p_out = NULL;
+  int status = 0;
+
+  assert (in_size > 0);
+  assert (in_buf != NULL);
+  assert (out_buf != NULL);
+  assert (out_size != NULL);
+
+  for (p_in = in_buf, p_end = p_in + in_size,
+       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+    {
+      if (*p_in < 0x7f)
+	{
+	  *p_out++ = *p_in;
+	}
+      else if (*p_in < 0xa0)
+	{
+	  /* ISO 8859-1 characters in this range are not valid */
+	  *p_out++ = '?';
+	  status = 2;
+	}
+      else
+	{
+	  *p_out++ = (unsigned char) (0xc0 | (*p_in >> 6));
+	  *p_out++ = (unsigned char) (0x80 | (*p_in & 0x3f));
+	  status = 1;
+	}
+    }
+
+  *out_size = p_out - *(out_buf);
+
+  return status;
 }
 
 /* monetary symbols */

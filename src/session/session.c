@@ -884,16 +884,23 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   switch (src_dbtype)
     {
     case DB_TYPE_CHAR:
-      DB_MAKE_CHAR (dest, precision, str, length);
+      DB_MAKE_CHAR (dest, precision, str, length, DB_GET_STRING_CODESET (src),
+		    DB_GET_STRING_COLLATION (src));
       break;
     case DB_TYPE_NCHAR:
-      DB_MAKE_NCHAR (dest, precision, str, length);
+      DB_MAKE_NCHAR (dest, precision, str, length,
+		     DB_GET_STRING_CODESET (src),
+		     DB_GET_STRING_COLLATION (src));
       break;
     case DB_TYPE_VARCHAR:
-      DB_MAKE_VARCHAR (dest, precision, str, length);
+      DB_MAKE_VARCHAR (dest, precision, str, length,
+		       DB_GET_STRING_CODESET (src),
+		       DB_GET_STRING_COLLATION (src));
       break;
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_VARNCHAR (dest, precision, str, length);
+      DB_MAKE_VARNCHAR (dest, precision, str, length,
+			DB_GET_STRING_CODESET (src),
+			DB_GET_STRING_COLLATION (src));
       break;
     case DB_TYPE_BIT:
       DB_MAKE_BIT (dest, precision, str, length);

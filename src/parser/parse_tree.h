@@ -257,6 +257,12 @@
         ( (((t) == PT_TYPE_BLOB)  || \
 	   ((t) == PT_TYPE_CLOB))     ? true : false )
 
+#define PT_HAS_COLLATION(t) \
+        ( (((t) == PT_TYPE_CHAR)     || \
+	   ((t) == PT_TYPE_VARCHAR)  || \
+	   ((t) == PT_TYPE_NCHAR)    || \
+	   ((t) == PT_TYPE_VARNCHAR))  ? true : false )
+
 #define pt_is_select(n) PT_IS_SELECT(n)
 #define pt_is_union(n) PT_IS_UNION(n)
 #define pt_is_intersection(n) PT_IS_INTERSECTION(n)
@@ -1018,6 +1024,7 @@ typedef enum
   PT_REORG_PARTITION,
   PT_COALESCE_PARTITION,
   PT_ANALYZE_PARTITION,
+  PT_PROMOTE_PARTITION,
   PT_RENAME_ENTITY,
   PT_ALTER_DEFAULT,
   PT_DROP_INDEX_CLAUSE,
@@ -1200,7 +1207,8 @@ typedef enum
   PT_CONV,
 
   /* rlike operator */
-  PT_RLIKE, PT_NOT_RLIKE, PT_RLIKE_BINARY, PT_NOT_RLIKE_BINARY
+  PT_RLIKE, PT_NOT_RLIKE, PT_RLIKE_BINARY, PT_NOT_RLIKE_BINARY,
+  PT_TO_ENUMERATION_VALUE
 } PT_OP_TYPE;
 
 
@@ -1685,7 +1693,8 @@ struct pt_data_type_info
   PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   int precision;		/* for float and int, length of char */
   int dec_precision;		/* decimal precision for float */
-  int units;			/* for money */
+  int units;			/* for money (or string's codeset) */
+  int collation_id;		/* collation identifier (strings) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
 };
 
@@ -2319,8 +2328,6 @@ struct pt_merge_info
     PT_NODE *assignment;	/* PT_EXPR (list) */
     PT_NODE *search_cond;	/* PT_EXPR */
     PT_NODE *del_search_cond;	/* PT_EXPR */
-    bool has_unique;		/* whether there's an unique constraint */
-    bool server_update;		/* whether it can be server-side update */
     bool do_class_attrs;	/* whether it is on class attributes */
   } update;
   struct
@@ -2328,10 +2335,10 @@ struct pt_merge_info
     PT_NODE *attr_list;		/* PT_NAME */
     PT_NODE *value_clauses;	/* PT_NODE_LIST(list) */
     PT_NODE *search_cond;	/* PT_EXPR */
-    PT_NODE *insert_mode;	/* insert execution mode */
   } insert;
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
+  bool has_unique;		/* whether there's an unique constraint */
   bool server_op;		/* whether it can be server-side operation */
 };
 
@@ -2855,6 +2862,19 @@ enum pt_composite_locking
 {
   PT_COMPOSITE_LOCKING_DELETE = 1,
   PT_COMPOSITE_LOCKING_UPDATE
+};
+
+/* Collation coercibility levels associated with parse tree nodes */
+typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
+enum pt_coll_coerc_lev
+{
+  PT_COLLATION_NOT_COERC = 0,
+  PT_COLLATION_L1_COERC,	/* columns */
+  PT_COLLATION_L2_COERC,	/* not used */
+  PT_COLLATION_L3_COERC,	/* expressions */
+  PT_COLLATION_L4_COERC,	/* SELECT values */
+  PT_COLLATION_FULLY_COERC	/* constants, HV, special cases (USER()), nodes
+				 * with coercible collation */
 };
 
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,

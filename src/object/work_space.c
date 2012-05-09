@@ -1212,6 +1212,163 @@ ws_new_mop (OID * oid, MOP class_mop)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
+ * ws_perm_oid_and_class - change the OID of a MOP and recache the class mop
+ *			   if it has been changed
+ *    return: void
+ *    mop(in/out)   : MOP whose OID needs to be changed
+ *    newoid(in)    : new OID
+ *    new_class_oid : new class OID
+ *
+ * Note:
+ *    This is only called by the transaction locator as OIDs need to be
+ *    flushed and must be converted to permanent OIDs before they are given
+ *    to the server.
+ *
+ *    This assumes that the new permanent OID is guaranteed to be
+ *    unique and we can avoid searching the hash table collision list
+ *    for existing MOPs with this OID.  This makes the conversion faster.
+ *
+ *    If the object belongs to a partitioned class, it will
+ *    have a different class oid here (i.e. the partition in
+ *    which it was placed). We have to fetch the partition mop
+ *    and recache it here
+ */
+int
+ws_perm_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
+{
+  MOP class_mop = NULL;
+  bool relink = false;
+  class_mop = ws_class_mop (mop);
+  if (!OID_ISTEMP ((OID *) WS_OID (mop)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_MOP_NOT_TEMPORARY, 0);
+      return ER_FAILED;
+    }
+
+  if (!OID_EQ (WS_OID (class_mop), new_class_oid))
+    {
+      /* we also need to disconnect this instance from class_mop and add it
+         to new_class_oid */
+      remove_class_object (class_mop, mop);
+      relink = true;
+      class_mop = ws_mop (new_class_oid, NULL);
+      if (class_mop == NULL)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+    }
+  mop->class_mop = class_mop;
+  ws_perm_oid (mop, new_oid);
+  if (relink)
+    {
+      add_class_object (class_mop, mop);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * ws_update_oid_and_class - update OID and class OID references for an
+ *			     updated object
+ *    return: error code or NO_ERROR
+ *    mop(in/out)   : MOP whose OID needs to be updated
+ *    newoid(in)    : new OID
+ *    new_class_oid : new class OID
+ *
+ * Note:
+ *    This is only called by the transaction locator as OIDs need to be
+ *    flushed and must be converted to permanent OIDs 
+ *
+ *    This assumes that the new permanent OID is guaranteed to be
+ *    unique and we can avoid searching the hash table collision list
+ *    for existing MOPs with this OID.  This makes the conversion faster.
+ *
+ *    If the object belongs to a partitioned class, it might
+ *    have different OID and class OID here (i.e. the partition to which it
+ *    belong has changed). If the partition has changed, we will mark the
+ *    original mop as deleted (because it was deleted from the original
+ *    partition) and create a new MOP with the new information.
+ *    This  means that the target partition class will also be fetched and
+ *    cached here which is inefficient but preservers workspace coherency.
+ */
+extern int
+ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
+{
+  MOP old_class = NULL, new_class = NULL, new_mop = NULL;
+  bool relink = false;
+  int error = NO_ERROR;
+
+  if (OID_ISTEMP ((OID *) WS_OID (mop)))
+    {
+      /* this only makes sense in an UPDATE operation and we should never
+       * work with temporary OIDs here. */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  /* get a reference to the old class */
+  old_class = ws_class_mop (mop);
+  if (OID_EQ (new_class_oid, WS_OID (old_class)))
+    {
+      /* class hasn't changed, nothing to be done here */
+      return NO_ERROR;
+    }
+
+  /* get a reference to the new class */
+  new_class = ws_mop (new_class_oid, sm_Root_class_mop);
+  if (new_class == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+      return error;
+    }
+
+  /* Mark the old object as deleted. We don't actually remove the object from
+   * the dirty link here. It will be removed by the next call to
+   * ws_map_dirty_internal */
+  mop->deleted = 1;
+  mop->dirty = false;
+  /* add the new object to the class it has been placed into */
+  if (new_class->object == NULL)
+    {
+      /* the new_class has not been fetched yet, do it here */
+      SM_CLASS *smclass = NULL;
+      int au_save;
+
+      /* Don't bother with authorization here. If the current user does not
+       * have access to this class, we should have known by now */
+      AU_DISABLE (au_save);
+      error = au_fetch_class (new_class, &smclass, AU_FETCH_READ, AU_SELECT);
+      AU_ENABLE (au_save);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* create a new mop for the object */
+  new_mop = ws_mop (new_oid, new_class);
+  if (new_mop == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+      return error;
+    }
+  /* this object is not dirty, we just received it from the server */
+  new_mop->dirty = false;
+  return NO_ERROR;
+}
+
+/*
  * ws_perm_oid - change the OID of a MOP
  *    return: void
  *    mop(in/out): MOP whose OID needs to be changed

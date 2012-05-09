@@ -59,6 +59,7 @@
 #include "perf_monitor.h"
 #include "intl_support.h"
 #include "language_support.h"
+#include "unicode_support.h"
 #include "transaction_cl.h"
 
 #include "dbi.h"
@@ -164,7 +165,6 @@ static int prepare_column_list_info_set (DB_SESSION * session,
 					 T_BROKER_VERSION client_version);
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     short scale, int prec,
-				     const DB_ENUMERATION * enumeration,
 				     const char *col_name,
 				     const char *default_value,
 				     char auto_increment, char unique_key,
@@ -174,12 +174,10 @@ static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     const char *class_name, char nullable,
 				     T_BROKER_VERSION client_version);
 static void set_column_info (T_NET_BUF * net_buf, char ut, short scale,
-			     int prec, const DB_ENUMERATION * enumeration,
-			     const char *col_name, const char *attr_name,
-			     const char *class_name, char is_non_null,
+			     int prec, const char *col_name,
+			     const char *attr_name, const char *class_name,
+			     char is_non_null,
 			     T_BROKER_VERSION client_version);
-static void net_buf_cp_enumeration (T_NET_BUF * net_buf,
-				    const DB_ENUMERATION * enumeration);
 
 /*
   fetch_xxx prototype:
@@ -358,7 +356,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIME,		/* 32 */
   CCI_U_TYPE_BLOB,		/* 33 */
   CCI_U_TYPE_CLOB,		/* 34 */
-  CCI_U_TYPE_ENUMERATION	/* 35 */
+  CCI_U_TYPE_STRING		/* 35 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3446,7 +3444,6 @@ ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode,
 
 static void
 prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
-			 const DB_ENUMERATION * enumeration,
 			 const char *col_name, const char *default_value,
 			 char auto_increment, char unique_key,
 			 char primary_key, char reverse_index,
@@ -3506,17 +3503,11 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
       net_buf_cp_byte (net_buf, foreign_key);
       net_buf_cp_byte (net_buf, shared);
     }
-
-  if (client_version >= CAS_MAKE_VER (8, 4, 9) && enumeration != NULL)
-    {
-      net_buf_cp_enumeration (net_buf, enumeration);
-    }
 }
 
 static void
 set_column_info (T_NET_BUF * net_buf, char ut,
 		 short scale, int prec,
-		 const DB_ENUMERATION * enumeration,
 		 const char *col_name,
 		 const char *attr_name,
 		 const char *class_name,
@@ -3605,7 +3596,6 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 			   ut,
 			   scale,
 			   prec,
-			   enumeration,
 			   col_name,
 			   default_value_string,
 			   auto_increment,
@@ -3678,6 +3668,9 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
       {
 	char *value, *invalid_pos = NULL;
 	int val_size;
+	bool is_composed = false;
+	int composed_size;
+
 	net_arg_get_str (&value, &val_size, net_value);
 
 	if (intl_check_string (value, val_size, &invalid_pos) != 0)
@@ -3687,6 +3680,34 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 		      (invalid_pos != NULL) ? (invalid_pos - value) : 0);
 	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
 					    DBMS_ERROR_INDICATOR, msg);
+	  }
+
+	if (unicode_string_need_compose (value, val_size, &composed_size,
+					 lang_get_generic_unicode_norm ()))
+	  {
+	    char *composed = NULL;
+
+	    composed = MALLOC (composed_size + 1);
+	    if (composed == NULL)
+	      {
+		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+				       CAS_ERROR_INDICATOR);
+	      }
+
+	    unicode_compose_string (value, val_size, composed,
+				    &composed_size, &is_composed,
+				    lang_get_generic_unicode_norm ());
+	    assert (composed_size <= val_size);
+	    composed[composed_size] = '\0';
+
+	    if (is_composed)
+	      {
+		value = composed;
+	      }
+	    else
+	      {
+		FREE (composed);
+	      }
 	  }
 
 	if (desired_type == DB_TYPE_OBJECT)
@@ -3705,6 +3726,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	else
 	  {
 	    err_code = db_make_string (&db_val, value);
+	    db_val.need_clear = is_composed;
 	  }
       }
       break;
@@ -3714,6 +3736,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	char *value, *invalid_pos = NULL;
 	int val_size;
 	int val_length;
+	bool is_composed = false;
+	int composed_size;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
@@ -3728,9 +3752,41 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }
 
-	intl_char_count ((unsigned char *) value, val_size, lang_charset (),
-			 &val_length);
-	err_code = db_make_nchar (&db_val, val_length, value, val_size);
+	if (unicode_string_need_compose (value, val_size, &composed_size,
+					 lang_get_generic_unicode_norm ()))
+	  {
+	    char *composed = NULL;
+
+	    composed = MALLOC (composed_size + 1);
+	    if (composed == NULL)
+	      {
+		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+				       CAS_ERROR_INDICATOR);
+	      }
+
+	    unicode_compose_string (value, val_size, composed,
+				    &composed_size, &is_composed,
+				    lang_get_generic_unicode_norm ());
+	    assert (composed_size <= val_size);
+	    composed[composed_size] = '\0';
+
+	    if (is_composed)
+	      {
+		value = composed;
+		val_size = composed_size;
+	      }
+	    else
+	      {
+		FREE (composed);
+	      }
+	  }
+
+	intl_char_count ((unsigned char *) value, val_size,
+			 LANG_COERCIBLE_CODESET, &val_length);
+	err_code = db_make_nchar (&db_val, val_length, value, val_size,
+				  LANG_COERCIBLE_CODESET,
+				  LANG_COERCIBLE_COLL);
+	db_val.need_clear = is_composed;
       }
       break;
     case CCI_U_TYPE_BIT:
@@ -4079,6 +4135,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	DB_C_CHAR str;
 	int dummy = 0;
 	int bytes_size = 0;
+	int decomp_size;
+	char *decomposed = NULL;
+	bool need_decomp = false;
 
 	str = db_get_char (val, &dummy);
 	bytes_size = DB_GET_STRING_SIZE (val);
@@ -4086,7 +4145,38 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  {
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
+
+	need_decomp =
+	  unicode_string_need_decompose (str, bytes_size, &decomp_size,
+					 lang_get_generic_unicode_norm ());
+
+	if (need_decomp)
+	  {
+	    decomposed = (char *) MALLOC (decomp_size * sizeof (char));
+	    if (decomposed != NULL)
+	      {
+		unicode_decompose_string (str, bytes_size, decomposed,
+					  &decomp_size,
+					  lang_get_generic_unicode_norm ());
+
+		str = decomposed;
+		bytes_size = decomp_size;
+	      }
+	    else
+	      {
+		/* set error indicator and send empty string */
+		ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+		bytes_size = 0;
+	      }
+	  }
+
 	add_res_data_string (net_buf, str, bytes_size, col_type, &data_size);
+
+	if (decomposed != NULL)
+	  {
+	    FREE (decomposed);
+	    decomposed = NULL;
+	  }
       }
       break;
     case DB_TYPE_VARNCHAR:
@@ -4095,6 +4185,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	DB_C_NCHAR nchar;
 	int dummy = 0;
 	int bytes_size = 0;
+	int decomp_size;
+	char *decomposed = NULL;
+	bool need_decomp = false;
 
 	nchar = db_get_nchar (val, &dummy);
 	bytes_size = DB_GET_STRING_SIZE (val);
@@ -4102,14 +4195,46 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  {
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
+
+	need_decomp =
+	  unicode_string_need_decompose (nchar, bytes_size, &decomp_size,
+					 lang_get_generic_unicode_norm ());
+
+	if (need_decomp)
+	  {
+	    decomposed = (char *) MALLOC (decomp_size * sizeof (char));
+	    if (decomposed != NULL)
+	      {
+		unicode_decompose_string (nchar, bytes_size, decomposed,
+					  &decomp_size,
+					  lang_get_generic_unicode_norm ());
+
+		nchar = decomposed;
+		bytes_size = decomp_size;
+	      }
+	    else
+	      {
+		/* set error indicator and send empty string */
+		ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+		bytes_size = 0;
+	      }
+	  }
+
 	add_res_data_string (net_buf, nchar, bytes_size, col_type,
 			     &data_size);
+
+	if (decomposed != NULL)
+	  {
+	    FREE (decomposed);
+	    decomposed = NULL;
+	  }
       }
       break;
     case DB_TYPE_ENUMERATION:
       {
-	short shortVal = db_get_enum_short (val);
-	add_res_data_short (net_buf, shortVal, col_type, &data_size);
+	add_res_data_string (net_buf, db_get_enum_string (val),
+			     db_get_enum_string_size (val),
+			     col_type ? DB_TYPE_STRING : 0, &data_size);
 	break;
       }
     case DB_TYPE_SMALLINT:
@@ -5866,7 +5991,6 @@ add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob,
     }
 }
 
-
 static void
 trigger_event_str (DB_TRIGGER_EVENT trig_event, char *buf)
 {
@@ -6030,7 +6154,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	  int precision;
 	  short scale;
 	  char *temp_column = NULL;
-	  DB_ENUMERATION *enumeration = NULL;
 
 	  temp_column = (char *) REALLOC (null_type_column, num_cols + 1);
 	  if (temp_column == NULL)
@@ -6106,10 +6229,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	    }
 	  else
 	    {
-	      if (db_type == DB_TYPE_ENUMERATION)
-		{
-		  enumeration = &DOM_GET_ENUMERATION (domain);
-		}
 	      cas_type = ux_db_type_to_cas_type (db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
@@ -6140,7 +6259,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 			   (char) cas_type,
 			   scale,
 			   precision,
-			   enumeration,
 			   col_name,
 			   attr_name,
 			   class_name,
@@ -6174,8 +6292,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
       updatable_flag = 0;
       net_buf_cp_byte (net_buf, updatable_flag);
       net_buf_cp_int (net_buf, 1, NULL);
-      prepare_column_info_set (net_buf, 0, 0, 0, NULL, "", "", 0, 0, 0, 0, 0,
-			       0, 0, "", "", 0, client_version);
+      prepare_column_info_set (net_buf, 0, 0, 0, "", "", 0, 0, 0, 0, 0, 0, 0,
+			       "", "", 0, client_version);
     }
   else
     {
@@ -8120,7 +8238,6 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       const char *col_name, *attr_name, *class_name;
       DB_DOMAIN *domain;
       DB_TYPE db_type;
-      DB_ENUMERATION *enumeration = NULL;
 
       if (col == NULL)
 	{
@@ -8150,10 +8267,6 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       else
 	{
-	  if (db_type == DB_TYPE_ENUMERATION)
-	    {
-	      enumeration = &DOM_GET_ENUMERATION (domain);
-	    }
 	  cas_type = ux_db_type_to_cas_type (db_type);
 	  precision = db_domain_precision (domain);
 	  scale = (short) db_domain_scale (domain);
@@ -8178,7 +8291,6 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 		       (char) cas_type,
 		       scale,
 		       precision,
-		       enumeration,
 		       col_name,
 		       attr_name,
 		       class_name,
@@ -8740,41 +8852,4 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
     }
 
   strcat (*out, "}");
-}
-
-/*
- * net_buf_cp_enumeration () - serialize the elements of an enumeration
- * return: void
- * net_buf (in): buffer to serialize to
- * enumeration (in): enumeration
- *
- * Note: this function serializes enumeration elements that are part of a
- * domain
- */
-static void
-net_buf_cp_enumeration (T_NET_BUF * net_buf,
-			const DB_ENUMERATION * enumeration)
-{
-  int i;
-  DB_ENUM_ELEMENT *elem = NULL;
-  char *str = NULL;
-  int str_size = 0;
-  /* enumeration is packed as: elements_count,elem1,elem2... */
-  if (enumeration == NULL || enumeration->count == 0)
-    {
-      net_buf_cp_int (net_buf, 0, NULL);
-      return;
-    }
-  net_buf_cp_int (net_buf, enumeration->count, NULL);
-
-  for (i = 0; i < enumeration->count; i++)
-    {
-      elem = &enumeration->elements[i];
-      /* TODO: should not know internals here ! */
-      str = elem->str_val.medium.buf;
-      str_size = elem->str_val.medium.size;
-      str_size++;		/* null terminated */
-      net_buf_cp_int (net_buf, str_size, NULL);
-      net_buf_cp_str (net_buf, str, str_size);
-    }
 }

@@ -636,6 +636,7 @@ EXPORTS
     db_set_global_transaction_info
     db_set_interrupt
     db_set_isempty
+    db_set_has_null
     db_set_ismember
     db_set_isolation
     db_set_loader_commands

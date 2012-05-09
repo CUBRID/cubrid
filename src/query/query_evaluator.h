@@ -343,7 +343,8 @@ typedef enum
   T_FINDINSET,
   T_HEX,
   T_ASCII,
-  T_CONV
+  T_CONV,
+  T_TO_ENUMERATION_VALUE
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

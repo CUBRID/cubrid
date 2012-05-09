@@ -170,6 +170,16 @@ struct or_class
   OID statistics;		/* object containing statistics */
 };
 
+typedef struct or_partition OR_PARTITION;
+struct or_partition
+{
+  OID db_part_oid;		/* OID of the record from _db_partition class */
+  OID class_oid;		/* class OID */
+  HFID class_hfid;		/* class HFID */
+  int partition_type;		/* partition type (range, list, hash) */
+  DB_SEQ *values;		/* values for range and list partition types */
+};
+
 extern int or_class_repid (RECDES * record);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -187,6 +197,8 @@ extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
 					      RECDES * record);
+extern int or_class_get_partition_info (RECDES * record,
+					OID * partition_info);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern const char *or_get_attrname (RECDES * record, int attrid);
 extern OR_CLASS *or_get_class (RECDES * record);
@@ -202,6 +214,8 @@ extern CLS_INFO *orc_class_info_from_record (RECDES * record);
 extern void orc_free_class_info (CLS_INFO * info);
 extern int orc_subclasses_from_record (RECDES * record,
 				       int *array_size, OID ** array_ptr);
+extern int orc_superclasses_from_record (RECDES * record, int *array_size,
+					 OID ** array_ptr);
 extern OR_CLASSREP **or_get_all_representation (RECDES * record,
 						bool do_indexes, int *count);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

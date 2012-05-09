@@ -1159,7 +1159,8 @@ $ LOADDB
 1091 Backup active log '%s' finished.
 1092 User name is too long.
 1093 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
-1094 마지막 에러
+1094 Atering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
+1095 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1548,6 +1549,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 242 Constant expression cannot be used as function index.
 243 Class name or alias is not unique in list: '%s'
 244 Invalid DEFAULT clause. '%s' cannot be used in a nested expression.
+245 '%s' requires arguments with compatible collations.
+246 Invalid character set.
+247 Required character set and collation are not compatible.
+248 Unknown collation '%s'.
+249 Context requires collection with elements having identical codesets and collations.
+250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

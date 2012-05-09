@@ -529,7 +529,8 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_GENLOCALE */
 typedef enum
 {
-  GENLOCALE_MSG_USAGE = 60
+  GENLOCALE_MSG_USAGE = 60,
+  GENLOCALE_MSG_INVALID_LOCALE = 61
 } MSGCAT_GENLOCALE_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DUMPLOCALE */
@@ -1175,8 +1176,6 @@ typedef struct _ha_config
 /* genlocale option list */
 #define GENLOCALE_INPUT_PATH_S			'i'
 #define GENLOCALE_INPUT_PATH_L			"input-ldml-file"
-#define GENLOCALE_OUTPUT_PATH_S                 'o'
-#define GENLOCALE_OUTPUT_PATH_L                 "output-locale-file"
 #define GENLOCALE_VERBOSE_S                     'v'
 #define GENLOCALE_VERBOSE_L                     "verbose"
 
@@ -1204,6 +1203,8 @@ typedef struct _ha_config
 #define DUMPLOCALE_START_VALUE_L                "start-value"
 #define DUMPLOCALE_END_VALUE_S			'e'
 #define DUMPLOCALE_END_VALUE_L			"end-value"
+#define DUMPLOCALE_NORMALIZATION_S		'z'
+#define DUMPLOCALE_NORMALIZATION_L		"normalization"
 
 #define VERSION_S                               20000
 #define VERSION_L                               "version"

@@ -144,8 +144,6 @@ static void regu_listid_init (QFILE_LIST_ID * ptr);
 static void regu_srlistid_init (QFILE_SORTED_LIST_ID * ptr);
 static void regu_domain_init (SM_DOMAIN * ptr);
 static void regu_cache_attrinfo_init (HEAP_CACHE_ATTRINFO * ptr);
-static void regu_partition_info_init (XASL_PARTITION_INFO * ptr);
-static void regu_parts_info_init (XASL_PARTS_INFO * ptr);
 static void regu_selupd_list_init (SELUPD_LIST * ptr);
 static PT_NODE *pt_create_param_for_value (PARSER_CONTEXT * parser,
 					   PT_NODE * value,
@@ -4180,6 +4178,12 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
 
     case DO_PROC:
       break;
+
+    case MERGE_PROC:
+      ptr->proc.merge.update_xasl = NULL;
+      ptr->proc.merge.delete_xasl = NULL;
+      ptr->proc.merge.insert_xasl = NULL;
+      break;
     }
 }
 
@@ -4649,6 +4653,7 @@ regu_domain_init (SM_DOMAIN * ptr)
   ptr->setdomain = NULL;
   OID_SET_NULL (&ptr->class_oid);
   ptr->codeset = 0;
+  ptr->collation_id = 0;
   ptr->is_cached = 0;
   ptr->built_in_index = 0;
   ptr->is_parameterized = 0;
@@ -4932,14 +4937,14 @@ regu_hfid_array_alloc (int size)
 }
 
 /*
- * regu_update_class_info_init () -
+ * regu_upddel_class_info_init () -
  *   return:
- *   ptr(in)    : pointer to a UPDATE_CLASS_INFO
+ *   ptr(in)    : pointer to a UPDDEL_CLASS_INFO
  *
- * Note: Initialization function for UPDATE_CLASS_INFO.
+ * Note: Initialization function for UPDDEL_CLASS_INFO.
  */
 void
-regu_update_class_info_init (UPDATE_CLASS_INFO * ptr)
+regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
 {
   ptr->att_id = NULL;
   ptr->class_hfid = NULL;
@@ -4947,20 +4952,20 @@ regu_update_class_info_init (UPDATE_CLASS_INFO * ptr)
   ptr->has_uniques = 0;
   ptr->no_subclasses = 0;
   ptr->no_attrs = 0;
-  ptr->partition = NULL;
+  ptr->needs_pruning = 0;
 }
 
 /*
- * regu_update_class_info_array_alloc () -
- *   return: UPDATE_CLASS_INFO *
+ * regu_upddel_class_info_array_alloc () -
+ *   return: UPDDEL_CLASS_INFO *
  *   size(in): size of the array to be allocated
  *
- * Note: Memory allocation function for arrays of UPDATE_CLASS_INFO
+ * Note: Memory allocation function for arrays of UPDDEL_CLASS_INFO
  */
-UPDATE_CLASS_INFO *
-regu_update_class_info_array_alloc (int size)
+UPDDEL_CLASS_INFO *
+regu_upddel_class_info_array_alloc (int size)
 {
-  UPDATE_CLASS_INFO *ptr;
+  UPDDEL_CLASS_INFO *ptr;
   int i;
 
   if (size == 0)
@@ -4969,7 +4974,7 @@ regu_update_class_info_array_alloc (int size)
     }
 
   ptr =
-    (UPDATE_CLASS_INFO *) pt_alloc_packing_buf (sizeof (UPDATE_CLASS_INFO) *
+    (UPDDEL_CLASS_INFO *) pt_alloc_packing_buf (sizeof (UPDDEL_CLASS_INFO) *
 						size);
   if (ptr == NULL)
     {
@@ -4980,7 +4985,7 @@ regu_update_class_info_array_alloc (int size)
     {
       for (i = 0; i < size; i++)
 	{
-	  regu_update_class_info_init (&ptr[i]);
+	  regu_upddel_class_info_init (&ptr[i]);
 	}
       return ptr;
     }
@@ -5204,138 +5209,6 @@ regu_free_method_sig_list (METHOD_SIG_LIST * method_sig_list)
       regu_free_method_sig (method_sig_list->method_sig);
       db_private_free_and_init (NULL, method_sig_list);
     }
-}
-
-/*
- * regu_partition_array_alloc () -
- *   return:
- *   nelements(in)   :
- */
-XASL_PARTITION_INFO **
-regu_partition_array_alloc (int nelements)
-{
-  XASL_PARTITION_INFO **ptr;
-  int size;
-
-  if (nelements == 0)
-    return NULL;
-
-  size = (int) sizeof (XASL_PARTITION_INFO *) * nelements;
-  ptr = (XASL_PARTITION_INFO **) pt_alloc_packing_buf (size);
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      return ptr;
-    }
-}
-
-/*
- * regu_parts_array_alloc () -
- *   return:
- *   nelements(in)   :
- */
-XASL_PARTS_INFO **
-regu_parts_array_alloc (int nelements)
-{
-  XASL_PARTS_INFO **ptr;
-  int size;
-
-  if (nelements == 0)
-    return NULL;
-
-  size = (int) sizeof (XASL_PARTS_INFO *) * nelements;
-  ptr = (XASL_PARTS_INFO **) pt_alloc_packing_buf (size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      return ptr;
-    }
-}
-
-/*
- * regu_partition_info_alloc () -
- *   return:
- */
-XASL_PARTITION_INFO *
-regu_partition_info_alloc (void)
-{
-  XASL_PARTITION_INFO *ptr;
-  int size;
-
-  size = (int) sizeof (XASL_PARTITION_INFO);
-  ptr = (XASL_PARTITION_INFO *) pt_alloc_packing_buf (size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_partition_info_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_parts_info_alloc () -
- *   return:
- */
-XASL_PARTS_INFO *
-regu_parts_info_alloc (void)
-{
-  XASL_PARTS_INFO *ptr;
-
-  ptr = (XASL_PARTS_INFO *) pt_alloc_packing_buf (sizeof (XASL_PARTS_INFO));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_parts_info_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_partition_info_init () -
- *   return:
- *   ptr(in)    :
- */
-static void
-regu_partition_info_init (XASL_PARTITION_INFO * ptr)
-{
-  ptr->key_attr = 0;
-  ptr->type = 0;
-  ptr->no_parts = 0;
-  ptr->act_parts = 0;
-  ptr->expr = NULL;
-  ptr->parts = NULL;
-}
-
-/*
- * regu_parts_info_init () -
- *   return:
- *   ptr(in)    :
- */
-static void
-regu_parts_info_init (XASL_PARTS_INFO * ptr)
-{
-  ptr->class_hfid.vfid.fileid = NULL_FILEID;
-  ptr->class_hfid.vfid.volid = NULL_VOLID;
-  ptr->class_hfid.hpgid = NULL_PAGEID;
-  regu_init_oid (&ptr->class_oid);
-  ptr->vals = NULL;
 }
 
 /*
@@ -6855,7 +6728,8 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
 
     /* prec */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_GT, "prec", 0);
-    cond_item1 = parser_make_expression (PT_AND, cond_item2, cond_item1, NULL);
+    cond_item1 =
+      parser_make_expression (PT_AND, cond_item2, cond_item1, NULL);
 
     pred_for_if = cond_item1;
     assert (concat_node != NULL);
@@ -7022,6 +6896,64 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
   return concat_node;
 }
 
+
+/*
+ * pt_make_collation_expr_node() - builds the node required to print the
+ *                                 collation of column in SHOW COLUMNS
+ *
+ *    (IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=4,
+ *	   CL.coll_name, NULL)) AS Collation
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ */
+static PT_NODE *
+pt_make_collation_expr_node (PARSER_CONTEXT * parser)
+{
+  PT_NODE *collation_name = NULL;
+  PT_NODE *null_expr = NULL;
+  PT_NODE *if_node = NULL;
+
+  collation_name = pt_make_dotted_identifier (parser, "CL.coll_name");
+
+  null_expr = parser_new_node (parser, PT_VALUE);
+  if (null_expr)
+    {
+      null_expr->type_enum = PT_TYPE_NULL;
+    }
+
+  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=4,
+     CL.name  ,
+     NULL )  */
+  {
+    PT_NODE *cond_item1 = NULL;
+    PT_NODE *cond_item2 = NULL;
+    PT_NODE *pred_for_if = NULL;
+
+    /* VARNCHAR and CHAR */
+    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* CHAR */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* STRING */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+
+    pred_for_if = cond_item1;
+
+    if_node = parser_make_expression (PT_IF,
+				      pred_for_if, collation_name, null_expr);
+
+    if (if_node != NULL)
+      {
+	if_node->alias_print = pt_append_string (parser, NULL, "Collation");
+      }
+  }
+
+  return if_node;
+}
 
 /*
  * pt_make_field_extra_expr_node() - builds the 'Extra' field for the
@@ -7880,6 +7812,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  *  SELECT * FROM (
  *  SELECT A.attr_name AS Field,
  *  <Type_field_query> AS Type,
+ *  {<collation_field> AS Collation}
  *  IF (A.is_nullable = 1 OR
  *	(SELECT COUNT(*) FROM <tbl_name> LIMIT 1) = -1,
  *     'YES','NO') AS Null ,
@@ -7891,7 +7824,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  *	       S.class_name =  C.class_name ) >= 1 ,
  *     'auto_increment', '' ) AS Extra
  *  FROM  db_class CC, _db_class  C , _db_domain D ,
- *	  _db_data_type T , _db_attribute A
+ *	  _db_data_type T , {_db_collation CL ,} _db_attribute A
  *  LEFT JOIN
  *     (SELECT AA.attr_name ATTR,
  *	       GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',')
@@ -7907,6 +7840,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  *  D.object_of = A AND
  *  C.class_name = <tbl_name> AND
  *  C.class_name = CC.class_name
+ *  { AND D.collation_id = CL.coll_id }
  *  ORDER BY A.attr_type DESC, A.def_order) show_columns
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
@@ -7921,12 +7855,13 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  * Note : Order is defined by: attr_type (shared attributes first, then
  *	  class attributes, then normal attributes), order of definition in
  *	  table
+ *	  { } -> optional fields controlled by 'is_show_full' argument
  */
 PT_NODE *
 pt_make_query_show_columns (PARSER_CONTEXT * parser,
 			    PT_NODE * original_cls_id,
 			    int like_where_syntax,
-			    PT_NODE * like_or_where_expr)
+			    PT_NODE * like_or_where_expr, int is_show_full)
 {
   PT_NODE *node = NULL;
   PT_NODE *sub_query = NULL;
@@ -7955,6 +7890,13 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   sel_item = pt_make_field_type_expr_node (parser);
   sub_query->info.query.q.select.list =
     parser_append_node (sel_item, sub_query->info.query.q.select.list);
+
+  if (is_show_full)
+    {
+      sel_item = pt_make_collation_expr_node (parser);
+      sub_query->info.query.q.select.list =
+	parser_append_node (sel_item, sub_query->info.query.q.select.list);
+    }
 
   /* create
    * IF (is_nullable = 1 OR
@@ -8011,6 +7953,14 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   from_item = pt_add_table_name_to_from_list (parser, sub_query,
 					      "_db_data_type", "T",
 					      DB_AUTH_SELECT);
+
+  if (is_show_full)
+    {
+      from_item = pt_add_table_name_to_from_list (parser, sub_query,
+						  "_db_collation", "CL",
+						  DB_AUTH_SELECT);
+    }
+
   /* _db_attribute MUST be added last before types subsquery in order
    * to corrrectly resolve the JOIN condition */
   from_item = pt_add_table_name_to_from_list (parser, sub_query,
@@ -8084,6 +8034,17 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     /* item1 = item2 AND item2 */
     where_item1 =
       parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    if (is_show_full)
+      {
+	where_item2 =
+	  pt_make_pred_with_identifiers (parser, PT_EQ, "D.collation_id",
+					 "CL.coll_id");
+
+	/* item1 = item2 AND item2 */
+	where_item1 =
+	  parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+      }
 
     /* where list should be empty */
     assert (sub_query->info.query.q.select.where == NULL);
@@ -8778,7 +8739,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
 
   node =
     pt_make_query_show_columns (parser, original_cls_id,
-				(where_node == NULL) ? 0 : 2, where_node);
+				(where_node == NULL) ? 0 : 2, where_node, 0);
 
   return node;
 }
@@ -9323,8 +9284,7 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
  *   statement(in): an update/merge statement
  */
 void
-pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
-			      PT_NODE * statement)
+pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *lhs, *node_tmp, *node;
   PT_NODE *assignments = NULL;
@@ -9345,8 +9305,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
       lhs = node->info.expr.arg1;
       if (lhs->node_type == PT_NAME)
 	{
-	  node_tmp =
-	    pt_find_spec_in_statement (parser, statement, lhs);
+	  node_tmp = pt_find_spec_in_statement (parser, statement, lhs);
 	  if (node_tmp == NULL)
 	    {
 	      PT_INTERNAL_ERROR (parser, "invalid spec id");
@@ -9359,8 +9318,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
 	  lhs = lhs->info.expr.arg1;
 	  while (lhs != NULL)
 	    {
-	      node_tmp =
-		pt_find_spec_in_statement (parser, statement, lhs);
+	      node_tmp = pt_find_spec_in_statement (parser, statement, lhs);
 	      if (node_tmp == NULL)
 		{
 		  PT_INTERNAL_ERROR (parser, "invalid spec id");

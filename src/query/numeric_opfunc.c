@@ -3667,7 +3667,8 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	  }
 
 	strcpy (return_string, temp_str);
-	DB_MAKE_CHAR (dest, size, return_string, size);
+	DB_MAKE_CHAR (dest, size, return_string, size, LANG_SYS_CODESET,
+		      LANG_SYS_COLLATION);
 	dest->need_clear = true;
 	break;
       }
@@ -3687,7 +3688,8 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	  }
 
 	strcpy (return_string, temp_str);
-	DB_MAKE_VARCHAR (dest, size, return_string, size);
+	DB_MAKE_VARCHAR (dest, size, return_string, size, LANG_SYS_CODESET,
+			 LANG_SYS_COLLATION);
 	dest->need_clear = true;
 	break;
       }
@@ -3707,7 +3709,8 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	  }
 
 	strcpy (return_string, temp_str);
-	DB_MAKE_NCHAR (dest, size, return_string, size);
+	DB_MAKE_NCHAR (dest, size, return_string, size, LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
 	dest->need_clear = true;
 	break;
       }
@@ -3727,7 +3730,8 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	  }
 
 	strcpy (return_string, temp_str);
-	DB_MAKE_VARNCHAR (dest, size, return_string, size);
+	DB_MAKE_VARNCHAR (dest, size, return_string, size, LANG_SYS_CODESET,
+			  LANG_SYS_COLLATION);
 	dest->need_clear = true;
 	break;
       }

@@ -1159,7 +1159,8 @@ $ LOADDB
 1091 Backup active log '%s' finished.
 1092 User name is too long.
 1093 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
-1094 Last Error
+1094 Atering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
+1095 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1548,6 +1549,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 242 Constant expression cannot be used as function index.
 243 Class name or alias is not unique in list: '%s'
 244 Invalid DEFAULT clause. '%s' cannot be used in a nested expression.
+245 '%s' requires arguments with compatible collations.
+246 Invalid character set.
+247 Required character set and collation are not compatible.
+248 Unknown collation '%s'.
+249 Context requires collection with elements having identical codesets and collations.
+250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

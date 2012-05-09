@@ -43,6 +43,7 @@
 #include "parser_message.h"
 #include "dbdef.h"
 #include "language_support.h"
+#include "unicode_support.h"
 #include "environment_variable.h"
 #include "transaction_cl.h"
 #include "csql_grammar_scan.h"
@@ -456,6 +457,12 @@ static int parser_count_list (PT_NODE * list);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
+static int pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
+					       PT_NODE * charset_node,
+					       PT_NODE * coll_node,
+					       int *charset, int *coll_id);
+static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
+				   const char *str, const int str_size);
 
 static PT_MISC_TYPE parser_attr_type;
 
@@ -882,8 +889,11 @@ typedef struct YYLTYPE
 %type <node> merge_update_insert_clause
 %type <node> merge_update_clause
 %type <node> merge_insert_clause
+%type <node> opt_merge_delete_clause
 %type <node> delete_name
 %type <node> delete_name_list
+%type <node> opt_collation
+%type <node> opt_charset
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1178,6 +1188,7 @@ typedef struct YYLTYPE
 %token Private
 %token PRIVILEGES
 %token PROCEDURE
+%token PROMOTE
 %token PROTECTED
 %token PROXY
 %token QUERY
@@ -1352,6 +1363,8 @@ typedef struct YYLTYPE
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
 %token <cptr> CACHE
+%token <cptr> CHARACTER_SET_
+%token <cptr> CHARSET
 %token <cptr> COLUMNS
 %token <cptr> COMMITTED
 %token <cptr> COST
@@ -1657,6 +1670,12 @@ stmt_
 				    dt = set_dt;
 				  }
 			      }
+			  }
+
+			if (PT_HAS_COLLATION (typ))
+			  {
+			    dt->info.data_type.units = LANG_SYS_CODESET;
+			    dt->info.data_type.collation_id = LANG_SYS_COLLATION;
 			  }
 
 			$$ = dt;
@@ -5661,22 +5680,26 @@ show_stmt
 
 		DBG_PRINT}}
 	| SHOW
+	  opt_full
 	  COLUMNS
 	  of_from_in
 	  identifier
 		{{
 
+			const bool is_full_syntax = ($2 == 1);
 			const int like_where_syntax = 0;  /* neither LIKE nor WHERE */
 			PT_NODE *node = NULL;
-			PT_NODE *original_cls_id = $4;
+			PT_NODE *original_cls_id = $5;
 
-			node = pt_make_query_show_columns (this_parser, original_cls_id, like_where_syntax, NULL);
+			node = pt_make_query_show_columns (this_parser, original_cls_id,
+							   like_where_syntax, NULL, is_full_syntax);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| SHOW
+	  opt_full
 	  COLUMNS
 	  of_from_in
 	  identifier
@@ -5684,18 +5707,21 @@ show_stmt
 	  expression_
 		{{
 
+			const bool is_full_syntax = ($2 == 1);
 			const int like_where_syntax = 1;  /* is LIKE */
 			PT_NODE *node = NULL;
-			PT_NODE *original_cls_id = $4;
-			PT_NODE *like_rhs = $6;
+			PT_NODE *original_cls_id = $5;
+			PT_NODE *like_rhs = $7;
 
-			node = pt_make_query_show_columns (this_parser, original_cls_id, like_where_syntax, like_rhs);
+			node = pt_make_query_show_columns (this_parser, original_cls_id,
+							   like_where_syntax, like_rhs, is_full_syntax);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| SHOW
+	  opt_full
 	  COLUMNS
 	  of_from_in
 	  identifier
@@ -5703,12 +5729,14 @@ show_stmt
 	  search_condition
 		{{
 
+			const bool is_full_syntax = ($2 == 1);
 			const int like_where_syntax = 2;  /* is WHERE */
 			PT_NODE *node = NULL;
-			PT_NODE *original_cls_id = $4;
-			PT_NODE *where_cond = $6;
+			PT_NODE *original_cls_id = $5;
+			PT_NODE *where_cond = $7;
 
-			node = pt_make_query_show_columns (this_parser, original_cls_id, like_where_syntax, where_cond);
+			node = pt_make_query_show_columns (this_parser, original_cls_id,
+							   like_where_syntax, where_cond, is_full_syntax);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5721,7 +5749,8 @@ show_stmt
 			PT_NODE *node = NULL;
 			PT_NODE *original_cls_id = $2;
 
-			node = pt_make_query_show_columns (this_parser, original_cls_id, 0, NULL);
+			node = pt_make_query_show_columns (this_parser, original_cls_id,
+							   0, NULL, 0);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5756,7 +5785,8 @@ show_stmt
 			  {
 			    like_where_syntax = 1;   /* is LIKE */
 			  }
-			node = pt_make_query_show_columns (this_parser, original_cls_id, like_where_syntax, like_rhs);
+			node = pt_make_query_show_columns (this_parser, original_cls_id,
+							   like_where_syntax, like_rhs, 0);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6497,6 +6527,7 @@ merge_update_clause
 	: WHEN MATCHED THEN UPDATE SET
 	  update_assignment_list		/* $6 */
 	  opt_where_clause			/* $7 */
+	  opt_merge_delete_clause		/* $8 */
 		{{
 
 			PT_NODE *merge = parser_top_hint_node ();
@@ -6504,7 +6535,7 @@ merge_update_clause
 			  {
 			    merge->info.merge.update.assignment = $6;
 			    merge->info.merge.update.search_cond = $7;
-			    merge->info.merge.update.del_search_cond = NULL;
+			    merge->info.merge.update.del_search_cond = $8;
 			  }
 
 		DBG_PRINT}}
@@ -6524,6 +6555,22 @@ merge_insert_clause
 			    merge->info.merge.insert.value_clauses = $7;
 			    merge->info.merge.insert.search_cond = $8;
 			  }
+
+		DBG_PRINT}}
+	;
+
+opt_merge_delete_clause
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| DELETE_ WHERE search_condition
+		{{
+
+			$$ = $3;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
@@ -16017,18 +16064,46 @@ primitive_type
 
 		DBG_PRINT}}
 	| String
+	  opt_charset
+	  opt_collation
 		{{
 
 			container_2 ctn;
 			PT_TYPE_ENUM typ = PT_TYPE_VARCHAR;
 			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			PT_NODE *charset_node = $2;
+			PT_NODE *coll_node = $3;
 			if (dt)
 			  {
+			    int coll_id, charset;
+
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
+
+			    if (pt_check_grammar_charset_collation
+				(this_parser, charset_node, coll_node, &charset, &coll_id) == 0)
+			      {
+				dt->info.data_type.units = charset;
+				dt->info.data_type.collation_id = coll_id;
+			      }
+			     else
+			      {
+				dt->info.data_type.units = -1;
+				dt->info.data_type.collation_id = -1;				
+			      }
 			  }
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			$$ = ctn;
+
+			if (charset_node)
+			  {
+			    parser_free_node (this_parser, charset_node);
+			  }
+
+			if (coll_node)
+			  {
+			    parser_free_node (this_parser, coll_node);
+			  }
 
 		DBG_PRINT}}
 	| BLOB_ opt_internal_external
@@ -16065,15 +16140,22 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| char_bit_type opt_prec_1
+	| char_bit_type
+	  opt_prec_1
+	  opt_charset
+	  opt_collation
 		{{
 
 			container_2 ctn;
 			PT_TYPE_ENUM typ = $1;
 			PT_NODE *len = NULL, *dt = NULL;
 			int l = 1;
+			PT_NODE *charset_node = NULL;
+			PT_NODE *coll_node = NULL;
 
 			len = $2;
+			charset_node = $3;
+			coll_node = $4;
 
 			if (len)
 			  {
@@ -16156,18 +16238,27 @@ primitive_type
 			dt = parser_new_node (this_parser, PT_DATA_TYPE);
 			if (dt)
 			  {
+			    int coll_id, charset;
+
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = l;
 			    switch (typ)
 			      {
 			      case PT_TYPE_CHAR:
 			      case PT_TYPE_VARCHAR:
-				dt->info.data_type.units = (int) lang_charset ();
-				break;
-
 			      case PT_TYPE_NCHAR:
 			      case PT_TYPE_VARNCHAR:
-				dt->info.data_type.units = (int) lang_charset ();
+				if (pt_check_grammar_charset_collation
+				    (this_parser, charset_node, coll_node, &charset, &coll_id) == 0)
+				  {
+				    dt->info.data_type.units = charset;
+				    dt->info.data_type.collation_id = coll_id;
+				  }
+				 else
+				  {
+				    dt->info.data_type.units = -1;
+				    dt->info.data_type.collation_id = -1;
+				  }
 				break;
 
 			      case PT_TYPE_BIT:
@@ -16184,6 +16275,16 @@ primitive_type
 			$$ = ctn;
 			if (len)
 			  parser_free_node (this_parser, len);
+
+			if (charset_node)
+			  {
+			    parser_free_node (this_parser, charset_node);
+                          }
+
+			if (coll_node)
+			  {
+			    parser_free_node (this_parser, coll_node);
+			  }
 
 		DBG_PRINT}}
 	| NUMERIC opt_prec_2
@@ -16430,6 +16531,81 @@ opt_prec_2
 		DBG_PRINT}}
 	;
 
+of_charset
+	: CHARACTER_SET_
+	| CHARSET
+	;
+
+of_collation
+	: COLLATE
+	| COLLATION
+	;
+
+opt_collation
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| of_collation char_string_literal
+		{{
+
+			$$ = $2;
+
+		DBG_PRINT}}
+	| of_collation IdName
+		{{
+			PT_NODE *node;
+
+			node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_CHAR;
+			    node->info.value.string_type = ' ';
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+			    node->info.value.text =
+			      (char *) node->info.value.data_value.str->bytes;
+			  }
+
+			$$ = node;
+		DBG_PRINT}}
+	;
+
+opt_charset
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| of_charset char_string_literal
+		{{
+
+			$$ = $2;
+
+		DBG_PRINT}}
+	| of_charset IdName
+		{{
+			PT_NODE *node;
+
+			node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_CHAR;
+			    node->info.value.string_type = ' ';
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+			    node->info.value.text =
+			      (char *) node->info.value.data_value.str->bytes;
+			  }
+
+			$$ = node;
+		DBG_PRINT}}
+	;
 
 set_type
 	: SET_OF
@@ -16824,25 +17000,18 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			char *invalid_pos = NULL;
 
 			if (p)
 			  {
-				PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    /* check only for invalid byte, truncation can be resolved */
-			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
-			      {
-				PT_ERRORmf (this_parser, NULL,
-					    MSGCAT_SET_ERROR,
-					    -(ER_INVALID_CHAR),
-					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
-			      }
-			    else if (intl_identifier_fix ($1) != NO_ERROR)
-			      {
-				PT_ERRORf (this_parser, p,
-					   "invalid identifier : %s", $1);
-			      }
-			    p->info.name.original = $1;
+			    int size_in;
+			    char *str_name = $1;
+
+			    size_in = strlen(str_name);
+
+			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+			    str_name = pt_check_identifier (this_parser, p, 
+							    str_name, size_in);
+			    p->info.name.original = str_name;
 			  }
 			$$ = p;
 
@@ -16851,25 +17020,18 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			char *invalid_pos = NULL;
 
 			if (p)
 			  {
-				PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    /* check only for invalid byte, truncation can be resolved */
-			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
-			      {
-				PT_ERRORmf (this_parser, NULL,
-					    MSGCAT_SET_ERROR,
-					    -(ER_INVALID_CHAR),
-					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
-			      }
-			    else if (intl_identifier_fix ($1) != NO_ERROR)
-			      {
-				PT_ERRORf (this_parser, p,
-					   "invalid identifier : %s", $1);
-			      }
-			    p->info.name.original = $1;
+			    int size_in;
+			    char *str_name = $1;
+
+			    size_in = strlen(str_name);		    
+
+			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+			    str_name = pt_check_identifier (this_parser, p, 
+							    str_name, size_in);
+			    p->info.name.original = str_name;
 			  }
 			$$ = p;
 
@@ -16878,25 +17040,18 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			char *invalid_pos = NULL;
 
 			if (p)
 			  {
-				PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    /* check only for invalid byte, truncation can be resolved */
-			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
-			      {
-				PT_ERRORmf (this_parser, NULL,
-					    MSGCAT_SET_ERROR,
-					    -(ER_INVALID_CHAR),
-					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
-			      }
-			    else if (intl_identifier_fix ($1) != NO_ERROR)
-			      {
-				PT_ERRORf (this_parser, p,
-					   "invalid identifier : %s", $1);
-			      }
-			    p->info.name.original = $1;
+			    int size_in;
+			    char *str_name = $1;
+
+			    size_in = strlen(str_name);	
+
+			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+			    str_name = pt_check_identifier (this_parser, p, 
+							    str_name, size_in);
+			    p->info.name.original = str_name;
 			  }
 			$$ = p;
 
@@ -16905,25 +17060,18 @@ identifier
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			char *invalid_pos = NULL;
 
 			if (p)
 			  {
-				PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    /* check only for invalid byte, truncation can be resolved */
-			    if (intl_check_string ($1, -1, &invalid_pos) == 1)
-			      {
-				PT_ERRORmf (this_parser, NULL,
-					    MSGCAT_SET_ERROR,
-					    -(ER_INVALID_CHAR),
-					    (invalid_pos != NULL) ? invalid_pos - ($1) : 0);			
-			      }
-			    else if (intl_identifier_fix ($1) != NO_ERROR)
-			      {
-				PT_ERRORf (this_parser, p,
-					   "invalid identifier : %s", $1);
-			      }
-			    p->info.name.original = $1;
+			    int size_in;
+			    char *str_name = $1;
+
+			    size_in = strlen(str_name);
+
+			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+			    str_name = pt_check_identifier (this_parser, p,
+							    str_name, size_in);
+			    p->info.name.original = str_name;
 			  }
 			$$ = p;
 
@@ -16960,6 +17108,26 @@ identifier
 
 		DBG_PRINT}}
 	| CACHE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| CHARACTER_SET_
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| CHARSET
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -17924,6 +18092,7 @@ char_string
 			PT_NODE *node = NULL;
 			char *invalid_pos = NULL;
 			char *str = $1;
+			int composed_size;
 
 			if (intl_check_string (str, str_size, &invalid_pos) != 0)
 			  {
@@ -17933,6 +18102,36 @@ char_string
 					(invalid_pos != NULL) ? invalid_pos - str : 0);			
 			  }
 
+			if (unicode_string_need_compose (str, str_size, &composed_size,
+							 lang_get_generic_unicode_norm ()))
+			  {
+			    char *composed = NULL;
+			    bool is_composed = false;
+
+			    composed =
+			      parser_allocate_string_buffer (this_parser, composed_size + 1, sizeof (char));
+
+			    if (composed != NULL)
+			      {
+				unicode_compose_string (str, str_size, composed, &composed_size,
+							&is_composed, lang_get_generic_unicode_norm ());
+				composed[composed_size] = '\0';
+
+				assert (composed_size <= str_size);
+
+				if (is_composed)
+				  {
+				    str = composed;
+				    str_size = composed_size;
+				  }
+			      }
+			    else
+			      {
+				str = NULL;
+				PT_ERRORf (this_parser, NULL, "cannot alloc %d bytes", composed_size + 1);
+			      }
+			   }
+
 			node = parser_new_node (this_parser, PT_VALUE);
 			  
 			if (node)
@@ -17940,7 +18139,7 @@ char_string
 			    node->type_enum = PT_TYPE_CHAR;
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $1, str_size);
+			      pt_append_bytes (this_parser, NULL, str, str_size);
 			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
 			  }
 
@@ -18898,6 +19097,18 @@ alter_partition_clause_for_alter_list
 			  }
 
 		DBG_PRINT}}
+	 | PROMOTE PARTITION identifier_list
+		{{
+
+			PT_NODE *alt = parser_get_alter_node ();
+
+			if (alt)
+			  {
+			    alt->info.alter.code = PT_PROMOTE_PARTITION;
+			    alt->info.alter.alter_clause.partition.name_list = $3;
+			  }
+
+		DBG_PRINT}}	 
 	;
 
 opt_all
@@ -19988,12 +20199,13 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	    }
 	  else if (arg3->info.value.data_value.str != NULL)
 	    {
+	      int flag = 0;
 	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
-	      if (lang_set_flag_from_lang (lang_str, 1,
-		      &(date_lang->info.value.data_value.i)))
+	      if (lang_set_flag_from_lang (lang_str, 1, &flag))
 		{
 		  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
 		}
+	      date_lang->info.value.data_value.i = (long) flag;
 	    }
 	}
       parser_free_node (this_parser, arg3);
@@ -20005,15 +20217,23 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       PT_NODE *date_lang = parser_new_node (this_parser, PT_VALUE);
       if (date_lang)
 	{
+	  char env_str[LANG_MAX_LANGNAME];
 	  const char *lang_str;
+	  int flag = 0;
+
 	  date_lang->type_enum = PT_TYPE_INTEGER;
 	  lang_str = envvar_get ("DATE_LANG");
-	  
-	  envvar_trim_char (lang_str, '\"');
+	  if (lang_str != NULL)
+	    {
+	      strncpy (env_str, lang_str, sizeof (env_str) - 1);
+	      env_str[sizeof (env_str) - 1] = '\0';
+	      envvar_trim_char (env_str, '\"');
+	      lang_str = env_str;
+	    }
 
-	  lang_set_flag_from_lang (lang_str, (arg_cnt == 1) ? 0 : 1,
-				   &(date_lang->info.value.data_value.i));
+	  lang_set_flag_from_lang (lang_str, (arg_cnt == 1) ? 0 : 1, &flag);
 
+	  date_lang->info.value.data_value.i = (long) flag;
 	}
 
       return date_lang;
@@ -21244,3 +21464,142 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
     }
 }
 
+static int
+pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
+				    PT_NODE * charset_node,
+				    PT_NODE * coll_node,
+				    int *charset, int *coll_id)
+{
+  bool has_user_charset = false;
+
+  assert (charset != NULL);
+  assert (coll_id != NULL);
+
+  *charset = LANG_SYS_CODESET;
+  *coll_id = LANG_SYS_COLLATION;
+
+  if (charset_node != NULL)
+    {
+      const char *cs_name;
+      assert (charset_node->node_type == PT_VALUE);
+
+      cs_name = charset_node->info.value.text;
+
+      if (strcasecmp (cs_name, "utf8") == 0)
+	{
+	  *charset = INTL_CODESET_UTF8;
+	}
+      else if (strcasecmp (cs_name, "iso88591") == 0
+	       || strcasecmp (cs_name, "iso") == 0)
+	{
+	  *charset = INTL_CODESET_ISO88591;
+	}
+      else
+	{
+	  PT_ERRORm (parser, charset_node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_CHARSET);
+
+	  return 1;
+	}
+
+      has_user_charset = true;
+    }
+
+  if (coll_node != NULL)
+    {
+      LANG_COLLATION * lang_coll;
+
+      assert (coll_node->node_type == PT_VALUE);
+
+      lang_coll = lang_get_collation_by_name (coll_node->info.value.text);
+      if (lang_coll != NULL)
+	{
+	  int coll_charset;
+
+	  *coll_id = lang_coll->coll.coll_id;
+	  coll_charset = (int) lang_coll->codeset;
+
+	  if (has_user_charset && coll_charset != *charset)
+	    {
+	      /* error incompatible charset and collation */
+	      PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+	      return 1;
+	    }
+
+	  /* default charset for this collation */
+	  *charset = coll_charset;
+	}
+      else
+	{
+	  PT_ERRORmf (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_UNKNOWN_COLL,
+		      coll_node->info.value.text);
+	  return 1;
+	}
+    }
+  else
+    {
+      assert (coll_node == NULL);
+      /* set a default collation for a charset */
+
+      if (*charset == INTL_CODESET_ISO88591)
+	{
+	  *coll_id = LANG_COLL_ISO_BINARY;
+	}
+      else
+	{
+	  assert (*charset == INTL_CODESET_UTF8);
+	  *coll_id = LANG_COLL_UTF8_BINARY;
+	}
+    }
+
+  return 0;
+}
+
+static char *
+pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
+		     const int str_size)
+{
+  char *invalid_pos = NULL;
+  int composed_size;
+
+  if (intl_check_string ((char *) str, str_size, &invalid_pos) == 1)
+    {
+      PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
+		  (invalid_pos != NULL) ? invalid_pos - str : 0);
+      return NULL;			
+    }
+  else if (intl_identifier_fix ((char *) str) != NO_ERROR)
+    {
+      PT_ERRORf (parser, p, "invalid identifier : %s", str);
+      return NULL;
+    }
+
+  if (unicode_string_need_compose (str, str_size, &composed_size,
+				   lang_get_generic_unicode_norm ()))
+    {
+      char *composed = NULL;
+      bool is_composed = false;
+
+      composed = parser_allocate_string_buffer (this_parser, composed_size + 1,
+					        sizeof (char));
+      if (composed == NULL)
+	{
+	  PT_ERRORf (parser, p, "cannot alloc %d bytes", composed_size + 1);
+	  return NULL;
+	}
+
+      unicode_compose_string (str, str_size, composed, &composed_size,
+			      &is_composed, lang_get_generic_unicode_norm ());
+      composed[composed_size] = '\0';
+      assert (composed_size <= str_size);
+
+      if (is_composed)
+	{
+	  return composed;
+	}
+    }
+
+  return (char *)str;   
+}

@@ -65,7 +65,7 @@
   } while (0)
 
 #define CATCLS_INDEX_NAME "i__db_class_class_name"
-#define CATCLS_INDEX_KEY   9
+#define CATCLS_INDEX_KEY   10
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
@@ -710,7 +710,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p,
   int error = NO_ERROR;
 
   error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH,
-			   (char *) name_p, strlen (name_p));
+			   (char *) name_p, strlen (name_p),
+			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
       return error;
@@ -1054,17 +1055,21 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   (*(tp_Object.data_readval)) (buf_p, &attrs[8].value, NULL, -1, true, NULL,
 			       0);
 
+  /* collation_id */
+  (*(tp_Integer.data_readval)) (buf_p, &attrs[9].value, NULL, -1, true, NULL,
+				0);
+
   /* variable */
 
   /* name */
-  attr_val_p = &attrs[9].value;
+  attr_val_p = &attrs[10].value;
   (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
 			       vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* (class_of) */
   if (catcls_find_class_oid_by_class_name (thread_p,
-					   DB_GET_STRING (&attrs[9].value),
+					   DB_GET_STRING (&attrs[10].value),
 					   &class_oid) != NO_ERROR)
     {
       error = er_errid ();
@@ -1081,7 +1086,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* sub_classes */
   error =
     catcls_get_object_set (thread_p, buf_p, vars[ORC_SUBCLASSES_INDEX].length,
-			   &attrs[10]);
+			   &attrs[11]);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1090,7 +1095,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* super_classes */
   error =
     catcls_get_object_set (thread_p, buf_p,
-			   vars[ORC_SUPERCLASSES_INDEX].length, &attrs[11]);
+			   vars[ORC_SUPERCLASSES_INDEX].length, &attrs[12]);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1099,7 +1104,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* attributes */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_ATTRIBUTES_INDEX].length,
-		       &attrs[12], catcls_get_or_value_from_attribute);
+		       &attrs[13], catcls_get_or_value_from_attribute);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1108,7 +1113,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* shared_attributes */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_SHARED_ATTRS_INDEX].length,
-		       &attrs[13], catcls_get_or_value_from_attribute);
+		       &attrs[14], catcls_get_or_value_from_attribute);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1117,7 +1122,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* class_attributes */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_CLASS_ATTRS_INDEX].length,
-		       &attrs[14], catcls_get_or_value_from_attribute);
+		       &attrs[15], catcls_get_or_value_from_attribute);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1126,7 +1131,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* methods */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_METHODS_INDEX].length,
-		       &attrs[15], catcls_get_or_value_from_method);
+		       &attrs[16], catcls_get_or_value_from_method);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1135,23 +1140,23 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* class_methods */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_CLASS_METHODS_INDEX].length,
-		       &attrs[16], catcls_get_or_value_from_method);
+		       &attrs[17], catcls_get_or_value_from_method);
   if (error != NO_ERROR)
     {
       goto error;
     }
 
   /* (apply attribute & method type) */
-  catcls_apply_component_type (&attrs[12], 0);
-  catcls_apply_component_type (&attrs[13], 2);
-  catcls_apply_component_type (&attrs[14], 1);
-  catcls_apply_component_type (&attrs[15], 0);
-  catcls_apply_component_type (&attrs[16], 1);
+  catcls_apply_component_type (&attrs[13], 0);
+  catcls_apply_component_type (&attrs[14], 2);
+  catcls_apply_component_type (&attrs[15], 1);
+  catcls_apply_component_type (&attrs[16], 0);
+  catcls_apply_component_type (&attrs[17], 1);
 
   /* method_files */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_METHOD_FILES_INDEX].length,
-		       &attrs[17], catcls_get_or_value_from_method_file);
+		       &attrs[18], catcls_get_or_value_from_method_file);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1176,11 +1181,11 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  goto error;
 	}
 
-      catcls_apply_resolutions (&attrs[12], resolution_p);
       catcls_apply_resolutions (&attrs[13], resolution_p);
       catcls_apply_resolutions (&attrs[14], resolution_p);
       catcls_apply_resolutions (&attrs[15], resolution_p);
       catcls_apply_resolutions (&attrs[16], resolution_p);
+      catcls_apply_resolutions (&attrs[17], resolution_p);
       catcls_free_or_value (resolution_p);
       resolution_p = NULL;
     }
@@ -1188,7 +1193,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* query_spec */
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_QUERY_SPEC_INDEX].length,
-		       &attrs[18], catcls_get_or_value_from_query_spec);
+		       &attrs[19], catcls_get_or_value_from_query_spec);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1200,7 +1205,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* properties */
   error =
     catcls_get_property_set (thread_p, buf_p,
-			     vars[ORC_PROPERTIES_INDEX].length, &attrs[19]);
+			     vars[ORC_PROPERTIES_INDEX].length, &attrs[20]);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1334,6 +1339,41 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
       goto error;
     }
 
+  /* Complete default value of enumeration type. We need to access domain
+   * structure of the attribute in order to get access to the elements of
+   * enumeration type. */
+  if (DB_VALUE_TYPE (attr_val_p) == DB_TYPE_ENUMERATION
+      && attrs[9].sub.count > 0)
+    {
+      OR_VALUE *or_val = attrs[9].sub.value;
+
+      if (or_val == NULL || or_val->sub.count < 8)
+	{
+	  goto error;
+	}
+      or_val = or_val[0].sub.value;
+      if (or_val == NULL)
+	{
+	  goto error;
+	}
+      or_val = &or_val[7];
+      if (!TP_IS_SET_TYPE (DB_VALUE_TYPE (&or_val->value)) ||
+	  DB_GET_ENUM_SHORT (attr_val_p) > or_val->value.data.set->set->size)
+	{
+	  goto error;
+	}
+      if (set_get_element (DB_GET_SET (&or_val->value),
+			   DB_GET_ENUM_SHORT (attr_val_p) - 1, &val)
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      val.need_clear = false;
+      DB_MAKE_ENUMERATION (attr_val_p, DB_GET_ENUM_SHORT (attr_val_p),
+			   DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val));
+      attr_val_p->need_clear = true;
+    }
   /* triggers - advance only */
   or_advance (buf_p, vars[ORC_ATT_TRIGGER_INDEX].length);
 
@@ -1551,8 +1591,12 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   (*(tp_Integer.data_readval)) (buf_p, &attrs[4].value, NULL, -1, true, NULL,
 				0);
 
+  /* collation id */
+  (*(tp_Integer.data_readval)) (buf_p, &attrs[5].value, NULL, -1, true, NULL,
+				0);
+
   /* class */
-  attr_val_p = &attrs[5].value;
+  attr_val_p = &attrs[6].value;
   (*(tp_Object.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
   if (!DB_IS_NULL (attr_val_p))
@@ -1592,14 +1636,14 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	}
       domain = tp_domain_cache (domain);
 
-      (*(seq_type->data_readval)) (buf_p, &attrs[6].value, domain, -1, true,
+      (*(seq_type->data_readval)) (buf_p, &attrs[7].value, domain, -1, true,
 				   NULL, 0);
     }
 
   /* set_domain */
   error =
     catcls_get_subset (thread_p, buf_p,
-		       vars[ORC_DOMAIN_SETDOMAIN_INDEX].length, &attrs[7],
+		       vars[ORC_DOMAIN_SETDOMAIN_INDEX].length, &attrs[8],
 		       catcls_get_or_value_from_domain);
   if (error != NO_ERROR)
     {
@@ -4633,6 +4677,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
   VALCNV_BUFFER *money_string_p;
   const char *currency_symbol_p;
   double amount;
+  DB_VALUE dbval;
 
   char line[1025];
 
@@ -4863,6 +4908,15 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	  buffer_p = valcnv_append_string (buffer_p, line);
 	  break;
 
+	case DB_TYPE_ENUMERATION:
+	  if (DB_GET_ENUM_STRING_SIZE (value_p) > 0)
+	    {
+	      DB_MAKE_STRING (&dbval, DB_GET_ENUM_STRING (value_p));
+
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval);
+	    }
+	  break;
+
 	default:
 	  break;
 	}
@@ -4938,6 +4992,22 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
+	case DB_TYPE_ENUMERATION:
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  break;
+
 	default:
 	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
 	  break;
@@ -4972,7 +5042,8 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 	}
 
       DB_MAKE_VARCHAR (&src_value, DB_MAX_STRING_LENGTH,
-		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length));
+		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
       (*(tp_String.setval)) (value_p, &src_value, true);

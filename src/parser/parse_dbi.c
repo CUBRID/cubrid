@@ -63,6 +63,9 @@ static PT_NODE *pt_bind_set_type (PARSER_CONTEXT * parser,
 				  DB_VALUE * val, int *data_type_added);
 static PT_NODE *pt_set_elements_to_value (PARSER_CONTEXT * parser,
 					  const DB_VALUE * val);
+static int pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser,
+					      PT_NODE * dt,
+					      DB_ENUMERATION * enumeration);
 
 /*
  * pt_misc_to_qp_misc_operand() - convert a PT_MISC_TYPE trim qualifier or
@@ -574,6 +577,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	    db_value_precision (val);
 	  result->data_type->info.data_type.units =
 	    db_get_string_codeset (val);
+	  result->data_type->info.data_type.collation_id =
+	    db_get_string_collation (val);
+	  assert (result->data_type->info.data_type.collation_id >= 0);
 	}
       break;
     case DB_TYPE_BIT:
@@ -1428,6 +1434,111 @@ pt_data_type_to_db_domain_name (const PT_NODE * dt)
 }
 
 /*
+ * pt_get_enumeration_from_data_type() - construct a enumeration from data type.
+ *   return:  NO_ERROR or error code.
+ *   parser(in):
+ *   dt(in): enumeration data type.
+ *   enumeration(in/out): address of a DB_ENUMERATION structure to fill.
+ */
+static int
+pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt,
+				   DB_ENUMERATION * enumeration)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN *domain = NULL;
+  PT_NODE *node = NULL;
+  DB_ENUM_ELEMENT *db_enum = NULL, *enum_elements = NULL;
+  char *str_val = NULL;
+  int str_len = 0, enum_elements_cnt = 0, idx;
+
+  if (dt == NULL || dt->type_enum != PT_TYPE_ENUMERATION
+      || enumeration == NULL)
+    {
+      err = ER_FAILED;
+      goto error;
+    }
+
+  node = dt->info.data_type.enumeration;
+  while (node != NULL)
+    {
+      enum_elements_cnt++;
+      node = node->next;
+    }
+
+  if (enum_elements_cnt == 0)
+    {
+      enumeration->count = 0;
+      enumeration->elements = NULL;
+      return NO_ERROR;
+    }
+
+  enum_elements = malloc (enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
+  if (enum_elements == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  idx = 0;
+  node = dt->info.data_type.enumeration;
+  while (node != NULL)
+    {
+      if (node->node_type != PT_VALUE)
+	{
+	  /* node_type should always be PT_VALUE */
+	  assert (false);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+	  err = ER_GENERIC_ERROR;
+	  goto error;
+	}
+      db_enum = &enum_elements[idx];
+      str_len = pt_get_varchar_length (node->info.value.data_value.str);
+      str_val = malloc (str_len + 1);
+      if (str_val == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_len + 1);
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      memcpy (str_val,
+	      pt_get_varchar_bytes (node->info.value.data_value.str),
+	      str_len);
+      str_val[str_len] = 0;
+
+      /* enum values are indexed starting from 1 */
+      DB_SET_ENUM_ELEM_SHORT (db_enum, (unsigned short) idx + 1);
+      DB_SET_ENUM_ELEM_STRING (db_enum, str_val);
+      DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_len);
+
+      idx++;
+      node = node->next;
+    }
+
+  enumeration->count = enum_elements_cnt;
+  enumeration->elements = enum_elements;
+
+  return NO_ERROR;
+
+error:
+  if (enum_elements != NULL)
+    {
+      for (--idx; idx >= 0; idx--)
+	{
+	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_elements[idx]));
+	}
+      free_and_init (enum_elements);
+    }
+
+  return err;
+}
+
+/*
  * pt_data_type_to_db_domain() - returns DB_DOMAIN * that matches dt
  *   return:  a DB_DOMAIN
  *   parser(in):
@@ -1460,14 +1571,17 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
   DB_TYPE domain_type;
   DB_OBJECT *class_obj = (DB_OBJECT *) 0;
-  DB_ENUM_ELEMENT *enum_elements = NULL;
-  int precision = 0, scale = 0, codeset = 0, enum_elements_cnt = 0;
-  int idx;
+  int precision = 0, scale = 0, codeset = 0;
+  DB_ENUMERATION enumeration;
+  int collation_id = 0;
 
   if (dt == NULL)
     {
       return (DB_DOMAIN *) NULL;
     }
+
+  enumeration.count = 0;
+  enumeration.elements = NULL;
 
   domain_type = pt_type_enum_to_db (dt->type_enum);
   switch (domain_type)
@@ -1530,7 +1644,9 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       precision = dt->info.data_type.precision;
-      codeset = lang_charset ();
+      codeset = dt->info.data_type.units;
+      collation_id = dt->info.data_type.collation_id;
+      assert (collation_id >= 0);
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
@@ -1550,83 +1666,11 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       return pt_node_to_db_domain (parser, dt, class_name);
 
     case DB_TYPE_ENUMERATION:
-      {
-	PT_NODE *node = dt->info.data_type.enumeration;
-	DB_ENUM_ELEMENT *db_enum = NULL;
-	char *str_val = NULL;
-	int str_len = 0;
-
-	enum_elements_cnt = 0;
-	while (node != NULL)
-	  {
-	    enum_elements_cnt++;
-	    node = node->next;
-	  }
-
-	if (enum_elements_cnt == 0)
-	  {
-	    break;
-	  }
-
-	enum_elements = malloc (enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
-	if (enum_elements == NULL)
-	  {
-	    er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		    ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		    enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
-	    return NULL;
-	  }
-
-	idx = 0;
-	node = dt->info.data_type.enumeration;
-	while (node != NULL)
-	  {
-	    if (node->node_type != PT_VALUE)
-	      {
-		/* node_type should always be PT_VALUE */
-		assert (false);
-		for (--idx; idx >= 0; idx--)
-		  {
-		    free_and_init (DB_GET_ENUM_ELEM_STRING
-				   (&enum_elements[idx]));
-		  }
-		free_and_init (enum_elements);
-
-		er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			ER_GENERIC_ERROR, 0);
-
-		return NULL;
-	      }
-	    db_enum = &enum_elements[idx];
-	    str_len = pt_get_varchar_length (node->info.value.data_value.str);
-	    str_val = malloc (str_len + 1);
-	    if (str_val == NULL)
-	      {
-		for (--idx; idx >= 0; idx--)
-		  {
-		    free_and_init (DB_GET_ENUM_ELEM_STRING
-				   (&enum_elements[idx]));
-		  }
-		free_and_init (enum_elements);
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1, str_len + 1);
-		return NULL;
-	      }
-
-	    memcpy (str_val,
-		    pt_get_varchar_bytes (node->info.value.data_value.str),
-		    str_len);
-	    str_val[str_len] = 0;
-
-	    /* enum values are indexed starting from 1 */
-	    DB_SET_ENUM_ELEM_SHORT (db_enum, (unsigned short) idx + 1);
-	    DB_SET_ENUM_ELEM_STRING (db_enum, str_val);
-	    DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_len);
-
-	    idx++;
-	    node = node->next;
-	  }
-      }
+      if (pt_get_enumeration_from_data_type (parser, dt, &enumeration) !=
+	  NO_ERROR)
+	{
+	  return NULL;
+	}
       break;
 
     case DB_TYPE_NULL:
@@ -1658,19 +1702,13 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       retval->precision = precision;
       retval->scale = scale;
       retval->codeset = codeset;
-      DOM_SET_ENUM_ELEMENTS (retval, enum_elements);
-      DOM_SET_ENUM_ELEMS_COUNT (retval, enum_elements_cnt);
+      retval->collation_id = collation_id;
+      DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
+      DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }
   else
     {
-      if (domain_type == DB_TYPE_ENUMERATION)
-	{
-	  for (idx = 0; idx < enum_elements_cnt; idx++)
-	    {
-	      free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_elements[idx]));
-	    }
-	  free_and_init (enum_elements);
-	}
+      tp_domain_clear_enumeration (&enumeration);
     }
 
   return retval;
@@ -1709,16 +1747,20 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 {
   DB_TYPE domain_type;
   DB_OBJECT *class_obj = (DB_OBJECT *) 0;
-  int precision = 0, scale = 0, codeset = 0;
+  int precision = 0, scale = 0, codeset = 0, collation_id = 0;
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
   DB_DOMAIN *setdomain = (DB_DOMAIN *) 0;
+  DB_ENUMERATION enumeration;
   int error = NO_ERROR;
 
   if (dt == NULL)
     {
       return (DB_DOMAIN *) NULL;
     }
+
+  enumeration.count = 0;
+  enumeration.elements = NULL;
 
   domain_type = pt_type_enum_to_db ((PT_TYPE_ENUM) type);
   switch (domain_type)
@@ -1775,6 +1817,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_VARBIT:
       precision = dt->info.data_type.precision;
       codeset = dt->info.data_type.units;
+      collation_id = dt->info.data_type.collation_id;
       break;
 
     case DB_TYPE_NUMERIC:
@@ -1801,6 +1844,14 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 	}
       return retval;
 
+    case DB_TYPE_ENUMERATION:
+      if (pt_get_enumeration_from_data_type (parser, dt, &enumeration) !=
+	  NO_ERROR)
+	{
+	  return NULL;
+	}
+      break;
+
     case DB_TYPE_NULL:
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_VARIABLE:
@@ -1816,6 +1867,13 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       retval->precision = precision;
       retval->scale = scale;
       retval->codeset = codeset;
+      retval->collation_id = collation_id;
+      DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
+      DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
+    }
+  else
+    {
+      tp_domain_clear_enumeration (&enumeration);
     }
 
   return retval;
@@ -2492,6 +2550,9 @@ pt_bind_helper (PARSER_CONTEXT * parser,
 	  dt->type_enum = node->type_enum;
 	  dt->info.data_type.precision = DB_VALUE_PRECISION (val);
 	  dt->info.data_type.units = (int) db_get_string_codeset (val);
+	  dt->info.data_type.collation_id =
+	    (int) db_get_string_collation (val);
+	  assert (dt->info.data_type.collation_id >= 0);
 	}
       break;
 
@@ -2821,6 +2882,15 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
   int dst_length;
   int bits_converted;
   char *bstring;
+  int collation_id = LANG_COERCIBLE_COLL;
+  INTL_CODESET codeset = LANG_COERCIBLE_CODESET;
+
+  assert (value->node_type == PT_VALUE);
+  if (PT_HAS_COLLATION (value->type_enum) && value->data_type != NULL)
+    {
+      collation_id = value->data_type->info.data_type.collation_id;
+      codeset = value->data_type->info.data_type.units;
+    }
 
   switch (value->type_enum)
     {
@@ -2991,7 +3061,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
       db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE,
 		     (DB_C_NCHAR) value->info.value.data_value.str->bytes,
-		     value->info.value.data_value.str->length);
+		     value->info.value.data_value.str->length,
+		     codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;
@@ -3000,7 +3071,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
       db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE,
 			(DB_C_NCHAR) value->info.value.data_value.str->bytes,
-			value->info.value.data_value.str->length);
+			value->info.value.data_value.str->length,
+			codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;
@@ -3078,7 +3150,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
       db_make_char (db_value, TP_FLOATING_PRECISION_VALUE,
 		    (DB_C_CHAR) value->info.value.data_value.str->bytes,
-		    value->info.value.data_value.str->length);
+		    value->info.value.data_value.str->length,
+		    codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;
@@ -3087,7 +3160,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
       db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE,
 		       (DB_C_CHAR) value->info.value.data_value.str->bytes,
-		       value->info.value.data_value.str->length);
+		       value->info.value.data_value.str->length,
+		       codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;

@@ -207,8 +207,8 @@ extern int set_size (DB_COLLECTION * set);
 extern bool set_isempty (DB_COLLECTION * set);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern bool set_is_all_null (DB_COLLECTION * set);
-extern bool set_has_null (DB_COLLECTION * set);
 #endif
+extern bool set_has_null (DB_COLLECTION * set);
 extern bool set_ismember (DB_COLLECTION * set, DB_VALUE * value);
 extern int set_issome (DB_VALUE * value, DB_COLLECTION * set,
 		       PT_OP_TYPE op, int do_coercion);

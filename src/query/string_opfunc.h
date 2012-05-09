@@ -55,14 +55,24 @@
 
 #define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
 
-#define QSTR_CHAR_COMPARE(string1, size1, string2, size2) \
-  (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
-#define QSTR_NCHAR_COMPARE(string1, size1, string2, size2, codeset) \
-  (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
-#define QSTR_COMPARE(string1, size1, string2, size2) \
-  (lang_locale ())->fastcmp ((string1), (size1), (string2), (size2))
-#define QSTR_NEXT_ALPHA_CHAR(cur_chr, size, next_chr, len) \
-  (lang_locale ())->next_coll_seq ((cur_chr), (size), (next_chr), (len))
+#define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2) \
+	QSTR_COMPARE(id, string1, size1, string2, size2)
+
+#define QSTR_NCHAR_COMPARE(id, string1, size1, string2, size2, codeset) \
+        QSTR_COMPARE(id, string1, size1, string2, size2)
+
+#define QSTR_COMPARE(id, string1, size1, string2, size2) \
+  (lang_get_collation (id))->fastcmp ((lang_get_collation (id)), (string1), \
+				      (size1), (string2), (size2))
+#define QSTR_NEXT_ALPHA_CHAR(id, cur_chr, size, next_chr, len) \
+  (lang_get_collation (id))->next_coll_seq ((lang_get_collation (id)), \
+					(cur_chr), (size), (next_chr), (len))
+#define QSTR_SPLIT_POINT(id, string1, size1, string2, size2, c, b) \
+  (lang_get_collation (id))->split_point ((lang_get_collation (id)), \
+					  (string1), (size1), \
+					  (string2), (size2), \
+					  (c), (b))
+
 
 /*
  * These are the sizes for scratch buffers for formatting numbers, dates,
@@ -208,7 +218,8 @@ extern int db_char_string_coerce (const DB_VALUE * src_string,
 extern int db_string_make_empty_typed_string (THREAD_ENTRY * thread_p,
 					      DB_VALUE * db_val,
 					      const DB_TYPE db_type,
-					      int precision);
+					      int precision,
+					      int codeset, int collation_id);
 extern int db_find_string_in_in_set (const DB_VALUE * needle,
 				     const DB_VALUE * stack,
 				     DB_VALUE * result);
@@ -233,9 +244,10 @@ extern void qstr_bit_to_hex_coerce (char *buffer, int buffer_size,
 				    int pad_flag, int *copy_size,
 				    int *truncation);
 extern int db_get_string_length (const DB_VALUE * value);
-extern void qstr_make_typed_string (DB_TYPE domain, DB_VALUE * value,
-				    int precision, const DB_C_CHAR src,
-				    const int s_unit);
+extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value,
+				    const int precision, const DB_C_CHAR src,
+				    const int s_unit, const int codeset,
+				    const int collation_id);
 extern int db_add_months (const DB_VALUE * src_date,
 			  const DB_VALUE * nmonth, DB_VALUE * result_date);
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);
@@ -244,7 +256,7 @@ extern int db_str_to_date (const DB_VALUE * src_date,
 			   DB_VALUE * result_date, TP_DOMAIN * domain);
 extern int db_time_format (const DB_VALUE * src_time,
 			   const DB_VALUE * src_format,
-			   DB_VALUE * result_time);
+			   DB_VALUE * result_time, const TP_DOMAIN * domain);
 extern int db_timestamp (const DB_VALUE * src_datetime1,
 			 const DB_VALUE * src_time2,
 			 DB_VALUE * result_datetime);
@@ -262,7 +274,8 @@ extern int db_sys_datetime (DB_VALUE * result_datetime);
 extern int db_sys_timezone (DB_VALUE * result_timezone);
 extern int db_to_char (const DB_VALUE * src_value,
 		       const DB_VALUE * format_or_length,
-		       const DB_VALUE * lang_str, DB_VALUE * result_str);
+		       const DB_VALUE * lang_str, DB_VALUE * result_str,
+		       const TP_DOMAIN * domain);
 extern int db_to_date (const DB_VALUE * src_str,
 		       const DB_VALUE * format_str,
 		       const DB_VALUE * date_lang, DB_VALUE * result_date);
@@ -281,7 +294,7 @@ extern int db_to_number (const DB_VALUE * src_str,
 extern int db_string_reverse (const DB_VALUE * src_str,
 			      DB_VALUE * result_str);
 extern int db_format (const DB_VALUE * number_text, const DB_VALUE * decimals,
-		      DB_VALUE * result);
+		      DB_VALUE * result, const TP_DOMAIN * domain);
 /* datetime functions */
 extern int db_date_add_interval_days (DB_VALUE * result,
 				      const DB_VALUE * date,
@@ -296,9 +309,12 @@ extern int db_date_sub_interval_expr (DB_VALUE * result,
 				      const DB_VALUE * date,
 				      const DB_VALUE * expr, const int unit);
 extern int db_date_format (const DB_VALUE * date_value,
-			   const DB_VALUE * format, DB_VALUE * result);
-extern int db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value);
-extern int db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value);
+			   const DB_VALUE * format, DB_VALUE * result,
+			   const TP_DOMAIN * domain);
+extern int db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value,
+			  const TP_DOMAIN * domain);
+extern int db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value,
+			  const TP_DOMAIN * domain);
 extern int count_leap_years_up_to (int year);
 extern int count_nonleap_years_up_to (int year);
 extern int db_date_diff (const DB_VALUE * date_value1,
@@ -381,4 +397,7 @@ extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
 		    const DB_VALUE * to_base, DB_VALUE * result);
 extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);
+extern int db_value_to_enumeration_value (const DB_VALUE * src,
+					  DB_VALUE * result,
+					  const TP_DOMAIN * enum_domain);
 #endif /* _STRING_OPFUNC_H_ */

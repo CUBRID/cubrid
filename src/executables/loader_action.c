@@ -888,11 +888,13 @@ act_string (char *token, int size, DB_TYPE dtype)
     {
       if (dtype == DB_TYPE_CHAR)
 	{
-	  DB_MAKE_VARCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size);
+	  DB_MAKE_VARCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size,
+			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	}
       else
 	{
-	  DB_MAKE_VARNCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size);
+	  DB_MAKE_VARNCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size,
+			    LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	}
 
       domain_ptr = tp_domain_resolve_value (value, &domain);

@@ -249,12 +249,22 @@ union hybrid_node
   METHOD_SPEC_TYPE method_node;	/* method specification */
 };				/* class/list access specification */
 
+typedef struct partition_spec_node PARTITION_SPEC_TYPE;
+struct partition_spec_node
+{
+  OID oid;			/* class oid */
+  HFID hfid;			/* class hfid */
+  INDX_ID indx_id;		/* index id */
+  PARTITION_SPEC_TYPE *next;	/* next partition */
+};
+
 typedef struct access_spec_node ACCESS_SPEC_TYPE;
 struct access_spec_node
 {
   TARGET_TYPE type;		/* target class or list */
   ACCESS_METHOD access;		/* access method */
   INDX_INFO *indexptr;		/* index info if index accessing */
+  INDX_ID indx_id;
   PRED_EXPR *where_key;		/* key filter expression */
   PRED_EXPR *where_pred;	/* predicate expression */
   HYBRID_NODE s;		/* class/list access specification */
@@ -266,6 +276,12 @@ struct access_spec_node
   DB_VALUE *s_dbval;		/* single fetch mode db_value */
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   int lock_hint;		/* lock hint */
+  PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
+  PARTITION_SPEC_TYPE *curent;	/* current partition */
+  bool pruned;			/* true if partition pruning has been
+				 * performed */
+  int needs_pruning;		/* true if partition pruning should be
+				 * performed */
 };
 
 
@@ -360,16 +376,16 @@ struct update_assignment
 				 * NULL */
 };
 
-/* class info structure */
-typedef struct update_class_info UPDATE_CLASS_INFO;
-struct update_class_info
+/*update/delete class info structure */
+typedef struct upddel_class_info UPDDEL_CLASS_INFO;
+struct upddel_class_info
 {
   int no_subclasses;		/* total number of subclasses */
   OID *class_oid;		/* OID's of the classes                 */
   HFID *class_hfid;		/* Heap file ID's of the classes        */
   int no_attrs;			/* total number of attrs involved       */
   int *att_id;			/* ID's of attributes (array)           */
-  struct xasl_partition_info **partition;	/* partition information */
+  int needs_pruning;		/* perform partition pruning */
   int has_uniques;		/* whether there are unique constraints */
 };
 
@@ -377,7 +393,7 @@ typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
   int no_classes;		/* total number of classes involved     */
-  UPDATE_CLASS_INFO *classes;	/* details for each class in the update
+  UPDDEL_CLASS_INFO *classes;	/* details for each class in the update
 				 * list */
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
   int no_assigns;		/* total no. of assignments */
@@ -407,14 +423,13 @@ struct insert_proc_node
 				 */
   int is_first_value;		/* Indicates whether the first value of VALUES
 				 * clause. */
-  struct xasl_partition_info *partition;	/* partition information */
+  int needs_pruning;		/* not 0 if the class needs pruning */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
 struct delete_proc_node
 {
-  OID *class_oid;		/* OID's of the classes                 */
-  HFID *class_hfid;		/* Heap file ID's of the classes        */
+  UPDDEL_CLASS_INFO *classes;	/* classes info */
   int no_classes;		/* total number of classes involved     */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
@@ -442,6 +457,14 @@ struct connectby_proc_node
   QFILE_TUPLE curr_tuple;	/* needed for operators and functions */
 };
 
+typedef struct merge_proc_node MERGE_PROC_NODE;
+struct merge_proc_node
+{
+  XASL_NODE *update_xasl;	/* XASL for UPDATE part */
+  XASL_NODE *delete_xasl;	/* XASL for UPDATE DELETE part */
+  XASL_NODE *insert_xasl;	/* XASL for INSERT part */
+};
+
 typedef enum
 {
   UNION_PROC,
@@ -456,7 +479,8 @@ typedef enum
   DELETE_PROC,
   INSERT_PROC,
   CONNECTBY_PROC,
-  DO_PROC
+  DO_PROC,
+  MERGE_PROC
 } PROC_TYPE;
 
 typedef enum
@@ -564,6 +588,7 @@ struct xasl_node
     INSERT_PROC_NODE insert;	/* INSERT_PROC */
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */
     CONNECTBY_PROC_NODE connect_by;	/* CONNECTBY_PROC */
+    MERGE_PROC_NODE merge;	/* MERGE_PROC */
   } proc;
 
   double cardinality;		/* estimated cardinality of result */
@@ -644,25 +669,6 @@ struct xasl_state
   int qp_xasl_line;		/* Error line */
 };				/* XASL Tree State Information */
 
-typedef struct xasl_parts_info XASL_PARTS_INFO;
-struct xasl_parts_info
-{
-  DB_VALUE *vals;		/* values  - sequence of */
-  OID class_oid;		/* OID of the sub-class */
-  HFID class_hfid;		/* Heap file ID of the sub-class */
-};
-
-typedef struct xasl_partition_info XASL_PARTITION_INFO;
-struct xasl_partition_info
-{
-  ATTR_ID key_attr;
-  int type;			/* RANGE, LIST, HASH */
-  int no_parts;			/* number of partitions */
-  int act_parts;		/* for partition reorg, coalesce, hashsize */
-  REGU_VARIABLE *expr;		/* partition expression */
-  XASL_PARTS_INFO **parts;
-};
-
 
 /*
  * xasl head node information
@@ -722,6 +728,9 @@ extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p,
 				     PRED_EXPR_WITH_CONTEXT * pred_filter,
 				     bool dealloc_dbvalues);
+extern int qexec_clear_partition_expression (THREAD_ENTRY * thread_p,
+					     REGU_VARIABLE * expr);
+
 extern QFILE_LIST_ID *qexec_get_xasl_list_id (XASL_NODE * xasl);
 #if defined(CUBRID_DEBUG)
 extern void get_xasl_dumper_linked_in ();

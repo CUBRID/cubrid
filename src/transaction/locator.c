@@ -790,12 +790,14 @@ locator_dump_copy_area_one_object (FILE * out_fp, LC_COPYAREA_ONEOBJ * obj,
   switch (obj->operation)
     {
     case LC_FLUSH_INSERT:
+    case LC_FLUSH_INSERT_PRUNE:
       str_operation = "FLUSH_INSERT";
       break;
     case LC_FLUSH_DELETE:
       str_operation = "FLUSH_DELETE";
       break;
     case LC_FLUSH_UPDATE:
+    case LC_FLUSH_UPDATE_PRUNE:
       str_operation = "FLUSH_UPDATE";
       break;
     case LC_FETCH:

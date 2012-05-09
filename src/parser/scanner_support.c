@@ -319,12 +319,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.insert.insert_mode = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
-	      else if (node->node_type == PT_MERGE)
-		{
-		  node->info.merge.hint |= hint_table[i].hint;
-		  node->info.merge.insert.insert_mode = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
 	      break;
 	    default:
 	      break;

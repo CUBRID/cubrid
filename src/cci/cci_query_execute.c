@@ -1470,8 +1470,9 @@ qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type, void *value,
   switch (a_type)
     {
     case CCI_A_TYPE_STR:
-      err_code = qe_get_data_str (&(req_handle->conv_value_buffer), u_type,
-				  col_value_p, data_size, value, indicator);
+      err_code =
+	qe_get_data_str (&(req_handle->conv_value_buffer), u_type,
+			 col_value_p, data_size, value, indicator);
       break;
     case CCI_A_TYPE_BIGINT:
       err_code = qe_get_data_bigint (u_type, col_value_p, value);

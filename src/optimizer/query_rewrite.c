@@ -35,6 +35,9 @@
 #include "view_transform.h"
 #include "parser.h"
 
+/* this must be the last header file included!!! */
+#include "dbval.h"
+
 #define DB_MAX_LITERAL_PRECISION 255
 
 typedef struct spec_id_info SPEC_ID_INFO;
@@ -3244,6 +3247,13 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
   bound->info.value.text = (char *) bound->info.value.data_value.str->bytes;
   (void) pt_value_to_db (parser, bound);
 
+  assert (bound->info.value.db_value_is_initialized);
+  assert (PT_HAS_COLLATION (pattern->type_enum));
+
+  db_put_cs_and_collation (&(bound->info.value.db_value),
+			   DB_GET_STRING_CODESET (&tmp_result),
+			   DB_GET_STRING_COLLATION (&tmp_result));
+
   db_value_clear (&tmp_result);
   return bound;
 
@@ -3295,10 +3305,17 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
   int num_match_many = 0;
   int num_match_one = 0;
   DB_VALUE compressed_pattern;
+  int collation_id;
+  INTL_CODESET codeset;
 
   DB_MAKE_NULL (&compressed_pattern);
 
   *perform_generic_rewrite = false;
+
+  assert (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE
+			   (&pattern->info.value.db_value)));
+  collation_id = DB_GET_STRING_COLLATION (&pattern->info.value.db_value);
+  codeset = DB_GET_STRING_CODESET (&pattern->info.value.db_value);
 
   if (escape != NULL)
     {
@@ -3317,7 +3334,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 	    (const char *) escape->info.value.data_value.str->bytes;
 	  intl_char_count ((unsigned char *) escape_str,
 			   escape->info.value.data_value.str->length,
-			   lang_charset (), &esc_char_len);
+			   codeset, &esc_char_len);
 	  if (esc_char_len != 1)
 	    {
 	      PT_ERRORm (parser, escape, MSGCAT_SET_ERROR,
@@ -3357,7 +3374,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
   pattern_str = (char *) pattern->info.value.data_value.str->bytes;
   pattern_size = pattern->info.value.data_value.str->length;
   intl_char_count ((unsigned char *) pattern_str, pattern_size,
-		   lang_charset (), &pattern_length);
+		   codeset, &pattern_length);
   pattern->info.value.text = pattern_str;
 
   error_code = db_get_info_for_like_optimization (&compressed_pattern,
@@ -3456,9 +3473,8 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
       assert (pattern_length >= 2
 	      && pattern_str[pattern_size - 1] == LIKE_WILDCARD_MATCH_MANY);
 
-      /* TODO : change this when we support collation per column
-       * do not rewrite for collations with expansions */
-      if (lang_locale ()->coll.uca_opt.sett_expansions)
+      /* do not rewrite for collations with LIKE disabled optimization */
+      if (!(lang_get_collation (collation_id)->options.allow_like_rewrite))
 	{
 	  *perform_generic_rewrite = true;
 	  goto fast_exit;
@@ -3591,6 +3607,10 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser,
     }
 
   bound->info.expr.arg2 = expr_escape;
+
+  /* copy data type */
+  assert (bound->data_type == NULL);
+  bound->data_type = parser_copy_tree (parser, pattern->data_type);
 
   return bound;
 
@@ -6305,11 +6325,6 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      /* neither LHS is an attribute, inst_num, nor orderby_num */
 	      continue;
 	    }
-	  /* if it is partition prunning key */
-	  if (!where->partition_pruned && qo_is_partition_attr (node_prior))
-	    {
-	      continue;
-	    }
 	  if (PT_EXPR_INFO_IS_FLAGED (dnf_node, PT_EXPR_INFO_FULL_RANGE))
 	    {
 	      continue;
@@ -6440,14 +6455,8 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser,
       return false;
     }
 
-  mobj = name->info.name.db_object;
-  if (au_fetch_class (mobj, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+  if (sm_is_partitioned_class (name->info.name.db_object))
     {
-      return false;
-    }
-  if (class_ == NULL || class_->partition_of != NULL)
-    {
-      /* partitioned tables */
       return false;
     }
   return true;
@@ -6470,12 +6479,12 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   PT_NODE *t_node, *spec;
   PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
   PT_NODE *limit, *derived;
-  PT_NODE **merge_upd_wherep, **merge_ins_wherep;
+  PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   bool call_auto_parameterize = false;
 
   dummy = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
-  merge_upd_wherep = merge_ins_wherep = &dummy;
+  merge_upd_wherep = merge_ins_wherep = merge_del_wherep = &dummy;
 
   switch (node->node_type)
     {
@@ -6592,6 +6601,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       wherep = &node->info.merge.search_cond;
       merge_upd_wherep = &node->info.merge.update.search_cond;
       merge_ins_wherep = &node->info.merge.insert.search_cond;
+      merge_del_wherep = &node->info.merge.update.del_search_cond;
       break;
 
     case PT_UNION:
@@ -6726,7 +6736,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
        */
 
       if (!*wherep && !*havingp && !*aftercbfilterp && !*startwithp
-	  && !*connectbyp && !*merge_upd_wherep && !*merge_ins_wherep)
+	  && !*connectbyp && !*merge_upd_wherep && !*merge_ins_wherep
+	  && !*merge_del_wherep)
 	{
 	  if (node->node_type != PT_SELECT)
 	    {
@@ -6771,6 +6782,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*merge_ins_wherep)
 	{
 	  *merge_ins_wherep = pt_cnf (parser, *merge_ins_wherep);
+	}
+      if (*merge_del_wherep)
+	{
+	  *merge_del_wherep = pt_cnf (parser, *merge_del_wherep);
 	}
 
       /* in HAVING clause with GROUP BY,
@@ -6870,6 +6885,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_reduce_equality_terms (parser, node, merge_ins_wherep);
 	}
+      if (*merge_del_wherep)
+	{
+	  qo_reduce_equality_terms (parser, node, merge_del_wherep);
+	}
 
       /* convert terms of the form 'const op attr' to 'attr op const' */
       if (*wherep)
@@ -6899,6 +6918,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*merge_ins_wherep)
 	{
 	  qo_converse_sarg_terms (parser, *merge_ins_wherep);
+	}
+      if (*merge_del_wherep)
+	{
+	  qo_converse_sarg_terms (parser, *merge_del_wherep);
 	}
 
       /* reduce a pair of comparison terms into one BETWEEN term */
@@ -6930,6 +6953,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_reduce_comp_pair_terms (parser, merge_ins_wherep);
 	}
+      if (*merge_del_wherep)
+	{
+	  qo_reduce_comp_pair_terms (parser, merge_del_wherep);
+	}
 
       /* convert a leftmost LIKE term to a BETWEEN (GE_LT) term */
       if (*wherep)
@@ -6959,6 +6986,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*merge_ins_wherep)
 	{
 	  qo_rewrite_like_terms (parser, merge_ins_wherep);
+	}
+      if (*merge_del_wherep)
+	{
+	  qo_rewrite_like_terms (parser, merge_del_wherep);
 	}
 
       /* convert comparison terms to RANGE */
@@ -6990,6 +7021,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_convert_to_range (parser, merge_ins_wherep);
 	}
+      if (*merge_del_wherep)
+	{
+	  qo_convert_to_range (parser, merge_del_wherep);
+	}
 
       /* narrow search range by applying range intersection */
       if (*wherep)
@@ -7020,6 +7055,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  qo_apply_range_intersection (parser, merge_ins_wherep);
 	}
+      if (*merge_del_wherep)
+	{
+	  qo_apply_range_intersection (parser, merge_del_wherep);
+	}
 
       /* remove meaningless IS NULL/IS NOT NULL terms */
       if (*wherep)
@@ -7049,6 +7088,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*merge_ins_wherep)
 	{
 	  qo_fold_is_and_not_null (parser, merge_ins_wherep);
+	}
+      if (*merge_del_wherep)
+	{
+	  qo_fold_is_and_not_null (parser, merge_del_wherep);
 	}
 
       if (node->node_type == PT_SELECT)
@@ -7081,36 +7124,6 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  if (qo_reduce_order_by (parser, node) != NO_ERROR)
 	    {
 	      return node;	/* give up */
-	    }
-	}
-
-      if (!node->partition_pruned
-	  && (node->node_type == PT_SELECT
-	      || node->node_type == PT_DELETE
-	      || node->node_type == PT_UPDATE || node->node_type == PT_MERGE))
-	{
-	  if (node->node_type == PT_SELECT)
-	    {
-	      /* check partition pruning */
-	      t_node = node->info.query.q.select.from;
-	      while (t_node != NULL && !t_node->partition_pruned)
-		{
-		  t_node = t_node->next;
-		}
-
-	      if (t_node != NULL)
-		{
-		  node->partition_pruned = 1;	/* for DELETE/UPDATE */
-		  node->info.query.q.select.where->partition_pruned = 1;
-		}
-	      else
-		{
-		  do_apply_partition_pruning (parser, node);
-		}
-	    }
-	  else
-	    {
-	      do_apply_partition_pruning (parser, node);
 	    }
 	}
 
@@ -7159,6 +7172,11 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 			    (*merge_ins_wherep)->force_auto_parameterize))
     {
       qo_do_auto_parameterize (parser, *merge_ins_wherep);
+    }
+  if (*merge_del_wherep && (call_auto_parameterize ||
+			    (*merge_del_wherep)->force_auto_parameterize))
+    {
+      qo_do_auto_parameterize (parser, *merge_del_wherep);
     }
 
   if (node->node_type == PT_SELECT && node->info.query.orderby_for &&

@@ -1471,7 +1471,8 @@ string_disk_size (const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length,
+		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
   return (*(tp_VarNChar.data_lengthval)) (&value, 1);
 }
 
@@ -1507,7 +1508,11 @@ get_string (OR_BUF * buf, int length)
    * domain to reflect this.
    */
   my_domain.precision = DB_MAX_VARNCHAR_PRECISION;
+
+  assert (lang_server_charset_id () == LANG_SYS_CODESET);
+
   my_domain.codeset = lang_server_charset_id ();
+  my_domain.collation_id = LANG_SYS_COLLATION;
 
   (*(tp_VarNChar.data_readval)) (buf, &value, &my_domain, length, true, NULL,
 				 0);
@@ -1550,7 +1555,8 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length,
+		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
 }
 
@@ -2031,6 +2037,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   or_put_int (buf, domain->precision);
   or_put_int (buf, domain->scale);
   or_put_int (buf, domain->codeset);
+  or_put_int (buf, domain->collation_id);
   pr_write_mop (buf, domain->class_mop);
 
   put_substructure_set (buf, (DB_LIST *) domain->setdomain,
@@ -2087,6 +2094,7 @@ disk_to_domain2 (OR_BUF * buf)
   domain->precision = or_get_int (buf, &rc);
   domain->scale = or_get_int (buf, &rc);
   domain->codeset = or_get_int (buf, &rc);
+  domain->collation_id = or_get_int (buf, &rc);
 
   /*
    * Read the domain class OID without promoting it to a MOP.
@@ -3005,6 +3013,14 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 					    vars
 					    [ORC_ATT_DOMAIN_INDEX].length);
 
+      if (att->domain != NULL && att->domain->type->id == DB_TYPE_ENUMERATION)
+	{
+	  /* Fill the default values with missing data */
+	  pr_complete_enum_value (&att->default_value.value, att->domain);
+	  pr_complete_enum_value (&att->default_value.original_value,
+				  att->domain);
+	}
+
       /* variable attribute 4: trigger list */
       triggers = get_object_set (buf, vars[ORC_ATT_TRIGGER_INDEX].length);
       if (triggers != NULL)
@@ -3568,6 +3584,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   /* owner object */
   pr_write_mop (buf, class_->owner);
+  or_put_int (buf, (int) class_->collation_id);
 
 
   /* 0: NAME */
@@ -3933,6 +3950,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   /* owner object */
   (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
   class_->owner = db_get_object (&value);
+  class_->collation_id = or_get_int (buf, &rc);
 
   /* variable 0 */
   class_->header.name = get_string (buf, vars[ORC_NAME_INDEX].length);

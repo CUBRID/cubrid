@@ -31,7 +31,6 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "language_support.h"
 #include "environment_variable.h"
 #include "utility.h"
 #include "xml_parser.h"
@@ -40,21 +39,16 @@
 #include "release_string.h"
 #include "uca_support.h"
 #include "unicode_support.h"
-#include "locale_support.h"
 #include "message_catalog.h"
+#include "language_support.h"
+#include "system_parameter.h"
+#include "locale_support.h"
 
 
 #define TXT_CONV_LINE_SIZE 512
 #define TXT_CONV_ITEM_GROW_COUNT 128
 
-/* common data shared by all locales */
-typedef struct locale_shared_data LOCALE_SHARED_DATA;
-struct locale_shared_data
-{
-  ALPHABET_DATA *unicode_a;	/* Unicode alphabet */
-  ALPHABET_DATA *ascii_a;	/* ASCII alphabet */
-};
-
+#define LOC_CURRENT_COLL_TAIL(ld) (&(ld->collations[ld->coll_cnt].tail_coll))
 const char *ldml_ref_day_names[] =
   { "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
 
@@ -68,6 +62,27 @@ typedef struct
   unsigned int text_cp;
   unsigned int unicode_cp;
 } TXT_CONV_ITEM;
+
+/* shared data : this is used during genlocale process 
+ * data shared by several locales are centralized here; and saved only once
+ * in the generated libray */
+typedef enum
+{
+  LOC_SHARED_COLLATION = 0,
+  LOC_SHARED_ALPHABET = 1,
+  LOC_SHARED_NORMALIZATION = 2
+} LOC_SHARED_DATA_TYPE;
+
+typedef struct
+{
+  LOC_SHARED_DATA_TYPE lsd_type;
+  char lsd_key[COLL_NAME_SIZE];
+} LOC_SHARED_DATA;
+
+static LOC_SHARED_DATA *shared_data = NULL;
+static int count_shared_data = 0;
+static int alloced_shared_data = 0;
+
 
 static int start_element_ok (void *data, const char **attr);
 static int end_element_ok (void *data, const char *el_name);
@@ -91,6 +106,7 @@ static int start_currency (void *data, const char **attr);
 static int end_number_symbol (void *data, const char *el_name);
 static int start_collations (void *data, const char **attr);
 static int start_one_collation (void *data, const char **attr);
+static int end_one_collation (void *data, const char *el_name);
 static int start_collation_setttings (void *data, const char **attr);
 static int start_collation_reset (void *data, const char **attr);
 static int end_collation_reset (void *data, const char *el_name);
@@ -118,15 +134,22 @@ static int start_upper_case_rule (void *data, const char **attr);
 static int end_case_rule (void *data, const char *el_name);
 static int start_lower_case_rule (void *data, const char **attr);
 static int end_transform_buffer (void *data, const char *el_name);
+
+static int start_unicode_file (void *data, const char **attr);
+static int start_normalization (void *data, const char **attr);
+
 static int start_consoleconversion (void *data, const char **attr);
 
 static int handle_data (void *data, const char *s, int len);
 
 
 static void clear_data_buffer (XML_PARSER_DATA * pd);
+static LOCALE_COLLATION *new_locale_collation (LOCALE_DATA * ld);
 static TAILOR_RULE *new_collation_rule (LOCALE_DATA * ld);
 static TRANSFORM_RULE *new_transform_rule (LOCALE_DATA * ld);
 static CUBRID_TAILOR_RULE *new_collation_cubrid_rule (LOCALE_DATA * ld);
+static int locale_alloc_collation_id (void);
+static void locale_destroy_collation (LOCALE_COLLATION * lc);
 
 static void print_debug_start_el (void *data, const char **attrs,
 				  const char *msg, const int status);
@@ -135,26 +158,18 @@ static void print_debug_end_el (void *data, const char *msg,
 static void print_debug_data_content (void *data, const char *msg,
 				      const int status);
 static int load_console_conv_data (LOCALE_DATA * ld, bool is_verbose);
-static int save_string_to_bin (FILE * fp, const char *s);
-static int load_string_from_bin (FILE * fp, char *s, const int size);
-static int save_int_to_bin (FILE * fp, const int i);
-static int load_int_from_bin (FILE * fp, int *i);
 
-static int locale_save_to_bin (LOCALE_FILE * lf, LOCALE_DATA * ld);
-static int save_alphabet_to_bin (FILE * fp, ALPHABET_DATA * a);
-static int load_alphabet_from_bin (LOCALE_FILE * lf, FILE * fp,
-				   ALPHABET_DATA * a);
-static int save_console_conv_to_bin (FILE * fp, TEXT_CONVERSION * tc);
-static int load_console_conv_from_bin (LOCALE_FILE * lf, FILE * fp,
-				       TEXT_CONVERSION * tc);
-static int save_uca_opt_to_bin (FILE * fp, UCA_OPTIONS * uca_opt);
-static int load_uca_opt_from_bin (LOCALE_FILE * lf, FILE * fp,
-				  UCA_OPTIONS * uca_opt);
-static int save_contraction_to_bin (FILE * fp, COLL_CONTRACTION * c,
-				    bool use_expansion, bool use_level_4);
-static int load_contraction_from_bin (LOCALE_FILE * lf, FILE * fp,
-				      COLL_CONTRACTION * c,
-				      bool use_expansion, bool use_level_4);
+static int locale_save_to_C_file (LOCALE_FILE * lf, LOCALE_DATA * ld);
+static int locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld);
+static int locale_save_alphabets_to_C_file (FILE * fp, LOCALE_DATA * ld);
+static int locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a,
+					       bool save_w_identier_name,
+					       const char *alpha_suffix);
+static int locale_save_collation_data_to_C_file (FILE * fp,
+						 COLL_DATA * coll_data);
+static int locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld);
+static int locale_save_normalization_to_C_file (FILE * fp, LOCALE_DATA * ld);
+
 static void locale_destroy_collation_tailorings (const COLL_TAILORING * ct);
 static void locale_destroy_collation_data (const COLL_DATA * cd);
 static void locale_destroy_alphabet_tailoring (const ALPHABET_TAILORING * cd);
@@ -163,41 +178,151 @@ static int str_pop_token (char *str_p, char **token_p, char **next_p);
 static int dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 				 int lower_bound, int upper_bound);
 
-static void dump_collation_key (LOCALE_DATA * ld, const unsigned int key,
+static void dump_collation_key (COLL_DATA * coll, const unsigned int key,
 				bool print_weight, bool print_key);
-static void dump_collation_contr (LOCALE_DATA * ld,
+static void dump_collation_contr (COLL_DATA * coll,
 				  const COLL_CONTRACTION * contr,
 				  bool print_weight, bool print_contr);
-static void dump_collation_codepoint (LOCALE_DATA * ld,
+static void dump_collation_codepoint (COLL_DATA * coll,
 				      const unsigned int cp,
 				      bool print_weight, bool print_cp);
+static int dump_locale_normalization (UNICODE_NORMALIZATION * norm);
+static void dump_unicode_mapping (UNICODE_MAPPING * um, const int mode);
 
+static int comp_func_coll_uca_exp_fo (const void *arg1, const void *arg2);
 static int comp_func_coll_uca_exp (const void *arg1, const void *arg2);
 
+static int comp_func_coll_uca_simple_weights_fo (const void *arg1,
+						 const void *arg2);
 static int comp_func_coll_uca_simple_weights (const void *arg1,
 					      const void *arg2);
 static int comp_func_parse_order_index (const void *arg1, const void *arg2);
 static void locale_make_calendar_parse_order (LOCALE_DATA * ld);
+static int locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE
+					     lsd_type, const char *lsd_key,
+					     bool * exist);
 
-#define PRINT_DEBUG_START(d, a, m, s) \
-   do { \
-      print_debug_start_el (d, a, m, s); \
+#define PRINT_DEBUG_START(d, a, m, s)				      \
+   do {								      \
+      print_debug_start_el (d, a, m, s);			      \
    } while (0);
 
-#define PRINT_DEBUG_END(d, m, s) \
-   do { \
-      print_debug_end_el (d, m, s); \
+#define PRINT_DEBUG_END(d, m, s)				      \
+   do {								      \
+      print_debug_end_el (d, m, s);				      \
    } while (0);
 
-#define PRINT_DEBUG_DATA(d, m, s) \
-   do { \
-      print_debug_data_content (d, m, s); \
+#define PRINT_DEBUG_DATA(d, m, s)				      \
+   do {								      \
+      print_debug_data_content (d, m, s);			      \
    } while (0);
+
+#define PRINT_TO_C_FILE_MAX_INT_LINE 10
+
+#if defined(_WIN32) || defined(WINDOWS) || defined(WIN64)
+#define DLL_EXPORT_PREFIX "__declspec(dllexport) "
+#define LOCLIB_FILE_EXT "dll"
+#else
+#define DLL_EXPORT_PREFIX   ""
+#define LOCLIB_FILE_EXT "so"
+#endif
+
+#define PRINT_STRING_TO_C_FILE(fp, val, len)                          \
+  do {                                                                \
+    int istr;                                                         \
+    fprintf (fp, "\"");                                               \
+    for (istr = 0; istr < len; istr++)                                \
+      {                                                               \
+	fprintf (fp, "\\x%02X", (unsigned char) val[istr]);           \
+      }                                                               \
+    fprintf (fp, "\"");						      \
+  } while (0);
+
+#define PRINT_VAR_TO_C_FILE(fp, type, valname, val, format, d)	      \
+  do {								      \
+    fprintf (fp, "\n"DLL_EXPORT_PREFIX"const "			      \
+	     type" "valname"_%s = "format";\n", d, val);	      \
+  } while (0);
+
+#define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val, d)			  \
+  do {                                                                    \
+    fprintf (fp, "\n"DLL_EXPORT_PREFIX"const char "valname"_%s[] = ", d); \
+    PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
+    fprintf (fp, ";\n");                                                  \
+  } while (0);
+
+#define PRINT_STRING_ARRAY_TO_C_FILE(fp, valname, arrcount, val, d)	    \
+  do {									    \
+    int istrarr;							    \
+    fprintf(fp, "\n"DLL_EXPORT_PREFIX"const char* "valname"_%s[] = {\n", d);\
+    for (istrarr = 0; istrarr < arrcount; istrarr++)			    \
+      {									    \
+	fprintf(fp, "\t");						    \
+	PRINT_STRING_TO_C_FILE (fp, val[istrarr], strlen(val[istrarr]));    \
+	if (istrarr < arrcount - 1)					    \
+	  {								    \
+	    fprintf(fp, ",\n");						    \
+	  }								    \
+	else								    \
+	  {								    \
+	    fprintf(fp, "\n");						    \
+	  }								    \
+      }									    \
+    fprintf(fp, "};\n");						    \
+  } while (0);
+
+
+#define PRINT_NUM_ARRAY_TO_C_FILE(fp, vname, vtype, intf, arrcount, val, d) \
+  do {									    \
+    int i_arr, j_arr;							    \
+    fprintf(fp,								    \
+	    "\n"DLL_EXPORT_PREFIX"const "vtype" "vname"_%s[] = {\n", d);    \
+    j_arr = 1;								    \
+    for (i_arr = 0; i_arr < arrcount; i_arr++)				    \
+      {									    \
+	fprintf(fp, "\t");						    \
+	fprintf(fp, intf, val[i_arr]);					    \
+	if (i_arr < arrcount - 1)					    \
+	  {								    \
+	    fprintf(fp, ",");						    \
+	  }								    \
+	j_arr++;							    \
+	if (j_arr > PRINT_TO_C_FILE_MAX_INT_LINE)			    \
+	  {								    \
+	    j_arr = 1;							    \
+	    fprintf(fp, "\n");						    \
+	  }								    \
+      }									    \
+    fprintf(fp, "};\n");						    \
+  } while (0);
+
+
+#define PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE(fp, intf, tab, arrcount, val)	    \
+  do {									    \
+    int i_uarr, j_uarr;							    \
+    fprintf(fp, tab"{\n");						    \
+    j_uarr = 1;								    \
+    for (i_uarr = 0; i_uarr < arrcount; i_uarr++)			    \
+      {									    \
+	fprintf(fp, intf, val[i_uarr]);					    \
+	if (i_uarr < arrcount - 1)					    \
+	  {								    \
+	    fprintf(fp, ",");						    \
+	  }								    \
+	j_uarr++;							    \
+	if (j_uarr > PRINT_TO_C_FILE_MAX_INT_LINE)			    \
+	  {								    \
+	    j_uarr = 1;							    \
+	    fprintf(fp, "\n"tab);					    \
+	  }								    \
+      }									    \
+    fprintf(fp, tab"}");						    \
+  } while (0);
+
 
 #define XML_COMMENT_START "<!-- "
 #define XML_COMMENT_END " -->"
 
-LOCALE_SHARED_DATA shared_data = { NULL, NULL };
 static COLL_DATA *dump_coll_data = NULL;
 
 static char *cmp_token_name_array = NULL;
@@ -205,7 +330,8 @@ static char cmp_token_name_size = 0;
 
 /*
  * LDML element definition (XML schema)
- * full name is the "path" - the names of all parent elements down to - the element
+ * full name is the "path" - the names of all parent elements down to
+ *			     the element
  */
 XML_ELEMENT_DEF ldml_elem_ldml =
   { "ldml", 1, (ELEM_START_FUNC) & start_element_ok,
@@ -339,7 +465,7 @@ XML_ELEMENT_DEF ldml_elem_collations =
 };
 XML_ELEMENT_DEF ldml_elem_collation =
   { "ldml collations collation", 3, (ELEM_START_FUNC) & start_one_collation,
-  (ELEM_END_FUNC) & end_element_ok, NULL
+  (ELEM_END_FUNC) & end_one_collation, NULL
 };
 XML_ELEMENT_DEF ldml_elem_collation_rules =
   { "ldml collations collation rules", 4,
@@ -595,6 +721,16 @@ XML_ELEMENT_DEF ldml_elem_alphabet_lower_dest =
   (ELEM_END_FUNC) & end_transform_buffer, (ELEM_DATA_FUNC) & handle_data
 };
 
+XML_ELEMENT_DEF ldml_elem_unicodefile =
+  { "ldml unicodefile", 2, (ELEM_START_FUNC) & start_unicode_file,
+  (ELEM_END_FUNC) & end_element_ok, NULL
+};
+
+XML_ELEMENT_DEF ldml_elem_normalization =
+  { "ldml normalization", 2, (ELEM_START_FUNC) & start_normalization,
+  (ELEM_END_FUNC) & end_element_ok, NULL
+};
+
 XML_ELEMENT_DEF ldml_elem_consoleconversion =
   { "ldml consoleconversion", 2, (ELEM_START_FUNC) & start_consoleconversion,
   (ELEM_END_FUNC) & end_element_ok, NULL
@@ -691,6 +827,9 @@ XML_ELEMENT_DEF *ldml_elements[] = {
   &ldml_elem_alphabet_lower,
   &ldml_elem_alphabet_lower_src,
   &ldml_elem_alphabet_lower_dest,
+
+  &ldml_elem_unicodefile,
+  &ldml_elem_normalization,
 
   &ldml_elem_consoleconversion
 };
@@ -1557,32 +1696,61 @@ start_one_collation (void *data, const char **attr)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
+  LOCALE_COLLATION *locale_coll = NULL;
+  char *att_val = NULL;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
 
-  if (xml_check_att_value (attr, "type", "standard") != 0)
+  locale_coll = new_locale_collation (ld);
+  if (locale_coll == NULL)
+    {
+      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
+      PRINT_DEBUG_START (data, attr, "memory allocation failed", -1);
+      return -1;
+    }
+
+  if (xml_get_att_value (attr, "type", &att_val) != 0)
     {
       PRINT_DEBUG_START (data, attr, "", 1);
       return 1;
     }
 
-  if (ld->coll.uca_opt.sett_strength != TAILOR_UNDEFINED
-      || ld->coll.uca_opt.sett_backwards != false
-      || ld->coll.uca_opt.sett_caseLevel != false
-      || ld->coll.uca_opt.sett_caseFirst != 0
-      || ld->coll.sett_max_cp != -1 || ld->coll.count_rules != 0)
-    {
-      PRINT_DEBUG_START (data, attr, "Only one collation is allowed", -1);
-      return -1;
-    }
+  assert (att_val != NULL);
+
+  strncpy (locale_coll->tail_coll.coll_name, att_val, COLL_NAME_SIZE - 1);
+  locale_coll->tail_coll.coll_name[COLL_NAME_SIZE - 1] = '\0';
 
   /* initialize default value for settings */
-  ld->coll.uca_opt.sett_strength = TAILOR_QUATERNARY;
-  ld->coll.uca_opt.sett_caseFirst = 1;
+  locale_coll->tail_coll.uca_opt.sett_strength = TAILOR_QUATERNARY;
+  locale_coll->tail_coll.uca_opt.sett_caseFirst = 1;
 
   PRINT_DEBUG_START (data, attr, "", 0);
+  return 0;
+}
+
+/* 
+ * end_one_collation() - XML element end function
+ * "ldml collations collation"
+ *
+ * return: 0 parser OK, non-zero value if parser NOK and stop parsing
+ * data: user data
+ * el_name: element name
+ */
+static int
+end_one_collation (void *data, const char *el_name)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  LOCALE_DATA *ld = NULL;
+
+  assert (data != NULL);
+
+  ld = XML_USER_DATA (pd);
+
+  ld->coll_cnt++;
+
+  PRINT_DEBUG_END (data, "", 0);
   return 0;
 }
 
@@ -1601,38 +1769,43 @@ start_collation_setttings (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   char *att_val = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   /* all setting are optional */
   if (xml_get_att_value (attr, "strength", &att_val) == 0)
     {
+      T_LEVEL coll_strength = TAILOR_QUATERNARY;
       if (strcmp (att_val, "primary") == 0 || strcmp (att_val, "1") == 0)
 	{
-	  ld->coll.uca_opt.sett_strength = TAILOR_PRIMARY;
+	  coll_strength = TAILOR_PRIMARY;
 	}
       else if ((strcmp (att_val, "secondary") == 0)
 	       || (strcmp (att_val, "2") == 0))
 	{
-	  ld->coll.uca_opt.sett_strength = TAILOR_SECONDARY;
+	  coll_strength = TAILOR_SECONDARY;
 	}
       else if ((strcmp (att_val, "tertiary") == 0)
 	       || (strcmp (att_val, "3") == 0))
 	{
-	  ld->coll.uca_opt.sett_strength = TAILOR_TERTIARY;
+	  coll_strength = TAILOR_TERTIARY;
 	}
       else if ((strcmp (att_val, "quaternary") == 0)
 	       || (strcmp (att_val, "4") == 0))
 	{
-	  ld->coll.uca_opt.sett_strength = TAILOR_QUATERNARY;
+	  coll_strength = TAILOR_QUATERNARY;
 	}
       else if ((strcmp (att_val, "identical") == 0)
 	       || (strcmp (att_val, "5") == 0))
 	{
-	  ld->coll.uca_opt.sett_strength = TAILOR_IDENTITY;
+	  coll_strength = TAILOR_IDENTITY;
 	}
+
+      curr_coll_tail->uca_opt.sett_strength = coll_strength;
     }
 
   att_val = NULL;
@@ -1641,7 +1814,7 @@ start_collation_setttings (void *data, const char **attr)
     {
       if (strcmp (att_val, "on") == 0)
 	{
-	  ld->coll.uca_opt.sett_backwards = true;
+	  curr_coll_tail->uca_opt.sett_backwards = true;
 	}
     }
 
@@ -1651,7 +1824,7 @@ start_collation_setttings (void *data, const char **attr)
     {
       if (strcmp (att_val, "on") == 0)
 	{
-	  ld->coll.uca_opt.sett_caseLevel = true;
+	  curr_coll_tail->uca_opt.sett_caseLevel = true;
 	}
     }
 
@@ -1661,15 +1834,15 @@ start_collation_setttings (void *data, const char **attr)
     {
       if (strcmp (att_val, "off") == 0)
 	{
-	  ld->coll.uca_opt.sett_caseFirst = 0;
+	  curr_coll_tail->uca_opt.sett_caseFirst = 0;
 	}
       else if (strcmp (att_val, "upper") == 0)
 	{
-	  ld->coll.uca_opt.sett_caseFirst = 1;
+	  curr_coll_tail->uca_opt.sett_caseFirst = 1;
 	}
       else if (strcmp (att_val, "lower") == 0)
 	{
-	  ld->coll.uca_opt.sett_caseFirst = 2;
+	  curr_coll_tail->uca_opt.sett_caseFirst = 2;
 	}
     }
 
@@ -1678,7 +1851,7 @@ start_collation_setttings (void *data, const char **attr)
   if (xml_get_att_value (attr, "CUBRIDMaxWeights", &att_val) == 0)
     {
       assert (att_val != NULL);
-      ld->coll.sett_max_cp = atoi (att_val);
+      curr_coll_tail->sett_max_cp = atoi (att_val);
     }
 
   att_val = NULL;
@@ -1687,7 +1860,7 @@ start_collation_setttings (void *data, const char **attr)
       assert (att_val != NULL);
       if (strcasecmp (att_val, "use") == 0)
 	{
-	  ld->coll.uca_opt.sett_contr_policy |= CONTR_DUCET_USE;
+	  curr_coll_tail->uca_opt.sett_contr_policy |= CONTR_DUCET_USE;
 	}
     }
 
@@ -1697,7 +1870,7 @@ start_collation_setttings (void *data, const char **attr)
       assert (att_val != NULL);
       if (strcasecmp (att_val, "use") == 0)
 	{
-	  ld->coll.uca_opt.sett_contr_policy |= CONTR_TAILORING_USE;
+	  curr_coll_tail->uca_opt.sett_contr_policy |= CONTR_TAILORING_USE;
 	}
     }
 
@@ -1707,7 +1880,7 @@ start_collation_setttings (void *data, const char **attr)
       assert (att_val != NULL);
       if (strcasecmp (att_val, "use") == 0)
 	{
-	  ld->coll.uca_opt.sett_expansions = true;
+	  curr_coll_tail->uca_opt.sett_expansions = true;
 	}
     }
 
@@ -1936,6 +2109,7 @@ start_collation_cubrid_rule_set_wr (void *data, const char **attr)
   LOCALE_DATA *ld = NULL;
   char *att_val = NULL;
   CUBRID_TAILOR_RULE *ct_rule;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
   int err_status = NO_ERROR;
 
@@ -1943,8 +2117,10 @@ start_collation_cubrid_rule_set_wr (void *data, const char **attr)
 
   ld = XML_USER_DATA (pd);
 
-  rule_id = ld->coll.cub_count_rules;
-  ct_rule = &(ld->coll.cub_rules[rule_id]);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
+
+  rule_id = curr_coll_tail->cub_count_rules;
+  ct_rule = &(curr_coll_tail->cub_rules[rule_id]);
 
   if (xml_get_att_value (attr, "step", &att_val) == 0)
     {
@@ -1978,17 +2154,19 @@ end_collation_cubrid_rule_set (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   CUBRID_TAILOR_RULE *ct_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
-  rule_id = ld->coll.cub_count_rules;
-  ct_rule = &(ld->coll.cub_rules[rule_id]);
+  rule_id = curr_coll_tail->cub_count_rules;
+  ct_rule = &(curr_coll_tail->cub_rules[rule_id]);
 
   /* rule finished, increase count */
-  ld->coll.cub_count_rules++;
+  curr_coll_tail->cub_count_rules++;
 
   if (pd->verbose)
     {
@@ -2018,15 +2196,17 @@ end_collation_cubrid_rule_set_cp_ch (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   CUBRID_TAILOR_RULE *ct_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
   int err_status = NO_ERROR;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
-  rule_id = ld->coll.cub_count_rules;
-  ct_rule = &(ld->coll.cub_rules[rule_id]);
+  rule_id = curr_coll_tail->cub_count_rules;
+  ct_rule = &(curr_coll_tail->cub_rules[rule_id]);
 
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
     {
@@ -2085,12 +2265,14 @@ end_collation_cubrid_rule_set_ech_ecp (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   CUBRID_TAILOR_RULE *ct_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
   int err_status = NO_ERROR;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
     {
@@ -2099,8 +2281,8 @@ end_collation_cubrid_rule_set_ech_ecp (void *data, const char *el_name)
 			ER_LOC_GEN, true);
       goto exit;
     }
-  rule_id = ld->coll.cub_count_rules;
-  ct_rule = &(ld->coll.cub_rules[rule_id]);
+  rule_id = curr_coll_tail->cub_count_rules;
+  ct_rule = &(curr_coll_tail->cub_rules[rule_id]);
 
   memcpy (ct_rule->end_cp_buf,
 	  ld->data_buffer, ld->data_buf_count * sizeof (char));
@@ -2144,15 +2326,17 @@ end_collation_cubrid_rule_set_w_wr (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   CUBRID_TAILOR_RULE *ct_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
   int err_status = NO_ERROR;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
-  rule_id = ld->coll.cub_count_rules;
-  ct_rule = &(ld->coll.cub_rules[rule_id]);
+  rule_id = curr_coll_tail->cub_count_rules;
+  ct_rule = &(curr_coll_tail->cub_rules[rule_id]);
 
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
     {
@@ -2195,14 +2379,16 @@ handle_data_collation_rule (void *data, const char *s, int len)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   assert (len >= 0);
 
-  t_rule = &(ld->coll.rules[ld->coll.count_rules]);
+  t_rule = &(curr_coll_tail->rules[curr_coll_tail->count_rules]);
   t_rule->t_buf = realloc (t_rule->t_buf, t_rule->t_buf_size + len);
   if (t_rule->t_buf == NULL)
     {
@@ -2252,15 +2438,17 @@ end_collation_rule (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   /* rule finished, increase count */
-  rule_id = ld->coll.count_rules++;
-  t_rule = &(ld->coll.rules[rule_id]);
+  rule_id = curr_coll_tail->count_rules++;
+  t_rule = &(curr_coll_tail->rules[rule_id]);
 
   if (strcmp (el_name, "p") == 0)
     {
@@ -2436,15 +2624,17 @@ end_collation_x (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   /* rule finished, increase count */
-  rule_id = ld->coll.count_rules++;
-  t_rule = &(ld->coll.rules[rule_id]);
+  rule_id = curr_coll_tail->count_rules++;
+  t_rule = &(curr_coll_tail->rules[rule_id]);
   /* BEFORE applies only for the first rule after <reset> */
   ld->last_rule_dir = TAILOR_AFTER;
 
@@ -2476,14 +2666,16 @@ end_collation_x_rule (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
-  rule_id = ld->coll.count_rules;
-  t_rule = &(ld->coll.rules[rule_id]);
+  rule_id = curr_coll_tail->count_rules;
+  t_rule = &(curr_coll_tail->rules[rule_id]);
 
   assert (strlen (ld->data_buffer) == ld->data_buf_count);
 
@@ -2559,14 +2751,16 @@ end_collation_x_extend (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
-  rule_id = ld->coll.count_rules;
-  t_rule = &(ld->coll.rules[rule_id]);
+  rule_id = curr_coll_tail->count_rules;
+  t_rule = &(curr_coll_tail->rules[rule_id]);
 
   assert (t_rule->r_buf != NULL);
   assert (ld->data_buf_count > 0);
@@ -2607,13 +2801,16 @@ end_collation_x_context (void *data, const char *el_name)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
 
   assert (data != NULL);
 
   ld = XML_USER_DATA (pd);
-  rule_id = ld->coll.count_rules;
-  t_rule = &(ld->coll.rules[rule_id]);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
+
+  rule_id = curr_coll_tail->count_rules;
+  t_rule = &(curr_coll_tail->rules[rule_id]);
 
   assert (strlen (ld->data_buffer) < LOC_DATA_COLL_TWO_CHARS);
   if (strlen (ld->data_buffer) >= LOC_DATA_COLL_TWO_CHARS)
@@ -2641,8 +2838,8 @@ end_collation_x_context (void *data, const char *el_name)
   if (pd->verbose)
     {
       char msg[ERR_MSG_SIZE];
-      int rule_id = ld->coll.count_rules;
-      TAILOR_RULE *t_rule = &(ld->coll.rules[rule_id]);
+      int rule_id = curr_coll_tail->count_rules;
+      TAILOR_RULE *t_rule = &(curr_coll_tail->rules[rule_id]);
 
       snprintf (msg, sizeof (msg) - 1, "* Rule %d *", rule_id);
       PRINT_DEBUG_END (data, msg, 0);
@@ -2813,19 +3010,6 @@ start_one_alphabet (void *data, const char **attr)
 			     "Expected ASCII or UNICODEDATAFILE", -1);
 	  return -1;
 	}
-    }
-
-  att_val = NULL;
-  if (xml_get_att_value (attr, "CUBRIDUnicodeDataFilePath", &att_val) == 0)
-    {
-      assert (att_val != NULL);
-
-      strncpy (ld->alpha_tailoring.unicode_data_file, att_val,
-	       sizeof (ld->alpha_tailoring.unicode_data_file) - 1);
-      ld->alpha_tailoring.
-	unicode_data_file[sizeof (ld->alpha_tailoring.unicode_data_file) -
-			  1] = '\0';
-      ld->alpha_tailoring.alphabet_mode = 1;
     }
 
   PRINT_DEBUG_START (data, attr, "", 0);
@@ -3219,6 +3403,37 @@ clear_data_buffer (XML_PARSER_DATA * pd)
 }
 
 /*
+ * new_locale_collation() - creates new collation in the locale struct
+ *
+ * return: rule
+ * ld(in): locale data
+ */
+static LOCALE_COLLATION *
+new_locale_collation (LOCALE_DATA * ld)
+{
+  LOCALE_COLLATION *loc_collation = NULL;
+
+  assert (ld != NULL);
+
+  /* check number of rules, increase array if necessary */
+  ld->collations = realloc (ld->collations, sizeof (LOCALE_COLLATION) *
+			    (ld->coll_cnt + 1));
+
+  if (ld->collations == NULL)
+    {
+      return NULL;
+    }
+
+  loc_collation = &(ld->collations[ld->coll_cnt]);
+  memset (loc_collation, 0, sizeof (LOCALE_COLLATION));
+
+  loc_collation->tail_coll.sett_max_cp = -1;
+  loc_collation->tail_coll.uca_opt.sett_contr_policy = CONTR_IGNORE;
+
+  return loc_collation;
+}
+
+/*
  * new_collation_rule() - creates new collation tailoring rule
  *
  * return: rule
@@ -3228,26 +3443,30 @@ static TAILOR_RULE *
 new_collation_rule (LOCALE_DATA * ld)
 {
   TAILOR_RULE *t_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
 
   assert (ld != NULL);
 
-  /* check number of rules, increase array if necessary */
-  if (ld->coll.count_rules + 1 >= ld->coll.max_rules)
-    {
-      ld->coll.rules = realloc (ld->coll.rules, sizeof (TAILOR_RULE) *
-				(ld->coll.max_rules +
-				 LOC_DATA_TAILOR_RULES_COUNT_GROW));
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
-      if (ld->coll.rules == NULL)
+  /* check number of rules, increase array if necessary */
+  if (curr_coll_tail->count_rules + 1 >= curr_coll_tail->max_rules)
+    {
+      curr_coll_tail->rules =
+	realloc (curr_coll_tail->rules, sizeof (TAILOR_RULE) *
+		 (curr_coll_tail->max_rules +
+		  LOC_DATA_TAILOR_RULES_COUNT_GROW));
+
+      if (curr_coll_tail->rules == NULL)
 	{
 	  return NULL;
 	}
 
-      ld->coll.max_rules += LOC_DATA_TAILOR_RULES_COUNT_GROW;
+      curr_coll_tail->max_rules += LOC_DATA_TAILOR_RULES_COUNT_GROW;
     }
 
   /* will use slot indicated by 'coll->count_rules' */
-  t_rule = &(ld->coll.rules[ld->coll.count_rules]);
+  t_rule = &(curr_coll_tail->rules[curr_coll_tail->count_rules]);
   memset (t_rule, 0, sizeof (TAILOR_RULE));
 
   return t_rule;
@@ -3299,28 +3518,29 @@ static CUBRID_TAILOR_RULE *
 new_collation_cubrid_rule (LOCALE_DATA * ld)
 {
   CUBRID_TAILOR_RULE *ct_rule = NULL;
+  COLL_TAILORING *curr_coll_tail = NULL;
 
   assert (ld != NULL);
+  curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   /* check number of absolute rules, increase array if necessary */
-  if (ld->coll.cub_count_rules + 1 >= ld->coll.cub_max_rules)
+  if (curr_coll_tail->cub_count_rules + 1 >= curr_coll_tail->cub_max_rules)
     {
-      ld->coll.cub_rules =
-	realloc (ld->coll.cub_rules,
-		 sizeof (CUBRID_TAILOR_RULE) *
-		 (ld->coll.max_rules +
+      curr_coll_tail->cub_rules =
+	realloc (curr_coll_tail->cub_rules, sizeof (CUBRID_TAILOR_RULE) *
+		 (curr_coll_tail->max_rules +
 		  LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
 
-      if (ld->coll.cub_rules == NULL)
+      if (curr_coll_tail->cub_rules == NULL)
 	{
 	  return NULL;
 	}
 
-      ld->coll.cub_max_rules += LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW;
+      curr_coll_tail->cub_max_rules += LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW;
     }
 
   /* will use slot indicated by 'coll->cub_count_rules' */
-  ct_rule = &(ld->coll.cub_rules[ld->coll.cub_count_rules]);
+  ct_rule = &(curr_coll_tail->cub_rules[curr_coll_tail->cub_count_rules]);
   memset (ct_rule, 0, sizeof (CUBRID_TAILOR_RULE));
 
   return ct_rule;
@@ -3473,6 +3693,21 @@ print_debug_data_content (void *data, const char *msg, const int status)
     }
 }
 
+/*
+ * locale_alloc_collation_id() - allocates collation id
+ *
+ * return:
+ */
+static int
+locale_alloc_collation_id (void)
+{
+  static int coll_id = -1;
+
+  coll_id++;
+
+  return coll_id + lang_collation_count ();
+}
+
 /* 
  * load_console_conv_data() - Loads the console conversion file (standardised 
  *			      and availabe at Unicode.org).
@@ -3528,8 +3763,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
   fp = fopen_ex (conv_file_name, "rt");
   if (fp == NULL)
     {
-      envvar_confdir_file (conv_file_name, sizeof (conv_file_name),
-			   ld->txt_conv_prm.conv_file);
+      envvar_codepagedir_file (conv_file_name, sizeof (conv_file_name),
+			       ld->txt_conv_prm.conv_file);
       fp = fopen_ex (conv_file_name, "rt");
     }
 
@@ -3804,13 +4039,16 @@ comp_func_parse_order_index (const void *arg1, const void *arg2)
   char *s2;
   char pos1;
   char pos2;
+  int cmp;
 
   pos1 = *((char *) arg1);
   pos2 = *((char *) arg2);
   s1 = (char *) (cmp_token_name_array + pos1 * cmp_token_name_size);
   s2 = (char *) (cmp_token_name_array + pos2 * cmp_token_name_size);
 
-  return strcmp (s2, s1);
+  cmp = strcmp (s2, s1);
+
+  return (cmp == 0) ? (pos1 - pos2) : cmp;
 }
 
 /*
@@ -3888,8 +4126,6 @@ locale_init_data (LOCALE_DATA * ld, const char *locale_name)
   ld->default_currency_code = DB_CURRENCY_NULL;
 
   ld->alpha_tailoring.sett_max_letters = -1;
-  ld->coll.sett_max_cp = -1;
-  ld->coll.uca_opt.sett_contr_policy = CONTR_IGNORE;
 }
 
 /*
@@ -3901,17 +4137,31 @@ locale_init_data (LOCALE_DATA * ld, const char *locale_name)
 void
 locale_destroy_data (LOCALE_DATA * ld)
 {
+  int i;
+
   assert (ld != NULL);
 
-  locale_destroy_collation_tailorings (&(ld->coll));
-  locale_destroy_collation_data (&(ld->opt_coll));
+  /* collations */
+  for (i = 0; i < ld->coll_cnt; i++)
+    {
+      locale_destroy_collation_data (&(ld->collations[i].opt_coll));
+      locale_destroy_collation_tailorings (&(ld->collations[i].tail_coll));
+    }
+
+  free (ld->collations);
+  ld->collations = NULL;
+  ld->coll_cnt = 0;
+
+  /* alphabet tailoring */
   locale_destroy_alphabet_tailoring (&(ld->alpha_tailoring));
 
   /* alphabets */
-  locale_destroy_alphabet_data (&(ld->alphabet), false);
-  locale_destroy_alphabet_data (&(ld->identif_alphabet), false);
+  locale_destroy_alphabet_data (&(ld->alphabet));
+  locale_destroy_alphabet_data (&(ld->identif_alphabet));
 
   locale_destroy_console_conversion (&(ld->txt_conv));
+
+  locale_destroy_normalization_data (&(ld->unicode_normalization));
 }
 
 /*
@@ -3922,15 +4172,9 @@ locale_destroy_data (LOCALE_DATA * ld)
  *    Note : Alphabets that are common are not freed
  */
 void
-locale_destroy_alphabet_data (const ALPHABET_DATA * a, bool destroy_shared)
+locale_destroy_alphabet_data (const ALPHABET_DATA * a)
 {
   assert (a != NULL);
-
-  /* non-tailored alphabets are shared by all locales */
-  if (!destroy_shared && a->is_shared)
-    {
-      return;
-    }
 
   if (a->lower_cp != NULL)
     {
@@ -4126,80 +4370,6 @@ locale_destroy_console_conversion (const TEXT_CONVERSION * tc)
 }
 
 /*
- * locale_set_shared_data() -
- * return:
- * type(in): type of shared data
- * p_data(in): pointer to a data to be shared
- *
- */
-void
-locale_set_shared_data (const LOCALE_SHARED_DATA_TYPE type, void *p_data)
-{
-  assert (p_data != NULL);
-
-  switch (type)
-    {
-    case SHARED_ALPHABET_ASCII:
-      shared_data.ascii_a = p_data;
-      break;
-
-    case SHARED_ALPHABET_UNICODE:
-      shared_data.unicode_a = p_data;
-      break;
-
-    default:
-      assert (false);
-    }
-}
-
-/*
- * locale_get_shared_data() -
- * return: pointer to shared data
- * type(in): type of shared data
- *
- */
-void *
-locale_get_shared_data (const LOCALE_SHARED_DATA_TYPE type)
-{
-  switch (type)
-    {
-    case SHARED_ALPHABET_ASCII:
-      return shared_data.ascii_a;
-      break;
-
-    case SHARED_ALPHABET_UNICODE:
-      return shared_data.unicode_a;
-      break;
-
-    default:
-      assert (false);
-    }
-
-  return NULL;
-}
-
-/*
- * locale_destroy_shared_data() - frees memory for common
- *    return:
- *
- */
-void
-locale_destroy_shared_data (void)
-{
-  if (shared_data.ascii_a != NULL)
-    {
-      locale_destroy_alphabet_data (shared_data.ascii_a, true);
-      shared_data.ascii_a = NULL;
-    }
-
-  if (shared_data.unicode_a != NULL)
-    {
-      locale_destroy_alphabet_data (shared_data.unicode_a, true);
-      shared_data.unicode_a = NULL;
-    }
-}
-
-/*
  * locale_compile_locale() - converts LDML file into binary file
  *
  * return: error code
@@ -4217,11 +4387,11 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
   char *bin_filename = NULL;
   int er_status = NO_ERROR;
   bool is_finished = false;
+  int i;
 
   assert (lf != NULL);
   locale_str = lf->locale_name;
   ldml_filename = lf->ldml_file;
-  bin_filename = lf->bin_file;
 
   fp = fopen_ex (ldml_filename, "rb");
   if (fp == NULL)
@@ -4267,9 +4437,9 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	}
     }
 
-  if (is_verbose)
+  if (ldml_parser.xml_error == XML_CUB_NO_ERROR)
     {
-      if (ldml_parser.xml_error == XML_CUB_NO_ERROR)
+      if (is_verbose)
 	{
 	  printf ("Parsing finished.\n");
 	  printf ("Date format: %s\n", ld.dateFormat);
@@ -4277,21 +4447,21 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	  printf ("Datetime format: %s\n", ld.datetimeFormat);
 	  printf ("Timestamp format: %s\n", ld.timestampFormat);
 	}
-      else
-	{
-	  char msg[512];
-	  const char *xml_err_text = (char *)
-	    XML_ErrorString (XML_GetErrorCode (ldml_parser.xml_parser));
+    }
+  else
+    {
+      char msg[ERR_MSG_SIZE];
+      const char *xml_err_text = (char *)
+	XML_ErrorString (XML_GetErrorCode (ldml_parser.xml_parser));
 
-	  snprintf (msg, sizeof (msg) - 1, "Error parsing. "
-		    "line : %d, column : %d. Internal XML: %s",
-		    ldml_parser.xml_error_line, ldml_parser.xml_error_column,
-		    xml_err_text);
+      snprintf (msg, sizeof (msg) - 1, "Error parsing. "
+		"line : %d, column : %d. Internal XML: %s",
+		ldml_parser.xml_error_line, ldml_parser.xml_error_column,
+		xml_err_text);
 
-	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
-	  er_status = ER_LOC_GEN;
-	  goto exit;
-	}
+      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
+      er_status = ER_LOC_GEN;
+      goto exit;
     }
 
   locale_make_calendar_parse_order (&ld);
@@ -4313,10 +4483,85 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
     }
   else
     {
+      bool is_alphabet_shared = false;
+
       er_status = unicode_process_alphabet (&ld, is_verbose);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
+	}
+
+      if (ld.alphabet.a_type == ALPHABET_UNICODE)
+	{
+	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
+							"ascii",
+							&is_alphabet_shared);
+	}
+      else if (ld.alphabet.a_type == ALPHABET_ASCII)
+	{
+	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
+							"unicode",
+							&is_alphabet_shared);
+	}
+
+      if (er_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      ld.alphabet.do_not_save = is_alphabet_shared;
+
+      is_alphabet_shared = false;
+      if (ld.identif_alphabet.a_type == ALPHABET_UNICODE)
+	{
+	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
+							"ascii",
+							&is_alphabet_shared);
+	}
+      else if (ld.identif_alphabet.a_type == ALPHABET_ASCII)
+	{
+	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
+							"unicode",
+							&is_alphabet_shared);
+	}
+
+      if (er_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      ld.identif_alphabet.do_not_save = is_alphabet_shared;
+    }
+
+  if (is_verbose)
+    {
+      printf ("\n*** Processing Unicode normalization data ***\n");
+    }
+
+  if (ld.unicode_normalization.is_enabled)
+    {
+      bool is_normalization_shared;
+
+      er_status =
+	locale_check_and_set_shared_data (LOC_SHARED_NORMALIZATION,
+					  "normalization",
+					  &(is_normalization_shared));
+
+      ld.unicode_normalization.do_not_save = is_normalization_shared;
+      if (!is_normalization_shared)
+	{
+	  er_status = unicode_process_normalization (&ld, is_verbose);
+	  if (er_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+  else
+    {
+      if (is_verbose)
+	{
+	  printf ("Normalization is disabled. Nothing to do.");
 	}
     }
 
@@ -4331,35 +4576,86 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
       goto exit;
     }
 
-  if (ld.coll.sett_max_cp == -1)
+  if (ld.coll_cnt == 0 && is_verbose)
     {
-      ld.coll.sett_max_cp = MAX_UNICODE_CHARS;
+      printf ("\n*** No collation defined ***\n");
     }
 
-  if (is_verbose)
+  for (i = 0; i < ld.coll_cnt; i++)
     {
-      printf ("\n*** Processing collation ***\nNumber of weights  = %d\n",
-	      ld.coll.sett_max_cp);
-    }
+      bool is_collation_shared = false;
+      LOCALE_COLLATION *lc = &(ld.collations[i]);
 
-  if (ld.coll.sett_max_cp == 0)
-    {
-      ld.opt_coll.w_count = ld.coll.sett_max_cp;
-    }
-  else
-    {
-      er_status = uca_process_collation (&ld, is_verbose);
+      strncpy (lc->opt_coll.coll_name, lc->tail_coll.coll_name,
+	       COLL_NAME_SIZE);
+      lc->opt_coll.coll_name[COLL_NAME_SIZE - 1] = '\0';
+
+      if (!lang_is_coll_name_allowed (lc->opt_coll.coll_name))
+	{
+	  char msg[ERR_MSG_SIZE];
+
+	  snprintf (msg, sizeof (msg) - 1, "Collation name %s "
+		    "not allowed. It cannot contain white-spaces "
+		    "or have same name as a built-in collation",
+		    lc->opt_coll.coll_name);
+
+	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
+	  er_status = ER_LOC_GEN;
+	  goto exit;
+	}
+
+      er_status = locale_check_and_set_shared_data (LOC_SHARED_COLLATION,
+						    lc->tail_coll.coll_name,
+						    &is_collation_shared);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
+	}
+
+      lc->do_not_save = is_collation_shared;
+
+      if (is_collation_shared)
+	{
+	  continue;
+	}
+
+      if (lc->tail_coll.sett_max_cp == -1)
+	{
+	  lc->tail_coll.sett_max_cp = MAX_UNICODE_CHARS;
+	}
+
+      if (is_verbose)
+	{
+	  printf ("\n*** Processing collation : %s ***\n"
+		  "Number of weights  = %d\n", lc->tail_coll.coll_name,
+		  lc->tail_coll.sett_max_cp);
+	}
+
+      if (lc->tail_coll.sett_max_cp == 0)
+	{
+	  lc->opt_coll.w_count = lc->tail_coll.sett_max_cp;
+	}
+      else
+	{
+	  uca_process_collation (lc, is_verbose);
+	  if (er_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  lc->opt_coll.coll_id = locale_alloc_collation_id ();
 	}
     }
 
   if (is_verbose)
     {
-      printf ("\n*** Saving locale to file: %s\n", lf->bin_file);
+      printf ("\n*** Saving locale to C source file...\n");
     }
-  er_status = locale_save_to_bin (lf, &ld);
+
+  er_status = locale_save_to_C_file (lf, &ld);
+  if (er_status != NO_ERROR)
+    {
+      goto exit;
+    }
 
 exit:
   locale_destroy_data (&ld);
@@ -4493,13 +4789,12 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales,
 	}
 
       str = next;
-      err_status = str_pop_token (str, &(loc->bin_file), &next);
+      err_status = str_pop_token (str, &(loc->lib_file), &next);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
 	}
     }
-
 
   *p_locale_files = locale_files;
   *p_num_locales = num_locales;
@@ -4530,7 +4825,7 @@ int
 locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
 {
   bool is_alloc_ldml_file = false;
-  bool is_alloc_bin_file = false;
+  bool is_alloc_lib_file = false;
   int er_status = NO_ERROR;
 
   assert (lf != NULL);
@@ -4550,7 +4845,15 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
       /* generate name for LDML file */
       char ldml_short_file[LOC_LOCALE_STR_SIZE + 13];
 
-      sprintf (ldml_short_file, "cubrid_%s.xml", lf->locale_name);
+      snprintf (ldml_short_file, sizeof (ldml_short_file) - 1,
+		"cubrid_%s.xml", lf->locale_name);
+      ldml_short_file[sizeof (ldml_short_file) - 1] = '\0';
+
+      if (lf->ldml_file != NULL)
+	{
+	  free (lf->ldml_file);
+	}
+
       lf->ldml_file = malloc (PATH_MAX + 1);
       if (lf->ldml_file == NULL)
 	{
@@ -4560,42 +4863,57 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
 	}
 
       is_alloc_ldml_file = true;
-      envvar_confdir_file (lf->ldml_file, PATH_MAX, ldml_short_file);
+      envvar_ldmldir_file (lf->ldml_file, PATH_MAX, ldml_short_file);
     }
 
-  if (lf->bin_file == NULL || *(lf->bin_file) == '\0'
-      || *(lf->bin_file) == '*')
+  if (lf->lib_file == NULL || *(lf->lib_file) == '\0'
+      || *(lf->lib_file) == '*')
     {
-      /* generate name for binary file */
-      char *ext = NULL;
-      int len;
+      /* generate name for locale lib file */
+      char lib_short_file[PATH_MAX];
 
-      assert (lf->ldml_file != NULL);
+      snprintf (lib_short_file, sizeof (lib_short_file) - 1,
+		"libcubrid_%s.%s", lf->locale_name, LOCLIB_FILE_EXT);
+      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
 
-      ext = strstr (lf->ldml_file, ".xml");
-
-      if (ext == NULL)
+      if (lf->lib_file != NULL)
 	{
-	  len = strlen (lf->ldml_file);
-	}
-      else
-	{
-	  len = ext - (lf->ldml_file);
+	  free (lf->lib_file);
 	}
 
-      /* if .xml ext not found, suffix with .locale */
-      lf->bin_file = malloc (len + 8);
-      if (lf->bin_file == NULL)
+      lf->lib_file = malloc (PATH_MAX + 1);
+      if (lf->lib_file == NULL)
 	{
 	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
 	  LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
 	  goto error;
 	}
 
-      is_alloc_bin_file = true;
-      strncpy (lf->bin_file, lf->ldml_file, len);
-      lf->bin_file[len] = '\0';
-      strcat (lf->bin_file, ".locale");
+      is_alloc_lib_file = true;
+      envvar_libdir_file (lf->lib_file, PATH_MAX, lib_short_file);
+
+      if (is_lang_init)
+	{
+	  FILE *fp;
+
+	  /* check that default lib file exists, otherwise switch to the
+	   * common libray locale */
+	  fp = fopen_ex (lf->lib_file, "rb");
+	  if (fp == NULL)
+	    {
+	      snprintf (lib_short_file, sizeof (lib_short_file) - 1,
+			"libcubrid_all_locales.%s", LOCLIB_FILE_EXT);
+	      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
+
+	      assert (lf->lib_file != NULL);
+
+	      envvar_libdir_file (lf->lib_file, PATH_MAX, lib_short_file);
+	    }
+	  else
+	    {
+	      fclose (fp);
+	    }
+	}
     }
 
   return NO_ERROR;
@@ -4608,777 +4926,16 @@ error:
       lf->ldml_file = NULL;
     }
 
-  if (is_alloc_bin_file)
+  if (is_alloc_lib_file)
     {
-      free (lf->bin_file);
-      lf->bin_file = NULL;
+      free (lf->lib_file);
+      lf->lib_file = NULL;
     }
-
   return er_status;
 }
 
-
 /*
- * save_string_to_bin() - saves a string to binary file
- *
- * return: zero if write successful, non-zero otherwise
- * fp(in): file descriptor
- * s(in): string
- */
-static int
-save_string_to_bin (FILE * fp, const char *s)
-{
-  int len;
-  int res;
-
-  assert (fp != NULL);
-  assert (s != NULL);
-
-  len = strlen (s);
-  res = save_int_to_bin (fp, len);
-  if (res != 0)
-    {
-      return -1;
-    }
-  res = fwrite (s, 1, len, fp);
-  if (res != len)
-    {
-      return -1;
-    }
-
-  return 0;
-}
-
-/*
- * load_string_from_bin() - loads a string from binary file
- *
- * return: zero if load is successful, non-zero otherwise
- * fp(in): file descriptor
- * s(out): buffer to store string
- * size(in): size of buffer
- */
-static int
-load_string_from_bin (FILE * fp, char *s, const int size)
-{
-  int len;
-  int res;
-
-  assert (fp != NULL);
-  assert (s != NULL);
-
-  res = load_int_from_bin (fp, &len);
-  if (res != 0 || len >= size)
-    {
-      return -1;
-    }
-  res = fread (s, 1, len, fp);
-  if (res != len)
-    {
-      return -1;
-    }
-
-  s[len] = '\0';
-
-  return 0;
-}
-
-/*
- * save_int_to_bin() - saves an integer to binary file
- *
- * return: zero if write successful, non-zero otherwise
- * fp(in): file descriptor
- * s(in): int
- */
-static int
-save_int_to_bin (FILE * fp, const int i)
-{
-  int res;
-
-  assert (fp != NULL);
-
-  res = fwrite (&i, sizeof (int), 1, fp);
-  if (res != 1)
-    {
-      return -1;
-    }
-
-  return 0;
-}
-
-/*
- * load_int_from_bin() - loads an integer from binary file
- *
- * return: zero if load is successful, non-zero otherwise
- * fp(in): file descriptor
- * s(out): buffer to store string
- * size(in): size of buffer
- */
-static int
-load_int_from_bin (FILE * fp, int *i)
-{
-  int res;
-
-  assert (fp != NULL);
-  assert (i != NULL);
-
-  res = fread (i, sizeof (int), 1, fp);
-  if (res != 1)
-    {
-      return -1;
-    }
-
-  return 0;
-}
-
-/*
- * save_alphabet_to_bin() - saves alphabet data to binary file
- *
- * return: zero if save is successful, non-zero otherwise
- * fp(in): file descriptor
- * a(in): alphabet data to save
- */
-static int
-save_alphabet_to_bin (FILE * fp, ALPHABET_DATA * a)
-{
-  int res = 0;
-
-  assert (a != NULL);
-  assert (fp != NULL);
-
-  /* alphabet */
-  res = save_int_to_bin (fp, a->a_type);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, a->l_count);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (a->l_count > 0)
-    {
-      assert (a->lower_multiplier > 0);
-
-      res = save_int_to_bin (fp, a->lower_multiplier);
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      res = fwrite (a->lower_cp, sizeof (unsigned int),
-		    a->l_count * a->lower_multiplier, fp);
-      if (res != a->l_count * a->lower_multiplier)
-	{
-	  goto error;
-	}
-
-      assert (a->upper_multiplier > 0);
-
-      res = save_int_to_bin (fp, a->upper_multiplier);
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      res = fwrite (a->upper_cp, sizeof (unsigned int),
-		    a->l_count * a->upper_multiplier, fp);
-      if (res != a->l_count * a->upper_multiplier)
-	{
-	  goto error;
-	}
-    }
-
-  return 0;
-
-error:
-
-  return -1;
-}
-
-/*
- * load_alphabet_from_bin() - loads alphabet data from binary file
- *
- * return: zero if load is successful, non-zero otherwise
- * lf(in): locale file info
- * fp(in): file descriptor
- * a(in/out): alphabet data to fill
- */
-static int
-load_alphabet_from_bin (LOCALE_FILE * lf, FILE * fp, ALPHABET_DATA * a)
-{
-  int res = 0;
-  char msg[ERR_MSG_SIZE];
-  ALPHABET_DATA *shared_a = NULL;
-  int i_value;
-  bool use_shared = false;
-
-  assert (a != NULL);
-  assert (fp != NULL);
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0 || i_value < ALPHABET_UNICODE || i_value > ALPHABET_TAILORED)
-    {
-      goto error_load;
-    }
-
-  a->a_type = (ALPHABET_TYPE) i_value;
-
-  if (a->a_type == ALPHABET_UNICODE)
-    {
-      shared_a = locale_get_shared_data (SHARED_ALPHABET_UNICODE);
-    }
-  else if (a->a_type == ALPHABET_ASCII)
-    {
-      shared_a = locale_get_shared_data (SHARED_ALPHABET_ASCII);
-    }
-
-  res = load_int_from_bin (fp, &(a->l_count));
-  if (a->l_count < 0 || res != 0)
-    {
-      goto error_load;
-    }
-
-  if (a->l_count > 0)
-    {
-      if (shared_a != NULL)
-	{
-	  if (a->l_count <= shared_a->l_count)
-	    {
-	      use_shared = true;
-	      a->is_shared = true;
-	    }
-	  else
-	    {
-	      assert (use_shared == false);
-	    }
-	}
-
-      /* lower info */
-      res = load_int_from_bin (fp, &(a->lower_multiplier));
-      if (res != 0)
-	{
-	  goto error_load;
-	}
-
-      if (a->lower_multiplier < 1
-	  || a->lower_multiplier > INTL_CASING_EXPANSION_MULTIPLIER)
-	{
-	  goto error_load;
-	}
-
-      if (use_shared)
-	{
-	  assert (shared_a != NULL);
-
-	  if (a->lower_multiplier != shared_a->lower_multiplier)
-	    {
-	      goto er_corrupted;
-	    }
-	  a->lower_cp = shared_a->lower_cp;
-	  assert (a->lower_multiplier == shared_a->lower_multiplier);
-
-	  /* skip file entries : */
-	  if (fseek (fp, (a->l_count) * (a->lower_multiplier) *
-		     sizeof (unsigned int), SEEK_CUR) != 0)
-	    {
-	      goto error_load;
-	    }
-	}
-      else
-	{
-	  a->lower_cp = malloc ((a->l_count) * (a->lower_multiplier) *
-				sizeof (unsigned int));
-
-	  if (a->lower_cp == NULL)
-	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				true);
-	      goto error;
-	    }
-
-	  res = fread (a->lower_cp, sizeof (unsigned int),
-		       (a->l_count) * (a->lower_multiplier), fp);
-	  if (res != (a->l_count) * (a->lower_multiplier))
-	    {
-	      goto error_load;
-	    }
-	}
-
-      /* upper info */
-      res = load_int_from_bin (fp, &(a->upper_multiplier));
-      if (res != 0)
-	{
-	  goto error_load;
-	}
-
-      if (a->upper_multiplier < 1
-	  || a->upper_multiplier > INTL_CASING_EXPANSION_MULTIPLIER)
-	{
-	  goto error_load;
-	}
-
-      if (use_shared)
-	{
-	  assert (shared_a != NULL);
-
-	  if (a->upper_multiplier != shared_a->upper_multiplier)
-	    {
-	      goto er_corrupted;
-	    }
-	  a->upper_cp = shared_a->upper_cp;
-	  assert (a->upper_multiplier == shared_a->upper_multiplier);
-
-	  /* skip file entries : */
-	  if (fseek (fp, (a->l_count) * (a->upper_multiplier) *
-		     sizeof (unsigned int), SEEK_CUR) != 0)
-	    {
-	      goto error_load;
-	    }
-	}
-      else
-	{
-	  a->upper_cp = malloc ((a->l_count) * (a->upper_multiplier) *
-				sizeof (unsigned int));
-
-	  if (a->upper_cp == NULL)
-	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				true);
-	      goto error;
-	    }
-
-	  res = fread (a->upper_cp, sizeof (unsigned int),
-		       (a->l_count) * (a->upper_multiplier), fp);
-	  if (res != (a->l_count) * (a->upper_multiplier))
-	    {
-	      goto error_load;
-	    }
-	}
-    }
-
-  /* save common alphabet */
-  if (shared_a == NULL)
-    {
-      if (a->a_type == ALPHABET_UNICODE)
-	{
-	  locale_set_shared_data (SHARED_ALPHABET_UNICODE, a);
-	  a->is_shared = true;
-	}
-      else if (a->a_type == ALPHABET_ASCII)
-	{
-	  locale_set_shared_data (SHARED_ALPHABET_ASCII, a);
-	  a->is_shared = true;
-	}
-    }
-
-  return 0;
-
-error_load:
-  snprintf (msg, sizeof (msg) - 1,
-	    "loading alphabet data from file: %s", lf->bin_file);
-  LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-
-  return -1;
-
-er_corrupted:
-  snprintf (msg, sizeof (msg) - 1,
-	    "corrupted alphabet data in file: %s", lf->bin_file);
-  LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-
-error:
-
-  return -1;
-}
-
-
-/*
- * save_console_conv_to_bin() - saves console conversion data to binary file
- *
- * return: zero if save is successful, non-zero otherwise
- * fp(in): file descriptor
- * tc(in): console conversion info
- */
-static int
-save_console_conv_to_bin (FILE * fp, TEXT_CONVERSION * tc)
-{
-  int res = 0;
-
-  assert (tc != NULL);
-  assert (fp != NULL);
-
-  res = save_int_to_bin (fp, tc->conv_type);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE
-      && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
-    {
-      return 0;
-    }
-
-  assert (tc->win_codepages != NULL);
-  res = save_string_to_bin (fp, tc->win_codepages);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  assert (tc->nl_lang_str != NULL);
-  res = save_string_to_bin (fp, tc->nl_lang_str);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, (int) tc->first_lead_byte);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, (int) tc->utf8_first_cp);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, (int) tc->utf8_last_cp);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  assert (tc->utf8_last_cp > tc->utf8_first_cp);
-  assert (tc->utf8_to_text != NULL);
-
-  res = fwrite (tc->utf8_to_text, sizeof (CONV_CP_TO_BYTES),
-		tc->utf8_last_cp - tc->utf8_first_cp + 1, fp);
-  if (res != (int) (tc->utf8_last_cp - tc->utf8_first_cp + 1))
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, (int) tc->text_first_cp);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, (int) tc->text_last_cp);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  assert (tc->text_last_cp > tc->text_first_cp);
-  assert (tc->text_to_utf8 != NULL);
-
-  res = fwrite (tc->text_to_utf8, sizeof (CONV_CP_TO_BYTES),
-		tc->text_last_cp - tc->text_first_cp + 1, fp);
-  if (res != (int) (tc->text_last_cp - tc->text_first_cp + 1))
-    {
-      goto error;
-    }
-
-  return 0;
-
-error:
-
-  return -1;
-}
-
-/*
- * load_console_conv_from_bin() - loads console conversion data from binary
- *				  file
- *
- * return: zero if load is successful, non-zero otherwise
- * lf(in): locale file info
- * fp(in): file descriptor
- * tc(in/out): console conversion info to fill
- */
-static int
-load_console_conv_from_bin (LOCALE_FILE * lf, FILE * fp, TEXT_CONVERSION * tc)
-{
-  int res = 0;
-  char msg[ERR_MSG_SIZE];
-  int i_value;
-
-  assert (tc != NULL);
-  assert (fp != NULL);
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0 || i_value < TEXT_CONV_NO_CONVERSION
-      || i_value > TEXT_CONV_GENERIC_2BYTE)
-    {
-      goto error_load;
-    }
-
-  tc->conv_type = i_value;
-
-  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE
-      && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
-    {
-      return 0;
-    }
-
-  tc->win_codepages = (char *) malloc (TXT_CONV_SYSTEM_STR_SIZE);
-  if (tc->win_codepages == NULL)
-    {
-      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-      goto error;
-    }
-  res = load_string_from_bin (fp, tc->win_codepages,
-			      TXT_CONV_SYSTEM_STR_SIZE - 1);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  tc->nl_lang_str = (char *) malloc (TXT_CONV_SYSTEM_STR_SIZE);
-  if (tc->nl_lang_str == NULL)
-    {
-      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-      goto error;
-    }
-  res = load_string_from_bin (fp, tc->nl_lang_str,
-			      TXT_CONV_SYSTEM_STR_SIZE - 1);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0 || i_value < 0 || i_value > 0xff)
-    {
-      goto error_load;
-    }
-
-  tc->first_lead_byte = i_value;
-
-  res = load_int_from_bin (fp, (int *) &(tc->utf8_first_cp));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = load_int_from_bin (fp, (int *) &(tc->utf8_last_cp));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (tc->utf8_last_cp <= tc->utf8_first_cp)
-    {
-      goto er_corrupted;
-    }
-
-  tc->utf8_to_text =
-    (CONV_CP_TO_BYTES *) malloc (sizeof (CONV_CP_TO_BYTES) *
-				 (tc->utf8_last_cp - tc->utf8_first_cp + 1));
-
-  if (tc->utf8_to_text == NULL)
-    {
-      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-      goto error;
-    }
-
-  res = fread (tc->utf8_to_text, sizeof (CONV_CP_TO_BYTES),
-	       (tc->utf8_last_cp - tc->utf8_first_cp + 1), fp);
-  if (res != (int) (tc->utf8_last_cp - tc->utf8_first_cp + 1))
-    {
-      goto error;
-    }
-
-  res = load_int_from_bin (fp, (int *) &(tc->text_first_cp));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = load_int_from_bin (fp, (int *) &(tc->text_last_cp));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (tc->text_last_cp <= tc->text_first_cp)
-    {
-      goto er_corrupted;
-    }
-  tc->text_to_utf8 =
-    (CONV_CP_TO_BYTES *) malloc (sizeof (CONV_CP_TO_BYTES) *
-				 (tc->text_last_cp - tc->text_first_cp + 1));
-
-  if (tc->text_to_utf8 == NULL)
-    {
-      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-      goto error;
-    }
-
-  res = fread (tc->text_to_utf8, sizeof (CONV_CP_TO_BYTES),
-	       (tc->text_last_cp - tc->text_first_cp + 1), fp);
-  if (res != (int) (tc->text_last_cp - tc->text_first_cp + 1))
-    {
-      goto error;
-    }
-
-  return 0;
-
-error_load:
-  snprintf (msg, sizeof (msg) - 1,
-	    "loading console conversion data from file: %s", lf->bin_file);
-  LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-
-  return -1;
-
-er_corrupted:
-  snprintf (msg, sizeof (msg) - 1,
-	    "corrupted console conversion data in file: %s", lf->bin_file);
-  LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-
-error:
-
-  return -1;
-}
-
-/*
- * save_uca_opt_to_bin() - saves UCA options to binary file
- *
- * return: zero if save is successful, non-zero otherwise
- * fp(in): file descriptor
- * uca_opt(in): options to save
- */
-static int
-save_uca_opt_to_bin (FILE * fp, UCA_OPTIONS * uca_opt)
-{
-  int res = 0;
-
-  assert (uca_opt != NULL);
-  assert (fp != NULL);
-
-  res = save_int_to_bin (fp, uca_opt->sett_strength);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, uca_opt->sett_backwards);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, uca_opt->sett_caseLevel);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, uca_opt->sett_caseFirst);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, uca_opt->sett_expansions);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, uca_opt->sett_contr_policy);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  return 0;
-
-error:
-
-  return -1;
-}
-
-/*
- * load_uca_opt_from_bin() - loads UCA options data from file
- *
- * return: zero if load is successful, non-zero otherwise
- * lf(in): locale file info
- * fp(in): file descriptor
- * uca_opt(in): UCA options to load into
- */
-static int
-load_uca_opt_from_bin (LOCALE_FILE * lf, FILE * fp, UCA_OPTIONS * uca_opt)
-{
-  char msg[ERR_MSG_SIZE];
-  int res = 0;
-  int i_value;
-
-  assert (uca_opt != NULL);
-  assert (fp != NULL);
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (i_value < TAILOR_UNDEFINED || i_value > TAILOR_IDENTITY)
-    {
-      snprintf (msg, sizeof (msg) - 1,
-		"corrupted collation options data in file: %s", lf->bin_file);
-      LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-      goto error;
-    }
-  uca_opt->sett_strength = (T_LEVEL) i_value;
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0)
-    {
-      goto error;
-    }
-  uca_opt->sett_backwards = (bool) i_value;
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0)
-    {
-      goto error;
-    }
-  uca_opt->sett_caseLevel = (bool) i_value;
-
-  res = load_int_from_bin (fp, &(uca_opt->sett_caseFirst));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = load_int_from_bin (fp, &i_value);
-  if (res != 0)
-    {
-      goto error;
-    }
-  uca_opt->sett_expansions = (bool) i_value;
-
-  res = load_int_from_bin (fp, &(uca_opt->sett_contr_policy));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  return 0;
-
-error:
-
-  return -1;
-}
-
-/*
- * save_contraction_to_bin() - saves collation contraction data to binary file
+ * save_contraction_to_C_file() - saves collation contraction data to C file
  *
  * return: zero if save is successful, non-zero otherwise
  * fp(in): file descriptor
@@ -5387,892 +4944,570 @@ error:
  * use_level_4(in):
  */
 static int
-save_contraction_to_bin (FILE * fp, COLL_CONTRACTION * c, bool use_expansion,
-			 bool use_level_4)
+save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c,
+			    bool use_expansion, bool use_level_4)
 {
   int res = 0;
 
   assert (c != NULL);
   assert (fp != NULL);
 
-  res = save_int_to_bin (fp, c->cp_count);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_string_to_bin (fp, c->c_buf);
-  if (res != 0)
-    {
-      goto error;
-    }
+  fprintf (fp, "\t{\n");
+  fprintf (fp, "\t\t%d, \n", c->cp_count);
+  PRINT_STRING_TO_C_FILE (fp, c->c_buf, strlen (c->c_buf));
+  fprintf (fp, ", \n");
+  fprintf (fp, "\t\t%d, \n", c->size);
+  fprintf (fp, "\t\t%u, \n", c->wv);
+  fprintf (fp, "\t\t%d, \n", c->uca_num);
 
   if (use_expansion)
     {
       assert (c->uca_num > 0 || c->uca_num <= MAX_UCA_EXP_CE);
-      res = save_int_to_bin (fp, c->uca_num);
-      if (res != 0)
-	{
-	  goto error;
-	}
 
-      res = fwrite (c->uca_w_l13, sizeof (UCA_L13_W), c->uca_num, fp);
-      if (res != c->uca_num)
-	{
-	  goto error;
-	}
+      PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE (fp, "%uu", "\t\t", c->uca_num,
+					 c->uca_w_l13);
+      fprintf (fp, ",\n");
 
       if (use_level_4)
 	{
-	  res = fwrite (c->uca_w_l4, sizeof (UCA_L4_W), c->uca_num, fp);
-	  if (res != c->uca_num)
-	    {
-	      goto error;
-	    }
+	  PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE (fp, "%u", "\t\t", c->uca_num,
+					     c->uca_w_l4);
+	  fprintf (fp, ",\n");
+	}
+      else
+	{
+	  fprintf (fp, "{ 0 },\n");
 	}
     }
   else
     {
-      res = save_int_to_bin (fp, c->wv);
-      if (res != 0)
-	{
-	  goto error;
-	}
+      fprintf (fp, "{ 0 },\n{ 0 }, \n");
     }
 
-  res = save_int_to_bin (fp, c->next);
-  if (res != 0)
-    {
-      goto error;
-    }
+  fprintf (fp, "%u } \n", c->next);
 
   return 0;
-
-error:
-
-  return -1;
 }
 
 /*
- * load_contraction_from_bin() - loads a collation contraction data from file
- *
- * return: zero if load is successful, non-zero otherwise
- * lf(in): locale file info
- * fp(in): file descriptor
- * c(in): contraction to load into
- * use_expansion (in):
- * use_level_4 (in):
- */
-static int
-load_contraction_from_bin (LOCALE_FILE * lf, FILE * fp, COLL_CONTRACTION * c,
-			   bool use_expansion, bool use_level_4)
-{
-  char msg[ERR_MSG_SIZE];
-  int res = 0;
-  int i_value;
-
-  assert (c != NULL);
-  assert (fp != NULL);
-
-  res = load_int_from_bin (fp, &(c->cp_count));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  assert (c->cp_count > 1);
-
-  res = load_string_from_bin (fp, c->c_buf, sizeof (c->c_buf) - 1);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  c->size = strlen (c->c_buf);
-
-  if (use_expansion)
-    {
-      res = load_int_from_bin (fp, &i_value);
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      if (i_value < 1 || i_value > MAX_UCA_EXP_CE)
-	{
-	  snprintf (msg, sizeof (msg) - 1,
-		    "corrupted collation contraction data in file: %s",
-		    lf->bin_file);
-	  LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-	  goto error;
-	}
-
-      c->uca_num = i_value;
-
-      res = fread (c->uca_w_l13, sizeof (UCA_L13_W), c->uca_num, fp);
-      if (res != c->uca_num)
-	{
-	  goto error;
-	}
-
-      if (use_level_4)
-	{
-	  res = fread (c->uca_w_l4, sizeof (UCA_L4_W), c->uca_num, fp);
-	  if (res != c->uca_num)
-	    {
-	      goto error;
-	    }
-	}
-    }
-  else
-    {
-      res = load_int_from_bin (fp, (int *) &(c->wv));
-      if (res != 0)
-	{
-	  goto error;
-	}
-    }
-
-  res = load_int_from_bin (fp, (int *) &(c->next));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  return 0;
-
-error:
-
-  return -1;
-}
-
-/*
- * locale_save_to_bin() - saves locale data to binary file
+ * locale_prepare_C_file() - saves locale data to C source file, for 
+ *			    later use when generating the locale shared
+ *			    library.
  *
  * return: error code
  * lf(in): locale file info
  * ld(in): locale data
+ * c_file_path(in): the path to where to write the C file
  */
-static int
-locale_save_to_bin (LOCALE_FILE * lf, LOCALE_DATA * ld)
+int
+locale_prepare_C_file (void)
 {
   FILE *fp;
-  int res, i;
-  char msg[ERR_MSG_SIZE];
+  char c_file_path[LOC_FILE_PATH_SIZE];
+  char err_msg[ERR_MSG_SIZE];
 
-  assert (lf != NULL);
-  assert (ld != NULL);
+  envvar_loclib_dir_file (c_file_path, PATH_MAX, "locale.c");
 
-  fp = fopen_ex (lf->bin_file, "wb");
+  fp = fopen_ex (c_file_path, "w");
   if (fp == NULL)
     {
       goto error;
     }
+  fprintf (fp, "/* GENERATED FILE - DO NOT EDIT */\n");
 
-  /* build number */
-  res = save_string_to_bin (fp, rel_build_number ());
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* locale string */
-  res = save_string_to_bin (fp, ld->locale_name);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* date format */
-  res = save_string_to_bin (fp, ld->dateFormat);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* time format */
-  res = save_string_to_bin (fp, ld->timeFormat);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* datetime format */
-  res = save_string_to_bin (fp, ld->datetimeFormat);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* timestamp format */
-  res = save_string_to_bin (fp, ld->timestampFormat);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* months name */
-  for (i = 0; i < CAL_MONTH_COUNT; i++)
-    {
-      res = save_string_to_bin (fp, ld->month_names_abbreviated[i]);
-      if (res != 0)
-	{
-	  goto error;
-	}
-      res = save_string_to_bin (fp, ld->month_names_wide[i]);
-      if (res != 0)
-	{
-	  goto error;
-	}
-    }
-
-  /* week days name */
-  for (i = 0; i < CAL_DAY_COUNT; i++)
-    {
-      res = save_string_to_bin (fp, ld->day_names_abbreviated[i]);
-      if (res != 0)
-	{
-	  goto error;
-	}
-      res = save_string_to_bin (fp, ld->day_names_wide[i]);
-      if (res != 0)
-	{
-	  goto error;
-	}
-    }
-
-  if (fwrite
-      (ld->day_names_abbr_parse_order, sizeof (char), CAL_DAY_COUNT,
-       fp) != CAL_DAY_COUNT)
-    {
-      goto error;
-    }
-  if (fwrite
-      (ld->day_names_wide_parse_order, sizeof (char), CAL_DAY_COUNT,
-       fp) != CAL_DAY_COUNT)
-    {
-      goto error;
-    }
-  if (fwrite (ld->month_names_abbr_parse_order, sizeof (char),
-	      CAL_MONTH_COUNT, fp) != CAL_MONTH_COUNT)
-    {
-      goto error;
-    }
-  if (fwrite (ld->month_names_wide_parse_order, sizeof (char),
-	      CAL_MONTH_COUNT, fp) != CAL_MONTH_COUNT)
-    {
-      goto error;
-    }
-  if (fwrite (ld->am_pm_parse_order, sizeof (char),
-	      CAL_AM_PM_COUNT, fp) != CAL_AM_PM_COUNT)
-    {
-      goto error;
-    }
-
-  /* day periods name */
-  for (i = 0; i < CAL_AM_PM_COUNT; i++)
-    {
-      res = save_string_to_bin (fp, ld->am_pm[i]);
-      if (res != 0)
-	{
-	  goto error;
-	}
-    }
-
-  res = fwrite (&(ld->number_decimal_sym), sizeof (char), 1, fp);
-  if (res != 1)
-    {
-      goto error;
-    }
-
-  res = fwrite (&(ld->number_group_sym), sizeof (char), 1, fp);
-  if (res != 1)
-    {
-      goto error;
-    }
-
-  if (ld->default_currency_code == DB_CURRENCY_NULL)
-    {
-      ld->default_currency_code = DB_CURRENCY_DOLLAR;
-    }
-  res = save_int_to_bin (fp, ld->default_currency_code);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* alphabet */
-  res = save_alphabet_to_bin (fp, &(ld->alphabet));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* alphabet for identifiers */
-  res = save_alphabet_to_bin (fp, &(ld->identif_alphabet));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* collation */
-  res = save_uca_opt_to_bin (fp, &(ld->opt_coll.uca_opt));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, ld->opt_coll.w_count);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  res = save_int_to_bin (fp, ld->opt_coll.uca_exp_num);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (ld->opt_coll.w_count > 0)
-    {
-      if (ld->opt_coll.uca_exp_num <= 1)
-	{
-	  res = fwrite (ld->opt_coll.weights, sizeof (unsigned int),
-			ld->opt_coll.w_count, fp);
-	  if (res != ld->opt_coll.w_count)
-	    {
-	      goto error;
-	    }
-	}
-      else
-	{
-	  res = fwrite (ld->opt_coll.uca_w_l13, sizeof (UCA_L13_W)
-			* ld->opt_coll.uca_exp_num, ld->opt_coll.w_count, fp);
-	  if (res != ld->opt_coll.w_count)
-	    {
-	      goto error;
-	    }
-
-	  if (ld->opt_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY)
-	    {
-	      res = fwrite (ld->opt_coll.uca_w_l4, sizeof (UCA_L4_W)
-			    * ld->opt_coll.uca_exp_num,
-			    ld->opt_coll.w_count, fp);
-	      if (res != ld->opt_coll.w_count)
-		{
-		  goto error;
-		}
-	    }
-
-	  res = fwrite (ld->opt_coll.uca_num, sizeof (char),
-			ld->opt_coll.w_count, fp);
-	  if (res != ld->opt_coll.w_count)
-	    {
-	      goto error;
-	    }
-	}
-
-      res = fwrite (ld->opt_coll.next_cp, sizeof (unsigned int),
-		    ld->opt_coll.w_count, fp);
-      if (res != ld->opt_coll.w_count)
-	{
-	  goto error;
-	}
-    }
-
-  /* contractions */
-  res = save_int_to_bin (fp, ld->opt_coll.count_contr);
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  if (ld->opt_coll.count_contr > 0)
-    {
-      for (i = 0; i < ld->opt_coll.count_contr; i++)
-	{
-	  res = save_contraction_to_bin (fp, &(ld->opt_coll.contr_list[i]),
-					 (ld->opt_coll.uca_exp_num >
-					  1) ? true : false,
-					 (ld->opt_coll.uca_opt.
-					  sett_strength >=
-					  TAILOR_QUATERNARY) ? true : false);
-	  if (res != 0)
-	    {
-	      goto error;
-	    }
-	}
-
-      res = save_int_to_bin (fp, ld->opt_coll.contr_min_size);
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      res = save_int_to_bin (fp, ld->opt_coll.cp_first_contr_offset);
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      assert (ld->opt_coll.cp_first_contr_count < 0xffff);
-
-      res = save_int_to_bin (fp, ld->opt_coll.cp_first_contr_count);
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      assert (ld->opt_coll.cp_first_contr_count > 0);
-
-      res = fwrite (ld->opt_coll.cp_first_contr_array, sizeof (int),
-		    ld->opt_coll.cp_first_contr_count, fp);
-      if (res != (int) (ld->opt_coll.cp_first_contr_count))
-	{
-	  goto error;
-	}
-    }
-
-  res = save_console_conv_to_bin (fp, &(ld->txt_conv));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  assert (fp != NULL);
+#if defined(WINDOWS)
+  fprintf (fp, "#include <stdio.h>\n");
+#else
+  fprintf (fp, "#include <stddef.h>\n");
+#endif
+  fprintf (fp, "#include \"locale_lib_common.h\"\n\n");
   fclose (fp);
-
-  return NO_ERROR;
-
+  return 0;
 error:
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
-
-  snprintf (msg, sizeof (msg) - 1,
-	    "Error saving binary locale data to file: %s", lf->bin_file);
-  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
-
-  return ER_LOC_GEN;
+  snprintf (err_msg, sizeof (err_msg) - 1,
+	    "Error opening file %s for rewrite.", c_file_path);
+  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
+  return ER_GENERIC_ERROR;
 }
 
 /*
- * locale_load_from_bin() - loads locale data from binary file
+ * locale_save_to_C_file() - saves locale data to C source file, for 
+ *			    later use when generating the locale shared
+ *			    library.
  *
  * return: error code
  * lf(in): locale file info
- * ld(out): locale data
+ * ld(in): locale data
+ * c_file_path(in): the path to where to write the C file
  */
-int
-locale_load_from_bin (LOCALE_FILE * lf, LOCALE_DATA * ld)
+static int
+locale_save_to_C_file (LOCALE_FILE * lf, LOCALE_DATA * ld)
 {
   FILE *fp;
-  int res, i;
-  char bin_build_number[32];
-  char msg[ERR_MSG_SIZE];
+  char c_file_path[LOC_FILE_PATH_SIZE];
+  char err_msg[ERR_MSG_SIZE];
+  int i;
 
   assert (lf != NULL);
   assert (ld != NULL);
 
-  fp = fopen_ex (lf->bin_file, "rb");
+  envvar_loclib_dir_file (c_file_path, PATH_MAX, "locale.c");
+
+  fp = fopen_ex (c_file_path, "a");
   if (fp == NULL)
     {
-      goto error_load;
-    }
-
-  /* check build number of binary file */
-  res = load_string_from_bin (fp, bin_build_number,
-			      sizeof (bin_build_number));
-  if (res != 0)
-    {
-      goto error_load;
-    }
-
-  if (strcmp (bin_build_number, rel_build_number ()))
-    {
-      snprintf (msg, sizeof (msg) - 1,
-		"binary locale file: %s is not compatible", lf->bin_file);
-      LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
       goto error;
     }
+  fprintf (fp, "/*\n * %s - generated from %s \n *\n */\n", ld->locale_name,
+	   lf->ldml_file);
 
-  /* locale string */
-  res = load_string_from_bin (fp, ld->locale_name, sizeof (ld->locale_name));
-  if (res != 0)
-    {
-      goto error_load;
-    }
+  PRINT_STRING_VAR_TO_C_FILE (fp, "locale_name", ld->locale_name,
+			      ld->locale_name);
 
-  if (strcmp (lf->locale_name, ld->locale_name))
-    {
-      snprintf (msg, sizeof (msg) - 1,
-		"binary locale file: %s . Locale strings don't match :"
-		" found '%s', expecting '%s'",
-		lf->bin_file, ld->locale_name, lf->locale_name);
-      LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
-      goto error;
-    }
+  locale_save_calendar_to_C_file (fp, ld);
 
-  /* date format */
-  res = load_string_from_bin (fp, ld->dateFormat, sizeof (ld->dateFormat));
-  if (res != 0)
-    {
-      goto error_load;
-    }
+  PRINT_VAR_TO_C_FILE (fp, "char", "number_decimal_sym",
+		       ld->number_decimal_sym, "'%c'", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "char", "number_group_sym",
+		       ld->number_group_sym, "'%c'", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "default_currency_code",
+		       ld->default_currency_code, "%d", ld->locale_name);
 
-  /* time format */
-  res = load_string_from_bin (fp, ld->timeFormat, sizeof (ld->timeFormat));
-  if (res != 0)
-    {
-      goto error_load;
-    }
+  locale_save_alphabets_to_C_file (fp, ld);
 
-  /* datetime format */
-  res = load_string_from_bin (fp, ld->datetimeFormat,
-			      sizeof (ld->datetimeFormat));
-  if (res != 0)
-    {
-      goto error_load;
-    }
+  /* number of collation associated with this locale */
+  PRINT_VAR_TO_C_FILE (fp, "int", "count_coll", ld->coll_cnt,
+		       "%d", ld->locale_name);
 
-  /* timestamp format */
-  res = load_string_from_bin (fp, ld->timestampFormat,
-			      sizeof (ld->timestampFormat));
-  if (res != 0)
+  for (i = 0; i < ld->coll_cnt; i++)
     {
-      goto error_load;
-    }
+      char coll_suffix[ERR_MSG_SIZE];
 
-  /* months name */
-  for (i = 0; i < CAL_MONTH_COUNT; i++)
-    {
-      res = load_string_from_bin (fp, ld->month_names_abbreviated[i],
-				  LOC_DATA_MONTH_ABBR_SIZE);
-      if (res != 0)
+      /* Collation names are user defined: first save fixed name variables
+       * containing collations name included in the LDML:
+       * collation_1_es_ES = "utf8_es_ES";
+       * collation_2_es_ES = "utf8_es_ES_ci"; 
+       */
+      snprintf (coll_suffix, sizeof (coll_suffix) - 1, "%d_%s", i,
+		ld->locale_name);
+      PRINT_STRING_VAR_TO_C_FILE (fp, "collation",
+				  ld->collations[i].opt_coll.coll_name,
+				  coll_suffix);
+
+      if (ld->collations[i].do_not_save)
 	{
-	  goto error_load;
+	  continue;
 	}
-      res = load_string_from_bin (fp, ld->month_names_wide[i],
-				  LOC_DATA_MONTH_WIDE_SIZE);
-      if (res != 0)
+
+      /* the collation datas are decorated with the user defined name of the 
+       * collation :
+       * coll_weights_utf8_es_ES = { .. };
+       * coll_weights_utf8_es_ES_ci = { .. };
+       */
+      locale_save_collation_data_to_C_file (fp,
+					    &(ld->collations[i].opt_coll));
+    }
+
+  locale_save_console_conv_to_C_file (fp, ld);
+
+  locale_save_normalization_to_C_file (fp, ld);
+
+  fclose (fp);
+  return 0;
+
+error:
+  snprintf (err_msg, sizeof (err_msg) - 1,
+	    "Error opening file %s for append.", c_file_path);
+  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
+  return ER_GENERIC_ERROR;
+}
+
+/*
+ * locale_save_calendar_to_C_file() - saves calendar data to C source file, 
+ *			    as variables, for later use when generating the 
+ *			    locale shared library.
+ *
+ * return: error code
+ * fp(in): file pointer where to write the data
+ * ld(in): locale data
+ */
+static int
+locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld)
+{
+  assert (ld != NULL);
+  assert (fp != NULL);
+
+  /* calendar format strings */
+  PRINT_STRING_VAR_TO_C_FILE (fp, "date_format", ld->dateFormat,
+			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "time_format", ld->timeFormat,
+			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "datetime_format", ld->datetimeFormat,
+			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "timestamp_format", ld->timestampFormat,
+			      ld->locale_name);
+
+  /* calendar data arrays */
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_abbreviated",
+				CAL_MONTH_COUNT, ld->month_names_abbreviated,
+				ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_wide", CAL_MONTH_COUNT,
+				ld->month_names_wide, ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "day_names_abbreviated", CAL_DAY_COUNT,
+				ld->day_names_abbreviated, ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "day_names_wide", CAL_DAY_COUNT,
+				ld->day_names_wide, ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "am_pm", CAL_AM_PM_COUNT, ld->am_pm,
+				ld->locale_name);
+
+  /* calendar parse order arrays */
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "day_names_abbr_parse_order",
+			     "char", "%u", CAL_DAY_COUNT,
+			     ld->day_names_abbr_parse_order, ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "day_names_wide_parse_order",
+			     "char", "%u", CAL_DAY_COUNT,
+			     ld->day_names_wide_parse_order, ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "month_names_abbr_parse_order",
+			     "char", "%u", CAL_MONTH_COUNT,
+			     ld->month_names_abbr_parse_order,
+			     ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "month_names_wide_parse_order",
+			     "char", "%u", CAL_MONTH_COUNT,
+			     ld->month_names_wide_parse_order,
+			     ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "am_pm_parse_order",
+			     "char", "%u", CAL_AM_PM_COUNT,
+			     ld->am_pm_parse_order, ld->locale_name);
+
+  return 0;
+}
+
+/*
+ * locale_save_alphabets_to_C_file() - saves alphabet and identifier alphabet
+ *			    to C source file as variables, for later use 
+ *			    when generating the locale shared library.
+ *
+ * return: error code
+ * fp(in): file pointer where to write the data
+ * a(in): alphabet data
+ * save_w_identier_name(in): true if alphabet is to be saved as "identifier"
+ *			     name
+ * alpha_suffix(in): suffix to be applied to variables names
+ */
+static int
+locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a,
+				    bool save_w_identier_name,
+				    const char *alpha_suffix)
+{
+  assert (a != NULL);
+  assert (fp != NULL);
+
+  if (save_w_identier_name)
+    {
+      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_l_count", a->l_count,
+			   "%d", alpha_suffix);
+
+      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_lower_multiplier",
+			   a->lower_multiplier, "%d", alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_upper_multiplier",
+			   a->upper_multiplier, "%d", alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "ident_alphabet_lower_cp",
+				 "unsigned int", "%u", a->l_count
+				 * a->lower_multiplier, a->lower_cp,
+				 alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "ident_alphabet_upper_cp",
+				 "unsigned int", "%u", a->l_count
+				 * a->upper_multiplier, a->upper_cp,
+				 alpha_suffix);
+    }
+  else
+    {
+      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_l_count", a->l_count, "%d",
+			   alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_lower_multiplier",
+			   a->lower_multiplier, "%d", alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_upper_multiplier",
+			   a->upper_multiplier, "%d", alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "alphabet_lower_cp", "unsigned int",
+				 "%u", a->l_count * a->lower_multiplier,
+				 a->lower_cp, alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "alphabet_upper_cp", "unsigned int",
+				 "%u", a->l_count * a->upper_multiplier,
+				 a->upper_cp, alpha_suffix);
+    }
+
+  return 0;
+}
+
+/*
+ * locale_save_alphabets_to_C_file() - saves alphabet and identifier alphabet
+ *			    to C source file as variables, for later use 
+ *			    when generating the locale shared library.
+ *
+ * return: error code
+ * fp(in): file pointer where to write the data
+ * ld(in): locale data
+ */
+static int
+locale_save_alphabets_to_C_file (FILE * fp, LOCALE_DATA * ld)
+{
+  assert (ld != NULL);
+  assert (fp != NULL);
+
+  /* alphabet data */
+  PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_a_type", ld->alphabet.a_type,
+		       "%d", ld->locale_name);
+
+  if (!(ld->alphabet.do_not_save))
+    {
+      const char *alpha_suffix;
+
+      if (ld->alphabet.a_type == ALPHABET_UNICODE)
 	{
-	  goto error_load;
+	  alpha_suffix = "unicode";
 	}
-    }
-
-  /* week days name */
-  for (i = 0; i < CAL_DAY_COUNT; i++)
-    {
-      res = load_string_from_bin (fp, ld->day_names_abbreviated[i],
-				  LOC_DATA_DAY_ABBR_SIZE);
-      if (res != 0)
+      else if (ld->alphabet.a_type == ALPHABET_ASCII)
 	{
-	  goto error_load;
-	}
-      res = load_string_from_bin (fp, ld->day_names_wide[i],
-				  LOC_DATA_DAY_WIDE_SIZE);
-      if (res != 0)
-	{
-	  goto error_load;
-	}
-    }
-
-  if (fread (ld->day_names_abbr_parse_order, sizeof (char),
-	     CAL_DAY_COUNT, fp) != CAL_DAY_COUNT)
-    {
-      goto error;
-    }
-  if (fread (ld->day_names_wide_parse_order, sizeof (char),
-	     CAL_DAY_COUNT, fp) != CAL_DAY_COUNT)
-    {
-      goto error;
-    }
-  if (fread (ld->month_names_abbr_parse_order, sizeof (char),
-	     CAL_MONTH_COUNT, fp) != CAL_MONTH_COUNT)
-    {
-      goto error;
-    }
-  if (fread (ld->month_names_wide_parse_order, sizeof (char),
-	     CAL_MONTH_COUNT, fp) != CAL_MONTH_COUNT)
-    {
-      goto error;
-    }
-  if (fread (ld->am_pm_parse_order, sizeof (char),
-	     CAL_AM_PM_COUNT, fp) != CAL_AM_PM_COUNT)
-    {
-      goto error;
-    }
-
-  /* day periods name */
-  for (i = 0; i < CAL_AM_PM_COUNT; i++)
-    {
-      res = load_string_from_bin (fp, ld->am_pm[i], LOC_DATA_AM_PM_SIZE);
-      if (res != 0)
-	{
-	  goto error_load;
-	}
-    }
-
-  res = fread (&(ld->number_decimal_sym), sizeof (char), 1, fp);
-  if (res != 1)
-    {
-      goto error_load;
-    }
-
-  res = fread (&(ld->number_group_sym), sizeof (char), 1, fp);
-  if (res != 1)
-    {
-      goto error_load;
-    }
-
-  res = load_int_from_bin (fp, &i);
-  if (res != 0)
-    {
-      goto error;
-    }
-  if (i < DB_CURRENCY_DOLLAR || i >= DB_CURRENCY_NULL)
-    {
-      LOG_LOCALE_ERROR ("Value for default currency ISO code is not in the "
-			"range of supported currencies.", ER_LOC_INIT, true);
-      goto error;
-    }
-  ld->default_currency_code = (DB_CURRENCY) i;
-
-  /* alphabet */
-  res = load_alphabet_from_bin (lf, fp, &(ld->alphabet));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* alphabet for identifiers */
-  res = load_alphabet_from_bin (lf, fp, &(ld->identif_alphabet));
-  if (res != 0)
-    {
-      goto error;
-    }
-
-  /* collation */
-  res = load_uca_opt_from_bin (lf, fp, &(ld->opt_coll.uca_opt));
-  if (res != 0)
-    {
-      goto error_load;
-    }
-
-  res = load_int_from_bin (fp, &(ld->opt_coll.w_count));
-  if (ld->opt_coll.w_count < 0 || res != 0)
-    {
-      goto error_load;
-    }
-
-  res = load_int_from_bin (fp, &(ld->opt_coll.uca_exp_num));
-  if (res != 0)
-    {
-      goto error_load;
-    }
-
-  if (ld->opt_coll.uca_exp_num < 0
-      || ld->opt_coll.uca_exp_num > MAX_UCA_EXP_CE)
-    {
-      LOG_LOCALE_ERROR ("Value for number of maximum number chars in "
-			"expansion is out of range.", ER_LOC_INIT, true);
-      goto error;
-    }
-
-  if (ld->opt_coll.w_count > 0)
-    {
-      if (ld->opt_coll.uca_exp_num > 1)
-	{
-	  /* Weight levels 1-3 */
-	  ld->opt_coll.uca_w_l13 = (UCA_L13_W *)
-	    malloc (ld->opt_coll.w_count * ld->opt_coll.uca_exp_num
-		    * sizeof (UCA_L13_W));
-	  if (ld->opt_coll.uca_w_l13 == NULL)
-	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				true);
-	      goto error;
-	    }
-
-	  res = fread (ld->opt_coll.uca_w_l13, sizeof (UCA_L13_W)
-		       * ld->opt_coll.uca_exp_num, ld->opt_coll.w_count, fp);
-	  if (res != ld->opt_coll.w_count)
-	    {
-	      goto error_load;
-	    }
-
-	  /* Weight level 4 */
-	  if (ld->opt_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY)
-	    {
-	      ld->opt_coll.uca_w_l4 = (UCA_L4_W *)
-		malloc (ld->opt_coll.w_count * ld->opt_coll.uca_exp_num
-			* sizeof (UCA_L4_W));
-	      if (ld->opt_coll.uca_w_l4 == NULL)
-		{
-		  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				    true);
-		  goto error;
-		}
-
-	      res = fread (ld->opt_coll.uca_w_l4, sizeof (UCA_L4_W)
-			   * ld->opt_coll.uca_exp_num,
-			   ld->opt_coll.w_count, fp);
-	      if (res != ld->opt_coll.w_count)
-		{
-		  goto error_load;
-		}
-	    }
-
-	  /* Weight levels CE num per CP */
-	  ld->opt_coll.uca_num =
-	    malloc (ld->opt_coll.w_count * sizeof (char));
-	  if (ld->opt_coll.uca_num == NULL)
-	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				true);
-	      goto error;
-	    }
-
-	  res = fread (ld->opt_coll.uca_num, sizeof (char),
-		       ld->opt_coll.w_count, fp);
-	  if (res != ld->opt_coll.w_count)
-	    {
-	      goto error_load;
-	    }
+	  alpha_suffix = "ascii";
 	}
       else
 	{
-	  ld->opt_coll.weights = malloc (ld->opt_coll.w_count *
-					 sizeof (unsigned int));
-	  if (ld->opt_coll.weights == NULL)
-	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				true);
-	      goto error;
-	    }
-
-	  res = fread (ld->opt_coll.weights, sizeof (unsigned int),
-		       ld->opt_coll.w_count, fp);
-	  if (res != ld->opt_coll.w_count)
-	    {
-	      goto error_load;
-	    }
+	  alpha_suffix = (const char *) (ld->locale_name);
 	}
 
-      ld->opt_coll.next_cp = malloc (ld->opt_coll.w_count *
-				     sizeof (unsigned int));
-
-      if (ld->opt_coll.next_cp == NULL)
-	{
-	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-	  goto error;
-	}
-
-      res = fread (ld->opt_coll.next_cp, sizeof (unsigned int),
-		   ld->opt_coll.w_count, fp);
-      if (res != ld->opt_coll.w_count)
-	{
-	  goto error_load;
-	}
+      (void) locale_save_one_alphabet_to_C_file (fp, &(ld->alphabet), false,
+						 alpha_suffix);
     }
 
-  /* contractions */
-  res = load_int_from_bin (fp, &(ld->opt_coll.count_contr));
-  if (res != 0)
+  /* identifier alphabet data */
+  PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_a_type",
+		       ld->identif_alphabet.a_type, "%d", ld->locale_name);
+
+  if (!(ld->identif_alphabet.do_not_save))
     {
-      goto error;
+      const char *alpha_suffix;
+      bool save_w_identif = false;
+
+      if (ld->identif_alphabet.a_type == ALPHABET_UNICODE)
+	{
+	  alpha_suffix = "unicode";
+	}
+      else if (ld->identif_alphabet.a_type == ALPHABET_ASCII)
+	{
+	  alpha_suffix = "ascii";
+	}
+      else
+	{
+	  alpha_suffix = (const char *) (ld->locale_name);
+	  save_w_identif = true;
+	}
+
+      (void) locale_save_one_alphabet_to_C_file (fp, &(ld->identif_alphabet),
+						 save_w_identif,
+						 alpha_suffix);
     }
 
-  if (ld->opt_coll.count_contr > 0)
-    {
-      ld->opt_coll.contr_list = malloc (ld->opt_coll.count_contr *
-					sizeof (COLL_CONTRACTION));
+  return 0;
+}
 
-      if (ld->opt_coll.contr_list == NULL)
-	{
-	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-	  goto error;
-	}
+/*
+ * locale_save_collation_data_to_C_file() - saves collation data to C source
+ *			    file as variables, for later use when generating
+ *			    the locale shared library.
+ *
+ * return: error code
+ * fp(in): file pointer where to write the data
+ * cd(in): collation data
+ */
+static int
+locale_save_collation_data_to_C_file (FILE * fp, COLL_DATA * cd)
+{
+  int i;
 
-      for (i = 0; i < ld->opt_coll.count_contr; i++)
-	{
-	  res =
-	    load_contraction_from_bin (lf, fp, &(ld->opt_coll.contr_list[i]),
-				       (ld->opt_coll.uca_exp_num >
-					1) ? true : false,
-				       (ld->opt_coll.uca_opt.sett_strength >=
-					TAILOR_QUATERNARY) ? true : false);
-	  if (res != 0)
-	    {
-	      goto error;
-	    }
-	}
-
-      res = load_int_from_bin (fp, (int *) &(ld->opt_coll.contr_min_size));
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      res = load_int_from_bin (fp,
-			       (int *) &(ld->opt_coll.cp_first_contr_offset));
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      assert (ld->opt_coll.cp_first_contr_offset < 0xffff);
-
-      res = load_int_from_bin (fp,
-			       (int *) &(ld->opt_coll.cp_first_contr_count));
-      if (res != 0)
-	{
-	  goto error;
-	}
-
-      assert (ld->opt_coll.cp_first_contr_count > 0);
-
-      ld->opt_coll.cp_first_contr_array =
-	(int *) malloc (ld->opt_coll.cp_first_contr_count * sizeof (int));
-      if (ld->opt_coll.cp_first_contr_array == NULL)
-	{
-	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-	  goto error;
-	}
-
-      res = fread (ld->opt_coll.cp_first_contr_array, sizeof (int),
-		   ld->opt_coll.cp_first_contr_count, fp);
-      if (res != (int) (ld->opt_coll.cp_first_contr_count))
-	{
-	  goto error_load;
-	}
-    }
-
-  /* console conversion */
-  res = load_console_conv_from_bin (lf, fp, &(ld->txt_conv));
-  if (res != 0)
-    {
-      goto error;
-    }
-
+  assert (cd != NULL);
   assert (fp != NULL);
-  fclose (fp);
 
-  return NO_ERROR;
+  /* collation constants */
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_id", cd->coll_id, "%d",
+		       cd->coll_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_name", cd->coll_name, cd->coll_name);
 
-error_load:
-  snprintf (msg, sizeof (msg) - 1, "loading binary locale file: %s",
-	    lf->bin_file);
-  LOG_LOCALE_ERROR (msg, ER_LOC_INIT, true);
+  /* OPT_COLL.UCA_OPT members */
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_strength",
+		       cd->uca_opt.sett_strength, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_backwards",
+		       cd->uca_opt.sett_backwards ? 1 : 0, "%d",
+		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_caseLevel",
+		       cd->uca_opt.sett_caseLevel ? 1 : 0, "%d",
+		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_caseFirst",
+		       cd->uca_opt.sett_caseFirst, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_expansions",
+		       cd->uca_opt.sett_expansions ? 1 : 0, "%d",
+		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_contr_policy",
+		       cd->uca_opt.sett_contr_policy, "%d", cd->coll_name);
 
-error:
-  if (fp != NULL)
+  /* other OPT_COLL members */
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_w_count", cd->w_count, "%d",
+		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_uca_exp_num", cd->uca_exp_num, "%d",
+		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_count_contr", cd->count_contr, "%d",
+		       cd->coll_name);
+
+  /* OPT_COLL pointer and array members */
+  if (cd->w_count > 0)
     {
-      fclose (fp);
+      if (!(cd->uca_opt.sett_expansions))
+	{
+	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_weights", "unsigned int",
+				     "%u", cd->w_count, cd->weights,
+				     cd->coll_name);
+	}
+      else
+	{
+	  assert (cd->uca_exp_num > 1);
+
+	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_w_l13", "unsigned int",
+				     "%u", cd->uca_exp_num * cd->w_count,
+				     cd->uca_w_l13, cd->coll_name);
+
+	  if (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY)
+	    {
+	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_w_l4",
+					 "unsigned short", "%u",
+					 cd->uca_exp_num * cd->w_count,
+					 cd->uca_w_l4, cd->coll_name);
+	    }
+
+	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_num", "char", "%d",
+				     cd->w_count, cd->uca_num, cd->coll_name);
+	}
+
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_next_cp", "unsigned int", "%u",
+				 cd->w_count, cd->next_cp, cd->coll_name);
     }
-  return ER_LOC_INIT;
+
+  if (cd->count_contr > 0)
+    {
+      PRINT_VAR_TO_C_FILE (fp, "int", "coll_contr_min_size",
+			   cd->contr_min_size, "%d", cd->coll_name);
+      PRINT_VAR_TO_C_FILE (fp, "unsigned int", "coll_cp_first_contr_offset",
+			   cd->cp_first_contr_offset, "%u", cd->coll_name);
+      PRINT_VAR_TO_C_FILE (fp, "unsigned int", "coll_cp_first_contr_count",
+			   cd->cp_first_contr_count, "%u", cd->coll_name);
+
+      fprintf (fp, "" DLL_EXPORT_PREFIX
+	       "const COLL_CONTRACTION coll_contr_list_%s[] = {",
+	       cd->coll_name);
+      for (i = 0; i < cd->count_contr; i++)
+	{
+	  fprintf (fp, "\n");
+	  save_contraction_to_C_file (fp, &(cd->contr_list[i]),
+				      cd->uca_opt.sett_expansions,
+				      (cd->uca_opt.sett_strength >=
+				       TAILOR_QUATERNARY));
+	  if (i < cd->count_contr - 1)
+	    {
+	      fprintf (fp, ", ");
+	    }
+	}
+      fprintf (fp, "};\n");
+
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_cp_first_contr_array",
+				 "int", "%d",
+				 (int) cd->cp_first_contr_count,
+				 cd->cp_first_contr_array, cd->coll_name);
+    }
+
+  return 0;
+}
+
+/*
+ * locale_save_console_conv_to_C_file() - saves console conversion data to 
+ *					  binary file
+ *
+ * return: zero if save is successful, non-zero otherwise
+ * fp(in): file descriptor
+ * tc(in): console conversion info
+ */
+static int
+locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
+{
+  int i;
+  int res = 0;
+
+  TEXT_CONVERSION *tc;
+
+  assert (ld != NULL);
+  assert (fp != NULL);
+
+  tc = &(ld->txt_conv);
+
+  /* TEXT_CONVERSION non-array members */
+  PRINT_VAR_TO_C_FILE (fp, "int", "tc_conv_type",
+		       tc->conv_type, "%d", ld->locale_name);
+
+  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE
+      && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
+    {
+      return 0;
+    }
+
+  PRINT_VAR_TO_C_FILE (fp, "unsigned char", "tc_first_lead_byte",
+		       tc->first_lead_byte, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_first_cp",
+		       tc->utf8_first_cp, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_last_cp",
+		       tc->utf8_last_cp, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_text_first_cp",
+		       tc->text_first_cp, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_text_last_cp",
+		       tc->text_last_cp, "%u", ld->locale_name);
+
+  assert (tc->win_codepages != NULL);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "tc_win_codepages", tc->win_codepages,
+			      ld->locale_name);
+
+  assert (tc->nl_lang_str != NULL);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "tc_nl_lang_str", tc->nl_lang_str,
+			      ld->locale_name);
+
+  assert (tc->utf8_last_cp > tc->utf8_first_cp);
+  assert (tc->utf8_to_text != NULL);
+
+  fprintf (fp,
+	   "" DLL_EXPORT_PREFIX
+	   "const CONV_CP_TO_BYTES tc_utf8_to_text_%s[] = { \n",
+	   ld->locale_name);
+  for (i = 0; i < (int) (tc->utf8_last_cp - tc->utf8_first_cp + 1); i++)
+    {
+      fprintf (fp, "{ %u, ", tc->utf8_to_text[i].size);
+      PRINT_STRING_TO_C_FILE (fp, tc->utf8_to_text[i].bytes,
+			      tc->utf8_to_text[i].size);
+      fprintf (fp, "},\n");
+    }
+  fprintf (fp, "};\n");
+
+  assert (tc->text_last_cp > tc->text_first_cp);
+  assert (tc->text_to_utf8 != NULL);
+
+  fprintf (fp,
+	   "" DLL_EXPORT_PREFIX
+	   "const CONV_CP_TO_BYTES tc_text_to_utf8_%s[] = { \n",
+	   ld->locale_name);
+  for (i = 0; i < (int) (tc->text_last_cp - tc->text_first_cp + 1); i++)
+    {
+      fprintf (fp, "{ %u, ", tc->text_to_utf8[i].size);
+      PRINT_STRING_TO_C_FILE (fp, tc->text_to_utf8[i].bytes,
+			      tc->text_to_utf8[i].size);
+      fprintf (fp, "},\n");
+    }
+  fprintf (fp, "};\n");
+
+  return 0;
 }
 
 /*
@@ -6334,7 +5569,6 @@ str_pop_token (char *str_p, char **token_p, char **next_p)
   return NO_ERROR;
 }
 
-
 /*
  * dump_locale_alphabet - dump the selected ALPHABET_DATA structure 
  *			  in human-readable text format.
@@ -6350,11 +5584,12 @@ static int
 dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 		      int lower_bound, int upper_bound)
 {
+#define DUMP_CP_BUF_SIZE 128
   int i, cp;
   unsigned char utf8_buf[INTL_UTF8_MAX_CHAR_SIZE + 1];
   unsigned int *case_buf;
-  char out_case[128];
-  char out_cp[128];
+  char out_case[DUMP_CP_BUF_SIZE];
+  char out_cp[DUMP_CP_BUF_SIZE];
 
   assert (ad != NULL);
   assert (lower_bound <= upper_bound);
@@ -6385,21 +5620,20 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
     {
       memset (utf8_buf, 0, INTL_UTF8_MAX_CHAR_SIZE + 1);
       intl_cp_to_utf8 (cp, utf8_buf);
-      printf ("CP: Ux%04X | %-4s", cp, (cp > 0x0020 ? utf8_buf :
-					(unsigned char *) ""));
+      printf ("CP: Ux%04X | %-4s", cp, (cp > 0x0020 ? utf8_buf
+					: (unsigned char *) ""));
       if ((dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER) != 0)
 	{
 	  bool print_case = true;
-	  memset (out_cp, 0, 128);
-	  memset (out_case, 0, 128);
+	  memset (out_cp, 0, sizeof (out_cp));
+	  memset (out_case, 0, sizeof (out_case));
 
 	  case_buf = &(ad->lower_cp[cp * ad->lower_multiplier]);
 
 	  for (i = 0; i < ad->lower_multiplier; i++)
 	    {
-	      char temp_cp[7];	/* Buffer for storing a codepoint as string, 
-				 * e.g. Ux0000 -> UxFFFF, null-terminated, 
-				 * length is 7. */
+	      char temp_cp[8];
+
 	      if (case_buf[i] == 0)
 		{
 		  break;
@@ -6409,10 +5643,9 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 		{
 		  print_case = false;
 		}
-	      memset (utf8_buf, 0, INTL_UTF8_MAX_CHAR_SIZE + 1);
+	      memset (utf8_buf, 0, sizeof (utf8_buf));
 	      intl_cp_to_utf8 (case_buf[i], utf8_buf);
 	      strcat (out_case, (char *) utf8_buf);
-	      memset (temp_cp, 0, 7);
 	      snprintf (temp_cp, sizeof (temp_cp) - 1, "Ux%04X", case_buf[i]);
 	      strcat (out_cp, temp_cp);
 	    }
@@ -6422,16 +5655,15 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
       if ((dl_settings & DUMPLOCALE_IS_ALPHABET_UPPER) != 0)
 	{
 	  bool print_case = true;
-	  memset (out_cp, 0, 128);
-	  memset (out_case, 0, 128);
+	  memset (out_cp, 0, sizeof (out_cp));
+	  memset (out_case, 0, sizeof (out_case));
 
 	  case_buf = &(ad->upper_cp[cp * ad->upper_multiplier]);
 
 	  for (i = 0; i < ad->upper_multiplier; i++)
 	    {
-	      char temp_cp[7];	/* Buffer for storing a codepoint as string, 
-				 * e.g. Ux0000 -> UxFFFF, null-terminated, 
-				 * length is 7. */
+	      char temp_cp[8];
+
 	      if (case_buf[i] == 0)
 		{
 		  break;
@@ -6442,10 +5674,9 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 		  print_case = false;
 		}
 
-	      memset (utf8_buf, 0, INTL_UTF8_MAX_CHAR_SIZE + 1);
+	      memset (utf8_buf, 0, sizeof (utf8_buf));
 	      intl_cp_to_utf8 (case_buf[i], utf8_buf);
 	      strcat (out_case, (char *) utf8_buf);
-	      memset (temp_cp, 0, 7);
 	      snprintf (temp_cp, sizeof (temp_cp) - 1, "Ux%04X", case_buf[i]);
 	      strcat (out_cp, temp_cp);
 	    }
@@ -6458,217 +5689,58 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 }
 
 /*
- * locale_dump - import the binary file(s) associated with the 
- *		 selected locale(s) and output the selected information
- *		 in human-readable text format.
- * Returns : error status.
- * ld(in)  : the LOCALE_DATA to be dumped in text format.
- * lf(in)  : the LOCALE_FILE i.e. binary file from which ld was imported.
+ * dump_locale_collation - dump the selected COLL_DATA structure 
+ *			   in human-readable text format.
+ * Returns : NO_ERROR.
+ * coll(in)  : the COLL_DATA to be dumped in text format.
  * dl_settings(in): the commmand line options encoded intoa binary masked int.
- * start_value(in): the starting codepoint for the range of items which 
+ * lower_bound(in): the starting codepoint for the range of items which 
  *		    -w or -c will dump.
- * end_value(in)  : the ending codepoint for the range of items which
+ * upper_bound(in)  : the ending codepoint for the range of items which
  *		    -w or -c will dump.
  */
-int
-locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
-	     int start_value, int end_value)
+static int
+dump_locale_collation (COLL_DATA * coll, int dl_settings,
+		       int start_value, int end_value)
 {
-  int i, cp;
-  int lower_bound = 0;
-  int upper_bound = 0;
-  int alphabet_settings;
-  int err_status = NO_ERROR;
   unsigned int *coll_key_list = NULL;
   int coll_key_list_cnt = 0;
+  int lower_bound = 0;
+  int upper_bound = 0;
+  int err_status = NO_ERROR;
+  int cp, i;
 
-  assert (ld != NULL);
-  assert (lf != NULL);
-  assert (start_value <= end_value);
+  assert (coll != NULL);
 
-  printf ("Locale data for: %s\nBinary file :%s\n",
-	  lf->locale_name, lf->bin_file);
-  printf ("*************************************************\n");
-  printf ("Locale string: %s\n", ld->locale_name);
-
-  if ((dl_settings & DUMPLOCALE_IS_CALENDAR) != 0)
+  lower_bound = 0;
+  upper_bound = coll->w_count;
+  if (start_value > lower_bound)
     {
-      printf ("\n");
-      printf ("Date format: %s\n", ld->dateFormat);
-      printf ("Time format: %s\n", ld->timeFormat);
-      printf ("Datetime format: %s\n", ld->datetimeFormat);
-      printf ("Timestamp format: %s\n", ld->timestampFormat);
-
-      printf ("\nAbbreviated month names:\n");
-      for (i = 0; i < CAL_MONTH_COUNT; i++)
-	{
-	  printf ("%d. %s\n", (i + 1), ld->month_names_abbreviated[i]);
-	}
-      printf ("\nAbbreviated month names, sorted for tokenizer:\n");
-      for (i = 0; i < CAL_MONTH_COUNT; i++)
-	{
-	  printf ("%d. %s = month %d\n",
-		  (i + 1),
-		  ld->month_names_abbreviated[(int) (ld->
-						     month_names_abbr_parse_order
-						     [i])],
-		  (int) (ld->month_names_abbr_parse_order[i]) + 1);
-	}
-
-      printf ("\nWide month names:\n");
-      for (i = 0; i < CAL_MONTH_COUNT; i++)
-	{
-	  printf ("%d. %s\n", (i + 1), ld->month_names_wide[i]);
-	}
-      printf ("\nWide month names, sorted for tokenizer:\n");
-      for (i = 0; i < CAL_MONTH_COUNT; i++)
-	{
-	  printf ("%d. %s = month %d\n",
-		  (i + 1),
-		  ld->month_names_wide[(int) (ld->
-					      month_names_wide_parse_order
-					      [i])],
-		  (int) (ld->month_names_wide_parse_order[i]) + 1);
-	}
-
-      printf ("\nAbbreviated weekday names:\n");
-      for (i = 0; i < CAL_DAY_COUNT; i++)
-	{
-	  printf ("%d. %s\n", (i + 1), ld->day_names_abbreviated[i]);
-	}
-      printf ("\nAbbreviated weekday names, sorted for parse order:\n");
-      for (i = 0; i < CAL_DAY_COUNT; i++)
-	{
-	  printf ("%d. %s = weekday %d\n",
-		  (i + 1),
-		  ld->day_names_abbreviated[(int) (ld->
-						   day_names_abbr_parse_order
-						   [i])],
-		  (int) (ld->day_names_abbr_parse_order[i]) + 1);
-	}
-
-      printf ("\nWide weekday names:\n");
-      for (i = 0; i < CAL_DAY_COUNT; i++)
-	{
-	  printf ("%d. %s\n", (i + 1), ld->day_names_wide[i]);
-	}
-      printf ("\nWide weekday names, sorted for tokenizer:\n");
-      for (i = 0; i < CAL_DAY_COUNT; i++)
-	{
-	  printf ("%d. %s = weekday %d\n",
-		  (i + 1),
-		  ld->day_names_wide[(int) (ld->
-					    day_names_wide_parse_order[i])],
-		  (int) (ld->day_names_wide_parse_order[i]) + 1);
-	}
-
-      printf ("\nDay periods:\n");
-      for (i = 0; i < CAL_AM_PM_COUNT; i++)
-	{
-	  printf ("%d. %s\n", (i + 1), ld->am_pm[i]);
-	}
-      printf ("\nDay periods, sorted for tokenizer:\n");
-      for (i = 0; i < CAL_AM_PM_COUNT; i++)
-	{
-	  printf ("%d. %s = day period %d\n",
-		  (i + 1),
-		  ld->am_pm[(int) (ld->am_pm_parse_order[i])],
-		  (int) (ld->am_pm_parse_order[i]) + 1);
-	}
+      lower_bound = start_value;
+    }
+  if (end_value > 0 && end_value < upper_bound)
+    {
+      /* if an upper bound is specified, use the "+1" to make sure that 
+       * the upper bound codepoint is included in the dump file. */
+      upper_bound = end_value + 1;
     }
 
-  /* Display numbering information. */
-  if ((dl_settings & DUMPLOCALE_IS_NUMBERING) != 0)
+  printf ("\n");
+  printf ("** Collation : %s | id : %d **\n", coll->coll_name, coll->coll_id);
+  printf ("Max codepoints : %d\n", coll->w_count);
+  printf ("Level: %d\n", coll->uca_opt.sett_strength);
+  printf ("Expansions : %s\n", coll->uca_opt.sett_expansions ? "yes" : "no");
+  if (coll->uca_opt.sett_expansions)
     {
-      printf ("\n");
-      printf ("Decimal separator: <%c>\n", ld->number_decimal_sym);
-      printf ("Separator for digit grouping: <%c>\n", ld->number_group_sym);
-      printf ("Default currency ISO code: %s",
-	      intl_get_money_ISO_symbol (ld->default_currency_code));
+      printf ("Expansion CE num : %d\n", coll->uca_exp_num);
+    }
+  printf ("Contractions: %d\n", coll->count_contr);
+  if (coll->count_contr > 0)
+    {
+      printf ("Contraction min size: %d\n", coll->contr_min_size);
     }
 
-  if ((dl_settings & DUMPLOCALE_IS_ALPHABET) != 0)
-    {
-      lower_bound = 0;
-      upper_bound = ld->alphabet.l_count;
-      if (start_value > lower_bound)
-	{
-	  lower_bound = start_value;
-	}
-      if (end_value > 0 && end_value < upper_bound)
-	{
-	  /* if an upper bound is specified, use the "+1" to make sure that 
-	   * the upper bound codepoint is included in the dump file. */
-	  upper_bound = end_value + 1;
-	}
-    }
-
-  if (upper_bound < lower_bound)
-    {
-      err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_DUMPLOCALE,
-					DUMPLOCALE_MSG_INVALID_CP_RANGE),
-			ER_LOC_GEN, true);
-      goto exit;
-    }
-
-  /* Dump alphabet data. */
-  if ((dl_settings & DUMPLOCALE_IS_ALPHABET) != 0)
-    {
-      alphabet_settings = 0;
-      alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER);
-      alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_UPPER);
-      printf ("\n");
-      printf ("* Alphabet data *\n");
-      dump_locale_alphabet (&(ld->alphabet), alphabet_settings, lower_bound,
-			    upper_bound);
-    }
-
-  /* Dump identifier alphabet data. */
-  if ((dl_settings & DUMPLOCALE_IS_IDENTIFIER_ALPHABET) != 0)
-    {
-      alphabet_settings = 0;
-      if ((dl_settings & DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER) != 0)
-	{
-	  alphabet_settings |= DUMPLOCALE_IS_ALPHABET_LOWER;
-	}
-      if ((dl_settings & DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER) != 0)
-	{
-	  alphabet_settings |= DUMPLOCALE_IS_ALPHABET_UPPER;
-	}
-
-      printf ("\n");
-      printf ("* Identifier alphabet data *\n");
-      dump_locale_alphabet (&(ld->identif_alphabet), alphabet_settings,
-			    lower_bound, upper_bound);
-    }
-
-
-  if (((dl_settings & DUMPLOCALE_IS_COLLATION_CP_ORDER) != 0)
-      || ((dl_settings & DUMPLOCALE_IS_COLLATION_WEIGHT_ORDER) != 0))
-    {
-      lower_bound = 0;
-      upper_bound = ld->opt_coll.w_count;
-      if (start_value > lower_bound)
-	{
-	  lower_bound = start_value;
-	}
-      if (end_value > 0 && end_value < upper_bound)
-	{
-	  /* if an upper bound is specified, use the "+1" to make sure that 
-	   * the upper bound codepoint is included in the dump file. */
-	  upper_bound = end_value + 1;
-	}
-
-      printf ("\n");
-      printf ("* Collation data *\n");
-      if (ld->opt_coll.w_count == 0)
-	{
-	  printf ("No collation defined\n");
-	  goto exit;
-	}
-    }
+  assert (coll->w_count > 0);
 
   if (upper_bound < lower_bound)
     {
@@ -6689,32 +5761,32 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	{
 	  unsigned int next_id;
 
-	  assert (cp >= 0 && cp < ld->opt_coll.w_count);
+	  assert (cp >= 0 && cp < coll->w_count);
 
-	  dump_collation_codepoint (ld, cp, true, true);
+	  dump_collation_codepoint (coll, cp, true, true);
 
-	  next_id = ld->opt_coll.next_cp[cp];
+	  next_id = coll->next_cp[cp];
 	  printf (" | Next : ");
 
-	  dump_collation_key (ld, next_id, true, true);
+	  dump_collation_key (coll, next_id, true, true);
 
 	  printf ("\n");
 	}
     }
 
-  if (ld->opt_coll.count_contr > 0
+  if (coll->count_contr > 0
       && (dl_settings & DUMPLOCALE_IS_COLLATION_CP_ORDER) != 0)
     {
       printf ("\n");
       printf ("* Contraction collation info (contraction order) *\n");
-      for (i = 0; i < ld->opt_coll.count_contr; i++)
+      for (i = 0; i < coll->count_contr; i++)
 	{
-	  COLL_CONTRACTION *contr = &(ld->opt_coll.contr_list[i]);
+	  COLL_CONTRACTION *contr = &(coll->contr_list[i]);
 
-	  dump_collation_contr (ld, contr, true, true);
+	  dump_collation_contr (coll, contr, true, true);
 	  printf (" | Next :");
 
-	  dump_collation_key (ld, contr->next, true, true);
+	  dump_collation_key (coll, contr->next, true, true);
 
 	  printf ("\n");
 	}
@@ -6729,7 +5801,7 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 
       printf ("\n");
       printf ("* Collation info (weight order) *\n");
-      coll_key_list_cnt = cp_count + ld->opt_coll.count_contr;
+      coll_key_list_cnt = cp_count + coll->count_contr;
       coll_key_list = (unsigned int *)
 	malloc (coll_key_list_cnt * sizeof (unsigned int));
       if (coll_key_list == NULL)
@@ -6744,24 +5816,24 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 	  coll_key_list[cp - lower_bound] = cp;
 	}
 
-      for (i = 0; i < ld->opt_coll.count_contr; i++)
+      for (i = 0; i < coll->count_contr; i++)
 	{
 	  coll_key_list[i + cp_count] = i | INTL_NEXT_MASK_CONTR;
 	}
 
       /* Order by weight. */
-      use_expansions = ld->opt_coll.uca_opt.sett_expansions;
+      use_expansions = coll->uca_opt.sett_expansions;
 
-      dump_coll_data = &(ld->opt_coll);
+      dump_coll_data = coll;
       if (use_expansions)
 	{
 	  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int),
-		 comp_func_coll_uca_exp);
+		 comp_func_coll_uca_exp_fo);
 	}
       else
 	{
 	  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int),
-		 comp_func_coll_uca_simple_weights);
+		 comp_func_coll_uca_simple_weights_fo);
 	}
 
       /* Dump ordered (weight, key id) tuples. */
@@ -6799,19 +5871,19 @@ locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
 		  printf ("\n");
 		}
 
-	      dump_collation_key (ld, coll_key_list[i], true, false);
+	      dump_collation_key (coll, coll_key_list[i], true, false);
 	      keys_same_weight = 1;
 	    }
 	  else
 	    {
 	      printf ("\n");
-	      dump_collation_key (ld, coll_key_list[i], true, false);
+	      dump_collation_key (coll, coll_key_list[i], true, false);
 	      keys_same_weight++;
 	    }
 
 	  printf (" | ");
 
-	  dump_collation_key (ld, coll_key_list[i], false, true);
+	  dump_collation_key (coll, coll_key_list[i], false, true);
 	}
     }
 exit:
@@ -6819,7 +5891,294 @@ exit:
     {
       free (coll_key_list);
     }
+
   return err_status;
+}
+
+/*
+ * locale_dump - output the selected information on locale data in
+ *		 human-readable text format.
+ * Returns : error status.
+ * data(in): the locale data to be dumped in text format.
+ * lf(in)  : the LOCALE_FILE i.e. binary file from which ld was imported.
+ * dl_settings(in): the commmand line options encoded intoa binary masked int.
+ * start_value(in): the starting codepoint for the range of items which 
+ *		    -w or -c will dump.
+ * end_value(in)  : the ending codepoint for the range of items which
+ *		    -w or -c will dump.
+ */
+int
+locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
+	     int start_value, int end_value)
+{
+  int i;
+  int lower_bound = 0;
+  int upper_bound = 0;
+  int alphabet_settings;
+  int err_status = NO_ERROR;
+  LANG_LOCALE_DATA *lld = NULL;
+
+  assert (data != NULL);
+  assert (lf != NULL);
+  assert (start_value <= end_value);
+
+  lld = (LANG_LOCALE_DATA *) data;
+
+  printf ("Locale data for: %s\nLibrary file :%s\n",
+	  lf->locale_name, lf->lib_file);
+  printf ("*************************************************\n");
+  printf ("Locale string: %s\n", lld->lang_name);
+
+  if ((dl_settings & DUMPLOCALE_IS_CALENDAR) != 0)
+    {
+      printf ("\n");
+      printf ("Date format: %s\n", lld->date_format);
+      printf ("Time format: %s\n", lld->time_format);
+      printf ("Datetime format: %s\n", lld->datetime_format);
+      printf ("Timestamp format: %s\n", lld->timestamp_format);
+
+      printf ("\nAbbreviated month names:\n");
+      for (i = 0; i < CAL_MONTH_COUNT; i++)
+	{
+	  printf ("%d. %s\n", (i + 1), lld->month_short_name[i]);
+	}
+      printf ("\nAbbreviated month names, sorted for tokenizer:\n");
+      for (i = 0; i < CAL_MONTH_COUNT; i++)
+	{
+	  printf ("%d. %s = month %d\n",
+		  (i + 1),
+		  lld->
+		  month_short_name[(int) (lld->month_short_parse_order[i])],
+		  (int) (lld->month_short_parse_order[i]) + 1);
+	}
+
+      printf ("\nWide month names:\n");
+      for (i = 0; i < CAL_MONTH_COUNT; i++)
+	{
+	  printf ("%d. %s\n", (i + 1), lld->month_name[i]);
+	}
+      printf ("\nWide month names, sorted for tokenizer:\n");
+      for (i = 0; i < CAL_MONTH_COUNT; i++)
+	{
+	  printf ("%d. %s = month %d\n",
+		  (i + 1),
+		  lld->month_name[(int) (lld->month_parse_order[i])],
+		  (int) (lld->month_parse_order[i]) + 1);
+	}
+
+      printf ("\nAbbreviated weekday names:\n");
+      for (i = 0; i < CAL_DAY_COUNT; i++)
+	{
+	  printf ("%d. %s\n", (i + 1), lld->day_short_name[i]);
+	}
+      printf ("\nAbbreviated weekday names, sorted for parse order:\n");
+      for (i = 0; i < CAL_DAY_COUNT; i++)
+	{
+	  printf ("%d. %s = weekday %d\n",
+		  (i + 1),
+		  lld->day_short_name[(int) (lld->day_short_parse_order[i])],
+		  (int) (lld->day_short_parse_order[i]) + 1);
+	}
+
+      printf ("\nWide weekday names:\n");
+      for (i = 0; i < CAL_DAY_COUNT; i++)
+	{
+	  printf ("%d. %s\n", (i + 1), lld->day_name[i]);
+	}
+      printf ("\nWide weekday names, sorted for tokenizer:\n");
+      for (i = 0; i < CAL_DAY_COUNT; i++)
+	{
+	  printf ("%d. %s = weekday %d\n",
+		  (i + 1),
+		  lld->day_name[(int) (lld->day_parse_order[i])],
+		  (int) (lld->day_parse_order[i]) + 1);
+	}
+
+      printf ("\nDay periods:\n");
+      for (i = 0; i < CAL_AM_PM_COUNT; i++)
+	{
+	  printf ("%d. %s\n", (i + 1), lld->am_pm[i]);
+	}
+      printf ("\nDay periods, sorted for tokenizer:\n");
+      for (i = 0; i < CAL_AM_PM_COUNT; i++)
+	{
+	  printf ("%d. %s = day period %d\n",
+		  (i + 1),
+		  lld->am_pm[(int) (lld->am_pm_parse_order[i])],
+		  (int) (lld->am_pm_parse_order[i]) + 1);
+	}
+    }
+
+  /* Display numbering information. */
+  if ((dl_settings & DUMPLOCALE_IS_NUMBERING) != 0)
+    {
+      printf ("\n");
+      printf ("Decimal separator: <%c>\n", lld->number_decimal_sym);
+      printf ("Separator for digit grouping: <%c>\n", lld->number_group_sym);
+      printf ("Default currency ISO code: %s",
+	      intl_get_money_ISO_symbol (lld->default_currency_code));
+    }
+
+  if ((dl_settings & DUMPLOCALE_IS_ALPHABET) != 0)
+    {
+      lower_bound = 0;
+      upper_bound = lld->alphabet.l_count;
+      if (start_value > lower_bound)
+	{
+	  lower_bound = start_value;
+	}
+      if (end_value > 0 && end_value < upper_bound)
+	{
+	  /* if an upper bound is specified, use the "+1" to make sure that 
+	   * the upper bound codepoint is included in the dump file. */
+	  upper_bound = end_value + 1;
+	}
+    }
+
+  if (upper_bound < lower_bound)
+    {
+      err_status = ER_LOC_GEN;
+      LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_DUMPLOCALE,
+					DUMPLOCALE_MSG_INVALID_CP_RANGE),
+			ER_LOC_GEN, true);
+      goto exit;
+    }
+
+  /* Dump alphabet data. */
+  if ((dl_settings & DUMPLOCALE_IS_ALPHABET) != 0)
+    {
+      alphabet_settings = 0;
+      alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER);
+      alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_UPPER);
+      printf ("\n");
+      printf ("* Alphabet data *\n");
+      dump_locale_alphabet (&(lld->alphabet), alphabet_settings, lower_bound,
+			    upper_bound);
+    }
+
+  /* Dump identifier alphabet data. */
+  if ((dl_settings & DUMPLOCALE_IS_IDENTIFIER_ALPHABET) != 0)
+    {
+      alphabet_settings = 0;
+      if ((dl_settings & DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER) != 0)
+	{
+	  alphabet_settings |= DUMPLOCALE_IS_ALPHABET_LOWER;
+	}
+      if ((dl_settings & DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER) != 0)
+	{
+	  alphabet_settings |= DUMPLOCALE_IS_ALPHABET_UPPER;
+	}
+
+      printf ("\n");
+      printf ("* Identifier alphabet data *\n");
+      dump_locale_alphabet (&(lld->ident_alphabet), alphabet_settings,
+			    lower_bound, upper_bound);
+    }
+
+  /* Dump normalization data. */
+  if ((dl_settings & DUMPLOCALE_IS_NORMALIZATION) != 0)
+    {
+      printf ("\n");
+      printf ("* Normalization data *\n");
+      dump_locale_normalization (&(lld->unicode_norm));
+    }
+exit:
+  return err_status;
+}
+
+/*
+ * locale_dump_lib_collations() - output the selected information on
+ *				  collations data in human-readable text
+ *				  format.
+ * return: error code
+ * lib_handle(in):
+ * lf(in): locale file info
+ * dl_settings(in):
+ * lower_bound(in):
+ * upper_bound(in):
+ */
+int
+locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
+			    int dl_settings, int start_value, int end_value)
+{
+  int err_status = NO_ERROR;
+  int i, count_coll_to_load;
+  COLL_DATA coll;
+
+  assert (lib_handle != NULL);
+  assert (lf != NULL);
+  assert (lf->locale_name != NULL);
+
+  /* collation data */
+  err_status =
+    lang_load_count_coll_from_lib (&count_coll_to_load, lib_handle, lf);
+  if (err_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  printf ("* %d collations found *\n", count_coll_to_load);
+
+  for (i = 0; i < count_coll_to_load; i++)
+    {
+      /* get name of collation */
+      char *coll_name = NULL;
+
+      memset (&coll, 0, sizeof (COLL_DATA));
+
+      err_status =
+	lang_load_get_coll_name_from_lib (i, &coll_name, lib_handle, lf);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      assert (strlen (coll_name) < (int) sizeof (coll.coll_name));
+      strncpy (coll.coll_name, coll_name, sizeof (coll.coll_name) - 1);
+
+      err_status = lang_load_coll_from_lib (&coll, lib_handle, lf);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      err_status =
+	dump_locale_collation (&coll, dl_settings, start_value, end_value);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      printf ("\n\n\n");
+    }
+
+exit:
+  return err_status;
+}
+
+/*
+ * comp_func_coll_uca_simple_weights_fo - compare function for sorting 
+ *		      collatable elements according to simple weights order
+ *		      but applies full order
+ *
+ *  Note: This function uses 'comp_func_coll_uca_simple_weights' but applies
+ *	  a full order.
+ *	  The purpose is to provide a 'deterministic comparison' to eliminate
+ *	  unpredictable results of sort algorithm (qsort).
+ */
+static int
+comp_func_coll_uca_simple_weights_fo (const void *arg1, const void *arg2)
+{
+  unsigned int pos1;
+  unsigned int pos2;
+  int cmp;
+
+  pos1 = *((unsigned int *) arg1);
+  pos2 = *((unsigned int *) arg2);
+
+  cmp = comp_func_coll_uca_simple_weights (arg1, arg2);
+
+  return (cmp == 0) ? (int) (pos1 - pos2) : cmp;
 }
 
 /*
@@ -6863,6 +6222,30 @@ comp_func_coll_uca_simple_weights (const void *arg1, const void *arg2)
     }
 
   return wv1 - wv2;
+}
+
+/*
+ * comp_func_coll_uca_exp_fo - compare function for sorting collatable
+ *			       elements according to UCA algorithm,
+ *			       with full order
+ *
+ *  Note: This function uses 'comp_func_coll_uca_exp' but applies a full order
+ *	  The purpose is to provide a 'deterministic comparison' to eliminate
+ *	   unpredictable results of sort algorithm (qsort).
+ */
+static int
+comp_func_coll_uca_exp_fo (const void *arg1, const void *arg2)
+{
+  unsigned int pos1;
+  unsigned int pos2;
+  int cmp;
+
+  pos1 = *((unsigned int *) arg1);
+  pos2 = *((unsigned int *) arg2);
+
+  cmp = comp_func_coll_uca_exp (arg1, arg2);
+
+  return (cmp == 0) ? (int) (pos1 - pos2) : cmp;
 }
 
 /*
@@ -6916,7 +6299,7 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
       str2 = (char *) utf8_buf_2;
     }
 
-  return intl_strcmp_utf8_uca_w_coll_data (coll, (const unsigned char *) str1,
+  return lang_strcmp_utf8_uca_w_coll_data (coll, (const unsigned char *) str1,
 					   size1,
 					   (const unsigned char *) str2,
 					   size2);
@@ -6926,38 +6309,38 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
  * dump_collation_key - prints information on collation key
  *			(codepoint or contraction)
  * Returns :
- * ld(in) : locale data
+ * coll(in) : collation data
  * key(in) : key to print
  * print_weight(in): true if weight should be printed
  * print_contr(in): true if contraction info should be printed
  */
 static void
-dump_collation_key (LOCALE_DATA * ld, const unsigned int key,
+dump_collation_key (COLL_DATA * coll, const unsigned int key,
 		    bool print_weight, bool print_key)
 {
   if (INTL_IS_NEXT_CONTR (key))
     {
       unsigned int contr_id = INTL_GET_NEXT_CONTR_ID (key);
-      COLL_CONTRACTION *contr = &(ld->opt_coll.contr_list[contr_id]);
+      COLL_CONTRACTION *contr = &(coll->contr_list[contr_id]);
 
-      dump_collation_contr (ld, contr, print_weight, print_key);
+      dump_collation_contr (coll, contr, print_weight, print_key);
     }
   else
     {
-      dump_collation_codepoint (ld, key, print_weight, print_key);
+      dump_collation_codepoint (coll, key, print_weight, print_key);
     }
 }
 
 /*
  * dump_collation_contr - prints information on collation contraction
  * Returns :
- * ld(in) : locale data
+ * coll(in) : collation data
  * contr(in) : contraction
  * print_weight(in): true if weight should be printed
  * print_contr(in): true if contraction info should be printed
  */
 static void
-dump_collation_contr (LOCALE_DATA * ld, const COLL_CONTRACTION * contr,
+dump_collation_contr (COLL_DATA * coll, const COLL_CONTRACTION * contr,
 		      bool print_weight, bool print_contr)
 {
   int i;
@@ -6999,7 +6382,7 @@ dump_collation_contr (LOCALE_DATA * ld, const COLL_CONTRACTION * contr,
       return;
     }
 
-  if (ld->opt_coll.uca_exp_num <= 1)
+  if (coll->uca_exp_num <= 1)
     {
       printf (" | Weight : %04x", contr->wv);
       return;
@@ -7013,7 +6396,7 @@ dump_collation_contr (LOCALE_DATA * ld, const COLL_CONTRACTION * contr,
       printf ("[%04X.", UCA_GET_L1_W (contr->uca_w_l13[i]));
       printf ("%04X.", UCA_GET_L2_W (contr->uca_w_l13[i]));
       printf ("%04X.", UCA_GET_L3_W (contr->uca_w_l13[i]));
-      if (ld->opt_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY)
+      if (coll->uca_opt.sett_strength >= TAILOR_QUATERNARY)
 	{
 	  printf ("%04X]", contr->uca_w_l4[i]);
 	}
@@ -7027,14 +6410,16 @@ dump_collation_contr (LOCALE_DATA * ld, const COLL_CONTRACTION * contr,
 /*
  * dump_collation_codepoint - prints information on collation codepoint
  * Returns :
- * ld(in)  : locale data
+ * coll(in)  : collation data
  * cp(in) : codepoint
  * print_weight(in): true if weight should be printed
  */
 static void
-dump_collation_codepoint (LOCALE_DATA * ld, const unsigned int cp,
+dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp,
 			  bool print_weight, bool print_cp)
 {
+  assert (cp <= INTL_MAX_UNICODE_CP_ALLOWED);
+
   if (print_cp)
     {
       unsigned char utf8_buf[INTL_UTF8_MAX_CHAR_SIZE + 1];
@@ -7052,39 +6437,35 @@ dump_collation_codepoint (LOCALE_DATA * ld, const unsigned int cp,
       return;
     }
 
-  if (ld->opt_coll.uca_exp_num <= 1)
+  if (coll->uca_exp_num <= 1)
     {
       printf (" | Weight%s: %04x",
-	      ((int) cp < ld->opt_coll.w_count) ? "" : "(Computed)",
-	      (((int) cp < ld->opt_coll.w_count) ?
-	       (ld->opt_coll.weights[cp]) : (cp + 1)));
+	      ((int) cp < coll->w_count) ? "" : "(Computed)",
+	      (((int) cp < coll->w_count) ? (coll->weights[cp]) : (cp + 1)));
       return;
     }
 
-  assert (ld->opt_coll.uca_exp_num > 1);
-  assert (ld->opt_coll.uca_exp_num <= MAX_UCA_EXP_CE);
+  assert (coll->uca_exp_num > 1);
+  assert (coll->uca_exp_num <= MAX_UCA_EXP_CE);
 
-  if ((int) cp < ld->opt_coll.w_count)
+  if ((int) cp < coll->w_count)
     {
       int i;
-      UCA_L13_W *uca_w_l13 =
-	&(ld->opt_coll.uca_w_l13[cp * ld->opt_coll.uca_exp_num]);
+      UCA_L13_W *uca_w_l13 = &(coll->uca_w_l13[cp * coll->uca_exp_num]);
 
       printf (" | Weight : ");
 
-      assert (ld->opt_coll.uca_num[cp] >= 1);
-      assert (ld->opt_coll.uca_num[cp] <= MAX_UCA_EXP_CE);
+      assert (coll->uca_num[cp] >= 1);
+      assert (coll->uca_num[cp] <= MAX_UCA_EXP_CE);
 
-      for (i = 0; i < ld->opt_coll.uca_num[cp]; i++)
+      for (i = 0; i < coll->uca_num[cp]; i++)
 	{
 	  printf ("[%04X.", UCA_GET_L1_W (uca_w_l13[i]));
 	  printf ("%04X.", UCA_GET_L2_W (uca_w_l13[i]));
 	  printf ("%04X.", UCA_GET_L3_W (uca_w_l13[i]));
-	  if (ld->opt_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY)
+	  if (coll->uca_opt.sett_strength >= TAILOR_QUATERNARY)
 	    {
-	      printf ("%04X]",
-		      ld->opt_coll.uca_w_l4[cp * ld->opt_coll.uca_exp_num +
-					    i]);
+	      printf ("%04X]", coll->uca_w_l4[cp * coll->uca_exp_num + i]);
 	    }
 	  else
 	    {
@@ -7095,5 +6476,397 @@ dump_collation_codepoint (LOCALE_DATA * ld, const unsigned int cp,
   else
     {
       printf (" | Weight(Computed) : %04X", cp + 1);
+    }
+}
+
+/*
+ * locale_check_and_set_shared_data - checks if data has already been taken
+ *				      into account as shared data, otherwise
+ *				      adds the new key as shared data
+ * Returns : error status
+ * lsd_type(in): shared data type
+ * lsd_key(in) : key (name) of data
+ * is_shared(out): true if data has already been taken into account as shared
+ *
+ *  Note : this is used in context of genlocale tool.
+ */
+static int
+locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
+				  const char *lsd_key, bool * is_shared)
+{
+  int status = NO_ERROR;
+  int i;
+
+  assert (lsd_key != NULL);
+  assert (is_shared != NULL);
+
+  *is_shared = false;
+
+#define SHARED_DATA_INCR_SIZE 32
+
+  for (i = 0; i < count_shared_data; i++)
+    {
+      if (lsd_type == shared_data[i].lsd_type
+	  && strcmp (lsd_key, shared_data[i].lsd_key) == 0)
+	{
+	  *is_shared = true;
+	  goto exit;
+	}
+    }
+
+  /* set new shared data */
+  if (alloced_shared_data <= count_shared_data)
+    {
+      shared_data = realloc (shared_data, sizeof (LOC_SHARED_DATA)
+			     * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
+      if (shared_data == NULL)
+	{
+	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
+	  status = ER_LOC_GEN;
+	  goto exit;
+	}
+      alloced_shared_data += SHARED_DATA_INCR_SIZE;
+    }
+
+  shared_data[count_shared_data].lsd_type = lsd_type;
+  strncpy (shared_data[count_shared_data].lsd_key, lsd_key,
+	   COLL_NAME_SIZE - 1);
+  shared_data[count_shared_data].lsd_key[COLL_NAME_SIZE - 1] = '\0';
+
+  count_shared_data++;
+
+exit:
+  return status;
+}
+
+/*
+ * locale_free_shared_data - 
+ *
+ *  Note : this is used in context of genlocale tool.
+ */
+void
+locale_free_shared_data (void)
+{
+  if (shared_data != NULL)
+    {
+      assert (count_shared_data > 0);
+      assert (alloced_shared_data > 0);
+
+      free (shared_data);
+      shared_data = NULL;
+    }
+
+  alloced_shared_data = 0;
+  count_shared_data = 0;
+}
+
+/*
+ * start_unicode_file() - XML element start function
+ * "ldml unicodefile"
+ *
+ * return: 0 validation OK enter this element , 1 validation NOK do not enter
+ *         -1 error abort parsing
+ * data: user data
+ * attr: attribute/value pair array
+ */
+static int
+start_unicode_file (void *data, const char **attr)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  LOCALE_DATA *ld = NULL;
+  char *att_val = NULL;
+
+  assert (data != NULL);
+
+  ld = XML_USER_DATA (pd);
+
+  if (strlen (ld->unicode_data_file) != 0)
+    {
+      PRINT_DEBUG_START (data, attr,
+			 "Only one unicodefile tag is allowed", -1);
+      return -1;
+    }
+
+  att_val = NULL;
+  if (xml_get_att_value (attr, "CUBRIDUnicodeDataFilePath", &att_val) == 0)
+    {
+      assert (att_val != NULL);
+
+      strncpy (ld->unicode_data_file, att_val,
+	       sizeof (ld->unicode_data_file) - 1);
+      ld->unicode_data_file[sizeof (ld->unicode_data_file) - 1] = '\0';
+      ld->alpha_tailoring.alphabet_mode = 1;
+      ld->unicode_mode = 1;
+    }
+
+  PRINT_DEBUG_START (data, attr, "", 0);
+
+  return 0;
+}
+
+/*
+ * start_normalization() - XML element start function
+ * "ldml normalization"
+ *
+ * return: 0 validation OK enter this element , 1 validation NOK do not enter
+ *         -1 error abort parsing
+ * data: user data
+ * attr: attribute/value pair array
+ */
+static int
+start_normalization (void *data, const char **attr)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  LOCALE_DATA *ld = NULL;
+  char *att_val = NULL;
+
+  assert (data != NULL);
+
+  ld = XML_USER_DATA (pd);
+
+  att_val = NULL;
+  if (xml_get_att_value (attr, "enabled", &att_val) == 0)
+    {
+      assert (att_val != NULL);
+
+      if (strcmp (att_val, "true") == 0)
+	{
+	  ld->unicode_normalization.is_enabled = true;
+	}
+      else if (strcmp (att_val, "false") == 0)
+	{
+	  ld->unicode_normalization.is_enabled = false;
+	}
+      else
+	{
+	  PRINT_DEBUG_START (data, attr,
+			     "Invalid value for normalization "
+			     "\"enabled\" attribute", -1);
+	  return -1;
+	}
+    }
+  else
+    {
+      ld->unicode_normalization.is_enabled = false;
+    }
+
+  PRINT_DEBUG_START (data, attr, "", 0);
+
+  return 0;
+}
+
+/*
+ * locale_destroy_normalization_data() - frees memory used by the specified
+ *			  locale for storing its computed normalization data.
+ *    return:
+ *    ld(in/out): locale to use
+ */
+void
+locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm)
+{
+  if (norm->unicode_mappings != NULL)
+    {
+      free (norm->unicode_mappings);
+      norm->unicode_mappings = NULL;
+    }
+
+  if (norm->list_full_decomp != NULL)
+    {
+      free (norm->list_full_decomp);
+      norm->list_full_decomp = NULL;
+    }
+
+  if (norm->unicode_mapping_index != NULL)
+    {
+      free (norm->unicode_mapping_index);
+      norm->unicode_mapping_index = NULL;
+    }
+}
+
+/*
+ * locale_save_normalization_to_C_file() - saves normalization data
+ *			    to C source file as variables, for later use 
+ *			    when generating the locale shared library.
+ *
+ * return: error code
+ * fp(in): file pointer where to write the data
+ * ld(in): locale data
+ */
+static int
+locale_save_normalization_to_C_file (FILE * fp, LOCALE_DATA * ld)
+{
+  int i;
+  UNICODE_MAPPING *um;
+  UNICODE_NORMALIZATION *norm;
+
+  assert (ld != NULL);
+  assert (fp != NULL);
+
+  norm = &(ld->unicode_normalization);
+
+  PRINT_VAR_TO_C_FILE (fp, "int", "unicode_normalization_enabled",
+		       norm->is_enabled ? 1 : 0, "%d", ld->locale_name);
+
+  if (!norm->is_enabled || norm->do_not_save)
+    {
+      goto exit;
+    }
+
+  PRINT_VAR_TO_C_FILE (fp, "int", "unicode_mappings_count",
+		       norm->unicode_mappings_count, "%d",
+		       UNICODE_NORMALIZATION_DECORATOR);
+
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "unicode_mapping_index", "int", "%d",
+			     MAX_UNICODE_CHARS,
+			     norm->unicode_mapping_index,
+			     UNICODE_NORMALIZATION_DECORATOR);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "list_full_decomp", "int", "%d",
+			     MAX_UNICODE_CHARS,
+			     norm->list_full_decomp,
+			     UNICODE_NORMALIZATION_DECORATOR);
+
+  fprintf (fp, "" DLL_EXPORT_PREFIX
+	   "const UNICODE_MAPPING unicode_mappings_%s[] = {",
+	   UNICODE_NORMALIZATION_DECORATOR);
+  for (i = 0; i < norm->unicode_mappings_count; i++)
+    {
+      um = &(norm->unicode_mappings[i]);
+      fprintf (fp, "\t{%u, %d, ", um->cp, um->size);
+      PRINT_STRING_TO_C_FILE (fp, um->buffer, um->size);
+      fprintf (fp, "}%s\n",
+	       (i < norm->unicode_mappings_count - 1) ? "," : "");
+    }
+  fprintf (fp, "};");
+
+exit:
+
+  return 0;
+}
+
+#define NORM_MAPPING_DUMP_MODE_FULL 0
+#define NORM_MAPPING_DUMP_MODE_COMP 1
+#define NORM_MAPPING_DUMP_MODE_DECOMP 2
+/*
+ * dump_locale_normalization - dump the selected UNICODE_NORMALIZATION
+ *			       structure in human-readable text format.
+ * Returns : NO_ERROR.
+ * norm(in)  : the UNICODE_NORMALIZATION to be dumped in text format.
+ * dl_settings(in): the commmand line options encoded into an int mask.
+ */
+static int
+dump_locale_normalization (UNICODE_NORMALIZATION * norm)
+{
+  int i;
+
+  if (!norm->is_enabled)
+    {
+      printf ("\n*Normalization is disabled*\n\n");
+      goto exit;
+    }
+
+  printf ("\n *Normalization data*\n");
+
+  printf (" Sorted list of unicode mappings: \n");
+  for (i = 0; i < norm->unicode_mappings_count; i++)
+    {
+      printf ("%d.\t ", i + 1);
+      dump_unicode_mapping (&(norm->unicode_mappings[i]),
+			    NORM_MAPPING_DUMP_MODE_FULL);
+      printf ("\n");
+    }
+
+  printf (" Unicode composition mappings \n");
+  for (i = 0; i < MAX_UNICODE_CHARS; i++)
+    {
+      int j, comp_start, comp_end;
+
+      printf ("CP: %04X | \t Comp: ", i);
+
+      if (!CP_HAS_MAPPINGS (norm->unicode_mapping_index[i]))
+	{
+	  printf ("NO\n");
+	  continue;
+	}
+
+      comp_start = GET_MAPPING_OFFSET (norm->unicode_mapping_index[i]);
+      comp_end = GET_MAPPING_OFFSET (norm->unicode_mapping_index[i + 1]);
+
+      printf ("(%2d) From: %d To: %d | \t", comp_end - comp_start, comp_start,
+	      comp_end);
+
+      for (j = comp_start; j < comp_end; j++)
+	{
+	  dump_unicode_mapping (&(norm->unicode_mappings[j]),
+				NORM_MAPPING_DUMP_MODE_COMP);
+	  printf (" | ");
+	}
+      printf ("\n");
+    }
+
+  printf (" Unicode decomposition mappings\n");
+  for (i = 0; i < MAX_UNICODE_CHARS; i++)
+    {
+      int decomp_idx = norm->list_full_decomp[i];
+
+      printf ("CP: %04X | Decomp : ", i);
+
+      if (decomp_idx < 0)
+	{
+	  printf ("NO\n");
+	  continue;
+	}
+
+      assert (decomp_idx >= 0);
+
+      dump_unicode_mapping (&(norm->unicode_mappings[decomp_idx]),
+			    NORM_MAPPING_DUMP_MODE_DECOMP);
+
+      printf ("\n");
+    }
+
+exit:
+  return 0;
+}
+
+/* 
+ * dump_unicode_mapping() - Dump a UNICODE_MAPPING to the console.
+ *
+ * Returns: 
+ * um(in) : unicode mapping to dump
+ */
+static void
+dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
+{
+  unsigned int cp;
+  unsigned char *next;
+  unsigned char *cur_str;
+
+  if (um == NULL)
+    {
+      printf ("Null mapping.\n");
+      return;
+    }
+
+  if (mode == NORM_MAPPING_DUMP_MODE_FULL)
+    {
+      printf ("CP: %04X", um->cp);
+      if (um->size > 0)
+	{
+	  printf (" ->");
+	}
+    }
+
+  cur_str = um->buffer;
+  next = cur_str;
+  while (next < um->buffer + um->size)
+    {
+      cp = intl_utf8_to_cp (cur_str, INTL_UTF8_MAX_CHAR_SIZE, &next);
+      printf ("%04X ", cp);
+      cur_str = next;
+    }
+
+  if (mode == NORM_MAPPING_DUMP_MODE_COMP)
+    {
+      printf (" -> CP: %04X", um->cp);
     }
 }

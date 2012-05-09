@@ -1,10 +1,11 @@
 
 SRC_DIR=
 DEST_DIR=
+PLATFORM=
 INSTALL_SCRIPT_DIR=.
 
 all:
-	cmd /C $(INSTALL_SCRIPT_DIR)\\install.bat "$(SRC_DIR)" "$(DEST_DIR)"
+	cmd /C $(INSTALL_SCRIPT_DIR)\\install.bat "$(SRC_DIR)" "$(DEST_DIR)" "$(PLATFORM)"
 
 all_debug: all
 

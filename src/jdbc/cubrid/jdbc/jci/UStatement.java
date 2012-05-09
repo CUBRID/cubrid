@@ -49,7 +49,6 @@ import java.util.HashMap;
 
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
-import cubrid.jdbc.driver.CUBRIDEnum;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
 import cubrid.sql.CUBRIDOID;
 
@@ -1313,12 +1312,6 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDEnum) {
-			CUBRIDEnum enm = (CUBRIDEnum) obj;
-			return columnInfo[index]
-					.getEnumValue(enm.getShortVal());
-		}
-
 		try {
 			return (UGetTypeConvertedValue.getString(obj));
 		} catch (UJciException e) {
@@ -1869,13 +1862,7 @@ public class UStatement {
 		else
 			size--;
 
-		Object attr = readData(inBuffer, localType, size);
-		if (localType == UUType.U_TYPE_ENUMERATION) {
-			CUBRIDEnum enm = (CUBRIDEnum) attr;
-			enm.setStringVal(columnInfo[index].getEnumValue(enm.getShortVal()));
-			return enm;
-		}
-		return attr;
+		return (readData(inBuffer, localType, size));
 	}
 
 	private Object readData(UInputBuffer inBuffer, int dataType, int dataSize)
@@ -1936,8 +1923,6 @@ public class UStatement {
 			return inBuffer.readBlob(dataSize, relatedConnection.cubridcon);
 		case UUType.U_TYPE_CLOB:
 			return inBuffer.readClob(dataSize, relatedConnection.cubridcon);
-		case UUType.U_TYPE_ENUMERATION:
-			return inBuffer.readEnum(relatedConnection.cubridcon);
 		default:
 			return null;
 		}
@@ -2015,21 +2000,9 @@ public class UStatement {
 				byte bRU = inBuffer.readByte();
 				byte bFK = inBuffer.readByte();
 				byte bSh = inBuffer.readByte();
-				String enumValues[] = null;
-				if (columnInfo[i].getColumnType() == UUType.U_TYPE_ENUMERATION) {
-					int enumValuesCount = inBuffer.readInt();
-					if (enumValuesCount > 0) {
-						enumValues = new String[enumValuesCount];
-						for (int j = 0; j < enumValuesCount; j++) {
-							int size = inBuffer.readInt();
-							enumValues[j] = inBuffer.readString(size,
-									relatedConnection.getCharset());
-						}
-					}
 
-				}
 				columnInfo[i].setExtraData(defValue, bAI, bUK, bPK, bFK, bRI,
-						bRU, bSh, enumValues);
+						bRU, bSh);
 			}
 
 			colNameToIndex.put(name.toLowerCase(), i);

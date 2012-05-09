@@ -30,9 +30,7 @@
 
 #include <stddef.h>
 #include "dbtype.h"
-
-/* maximum char size for UTF-8 */
-#define INTL_UTF8_MAX_CHAR_SIZE	4
+#include "locale_lib_common.h"
 
 /* Maximum Unicode characters
  * Do not change this above 65536 */
@@ -75,6 +73,8 @@
 
 #define LOC_LOCALE_STR_SIZE 10
 #define LOC_DATA_BUFF_SIZE  256
+
+#define COLL_NAME_SIZE 32
 
 
 /* constants for Gregorian calendar */
@@ -120,16 +120,10 @@
 
 #define LOC_DATA_CURRENCY_ISO_CODE_LEN 3
 
-#define MAX_UCA_EXP_CE 10
-
 #define LOC_DATA_COLL_TWO_CHARS 13
 #define LOC_DATA_TAILOR_RULES_COUNT_GROW 128
 #define LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW 8
 #define MAX_STRLEN_FOR_COLLATION_ELEMENT 136
-
-/* maximum characters to be used as a sequence in UCA
-  (contraction or expansion) */
-#define LOC_MAX_UCA_CHARS_SEQ 3
 
 #define DUMPLOCALE_IS_CALENDAR			1
 #define DUMPLOCALE_IS_NUMBERING			(1 << 1)
@@ -141,6 +135,7 @@
 #define DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER	(1 << 7)
 #define DUMPLOCALE_IS_COLLATION_CP_ORDER	(1 << 8)
 #define DUMPLOCALE_IS_COLLATION_WEIGHT_ORDER	(1 << 9)
+#define DUMPLOCALE_IS_NORMALIZATION		(1 << 10)
 
 #define ERR_MSG_SIZE 512
 
@@ -153,6 +148,22 @@
 	} \
     } while (0)
 
+#define MAPPING_INDEX_MASK  0x100000
+
+#define SET_MAPPING_INDEX(val, is_used, offset)	  \
+  do {						  \
+    val = (offset);				  \
+    if (is_used)				  \
+      {						  \
+	val |= MAPPING_INDEX_MASK;		  \
+      }						  \
+  } while (0);
+
+#define CP_HAS_MAPPINGS(val)			  \
+  (((val) & MAPPING_INDEX_MASK) == MAPPING_INDEX_MASK)
+
+#define GET_MAPPING_OFFSET(val)	((val) & ~MAPPING_INDEX_MASK)
+
 #define LOC_FILE_PATH_SIZE  256
 
 typedef unsigned short UCA_CP;
@@ -163,7 +174,7 @@ struct locale_file
 {
   char *locale_name;
   char *ldml_file;
-  char *bin_file;
+  char *lib_file;
 };
 
 /* Collation structures */
@@ -278,31 +289,6 @@ struct cubrid_tailor_rule
    */
 };
 
-typedef unsigned int UCA_L13_W;
-typedef unsigned short int UCA_L4_W;
-
-/* Collation data with optimized weights */
-typedef struct coll_contraction COLL_CONTRACTION;
-struct coll_contraction
-{
-  /* number of codepoints in contraction */
-  int cp_count;
-
-  /* buffer of contraction contraction, nul-terminated */
-  char c_buf[LOC_MAX_UCA_CHARS_SEQ * INTL_UTF8_MAX_CHAR_SIZE];
-  int size;
-
-  /* weight value for contraction */
-  unsigned int wv;
-
-  /* UCA weights values */
-  char uca_num;
-  UCA_L13_W uca_w_l13[MAX_UCA_EXP_CE];
-  UCA_L4_W uca_w_l4[MAX_UCA_EXP_CE];
-  /* next sequence */
-  unsigned int next;
-};
-
 typedef enum
 {
   CONTR_IGNORE = 0x0,
@@ -329,6 +315,9 @@ struct uca_options
 typedef struct coll_data COLL_DATA;
 struct coll_data
 {
+  int coll_id;			/* collation id */
+  char coll_name[COLL_NAME_SIZE];	/* collation name */
+
   UCA_OPTIONS uca_opt;
 
   unsigned int *weights;	/* array of weight (one weight per CP) */
@@ -361,6 +350,8 @@ struct coll_data
 typedef struct coll_tailoring COLL_TAILORING;
 struct coll_tailoring
 {
+  char coll_name[COLL_NAME_SIZE];	/* collation name */
+
   UCA_OPTIONS uca_opt;
 
   /* number of codepoints to take into account for collation 
@@ -387,11 +378,12 @@ typedef enum
   ALPHABET_TAILORED
 } ALPHABET_TYPE;
 
-/* alphabet structures (lower, upper, letter flags) */
+/* alphabet structures (lower, upper) */
 typedef struct alphabet_data ALPHABET_DATA;
 struct alphabet_data
 {
   ALPHABET_TYPE a_type;
+  int codeset;			/* codeset of alphabet : not serialized */
   int l_count;			/* number of elements */
 
   int lower_multiplier;		/* how many codepoints contains each lower
@@ -402,8 +394,7 @@ struct alphabet_data
 				 * entry */
   unsigned int *upper_cp;	/* upper CP */
 
-  bool is_shared;		/* true if this alphabet is shared with
-				 * other locales; not serialized */
+  bool do_not_save;		/* used by genlocale if shared alphabet */
 };
 
 typedef enum
@@ -455,17 +446,6 @@ typedef enum
   TEXT_CONV_GENERIC_2BYTE	/* user defined UTF-8 to double byte codepage */
 } TEXT_CONV_TYPE;
 
-#define TEXT_CONV_MAX_BYTES 3
-
-/* bytes sequence encoding of a source codepoint :
- * codepoint is index in an array; encoding is the item accessed by the index */
-typedef struct conv_cp_to_bytes CONV_CP_TO_BYTES;
-struct conv_cp_to_bytes
-{
-  unsigned char size;		/* size in bytes of converted codepoint */
-  unsigned char bytes[TEXT_CONV_MAX_BYTES];	/* bytes of encoded sequence */
-};
-
 #define TXT_CONV_SYSTEM_STR_SIZE	256
 typedef struct text_conversion TEXT_CONVERSION;
 struct text_conversion
@@ -504,9 +484,34 @@ struct text_conversion_prm
   char conv_file[LOC_FILE_PATH_SIZE];
 };
 
+#define UNICODE_NORMALIZATION_DECORATOR "std"
+
+typedef struct unicode_normalization UNICODE_NORMALIZATION;
+struct unicode_normalization
+{
+  bool is_enabled;
+  UNICODE_MAPPING *unicode_mappings;
+  int unicode_mappings_count;	/* total number of mappings, fully,
+				 * partially or not decomposed. */
+  int *unicode_mapping_index;
+  int *list_full_decomp;
+
+  bool do_not_save;
+};
+
 #define CAL_SIMPLE_DATE_FORMAT_SIZE  30
 #define CAL_COMP_DATE_FORMAT_SIZE  48
+
 /* user defined LOCALE DATA */
+typedef struct locale_collation LOCALE_COLLATION;
+struct locale_collation
+{
+  COLL_TAILORING tail_coll;	/* collation info gathered from LDML */
+  COLL_DATA opt_coll;		/* optimized collation data */
+  bool do_not_save;		/* set true if collation is shared and already
+				 * processed */
+};
+
 typedef struct locale_data LOCALE_DATA;
 struct locale_data
 {
@@ -540,12 +545,21 @@ struct locale_data
   char number_group_sym;
   DB_CURRENCY default_currency_code;	/* ISO code for default locale currency. */
 
-  COLL_TAILORING coll;		/* collation info gathered from LDML */
-  COLL_DATA opt_coll;		/* optimized collation data */
+  LOCALE_COLLATION *collations;
+  int coll_cnt;
 
   ALPHABET_TAILORING alpha_tailoring;
   ALPHABET_DATA alphabet;	/* data for user lower / uppper */
   ALPHABET_DATA identif_alphabet;	/* data for lower / uppper for identifiers */
+
+  /* unicode data file used for alphabets and normalization */
+  int unicode_mode;		/* 0 : default UnicodeData
+				 * 1 : UnicodeData with specified file */
+  /* file path for Unicode data (if 'alphabet_mode' == 1) */
+  char unicode_data_file[LOC_FILE_PATH_SIZE];
+
+  /* normalization */
+  UNICODE_NORMALIZATION unicode_normalization;
 
   /* console text conversion */
   TEXT_CONVERSION txt_conv;
@@ -584,12 +598,6 @@ struct locale_data
   int data_buf_count;
 };
 
-typedef enum
-{
-  SHARED_ALPHABET_ASCII = 0,
-  SHARED_ALPHABET_UNICODE
-} LOCALE_SHARED_DATA_TYPE;
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -597,20 +605,21 @@ extern "C"
 
   void locale_init_data (LOCALE_DATA * ld, const char *locale_name);
   void locale_destroy_data (LOCALE_DATA * ld);
-  void locale_destroy_alphabet_data (const ALPHABET_DATA * a,
-				     bool destroy_shared);
-  void locale_set_shared_data (const LOCALE_SHARED_DATA_TYPE type,
-			       void *p_data);
-  void *locale_get_shared_data (const LOCALE_SHARED_DATA_TYPE type);
-  void locale_destroy_shared_data (void);
+  void locale_destroy_alphabet_data (const ALPHABET_DATA * a);
+  void locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm);
   int locale_get_cfg_locales (LOCALE_FILE ** p_locale_files,
 			      int *p_num_locales, bool is_lang_init);
   int locale_check_and_set_default_files (LOCALE_FILE * lf,
 					  bool is_lang_init);
+  int locale_prepare_C_file (void);
   int locale_compile_locale (LOCALE_FILE * lf, bool is_verbose);
-  int locale_load_from_bin (LOCALE_FILE * lf, LOCALE_DATA * ld);
-  int locale_dump (LOCALE_DATA * ld, LOCALE_FILE * lf, int dl_settings,
-		   int start_value, int end_value);
+  int locale_dump (void *data, LOCALE_FILE * lf,
+		   int dl_settings, int start_value, int end_value);
+  int locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
+				  int dl_settings, int start_value,
+				  int end_value);
+  void locale_free_shared_data (void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -2457,7 +2457,9 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 				      result_p, DB_VALUE_PRECISION (result_p),
 				      DB_PULL_STRING (result_p),
 				      DB_GET_STRING_SIZE (result_p) +
-				      spare_bytes);
+				      spare_bytes,
+				      DB_GET_STRING_CODESET (dbval1_p),
+				      DB_GET_STRING_COLLATION (dbval1_p));
 	    }
 	}
       else
@@ -2510,7 +2512,10 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 					    DB_VALUE_PRECISION (result_p),
 					    DB_PULL_STRING (result_p),
 					    DB_GET_STRING_SIZE (result_p) +
-					    spare_bytes);
+					    spare_bytes,
+					    DB_GET_STRING_CODESET (dbval1_p),
+					    DB_GET_STRING_COLLATION
+					    (dbval1_p));
 		  }
 	      }
 	    else
@@ -8695,9 +8700,11 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
  * qdata_list_dbs () - lists all databases names
  *   return: NO_ERROR, or ER_code
  *   result_p(out) : resultant db_value node
+ *   domain(in): domain
  */
 int
-qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p)
+qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
+		TP_DOMAIN * domain_p)
 {
   DB_INFO *db_info_p;
 
@@ -8765,6 +8772,14 @@ qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p)
 	  cfg_free_directory (db_info_p);
 	  db_make_null (result_p);
 	}
+
+      if (domain_p != NULL)
+	{
+	  assert (TP_DOMAIN_TYPE (domain_p) == DB_VALUE_TYPE (result_p));
+
+	  db_put_cs_and_collation (result_p, TP_DOMAIN_CODESET (domain_p),
+				   TP_DOMAIN_COLLATION (domain_p));
+	}
     }
   else
     {
@@ -8802,7 +8817,10 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
     }
 
   if (db_string_make_empty_typed_string (thread_p, agg_p->value, agg_type,
-					 DB_DEFAULT_PRECISION) != NO_ERROR)
+					 DB_DEFAULT_PRECISION,
+					 TP_DOMAIN_CODESET (agg_p->domain),
+					 TP_DOMAIN_COLLATION (agg_p->domain))
+      != NO_ERROR)
     {
       return ER_FAILED;
     }

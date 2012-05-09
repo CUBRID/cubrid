@@ -3393,6 +3393,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "define_variable";
     case PT_EXEC_STATS:
       return "exec_stats";
+    case PT_TO_ENUMERATION_VALUE:
+      return "to_enumeration_value";
     default:
       return "unknown opcode";
     }
@@ -3662,6 +3664,8 @@ pt_show_alter (PT_ALTER_CODE c)
       return "REORGANIZE PARTITION";
     case PT_COALESCE_PARTITION:
       return "COALESCE PARTITION";
+    case PT_PROMOTE_PARTITION:
+      return "PROMOTE PARTITION";
     case PT_MODIFY_DEFAULT:
       return "CHANGE DEFAULT";
     case PT_RENAME_ENTITY:
@@ -5010,6 +5014,7 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p,
       break;
     case PT_DROP_PARTITION:
     case PT_ANALYZE_PARTITION:
+    case PT_PROMOTE_PARTITION:
       p->info.alter.alter_clause.partition.name_list =
 	g (parser, p->info.alter.alter_clause.partition.name_list, arg);
       break;
@@ -5568,6 +5573,16 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.alter.alter_clause.partition.size);
       q = pt_append_nulstring (parser, q, " add partition partitions ");
       q = pt_append_varchar (parser, q, r1);
+      break;
+    case PT_PROMOTE_PARTITION:
+      if (p->info.alter.alter_clause.partition.name_list)
+	{
+	  r1 =
+	    pt_print_bytes_l (parser,
+			      p->info.alter.alter_clause.partition.name_list);
+	  q = pt_append_nulstring (parser, q, " promote partition ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
       break;
     case PT_CHANGE_AUTO_INCREMENT:
       r1 = pt_print_bytes (parser,
@@ -7670,7 +7685,8 @@ pt_init_datatype (PT_NODE * p)
   p->info.data_type.entity = 0;
   p->info.data_type.precision = 0;
   p->info.data_type.dec_precision = 0;
-  p->info.data_type.units = 0;
+  p->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
+  p->info.data_type.collation_id = LANG_COERCIBLE_COLL;
   p->info.data_type.enumeration = NULL;
   return p;
 }
@@ -7686,6 +7702,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
   char buf[PT_MEMB_BUF_SIZE];
+  bool show_collation = false;
 
   switch (p->type_enum)
     {
@@ -7714,10 +7731,11 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
-    case PT_TYPE_BIT:
-    case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+      show_collation = true;
+    case PT_TYPE_BIT:
+    case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
       {
 	bool show_precision;
@@ -7776,6 +7794,14 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
+
+  if (show_collation && p->info.data_type.collation_id != LANG_SYS_COLLATION)
+    {
+      sprintf (buf, " collate %s",
+	       lang_get_collation_name (p->info.data_type.collation_id));
+      q = pt_append_nulstring (parser, q, buf);
+    }
+
   return q;
 }
 
@@ -10684,6 +10710,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
 
       q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_TO_ENUMERATION_VALUE:
+      /* only print argument */
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
       break;
 
     case PT_RANGE:
@@ -15256,10 +15288,10 @@ pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
   p->info.merge.search_cond = g (parser, p->info.merge.search_cond, arg);
   p->info.merge.insert.attr_list =
     g (parser, p->info.merge.insert.attr_list, arg);
-  p->info.merge.insert.search_cond =
-    g (parser, p->info.merge.insert.search_cond, arg);
   p->info.merge.insert.value_clauses =
     g (parser, p->info.merge.insert.value_clauses, arg);
+  p->info.merge.insert.search_cond =
+    g (parser, p->info.merge.insert.search_cond, arg);
   p->info.merge.update.assignment =
     g (parser, p->info.merge.update.assignment, arg);
   p->info.merge.update.search_cond =
@@ -15285,16 +15317,14 @@ pt_init_merge (PT_NODE * p)
   p->info.merge.insert.attr_list = NULL;
   p->info.merge.insert.search_cond = NULL;
   p->info.merge.insert.value_clauses = NULL;
-  p->info.merge.insert.insert_mode = NULL;
   p->info.merge.update.assignment = NULL;
   p->info.merge.update.search_cond = NULL;
   p->info.merge.update.del_search_cond = NULL;
-  p->info.merge.update.has_unique = false;
-  p->info.merge.update.server_update = false;
   p->info.merge.update.do_class_attrs = false;
   p->info.merge.waitsecs_hint = NULL;
   p->info.merge.hint = PT_HINT_NONE;
   p->info.merge.server_op = false;
+  p->info.merge.has_unique = false;
 
   return p;
 }
@@ -15331,14 +15361,6 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.merge.hint & PT_HINT_REL_LOCK)
 	{
 	  q = pt_append_nulstring (parser, q, " RELEASE_LOCK");
-	}
-      if (p->info.merge.hint & PT_HINT_INSERT_MODE)
-	{
-	  PARSER_VARCHAR *vc;
-	  q = pt_append_nulstring (parser, q, " INSERT_EXECUTION_MODE(");
-	  vc = pt_print_bytes (parser, p->info.merge.insert.insert_mode);
-	  q = pt_append_varchar (parser, q, vc);
-	  q = pt_append_nulstring (parser, q, ")");
 	}
       q = pt_append_nulstring (parser, q, " */");
     }
@@ -15651,6 +15673,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_FROMDAYS:
 	case PT_TIMETOSEC:
 	case PT_SECTOTIME:
+	case PT_TO_ENUMERATION_VALUE:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)) ? true :
 	    false;
 	case PT_SCHEMA:

@@ -617,6 +617,83 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
 }
 
 /*
+ * orc_superclasses_from_record () - Extracts the OID's of the immediate
+ *				     superclasses
+ *   return: error code
+ *   record(in): record containing a class
+ *   array_size(out): pointer to int containing max size of array
+ *   array_ptr(out): pointer to OID array
+ *
+ * Note: The array is maintained as an array of OID's, the last element in the
+ *       array will satisfy the OID_ISNULL() test.  The array_size has
+ *       the number of actual elements allocated in the array which may be
+ *	 more than the number of slots that have non-NULL OIDs.
+ *       The function adds the subclass oids to the existing array.  If the
+ *       array is not large enough, it is reallocated using realloc.
+ */
+int
+orc_superclasses_from_record (RECDES * record, int *array_size,
+			      OID ** array_ptr)
+{
+  int error = NO_ERROR;
+  OID *oid_array = NULL;
+  char *ptr = NULL;
+  int nsupers = 0, i = 0;
+  char *superset = NULL;
+
+  assert (array_ptr != NULL);
+  assert (*array_ptr == NULL);
+  assert (array_size != NULL);
+
+  nsupers = 0;
+  if (OR_VAR_IS_NULL (record->data, ORC_SUPERCLASSES_INDEX))
+    {
+      /* no superclasses, just return */
+      return NO_ERROR;
+    }
+
+  superset =
+    (char *) (record->data) + OR_VAR_OFFSET (record->data,
+					     ORC_SUPERCLASSES_INDEX);
+  nsupers = OR_SET_ELEMENT_COUNT (superset);
+  if (nsupers <= 0)
+    {
+      /* This is probably an error but there's no point in reporting it here.
+       * We just assume that there are no supers */
+      assert (false);
+      return NO_ERROR;
+    }
+
+  oid_array = (OID *) malloc (nsupers * sizeof (OID));
+
+  if (oid_array == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      nsupers * sizeof (OID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Advance past the set header, the domain size, and the "object" domain.
+   * Note that this assumes we are not using a bound bit array even though
+   * this is a fixed width homogeneous set.  Probably not a good assumption.
+   */
+  ptr = superset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+
+  /* add the new OIDs */
+  for (i = 0; i < nsupers; i++)
+    {
+      OR_GET_OID (ptr, &oid_array[i]);
+      ptr += OR_OID_SIZE;
+    }
+
+  /* return these in case there were changes */
+  *array_size = nsupers;
+  *array_ptr = oid_array;
+
+  return error;
+}
+
+/*
  * or_class_repid () - extracts the current representation id from a record
  *                     containing the disk representation of a class
  *   return: disk record
@@ -1139,6 +1216,8 @@ or_get_domain_internal (char *ptr)
       new_->precision = OR_GET_INT (fixed + ORC_DOMAIN_PRECISION_OFFSET);
       new_->scale = OR_GET_INT (fixed + ORC_DOMAIN_SCALE_OFFSET);
       new_->codeset = OR_GET_INT (fixed + ORC_DOMAIN_CODESET_OFFSET);
+      new_->collation_id = OR_GET_INT (fixed +
+				       ORC_DOMAIN_COLLATION_ID_OFFSET);
 
       OR_GET_OID (fixed + ORC_DOMAIN_CLASS_OFFSET, &new_->class_oid);
       /* can't swizzle the pointer on the server */
@@ -3129,6 +3208,96 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
     }
 
   return rep;
+}
+
+/*
+ * or_class_get_partition_info () - Get partition information from a record
+ *				    descriptor of a class record
+ * return : error code or NO_ERROR
+ * record (in) : record descriptor
+ * partition_info (in/out) : partition information
+ *
+ * Note: This function extracts the partition information from a class record.
+ * Partition information is represented by the OID of the tuple from the
+ * _db_partition class in which we can find the actual partition info.
+ * This OID is stored in the class properties sequence
+ *
+ * If the class is not a partition or is not a partitioned class,
+ * partition_info will be returned as a NULL OID 
+ */
+int
+or_class_get_partition_info (RECDES * record, OID * partition_info)
+{
+  int error = NO_ERROR;
+  int i = 0, nparts = 0;
+  char *subset = NULL;
+  DB_SET *setref = NULL;
+  DB_VALUE value;
+  nparts = 0;
+
+  if (partition_info == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  OID_SET_NULL (partition_info);
+
+  if (OR_VAR_IS_NULL (record->data, ORC_PROPERTIES_INDEX))
+    {
+      return NO_ERROR;
+    }
+
+  subset = (char *) (record->data) +
+    OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
+
+  or_unpack_setref (subset, &setref);
+  if (setref == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  nparts = set_size (setref);
+  for (i = 0; i < nparts; i += 2)
+    {
+      const char *prop_name = NULL;
+      error = set_get_element_nocopy (setref, i, &value);
+      if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_STRING)
+	{
+	  /* internal storage error */
+	  assert (false);
+	  return ER_FAILED;
+	}
+
+      prop_name = DB_PULL_STRING (&value);
+      if (prop_name == NULL)
+	{
+	  /* internal storage error */
+	  assert (false);
+	  return ER_FAILED;
+	}
+
+      if (strcmp (prop_name, SM_PROPERTY_PARTITION) != 0)
+	{
+	  continue;
+	}
+      error = set_get_element_nocopy (setref, i + 1, &value);
+      if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_OID)
+	{
+	  /* internal storage error */
+	  assert (false);
+	  return ER_FAILED;
+	}
+      COPY_OID (partition_info, DB_GET_OID (&value));
+      if (OID_ISNULL (partition_info))
+	{
+	  /* if it exists in the schema then it shouldn't be NULL */
+	  return ER_FAILED;
+	}
+      break;
+    }
+
+  return NO_ERROR;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

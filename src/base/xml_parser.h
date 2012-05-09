@@ -105,7 +105,6 @@ struct xml_element
 #define DATA_FUNC(el) (el->def->data_func)
 
 #define XML_USER_DATA(xml) (xml->ud)
-#define XML_SET_USER_DATA(xml,u_data) (xml->ud = udata)
 
 typedef struct xml_parser_data XML_PARSER_DATA;
 struct xml_parser_data

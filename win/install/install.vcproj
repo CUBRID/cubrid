@@ -29,9 +29,9 @@
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				ReBuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
+				BuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				ReBuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
 				Output=""
 				PreprocessorDefinitions=""
 				IncludeSearchPath=""
@@ -51,9 +51,9 @@
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				ReBuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
+				BuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				ReBuildCommandLine="nmake all_debug SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
 				Output=""
 				PreprocessorDefinitions=""
 				IncludeSearchPath=""
@@ -74,9 +74,9 @@
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				ReBuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
+				BuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				ReBuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
 				Output=""
 				PreprocessorDefinitions=""
 				IncludeSearchPath=""
@@ -97,9 +97,9 @@
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				ReBuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
-				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot;"
+				BuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				ReBuildCommandLine="nmake SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
+				CleanCommandLine="nmake clean SRC_DIR=&quot;$(OutDir)&quot; DEST_DIR=&quot;$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)&quot; PLATFORM=&quot;$(PlatformName)&quot;"
 				Output=""
 				PreprocessorDefinitions=""
 				IncludeSearchPath=""

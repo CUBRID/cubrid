@@ -2212,7 +2212,43 @@ qo_analyze_term (QO_TERM * term, int term_type)
       /* examine if LHS is indexable or not? */
 
       /* is LHS a type of name(attribute) of local database */
-      lhs_indexable &= (lhs_indexable && is_local_name (env, lhs_expr));
+      if (lhs_indexable)
+	{
+	  if (is_local_name (env, lhs_expr))
+	    {
+	      if (lhs_expr->type_enum == PT_TYPE_ENUMERATION)
+		{
+		  /* lhs is indexable only if this is an equality
+		     comparison */
+		  op_type = pt_expr->info.expr.op;
+		  switch (op_type)
+		    {
+		    case PT_EQ:
+		    case PT_IS_IN:
+		    case PT_EQ_SOME:
+		    case PT_NULLSAFE_EQ:
+		      break;
+		    case PT_RANGE:
+		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+			{
+			  lhs_indexable = 0;
+			}
+		      break;
+		    default:
+		      lhs_indexable = 0;
+		      break;
+		    }
+		}
+	      else
+		{
+		  lhs_indexable = 1;
+		}
+	    }
+	  else
+	    {
+	      lhs_indexable = 0;
+	    }
+	}
       if (lhs_indexable && (pt_is_function_index_expr (lhs_expr)
 			    || (lhs_expr && lhs_expr->info.expr.op == PT_PRIOR
 				&& pt_is_function_index_expr (lhs_expr->info.
@@ -2301,10 +2337,44 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	}
 
       /* examine if LHS is indexable or not? */
-
-      /* is RHS attribute and is LHS constant value ? */
-      rhs_indexable &= (rhs_indexable && is_local_name (env, rhs_expr)
-			&& pt_is_pseudo_const (lhs_expr));
+      if (rhs_indexable)
+	{
+	  if (is_local_name (env, rhs_expr) && pt_is_pseudo_const (lhs_expr))
+	    {
+	      /* is RHS attribute and is LHS constant value ? */
+	      if (rhs_expr->type_enum == PT_TYPE_ENUMERATION)
+		{
+		  /* lhs is indexable only if this is an equality
+		     comparison */
+		  op_type = pt_expr->info.expr.op;
+		  switch (op_type)
+		    {
+		    case PT_EQ:
+		    case PT_IS_IN:
+		    case PT_EQ_SOME:
+		    case PT_NULLSAFE_EQ:
+		      break;
+		    case PT_RANGE:
+		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+			{
+			  rhs_indexable = 0;
+			}
+		      break;
+		    default:
+		      rhs_indexable = 0;
+		      break;
+		    }
+		}
+	      else
+		{
+		  rhs_indexable = 1;
+		}
+	    }
+	  else
+	    {
+	      rhs_indexable = 0;
+	    }
+	}
       if (rhs_indexable && (pt_is_function_index_expr (rhs_expr)
 			    || (rhs_expr && rhs_expr->info.expr.op == PT_PRIOR
 				&& pt_is_function_index_expr (rhs_expr->info.
@@ -3407,6 +3477,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_STR_TO_DATE:
     case PT_DATEDIFF:
     case PT_TIMEDIFF:
+    case PT_TO_ENUMERATION_VALUE:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3934,6 +4005,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_FROMDAYS:
 	case PT_TIMETOSEC:
 	case PT_SECTOTIME:
+	case PT_TO_ENUMERATION_VALUE:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TIMESTAMP:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
@@ -8635,4 +8707,57 @@ qo_is_prefix_index (QO_INDEX_ENTRY * ent)
     }
 
   return is_prefix_index;
+}
+
+/*
+ * qo_check_coll_optimization () - Checks for attributes with collation in
+ *				   index and fills the optimization structure
+ *
+ *   return:
+ *   ent(in): index entry
+ *   collation_opt(out):
+ *
+ *  Note : this only checks for index covering optimization.
+ *	   If at least one attribute of index does not support index covering,
+ *	   this option will be disabled for the entire index.
+ */
+void
+qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
+{
+  bool is_prefix_index = false;
+
+  assert (collation_opt != NULL);
+
+  collation_opt->allow_index_cov = true;
+
+  if (ent && ent->class_ && ent->class_->smclass)
+    {
+      SM_CLASS_CONSTRAINT *cons;
+      SM_ATTRIBUTE **attr;
+      cons =
+	classobj_find_class_index (ent->class_->smclass,
+				   ent->constraints->name);
+      if (cons == NULL || cons->attributes == NULL)
+	{
+	  return;
+	}
+
+      for (attr = cons->attributes; *attr != NULL; attr++)
+	{
+	  if ((*attr)->domain != NULL
+	      && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE ((*attr)->domain)))
+	    {
+	      LANG_COLLATION *lang_coll =
+		lang_get_collation (TP_DOMAIN_COLLATION ((*attr)->domain));
+
+	      assert (lang_coll != NULL);
+
+	      if (!(lang_coll->options.allow_index_cov))
+		{
+		  collation_opt->allow_index_cov = false;
+		  return;
+		}
+	    }
+	}
+    }
 }

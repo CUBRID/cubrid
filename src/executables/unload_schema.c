@@ -2505,18 +2505,18 @@ emit_index_def (DB_OBJECT * class_)
       if (constraint->func_index_info)
 	{
 	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		  (ctype ==
+		   (ctype ==
 		    DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
-		  PRINT_FUNCTION_INDEX_NAME (constraint->name),
-		  PRINT_IDENTIFIER (cls_name));
+		   PRINT_FUNCTION_INDEX_NAME (constraint->name),
+		   PRINT_IDENTIFIER (cls_name));
 	}
       else
 	{
 	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		  (ctype ==
+		   (ctype ==
 		    DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
-		  PRINT_IDENTIFIER (constraint->name),
-		  PRINT_IDENTIFIER (cls_name));
+		   PRINT_IDENTIFIER (constraint->name),
+		   PRINT_IDENTIFIER (cls_name));
 	}
 
       asc_desc = NULL;		/* init */
@@ -2619,6 +2619,7 @@ emit_domain_def (DB_DOMAIN * domains)
   DB_OBJECT *class_;
   int precision;
   const char *name;
+  int has_collation;
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
@@ -2644,6 +2645,7 @@ emit_domain_def (DB_DOMAIN * domains)
 	}
       else
 	{
+	  has_collation = 0;
 	  (void) fprintf (output_file, "%s", prtype->name);
 
 	  switch (type)
@@ -2652,6 +2654,7 @@ emit_domain_def (DB_DOMAIN * domains)
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_VARNCHAR:
+	      has_collation = 1;
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      precision = db_domain_precision (domain);
@@ -2702,6 +2705,12 @@ emit_domain_def (DB_DOMAIN * domains)
 
 	    default:
 	      break;
+	    }
+
+	  if (has_collation)
+	    {
+	      (void) fprintf (output_file, " COLLATION '%s'",
+			      lang_get_collation_name (domain->collation_id));
 	    }
 	}
 

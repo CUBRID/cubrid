@@ -158,6 +158,7 @@ const char *AU_DBA_USER_NAME = "dba";
          strcmp(name, CT_STORED_PROC_ARGS_NAME) == 0 || \
          strcmp(name, CT_PARTITION_NAME) == 0 || \
          strcmp(name, CT_SERIAL_NAME) == 0 || \
+	 strcmp(name, CT_COLLATION_NAME) == 0 || \
          strcmp(name, CT_HA_APPLY_INFO_NAME) == 0)
 
 /*
@@ -1461,7 +1462,8 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop,
       ;
     }
 
-  db_make_varchar (&value, 7, (char *) type_set[i], strlen (type_set[i]));
+  db_make_varchar (&value, 7, (char *) type_set[i], strlen (type_set[i]),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   obj_set (au_obj, "auth_type", &value);
 
   db_make_int (&value, (int) grant_option);

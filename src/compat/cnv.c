@@ -7043,7 +7043,8 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_CHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_char (value, size, (char *) string, size);
+	    db_make_char (value, size, (char *) string, size,
+			  LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -7051,7 +7052,8 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_VARCHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_varchar (value, size, (char *) string, size);
+	    db_make_varchar (value, size, (char *) string, size,
+			     LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -7060,8 +7062,9 @@ db_string_value (const char *string, int str_size, const char *format,
 	  {
 	    int size;
 	    intl_char_count ((unsigned char *) string,
-			     strlen (string), lang_charset (), &size);
-	    db_make_nchar (value, size, (char *) string, size);
+			     strlen (string), LANG_SYS_CODESET, &size);
+	    db_make_nchar (value, size, (char *) string, size,
+			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }
@@ -7070,8 +7073,9 @@ db_string_value (const char *string, int str_size, const char *format,
 	  {
 	    int char_count;
 	    intl_char_count ((unsigned char *) string,
-			     strlen (string), lang_charset (), &char_count);
-	    db_make_varnchar (value, char_count, (char *) string, char_count);
+			     strlen (string), LANG_SYS_CODESET, &char_count);
+	    db_make_varnchar (value, char_count, (char *) string, char_count,
+			      LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }

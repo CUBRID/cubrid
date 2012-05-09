@@ -73,6 +73,7 @@
 #include "replication.h"
 #include "es.h"
 #include "memory_hash.h"
+#include "partition.h"
 
 #if !defined(SERVER_MODE)
 
@@ -389,6 +390,8 @@ static int log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
 						    const OID * class_oid,
 						    bool
 						    mark_as_update_stats_required);
+static bool log_is_class_being_modified_internal (THREAD_ENTRY * thread_p,
+						  const OID * class_oid);
 static void log_cleanup_modified_class (THREAD_ENTRY * thread_p,
 					MODIFIED_CLASS_ENTRY * class,
 					void *arg);
@@ -5064,6 +5067,41 @@ log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * log_is_class_being_modified () - check if a class is being modified by
+ *				    the transaction which is executed by the
+ *				    thread parameter
+ * return : true if the class is being modified, false otherwise
+ * thread_p (in)  : thread entry
+ * class_oid (in) : class identifier
+ */
+static bool
+log_is_class_being_modified_internal (THREAD_ENTRY * thread_p,
+				      const OID * class_oid)
+{
+  LOG_TDES *tdes;
+  int tran_index;
+  MODIFIED_CLASS_ENTRY *t = NULL;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes == NULL)
+    {
+      /* this is an error but this is not the place for handling it */
+      return false;
+    }
+
+  for (t = tdes->modified_class_list; t; t = t->next)
+    {
+      if (OID_EQ (&t->class_oid, class_oid))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * log_add_to_modified_class_list -
  *
  * return:
@@ -5097,6 +5135,20 @@ log_mark_modified_class_as_update_stats_required (THREAD_ENTRY *
 }
 
 /*
+ * log_is_class_being_modified () - check if a class is being modified by
+ *				    the transaction which is executed by the
+ *				    thread parameter
+ * return : true if the class is being modified, false otherwise
+ * thread_p (in)  : thread entry
+ * class_oid (in) : class identifier
+ */
+bool
+log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  return log_is_class_being_modified_internal (thread_p, class_oid);
+}
+
+/*
  * log_cleanup_modified_class -
  *
  * return:
@@ -5118,6 +5170,8 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
     {
       (void) heap_classrepr_decache (thread_p, &class->class_oid);
     }
+  /* decache this class from the partitions cache also */
+  (void) partition_decache_class (thread_p, &class->class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
   if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0

@@ -779,11 +779,15 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
       return;			/* nop */
     }
 
-  /* exclude class hierarchy scan */
-  if (QO_NODE_INFO (plan->plan_un.scan.node) == NULL ||	/* may be impossible */
-      QO_NODE_INFO_N (plan->plan_un.scan.node) > 1)
+  if (QO_NODE_INFO (plan->plan_un.scan.node) == NULL)
     {
-      return;			/* nop */
+      /* may be impossible */
+      return;
+    }
+  else if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
+    {
+      /* exclude class hierarchy scan */
+      return;
     }
 
   /* check for index scan plan */
@@ -1352,6 +1356,16 @@ qo_plan_print_sort_spec_helper (PT_NODE * list, FILE * f, int howfar)
       fprintf (f, "%d %s",
 	       list->info.sort_spec.pos_descr.pos_no,
 	       list->info.sort_spec.asc_or_desc == PT_ASC ? "asc" : "desc");
+      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE
+				 (list->info.sort_spec.pos_descr.dom))
+	  && TP_DOMAIN_COLLATION (list->info.sort_spec.pos_descr.dom)
+	  != LANG_SYS_COLLATION)
+	{
+	  fprintf (f, " collate %s",
+		   lang_get_collation_name (TP_DOMAIN_COLLATION
+					    (list->info.sort_spec.
+					     pos_descr.dom)));
+	}
       prefix = ", ";
     }
 }
@@ -2599,8 +2613,7 @@ qo_join_new (QO_INFO * info,
 	  /* for outer join,
 	   * if inner plan is a scan of classes in hierarchy */
 	  if (inner->plan_type == QO_PLANTYPE_SCAN
-	      && QO_NODE_INFO (inner->plan_un.scan.node)
-	      && QO_NODE_INFO_N (inner->plan_un.scan.node) > 1)
+	      && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node))
 	    {
 	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
 	    }
@@ -12010,8 +12023,7 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
     }
 
   /* exclude class hierarchy scan */
-  if (QO_NODE_INFO (plan->plan_un.scan.node) == NULL ||	/* may be impossible */
-      QO_NODE_INFO_N (plan->plan_un.scan.node) > 1)
+  if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
     {
       return;			/* nop */
     }

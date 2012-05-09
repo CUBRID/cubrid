@@ -772,6 +772,30 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
 					  RECDES * new_recdes,
 					  int lob_create_flag);
 
+static int heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p,
+						const OID * subclasses,
+						const OID * class_part_oid,
+						const OID * _db_part_oid,
+						int *parts_count,
+						OR_PARTITION * partitions);
+static int heap_class_get_partition_info (THREAD_ENTRY * thread_p,
+					  const OID * class_oid,
+					  OID * partition_info,
+					  HFID * class_hfid);
+static int heap_get_partition_attributes (THREAD_ENTRY * thread_p,
+					  const OID * cls_oid,
+					  ATTR_ID * type_id,
+					  ATTR_ID * values_id);
+static int heap_get_class_subclasses (THREAD_ENTRY * thread_p,
+				      const OID * class_oid, int *count,
+				      OID ** subclasses);
+
+static int heap_read_or_partition (THREAD_ENTRY * thread_p,
+				   HEAP_CACHE_ATTRINFO * attr_info,
+				   HEAP_SCANCACHE * scan_cache,
+				   ATTR_ID type_id, ATTR_ID values_id,
+				   OR_PARTITION * or_part);
+
 /*
  * heap_hash_vpid () - Hash a page identifier
  *   return: hash value
@@ -9206,8 +9230,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p,
       scan_cache->page_latch = X_LOCK;
     }
 
-  if ((op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE
-       || op_type == MULTI_ROW_UPDATE) && class_oid != NULL)
+  if (BTREE_IS_MULTI_ROW_OP (op_type) && class_oid != NULL)
     {
       /* get class representation to find the total number of indexes */
       classrepr = heap_classrepr_get (thread_p, (OID *) class_oid, NULL, 0,
@@ -9226,6 +9249,12 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p,
 	{
 	  /* allocate local btree statistical information structure */
 	  malloc_size = sizeof (BTREE_UNIQUE_STATS) * scan_cache->num_btids;
+
+	  if (scan_cache->index_stat_info != NULL)
+	    {
+	      db_private_free (thread_p, scan_cache->index_stat_info);
+	    }
+
 	  scan_cache->index_stat_info =
 	    (BTREE_UNIQUE_STATS *) db_private_alloc (thread_p, malloc_size);
 	  if (scan_cache->index_stat_info == NULL)
@@ -14235,6 +14264,561 @@ heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
+ * heap_get_class_subclasses () - get OIDs of subclasses for a given class
+ * return : error code or NO_ERROR
+ * thread_p (in)  :
+ * class_oid (in) : OID of the parent class
+ * count (out)	  : size of the subclasses array
+ * subclasses (out) : array containing OIDs of subclasses
+ *
+ * Note: The subclasses array is maintained as an array of OID's,
+ *	 the last element in the array will satisfy the OID_ISNULL() test.
+ *	 The array_size has the number of actual elements allocated in the
+ *	 array which may be more than the number of slots that have non-NULL
+ *	 OIDs. The function adds the subclass oids to the existing array.
+ *	 If the array is not large enough, it is reallocated using realloc.
+ */
+int
+heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid,
+			   int *count, OID ** subclasses)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int error = NO_ERROR;
+
+  error = heap_scancache_quick_start (&scan_cache);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+
+  error = orc_subclasses_from_record (&recdes, count, subclasses);
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return error;
+}
+
+/*
+ * heap_class_get_partition_info () - Get partition information for the class
+ *				      identified by class_oid
+ * return : error code or NO_ERROR
+ * class_oid (in) : class_oid
+ * partition_info (in/out) : partition information
+ * class_hfid (in/out) : HFID of the partitioned class
+ *
+ * Note: This function extracts the partition information from a class OID.
+ * Partition information is represented by the OID of the tuple from the
+ * _db_partition class in which we can find the actual partition info.
+ * This OID is stored in the class properties sequence
+ *
+ * If the class is not a partition or is not a partitioned class,
+ * partition_info will be returned as a NULL OID 
+ */
+static int
+heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid,
+			       OID * partition_oid, HFID * class_hfid)
+{
+  int error = NO_ERROR;
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  OID root_oid;
+
+  assert (partition_oid != NULL);
+  assert (class_oid != NULL);
+
+  if (heap_scancache_quick_start (&scan_cache) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
+			       &scan_cache, PEEK) != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  error = or_class_get_partition_info (&recdes, partition_oid);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (class_hfid != NULL)
+    {
+      or_class_hfid (&recdes, class_hfid);
+    }
+
+cleanup:
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return error;
+}
+
+/*
+ * heap_get_partition_attributes () - get attribute ids for columns of
+ *				      _db_partition class
+ * return : error code or NO_ERROR
+ * thread_p (in)      :
+ * cls_oid (in)	      : _db_partition class OID
+ * type_id (in/out)   : holder for the type attribute id
+ * values_id (in/out) : holder for the values attribute id
+ */
+static int
+heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid,
+			       ATTR_ID * type_id, ATTR_ID * values_id)
+{
+  int idx_cache = -1;
+  RECDES recdes;
+  HEAP_SCANCACHE scan;
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = NO_ERROR;
+  int i = 0;
+  const char *attr_name = NULL;
+  bool is_scan_cache_started = false, is_attrinfo_started = false;
+
+  if (type_id == NULL || values_id == NULL)
+    {
+      assert (false);
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  *type_id = *values_id = NULL_ATTRID;
+
+  if (heap_scancache_quick_start (&scan) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  is_scan_cache_started = true;
+
+  error = heap_attrinfo_start (thread_p, cls_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  is_attrinfo_started = true;
+
+  if (heap_get (thread_p, cls_oid, &recdes, &scan, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  for (i = 0;
+       i < attr_info.num_values && (*type_id == NULL_ATTRID
+				    || *values_id == NULL_ATTRID); i++)
+    {
+      attr_name = or_get_attrname (&recdes, i);
+      if (attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      if (strcmp (attr_name, "ptype") == 0)
+	{
+	  *type_id = i;
+	}
+
+      if (strcmp (attr_name, "pvalues") == 0)
+	{
+	  *values_id = i;
+	}
+    }
+
+  if (*type_id == NULL_ATTRID || *values_id == NULL_ATTRID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_FAILED;
+    }
+
+cleanup:
+  if (is_attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (is_scan_cache_started)
+    {
+      heap_scancache_end (thread_p, &scan);
+    }
+  return error;
+}
+
+/*
+ * heap_read_or_partition () - read OR_PARTITION information for a class
+ * return : 
+ * thread_p (in)    :
+ * attr_info (in)   : attribute cache
+ * scan_cache (in)  : scan cache
+ * type_id (in)	    : id of the type attribute
+ * values_id (in)   : id of the values attribute
+ * or_part (in/out) : partition information
+ */
+static int
+heap_read_or_partition (THREAD_ENTRY * thread_p,
+			HEAP_CACHE_ATTRINFO * attr_info,
+			HEAP_SCANCACHE * scan_cache, ATTR_ID type_id,
+			ATTR_ID values_id, OR_PARTITION * or_part)
+{
+  SCAN_CODE scan_code = S_SUCCESS;
+  DB_VALUE *db_val = NULL;
+  RECDES recdes;
+  int error = NO_ERROR;
+
+  if (or_part == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  scan_code = heap_get (thread_p, &or_part->db_part_oid, &recdes, scan_cache,
+			PEEK, NULL_CHN);
+  if (scan_code != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+  error =
+    heap_attrinfo_read_dbvalues (thread_p, &or_part->db_part_oid, &recdes,
+				 attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* get partition type */
+  db_val = heap_attrinfo_access (type_id, attr_info);
+  if (db_val == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (DB_VALUE_TYPE (db_val) != DB_TYPE_INTEGER)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  or_part->partition_type = DB_GET_INT (db_val);
+  pr_clear_value (db_val);
+
+  /* get partition limits */
+  db_val = heap_attrinfo_access (values_id, attr_info);
+  if (!DB_IS_NULL (db_val))
+    {
+      if (DB_VALUE_TYPE (db_val) != DB_TYPE_SEQUENCE)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      or_part->values = db_set_copy (DB_GET_SEQUENCE (db_val));
+    }
+  else
+    {
+      /* hash partition */
+      or_part->values = NULL;
+    }
+
+cleanup:
+  heap_attrinfo_clear_dbvalues (attr_info);
+  return error;
+}
+
+/*
+ * heap_get_partitions_from_subclasses () - Get partition information from a
+ *					    list of subclasses
+ * return : error code or NO_ERROR
+ * thread_p (in)	:
+ * subclasses (in)	: subclasses OIDs
+ * class_part_oid (in)	: OID of the master class
+ * _db_part_oid (in)	: OID of the _db_partition class
+ * parts_count (in/out) : number of "useful" elements in parts
+ * parts (in/out)	: partitions
+ *
+ *  Note: Memory for the partition array must be allocated before calling this
+ *  function and must be enough to store all partitions. The value from
+ *  position 0 in the partitions array will contain information from the
+ *  master class
+ */
+static int
+heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p,
+				     const OID * subclasses,
+				     const OID * class_part_oid,
+				     const OID * _db_part_oid,
+				     int *parts_count, OR_PARTITION * parts)
+{
+  int part_idx = 0, i;
+  int error = NO_ERROR;
+  HEAP_SCANCACHE scan_cache;
+  HEAP_CACHE_ATTRINFO attr_info;
+  OID part_info;
+  HFID part_hfid;
+  bool is_scancache_started = false, is_attrinfo_started = false;
+  ATTR_ID type_id = NULL_ATTRID, values_id = NULL_ATTRID;
+
+  if (parts == NULL)
+    {
+      assert (false);
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  /* Get attribute ids for the attributes we are interested in from the class
+   * _db_partition. At this point we are interested in the ptype and pvalues
+   * columns. The ptype column represents partition type (LIST, RANGE, HASH)
+   * and pvalues represents actual limits for each partition. For the master
+   * class, pvalues also contains the serialized REGU_VAR representing the
+   * partition expression
+   */
+  error =
+    heap_get_partition_attributes (thread_p, _db_part_oid, &type_id,
+				   &values_id);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  /* Start a heap scan for _db_partition class */
+  error = heap_scancache_quick_start (&scan_cache);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  is_scancache_started = true;
+
+  /* start heap attr info for _db_partition class */
+  error = heap_attrinfo_start (thread_p, _db_part_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  is_attrinfo_started = true;
+
+  /* first get information for the master class */
+  OID_SET_NULL (&(parts[0].class_oid));
+  COPY_OID (&(parts[0].db_part_oid), class_part_oid);
+
+  error = heap_read_or_partition (thread_p, &attr_info, &scan_cache,
+				  type_id, values_id, &parts[0]);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  part_idx = 1;
+  /* loop through subclasses and load partition information if the subclass is
+     a partition */
+  for (i = 0; !OID_ISNULL (&subclasses[i]); i++)
+    {
+      /* Get partition information from this subclass. part_info will be the
+       * OID of the tuple from _db_partition containing partition information
+       */
+      error =
+	heap_class_get_partition_info (thread_p, &subclasses[i], &part_info,
+				       &part_hfid);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (OID_ISNULL (&part_info))
+	{
+	  /* this is not a partition, this is a simple subclass */
+	  continue;
+	}
+
+      COPY_OID (&(parts[part_idx].class_oid), &subclasses[i]);
+      COPY_OID (&(parts[part_idx].db_part_oid), &part_info);
+      HFID_COPY (&(parts[part_idx].class_hfid), &part_hfid);
+      error = heap_read_or_partition (thread_p, &attr_info, &scan_cache,
+				      type_id, values_id, &parts[part_idx]);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      part_idx++;
+    }
+  *parts_count = part_idx;
+
+cleanup:
+  if (is_attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (is_scancache_started)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+    }
+  if (error != NO_ERROR)
+    {
+      /* free memory for the values of partitions */
+      for (i = 0; i < part_idx; i++)
+	{
+	  if (parts[i].values != NULL)
+	    {
+	      db_seq_free (parts[i].values);
+	    }
+	}
+    }
+  return error;
+}
+
+/*
+ * heap_get_class_partitions () - get partitions information for a class
+ * return : error code or NO_ERROR
+ * thread_p (in)	:
+ * class_oid (in)	: class OID
+ * parts (in/out)	: partitions information
+ * parts_count (in/out)	: number of partitions
+ */
+int
+heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
+			   OR_PARTITION ** parts, int *parts_count)
+{
+  int subclasses_count = 0;
+  OID *subclasses = NULL;
+  OID part_info;
+  int error = NO_ERROR;
+  OID _db_part_oid;
+  OR_PARTITION *partitions = NULL;
+  OID_SET_NULL (&_db_part_oid);
+
+  /* This class might have partitions and subclasses. In order to get
+   * partition information we have to:
+   *  1. Get the OIDs for all subclasses
+   *  2. Get partition information for all OIDs
+   *  3. Build information only for those subclasses which are partitions
+   */
+  if (heap_class_get_partition_info (thread_p, class_oid, &part_info, NULL)
+      != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (OID_ISNULL (&part_info))
+    {
+      /* this class does not have partitions */
+      error = NO_ERROR;
+      goto cleanup;
+    }
+
+  /* Get OIDs for subclasses of class_oid. Some of them will be partitions */
+  error = heap_get_class_subclasses (thread_p, class_oid, &subclasses_count,
+				     &subclasses);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  else if (subclasses_count == 0)
+    {
+      /* This means that class_oid actually points to a partition and not
+       * the master class. We return NO_ERROR here since there's no partition
+       * information
+       */
+      error = NO_ERROR;
+      goto cleanup;
+    }
+
+  /* part_info is the OID of the tuple from _db_partition class where
+   * partition information can be found for this class. We will get the OID of
+   * the _db_partition class here because we will need it later
+   */
+  if (heap_get_class_oid (thread_p, &_db_part_oid, &part_info) == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  /* Allocate memory for partitions. We allocate more memory than needed here
+   * because the call to heap_get_class_subclasses from above actually
+   * returned a larger count than the useful information. Also, not all
+   * subclasses are necessarily partitions.
+   */
+  partitions =
+    (OR_PARTITION *) db_private_alloc (thread_p,
+				       (subclasses_count +
+					1) * sizeof (OR_PARTITION));
+  if (partitions == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  error =
+    heap_get_partitions_from_subclasses (thread_p, subclasses, &part_info,
+					 &_db_part_oid, parts_count,
+					 partitions);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  *parts = partitions;
+
+cleanup:
+  if (subclasses != NULL)
+    {
+      free_and_init (subclasses);
+    }
+  if (error != NO_ERROR && partitions != NULL)
+    {
+      db_private_free (thread_p, partitions);
+      *parts = NULL;
+      *parts_count = 0;
+    }
+  return error;
+}
+
+/*
+ * heap_get_class_supers () - get OIDs of superclasses of a class
+ * return : error code or NO_ERROR
+ * thread_p (in)  : thread entry
+ * class_oid (in) : OID of the subclass
+ * super_oids (in/out) : OIDs of the superclasses
+ * count (in/out)      : number of elements in super_oids
+ */
+int
+heap_get_class_supers (THREAD_ENTRY * thread_p, const OID * class_oid,
+		       OID ** super_oids, int *count)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int error = NO_ERROR;
+
+  error = heap_scancache_quick_start (&scan_cache);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+
+  error = orc_superclasses_from_record (&recdes, count, super_oids);
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return error;
+}
+
+/*
  * heap_attrinfo_check () -
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
@@ -16030,6 +16614,48 @@ heap_indexinfo_get_attrs_prefix_length (int btid_index,
     }
 
   return ret;
+}
+
+/*
+ * heap_get_index_with_name () - get BTID of index with name index_name
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * class_oid (in) : class OID
+ * index_name (in): index name
+ * btid (in/out)  : btid
+ */
+int
+heap_get_index_with_name (THREAD_ENTRY * thread_p, OID * class_oid,
+			  const char *index_name, BTID * btid)
+{
+  OR_CLASSREP *classrep = NULL;
+  OR_INDEX *indexp = NULL;
+  int idx_in_cache, i;
+  int error = NO_ERROR;
+
+  BTID_SET_NULL (btid);
+
+  /* get the class representation so that we can access the indexes */
+  classrep = heap_classrepr_get (thread_p, class_oid, NULL, 0,
+				 &idx_in_cache, true);
+  if (classrep == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  for (i = 0; i < classrep->n_indexes; i++)
+    {
+      if (strcasecmp (classrep->indexes[i].btname, index_name) == 0)
+	{
+	  BTID_COPY (btid, &classrep->indexes[i].btid);
+	  break;
+	}
+    }
+  if (classrep != NULL)
+    {
+      error = heap_classrepr_free (classrep, &idx_in_cache);
+    }
+  return error;
 }
 
 /*
@@ -18989,7 +19615,9 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 
 	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH,
 				   serial_name,
-				   strlen (serial_name)) != NO_ERROR)
+				   strlen (serial_name),
+				   LANG_SYS_CODESET, LANG_SYS_COLLATION)
+		  != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -19581,7 +20209,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	      /* set max value of destination domain */
 	      error = db_value_domain_max (&(value->dbvalue),
 					   dest_type,
-					   dest_prec, dest_dom->scale);
+					   dest_prec, dest_dom->scale,
+					   dest_dom->codeset,
+					   dest_dom->collation_id);
 	      if (error != NO_ERROR)
 		{
 		  /* this should not happen */
@@ -19595,7 +20225,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	      /* set min value of destination domain */
 	      error = db_value_domain_min (&(value->dbvalue),
 					   dest_type,
-					   dest_prec, dest_dom->scale);
+					   dest_prec, dest_dom->scale,
+					   dest_dom->codeset,
+					   dest_dom->collation_id);
 	      if (error != NO_ERROR)
 		{
 		  /* this should not happen */
@@ -19610,7 +20242,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	      /* set default value of destination domain */
 	      error = db_value_domain_default (&(value->dbvalue),
 					       dest_type,
-					       dest_prec, dest_dom->scale);
+					       dest_prec, dest_dom->scale,
+					       dest_dom->codeset,
+					       dest_dom->collation_id);
 	      if (error != NO_ERROR)
 		{
 		  /* this should not happen */

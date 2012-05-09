@@ -647,6 +647,29 @@ db_set_isempty (DB_SET * set)
 }
 
 /*
+ * db_set_has_null() - This function checks to see if a set is empty.  The set
+ *    (or sequence) must have no elements at all in order for this to be true.
+ *    If this is a sequence and there are only NULL elements, this function
+ *    will return false since NULL elements are still considered valid elements
+ *    for sequences.
+ * return : non-zero if the set has no elements
+ * set(in): set descriptor
+ */
+int
+db_set_has_null (DB_COLLECTION * set)
+{
+  int retval;
+
+  CHECK_CONNECT_FALSE ();
+  CHECK_1ARG_FALSE (set);
+
+  /* allow all types */
+  retval = (set_has_null (set)) ? 1 : 0;
+
+  return (retval);
+}
+
+/*
  * db_set_print() - This is a debugging function that prints a simple
  *    description of a set. This should be used for information purposes only.
  * return : error code

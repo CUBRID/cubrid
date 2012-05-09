@@ -849,6 +849,7 @@ struct sm_class
   CLASS_STATS *stats;		/* server statistics, loaded on demand */
 
   MOP owner;			/* authorization object */
+  int collation_id;		/* class collation */
   void *auth_cache;		/* compiled cache */
 
   SM_ATTRIBUTE *ordered_attributes;	/* see classobj_fixup_loaded_class () */
@@ -1128,6 +1129,9 @@ extern SM_ATTRIBUTE *classobj_make_attribute (const char *name,
 					      SM_NAME_SPACE name_space);
 extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src,
 					      const char *alias);
+extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class,
+				  int ordered, SM_ATTRIBUTE ** copy_ptr);
+
 extern void classobj_free_attribute (SM_ATTRIBUTE * att);
 
 /* Method argument */

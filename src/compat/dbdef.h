@@ -419,4 +419,11 @@ typedef unsigned int SESSION_ID;
 /* uninitialized value for row count */
 #define DB_ROW_COUNT_NOT_SET -2
 
+typedef enum
+{
+  DB_PARTITION_HASH = 0,
+  DB_PARTITION_RANGE,
+  DB_PARTITION_LIST
+} DB_PARTITION_TYPE;
+
 #endif /* _DBDEF_H_ */

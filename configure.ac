@@ -801,6 +801,25 @@ AC_ARG_WITH([msgdir],
 AC_MSG_RESULT($CUBRID_LOCALEDIR)
 DIR_DEFS="$DIR_DEFS -DCUBRID_LOCALEDIR=\\\"$CUBRID_LOCALEDIR\\\""
 
+AC_MSG_CHECKING([for shlocdir])
+AC_ARG_WITH([shlocdir],
+	AS_HELP_STRING([--with-locdir=PATH],
+		       [Directory containing message files @<:@default=PREFIX/locales@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need LOCALESDIR.)
+	    ;;
+	  yes)
+	    CUBRID_SHLOCALESDIR="\$(prefix)/locales"
+	    ;;
+	  *)
+	    CUBRID_SHLOCALESDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_SHLOCALESDIR="\$(prefix)/locales"])
+AC_MSG_RESULT($CUBRID_SHLOCALESDIR)
+DIR_DEFS="$DIR_DEFS -DCUBRID_SHLOCALESDIR=\\\"$CUBRID_SHLOCALESDIR\\\""
+
 AC_MSG_CHECKING([for compatdir])
 AC_ARG_WITH([compatdir],
 	AS_HELP_STRING([--with-compatdir=PATH],
@@ -891,6 +910,7 @@ AC_SUBST([CUBRID_JAVADIR])
 AC_SUBST([CUBRID_JDBCDIR])
 AC_SUBST([CUBRID_DEMODIR])
 AC_SUBST([CUBRID_LOCALEDIR])
+AC_SUBST([CUBRID_SHLOCALESDIR])
 AC_SUBST([CUBRID_COMPATDIR])
 AC_SUBST([CUBRID_LOGDIR])
 AC_SUBST([CUBRID_TMPDIR])
@@ -942,6 +962,11 @@ AC_CONFIG_FILES([Makefile
 	cci/Makefile
 	cas4mysql/Makefile
 	cas4oracle/Makefile
+	locales/Makefile
+	locales/loclib/Makefile
+	locales/data/Makefile
+	locales/data/codepages/Makefile
+	locales/data/ldml/Makefile
 	])
 
 AC_OUTPUT

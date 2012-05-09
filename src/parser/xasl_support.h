@@ -47,8 +47,6 @@ extern QFILE_SORTED_LIST_ID *regu_srlistid_alloc (void);
 extern HEAP_CACHE_ATTRINFO *regu_cache_attrinfo_alloc (void);
 extern METHOD_SIG *regu_method_sig_alloc (void);
 extern METHOD_SIG_LIST *regu_method_sig_list_alloc (void);
-extern XASL_PARTITION_INFO *regu_partition_info_alloc (void);
-extern XASL_PARTS_INFO *regu_parts_info_alloc (void);
 extern SELUPD_LIST *regu_selupd_list_alloc (void);
 
 /* for regu_machead_db () */
@@ -63,8 +61,6 @@ extern SM_DOMAIN *regu_domain_db_alloc (void);
 /* for regu_machead_array_ptr () */
 extern DB_VALUE **regu_dbvalptr_array_alloc (int size);
 extern REGU_VARIABLE **regu_varptr_array_alloc (int size);
-extern XASL_PARTITION_INFO **regu_partition_array_alloc (int size);
-extern XASL_PARTS_INFO **regu_parts_array_alloc (int size);
 
 /* for regu_machead_array_db () */
 extern int *regu_int_array_db_alloc (int size);
@@ -74,7 +70,7 @@ extern KEY_RANGE *regu_keyrange_array_alloc (int size);
 extern int *regu_int_array_alloc (int size);
 extern OID *regu_oid_array_alloc (int size);
 extern HFID *regu_hfid_array_alloc (int size);
-extern UPDATE_CLASS_INFO *regu_update_class_info_array_alloc (int size);
+extern UPDDEL_CLASS_INFO *regu_upddel_class_info_array_alloc (int size);
 extern UPDATE_ASSIGNMENT *regu_update_assignment_array_alloc (int size);
 
 extern int regu_dbval_init (DB_VALUE * ptr);
@@ -109,7 +105,7 @@ extern SM_DOMAIN *regu_cp_domain (SM_DOMAIN * ptr);
 extern void regu_int_init (int *ptr);
 extern void regu_oid_init (OID * ptr);
 extern void regu_hfid_init (HFID * ptr);
-extern void regu_update_class_info_init (UPDATE_CLASS_INFO * ptr);
+extern void regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr);
 extern void regu_update_assignment_init (UPDATE_ASSIGNMENT * ptr);
 extern void regu_method_sig_init (METHOD_SIG * ptr);
 extern void regu_free_method_sig (METHOD_SIG * method_sig);

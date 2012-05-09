@@ -1522,7 +1522,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		case PT_RTRIM:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd2, 1, (char *) " ", 1);
+		      db_make_varnchar (&opd2, 1, (char *) " ", 1,
+					DB_GET_STRING_CODESET (&opd1),
+					DB_GET_STRING_COLLATION (&opd1));
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
@@ -1561,7 +1563,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		case PT_TRANSLATE:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) "", 0);
+		      db_make_varnchar (&opd3, 1, (char *) "", 0,
+					DB_GET_STRING_CODESET (&opd1),
+					DB_GET_STRING_COLLATION (&opd1));
 		      type3 = PT_TYPE_VARNCHAR;
 		    }
 		  else
@@ -1574,7 +1578,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		case PT_RPAD:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) " ", 1);
+		      db_make_varnchar (&opd3, 1, (char *) " ", 1,
+					DB_GET_STRING_CODESET (&opd1),
+					DB_GET_STRING_COLLATION (&opd1));
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else

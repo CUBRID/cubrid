@@ -145,7 +145,7 @@ static OUTPTR_LIST *stx_restore_outptr_list (THREAD_ENTRY * thread_p,
 					     char *ptr);
 static SELUPD_LIST *stx_restore_selupd_list (THREAD_ENTRY * thread_p,
 					     char *ptr);
-static UPDATE_CLASS_INFO *stx_restore_update_class_info_array (THREAD_ENTRY *
+static UPDDEL_CLASS_INFO *stx_restore_update_class_info_array (THREAD_ENTRY *
 							       thread_p,
 							       char *ptr,
 							       int
@@ -156,15 +156,6 @@ static UPDATE_ASSIGNMENT *stx_restore_update_assignment_array (THREAD_ENTRY
 							       int
 							       no_assigns);
 static PRED_EXPR *stx_restore_pred_expr (THREAD_ENTRY * thread_p, char *ptr);
-static XASL_PARTITION_INFO *stx_restore_partition_info (THREAD_ENTRY *
-							thread_p, char *ptr);
-static XASL_PARTS_INFO *stx_restore_parts_info (THREAD_ENTRY * thread_p,
-						char *ptr);
-static XASL_PARTS_INFO **stx_restore_parts_array (THREAD_ENTRY * thread_p,
-						  char *ptr, int size);
-static XASL_PARTITION_INFO **stx_restore_partition_array (THREAD_ENTRY *
-							  thread_p, char *ptr,
-							  int size);
 static REGU_VARIABLE *stx_restore_regu_variable (THREAD_ENTRY * thread_p,
 						 char *ptr);
 static REGU_VARIABLE_LIST stx_restore_regu_variable_list (THREAD_ENTRY *
@@ -217,7 +208,7 @@ static char *stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *tmp,
 static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp,
 				      QFILE_LIST_MERGE_INFO * ptr);
 static char *stx_build_update_class_info (THREAD_ENTRY * thread_p, char *tmp,
-					  UPDATE_CLASS_INFO * ptr);
+					  UPDDEL_CLASS_INFO * ptr);
 static char *stx_build_update_assignment (THREAD_ENTRY * thread_p, char *tmp,
 					  UPDATE_ASSIGNMENT * ptr);
 static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp,
@@ -226,16 +217,14 @@ static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp,
 				    DELETE_PROC_NODE * ptr);
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp,
 				    INSERT_PROC_NODE * ptr);
+static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp,
+				   MERGE_PROC_NODE * ptr);
 static char *stx_build_outptr_list (THREAD_ENTRY * thread_p, char *tmp,
 				    OUTPTR_LIST * ptr);
 static char *stx_build_selupd_list (THREAD_ENTRY * thread_p, char *tmp,
 				    SELUPD_LIST * ptr);
 static char *stx_build_pred_expr (THREAD_ENTRY * thread_p, char *tmp,
 				  PRED_EXPR * ptr);
-static char *stx_build_partition_info (THREAD_ENTRY * thread_p, char *tmp,
-				       XASL_PARTITION_INFO * ptr);
-static char *stx_build_parts_info (THREAD_ENTRY * thread_p, char *tmp,
-				   XASL_PARTS_INFO * ptr);
 static char *stx_build_pred (THREAD_ENTRY * thread_p, char *tmp, PRED * ptr);
 static char *stx_build_eval_term (THREAD_ENTRY * thread_p, char *tmp,
 				  EVAL_TERM * ptr);
@@ -841,73 +830,6 @@ stx_restore_pred_expr (THREAD_ENTRY * thread_p, char *ptr)
     }
 
   return pred_expr;
-}
-
-static XASL_PARTITION_INFO *
-stx_restore_partition_info (THREAD_ENTRY * thread_p, char *ptr)
-{
-  XASL_PARTITION_INFO *partition_info;
-
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  partition_info =
-    (XASL_PARTITION_INFO *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (partition_info != NULL)
-    {
-      return partition_info;
-    }
-
-  partition_info = (XASL_PARTITION_INFO *)
-    stx_alloc_struct (thread_p, sizeof (*partition_info));
-  if (partition_info == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  if (stx_mark_struct_visited (thread_p, ptr, partition_info) == ER_FAILED
-      || stx_build_partition_info (thread_p, ptr, partition_info) == NULL)
-    {
-      return NULL;
-    }
-
-  return partition_info;
-}
-
-static XASL_PARTS_INFO *
-stx_restore_parts_info (THREAD_ENTRY * thread_p, char *ptr)
-{
-  XASL_PARTS_INFO *parts_info;
-
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  parts_info = (XASL_PARTS_INFO *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (parts_info != NULL)
-    {
-      return parts_info;
-    }
-
-  parts_info =
-    (XASL_PARTS_INFO *) stx_alloc_struct (thread_p, sizeof (*parts_info));
-  if (parts_info == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  if (stx_mark_struct_visited (thread_p, ptr, parts_info) == ER_FAILED
-      || stx_build_parts_info (thread_p, ptr, parts_info) == NULL)
-    {
-      return NULL;
-    }
-
-  return parts_info;
 }
 
 static REGU_VARIABLE *
@@ -1605,94 +1527,6 @@ stx_restore_input_vals (THREAD_ENTRY * thread_p, char *ptr, int nelements)
   return input_vals;
 }
 #endif
-
-static XASL_PARTS_INFO **
-stx_restore_parts_array (THREAD_ENTRY * thread_p, char *ptr, int size)
-{
-  XASL_PARTS_INFO **parts_info_array;
-  int *offset_array;
-  int i;
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info =
-    stx_get_xasl_unpack_info_ptr (thread_p);
-
-  parts_info_array =
-    (XASL_PARTS_INFO **) stx_alloc_struct (thread_p,
-					   sizeof (XASL_PARTS_INFO *) * size);
-  if (parts_info_array == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  offset_array = stx_restore_int_array (thread_p, ptr, size);
-  if (offset_array == NULL)
-    {
-      return NULL;
-    }
-
-  for (i = 0; i < size; i++)
-    {
-      offset = offset_array[i];
-      parts_info_array[i] =
-	stx_restore_parts_info (thread_p,
-				&xasl_unpack_info->packed_xasl[offset]);
-      if (parts_info_array[i] == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-    }
-
-  return parts_info_array;
-}
-
-static XASL_PARTITION_INFO **
-stx_restore_partition_array (THREAD_ENTRY * thread_p, char *ptr, int size)
-{
-  XASL_PARTITION_INFO **partition_info_array;
-  int *offset_array;
-  int i;
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info =
-    stx_get_xasl_unpack_info_ptr (thread_p);
-
-  partition_info_array =
-    (XASL_PARTITION_INFO **) stx_alloc_struct (thread_p,
-					       sizeof (XASL_PARTITION_INFO *)
-					       * size);
-  if (partition_info_array == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  offset_array = stx_restore_int_array (thread_p, ptr, size);
-  if (offset_array == NULL)
-    {
-      return NULL;
-    }
-
-  for (i = 0; i < size; i++)
-    {
-      offset = offset_array[i];
-      if (offset <= 0)
-	{
-	  partition_info_array[i] = NULL;
-	  continue;
-	}
-      partition_info_array[i] =
-	stx_restore_partition_info (thread_p,
-				    &xasl_unpack_info->packed_xasl[offset]);
-      if (partition_info_array[i] == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-    }
-
-  return (partition_info_array);
-}
 
 /*
  * Restore the regu_variable_list as an array to avoid recursion in the server.
@@ -2467,6 +2301,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       break;
 
     case DO_PROC:
+      break;
+
+    case MERGE_PROC:
+      ptr = stx_build_merge_proc (thread_p, ptr, &xasl->proc.merge);
       break;
 
     default:
@@ -3318,7 +3156,7 @@ error:
 
 static char *
 stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr,
-			     UPDATE_CLASS_INFO * upd_cls)
+			     UPDDEL_CLASS_INFO * upd_cls)
 {
   int offset = 0;
   XASL_UNPACK_INFO *xasl_unpack_info =
@@ -3382,42 +3220,25 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  /* partition */
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_subclasses == 0)
-    {
-      stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
-      return NULL;
-    }
-  else
-    {
-      upd_cls->partition =
-	stx_restore_partition_array (thread_p,
-				     &xasl_unpack_info->packed_xasl[offset],
-				     upd_cls->no_subclasses);
-      if (upd_cls->partition == NULL)
-	{
-	  return NULL;
-	}
-    }
-
+  /* partition pruning info */
+  ptr = or_unpack_int (ptr, &upd_cls->needs_pruning);
   /* has_uniques */
   ptr = or_unpack_int (ptr, &upd_cls->has_uniques);
 
   return ptr;
 }
 
-static UPDATE_CLASS_INFO *
+static UPDDEL_CLASS_INFO *
 stx_restore_update_class_info_array (THREAD_ENTRY * thread_p, char *ptr,
 				     int no_classes)
 {
   int idx;
-  UPDATE_CLASS_INFO *classes = NULL;
+  UPDDEL_CLASS_INFO *classes = NULL;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
   classes =
-    (UPDATE_CLASS_INFO *) stx_alloc_struct (thread_p,
+    (UPDDEL_CLASS_INFO *) stx_alloc_struct (thread_p,
 					    sizeof (*classes) * no_classes);
   if (classes == NULL)
     {
@@ -3588,33 +3409,16 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || delete_info->no_classes == 0)
     {
-      delete_info->class_oid = NULL;
+      delete_info->classes = NULL;
     }
   else
     {
-      delete_info->class_oid =
-	stx_restore_OID_array (thread_p,
-			       &xasl_unpack_info->packed_xasl[offset],
-			       delete_info->no_classes);
-      if (delete_info->class_oid == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || delete_info->no_classes == 0)
-    {
-      delete_info->class_hfid = NULL;
-    }
-  else
-    {
-      delete_info->class_hfid =
-	stx_restore_hfid_array (thread_p,
-				&xasl_unpack_info->packed_xasl[offset],
-				delete_info->no_classes);
-      if (delete_info->class_hfid == NULL)
+      delete_info->classes =
+	stx_restore_update_class_info_array (thread_p,
+					     &xasl_unpack_info->
+					     packed_xasl[offset],
+					     delete_info->no_classes);
+      if (delete_info->classes == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
@@ -3699,18 +3503,66 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
   ptr = or_unpack_int (ptr, &insert_info->dup_key_oid_var_index);
   ptr = or_unpack_int (ptr, &insert_info->is_first_value);
+  ptr = or_unpack_int (ptr, &insert_info->needs_pruning);
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+static char *
+stx_build_merge_proc (THREAD_ENTRY *thread_p, char *ptr,
+		      MERGE_PROC_NODE *merge_info)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      insert_info->partition = NULL;
+      merge_info->update_xasl = NULL;
     }
   else
     {
-      insert_info->partition =
-	stx_restore_partition_info (thread_p,
-				    &xasl_unpack_info->packed_xasl[offset]);
-      if (insert_info->partition == NULL)
+      merge_info->update_xasl =
+	stx_restore_xasl_node (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset]);
+      if (merge_info->update_xasl == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      merge_info->delete_xasl = NULL;
+    }
+  else
+    {
+      merge_info->delete_xasl =
+	stx_restore_xasl_node (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset]);
+      if (merge_info->delete_xasl == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      merge_info->insert_xasl = NULL;
+    }
+  else
+    {
+      merge_info->insert_xasl =
+	stx_restore_xasl_node (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset]);
+      if (merge_info->insert_xasl == NULL)
 	{
 	  goto error;
 	}
@@ -3833,88 +3685,6 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr,
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
-    }
-
-  return ptr;
-}
-
-static char *
-stx_build_partition_info (THREAD_ENTRY * thread_p, char *ptr,
-			  XASL_PARTITION_INFO * partition_info)
-{
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info =
-    stx_get_xasl_unpack_info_ptr (thread_p);
-
-  ptr = or_unpack_int (ptr, (int *) &partition_info->key_attr);
-  ptr = or_unpack_int (ptr, (int *) &partition_info->type);
-  ptr = or_unpack_int (ptr, (int *) &partition_info->no_parts);
-  ptr = or_unpack_int (ptr, (int *) &partition_info->act_parts);
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      partition_info->expr = NULL;
-    }
-  else
-    {
-      partition_info->expr =
-	stx_restore_regu_variable (thread_p,
-				   &xasl_unpack_info->packed_xasl[offset]);
-      if (partition_info->expr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || partition_info->no_parts == 0)
-    {
-      partition_info->parts = NULL;
-    }
-  else
-    {
-      partition_info->parts =
-	stx_restore_parts_array (thread_p,
-				 &xasl_unpack_info->packed_xasl[offset],
-				 partition_info->no_parts);
-      if (partition_info->parts == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-    }
-
-  return ptr;
-}
-
-static char *
-stx_build_parts_info (THREAD_ENTRY * thread_p, char *ptr,
-		      XASL_PARTS_INFO * parts_info)
-{
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info =
-    stx_get_xasl_unpack_info_ptr (thread_p);
-
-  ptr = or_unpack_oid (ptr, &parts_info->class_oid);
-  ptr = or_unpack_hfid (ptr, &parts_info->class_hfid);
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      parts_info->vals = NULL;
-    }
-  else
-    {
-      parts_info->vals =
-	stx_restore_db_value (thread_p,
-			      &xasl_unpack_info->packed_xasl[offset]);
-      if (parts_info->vals == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
     }
 
   return ptr;
@@ -4300,6 +4070,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 	{
 	  goto error;
 	}
+      /* backup index id */
+      access_spec->indx_id = access_spec->indexptr->indx_id;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4377,6 +4149,11 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &access_spec->qualified_block);
   ptr = or_unpack_int (ptr, (int *) &access_spec->single_fetch);
 
+  ptr = or_unpack_int (ptr, &access_spec->needs_pruning);
+  access_spec->parts = NULL;
+  access_spec->curent = NULL;
+  access_spec->pruned = false;
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -4392,6 +4169,10 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 	  goto error;
 	}
     }
+
+  access_spec->parts = NULL;
+  access_spec->curent = NULL;
+  access_spec->pruned = false;
 
   return ptr;
 

@@ -260,6 +260,7 @@ extern int db_set_size (DB_COLLECTION * set);
 extern int db_set_cardinality (DB_COLLECTION * set);
 extern int db_set_ismember (DB_COLLECTION * set, DB_VALUE * value);
 extern int db_set_isempty (DB_COLLECTION * set);
+extern int db_set_has_null (DB_COLLECTION * set);
 extern int db_set_print (DB_COLLECTION * set);
 extern DB_TYPE db_set_type (DB_COLLECTION * set);
 extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
@@ -442,6 +443,7 @@ extern DB_DOMAIN *db_domain_set (const DB_DOMAIN * domain);
 extern int db_domain_precision (const DB_DOMAIN * domain);
 extern int db_domain_scale (const DB_DOMAIN * domain);
 extern int db_domain_codeset (const DB_DOMAIN * domain);
+extern int db_domain_collation_id (const DB_DOMAIN * domain);
 
 extern DB_METHOD *db_method_next (DB_METHOD * method);
 extern const char *db_method_name (DB_METHOD * method);

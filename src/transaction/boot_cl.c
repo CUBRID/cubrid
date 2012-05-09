@@ -176,6 +176,8 @@ static int boot_define_stored_procedure (MOP class_mop);
 static int boot_define_stored_procedure_arguments (MOP class_mop);
 static int boot_define_serial (MOP class_mop);
 static int boot_define_ha_apply_info (MOP class_mop);
+static int boot_add_collations (MOP class_mop);
+static int boot_define_collations (MOP class_mop);
 static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
 static int boot_define_view_vclass (void);
@@ -1601,6 +1603,12 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "collation_id", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   sprintf (domain_string, "sequence of %s", CT_CLASS_NAME);
 
   error_code = smt_add_attribute (def, "sub_classes", domain_string, NULL);
@@ -1860,6 +1868,12 @@ boot_define_domain (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "code_set", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "collation_id", "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2647,7 +2661,8 @@ boot_add_data_type (MOP class_mop)
 	  DB_MAKE_INTEGER (&val, i + 1);
 	  db_put_internal (obj, "type_id", &val);
 
-	  DB_MAKE_VARCHAR (&val, 9, (char *) names[i], strlen (names[i]));
+	  DB_MAKE_VARCHAR (&val, 9, (char *) names[i], strlen (names[i]),
+			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
     }
@@ -3234,6 +3249,141 @@ boot_define_ha_apply_info (MOP class_mop)
 }
 
 /*
+ * boot_add_collations :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   class(IN) :
+ *
+ * Note:
+ *
+ */
+static int
+boot_add_collations (MOP class_mop)
+{
+  int i;
+  int count_collations;
+
+  count_collations = lang_collation_count ();
+
+  for (i = 0; i < count_collations; i++)
+    {
+      LANG_COLLATION *lang_coll = lang_get_collation (i);
+      DB_OBJECT *obj;
+      DB_VALUE val;
+
+      assert (lang_coll != NULL);
+
+      obj = db_create_internal (class_mop);
+      if (obj == NULL)
+	{
+	  return er_errid ();
+	}
+
+      assert (lang_coll->coll.coll_id == i);
+
+      DB_MAKE_INTEGER (&val, i);
+      db_put_internal (obj, "coll_id", &val);
+
+      DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.coll_name,
+		       strlen (lang_coll->coll.coll_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_put_internal (obj, "coll_name", &val);
+
+      DB_MAKE_INTEGER (&val, (int) (lang_coll->codeset));
+      db_put_internal (obj, "charset_id", &val);
+
+      DB_MAKE_INTEGER (&val, lang_coll->built_in);
+      db_put_internal (obj, "built_in", &val);
+
+      DB_MAKE_INTEGER (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
+      db_put_internal (obj, "expansions", &val);
+
+      DB_MAKE_INTEGER (&val, lang_coll->coll.count_contr);
+      db_put_internal (obj, "contractions", &val);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * boot_define_collations :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   class(IN) :
+ */
+static int
+boot_define_collations (MOP class_mop)
+{
+  SM_TEMPLATE *def;
+  int error_code = NO_ERROR;
+
+  def = smt_edit_class_mop (class_mop);
+
+  error_code = smt_add_attribute (def, "coll_id", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "coll_name", "varchar(32)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "charset_id", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "built_in", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "expansions", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "contractions", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_update_class (def, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      return er_errid ();
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = boot_add_collations (class_mop);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * catcls_class_install :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -3259,7 +3409,8 @@ catcls_class_install (void)
     {CT_STORED_PROC_ARGS_NAME,
      (DEF_FUNCTION) boot_define_stored_procedure_arguments},
     {CT_SERIAL_NAME, (DEF_FUNCTION) boot_define_serial},
-    {CT_HA_APPLY_INFO_NAME, (DEF_FUNCTION) boot_define_ha_apply_info}
+    {CT_HA_APPLY_INFO_NAME, (DEF_FUNCTION) boot_define_ha_apply_info},
+    {CT_COLLATION_NAME, (DEF_FUNCTION) boot_define_collations}
   };
 
   MOP class_mop[sizeof (clist) / sizeof (clist[0])];
@@ -4775,7 +4926,7 @@ boot_destroy_catalog_classes (void)
     CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
     CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
     CTV_TRIGGER_NAME, CTV_PARTITION_NAME, CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME, NULL
+    CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME, NULL
   };
 
   /* check if catalog exists */

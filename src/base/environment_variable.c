@@ -335,7 +335,6 @@ envvar_bindir_file (char *path, size_t size, const char *filename)
   return path;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 char *
 envvar_libdir_file (char *path, size_t size, const char *filename)
 {
@@ -354,7 +353,6 @@ envvar_libdir_file (char *path, size_t size, const char *filename)
   path[size - 1] = '\0';
   return path;
 }
-#endif
 
 char *
 envvar_javadir_file (char *path, size_t size, const char *filename)
@@ -496,4 +494,81 @@ envvar_trim_char (char *env_val, const int c)
 	  free (buf);
 	}
     }
+}
+
+char *
+envvar_ldmldir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/locales/data/ldml/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_codepagedir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/locales/data/codepages/%s", envvar_Root,
+	    filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_localedatadir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/locales/data/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_loclib_dir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/locales/loclib/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
 }

@@ -148,6 +148,12 @@ extern int yycolumn_end;
 [cC][aA][tT][aA][lL][oO][gG]						{ begin_token(yytext);   return CATALOG; }
 [cC][hH][aA][nN][gG][eE]						{ begin_token(yytext);   return CHANGE; }
 [cC][hH][aA][rR][aA][cC][tT][eE][rR]					{ begin_token(yytext);   return CHAR_; }
+[cC][hH][aA][rR][aA][cC][tT][eE][rR]_[sS][eE][tT]			{ begin_token(yytext);
+									      csql_yylval.cptr = pt_makename(yytext);
+									      return CHARACTER_SET_; }
+[cC][hH][aA][rR][sS][eE][tT]						{ begin_token(yytext);
+									      csql_yylval.cptr = pt_makename(yytext);
+									      return CHARSET; }
 [cC][hH][eE][cC][kK]							{ begin_token(yytext);   return CHECK; }
 [cC][lL][aA][sS][sS]							{ begin_token(yytext);   return CLASS; }
 [cC][lL][aA][sS][sS][eE][sS]						{ begin_token(yytext);   return CLASSES; }
@@ -512,6 +518,7 @@ extern int yycolumn_end;
 										return PRIORITY; }
 [pP][rR][iI][vV][iI][lL][eE][gG][eE][sS]				{ begin_token(yytext);   return PRIVILEGES; }
 [pP][rR][oO][cC][eE][dD][uU][rR][eE]					{ begin_token(yytext);   return PROCEDURE; }
+[pP][rR][oO][mM][oO][tT][eE]							{ begin_token(yytext);   return PROMOTE; }
 [pP][rR][oO][tT][eE][cC][tT][eE][dD]					{ begin_token(yytext);   return PROTECTED; }
 [pP][rR][iI][vV][aA][tT][eE]						{ begin_token(yytext);   return Private; }
 [qQ][uU][eE][rR][yY]							{ begin_token(yytext);   return QUERY; }

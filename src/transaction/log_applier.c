@@ -1452,9 +1452,10 @@ la_get_db_ha_apply_info (const char *log_path, const char *prefix_name,
 
   in_value_idx = 0;
   db_make_varchar (&in_value[in_value_idx++], 4096, (char *) log_path,
-		   strlen (log_path));
+		   strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_varchar (&in_value[in_value_idx++], 255,
-		   (char *) prefix_name, strlen (prefix_name));
+		   (char *) prefix_name, strlen (prefix_name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
   error =
@@ -1561,10 +1562,12 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
 
   in_value_idx = 0;
   db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		   strlen (la_Info.log_path));
+		   strlen (la_Info.log_path),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_varchar (&in_value[in_value_idx++], 255,
 		   act_log->log_hdr->prefix_name,
-		   strlen (act_log->log_hdr->prefix_name));
+		   strlen (act_log->log_hdr->prefix_name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
   error =
@@ -1663,10 +1666,12 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
 
       in_value_idx = 0;
       db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		       strlen (la_Info.log_path));
+		       strlen (la_Info.log_path),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       act_log->log_hdr->prefix_name,
-		       strlen (act_log->log_hdr->prefix_name));
+		       strlen (act_log->log_hdr->prefix_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
@@ -1696,10 +1701,12 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
       in_value_idx = 0;
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       act_log->log_hdr->prefix_name,
-		       strlen (act_log->log_hdr->prefix_name));
+		       strlen (act_log->log_hdr->prefix_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_datetime (&in_value[in_value_idx++], &datetime);
       db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		       strlen (la_Info.log_path));
+		       strlen (la_Info.log_path),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_bigint (&in_value[in_value_idx++], lsa->pageid);
       db_make_int (&in_value[in_value_idx++], lsa->offset);
       assert (in_value_idx <= LA_IN_VALUE_COUNT);
@@ -1742,10 +1749,12 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
 
       in_value_idx = 0;
       db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		       strlen (la_Info.log_path));
+		       strlen (la_Info.log_path),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       act_log->log_hdr->prefix_name,
-		       strlen (act_log->log_hdr->prefix_name));
+		       strlen (act_log->log_hdr->prefix_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
@@ -1809,10 +1818,12 @@ la_update_last_applied_lsa (LOG_LSA * lsa)
       db_make_bigint (&in_value[in_value_idx++], la_Info.fail_counter);
       db_make_bigint (&in_value[in_value_idx++], la_Info.required_lsa.pageid);
       db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		       strlen (la_Info.log_path));
+		       strlen (la_Info.log_path),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       la_Info.act_log.log_hdr->prefix_name,
-		       strlen (la_Info.act_log.log_hdr->prefix_name));
+		       strlen (la_Info.act_log.log_hdr->prefix_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
@@ -1840,10 +1851,12 @@ la_update_last_applied_lsa (LOG_LSA * lsa)
       db_make_bigint (&in_value[in_value_idx++], la_Info.fail_counter);
       db_make_bigint (&in_value[in_value_idx++], la_Info.required_lsa.pageid);
       db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		       strlen (la_Info.log_path));
+		       strlen (la_Info.log_path),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       la_Info.act_log.log_hdr->prefix_name,
-		       strlen (la_Info.act_log.log_hdr->prefix_name));
+		       strlen (la_Info.act_log.log_hdr->prefix_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
@@ -1889,10 +1902,12 @@ la_update_applier_status (void)
 
   db_make_int (&in_value[in_value_idx++], la_Info.status);
   db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		   strlen (la_Info.log_path));
+		   strlen (la_Info.log_path),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_varchar (&in_value[in_value_idx++], 255,
 		   la_Info.act_log.log_hdr->prefix_name,
-		   strlen (la_Info.act_log.log_hdr->prefix_name));
+		   strlen (la_Info.act_log.log_hdr->prefix_name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
   error =

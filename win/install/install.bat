@@ -2,6 +2,7 @@
 
 if %1 == "" goto exit
 if %2 == "" goto exit
+if %3 == "" goto exit
 
 set SRC_DIR=%1
 set DEST_DIR=%2
@@ -94,6 +95,18 @@ copy %SRC_DIR%\..\..\..\msg\vi_VN.utf8\*.msg 		%MSG_VI_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\vi_VN.utf8\syntax.txt	%MSG_VI_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\zh_CN.utf8\*.msg 		%MSG_ZH_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\zh_CN.utf8\syntax.txt	%MSG_ZH_UTF8_DIR%
+
+mkdir %DEST_DIR%\locales
+mkdir %DEST_DIR%\locales\data
+mkdir %DEST_DIR%\locales\data\ldml
+mkdir %DEST_DIR%\locales\data\codepages
+mkdir %DEST_DIR%\locales\loclib
+copy %SRC_DIR%\..\..\..\locales\data\*.txt %DEST_DIR%\locales\data
+copy %SRC_DIR%\..\..\..\locales\data\ldml\*.xml %DEST_DIR%\locales\data\ldml
+copy %SRC_DIR%\..\..\..\locales\data\codepages\*.txt %DEST_DIR%\locales\data\codepages
+xcopy %SRC_DIR%\..\..\..\locales\loclib_win_%3 %DEST_DIR%\locales\loclib /e /c /i /f /r /y
+copy %SRC_DIR%\..\..\..\src\base\locale_lib_common.h %DEST_DIR%\locales\loclib\locale_lib_common.h /y
+copy %SRC_DIR%\..\..\..\locales\make_locale_%3.bat %DEST_DIR%\bin\make_locale.bat /y
 
 del %DEST_DIR%\bin\migrate_r40beta2ga.exe
 

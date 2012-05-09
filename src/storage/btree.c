@@ -13151,7 +13151,9 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 		  if (dsize < keysize)
 		    {
 		      err = db_value_domain_min (&dbvals[num_dbvals], type,
-						 dp->precision, dp->scale);
+						 dp->precision, dp->scale,
+						 dp->codeset,
+						 dp->collation_id);
 		    }
 		  else
 		    {
@@ -13162,7 +13164,8 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
 		{
 		  err = db_value_domain_max (&dbvals[num_dbvals], type,
-					     dp->precision, dp->scale);
+					     dp->precision, dp->scale,
+					     dp->codeset, dp->collation_id);
 		}
 	      else
 		{

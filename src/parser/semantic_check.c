@@ -1563,6 +1563,13 @@ pt_union_compatible (PARSER_CONTEXT * parser,
 
 	  if (dt1 && dt2)
 	    {
+	      if (PT_IS_CHAR_STRING_TYPE (common_type)
+		  && dt1->info.data_type.collation_id !=
+		  dt2->info.data_type.collation_id)
+		{
+		  return PT_UNION_INCOMP;
+		}
+
 	      /* numeric type, fixed size string type */
 	      if (common_type == PT_TYPE_NUMERIC
 		  || common_type == PT_TYPE_CHAR
@@ -1704,6 +1711,13 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
 {
   if (dest_type_enum != src->type_enum)
     {
+      return false;
+    }
+
+  if (dest_type_enum == PT_TYPE_ENUMERATION
+      || src->type_enum == PT_TYPE_ENUMERATION)
+    {
+      /* enumerations might not have the same domain */
       return false;
     }
 
@@ -3896,6 +3910,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_ADD_HASHPARTITION:
     case PT_REORG_PARTITION:
     case PT_COALESCE_PARTITION:
+    case PT_PROMOTE_PARTITION:
       if (sm_class_has_triggers (db, &trigger_involved, TR_EVENT_ALL) ==
 	  NO_ERROR)
 	{
@@ -5291,7 +5306,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   class_name = (char *) stmt->info.alter.entity_name->info.name.original;
   cmd = stmt->info.alter.code;
   if (cmd == PT_DROP_PARTITION
-      || cmd == PT_ANALYZE_PARTITION || cmd == PT_REORG_PARTITION)
+      || cmd == PT_ANALYZE_PARTITION || cmd == PT_REORG_PARTITION
+      || cmd == PT_PROMOTE_PARTITION)
     {
       name_list = stmt->info.alter.alter_clause.partition.name_list;
     }
@@ -5329,6 +5345,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   switch (cmd)
     {				/* parameter check */
     case PT_DROP_PARTITION:	/* name_list */
+    case PT_PROMOTE_PARTITION:
       if (name_list == NULL)
 	{
 	  chkflag = 1;
@@ -5397,6 +5414,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     case PT_DROP_PARTITION:	/* RANGE/LIST */
     case PT_ADD_PARTITION:
     case PT_REORG_PARTITION:
+    case PT_PROMOTE_PARTITION:
       if (ptype.data.i == PT_PARTITION_HASH)
 	{
 	  chkflag = 1;
@@ -5463,7 +5481,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      goto invalid_partition_info_fail;	/* get partition key values */
 	    }
 
-	  if (ptype.data.i == PT_PARTITION_RANGE && cmd != PT_DROP_PARTITION)
+	  if (ptype.data.i == PT_PARTITION_RANGE && cmd != PT_DROP_PARTITION
+	      && cmd != PT_PROMOTE_PARTITION)
 	    {
 	      if (set_get_element (pattr.data.set, 0, &minele) != NO_ERROR)
 		{
@@ -5813,7 +5832,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   if (psize == NULL)
     {				/* RANGE or LIST */
       orig_cnt = orig_cnt - name_cnt + parts_cnt;
-      if (orig_cnt < 1 || orig_cnt > MAX_PARTITIONS)
+      if ((orig_cnt < 1 || orig_cnt > MAX_PARTITIONS)
+	  && cmd != PT_PROMOTE_PARTITION)
 	{
 	  PT_ERRORmf (parser, stmt,
 		      MSGCAT_SET_PARSER_SEMANTIC,
@@ -6467,6 +6487,9 @@ pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser,
 	    attr->data_type->info.data_type.dec_precision;
 	  new_dt->info.data_type.units =
 	    attr->data_type->info.data_type.units;
+	  new_dt->info.data_type.collation_id =
+	    attr->data_type->info.data_type.collation_id;
+	  assert (new_dt->info.data_type.collation_id >= 0);
 	  new_dt->info.data_type.enumeration =
 	    parser_copy_tree_list (parser,
 				   attr->data_type->info.data_type.
@@ -7218,6 +7241,8 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
       prefix_length = node->info.index.prefix_length;
       if (prefix_length)
 	{
+	  PT_NODE *index_column;
+
 	  if (prefix_length->type_enum != PT_TYPE_INTEGER
 	      || prefix_length->info.value.data_value.i == 0)
 	    {
@@ -7231,6 +7256,44 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 			  MSGCAT_SEMANTIC_INVALID_PREFIX_LENGTH,
 			  prefix_length->info.value.text);
 	      return;
+	    }
+
+	  assert (node->info.index.column_names != NULL);
+
+	  /* check if prefix index is allowed for this type of column */
+	  for (index_column = node->info.index.column_names;
+	       index_column != NULL; index_column = index_column->next)
+	    {
+	      PT_NODE *col_dt;
+
+	      if (index_column->node_type != PT_SORT_SPEC
+		  || index_column->info.sort_spec.expr == NULL
+		  || index_column->info.sort_spec.expr->node_type != PT_NAME)
+		{
+		  continue;
+		}
+
+	      col_dt = index_column->info.sort_spec.expr->data_type;
+
+	      if (col_dt != NULL && PT_HAS_COLLATION (col_dt->type_enum))
+		{
+		  LANG_COLLATION *lc;
+
+		  lc =
+		    lang_get_collation (col_dt->info.data_type.collation_id);
+
+		  assert (lc != NULL);
+
+		  if (!(lc->options.allow_prefix_index))
+		    {
+		      PT_ERRORmf (parser, node,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_PREFIX_LENGTH_COLLATION,
+				  index_column->info.sort_spec.expr->
+				  info.name.original);
+		      return;
+		    }
+		}
 	    }
 	}
     }
@@ -9420,6 +9483,45 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 }
 
 /*
+ * pt_semantic_quick_check_node () - perform semantic validation on a 
+ *				     node that is not necessarily part of a
+ *				     statement
+ * return : modified node or NULL on error
+ * parser (in)	    : parser context
+ * entity_name (in) : PT_NAME of the class containing attributes from node
+ * node (in)	    : node to check
+ *
+ *  Note: Callers of this function need both the spec and the node after
+ *  the call. This is why we have to pass pointers to PT_NODE*
+ */
+PT_NODE *
+pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
+			      PT_NODE ** node_p)
+{
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  int error = NO_ERROR;
+  PT_NODE *node = NULL;
+
+  /* resolve names */
+  error = pt_quick_resolve_names (parser, spec_p, node_p, &sc_info);
+  if (error != NO_ERROR || parser->error_msgs != NULL)
+    {
+      return NULL;
+    }
+
+  node = *node_p;
+
+  /* perform semantic check */
+  node = pt_semantic_type (parser, node, &sc_info);
+  if (node == NULL)
+    {
+      return NULL;
+    }
+  node_p = &node;
+  return node;
+}
+
+/*
  * pt_semantic_check () -
  *   return: PT_NODE *(modified) if no errors, else NULL if errors
  *   parser(in):
@@ -10963,7 +11065,9 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		      && (db_value_domain_min (&value,
 					       TP_DOMAIN_TYPE (dp),
 					       dp->precision,
-					       dp->scale) == NO_ERROR)
+					       dp->scale,
+					       dp->codeset,
+					       dp->collation_id) == NO_ERROR)
 		      && (llim = pt_dbval_to_value (parser, &value))
 		      && (temp = parser_copy_tree (parser, col))
 		      && (expr = parser_new_node (parser, PT_EXPR))

@@ -380,7 +380,13 @@ struct qo_node
 #define QO_NODE_NCARD(node)		(node)->ncard
 #define QO_NODE_TCARD(node)		(node)->tcard
 #define QO_NODE_HINT(node)		(node)->hint
+#define QO_NODE_INFO_SMCLASS(node)	(node)->info[0].info->smclass
 
+#define QO_NODE_IS_CLASS_HIERARCHY(node)  \
+  (QO_NODE_INFO(node) != NULL	\
+   && (QO_NODE_INFO_N(node) > 1	\
+       || (QO_NODE_INFO_SMCLASS(node)->partition_of != NULL)  \
+	   && QO_NODE_INFO_SMCLASS(node)->users != NULL))
 
 struct qo_segment
 {
@@ -927,6 +933,8 @@ extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
 extern int qo_seg_width (QO_SEGMENT * seg);
 extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
+extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent,
+					COLL_OPT * collation_opt);
 
 extern double QO_INFINITY;
 

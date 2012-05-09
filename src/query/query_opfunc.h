@@ -232,7 +232,8 @@ extern int qdata_divmod_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
 			       OPERATOR_TYPE op, DB_VALUE * res,
 			       TP_DOMAIN * domain);
 
-extern int qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p);
+extern int qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
+			   TP_DOMAIN * domain_p);
 
 extern int qdata_get_cardinality (THREAD_ENTRY * thread_p,
 				  DB_VALUE * db_class_name,

@@ -3360,6 +3360,8 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
+	  /* collation id */
+	  size += OR_INT_SIZE;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  /*
@@ -3444,6 +3446,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
   unsigned int carrier, extended_precision, extended_scale;
   int precision;
   int has_oid, has_subdomain, has_enum;
+  bool has_collation;
   TP_DOMAIN *d;
   DB_TYPE id;
   int rc = NO_ERROR;
@@ -3500,6 +3503,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
       has_oid = 0;
       has_subdomain = 0;
       has_enum = 0;
+      has_collation = false;
 
       switch (id)
 	{
@@ -3530,6 +3534,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
+	  has_collation = true;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  carrier |= (int) (d->codeset) << OR_DOMAIN_CODSET_SHIFT;
@@ -3633,6 +3638,15 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	  return rc;
 	}
 
+      if (has_collation)
+	{
+	  rc = or_put_int (buf, d->collation_id);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+
       /* do we require any extended precision words ? */
       if (extended_precision)
 	{
@@ -3701,8 +3715,8 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid,
-    has_setdomain, has_enum;
-  bool more, auto_precision, is_desc;
+    has_setdomain, has_enum, collation_id;
+  bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
   int index;
   int rc = NO_ERROR;
@@ -3756,6 +3770,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  has_setdomain = 0;
 	  has_enum = 0;
 	  auto_precision = false;
+	  has_collation = false;
 
 	  if (carrier & OR_DOMAIN_DESC_FLAG)
 	    {
@@ -3780,6 +3795,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
+	      has_collation = true;
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset =
@@ -3832,6 +3848,19 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	    default:
 	      break;
+	    }
+
+	  if (has_collation)
+	    {
+	      collation_id = or_get_int (buf, &rc);
+	      if (rc != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      collation_id = 0;
 	    }
 
 	  /* do we have an extra precision word ? */
@@ -3888,6 +3917,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	  /* store the codset if we had one */
 	  d->codeset = codeset;
+	  d->collation_id = collation_id;
 
 	  if (has_enum)
 	    {
@@ -3964,7 +3994,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   DB_TYPE type;
   bool more, is_desc;
   unsigned int carrier, index;
-  unsigned int precision, scale, codeset = 0;
+  unsigned int precision, scale, codeset = 0, collation_id;
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
@@ -4009,6 +4039,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	  /* unpack a real domain */
 	  more = (carrier & OR_DOMAIN_NEXT_FLAG) ? true : false;
 	  is_desc = (carrier & OR_DOMAIN_DESC_FLAG) ? true : false;
+
+	  collation_id = 0;
 
 	  switch (type)		/* try to find */
 	    {
@@ -4060,6 +4092,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
+	      collation_id = or_get_int (buf, &rc);
+	      if (rc != NO_ERROR)
+		{
+		  goto error;
+		}
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset = ((carrier & OR_DOMAIN_CODSET_MASK)
@@ -4100,7 +4137,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		    }
 		}
 	      dom =
-		tp_domain_find_charbit (type, codeset, precision, is_desc);
+		tp_domain_find_charbit (type, codeset, collation_id,
+					precision, is_desc);
 	      break;
 
 	    case DB_TYPE_OBJECT:
@@ -4205,6 +4243,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
+		  dom->collation_id = collation_id;
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -5561,10 +5600,16 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	{
 	  tp_init_value_domain (domain, value);
 	}
+
       if (is_null && value)
 	{
 	  /* this was a tagged NULL value, restore the domain but set the null flag */
 	  db_value_put_null (value);
+	  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+	    {
+	      db_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
+				       TP_DOMAIN_COLLATION (domain));
+	    }
 	}
       else
 	{
@@ -6313,7 +6358,8 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
 
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
 		       DB_GET_ENUM_ELEM_STRING (db_enum),
-		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum));
+		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       size += (*(tp_String.data_lengthval)) (&value, 1);
     }
 
@@ -6350,7 +6396,8 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
       db_enum = &enumeration->elements[idx];
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
 		       DB_GET_ENUM_ELEM_STRING (db_enum),
-		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum));
+		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       rc = (*(tp_String.data_writeval)) (buf, &value);
       if (rc != NO_ERROR)
 	{

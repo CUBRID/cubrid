@@ -63,6 +63,7 @@
 #include "log_impl.h"
 #include "transaction_sr.h"
 #include "boot_sr.h"
+#include "partition.h"
 
 #include "db.h"
 
@@ -205,6 +206,16 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info);
+static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
+				OID * old_class_oid, OID * obj_oid,
+				OID * new_class_oid, HFID * new_class_hfid,
+				RECDES * recdes, HEAP_SCANCACHE * scan_cache,
+				int has_index, int *force_count);
+static int locator_setup_heap_attr (THREAD_ENTRY * thread_p, OID * class_oid,
+				    OID * obj_oid,
+				    HEAP_SCANCACHE * scan_cache,
+				    RECDES * recdes,
+				    HEAP_CACHE_ATTRINFO * attr_info);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 					   LC_COPYAREA * force_area);
 
@@ -4908,13 +4919,38 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
   int error_code = NO_ERROR;
+  OID real_class_oid;
+  HFID real_hfid;
   OID null_oid = {
     NULL_PAGEID, NULL_SLOTID, NULL_VOLID
   };
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
+  HFID_COPY (&real_hfid, hfid);
+  COPY_OID (&real_class_oid, class_oid);
+
+  if (op_type == SINGLE_ROW_INSERT_PRUNING ||
+      op_type == MULTI_ROW_INSERT_PRUNING)
+    {
+      /* Perform partition pruning on the given class */
+      error_code =
+	partition_prune_insert (thread_p, class_oid, recdes, scan_cache,
+				&real_class_oid, &real_hfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto error2;
+	}
+      /* There will be no pruning after this point. Reset op_type to a
+       * non-pruning operation
+       */
+      op_type =
+	(op_type ==
+	 SINGLE_ROW_INSERT_PRUNING) ? SINGLE_ROW_INSERT : MULTI_ROW_INSERT;
+    }
+
   *force_count = 0;
+
   /*
    * This is a new object. The object must be locked in exclusive mode,
    * once its OID is assigned. We just do it for the classes, the new
@@ -4924,8 +4960,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
   /* insert object and lock it */
 
-  if (heap_insert (thread_p, hfid, class_oid, oid, recdes, scan_cache) ==
-      NULL)
+  if (heap_insert (thread_p, &real_hfid, &real_class_oid, oid, recdes,
+		   scan_cache) == NULL)
     {
       /*
        * Problems inserting the object...Maybe, the transaction should be
@@ -4935,7 +4971,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
       goto error2;
     }
 
-  if (OID_IS_ROOTOID (class_oid))
+  if (OID_IS_ROOTOID (&real_class_oid))
     {
       /*
        * A CLASS: Add the classname to class_OID entry and add the class
@@ -4987,9 +5023,10 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        * AN INSTANCE: Apply the necessary index insertions
        */
       if (has_index
-	  && locator_add_or_remove_index (thread_p, recdes, oid, class_oid,
+	  && locator_add_or_remove_index (thread_p, recdes, oid,
+					  &real_class_oid,
 					  true, op_type, scan_cache, true,
-					  true, hfid) != NO_ERROR)
+					  true, &real_hfid) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error1;
@@ -5027,32 +5064,37 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	}
 
       /* increase the counter of the catalog */
-      locator_increase_catalog_count (thread_p, class_oid);
+      locator_increase_catalog_count (thread_p, &real_class_oid);
 
       /* remove query result cache entries which are relevant with this class */
       if (!QFILE_IS_LIST_CACHE_DISABLED)
 	{
-	  if (qexec_clear_list_cache_by_class (thread_p, class_oid) !=
+	  if (qexec_clear_list_cache_by_class (thread_p, &real_class_oid) !=
 	      NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "locator_insert_force: qexec_clear_list_cache_by_class "
 			    "failed for class { %d %d %d }\n",
-			    class_oid->pageid, class_oid->slotid,
-			    class_oid->volid);
+			    real_class_oid.pageid, real_class_oid.slotid,
+			    real_class_oid.volid);
 	    }
-	  qmgr_add_modified_class (thread_p, class_oid);
+	  qmgr_add_modified_class (thread_p, &real_class_oid);
 	}
     }
 
   /* Unlock the object according to isolation level */
   /* locked by heap_insert */
   /* manual duration */
-  lock_unlock_object (thread_p, &null_oid, class_oid, X_LOCK, false);
+  lock_unlock_object (thread_p, &null_oid, &real_class_oid, X_LOCK, false);
 
   *force_count = 1;
 
 error1:
+  /* update the OID of the class with the actual partition in which
+   * the object was inserted
+   */
+  COPY_OID (class_oid, &real_class_oid);
+  HFID_COPY (hfid, &real_hfid);
   if (error_code != NO_ERROR)
     {
       lock_unlock_object (thread_p, oid, class_oid, X_LOCK, false);
@@ -5065,6 +5107,153 @@ error2:
     }
 
   return error_code;
+}
+
+/*
+ * locator_setup_heap_attr () - setup a attribute info object
+ * return :  error code or NO_ERROR
+ * thread_p (in)  :
+ * class_oid (in) :
+ * obj_oid (in)	  :
+ * scan_cache (in):
+ * recdes (in)	  :
+ * attr_info (in/out) :
+ */
+static int
+locator_setup_heap_attr (THREAD_ENTRY * thread_p, OID * class_oid,
+			 OID * obj_oid, HEAP_SCANCACHE * scan_cache,
+			 RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  int error = NO_ERROR;
+  bool clear_attr_info = false, clear_attr_values = false;
+  SCAN_CODE scan = S_SUCCESS;
+
+  assert (attr_info != NULL);
+
+  error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, attr_info);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+  clear_attr_info = true;
+
+  /* Set the values from the provided RECDES. The recdes contains the result
+   * of the update operation
+   */
+  error = heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, attr_info);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+  clear_attr_values = true;
+
+  return NO_ERROR;
+
+error_return:
+  if (clear_attr_values)
+    {
+      heap_attrinfo_clear_dbvalues (attr_info);
+    }
+  if (clear_attr_info)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+    }
+  return error;
+}
+
+/*
+ * locator_move_record () - relocate a record from a partitioned class
+ * return : error code or NO_ERROR
+ * thread_p (in)	: caller thread
+ * old_hfid (in)	: source location of the record
+ * old_class_oid (in)	: class owning the record
+ * obj_oid (in)		: record OID
+ * new_class_oid (in)	: destination class
+ * new_class_hfid (in)	: destination hfid
+ * recdes (in)		: record
+ * scan_cache (in)	: scan cache
+ * has_index (in)	: true if the class has indexes
+ * force_count (in/out)	: 
+ */
+static int
+locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
+		     OID * old_class_oid, OID * obj_oid, OID * new_class_oid,
+		     HFID * new_class_hfid, RECDES * recdes,
+		     HEAP_SCANCACHE * scan_cache, int has_index,
+		     int *force_count)
+{
+  HEAP_CACHE_ATTRINFO attr_info_old, attr_info_new;
+  bool clear_old_attr_info = false, clear_new_attr_info = false;
+  int error = NO_ERROR, i;
+  OID new_obj_oid;
+  HEAP_SCANCACHE insert_scan_cache;
+
+  error =
+    locator_setup_heap_attr (thread_p, old_class_oid, obj_oid, scan_cache,
+			     recdes, &attr_info_old);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  clear_old_attr_info = true;
+
+  /* Initialize an attr_info structure based on the new class */
+  error = heap_attrinfo_start (thread_p, new_class_oid, -1, NULL,
+			       &attr_info_new);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  clear_new_attr_info = true;
+
+  /* use heap set for each value from old attr_info */
+  for (i = 0; i < attr_info_old.num_values; i++)
+    {
+      error =
+	heap_attrinfo_set (NULL, attr_info_old.values[i].attrid,
+			   &attr_info_old.values[i].dbvalue, &attr_info_new);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+  error = locator_delete_force (thread_p, old_hfid, obj_oid, true,
+				SINGLE_ROW_DELETE, scan_cache, force_count);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* initialize a scan cache structure for inserting */
+  error =
+    locator_start_force_scan_cache (thread_p, &insert_scan_cache,
+				    new_class_hfid, new_class_oid,
+				    SINGLE_ROW_INSERT);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  error =
+    locator_attribute_info_force (thread_p, new_class_hfid, &new_obj_oid,
+				  &attr_info_new, NULL, 0, LC_FLUSH_INSERT,
+				  SINGLE_ROW_INSERT, &insert_scan_cache,
+				  force_count, false,
+				  REPL_INFO_TYPE_STMT_NORMAL);
+
+  locator_end_force_scan_cache (thread_p, &insert_scan_cache);
+  COPY_OID (obj_oid, &new_obj_oid);
+
+cleanup:
+  if (clear_old_attr_info)
+    {
+      heap_attrinfo_end (thread_p, &attr_info_old);
+    }
+  if (clear_new_attr_info)
+    {
+      heap_attrinfo_end (thread_p, &attr_info_new);
+    }
+  return error;
 }
 
 /*
@@ -5257,6 +5446,43 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
     }
   else
     {
+      if (op_type == SINGLE_ROW_UPDATE_PRUNING ||
+	  op_type == MULTI_ROW_UPDATE_PRUNING)
+	{
+	  OID real_class_oid;
+	  HFID real_hfid;
+
+	  HFID_COPY (&real_hfid, hfid);
+	  COPY_OID (&real_class_oid, class_oid);
+	  error_code =
+	    partition_prune_update (thread_p, class_oid, recdes,
+				    &real_class_oid, &real_hfid);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (!OID_EQ (class_oid, &real_class_oid))
+	    {
+	      error_code =
+		locator_move_record (thread_p, hfid, class_oid, oid,
+				     &real_class_oid, &real_hfid, recdes,
+				     scan_cache, has_index, force_count);
+	      if (error_code == NO_ERROR)
+		{
+		  COPY_OID (class_oid, &real_class_oid);
+		  HFID_COPY (hfid, &real_hfid);
+		}
+	      return error_code;
+	    }
+
+	  /* There will be no pruning after this point so we should reset
+	   * op_type to a non pruning operation
+	   */
+	  op_type =
+	    (op_type ==
+	     SINGLE_ROW_UPDATE_PRUNING) ? SINGLE_ROW_UPDATE :
+	    MULTI_ROW_UPDATE;
+	}
       /* AN INSTANCE: Update indices if any */
 
       if (has_index)
@@ -5964,7 +6190,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
   int force_count;
   LOG_LSA lsa;
   int error_code = NO_ERROR;
-
+  int op_type = 0;
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
@@ -6014,11 +6240,14 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
       switch (obj->operation)
 	{
 	case LC_FLUSH_INSERT:
+	case LC_FLUSH_INSERT_PRUNE:
+	  op_type =
+	    (obj->operation ==
+	     LC_FLUSH_INSERT) ? SINGLE_ROW_INSERT : SINGLE_ROW_INSERT_PRUNING;
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
-				  &obj->oid, &recdes, obj->has_index,
-				  SINGLE_ROW_INSERT, force_scancache,
-				  &force_count);
+				  &obj->oid, &recdes, obj->has_index, op_type,
+				  force_scancache, &force_count);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -6032,10 +6261,14 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 	  break;
 
 	case LC_FLUSH_UPDATE:
+	case LC_FLUSH_UPDATE_PRUNE:
+	  op_type =
+	    (obj->operation ==
+	     LC_FLUSH_UPDATE) ? SINGLE_ROW_UPDATE : SINGLE_ROW_UPDATE_PRUNING;
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid,
 				  &obj->oid, NULL, &recdes, obj->has_index,
-				  NULL, 0, SINGLE_ROW_UPDATE, force_scancache,
+				  NULL, 0, op_type, force_scancache,
 				  &force_count, false,
 				  REPL_INFO_TYPE_STMT_NORMAL);
 	  if (error_code != NO_ERROR)
@@ -6245,6 +6478,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
   switch (operation)
     {
     case LC_FLUSH_UPDATE:
+    case LC_FLUSH_UPDATE_PRUNE:
       scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY,
 		       NULL_CHN);
       if (scan == S_SUCCESS)
@@ -6270,7 +6504,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 	  else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* This means that the object we're looking for does not exist.
-	       * This information is usefull for the caller of this function
+	       * This information is useful for the caller of this function
 	       * so return this error code instead of ER_FAILD.
 	       * An example for which we need to know this error code is when
 	       * we're updating partitioned tables and previous iterations
@@ -6292,6 +6526,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
       /* Fall through */
 
     case LC_FLUSH_INSERT:
+    case LC_FLUSH_INSERT_PRUNE:
       copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, attr_info,
 						 old_recdes,
@@ -6304,7 +6539,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 	}
 
       /* Assume that it has indices */
-      if (operation == LC_FLUSH_INSERT)
+      if (LC_IS_FLUSH_INSERT (operation))
 	{
 	  error_code =
 	    locator_insert_force (thread_p, hfid, &attr_info->class_oid, oid,
@@ -6313,7 +6548,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 	}
       else
 	{
-	  assert (operation == LC_FLUSH_UPDATE);
+	  assert (LC_IS_FLUSH_UPDATE (operation));
 	  error_code =
 	    locator_update_force (thread_p, hfid, &attr_info->class_oid, oid,
 				  old_recdes, &new_recdes, true, att_id,
@@ -6483,8 +6718,8 @@ locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
     {
       error_code =
 	locator_insert_force (thread_p, newhfid, &attr_info->class_oid,
-			      &newoid, &new_recdes, true, SINGLE_ROW_INSERT,
-			      scan_cache, force_count);
+			      &newoid, &new_recdes, true,
+			      SINGLE_ROW_INSERT, scan_cache, force_count);
     }
   if (copyarea != NULL)
     {

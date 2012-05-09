@@ -275,6 +275,15 @@ static int pt_init_pred_expr_context (PARSER_CONTEXT * parser,
 				      PT_NODE * predicate, PT_NODE * spec,
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
+static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser,
+					   PT_NODE * statement,
+					   PT_NODE ** non_null_attrs);
+static XASL_NODE *pt_to_merge_delete_xasl (PARSER_CONTEXT * parser,
+					   PT_NODE * statement);
+static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser,
+					   PT_NODE * statement,
+					   PT_NODE * non_null_attrs,
+					   PT_NODE * default_expr_attrs);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
@@ -520,11 +529,11 @@ static int pt_get_pred_attrs (PARSER_CONTEXT * parser,
 			      TABLE_INFO * table_info, PT_NODE * pred,
 			      PT_NODE ** pred_attrs);
 
-static PT_NODE *pt_pruning_and_flush_class_and_null_xasl (PARSER_CONTEXT *
-							  parser,
-							  PT_NODE * tree,
-							  void *void_arg,
-							  int *continue_walk);
+static PT_NODE *pt_flush_class_and_null_xasl (PARSER_CONTEXT *
+					      parser,
+					      PT_NODE * tree,
+					      void *void_arg,
+					      int *continue_walk);
 
 
 static VAL_LIST *pt_clone_val_list (PARSER_CONTEXT * parser,
@@ -3369,6 +3378,8 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   PT_NODE *class_;
   int isvirt;
+  MOP clsmop = NULL;
+  SM_CLASS *smcls = NULL;
 
   /* If parser->dont_flush is asserted, skip the flushing. */
   if (node->node_type == PT_SPEC)
@@ -3376,6 +3387,12 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
       for (class_ = node->info.spec.flat_entity_list;
 	   class_; class_ = class_->next)
 	{
+	  clsmop = class_->info.name.db_object;
+	  if (clsmop == NULL)
+	    {
+	      assert (false);
+	      PT_ERROR (parser, node, "Generic error");
+	    }
 	  /* if class object is not dirty and doesn't contain any
 	   * dirty instances, do not flush the class and its instances */
 	  if (WS_ISDIRTY (class_->info.name.db_object)
@@ -3386,7 +3403,33 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 		  PT_ERRORc (parser, class_, er_msg ());
 		}
 	    }
-
+	  /* Also test if we need to flush partitions of each class */
+	  if (!locator_is_class (clsmop, DB_FETCH_READ))
+	    {
+	      continue;
+	    }
+	  if (au_fetch_class_force (clsmop, &smcls, AU_FETCH_READ) !=
+	      NO_ERROR)
+	    {
+	      PT_ERRORc (parser, class_, er_msg ());
+	    }
+	  if (smcls->partition_of)
+	    {
+	      /* flush all partitions */
+	      DB_OBJLIST *user = NULL;
+	      SM_CLASS *subclass = NULL;
+	      for (user = smcls->users; user != NULL; user = user->next)
+		{
+		  if (WS_ISDIRTY (user->op)
+		      || ws_has_dirty_objects (user->op, &isvirt))
+		    {
+		      if (sm_flush_objects (user->op) != NO_ERROR)
+			{
+			  PT_ERRORc (parser, class_, er_msg ());
+			}
+		    }
+		}
+	    }
 	}
     }
 
@@ -3394,7 +3437,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
- * pt_pruning_and_flush_class_and_null_xasl () - Flushes each class encountered
+ * pt_flush_class_and_null_xasl () - Flushes each class encountered
  * 	Partition pruning is applied to PT_SELECT nodes
  *   return:
  *   parser(in):
@@ -3403,24 +3446,16 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_pruning_and_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
-					  PT_NODE * tree,
-					  void *void_arg, int *continue_walk)
+pt_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
+			      PT_NODE * tree,
+			      void *void_arg, int *continue_walk)
 {
   if (ws_has_updated ())
     {
       tree = pt_flush_classes (parser, tree, void_arg, continue_walk);
     }
 
-  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
-    {
-      if (!tree->partition_pruned && tree->node_type == PT_SELECT)
-	{
-	  do_apply_partition_pruning (parser, tree);
-	}
-      tree->info.query.xasl = NULL;
-    }
-  else if (tree->node_type == PT_DATA_TYPE)
+  if (tree->node_type == PT_DATA_TYPE)
     {
       PT_NODE *entity;
 
@@ -4039,7 +4074,11 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 		      strcpy (buf, ",");
 		      qstr_make_typed_string (pt_type_enum_to_db (arg_type),
 					      aggregate_list->value2,
-					      DB_DEFAULT_PRECISION, buf, 1);
+					      DB_DEFAULT_PRECISION, buf, 1,
+					      TP_DOMAIN_CODESET
+					      (aggregate_list->domain),
+					      TP_DOMAIN_COLLATION
+					      (aggregate_list->domain));
 		      aggregate_list->value2->need_clear = true;
 		    }
 		  else
@@ -4437,9 +4476,12 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	{
 	  if (from->info.spec.entity_name)
 	    {
-	      info.class_name =
-		from->info.spec.entity_name->info.name.original;
-	      info.flag_agg_optimize = true;
+	      if (from->info.spec.entity_name->info.name.partition_of == NULL)
+		{
+		  info.class_name =
+		    from->info.spec.entity_name->info.name.original;
+		  info.flag_agg_optimize = true;
+		}
 	    }
 	}
     }
@@ -4670,6 +4712,10 @@ pt_make_access_spec (TARGET_TYPE spec_type,
       spec->where_key = where_key;
       spec->where_pred = where_pred;
       spec->next = NULL;
+      spec->needs_pruning = 0;
+      spec->pruned = false;
+      spec->curent = NULL;
+      spec->parts = NULL;
     }
 
   return spec;
@@ -4811,6 +4857,11 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
 	{
 	  return NULL;
 	}
+
+      spec->parts = NULL;
+      spec->curent = NULL;
+      spec->needs_pruning = sm_is_partitioned_class (class_);
+      spec->pruned = false;
 
       spec->s.cls_node.cls_regu_list_key = attr_list_key;
       spec->s.cls_node.cls_regu_list_pred = attr_list_pred;
@@ -6642,22 +6693,26 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
 
     case PT_TYPE_CHAR:
       dt->info.data_type.precision = DB_MAX_CHAR_PRECISION;
-      dt->info.data_type.units = lang_charset ();
+      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
+      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_NCHAR:
       dt->info.data_type.precision = DB_MAX_NCHAR_PRECISION;
-      dt->info.data_type.units = (int) lang_charset ();
+      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
+      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
-      dt->info.data_type.units = lang_charset ();
+      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
+      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_VARNCHAR:
       dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
-      dt->info.data_type.units = (int) lang_charset ();
+      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
+      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_BIT:
@@ -7273,7 +7328,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_FROMDAYS
 		       || node->info.expr.op == PT_TIMETOSEC
 		       || node->info.expr.op == PT_SECTOTIME
-		       || node->info.expr.op == PT_EVALUATE_VARIABLE)
+		       || node->info.expr.op == PT_EVALUATE_VARIABLE
+		       || node->info.expr.op == PT_TO_ENUMERATION_VALUE)
 		{
 		  r1 = NULL;
 
@@ -7845,6 +7901,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			  str->bytes;
 
 			db_string_free (dbname);
+
+			/* copy data type (to apply collation and codeset) */
+			assert (dbname_val->data_type == NULL);
+			dbname_val->data_type =
+			  parser_copy_tree (parser, node->data_type);
+			assert (dbname_val->data_type->type_enum
+				== dbname_val->type_enum);
 		      }
 		    else
 		      {
@@ -7879,6 +7942,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			  str->bytes;
 
 			db_string_free (dbversion);
+
+			/* copy data type (to apply collation and codeset) */
+			assert (dbversion_val->data_type == NULL);
+			dbversion_val->data_type =
+			  parser_copy_tree (parser, node->data_type);
+			assert (dbversion_val->data_type->type_enum
+				== dbversion_val->type_enum);
 		      }
 		    else
 		      {
@@ -8377,6 +8447,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      (char *) current_user_val->info.value.data_value.
 		      str->bytes;
 
+		    /* copy data type (to apply collation and codeset) */
+		    assert (current_user_val->data_type == NULL);
+		    current_user_val->data_type =
+		      parser_copy_tree (parser, node->data_type);
+		    assert (current_user_val->data_type->type_enum
+			    == current_user_val->type_enum);
+
 		    regu = pt_to_regu_variable (parser,
 						current_user_val, unbox);
 
@@ -8437,6 +8514,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      (char *) current_user_val->info.value.data_value.
 		      str->bytes;
 
+		    /* copy data type (to apply collation and codeset) */
+		    assert (current_user_val->data_type == NULL);
+		    current_user_val->data_type =
+		      parser_copy_tree (parser, node->data_type);
+		    assert (current_user_val->data_type->type_enum
+			    == current_user_val->type_enum);
+
 		    regu = pt_to_regu_variable (parser,
 						current_user_val, unbox);
 
@@ -8460,12 +8544,22 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  }
 
 		case PT_TO_CHAR:
-		  data_type =
-		    pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		  if (node->data_type != NULL)
+		    {
+		      data_type = node->data_type;
+		    }
+		  else
+		    {
+		      data_type =
+			pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		    }
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		  regu = pt_make_regu_arith (r1, r2, r3, T_TO_CHAR, domain);
-		  parser_free_tree (parser, data_type);
+		  if (data_type != node->data_type)
+		    {
+		      parser_free_tree (parser, data_type);
+		    }
 		  break;
 
 		case PT_TO_DATE:
@@ -8816,6 +8910,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_EXEC_STATS:
 		  regu =
 		    pt_make_regu_arith (r1, r2, r3, T_EXEC_STATS, domain);
+		  break;
+
+		case PT_TO_ENUMERATION_VALUE:
+		  regu =
+		    pt_make_regu_arith (NULL, r2, NULL,
+					T_TO_ENUMERATION_VALUE, domain);
 		  break;
 
 		default:
@@ -10938,11 +11038,16 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
    * depending on the presence of a lower limit and the query complexity */
 
   /* do we have a join or other non-trivial select? */
-  if (xasl->scan_ptr || (xasl->spec_list && xasl->spec_list->next))
+  if (xasl->scan_ptr)
     {
       /* If we are joining multiple tables, we cannot afford to use the
        * lower limit: it should be applied only at the higher, join level
        * and not at lower table scan levels. Discard the lower limit.*/
+      limit_infop->lower = NULL;
+    }
+  else if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
+    {
+      /* We cannot use the lower limit in a hierarchy */
       limit_infop->lower = NULL;
     }
   else
@@ -11241,6 +11346,15 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->indx_id.i.btid = *btidp;
   indx_infop->coverage = (int) qo_xasl_get_coverage (class_, qo_index_infop)
     && (is_prefix_index == false);
+
+  if (indx_infop->coverage)
+    {
+      COLL_OPT collation_opt;
+
+      qo_check_coll_optimization (index_entryp, &collation_opt);
+
+      indx_infop->coverage = collation_opt.allow_index_cov;
+    }
 
   indx_infop->class_oid = class_->oid_info.oid;
   indx_infop->use_desc_index = index_entryp->use_descending;
@@ -15482,6 +15596,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  error = ER_HEAP_UNKNOWN_OBJECT;
 	}
 
+      insert->needs_pruning = sm_is_partitioned_class (class_obj);
       insert->has_uniques = has_uniques;
       insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
       hint_arg = statement->info.insert.waitsecs_hint;
@@ -15551,18 +15666,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       error = pt_to_constraint_pred (parser, xasl,
 				     statement->info.insert.spec,
 				     non_null_attrs, attrs, 0);
-
-      if (insert)
-	{
-	  insert->partition = NULL;
-	}
-
-      if (statement->info.insert.spec->info.spec.flat_entity_list->info.name.
-	  partition_of)
-	{
-	  error = do_build_partition_xasl (parser, class_obj,
-					   &xasl->proc.insert.partition);
-	}
     }
 
   if (pt_has_error (parser))
@@ -16095,6 +16198,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   XASL_NODE *xasl = NULL;
   DELETE_PROC_NODE *delete_ = NULL;
+  UPDDEL_CLASS_INFO *class_info = NULL;
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from;
   PT_NODE *where;
@@ -16104,7 +16208,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   HFID *hfid;
   OID *class_oid;
   DB_OBJECT *class_obj;
-  int no_classes = 0, cl;
+  int no_classes = 0, no_subclasses = 0, i, j;
   int error = NO_ERROR;
   PT_NODE *hint_arg, *node;
   float hint_wait_secs;
@@ -16172,7 +16276,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    pt_make_aptr_parent_node (parser, aptr_statement,
 				      DELETE_PROC)) == NULL))
 	{
-	  error = er_errid ();
+	  goto error_return;
 	}
 
       while (select_list)
@@ -16186,11 +16290,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (aptr_statement)
     {
       parser_free_tree (parser, aptr_statement);
-    }
-
-  if (!statement->partition_pruned)
-    {
-      do_apply_partition_pruning (parser, statement);
+      aptr_statement = NULL;
     }
 
   if (xasl != NULL)
@@ -16205,73 +16305,80 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 	    {
-	      cl_name_node = node->info.spec.flat_entity_list;
-	      for (; cl_name_node; cl_name_node = cl_name_node->next)
-		{
-		  no_classes++;
-		}
+	      no_classes++;
 	    }
-
 	  node = node->next;
 	}
-
-      if ((delete_->class_oid = regu_oid_array_alloc (no_classes)) == NULL)
+      delete_->no_classes = no_classes;
+      delete_->classes = regu_upddel_class_info_array_alloc (no_classes);
+      if (delete_->classes == NULL)
 	{
-	  error = er_errid ();
-	}
-      else if ((delete_->class_hfid =
-		regu_hfid_array_alloc (no_classes)) == NULL)
-	{
-	  error = er_errid ();
+	  goto error_return;
 	}
 
-      node = statement->info.delete_.spec;
-
-      for (cl = 0, cl_name_node = NULL;
-	   cl < no_classes && error >= 0;
-	   ++cl, cl_name_node = cl_name_node->next)
+      /* we iterate through updatable classes from left to right and fill
+       * the structures from right to left because we must match the order
+       * of OID's in the generated SELECT statement */
+      for (i = no_classes - 1, node = statement->info.delete_.spec;
+	   i >= 0 && node != NULL; node = node->next)
 	{
-	  if (!cl_name_node)
+	  if (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 	    {
-	      while (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
-		{
-		  node = node->next;
-		}
-	      cl_name_node = node->info.spec.flat_entity_list;
-	      node = node->next;
+	      /* skip classes from which we're not deleting */
+	      continue;
 	    }
 
+	  class_info = &delete_->classes[i--];
+
+	  /* setup members not needed for DELETE */
+	  class_info->att_id = NULL;
+	  class_info->no_attrs = 0;
+	  class_info->has_uniques = 0;
+
+	  cl_name_node = node->info.spec.flat_entity_list;
 	  class_obj = cl_name_node->info.name.db_object;
-	  class_oid = ws_identifier (class_obj);
-	  if (class_oid == NULL)
+	  class_info->needs_pruning = sm_is_partitioned_class (class_obj);
+
+	  no_subclasses = 0;
+	  while (cl_name_node)
 	    {
-	      error = ER_HEAP_UNKNOWN_OBJECT;
+	      no_subclasses++;
+	      cl_name_node = cl_name_node->next;
+	    }
+	  class_info->no_subclasses = no_subclasses;
+	  class_info->class_oid = regu_oid_array_alloc (no_subclasses);
+	  if (class_info->class_oid == NULL)
+	    {
+	      goto error_return;
+	    }
+	  class_info->class_hfid = regu_hfid_array_alloc (no_subclasses);
+	  if (class_info->class_hfid == NULL)
+	    {
+	      goto error_return;
 	    }
 
-	  hfid = sm_get_heap (class_obj);
-	  if (hfid == NULL)
+	  j = 0;
+	  cl_name_node = node->info.spec.flat_entity_list;
+	  while (cl_name_node != NULL)
 	    {
-	      error = er_errid ();
-	    }
-
-	  if (class_oid != NULL && hfid != NULL)
-	    {
-	      if (delete_->class_oid)
+	      class_obj = cl_name_node->info.name.db_object;
+	      class_oid = ws_identifier (class_obj);
+	      if (class_oid == NULL)
 		{
-		  delete_->class_oid[cl] = *class_oid;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
+		  goto error_return;
 		}
-
-
-	      if (delete_->class_hfid)
+	      hfid = sm_get_heap (class_obj);
+	      if (hfid == NULL)
 		{
-		  delete_->class_hfid[cl] = *hfid;
+		  goto error_return;
 		}
+	      COPY_OID (&class_info->class_oid[j], class_oid);
+	      HFID_COPY (&class_info->class_hfid[j], hfid);
+	      cl_name_node = cl_name_node->next;
+	      j++;
 	    }
-	}
-
-      if (error >= 0)
-	{
-	  delete_->no_classes = no_classes;
 	}
 
       hint_arg = statement->info.delete_.waitsecs_hint;
@@ -16335,6 +16442,23 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return xasl;
+
+error_return:
+  if (aptr_statement != NULL)
+    {
+      parser_free_tree (parser, aptr_statement);
+    }
+
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      xasl = NULL;
+    }
+  else if (error != NO_ERROR)
+    {
+      xasl = NULL;
+    }
+  return xasl;
 }
 
 
@@ -16352,7 +16476,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   XASL_NODE *xasl = NULL;
   UPDATE_PROC_NODE *update = NULL;
-  UPDATE_CLASS_INFO *upd_cls = NULL;
+  UPDDEL_CLASS_INFO *upd_cls = NULL;
   PT_NODE *assigns = statement->info.update.assignment;
   PT_NODE *aptr_statement = NULL;
   PT_NODE *p = NULL;
@@ -16482,11 +16606,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       XASL_SET_FLAG (xasl->aptr_list, XASL_MULTI_UPDATE_AGG);
     }
 
-  if (statement->partition_pruned == 0)
-    {
-      do_apply_partition_pruning (parser, statement);
-    }
-
   /* flush all classes and count classes for update */
   no_classes = 0;
   p = from;
@@ -16515,7 +16634,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   update->no_classes = no_classes;
   update->no_assigns = no_vals;
 
-  update->classes = regu_update_class_info_array_alloc (no_classes);
+  update->classes = regu_upddel_class_info_array_alloc (no_classes);
   if (update->classes == NULL)
     {
       error = er_errid ();
@@ -16589,12 +16708,9 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  goto cleanup;
 	}
 
-      upd_cls->partition = regu_partition_array_alloc (no_subclasses);
-      if (upd_cls->partition == NULL)
-	{
-	  error = er_errid ();
-	  goto cleanup;
-	}
+      cl_name_node = p->info.spec.flat_entity_list;
+      class_obj = cl_name_node->info.name.db_object;
+      upd_cls->needs_pruning = sm_is_partitioned_class (class_obj);
 
       /* iterate through subclasses */
       cl = 0;
@@ -16659,18 +16775,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		}
 	      /* count assignments */
 	      assign_idx++;
-	    }
-
-	  /* build partition xasl if needed */
-	  upd_cls->partition[cl] = NULL;
-	  if (cl_name_node->info.name.partition_of)
-	    {
-	      error = do_build_partition_xasl (parser, class_obj,
-					       &upd_cls->partition[cl]);
-	      if (error != NO_ERROR)
-		{
-		  goto cleanup;
-		}
 	    }
 
 	  /* count subclasses */
@@ -17038,8 +17142,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   parser->dbval_cnt = 0;
 
   node = parser_walk_tree (parser, node,
-			   pt_pruning_and_flush_class_and_null_xasl, NULL,
-			   NULL, NULL);
+			   pt_flush_class_and_null_xasl, NULL, NULL, NULL);
 
   /* During the above parser_walk_tree the request to get a driver may cause a
      deadlock. We give up the following steps and propagate the error
@@ -20152,23 +20255,143 @@ outofmem:
 }
 
 /*
- * pt_to_merge_update_query () - Creates a query for MERGE UPDATE part
+ * validate_regu_key_function_index () - checks if a regu variable can be used
+ *					 as key information when the index scan
+ *					 uses a function index.
+ *   return:
+ *   regu_var(in):
+ */
+static bool
+validate_regu_key_function_index (REGU_VARIABLE * regu_var)
+{
+  if (regu_var->type == TYPE_INARITH)
+    {
+      switch (regu_var->value.arithptr->opcode)
+	{
+	case T_MOD:
+	case T_LEFT:
+	case T_RIGHT:
+	case T_REPEAT:
+	case T_SPACE:
+	case T_MID:
+	case T_STRCMP:
+	case T_REVERSE:
+	case T_BIT_COUNT:
+	case T_FLOOR:
+	case T_CEIL:
+	case T_ABS:
+	case T_POWER:
+	case T_ROUND:
+	case T_LOG:
+	case T_EXP:
+	case T_SQRT:
+	case T_SIN:
+	case T_COS:
+	case T_TAN:
+	case T_COT:
+	case T_ACOS:
+	case T_ASIN:
+	case T_ATAN:
+	case T_ATAN2:
+	case T_DEGREES:
+	case T_DATE:
+	case T_TIME:
+	case T_RADIANS:
+	case T_LN:
+	case T_LOG2:
+	case T_LOG10:
+	case T_TRUNC:
+	case T_CHR:
+	case T_INSTR:
+	case T_LEAST:
+	case T_GREATEST:
+	case T_POSITION:
+	case T_LOWER:
+	case T_UPPER:
+	case T_LTRIM:
+	case T_RTRIM:
+	case T_FROM_UNIXTIME:
+	case T_SUBSTRING_INDEX:
+	case T_MD5:
+	case T_LPAD:
+	case PT_RPAD:
+	case T_REPLACE:
+	case T_TRANSLATE:
+	case T_ADD_MONTHS:
+	case T_LAST_DAY:
+	case T_UNIX_TIMESTAMP:
+	case T_STR_TO_DATE:
+	case T_TIME_FORMAT:
+	case T_TIMESTAMP:
+	case T_YEAR:
+	case T_MONTH:
+	case T_DAY:
+	case T_HOUR:
+	case PT_MINUTE:
+	case T_SECOND:
+	case T_QUARTER:
+	case T_WEEKDAY:
+	case T_DAYOFWEEK:
+	case T_DAYOFYEAR:
+	case T_TODAYS:
+	case T_FROMDAYS:
+	case T_TIMETOSEC:
+	case T_SECTOTIME:
+	case T_MAKEDATE:
+	case T_MAKETIME:
+	case T_WEEK:
+	case T_MONTHS_BETWEEN:
+	case T_FORMAT:
+	case T_DATE_FORMAT:
+	case T_ADDDATE:
+	case T_DATEDIFF:
+	case T_TIMEDIFF:
+	case T_SUBDATE:
+	  break;
+	default:
+	  return true;
+	}
+      if (regu_var->value.arithptr->leftptr &&
+	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->leftptr))
+	{
+	  return false;
+	}
+      if (regu_var->value.arithptr->rightptr &&
+	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->rightptr))
+	{
+	  return false;
+	}
+      if (regu_var->value.arithptr->thirdptr &&
+	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->thirdptr))
+	{
+	  return false;
+	}
+      return true;
+    }
+  return true;
+}
+
+/*
+ * pt_to_merge_upd_del_query () - Creates a query for MERGE UPDATE/DELETE part
  *   return: resulted query, or NULL if error
  *   parser(in): parser context
  *   select_list(in): nodes for select list
  *   info(in): MERGE statement info
+ *   composite_locking(in): update or delete
  *
  * Note: Prepends the class oid and the instance oid onto the select list for
- * use during the update operation.
+ * use during the update or delete operation.
  * If the operation is a server side update, the prepended class oid is
  * put in the list file otherwise the class oid is a hidden column and
- * not put in the list file
+ * not put in the list file.
  */
 PT_NODE *
-pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
-			  PT_MERGE_INFO * info)
+pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
+			   PT_MERGE_INFO * info,
+			   PT_COMPOSITE_LOCKING composite_locking)
 {
   PT_NODE *statement, *spec, *save_spec, *save_next;
+  PT_NODE *search_cond;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -20186,8 +20409,10 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   statement->info.query.q.select.from =
     parser_append_node (parser_copy_tree_list (parser, info->using),
 			statement->info.query.q.select.from);
-  /* set merge search condition */
-  if (info->update.search_cond)
+  /* set search condition */
+  search_cond = (composite_locking == PT_COMPOSITE_LOCKING_UPDATE) ?
+		info->update.search_cond : info->update.del_search_cond;
+  if (search_cond)
     {
       PT_NODE *node = parser_new_node (parser, PT_EXPR);
       if (node)
@@ -20196,7 +20421,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	  node->info.expr.arg1 =
 	    parser_copy_tree_list (parser, info->search_cond);
 	  node->info.expr.arg2 =
-	    parser_copy_tree_list (parser, info->update.search_cond);
+	    parser_copy_tree_list (parser, search_cond);
 	}
       statement->info.query.q.select.where = node;
     }
@@ -20212,7 +20437,6 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 
   /* add the class and instance OIDs to the select list */
   spec = save_spec = statement->info.query.q.select.from;
-  statement->info.query.upd_del_class_cnt = 0;
   while (spec)
     {
       if (spec->node_type != PT_SPEC)
@@ -20222,7 +20446,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	  parser_free_tree (parser, statement);
 	  return NULL;
 	}
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      if (spec->info.spec.flag & (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE))
 	{
 	  save_next = spec->next;
 	  spec->next = NULL;
@@ -20233,13 +20457,12 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	  statement = pt_add_row_oid_name (parser, statement);
 	  assert (statement != NULL);
 	  spec->next = save_next;
-	  statement->info.query.upd_del_class_cnt++;
 	}
       spec = spec->next;
     }
-  assert (statement->info.query.upd_del_class_cnt == 1);
+  statement->info.query.upd_del_class_cnt = 1;
   statement->info.query.q.select.from = save_spec;
-  statement->info.query.composite_locking = PT_COMPOSITE_LOCKING_UPDATE;
+  statement->info.query.composite_locking = composite_locking;
 
   return statement;
 }
@@ -20352,112 +20575,1121 @@ error_exit:
   return NULL;
 }
 
-static bool
-validate_regu_key_function_index (REGU_VARIABLE * regu_var)
+/*
+ * pt_to_merge_xasl () - Generate XASL for MERGE statement
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *   non_null_attrs(in):
+ *   default_expr_attrs(in):
+ */
+XASL_NODE *
+pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
+		  PT_NODE ** non_null_attrs, PT_NODE * default_expr_attrs)
 {
-  if (regu_var->type == TYPE_INARITH)
+  XASL_NODE *xasl, *xptr;
+  XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;
+  OID *oid = NULL;
+  int error = NO_ERROR;
+
+  xasl = regu_xasl_node_alloc (MERGE_PROC);
+  if (xasl == NULL)
     {
-      switch (regu_var->value.arithptr->opcode)
+      error = er_errid ();
+      if (error == NO_ERROR)
 	{
-	case T_MOD:
-	case T_LEFT:
-	case T_RIGHT:
-	case T_REPEAT:
-	case T_SPACE:
-	case T_MID:
-	case T_STRCMP:
-	case T_REVERSE:
-	case T_BIT_COUNT:
-	case T_FLOOR:
-	case T_CEIL:
-	case T_ABS:
-	case T_POWER:
-	case T_ROUND:
-	case T_LOG:
-	case T_EXP:
-	case T_SQRT:
-	case T_SIN:
-	case T_COS:
-	case T_TAN:
-	case T_COT:
-	case T_ACOS:
-	case T_ASIN:
-	case T_ATAN:
-	case T_ATAN2:
-	case T_DEGREES:
-	case T_DATE:
-	case T_TIME:
-	case T_RADIANS:
-	case T_LN:
-	case T_LOG2:
-	case T_LOG10:
-	case T_TRUNC:
-	case T_CHR:
-	case T_INSTR:
-	case T_LEAST:
-	case T_GREATEST:
-	case T_POSITION:
-	case T_LOWER:
-	case T_UPPER:
-	case T_LTRIM:
-	case T_RTRIM:
-	case T_FROM_UNIXTIME:
-	case T_SUBSTRING_INDEX:
-	case T_MD5:
-	case T_LPAD:
-	case PT_RPAD:
-	case T_REPLACE:
-	case T_TRANSLATE:
-	case T_ADD_MONTHS:
-	case T_LAST_DAY:
-	case T_UNIX_TIMESTAMP:
-	case T_STR_TO_DATE:
-	case T_TIME_FORMAT:
-	case T_TIMESTAMP:
-	case T_YEAR:
-	case T_MONTH:
-	case T_DAY:
-	case T_HOUR:
-	case PT_MINUTE:
-	case T_SECOND:
-	case T_QUARTER:
-	case T_WEEKDAY:
-	case T_DAYOFWEEK:
-	case T_DAYOFYEAR:
-	case T_TODAYS:
-	case T_FROMDAYS:
-	case T_TIMETOSEC:
-	case T_SECTOTIME:
-	case T_MAKEDATE:
-	case T_MAKETIME:
-	case T_WEEK:
-	case T_MONTHS_BETWEEN:
-	case T_FORMAT:
-	case T_DATE_FORMAT:
-	case T_ADDDATE:
-	case T_DATEDIFF:
-	case T_TIMEDIFF:
-	case T_SUBDATE:
-	  break;
-	default:
-	  return true;
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      if (regu_var->value.arithptr->leftptr &&
-	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->leftptr))
-	{
-	  return false;
-	}
-      if (regu_var->value.arithptr->rightptr &&
-	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->rightptr))
-	{
-	  return false;
-	}
-      if (regu_var->value.arithptr->thirdptr &&
-	  !VALIDATE_REGU_KEY_HELPER (regu_var->value.arithptr->thirdptr))
-	{
-	  return false;
-	}
-      return true;
+      return NULL;
     }
-  return true;
+
+  if (statement->info.merge.update.assignment)
+    {
+      /* generate XASL for UPDATE part */
+      update_xasl =
+	pt_to_merge_update_xasl (parser, statement, non_null_attrs);
+      if (update_xasl == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	    }
+	  return NULL;
+	}
+      if (statement->info.merge.update.del_search_cond)
+	{
+	  /* generate XASL for UPDATE DELETE part */
+	  delete_xasl = pt_to_merge_delete_xasl (parser, statement);
+	  if (delete_xasl == NULL)
+	    {
+	      if (pt_has_error (parser))
+		{
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		}
+	      return NULL;
+	    }
+	}
+    }
+
+  if (statement->info.merge.insert.value_clauses)
+    {
+      /* generate XASL for INSERT part */
+      insert_xasl =
+	pt_to_merge_insert_xasl (parser, statement, *non_null_attrs,
+				 default_expr_attrs);
+      if (insert_xasl == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	    }
+	  return NULL;
+	}
+    }
+
+  /* finalize XASL */
+  xasl->proc.merge.update_xasl = update_xasl;
+  xasl->proc.merge.delete_xasl = delete_xasl;
+  xasl->proc.merge.insert_xasl = insert_xasl;
+  xasl->qstmt = statement->alias_print;
+
+  if ((oid = ws_identifier (db_get_user ())) != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* list of class OIDs used in this XASL */
+  xptr = (update_xasl ? update_xasl : insert_xasl);
+
+  xasl->class_oid_list = regu_oid_array_alloc (xptr->n_oid_list);
+  xasl->repr_id_list = regu_int_array_alloc (xptr->n_oid_list);
+  if (xasl->class_oid_list == NULL || xasl->repr_id_list == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      return NULL;
+    }
+
+  xasl->n_oid_list = xptr->n_oid_list;
+
+  /* copy xptr oids to xasl */
+  (void) memcpy (xasl->class_oid_list, xptr->class_oid_list,
+		 sizeof (OID) * xptr->n_oid_list);
+  (void) memcpy (xasl->repr_id_list, xptr->repr_id_list,
+		 sizeof (int) * xptr->n_oid_list);
+
+  /* set host variable count */
+  xasl->dbval_cnt = parser->host_var_count + parser->auto_param_count;
+
+  return xasl;
+}
+
+/*
+ * pt_to_merge_update_xasl () - Generate XASL for UPDATE part of MERGE
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *   non_null_attrs(in):
+ */
+static XASL_NODE *
+pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
+			 PT_NODE ** non_null_attrs)
+{
+  XASL_NODE *xasl = NULL, *aptr;
+  UPDATE_PROC_NODE *update = NULL;
+  UPDDEL_CLASS_INFO *upd_cls = NULL;
+  PT_NODE *assigns = statement->info.merge.update.assignment;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *p = NULL;
+  PT_NODE *cl_name_node = NULL;
+  int no_subclasses = 0;
+  PT_NODE *from = NULL;
+  int cl = 0, no_vals = 0, no_consts = 0;
+  int error = NO_ERROR;
+  int a = 0, assign_idx = 0;
+  PT_NODE *att_name_node = NULL;
+  DB_VALUE *val = NULL;
+  DB_ATTRIBUTE *attr = NULL;
+  DB_DOMAIN *dom = NULL;
+  OID *class_oid = NULL;
+  DB_OBJECT *class_obj = NULL;
+  HFID *hfid = NULL;
+  PT_NODE *hint_arg = NULL;
+  PT_ASSIGNMENTS_HELPER assign_helper;
+  PT_NODE **links = NULL;
+  UPDATE_ASSIGNMENT *assign = NULL;
+  PT_NODE *select_names = NULL;
+  PT_NODE *select_values = NULL;
+  PT_NODE *const_names = NULL;
+  PT_NODE *const_values = NULL;
+  OID *oid = NULL;
+  PT_MERGE_INFO *info = &statement->info.merge;
+
+  from = parser_copy_tree (parser, info->into);
+  from = parser_append_node (parser_copy_tree_list (parser, info->using),
+			     from);
+
+  if (from == NULL || from->node_type != PT_SPEC
+      || from->info.spec.range_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid spec");
+      goto cleanup;
+    }
+
+  /* get assignments lists for select statement generation */
+  error =
+    pt_get_assignment_lists (parser, &select_names, &select_values,
+			     &const_names, &const_values, &no_vals,
+			     &no_consts, info->update.assignment, &links);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      goto cleanup;
+    }
+
+  aptr_statement = pt_to_merge_upd_del_query (parser, select_values, info,
+					      PT_COMPOSITE_LOCKING_UPDATE);
+
+  /* restore tree structure; pt_get_assignment_lists() */
+  pt_restore_assignment_links (info->update.assignment, links, -1);
+
+  if (aptr_statement == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  aptr_statement = mq_translate (parser, aptr_statement);
+  if (aptr_statement == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
+  if (xasl == NULL || xasl->aptr_list == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  /* flush all classes */
+  p = from;
+  while (p != NULL)
+    {
+      cl_name_node = p->info.spec.flat_entity_list;
+      while (cl_name_node != NULL)
+	{
+	  error = locator_flush_class (cl_name_node->info.name.db_object);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  cl_name_node = cl_name_node->next;
+	}
+      p = p->next;
+    }
+
+  update = &xasl->proc.update;
+
+  update->no_classes = 1;
+  update->no_assigns = no_vals;
+
+  update->classes = regu_upddel_class_info_array_alloc (1);
+  if (update->classes == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  update->assigns = regu_update_assignment_array_alloc (update->no_assigns);
+  if (update->assigns == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  upd_cls = &update->classes[0];
+
+  /* count subclasses of update class */
+  no_subclasses = 0;
+  cl_name_node = from->info.spec.flat_entity_list;
+  while (cl_name_node)
+    {
+      no_subclasses++;
+      cl_name_node = cl_name_node->next;
+    }
+  upd_cls->no_subclasses = no_subclasses;
+
+  /* count class assignments */
+  a = 0;
+  pt_init_assignments_helper (parser, &assign_helper, assigns);
+  while (pt_get_next_assignment (&assign_helper) != NULL)
+    {
+      if (assign_helper.lhs->info.name.spec_id == from->info.spec.id)
+	{
+	  a++;
+	}
+    }
+  upd_cls->no_attrs = a;
+
+  /* allocate array for subclasses OIDs, hfids, attributes ids */
+  upd_cls->class_oid = regu_oid_array_alloc (no_subclasses);
+  if (upd_cls->class_oid == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  upd_cls->class_hfid = regu_hfid_array_alloc (no_subclasses);
+  if (upd_cls->class_hfid == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  upd_cls->att_id = regu_int_array_alloc (no_subclasses * upd_cls->no_attrs);
+  if (upd_cls->att_id == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  cl_name_node = from->info.spec.flat_entity_list;
+  class_obj = cl_name_node->info.name.db_object;
+  upd_cls->needs_pruning = sm_is_partitioned_class (class_obj);
+
+  /* iterate through subclasses */
+  cl = 0;
+  cl_name_node = from->info.spec.flat_entity_list;
+  while (cl_name_node && error == NO_ERROR)
+    {
+      class_obj = cl_name_node->info.name.db_object;
+
+      /* get class oid */
+      class_oid = ws_identifier (class_obj);
+      if (class_oid == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
+	  error = ER_HEAP_UNKNOWN_OBJECT;
+	  goto cleanup;
+	}
+
+      /* get hfid */
+      hfid = sm_get_heap (class_obj);
+      if (hfid == NULL)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
+
+      upd_cls->class_oid[cl] = *class_oid;
+      upd_cls->class_hfid[cl] = *hfid;
+
+      /* Calculate attribute ids and link each assignment
+       * to classes and attributes */
+      pt_init_assignments_helper (parser, &assign_helper, assigns);
+      assign_idx = a = 0;
+      while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+	{
+	  if (att_name_node->info.name.spec_id
+	      == cl_name_node->info.name.spec_id)
+	    {
+	      assign = &update->assigns[assign_idx];
+	      assign->cls_idx = 0;
+	      assign->att_idx = a;
+	      upd_cls->att_id[cl * upd_cls->no_attrs + a] =
+		sm_att_id (class_obj, att_name_node->info.name.original);
+	      if (!upd_cls->has_uniques)
+		{
+		  /* check if current attribute has a unique
+		   * constraint */
+		  upd_cls->has_uniques =
+		    sm_att_unique_constrained (class_obj,
+					       att_name_node->
+					       info.name.original);
+		}
+
+	      if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
+		{
+		  error = er_errid ();
+		  if (error == NO_ERROR)
+		    {
+		      error = ER_GENERIC_ERROR;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		    }
+		  goto cleanup;
+		}
+	      /* count attributes for current class */
+	      a++;
+	    }
+	  /* count assignments */
+	  assign_idx++;
+	}
+
+      /* count subclasses */
+      cl++;
+      cl_name_node = cl_name_node->next;
+    }
+
+  update->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+  hint_arg = info->waitsecs_hint;
+  if (info->hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+    {
+      float hint_wait_secs = (float) atof (hint_arg->info.name.original);
+      if (hint_wait_secs > 0)
+	{
+	  update->wait_msecs = (int) (hint_wait_secs * 1000);
+	}
+      else
+	{
+	  update->wait_msecs = (int) hint_wait_secs;
+	}
+    }
+  update->no_logging = (info->hint & PT_HINT_NO_LOGGING);
+  update->release_lock = (info->hint & PT_HINT_REL_LOCK);
+
+  /* check constants */
+  class_obj = from->info.spec.flat_entity_list->info.name.db_object;
+
+  pt_init_assignments_helper (parser, &assign_helper, assigns);
+  a = 0;
+  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+    {
+      PT_NODE *node, *prev, *next;
+      /* process only constants assigned to current class attributes */
+      if (att_name_node->info.name.spec_id != from->info.spec.id
+	  || !assign_helper.is_rhs_const)
+	{
+	  /* this is a constant assignment */
+	  a++;
+	  continue;
+	}
+      /* get DB_VALUE of assignment's right argument */
+      val = pt_value_to_db (parser, assign_helper.assignment->info.expr.arg2);
+      if (val == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto cleanup;
+	}
+
+      prev = NULL;
+      for (node = *non_null_attrs; node != NULL; node = next)
+	{
+	  /* Check to see if this is a NON NULL attr */
+	  next = node->next;
+
+	  if (!pt_name_equal (parser, node, att_name_node))
+	    {
+	      prev = node;
+	      continue;
+	    }
+
+	  if (DB_IS_NULL (val))
+	    {
+	      /* assignment of a NULL value to a non null attribute */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1,
+		      att_name_node->info.name.original);
+	      error = ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+	      goto cleanup;
+	    }
+	  /* remove the node from the non_null_attrs list
+	   * since we've already checked that the attr will be
+	   * non-null and the engine need not check again.
+	   */
+	  if (prev == NULL)
+	    {
+	      *non_null_attrs = (*non_null_attrs)->next;
+	    }
+	  else
+	    {
+	      prev->next = node->next;
+	    }
+
+	  /* free the node */
+	  node->next = NULL;	/* cut-off link */
+	  parser_free_tree (parser, node);
+	  break;
+	}
+
+      /* Coerce constant value to destination attribute type */
+      update->assigns[a].constant = regu_dbval_alloc ();
+      if (update->assigns[a].constant == NULL)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
+      attr = db_get_attribute (class_obj, att_name_node->info.name.original);
+      if (attr == NULL)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
+      dom = db_attribute_domain (attr);
+      error = tp_value_coerce (val, update->assigns[a].constant, dom);
+      if (error != DOMAIN_COMPATIBLE)
+	{
+	  error = ER_OBJ_DOMAIN_CONFLICT;
+	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
+		  error, 1, att_name_node->info.name.original);
+	  goto cleanup;
+	}
+
+      /* count assignments */
+      a++;
+    }
+
+  /* generate xasl for non-null constraints predicates */
+  error =
+    pt_get_assignment_lists (parser, &select_names, &select_values,
+			     &const_names, &const_values, &no_vals,
+			     &no_consts, info->update.assignment, &links);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
+  error = pt_to_constraint_pred (parser, xasl, info->into,
+				 *non_null_attrs, select_names,
+				 aptr_statement->info.query.
+				 upd_del_class_cnt * 2);
+  pt_restore_assignment_links (info->update.assignment, links, -1);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  aptr = xasl->aptr_list;
+
+  xasl->n_oid_list = aptr->n_oid_list;
+  aptr->n_oid_list = 0;
+  xasl->class_oid_list = aptr->class_oid_list;
+  aptr->class_oid_list = NULL;
+  xasl->repr_id_list = aptr->repr_id_list;
+  aptr->repr_id_list = NULL;
+  xasl->dbval_cnt = aptr->dbval_cnt;
+
+  /* fill in XASL cache related information */
+  /* OID of the user who is creating this XASL */
+  if ((oid = ws_identifier (db_get_user ())) != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+cleanup:
+  if (aptr_statement != NULL)
+    {
+      parser_free_tree (parser, aptr_statement);
+    }
+  if (from != NULL)
+    {
+      parser_free_tree (parser, from);
+    }
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      xasl = NULL;
+    }
+  else if (error != NO_ERROR)
+    {
+      xasl = NULL;
+    }
+
+  return xasl;
+}
+
+/*
+ * pt_to_merge_insert_xasl () - Generate XASL for INSERT part of MERGE
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *   non_null_attrs(in):
+ *   default_expr_attrs(in):
+ */
+static XASL_NODE *
+pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
+			 PT_NODE * non_null_attrs,
+			 PT_NODE * default_expr_attrs)
+{
+  XASL_NODE *xasl = NULL, *aptr;
+  INSERT_PROC_NODE *insert = NULL;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *values_list;
+  PT_NODE *attr, *attrs;
+  MOBJ class_;
+  OID *class_oid, *oid;
+  DB_OBJECT *class_obj;
+  HFID *hfid;
+  int no_vals, no_default_expr, a;
+  int error = NO_ERROR;
+  PT_NODE *hint_arg;
+
+  values_list = statement->info.merge.insert.value_clauses;
+  if (values_list == NULL)
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return NULL;
+    }
+
+  aptr_statement =
+    pt_to_merge_insert_query (parser, values_list->info.node_list.list,
+			      &statement->info.merge);
+  if (aptr_statement == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      return NULL;
+    }
+  aptr_statement = mq_translate (parser, aptr_statement);
+  if (aptr_statement == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      return NULL;
+    }
+
+  attrs = statement->info.merge.insert.attr_list;
+  class_obj =
+    statement->info.merge.into->info.spec.flat_entity_list->info.name.
+    db_object;
+
+  class_ = locator_create_heap_if_needed (class_obj,
+					  sm_is_reuse_oid_class (class_obj));
+  if (class_ == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  hfid = sm_heap (class_);
+  if (hfid == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  if (locator_flush_class (class_obj) != NO_ERROR)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  no_default_expr = pt_length_of_list (default_expr_attrs);
+  no_vals =
+    pt_length_of_select_list (pt_get_select_list (parser, aptr_statement),
+			      EXCLUDE_HIDDEN_COLUMNS);
+
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+  if (xasl == NULL || xasl->aptr_list == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  insert = &xasl->proc.insert;
+  insert->class_hfid = *hfid;
+  class_oid = ws_identifier (class_obj);
+  if (class_oid)
+    {
+      insert->class_oid = *class_oid;
+    }
+  else
+    {
+      error = ER_HEAP_UNKNOWN_OBJECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto cleanup;
+    }
+
+  insert->has_uniques = statement->info.merge.has_unique;
+  insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+  hint_arg = statement->info.merge.waitsecs_hint;
+  if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT
+      && PT_IS_HINT_NODE (hint_arg))
+    {
+      float hint_wait_secs = (float) atof (hint_arg->info.name.original);
+      if (hint_wait_secs > 0)
+	{
+	  insert->wait_msecs = (int) (hint_wait_secs * 1000);
+	}
+      else
+	{
+	  insert->wait_msecs = (int) hint_wait_secs;
+	}
+    }
+  insert->no_logging = (statement->info.merge.hint & PT_HINT_NO_LOGGING);
+  insert->release_lock = (statement->info.merge.hint & PT_HINT_REL_LOCK);
+  insert->do_replace = 0;
+  insert->dup_key_oid_var_index = -1;
+  insert->is_first_value = 1;
+
+  if (no_vals + no_default_expr > 0)
+    {
+      insert->att_id = regu_int_array_alloc (no_vals + no_default_expr);
+      if (insert->att_id)
+	{
+	  /* the identifiers of the attributes that have a default 
+	   * expression are placed first */
+	  for (attr = default_expr_attrs, a = 0; error >= 0 &&
+	       a < no_default_expr; attr = attr->next, ++a)
+	    {
+	      if ((insert->att_id[a] =
+		  sm_att_id (class_obj, attr->info.name.original)) < 0)
+		{
+		  error = er_errid ();
+		}
+	    }
+	  for (attr = attrs, a = no_default_expr; error >= 0 &&
+	       a < no_default_expr + no_vals; attr = attr->next, ++a)
+	    {
+	      if ((insert->att_id[a] =
+		  sm_att_id (class_obj, attr->info.name.original)) < 0)
+		{
+		  error = er_errid ();
+		}
+	    }
+	  insert->vals = NULL;
+	  insert->no_vals = no_vals + no_default_expr;
+	}
+      else
+	{
+	  error = er_errid ();
+	}
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  insert->needs_pruning = sm_is_partitioned_class (class_obj);
+
+  error = pt_to_constraint_pred (parser, xasl,
+				 statement->info.merge.into,
+				 non_null_attrs, attrs, 0);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* fill in XASL cache related information */
+  aptr = xasl->aptr_list;
+
+  /* OID of the user who is creating this XASL */
+  oid = ws_identifier (db_get_user ());
+  if (oid != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* list of class OIDs used in this XASL */
+  /* reserve spec oid space by 1+ */
+  xasl->class_oid_list = regu_oid_array_alloc (1 + aptr->n_oid_list);
+  xasl->repr_id_list = regu_int_array_alloc (1 + aptr->n_oid_list);
+  if (xasl->class_oid_list == NULL || xasl->repr_id_list == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  xasl->n_oid_list = 1 + aptr->n_oid_list;
+
+  /* copy aptr oids to xasl */
+  (void) memcpy (xasl->class_oid_list + 1, aptr->class_oid_list,
+		 sizeof (OID) * aptr->n_oid_list);
+  (void) memcpy (xasl->repr_id_list + 1, aptr->repr_id_list,
+		 sizeof (int) * aptr->n_oid_list);
+
+  /* set spec oid */
+  xasl->class_oid_list[0] = insert->class_oid;
+  xasl->repr_id_list[0] = -1;
+  xasl->dbval_cnt = aptr->dbval_cnt;
+
+cleanup:
+  if (aptr_statement != NULL)
+    {
+      parser_free_tree (parser, aptr_statement);
+    }
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      xasl = NULL;
+    }
+  else if (error != NO_ERROR)
+    {
+      xasl = NULL;
+    }
+
+  return xasl;
+}
+
+/*
+ * pt_to_merge_delete_xasl () - Generate XASL for UPDATE DELETE part of MERGE
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ */
+static XASL_NODE *
+pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl = NULL, *aptr;
+  DELETE_PROC_NODE *delete_ = NULL;
+  UPDDEL_CLASS_INFO *del_cls = NULL;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *from;
+  PT_NODE *select_node, *select_list = NULL;
+  PT_NODE *cl_name_node;
+  HFID *hfid;
+  OID *class_oid, *oid;
+  DB_OBJECT *class_obj;
+  int no_subclasses = 0, cl;
+  int error = NO_ERROR;
+  PT_NODE *hint_arg, *node, *flat = NULL;
+  PT_MERGE_INFO *info = &statement->info.merge;
+
+  from = parser_copy_tree (parser, info->into);
+  from = parser_append_node (parser_copy_tree_list (parser, info->using),
+			     from);
+
+  if (from == NULL || from->node_type != PT_SPEC
+      || from->info.spec.range_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid spec");
+      goto cleanup;
+    }
+
+  /* append LOB type attributes to select_list */
+  node = from;
+  while (node)
+    {
+      if (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
+	{
+	  node = node->next;
+	  continue;
+	}
+
+      cl_name_node = node->info.spec.flat_entity_list;
+      class_obj = cl_name_node->info.name.db_object;
+      if (class_obj)
+	{
+	  DB_ATTRIBUTE *attr;
+	  attr = db_get_attributes (class_obj);
+	  while (attr)
+	    {
+	      if (attr->type->id == DB_TYPE_BLOB
+		  || attr->type->id == DB_TYPE_CLOB)
+		{
+		  /* add lob to select list */
+		  select_node = pt_name (parser, attr->header.name);
+		  if (select_node)
+		    {
+		      select_node->info.name.spec_id = node->info.spec.id;
+		      select_node->type_enum =
+			pt_db_to_type_enum (attr->type->id);
+		      select_list =
+			parser_append_node (select_node, select_list);
+		    }
+		}
+	      attr = db_attribute_next (attr);
+	    }
+	}
+      node = node->next;
+    }
+
+  aptr_statement = pt_to_merge_upd_del_query (parser, select_list, info,
+					      PT_COMPOSITE_LOCKING_DELETE);
+  if (aptr_statement == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+  aptr_statement = mq_translate (parser, aptr_statement);
+  if (aptr_statement == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
+  if (xasl == NULL || xasl->aptr_list == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  delete_ = &xasl->proc.delete_;
+
+  delete_->no_classes = 1;
+  delete_->classes = regu_upddel_class_info_array_alloc (1);
+  if (delete_->classes == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  del_cls = &delete_->classes[0];
+  del_cls->att_id = NULL;
+  del_cls->no_attrs = 0;
+  del_cls->has_uniques = 0;
+
+  /* count subclasses */
+  no_subclasses = 0;
+  cl_name_node = from->info.spec.flat_entity_list;
+  while (cl_name_node)
+    {
+      no_subclasses++;
+      cl_name_node = cl_name_node->next;
+    }
+  del_cls->no_subclasses = no_subclasses;
+
+  del_cls->class_oid = regu_oid_array_alloc (no_subclasses);
+  if (del_cls->class_oid == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+  del_cls->class_hfid = regu_hfid_array_alloc (no_subclasses);
+  if (del_cls->class_hfid == NULL)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
+
+  cl_name_node = from->info.spec.flat_entity_list;
+  class_obj = cl_name_node->info.name.db_object;
+  del_cls->needs_pruning = sm_is_partitioned_class (class_obj);
+
+  cl = 0;
+  while (cl_name_node)
+    {
+      class_obj = cl_name_node->info.name.db_object;
+      /* get class oid */
+      class_oid = ws_identifier (class_obj);
+      if (class_oid == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
+	  error = ER_HEAP_UNKNOWN_OBJECT;
+	  goto cleanup;
+	}
+      /* get hfid */
+      hfid = sm_get_heap (class_obj);
+      if (hfid == NULL)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
+      COPY_OID (&del_cls->class_oid[cl], class_oid);
+      HFID_COPY (&del_cls->class_hfid[cl], hfid);
+      cl_name_node = cl_name_node->next;
+      cl++;
+    }
+
+  hint_arg = info->waitsecs_hint;
+  delete_->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+  if (PT_IS_HINT_NODE (hint_arg) && (info->hint & PT_HINT_LK_TIMEOUT))
+    {
+      float hint_wait_secs = (float) atof (hint_arg->info.name.original);
+      if (hint_wait_secs > 0)
+	{
+	  delete_->wait_msecs = (int) (hint_wait_secs * 1000);
+	}
+      else
+	{
+	  delete_->wait_msecs = (int) hint_wait_secs;
+	}
+    }
+  delete_->no_logging = (info->hint & PT_HINT_NO_LOGGING);
+  delete_->release_lock = (info->hint & PT_HINT_REL_LOCK);
+
+  /* fill in XASL cache related information */
+  aptr = xasl->aptr_list;
+
+  /* OID of the user who is creating this XASL */
+  if ((oid = ws_identifier (db_get_user ())) != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* list of class OIDs used in this XASL */
+  xasl->n_oid_list = aptr->n_oid_list;
+  aptr->n_oid_list = 0;
+  xasl->class_oid_list = aptr->class_oid_list;
+  aptr->class_oid_list = NULL;
+  xasl->repr_id_list = aptr->repr_id_list;
+  aptr->repr_id_list = NULL;
+  xasl->dbval_cnt = aptr->dbval_cnt;
+
+cleanup:
+  while (select_list != NULL)
+    {
+      select_node = select_list;
+      select_list = select_list->next;
+      parser_free_node (parser, select_node);
+    }
+  if (aptr_statement != NULL)
+    {
+      parser_free_tree (parser, aptr_statement);
+    }
+  if (from != NULL)
+    {
+      parser_free_tree (parser, from);
+    }
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      xasl = NULL;
+    }
+  else if (error != NO_ERROR)
+    {
+      xasl = NULL;
+    }
+
+  return xasl;
 }

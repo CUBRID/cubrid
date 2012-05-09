@@ -643,6 +643,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\query\partition.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\query\query_dump.c"
 					>
 				</File>

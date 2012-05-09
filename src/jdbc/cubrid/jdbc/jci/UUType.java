@@ -83,7 +83,6 @@ abstract public class UUType {
 	public static final byte U_TYPE_DATETIME = 22;
 	public static final byte U_TYPE_BLOB = 23;
 	public static final byte U_TYPE_CLOB = 24;
-	public static final byte U_TYPE_ENUMERATION = 25;
 
 	static boolean isCollectionType(byte type) {
 		if (type == UUType.U_TYPE_SET || type == UUType.U_TYPE_MULTISET

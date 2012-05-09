@@ -39,6 +39,10 @@ extern PT_NODE *pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT *
 extern PT_NODE *pt_check_union_compatibility (PARSER_CONTEXT * parser,
 					      PT_NODE * node);
 
+extern PT_NODE *pt_semantic_quick_check_node (PARSER_CONTEXT * parser,
+					      PT_NODE ** spec,
+					      PT_NODE ** node);
+
 extern PT_NODE *pt_semantic_check (PARSER_CONTEXT * parser,
 				   PT_NODE * statement);
 

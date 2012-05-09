@@ -174,6 +174,7 @@ extern unsigned int db_on_server;
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
+  0,            /* collation id */		       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
@@ -181,13 +182,14 @@ extern unsigned int db_on_server;
   0				/* is_visited */
 
 /* Same as above, but leaves off the prec and scale, and sets the codeset */
-#define DOMAIN_INIT2(codeset)                          \
+#define DOMAIN_INIT2(codeset, coll)                    \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
   {0, NULL},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   (codeset),    /* codeset */                          \
+  (coll),	/* collation id */		       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
@@ -208,6 +210,7 @@ extern unsigned int db_on_server;
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
+  0,            /* collation id */		       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
@@ -222,7 +225,7 @@ TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double, DOMAIN_INIT };
 
 TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String,
   DB_MAX_VARCHAR_PRECISION, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591)
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 TP_DOMAIN tp_Object_domain = { NULL, NULL, &tp_Object, DOMAIN_INIT3 };
 TP_DOMAIN tp_Set_domain = { NULL, NULL, &tp_Set, DOMAIN_INIT3 };
@@ -234,6 +237,7 @@ TP_DOMAIN tp_Multiset_domain = {
 TP_DOMAIN tp_Sequence_domain = {
   NULL, NULL, &tp_Sequence, DOMAIN_INIT3
 };
+
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
@@ -275,32 +279,32 @@ TP_DOMAIN tp_Enumeration_domain =
 
 TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric,
   DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE,
-  DOMAIN_INIT2 (0)
+  DOMAIN_INIT2 (0, 0)
 };
 
 TP_DOMAIN tp_Bit_domain = { NULL, NULL, &tp_Bit,
   TP_FLOATING_PRECISION_VALUE, 0,
-  DOMAIN_INIT2 (INTL_CODESET_RAW_BITS)
+  DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
 TP_DOMAIN tp_VarBit_domain = { NULL, NULL, &tp_VarBit,
   DB_MAX_VARBIT_PRECISION, 0,
-  DOMAIN_INIT2 (INTL_CODESET_RAW_BITS)
+  DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
 TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char,
   TP_FLOATING_PRECISION_VALUE, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591)
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
 TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar,
   TP_FLOATING_PRECISION_VALUE, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591)
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
 TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar,
   DB_MAX_VARNCHAR_PRECISION, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591)
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
 /* These must be in DB_TYPE order */
@@ -639,11 +643,17 @@ tp_init (void)
       d->is_desc = false;
     }
 
+
   /* update string domains with current codeset */
-  tp_String_domain.codeset = lang_charset ();
-  tp_Char_domain.codeset = lang_charset ();
-  tp_NChar_domain.codeset = lang_charset ();
-  tp_VarNChar_domain.codeset = lang_charset ();
+  tp_String_domain.codeset = LANG_SYS_CODESET;
+  tp_Char_domain.codeset = LANG_SYS_CODESET;
+  tp_NChar_domain.codeset = LANG_SYS_CODESET;
+  tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
+
+  tp_String_domain.collation_id = LANG_SYS_COLLATION;
+  tp_Char_domain.collation_id = LANG_SYS_COLLATION;
+  tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
+  tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
 }
 
 
@@ -734,8 +744,7 @@ void
 tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
 {
   int i = 0;
-
-  if (enumeration == NULL)
+  if (enumeration == NULL || enumeration->count == 0)
     {
       return;
     }
@@ -865,7 +874,16 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
   domain->setdomain = NULL;
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
-  domain->codeset = 0;		/* is there a better default for this ? */
+  if (TP_TYPE_HAS_COLLATION (typeid_))
+    {
+      domain->codeset = LANG_SYS_CODESET;
+      domain->collation_id = LANG_SYS_COLLATION;
+    }
+  else
+    {
+      domain->codeset = 0;
+      domain->collation_id = 0;
+    }
   domain->is_cached = 0;
   domain->built_in_index = 0;
 
@@ -1126,6 +1144,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->precision = d->precision;
 	      new_domain->scale = d->scale;
 	      new_domain->codeset = d->codeset;
+	      new_domain->collation_id = d->collation_id;
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
@@ -1243,6 +1262,8 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+      db_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -1540,6 +1561,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
       break;
 
     case DB_TYPE_VARCHAR:
+      if (dom1->collation_id != dom2->collation_id)
+	{
+	  match = 0;
+	  break;
+	}
+      /* fall through */
     case DB_TYPE_VARBIT:
       if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
 	{
@@ -1568,6 +1595,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
       break;
 
     case DB_TYPE_CHAR:
+      if (dom1->collation_id != dom2->collation_id)
+	{
+	  match = 0;
+	  break;
+	}
+      /* fall through */
     case DB_TYPE_BIT:
       /*
        * Unlike varchar, we have to be a little tighter on domain matches for
@@ -1600,7 +1633,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	  || exact == TP_SET_MATCH)
 	{
 	  match = ((dom1->precision == dom2->precision)
-		   && (dom1->codeset == dom2->codeset));
+		   && (dom1->collation_id == dom2->collation_id));
 	}
       else
 	{
@@ -1608,7 +1641,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	   * see discussion of special domain precision values in the
 	   * DB_TYPE_CHAR case above.
 	   */
-	  match = ((dom1->codeset == dom2->codeset)
+	  match = ((dom1->collation_id == dom2->collation_id)
 		   && (dom2->precision == 0
 		       || dom2->precision == TP_FLOATING_PRECISION_VALUE
 		       || dom1->precision >= dom2->precision));
@@ -1621,12 +1654,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	  || exact == TP_SET_MATCH)
 	{
 	  match = ((dom1->precision == dom2->precision)
-		   && (dom1->codeset == dom2->codeset));
+		   && (dom1->collation_id == dom2->collation_id));
 	}
       else
 	{
 	  /* see notes above under the DB_TYPE_VARCHAR clause */
-	  match = dom1->codeset == dom2->codeset;
+	  match = dom1->collation_id == dom2->collation_id;
 	}
       break;
 
@@ -1661,6 +1694,13 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
       break;
       /* don't have a default so we make sure to add clauses for all types */
     }
+
+#if !defined (NDEBUG)
+  if (match && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (dom1)))
+    {
+      assert (dom1->codeset == dom2->codeset);
+    }
+#endif
 
   return match;
 }
@@ -2019,6 +2059,55 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
       break;
 
     case DB_TYPE_VARCHAR:
+      while (domain)
+	{
+	  if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
+	    {
+	      /* check for descending order */
+	      if (domain->precision < transient->precision)
+		{
+		  break;
+		}
+
+	      match = ((domain->precision == transient->precision)
+		       && (domain->collation_id == transient->collation_id)
+		       && (domain->is_desc == transient->is_desc));
+	    }
+	  else if (exact == TP_STR_MATCH)
+	    {
+	      /*
+	       * Allow the match if the precisions would allow us to reuse the
+	       * string without modification.
+	       */
+	      match = ((domain->precision >= transient->precision)
+		       && (domain->collation_id == transient->collation_id)
+		       && (domain->is_desc == transient->is_desc));
+	    }
+	  else
+	    {
+	      /*
+	       * Allow matches regardless of precision, let the actual length
+	       * of the value determine if it can be assigned.  This is
+	       * important for literal strings as their precision will be the
+	       * maximum but they can still be assigned to domains with a
+	       * smaller precision provided the actual value is within the
+	       * destination domain tolerance.
+	       */
+	      match = ((domain->collation_id == transient->collation_id)
+		       && (domain->is_desc == transient->is_desc));
+	    }
+
+	  if (match)
+	    {
+	      assert (domain->codeset == transient->codeset);
+	      break;
+	    }
+
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+      break;
+
     case DB_TYPE_VARBIT:
       while (domain)
 	{
@@ -2065,7 +2154,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	}
       break;
 
-    case DB_TYPE_CHAR:
     case DB_TYPE_BIT:
       while (domain)
 	{
@@ -2112,6 +2200,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	}
       break;
 
+    case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
       while (domain)
 	{
@@ -2124,7 +2213,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 		}
 
 	      match = ((domain->precision == transient->precision)
-		       && (domain->codeset == transient->codeset)
+		       && (domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc));
 	    }
 	  else
@@ -2133,7 +2222,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       * see discussion of special domain precision values
 	       * in the DB_TYPE_CHAR case above.
 	       */
-	      match = ((domain->codeset == transient->codeset)
+	      match = ((domain->collation_id == transient->collation_id)
 		       && (transient->precision == 0
 			   || (transient->precision ==
 			       TP_FLOATING_PRECISION_VALUE)
@@ -2143,6 +2232,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
 	  if (match)
 	    {
+	      assert (domain->codeset == transient->codeset);
 	      break;
 	    }
 
@@ -2165,18 +2255,19 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 		}
 
 	      match = ((domain->precision == transient->precision)
-		       && (domain->codeset == transient->codeset)
+		       && (domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc));
 	    }
 	  else
 	    {
 	      /* see notes above under the DB_TYPE_VARCHAR clause */
-	      match = ((domain->codeset == transient->codeset)
+	      match = ((domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc));
 	    }
 
 	  if (match)
 	    {
+	      assert (domain->codeset == transient->codeset);
 	      break;
 	    }
 
@@ -2398,12 +2489,13 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
  *    return: domain that matches
  *    type(in): DB_TYPE
  *    codeset(in): code set
+ *    collation_id(in): collation id
  *    precision(in): precision
  *    is_desc(in): desc order for index key_type
  */
 TP_DOMAIN *
-tp_domain_find_charbit (DB_TYPE type, int codeset, int precision,
-			bool is_desc)
+tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
+			int precision, bool is_desc)
 {
   TP_DOMAIN *dom;
 
@@ -2433,10 +2525,15 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int precision,
 	  /* we MUST perform exact matches here */
 	  if (dom->precision == precision && dom->is_desc == is_desc)
 	    {
-	      /* If it is national character, codeset should be same. */
-	      if (type != DB_TYPE_VARNCHAR || dom->codeset == codeset)
+	      if (type == DB_TYPE_VARBIT)
 		{
 		  break;	/* found */
+		}
+	      else if (dom->collation_id == collation_id)
+		{
+		  /* codeset should be the same if collations are equal */
+		  assert (dom->codeset == codeset);
+		  break;
 		}
 	    }
 	}
@@ -2456,10 +2553,15 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int precision,
 	  /* we MUST perform exact matches here */
 	  if (dom->precision == precision && dom->is_desc == is_desc)
 	    {
-	      /* If it is national character, codeset should be same. */
-	      if (type != DB_TYPE_NCHAR || dom->codeset == codeset)
+	      if (type == DB_TYPE_BIT)
 		{
 		  break;	/* found */
+		}
+	      else if (dom->collation_id == collation_id)
+		{
+		  /* codeset should be the same if collations are equal */
+		  assert (dom->codeset == codeset);
+		  break;
 		}
 	    }
 	}
@@ -2996,6 +3098,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain_init (domain, value_type);
 	    }
 	  domain->codeset = db_get_string_codeset (val);
+	  domain->collation_id = db_get_string_collation (val);
 	  domain->precision = db_value_precision (val);
 
 	  /*
@@ -4212,6 +4315,23 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   desired_type = TP_DOMAIN_TYPE (desired_domain);
   desired_precision = desired_domain->precision;
 
+  if (TP_TYPE_HAS_COLLATION (original_type)
+      && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (desired_domain)))
+    {
+      if (DB_GET_STRING_COLLATION (val)
+	  != TP_DOMAIN_COLLATION (desired_domain)
+	  && !LANG_IS_COERCIBLE_COLL (DB_GET_STRING_COLLATION (val)))
+	{
+	  return 0;
+	}
+
+      if (DB_GET_STRING_CODESET (val) == INTL_CODESET_ISO88591
+	  && TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_UTF8)
+	{
+	  return 0;
+	}
+    }
+
   if (desired_precision == TP_FLOATING_PRECISION_VALUE)
     {
       desired_precision = original_length;
@@ -5060,22 +5180,26 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
     {
     case DB_TYPE_CHAR:
       DB_MAKE_CHAR (result, DB_VALUE_PRECISION (result), str_float,
-		    strlen (str_float));
+		    strlen (str_float), DB_GET_STRING_CODESET (result),
+		    DB_GET_STRING_COLLATION (result));
       break;
 
     case DB_TYPE_NCHAR:
       DB_MAKE_NCHAR (result, DB_VALUE_PRECISION (result), str_float,
-		     strlen (str_float));
+		     strlen (str_float), DB_GET_STRING_CODESET (result),
+		     DB_GET_STRING_COLLATION (result));
       break;
 
     case DB_TYPE_VARCHAR:
       DB_MAKE_VARCHAR (result, DB_VALUE_PRECISION (result), str_float,
-		       strlen (str_float));
+		       strlen (str_float), DB_GET_STRING_CODESET (result),
+		       DB_GET_STRING_COLLATION (result));
       break;
 
     case DB_TYPE_VARNCHAR:
       DB_MAKE_VARNCHAR (result, DB_VALUE_PRECISION (result), str_float,
-			strlen (str_float));
+			strlen (str_float), DB_GET_STRING_CODESET (result),
+			DB_GET_STRING_COLLATION (result));
       break;
 
     default:
@@ -5131,22 +5255,26 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
     {
     case DB_TYPE_CHAR:
       DB_MAKE_CHAR (result, DB_VALUE_PRECISION (result), str_double,
-		    strlen (str_double));
+		    strlen (str_double), DB_GET_STRING_CODESET (result),
+		    DB_GET_STRING_COLLATION (result));
       break;
 
     case DB_TYPE_NCHAR:
       DB_MAKE_NCHAR (result, DB_VALUE_PRECISION (result), str_double,
-		     strlen (str_double));
+		     strlen (str_double), DB_GET_STRING_CODESET (result),
+		     DB_GET_STRING_COLLATION (result));
       break;
 
     case DB_TYPE_VARCHAR:
       DB_MAKE_VARCHAR (result, DB_VALUE_PRECISION (result), str_double,
-		       strlen (str_double));
+		       strlen (str_double), DB_GET_STRING_CODESET (result),
+		       DB_GET_STRING_COLLATION (result));
       break;
 
     case DB_TYPE_VARNCHAR:
       DB_MAKE_VARNCHAR (result, DB_VALUE_PRECISION (result), str_double,
-			strlen (str_double));
+			strlen (str_double), DB_GET_STRING_CODESET (result),
+			DB_GET_STRING_COLLATION (result));
       break;
 
     default:
@@ -5195,14 +5323,16 @@ tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result)
 	}
       else
 	{
-	  db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0);
+	  db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0,
+			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	}
     }
   else
     {
       db_make_varchar (result, DB_DEFAULT_PRECISION,
 		       DB_GET_ENUM_STRING (src),
-		       DB_GET_ENUM_STRING_SIZE (src));
+		       DB_GET_ENUM_STRING_SIZE (src), LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
     }
 
   return error;
@@ -5312,7 +5442,8 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 #define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type)		\
    ((TP_IS_CHAR_STRING(src_type) && !(TP_IS_CHAR_STRING(dest_type) ||	\
 				      TP_IS_DATETIME_TYPE(dest_type) || \
-				      TP_IS_NUMERIC_TYPE(dest_type))) ||\
+				      TP_IS_NUMERIC_TYPE(dest_type) ||	\
+				      dest_type == DB_TYPE_ENUMERATION)) ||\
     (!TP_IS_CHAR_STRING(src_type) && src_type != DB_TYPE_ENUMERATION &&	\
      TP_IS_CHAR_STRING(dest_type)) ||					\
     (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
@@ -5370,20 +5501,26 @@ make_desired_string_db_value (DB_TYPE desired_type,
     {
     case DB_TYPE_CHAR:
       db_make_char (&temp, desired_domain->precision, new_string,
-		    strlen (new_string));
+		    strlen (new_string), TP_DOMAIN_CODESET (desired_domain),
+		    TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_NCHAR:
       db_make_nchar (&temp, desired_domain->precision,
-		     new_string, strlen (new_string));
+		     new_string, strlen (new_string),
+		     TP_DOMAIN_CODESET (desired_domain),
+		     TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARCHAR:
       db_make_varchar (&temp, desired_domain->precision,
-		       new_string, strlen (new_string));
+		       new_string, strlen (new_string),
+		       TP_DOMAIN_CODESET (desired_domain),
+		       TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARNCHAR:
-      db_make_varnchar (&temp,
-			desired_domain->precision,
-			new_string, strlen (new_string));
+      db_make_varnchar (&temp, desired_domain->precision,
+			new_string, strlen (new_string),
+			TP_DOMAIN_CODESET (desired_domain),
+			TP_DOMAIN_COLLATION (desired_domain));
       break;
     default:			/* Can't get here.  This just quiets the compiler */
       break;
@@ -6337,6 +6474,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
    */
   db_value_domain_init (target, desired_type,
 			desired_domain->precision, desired_domain->scale);
+
+  if (TP_TYPE_HAS_COLLATION (desired_type))
+    {
+      db_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
+			       TP_DOMAIN_COLLATION (desired_domain));
+    }
 
   switch (desired_type)
     {
@@ -7642,6 +7785,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 	  else
 	    {
+	      db_put_cs_and_collation (target,
+				       TP_DOMAIN_CODESET (desired_domain),
+				       TP_DOMAIN_COLLATION (desired_domain));
 	      status = DOMAIN_COMPATIBLE;
 	    }
 	  break;
@@ -8857,6 +9003,70 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 
 	  if (pr_type)
 	    {
+	      /* TODO : change this when adding new types with collation */
+	      if (TP_TYPE_HAS_COLLATION (vtype1)
+		  && (DB_GET_STRING_CODESET (v1)
+		      != DB_GET_STRING_CODESET (v1)))
+		{
+		  int common_coll;
+		  INTL_CODESET codeset;
+		  DB_DATA_STATUS data_status;
+		  int error_status;
+
+		  DB_MAKE_NULL (&temp1);
+		  DB_MAKE_NULL (&temp2);
+		  coercion = 1;
+
+		  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1),
+				       DB_GET_STRING_COLLATION (v2),
+				       common_coll);
+
+		  codeset = lang_get_collation (common_coll)->codeset;
+
+		  if (DB_GET_STRING_CODESET (v1) != codeset)
+		    {
+		      db_value_domain_init (&temp1, vtype1,
+					    DB_VALUE_PRECISION (v1), 0);
+
+		      db_put_cs_and_collation (&temp1, codeset, common_coll);
+		      error_status =
+			db_char_string_coerce (v1, &temp1, &data_status);
+
+		      if (error_status != NO_ERROR)
+			{
+			  status = DB_UNK;
+			  pr_clear_value (&temp1);
+			  return status;
+			}
+
+		      assert (data_status == DATA_STATUS_OK);
+
+		      v1 = &temp1;
+		    }
+		  else
+		    {
+		      assert (DB_GET_STRING_CODESET (v2) != codeset);
+
+		      db_value_domain_init (&temp2, vtype2,
+					    DB_VALUE_PRECISION (v2), 0);
+
+		      db_put_cs_and_collation (&temp2, codeset, common_coll);
+		      error_status =
+			db_char_string_coerce (v2, &temp2, &data_status);
+
+		      if (error_status != NO_ERROR)
+			{
+			  pr_clear_value (&temp2);
+			  status = DB_UNK;
+			  return status;
+			}
+
+		      assert (data_status == DATA_STATUS_OK);
+
+		      v2 = &temp2;
+		    }
+
+		}
 	      status = (*(pr_type->cmpval)) (v1, v2,
 					     do_coercion, total_order, NULL);
 	      if (status == DB_UNK)
@@ -9196,17 +9406,21 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  fprintf (fp, ")");
 	  break;
 
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  fprintf (fp, "%s(%d)", d->type->name, d->precision);
 	  break;
 
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  fprintf (fp, "%s(%d) collate %s", d->type->name, d->precision,
+		   lang_get_collation_name (d->collation_id));
+	  break;
+
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  fprintf (fp, "%s(%d) NATIONAL %d", d->type->name, d->precision,
-		   d->codeset);
+	  fprintf (fp, "%s(%d) NATIONAL collate %s", d->type->name,
+		   d->precision, lang_get_collation_name (d->collation_id));
 	  break;
 
 	case DB_TYPE_NUMERIC:

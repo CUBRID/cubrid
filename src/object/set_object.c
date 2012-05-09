@@ -3194,6 +3194,7 @@ set_is_all_null (DB_COLLECTION * set)
 
   return (isallnull);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * set_has_null() -
@@ -3232,7 +3233,6 @@ set_has_null (DB_COLLECTION * set)
 #endif
   return (hasnull);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * set_ismember() -

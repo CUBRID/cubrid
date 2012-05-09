@@ -623,6 +623,12 @@ extern bool PRM_USE_LOCALE_NUMBER_FORMAT;
 #define PRM_NAME_USE_LOCALE_DATE_FORMAT "use_locale_date_format"
 extern bool PRM_USE_LOCALE_DATE_FORMAT;
 
+#define PRM_NAME_UNICODE_INPUT_NORMALIZATION "unicode_input_normalization"
+extern bool PRM_UNICODE_INPUT_NORMALIZATION;
+
+#define PRM_NAME_UNICODE_OUTPUT_NORMALIZATION "unicode_output_normalization"
+extern bool PRM_UNICODE_OUTPUT_NORMALIZATION;
+
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
 extern int sysprm_reload_and_init (const char *db_name,
 				   const char *conf_file);

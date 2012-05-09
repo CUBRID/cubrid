@@ -165,6 +165,9 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
     case CONNECTBY_PROC:
       type_string_p = "connectby_proc";
       break;
+    case MERGE_PROC:
+      type_string_p = "merge_proc";
+      break;
     default:
       return false;
     }
@@ -323,7 +326,7 @@ static bool
 qdump_print_update_proc_node (UPDATE_PROC_NODE * node_p)
 {
   int i = 0, cnt = 0, idx = 0;
-  UPDATE_CLASS_INFO *cls = NULL;
+  UPDDEL_CLASS_INFO *cls = NULL;
 
   cnt = node_p->no_classes;
   for (idx = 0; idx < cnt; idx++)
@@ -357,18 +360,30 @@ qdump_print_update_proc_node (UPDATE_PROC_NODE * node_p)
 static bool
 qdump_print_delete_proc_node (DELETE_PROC_NODE * node_p)
 {
-  int i;
+  int i, j;
+  int hfid_count = 0;
+  /* actual number of HFID's is no_classes + number of subclasses for each
+   * class */
 
-  fprintf (foutput, "[number of HFID's to use:%d]", node_p->no_classes);
 
   for (i = 0; i < node_p->no_classes; ++i)
     {
-      qdump_print_oid (&node_p->class_oid[i]);
+      hfid_count += node_p->classes[i].no_subclasses;
     }
 
+  fprintf (foutput, "[number of HFID's to use:%d]", hfid_count);
+
   for (i = 0; i < node_p->no_classes; ++i)
     {
-      qdump_print_hfid (node_p->class_hfid[i]);
+      for (j = 0; j < node_p->classes[i].no_subclasses; ++j)
+	{
+	  qdump_print_oid (&node_p->classes[i].class_oid[j]);
+	}
+
+      for (j = 0; j < node_p->classes[i].no_subclasses; ++j)
+	{
+	  qdump_print_hfid (node_p->classes[i].class_hfid[j]);
+	}
     }
 
   return true;
@@ -2741,6 +2756,30 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       fprintf (foutput, "-->insert info:");
       qdump_print_insert_proc_node (&xasl_p->proc.insert);
       fprintf (foutput, "\n");
+      break;
+
+    case MERGE_PROC:
+      fprintf (foutput, "-->merge info:");
+      if (xasl_p->proc.merge.update_xasl)
+	{
+	  fprintf (foutput, "\n---->update:");
+	  qdump_print_update_proc_node (&xasl_p->proc.merge.update_xasl->
+					proc.update);
+	  if (xasl_p->proc.merge.delete_xasl)
+	    {
+	      fprintf (foutput, "\n------>delete:");
+	      qdump_print_delete_proc_node (&xasl_p->proc.merge.delete_xasl->
+					    proc.delete_);
+	    }
+	  fprintf (foutput, "\n");
+	}
+      if (xasl_p->proc.merge.insert_xasl)
+	{
+	  fprintf (foutput, "\n---->insert:");
+	  qdump_print_insert_proc_node (&xasl_p->proc.merge.insert_xasl->
+					proc.insert);
+	  fprintf (foutput, "\n");
+	}
       break;
 
     default:

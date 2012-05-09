@@ -97,7 +97,7 @@
 		</currencies>		
 	</numbers>
 	<collations validSubLocales="tr_TR">
-		<collation type="standard">
+		<collation type="utf8_tr_cs_uca">
 			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
@@ -128,6 +128,15 @@
 				<t>Ü</t>
 			</rules>
 		</collation>
+		<collation type="utf8_gen">
+			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+		</collation>		
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
@@ -149,5 +158,6 @@
 			</l>
 		</alphabet>
 	</alphabets>
+	<normalization enabled="false" />
 	<consoleconversion type="ISO88599" windows_codepage="28599" linux_charset="iso88599,ISO_8859-9,ISO8859-9,ISO-8859-9" />
 </ldml>

@@ -86,10 +86,18 @@ typedef enum
   LC_FETCH_DELETED,
   LC_FETCH_DECACHE_LOCK,
   LC_FLUSH_INSERT,
+  LC_FLUSH_INSERT_PRUNE,
   LC_FLUSH_DELETE,
   LC_FLUSH_UPDATE,
+  LC_FLUSH_UPDATE_PRUNE,
   LC_FETCH_VERIFY_CHN
 } LC_COPYAREA_OPERATION;
+
+#define LC_IS_FLUSH_INSERT(operation) \
+  (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE)
+
+#define LC_IS_FLUSH_UPDATE(operation) \
+  (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj

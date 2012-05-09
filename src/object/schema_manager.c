@@ -2953,7 +2953,7 @@ sm_mark_system_class_for_catalog (void)
     CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
     CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
     CTV_TRIGGER_NAME, CTV_STORED_PROC_NAME, CTV_STORED_PROC_ARGS_NAME,
-    CTV_PARTITION_NAME, NULL
+    CTV_PARTITION_NAME, CT_COLLATION_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL; i++)
@@ -3025,6 +3025,28 @@ bool
 sm_is_reuse_oid_class (MOP op)
 {
   return sm_get_class_flag (op, SM_CLASSFLAG_REUSE_OID) ? true : false;
+}
+
+/*
+ * sm_is_partitioned_class () - test if this class is partitioned
+ * return : true for partitioned classes, false otherwise
+ * op (in) : class object
+ */
+bool
+sm_is_partitioned_class (MOP op)
+{
+  SM_CLASS *class_;
+  bool result = false;
+
+  if (op != NULL && locator_is_class (op, DB_FETCH_READ))
+    {
+      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
+	{
+	  result = (class_->partition_of != NULL);
+	}
+    }
+
+  return result;
 }
 
 /*
@@ -3773,7 +3795,8 @@ sm_update_all_catalog_statistics (void)
     CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
-    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME, NULL
+    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
+    CT_COLLATION_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -9564,6 +9587,7 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	  new_domain->precision = atts[i]->domain->precision;
 	  new_domain->scale = atts[i]->domain->scale;
 	  new_domain->codeset = atts[i]->domain->codeset;
+	  new_domain->collation_id = atts[i]->domain->collation_id;
 	  new_domain->is_parameterized = atts[i]->domain->is_parameterized;
 
 	  if (new_domain->type->id == DB_TYPE_ENUMERATION)

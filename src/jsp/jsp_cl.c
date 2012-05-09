@@ -56,6 +56,7 @@
 #include "jsp_cl.h"
 #include "system_parameter.h"
 #include "network_interface_cl.h"
+#include "unicode_support.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
@@ -1516,10 +1517,49 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 {
   char *v;
   char *ptr;
+  int v_size;
+  int decomp_size;
+  bool was_decomposed = false;
+
 
   ptr = buffer;
   v = DB_GET_STRING (value);
+  v_size = (v != NULL) ? strlen (v) : 0;
+
+  if (v_size > 0
+      && unicode_string_need_decompose (v, v_size, &decomp_size,
+					lang_get_generic_unicode_norm ()))
+    {
+      char *decomposed;
+      int alloc_size = decomp_size + 1;
+
+      decomposed = (char *) db_private_alloc (NULL, alloc_size);
+      if (decomposed != NULL)
+	{
+	  unicode_decompose_string (v, v_size, decomposed, &decomp_size,
+				    lang_get_generic_unicode_norm ());
+	  /* or_pack_string requires null-terminated string */
+	  decomposed[decomp_size] = '\0';
+	  assert (decomp_size < alloc_size);
+
+	  v = decomposed;
+	  v_size = decomp_size;
+	  was_decomposed = true;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, decomp_size);
+	  v = NULL;
+	}
+    }
+
   ptr = or_pack_string (ptr, v);
+
+  if (was_decomposed)
+    {
+      db_private_free (NULL, v);
+    }
 
   return ptr;
 }
@@ -2068,15 +2108,52 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
   char *val;
   char *ptr;
   char *invalid_pos = NULL;
+  int size_in;
+  int composed_size;
 
   ptr = buffer;
   ptr = or_unpack_string (ptr, &val);
-  if (intl_check_string (val, -1, &invalid_pos) != 0)
+
+  size_in = strlen (val);
+
+  if (intl_check_string (val, size_in, &invalid_pos) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - val);
       return NULL;
     }
+
+  if (unicode_string_need_compose (val, size_in, &composed_size,
+				   lang_get_generic_unicode_norm ()))
+    {
+      char *composed;
+      bool is_composed = false;
+
+      composed = db_private_alloc (NULL, composed_size + 1);
+      if (composed == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size_in);
+	  return NULL;
+	}
+
+      unicode_compose_string (val, size_in, composed, &composed_size,
+			      &is_composed, lang_get_generic_unicode_norm ());
+      composed[composed_size] = '\0';
+
+      assert (composed_size <= size_in);
+
+      if (is_composed)
+	{
+	  db_private_free (NULL, val);
+	  val = composed;
+	}
+      else
+	{
+	  db_private_free (NULL, composed);
+	}
+    }
+
   db_make_string (retval, val);
   retval->need_clear = true;
 
@@ -2470,7 +2547,7 @@ redo:
   if (start_code == 0x08)
     {
       tran_begin_libcas_function ();
-      libcas_main (sockfd);     /* jdbc call */
+      libcas_main (sockfd);	/* jdbc call */
       tran_end_libcas_function ();
       goto redo;
     }

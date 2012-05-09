@@ -360,4 +360,6 @@ extern void pr_gc_type (PR_TYPE * type, char *mem, void (*gcmarker) (MOP));
 /* area init */
 extern void pr_area_init (void);
 
+extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
+
 #endif /* _OBJECT_PRIMITIVE_H_ */

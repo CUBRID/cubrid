@@ -97,7 +97,7 @@
 		</currencies>
 	</numbers>
 	<collations validSubLocales="zh_CN">
-		<collation type="standard">
+		<collation type="utf8_gen">
 			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
@@ -111,5 +111,6 @@
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
+	<normalization enabled="false" />
 	<consoleconversion type="DBCS" windows_codepage="936" linux_charset="euc-cn" file="CP936.TXT" />		
 </ldml>
