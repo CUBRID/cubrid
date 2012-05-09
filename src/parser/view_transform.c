@@ -1638,7 +1638,7 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
   col = derived_table->info.query.q.select.list;
   switch (col->node_type)
     {
-    /* col must not be hidden within derived table */
+      /* col must not be hidden within derived table */
     case PT_FUNCTION:
       col->info.function.hidden_column = 0;
       break;
@@ -3193,8 +3193,9 @@ pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      copy_cnt +=
-	pt_check_copypush_subquery (parser, query->info.query.q.union_.arg1);
+      copy_cnt += pt_check_copypush_subquery (parser,
+					      query->info.query.q.union_.
+					      arg1);
       copy_cnt +=
 	pt_check_copypush_subquery (parser, query->info.query.q.union_.arg2);
       break;
@@ -3750,7 +3751,6 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   return agg_sel;
 }
 
-
 /*
  * mq_translate_select() - recursively expands each sub-query in the where part
  *     Then it expands this select statement against the classes which
@@ -3804,7 +3804,6 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 
   return select_statement;
 }
-
 
 /*
  * mq_check_update() - checks duplicated column names
@@ -3893,7 +3892,6 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 
   return update_statement;
 }
-
 
 /*
  * mq_translate_insert() - leaf expansion or vclass/view expansion
@@ -4104,7 +4102,6 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   return insert_statement;
 }
 
-
 /*
  * mq_translate_delete() - leaf expansion or vclass/view expansion
  *   return:
@@ -4143,7 +4140,6 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
   return delete_statement;
 }
 
-
 /*
  * mq_check_merge() - checks duplicated column names
  *   return:
@@ -4156,7 +4152,6 @@ mq_check_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   pt_no_double_updates (parser, merge_statement);
   pt_no_attr_and_meta_attr_updates (parser, merge_statement);
 }
-
 
 /*
  * mq_translate_merge() - leaf expansion or vclass/view expansion for merge
@@ -4195,7 +4190,6 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 
   return merge_statement;
 }
-
 
 /*
  * mq_push_paths_select() -
@@ -4250,8 +4244,10 @@ mq_push_paths_select (PARSER_CONTEXT * parser, PT_NODE * statement,
 		    if (spec->info.spec.derived_table_type
 			&& db_is_vclass (flat->info.name.db_object))
 		    {
-		      subquery = mq_fetch_subqueries_for_update
-			(parser, flat, PT_NORMAL_SELECT, DB_AUTH_SELECT);
+		      subquery =
+			mq_fetch_subqueries_for_update (parser, flat,
+							PT_NORMAL_SELECT,
+							DB_AUTH_SELECT);
 		      if (!subquery || subquery->next || flat->next)
 			{
 			  /* this is non-updatable, or turns into a union,
@@ -4325,8 +4321,8 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
       if (mq_is_union_translation (parser, from))
 	{
 	  select_statement->info.query.q.select.from = from =
-	    mq_rewrite_vclass_spec_as_derived
-	    (parser, select_statement, from, NULL);
+	    mq_rewrite_vclass_spec_as_derived (parser, select_statement,
+					       from, NULL);
 	  if (from == NULL)
 	    {
 	      return NULL;
@@ -4341,8 +4337,9 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	{
 	  if (mq_is_union_translation (parser, from->next))
 	    {
-	      from->next = mq_rewrite_vclass_spec_as_derived
-		(parser, select_statement, from->next, NULL);
+	      from->next =
+		mq_rewrite_vclass_spec_as_derived (parser, select_statement,
+						   from->next, NULL);
 	    }
 	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	    {
@@ -4541,7 +4538,7 @@ mq_translate_local (PARSER_CONTEXT * parser,
 	  spec = statement->info.query.q.select.from;
 	  if (aggregate_rewrote_as_derived && spec != NULL)
 	    {
-	      PT_NODE * derived_table = spec->info.spec.derived_table;
+	      PT_NODE *derived_table = spec->info.spec.derived_table;
 	      assert (derived_table != NULL);
 	      using_index = derived_table->info.query.q.select.using_index;
 	      spec = derived_table->info.query.q.select.from;
@@ -5703,8 +5700,7 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node,
  *   continue_walk(in):
  */
 static PT_NODE *
-mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser,
-				   PT_NODE * node,
+mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *void_arg, int *continue_walk)
 {
   PT_NODE *dt;
@@ -9299,10 +9295,9 @@ mq_fetch_subqueries_for_update (PARSER_CONTEXT * parser, PT_NODE * class_,
 {
   PARSER_CONTEXT *query_cache;
 
-  return mq_fetch_subqueries_for_update_local
-    (parser, class_, fetch_as, what_for, &query_cache);
+  return mq_fetch_subqueries_for_update_local (parser, class_, fetch_as, 
+					       what_for, &query_cache);
 }
-
 
 /*
  * mq_fetch_select_for_real_class_update() - fetch the select statement that
@@ -9459,7 +9454,6 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser,
   return NULL;
 }
 
-
 /*
  * mq_fetch_attributes() - fetch class's subqueries
  *   return: PT_NODE list of its attribute names, including oid attr
@@ -9557,14 +9551,12 @@ mq_is_updatable (DB_OBJECT * class_object)
 {
   PT_NODE class_;
   PT_NODE *subquery;
-  /* static */ PARSER_CONTEXT *parser = NULL;
+  PARSER_CONTEXT *parser;
+
+  parser = parser_create_parser ();
   if (parser == NULL)
     {
-      parser = parser_create_parser ();
-      if (parser == NULL)
-	{
-	  return false;
-	}
+      return false;
     }
 
   class_.node_type = PT_NAME;
@@ -9574,14 +9566,13 @@ mq_is_updatable (DB_OBJECT * class_object)
   class_.info.name.original = NULL;
   class_.info.name.db_object = class_object;
 
-  subquery =
-    mq_fetch_subqueries_for_update (parser, &class_, PT_NORMAL_SELECT,
-				    DB_AUTH_SELECT);
-
+  subquery = mq_fetch_subqueries_for_update (parser, &class_,
+					     PT_NORMAL_SELECT,
+					     DB_AUTH_SELECT);
   /* clean up memory */
   parser_free_parser (parser);
 
-  return subquery != NULL;
+  return (subquery != NULL);
 }
 
 /*
@@ -9592,7 +9583,6 @@ mq_is_updatable (DB_OBJECT * class_object)
  *   att_nam(in): one of vmop's attribute names
  *   rmop(in): real (base) class object
  */
-
 bool
 mq_is_updatable_att (PARSER_CONTEXT * parser, DB_OBJECT * vmop,
 		     const char *att_nam, DB_OBJECT * rmop)
@@ -9612,10 +9602,10 @@ mq_is_updatable_att (PARSER_CONTEXT * parser, DB_OBJECT * vmop,
   real.info.name.original = NULL;
   real.info.name.db_object = rmop;
 
-  expr = mq_fetch_expression_for_real_class_update
-    (parser, vmop, &attr, &real, PT_INVERTED_ASSIGNMENTS,
-     DB_AUTH_SELECT, NULL);
-
+  expr = mq_fetch_expression_for_real_class_update (parser, vmop, &attr,
+						    &real,
+						    PT_INVERTED_ASSIGNMENTS,
+						    DB_AUTH_SELECT, NULL);
   if (!expr)
     {
       return false;
@@ -9623,7 +9613,6 @@ mq_is_updatable_att (PARSER_CONTEXT * parser, DB_OBJECT * vmop,
 
   return expr->info.expr.arg1 && expr->info.expr.arg2;
 }
-
 
 /*
  * mq_is_updatable_attribute() -
