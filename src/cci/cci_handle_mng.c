@@ -560,6 +560,7 @@ hm_find_ha_status_index (T_CON_HANDLE * con_handle)
   return index;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 hm_get_ha_connected_host (T_CON_HANDLE * con_handle)
 {
@@ -576,6 +577,7 @@ hm_get_ha_connected_host (T_CON_HANDLE * con_handle)
   MUTEX_UNLOCK (ha_status_mutex);
   return cur_host_id;
 }
+#endif
 
 time_t
 hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle)

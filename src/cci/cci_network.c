@@ -746,6 +746,7 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   return net_recv_msg_timeout (con_handle, msg, msg_size, err_buf, 0);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 net_send_file (SOCKET sock_fd, char *filename, int filesize)
 {
@@ -805,6 +806,7 @@ net_recv_file (SOCKET sock_fd, int port, int file_size, int out_fd)
 
   return 0;
 }
+#endif
 
 /************************************************************************
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
