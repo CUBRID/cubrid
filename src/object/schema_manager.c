@@ -5584,7 +5584,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	  /* always make sure the class is flushed as well */
 	  if (locator_flush_class (obj) != NO_ERROR)
 	    {
-	      return (er_errid ());
+	      return er_errid ();
 	    }
 
 	  class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
@@ -5633,12 +5633,15 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	  if (obj->class_mop != NULL)
 	    {
 	      if (locator_flush_class (obj->class_mop) != NO_ERROR)
-		return (er_errid ());
+		{
+		  return er_errid ();
+		}
 
-	      if ((class_ =
-		   (SM_CLASS *) locator_fetch_class (obj,
-						     DB_FETCH_READ)) == NULL)
-		ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+	      class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
+	      if (class_ == NULL)
+		{
+		  ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+		}
 	      else
 		{
 		  switch (class_->class_type)
@@ -5646,12 +5649,16 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		    case SM_CLASS_CT:
 		      if (locator_flush_all_instances (obj->class_mop,
 						       decache) != NO_ERROR)
-			error = er_errid ();
+			{
+			  error = er_errid ();
+			}
 		      break;
 
 		    case SM_VCLASS_CT:
 		      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-			error = er_errid ();
+			{
+			  error = er_errid ();
+			}
 		      break;
 
 		    case SM_ADT_CT:
@@ -5662,21 +5669,23 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	    }
 	  else
 	    {
-	      if ((error =
-		   au_fetch_instance (obj, &mem, AU_FETCH_READ,
-				      AU_SELECT)) == NO_ERROR)
+	      error = au_fetch_instance (obj, &mem, AU_FETCH_READ, AU_SELECT);
+	      if (error == NO_ERROR)
 		{
 		  /* don't need to pin here, we only wanted to check authorization */
 		  if (obj->class_mop != NULL)
 		    {
 		      if (locator_flush_class (obj->class_mop) != NO_ERROR)
-			return (er_errid ());
+			{
+			  return er_errid ();
+			}
 
-		      if ((class_ =
-			   (SM_CLASS *) locator_fetch_class (obj,
-							     DB_FETCH_READ))
-			  == NULL)
-			ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+		      class_ = (SM_CLASS *) locator_fetch_class (obj, 
+								 DB_FETCH_READ);
+		      if (class_ == NULL)
+			{
+			  ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+			}
 		      else
 			{
 			  switch (class_->class_type)
@@ -5685,13 +5694,17 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			      if (locator_flush_all_instances (obj->class_mop,
 							       decache) !=
 				  NO_ERROR)
-				error = er_errid ();
+				{
+				  error = er_errid ();
+				}
 			      break;
 
 			    case SM_VCLASS_CT:
 			      if (vid_flush_all_instances (obj, decache) !=
 				  NO_ERROR)
-				error = er_errid ();
+				{
+				  error = er_errid ();
+				}
 			      break;
 
 			    case SM_ADT_CT:
@@ -5701,7 +5714,9 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			}
 		    }
 		  else
-		    ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+		    {
+		      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+		    }
 		}
 	    }
 	}

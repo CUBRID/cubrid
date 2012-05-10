@@ -258,7 +258,7 @@ obj_print_copy_string (const char *source)
 	  strcpy (new_str, source);
 	}
     }
-  return (new_str);
+  return new_str;
 }
 
 /*
@@ -301,7 +301,7 @@ obj_print_convert_strlist (STRLIST * str_list)
 	  array[count] = NULL;
 	}
     }
-  return (array);
+  return array;
 }
 
 /* TRIGGER SUPPORT FUNCTIONS */
@@ -524,7 +524,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, ", ");
 	}
     }
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -1010,7 +1010,7 @@ obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, "invalid type");
 	}
     }
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -1054,7 +1054,7 @@ obj_print_describe_signature (PARSER_CONTEXT * parser,
 	}
     }
 
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -1121,7 +1121,7 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
       buffer = pt_append_nulstring (parser, buffer, ")");
     }
 
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -1162,7 +1162,7 @@ obj_print_describe_resolution (PARSER_CONTEXT * parser,
 	  buffer = pt_append_nulstring (parser, buffer, resolution_p->alias);
 	}
     }
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -1189,7 +1189,7 @@ obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p,
 	  pt_append_nulstring (parser, fbuffer, ")");
 	}
     }
-  return (fbuffer);
+  return fbuffer;
 }
 
 /*
@@ -1224,7 +1224,7 @@ obj_print_describe_class_trigger (PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, trigger->attribute);
     }
 
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -1328,7 +1328,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
     {
       array = obj_print_convert_strlist (strings);
     }
-  return (array);
+  return array;
 }
 
 /* CLASS HELP */
@@ -1362,7 +1362,7 @@ obj_print_make_class_help (void)
   new_p->object_id = NULL;
   new_p->triggers = NULL;
 
-  return (new_p);
+  return new_p;
 }
 
 /*
@@ -1421,6 +1421,7 @@ obj_print_help_class (MOP op)
   PARSER_VARCHAR *buffer;
   int part_count = 0;
   SM_CLASS *subclass;
+  char *description;
 
   buffer = NULL;
   if (parser == NULL)
@@ -1535,12 +1536,12 @@ obj_print_help_class (MOP op)
 	    {
 	      goto error_exit;
 	    }
+
 	  i = 0;
 	  for (a = class_->ordered_attributes; a != NULL; a = a->order_link)
 	    {
-	      strs[i] =
-		obj_print_copy_string (obj_print_describe_attribute
-				       (op, parser, a));
+	      description = obj_print_describe_attribute (op, parser, a);
+	      strs[i] = obj_print_copy_string (description);
 	      i++;
 	    }
 	  strs[i] = NULL;
@@ -1555,13 +1556,13 @@ obj_print_help_class (MOP op)
 	    {
 	      goto error_exit;
 	    }
+
 	  i = 0;
 	  for (a = class_->class_attributes; a != NULL;
 	       a = (SM_ATTRIBUTE *) a->header.next)
 	    {
-	      strs[i] =
-		obj_print_copy_string (obj_print_describe_attribute
-				       (op, parser, a));
+	      description = obj_print_describe_attribute (op, parser, a);
+	      strs[i] = obj_print_copy_string (description);
 	      i++;
 	    }
 	  strs[i] = NULL;
@@ -1624,11 +1625,10 @@ obj_print_help_class (MOP op)
 
 	  for (r = class_->resolutions; r != NULL; r = r->next)
 	    {
+	      buffer = obj_print_describe_resolution (parser, r);
 	      strs[i] =
 		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes
-				       (obj_print_describe_resolution
-					(parser, r)));
+				       pt_get_varchar_bytes (buffer));
 	      i++;
 	    }
 	  strs[i] = NULL;
@@ -1646,11 +1646,10 @@ obj_print_help_class (MOP op)
 	  i = 0;
 	  for (f = class_->method_files; f != NULL; f = f->next)
 	    {
+	      buffer = obj_print_describe_method_file (parser, op, f);
 	      strs[i] =
 		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes
-				       (obj_print_describe_method_file
-					(parser, op, f)));
+				       pt_get_varchar_bytes (buffer));
 	      i++;
 	    }
 	  strs[i] = NULL;
@@ -1711,9 +1710,9 @@ obj_print_help_class (MOP op)
 		{
 		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		    {
-		      strs[i] =
-			obj_print_copy_string (obj_print_describe_constraint
-					       (parser, class_, c));
+		      description = obj_print_describe_constraint (parser,
+								   class_, c);
+		      strs[i] = obj_print_copy_string (description);
 		      if (strs[i] == NULL)
 			{
 			  info->constraints = strs;
@@ -1739,9 +1738,9 @@ obj_print_help_class (MOP op)
 	    }
 	  memset (strs, 0, sizeof (char *) * (part_count + 2));
 
-	  strs[0] =
-	    obj_print_copy_string (obj_print_describe_partition_info
-				   (parser, class_->partition_of));
+	  description =
+	    obj_print_describe_partition_info (parser, class_->partition_of);
+	  strs[0] = obj_print_copy_string (description);
 	  i = 1;
 	  for (user = class_->users; user != NULL; user = user->next)
 	    {
@@ -1750,10 +1749,11 @@ obj_print_help_class (MOP op)
 		{
 		  if (subclass->partition_of)
 		    {
-		      strs[i++] =
-			obj_print_copy_string
-			(obj_print_describe_partition_parts
-			 (parser, subclass->partition_of));
+		      description =
+			obj_print_describe_partition_parts (parser,
+							    subclass->
+							    partition_of);
+		      strs[i++] = obj_print_copy_string (description);
 		    }
 		}
 	    }
@@ -1765,7 +1765,7 @@ obj_print_help_class (MOP op)
 
   parser_free_parser (parser);
   parser = NULL;		/* Remember, it's a global! */
-  return (info);
+  return info;
 
 error_exit:
   if (info)
@@ -1805,7 +1805,7 @@ obj_print_help_class_name (const char *name)
       help = obj_print_help_class (class_);
     }
 
-  return (help);
+  return help;
 }
 
 /* TRIGGER HELP */
@@ -1835,7 +1835,7 @@ obj_print_make_trigger_help (void)
       help_p->action_time = NULL;
       help_p->action = NULL;
     }
-  return (help_p);
+  return help_p;
 }
 
 /*
@@ -1971,7 +1971,7 @@ help_trigger (DB_OBJECT * trobj)
       help->full_event = obj_print_copy_string ((char *) help->event);
     }
 
-  return (help);
+  return help;
 
 exit_on_error:
   if (condition != NULL)
@@ -2004,7 +2004,7 @@ help_trigger_name (const char *name)
       help = help_trigger (trigger);
     }
 
-  return (help);
+  return help;
 }
 
 /*
@@ -2067,7 +2067,7 @@ help_trigger_names (char ***names_ptr)
 	}
     }
   *names_ptr = names;
-  return (error);
+  return error;
 }
 
 /*
@@ -2141,7 +2141,7 @@ obj_print_make_obj_help (void)
       new_p->attributes = NULL;
       new_p->shared = NULL;
     }
-  return (new_p);
+  return new_p;
 }
 
 /*
@@ -2287,7 +2287,7 @@ help_obj (MOP op)
     }
   parser_free_parser (parser);
   parser = NULL;
-  return (info);
+  return info;
 
 error_exit:
   if (info)
@@ -2642,7 +2642,7 @@ wrapup:
       free_and_init (buffer);
     }
 
-  return (new_p);
+  return new_p;
 }
 
 /*
@@ -2688,7 +2688,7 @@ obj_print_find_help_section (FILE * fp, const char *keyword)
 
   free_and_init (buffer);
 
-  return (found);
+  return found;
 }
 
 /*
@@ -2715,7 +2715,7 @@ obj_print_load_help_file (FILE * fp, const char *keyword)
 	}
     }
 
-  return (help);
+  return help;
 }
 
 /*
@@ -2768,7 +2768,7 @@ help_command_name (const char *name)
 	  fclose (fp);
 	}
     }
-  return (help);
+  return help;
 }
 
 /*
@@ -2881,7 +2881,7 @@ help_command (DB_HELP_COMMAND cmd)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HELP_INVALID_COMMAND, 0);
     }
 
-  return (help);
+  return help;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3040,7 +3040,7 @@ help_class_names (const char *qualifier)
       db_objlist_free (mops);
     }
 
-  return (names);
+  return names;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3085,7 +3085,7 @@ help_base_class_names (void)
       db_objlist_free (mops);
     }
 
-  return (names);
+  return names;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -3213,7 +3213,7 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 	    }
 	}
     }
-  return (total);
+  return total;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3354,7 +3354,7 @@ obj_print_next_token (char *ptr, char *buffer)
     }
   *buffer = '\0';
 
-  return (p);
+  return p;
 }
 
 /*
@@ -3990,7 +3990,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	}
     }
 
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -4115,7 +4115,7 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	}
     }
 
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -4175,7 +4175,7 @@ describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   length = CAST_STRLEN (pos - src);
   buffer = pt_append_bytes (parser, buffer, src, length);
 
-  return (buffer);
+  return buffer;
 }
 
 /*
@@ -4247,7 +4247,7 @@ help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
 
   parser_free_parser (parser);
 
-  return (length);
+  return length;
 }
 
 #if defined(CUBRID_DEBUG)
