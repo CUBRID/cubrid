@@ -1260,7 +1260,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	      for (i = 0; i < *num_classes; ++i)
 		{
-		  if (sm_is_reuse_oid_class ((*classes)[i]))
+		  if (sm_is_reuse_oid_class ((*classes)[i])
+		      || sm_is_system_class ((*classes)[i]))
 		    {
 		      updatable = false;
 		      break;
@@ -4719,7 +4720,7 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 	  node->info.name.resolved != NULL &&
 	  (node->etc == (void *) 0 || node->etc == (void *) 1))
 	{
-	  /* found a normal index hint; search for same index in USING INDEX 
+	  /* found a normal index hint; search for same index in USING INDEX
 	     ALL EXCEPT clause */
 	  search_node = using_index;
 	  while (search_node != NULL)
@@ -9303,7 +9304,7 @@ mq_fetch_subqueries_for_update (PARSER_CONTEXT * parser, PT_NODE * class_,
 {
   PARSER_CONTEXT *query_cache;
 
-  return mq_fetch_subqueries_for_update_local (parser, class_, fetch_as, 
+  return mq_fetch_subqueries_for_update_local (parser, class_, fetch_as,
 					       what_for, &query_cache);
 }
 
