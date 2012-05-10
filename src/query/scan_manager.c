@@ -1409,8 +1409,6 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	  memmove (nextp, nextp + 1,
 		   sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
-	  nextp++;
-	  next_n++;
 	}
 
       curp++;
@@ -2624,7 +2622,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	      continue;
 	    }
 
-	  if (range < GE_LE || range > INF_LT)
+	  if (range < GE_LE || range > INF_INF)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_QPROC_INVALID_XASLNODE, 0);
@@ -2641,6 +2639,29 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    {
 	      pr_clear_value (&key_vals[iscan_id->curr_keyno].key1);
 	      PRIM_SET_NULL (&key_vals[iscan_id->curr_keyno].key1);
+	    }
+
+	  if (range == INF_INF)
+	    {
+	      if (key_cnt != 1)
+		{
+		  assert_release (0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QPROC_INVALID_XASLNODE, 0);
+		  goto exit_on_error;
+		}
+
+	      /* if we reached the key count limit, break */
+	      if (iscan_id->curr_keyno >= key_cnt)
+		{
+		  iscan_id->curr_keyno++;
+		  break;
+		}
+
+	      pr_clear_value (&key_vals[0].key1);
+	      pr_clear_value (&key_vals[0].key2);
+	      PRIM_SET_NULL (&key_vals[0].key1);
+	      PRIM_SET_NULL (&key_vals[0].key2);
 	    }
 
 	  key_vals[iscan_id->curr_keyno].range = range;
