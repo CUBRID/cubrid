@@ -62,9 +62,10 @@ GOTO :CHECK_OPTION
 :CHECK_ENV
 if "%SELECTED_LOCALE%" == "." (
 set SELECTED_LOCALE=all_locales
-) else (set LOCALE_PARAM=%SELECTED_LOCALE%) 
-
-if "%LOCALE_PARAM:~0,1%" == "-" goto :ERROR
+) else (
+if "%SELECTED_LOCALE:~0,1%" == "-" goto :ERROR
+set LOCALE_PARAM=%SELECTED_LOCALE%
+) 
 
 if "%BUILD_MODE%" == "." set BUILD_MODE=release
 

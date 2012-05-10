@@ -531,7 +531,7 @@ partition_load_context_from_cache (PRUNING_CONTEXT * pinfo, bool * is_modfied)
       return false;
     }
 
-  entry_p = (PARTITION_CACHE_ENTRY *) mht_get (db_Partition_Ht, 
+  entry_p = (PARTITION_CACHE_ENTRY *) mht_get (db_Partition_Ht,
 					       &pinfo->root_oid);
   if (entry_p == NULL)
     {
@@ -2543,8 +2543,13 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
       db_private_free (pinfo->thread_p, pinfo->partitions);
     }
 
-  (void) qexec_clear_partition_expression (pinfo->thread_p,
-					   pinfo->partition_pred->func_regu);
+  if (pinfo->partition_pred != NULL
+      && pinfo->partition_pred->func_regu != NULL)
+    {
+      (void) qexec_clear_partition_expression (pinfo->thread_p,
+					       pinfo->partition_pred->
+					       func_regu);
+    }
   if (pinfo->fp_cache_context != NULL)
     {
       db_private_free (pinfo->thread_p, pinfo->fp_cache_context);

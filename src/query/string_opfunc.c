@@ -8882,10 +8882,18 @@ qstr_coerce (const unsigned char *src,
       if (src_codeset == INTL_CODESET_ISO88591
 	  && dest_codeset == INTL_CODESET_UTF8)
 	{
-	  int conv_size;
+	  int conv_size = 0;
 
-	  intl_fast_iso88591_to_utf8 (src, copy_size, dest, &conv_size);
-	  copy_size = conv_size;
+	  if (copy_size > 0)
+	    {
+	      intl_fast_iso88591_to_utf8 (src, copy_size, dest, &conv_size);
+	      copy_size = conv_size;
+	    }
+	  else
+	    {
+	      assert (copy_size == 0);
+	      *dest = (unsigned char *) src;
+	    }
 	}
       else
 	{

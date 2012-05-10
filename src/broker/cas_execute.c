@@ -3687,7 +3687,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  {
 	    char *composed = NULL;
 
-	    composed = MALLOC (composed_size + 1);
+	    composed = db_private_alloc (NULL, composed_size + 1);
 	    if (composed == NULL)
 	      {
 		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
@@ -3706,7 +3706,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	      }
 	    else
 	      {
-		FREE (composed);
+		db_private_free (NULL, composed);
 	      }
 	  }
 
@@ -3757,7 +3757,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  {
 	    char *composed = NULL;
 
-	    composed = MALLOC (composed_size + 1);
+	    composed = db_private_alloc (NULL, composed_size + 1);
 	    if (composed == NULL)
 	      {
 		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
@@ -3777,7 +3777,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	      }
 	    else
 	      {
-		FREE (composed);
+		db_private_free (NULL, composed);
 	      }
 	  }
 

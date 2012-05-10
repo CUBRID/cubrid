@@ -1365,7 +1365,7 @@ unicode_compose_string (const char *str_in, const int size_in,
       if (!match_found)
 	{
 	  byte_count = str_next - str_cursor;
-	  memcpy (&(composed_str[composed_index]), str_in, byte_count);
+	  memcpy (&(composed_str[composed_index]), str_cursor, byte_count);
 	  composed_index += byte_count;
 	  str_cursor += byte_count;
 	}

@@ -6576,14 +6576,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  }
 	case DB_TYPE_ENUMERATION:
-	  if (OR_CHECK_SHORT_OVERFLOW (DB_GET_ENUM_SHORT (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_short (target, DB_GET_ENUM_SHORT (src));
-	    }
+	  db_make_short (target, DB_GET_ENUM_SHORT (src));
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
