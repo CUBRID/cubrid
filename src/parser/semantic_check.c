@@ -12877,7 +12877,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       switch (node->info.expr.op)
 	{
 	case PT_AND:
-	case PT_OR:
 	case PT_NOT:
 	case PT_BETWEEN:
 	case PT_NOT_BETWEEN:
