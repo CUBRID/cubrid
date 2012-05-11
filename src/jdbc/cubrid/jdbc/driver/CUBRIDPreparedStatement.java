@@ -115,8 +115,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(
-					CUBRIDJDBCErrorCode.prepared_statement_closed);
+		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -153,7 +152,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
+		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -493,7 +492,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
+		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -766,7 +765,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
+		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
@@ -877,7 +876,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
+		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
 		}
 	}
 
