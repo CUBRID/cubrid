@@ -790,7 +790,7 @@ pgbuf_finalize (void)
     }
 
   /* final task for LRU list */
-  if (pgbuf_Pool.num_LRU_list != NULL)
+  if (pgbuf_Pool.buf_LRU_list != NULL)
     {
       for (i = 0; i < pgbuf_Pool.num_LRU_list; i++)
 	{

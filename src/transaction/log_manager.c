@@ -3506,6 +3506,8 @@ log_skip_tailsa_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 void
 log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 {
+  int rv;
+
   assert (addr && addr->pgptr != NULL);
 
 #if defined(CUBRID_DEBUG)
@@ -3520,7 +3522,7 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   /* Don't need to log */
 
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
 
   (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.prior_info.prior_lsa);
 

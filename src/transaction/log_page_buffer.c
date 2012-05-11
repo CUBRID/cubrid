@@ -4492,8 +4492,9 @@ prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 		       LOG_TDES * tdes)
 {
   LOG_LSA start_lsa;
+  int rv;
 
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
 
   prior_lsa_start_append (thread_p, node, tdes);
 
@@ -4686,10 +4687,11 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 {
   LOG_PRIOR_NODE *prior_list;
   INT64 current_size;
+  int rv;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
   current_size = log_Gl.prior_info.list_size;
   prior_list = prior_lsa_remove_prior_list (thread_p);
   pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
