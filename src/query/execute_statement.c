@@ -11564,7 +11564,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   DB_OBJECT *obj = NULL;
   PT_NODE *attr, *qry, *attrs;
   DB_VALUE *vals = NULL, *val = NULL, *ins_val = NULL;
-  int degree, k, first, cnt, i;
+  int degree, k, cnt, i;
   DB_ATTDESC **attr_descs = NULL;
 
   if (values_list == NULL || values_list->node_type != PT_NODE_LIST
@@ -11651,7 +11651,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	  if (error >= NO_ERROR)
 	    {
 	      /* for each tuple in subquery result do */
-	      first = 1;
 	      while (cursor_next_tuple (&cursor_id) == DB_CURSOR_SUCCESS)
 		{
 		  /* get current tuple of subquery result */
@@ -11790,20 +11789,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			  goto cleanup;
 			}
 
-		      /* treat the first new instance as the insert's "result" */
-		      if (first)
-			{
-			  first = 0;
-			  ins_val = db_value_create ();
-			  if (ins_val == NULL)
-			    {
-			      cnt = er_errid ();
-			      goto cleanup;
-			    }
-
-			  db_make_object (ins_val, obj);
-			  statement->etc = (void *) ins_val;
-			}
 		    }
 
 		  /* keep track of how many we have inserted */
