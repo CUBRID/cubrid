@@ -1118,6 +1118,21 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
+      error = numeric_db_value_compare (&max_val, &start_val, &cmp_result);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      /* max_val < start_val */
+      if (DB_GET_INT (&cmp_result) < 0)
+	{
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
+	  goto end;
+	}
+
       error = numeric_db_value_compare (&min_val, &start_val, &cmp_result);
       if (error != NO_ERROR)
 	{
@@ -1136,21 +1151,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = ER_INVALID_SERIAL_VALUE;
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	  goto end;
-	}
-
-      error = numeric_db_value_compare (&max_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* max_val < start_val */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -1203,6 +1203,21 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
+      error = numeric_db_value_compare (&min_val, &start_val, &cmp_result);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      /* min_val > start_val */
+      if (DB_GET_INT (&cmp_result) > 0)
+	{
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
+	  goto end;
+	}
+
       error = numeric_db_value_compare (&max_val, &start_val, &cmp_result);
       if (error != NO_ERROR)
 	{
@@ -1221,21 +1236,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = ER_INVALID_SERIAL_VALUE;
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	  goto end;
-	}
-
-      error = numeric_db_value_compare (&min_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* min_val > start_val */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -2031,11 +2031,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* new_min_val > current_val || new_min_val >= new_max_val */
       if (DB_GET_INT (&cmp_result) > 0 || DB_GET_INT (&cmp_result2) >= 0)
 	{
-	  if (min_val_change || cur_val_change)
+	  if (min_val_change)
 	    {
 	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
+	      goto end;
+	    }
+	  else if (cur_val_change)
+	    {
+	      error = ER_INVALID_SERIAL_VALUE;
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else
@@ -2056,10 +2063,20 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	  goto end;
+	  if (cur_val_change)
+	    {
+	      error = ER_INVALID_SERIAL_VALUE;
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
+	      goto end;
+	    }
+	  else
+	    {
+	      error = ER_INVALID_SERIAL_VALUE;
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
+	      goto end;
+	    }
 	}
 
       numeric_db_value_sub (&new_max_val, &new_min_val, &value);
@@ -2153,6 +2170,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	      goto end;
 	    }
+	  else if (cur_val_change)
+	    {
+	      error = ER_INVALID_SERIAL_VALUE;
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
+	      goto end;
+	    }
 	  else
 	    {
 	      error = ER_INVALID_SERIAL_VALUE;
@@ -2171,10 +2195,20 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	  goto end;
+	  if (cur_val_change)
+	    {
+	      error = ER_INVALID_SERIAL_VALUE;
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
+	      goto end;
+	    }
+	  else
+	    {
+	      error = ER_INVALID_SERIAL_VALUE;
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
+	      goto end;
+	    }
 	}
 
       numeric_db_value_sub (&new_min_val, &new_max_val, &value);

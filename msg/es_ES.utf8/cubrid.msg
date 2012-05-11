@@ -1555,6 +1555,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 248 Unknown collation '%s'.
 249 Context requires collection with elements having identical codesets and collations.
 250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
+251 Initial value is invalid.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
