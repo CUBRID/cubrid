@@ -9263,19 +9263,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	  if (node && !pt_has_error (parser))
 	    {
 	      if (node->info.index.where &&
-		  node->info.index.where->node_type == PT_VALUE &&
-		  node->info.index.where->info.value.db_value_is_initialized)
+		  pt_false_search_condition (parser, node->info.index.where))
 		{
-		  DB_VALUE *db_value =
-		    &(node->info.index.where->info.value.db_value);
-		  if (DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER)
-		    {
-		      if (DB_GET_INT (db_value) == 0)
-			{
-			  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
-			}
-		    }
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
 		}
 	    }
 
