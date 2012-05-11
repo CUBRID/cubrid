@@ -245,8 +245,7 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
   char *token, *save_data = NULL, *end;
   int i, error = CCI_ER_NO_ERROR;
 
-  token = strtok_r (data, ",", &save_data);
-  for (i = 0; token != NULL; i++)
+  for (i = 0;; i++, data = NULL)
     {
       char *host, *port, *save_alter = NULL;
       int v;
@@ -254,6 +253,12 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
       if (i >= ALTER_HOST_MAX_SIZE)
 	{
 	  return CCI_ER_INVALID_URL;
+	}
+
+	  token = strtok_r (data, ",", &save_data);
+	  if (token == NULL)
+	{
+	  break;
 	}
 
       host = strtok_r (token, ":", &save_alter);
