@@ -255,8 +255,8 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 	  return CCI_ER_INVALID_URL;
 	}
 
-	  token = strtok_r (data, ",", &save_data);
-	  if (token == NULL)
+      token = strtok_r (data, ",", &save_data);
+      if (token == NULL)
 	{
 	  break;
 	}
@@ -308,7 +308,12 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
      &handle->slow_query_threshold_millis},
     {"logTraceApi", BOOL_PROPERTY, &handle->log_trace_api},
     {"logTraceNetwork", BOOL_PROPERTY, &handle->log_trace_network},
-    {"logBaseDir", STRING_PROPERTY, &base}
+    {"logBaseDir", STRING_PROPERTY, &base},
+    /* for backward compatibility */
+    {"login_timeout", INT_PROPERTY, &handle->login_timeout},
+    {"query_timeout", INT_PROPERTY, &handle->query_timeout},
+    {"disconnect_on_query_timeout", BOOL_PROPERTY,
+     &handle->disconnect_on_query_timeout}
   };
   int error = CCI_ER_NO_ERROR;
 
@@ -323,9 +328,9 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       error = cci_url_set_althosts (handle, althosts);
       free (althosts);
       if (error != CCI_ER_NO_ERROR)
-        {
-          goto set_properties_end;
-        }
+	{
+	  goto set_properties_end;
+	}
     }
 
   /* for logging */
@@ -335,15 +340,15 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
 
       if (base == NULL)
 	{
-          snprintf (file, PATH_MAX, "logs/cci_%04d.log", handle->id);
-          mkdir ("logs", 0755);
+	  snprintf (file, PATH_MAX, "logs/cci_%04d.log", handle->id);
+	  mkdir ("logs", 0755);
 	}
       else
-        {
-          snprintf (file, PATH_MAX, "%s/cci_%04d.log", base, handle->id);
-          mkdir (base, 0755);
-          free (base);
-        }
+	{
+	  snprintf (file, PATH_MAX, "%s/cci_%04d.log", base, handle->id);
+	  mkdir (base, 0755);
+	  free (base);
+	}
       handle->log_filename = strdup (file);
       if (handle->log_filename == NULL)
 	{
