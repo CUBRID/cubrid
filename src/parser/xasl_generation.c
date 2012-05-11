@@ -15383,30 +15383,41 @@ exit_on_error:
 
 /*
  * pt_to_constraint_pred () - Builds predicate of NOT NULL conjuncts.
- * 	Then generates the corresponding filter predicateicate
+ * 	Then generates the corresponding filter predicate
  *   return: NO_ERROR on success, non-zero for ERROR
  *   parser(in):
  *   xasl(in): value list contains the attributes the predicate must point to
- *   spec(in): spce that generated the list file for the above value list
+ *   spec(in): spec that generated the list file for the above value list
  *   non_null_attrs(in): list of attributes to make into a constraint pred
  *   attr_list(in): corresponds to the list file's value list positions
  *   attr_offset(in): the additional offset into the value list. This is
  * 		      necessary because the update prepends 2 columns for
  *		      each class that will be updated on the select list of
  *		      the aptr query
+ *
+ *   NOTE: on outer joins, the OID of a node in not_null_attrs can be null.
+ *	In this case, constraint verification should be skipped, because there
+ *	will be nothing to update.
  */
 static int
 pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 		       PT_NODE * spec, PT_NODE * non_null_attrs,
 		       PT_NODE * attr_list, int attr_offset)
 {
-  PT_NODE *pt_pred = NULL, *node, *conj, *next;
+  PT_NODE *pt_pred = NULL, *node, *conj, *next, *oid_is_null_expr, *constraint;
+  PT_NODE *name, *spec_list;
   PRED_EXPR *pred = NULL;
   TABLE_INFO *ti = NULL;
 
   assert (xasl != NULL && spec != NULL && parser != NULL);
 
   node = non_null_attrs;
+
+  if ((parser->symbols = pt_symbol_info_alloc ()) == NULL)
+    {
+      goto outofmem;
+    }
+
   while (node)
     {
       /* we don't want a DAG so we need to NULL the next pointer as
@@ -15415,47 +15426,88 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
        */
       next = node->next;
       node->next = NULL;
-      if ((conj = parser_new_node (parser, PT_EXPR)) == NULL)
+      if ((constraint = parser_new_node (parser, PT_EXPR)) == NULL)
 	{
 	  goto outofmem;
 	}
 
-      conj->next = NULL;
-      conj->line_number = node->line_number;
-      conj->column_number = node->column_number;
-      conj->type_enum = PT_TYPE_LOGICAL;
-      conj->info.expr.op = PT_IS_NOT_NULL;
-      conj->info.expr.arg1 = node;
-      conj->next = pt_pred;
-      pt_pred = conj;
-      node = next;		/* go to the next node */
-    }
+      oid_is_null_expr = NULL;
 
-  if ((parser->symbols = pt_symbol_info_alloc ()) == NULL)
-    {
-      goto outofmem;
-    }
+      name = node;
+      CAST_POINTER_TO_NODE (name);
+      assert (PT_IS_NAME_NODE (name));
 
-  /* add table info for each spec that has non_null attributes */
-  for (node = spec; node; node = node->next)
-    {
-      for (next = pt_pred; next; next = next->next)
+      /* look for spec in spec list */
+      spec_list = spec;
+      while (spec_list)
 	{
-	  if (next->info.expr.arg1->info.pointer.node->info.name.spec_id ==
-	      node->info.spec.id)
+	  if (spec_list->info.spec.id == name->info.name.spec_id)
 	    {
 	      break;
 	    }
+	  spec_list = spec_list->next;
 	}
-      if (next)
+
+      assert (spec_list);
+
+      /* create not null constraint */
+      constraint->next = NULL;
+      constraint->line_number = node->line_number;
+      constraint->column_number = node->column_number;
+      constraint->type_enum = PT_TYPE_LOGICAL;
+      constraint->info.expr.op = PT_IS_NOT_NULL;
+      constraint->info.expr.arg1 = node;
+      constraint->next = pt_pred;
+
+      if (mq_is_outer_join_spec (parser, spec_list))
 	{
-	  ti = pt_make_table_info (parser, node);
-	  if (ti)
+	  /* need rewrite */
+	  /* verify not null constraint only if OID is not null */
+	  /* create OID is NULL expression */
+	  oid_is_null_expr = parser_new_node (parser, PT_EXPR);
+	  if (!oid_is_null_expr)
 	    {
-	      ti->next = parser->symbols->table_info;
-	      parser->symbols->table_info = ti;
+	      goto outofmem;
 	    }
+	  oid_is_null_expr->type_enum = PT_TYPE_LOGICAL;
+	  oid_is_null_expr->info.expr.op = PT_IS_NULL;
+	  oid_is_null_expr->info.expr.arg1 = pt_spec_to_oid_attr (parser,
+								   spec_list,
+								   OID_NAME);
+	  if (!oid_is_null_expr->info.expr.arg1)
+	    {
+	      goto outofmem;
+	    }
+
+	  /* create an OR expression, first argument OID is NULL, second
+	   * argument the constraint. This way, constraint check will be
+	   * skipped if OID is NULL
+	   */
+	  conj = parser_new_node (parser, PT_EXPR);
+	  if (!conj)
+	    {
+	      goto outofmem;
+	    }
+	  conj->type_enum = PT_TYPE_LOGICAL;
+	  conj->info.expr.op = PT_OR;
+	  conj->info.expr.arg1 = oid_is_null_expr;
+	  conj->info.expr.arg2 = constraint;
 	}
+      else
+	{
+	  conj = constraint;
+	}
+
+      /* add spec to table info */
+      ti = pt_make_table_info (parser, spec_list);
+      if (ti)
+	{
+	  ti->next = parser->symbols->table_info;
+	  parser->symbols->table_info = ti;
+	}
+
+      pt_pred = conj;
+      node = next;		/* go to the next node */
     }
 
   parser->symbols->current_listfile = attr_list;
