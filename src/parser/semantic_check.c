@@ -324,7 +324,7 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser,
 						 void *arg,
 						 int *continue_walk);
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
-					PT_NODE * node);
+					PT_NODE * atts, PT_NODE * node);
 
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
@@ -7300,7 +7300,8 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* if this is a filter index, check that the filter is a valid filter
      expression. */
-  pt_check_filter_index_expr (parser, node->info.index.where);
+  pt_check_filter_index_expr (parser, node->info.index.column_names,
+			      node->info.index.where);
 }
 
 /*
@@ -9252,7 +9253,9 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
 	  if (!pt_has_error (parser) && node->node_type == PT_ALTER_INDEX)
 	    {
-	      pt_check_filter_index_expr (parser, node->info.index.where);
+	      pt_check_filter_index_expr (parser,
+					  node->info.index.column_names,
+					  node->info.index.where);
 	    }
 
 	  if (!pt_has_error (parser))
@@ -12797,12 +12800,15 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
  *				   index
  * return : true if expression tree is valid, false otherwise
  * parser (in)	: parser context
- * node (in)	: root node of expression tree
+ * atts (in): an attribute definition list
+ * node (in) : root node of expression tree
  */
 static void
-pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
+			    PT_NODE * node)
 {
   PT_FILTER_INDEX_INFO info;
+  int atts_count = 0, i = 0;
 
   if (node == NULL)
     {
@@ -12810,8 +12816,28 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  info.atts = atts;
+  while (atts)
+    {
+      atts_count++;
+      atts = atts->next;
+    }
+
+  info.atts_count = atts_count;
+  info.is_null_atts = (bool *) malloc (atts_count * sizeof (bool));
+  if (info.is_null_atts == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return;
+    }
+  for (i = 0; i < atts_count; i++)
+    {
+      info.is_null_atts[i] = false;
+    }
   info.is_valid_expr = true;
   info.depth = 0;
+
   (void) parser_walk_tree (parser, node, pt_check_filter_index_expr_pre,
 			   &info, pt_check_filter_index_expr_post, &info);
 
@@ -12819,6 +12845,11 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+    }
+
+  if (info.is_null_atts)
+    {
+      free_and_init (info.is_null_atts);
     }
 }
 
@@ -12852,7 +12883,7 @@ pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node,
  * return : current node
  * parser (in)	: parser context
  * node (in)	: node
- * arg (in/out)	: (is_valid_expr, expression depth)
+ * arg (in/out)	: PT_FILTER_INDEX_INFO *
  * continue_walk (in) : continue walk
  */
 static PT_NODE *
@@ -12884,7 +12915,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_NOT_LIKE:
 	case PT_IS_IN:
 	case PT_IS_NOT_IN:
-	case PT_IS_NULL:
 	case PT_IS_NOT_NULL:
 	case PT_IS:
 	case PT_IS_NOT:
@@ -13066,6 +13096,60 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_CONV:
 	  /* valid expression, nothing to do */
 	  break;
+	case PT_IS_NULL:
+	  {
+	    PT_NODE *attr = NULL, *p_nam = NULL;
+	    PT_NODE *arg1 = NULL;
+	    int i = 0, j = 0;
+
+	    arg1 = node->info.expr.arg1;
+	    if (arg1 == NULL || arg1->node_type != PT_NAME ||
+		arg1->info.name.original == NULL || info->atts == NULL)
+	      {
+		break;
+	      }
+
+	    for (attr = info->atts; attr != NULL; attr = attr->next)
+	      {
+		if (attr->node_type == PT_SORT_SPEC)
+		  {
+		    p_nam = attr->info.sort_spec.expr;
+		  }
+		else if (attr->node_type == PT_ATTR_DEF)
+		  {
+		    p_nam = attr->info.attr_def.attr_name;
+		  }
+
+		if (p_nam == NULL || p_nam->node_type != PT_NAME)
+		  {
+		    continue;	/* give up */
+		  }
+
+		if (!pt_str_compare (p_nam->info.name.original,
+				     arg1->info.name.original,
+				     CASE_INSENSITIVE))
+		  {
+		    info->is_null_atts[i] = true;
+		    for (j = 0; j < info->atts_count; j++)
+		      {
+			if (info->is_null_atts[j] == false)
+			  {
+			    break;
+			  }
+		      }
+		    if (j == info->atts_count)
+		      {
+			info->is_valid_expr = false;
+		      }
+
+		    break;
+		  }
+
+		i++;
+	      }
+	  }
+	  break;
+
 	default:
 	  info->is_valid_expr = false;
 	  break;

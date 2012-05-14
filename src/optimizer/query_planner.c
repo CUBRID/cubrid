@@ -8327,7 +8327,18 @@ qo_search_planner (QO_PLANNER * planner)
 						    &seg_terms);
 #if 1
 	      /* Currently we do not consider the following optimization. */
-	      if (have_range_terms)
+	      if (have_range_terms ||
+		  (index_entry->constraints->filter_predicate &&
+		   index_entry->force &&
+		   bitset_cardinality (&(index_entry->key_filter_terms)) > 0))
+		/* Currently, CUBRID does not allow null values in index.
+		 * The filter index expression must contain at least one
+		 * term different than "is null". Otherwise, the index will
+		 * be empty. Having at least one term different than
+		 * "is null" in a filter index expression, the user
+		 * knows from beginning that null values can't appear when
+		 * scan filter index.
+		 */
 #else
 	      /* We can generate a plan using index scan if terms are covered,
 	       * even though no range term is found. In this case, however,
