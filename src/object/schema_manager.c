@@ -504,6 +504,12 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop,
 						   const SM_CLASS_CONSTRAINT *
 						   const constraint);
 
+static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT *
+						     constraint,
+						     char *class_name,
+						     SM_ATTRIBUTE * old_atts,
+						     SM_ATTRIBUTE * new_atts);
+
 static int sm_truncate_using_delete (MOP class_mop);
 #if 0
 static int sm_truncate_using_destroy_heap (MOP class_mop);
@@ -5680,7 +5686,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			  return er_errid ();
 			}
 
-		      class_ = (SM_CLASS *) locator_fetch_class (obj, 
+		      class_ = (SM_CLASS *) locator_fetch_class (obj,
 								 DB_FETCH_READ);
 		      if (class_ == NULL)
 			{
@@ -10759,6 +10765,54 @@ inherit_constraint (MOP classop, SM_CLASS_CONSTRAINT * con)
 }
 
 /*
+ * sm_filter_index_pred_have_invalid_attrs() - Check whether filter index
+ *						predicate contain invalid
+ *						class attributes
+ *   return: true if filter index predicate contain invalid (removed)
+ *	      attributes, false otherwise
+ *   class_name(in): class name
+ *   old_atts(in): old class attributes
+ *   new_atts(in): new class attributes
+ */
+bool
+sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint,
+					 char *class_name,
+					 SM_ATTRIBUTE * old_atts,
+					 SM_ATTRIBUTE * new_atts)
+{
+  SM_ATTRIBUTE *old_att = NULL;
+  int i;
+
+  if (constraint == NULL || old_atts == NULL || new_atts == NULL ||
+      constraint->filter_predicate == NULL ||
+      constraint->filter_predicate->att_ids == NULL)
+    {
+      return false;
+    }
+
+  assert (constraint->filter_predicate->num_attrs > 0);
+  for (old_att = old_atts; old_att != NULL;
+       old_att = (SM_ATTRIBUTE *) old_att->header.next)
+    {
+      if (find_matching_att (new_atts, old_att, 1) == NULL)
+	{
+	  /* old_att has been removed */
+	  for (i = 0; i < constraint->filter_predicate->num_attrs; i++)
+	    {
+	      if (constraint->filter_predicate->att_ids[i] == old_att->id)
+		{
+		  return true;
+		}
+	    }
+	}
+    }
+
+  return false;
+}
+
+
+/*
+/*
  * transfer_disk_structures() - Work function for install_new_representation.
  *    Here we look for any attributes that are being dropped from the
  *    class and remove their associated disk structures (if any).
@@ -10889,7 +10943,13 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
        con != NULL; con = next)
     {
       next = con->next;
-      if (con->attributes[0] != NULL)
+      if (con->attributes[0] != NULL &&
+	  sm_filter_index_pred_have_invalid_attrs (con,
+						   (char *) class_->header.
+						   name, class_->attributes,
+						   flat->
+						   instance_attributes) ==
+	  false)
 	{
 	  prev = con;
 	}
@@ -13809,6 +13869,10 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 	    {
 	      free_and_init (info->filter_predicate->pred_stream);
 	    }
+	  if (info->filter_predicate->att_ids)
+	    {
+	      free_and_init (info->filter_predicate->att_ids);
+	    }
 	  free_and_init (info->filter_predicate);
 	}
       free_and_init (info->ref_cls_name);
@@ -14003,6 +14067,31 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 
       new_constraint->filter_predicate->pred_stream_size =
 	c->filter_predicate->pred_stream_size;
+
+      if (c->filter_predicate->num_attrs == 0)
+	{
+	  new_constraint->filter_predicate->att_ids = NULL;
+	}
+      else
+	{
+	  new_constraint->filter_predicate->att_ids =
+	    (int *) calloc (c->filter_predicate->num_attrs, sizeof (int));
+	  if (new_constraint->filter_predicate->att_ids == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		      c->filter_predicate->num_attrs * sizeof (int));
+	      goto error_exit;
+	    }
+	  for (i = 0; i < c->filter_predicate->num_attrs; i++)
+	    {
+	      new_constraint->filter_predicate->att_ids[i] =
+		c->filter_predicate->att_ids[i];
+	    }
+	}
+
+      new_constraint->filter_predicate->num_attrs =
+	c->filter_predicate->num_attrs;
     }
   else
     {

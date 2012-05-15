@@ -2574,7 +2574,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
   bool free_packing_buff = false;
   PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
   int stream_size = 0;
-  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0 },
+  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 },
     *p_pred_index_info = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
 
@@ -2727,6 +2727,9 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 				 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		      goto end;
 		    }
+		  pred_index_info.att_ids = filter_predicate->attrids_pred;
+		  pred_index_info.num_attrs =
+		    filter_predicate->num_attrs_pred;
 		  p_pred_index_info = &pred_index_info;
 		}
 	      else
@@ -2972,7 +2975,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   bool free_packing_buff = false;
   PT_NODE *where_predicate = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
-  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0 },
+  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 },
     *p_pred_index_info = NULL;
   bool free_funtion_expr_str = false;
   const char *class_name = NULL;
@@ -3148,44 +3151,67 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       if (idx->filter_predicate)
 	{
-	  if (idx->filter_predicate->pred_string)
-	    {
-	      int pred_str_len = strlen (idx->filter_predicate->pred_string);
-	      pred_index_info.pred_string =
-		strdup (idx->filter_predicate->pred_string);
-	      if (pred_index_info.pred_string == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  strlen (idx->filter_predicate->pred_string) *
-			  sizeof (char));
-		  error = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto error_exit;
-		}
-	      free_pred_string = true;
-	    }
+	  int pred_str_len;
+	  assert (idx->filter_predicate->pred_string != NULL &&
+		  idx->filter_predicate->pred_stream != NULL);
 
-	  if (idx->filter_predicate->pred_stream)
+	  pred_str_len = strlen (idx->filter_predicate->pred_string);
+	  pred_index_info.pred_string =
+	    strdup (idx->filter_predicate->pred_string);
+	  if (pred_index_info.pred_string == NULL)
 	    {
-	      pred_index_info.pred_stream =
-		(char *) malloc (idx->filter_predicate->
-				 pred_stream_size * sizeof (char));
-	      if (pred_index_info.pred_stream == NULL)
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      strlen (idx->filter_predicate->pred_string) *
+		      sizeof (char));
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_exit;
+	    }
+	  free_pred_string = true;
+
+	  pred_index_info.pred_stream =
+	    (char *) malloc (idx->filter_predicate->
+			     pred_stream_size * sizeof (char));
+	  if (pred_index_info.pred_stream == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      idx->filter_predicate->pred_stream_size *
+		      sizeof (char));
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_exit;
+	    }
+	  memcpy (pred_index_info.pred_stream,
+		  idx->filter_predicate->pred_stream,
+		  idx->filter_predicate->pred_stream_size);
+	  pred_index_info.pred_stream_size =
+	    idx->filter_predicate->pred_stream_size;
+
+	  if (idx->filter_predicate->num_attrs == 0)
+	    {
+	      pred_index_info.att_ids = NULL;
+	    }
+	  else
+	    {
+	      pred_index_info.att_ids =
+		(int *) calloc (idx->filter_predicate->num_attrs,
+				sizeof (int));
+	      if (pred_index_info.att_ids == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  idx->filter_predicate->pred_stream_size *
-			  sizeof (char));
+			  idx->filter_predicate->num_attrs * sizeof (int));
 		  error = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error_exit;
 		}
-	      memcpy (pred_index_info.pred_stream,
-		      idx->filter_predicate->pred_stream,
-		      idx->filter_predicate->pred_stream_size);
-	      pred_index_info.pred_stream_size =
-		idx->filter_predicate->pred_stream_size;
-	      p_pred_index_info = &pred_index_info;
+	      for (i = 0; i < idx->filter_predicate->num_attrs; i++)
+		{
+		  pred_index_info.att_ids[i] =
+		    idx->filter_predicate->att_ids[i];
+		}
 	    }
+	  pred_index_info.num_attrs = idx->filter_predicate->num_attrs;
+	  p_pred_index_info = &pred_index_info;
 	}
 
       if (idx->func_index_info)
@@ -3305,6 +3331,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 		{
 		  goto error_exit;
 		}
+	      pred_index_info.att_ids = filter_predicate->attrids_pred;
+	      pred_index_info.num_attrs = filter_predicate->num_attrs_pred;
 	    }
 	  else
 	    {
@@ -3438,6 +3466,11 @@ end:
   if (free_pred_string)
     {
       free_and_init (pred_index_info.pred_string);
+      /* free allocated attribute ids */
+      if (pred_index_info.att_ids != NULL)
+	{
+	  free_and_init (pred_index_info.att_ids);
+	}
     }
 
   if (free_packing_buff)
@@ -16013,6 +16046,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
   int query_str_len = 0;
   char *pred_str = NULL;
   int pred_str_len = 0;
+  bool free_packing_buff = false;
+  SM_PREDICATE_INFO new_pred = { NULL, NULL, 0, NULL, 0 };
 
   if (alter && alter->node_type == PT_ALTER)
     {
@@ -16104,31 +16139,21 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
-  if (constr->filter_predicate->pred_string)
-    {
-      free_and_init (constr->filter_predicate->pred_string);
-    }
-  if (constr->filter_predicate->pred_stream)
-    {
-      free_and_init (constr->filter_predicate->pred_stream);
-    }
-
   filter_expr = pt_print_bytes (parser, where_predicate);
   if (filter_expr)
     {
       pred_str = (char *) filter_expr->bytes;
       pred_str_len = strlen (pred_str);
-      constr->filter_predicate->pred_string =
+      new_pred.pred_string =
 	(char *) calloc (pred_str_len + 1, sizeof (char));
-      if (constr->filter_predicate->pred_string == NULL)
+      if (new_pred.pred_string == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
-      memcpy (constr->filter_predicate->pred_string, pred_str, pred_str_len);
+      memcpy (new_pred.pred_string, pred_str, pred_str_len);
 
-      if (strlen (constr->filter_predicate->pred_string) >
-	  MAX_FILTER_PREDICATE_STRING_LENGTH)
+      if (strlen (new_pred.pred_string) > MAX_FILTER_PREDICATE_STRING_LENGTH)
 	{
 	  PT_ERRORm (parser, where_predicate, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
@@ -16138,19 +16163,17 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     }
 
   pt_enter_packing_buf ();
+  free_packing_buff = true;
   filter_predicate = pt_to_pred_with_context (parser, where_predicate,
 					      (*stmt)->info.query.q.select.
 					      from);
   if (filter_predicate)
     {
       error = xts_map_filter_pred_to_stream (filter_predicate,
-					     &constr->filter_predicate->
-					     pred_stream,
-					     &constr->filter_predicate->
-					     pred_stream_size);
+					     &new_pred.pred_stream,
+					     &new_pred.pred_stream_size);
       if (error != NO_ERROR)
 	{
-	  pt_exit_packing_buf ();
 	  PT_ERRORm (parser, where_predicate, MSGCAT_SET_PARSER_RUNTIME,
 		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	  error = ER_FAILED;
@@ -16159,22 +16182,81 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     }
   else
     {
-      pt_exit_packing_buf ();
       error = er_errid ();
       goto error;
     }
-  pt_exit_packing_buf ();
+
+  if (filter_predicate->attrids_pred)
+    {
+      int i;
+      assert (filter_predicate->num_attrs_pred > 0);
+      new_pred.att_ids =
+	(int *) calloc (filter_predicate->num_attrs_pred, sizeof (int));
+      if (new_pred.att_ids == NULL)
+	{
+	  PT_ERRORm (parser, where_predicate, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  error = ER_FAILED;
+	  goto error;
+	}
+      for (i = 0; i < filter_predicate->num_attrs_pred; i++)
+	{
+	  new_pred.att_ids[i] = filter_predicate->attrids_pred[i];
+	}
+    }
+  else
+    {
+      new_pred.att_ids = NULL;
+    }
+  new_pred.num_attrs = filter_predicate->num_attrs_pred;
+
+  if (constr->filter_predicate->pred_string)
+    {
+      free_and_init (constr->filter_predicate->pred_string);
+    }
+  if (constr->filter_predicate->pred_stream)
+    {
+      free_and_init (constr->filter_predicate->pred_stream);
+    }
+  if (constr->filter_predicate->att_ids)
+    {
+      free_and_init (constr->filter_predicate->att_ids);
+    }
+
+  constr->filter_predicate->pred_string = new_pred.pred_string;
+  constr->filter_predicate->pred_stream = new_pred.pred_stream;
+  constr->filter_predicate->pred_stream_size = new_pred.pred_stream_size;
+  constr->filter_predicate->att_ids = new_pred.att_ids;
+  constr->filter_predicate->num_attrs = new_pred.num_attrs;
 
   if (query_str)
     {
       free_and_init (query_str);
     }
+
+  pt_exit_packing_buf ();
   return NO_ERROR;
 
 error:
   if (query_str)
     {
       free_and_init (query_str);
+    }
+  if (new_pred.pred_string)
+    {
+      free_and_init (new_pred.pred_string);
+    }
+  if (new_pred.pred_stream)
+    {
+      free_and_init (new_pred.pred_stream);
+    }
+  if (new_pred.att_ids)
+    {
+      free_and_init (new_pred.att_ids);
+    }
+  if (free_packing_buff)
+    {
+      pt_exit_packing_buf ();
     }
   return error;
 }

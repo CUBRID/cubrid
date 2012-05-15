@@ -625,6 +625,8 @@ struct sm_predicate_info
   char *pred_string;
   char *pred_stream;		/* CREATE INDEX ... WHERE filter_predicate */
   int pred_stream_size;
+  int *att_ids;			/* array of attr ids from predicate */
+  int num_attrs;		/* number of atts from predicate */
 };
 
 typedef struct sm_function_info SM_FUNCTION_INFO;

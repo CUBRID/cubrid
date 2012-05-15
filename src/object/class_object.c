@@ -823,15 +823,24 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
 {
   DB_SEQ *pred_seq = NULL;
   DB_VALUE value;
+  DB_SEQ *att_seq = NULL;
+  int i;
 
   if (filter_index_info == NULL)
     {
       return NULL;
     }
 
-  pred_seq = set_create_sequence (2);
+  pred_seq = set_create_sequence (3);
   if (pred_seq == NULL)
     {
+      return NULL;
+    }
+
+  att_seq = set_create_sequence (0);
+  if (att_seq == NULL)
+    {
+      set_free (pred_seq);
       return NULL;
     }
 
@@ -857,6 +866,17 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
       db_make_null (&value);
     }
   set_put_element (pred_seq, 1, &value);
+
+  /* attribute ids */
+  for (i = 0; i < filter_index_info->num_attrs; i++)
+    {
+      db_make_int (&value, filter_index_info->att_ids[i]);
+      set_put_element (att_seq, i, &value);
+    }
+
+  db_make_sequence (&value, att_seq);
+  set_put_element (pred_seq, 2, &value);
+  pr_clear_value (&value);
 
   return pred_seq;
 }
@@ -2405,6 +2425,10 @@ classobj_free_class_constraints (SM_CLASS_CONSTRAINT * constraints)
 	    {
 	      db_ws_free (c->filter_predicate->pred_string);
 	    }
+	  if (c->filter_predicate->att_ids)
+	    {
+	      db_ws_free (c->filter_predicate->att_ids);
+	    }
 	  db_ws_free (c->filter_predicate);
 	}
 
@@ -2710,13 +2734,16 @@ static SM_PREDICATE_INFO *
 classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
 {
   SM_PREDICATE_INFO *filter_predicate = NULL;
-  DB_VALUE fvalue;
+  DB_VALUE fvalue, avalue, v;
   char *val_str = NULL;
   size_t val_str_len = 0;
   char *buffer = NULL;
   int buffer_len = 0;
+  DB_SEQ *att_seq = NULL;
+  int att_seq_size = 0, i;
 
-  assert (pred_seq != NULL && set_size (pred_seq) == 2);
+  assert (pred_seq != NULL && set_size (pred_seq) == 3);
+  db_make_null (&avalue);
 
   if (set_get_element_nocopy (pred_seq, 0, &fvalue) != NO_ERROR)
     {
@@ -2790,6 +2817,50 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
   memcpy (filter_predicate->pred_stream, buffer, buffer_len);
   filter_predicate->pred_stream_size = buffer_len;
 
+  if (set_get_element (pred_seq, 2, &avalue) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  if (DB_VALUE_TYPE (&avalue) != DB_TYPE_SEQUENCE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  att_seq = DB_GET_SEQUENCE (&avalue);
+  filter_predicate->num_attrs = att_seq_size = set_size (att_seq);
+  if (att_seq_size == 0)
+    {
+      filter_predicate->att_ids = NULL;
+    }
+  else
+    {
+      filter_predicate->att_ids =
+	(int *) db_ws_alloc (sizeof (int) * att_seq_size);
+      if (filter_predicate->att_ids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, att_seq_size * sizeof (int));
+	  goto error;
+	}
+
+      for (i = 0; i < att_seq_size; i++)
+	{
+	  if (set_get_element_nocopy (att_seq, i, &v) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_SM_INVALID_PROPERTY, 0);
+	      goto error;
+	    }
+
+	  filter_predicate->att_ids[i] = DB_GET_INT (&v);
+	}
+    }
+
+  pr_clear_value (&avalue);
+
   return filter_predicate;
 error:
 
@@ -2805,8 +2876,15 @@ error:
 	  db_ws_free (filter_predicate->pred_stream);
 	}
 
+      if (filter_predicate->att_ids)
+	{
+	  db_ws_free (filter_predicate->att_ids);
+	}
+
       db_ws_free (filter_predicate);
     }
+
+  pr_clear_value (&avalue);
   return NULL;
 }
 

@@ -1729,6 +1729,8 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return ER_SM_INVALID_PROPERTY;
     }
 
+  /* currently, element 2 from pred_seq is used only on client side */
+
   filter_predicate = (OR_PREDICATE *) malloc (sizeof (OR_PREDICATE));
   if (filter_predicate == NULL)
     {
