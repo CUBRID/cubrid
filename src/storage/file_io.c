@@ -435,6 +435,10 @@ static int max_flush_pages_per_sec = 0;
 static int io_Bkuptrace_debug = -1;
 #endif /* CUBRID_DEBUG */
 
+#if defined(SERVER_MODE) && defined(WINDOWS)
+static pthread_mutex_t *fileio_get_volume_mutex (THREAD_ENTRY * thread_p,
+						 int vdes);
+#endif
 static int fileio_initialize_volume_info_cache (void);
 static void fileio_make_volume_lock_name (char *vol_lockname,
 					  const char *vol_fullname);
@@ -2498,6 +2502,12 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
  *       temporary volumes.
  *
  *       NOTE: No checking for temporary volumes is performed by this function.
+ *
+ *	 NOTE: On WINDOWS && SERVER MODE io_mutex lock must be obtained before 
+ *	  calling lseek. Otherwise, expanding can interfere with fileio_read
+ *	  and fileio_write calls. This caused corruptions in the temporary
+ *	  file, random pages being written at the end of file instead of being
+ *	  written at their designated places.
  */
 DKNPAGES
 fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
@@ -2508,6 +2518,11 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
   off_t offset;
   DKNPAGES max_npages;
   DKNPAGES npages;
+#if defined(WINDOWS) && defined(SERVER_MODE)
+  int rv;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
   vol_fd = fileio_get_volume_descriptor (vol_id);
   vol_label_p = fileio_get_volume_label (vol_id);
@@ -2528,9 +2543,27 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
   max_npages = fileio_get_number_of_partition_free_pages (vol_label_p,
 							  IO_PAGESIZE);
 
+#if defined(WINDOWS) && defined(SERVER_MODE)
+  io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
+  if (io_mutex == NULL)
+    {
+      io_mutex = &io_mutex_instance;
+    }
+
+  rv = pthread_mutex_lock (io_mutex);
+  if (rv != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
+      return -1;
+    }
+#endif
+
   /* Find the offset to the end of the file, then add the given number of
      pages */
   offset = lseek (vol_fd, 0, SEEK_END);
+#if defined(WINDOWS) && defined(SERVER_MODE)
+  pthread_mutex_unlock (io_mutex);
+#endif
   offset += FILEIO_GET_FILE_SIZE (IO_PAGESIZE, npages_toadd - 1);
 
   /*
