@@ -312,6 +312,8 @@ extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid);
 extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int sm_att_unique_constrained (MOP classop, const char *name);
+extern int sm_att_in_unique_filter_constraint_predicate (MOP classop,
+							 const char *name);
 extern int sm_is_att_fk_cache (MOP classop, const char *name);
 extern int sm_att_fk_constrained (MOP classop, const char *name);
 

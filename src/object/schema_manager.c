@@ -5278,6 +5278,50 @@ sm_att_unique_constrained (MOP classop, const char *name)
 }
 
 /*
+ * sm_att_in_unique_filter_constraint_predicate() - Returns whether the
+ *						    attribute is inside
+ *						    of unique filter
+ *						    constraint predicate
+ *   return: whether the attribute is inside of unique filter constraint
+ *	      predicate
+ *   classop(in): class object
+ *   name(in): attribute
+ */
+int
+sm_att_in_unique_filter_constraint_predicate (MOP classop, const char *name)
+{
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *att = NULL;
+
+  if (find_attribute_op (classop, name, &class_, &att) == NO_ERROR)
+    {
+      SM_CLASS_CONSTRAINT *constr = NULL;
+      int i;
+
+      for (constr = class_->constraints; constr != NULL;
+	   constr = constr->next)
+	{
+	  if ((constr->type == SM_CONSTRAINT_UNIQUE
+	       || constr->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+	      && constr->filter_predicate
+	      && constr->filter_predicate->att_ids)
+	    {
+	      assert (constr->filter_predicate->num_attrs > 0);
+	      for (i = 0; i < constr->filter_predicate->num_attrs; i++)
+		{
+		  if (constr->filter_predicate->att_ids[i] == att->id)
+		    {
+		      return 1;
+		    }
+		}
+	    }
+	}
+    }
+
+  return 0;
+}
+
+/*
  * sm_class_check_uniques() - Returns NO_ERROR if there are no unique constraints
  *    or if none of the unique constraints are violated.
  *    Used by the interpreter to check batched unique constraints.

@@ -7606,7 +7606,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	    }
 	}
 
-      if (!same_key)
+      if (!same_key || do_delete_only || do_insert_only)
 	{
 	  if (i < 1 || !locator_was_index_already_applied (new_attrinfo,
 							   &index->btid, i))

@@ -11514,6 +11514,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
   OUTPTR_LIST *output_val_list = NULL;
   REGU_VARIABLE_LIST regu_val_list = NULL;
 
+
   assert (parser != NULL);
 
   if (spec == NULL)
@@ -15404,7 +15405,8 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 		       PT_NODE * spec, PT_NODE * non_null_attrs,
 		       PT_NODE * attr_list, int attr_offset)
 {
-  PT_NODE *pt_pred = NULL, *node, *conj, *next, *oid_is_null_expr, *constraint;
+  PT_NODE *pt_pred =
+    NULL, *node, *conj, *next, *oid_is_null_expr, *constraint;
   PT_NODE *name, *spec_list;
   PRED_EXPR *pred = NULL;
   TABLE_INFO *ti = NULL;
@@ -15472,8 +15474,8 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	  oid_is_null_expr->type_enum = PT_TYPE_LOGICAL;
 	  oid_is_null_expr->info.expr.op = PT_IS_NULL;
 	  oid_is_null_expr->info.expr.arg1 = pt_spec_to_oid_attr (parser,
-								   spec_list,
-								   OID_NAME);
+								  spec_list,
+								  OID_NAME);
 	  if (!oid_is_null_expr->info.expr.arg1)
 	    {
 	      goto outofmem;
@@ -16137,7 +16139,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 		    }
 
 		  /* remember this node as previous assignment node */
-	          last_val = val;
+		  last_val = val;
 		}
 	    }
 	}
@@ -16815,6 +16817,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 			sm_att_unique_constrained (class_obj,
 						   att_name_node->
 						   info.name.original);
+		      if (upd_cls->has_uniques == 0)
+			{
+			  upd_cls->has_uniques =
+			    sm_att_in_unique_filter_constraint_predicate
+			    (class_obj, att_name_node->info.name.original);
+			}
 		    }
 
 		  if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
@@ -20463,7 +20471,7 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 			statement->info.query.q.select.from);
   /* set search condition */
   search_cond = (composite_locking == PT_COMPOSITE_LOCKING_UPDATE) ?
-		info->update.search_cond : info->update.del_search_cond;
+    info->update.search_cond : info->update.del_search_cond;
   if (search_cond)
     {
       PT_NODE *node = parser_new_node (parser, PT_EXPR);
@@ -20472,8 +20480,7 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	  node->info.expr.op = PT_AND;
 	  node->info.expr.arg1 =
 	    parser_copy_tree_list (parser, info->search_cond);
-	  node->info.expr.arg2 =
-	    parser_copy_tree_list (parser, search_cond);
+	  node->info.expr.arg2 = parser_copy_tree_list (parser, search_cond);
 	}
       statement->info.query.q.select.where = node;
     }
@@ -20997,7 +21004,8 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
        * to classes and attributes */
       pt_init_assignments_helper (parser, &assign_helper, assigns);
       assign_idx = a = 0;
-      while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+      while ((att_name_node =
+	      pt_get_next_assignment (&assign_helper)) != NULL)
 	{
 	  if (att_name_node->info.name.spec_id
 	      == cl_name_node->info.name.spec_id)
@@ -21385,7 +21393,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	       a < no_default_expr; attr = attr->next, ++a)
 	    {
 	      if ((insert->att_id[a] =
-		  sm_att_id (class_obj, attr->info.name.original)) < 0)
+		   sm_att_id (class_obj, attr->info.name.original)) < 0)
 		{
 		  error = er_errid ();
 		}
@@ -21394,7 +21402,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	       a < no_default_expr + no_vals; attr = attr->next, ++a)
 	    {
 	      if ((insert->att_id[a] =
-		  sm_att_id (class_obj, attr->info.name.original)) < 0)
+		   sm_att_id (class_obj, attr->info.name.original)) < 0)
 		{
 		  error = er_errid ();
 		}
