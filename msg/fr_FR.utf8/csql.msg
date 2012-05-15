@@ -26,7 +26,7 @@ $
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
 interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name\n\
+usage: %s [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
   -S, --SA-mode                standalone mode execution\n\
