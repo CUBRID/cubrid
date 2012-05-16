@@ -93,6 +93,9 @@ int wsa_initialize ();
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
+#define MAKE_STRI(x) #x
+#define MAKE_STR(x) MAKE_STRI(x)
+
 #ifdef CCI_DEBUG
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)		DEBUG_MSG_FUNC
 #define DEBUG_STR(STR)			((STR) == NULL ? "NULL" : (STR))
@@ -187,6 +190,7 @@ static int cci_time_string (char *buf, struct timeval *time_val);
 /************************************************************************
  * PRIVATE VARIABLES							*
  ************************************************************************/
+static const char *build_number = "VERSION=" MAKE_STR (BUILD_NUMBER);
 
 #if defined(WINDOWS)
 static HANDLE con_handle_table_mutex;
