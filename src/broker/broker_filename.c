@@ -227,8 +227,18 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf)
       snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
       break;
     case FID_SOCK_DIR:
-      envvar_vardir_file (buf, PATH_MAX, "CUBRID_SOCK/");
-      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      {
+	const char *cubrid_tmp = envvar_get ("TMP");
+	if (cubrid_tmp == NULL || cubrid_tmp[0] == '\0')
+	  {
+	    envvar_vardir_file (buf, PATH_MAX, "CUBRID_SOCK/");
+	  }
+	else
+	  {
+	    snprintf (buf, PATH_MAX, "%s/", cubrid_tmp);
+	  }
+	snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      }
       break;
     case FID_AS_PID_DIR:
       envvar_vardir_file (buf, PATH_MAX, "as_pid/");

@@ -36,9 +36,6 @@ extern int css_Server_use_new_connection_protocol;
 extern int css_Server_inhibit_connection_socket;
 extern SOCKET css_Server_connection_socket;
 
-#if !defined(WINDOWS)
-extern char css_Master_unix_domain_path[];
-#endif
 extern SOCKET css_Pipe_to_master;
 
 #define CSS_NET_MAGIC_SIZE		8

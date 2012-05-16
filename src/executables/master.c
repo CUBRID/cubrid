@@ -238,7 +238,7 @@ css_master_cleanup (int sig)
   css_shutdown_socket (css_Master_socket_fd[0]);
   css_shutdown_socket (css_Master_socket_fd[1]);
 #if !defined(WINDOWS)
-  unlink (css_Master_unix_domain_path);
+  unlink (css_get_master_domain_path ());
 
   if (PRM_HA_MODE)
     {

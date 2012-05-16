@@ -117,18 +117,7 @@ extern void cfg_free_dbinfo_all (DB_INFO * databases);
 extern int cfg_read_dbinfo (DB_INFO ** db_info_p);
 extern DB_INFO *cfg_find_db_list (DB_INFO * db_info_list_p, const char *name);
 extern int char_is_delim (int c, int delim);
-extern const char *envvar_prefix (void);
-extern const char *envvar_root (void);
-extern char *envvar_confdir_file (char *path, size_t size,
-				  const char *filename);
-extern char *envvar_tmpdir_file (char *path, size_t size,
-				 const char *filename);
-extern char *envvar_vardir_file (char *path, size_t size,
-				 const char *filename);
-extern char *envvar_logdir_file (char *path, size_t size,
-				 const char *filename);
-extern char *envvar_bindir_file (char *path, size_t size,
-				 const char *filename);
+
 extern UINT64 ntohi64 (UINT64 from);
 
 extern int char_islower (int c);

@@ -35,7 +35,6 @@
 #include "stringl.h"
 #endif
 #include "error_code.h"
-#include "error_manager.h"
 #include "environment_variable.h"
 
 /* available root directory symbols; NULL terminated array */
@@ -44,6 +43,53 @@ static const char *envvar_Prefix = NULL;
 static const char *envvar_Root = NULL;
 
 #define _ENVVAR_MAX_LENGTH      255
+
+typedef enum
+{
+  ENV_INVALID_DIR,
+  ENV_DONT_EXISTS_ROOT,
+  ENV_MUST_ABS_PATH,
+  ENV_TOO_LONG
+} ENV_ERR_MSG;
+
+static const char *env_msg[] = {
+  "The directory in $%s is invalid. (%s)\n",
+  "The root directory environment variable $%s is not set.\n",
+  "The $%s should be an absolute path. (%s)\n",
+  "The $%s is too long. (%s)\n"
+};
+
+static void
+envvar_check_environment (void)
+{
+#if defined(WINDOWS)
+  return;
+#else
+  const char *cubrid_tmp = envvar_get ("TMP");
+
+  if (cubrid_tmp)
+    {
+      char name[_ENVVAR_MAX_LENGTH];
+      size_t len = strlen (cubrid_tmp);
+      size_t limit = 108 - 12;
+      /* 108 = sizeof (((struct sockaddr_un *) 0)->sun_path) */
+      /* 12  = ("CUBRID65384" + 1) */
+      envvar_name (name, _ENVVAR_MAX_LENGTH, "TMP");
+      if (IS_ABS_PATH (cubrid_tmp))
+	{
+	  fprintf (stderr, env_msg[ENV_MUST_ABS_PATH], name, cubrid_tmp);
+	  fflush (stderr);
+	  exit (1);
+	}
+      if (len > limit)
+	{
+	  fprintf (stderr, env_msg[ENV_TOO_LONG], name, cubrid_tmp);
+	  fflush (stderr);
+	  exit (1);
+	}
+    }
+#endif
+}
 
 /*
  * envvar_prefix - find a recognized prefix symbol
@@ -61,7 +107,7 @@ envvar_prefix (void)
 #if !defined (WINDOWS)
 	  if (access (envvar_Root, F_OK) != 0)
 	    {
-	      fprintf (stderr, "The directory in $%s is invalid. (%s)\n",
+	      fprintf (stderr, env_msg[ENV_INVALID_DIR],
 		       envvar_Prefix_name, envvar_Root);
 	      fflush (stderr);
 	      exit (1);
@@ -69,14 +115,14 @@ envvar_prefix (void)
 #endif
 
 	  envvar_Prefix = envvar_Prefix_name;
-	  return envvar_Prefix;
 	}
-
-      fprintf (stderr,
-	       "The root directory environment variable $%s is not set.\n",
-	       envvar_Prefix_name);
-      fflush (stderr);
-      exit (1);
+      else
+	{
+	  fprintf (stderr, env_msg[ENV_DONT_EXISTS_ROOT], envvar_Prefix_name);
+	  fflush (stderr);
+	  exit (1);
+	}
+      envvar_check_environment ();
 #else
       envvar_Prefix = envvar_Prefix_name;
       envvar_Root = CUBRID_PREFIXDIR;

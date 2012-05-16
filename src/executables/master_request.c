@@ -703,7 +703,7 @@ css_process_kill_master (void)
   css_shutdown_socket (css_Master_socket_fd[1]);
 
 #if !defined(WINDOWS)
-  unlink (css_Master_unix_domain_path);
+  unlink (css_get_master_domain_path ());
 
   if (hb_Resource && resource_Jobs)
     {

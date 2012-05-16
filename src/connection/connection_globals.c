@@ -38,9 +38,6 @@
 const char *css_Service_name = "cubrid";
 int css_Service_id = 1523;
 
-#if !defined(WINDOWS)
-char css_Master_unix_domain_path[TMP_MAX] = "";
-#endif
 SOCKET css_Pipe_to_master = INVALID_SOCKET;	/* socket for Master->Slave communication */
 
 /* Stuff for the new client/server/master protocol */

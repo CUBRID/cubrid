@@ -104,6 +104,28 @@ static int css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 			 socklen_t * slen);
 static int css_fd_error (SOCKET fd);
 
+char *
+css_get_master_domain_path (void)
+{
+  static char path[PATH_MAX];
+  static bool need_init = true;
+
+  if (need_init)
+    {
+      const char *cubrid_tmp = envvar_get ("TMP");
+
+      if (cubrid_tmp == NULL || cubrid_tmp[0] == '\0')
+	{
+	  cubrid_tmp = "/tmp";
+	}
+      snprintf (path, PATH_MAX, "%s/%s%d", cubrid_tmp, envvar_prefix (),
+		prm_get_master_port_id ());
+      need_init = false;
+    }
+
+  return path;
+}
+
 /*
  * css_tcp_client_open () -
  *   return:
@@ -244,12 +266,6 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
     }
 
   /*
-   * Construct address for Unix domain socket
-   */
-  sprintf (css_Master_unix_domain_path, "%s/%s%d",
-	   P_tmpdir, envvar_prefix (), port);
-
-  /*
    * Compare with the TCP address with localhost.
    * If it is, use Unix domain socket rather than TCP for the performance
    */
@@ -258,7 +274,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
-      strncpy (unix_saddr.sun_path, css_Master_unix_domain_path,
+      strncpy (unix_saddr.sun_path, css_get_master_domain_path (),
 	       sizeof (unix_saddr.sun_path) - 1);
       *slen = sizeof (unix_saddr);
       memcpy ((void *) saddr, (void *) &unix_saddr, *slen);
@@ -548,11 +564,8 @@ css_tcp_master_open (int port, SOCKET * sockfd)
       return ERR_CSS_TCP_PORT_ERROR;
     }
 
-  sprintf (css_Master_unix_domain_path, "%s/%s%d",
-	   P_tmpdir, envvar_prefix (), port);
-
   unix_srv_addr.sun_family = AF_UNIX;
-  strncpy (unix_srv_addr.sun_path, css_Master_unix_domain_path,
+  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (),
 	   sizeof (unix_srv_addr.sun_path) - 1);
 
   /*
@@ -621,14 +634,14 @@ retry:
   ioctl (sockfd[0], FIOCLEX, 0);
 #endif /* HPUX */
 
-  if (access (css_Master_unix_domain_path, F_OK) == 0)
+  if (access (css_get_master_domain_path (), F_OK) == 0)
     {
-      if (stat (css_Master_unix_domain_path, &unix_socket_stat) == -1)
+      if (stat (css_get_master_domain_path (), &unix_socket_stat) == -1)
 	{
 	  /* stat() failed */
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
-			       css_Master_unix_domain_path);
+			       css_get_master_domain_path ());
 	  css_shutdown_socket (sockfd[0]);
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
 	}
@@ -637,16 +650,16 @@ retry:
 	  /* not socket file */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
-		  css_Master_unix_domain_path);
+		  css_get_master_domain_path ());
 	  css_shutdown_socket (sockfd[0]);
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
 	}
-      if (unlink (css_Master_unix_domain_path) == -1)
+      if (unlink (css_get_master_domain_path ()) == -1)
 	{
 	  /* unlink() failed */
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
-			       css_Master_unix_domain_path);
+			       css_get_master_domain_path ());
 	  css_shutdown_socket (sockfd[0]);
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
 	}

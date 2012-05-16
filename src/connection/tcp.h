@@ -37,6 +37,8 @@ extern unsigned int css_gethostid (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_fd_down (SOCKET fd);
 #endif
+extern char *css_get_master_domain_path (void);
+
 extern SOCKET css_tcp_client_open (const char *host, int port);
 extern SOCKET css_tcp_client_open_with_retry (const char *host, int port,
 					      bool will_retry);
