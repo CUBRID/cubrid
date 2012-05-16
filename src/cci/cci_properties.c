@@ -296,7 +296,6 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
   T_URL_PROPERTY props[] = {
     {"altHosts", STRING_PROPERTY, &althosts},
     {"rcTime", INT_PROPERTY, &handle->rc_time},
-    {"autoCommit", BOOL_PROPERTY, &handle->autocommit_mode},
     {"loginTimeout", INT_PROPERTY, &handle->login_timeout},
     {"queryTimeout", INT_PROPERTY, &handle->query_timeout},
     {"disconnectOnQueryTimeout", BOOL_PROPERTY,

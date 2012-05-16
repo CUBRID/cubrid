@@ -564,7 +564,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
     }
   ADD_ARG_BYTES (&net_buf, &fetch_flag, 1);
 
-  if (con_handle->autocommit_mode == true)
+  if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE)
     {
       forward_only_cursor = true;
     }
