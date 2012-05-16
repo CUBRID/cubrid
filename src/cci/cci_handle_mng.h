@@ -159,6 +159,7 @@ typedef struct
   int num_query_res;
   int valid;
   int query_timeout;
+  int is_closed;
 } T_REQ_HANDLE;
 
 typedef struct
@@ -232,6 +233,7 @@ typedef struct
   int *deferred_close_handle_list;
   int deferred_close_handle_count;
   void *logger;
+  int is_holdable;
 } T_CON_HANDLE;
 
 /************************************************************************
@@ -247,6 +249,10 @@ extern int hm_req_handle_alloc (int con_id, T_REQ_HANDLE **);
 extern void hm_req_handle_free (T_CON_HANDLE * con_handle,
 				int req_h_id, T_REQ_HANDLE * req_handle);
 extern void hm_req_handle_free_all (T_CON_HANDLE * con_handle);
+extern void hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle);
+extern void hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle);
+extern void hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE *
+							   con_handle);
 extern int hm_con_handle_free (int con_id);
 
 extern T_CON_HANDLE *hm_find_con_handle (int con_handle_id);
@@ -267,6 +273,10 @@ extern void hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime);
 extern int hm_get_ha_connected_host (T_CON_HANDLE * con_handle);
 extern time_t hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle);
 extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
+
+extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
+					int holdable);
+extern int hm_get_con_handle_holdable (T_CON_HANDLE * con_handle);
 
 extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
 extern int hm_req_get_from_pool (T_CON_HANDLE * con, char *sql);

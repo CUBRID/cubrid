@@ -1258,7 +1258,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
-  if (IS_BROKER_STMT_POOL (con_handle))
+  if (IS_BROKER_STMT_POOL (con_handle) || req_handle->is_closed)
     {
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
     }
@@ -2284,8 +2284,6 @@ cci_set_autocommit (int con_h_id, CCI_AUTOCOMMIT_MODE autocommit_mode)
   return err_code;
 }
 
-
-
 CCI_AUTOCOMMIT_MODE
 cci_get_autocommit (int con_h_id)
 {
@@ -2325,6 +2323,94 @@ cci_get_autocommit (int con_h_id)
   con_handle->ref_count = 0;
 
   return con_handle->autocommit_mode;
+}
+
+int
+cci_set_holdability (int con_h_id, int holdable)
+{
+  T_CON_HANDLE *con_handle;
+  int err_code = 0;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_set_con_handle_holdable %d", holdable));
+#endif
+
+  while (1)
+    {
+      MUTEX_LOCK (con_handle_table_mutex);
+
+      con_handle = hm_find_con_handle (con_h_id);
+      if (con_handle == NULL)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  return CCI_ER_CON_HANDLE;
+	}
+
+      if (con_handle->ref_count > 0)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  SLEEP_MILISEC (0, 100);
+	}
+      else
+	{
+	  con_handle->ref_count = 1;
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  break;
+	}
+    }
+
+  if (err_code == 0)
+    {
+      hm_set_con_handle_holdable (con_handle, holdable);
+    }
+
+  con_handle->ref_count = 0;
+
+  return err_code;
+}
+
+int
+cci_get_holdability (int con_h_id)
+{
+  T_CON_HANDLE *con_handle;
+  int err_code = 0;
+  int holdable = 0;
+
+  while (1)
+    {
+      MUTEX_LOCK (con_handle_table_mutex);
+
+      con_handle = hm_find_con_handle (con_h_id);
+      if (con_handle == NULL)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  return CCI_ER_CON_HANDLE;
+	}
+
+      if (con_handle->ref_count > 0)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  SLEEP_MILISEC (0, 100);
+	}
+      else
+	{
+	  con_handle->ref_count = 1;
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  break;
+	}
+    }
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_get_con_handle_holdable %d",
+		    con_handle->is_holdable));
+#endif
+  holdable = hm_get_con_handle_holdable (con_handle);
+
+  con_handle->ref_count = 0;
+
+  return holdable;
 }
 
 int
@@ -4058,6 +4144,9 @@ cci_get_err_msg_internal (int err_code)
     case CCI_ER_REQ_HANDLE:
       return "Cannot allocate request handle";
 
+    case CCI_ER_RESULT_SET_CLOSED:
+      return "Result set is closed";
+
     case CCI_ER_INVALID_CURSOR_POS:
       return "Invalid cursor position";
 
@@ -4180,6 +4269,9 @@ cci_get_err_msg_internal (int err_code)
 
     case CAS_ER_HOLDABLE_NOT_ALLOWED:
       return "Holdable results may not be updatable or sensitive";
+
+    case CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF:
+      return "Holdable results are not allowed while KEEP_CONNECTION is off";
 
     case CAS_ER_IS:
       return "Not used";
@@ -4926,7 +5018,7 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 {
   int err_code = 0;
 
-  if (req_handle->valid)
+  if (req_handle->valid && !req_handle->is_closed)
     {
       return err_code;
     }

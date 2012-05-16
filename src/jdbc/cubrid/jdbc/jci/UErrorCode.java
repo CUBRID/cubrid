@@ -99,6 +99,7 @@ abstract public class UErrorCode {
 	public static final int CAS_ER_DBSERVER_DISCONNECTED = -1025;
 	public static final int CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED = -1026;
 	public static final int CAS_ER_HOLDABLE_NOT_ALLOWED = -1027;
+	public static final int CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF = -1028;
 	public static final int CAS_ER_NOT_IMPLEMENTED = -1100;
 	public static final int CAS_ER_IS = -1200;
 
@@ -222,6 +223,8 @@ abstract public class UErrorCode {
 				"Cannot prepare more than MAX_PREPARED_STMT_COUNT statements");
 		CASMessageString.put(new Integer(CAS_ER_HOLDABLE_NOT_ALLOWED),
 				"Holdable results may not be updatable or sensitive");
+		CASMessageString.put(new Integer(CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF),
+				"Holdable results are not allowed while KEEP_CONNECTION is off");
 		CASMessageString.put(new Integer(CAS_ER_NOT_IMPLEMENTED),
 				"Attempt to use a not supported service");
 		CASMessageString.put(new Integer(CAS_ER_IS), "Authentication failure");

@@ -714,6 +714,15 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
 
+#ifndef LIBCAS_FOR_JSP
+  if ((flag & CCI_PREPARE_HOLDABLE) && (as_info->cur_keep_con == KEEP_CON_OFF))
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF,
+				 CAS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+#endif
+
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
   if (srv_h_id < 0)
     {
@@ -848,6 +857,15 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       num_markers = get_num_markers (sql_stmt);
       stmt_type = db_get_statement_type (session, stmt_id);
       srv_handle->is_prepared = TRUE;
+    }
+
+  if ((flag & CCI_PREPARE_HOLDABLE))
+    {
+      hm_srv_handle_set_holdable (srv_handle, true);
+    }
+  else
+    {
+      hm_srv_handle_set_holdable (srv_handle, false);
     }
 
 prepare_result_set:
@@ -1213,15 +1231,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       srv_handle->q_result->async_flag = FALSE;
     }
 
-  if ((flag & CCI_EXEC_HOLDABLE)
-      && srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
-    {
-      hm_srv_handle_set_holdable (srv_handle, true);
-    }
-  else
-    {
-      hm_srv_handle_set_holdable (srv_handle, false);
-    }
   db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
 #if 0				/* yaw */
   if ((err_code = check_class_chn (srv_handle)) < 0)

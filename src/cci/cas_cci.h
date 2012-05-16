@@ -150,7 +150,6 @@ extern "C"
 #define CCI_EXEC_QUERY_INFO		0x04
 #define CCI_EXEC_ONLY_QUERY_PLAN        0x08
 #define CCI_EXEC_THREAD			0x10
-#define CCI_EXEC_HOLDABLE		0x20
 
 #define CCI_FETCH_SENSITIVE		1
 
@@ -391,6 +390,8 @@ extern "C"
 
     CCI_ER_LOGIN_TIMEOUT = -38,
     CCI_ER_QUERY_TIMEOUT = -39,
+
+    CCI_ER_RESULT_SET_CLOSED = -40,
 
     CCI_ER_NOT_IMPLEMENTED = -99
   } T_CCI_ERROR_CODE;
@@ -712,6 +713,8 @@ extern "C"
   extern CCI_AUTOCOMMIT_MODE cci_get_autocommit (int con_handle);
   extern int cci_set_autocommit (int con_handle,
 				 CCI_AUTOCOMMIT_MODE autocommit_mode);
+  extern int cci_set_holdability (int con_handle_id, int holdable);
+  extern int cci_get_holdability (int con_handle_id);
   extern int cci_get_class_num_objs (int conn_handle, char *class_name,
 				     int flag, int *num_objs, int *num_pages,
 				     T_CCI_ERROR * err_buf);

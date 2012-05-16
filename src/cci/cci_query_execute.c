@@ -295,7 +295,27 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
   if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] !=
       CAS_STATEMENT_POOLING_ON)
     {
-      hm_req_handle_free_all (con_handle);
+      if (type == CCI_TRAN_ROLLBACK)
+	{
+	  hm_req_handle_free_all (con_handle);
+	}
+      else
+	{
+	  hm_req_handle_free_all_unholdable (con_handle);
+	}
+    }
+  else
+    {
+      if (type == CCI_TRAN_ROLLBACK)
+	{
+	  /* close all results sets */
+	  hm_req_handle_close_all_resultsets (con_handle);
+	}
+      else
+	{
+	  /* close only unholdable results sets */
+	  hm_req_handle_close_all_unholdable_resultsets (con_handle);
+	}
     }
 
   keep_connection = (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION]
@@ -389,6 +409,12 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
 	       con_handle->charset);
+
+  if (con_handle->is_holdable)
+    {
+      /* make sure statement is holdable */
+      flag |= CCI_PREPARE_HOLDABLE;
+    }
   ADD_ARG_BYTES (&net_buf, &flag, 1);
 
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
@@ -453,6 +479,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     flag |= CCI_PREPARE_INCLUDE_OID;
   req_handle->prepare_flag = flag;
   req_handle->cursor_pos = 0;
+  req_handle->is_closed = 0;
   req_handle->valid = 1;
 
   if (!reuse)
@@ -668,7 +695,6 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   hm_req_handle_fetch_buf_free (req_handle);
   req_handle->cursor_pos = 0;
 
-
   /* If fetch_flag is 1, executing query and fetching data
      is processed together.
      So, fetching results are included in result_msg.
@@ -829,6 +855,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     prepare_flag |= CCI_PREPARE_INCLUDE_OID;
   req_handle->prepare_flag = prepare_flag;
   req_handle->cursor_pos = 0;
+  req_handle->is_closed = 0;
   req_handle->valid = 1;
 
   if (req_handle->stmt_type == CUBRID_STMT_SELECT)
@@ -1172,6 +1199,11 @@ qe_cursor (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, int offset,
   int tuple_num;
   int cursor_pos;
 
+  if (req_handle->is_closed)
+    {
+      return CCI_ER_RESULT_SET_CLOSED;
+    }
+
   if (req_handle->handle_type == HANDLE_PREPARE)
     {
       if (req_handle->stmt_type == CUBRID_STMT_SELECT ||
@@ -1337,6 +1369,11 @@ qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       return CCI_ER_NO_MORE_DATA;
     }
 
+  if (req_handle->is_closed)
+    {
+      return CCI_ER_RESULT_SET_CLOSED;
+    }
+
   if (req_handle->fetched_tuple_begin > 0 &&
       req_handle->cursor_pos >= req_handle->fetched_tuple_begin &&
       req_handle->cursor_pos <= req_handle->fetched_tuple_end)
@@ -1418,6 +1455,11 @@ qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type, void *value,
   int data_size;
   int err_code;
   int num_cols;
+
+  if (req_handle->is_closed)
+    {
+      return CCI_ER_RESULT_SET_CLOSED;
+    }
 
   if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     {

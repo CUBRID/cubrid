@@ -420,11 +420,77 @@ hm_req_handle_free_all (T_CON_HANDLE * con_handle)
     {
       req_handle = con_handle->req_handle_table[i];
       if (req_handle == NULL)
-	continue;
+	{
+	  continue;
+	}
       req_handle_content_free (req_handle, 0);
       FREE_MEM (req_handle);
       con_handle->req_handle_table[i] = NULL;
       --(con_handle->req_handle_count);
+    }
+}
+
+void
+hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle;
+
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      req_handle = con_handle->req_handle_table[i];
+      if (req_handle == NULL)
+	{
+	  continue;
+	}
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
+	{
+	  /* do not free holdable req_handles */
+	  continue;
+	}
+      req_handle_content_free (req_handle, 0);
+      FREE_MEM (req_handle);
+      con_handle->req_handle_table[i] = NULL;
+      --(con_handle->req_handle_count);
+    }
+}
+
+void
+hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle;
+
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      req_handle = con_handle->req_handle_table[i];
+      if (req_handle == NULL)
+	{
+	  continue;
+	}
+      req_handle->is_closed = 1;
+    }
+}
+
+void
+hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle;
+
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      req_handle = con_handle->req_handle_table[i];
+      if (req_handle == NULL)
+	{
+	  continue;
+	}
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
+	{
+	  /* skip holdable req_handles */
+	  continue;
+	}
+      req_handle->is_closed = 1;
     }
 }
 
@@ -624,6 +690,18 @@ hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime)
   MUTEX_UNLOCK (ha_status_mutex);
 }
 
+void
+hm_set_con_handle_holdable (T_CON_HANDLE * con_handle, int holdable)
+{
+  con_handle->is_holdable = holdable;
+}
+
+int
+hm_get_con_handle_holdable (T_CON_HANDLE * con_handle)
+{
+  return con_handle->is_holdable;
+}
+
 T_BROKER_VERSION
 hm_get_broker_version (T_CON_HANDLE * con_handle)
 {
@@ -745,6 +823,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
     (int *) MALLOC (sizeof (int) *
 		    con_handle->deferred_max_close_handle_count);
   con_handle->deferred_close_handle_count = 0;
+
+  con_handle->is_holdable = 0;
 
   return 0;
 }
