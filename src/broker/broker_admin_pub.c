@@ -46,9 +46,11 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <math.h>
 #endif /* WINDOWS */
 
 #include "porting.h"
@@ -88,6 +90,9 @@
 	      _msglen += sprintf(BUF + _msglen, " (os error = %s)", _msg); \
 	  }								\
 	} while (0)
+
+#define MEMBER_SIZE(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
+#define NUM_OF_DIGITS(NUMBER) (int)log10(NUMBER) + 1
 
 #define ACCESS_FILE_DELIMITER ":"
 #define IP_FILE_DELIMITER ","
@@ -215,6 +220,12 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
     return -1;
 #endif /* WINDOWS */
 
+  if (br_num <= 0)
+    {
+      strcpy (admin_err_msg,
+	      "Cannot start CUBRID Broker. (number of broker is 0)");
+      return -1;
+    }
   chdir ("..");
   broker_create_dir (get_cubrid_file (FID_VAR_DIR, path));
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path));
@@ -227,15 +238,19 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path));
 #endif /* !WINDOWS */
 
-  if (br_num <= 0)
-    {
-      strcpy (admin_err_msg,
-	      "Cannot start CUBRID Broker. (number of broker is 0)");
-      return -1;
-    }
 
   for (i = 0; i < br_num; i++)
     {
+#if !defined(WINDOWS)
+      /*prevent the broker from hanging due to an excessively long path*/
+      if (strlen (path) + strlen (br_info[i].name) +
+	  NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
+	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
+	{
+	  strcpy (admin_err_msg, "The installation path is too long");
+	  return -1;
+	}
+#endif /* !WINDOWS */
       broker_create_dir (br_info[i].log_dir);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
