@@ -10856,7 +10856,6 @@ sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint,
 
 
 /*
-/*
  * transfer_disk_structures() - Work function for install_new_representation.
  *    Here we look for any attributes that are being dropped from the
  *    class and remove their associated disk structures (if any).
