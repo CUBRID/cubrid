@@ -1292,7 +1292,7 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	  shm_appl->slow_log_mode = slow_log_mode;
 	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	    {
-	      shm_appl->as_info[i].cur_sql_log_mode = slow_log_mode;
+	      shm_appl->as_info[i].cur_slow_log_mode = slow_log_mode;
 	    }
 	}
       else
