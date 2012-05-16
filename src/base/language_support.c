@@ -119,7 +119,7 @@ static LANG_LOCALE_DATA *find_lang_locale_data (const char *name,
 						const INTL_CODESET codeset,
 						LANG_LOCALE_DATA **
 						last_lang_locale);
-static void register_lang_locale_data (LANG_LOCALE_DATA * lld);
+static int register_lang_locale_data (LANG_LOCALE_DATA * lld);
 static void free_lang_locale_data (LANG_LOCALE_DATA * lld);
 static int register_collation (LANG_COLLATION * coll);
 
@@ -436,16 +436,16 @@ lang_init (void)
    * string - data/time , string - number conversions */
 
   /* built-in locales with ISO codeset */
-  register_lang_locale_data (&lc_English_iso88591);
-  register_lang_locale_data (&lc_Korean_iso88591);
-  register_lang_locale_data (&lc_Turkish_iso88591);
+  (void) register_lang_locale_data (&lc_English_iso88591);
+  (void) register_lang_locale_data (&lc_Korean_iso88591);
+  (void) register_lang_locale_data (&lc_Turkish_iso88591);
 
-  register_lang_locale_data (&lc_Korean_euckr);
+  (void) register_lang_locale_data (&lc_Korean_euckr);
 
   /* built-in locales with UTF-8 codeset : should be loaded last */
-  register_lang_locale_data (&lc_English_utf8);
-  register_lang_locale_data (&lc_Korean_utf8);
-  register_lang_locale_data (&lc_Turkish_utf8);
+  (void) register_lang_locale_data (&lc_English_utf8);
+  (void) register_lang_locale_data (&lc_Korean_utf8);
+  (void) register_lang_locale_data (&lc_Turkish_utf8);
 
   /* set current locale */
   set_current_locale (false);
@@ -765,26 +765,25 @@ init_user_locales (void)
 
       if (lld != NULL)
 	{
-	  /* user customization : remove previous one */
+	  /* user customization : overwrite built-in locale */
 	  if (lld->is_user_data)
 	    {
-	      /* Only need to deallocate text conversion, because this is
-	       * the only manually allocated struct. 
-	       * Text conversions having init_conv_func not NULL are built-in.
-	       */
-	      if (lld->txt_conv != NULL &&
-		  lld->txt_conv->init_conv_func == NULL)
-		{
-		  free (lld->txt_conv);
-		  lld->txt_conv = NULL;
-		}
+	      char err_msg[ERR_MSG_SIZE];
+
+	      snprintf (err_msg, sizeof (err_msg) - 1,
+			"Duplicate user locale : %s", lld->lang_name);
+	      er_status = ER_LOC_INIT;
+	      LOG_LOCALE_ERROR (err_msg, er_status, true);
+	      goto error;
 	    }
 	  l_id = lld->lang_id;
 	}
       else
 	{
+	  /* locale not found */
 	  if (last_lang_locale != NULL)
 	    {
+	      /* existing language, but new locale (another charset) */
 	      l_id = last_lang_locale->lang_id;
 	    }
 	  else
@@ -814,13 +813,13 @@ init_user_locales (void)
 	  lld->codeset = INTL_CODESET_UTF8;
 	  lld->lang_id = l_id;
 
-	  lld->is_user_data = true;
-
 	  is_new_locale = true;
 	}
 
       assert (lld->codeset == INTL_CODESET_UTF8);
       assert (lld->lang_id == l_id);
+
+      lld->is_user_data = true;
 
       er_status =
 	lang_locale_data_load_from_lib (lld,
@@ -870,7 +869,13 @@ init_user_locales (void)
 	    {
 	      lang_set_generic_unicode_norm (&(lld->unicode_norm));
 	    }
-	  register_lang_locale_data (lld);
+
+	  er_status = register_lang_locale_data (lld);
+
+	  if (er_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
 
       lld->is_initialized = true;
@@ -1100,10 +1105,10 @@ find_lang_locale_data (const char *name, const INTL_CODESET codeset,
 
 /*
  * register_lang_locale_data - registers a language locale data in the system
- *   return:
+ *   return: error status
  *   lld(in): language locale data
  */
-static void
+static int
 register_lang_locale_data (LANG_LOCALE_DATA * lld)
 {
   LANG_LOCALE_DATA *last_lang_locale = NULL;
@@ -1115,6 +1120,21 @@ register_lang_locale_data (LANG_LOCALE_DATA * lld)
 					     &last_lang_locale);
 
   assert (found_lang_locale == NULL);
+
+  if (!lld->is_user_data)
+    {
+      /* make a copy of built-in */
+      LANG_LOCALE_DATA *new_lld =
+	(LANG_LOCALE_DATA *) malloc (sizeof (LANG_LOCALE_DATA));
+      if (new_lld == NULL)
+	{
+	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
+	  return ER_LOC_INIT;
+	}
+
+      memcpy (new_lld, lld, sizeof (LANG_LOCALE_DATA));
+      lld = new_lld;
+    }
 
   if (last_lang_locale == NULL)
     {
@@ -1140,6 +1160,8 @@ register_lang_locale_data (LANG_LOCALE_DATA * lld)
 	  lld->default_lang_coll->init_coll (lld->default_lang_coll);
 	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -1168,9 +1190,9 @@ free_lang_locale_data (LANG_LOCALE_DATA * lld)
 	  free (lld->txt_conv);
 	  lld->txt_conv = NULL;
 	}
-
-      free (lld);
     }
+
+  free (lld);
 }
 
 /*
