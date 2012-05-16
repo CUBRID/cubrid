@@ -13890,8 +13890,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	   * this should be done in a more generic code : but,
 	   * pt_common_type_op is expected to return TYPE_NONE in this case*/
 	  if (PT_IS_CHAR_STRING_TYPE (rTyp) &&
-	      ((op == PT_PLUS && PRM_PLUS_AS_CONCAT == false)
-	       || op == PT_MINUS))
+	      (op != PT_PLUS || PRM_PLUS_AS_CONCAT == false))
 	    {
 	      rTyp = PT_TYPE_DOUBLE;
 	    }
