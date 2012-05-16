@@ -8469,7 +8469,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	      goto cleanup;
 	    }
 	  error =
-	    sm_add_index (objs->op, db_constraint_type (constraint),
+	    sm_add_index (subclass_op, db_constraint_type (constraint),
 			  constraint->name, (const char **) namep, asc_desc,
 			  constraint->attrs_prefix_length,
 			  constraint->filter_predicate,
