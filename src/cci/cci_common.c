@@ -937,6 +937,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
   return key;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * mht_put - insert an entry associating key with data
  *   return: Returns key if insertion was OK, otherwise, it returns NULL
@@ -958,6 +959,7 @@ mht_put (MHT_TABLE * ht, void *key, void *data)
   assert (ht != NULL && key != NULL);
   return mht_put_internal (ht, key, data, MHT_OPT_DEFAULT);
 }
+#endif
 
 void *
 mht_put_data (MHT_TABLE * ht, void *key, void *data)
