@@ -8151,6 +8151,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	break;
       }
+
     case PT_LIKE_LOWER_BOUND:
     case PT_LIKE_UPPER_BOUND:
       /* Check if arguments have been handled by PT_LIKE and only the result
@@ -8161,60 +8162,35 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    pt_db_to_type_enum (TP_DOMAIN_TYPE (arg1->expected_domain));
 	  goto error;
 	}
+      break;
 
     case PT_IS_IN:
     case PT_IS_NOT_IN:
-      {
-	SEMANTIC_CHK_INFO sc_info =
-	  { NULL, NULL, 0, 0, 0, false, false, false };
-	PT_NODE *t, *lhs, *rhs;
+      if (arg2->node_type == PT_VALUE)
+	{
+	  if (PT_IS_COLLECTION_TYPE (arg2->type_enum)
+	      && arg2->info.value.data_value.set
+	      && arg2->info.value.data_value.set->next == NULL)
+	    {
+	      /* only one element in set. convert expr as EQ/NE expr. */
+	      PT_NODE *new_arg2;
 
-	lhs = arg1;
-	rhs = arg2;
+	      new_arg2 = arg2->info.value.data_value.set;
 
-	if (pt_is_query (lhs) && lhs->info.query.q.select.list->next != NULL)
-	  {
-	    pt_select_list_to_one_col (parser, lhs, true);
-	    lhs = pt_resolve_names (parser, lhs, &sc_info);
-	  }
+	      /* free arg2 */
+	      arg2->info.value.data_value.set = NULL;
+	      parser_free_tree (parser, node->info.expr.arg2);
 
-	for (t = rhs; t; t = t->next)
-	  {
-	    if (pt_is_query (t) && t->info.query.q.select.list->next != NULL)
-	      {
-		pt_select_list_to_one_col (parser, t, true);
-		t = pt_resolve_names (parser, t, &sc_info);
-	      }
-	  }
-
-	if ((op == PT_IS_IN || op == PT_IS_NOT_IN)
-	    && arg2->node_type == PT_VALUE)
-	  {
-	    if (PT_IS_COLLECTION_TYPE (arg2->type_enum)
-		&& arg2->info.value.data_value.set
-		&& arg2->info.value.data_value.set->next == NULL)
-	      {
-		/* only one element in set. convert expr as EQ/NE expr. */
-		PT_NODE *new_arg2;
-
-		new_arg2 = arg2->info.value.data_value.set;
-
-		/* free arg2 */
-		arg2->info.value.data_value.set = NULL;
-		parser_free_tree (parser, node->info.expr.arg2);
-
-		/* rewrite arg2 */
-		node->info.expr.arg2 = new_arg2;
-		node->info.expr.op = (op == PT_IS_IN) ? PT_EQ : PT_NE;
-	      }
-	    else if (PT_IS_NULL_NODE (arg2))
-	      {
-		return node;
-	      }
-	  }
-
-	break;
-      }
+	      /* rewrite arg2 */
+	      node->info.expr.arg2 = new_arg2;
+	      node->info.expr.op = (op == PT_IS_IN) ? PT_EQ : PT_NE;
+	    }
+	  else if (PT_IS_NULL_NODE (arg2))
+	    {
+	      return node;
+	    }
+	}
+      break;
 
     case PT_TO_CHAR:
       if (arg1_type == PT_TYPE_CHAR || arg1_type == PT_TYPE_VARCHAR
@@ -9444,38 +9420,41 @@ error:
 	  return node;
 	}
 
-      if (arg2 && arg3)
+      if (!pt_has_error (parser))
 	{
-	  assert (arg1 != NULL);
-	  PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_3,
-		       pt_show_binopcode (op),
-		       pt_show_type_enum (arg1->type_enum),
-		       pt_show_type_enum (arg2->type_enum),
-		       pt_show_type_enum (arg3->type_enum));
-	}
-      else if (arg2)
-	{
-	  assert (arg1 != NULL);
-	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-		       pt_show_binopcode (op),
-		       pt_show_type_enum (arg1->type_enum),
-		       pt_show_type_enum (arg2->type_enum));
-	}
-      else if (arg1)
-	{
-	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
-		       pt_show_binopcode (op),
-		       pt_show_type_enum (arg1->type_enum));
-	}
-      else
-	{
-	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
-		       pt_show_binopcode (op),
-		       pt_show_type_enum (PT_TYPE_NONE));
+	  if (arg2 && arg3)
+	    {
+	      assert (arg1 != NULL);
+	      PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_3,
+			   pt_show_binopcode (op),
+			   pt_show_type_enum (arg1->type_enum),
+			   pt_show_type_enum (arg2->type_enum),
+			   pt_show_type_enum (arg3->type_enum));
+	    }
+	  else if (arg2)
+	    {
+	      assert (arg1 != NULL);
+	      PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+			   pt_show_binopcode (op),
+			   pt_show_type_enum (arg1->type_enum),
+			   pt_show_type_enum (arg2->type_enum));
+	    }
+	  else if (arg1)
+	    {
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
+			   pt_show_binopcode (op),
+			   pt_show_type_enum (arg1->type_enum));
+	    }
+	  else
+	    {
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
+			   pt_show_binopcode (op),
+			   pt_show_type_enum (PT_TYPE_NONE));
+	    }
 	}
     }
 
