@@ -21547,6 +21547,10 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
 	{
 	  *coll_id = LANG_COLL_ISO_BINARY;
 	}
+      else if (*charset == INTL_CODESET_KSC5601_EUC)
+	{
+	  *coll_id = LANG_COLL_EUCKR_BINARY;
+	}
       else
 	{
 	  assert (*charset == INTL_CODESET_UTF8);

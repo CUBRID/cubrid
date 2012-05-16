@@ -48,11 +48,15 @@
 
 /* collation and charset do be used by system : */
 #define LANG_SYS_COLLATION  ((lang_charset() == INTL_CODESET_UTF8) \
-	? LANG_COLL_UTF8_BINARY : LANG_COLL_ISO_BINARY)
+	? LANG_COLL_UTF8_BINARY :				   \
+	((lang_charset() == INTL_CODESET_KSC5601_EUC) ?		   \
+	 LANG_COLL_EUCKR_BINARY : LANG_COLL_ISO_BINARY))
+
 #define LANG_SYS_CODESET  lang_charset()
 
 #define LANG_IS_COERCIBLE_COLL(c)	\
-  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY)
+  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
+   || (c) == LANG_COLL_EUCKR_BINARY)
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
@@ -81,6 +85,7 @@
 #define LANG_COLL_UTF8_TR_CS	6
 #define LANG_COLL_ISO_KO_CS	7
 #define LANG_COLL_UTF8_KO_CS	8
+#define LANG_COLL_EUCKR_BINARY	9
 /*
  * message for fundamental error that occur before any messages catalogs
  * can be accessed or opened.

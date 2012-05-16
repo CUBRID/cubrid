@@ -60,6 +60,7 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591;
 static LANG_LOCALE_DATA lc_Turkish_utf8;
 static LANG_LOCALE_DATA lc_Korean_iso88591;
 static LANG_LOCALE_DATA lc_Korean_utf8;
+static LANG_LOCALE_DATA lc_Korean_euckr;
 static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 
 static bool lang_Initialized = false;
@@ -374,6 +375,21 @@ static LANG_COLLATION coll_utf8_ko_cs = {
   lang_init_coll_utf8_en_cs
 };
 
+static LANG_COLLATION coll_euckr_bin = {
+  INTL_CODESET_KSC5601_EUC, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_EUCKR_BINARY, "euckr_bin",
+   LANG_COLL_GENERIC_SORT_OPT,
+   NULL, NULL, 0,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR},
+  lang_fastcmp_ko,
+  lang_next_alpha_char_ko,
+  lang_split_point_iso,
+  NULL
+};
+
+
 static LANG_COLLATION *built_in_collations[] = {
   &coll_iso_binary,
   &coll_utf8_binary,
@@ -383,7 +399,8 @@ static LANG_COLLATION *built_in_collations[] = {
   &coll_utf8_en_ci,
   &coll_utf8_tr_cs,
   &coll_iso88591_ko_cs,
-  &coll_utf8_ko_cs
+  &coll_utf8_ko_cs,
+  &coll_euckr_bin,
 };
 
 /*
@@ -423,7 +440,9 @@ lang_init (void)
   register_lang_locale_data (&lc_Korean_iso88591);
   register_lang_locale_data (&lc_Turkish_iso88591);
 
-  /* built-in locales with UTF-8 codeset */
+  register_lang_locale_data (&lc_Korean_euckr);
+
+  /* built-in locales with UTF-8 codeset : should be loaded last */
   register_lang_locale_data (&lc_English_utf8);
   register_lang_locale_data (&lc_Korean_utf8);
   register_lang_locale_data (&lc_Turkish_utf8);
@@ -3864,6 +3883,23 @@ lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld)
   ld->is_initialized = true;
 }
 
+
+/*
+ * lang_initloc_ko_euc () - init locale data for Korean language with EUC-KR
+ *			    charset
+ *   return:
+ */
+static void
+lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
+{
+  assert (ld != NULL);
+
+  /* TODO: update this if EUC-KR is fully supported as standalone charset */
+  coll_euckr_bin.default_lang = ld;
+
+  ld->is_initialized = true;
+}
+
 /*
  * lang_fastcmp_ko () - compare two EUC-KR character strings
  *
@@ -4047,6 +4083,42 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
   lang_initloc_ko_utf8,
+  false
+};
+
+/* built-in support of Korean in EUC-KR : date-time conversions as in English
+ * collation : binary */
+static LANG_LOCALE_DATA lc_Korean_euckr = {
+  NULL,
+  LANG_NAME_KOREAN,
+  INTL_LANG_KOREAN,
+  INTL_CODESET_KSC5601_EUC,
+  /* alphabet : same as Korean ISO */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  /* identifiers alphabet : same as Korean ISO */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  &coll_iso88591_ko_cs,		/* collation : same as Korean ISO */
+  NULL,				/* console text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp format */
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  ',',
+  '.',
+  DB_CURRENCY_WON,
+  LANG_NO_NORMALIZATION,
+  lang_initloc_ko_euc,
   false
 };
 
