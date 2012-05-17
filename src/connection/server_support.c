@@ -103,7 +103,7 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static pthread_mutex_t ha_Server_state_waiting_mutex =
   PTHREAD_MUTEX_INITIALIZER;
 static int *ha_Server_state_waiting_clients = NULL;
-static int ha_Server_state_waiting_num = 0;
+static int ha_Server_state_max_waiting_clients = 0;
 static int ha_Server_num_of_hosts = 0;
 
 typedef struct job_queue JOB_QUEUE;
@@ -193,6 +193,8 @@ static void css_wakeup_ha_active_state (THREAD_ENTRY * thread_p);
 static bool css_wait_ha_active_state (THREAD_ENTRY * thread_p);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+
+static int css_num_ha_waiting_clients (void);
 
 /*
  * css_make_job_entry () -
@@ -337,20 +339,21 @@ css_init_job_queue (void)
 	}
     }
 
+  ha_Server_state_max_waiting_clients =
+    logtb_get_number_of_total_tran_indices ();
   ha_Server_state_waiting_clients =
-    (int *) malloc (PRM_CSS_MAX_CLIENTS * sizeof (int));
+    (int *) malloc (ha_Server_state_max_waiting_clients * sizeof (int));
   if (ha_Server_state_waiting_clients == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, PRM_CSS_MAX_CLIENTS * sizeof (int));
+	      1, ha_Server_state_max_waiting_clients * sizeof (int));
       return;
     }
 
-  for (i = 0; i < PRM_CSS_MAX_CLIENTS; i++)
+  for (i = 0; i < ha_Server_state_max_waiting_clients; i++)
     {
-      ha_Server_state_waiting_clients[i] = -1;
+      ha_Server_state_waiting_clients[i] = NULL_TRAN_INDEX;
     }
-  ha_Server_state_waiting_num = 0;
 }
 
 /*
@@ -833,7 +836,7 @@ css_process_new_client (SOCKET master_fd)
   unsigned short rid;
   CSS_CONN_ENTRY temp_conn;
   void *area;
-  char *buffer[1024];
+  char buffer[1024];
   int length = 1024;
 
   /* receive new socket descriptor from the master */
@@ -874,6 +877,7 @@ css_process_new_client (SOCKET master_fd)
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
 
       area = er_get_area_error (buffer, &length);
+
       temp_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
       css_send_error (&temp_conn, rid, (const char *) area, length);
       css_shutdown_conn (&temp_conn);
@@ -2461,6 +2465,27 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * css_num_ha_waiting_clients -
+ *   return: number of waiting clients
+ */
+static int
+css_num_ha_waiting_clients ()
+{
+  int i, num_waiting_clients;
+
+  num_waiting_clients = 0;
+  for (i = 0; i < ha_Server_state_max_waiting_clients; i++)
+    {
+      if (ha_Server_state_waiting_clients[i] != NULL_TRAN_INDEX)
+	{
+	  num_waiting_clients++;
+	}
+    }
+
+  return num_waiting_clients;
+}
+
+/*
  * css_wait_ha_active_state - wait for the server state to be active
  *                            from to-be-active
  *   return: true if ha_Server_state == HA_SERVER_STATE_ACTIVE, otherwise false
@@ -2471,19 +2496,30 @@ css_wait_ha_active_state (THREAD_ENTRY * thread_p)
   int r;
 
   r = pthread_mutex_lock (&ha_Server_state_waiting_mutex);
+
+  /* save waiting client for the server state to be active */
+  ha_Server_state_waiting_clients[thread_p->tran_index] =
+    thread_p->tran_index;
+
   while (ha_Server_state != HA_SERVER_STATE_ACTIVE
 	 && thread_p->interrupted == false)
     {
-      ha_Server_state_waiting_clients[ha_Server_state_waiting_num++]
-	= thread_p->tran_index;
       er_log_debug (ARG_FILE_LINE, "css_wait_ha_active_state: "
 		    "thread_suspend_with_other_mutex()[%d] tran_index %d\n",
-		    ha_Server_state_waiting_num - 1, thread_p->tran_index);
+		    css_num_ha_waiting_clients (), thread_p->tran_index);
       thread_suspend_with_other_mutex (thread_p,
 				       &ha_Server_state_waiting_mutex,
 				       INF_WAIT, NULL,
 				       THREAD_HA_ACTIVE_STATE_SUSPENDED);
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+	{
+	  break;
+	}
     }
+
+  /* clear waiting client */
+  ha_Server_state_waiting_clients[thread_p->tran_index] = NULL_TRAN_INDEX;
+
   pthread_mutex_unlock (&ha_Server_state_waiting_mutex);
 
   return (ha_Server_state == HA_SERVER_STATE_ACTIVE);
@@ -2499,7 +2535,7 @@ css_wakeup_ha_active_state (THREAD_ENTRY * thread_p)
   int i, r, tran_index;
 
   r = pthread_mutex_lock (&ha_Server_state_waiting_mutex);
-  for (i = 0; i < ha_Server_state_waiting_num; i++)
+  for (i = 0; i < ha_Server_state_max_waiting_clients; i++)
     {
       tran_index = ha_Server_state_waiting_clients[i];
       if (tran_index > 0)
@@ -2509,10 +2545,8 @@ css_wakeup_ha_active_state (THREAD_ENTRY * thread_p)
 			i, tran_index);
 	  thread_wakeup_with_tran_index (tran_index,
 					 THREAD_HA_ACTIVE_STATE_RESUMED);
-	  ha_Server_state_waiting_clients[i] = -1;
 	}
     }
-  ha_Server_state_waiting_num = 0;
   pthread_mutex_unlock (&ha_Server_state_waiting_mutex);
 }
 
@@ -2662,7 +2696,7 @@ css_check_ha_log_applier_working (void)
  *   state(in): new state for server to be
  *   force(in): force to change
  *   timeout(in): timeout (standby to maintenance)
- *   heartbeat(in): from heartbeat master 
+ *   heartbeat(in): from heartbeat master
  */
 int
 css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
