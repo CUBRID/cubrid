@@ -75,9 +75,9 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
   int ret = -1;
 
 #if defined(CAS_FOR_ORACLE)
-  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename);
+  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename, PATH_MAX);
 #elif defined(CAS_FOR_MYSQL)
-  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename);
+  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename, PATH_MAX);
 #endif
 
   file = fopen (filename, "r");
@@ -124,9 +124,9 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
   databases = last = NULL;
 
 #if defined(CAS_FOR_ORACLE)
-  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename);
+  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename, PATH_MAX);
 #elif defined(CAS_FOR_MYSQL)
-  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename);
+  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename, PATH_MAX);
 #endif
   file = fopen (filename, "r");
   if (file == NULL)

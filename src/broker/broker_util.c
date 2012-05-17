@@ -264,11 +264,11 @@ clear_sock_file:
     {
       char tmp[PATH_MAX], dirname[PATH_MAX];
 
-      get_cubrid_file (FID_SOCK_DIR, dirname);
+      get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
       snprintf (tmp, PATH_MAX - 1, "%s%s.%d", dirname, br_name, as_index + 1);
       unlink (tmp);
 
-      get_cubrid_file (FID_AS_PID_DIR, dirname);
+      get_cubrid_file (FID_AS_PID_DIR, dirname, PATH_MAX);
       snprintf (tmp, PATH_MAX - 1, "%s%s_%d.pid", dirname, br_name,
 		as_index + 1);
       unlink (tmp);
@@ -394,7 +394,8 @@ as_pid_file_create (char *br_name, int as_index)
   char buf[PATH_MAX];
 
   sprintf (as_pid_file_name, "%s%s_%d.pid",
-	   get_cubrid_file (FID_AS_PID_DIR, buf), br_name, as_index + 1);
+	   get_cubrid_file (FID_AS_PID_DIR, buf, PATH_MAX), br_name,
+	   as_index + 1);
   fp = fopen (as_pid_file_name, "w");
   if (fp)
     {
@@ -409,7 +410,8 @@ as_db_err_log_set (char *br_name, int as_index)
   char buf[PATH_MAX];
 
   sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d.err",
-	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf), br_name, as_index + 1);
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, PATH_MAX), br_name,
+	   as_index + 1);
   putenv (db_err_log_file);
 }
 

@@ -50,14 +50,6 @@
 #define isatty(stream)	_isatty(stream)
 #endif /* WINDOWS */
 
-#if !defined(LINE_MAX)
-#define LINE_MAX        2048
-#endif /* LINE_MAX */
-
-#if !defined(PATH_MAX)
-#define PATH_MAX        255
-#endif /* PATH_MAX */
-
 #define MSGCAT_CSQL_SET_CSQL	1
 
 /*

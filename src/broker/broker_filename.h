@@ -84,7 +84,7 @@ struct t_cubrid_file_info
 
 extern void set_cubrid_home (void);
 extern void set_cubrid_file (T_CUBRID_FILE_ID fid, char *value);
-extern char *get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf);
+extern char *get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len);
 extern char *get_cubrid_file_ptr (T_CUBRID_FILE_ID fid);
 extern char *get_cubrid_home (void);
 extern const char *getenv_cubrid_broker (void);

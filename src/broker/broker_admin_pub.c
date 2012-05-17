@@ -227,22 +227,22 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       return -1;
     }
   chdir ("..");
-  broker_create_dir (get_cubrid_file (FID_VAR_DIR, path));
-  broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path));
-  broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path));
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path));
-  broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path));
-  broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path, PATH_MAX));
 #if !defined(WINDOWS)
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path));
-  broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, PATH_MAX));
 #endif /* !WINDOWS */
 
 
   for (i = 0; i < br_num; i++)
     {
 #if !defined(WINDOWS)
-      /*prevent the broker from hanging due to an excessively long path*/
+      /*prevent the broker from hanging due to an excessively long path */
       if (strlen (path) + strlen (br_info[i].name) +
 	  NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
@@ -464,7 +464,7 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   int pid;
   char **env;
   int env_num;
-  char port_str[AS_PORT_STR_SIZE], appl_name_str[64];
+  char port_str[PATH_MAX], appl_name_str[64];
   char access_log_env_str[256], error_log_env_str[256];
   char appl_server_shm_key_str[32];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
@@ -576,7 +576,7 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 	}
 
       sprintf (port_str, "%s=%s%s.%d", PORT_NAME_ENV_STR,
-	       get_cubrid_file (FID_SOCK_DIR, buf),
+	       get_cubrid_file (FID_SOCK_DIR, buf, PATH_MAX),
 	       shm_br->br_info[br_index].name, as_index + 1);
       putenv (port_str);
       sprintf (appl_server_shm_key_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
@@ -1954,7 +1954,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   T_SHM_APPL_SERVER *shm_appl;
   char **env;
   int env_num;
-  char port_str[AS_PORT_STR_SIZE];
+  char port_str[PATH_MAX];
   char appl_name_str[32];
   char master_shm_key_str[32];
   char appl_server_shm_key_str[32];
@@ -2325,7 +2325,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 	     T_SHM_APPL_SERVER * shm_appl, T_SHM_BROKER * shm_br)
 {
   int pid;
-  char port_str[AS_PORT_STR_SIZE];
+  char port_str[PATH_MAX];
   char appl_name_str[64];
   char appl_server_shm_key_str[32];
   char access_log_env_str[256];
@@ -2333,12 +2333,12 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
   char error_log_lock_file[128];
   int i;
-  char port_name[AS_PORT_STR_SIZE], dirname[AS_PORT_STR_SIZE];
+  char port_name[PATH_MAX], dirname[PATH_MAX];
 #if !defined(WINDOWS)
   char process_name[128];
 #endif /* !WINDOWS */
 
-  get_cubrid_file (FID_SOCK_DIR, dirname);
+  get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
   snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname,
 	    br_info->name, as_index + 1);
 #if !defined(WINDOWS)

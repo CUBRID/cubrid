@@ -70,7 +70,7 @@ make_error_log_filename (char *filename_buf,
 
   assert (filename_buf != NULL);
 
-  get_cubrid_file (FID_CUBRID_ERR_DIR, dirname);
+  get_cubrid_file (FID_CUBRID_ERR_DIR, dirname, PATH_MAX);
   snprintf (filename_buf, buf_size, "%s%s_CAS_%d.err", dirname, br_name,
 	    (as_index) + 1);
   return filename_buf;

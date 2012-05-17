@@ -89,7 +89,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 
   assert (filename_buf != NULL);
 
-  get_cubrid_file (fid, dirname);
+  get_cubrid_file (fid, dirname, PATH_MAX);
   switch (fid)
     {
     case FID_SQL_LOG_DIR:
@@ -794,7 +794,7 @@ cas_log_query_plan_file (int id)
 #ifndef LIBCAS_FOR_JSP
   static char plan_file_name[PATH_MAX];
   char dirname[PATH_MAX];
-  get_cubrid_file (FID_CAS_TMP_DIR, dirname);
+  get_cubrid_file (FID_CAS_TMP_DIR, dirname, PATH_MAX);
   snprintf (plan_file_name, PATH_MAX - 1, "%s/%d.%d.plan", dirname,
 	    (int) getpid (), id);
   return plan_file_name;

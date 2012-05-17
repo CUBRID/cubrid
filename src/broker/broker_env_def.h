@@ -51,6 +51,4 @@
 
 #define ERROR_LOG_LOCK_FILE_ENV_STR	"ERROR_LOG_LOCK_FILE"
 
-#define AS_PORT_STR_SIZE		512
-
 #endif /* _BROKER_ENV_DEF_H_ */

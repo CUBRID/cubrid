@@ -1194,7 +1194,7 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
 static int
 run_appl_server (int as_index)
 {
-  char port_str[AS_PORT_STR_SIZE];
+  char port_str[PATH_MAX];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE], appl_name_str[64];
   char access_log_env_str[256], error_log_env_str[256];
   int pid;
@@ -1240,7 +1240,7 @@ run_appl_server (int as_index)
 #endif
 
       sprintf (port_str, "%s=%s%s.%d", PORT_NAME_ENV_STR,
-	       get_cubrid_file (FID_SOCK_DIR, buf),
+	       get_cubrid_file (FID_SOCK_DIR, buf, PATH_MAX),
 	       shm_br->br_info[br_index].name, as_index + 1);
       putenv (port_str);
 
@@ -1335,7 +1335,7 @@ restart_appl_server (int as_index)
       FILE *fp;
       int old_pid;
 
-      get_cubrid_file (FID_AS_PID_DIR, dirname);
+      get_cubrid_file (FID_AS_PID_DIR, dirname, PATH_MAX);
       snprintf (pid_file_name, PATH_MAX - 1, "%s%s_%d.pid", dirname,
 		shm_br->br_info[br_index].name, as_index + 1);
       fp = fopen (pid_file_name, "r");
@@ -1429,7 +1429,8 @@ retry:
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
   sprintf (sock_addr.sun_path, "%s/%s.%d",
-	   get_cubrid_file (FID_SOCK_DIR, buf), br_name, as_index + 1);
+	   get_cubrid_file (FID_SOCK_DIR, buf, PATH_MAX), br_name,
+	   as_index + 1);
   sock_addr_len =
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif
@@ -1702,7 +1703,7 @@ check_cas_log (char *br_name, int as_index)
 
   if (shm_appl->as_info[as_index].cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      get_cubrid_file (FID_SQL_LOG_DIR, dirname);
+      get_cubrid_file (FID_SQL_LOG_DIR, dirname, PATH_MAX);
       snprintf (log_filename, PATH_MAX, "%s%s_%d.sql.log", dirname,
 		br_name, as_index + 1);
 
@@ -1720,7 +1721,7 @@ check_cas_log (char *br_name, int as_index)
 
   if (shm_appl->as_info[as_index].cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      get_cubrid_file (FID_SLOW_LOG_DIR, dirname);
+      get_cubrid_file (FID_SLOW_LOG_DIR, dirname, PATH_MAX);
       snprintf (log_filename, PATH_MAX, "%s%s_%d.slow.log", dirname,
 		br_name, as_index + 1);
 
