@@ -19723,6 +19723,7 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
       /* fall through */
     case PT_SELECT:
     case PT_FUNCTION:
+    case PT_METHOD_CALL:
       assert (has_collation);
       *coerc_level = PT_COLLATION_L4_COERC;
       break;
@@ -19874,6 +19875,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_EXPR:
     case PT_SELECT:
     case PT_FUNCTION:
+    case PT_METHOD_CALL:
       if (!PT_HAS_COLLATION (node->type_enum)
 	  && !PT_IS_COLLECTION_TYPE (node->type_enum))
 	{
@@ -20078,10 +20080,32 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	  /* propagate the collation and codeset to cast */
 	  PT_NODE *cast_type = node->info.expr.cast_type;
 
-	  assert (PT_HAS_COLLATION (cast_type->type_enum));
+	  if (PT_IS_COLLECTION_TYPE (cast_type->type_enum))
+	    {
+	      PT_NODE *dt_node = cast_type->data_type;
 
-	  cast_type->info.data_type.collation_id = coll_id;
-	  cast_type->info.data_type.units = (int) codeset;
+	      assert (dt_node != NULL);
+
+	      /* force collation on each collection component */
+	      do
+		{
+		  if (PT_HAS_COLLATION (dt_node->type_enum))
+		    {
+		      dt_node->info.data_type.collation_id = coll_id;
+		      dt_node->info.data_type.units = (int) codeset;
+		    }
+
+		  dt_node = dt_node->next;
+		}
+	      while (dt_node != NULL);
+	    }
+	  else
+	    {
+	      assert (PT_HAS_COLLATION (cast_type->type_enum));
+
+	      cast_type->info.data_type.collation_id = coll_id;
+	      cast_type->info.data_type.units = (int) codeset;
+	    }
 	}
       break;
     default:
