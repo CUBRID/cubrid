@@ -55,6 +55,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 	private String[] col_table;
 	private int[] col_null;
 	private String[] col_class_name;
+	private boolean[] is_auto_increment_col;
 
 	protected CUBRIDResultSetMetaData(UColumnInfo[] col_info) {
 		col_name = new String[col_info.length];
@@ -68,6 +69,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 		col_table = new String[col_info.length];
 		col_null = new int[col_info.length];
 		col_class_name = new String[col_info.length];
+		is_auto_increment_col = new boolean[col_info.length];
 
 		for (int i = 0; i < col_info.length; i++) {
 			col_disp_size[i] = getDefaultColumnDisplaySize(col_info[i]
@@ -82,6 +84,12 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				col_null[i] = columnNullable;
 			else
 				col_null[i] = columnNoNulls;
+
+			if (col_info[i].getIsAutoIncrement() == 0) {
+				is_auto_increment_col[i] = false;
+			} else {
+				is_auto_increment_col[i] = true;
+			}
 
 			switch (col_info[i].getColumnType()) {
 			case UUType.U_TYPE_CHAR:
@@ -514,7 +522,8 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 
 	public boolean isAutoIncrement(int column) throws SQLException {
 		checkColumnIndex(column);
-		return false;
+		
+		return is_auto_increment_col[column - 1];
 	}
 
 	public boolean isCaseSensitive(int column) throws SQLException {
