@@ -36,10 +36,10 @@ cubrid_user=$(whoami)
 now=$(date +"%Y%m%d_%H%M%S")
 
 ha_temp_home=$HOME/.ha
-result_home=$ha_temp_home/result
 function_home=$ha_temp_home/functions
 expect_home=$ha_temp_home/expect
 install_output=$ha_temp_home/install.output
+env_output=$ha_temp_home/env.output
 repl_util_output=$ha_temp_home/repl_utils.output
 copylog_output=$ha_temp_home/copylog.output
 backupdb_output=
@@ -53,6 +53,7 @@ step_func_slave_from_master=(
 	"show_environment"
 	"copy_script_to_master"
 	"copy_script_to_replica"
+	"check_environment"
 	"suspend_master_repl_util"
 	"init_ha_info_on_master"
 	"init_ha_info_on_replica"
@@ -61,7 +62,6 @@ step_func_slave_from_master=(
 	"restore_db_to_current"
 	"init_ha_info_on_slave"
 	"copy_active_log_from_master"
-	"start_cubrid_ha"
 	"restart_master_repl_util"
 	"show_complete"
 )
@@ -70,6 +70,7 @@ step_func_slave_from_replica=(
 	"show_environment"
 	"copy_script_to_master"
 	"copy_script_to_replica"
+	"check_environment"
 	"suspend_master_repl_util"
 	"init_ha_info_on_master"
 	"init_ha_info_on_replica"
@@ -85,6 +86,7 @@ step_func_replica_from_slave=(
 	"show_environment"
 	"copy_script_to_master"
 	"copy_script_to_slave"
+	"check_environment"
 	"online_backup_db"
 	"copy_backup_db_from_target"
 	"restore_db_to_current"
@@ -96,6 +98,7 @@ step_func_replica_from_replica=(
 	"get_password"
 	"show_environment"
 	"copy_script_to_target"
+	"check_environment"
 	"online_backup_db"
 	"copy_backup_db_from_target"
 	"restore_db_to_current"
@@ -170,7 +173,7 @@ function ssh_expect()
 	if [ ! -z "$command5" ]; then
 		echo "[$user@$host]$ $command5"
 	fi
-	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" > $result_home/$host.result 2>&1
+	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" >/dev/null 2>&1
 }
 
 function scp_cubrid_to()
@@ -181,7 +184,7 @@ function scp_cubrid_to()
 	source=$2
 	target=$3
 
-	echo "[$cubrid_user@$host]$ scp $scp_option -r $source $cubrid_user@$host:$target"
+	echo "[$cubrid_user@$current_host]$ scp $scp_option -r $source $cubrid_user@$host:$target"
 	scp $scp_option -r $source $cubrid_user@$host:$target
 }
 
@@ -259,8 +262,6 @@ function init_conf()
 {
 	# init path
 	mkdir -p $ha_temp_home
-	rm -rf $result_home
-	mkdir $result_home
 	if [ -n $backup_dest_path ]; then 
 		backup_dest_path=$ha_temp_home/backup
 		if [ ! -d $backup_dest_path ]; then
@@ -485,20 +486,6 @@ function show_environment()
 	if [ $STDIN -eq $SKIP ]; then
 		return $SUCCESS
 	fi
-	
-	command1='test "$CUBRID" == "'$CUBRID'" && echo SUCCESS'
-	command2='test "$CUBRID_DATABASES" == "'$CUBRID_DATABASES'" && echo SUCCESS'
-	command3="test -d $repl_log_home/$db_name && echo SUCCESS"
-	
-	for host in $master_host $slave_host ${replica_hosts[@]}; do
-		ssh_expect $cubrid_user "$server_password" $host "$command1" "$command2" "$command3"
-	done
-	
-	for host in $master_host $slave_host ${replica_hosts[@]}; do
-		if [ $(fgrep SUCCESS $result_home/$host.result | grep -v "echo SUCCESS" | wc -l) -ne 3 ]; then
-			error "$host's envirionment is different others."
-		fi
-	done
 }
 
 function copy_script_to_master()
@@ -637,6 +624,43 @@ function copy_script_to_replica()
 			error "The script is not properly installed on some replications."
 		fi
 	fi
+}
+
+function check_environment()
+{
+	echo ""
+	echo "##### step $step_no ###################################################################"	
+	echo "#"
+	echo "#  check environment of all ha node"
+	echo "#"
+	echo "#  * details"
+	echo '#   - test $CUBRID == '"$CUBRID"
+	echo '#   - test $CUBRID_DATABASES == '"$CUBRID_DATABASES"
+	echo "#   - test -d $repl_log_home/$db_name"
+	echo "#"
+	echo "################################################################################"
+	get_yesno
+	if [ $STDIN -eq $SKIP ]; then
+		return $SUCCESS
+	fi
+	
+	rm -rf $env_output
+	mkdir $env_output
+	for host in $master_host $slave_host ${replica_hosts[@]}; do
+		if [ "$current_host" == "$host" ]; then
+			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home"			
+			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home
+		else
+			ssh_expect $cubrid_user "$server_password" "$host" "sh $function_home/ha_check_environment.sh -t $ha_temp_home -o $env_output -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home"
+			scp_from_expect $cubrid_user "$server_password" $env_output $host $env_output/$host
+		fi
+	done
+	
+	for host in $master_host $slave_host ${replica_hosts[@]}; do
+		if [ ! -f $env_output/$host ]; then
+			error "$host's environment is different others."
+		fi
+	done
 }
 
 function suspend_master_repl_util()
@@ -879,7 +903,7 @@ function init_ha_info_on_replica()
 	echo "#"
 	echo "#  * details"
 	echo "#   - remove old copy log of slave"
-	echo "#   - init db_ha_apply_info on master"
+	echo "#   - init db_ha_apply_info on replications"
 	echo "#"
 	echo "################################################################################"
 	get_yesno

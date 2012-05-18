@@ -7,6 +7,7 @@ source $CURR_DIR/../common/common.sh
 # program variables
 #################################################################################
 prog_name='ha_repl_resume.sh'
+current_host=$(uname -n)
 
 input_file=
 
