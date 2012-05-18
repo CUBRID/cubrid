@@ -841,6 +841,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
   DB_VALUE src_value;
   char *string = NULL, *val_str;
   int length;
+  int byte_size;
 
   switch (DB_VALUE_TYPE (value))
     {
@@ -848,7 +849,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_STRING (value);
       if (val_str != NULL && DB_GET_STRING_LENGTH (value) > precision)
 	{
-	  string = (char *) db_private_alloc (NULL, precision + 1);
+	  intl_char_size (val_str, precision, DB_GET_STRING_CODESET (value),
+			  &byte_size);
+	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -857,10 +860,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (precision < DB_GET_STRING_SIZE (value));
-	  strncpy (string, val_str, precision);
-	  string[precision] = '\0';
-	  db_make_varchar (&src_value, precision, string, precision,
+	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, byte_size);
+	  string[byte_size] = '\0';
+	  db_make_varchar (&src_value, precision, string, byte_size,
 			   DB_GET_STRING_CODESET (value),
 			   DB_GET_STRING_COLLATION (value));
 
@@ -875,7 +878,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_CHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  string = (char *) db_private_alloc (NULL, precision + 1);
+	  intl_char_size (val_str, precision, DB_GET_STRING_CODESET (value),
+			  &byte_size);
+	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -884,10 +889,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (precision < DB_GET_STRING_SIZE (value));
-	  strncpy (string, val_str, precision);
-	  string[precision] = '\0';
-	  db_make_char (&src_value, precision, string, precision,
+	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, byte_size);
+	  string[byte_size] = '\0';
+	  db_make_char (&src_value, precision, string, byte_size,
 			DB_GET_STRING_CODESET (value),
 			DB_GET_STRING_COLLATION (value));
 
@@ -903,7 +908,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_NCHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  string = (char *) db_private_alloc (NULL, precision + 1);
+	  intl_char_size (val_str, precision, DB_GET_STRING_CODESET (value),
+			  &byte_size);
+	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -912,10 +919,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (precision < DB_GET_STRING_SIZE (value));
-	  strncpy (string, val_str, precision);
-	  string[precision] = '\0';
-	  db_make_varnchar (&src_value, precision, string, precision,
+	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, byte_size);
+	  string[byte_size] = '\0';
+	  db_make_varnchar (&src_value, precision, string, byte_size,
 			    DB_GET_STRING_CODESET (value),
 			    DB_GET_STRING_COLLATION (value));
 
@@ -930,7 +937,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_NCHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  string = (char *) db_private_alloc (NULL, precision + 1);
+	  intl_char_size (val_str, precision, DB_GET_STRING_CODESET (value),
+			  &byte_size);
+	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -939,10 +948,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (precision < DB_GET_STRING_SIZE (value));
-	  strncpy (string, val_str, precision);
-	  string[precision] = '\0';
-	  db_make_nchar (&src_value, precision, string, precision,
+	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, byte_size);
+	  string[byte_size] = '\0';
+	  db_make_nchar (&src_value, precision, string, byte_size,
 			 DB_GET_STRING_CODESET (value),
 			 DB_GET_STRING_COLLATION (value));
 
@@ -1559,7 +1568,8 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset,
 	       * for the char value specified in the domain.
 	       */
 	      if (value->domain.char_info.length ==
-		  TP_FLOATING_PRECISION_VALUE)
+		  TP_FLOATING_PRECISION_VALUE
+		  || LANG_VARIABLE_CHARSET (codeset))
 		{
 		  value->data.ch.medium.size = size;
 		}
@@ -2994,14 +3004,8 @@ db_get_enum_string (const DB_VALUE * value)
 int
 db_get_enum_string_size (const DB_VALUE * value)
 {
-  char *str = NULL;
-  int length = 0;
   CHECK_1ARG_ZERO (value);
-  str = db_get_enum_string (value);
-  intl_char_count ((unsigned char *) str,
-		   value->data.enumeration.str_val.medium.size,
-		   LANG_SYS_CODESET, &length);
-  return length;
+  return value->data.enumeration.str_val.medium.size;
 }
 
 /*
@@ -4560,16 +4564,20 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       {
+	int char_count;
 	int precision = DB_VALUE_PRECISION (value);
+
+	intl_char_count ((unsigned char *) buf,
+			 buflen, LANG_SYS_CODESET, &char_count);
 
 	if (precision == TP_FLOATING_PRECISION_VALUE && buflen != 0)
 	  {
-	    precision = buflen;
+	    precision = char_count;
 	  }
 
 	if ((precision == TP_FLOATING_PRECISION_VALUE)
-	    || (db_type == DB_TYPE_VARCHAR && precision >= buflen)
-	    || (db_type == DB_TYPE_CHAR && precision == buflen))
+	    || (db_type == DB_TYPE_VARCHAR && precision >= char_count)
+	    || (db_type == DB_TYPE_CHAR && precision == char_count))
 	  {
 	    qstr_make_typed_string (db_type, value, precision, buf, buflen,
 				    LANG_SYS_CODESET, LANG_SYS_COLLATION);

@@ -710,12 +710,12 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
   SESSION_VARIABLE *var = NULL;
   SESSION_VARIABLE *current = NULL;
   DB_VALUE *val = NULL;
-  int len = 0, dummy, count = 0;
+  int len = 0, count = 0;
   const char *name_str;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_CHAR (name, &dummy);
+  name_str = DB_GET_STRING (name);
 
   assert (name_str != NULL);
 
@@ -949,7 +949,7 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
 {
   SESSION_VARIABLE *current = NULL, *prev = NULL;
   DB_VALUE *val = NULL;
-  int dummy = 0, count = 0;
+  int count = 0;
   const char *name_str;
 
   if (state_p->session_variables == NULL)
@@ -958,7 +958,9 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
     }
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
-  name_str = DB_GET_CHAR (name, &dummy);
+  name_str = DB_GET_STRING (name);
+
+  assert (name_str != NULL);
 
   current = state_p->session_variables;
   while (current)
@@ -1783,13 +1785,13 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 {
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
-  int dummy = 0;
   const char *name_str;
   SESSION_VARIABLE *var;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_CHAR (name, &dummy);
+  name_str = DB_GET_STRING (name);
+  assert (name_str != NULL);
 
   if (session_get_session_id (thread_p, &id) != NO_ERROR)
     {
@@ -1876,7 +1878,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 {
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
-  int name_len = 0;
+  int name_len;
   const char *name_str;
   SESSION_VARIABLE *var;
 
@@ -1890,7 +1892,8 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
   assert (result != NULL);
 
-  name_str = DB_GET_CHAR (name, &name_len);
+  name_str = DB_GET_STRING (name);
+  name_len = (name_str != NULL) ? strlen (name_str) : 0;
 
   if (session_get_session_id (thread_p, &id) != NO_ERROR)
     {
@@ -2017,13 +2020,12 @@ int
 session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
 				  const DB_VALUE * name, DB_VALUE * result)
 {
-  int name_len = 0;
   const char *name_str;
   UINT64 stat_val;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_CHAR (name, &name_len);
+  name_str = DB_GET_STRING (name);
 
   stat_val = mnt_x_get_stats_and_clear (thread_p, name_str);
   DB_MAKE_BIGINT (result, stat_val);

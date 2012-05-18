@@ -2411,11 +2411,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       /* check prerequisite condition */
       saved_range = range = key_vals[0].range;
 
-      if (key_vals[0].is_truncated == true)
-	{			/* specially, key value search */
-	  range = GE_LE;
-	}
-
       if (range == NA_NA)
 	{
 	  /* skip this key value */
@@ -2440,6 +2435,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	{
 	  pr_clear_value (&key_vals[0].key1);
 	  PRIM_SET_NULL (&key_vals[0].key1);
+	}
+
+      if (key_vals[0].is_truncated == true)
+	{			/* specially, key value search */
+	  range = GE_LE;
 	}
 
       if (range == INF_INF)
@@ -2601,11 +2601,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  /* check prerequisite condition */
 	  saved_range = range = key_vals[iscan_id->curr_keyno].range;
 
-	  if (key_vals[iscan_id->curr_keyno].is_truncated == true)
-	    {			/* specially, key value search */
-	      range = GE_LE;
-	    }
-
 	  if (range == NA_NA)
 	    {
 	      /* skip this key value and continue to the next */
@@ -2635,6 +2630,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    {
 	      pr_clear_value (&key_vals[iscan_id->curr_keyno].key2);
 	      PRIM_SET_NULL (&key_vals[iscan_id->curr_keyno].key2);
+	    }
+
+	  if (key_vals[iscan_id->curr_keyno].is_truncated == true)
+	    {			/* specially, key value search */
+	      range = GE_LE;
 	    }
 
 	  if (range >= INF_LE && range <= INF_LT)

@@ -18041,11 +18041,13 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals,
 	    return error;
 	  }
 
-	c = DB_GET_CHAR (&trimmed_val, &len);
+	c = DB_GET_STRING (&trimmed_val);
 	if (c == NULL)
 	  {
 	    goto invalid_argument_error;
 	  }
+
+	len = strlen (c);
 
 	for (i = 0; i < len; i++)
 	  {
