@@ -9134,7 +9134,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	if (arg2_hv && arg2_type == PT_TYPE_MAYBE)
 	  {
-	    d = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	    d = tp_domain_resolve_default (DB_TYPE_STRING);
 	    SET_EXPECTED_DOMAIN (arg2, d);
 	    pt_preset_hostvar (parser, arg2);
 	  }
@@ -9189,11 +9189,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		node->type_enum = PT_TYPE_VARCHAR;
 		common_type = node->type_enum;
-	      }
-
-	    if (PT_IS_NUMERIC_TYPE (arg2_type) && !is_single_unit)
-	      {
-		node->type_enum = PT_TYPE_NONE;
 	      }
 	  }
 	else if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)

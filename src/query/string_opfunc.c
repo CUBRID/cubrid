@@ -19093,7 +19093,7 @@ copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...)
 static DB_BIGINT
 get_single_unit_value (char *expr, DB_BIGINT int_val)
 {
-  DB_BIGINT v;
+  DB_BIGINT v = 0;
 
   if (expr == NULL)
     {
@@ -19295,102 +19295,183 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
       break;
 
     case PT_SECOND_MILLISECOND:
-      narg = sscanf (expr_s, "%lld%c%s", (long long *) &seconds, &delim,
-		     millisec_s);
-      millisec = db_str_to_millisec (millisec_s);
-      copy_and_shift_values (narg, 2, &seconds, &millisec);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%s", (long long *) &seconds, &delim,
+			 millisec_s);
+	  millisec = db_str_to_millisec (millisec_s);
+	  copy_and_shift_values (narg, 2, &seconds, &millisec);
+	}
+      else
+	{
+	  millisec = unit_int_val;
+	}
       sign = (seconds >= 0);
       type |= 1;
       break;
 
     case PT_MINUTE_MILLISECOND:
-      narg = sscanf (expr_s, "%lld%c%lld%c%s", (long long *) &minutes, &delim,
-		     (long long *) &seconds, &delim, millisec_s);
-      millisec = db_str_to_millisec (millisec_s);
-      copy_and_shift_values (narg, 3, &minutes, &seconds, &millisec);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld%c%s", (long long *) &minutes,
+			 &delim, (long long *) &seconds, &delim, millisec_s);
+	  millisec = db_str_to_millisec (millisec_s);
+	  copy_and_shift_values (narg, 3, &minutes, &seconds, &millisec);
+	}
+      else
+	{
+	  millisec = unit_int_val;
+	}
       sign = (minutes >= 0);
       type |= 1;
       break;
 
     case PT_MINUTE_SECOND:
-      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &minutes, &delim,
-		     (long long *) &seconds);
-      copy_and_shift_values (narg, 2, &minutes, &seconds);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &minutes,
+			 &delim, (long long *) &seconds);
+	  copy_and_shift_values (narg, 2, &minutes, &seconds);
+	}
+      else
+	{
+	  seconds = unit_int_val;
+	}
       sign = (minutes >= 0);
       type |= 1;
       break;
 
     case PT_HOUR_MILLISECOND:
-      narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%s", (long long *) &hours,
-		     &delim, (long long *) &minutes, &delim,
-		     (long long *) &seconds, &delim, millisec_s);
-      millisec = db_str_to_millisec (millisec_s);
-      copy_and_shift_values (narg, 4, &hours, &minutes, &seconds, &millisec);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%s", (long long *) &hours,
+			 &delim, (long long *) &minutes, &delim,
+			 (long long *) &seconds, &delim, millisec_s);
+	  millisec = db_str_to_millisec (millisec_s);
+	  copy_and_shift_values (narg, 4, &hours, &minutes, &seconds,
+				 &millisec);
+	}
+      else
+	{
+	  millisec = unit_int_val;
+	}
       sign = (hours >= 0);
       type |= 1;
       break;
 
     case PT_HOUR_SECOND:
-      narg = sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &hours, &delim,
-		     (long long *) &minutes, &delim, (long long *) &seconds);
-      copy_and_shift_values (narg, 3, &hours, &minutes, &seconds);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &hours,
+			 &delim, (long long *) &minutes, &delim,
+			 (long long *) &seconds);
+	  copy_and_shift_values (narg, 3, &hours, &minutes, &seconds);
+	}
+      else
+	{
+	  seconds = unit_int_val;
+	}
       sign = (hours >= 0);
       type |= 1;
       break;
 
     case PT_HOUR_MINUTE:
-      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &hours, &delim,
-		     (long long *) &minutes);
-      copy_and_shift_values (narg, 2, &hours, &minutes);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &hours, &delim,
+			 (long long *) &minutes);
+	  copy_and_shift_values (narg, 2, &hours, &minutes);
+	}
+      else
+	{
+	  minutes = unit_int_val;
+	}
       sign = (hours >= 0);
       type |= 1;
       break;
 
     case PT_DAY_MILLISECOND:
-      narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%lld%c%s",
-		     (long long *) &days, &delim, (long long *) &hours,
-		     &delim, (long long *) &minutes, &delim,
-		     (long long *) &seconds, &delim, millisec_s);
-      millisec = db_str_to_millisec (millisec_s);
-      copy_and_shift_values (narg, 5, &days, &hours, &minutes, &seconds,
-			     &millisec);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%lld%c%s",
+			 (long long *) &days, &delim, (long long *) &hours,
+			 &delim, (long long *) &minutes, &delim,
+			 (long long *) &seconds, &delim, millisec_s);
+	  millisec = db_str_to_millisec (millisec_s);
+	  copy_and_shift_values (narg, 5, &days, &hours, &minutes, &seconds,
+				 &millisec);
+	}
+      else
+	{
+	  millisec = unit_int_val;
+	}
       sign = (days >= 0);
       type |= 1;
       type |= 2;
       break;
 
     case PT_DAY_SECOND:
-      narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%lld", (long long *) &days,
-		     &delim, (long long *) &hours, &delim,
-		     (long long *) &minutes, &delim, (long long *) &seconds);
-      copy_and_shift_values (narg, 4, &days, &hours, &minutes, &seconds);
+      if (expr_s)
+	{
+	  narg =
+	    sscanf (expr_s, "%lld%c%lld%c%lld%c%lld", (long long *) &days,
+		    &delim, (long long *) &hours, &delim,
+		    (long long *) &minutes, &delim, (long long *) &seconds);
+	  copy_and_shift_values (narg, 4, &days, &hours, &minutes, &seconds);
+	}
+      else
+	{
+	  seconds = unit_int_val;
+	}
       sign = (days >= 0);
       type |= 1;
       type |= 2;
       break;
 
     case PT_DAY_MINUTE:
-      narg = sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &days, &delim,
-		     (long long *) &hours, &delim, (long long *) &minutes);
-      copy_and_shift_values (narg, 3, &days, &hours, &minutes);
+      if (expr_s)
+	{
+	  narg =
+	    sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &days, &delim,
+		    (long long *) &hours, &delim, (long long *) &minutes);
+	  copy_and_shift_values (narg, 3, &days, &hours, &minutes);
+	}
+      else
+	{
+	  minutes = unit_int_val;
+	}
       sign = (days >= 0);
       type |= 1;
       type |= 2;
       break;
 
     case PT_DAY_HOUR:
-      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &days, &delim,
-		     (long long *) &hours);
-      copy_and_shift_values (narg, 2, &days, &hours);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &days, &delim,
+			 (long long *) &hours);
+	  copy_and_shift_values (narg, 2, &days, &hours);
+	}
+      else
+	{
+	  hours = unit_int_val;
+	}
       sign = (days >= 0);
       type |= 1;
       type |= 2;
       break;
 
     case PT_YEAR_MONTH:
-      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &years, &delim,
-		     (long long *) &months);
-      copy_and_shift_values (narg, 2, &years, &months);
+      if (expr_s)
+	{
+	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &years, &delim,
+			 (long long *) &months);
+	  copy_and_shift_values (narg, 2, &years, &months);
+	}
+      else
+	{
+	  months = unit_int_val;
+	}
       sign = (years >= 0);
       type |= 2;
       break;
