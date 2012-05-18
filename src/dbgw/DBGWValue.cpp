@@ -67,7 +67,7 @@ namespace dbgw
     clearException();
     try
       {
-        if (pValue == NULL)
+        if (pValue == NULL || *(char *) pValue == NULL)
           {
             m_stValue.szValue = NULL;
             m_bNull = true;
