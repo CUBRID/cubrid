@@ -761,6 +761,11 @@ namespace dbgw
       char *p = szBuffer;
       const char *q = rawValue.szValue;
 
+      if (q == NULL)
+        {
+          return;
+        }
+
       memcpy(p, q, 10);
       p += 10;
       q += 10;

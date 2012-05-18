@@ -22,8 +22,6 @@
 namespace dbgw
 {
 
-  static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
-
   class DBGWLogger
   {
   public:

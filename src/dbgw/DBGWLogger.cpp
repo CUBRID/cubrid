@@ -26,6 +26,7 @@
 namespace dbgw
 {
 
+  static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
   static const int LOG_BUFFER_SIZE = 16384;
 
   Logger DBGWLogger::m_logger = NULL;
