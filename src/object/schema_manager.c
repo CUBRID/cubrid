@@ -434,6 +434,7 @@ static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 				       DB_OBJLIST * subclasses);
 static int allocate_foreign_key (MOP classop, SM_CLASS * class_,
 				 SM_CLASS_CONSTRAINT * con,
+				 DB_OBJLIST * subclasses,
 				 bool * recache_cls_cons);
 static int allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 					   SM_CLASS_CONSTRAINT * con,
@@ -9733,7 +9734,8 @@ mem_error:
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): Class MOP of the base class.
  *   subclasses(in): List of subclasses.
- *   constraint_name(in): Name of UNIQUE constraint to search for.
+ *   constraint_name(in): Name of UNIQUE or FOREIGN KEY constraint to search
+ *			  for.
  *   reverse(in):
  *   n_classes(out): Number of subclasses which inherit the constraint.
  *   n_attrs(in): Number of attributes in constraint.
@@ -9775,8 +9777,8 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 	  if (error == NO_ERROR)
 	    {
 	      /* Does this class contain the constraint that we're looking for?
-	         Note that we're only interested in UNIQUE constraints at this
-	         time. */
+	         Note that we're only interested in UNIQUE or FOREIGN KEY
+	         constraints at this time. */
 	      if (reverse)
 		{
 		  found = classobj_find_class_constraint (constraints,
@@ -9792,6 +9794,12 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 		    {
 		      found = classobj_find_class_constraint (constraints,
 							      SM_CONSTRAINT_PRIMARY_KEY,
+							      constraint_name);
+		    }
+		  if (!found)
+		    {
+		      found = classobj_find_class_constraint (constraints,
+							      SM_CONSTRAINT_FOREIGN_KEY,
 							      constraint_name);
 		    }
 		}
@@ -10008,9 +10016,11 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  HFID_COPY (&hfids[n_classes], &class_->header.heap);
 	  n_classes++;
 
-	  /* If we're creating a UNIQUE B-tree, we need to collect information
-	     from subclasses which inherit the UNIQUE constraint */
-	  if (unique)
+	  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to
+	     collect information from subclasses which inherit the
+	     constraint */
+	  if (unique
+	      || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
 	    {
 	      error =
 		collect_hier_class_info (classop, subclasses, constraint_name,
@@ -10376,12 +10386,14 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
  *   class(in): class structure
- *   con(in):constraint info
+ *   con(in): constraint info
+ *   subclasses(in): subclasses
  *   recache_cls_cons(out):
  */
 static int
 allocate_foreign_key (MOP classop, SM_CLASS * class_,
-		      SM_CLASS_CONSTRAINT * con, bool * recache_cls_cons)
+		      SM_CLASS_CONSTRAINT * con, DB_OBJLIST * subclasses,
+		      bool * recache_cls_cons)
 {
   SM_CLASS_CONSTRAINT *pk, *existing_con;
   MOP ref_clsop;
@@ -10443,7 +10455,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
     }
   else
     {
-      if (allocate_index (classop, class_, NULL, con->attributes, NULL,
+      if (allocate_index (classop, class_, subclasses, con->attributes, NULL,
 			  con->attrs_prefix_length, false,
 			  false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid),
@@ -10524,7 +10536,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 	}
       else if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
-	  error = allocate_foreign_key (classop, class_, con,
+	  error = allocate_foreign_key (classop, class_, con, subclasses,
 					recache_cls_cons);
 	}
 
