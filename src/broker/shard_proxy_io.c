@@ -46,8 +46,7 @@
 #define CAS_READ_ERROR(i)       io_error(i, PROC_TYPE_CAS, READ_TYPE)
 #define CAS_WRITE_ERROR(i)      io_error(i, PROC_TYPE_CAS, WRITE_TYPE)
 
-#define MAX_NUM_IO_PROCESSED	30
-#define MAX_NUM_NEW_CLIENT	10
+#define MAX_NUM_NEW_CLIENT	5
 
 extern T_SHM_APPL_SERVER *shm_as_p;
 extern T_SHM_PROXY *shm_proxy_p;
@@ -3721,7 +3720,6 @@ proxy_io_process (void)
   int cas_fd;
   int i;
   unsigned int num_new_client = 0;
-  static unsigned int num_io_processed = 0;
 
   fd_set eset;
   struct timeval tv;
@@ -3732,16 +3730,8 @@ retry_select:
   rset = allset;
   wset = wallset = wnewset;
 
-  num_io_processed++;
-  if ((num_io_processed % MAX_NUM_IO_PROCESSED) == 0)
-    {
-      tv.tv_usec = 1000000 / HZ;
-    }
-  else
-    {
-      tv.tv_usec = 0;
-    }
   tv.tv_sec = 0;
+  tv.tv_usec = 1000000 / HZ;
 
   select_ret = select (maxfd + 1, &rset, &wset, NULL, &tv);
   if (select_ret < 0)

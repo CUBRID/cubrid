@@ -919,10 +919,12 @@ shard_stmt_rewrite_sql (char *sql_stmt, char appl_server)
   const char *next_p = NULL;
   char *q = NULL;
   char *organized_sql_stmt = NULL;
+  SP_HINT_TYPE hint_type = HT_NONE;
+#if 0				/* for fully rewriting sql statement */
   SP_TOKEN curr_token;
   SP_TOKEN prev_token;
-  SP_HINT_TYPE hint_type = HT_NONE;
   int whitespace_count = 0;
+#endif
 
   while (*sql_stmt && isspace (*sql_stmt))
     {
@@ -944,6 +946,8 @@ shard_stmt_rewrite_sql (char *sql_stmt, char appl_server)
 
   p = sql_stmt;
   q = organized_sql_stmt;
+
+#if 0				/* for fully rewriting sql statement */
   prev_token = curr_token = TT_NONE;
   while (*p)
     {
@@ -1059,6 +1063,39 @@ shard_stmt_rewrite_sql (char *sql_stmt, char appl_server)
 
       p = next_p;
     }
+#else
+  while (*(p))
+    {
+      if (*(p) == '/' && *(p + 1) == '*' && *(p + 2) == '+')
+	{
+	  q = shard_stmt_write_buf_to_sql (q, "/*+", 3, true, appl_server);
+	  p = p + 3;
+	  next_p = p;
+	  p = sp_get_hint_type (p, &hint_type);
+	  if (hint_type == HT_VAL)
+	    {
+	      error = shard_stmt_change_shard_val_to_id (&q, &p, appl_server);
+	      if (error != NO_ERROR)
+		{
+		  free (organized_sql_stmt);
+		  organized_sql_stmt = NULL;
+
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      p = next_p;
+	    }
+	}
+      else
+	{
+	  q = shard_stmt_write_buf_to_sql (q, p, 1, true, appl_server);
+	  p += 1;
+	}
+    }
+#endif
+
   *(q++) = '\0';		/* NTS */
 
   return organized_sql_stmt;
@@ -1141,6 +1178,7 @@ shard_stmt_write_buf_to_sql (char *sql_stmt, const char *buf, int length,
 
   for (; i < length; i++)
     {
+#if 0
       if (is_to_upper && appl_server == APPL_SERVER_CAS)
 	{
 	  *(sql_stmt++) = toupper (*(buf++));
@@ -1149,6 +1187,9 @@ shard_stmt_write_buf_to_sql (char *sql_stmt, const char *buf, int length,
 	{
 	  *(sql_stmt++) = *(buf++);
 	}
+#else
+      *(sql_stmt++) = *(buf++);
+#endif
     }
 
   return sql_stmt;
