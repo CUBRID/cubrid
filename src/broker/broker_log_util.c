@@ -199,7 +199,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
 
   len = strlen (end);
-  if (len > sizeof (size))
+  if (len > (int) sizeof (size))
     {
       goto error_on_val_size;
     }

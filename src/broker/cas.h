@@ -91,6 +91,10 @@ extern int restart_is_needed (void);
 extern const char *program_name;
 extern char broker_name[32];
 
+#if defined(CUBRID_SHARD)
+extern int shm_proxy_id;
+extern int shm_shard_id;
+#endif /* CUBRID_SHARD */
 extern int shm_as_index;
 extern T_SHM_APPL_SERVER *shm_appl;
 extern T_APPL_SERVER_INFO *as_info;

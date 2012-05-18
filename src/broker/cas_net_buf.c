@@ -63,7 +63,9 @@ net_buf_clear (T_NET_BUF * net_buf)
   alloc_size = net_buf->alloc_size;
   data = net_buf->data;
 
+#if !defined(CUBRID_SHARD)
   FREE_MEM (net_buf->post_send_file);
+#endif /* CUBRID_SHARD */
   net_buf_init (net_buf);
 
   /* restore alloc info */
@@ -78,6 +80,7 @@ net_buf_destroy (T_NET_BUF * net_buf)
   net_buf_clear (net_buf);
 }
 
+#if !defined(CUBRID_SHARD)
 int
 net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
 {
@@ -91,6 +94,7 @@ net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
   net_buf->post_file_size = size;
   return 0;
 }
+#endif /* CUBRID_SHARD */
 
 int
 net_buf_cp_byte (T_NET_BUF * net_buf, char ch)
@@ -295,6 +299,9 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
 #endif /* !LIBCAS_FOR_JSP */
 
   net_buf_clear (net_buf);
+#if defined(CUBRID_SHARD)	/* TODO SHARD : client library version setting */
+  net_buf_cp_int (net_buf, err_indicator, NULL);
+#else
 #ifndef LIBCAS_FOR_JSP
   ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 2, 2))
@@ -304,6 +311,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
 #else /* !LIBCAS_FOR_JSP */
   net_buf_cp_int (net_buf, err_indicator, NULL);
 #endif /* !LIBCAS_FOR_JSP */
+#endif /* !CUBRID_SHARD */
   net_buf_cp_int (net_buf, err_code, NULL);
 
 #ifdef CAS_DEBUG
@@ -733,3 +741,21 @@ net_arg_get_lob_value (DB_VALUE * db_lob, void *arg)
   db_lob->need_clear = true;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+#if defined(CUBRID_SHARD)
+void
+net_arg_put_int (void *arg, int *value)
+{
+  int len;
+  int put_value;
+  char *cur_p;
+
+  cur_p = (char *) (arg);
+  len = htonl (NET_SIZE_INT);
+  memcpy (cur_p, &len, NET_SIZE_INT);
+
+  cur_p += NET_SIZE_INT;
+  put_value = htonl (*value);
+  memcpy (cur_p, &put_value, NET_SIZE_INT);
+}
+#endif /* CUBRID_SHARD */

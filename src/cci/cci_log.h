@@ -28,7 +28,6 @@
  *
  */
 
-
 /*
  * cci_log.h -
  */
@@ -38,13 +37,50 @@
 
 typedef void *Logger;
 
+typedef enum
+{
+  CCI_LOG_LEVEL_OFF = 0,
+  CCI_LOG_LEVEL_ERROR,
+  CCI_LOG_LEVEL_WARN,
+  CCI_LOG_LEVEL_INFO,
+  CCI_LOG_LEVEL_DEBUG
+} CCI_LOG_LEVEL;
+
+static const char *cciLogLevelStr[] =
+  { "OFF", "ERROR", "WARN", "INFO", "DEBUG" };
+
+#define CCI_LOG_ERROR(logger, ...) \
+  do { \
+          cci_log_write(CCI_LOG_LEVEL_ERROR, logger, __VA_ARGS__); \
+  } while (false)
+
+#define CCI_LOG_WARN(logger, ...) \
+  do { \
+          cci_log_write(CCI_LOG_LEVEL_WARN, logger, __VA_ARGS__); \
+  } while (false)
+
+#define CCI_LOG_INFO(logger, ...) \
+  do { \
+          cci_log_write(CCI_LOG_LEVEL_INFO, logger, __VA_ARGS__); \
+  } while (false)
+
+#define CCI_LOG_DEBUG(logger, ...) \
+  do { \
+          cci_log_write(CCI_LOG_LEVEL_DEBUG, logger, __VA_ARGS__); \
+  } while (false)
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+
   extern Logger cci_log_get (const char *path);
   extern void cci_log_finalize (void);
-  extern void cci_log_write (Logger logger, const char *format, ...);
+  extern void cci_log_write (CCI_LOG_LEVEL level, Logger logger,
+			     const char *format, ...);
+  extern void cci_log_remove (const char *path);
+  extern void cci_log_set_level (Logger logger, CCI_LOG_LEVEL level);
+
 #ifdef __cplusplus
 }
 #endif

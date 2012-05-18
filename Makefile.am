@@ -19,7 +19,7 @@
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales @OPTIONAL_DIR@
+SUBDIRS = external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales shard_cubrid shard_mysql dbgw @OPTIONAL_DIR@
 
 EXTRA_DIST = BUILD_NUMBER COPYING CREDITS README \
 	     autogen.sh build.sh debian win src

@@ -26,6 +26,10 @@
 #define	_BROKER_CONFIG_H_
 
 #include "config.h"
+#include "cas_protocol.h"
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#include "environment_variable.h"
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #define	APPL_SERVER_CAS		0
 #define	APPL_SERVER_CAS_ORACLE	1
@@ -76,6 +80,15 @@
 #define BROKER_NAME_LEN		64
 #define BROKER_LOG_MSG_SIZE	64
 
+#if defined(CUBRID_SHARD)
+#define SHARD_NAME_LEN 		64
+#define DEFAULT_MIN_NUM_PROXY	1
+#define DEFAULT_MAX_NUM_PROXY	1
+#define DEFAULT_MAX_CLIENT 	10
+
+#define DEFAULT_PROXY_LOG_MAX_SIZE	100000	/* 100M */
+#define MAX_PROXY_LOG_MAX_SIZE		1000000	/* 1G */
+#endif /* CUBRID_SHARD */
 
 typedef enum t_sql_log_value T_SQL_LOG_MODE_VALUE;
 enum t_sql_log_mode_value
@@ -113,6 +126,22 @@ enum t_access_mode_value
   SLAVE_ONLY_ACCESS_MODE = 2,
   PH_READ_ONLY_ACCESS_MODE = 3
 };
+
+#if defined(CUBRID_SHARD)
+typedef enum t_proxy_log_value T_PROXY_LOG_MODE_VALUE;
+enum t_proxy_log_mode_value
+{
+  PROXY_LOG_MODE_NONE = 0,
+  PROXY_LOG_MODE_ERROR = 1,
+  PROXY_LOG_MODE_TIMEOUT = 2,
+  PROXY_LOG_MODE_NOTICE = 3,
+  PROXY_LOG_MODE_SHARD_DETAIL = 4,
+  PROXY_LOG_MODE_SCHEDULE_DETAIL = 5,
+  PROXY_LOG_MODE_DEBUG = 6,
+  PROXY_LOG_MODE_ALL = 7,
+  PROXY_LOG_MODE_DEFAULT = SQL_LOG_MODE_ERROR
+};
+#endif /* CUBRID_SHARD */
 
 typedef struct t_broker_info T_BROKER_INFO;
 struct t_broker_info
@@ -163,7 +192,9 @@ struct t_broker_info
   char log_dir[CONF_LOG_FILE_LEN];
   char slow_log_dir[CONF_LOG_FILE_LEN];
   char err_log_dir[CONF_LOG_FILE_LEN];
+#if !defined(CUBRID_SHARD)
   char access_log_file[CONF_LOG_FILE_LEN];
+#endif				/* CUBRID_SHARD */
   char error_log_file[CONF_LOG_FILE_LEN];
   char source_env[CONF_LOG_FILE_LEN];
   char acl_file[CONF_LOG_FILE_LEN];
@@ -176,6 +207,30 @@ struct t_broker_info
   int jdbc_cache_life_time;
   char ready_to_service;
   char cci_default_autocommit;
+
+#if defined(CUBRID_SHARD)
+  char proxy_log_mode;
+
+  char shard_db_name[SRV_CON_DBNAME_SIZE];
+  char shard_db_user[SRV_CON_DBUSER_SIZE];
+  char shard_db_password[SRV_CON_DBPASSWD_SIZE];
+
+  int min_num_proxy;
+  int max_num_proxy;
+  char proxy_log_dir[CONF_LOG_FILE_LEN];
+  int max_client;
+
+  int metadata_shm_id;
+  char shard_connection_file[LINE_MAX];
+  char shard_key_file[LINE_MAX];
+
+  /* SHARD SHARD_KEY_ID */
+  int shard_key_modular;
+  char shard_key_library_name[PATH_MAX];
+  char shard_key_function_name[PATH_MAX];
+
+  int proxy_log_max_size;
+#endif				/* CUBRID_SHARD */
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
@@ -190,5 +245,25 @@ extern int conf_get_value_table_on_off (const char *value);
 extern int conf_get_value_sql_log_mode (const char *value);
 extern int conf_get_value_keep_con (const char *value);
 extern int conf_get_value_access_mode (const char *value);
+
+#if defined(CUBRID_SHARD)
+extern int conf_get_value_proxy_log_mode (const char *value);
+#endif /* CUBRID_SHARD */
+extern void dir_repath (char *path);
+
+#if defined(CUBRID_SHARD)
+#if defined(SHARD_VERBOSE_DEBUG)
+#define SHARD_ERR(f, a...) do { \
+fprintf(stdout, "[%-35s:%05d] <ERR> "f, __FILE__, __LINE__, ##a); \
+} while (0);
+
+#define SHARD_INF(f, a...)	do { \
+fprintf(stdout, "[%-35s:%05d] <INF> "f, __FILE__, __LINE__, ##a); \
+} while (0);
+#else /* SHARD_VERBOSE_DEBUG */
+#define SHARD_ERR(f, a...)
+#define SHARD_INF(f, a...)
+#endif
+#endif /* CUBRID_SHARD */
 
 #endif /* _BROKER_CONFIG_H_ */

@@ -260,8 +260,8 @@ extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p,
 					 QFILE_TUPLE tuple_p, int col_num,
 					 DB_VALUE * value_p,
 					 TP_DOMAIN * domain);
-extern int qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page,
-				  QFILE_TUPLE tuplep,
+extern int qfile_overwrite_tuple (THREAD_ENTRY * thread_p,
+				  PAGE_PTR first_page, QFILE_TUPLE tuplep,
 				  QFILE_TUPLE_RECORD * tplrec,
 				  QFILE_LIST_ID * list_idp);
 #endif /* _LIST_FILE_H_ */

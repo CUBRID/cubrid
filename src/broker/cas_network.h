@@ -315,22 +315,27 @@ typedef struct
   char buf[MSG_HEADER_SIZE];
 } MSG_HEADER;
 
+#if defined(CUBRID_SHARD)
+extern SOCKET net_connect_proxy (void);
+#else
 extern SOCKET net_connect_client (SOCKET srv_sock_fd);
+#endif
 extern int net_read_stream (SOCKET sock_fd, char *buf, int size);
 extern int net_write_stream (SOCKET sock_fd, const char *buf, int size);
 extern int net_write_int (SOCKET sock_fd, int value);
 extern int net_read_int (SOCKET sock_fd, int *value);
 extern int net_decode_str (char *msg, int msg_size, char *func_code,
 			   void ***ret_argv);
+#if !defined(CUBRID_SHARD)
 extern int net_read_to_file (SOCKET sock_fd, int file_size, char *filename);
 extern int net_write_from_file (SOCKET sock_fd, int file_size,
 				char *filename);
+#endif /* !CUBRID_SHARD */
+
 extern void net_timeout_set (int timeout_sec);
 extern void init_msg_header (MSG_HEADER * header);
 extern int net_read_header (SOCKET sock_fd, MSG_HEADER * header);
-#if defined (ENABLE_UNUSED_FUNCTION)
 extern int net_write_header (SOCKET sock_fd, MSG_HEADER * header);
-#endif
 extern bool is_net_timed_out (void);
 
 #endif /* _CAS_NETWORK_H_ */

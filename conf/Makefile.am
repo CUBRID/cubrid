@@ -19,6 +19,6 @@
 
 
 confdir = @CUBRID_CONFDIR@
-dist_conf_CUBRID_files = cubrid.conf cubrid_broker.conf cubrid_ha.conf cubrid.conf.small cubrid.conf.large
+dist_conf_CUBRID_files = cubrid.conf cubrid_broker.conf cubrid_ha.conf cubrid.conf.small cubrid.conf.large shard.conf shard_connection.txt shard_key.txt
 dist_locale_general_files = cubrid_locales.txt cubrid_locales.all.txt
 dist_conf_DATA = $(dist_conf_CUBRID_files) $(dist_locale_general_files)

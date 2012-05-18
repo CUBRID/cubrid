@@ -36,9 +36,13 @@
 #endif
 
 #include "porting.h"
+#include "broker_env_def.h"
 #include "broker_config.h"
 #include "broker_max_heap.h"
 #include "cas_protocol.h"
+#if defined(CUBRID_SHARD)
+#include "shard_metadata.h"
+#endif /* CUBRID_SHARD */
 
 #define 	STATE_KEEP_TRUE		1
 #define		STATE_KEEP_FALSE	0
@@ -50,6 +54,13 @@
 #if defined(WINDOWS)
 #define		UTS_STATUS_BUSY_WAIT	4
 #endif
+#if defined(CUBRID_SHARD)
+#define         UTS_STATUS_CON_WAIT     5
+#endif /* CUBRID_SHARD */
+
+#define 	PROXY_STATUS_BUSY	1
+#define		PROXY_STATUS_RESTART	2
+#define		PROXY_STATUS_START	3
 
 #define 	MAX_NUM_UTS_ADMIN	10
 
@@ -141,6 +152,9 @@
 
 #define CAS_LOG_RESET_REOPEN          0x01
 #define CAS_LOG_RESET_REMOVE            0x02
+#if defined(CUBRID_SHARD)
+#define PROXY_LOG_RESET_REOPEN 		0x01
+#endif /* CUBRID_SHARD */
 
 #define IP_BYTE_COUNT           5
 #define ACL_MAX_ITEM_COUNT      50
@@ -198,6 +212,9 @@ struct t_appl_server_info
   int pid;			/* the process id */
   int psize;
   time_t psize_time;
+#if defined(CUBRID_SHARD)
+  int session_id;		/* the session id (uw,v3) */
+#endif
   int cas_log_reset;
   int cas_slow_log_reset;
   char service_flag;
@@ -257,6 +274,161 @@ struct t_appl_server_info
   INT64 num_restarts;
 };
 
+#if defined(CUBRID_SHARD)
+typedef struct t_client_info T_CLIENT_INFO;
+struct t_client_info
+{
+  int client_id;		/* client id */
+  int client_ip;		/* client ip address */
+  time_t connect_time;		/* first connect time */
+
+  int func_code;		/* current request function code */
+
+  /* SHARD TODO : not implemented yet */
+#if 0
+  int shard_id;			/* scheduled shard id */
+  int cas_id;			/* scheduled cas id */
+#endif
+
+  time_t req_time;		/* current request receive from client time */
+  time_t res_time;		/* current response receive from cas time */
+
+  /* TODO : MORE STATISTICS INFOMATION per Client 
+   *  INT64 num_queries_processed;
+   *  INT64 num_error_queries;
+   */
+
+  /* CLIENT INFO. MOVE FROM T_APPL_SERVER_INFO */
+  char clt_appl_name[APPL_NAME_LENGTH];
+  char clt_req_path_info[APPL_NAME_LENGTH];
+  char clt_ip_addr[20];
+};
+
+typedef struct t_shard_info T_SHARD_INFO;
+struct t_shard_info
+{
+  int next;
+
+  int shard_id;
+  int status;			/* SHARD TODO : not defined yet */
+  char service_ready_flag;
+
+  int min_appl_server;
+  int max_appl_server;
+  int num_appl_server;
+
+  /* connection info */
+  char db_name[SRV_CON_DBNAME_SIZE];
+  char db_user[SRV_CON_DBUSER_SIZE];
+  char db_password[SRV_CON_DBPASSWD_SIZE];
+
+  char db_conn_info[LINE_MAX];	/* cubrid - hostname(ip) 
+				 * mysql  - hostname(ip):port
+				 * oracle - tns 
+				 */
+  T_APPL_SERVER_INFO as_info[1];
+};
+
+typedef struct t_shm_shard_conn_stat T_SHM_SHARD_CONN_STAT;
+struct t_shm_shard_conn_stat
+{
+  int shard_id;
+
+  INT64 num_hint_key_queries_requested;
+  INT64 num_hint_id_queries_requested;
+  INT64 num_hint_all_queries_requested;
+};
+
+typedef struct t_shm_shard_key_range_stat T_SHM_SHARD_KEY_RANGE_STAT;
+struct t_shm_shard_key_range_stat
+{
+  int min;
+  int max;
+  int shard_id;
+
+  INT64 num_range_queries_requested;
+};
+
+typedef struct t_shm_shard_key_stat T_SHM_SHARD_KEY_STAT;
+struct t_shm_shard_key_stat
+{
+  char key_column[SHARD_KEY_COLUMN_LEN];
+  int num_key_range;
+
+  T_SHM_SHARD_KEY_RANGE_STAT stat[SHARD_KEY_RANGE_MAX];
+};
+
+/* NOTICE : 
+ *  If you want to add struct member, 
+ *  you must modify shard_shm_get_shard_info_offset too.
+ */
+typedef struct t_proxy_info T_PROXY_INFO;
+struct t_proxy_info
+{
+  int next;
+
+  int proxy_id;
+  int pid;
+  int service_flag;		/* SERVICE_OFF | SERVICE_ON */
+  int status;			/* SHARD TODO : not defined yet */
+  int cur_proxy_log_mode;
+  int max_shard;
+  int max_client;
+  int cur_client;
+
+  char appl_server;		/* APPL_SERVER_CAS | APPL_SERVER_CAS_MYSQL | APPL_SERVER_CAS_ORACLE */
+
+  /* MOVE FROM T_APPL_SERVER_INFO */
+#if defined(WINDOWS)
+  int proxy_port;		/* as_port */
+#else
+  int dummy;			/* for align */
+#endif
+
+  int max_prepared_stmt_count;
+
+  int proxy_log_reset;
+  int proxy_access_log_reset;
+
+  char port_name[PATH_MAX];
+
+  /* MOVE FROM T_BROKER_INFO */
+  char access_log_file[CONF_LOG_FILE_LEN];
+
+  /* statistics information */
+  INT64 num_hint_none_queries_processed;
+  INT64 num_hint_key_queries_processed;
+  INT64 num_hint_id_queries_processed;
+  INT64 num_hint_all_queries_processed;
+
+  int num_shard_key;		/* size : T_SHM_SHARD_KEY->num_shard_key */
+  int num_shard_conn;		/* size : T_SHM_SHARD_CONN->num_shard_conn */
+  T_SHM_SHARD_KEY_STAT key_stat[1];
+  T_SHM_SHARD_CONN_STAT shard_stat[1];
+
+  T_CLIENT_INFO client_info[1];
+  T_SHARD_INFO shard_info[1];
+};
+
+typedef struct t_shm_proxy T_SHM_PROXY;
+struct t_shm_proxy
+{
+  char shard_name[SHARD_NAME_LEN];
+  int metadata_shm_id;
+
+  int min_num_proxy;
+  int max_num_proxy;
+  int max_client;
+
+  /* SHARD SHARD_KEY_ID */
+  int shard_key_modular;
+  char shard_key_library_name[PATH_MAX];
+  char shard_key_function_name[PATH_MAX];
+
+  T_PROXY_INFO proxy_info[1];
+};
+#endif /* CUBRID_SHARD */
+
 typedef struct t_shm_appl_server T_SHM_APPL_SERVER;
 struct t_shm_appl_server
 {
@@ -288,6 +460,16 @@ struct t_shm_appl_server
   char broker_name[BROKER_NAME_LEN];
   char appl_server_name[APPL_SERVER_NAME_MAX_SIZE];
   char preferred_hosts[LINE_MAX];
+
+#if defined(CUBRID_SHARD)
+  /* from br_info */
+  char source_env[CONF_LOG_FILE_LEN];
+  char error_log_file[CONF_LOG_FILE_LEN];
+  char proxy_log_dir[CONF_LOG_FILE_LEN];
+  char port_name[PATH_MAX];
+  int proxy_log_max_size;
+#endif				/* CUBRID_SHARD */
+
 #ifdef USE_MUTEX
   int lock;
 #endif				/* USE_MUTEX */
@@ -315,7 +497,13 @@ struct t_shm_appl_server
   INT64 dummy1;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   INT64 dummy2;
+
+  /* SHARD TODO : will delete - it it only for build */
   T_APPL_SERVER_INFO as_info[1];
+
+#if defined(CUBRID_SHARD)
+  T_SHM_PROXY shard_proxy;
+#endif				/* CUBRID_SHARD */
 };
 
 /* shared memory information */

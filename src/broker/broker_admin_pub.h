@@ -28,7 +28,14 @@
 #ident "$Id$"
 
 #include "broker_config.h"
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#if defined(CUBRID_SHARD)
+#include "shard_metadata.h"
+#include "shard_shm.h"
+#include "shard_admin_pub.h"
+#endif /* CUBRID_SHARD */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int admin_isstarted_cmd (int);

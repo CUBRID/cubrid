@@ -6797,7 +6797,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p,
 {
   PAGE_PTR page_p;
   QFILE_TUPLE_VALUE_FLAG flag;
-  QFILE_TUPLE_RECORD tuple_rec = {NULL, 0};
+  QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
   PR_TYPE *pr_type;
   OR_BUF buf;
   char *ptr;
@@ -6865,7 +6865,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p,
       else
 	{
 	  if (qfile_get_tuple (thread_p, page_p, tuple_p, &tuple_rec,
-	      list_id_p) != NO_ERROR)
+			       list_id_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
@@ -6998,4 +6998,3 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
 
   return NO_ERROR;
 }
-

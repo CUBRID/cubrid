@@ -54,8 +54,13 @@
 
 #define SELECT_MASK	fd_set
 
+#if defined(CUBRID_SHARD)
+static int write_to_proxy (SOCKET sock_fd, const char *buf, int size);
+static int read_from_proxy (SOCKET sock_fd, char *buf, int size);
+#else
 static int write_to_client (SOCKET sock_fd, const char *buf, int size);
 static int read_from_client (SOCKET sock_fd, char *buf, int size);
+#endif /* CUBRID_SHARD */
 
 static void set_net_timeout_flag (void);
 static void unset_net_timeout_flag (void);
@@ -152,6 +157,45 @@ net_init_env (void)
   return (sock_fd);
 }
 
+#if defined(CUBRID_SHARD)
+SOCKET
+net_connect_proxy (void)
+{
+  int fd, len;
+  struct sockaddr_un unix_addr;
+  char *port_name;
+
+  if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
+    {
+      return (-1);
+    }
+  /* FOR DEBUG */
+  SHARD_ERR ("<CAS> connect to unixdoamin:[%s].\n", port_name);
+
+  if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
+    return (-1);
+
+  memset (&unix_addr, 0, sizeof (unix_addr));
+  unix_addr.sun_family = AF_UNIX;
+  strcpy (unix_addr.sun_path, port_name);
+#ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
+  len = sizeof (unix_addr.sun_len) + sizeof (unix_addr.sun_family) +
+    strlen (unix_addr.sun_path) + 1;
+  unix_addr.sun_len = len;
+#else /* vanilla 4.3BSD */
+  len = strlen (unix_addr.sun_path) + sizeof (unix_addr.sun_family) + 1;
+#endif
+
+  if (connect (fd, (struct sockaddr *) &unix_addr, len) < 0)
+    {
+      CLOSE_SOCKET (fd);
+      return (INVALID_SOCKET);
+    }
+
+  net_error_flag = 0;
+  return (fd);
+}
+#else
 SOCKET
 net_connect_client (SOCKET srv_sock_fd)
 {
@@ -176,6 +220,7 @@ net_connect_client (SOCKET srv_sock_fd)
   net_error_flag = 0;
   return clt_sock_fd;
 }
+#endif /* CUBRID_SHARD */
 
 int
 net_write_stream (SOCKET sock_fd, const char *buf, int size)
@@ -184,7 +229,11 @@ net_write_stream (SOCKET sock_fd, const char *buf, int size)
     {
       int write_len;
 
+#if defined(CUBRID_SHARD)
+      write_len = write_to_proxy (sock_fd, buf, size);
+#else
       write_len = write_to_client (sock_fd, buf, size);
+#endif /* CUBRID_SHARD */
       if (write_len <= 0)
 	{
 #ifdef _DEBUG
@@ -205,7 +254,11 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
     {
       int read_len;
 
+#if defined(CUBRID_SHARD)
+      read_len = read_from_proxy (sock_fd, buf, size);
+#else
       read_len = read_from_client (sock_fd, buf, size);
+#endif /* CUBRID_SHARD */
       if (read_len <= 0)
 	{
 #ifdef _DEBUG
@@ -239,7 +292,7 @@ net_read_header (SOCKET sock_fd, MSG_HEADER * header)
   return retval;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
+#if defined(CUBRID_SHARD)
 int
 net_write_header (SOCKET sock_fd, MSG_HEADER * header)
 {
@@ -250,7 +303,7 @@ net_write_header (SOCKET sock_fd, MSG_HEADER * header)
 
   return 0;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
+#endif /* CUBRID_SHARD */
 
 void
 init_msg_header (MSG_HEADER * header)
@@ -270,7 +323,11 @@ int
 net_write_int (SOCKET sock_fd, int value)
 {
   value = htonl (value);
+#if defined(CUBRID_SHARD)
+  return (write_to_proxy (sock_fd, (const char *) (&value), 4));
+#else
   return (write_to_client (sock_fd, (const char *) (&value), 4));
+#endif /* CUBRID_SHARD */
 }
 
 int
@@ -336,6 +393,7 @@ net_decode_str (char *msg, int msg_size, char *func_code, void ***ret_argv)
   return argc;
 }
 
+#if !defined(CUBRID_SHARD)
 int
 net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 {
@@ -410,6 +468,7 @@ net_write_from_file (SOCKET sock_fd, int file_size, char *filename)
   close (in_fd);
   return 0;
 }
+#endif /* !CUBRID_SHARD */
 
 void
 net_timeout_set (int timeout_sec)
@@ -417,8 +476,13 @@ net_timeout_set (int timeout_sec)
   net_timeout = timeout_sec;
 }
 
+#if defined(CUBRID_SHARD)
+static int
+read_from_proxy (SOCKET sock_fd, char *buf, int size)
+#else
 static int
 read_from_client (SOCKET sock_fd, char *buf, int size)
+#endif				/* CUBRID_SHARD */
 {
   int read_len;
   struct timeval timeout_val, *timeout_ptr;
@@ -426,7 +490,9 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
   SELECT_MASK read_mask;
   int nfound;
   int maxfd;
+#if !defined(CUBRID_SHARD)
   extern SOCKET new_req_sock_fd;
+#endif /* CUBRID_SHARD */
 #endif /* ASYNC_MODE */
 
   if (net_timeout < 0)
@@ -448,12 +514,14 @@ retry_select:
   FD_ZERO (&read_mask);
   FD_SET (sock_fd, (fd_set *) & read_mask);
   maxfd = (int) sock_fd + 1;
+#if !defined(CUBRID_SHARD)
   if (!IS_INVALID_SOCKET (new_req_sock_fd))
     {
       FD_SET (new_req_sock_fd, (fd_set *) & read_mask);
       if (new_req_sock_fd > sock_fd)
 	maxfd = (int) new_req_sock_fd + 1;
     }
+#endif /* CUBRID_SHARD */
   nfound =
     select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
 	    timeout_ptr);
@@ -469,6 +537,10 @@ retry_select:
 #endif /* ASYNC_MODE */
 
 #ifdef ASYNC_MODE
+#if defined(CUBRID_SHARD)
+  if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
+    {
+#else
   if (!IS_INVALID_SOCKET (new_req_sock_fd)
       && FD_ISSET (new_req_sock_fd, (fd_set *) & read_mask))
     {
@@ -476,6 +548,7 @@ retry_select:
     }
   else if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
     {
+#endif /* CUBRID_SHARD */
 #endif /* ASYNC_MODE */
       read_len = READ_FROM_SOCKET (sock_fd, buf, size);
 #ifdef ASYNC_MODE
@@ -495,8 +568,13 @@ retry_select:
   return read_len;
 }
 
+#if defined(CUBRID_SHARD)
+static int
+write_to_proxy (SOCKET sock_fd, const char *buf, int size)
+#else
 static int
 write_to_client (SOCKET sock_fd, const char *buf, int size)
+#endif				/* CUBRID_SHARD */
 {
   int write_len;
   struct timeval timeout_val, *timeout_ptr;

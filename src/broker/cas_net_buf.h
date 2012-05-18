@@ -91,8 +91,10 @@ struct t_net_buf
   int data_size;
   char *data;
   int err_code;
+#if !defined(CUBRID_SHARD)
   int post_file_size;
   char *post_send_file;
+#endif				/* CUBRID_SHARD */
 };
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
@@ -101,7 +103,9 @@ struct t_net_buf
 extern void net_buf_init (T_NET_BUF * net_buf);
 extern void net_buf_clear (T_NET_BUF * net_buf);
 extern void net_buf_destroy (T_NET_BUF * net_buf);
+#if !defined(CUBRID_SHARD)
 extern int net_buf_cp_post_send_file (T_NET_BUF * net_buf, int, char *str);
+#endif /* CUBRID_SHARD */
 extern int net_buf_cp_byte (T_NET_BUF * net_buf, char ch);
 extern int net_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size);
 extern int net_buf_cp_int (T_NET_BUF * net_buf, int value, int *begin_offset);
@@ -153,14 +157,18 @@ extern void net_arg_get_timestamp (short *yr, short *mon, short *day,
 extern void net_arg_get_datetime (short *yr, short *mon, short *day,
 				  short *hh, short *mm, short *ss, short *ms,
 				  void *arg);
+extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_cache_time (void *ct, void *arg);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_dbobject (DB_OBJECT ** obj, void *arg);
 extern void net_arg_get_cci_object (int *pageid, short *slotid, short *volid,
 				    void *arg);
 extern void net_arg_get_lob_handle (T_LOB_HANDLE * lob, void *arg);
 extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+#if defined(CUBRID_SHARD)
+extern void net_arg_put_int (void *arg, int *value);
+#endif /* CUBRID_SHARD */
 
 #endif /* _CAS_NET_BUF_H_ */

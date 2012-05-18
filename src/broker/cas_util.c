@@ -40,6 +40,21 @@
 #include "cas_util.h"
 #include "cas_net_buf.h"
 
+#if defined(CUBRID_SHARD)
+char *
+ut_uchar2ipstr (unsigned char *ip_addr)
+{
+  static char ip_str[32];
+
+  assert (ip_addr != NULL);
+
+  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
+	   (unsigned char) ip_addr[1],
+	   (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
+  return (ip_str);
+}
+#endif /* CUBRID_SHARD */
+
 char *
 ut_trim (char *str)
 {

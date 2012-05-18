@@ -167,6 +167,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "stop");
 	}
     }
+#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "add") == 0)
     {
       if (argc < 3)
@@ -346,6 +347,7 @@ main (int argc, char **argv)
 	    }
 	}
     }
+#endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "info") == 0)
     {
       if (admin_broker_info_cmd (master_shm_id) < 0)
@@ -357,6 +359,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "info");
 	}
     }
+#if defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "acl") == 0)
     {
       char *br_name = NULL;
@@ -392,6 +395,7 @@ main (int argc, char **argv)
 	  return -1;
 	}
     }
+#endif /* CUBRID_SHARD */
   else
     {
       goto usage;
@@ -400,8 +404,12 @@ main (int argc, char **argv)
   return 0;
 
 usage:
+#if defined(CUBRID_SHARD)
+  printf ("%s (start | stop | info)\n", argv[0]);
+#else
   printf ("%s (start | stop | add | drop | restart"
 	  " | on | off | suspend | resume | reset | job_first | info | acl)\n",
 	  argv[0]);
+#endif /* CUBRID_SHARD */
   return -1;
 }

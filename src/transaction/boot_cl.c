@@ -689,7 +689,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   char *ptr;
 #if defined(CS_MODE)
   const char *hosts[2];
-  size_t size;
+
+  const char **ha_hosts;
+  int num_hosts;
+  char *ha_node_list = NULL;
 #endif /* CS_MODE */
 
   assert (client_credential != NULL);
@@ -778,11 +781,30 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       /* db_name@host_name */
 #if defined(CS_MODE)
-      size = strlen (client_credential->db_name) + 1;
-      hosts[0] = ptr + 1;
-      hosts[1] = NULL;
       *ptr = '\0';		/* screen 'db@host' */
-      db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, hosts);
+      if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE
+	  (client_credential->client_type))
+	{
+	  ha_node_list = ptr + 1;
+	  ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
+
+	  db =
+	    cfg_new_db (client_credential->db_name, NULL, NULL, NULL,
+			ha_hosts);
+
+	  if (ha_hosts)
+	    {
+	      cfg_free_hosts (ha_hosts);
+	    }
+	}
+      else
+	{
+	  hosts[0] = ptr + 1;
+	  hosts[1] = NULL;
+
+	  db =
+	    cfg_new_db (client_credential->db_name, NULL, NULL, NULL, hosts);
+	}
       *ptr = (char) '@';
 #else /* CS_MODE */
       error_code = ER_NOT_IN_STANDALONE;

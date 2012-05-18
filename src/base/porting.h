@@ -119,10 +119,11 @@
 #define POLLHUP     0x0002
 #define POLLNVAL    0x0004
 
-struct pollfd {
-    SOCKET  fd;
-    SHORT   events;
-    SHORT   revents;
+struct pollfd
+{
+  SOCKET fd;
+  SHORT events;
+  SHORT revents;
 };
 #endif /* (_WIN32_WINNT < 0x0600) */
 

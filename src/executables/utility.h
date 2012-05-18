@@ -659,7 +659,9 @@ typedef struct _ha_config
 #define UTIL_COMMDB_NAME        "cub_commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
+#define UTIL_SHARD_NAME        	"shard_admin" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
+#define UTIL_SMONITOR_NAME	"shard_broker_monitor" UTIL_EXE_EXT
 #define UTIL_CUB_AUTO_NAME      "cub_auto" UTIL_EXE_EXT
 #define UTIL_CUB_JS_NAME        "cub_js" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
@@ -684,6 +686,7 @@ typedef struct _ha_config
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 #define PRINT_HA_PROCS_NAME     "HA processes"
+#define PRINT_SHARD_NAME	"cubrid shard"
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
@@ -727,6 +730,7 @@ typedef struct _ha_config
 #define MASK_MANAGER            0x08
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
+#define MASK_SHARD		0x80
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"

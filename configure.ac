@@ -310,9 +310,10 @@ then
 fi
 
 WARN="-Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wlong-long"
+WARN_CXX="-Wall -W -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra  -Wlong-long"
 NOWARN="-Wno-unused"
 CFLAGS="$CFLAGS $WARN $NOWARN"
-CXXFLAGS="$CCCFLAGS $WARN $NOWARN"
+CXXFLAGS="$CXXFLAGS $WARN_CXX $NOWARN"
 
 EXTERNAL_DIST="hoard-371"
 
@@ -558,6 +559,15 @@ esac
 AM_CONDITIONAL([BUILD_CAS_FOR_ORACLE], [test "$with_oracle" != "no"])
 AC_MSG_RESULT([$with_oracle])
 
+AC_ARG_ENABLE([shard],
+       [AS_HELP_STRING([--enable-shard],
+               [build db shard @<:@default=yes@:>@])],
+       [enable_shard=$enableval],
+       [enable_shard=yes])
+AM_CONDITIONAL([BUILD_SHARD], [test "$enable_shard" != "no"])
+AM_CONDITIONAL([BUILD_SHARD_FOR_MYSQL], [test "$with_mysql" != "no" && test "$enable_shard" != "no"])
+#AM_CONDITIONAL([BUILD_SHARD_FOR_MYSQL], [test "$enable_shard" = "yes"])
+
 AC_MSG_CHECKING([for cubrid manager server])
 AC_ARG_WITH([cmserver],
 	AS_HELP_STRING([--with-cmserver=PATH],
@@ -632,7 +642,6 @@ else
 	EXTERNAL_DIST="$EXTERNAL_DIST expat-2.0.1"
 fi
 AC_MSG_RESULT([$with_expat])
-
 
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
@@ -920,6 +929,7 @@ AC_SUBST([ORACLE_LIB_PATH])
 AC_SUBST([ORACLE_INC_PATH])
 AC_SUBST([BISON])
 AC_SUBST([OPTIONAL_DIR])
+AC_SUBST([EXPAT_LIBS])
 
 AH_TOP([
 #ifndef _CONFIG_H_
@@ -967,6 +977,9 @@ AC_CONFIG_FILES([Makefile
 	locales/data/Makefile
 	locales/data/codepages/Makefile
 	locales/data/ldml/Makefile
+	shard_cubrid/Makefile
+	shard_mysql/Makefile
+	dbgw/Makefile
 	])
 
 AC_OUTPUT

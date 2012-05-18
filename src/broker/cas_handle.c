@@ -72,7 +72,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   T_SRV_HANDLE **new_srv_handle_table = NULL;
   T_SRV_HANDLE *srv_handle;
 
-#if !defined(LIBCAS_FOR_JSP)
+#if !defined(LIBCAS_FOR_JSP) && !defined(CUBRID_SHARD)
   if (current_handle_count >= shm_appl->max_prepared_stmt_count)
     {
       return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED,
@@ -438,7 +438,7 @@ hm_srv_handle_append_active (T_SRV_HANDLE * srv_handle)
 
   if (active_handle_table == NULL
       || active_handle_count >=
-      (active_handle_table_size / sizeof (T_SRV_HANDLE *)))
+      (int) (active_handle_table_size / sizeof (T_SRV_HANDLE *)))
     {
       if (active_handle_table_size == 0)
 	{

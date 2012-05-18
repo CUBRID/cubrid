@@ -23,6 +23,7 @@ BuildRequires: elfutils-libelf-devel
 BuildRequires: ncurses-devel
 BuildRequires: libstdc++-devel
 BuildRequires: glibc-devel
+BuildRequires: boost-devel
 BuildRoot:     %{_tmppath}/%{name}-%{version}-build
 Prefix:        %{_prefix}
 

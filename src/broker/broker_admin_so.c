@@ -758,11 +758,13 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
 	  as_info[i].cpu_time = shm_appl->as_info[i].cpu_time;
 	}
 #endif /* WINDOWS */
+#if !defined(CUBRID_SHARD)
 #if defined(WINDOWS)
       as_info[i].as_port = shm_appl->as_info[i].as_port;
 #else /* WINDOWS */
       as_info[i].as_port = 0;
 #endif /* WINDOWS */
+#endif /* !CUBRID_SHARD */
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 	{
 	  if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
@@ -800,10 +802,12 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
       as_info[i].num_error_queries = shm_appl->as_info[i].num_error_queries;
       as_info[i].num_interrupts = shm_appl->as_info[i].num_interrupts;
 
+#if !defined(CUBRID_SHARD)
       ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str),
 			  shm_appl->as_info[i].cas_clt_ip);
       strncpy (as_info[i].clt_ip_addr, client_ip_str,
 	       sizeof (as_info[i].clt_ip_addr) - 1);
+#endif /* !CUBRID_SHARD */
 
       strncpy (as_info[i].database_host,
 	       shm_appl->as_info[i].database_host,
@@ -811,12 +815,14 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
       strncpy (as_info[i].database_name,
 	       shm_appl->as_info[i].database_name,
 	       sizeof (as_info[i].database_name) - 1);
+#if !defined(CUBRID_SHARD)
       strncpy (as_info[i].clt_appl_name,
 	       shm_appl->as_info[i].clt_appl_name,
 	       sizeof (as_info[i].clt_appl_name) - 1);
       strncpy (as_info[i].request_file,
 	       shm_appl->as_info[i].clt_req_path_info,
 	       sizeof (as_info[i].request_file) - 1);
+#endif /* !CUBRID_SHARD */
       strncpy (as_info[i].log_msg,
 	       shm_appl->as_info[i].log_msg, sizeof (as_info[i].log_msg) - 1);
     }
@@ -972,8 +978,10 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  br_info[i].long_query_time = shm_br->br_info[i].long_query_time;
 	  br_info[i].long_transaction_time =
 	    shm_br->br_info[i].long_transaction_time;
+#if !defined(CUBRID_SHARD)
 	  strncpy (br_info[i].log_dir, shm_br->br_info[i].access_log_file,
 		   sizeof (br_info[i].log_dir) - 1);
+#endif /* !CUBRID_SHARD */
 	  p = strrchr (br_info[i].log_dir, '/');
 	  if (p != NULL)
 	    *p = '\0';

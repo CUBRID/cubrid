@@ -41,7 +41,7 @@
 
 static char cubrid_Dir[PATH_MAX] = "";
 
-#define NUM_CUBRID_FILE		19
+#define NUM_CUBRID_FILE		MAX_CUBRID_FILE
 static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CUBRID_BROKER_CONF, ""},
   {FID_UV_ERR_MSG, ""},
@@ -61,7 +61,10 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CAS_FOR_ORACLE_DBINFO, ""},
   {FID_CAS_FOR_MYSQL_DBINFO, ""},
   {FID_ACCESS_CONTROL_FILE, ""},
-  {FID_SLOW_LOG_DIR, ""}
+  {FID_SLOW_LOG_DIR, ""},
+  {FID_SHARD_CONF, ""},
+  {FID_SHARD_DBINFO, ""},
+  {FID_SHARD_PROXY_LOG_DIR, ""}
 };
 
 void
@@ -261,6 +264,18 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_CAS_FOR_MYSQL_DBINFO:
       envvar_confdir_file (buf, len, "databases_mysql.txt");
+      break;
+    case FID_SHARD_CONF:
+      envvar_confdir_file (buf, PATH_MAX, "shard.conf");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_SHARD_DBINFO:
+      envvar_confdir_file (buf, PATH_MAX, "shard_databases.txt");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_SHARD_PROXY_LOG_DIR:
+      envvar_logdir_file (buf, PATH_MAX, "broker/proxy_log/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
       break;
     default:
       break;

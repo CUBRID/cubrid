@@ -32,6 +32,19 @@
 #include "cas_common.h"
 #include "porting.h"
 
+#if !defined(PROXY_INVALID_ID)
+#define PROXY_INVALID_ID	(-1)
+#endif
+#if !defined(PROXY_INVALID_SHARD)
+#define PROXY_INVALID_SHARD	(PROXY_INVALID_ID)
+#endif
+#if !defined(PROXY_INVALID_CAS)
+#define PROXY_INVALID_CAS 	(PROXY_INVALID_ID)
+#endif
+
+#define SHARD_INVALID_ID	(PROXY_INVALID_SHARD)
+#define CAS_INVALID_ID		(PROXY_INVALID_CAS)
+
 #if !defined(LIBCAS_FOR_JSP)
 extern char *trim (char *str);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -40,7 +53,8 @@ extern void ut_file_unlock (char *);
 #endif
 extern int ut_access_log (int as_index, struct timeval *start_time,
 			  char err_flag, int e_offset);
-extern int ut_kill_process (int pid, char *br_name, int as_index);
+extern int ut_kill_process (int pid, char *br_name, int proxy_index,
+			    int shard_index, int as_index);
 extern void ut_cd_work_dir (void);
 
 extern int ut_set_keepalive (int sock, int keepalive_time);
@@ -49,9 +63,11 @@ extern int ut_set_keepalive (int sock, int keepalive_time);
 extern int run_child (const char *appl_name);
 #endif
 
-extern void as_pid_file_create (char *br_name, int as_index);
 extern int as_get_my_as_info (char *br_name, int *as_index);
-extern void as_db_err_log_set (char *br_name, int as_index);
+extern void as_pid_file_create (char *br_name, int proxy_index, int shard_id,
+				int as_index);
+extern void as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
+			       int as_index);
 #endif
 
 extern int ut_time_string (char *buf, struct timeval *log_time);

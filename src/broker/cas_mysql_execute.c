@@ -87,6 +87,10 @@
   } while (0)
 #endif /* !WINDOWS */
 
+#if defined(CUBRID_SHARD)
+extern T_SHARD_INFO *shard_info_p;
+#endif /* CUBRID_SHARD */
+
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
 			     T_NET_BUF *, T_REQ_INFO *);
 
@@ -769,13 +773,13 @@ ux_db_type_to_cas_type (int db_type)
       cas_type = CCI_U_TYPE_NUMERIC;
       break;
       /* DB_TYPE_INTEGER */
-    case MYSQL_TYPE_TINY:
     case MYSQL_TYPE_INT24:
     case MYSQL_TYPE_LONG:
       cas_type = CCI_U_TYPE_INT;
       break;
       /* DB_TYPE_SHORT */
     case MYSQL_TYPE_SHORT:
+    case MYSQL_TYPE_TINY:
       cas_type = CCI_U_TYPE_SHORT;
       break;
       /* DB_TYPE_FLOAT */
@@ -1006,7 +1010,7 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_BLOB:
       {
 	char *value;
-	net_arg_get_str (&value, &db_val->size, net_value);
+	net_arg_get_str (&value, (int *) (&db_val->size), net_value);
 
 	data = (char *) MALLOC (db_val->size);
 	if (data == NULL)
@@ -1030,7 +1034,7 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_VARCHAR:	/* VARCHAR(n) */
       {
 	char *value;
-	net_arg_get_str (&value, &db_val->size, net_value);
+	net_arg_get_str (&value, (int *) (&db_val->size), net_value);
 
 	data = (char *) MALLOC (db_val->size);
 	if (data == NULL)
@@ -1214,7 +1218,6 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 
   switch (type)
     {
-    case MYSQL_TYPE_TINY:
     case MYSQL_TYPE_INT24:
     case MYSQL_TYPE_LONG:
       {
@@ -1233,9 +1236,10 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	break;
       }
     case MYSQL_TYPE_SHORT:
+    case MYSQL_TYPE_TINY:
       {
 	short smallint;
-	memcpy ((char *) &smallint, (char *) val, length);
+	memcpy ((char *) &smallint, (char *) val, NET_SIZE_SHORT);
 	add_res_data_short (net_buf, smallint, 0);
 	data_size = 4 + 2 + 0;
 	break;
@@ -1876,6 +1880,7 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 		  defines[i].buffer_length = size;
 		  break;
 		case MYSQL_TYPE_SHORT:
+		case MYSQL_TYPE_TINY:
 		  defines[i].buffer = (void *) &(columns[i].data.sh);
 		  defines[i].buffer_length = sizeof (short);
 		  break;
@@ -2143,6 +2148,29 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
       goto cas_mysql_find_db_error;
     }
 
+#if defined(CUBRID_SHARD)
+  memset (tmpdbinfo, 0x00, PATH_MAX);
+  memcpy (tmpdbinfo, shard_info_p->db_conn_info, PATH_MAX);
+
+  strcpy (dbname, alias);
+
+  str = strtok (tmpdbinfo, delim);	/* SET HOST ADDRESS */
+  if (str == NULL)
+    {
+      goto cas_mysql_find_db_error;
+    }
+  strncpy (host, str, MAX_HOSTNAME_LENGTH);
+
+  str = strtok (NULL, delim);	/* SET PORT */
+  if (str == NULL)
+    {
+      *port = DEFAULT_MYSQL_PORT;
+    }
+  else
+    {
+      *port = atoi (str);
+    }
+#else
   if ((ret = cfg_read_dbinfo (&db_info_all_p)) < 0)
     {
       return ret;
@@ -2194,6 +2222,7 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
 	  cfg_free_dbinfo_all (db_info_all_p);
 	}
     }
+#endif /* CUBRID_SHARD */
   return 0;
 
 cas_mysql_find_db_error:

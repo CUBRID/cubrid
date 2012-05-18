@@ -85,7 +85,7 @@ sql_log2_get_filename ()
 #if defined(WINDOWS)
   return "";
 #else
-  return (sql_log2_file == NULL) ? "" : sql_log2_file;
+  return (sql_log2_file == NULL) ? (char *) "" : (char *) sql_log2_file;
 #endif
 }
 

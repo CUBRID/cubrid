@@ -353,6 +353,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
     {
       net_arg_get_char (auto_commit_mode, argv[2]);
 
+#if !defined(CUBRID_SHARD)
       for (i = 3; i < argc; i++)
 	{
 	  int deferred_close_handle;
@@ -361,6 +362,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
 			 deferred_close_handle);
 	  hm_srv_handle_free (deferred_close_handle);
 	}
+#endif
     }
   else
     {
@@ -742,6 +744,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
   return FN_KEEP_CONN;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv,
 			T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -774,7 +777,6 @@ prepare_and_execute_end:
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
 		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)

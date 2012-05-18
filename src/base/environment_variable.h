@@ -37,8 +37,10 @@ extern int envvar_expand (const char *, char *, size_t);
 
 extern char *envvar_bindir_file (char *path, size_t size,
 				 const char *filename);
+#if defined(ENABLE_UNUSED_FUNCTION) || defined(CUBRID_SHARD)
 extern char *envvar_libdir_file (char *path, size_t size,
 				 const char *filename);
+#endif /* ENABLE_UNUSED_FUNCTION || CUBRID_SHARD */
 extern char *envvar_javadir_file (char *path, size_t size,
 				  const char *filename);
 extern char *envvar_localedir_file (char *path, size_t size,

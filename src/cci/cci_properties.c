@@ -340,12 +340,10 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       if (base == NULL)
 	{
 	  snprintf (file, PATH_MAX, "logs/cci_%04d.log", handle->id);
-	  mkdir ("logs", 0755);
 	}
       else
 	{
 	  snprintf (file, PATH_MAX, "%s/cci_%04d.log", base, handle->id);
-	  mkdir (base, 0755);
 	  free (base);
 	}
       handle->log_filename = strdup (file);
@@ -360,6 +358,7 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       || handle->log_trace_api || handle->log_trace_network)
     {
       handle->logger = cci_log_get (handle->log_filename);
+      cci_log_set_level (handle->logger, CCI_LOG_LEVEL_DEBUG);
     }
 
 set_properties_end:

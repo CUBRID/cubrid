@@ -71,8 +71,13 @@ make_error_log_filename (char *filename_buf,
   assert (filename_buf != NULL);
 
   get_cubrid_file (FID_CUBRID_ERR_DIR, dirname, PATH_MAX);
+#if defined(CUBRID_SHARD)
+  snprintf (filename_buf, buf_size, "%s%s_CAS_%d_%d_%d.err", dirname, br_name,
+	    shm_proxy_id + 1, shm_shard_id, (as_index) + 1);
+#else
   snprintf (filename_buf, buf_size, "%s%s_CAS_%d.err", dirname, br_name,
 	    (as_index) + 1);
+#endif /* CUBRID_SHARD */
   return filename_buf;
 }
 

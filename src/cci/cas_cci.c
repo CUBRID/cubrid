@@ -523,7 +523,7 @@ cci_connect_with_url (char *url, char *user, char *password)
 	  API_SLOG (con_handle);
 	  if (con_handle->log_trace_api)
 	    {
-	      cci_log_write (con_handle->logger, "URL[%s]", url);
+	      CCI_LOG_DEBUG (con_handle->logger, "URL[%s]", url);
 	    }
 	  if (error < 0)
 	    {
@@ -651,7 +651,7 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
       cci_datasource_release (con_handle->datasource, con_h_id, err_buf);
       if (con_handle->log_trace_api)
 	{
-	  cci_log_write (con_handle->logger,
+	  CCI_LOG_DEBUG (con_handle->logger,
 			 "[%04d][API][E][cci_datasource_release]", con_h_id);
 	}
     }
@@ -818,7 +818,7 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
   API_SLOG (con_handle);
   if (con_handle->log_trace_api)
     {
-      cci_log_write (con_handle->logger, "FLAG[%d],SQL[%s]", flag, sql_stmt);
+      CCI_LOG_DEBUG (con_handle->logger, "FLAG[%d],SQL[%s]", flag, sql_stmt);
     }
 
   if (IS_STMT_POOL (con_handle))
@@ -1247,7 +1247,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
   API_SLOG (con_handle);
   if (con_handle->log_trace_api)
     {
-      cci_log_write (con_handle->logger, "FLAG[%d], MAX_COL_SIZE[%d]",
+      CCI_LOG_DEBUG (con_handle->logger, "FLAG[%d], MAX_COL_SIZE[%d]",
 		     flag, max_col_size);
     }
 
@@ -1347,7 +1347,7 @@ execute_end:
       elapsed = ELAPSED_MSECS (et, st);
       if (elapsed > con_handle->slow_query_threshold_millis)
 	{
-	  cci_log_write (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
+	  CCI_LOG_DEBUG (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
 			 con_handle->id, elapsed, req_handle->sql_text);
 	}
     }
@@ -1416,7 +1416,7 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
   API_SLOG (con_handle);
   if (con_handle->log_trace_api)
     {
-      cci_log_write (con_handle->logger, "MAX_COL_SIZE[%d], SQL[%s]",
+      CCI_LOG_DEBUG (con_handle->logger, "MAX_COL_SIZE[%d], SQL[%s]",
 		     max_col_size, sql_stmt);
     }
 
@@ -1451,7 +1451,7 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
       elapsed = ELAPSED_MSECS (et, st);
       if (elapsed > con_handle->slow_query_threshold_millis)
 	{
-	  cci_log_write (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
+	  CCI_LOG_DEBUG (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
 			 con_handle->id, elapsed, sql_stmt);
 	}
     }

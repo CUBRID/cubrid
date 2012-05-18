@@ -84,7 +84,10 @@ typedef enum
   CAS_INFO_ADDITIONAL_FLAG = 3
 } CAS_INFO_TYPE;
 
-#define CAS_INFO_FLAG_MASK_AUTOCOMMIT	0x01
+#define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
+#if defined(CUBRID_SHARD)
+#define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
+#endif /* CUBRID_SHARD */
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
@@ -182,6 +185,11 @@ enum t_cas_func_code
    */
   CAS_FC_MAX
 };
+
+#if defined(CUBRID_SHARD)
+#define IS_VALID_CAS_FC(fc) \
+	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
+#endif /* CUBRID_SHARD */
 
 /* Current protocol version */
 #define CAS_PROTOCOL_VERSION    (0x01)

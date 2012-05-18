@@ -97,6 +97,7 @@
 #define ACCESS_FILE_DELIMITER ":"
 #define IP_FILE_DELIMITER ","
 
+#if !defined(CUBRID_SHARD)
 static int br_activate (T_BROKER_INFO *, int, T_SHM_BROKER *);
 static int br_inactivate (T_BROKER_INFO *);
 static void as_activate (T_APPL_SERVER_INFO *, int, T_BROKER_INFO *, char **,
@@ -105,6 +106,7 @@ static void as_inactivate (int, char *br_name, int as_index);
 static char **make_env (char *env_file, int *env_num);
 static const char *get_appl_server_name (int appl_server_type, char **env,
 					 int env_num);
+#endif /* !CUBRID_SHARD */
 static int broker_create_dir (const char *new_dir);
 static int read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl,
 					  char *filename);
@@ -208,12 +210,20 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 		 bool acl_flag, char *acl_file)
 {
   T_SHM_BROKER *shm_br;
-  int shm_size, i;
+  int shm_size, i, j;
   int res = 0;
 #if defined(WINDOWS)
   unsigned char ip_addr[4];
 #endif /* WINDOWS */
   char path[PATH_MAX];
+
+#if defined(CUBRID_SHARD)
+  char *shm_metadata_p = NULL;
+  char *shm_appl_svr_p = NULL;
+  T_SHM_APPL_SERVER *shm_as_p = NULL;
+  T_SHM_PROXY *proxy_p = NULL;
+  T_PROXY_INFO *proxy_info_p;
+#endif /* CUBRID_SHARD */
 
 #if defined(WINDOWS)
   if (admin_get_host_ip (ip_addr) < 0)
@@ -254,6 +264,9 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       broker_create_dir (br_info[i].log_dir);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
+#if defined(CUBRID_SHARD)
+      broker_create_dir (br_info[i].proxy_log_dir);
+#endif /* CUBRID_SHARD */
     }
   chdir (envvar_bindir_file (path, PATH_MAX, ""));
 
@@ -283,9 +296,15 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   /* create appl server shared memory */
   for (i = 0; i < br_num; i++)
     {
+#if defined(CUBRID_SHARD)
+      shm_as_p = NULL;
+      proxy_p = NULL;
+#endif
       shm_br->br_info[i] = br_info[i];
+#if !defined(CUBRID_SHARD)
       snprintf (shm_br->br_info[i].access_log_file, CONF_LOG_FILE_LEN - 1,
 		"%s/%s.access", br_info[i].access_log_file, br_info[i].name);
+#endif /* !CUBRID_SHARD */
       snprintf (shm_br->br_info[i].error_log_file, CONF_LOG_FILE_LEN - 1,
 		"%s/%s.err", br_info[i].error_log_file, br_info[i].name);
 
@@ -298,23 +317,79 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 
       if (shm_br->br_info[i].service_flag == ON)
 	{
+#if defined(CUBRID_SHARD)
+	  shm_metadata_p = shard_metadata_initialize (&(shm_br->br_info[i]));
+	  if (shm_metadata_p)
+	    {
+	      shm_appl_svr_p =
+		shard_shm_initialize (&(shm_br->br_info[i]), shm_metadata_p);
+	      if (shm_appl_svr_p)
+		{
+		  shm_as_p = shard_shm_get_appl_server (shm_appl_svr_p);
+		  proxy_p = shard_shm_get_proxy (shm_appl_svr_p);
+		}
+	    }
+
+	  if (shm_as_p == NULL || proxy_p == NULL)
+	    {
+	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+	      uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
+
+	      res = -1;
+	      break;
+	    }
+
+	  for (j = 0, proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+	       proxy_info_p;
+	       j++, proxy_info_p =
+	       shard_shm_get_next_proxy_info (proxy_info_p))
+	    {
+	      snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1,
+			"%s/%s_%d.access", CUBRID_BASE_DIR, br_info[i].name,
+			j);
+	      dir_repath (proxy_info_p->access_log_file);
+	    }
+
+	  res =
+	    shard_process_activate (master_shm_id, &(shm_br->br_info[i]),
+				    shm_br, shm_appl_svr_p);
+#else
 	  res = br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
+#endif
 	  if (res < 0)
-	    break;
+	    {
+	      break;
+	    }
 	}
     }
+
   if (res < 0)
     {
       char err_msg_backup[ADMIN_ERR_MSG_SIZE];
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
+
       for (--i; i >= 0; i--)
 	{
+#if defined(CUBRID_SHARD)
+	  shard_process_inactivate (&(shm_br->br_info[i]));
+#else
 	  br_inactivate (&(shm_br->br_info[i]));
+#endif /* CUBRID_SHARD */
 	}
       memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
     }
 
   uw_shm_detach (shm_br);
+#if defined(CUBRID_SHARD)
+  if (shm_appl_svr_p)
+    {
+      uw_shm_detach (shm_appl_svr_p);
+    }
+  if (shm_metadata_p)
+    {
+      uw_shm_detach (shm_metadata_p);
+    }
+#endif /* CUBRID_SHARD */
 
   if (res < 0)
     {
@@ -330,7 +405,6 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       run_child (NAME_UC_SHM);
     }
 #endif /* WINDOWS */
-
 
   return res;
 }
@@ -361,7 +435,11 @@ admin_stop_cmd (int master_shm_id)
     {
       if (shm_br->br_info[i].service_flag == ON)
 	{
+#if defined(CUBRID_SHARD)
+	  shard_process_inactivate (&shm_br->br_info[i]);
+#else
 	  br_inactivate (&(shm_br->br_info[i]));
+#endif /* CUBRID_SHARD */
 	}
     }
 
@@ -377,6 +455,10 @@ admin_stop_cmd (int master_shm_id)
 int
 admin_add_cmd (int master_shm_id, const char *broker)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl_server;
   int i, br_index;
@@ -453,11 +535,16 @@ admin_add_cmd (int master_shm_id, const char *broker)
   FREE_MEM (env);
 
   return 0;
+#endif /* CUBRID_SHARD */
 }
 
 int
 admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   T_SHM_BROKER *shm_br = NULL;
   T_SHM_APPL_SERVER *shm_appl = NULL;
   int i, br_index, appl_shm_key;
@@ -523,8 +610,11 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     {
+      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
+      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
       ut_kill_process (shm_appl->as_info[as_index].pid,
-		       shm_br->br_info[br_index].name, as_index);
+		       shm_br->br_info[br_index].name, PROXY_INVALID_ID,
+		       SHARD_INVALID_ID, as_index);
       shm_appl->as_info[as_index].uts_status = UTS_STATUS_BUSY;
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
@@ -547,8 +637,11 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (shm_appl->as_info[as_index].pid)
     {
+      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
+      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
       ut_kill_process (shm_appl->as_info[as_index].pid,
-		       shm_br->br_info[br_index].name, as_index);
+		       shm_br->br_info[br_index].name, PROXY_INVALID_ID,
+		       SHARD_INVALID_ID, as_index);
     }
 
   SLEEP_SEC (1);
@@ -646,11 +739,17 @@ restart_error:
   if (shm_br)
     uw_shm_detach (shm_br);
   return -1;
+#endif /* CUBRID_SHARD */
 }
+
 
 int
 admin_drop_cmd (int master_shm_id, const char *broker)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl_server;
   int br_index, i, appl_shm_key, as_index;
@@ -723,11 +822,16 @@ finale:
   uw_shm_detach (shm_appl_server);
 
   return 0;
+#endif /* CUBRID_SHARD */
 }
 
 int
 admin_broker_on_cmd (int master_shm_id, const char *broker_name)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   int i;
   T_SHM_BROKER *shm_br;
   int res = 0;
@@ -770,11 +874,16 @@ admin_broker_on_cmd (int master_shm_id, const char *broker_name)
   uw_shm_detach (shm_br);
 
   return res;
+#endif /* CUBRID_SHARD */
 }
 
 int
 admin_broker_off_cmd (int master_shm_id, const char *broker_name)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   int i;
   T_SHM_BROKER *shm_br;
 
@@ -822,11 +931,16 @@ admin_broker_off_cmd (int master_shm_id, const char *broker_name)
 
   uw_shm_detach (shm_br);
   return 0;
+#endif /* CUBRID_SHARD */
 }
 
 int
 admin_broker_suspend_cmd (int master_shm_id, const char *broker_name)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   int i, br_index;
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
@@ -892,11 +1006,16 @@ admin_broker_suspend_cmd (int master_shm_id, const char *broker_name)
   uw_shm_detach (shm_appl);
   uw_shm_detach (shm_br);
   return 0;
+#endif /* CUBRID_SHARD */
 }
 
 int
 admin_broker_resume_cmd (int master_shm_id, const char *broker_name)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   int i, br_index;
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
@@ -954,11 +1073,16 @@ admin_broker_resume_cmd (int master_shm_id, const char *broker_name)
   uw_shm_detach (shm_appl);
   uw_shm_detach (shm_br);
   return 0;
+#endif /* CUBRID_SHARD */
 }
 
 int
 admin_broker_reset_cmd (int master_shm_id, const char *broker_name)
 {
+#if defined(CUBRID_SHARD)
+  /* SHARD TODO : not implemented yet */
+  return 0;
+#else
   int i, br_index;
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
@@ -1019,6 +1143,7 @@ admin_broker_reset_cmd (int master_shm_id, const char *broker_name)
   uw_shm_detach (shm_appl);
   uw_shm_detach (shm_br);
   return 0;
+#endif /* CUBRID_SHARD */
 }
 
 int
@@ -1946,6 +2071,7 @@ admin_get_host_ip (unsigned char *ip_addr)
 }
 #endif /* WINDOWS */
 
+#if !defined(CUBRID_SHARD)
 static int
 br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	     T_SHM_BROKER * shm_br)
@@ -2261,7 +2387,10 @@ br_inactivate (T_BROKER_INFO * br_info)
 
   if (br_info->pid)
     {
-      ut_kill_process (br_info->pid, NULL, 0);
+      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
+      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
+      ut_kill_process (br_info->pid, NULL, PROXY_INVALID_ID, SHARD_INVALID_ID,
+		       CAS_INVALID_ID);
       SLEEP_MILISEC (1, 0);
     }
 
@@ -2448,7 +2577,10 @@ as_inactivate (int as_pid, char *br_name, int as_index)
 {
   if (as_pid)
     {
-      ut_kill_process (as_pid, br_name, as_index);
+      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
+      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
+      ut_kill_process (as_pid, br_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
+		       as_index);
     }
 }
 
@@ -2531,6 +2663,7 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
     return APPL_SERVER_CAS_MYSQL_NAME;
   return APPL_SERVER_CAS_NAME;
 }
+#endif /* !CUBRID_SHARD */
 
 static ACCESS_INFO *
 find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser)

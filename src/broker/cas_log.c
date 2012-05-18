@@ -60,6 +60,9 @@ static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 				    size_t buf_size, const char *br_name,
 				    int as_index);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
+static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt,
+					    ...);
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name,
@@ -93,12 +96,22 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
   switch (fid)
     {
     case FID_SQL_LOG_DIR:
+#if defined(CUBRID_SHARD)
+      snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname,
+		br_name, shm_proxy_id + 1, shm_shard_id, (as_index) + 1);
+#else
       snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name,
 		(as_index) + 1);
+#endif /* CUBRID_SHARD */
       break;
     case FID_SLOW_LOG_DIR:
+#if defined(CUBRID_SHARD)
+      snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname,
+		br_name, shm_proxy_id + 1, shm_shard_id, (as_index) + 1);
+#else
       snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name,
 		(as_index) + 1);
+#endif /* CUBRID_SHARD */
       break;
     default:
       assert (0);
@@ -211,6 +224,25 @@ cas_log_backup (T_CUBRID_FILE_ID fid)
   rename (filepath, backup_filepath);
 }
 
+static void
+cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
+{
+  va_list ap;
+
+  if (log_fp == NULL)
+    {
+      return;
+    }
+
+  va_start (ap, fmt);
+  cas_log_write_internal (log_fp, NULL, 0, false, fmt, ap);
+  va_end (ap);
+
+  fseek (log_fp, saved_log_fpos, SEEK_SET);
+
+  return;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void
 cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
@@ -293,9 +325,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
       if (abandon)
 	{
-	  cas_log_write_internal (log_fp, NULL, 0, false,
-				  "END OF LOG\n\n", "");
-	  fseek (log_fp, saved_log_fpos, SEEK_SET);
+	  cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
 	}
       else
 	{
@@ -314,9 +344,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	  else
 	    {
-	      cas_log_write_internal (log_fp, NULL, 0, true,
-				      "END OF LOG\n\n", "");
-	      fseek (log_fp, saved_log_fpos, SEEK_SET);
+	      cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
 	    }
 	}
     }
@@ -677,6 +705,7 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif
 
+#if !defined(CUBRID_SHARD)
 int
 cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
 		char *dbname, char *dbuser, bool accepted)
@@ -766,6 +795,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
   return 0;
 #endif /* !LIBCAS_FOR_JSP */
 }
+#endif /* CUBRID_SHARD */
 
 void
 cas_log_query_info_init (int id, char is_only_query_plan)

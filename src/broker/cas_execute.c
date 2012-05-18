@@ -140,6 +140,10 @@ struct t_attr_table
   char is_key;
 };
 
+extern int db_check_session (void);
+extern void histo_print (FILE * stream);
+extern void histo_clear (void);
+
 static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val,
 			    T_NET_BUF * net_buf, char desired_type);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size,
@@ -3536,6 +3540,7 @@ set_column_info (T_NET_BUF * net_buf, char ut,
   int enum_values_cnt = 0;
   bool alloced_default_value_string = false;
   int def_size = 0;
+  char *def_str_p = NULL;
   DB_VALUE default_value;
 
   db_make_null (&default_value);
@@ -3575,13 +3580,16 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_NCHAR:
 	      def_size = DB_GET_STRING_SIZE (def);
-	      default_value_string = (char *) malloc (def_size + 1);
-	      if (default_value_string != NULL)
+	      def_str_p = DB_GET_STRING (def);
+	      if (def_str_p)
 		{
-		  alloced_default_value_string = true;
-		  memcpy (default_value_string, DB_GET_STRING (def),
-			  def_size);
-		  default_value_string[def_size] = '\0';
+		  default_value_string = (char *) malloc (def_size + 1);
+		  if (default_value_string != NULL)
+		    {
+		      alloced_default_value_string = true;
+		      memcpy (default_value_string, def_str_p, def_size);
+		      default_value_string[def_size] = '\0';
+		    }
 		}
 	      break;
 

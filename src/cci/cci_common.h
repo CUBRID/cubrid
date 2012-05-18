@@ -73,13 +73,13 @@ extern "C"
 #define API_SLOG(con) \
   do { \
     if ((con)->log_trace_api) \
-      cci_log_write ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
+      CCI_LOG_DEBUG ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
   } while (false)
 
 #define API_ELOG(con, err) \
   do { \
     if ((con)->log_trace_api) \
-      cci_log_write ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
+      CCI_LOG_DEBUG ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
   } while (false)
 
 #define strlen(s1)  ((int) strlen(s1))
@@ -243,9 +243,9 @@ extern "C"
 
 #if defined(WINDOWS)
 #define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
-typedef int socklen_t;
+  typedef int socklen_t;
 #else
-typedef int SOCKET;
+  typedef int SOCKET;
 #define INVALID_SOCKET (-1)
 #define IS_INVALID_SOCKET(socket) ((socket) < 0)
 #endif
@@ -261,180 +261,178 @@ typedef int SOCKET;
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
 
-typedef struct
-{
-  char *key;
-  char *value;
-} T_CCI_PROPERTIES_PAIR;
+  typedef struct
+  {
+    char *key;
+    char *value;
+  } T_CCI_PROPERTIES_PAIR;
 
-struct PROPERTIES_T
-{
-  int capacity;
-  int size;
+  struct PROPERTIES_T
+  {
+    int capacity;
+    int size;
 
-  T_CCI_PROPERTIES_PAIR *pair;
-};
+    T_CCI_PROPERTIES_PAIR *pair;
+  };
 
-struct DATASOURCE_T
-{
-  int is_init;
+  struct DATASOURCE_T
+  {
+    int is_init;
 
-  void *mutex;
-  void *cond;
+    void *mutex;
+    void *cond;
 
-  char *user;
-  char *pass;
-  char *url;
+    char *user;
+    char *pass;
+    char *url;
 
-  int pool_size;
-  int max_wait;
-  bool pool_prepared_statement;
-  int default_autocommit;
-  T_CCI_TRAN_ISOLATION default_isolation;
-  int default_lock_timeout;
+    int pool_size;
+    int max_wait;
+    bool pool_prepared_statement;
+    int default_autocommit;
+    T_CCI_TRAN_ISOLATION default_isolation;
+    int default_lock_timeout;
 
-  int num_idle;
-  int *con_handles;		/* realloc by pool_size */
-};
+    int num_idle;
+    int *con_handles;		/* realloc by pool_size */
+  };
 
 #if defined(WINDOWS)
-typedef struct
-{
-  CRITICAL_SECTION cs;
-  CRITICAL_SECTION *csp;
-} cci_mutex_t;
+  typedef struct
+  {
+    CRITICAL_SECTION cs;
+    CRITICAL_SECTION *csp;
+  } cci_mutex_t;
 
-typedef HANDLE cci_mutexattr_t;
+  typedef HANDLE cci_mutexattr_t;
 
 #define PTHREAD_MUTEX_INITIALIZER       {{ NULL, 0, 0, NULL, NULL, 0 }, NULL}
 
-typedef union
-{
-  CONDITION_VARIABLE native_cond;
-
-  struct
+  typedef union
   {
-    unsigned int waiting;
-    CRITICAL_SECTION lock_waiting;
-    enum
-    {
-      COND_SIGNAL = 0,
-      COND_BROADCAST = 1,
-      MAX_EVENTS = 2
-    } EVENTS;
-    HANDLE events[MAX_EVENTS];
-    HANDLE broadcast_block_event;
-  };
-} cci_cond_t;
+    CONDITION_VARIABLE native_cond;
 
-typedef HANDLE cci_condattr_t;
+    struct
+    {
+      unsigned int waiting;
+      CRITICAL_SECTION lock_waiting;
+      enum
+      {
+	COND_SIGNAL = 0,
+	COND_BROADCAST = 1,
+	MAX_EVENTS = 2
+      } EVENTS;
+      HANDLE events[MAX_EVENTS];
+      HANDLE broadcast_block_event;
+    };
+  } cci_cond_t;
+
+  typedef HANDLE cci_condattr_t;
 
 #define ETIMEDOUT WAIT_TIMEOUT
 #define PTHREAD_COND_INITIALIZER        { NULL }
 
-struct timespec
-{
-  int tv_sec;
-  int tv_nsec;
-};
+  struct timespec
+  {
+    int tv_sec;
+    int tv_nsec;
+  };
 #else
-typedef pthread_mutex_t cci_mutex_t;
-typedef pthread_mutexattr_t cci_mutexattr_t;
-typedef pthread_cond_t cci_cond_t;
-typedef pthread_condattr_t cci_condattr_t;
+  typedef pthread_mutex_t cci_mutex_t;
+  typedef pthread_mutexattr_t cci_mutexattr_t;
+  typedef pthread_cond_t cci_cond_t;
+  typedef pthread_condattr_t cci_condattr_t;
 #endif
 
-typedef unsigned int (*HASH_FUNC) (void *key, unsigned int ht_size);
-typedef int (*CMP_FUNC) (void *key1, void *key2);
-typedef int (*REM_FUNC) (void *key, void *data, void *args);
-typedef int (*PRINT_FUNC) (FILE * fp, void *key, void *data, void *args);
+  typedef unsigned int (*HASH_FUNC) (void *key, unsigned int ht_size);
+  typedef int (*CMP_FUNC) (void *key1, void *key2);
+  typedef int (*REM_FUNC) (void *key, void *data, void *args);
+  typedef int (*PRINT_FUNC) (FILE * fp, void *key, void *data, void *args);
 
 /* Hash Table Entry - linked list */
-typedef struct hentry HENTRY;
-typedef struct hentry *HENTRY_PTR;
-struct hentry
-{
-  HENTRY_PTR act_next;		/* Next active entry on hash table */
-  HENTRY_PTR act_prev;		/* Previous active entry on hash table */
-  HENTRY_PTR next;		/* Next hash table entry for colisions */
-  void *key;			/* Key associated with entry */
-  void *data;			/* Data associated with key entry */
-};
+  typedef struct hentry HENTRY;
+  typedef struct hentry *HENTRY_PTR;
+  struct hentry
+  {
+    HENTRY_PTR act_next;	/* Next active entry on hash table */
+    HENTRY_PTR act_prev;	/* Previous active entry on hash table */
+    HENTRY_PTR next;		/* Next hash table entry for colisions */
+    void *key;			/* Key associated with entry */
+    void *data;			/* Data associated with key entry */
+  };
 
 /* Memory Hash Table */
-typedef struct mht_table MHT_TABLE;
-struct mht_table
-{
-  HASH_FUNC hash_func;
-  CMP_FUNC cmp_func;
-  const char *name;
-  HENTRY_PTR *table;		/* The hash table (entries) */
-  HENTRY_PTR act_head;		/* Head of active double link list
+  typedef struct mht_table MHT_TABLE;
+  struct mht_table
+  {
+    HASH_FUNC hash_func;
+    CMP_FUNC cmp_func;
+    const char *name;
+    HENTRY_PTR *table;		/* The hash table (entries) */
+    HENTRY_PTR act_head;	/* Head of active double link list
 				 * entries. Used to perform quick
 				 * mappings of hash table.
 				 */
-  HENTRY_PTR act_tail;		/* Tail of active double link list
+    HENTRY_PTR act_tail;	/* Tail of active double link list
 				 * entries. Used to perform quick
 				 * mappings of hash table.
 				 */
-  HENTRY_PTR prealloc_entries;	/* Free entries allocated for
-				 * locality reasons
-				 */
-  unsigned int size;		/* Better if prime number */
-  unsigned int rehash_at;	/* Rehash at this num of entries */
-  unsigned int nentries;	/* Actual number of entries */
-  unsigned int nprealloc_entries;	/* Number of preallocated entries
+    HENTRY_PTR prealloc_entries;	/* Free entries allocated for
+					 * locality reasons
+					 */
+    unsigned int size;		/* Better if prime number */
+    unsigned int rehash_at;	/* Rehash at this num of entries */
+    unsigned int nentries;	/* Actual number of entries */
+    unsigned int nprealloc_entries;	/* Number of preallocated entries
 					 * for future insertions
 					 */
-  unsigned int ncollisions;	/* Number of collisions in HT */
-};
+    unsigned int ncollisions;	/* Number of collisions in HT */
+  };
 
 /************************************************************************
  * PUBLIC FUNCTION PROTOTYPES						*
  ************************************************************************/
 #if defined (WINDOWS)
-extern cci_mutex_t cci_Internal_mutex_for_mutex_initialize;
-extern int cci_mutex_init (cci_mutex_t * mutex, cci_mutexattr_t * attr);
-extern int cci_mutex_destroy (cci_mutex_t * mutex);
+  extern cci_mutex_t cci_Internal_mutex_for_mutex_initialize;
+  extern int cci_mutex_init (cci_mutex_t * mutex, cci_mutexattr_t * attr);
+  extern int cci_mutex_destroy (cci_mutex_t * mutex);
 
-extern void port_cci_mutex_init_and_lock (cci_mutex_t * mutex);
+  extern void port_cci_mutex_init_and_lock (cci_mutex_t * mutex);
 
-__inline int
-cci_mutex_lock (cci_mutex_t * mutex)
-{
-  if (mutex->csp == &mutex->cs)
-    {
-      EnterCriticalSection (mutex->csp);
-    }
-  else
-    {
-      port_cci_mutex_init_and_lock (mutex);
-    }
+  __inline int cci_mutex_lock (cci_mutex_t * mutex)
+  {
+    if (mutex->csp == &mutex->cs)
+      {
+	EnterCriticalSection (mutex->csp);
+      }
+    else
+      {
+	port_cci_mutex_init_and_lock (mutex);
+      }
 
-  return 0;
-}
+    return 0;
+  }
 
-__inline int
-cci_mutex_unlock (cci_mutex_t * mutex)
-{
-  if (mutex->csp->LockCount == -1)
-    {
-      /* this means unlock mutex which isn't locked */
-      assert (0);
-      return 0;
-    }
+  __inline int cci_mutex_unlock (cci_mutex_t * mutex)
+  {
+    if (mutex->csp->LockCount == -1)
+      {
+	/* this means unlock mutex which isn't locked */
+	assert (0);
+	return 0;
+      }
 
-  LeaveCriticalSection (mutex->csp);
-  return 0;
-}
+    LeaveCriticalSection (mutex->csp);
+    return 0;
+  }
 
-extern int cci_cond_init (cci_cond_t * cond, const cci_condattr_t * attr);
-extern int cci_cond_wait (cci_cond_t * cond, cci_mutex_t * mutex);
-extern int cci_cond_timedwait (cci_cond_t * cond, cci_mutex_t * mutex,
-			       struct timespec *ts);
-extern int cci_cond_destroy (cci_cond_t * cond);
-extern int cci_cond_signal (cci_cond_t * cond);
-extern int cci_cond_broadcast (cci_cond_t * cond);
+  extern int cci_cond_init (cci_cond_t * cond, const cci_condattr_t * attr);
+  extern int cci_cond_wait (cci_cond_t * cond, cci_mutex_t * mutex);
+  extern int cci_cond_timedwait (cci_cond_t * cond, cci_mutex_t * mutex,
+				 struct timespec *ts);
+  extern int cci_cond_destroy (cci_cond_t * cond);
+  extern int cci_cond_signal (cci_cond_t * cond);
+  extern int cci_cond_broadcast (cci_cond_t * cond);
 #else
 #define cci_mutex_init pthread_mutex_init
 #define cci_mutex_destroy pthread_mutex_destroy
@@ -448,31 +446,31 @@ extern int cci_cond_broadcast (cci_cond_t * cond);
 #define cci_gettimeofday gettimeofday
 #endif
 
-extern int get_elapsed_time (struct timeval *start_time);
+  extern int get_elapsed_time (struct timeval *start_time);
 #if defined(WINDOWS)
-extern int cci_gettimeofday (struct timeval *tp, void *tzp);
+  extern int cci_gettimeofday (struct timeval *tp, void *tzp);
 #endif
 
-extern unsigned int mht_5strhash (void *key, unsigned int ht_size);
-extern int mht_strcasecmpeq (void *key1, void *key2);
+  extern unsigned int mht_5strhash (void *key, unsigned int ht_size);
+  extern int mht_strcasecmpeq (void *key1, void *key2);
 
-extern MHT_TABLE *mht_create (char *name, int est_size, HASH_FUNC hash_func,
-			      CMP_FUNC cmp_func);
-extern void mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data);
-extern void *mht_get (MHT_TABLE * ht, void *key);
-extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
-extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
+  extern MHT_TABLE *mht_create (char *name, int est_size, HASH_FUNC hash_func,
+				CMP_FUNC cmp_func);
+  extern void mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data);
+  extern void *mht_get (MHT_TABLE * ht, void *key);
+  extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
+  extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
 
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/
-extern CCI_MALLOC_FUNCTION cci_malloc;
-extern CCI_FREE_FUNCTION cci_free;
-extern CCI_REALLOC_FUNCTION cci_realloc;
-extern CCI_CALLOC_FUNCTION cci_calloc;
+  extern CCI_MALLOC_FUNCTION cci_malloc;
+  extern CCI_FREE_FUNCTION cci_free;
+  extern CCI_REALLOC_FUNCTION cci_realloc;
+  extern CCI_CALLOC_FUNCTION cci_calloc;
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _CCI_COMMON_H_ */
+#endif				/* _CCI_COMMON_H_ */

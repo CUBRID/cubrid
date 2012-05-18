@@ -57,7 +57,8 @@ typedef enum
   HEARTBEAT,
   UTIL_HELP,
   UTIL_VERSION,
-  ADMIN
+  ADMIN,
+  SHARD
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -105,6 +106,7 @@ typedef struct
 #define UTIL_TYPE_MANAGER       "manager"
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
 #define UTIL_TYPE_HB_SHORT      "hb"
+#define UTIL_TYPE_SHARD        	"shard"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {SERVICE, UTIL_TYPE_SERVICE, MASK_SERVICE},
@@ -145,6 +147,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_APPLYINFO, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_GENERATE_LOCALE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_DUMP_LOCALE, MASK_ADMIN},
+  {SHARD, UTIL_TYPE_SHARD, MASK_SHARD},
   {-1, "", MASK_ADMIN}
 };
 
@@ -165,17 +168,18 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
-  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER},
+  {RESTART, COMMAND_TYPE_RESTART,
+   MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_SHARD},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {ACTIVATE, COMMAND_TYPE_ACTIVATE, MASK_HEARTBEAT},
   {DEACTIVATE, COMMAND_TYPE_DEACTIVATE, MASK_HEARTBEAT},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
   {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
-  {ON, COMMAND_TYPE_ON, MASK_BROKER},
-  {OFF, COMMAND_TYPE_OFF, MASK_BROKER},
-  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
-  {RESET, COMMAND_TYPE_RESET, MASK_BROKER},
+  {ON, COMMAND_TYPE_ON, MASK_BROKER | MASK_SHARD},
+  {OFF, COMMAND_TYPE_OFF, MASK_BROKER | MASK_SHARD},
+  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER | MASK_SHARD},
+  {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_SHARD},
   {-1, "", MASK_ALL}
 };
 
@@ -201,6 +205,8 @@ static int process_server (int command_type, int argc, const char **argv,
 			   bool show_usage, bool process_window_service);
 static int process_broker (int command_type, int argc, const char **argv,
 			   bool process_window_service);
+static int process_shard (int command_type, int argc, const char **argv,
+			  bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
 static int process_heartbeat (int command_type, char *name);
 static int proc_execute (const char *file, const char *args[],
@@ -487,6 +493,11 @@ main (int argc, char *argv[])
 #else
       status = process_heartbeat (command_type, (argc > 3) ? argv[3] : NULL);
 #endif /* !WINDOWs */
+      break;
+    case SHARD:
+      status = process_shard (command_type, argc - 3,
+			      (const char **) &argv[3],
+			      process_window_service);
       break;
     default:
       goto usage;
@@ -1504,6 +1515,260 @@ process_broker (int command_type, int argc, const char **argv,
 		return ER_GENERIC_ERROR;
 	      }
 	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	  }
+      }
+      break;
+    default:
+      return ER_GENERIC_ERROR;
+    }
+  return status;
+}
+
+/*
+ * is_shard_running -
+ *
+ * return:
+ *
+ */
+static bool
+is_shard_running (void)
+{
+  const char *args[] = { UTIL_SMONITOR_NAME, 0 };
+  int status = proc_execute (UTIL_SMONITOR_NAME, args, true, true, NULL);
+  return status == NO_ERROR ? true : false;
+}
+
+/*
+ * process_shard -
+ *
+ * return:
+ *
+ *      command_type(in):
+ *      name(in):
+ *
+ */
+static int
+process_shard (int command_type, int argc, const char **argv,
+	       bool process_window_service)
+{
+  int status = NO_ERROR;
+
+  switch (command_type)
+    {
+    case START:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_SHARD_NAME, PRINT_CMD_START);
+      if (is_shard_running () == true)
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+			 PRINT_SHARD_NAME);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  if (process_window_service)
+	    {
+#if defined(WINDOWS)
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+		COMMAND_TYPE_START, NULL
+	      };
+
+	      status =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+#endif
+	    }
+	  else
+	    {
+	      const char *args[] =
+		{ UTIL_SHARD_NAME, COMMAND_TYPE_START, NULL };
+	      status =
+		proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	    }
+
+	  print_result (PRINT_SHARD_NAME, status, command_type);
+	}
+      break;
+    case STOP:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_SHARD_NAME, PRINT_CMD_STOP);
+      if (is_shard_running () != true)
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_SHARD_NAME);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  if (process_window_service)
+	    {
+#if defined(WINDOWS)
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+		COMMAND_TYPE_STOP, NULL
+	      };
+
+	      status =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+#endif
+	    }
+	  else
+	    {
+	      const char *args[] =
+		{ UTIL_SHARD_NAME, COMMAND_TYPE_STOP, NULL };
+	      status =
+		proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	    }
+
+	  print_result (PRINT_SHARD_NAME, status, command_type);
+	}
+      break;
+    case RESTART:
+      process_broker (STOP, 0, NULL, process_window_service);
+      process_broker (START, 0, NULL, process_window_service);
+      break;
+    case STATUS:
+      {
+	int i;
+	const char **args;
+
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		       PRINT_SHARD_NAME, PRINT_CMD_STATUS);
+	if (is_shard_running ())
+	  {
+	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
+	    if (args == NULL)
+	      {
+		return ER_GENERIC_ERROR;
+	      }
+
+	    args[0] = PRINT_SHARD_NAME " " PRINT_CMD_STATUS;
+	    for (i = 0; i < argc; i++)
+	      {
+		args[i + 1] = argv[i];
+	      }
+	    args[argc + 1] = NULL;
+	    status =
+	      proc_execute (UTIL_SMONITOR_NAME, args, true, false, NULL);
+
+	    free (args);
+	  }
+	else
+	  {
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			   PRINT_SHARD_NAME);
+	  }
+      }
+      break;
+    case ON:
+      {
+	if (process_window_service)
+	  {
+#if defined(WINDOWS)
+	    const char *args[] =
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      COMMAND_TYPE_ON, argv[0], NULL
+	    };
+
+	    status =
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+#endif
+	  }
+	else
+	  {
+	    const char *args[] =
+	      { UTIL_SHARD_NAME, COMMAND_TYPE_ON, argv[0], NULL };
+	    if (argc <= 0)
+	      {
+		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		return ER_GENERIC_ERROR;
+	      }
+	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	  }
+      }
+      break;
+    case OFF:
+      {
+	if (process_window_service)
+	  {
+#if defined(WINDOWS)
+	    const char *args[] =
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      COMMAND_TYPE_OFF, argv[0], NULL
+	    };
+
+	    status =
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+#endif
+	  }
+	else
+	  {
+	    const char *args[] =
+	      { UTIL_SHARD_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
+	    if (argc <= 0)
+	      {
+		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		return ER_GENERIC_ERROR;
+	      }
+	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	  }
+      }
+      break;
+    case ACCESS_CONTROL:
+      {
+	const char *args[5];
+
+	args[0] = UTIL_SHARD_NAME;
+	args[1] = COMMAND_TYPE_ACL;
+	args[2] = argv[0];
+
+	if (argc == 1)
+	  {
+	    args[3] = NULL;
+	  }
+	else if (argc == 2)
+	  {
+	    args[3] = argv[1];
+	    args[4] = NULL;
+	  }
+	else
+	  {
+	    util_service_usage (BROKER);
+	    return ER_GENERIC_ERROR;
+	  }
+	status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	print_result (PRINT_SHARD_NAME, status, command_type);
+	break;
+      }
+    case RESET:
+      {
+	if (process_window_service)
+	  {
+#if defined(WINDOWS)
+	    const char *args[] =
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      COMMAND_TYPE_RESET, argv[0], NULL
+	    };
+
+	    status =
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+#endif
+	  }
+	else
+	  {
+	    const char *args[] =
+	      { UTIL_SHARD_NAME, COMMAND_TYPE_RESET, argv[0], NULL };
+	    if (argc <= 0)
+	      {
+		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		return ER_GENERIC_ERROR;
+	      }
+	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
 	  }
       }
       break;
