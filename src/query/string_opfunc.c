@@ -361,7 +361,6 @@ static int get_number_token (const INTL_LANG lang, char *fsp, int *length,
 static int get_next_format (char *sp, const INTL_CODESET codeset,
 			    DB_TYPE str_type, int *format_length,
 			    char **next_pos);
-static int qstr_length (char *sp);
 static int get_cur_year (void);
 static int get_cur_month (void);
 static int is_valid_date (int month, int day, int year, int day_of_the_week);
@@ -12448,11 +12447,9 @@ db_to_date (const DB_VALUE * src_str,
   day = (daycount == 0) ? 1 : day;
   week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
 
-  if (is_valid_date (month, day, year, week) == true)
-    {
-      DB_MAKE_DATE (result_date, month, day, year);
-    }
-  else
+  DB_MAKE_DATE (result_date, month, day, year);
+
+  if (*(DB_GET_DATE (result_date)) == 0)
     {
       error_status = ER_DATE_CONVERSION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -17614,19 +17611,18 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
   switch (char_tolower (*sp))
     {
     case 'y':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 4
-	  && strncasecmp ((const char *) (void *) sp, "yyyy", 4) == 0)
+      if (str_type == DB_TYPE_TIME)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "yyyy", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
 	  return DT_YYYY;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 2
-	       && strncasecmp ((const char *) (void *) sp, "yy", 2) == 0)
+      else if (strncasecmp (sp, "yy", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
@@ -17638,28 +17634,24 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'd':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "dd", 2) == 0)
+      if (str_type == DB_TYPE_TIME)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "dd", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_DD;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 2
-	       && strncasecmp ((const char *) (void *) sp, "dy", 2) == 0)
+      else if (strncasecmp (sp, "dy", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_DY;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 3
-	       && strncasecmp ((const char *) (void *) sp, "day", 3) == 0)
+      else if (strncasecmp (sp, "day", 3) == 0)
 	{
 	  *format_length += 3;
 	  *next_pos = sp + *format_length;
@@ -17673,10 +17665,12 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'c':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "cc", 2) == 0)
+      if (str_type == DB_TYPE_TIME)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "cc", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
@@ -17688,52 +17682,35 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'q':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 1
-	  && strncasecmp ((const char *) (void *) sp, "q", 1) == 0)
-	{
-	  *format_length += 1;
-	  *next_pos = sp + *format_length;
-	  return DT_Q;
-	}
-      else
+      if (str_type == DB_TYPE_TIME)
 	{
 	  return DT_INVALID;
 	}
 
+      *format_length += 1;
+      *next_pos = sp + *format_length;
+      return DT_Q;
+
     case 'm':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "mm", 2) == 0)
+      if (str_type != DB_TYPE_TIME && strncasecmp (sp, "mm", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_MM;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 5
-	       && strncasecmp ((const char *) (void *) sp, "month", 5) == 0)
+      else if (str_type != DB_TYPE_TIME && strncasecmp (sp, "month", 5) == 0)
 	{
 	  *format_length += 5;
 	  *next_pos = sp + *format_length;
 	  return DT_MONTH;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 3
-	       && strncasecmp ((const char *) (void *) sp, "mon", 3) == 0)
+      else if (str_type != DB_TYPE_TIME && strncasecmp (sp, "mon", 3) == 0)
 	{
 	  *format_length += 3;
 	  *next_pos = sp + *format_length;
 	  return DT_MON;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 2
-	       && strncasecmp ((const char *) (void *) sp, "mi", 2) == 0)
+      else if (str_type != DB_TYPE_DATE && strncasecmp (sp, "mi", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
@@ -17745,19 +17722,18 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'a':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "am", 2) == 0)
+      if (str_type == DB_TYPE_DATE)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "am", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_AM;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 4
-	       && strncasecmp ((const char *) (void *) sp, "a.m.", 4) == 0)
+      else if (strncasecmp (sp, "a.m.", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
@@ -17769,19 +17745,18 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'p':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "pm", 2) == 0)
+      if (str_type == DB_TYPE_DATE)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "pm", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_PM;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 4
-	       && strncasecmp ((const char *) (void *) sp, "p.m.", 4) == 0)
+      else if (strncasecmp (sp, "p.m.", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
@@ -17793,28 +17768,24 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'h':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 4
-	  && strncasecmp ((const char *) (void *) sp, "hh24", 4) == 0)
+      if (str_type == DB_TYPE_DATE)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "hh24", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
 	  return DT_HH24;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 4
-	       && strncasecmp ((const char *) (void *) sp, "hh12", 4) == 0)
+      else if (strncasecmp (sp, "hh12", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
 	  return DT_HH12;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-		|| str_type == DB_TYPE_DATETIME)
-	       && qstr_length (sp) >= 2
-	       && strncasecmp ((const char *) (void *) sp, "hh", 2) == 0)
+      else if (strncasecmp (sp, "hh", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
@@ -17826,10 +17797,12 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 's':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
-	   || str_type == DB_TYPE_DATETIME)
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "ss", 2) == 0)
+      if (str_type == DB_TYPE_DATE)
+	{
+	  return DT_INVALID;
+	}
+
+      if (strncasecmp (sp, "ss", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
@@ -17841,9 +17814,7 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'f':
-      if (str_type == DB_TYPE_DATETIME
-	  && qstr_length (sp) >= 2
-	  && strncasecmp ((const char *) (void *) sp, "ff", 2) == 0)
+      if (str_type == DB_TYPE_DATETIME && strncasecmp (sp, "ff", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
@@ -17890,23 +17861,6 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
     default:
       return DT_INVALID;
     }
-}
-
-/*
- * qstr_length () -
- */
-static int
-qstr_length (char *sp)
-{
-  int len = 0;
-
-  while (*sp != '\0')
-    {
-      len++;
-      sp = sp + 1;
-    }
-
-  return len;
 }
 
 /*
@@ -23436,13 +23390,16 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val,
   val_size = DB_GET_STRING_SIZE (str_val);
 
   /* size < 0 assumes a null terminated string */
-  if (val_size < 0 || (val_size < DB_VALUE_PRECISION (str_val) &&
-		       val_buf[val_size] == '\0'))
+  if (val_size < 0
+      || ((val_size < DB_VALUE_PRECISION (str_val)
+	   || DB_VALUE_PRECISION (str_val) == TP_FLOATING_PRECISION_VALUE)
+	  && val_buf[val_size] == '\0'))
     {
       /* already null terminated , safe to use it */
       *str_out = val_buf;
       return NO_ERROR;
     }
+
   if (val_size < pre_alloc_buf_size)
     {
       /* use the preallocated buffer supplied to copy the content */
