@@ -129,9 +129,7 @@ struct rop_range_struct
   {
   ROP_GT_INF, ROP_LT, INF_LT},
   {
-  ROP_GT_INF, ROP_LT_INF, INF_INF},
-  {
-  ROP_EQ, ROP_NA, EQ_NA}
+  ROP_GT_INF, ROP_LT_INF, INF_INF}
 };
 
 static const int rop_range_table_size =
@@ -2075,6 +2073,11 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	}
     }
 
+  if (key_val_range->range == EQ_NA)
+    {
+      key_val_range->range = GE_LE;
+    }
+
   switch (iscan_id->indx_info->range_type)
     {
     case R_KEY:
@@ -2251,6 +2254,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  ret = scan_regu_key_to_index_key (thread_p, &key_ranges[i],
 					    &key_vals[i], iscan_id,
 					    BTS->btid_int.key_type, s_id->vd);
+
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -2354,7 +2358,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  break;
 	}
 
-      if (key_cnt != 1 || range != EQ_NA)
+      if (key_cnt != 1 || range != GE_LE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
 		  0);
@@ -2407,7 +2411,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       /* check prerequisite condition */
       saved_range = range = key_vals[0].range;
 
-      if (range == EQ_NA || key_vals[0].is_truncated == true)
+      if (key_vals[0].is_truncated == true)
 	{			/* specially, key value search */
 	  range = GE_LE;
 	}
@@ -2521,14 +2525,13 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	      continue;
 	    }
 
-	  if (range != EQ_NA)
+	  if (range != GE_LE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_QPROC_INVALID_XASLNODE, 0);
 	      goto exit_on_error;
 	    }
 
-	  key_vals[iscan_id->curr_keyno].range = GE_LE;
 	  n = btree_range_search (thread_p,
 				  &indx_infop->indx_id.i.btid,
 				  s_id->readonly_scan,
@@ -2598,8 +2601,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  /* check prerequisite condition */
 	  saved_range = range = key_vals[iscan_id->curr_keyno].range;
 
-	  if (range == EQ_NA
-	      || key_vals[iscan_id->curr_keyno].is_truncated == true)
+	  if (key_vals[iscan_id->curr_keyno].is_truncated == true)
 	    {			/* specially, key value search */
 	      range = GE_LE;
 	    }
