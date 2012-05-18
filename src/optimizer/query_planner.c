@@ -7763,8 +7763,15 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
       if (nsegs == 0)
 	{
-	  if (bitset_cardinality (&(index_entryp->key_filter_terms)) &&
-	      index_entryp->cover_segments)
+	  /* We have multi column index. Use index if one of the following
+	   * two situations is true:
+	   *  - we have key filter terms and the index cover all segments
+	   *  - we have filter predicate and force index is used
+	   */
+	  if ((bitset_cardinality (&(index_entryp->key_filter_terms)) &&
+	       index_entryp->cover_segments) ||
+	      (index_entryp->constraints->filter_predicate
+	       && index_entryp->force))
 	    {
 	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
 	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
@@ -8031,34 +8038,39 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
 	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
 
-      /* we have only key filter terms and single column index. Use index
-       * only if covering, to be sure that we have all segments correct.
+      /* We have single column index. Use index if one of the following
+       * two situations is true:
+       *  - we have key filter terms and the index cover all segments
+       *  - we have filter predicate and force index is used
        */
-      if (!plan_created && index_entryp->cover_segments)
+      if ((!plan_created)
+	  && ((index_entryp->cover_segments
+	       && bitset_cardinality (&(index_entryp->key_filter_terms)))
+	      || (index_entryp->constraints->filter_predicate
+		  && index_entryp->force)))
 	{
 	  /* section added to support key filter terms for order by skipping
 	   * also when we do not have covering.
 	   * For example (select * from T where col is not null order by col)
 	   */
-	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+
+
+	  bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+
+	  planp = qo_index_scan_new (infop, nodep, ni_entryp,
+				     &range_terms,
+				     &kf_terms, &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+	  if (n)
 	    {
-	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
-
-	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
-					 &range_terms,
-					 &kf_terms,
-					 &QO_NODE_SUBQUERIES (nodep));
-
-	      n = qo_check_plan_on_info (infop, planp);
-	      if (n)
+	      plan_created = true;
+	      if (start_column == 0)
 		{
-		  plan_created = true;
-		  if (start_column == 0)
-		    {
-		      normal_index_plan_n++;
-		    }
+		  normal_index_plan_n++;
 		}
 	    }
+
 	}
     }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
 
@@ -8327,10 +8339,9 @@ qo_search_planner (QO_PLANNER * planner)
 						    &seg_terms);
 #if 1
 	      /* Currently we do not consider the following optimization. */
-	      if (have_range_terms ||
-		  (index_entry->constraints->filter_predicate &&
-		   index_entry->force &&
-		   bitset_cardinality (&(index_entry->key_filter_terms)) > 0))
+	      if ((have_range_terms == true)
+		  || (index_entry->constraints->filter_predicate &&
+		      index_entry->force))
 		/* Currently, CUBRID does not allow null values in index.
 		 * The filter index expression must contain at least one
 		 * term different than "is null". Otherwise, the index will
