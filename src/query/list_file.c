@@ -1525,6 +1525,11 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   PAGE_PTR new_page_p;
   VPID new_vpid;
 
+  if (qmgr_interrupt_query (thread_p, list_id_p->query_id) == true)
+    {
+      return NULL;
+    }
+
   new_page_p = qmgr_get_new_page (thread_p, &new_vpid, list_id_p->tfile_vfid);
   if (new_page_p == NULL)
     {
@@ -1663,9 +1668,7 @@ qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   char *page_p, *tuple_p;
   int offset, tuple_page_size;
 
-  /* TODO: Do we really want to check the interrupt for every tuple */
-  if ((list_id_p == NULL)
-      || (qmgr_interrupt_query (thread_p, list_id_p->query_id) == true))
+  if (list_id_p == NULL)
     {
       return ER_FAILED;
     }
@@ -1924,9 +1927,7 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p,
   int tuple_length, offset;
   char *page_p;
 
-  /* TODO: Do we really want to check the interrupt for every tuple */
-  if ((list_id_p == NULL) ||
-      (qmgr_interrupt_query (thread_p, list_id_p->query_id) == true))
+  if (list_id_p == NULL)
     {
       return ER_FAILED;
     }
@@ -6617,9 +6618,7 @@ qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p,
   char *page_p, *tuple_p;
   int offset, tuple_page_size;
 
-  /* TODO: Do we really want to check the interrupt for every tuple */
-  if ((list_id_p == NULL)
-      || (qmgr_interrupt_query (thread_p, list_id_p->query_id) == true))
+  if (list_id_p == NULL)
     {
       return ER_FAILED;
     }
