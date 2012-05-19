@@ -2835,6 +2835,12 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 	}
       else
 	{
+	  if (scan_attrsp->attr_ids == NULL)
+	    {
+	      /* defense code */
+	      assert_release (false);
+	      return V_ERROR;
+	    }
 	  attrvalue = heap_attrvalue_locate (scan_attrsp->attr_ids[0],
 					     scan_attrsp->attr_cache);
 	  if (attrvalue == NULL)

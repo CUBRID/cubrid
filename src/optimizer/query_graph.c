@@ -940,7 +940,7 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
       env->nsegs++;
     }
 
-  /* check if the constraint is a function index info and add a segment for 
+  /* check if the constraint is a function index info and add a segment for
    * each function index expression
    */
   if (entity->info.spec.flat_entity_list)
@@ -1076,7 +1076,7 @@ build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
  * build_query_graph_function_index () - This pre walk function will search
  *					 the tree for expressions that match
  *					 expressions used in function indexes.
- *					 For such matched expressions, 
+ *					 For such matched expressions,
  *					 a corresponding segment is added to
  *                                       the query graph.
  *   return: PT_NODE *
@@ -1491,7 +1491,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
   if (pt_is_function_index_expr (attr))
     {
       /*
-       * The node should be the same for each argument of expression => 
+       * The node should be the same for each argument of expression =>
        * once found should be returned
        */
       QO_NODE *node = NULL;
@@ -1705,7 +1705,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
 	      continue;
 	    }
 	  /* match function index expression against the expression
-	   * in the given query 
+	   * in the given query
 	   */
 	  if (!intl_identifier_casecmp (QO_SEG_NAME (QO_ENV_SEG (env, i)),
 					expr_str))
@@ -5387,7 +5387,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
       if (is_iss_and_cover)
 	{
 	  /* temporarily disable potential index skip scan optimization
-	   * and re-enable it only at the end, if there is enough data 
+	   * and re-enable it only at the end, if there is enough data
 	   * (i.e. pkeys) and if the data shows that the optimization
 	   * would be a good thing.
 	   *
@@ -5401,8 +5401,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	   * flag as soon as we have enough data to disqualify it, or as
 	   * soon as we learn that there is no data.
 	   * The reason is that if an (inefficient) ISS plan also has the
-	   * covering flag set, it will be preferred regardless of the 
-	   * cost computed later on, and there is no way to "unset" the 
+	   * covering flag set, it will be preferred regardless of the
+	   * cost computed later on, and there is no way to "unset" the
 	   * index skip scan flag later on (when computing the cost).
 	   */
 
@@ -6177,7 +6177,7 @@ qo_discover_edges (QO_ENV * env)
  *   env(in): The environment used
  *   segsp(in): Passed BITSET of interested segments
  *   termsp(in): Returned BITSET of terms which contain the segments
- *   just_segments_termsp(in): Returned BITSET of terms which contain 
+ *   just_segments_termsp(in): Returned BITSET of terms which contain
  *			       just the segments
  */
 static void
@@ -6562,7 +6562,7 @@ qo_find_index_segs (QO_ENV * env,
  * qo_is_coverage_index () - check if the index cover all query segments
  *   return: bool
  *   env(in): The environment
- *   nodep(in): The node 
+ *   nodep(in): The node
  *   index_entry(in): The index entry
  */
 static bool
@@ -6574,6 +6574,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
   bool found;
   QO_CLASS_INFO *class_infop = NULL;
   QO_NODE *seg_nodep = NULL;
+  QO_TERM *qo_termp;
   PT_NODE *pt_node;
 
   if (env == NULL || nodep == NULL || index_entry == NULL)
@@ -6581,7 +6582,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
       return false;
     }
 
-  /* 
+  /*
    * If NO_COVERING_IDX hint is given, we do not generate a plan for
    * covering index scan.
    */
@@ -6622,9 +6623,26 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
     {
       seg = QO_ENV_SEG (env, i);
 
-      if (seg == NULL || QO_SEG_IS_OID_SEG (seg))
+      if (seg == NULL)
 	{
 	  continue;
+	}
+      if (QO_SEG_IS_OID_SEG (seg))
+	{
+	  found = false;
+	  for (j = 0; j < env->nterms; j++)
+	    {
+	      qo_termp = QO_ENV_TERM (env, j);
+	      if (BITSET_MEMBER (QO_TERM_SEGS (qo_termp), i))
+		{
+		  found = true;
+		  break;
+		}
+	    }
+	  if (found == false)
+	    {
+	      continue;
+	    }
 	}
 
       /* the segment should belong to the given node */
@@ -6677,7 +6695,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
  * qo_is_iss_index () - check if we can use the Index Skip Scan optimization
  *   return: bool
  *   env(in): The environment
- *   nodep(in): The node 
+ *   nodep(in): The node
  *   index_entry(in): The index entry
  *
  *   Notes: The Index Skip Scan optimization applies when there is no term
@@ -6771,7 +6789,7 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 	   * elsewhere */
 	  if (first_col_present == false)
 	    {
-	      /* Not out of the woods yet: we still need to check all the 
+	      /* Not out of the woods yet: we still need to check all the
 	       * EQ classes to make sure the segment referring to the first index
 	       * column is not hiding in there. If it DOES belong to any EQ class,
 	       * then there is a risk of chosing Index Skip Scan without it being
