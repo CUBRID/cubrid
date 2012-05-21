@@ -282,6 +282,11 @@ static LDR_STRING *loader_make_string_by_buffer (void);
     return TURKISH_LIRA_CURRENCY;
 }
 
+\\[T][R][Y] {
+    PRINT ("TURKISH_LIRA_CURRENCY %s\n", yytext);
+    return TURKISH_LIRA_CURRENCY;
+}
+
 \\[G][B][P] {
     PRINT ("BRITISH_POUND_SYMBOL %s\n", yytext);
     return BRITISH_POUND_SYMBOL;
@@ -388,6 +393,11 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 }
 
 \$ {
+    PRINT ("DOLLAR_SYMBOL %s\n", yytext);
+    return DOLLAR_SYMBOL;
+}
+
+\\[U][S][D] {
     PRINT ("DOLLAR_SYMBOL %s\n", yytext);
     return DOLLAR_SYMBOL;
 }

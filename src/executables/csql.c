@@ -2229,11 +2229,9 @@ csql_exit_init (void)
   csql_Output_fp = stdout;
   csql_Error_fp = stderr;
 
-  /* Sigh, these are necessary for the catalog & args parsing
-   * modules.  Would be nice to have a better encapsulation of
-   * the dependencies for arg parsing.
-   */
-  lang_init_full ();		/* for catalog location */
+  lang_init_full ();
+
+  lang_init_console_txt_conv ();
 }
 
 /*

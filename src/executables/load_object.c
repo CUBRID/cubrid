@@ -1528,7 +1528,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       /* Always print symbol before value, even if for turkish lira
        * the user format is after value : intl_get_currency_symbol_position */
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%s%.*f",
-				     intl_get_money_symbol_grammar
+				     intl_get_money_esc_ISO_symbol
 				     (DB_GET_MONETARY (value)->type), 2,
 				     DB_GET_MONETARY (value)->amount));
       break;

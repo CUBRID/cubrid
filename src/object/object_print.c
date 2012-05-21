@@ -3646,12 +3646,12 @@ describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
   assert (parser != NULL && value != NULL);
 
-  sprintf (cbuf, "%s%.2f", intl_get_money_symbol_grammar (value->type),
+  sprintf (cbuf, "%s%.2f", intl_get_money_esc_ISO_symbol (value->type),
 	   value->amount);
 
   if (strstr (cbuf, "Inf"))
     {
-      sprintf (cbuf, "%s%.2f", intl_get_money_symbol_grammar (value->type),
+      sprintf (cbuf, "%s%.2f", intl_get_money_esc_ISO_symbol (value->type),
 	       (value->amount > 0 ? DBL_MAX : -DBL_MAX));
     }
 

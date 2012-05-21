@@ -488,65 +488,84 @@ lang_init_full (void)
 
   set_current_locale (true);
 
-  if (lang_Loc_data->txt_conv != NULL)
-    {
-      char *sys_id = NULL;
-      char *conv_sys_ids = NULL;
-#if defined(WINDOWS)
-      UINT cp;
-      char win_codepage_str[32];
-
-      cp = GetConsoleCP ();
-      snprintf (win_codepage_str, sizeof (win_codepage_str) - 1, "%d", cp);
-
-      sys_id = win_codepage_str;
-      conv_sys_ids = lang_Loc_data->txt_conv->win_codepages;
-#else
-      if (setlocale (LC_CTYPE, "") != NULL)
-	{
-	  sys_id = nl_langinfo (CODESET);
-	  conv_sys_ids = lang_Loc_data->txt_conv->nl_lang_str;
-	}
-#endif
-
-      if (sys_id != NULL && conv_sys_ids != NULL)
-	{
-	  char *conv_sys_end = conv_sys_ids + strlen (conv_sys_ids);
-	  char *found_token;
-
-	  /* supported system identifiers for conversion are separated by
-	   * comma */
-	  do
-	    {
-	      found_token = strstr (conv_sys_ids, sys_id);
-	      if (found_token == NULL)
-		{
-		  break;
-		}
-
-	      if (found_token + strlen (sys_id) >= conv_sys_end
-		  || *(found_token + strlen (sys_id)) == ','
-		  || *(found_token + strlen (sys_id)) == ' ')
-		{
-		  if (lang_Loc_data->txt_conv->init_conv_func != NULL)
-		    {
-		      lang_Loc_data->txt_conv->init_conv_func ();
-		    }
-		  console_conv = lang_Loc_data->txt_conv;
-		  break;
-		}
-	      else
-		{
-		  conv_sys_ids = conv_sys_ids + strlen (sys_id);
-		}
-	    }
-	  while (conv_sys_ids < conv_sys_end);
-	}
-    }
-
   lang_Fully_Initialized = true;
 
   return (lang_Fully_Initialized);
+}
+
+/*
+ * lang_init_console_txt_conv - Initializes console text conversion
+ *
+ *   return: true if success
+ */
+void
+lang_init_console_txt_conv (void)
+{
+  char *sys_id = NULL;
+  char *conv_sys_ids = NULL;
+#if defined(WINDOWS)
+  UINT cp;
+  char win_codepage_str[32];
+#endif
+
+  assert (lang_Loc_data != NULL);
+
+  if (lang_Loc_data == NULL || lang_Loc_data->txt_conv == NULL)
+    {
+      return;
+    }
+
+#if defined(WINDOWS)
+  cp = GetConsoleCP ();
+  snprintf (win_codepage_str, sizeof (win_codepage_str) - 1, "%d", cp);
+
+  sys_id = win_codepage_str;
+  conv_sys_ids = lang_Loc_data->txt_conv->win_codepages;
+#else
+  /* setlocale with empty string forces the current locale :
+   * this is required to retrieve codepage id, but as a side-effect modifies
+   * the behavior of string utility functions such as 'snprintf' to support
+   * current locale charset */
+  if (setlocale (LC_CTYPE, "") != NULL)
+    {
+      sys_id = nl_langinfo (CODESET);
+      conv_sys_ids = lang_Loc_data->txt_conv->nl_lang_str;
+    }
+#endif
+
+  if (sys_id != NULL && conv_sys_ids != NULL)
+    {
+      char *conv_sys_end = conv_sys_ids + strlen (conv_sys_ids);
+      char *found_token;
+
+      /* supported system identifiers for conversion are separated by
+       * comma */
+      do
+	{
+	  found_token = strstr (conv_sys_ids, sys_id);
+	  if (found_token == NULL)
+	    {
+	      break;
+	    }
+
+	  if (found_token + strlen (sys_id) >= conv_sys_end
+	      || *(found_token + strlen (sys_id)) == ','
+	      || *(found_token + strlen (sys_id)) == ' ')
+	    {
+	      if (lang_Loc_data->txt_conv->init_conv_func != NULL)
+		{
+		  lang_Loc_data->txt_conv->init_conv_func ();
+		}
+	      console_conv = lang_Loc_data->txt_conv;
+	      break;
+	    }
+	  else
+	    {
+	      conv_sys_ids = conv_sys_ids + strlen (sys_id);
+	    }
+	}
+      while (conv_sys_ids < conv_sys_end);
+    }
 }
 
 /*

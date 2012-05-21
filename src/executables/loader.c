@@ -3867,7 +3867,8 @@ ldr_monetary_elem (LDR_CONTEXT * context,
 
   if (len >= 2 && intl_is_currency_symbol ((const char *) p, &currency_type,
 					   &symbol_size,
-					   CURRENCY_CHECK_MODE_GRAMMAR))
+					   CURRENCY_CHECK_MODE_ESC_ISO
+					   | CURRENCY_CHECK_MODE_GRAMMAR))
     {
       token += symbol_size;
     }
@@ -6195,7 +6196,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    /* In Loader grammar always print symbol before value (position of
 	     * currency symbol is not localized) */
 	    char *curr_str =
-	      intl_get_money_symbol_grammar (mon->currency_type);
+	      intl_get_money_esc_ISO_symbol (mon->currency_type);
 	    int full_mon_str_len = strlen (str->val) + strlen (curr_str);
 
 	    if (full_mon_str_len >= sizeof (full_mon_str))

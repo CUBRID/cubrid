@@ -14724,7 +14724,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	val = &(p->info.value.data_value.money);
 	/* this string may be used for replication, so it must be parsable */
 	sprintf (s, "%s%.2f",
-		 intl_get_money_symbol_grammar (pt_currency_to_db
+		 intl_get_money_esc_ISO_symbol (pt_currency_to_db
 						(val->type)), val->amount);
 #if defined(HPUX)
 	/* workaround for HP's broken printf */
@@ -14734,7 +14734,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 #endif /* HPUX */
 	  {
 	    sprintf (s, "%s%.2f",
-		     intl_get_money_symbol_grammar (pt_currency_to_db
+		     intl_get_money_esc_ISO_symbol (pt_currency_to_db
 						    (val->type)),
 		     (val->amount > 0 ? DBL_MAX : -DBL_MAX));
 	  }

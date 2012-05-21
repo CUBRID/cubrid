@@ -4509,6 +4509,36 @@ static char moneysymbols_iso_codes[][4] = {
 				 * before this */
 };
 
+/* escaped ISO encoding of money symbols - maps to DB_CURRENCY enum type */
+static char moneysymbols_esc_iso_codes[][5] = {
+  "\\USD",			/* dollar sign */
+  "\\JPY",			/* japanese yen */
+  "\\GBP",			/* british pound */
+  "\\KRW",			/* Korean won */
+  "\\TRY",			/* turkish lira */
+  "\\KHR",			/* cambodian riel */
+  "\\CNY",			/* chinese renminbi */
+  "\\INR",			/* indian rupee */
+  "\\RUB",			/* russian ruble */
+  "\\AUD",			/* australian dollar */
+  "\\CAD",			/* canadian dollar */
+  "\\BRL",			/* brasilian real */
+  "\\RON",			/* romanian leu */
+  "\\EUR",			/* euro */
+  "\\CHF",			/* swiss franc */
+  "\\DKK",			/* danish krone */
+  "\\NOK",			/* norwegian krone */
+  "\\BGN",			/* bulgarian lev */
+  "\\VND",			/* vietnamese dong */
+  "\\CZK",			/* Czech koruna */
+  "\\PLN",			/* Polish zloty */
+  "\\SEK",			/* Swedish krona */
+  "\\HRK",			/* Croatian kuna */
+  "\\RSD",			/* serbian dinar */
+  ""				/* generic currency symbol - add new symbols
+				 * before this */
+};
+
 /*
  * intl_is_currency_symbol() - check if a string matches a currency
  *                             symbol (UTF-8)
@@ -4539,6 +4569,24 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 	  int symbol_len = strlen (moneysymbols_iso_codes[sym_currency]);
 	  if (src_len >= symbol_len && symbol_len > 0 &&
 	      !memcmp (src, moneysymbols_iso_codes[sym_currency], symbol_len))
+	    {
+	      *currency = (DB_CURRENCY) sym_currency;
+	      *symbol_size = symbol_len;
+	      return (*currency == DB_CURRENCY_NULL) ? false : true;
+	    }
+	}
+    }
+
+  if (check_mode & CURRENCY_CHECK_MODE_ESC_ISO)
+    {
+      for (sym_currency = 0; src_len > 0
+	   && sym_currency < (int) DIM (moneysymbols_esc_iso_codes);
+	   sym_currency++)
+	{
+	  int symbol_len = strlen (moneysymbols_esc_iso_codes[sym_currency]);
+	  if (src_len >= symbol_len && symbol_len > 0 &&
+	      !memcmp (src, moneysymbols_esc_iso_codes[sym_currency],
+		       symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -4683,4 +4731,20 @@ intl_get_money_ISO_symbol (const DB_CURRENCY currency)
       return moneysymbols_iso_codes[DB_CURRENCY_NULL];
     }
   return moneysymbols_iso_codes[currency];
+}
+
+/*
+ * intl_get_money_esc_ISO_symbol() - returns a string representing the
+ *				     currency with escaped ISO symbol
+ *   return: currency escaped ISO symbol
+ *   currency(int): currency code
+ */
+char *
+intl_get_money_esc_ISO_symbol (const DB_CURRENCY currency)
+{
+  if (currency >= (int) DIM (moneysymbols_esc_iso_codes))
+    {
+      return moneysymbols_esc_iso_codes[DB_CURRENCY_NULL];
+    }
+  return moneysymbols_esc_iso_codes[currency];
 }
