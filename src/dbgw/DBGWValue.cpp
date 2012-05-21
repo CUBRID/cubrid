@@ -67,7 +67,7 @@ namespace dbgw
     clearException();
     try
       {
-        if (pValue == NULL || *(char *) pValue == NULL)
+        if (pValue == NULL)
           {
             m_stValue.szValue = NULL;
             m_bNull = true;
@@ -78,24 +78,35 @@ namespace dbgw
               {
               case DBGW_VAL_TYPE_INT:
                 m_stValue.nValue = *(int *) pValue;
+                m_bNull = false;
                 break;
               case DBGW_VAL_TYPE_LONG:
                 m_stValue.lValue = *(int64 *) pValue;
+                m_bNull = false;
                 break;
               case DBGW_VAL_TYPE_STRING:
-                m_stValue.szValue = strdup((char *) pValue);
+                if (*(char **) pValue == NULL)
+                  {
+                    m_stValue.szValue = NULL;
+                    m_bNull = true;
+                  }
+                else
+                  {
+                    m_stValue.szValue = strdup((char *) pValue);
+                    m_bNull = false;
+                  }
                 break;
               case DBGW_VAL_TYPE_CHAR:
                 m_stValue.szValue = (char *) malloc(sizeof(char) * 2);
                 m_stValue.szValue[0] = *(char *) pValue;
                 m_stValue.szValue[1] = '\0';
+                m_bNull = false;
                 break;
               default:
                 InvalidValueTypeException e(type);
                 DBGW_LOG_ERROR(e.what());
                 throw e;
               }
-            m_bNull = false;
           }
       }
     catch (DBGWException &e)
@@ -394,7 +405,14 @@ namespace dbgw
             throw e;
           }
 
-        *pValue = *m_stValue.szValue;
+        if (m_stValue.szValue == NULL)
+          {
+            *pValue = 0;
+          }
+        else
+          {
+            *pValue = *m_stValue.szValue;
+          }
         return true;
       }
     catch (DBGWException &e)
@@ -1405,3 +1423,4 @@ namespace dbgw
   }
 
 }
+

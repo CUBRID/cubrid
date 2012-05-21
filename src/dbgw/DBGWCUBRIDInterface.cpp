@@ -735,22 +735,14 @@ namespace dbgw
           throw e;
         }
 
-      if (stMetadata.type == DBGW_VAL_TYPE_STRING && nIndicator == -1 && (utype
-          == CCI_U_TYPE_DOUBLE || utype == CCI_U_TYPE_NUMERIC || utype
-          == CCI_U_TYPE_FLOAT))
+      char szBuffer[32];
+      if (stMetadata.orgType == CCI_U_TYPE_TIMESTAMP || stMetadata.orgType
+          == CCI_U_TYPE_DATE || stMetadata.orgType == CCI_U_TYPE_DATETIME)
         {
-          pValue = DBGWValueSharedPtr(new DBGWValue("0"));
+          convertDateFormat(rawValue, szBuffer, stMetadata.orgType);
         }
-      else
-        {
-          char szBuffer[32];
-          if (stMetadata.orgType == CCI_U_TYPE_TIMESTAMP || stMetadata.orgType
-              == CCI_U_TYPE_DATE || stMetadata.orgType == CCI_U_TYPE_DATETIME)
-            {
-              convertDateFormat(rawValue, szBuffer, stMetadata.orgType);
-            }
-          pValue = DBGWValueSharedPtr(new DBGWValue(rawValue, stMetadata.type));
-        }
+      pValue = DBGWValueSharedPtr(
+          new DBGWValue(rawValue, stMetadata.type, nIndicator == -1));
 
       return pValue;
     }
