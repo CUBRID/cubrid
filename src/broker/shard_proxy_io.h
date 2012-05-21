@@ -149,6 +149,8 @@ extern int proxy_io_close_all_fd (void);
 
 extern int proxy_io_process (void);
 extern int proxy_io_initialize (void);
+extern void proxy_io_destroy (void);
+
 
 extern int proxy_socket_io_delete (SOCKET fd);
 

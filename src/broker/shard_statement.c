@@ -767,6 +767,7 @@ shard_stmt_get_hint_type (T_SHARD_STMT * stmt_p)
   return hint_p->hint_type;
 }
 
+#if defined (PROXY_VERBOSE_DEBUG)
 void
 shard_stmt_dump_title (FILE * fp)
 {
@@ -810,6 +811,7 @@ shard_stmt_dump_all (FILE * fp)
 
   return;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 char *
 shard_str_stmt (T_SHARD_STMT * stmt_p)

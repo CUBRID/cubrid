@@ -59,11 +59,20 @@ cleanup (int signo)
 {
   signal (signo, SIG_IGN);
 
+  proxy_term ();
+
+  return;
+}
+
+void
+proxy_term (void)
+{
 #ifdef SOLARIS
   SLEEP_MILISEC (1, 0);
 #endif
-
-  proxy_io_close_all_fd ();
+  proxy_handler_destroy ();
+  proxy_io_destroy ();
+  shard_stmt_destroy ();
 
   exit (0);
 }
@@ -222,6 +231,6 @@ main (int argc, char *argv[])
       /* process message */
       proxy_handler_process ();
     }
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Shard proxy going down.");
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Shard proxy going down.");
   return 0;
 }

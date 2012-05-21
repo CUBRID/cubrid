@@ -2253,7 +2253,6 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
   char dbname[MAX_DBNAME_LENGTH] = "";
   char host[MAX_HOSTNAME_LENGTH] = "";
   int port;
-  my_bool reconnect = true;
 
   _db_conn = mysql_init (NULL);
   if (_db_conn == NULL)
@@ -2267,7 +2266,6 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
       return ret;
     }
 
-  mysql_options (_db_conn, MYSQL_OPT_RECONNECT, &reconnect);
   mysql_options (_db_conn, MYSQL_SET_CHARSET_NAME, "utf8");
   mysql_options (_db_conn, MYSQL_INIT_COMMAND,
 		 "SET SESSION sql_mode=STRICT_TRANS_TABLES");

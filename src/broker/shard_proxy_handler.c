@@ -877,7 +877,7 @@ proxy_context_destroy (void)
   return;
 }
 
-
+#if defined(PROXY_VERBOSE_DEBUG)
 void
 proxy_context_dump_stmt (FILE * fp, T_PROXY_CONTEXT * ctx_p)
 {
@@ -960,7 +960,6 @@ proxy_context_dump_all (FILE * fp)
   return;
 }
 
-
 void
 proxy_context_print (bool print_all)
 {
@@ -999,6 +998,7 @@ proxy_context_print (bool print_all)
 
   return;
 }
+#endif /* PROXY_VERBOSE_DEBUG */
 
 char *
 proxy_str_context (T_PROXY_CONTEXT * ctx_p)

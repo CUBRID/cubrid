@@ -106,9 +106,11 @@ extern void shard_stmt_del_all_srv_h_id_for_shard_cas (int shard_id,
 						       int cas_id);
 extern int shard_stmt_set_hint_list (T_SHARD_STMT * stmt_p);
 extern int shard_stmt_get_hint_type (T_SHARD_STMT * stmt_p);
+#if defined (PROXY_VERBOSE_DEBUG)
 extern void shard_stmt_dump_title (FILE * fp);
 extern void shard_stmt_dump (FILE * fp, T_SHARD_STMT * stmt_p);
 extern void shard_stmt_dump_all (FILE * fp);
+#endif /* PROXY_VERBOSE_DEBUG */
 extern char *shard_str_stmt (T_SHARD_STMT * stmt_p);
 extern int shard_stmt_initialize (int initial_size);
 extern char *shard_stmt_rewrite_sql (char *sql_stmt, char appl_server);

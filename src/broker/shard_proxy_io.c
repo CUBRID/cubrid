@@ -27,6 +27,7 @@
 
 
 #include <assert.h>
+#include <signal.h>
 
 #include "shard_proxy_io.h"
 #include "shard_proxy_handler.h"
@@ -57,11 +58,15 @@ extern int proxy_id;
 extern T_PROXY_HANDLER proxy_Handler;
 extern T_PROXY_CONTEXT proxy_Context;
 
+extern void proxy_term (void);
+
 extern const char *rel_build_number (void);
 
 static int shard_io_set_fl (int fd, int flags);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int shard_io_clr_fl (int fd, int flags);
 static int shard_io_setsockbuf (int fd, int size);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static void proxy_socket_io_clear (T_SOCKET_IO * sock_io_p);
 static int proxy_socket_io_initialize (void);
@@ -279,6 +284,7 @@ shard_io_set_fl (int fd, int flags)
   return 1;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 shard_io_clr_fl (int fd, int flags)
 {				/* flags are file status flags to turn on */
@@ -361,6 +367,7 @@ shard_io_setsockbuf (int fd, int size)
 
   return 1;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 char *
 proxy_dup_msg (char *msg)
@@ -903,11 +910,11 @@ proxy_socket_io_destroy (void)
       return;
     }
 
-  for (i = 0; i < MAX_FD; i++)
+  for (i = 0; i < proxy_Socket_io.max_socket; i++)
     {
       sock_io_p = &(proxy_Socket_io.ent[i]);
 
-      if (sock_io_p->fd)
+      if (sock_io_p->fd != INVALID_SOCKET)
 	{
 	  FD_CLR (sock_io_p->fd, &allset);
 	  FD_CLR (sock_io_p->fd, &wnewset);
@@ -924,6 +931,7 @@ proxy_socket_io_destroy (void)
   return;
 }
 
+#if defined(PROXY_VERBOSE_DEBUG)
 void
 proxy_socket_io_print (bool print_all)
 {
@@ -978,6 +986,7 @@ proxy_socket_io_print (bool print_all)
 
   return;
 }
+#endif /* PROXY_VERBOSE_DEBUG */
 
 static T_SOCKET_IO *
 proxy_socket_io_add (SOCKET fd, bool from_cas)
@@ -1135,7 +1144,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
 		 "(lsnf_fd:%d, client_fd:%d).", lsnr_fd, client_fd);
 
       /* shard_broker must be abnormal status */
-      exit (0);
+      proxy_term ();
     }
 
   proxy_status = 0;
@@ -1964,6 +1973,7 @@ proxy_socket_io_write_to_client (T_SOCKET_IO * sock_io_p)
 {
   int len;
   T_PROXY_CONTEXT *ctx_p;
+  T_CLIENT_INFO *client_info_p;
 
   assert (sock_io_p);
 
@@ -1981,6 +1991,11 @@ proxy_socket_io_write_to_client (T_SOCKET_IO * sock_io_p)
 
   if (ctx_p->free_on_client_io_write)
     {
+      /* init shared memory T_CLIENT_INFO */
+      client_info_p =
+	shard_shm_get_client_info (proxy_info_p, sock_io_p->id.client_id);
+      shard_shm_init_client_info (client_info_p);
+
       sock_io_p->status = SOCK_IO_CLOSE_WAIT;
       proxy_context_free (ctx_p);
     }
@@ -2398,6 +2413,7 @@ proxy_client_io_destroy (void)
   proxy_Client_io.cur_client = 0;
 }
 
+#if defined(PROXY_VERBOSE_DEBUG)
 void
 proxy_client_io_print (bool print_all)
 {
@@ -2432,6 +2448,7 @@ proxy_client_io_print (bool print_all)
 
   return;
 }
+#endif /* PROXY_VERBOSE_DEBUG */
 
 char *
 proxy_str_client_io (T_CLIENT_IO * cli_io_p)
@@ -2759,6 +2776,7 @@ proxy_shard_io_destroy (void)
   return;
 }
 
+#if defined(PROXY_VERBOSE_DEBUG)
 void
 proxy_shard_io_print (bool print_all)
 {
@@ -2807,9 +2825,9 @@ proxy_shard_io_print (bool print_all)
 	}
     }
 
-
   return;
 }
+#endif /* PROXY_VERBOSE_DEBUG */
 
 char *
 proxy_str_cas_io (T_CAS_IO * cas_io_p)
@@ -3455,7 +3473,7 @@ proxy_io_connect_to_broker (void)
     }
 
   /* FOR DEBUG */
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Connect to broker. (port_name:[%s]).",
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Connect to broker. (port_name:[%s]).",
 	     port_name);
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
@@ -3489,7 +3507,7 @@ proxy_io_register_to_broker (void)
   int len;
   int num_retry = 0;
 
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Register to broker. ");
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Register to broker. ");
 
   do
     {
@@ -3571,7 +3589,7 @@ proxy_io_cas_lsnr (void)
   SOCKET fd;
 
   /* FOR DEBUG */
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Listen CAS socket. (port name:[%s])",
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port name:[%s])",
 	     proxy_info_p->port_name);
 
   fd = proxy_io_unixd_lsnr (proxy_info_p->port_name);
@@ -3678,6 +3696,17 @@ proxy_io_initialize (void)
     }
 
   return 0;
+}
+
+void
+proxy_io_destroy (void)
+{
+  proxy_io_close_all_fd ();
+  proxy_socket_io_destroy ();
+  proxy_client_io_destroy ();
+  proxy_shard_io_destroy ();
+
+  return;
 }
 
 int

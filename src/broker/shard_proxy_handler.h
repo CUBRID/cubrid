@@ -61,11 +61,13 @@ extern T_CONTEXT_STMT *proxy_context_add_stmt (T_PROXY_CONTEXT * ctx_p,
 					       T_SHARD_STMT * stmt_p);
 extern void proxy_context_free_stmt (T_PROXY_CONTEXT * ctx_p);
 
+#if defined (PROXY_VERBOSE_DEBUG)
 extern void proxy_context_dump_stmt (FILE * fp, T_PROXY_CONTEXT * ctx_p);
 extern void proxy_context_dump_title (FILE * fp);
 extern void proxy_context_dump (FILE * fp, T_PROXY_CONTEXT * ctx_p);
 extern void proxy_context_dump_all (FILE * fp);
 extern void proxy_context_print (bool print_all);
+#endif /* PROXY_VERBOSE_DEBUG */
 extern char *proxy_str_context (T_PROXY_CONTEXT * ctx_p);
 
 

@@ -2154,6 +2154,11 @@ client_monitor (void)
   struct tm ct1;
   for (i = 0; i < shm_br->num_broker; i++)
     {
+      if (shm_br->br_info[i].service_flag != SERVICE_ON)
+	{
+	  continue;
+	}
+
       shm_as_cp =
 	(char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
 			      SHM_APPL_SERVER, SHM_MODE_MONITOR);

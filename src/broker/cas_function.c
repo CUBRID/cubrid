@@ -527,9 +527,9 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
   if (prepared_srv_h_id != NULL)
     {
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+      if (srv_handle != NULL && srv_handle->stmt_type == CUBRID_STMT_SELECT)
 #else
-      if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+      if (srv_handle != NULL && srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
 #endif
 	{
 	  fetch_flag = 1;

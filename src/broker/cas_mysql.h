@@ -29,6 +29,7 @@
 
 #include "mysql.h"
 #include "mysqld_error.h"
+#include "errmsg.h"
 #include "cas_dbms_util.h"
 
 #define DEFAULT_MYSQL_PORT	3306

@@ -85,6 +85,17 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     {
       set_server_aborted (true);
     }
+#if defined(CAS_FOR_MYSQL)
+  switch (err_info.err_number)
+    {
+    case CR_SERVER_GONE_ERROR:
+    case CR_SERVER_LOST:
+      as_info->reset_flag = TRUE;
+      set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+      cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
+      break;
+    }
+#endif /* CAS_FOR_MYSQL */
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 #ifndef LIBCAS_FOR_JSP
   if ((net_buf == NULL)
