@@ -7079,6 +7079,7 @@ parser_c_hint ()
 	{
 	  if (i >= (CSQL_MAXNAME - 1))
 	    {
+	      i ++;
 	      goto consume_comment;
 	    }
 
@@ -7093,6 +7094,7 @@ parser_c_hint ()
 
       buff[i] = 0;
 
+      yybuffer_pos += i + 2;
       pt_check_hint (buff, parser_hint_table, &hint, false);
       if (hint == PT_HINT_NONE)
 	{			/* comment */
@@ -7107,13 +7109,19 @@ parser_c_hint ()
     }
 
 consume_comment:
-  while ((c = input_internal ()) != '*' && c != 0 && c != -1);
+  yybuffer_pos += i;
+  while ((c = input_internal ()) != '*' && c != 0 && c != -1)
+  {
+    yybuffer_pos ++;
+  }
 
   if ((c1 = input_internal ()) != '/' && c != 0 && c != -1)
     {
       unput (c1);
       goto consume_comment;
     }
+    
+  yybuffer_pos += 2;
 
   return NULL;
 }
@@ -7148,6 +7156,7 @@ loop:
 	}
       buff[i] = 0;
 
+      yybuffer_pos += i + 1;
       pt_check_hint (buff, parser_hint_table, &hint, false);
       if (hint == PT_HINT_NONE)
 	{			/* comment */
@@ -7158,9 +7167,14 @@ loop:
     }
   else
     {				/* comment */
+      yybuffer_pos += i;
       unput (c);
       while ((c = input_internal ()) != '\r' && c != '\n' && c != 0
-	     && c != -1);
+	     && c != -1)
+	{
+	  yybuffer_pos ++;
+	}
+	yybuffer_pos ++;
 
       return NULL;
     }

@@ -10084,10 +10084,12 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_NUMERIC:
 	    case PT_TYPE_DOUBLE:
 	    case PT_TYPE_MONETARY:
-	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
 	    case PT_TYPE_ENUMERATION:
 	      common_type = arg2_type;
+	      break;
+	    case PT_TYPE_CHAR:
+	      common_type = PT_TYPE_VARCHAR;
 	      break;
 	    default:
 	      common_type = pt_common_type (PT_TYPE_VARCHAR, arg2_type);

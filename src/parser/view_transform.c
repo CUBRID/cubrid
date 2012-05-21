@@ -8450,6 +8450,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 		  result->line_number = node->line_number;
 		  result->column_number = node->column_number;
 		  result->is_hidden_column = node->is_hidden_column;
+		  result->buffer_pos = node->buffer_pos;
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
