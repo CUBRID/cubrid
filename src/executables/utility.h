@@ -1005,6 +1005,8 @@ typedef struct _ha_config
 #define LOAD_SA_MODE_L                          "SA-mode"
 #define LOAD_CS_MODE_S                          11815
 #define LOAD_CS_MODE_L                          "CS-hidden"
+#define LOAD_TABLE_NAME_S                       't'
+#define LOAD_TABLE_NAME_L                       "table"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'

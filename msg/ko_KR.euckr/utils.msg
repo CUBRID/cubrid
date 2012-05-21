@@ -426,6 +426,7 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -s, --schema-file=FILE[:LINE] 파일[:라인] 정보로 스키마 생성\n\
   -i, --index-file=FILE[:LINE]  파일[:라인] 정보로 인덱스 생성\n\
   -d, --data-file=FILE          적재할 데이터 파일\n\
+  -t, --table=TABLE             데이터를 적재할 테이블 이름\n\
       --error-control-file=FILE 적재 시 발생하는 에러에 대한 제어 파일\n\
       --ignore-class-file=FILE  적재하지 않을 클래스 이름이 있는 파일\n
 121 \

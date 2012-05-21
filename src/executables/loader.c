@@ -629,6 +629,7 @@ static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
 static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
+static void ldr_act_add_class_all_attrs (LDR_CONTEXT * context);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
@@ -6330,4 +6331,42 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
     }
 
   free_and_init (ref);
+}
+
+void
+ldr_init_class_spec (const char *class_name)
+{
+  ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
+  ldr_act_add_class_all_attrs (ldr_Current_context);
+}
+
+static void
+ldr_act_add_class_all_attrs (LDR_CONTEXT * context)
+{
+  int err = NO_ERROR;
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *att;
+
+  err = au_fetch_class (context->cls, &class_, AU_FETCH_READ, AU_SELECT);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+    {
+      ldr_act_add_attr (ldr_Current_context, att->header.name,
+			strlen (att->header.name));
+    }
+
+  return;
+
+error_exit:
+  if (err != NO_ERROR)
+    {
+      CHECK_CONTEXT_VALIDITY (context, true);
+      ldr_abort ();
+    }
+
+  return;
 }

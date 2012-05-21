@@ -409,6 +409,7 @@ static UTIL_ARG_MAP ua_Load_Option_Map[] = {
   {LOAD_IGNORE_CLASS_S, {ARG_STRING}, {0}},
   {LOAD_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {LOAD_SA_MODE_S, {ARG_BOOLEAN}, {1}},
+  {LOAD_TABLE_NAME_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
@@ -430,6 +431,7 @@ static GETOPT_LONG ua_Load_Option[] = {
   {LOAD_IGNORE_CLASS_L, 1, 0, LOAD_IGNORE_CLASS_S},
   {LOAD_CS_MODE_L, 0, 0, LOAD_CS_MODE_S},
   {LOAD_SA_MODE_L, 0, 0, LOAD_SA_MODE_S},
+  {LOAD_TABLE_NAME_L, 1, 0, LOAD_TABLE_NAME_S},
   {0, 0, 0, 0}
 };
 

@@ -78,6 +78,8 @@ static const char *Error_file = "";
 static const char *User_name = NULL;
 static const char *Password = NULL;
 static const char *Ignore_class_file = NULL;
+static const char *Table_name = "";
+
 static bool Syntax_check = false;
 /* No syntax checking performed */
 static bool Load_only = false;
@@ -427,6 +429,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   Ignore_logging = utility_get_option_bool_value (arg_map,
 						  LOAD_IGNORE_LOGGING_S);
 #if !defined (LDR_OLD_LOADDB)
+  Table_name = utility_get_option_string_value (arg_map,
+						LOAD_TABLE_NAME_S, 0);
+
   Ignore_class_file = utility_get_option_string_value (arg_map,
 						       LOAD_IGNORE_CLASS_S,
 						       0);
@@ -437,6 +442,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   Index_file = Index_file ? Index_file : "";
   Object_file = Object_file ? Object_file : "";
   Error_file = Error_file ? Error_file : "";
+  Table_name = Table_name ? Table_name : "";
 
   if (ldr_validate_object_file (stderr, arg->argv0))
     {
@@ -835,6 +841,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		}
 	      else
 		{
+#if !defined (LDR_OLD_LOADDB)
+		  if (Table_name[0] != '\0')
+		    {
+		      ldr_init_class_spec (Table_name);
+		    }
+#endif
 		  do_loader_parse (object_file);
 #if defined(LDR_OLD_LOADDB)
 		  ldr_stats (&errors, &objects, &defaults);
