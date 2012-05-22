@@ -3455,7 +3455,11 @@ pt_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
       tree = pt_flush_classes (parser, tree, void_arg, continue_walk);
     }
 
-  if (tree->node_type == PT_DATA_TYPE)
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      tree->info.query.xasl = NULL;
+    }
+  else if (tree->node_type == PT_DATA_TYPE)
     {
       PT_NODE *entity;
 
@@ -21393,7 +21397,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       insert->att_id = regu_int_array_alloc (no_vals + no_default_expr);
       if (insert->att_id)
 	{
-	  /* the identifiers of the attributes that have a default 
+	  /* the identifiers of the attributes that have a default
 	   * expression are placed first */
 	  for (attr = default_expr_attrs, a = 0; error >= 0 &&
 	       a < no_default_expr; attr = attr->next, ++a)
