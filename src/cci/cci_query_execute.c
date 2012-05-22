@@ -1023,6 +1023,14 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 	  else
 	    {
 	      NET_STR_TO_INT (val, result_msg + 4);
+	      if (param_name == CCI_PARAM_LOCK_TIMEOUT)
+		{
+		  if (val > 0)
+		    {
+		      /* For backward compatibility */
+		      val = val / 1000;	/* millisecond --> second */
+		    }
+		}
 	      memcpy (ret_val, (char *) &val, 4);
 	    }
 	}
