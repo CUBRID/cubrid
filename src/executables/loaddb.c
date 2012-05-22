@@ -837,7 +837,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 				   lastcommit);
 #endif /* !LDR_OLD_LOADDB */
 		  interrupted = true;
-
+		  status = 3;
 		}
 	      else
 		{

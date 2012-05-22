@@ -425,7 +425,7 @@ valid options:\n\
   -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
   -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
   -d, --data-file=FILE          load data with FILE\n\
-  -t, --table=TABLE             table name to load\n\
+  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
       --error-control-file=FILE FILE to control error(s) during loading\n\
       --ignore-class-file=FILE  input file of class names that skip load\n
 121 \
