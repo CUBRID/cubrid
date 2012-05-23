@@ -7507,6 +7507,11 @@ qo_generate_join_index_scan (QO_INFO * infop,
   BITSET empty_terms;
   BITSET remaining_terms;
 
+  if (nodep != NULL && QO_NODE_IS_CLASS_HIERARCHY (nodep))
+    {
+      /* cannot perform index join on class hierarchy */
+      return 0;
+    }
   env = infop->env;
 
   bitset_init (&range_terms, env);
