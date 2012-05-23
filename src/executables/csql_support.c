@@ -1115,10 +1115,21 @@ int
 csql_edit_read_file (FILE * fp)
 {
   char line_buf[1024];
+  bool is_first_read_line = true;
 
   while (fgets (line_buf, sizeof (line_buf), fp) != NULL)
     {
-      if (csql_edit_contents_append (line_buf, false) != CSQL_SUCCESS)
+      char *line_begin = line_buf;
+
+      if (is_first_read_line
+	  && intl_is_bom_magic (line_buf, strlen (line_buf)))
+	{
+	  line_begin += 3;
+	}
+
+      is_first_read_line = false;
+
+      if (csql_edit_contents_append (line_begin, false) != CSQL_SUCCESS)
 	return CSQL_FAILURE;
     }
   return CSQL_SUCCESS;
