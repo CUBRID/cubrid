@@ -8821,21 +8821,6 @@ qstr_coerce (const unsigned char *src,
 
   copy_length = MIN (src_length, src_padded_length);
 
-  if (dest_codeset == INTL_CODESET_ISO88591)
-    {
-      /* when coercing to ISO charset, we just handle the original bytes as 
-       * characters */
-      copy_size = copy_length;
-    }
-  else
-    {
-      /* copy_length = number of characters, count the bytes according to 
-       * source codeset */
-      intl_char_size ((unsigned char *) src, copy_length, src_codeset,
-		      &copy_size);
-    }
-
-
   /*
    *  For fixed-length destination strings...
    *    Allocate the destination precision size, copy the source
@@ -8852,6 +8837,32 @@ qstr_coerce (const unsigned char *src,
   else
     {
       *dest_length = src_padded_length;
+    }
+
+  if (dest_codeset == INTL_CODESET_ISO88591)
+    {
+      /* when coercing to ISO charset, we just handle the original bytes as 
+       * characters */
+      if (src_codeset == INTL_CODESET_UTF8
+	  && (copy_length < dest_precision
+	      || dest_precision == TP_FLOATING_PRECISION_VALUE))
+	{
+	  intl_char_size ((unsigned char *) src, copy_length, src_codeset,
+			  &copy_size);
+	  copy_size = MIN (copy_size, dest_precision);
+	  *dest_length = copy_length = copy_size;
+	}
+      else
+	{
+	  copy_size = copy_length;
+	}
+    }
+  else
+    {
+      /* copy_length = number of characters, count the bytes according to 
+       * source codeset */
+      intl_char_size ((unsigned char *) src, copy_length, src_codeset,
+		      &copy_size);
     }
 
   alloc_size = INTL_CODESET_MULT (dest_codeset) * (*dest_length);
