@@ -1,6 +1,6 @@
 #!/bin/sh
 
-opts="--prefix=$PWD/.. --disable-shared"
+opts="--prefix=$PWD/.. --disable-shared --enable-widec"
 srdrir=''
 
 while test $# -ge 1; do
