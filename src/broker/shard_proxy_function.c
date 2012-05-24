@@ -2123,6 +2123,8 @@ fn_proxy_cas_relay_only (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 {
   int error;
 
+  assert (false);
+
   ENTER_FUNC ();
 
   error = proxy_send_response_to_client (ctx_p, event_p);

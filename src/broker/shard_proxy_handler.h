@@ -40,9 +40,11 @@ extern void proxy_waiter_free (T_WAIT_CONTEXT * waiter);
 extern bool proxy_handler_is_cas_in_tran (int shard_id, int cas_id);
 extern void proxy_context_set_error (T_PROXY_CONTEXT * ctx_p, int error_ind,
 				     int error_code);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void proxy_context_set_error_with_msg (T_PROXY_CONTEXT * ctx_p,
 					      int error_ind, int error_code,
 					      const char *fmt, va_list ap);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern void proxy_context_clear_error (T_PROXY_CONTEXT * ctx_p);
 
 extern void proxy_context_set_in_tran (T_PROXY_CONTEXT * ctx_p,
@@ -51,7 +53,9 @@ extern void proxy_context_set_out_tran (T_PROXY_CONTEXT * ctx_p);
 
 extern T_PROXY_CONTEXT *proxy_context_new (void);
 extern void proxy_context_free (T_PROXY_CONTEXT * ctx_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void proxy_context_free_by_cid (int cid, unsigned int uid);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern T_PROXY_CONTEXT *proxy_context_find (int cid, unsigned int uid);
 extern T_PROXY_CONTEXT *proxy_context_find_by_socket_client_io (T_SOCKET_IO *
 								sock_io_p);
@@ -112,7 +116,9 @@ extern void proxy_event_set_context (T_PROXY_EVENT * event_p, int cid,
 extern void proxy_event_set_shard (T_PROXY_EVENT * event_p, int shard_id,
 				   int cas_id);
 extern bool proxy_event_io_read_complete (T_PROXY_EVENT * event_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern bool proxy_event_io_write_complete (T_PROXY_EVENT * event_p);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern void proxy_event_free (T_PROXY_EVENT * event_p);
 extern char *proxy_str_event (T_PROXY_EVENT * event_p);
 

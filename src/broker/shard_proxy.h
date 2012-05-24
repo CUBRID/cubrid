@@ -41,4 +41,6 @@
 
 #define DFLT_SOCKBUF	16384
 
+extern void proxy_term (void);
+
 #endif /* _SHARD_PROXY_H_ */

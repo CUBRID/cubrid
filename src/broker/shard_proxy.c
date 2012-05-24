@@ -54,16 +54,6 @@ static int proxy_shm_initialize (void);
 
 static void cleanup (int signo);
 
-static void
-cleanup (int signo)
-{
-  signal (signo, SIG_IGN);
-
-  proxy_term ();
-
-  return;
-}
-
 void
 proxy_term (void)
 {
@@ -75,6 +65,16 @@ proxy_term (void)
   shard_stmt_destroy ();
 
   exit (0);
+}
+
+static void
+cleanup (int signo)
+{
+  signal (signo, SIG_IGN);
+
+  proxy_term ();
+
+  return;
 }
 
 int

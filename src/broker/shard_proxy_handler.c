@@ -216,6 +216,7 @@ proxy_context_set_error (T_PROXY_CONTEXT * ctx_p, int error_ind,
   return;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 void
 proxy_context_set_error_with_msg (T_PROXY_CONTEXT * ctx_p, int error_ind,
 				  int error_code, const char *fmt, va_list ap)
@@ -227,6 +228,7 @@ proxy_context_set_error_with_msg (T_PROXY_CONTEXT * ctx_p, int error_ind,
 
   return;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 proxy_context_clear_error (T_PROXY_CONTEXT * ctx_p)
@@ -1211,6 +1213,7 @@ proxy_context_free (T_PROXY_CONTEXT * ctx_p)
   return;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 void
 proxy_context_free_by_cid (int cid, unsigned int uid)
 {
@@ -1224,6 +1227,7 @@ proxy_context_free_by_cid (int cid, unsigned int uid)
     }
   return;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 T_PROXY_CONTEXT *
 proxy_context_find (int cid, unsigned int uid)
@@ -1730,6 +1734,7 @@ proxy_event_io_read_complete (T_PROXY_EVENT * event_p)
 	  && event_p->buffer.length == event_p->buffer.offset) ? true : false;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 bool
 proxy_event_io_write_complete (T_PROXY_EVENT * event_p)
 {
@@ -1739,6 +1744,7 @@ proxy_event_io_write_complete (T_PROXY_EVENT * event_p)
   return (event_p->buffer.length != 0
 	  && event_p->buffer.length == event_p->buffer.offset) ? true : false;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 proxy_event_free (T_PROXY_EVENT * event_p)
