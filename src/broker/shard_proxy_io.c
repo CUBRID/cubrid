@@ -3813,7 +3813,7 @@ retry_select:
     }
 
   /* process socket io */
-  for (i = 0; i < proxy_Socket_io.max_socket; i++)
+  for (i = 0; i <= maxfd; i++)
     {
       sock_io_p = &(proxy_Socket_io.ent[i]);
       if (sock_io_p->fd <= INVALID_SOCKET)
