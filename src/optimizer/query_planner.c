@@ -556,12 +556,19 @@ qo_term_string (QO_TERM * term)
   int i;
   QO_ENV *env;
   const char *separator;
+  PT_NODE *conj, *saved_next;
 
   env = QO_TERM_ENV (term);
 
+  conj = QO_TERM_PT_EXPR (term);
+  if (conj)
+    {
+      saved_next = conj->next;
+      conj->next = NULL;
+    }
+
   switch (QO_TERM_CLASS (term))
     {
-
     case QO_TC_DEP_LINK:
       sprintf (buf, "table(");
       p = buf + strlen (buf);
@@ -592,13 +599,21 @@ qo_term_string (QO_TERM * term)
       break;
 
     default:
+      assert_release (conj != NULL);
+      if (conj)
       {
 	PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
 	PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
 	parser->print_db_value = NULL;
-	p = parser_print_tree (parser, QO_TERM_PT_EXPR (term));
+	p = parser_print_tree (parser, conj);
 	parser->print_db_value = saved_func;
       }
+    }
+
+  /* restore link */
+  if (conj)
+    {
+      conj->next = saved_next;
     }
 
   return p;
@@ -2174,9 +2189,13 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
     }
   name = QO_NODE_NAME (node);
   if (n == 1)
-    fprintf (f, "%s", (name ? name : "(unknown)"));
+    {
+      fprintf (f, "%s", (name ? name : "(unknown)"));
+    }
   else
-    fprintf (f, "as %s", (name ? name : "(unknown)"));
+    {
+      fprintf (f, "as %s", (name ? name : "(unknown)"));
+    }
 
   if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
     {

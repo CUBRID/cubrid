@@ -8378,9 +8378,18 @@ qo_termset_fprint (QO_ENV * env, BITSET * terms, FILE * f)
 static void
 qo_term_dump (QO_TERM * term, FILE * f)
 {
+  PT_NODE *conj, *saved_next;
   QO_TERMCLASS tc;
 
-  switch (tc = QO_TERM_CLASS (term))
+  conj = QO_TERM_PT_EXPR (term);
+  if (conj)
+    {
+      saved_next = conj->next;
+      conj->next = NULL;
+    }
+
+  tc = QO_TERM_CLASS (term);
+  switch (tc)
     {
     case QO_TC_PATH:
       qo_node_fprint (QO_TERM_HEAD (term), f);
@@ -8409,11 +8418,11 @@ qo_term_dump (QO_TERM * term, FILE * f)
       break;
 
     case QO_TC_DUMMY_JOIN:
-      if (QO_TERM_PT_EXPR (term))
+      if (conj)
 	{			/* may be transitive dummy join term */
 	  fprintf (f, "%s",
 		   parser_print_tree (QO_ENV_PARSER (QO_TERM_ENV (term)),
-				      QO_TERM_PT_EXPR (term)));
+				      conj));
 	}
       else
 	{
@@ -8424,14 +8433,17 @@ qo_term_dump (QO_TERM * term, FILE * f)
       break;
 
     default:
-      {
-	PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
-	PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-	/* in order to print auto parameterized values */
-	parser->print_db_value = pt_print_node_value;
-	fprintf (f, "%s", parser_print_tree (parser, QO_TERM_PT_EXPR (term)));
-	parser->print_db_value = saved_func;
-      }
+      assert_release (conj != NULL);
+      if (conj)
+	{
+	  PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
+	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+
+	  /* in order to print auto parameterized values */
+	  parser->print_db_value = pt_print_node_value;
+	  fprintf (f, "%s", parser_print_tree (parser, conj));
+	  parser->print_db_value = saved_func;
+	}
       break;
     }
   fprintf (f, " (sel %g)", QO_TERM_SELECTIVITY (term));
@@ -8454,11 +8466,9 @@ qo_term_dump (QO_TERM * term, FILE * f)
       break;
     case QO_TC_OTHER:
       {
-	PT_NODE *conj;
-
-	conj = QO_TERM_PT_EXPR (term);
-	if (conj && conj->node_type == PT_VALUE
-	    && conj->info.value.location == 0)
+	if (conj
+	    && conj->node_type == PT_VALUE
+            && conj->info.value.location == 0)
 	  {
 	    /* is an always-false or always-true WHERE condition */
 	    fprintf (f, " (dummy sarg term)");
@@ -8535,6 +8545,12 @@ qo_term_dump (QO_TERM * term, FILE * f)
     }
 
   fprintf (f, " (loc %d)", QO_TERM_LOCATION (term));
+
+  /* restore link */
+  if (conj)
+    {
+      conj->next = saved_next;
+    }
 }
 
 /*
