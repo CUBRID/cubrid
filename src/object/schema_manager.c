@@ -2756,7 +2756,7 @@ sm_rename_class (MOP op, const char *new_name)
   SM_ATTRIBUTE *att;
   const char *current, *newname;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
-  int is_partition = 0, subren = 0;
+  int is_partition = 0;
 /*  TR_STATE *trstate; */
 
   /* make sure this gets into the server table with no capitalization */
@@ -2772,24 +2772,13 @@ sm_rename_class (MOP op, const char *new_name)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
   error = do_is_partitioned_classobj (&is_partition, op, NULL, NULL);
-  if (is_partition == 1)
+  if (is_partition == PARTITIONED_CLASS)
     {
       if ((error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME,
 				   false)) != NO_ERROR)
 	{
 	  return error;
 	}
-
-      if ((error = do_rename_partition (op, realname)) != NO_ERROR)
-	{
-	  if (error != ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
-	    }
-	  return error;
-	}
-      subren = 1;
     }
 
   if (!sm_check_name (realname))
@@ -2860,9 +2849,18 @@ sm_rename_class (MOP op, const char *new_name)
 	}
     }
 
-  if (subren && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+  if (is_partition == PARTITIONED_CLASS)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+      if (error == NO_ERROR)
+	{
+	  error = do_rename_partition (op, realname);
+	}
+
+      if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  (void)
+	    tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+	}
     }
 
   return error;

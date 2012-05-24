@@ -7566,6 +7566,7 @@ do_rename_partition (MOP old_class, const char *newname)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_PARTITION_WORK_FAILED, 0);
+	      error = ER_PARTITION_WORK_FAILED;
 	      goto end_rename;
 	    }
 
@@ -7573,6 +7574,7 @@ do_rename_partition (MOP old_class, const char *newname)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_PARTITION_WORK_FAILED, 0);
+	      error = ER_PARTITION_WORK_FAILED;
 	      goto end_rename;
 	    }
 	  sprintf (new_subname, "%s%s", newname, ptr);
