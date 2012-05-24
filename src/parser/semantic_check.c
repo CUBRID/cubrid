@@ -5861,8 +5861,20 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    }
 	  else if (cmd == PT_REORG_PARTITION)
 	    {
-	      if (!DB_IS_NULL (minval)
-		  && db_value_compare (partmin, minval) != DB_GT)
+	      if (partmin == NULL)
+		{
+		  /* reorganizing into one partition with MAXVALUE */
+		  if (parts_cnt != 1)
+		    {
+		      PT_ERRORmf (parser, stmt,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID,
+				  class_name);
+		      goto check_end;
+		    }
+		}
+	      else if (!DB_IS_NULL (minval)
+		       && db_value_compare (partmin, minval) != DB_GT)
 		{
 		range_invalid_error:
 		  PT_ERRORmf (parser, stmt,
