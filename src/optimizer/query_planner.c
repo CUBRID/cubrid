@@ -595,8 +595,7 @@ qo_term_string (QO_TERM * term)
       {
 	PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
 	PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-	/* in order to print auto parameterized values */
-	parser->print_db_value = pt_print_node_value;
+	parser->print_db_value = NULL;
 	p = parser_print_tree (parser, QO_TERM_PT_EXPR (term));
 	parser->print_db_value = saved_func;
       }
