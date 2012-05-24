@@ -1055,6 +1055,7 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
   ctx_p->free_context = false;
   ctx_p->is_client_in_tran = false;
   ctx_p->is_cas_in_tran = false;
+  ctx_p->waiting_dummy_prepare = false;
 
   if (ctx_p->waiting_event)
     {

@@ -240,6 +240,7 @@ struct t_proxy_context
 				 * status to in_tran. 
 				 */
   bool is_cas_in_tran;		/* cas transaction status */
+  bool waiting_dummy_prepare;
 
   /* context */
   T_PROXY_EVENT *waiting_event;

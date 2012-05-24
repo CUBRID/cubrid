@@ -939,10 +939,11 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   stmt_p->request_buffer_length = get_msg_length (request_p);
 
 relay_prepare_request:
-  if (ctx_p->is_in_tran == false)
+  if (ctx_p->is_in_tran == false || ctx_p->waiting_dummy_prepare == true)
     {
       proxy_set_force_out_tran (request_p);
     }
+  ctx_p->waiting_dummy_prepare = false;
 
   if (stmt_p->status != SHARD_STMT_STATUS_IN_PROGRESS)
     {
@@ -978,6 +979,8 @@ relay_prepare_request:
       /* waiting idle shard/cas */
       ctx_p->waiting_event = event_p;
       event_p = NULL;
+
+      ctx_p->waiting_dummy_prepare = true;
 
       EXIT_FUNC ();
       return 0;
