@@ -60,6 +60,36 @@ static int rv;
 #define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
 #define DISK_HINT_START_SECT     4
 
+/* do not use assert_release () for performance risk */
+#define DISK_VERIFY_VAR_HEADER(h) 					\
+  do { 									\
+    assert ((h)->total_pages > 0);					\
+    assert ((h)->free_pages >= 0);					\
+    assert ((h)->free_pages <= (h)->total_pages);			\
+									\
+    assert ((h)->total_sects > 0);					\
+    assert ((h)->free_sects >= 0);					\
+    assert ((h)->free_sects <= (h)->total_sects);			\
+									\
+    assert ((h)->sect_npgs == DISK_SECTOR_NPAGES);			\
+    assert ((h)->total_sects == 					\
+            CEIL_PTVDIV ((h)->total_pages, (h)->sect_npgs));		\
+    assert ((h)->sect_alloctb_page1 == DISK_VOLHEADER_PAGE + 1);	\
+									\
+    assert ((h)->page_alloctb_page1 == 					\
+            ((h)->sect_alloctb_page1 + (h)->sect_alloctb_npages));	\
+    assert ((h)->sys_lastpage == 					\
+            ((h)->page_alloctb_page1 + (h)->page_alloctb_npages - 1));	\
+   									\
+    if ((h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                     	\
+      {                                                                 \
+        assert ((h)->sect_alloctb_npages == 				\
+                CEIL_PTVDIV ((h)->total_sects, DISK_PAGE_BIT));		\
+        assert ((h)->page_alloctb_npages == 				\
+                CEIL_PTVDIV ((h)->total_pages, DISK_PAGE_BIT));		\
+      }									\
+  } while (0)
+
 #define DISK_PAGE   1
 #define DISK_SECTOR 0
 
@@ -1781,7 +1811,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   vhdr->purpose = vol_purpose;
   vhdr->sect_npgs = DISK_SECTOR_NPAGES;
   vhdr->total_pages = npages;
+  vhdr->free_pages = 0;
   vhdr->total_sects = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
+  vhdr->free_sects = 0;
 
   if (disk_set_alloctables (vol_purpose, vhdr->total_sects, npages,
 			    &vhdr->sect_alloctb_npages,
@@ -1790,6 +1822,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 			    &vhdr->page_alloctb_page1,
 			    &vhdr->sys_lastpage) != NO_ERROR)
     {
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
       return NULL_VOLID;
     }
 
@@ -1844,6 +1878,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   if (log_get_db_start_parameters (&vhdr->db_creation, &vhdr->chkpt_lsa) !=
       NO_ERROR)
     {
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
       return NULL_VOLID;
     }
 
@@ -1861,14 +1897,20 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   vhdr->var_fields[vhdr->offset_to_vol_fullname] = '\0';
   if (disk_vhdr_set_vol_fullname (vhdr, vol_fullname) != NO_ERROR)
     {
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
       return NULL_VOLID;
     }
   if (disk_vhdr_set_next_vol_fullname (vhdr, NULL) != NO_ERROR)
     {
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
       return NULL_VOLID;
     }
   if (disk_vhdr_set_vol_remarks (vhdr, vol_remarks) != NO_ERROR)
     {
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
       return NULL_VOLID;
     }
 
@@ -1964,6 +2006,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 		}
 	    }
 	}
+
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
     }
@@ -2053,6 +2098,9 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   if (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
     {
       /* We are not allow to expand permanent volumes. The only volumes that
@@ -2092,7 +2140,6 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
    */
   vhdr->total_pages += npages_toadd;
   vhdr->free_pages += npages_toadd;
-  vhdr->page_alloctb_npages = CEIL_PTVDIV (vhdr->total_pages, DISK_PAGE_BIT);
 
   /*
    * Add any sectors to covert the new set of pages or until the end of
@@ -2118,12 +2165,17 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
   disk_cache_goodvol_update (thread_p, volid, DISK_TEMPVOL_TEMP_PURPOSE,
 			     npages_toadd, true);
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   /* Set dirty header page, free it, and unlock it */
   pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
 
   return npages_toadd;
 
 error:
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
   return -1;
@@ -2182,6 +2234,8 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
     }
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   if (vhdr->purpose != DISK_PERMVOL_TEMP_PURPOSE)
     {
       /* Cannot reinitialize bitmaps of storage purposes other than temporary */
@@ -2232,6 +2286,8 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 			 vhdr->page_alloctb_npages - 1),
 			vhdr->sys_lastpage + 1, vhdr->purpose) != NO_ERROR)
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       /* Problems setting the map allocation tables, release the header page,
          dismount and destroy the volume, and return */
       pgbuf_unfix_and_init (thread_p, pgptr);
@@ -2239,6 +2295,8 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
     }
   else
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_set_lsa_as_temporary (thread_p, pgptr);
       pgbuf_unfix_and_init (thread_p, pgptr);
     }
@@ -2350,6 +2408,8 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   /* Do I need to log anything ? */
   if (logchange != false)
     {
@@ -2407,6 +2467,8 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
       goto error;
     }
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   if (flush == DISK_FLUSH)
     {
       assert (false);
@@ -2430,6 +2492,9 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
   return NO_ERROR;
 
 error:
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
   return ER_FAILED;
@@ -2474,6 +2539,8 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   /* Do I need to log anything ? */
   if (logchange == true)
     {
@@ -2494,6 +2561,8 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   if (disk_vhdr_set_next_vol_fullname (vhdr, next_volext_fullname) !=
       NO_ERROR)
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
       return ER_FAILED;
     }
@@ -2503,6 +2572,8 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   LOG_CS_ENTER (thread_p);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
   LOG_CS_EXIT ();
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
   if (flush == DISK_FLUSH_AND_INVALIDATE)
@@ -2554,10 +2625,14 @@ disk_set_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, const HFID * hfid)
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   log_append_undoredo_data (thread_p, RVDK_RESET_BOOT_HFID, &addr,
 			    sizeof (vhdr->boot_hfid), sizeof (*hfid),
 			    &vhdr->boot_hfid, &hfid);
   HFID_COPY (&(vhdr->boot_hfid), hfid);
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
   addr.pgptr = NULL;
@@ -2590,7 +2665,11 @@ disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid)
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   HFID_COPY (hfid, &(vhdr->boot_hfid));
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
@@ -2626,8 +2705,12 @@ disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   strncpy (next_volext_fullname, disk_vhdr_get_next_vol_fullname (vhdr),
 	   DB_MAX_PATH_LENGTH);
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
@@ -2766,6 +2849,8 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   vhdr->chkpt_lsa.pageid = log_chkpt_lsa->pageid;
   vhdr->chkpt_lsa.offset = log_chkpt_lsa->offset;
 
@@ -2773,6 +2858,8 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 #if 0
   (void) pgbuf_flush_all_unfixed (volid);
 #endif
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   log_skip_logging (thread_p, &addr);
   pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
@@ -2812,8 +2899,12 @@ disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa)
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   vol_lsa->pageid = vhdr->chkpt_lsa.pageid;
   vol_lsa->offset = vhdr->chkpt_lsa.offset;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -2848,7 +2939,12 @@ disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid,
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   memcpy (db_creation, &vhdr->db_creation, sizeof (*db_creation));
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -2916,6 +3012,8 @@ xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
 
       vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
 
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       *vol_purpose = vhdr->purpose;
       *vol_ntotal_pages = vhdr->total_pages;
       *vol_nfree_pages = vhdr->free_pages;
@@ -2964,8 +3062,13 @@ xdisk_get_purpose_and_sys_lastpage (THREAD_ENTRY * thread_p, INT16 volid,
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   *vol_purpose = vhdr->purpose;
   *sys_lastpage = vhdr->sys_lastpage;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -3046,7 +3149,12 @@ disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid)
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   total_sects = vhdr->total_sects;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -3172,8 +3280,13 @@ xdisk_get_fullname (THREAD_ENTRY * thread_p, INT16 volid, char *vol_fullname)
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   strncpy (vol_fullname, disk_vhdr_get_vol_fullname (vhdr),
 	   DB_MAX_PATH_LENGTH);
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -3213,12 +3326,16 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   remarks = (char *) malloc ((int) strlen (disk_vhdr_get_vol_remarks (vhdr))
 			     + 1);
   if (remarks != NULL)
     {
       strcpy (remarks, disk_vhdr_get_vol_remarks (vhdr));
     }
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -3323,6 +3440,8 @@ disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   /*
    * If there are not any more sectors availables, share the whole volume.
    * If the number of free pages is less than the number of pages in a sector,
@@ -3349,6 +3468,9 @@ disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects,
   if (alloc_sect == NULL_SECTID)
     {
       alloc_sect = DISK_SECTOR_WITH_ALL_PAGES;
+
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
     }
   else
@@ -3372,6 +3494,9 @@ disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects,
       log_append_undoredo_data (thread_p, RVDK_VHDR_SCALLOC, &addr,
 				sizeof (undo_data), sizeof (redo_data),
 				&undo_data, &redo_data);
+
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
     }
@@ -3464,6 +3589,8 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   vol_purpose = vhdr->purpose;
 
   if (sectid < 0 || sectid > vhdr->total_sects
@@ -3485,6 +3612,8 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
    */
   if (vhdr->free_pages < npages)
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
       return NULL_PAGEID;
     }
@@ -3546,6 +3675,8 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
   if (new_pageid == NULL_PAGEID)
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
       if (sectid != DISK_SECTOR_WITH_ALL_PAGES)
 	{
@@ -3621,6 +3752,9 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       log_append_undoredo_data (thread_p, RVDK_VHDR_PGALLOC, &addr,
 				sizeof (undo_data), sizeof (redo_data),
 				&undo_data, &redo_data);
+
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
     }
@@ -4031,6 +4165,8 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   if (sectid < 0)
     {
       for (; sectid < 0 && nsects > 0; sectid++, nsects--)
@@ -4076,6 +4212,8 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       goto exit_on_error;
     }
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   /* To sync volume header and page bitmap, use RVDK_IDDEALLOC_WITH_VOLHEADER.
      See disk_id_dealloc() function */
   pgbuf_unfix_and_init (thread_p, addr.pgptr);
@@ -4086,6 +4224,8 @@ exit_on_error:
 
   if (addr.pgptr)
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
     }
 
@@ -4152,6 +4292,8 @@ disk_dealloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid,
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   if (pageid <= vhdr->sys_lastpage && pageid >= DISK_VOLHEADER_PAGE)
     {
       /* System error.. trying to deallocate a system page */
@@ -4173,6 +4315,8 @@ disk_dealloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid,
   /* If there is not any error update the header page too */
   npages = disk_id_dealloc (thread_p, volid, vhdr->page_alloctb_page1,
 			    pageid, npages, DISK_PAGE);
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
@@ -4388,6 +4532,8 @@ disk_get_maxcontiguous_numpages (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   npages = vhdr->free_pages;
   if (npages <= 1)
     {
@@ -4399,6 +4545,9 @@ disk_get_maxcontiguous_numpages (THREAD_ENTRY * thread_p, INT16 volid,
 				       vhdr->sys_lastpage + 1,
 				       vhdr->total_pages - 1, max_npages);
 end:
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   pgbuf_unfix_and_init (thread_p, pgptr);
 
   return npages;
@@ -4439,6 +4588,8 @@ disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   *num_freepgs = vhdr->free_pages;
   if (*num_freepgs <= arecontiguous_npages)
     {
@@ -4458,6 +4609,8 @@ disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
     {
       npages = *num_freepgs;
     }
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
@@ -4650,12 +4803,18 @@ disk_isvalid_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid)
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   valid = ((pageid <= vhdr->sys_lastpage)
 	   ? DISK_VALID
 	   : ((pageid > vhdr->total_pages)
 	      ? DISK_INVALID
 	      : disk_id_isvalid (thread_p, volid, vhdr->page_alloctb_page1,
 				 pageid)));
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
   return valid;
@@ -4730,7 +4889,12 @@ disk_get_overhead_numpages (THREAD_ENTRY * thread_p, INT16 volid)
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   noverhead_pages = vhdr->sys_lastpage + 1;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
@@ -4785,6 +4949,8 @@ disk_repair (THREAD_ENTRY * thread_p, INT16 volid, int dk_type)
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   if (dk_type == DISK_PAGE)
     {
       nfree =
@@ -4818,6 +4984,9 @@ disk_repair (THREAD_ENTRY * thread_p, INT16 volid, int dk_type)
     {
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
     }
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   pgbuf_unfix_and_init (thread_p, pgptr);
 
   return error;
@@ -4855,6 +5024,10 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  assert_release (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE);
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   nfree = disk_id_get_max_frees (thread_p, volid, vhdr->page_alloctb_page1,
 				 vhdr->sys_lastpage + 1,
 				 vhdr->total_pages - 1);
@@ -4868,6 +5041,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	}
       else if (repair)
 	{
+	  DISK_VERIFY_VAR_HEADER (vhdr);
+
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 
 	  if (disk_repair (thread_p, volid, DISK_PAGE) != NO_ERROR)
@@ -4887,6 +5062,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	    }
 
 	  vhdr = (DISK_VAR_HEADER *) pgptr;
+
+	  DISK_VERIFY_VAR_HEADER (vhdr);
 	}
       else
 	{
@@ -4910,6 +5087,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	}
       else if (repair)
 	{
+	  DISK_VERIFY_VAR_HEADER (vhdr);
+
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 
 	  if (disk_repair (thread_p, volid, DISK_SECTOR) != NO_ERROR)
@@ -4929,6 +5108,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	    }
 
 	  vhdr = (DISK_VAR_HEADER *) pgptr;
+
+	  DISK_VERIFY_VAR_HEADER (vhdr);
 	}
       else
 	{
@@ -4939,23 +5120,40 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	}
     }
 
+  /* the following check also added to the DISK_VERIFY_VAR_HEADER() macro */
   if (vhdr->sect_npgs != DISK_SECTOR_NPAGES
       || vhdr->total_sects != CEIL_PTVDIV (vhdr->total_pages, vhdr->sect_npgs)
-      || vhdr->sect_alloctb_npages != CEIL_PTVDIV (vhdr->total_sects,
-						   DISK_PAGE_BIT)
-      || vhdr->page_alloctb_npages != CEIL_PTVDIV (vhdr->total_pages,
-						   DISK_PAGE_BIT)
       || vhdr->sect_alloctb_page1 != DISK_VOLHEADER_PAGE + 1
       || vhdr->page_alloctb_page1 != (vhdr->sect_alloctb_page1
 				      + vhdr->sect_alloctb_npages)
       || vhdr->sys_lastpage != (vhdr->page_alloctb_page1
 				+ vhdr->page_alloctb_npages - 1))
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 	      fileio_get_volume_label (volid));
       valid = DISK_INVALID;
     }
+  else if (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
+    {
+      if (vhdr->sect_alloctb_npages != CEIL_PTVDIV (vhdr->total_sects,
+						    DISK_PAGE_BIT)
+	  || vhdr->page_alloctb_npages != CEIL_PTVDIV (vhdr->total_pages,
+						       DISK_PAGE_BIT))
+	{
+	  DISK_VERIFY_VAR_HEADER (vhdr);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_DISK_INCONSISTENT_VOL_HEADER, 1,
+		  fileio_get_volume_label (volid));
+	  valid = DISK_INVALID;
+	}
+    }
+
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
@@ -4965,6 +5163,8 @@ error:
 
   if (pgptr != NULL)
     {
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, pgptr);
     }
 
@@ -5008,6 +5208,9 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid,
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   disk_vhdr_dump (fp, vhdr);
 
   /* Make sure the input parameters are OK */
@@ -5078,6 +5281,9 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid,
     }
 
   (void) fprintf (fp, "\n\n");
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
   return NO_ERROR;
@@ -5956,14 +6162,23 @@ disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
 	}
 
       vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       if (vhdr->purpose == purpose)
 	{
 	  *ntotal_pages = vhdr->total_pages;
 	  *nfree_pages = vhdr->free_pages;
+
+	  DISK_VERIFY_VAR_HEADER (vhdr);
+
 	  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
 	  return volid;
 	}
+
+      DISK_VERIFY_VAR_HEADER (vhdr);
+
       pgbuf_unfix_and_init (thread_p, hdr_pgptr);
     }
 
