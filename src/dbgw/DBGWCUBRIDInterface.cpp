@@ -24,6 +24,12 @@
 #include "DBGWDataBaseInterface.h"
 #include "DBGWCUBRIDInterface.h"
 
+#ifdef BUILD_MOCK
+#define cci_connect_with_url cci_mock_connect_with_url
+#define cci_prepare cci_mock_prepare
+#define cci_execute cci_mock_execute
+#endif
+
 namespace dbgw
 {
 
@@ -133,7 +139,7 @@ namespace dbgw
     DBGWCUBRIDConnection::DBGWCUBRIDConnection(const string &groupName,
         const string &host, int nPort, const DBGWDBInfoHashMap &dbInfoMap) :
       DBGWConnection(groupName, host, nPort, dbInfoMap), m_bClosed(false),
-      m_hCCIConnection(-1)
+      m_hCCIConnection(-1), m_bAutocommit(true)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -217,7 +223,7 @@ namespace dbgw
               connectionUrl << ":" << dbInfoMap["althosts"] << "&";
             }
 
-          connectionUrl << "logFile=" << "log/log/cci_dbgw.log"
+          connectionUrl << "logFile=" << DBGWLogger::getLogPath()
               << "&logOnException=true&logSlowQueries=true";
 
           m_hCCIConnection = cci_connect_with_url(
@@ -227,7 +233,10 @@ namespace dbgw
           if (m_hCCIConnection < 0)
             {
               CUBRIDException e(m_hCCIConnection, "Failed to connect database.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              string replace(e.what());
+              replace += "(" + connectionUrl.str();
+              replace += ")";
+              DBGW_LOG_ERROR(m_logger.getLogMessage(replace.c_str()).c_str());
               throw e;
             }
           DBGW_LOG_INFO(m_logger.getLogMessage("connection open.").c_str());
@@ -266,8 +275,7 @@ namespace dbgw
                   throw e;
                 }
 
-              DBGW_LOG_INFO(m_logger.getLogMessage("connection close.").
-                  c_str());
+              DBGW_LOG_INFO(m_logger.getLogMessage("connection close.").c_str());
             }
 
           return true;
@@ -317,6 +325,55 @@ namespace dbgw
           if (nResult < 0)
             {
               CUBRIDException e(nResult, "Failed to set autocommit.");
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+
+          m_bAutocommit = bAutocommit;
+
+          return true;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+    }
+
+    bool DBGWCUBRIDConnection::setIsolation(DBGW_TRAN_ISOLATION isolation)
+    {
+      clearException();
+
+      try
+        {
+          T_CCI_ERROR cciError;
+          int nResult;
+          int nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+
+          switch (isolation)
+            {
+            case DBGW_TRAN_UNKNOWN:
+              return true;
+            case DBGW_TRAN_SERIALIZABLE:
+              nIsolation = TRAN_SERIALIZABLE;
+              break;
+            case DBGW_TRAN_REPEATABLE_READ:
+              nIsolation = TRAN_REP_CLASS_REP_INSTANCE;
+              break;
+            case DBGW_TRAN_READ_COMMITED:
+              nIsolation = TRAN_REP_CLASS_COMMIT_INSTANCE;
+              break;
+            case DBGW_TRAN_READ_UNCOMMITED:
+              nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+              break;
+            }
+
+          nResult = cci_set_db_parameter(m_hCCIConnection,
+              CCI_PARAM_ISOLATION_LEVEL, (void *) &nIsolation, &cciError);
+          if (nResult < 0)
+            {
+              CUBRIDException e(nResult, cciError,
+                  "Failed to set isolation level");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -377,6 +434,13 @@ namespace dbgw
           setLastException(e);
           return false;
         }
+    }
+
+    string DBGWCUBRIDConnection::dump()
+    {
+      boost::format status("[DUMP][CONN] DBGW(AU : %d), CCI(AU : %d)");
+      status % m_bAutocommit % cci_get_autocommit(m_hCCIConnection);
+      return status.str();
     }
 
     DBGWCUBRIDPreparedStatement::~DBGWCUBRIDPreparedStatement()

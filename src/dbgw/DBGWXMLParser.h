@@ -45,6 +45,7 @@ namespace dbgw
     virtual ~ DBGWExpatXMLProperties();
 
     const char *get(const char *szName, bool bRequired);
+    const char *getCString(const char *szName, bool bRequired);
     int getInt(const char *szName, bool bRequired);
     bool getBool(const char *szName, bool bRequired);
     DBGWValueType getValueType(const char *szName);
@@ -105,7 +106,8 @@ namespace dbgw
   class DBGWConnectorParser: public DBGWParser
   {
   public:
-    DBGWConnectorParser(const string &fileName, DBGWConnector &connector);
+    DBGWConnectorParser(const string &fileName,
+        DBGWConnectorSharedPtr pConnector);
     virtual ~ DBGWConnectorParser();
 
   protected:
@@ -116,16 +118,18 @@ namespace dbgw
   private:
     void parseService(DBGWExpatXMLProperties &properties);
     void parseGroup(DBGWExpatXMLProperties &properties);
+    void parsePool(DBGWExpatXMLProperties &properties);
     void parseDBInfo(DBGWExpatXMLProperties &properties);
     void parseHost(DBGWExpatXMLProperties &properties);
     void parseAltHost(DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWConnector &m_connector;
+    DBGWConnectorSharedPtr m_pConnector;
     DBGWServiceSharedPtr m_pService;
     DBGWGroupSharedPtr m_pGroup;
     DBGWDBInfoHashMap *m_pDBnfoMap;
     DBGWHostSharedPtr m_pHost;
+    size_t m_nPoolSize;
   };
 
   static const int MAX_QUERY_LEN = 4096;
@@ -133,7 +137,8 @@ namespace dbgw
   class DBGWQueryMapParser: public DBGWParser
   {
   public:
-    DBGWQueryMapParser(const string &fileName, DBGWQueryMapper &queryMapper);
+    DBGWQueryMapParser(const string &fileName,
+        DBGWQueryMapperSharedPtr pQueryMapper);
     virtual ~ DBGWQueryMapParser();
 
   protected:
@@ -150,7 +155,7 @@ namespace dbgw
     void parseGroup(DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWQueryMapper &m_queryMapper;
+    DBGWQueryMapperSharedPtr m_pQueryMapper;
     string m_sqlName;
     string m_globalGroupName;
     string m_localGroupName;
@@ -166,9 +171,10 @@ namespace dbgw
   class DBGWConfigurationParser: public DBGWParser
   {
   public:
-    DBGWConfigurationParser(const string &fileName, DBGWConnector &connector);
     DBGWConfigurationParser(const string &fileName,
-        DBGWQueryMapper &m_queryMapper);
+        DBGWConnectorSharedPtr pConnector);
+    DBGWConfigurationParser(const string &fileName,
+        DBGWQueryMapperSharedPtr pQueryMapper);
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
@@ -180,8 +186,8 @@ namespace dbgw
     void parseInclude(DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWConnector *m_pConnector;
-    DBGWQueryMapper *m_pQueryMapper;
+    DBGWConnectorSharedPtr m_pConnector;
+    DBGWQueryMapperSharedPtr m_pQueryMapper;
   };
 
 }

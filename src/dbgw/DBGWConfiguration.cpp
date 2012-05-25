@@ -33,45 +33,6 @@ namespace dbgw
 {
 
   static const char *GROUP_NAME_ALL = "__ALL__";
-  static const int INVALID_VERSION = -1;
-
-  static Mutex g_version_mutex;
-
-  Mutex::Mutex()
-  {
-    if (pthread_mutex_init(&m_stMutex, NULL) != 0)
-      {
-        MutexInitFailException e;
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-  }
-
-  Mutex::~Mutex()
-  {
-    pthread_mutex_destroy(&m_stMutex);
-  }
-
-  void Mutex::lock()
-  {
-    pthread_mutex_lock(&m_stMutex);
-  }
-
-  void Mutex::unlock()
-  {
-    pthread_mutex_unlock(&m_stMutex);
-  }
-
-  MutexLock::MutexLock(Mutex *pMutex) :
-    m_pMutex(pMutex)
-  {
-    m_pMutex->lock();
-  }
-
-  MutexLock::~MutexLock()
-  {
-    m_pMutex->unlock();
-  }
 
   DBGWHost::DBGWHost(const string &address, int nPort) :
     m_address(address), m_nPort(nPort), m_nWeight(0)
@@ -87,6 +48,7 @@ namespace dbgw
 
   DBGWHost::~DBGWHost()
   {
+    m_dbInfoMap.clear();
   }
 
   void DBGWHost::setAltHost(const char *szAddress, const char *szPort)
@@ -118,16 +80,344 @@ namespace dbgw
     return m_dbInfoMap;
   }
 
+  DBGWExecuter::DBGWExecuter(DBGWExecuterPool &executerPool,
+      DBGWConnectionSharedPtr pConnection) :
+    m_bClosed(false), m_bDestroyed(false), m_bAutocommit(false),
+    m_bInTran(false), m_bInvalid(false), m_pConnection(pConnection),
+    m_executerPool(executerPool)
+  {
+  }
+
+  DBGWExecuter::~DBGWExecuter()
+  {
+    clearException();
+
+    try
+      {
+        destroy();
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+      }
+  }
+
+  const DBGWResultSharedPtr DBGWExecuter::execute(DBGWBoundQuerySharedPtr pQuery,
+      const DBGWParameter *pParameter)
+  {
+    DBGW_FAULT_PARTIAL_PREPARE_FAIL(pQuery->getGroupName());
+    DBGW_FAULT_PARTIAL_EXECUTE_FAIL(pQuery->getGroupName());
+
+    if (m_bAutocommit == false)
+      {
+        m_bInTran = true;
+      }
+
+    DBGWPreparedStatementSharedPtr pStmt;
+    DBGWPreparedStatementHashMap::iterator it = m_preparedStatmentMap.find(
+        pQuery->getSqlKey());
+    if (it != m_preparedStatmentMap.end())
+      {
+        pStmt = it->second;
+
+        if (pStmt != NULL)
+          {
+            pStmt->init(pQuery);
+          }
+      }
+
+    if (pStmt == NULL)
+      {
+        pStmt = m_pConnection->preparedStatement(pQuery);
+        if (pStmt == NULL)
+          {
+            throw getLastException();
+          }
+        m_preparedStatmentMap[pQuery->getSqlKey()] = pStmt;
+      }
+
+    pStmt->setParameter(pParameter);
+
+    return pStmt->execute();
+  }
+
+  void DBGWExecuter::setAutocommit(bool bAutocommit)
+  {
+    if (m_pConnection->setAutocommit(bAutocommit) == false)
+      {
+        throw getLastException();
+      }
+
+    m_bAutocommit = bAutocommit;
+  }
+
+  void DBGWExecuter::commit()
+  {
+    m_bInTran = false;
+    if (m_pConnection->commit() == false)
+      {
+        throw getLastException();
+      }
+  }
+
+  void DBGWExecuter::rollback()
+  {
+    m_bInTran = false;
+    if (m_pConnection->rollback() == false)
+      {
+        throw getLastException();
+      }
+  }
+
+  void DBGWExecuter::close()
+  {
+    if (m_bClosed)
+      {
+        return;
+      }
+
+    m_bClosed = true;
+
+    if (m_bInTran)
+      {
+        if (m_pConnection->rollback() == false)
+          {
+            m_bInvalid = true;
+            m_pConnection->close();
+          }
+      }
+    m_executerPool.returnExecuter(this);
+  }
+
+  void DBGWExecuter::destroy()
+  {
+    if (m_bDestroyed)
+      {
+        return;
+      }
+
+    m_bClosed = true;
+    m_bDestroyed = true;
+
+    DBGWInterfaceException exception;
+    for (DBGWPreparedStatementHashMap::iterator it =
+        m_preparedStatmentMap.begin(); it != m_preparedStatmentMap.end(); it++)
+      {
+        if (it->second->close() == false)
+          {
+            exception = getLastException();
+          }
+      }
+
+    m_preparedStatmentMap.clear();
+
+    if (m_pConnection->close() == false)
+      {
+        exception = getLastException();
+      }
+
+    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+      {
+        throw exception;
+      }
+  }
+
+  const char *DBGWExecuter::getGroupName() const
+  {
+    return m_executerPool.getGroupName();
+  }
+
+  bool DBGWExecuter::isIgnoreResult() const
+  {
+    return m_executerPool.isIgnoreResult();
+  }
+
+  void DBGWExecuter::init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation)
+  {
+    m_bClosed = false;
+    m_bDestroyed = false;
+    m_bAutocommit = bAutocommit;
+
+    if (m_pConnection->setAutocommit(bAutocommit) == false)
+      {
+        throw getLastException();
+      }
+
+    if (m_pConnection->setIsolation(isolation) == false)
+      {
+        throw getLastException();
+      }
+  }
+
+  bool DBGWExecuter::isInvalid() const
+  {
+    return m_bInvalid;
+  }
+
+  DBGWExecuterPool::DBGWExecuterPool(DBGWGroup &group) :
+    m_group(group), m_bAutocommit(true), m_isolation(DBGW_TRAN_UNKNOWN)
+  {
+  }
+
+  DBGWExecuterPool::~DBGWExecuterPool()
+  {
+    clearException();
+
+    try
+      {
+        close();
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+      }
+  }
+
+  void DBGWExecuterPool::init(size_t nCount)
+  {
+    DBGWExecuter *pExecuter = NULL;
+    for (size_t i = 0; i < nCount; i++)
+      {
+        pExecuter = new DBGWExecuter(*this, m_group.getConnection());
+
+        m_poolMutex.lock();
+        m_executerList.push_back(pExecuter);
+        m_poolMutex.unlock();
+        usleep(1000);
+      }
+  }
+
+  DBGWExecuter *DBGWExecuterPool::getExecuter()
+  {
+    DBGWExecuter *pExecuter = NULL;
+    bool bError = false;
+    do
+      {
+        try
+          {
+            m_poolMutex.lock();
+            if (m_executerList.empty())
+              {
+                m_poolMutex.unlock();
+                break;
+              }
+
+            pExecuter = m_executerList.front();
+            m_executerList.pop_front();
+            m_poolMutex.unlock();
+
+            if (pExecuter->isInvalid())
+              {
+                bError = true;
+              }
+            else
+              {
+                pExecuter->init(m_bAutocommit, m_isolation);
+                bError = false;
+              }
+          }
+        catch (DBGWException &e)
+          {
+            bError = true;
+            usleep(1000);
+          }
+
+        if (bError)
+          {
+            if (pExecuter != NULL)
+              {
+                delete pExecuter;
+              }
+          }
+      }
+    while (bError == true);
+
+    if (pExecuter == NULL)
+      {
+        pExecuter = new DBGWExecuter(*this, m_group.getConnection());
+      }
+
+    return pExecuter;
+  }
+
+  void DBGWExecuterPool::returnExecuter(DBGWExecuter *pExecuter)
+  {
+    MutexLock lock(&m_poolMutex);
+
+    m_executerList.push_back(pExecuter);
+  }
+
+  void DBGWExecuterPool::close()
+  {
+    if (m_bClosed)
+      {
+        return;
+      }
+
+    m_bClosed = true;
+
+    MutexLock lock(&m_poolMutex);
+
+    DBGWExecuter *pExecuter = NULL;
+    DBGWInterfaceException exception;
+    while (!m_executerList.empty())
+      {
+        pExecuter = m_executerList.front();
+        m_executerList.pop_front();
+
+        if (pExecuter != NULL)
+          {
+            try
+              {
+                pExecuter->destroy();
+              }
+            catch (DBGWException &e)
+              {
+                exception = e;
+              }
+
+            delete pExecuter;
+          }
+      }
+
+    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+      {
+        throw exception;
+      }
+  }
+
+  void DBGWExecuterPool::setDefaultAutocommit(bool bAutocommit)
+  {
+    m_bAutocommit = bAutocommit;
+  }
+
+  void DBGWExecuterPool::setDefaultTransactionIsolation(DBGW_TRAN_ISOLATION isolation)
+  {
+    m_isolation = isolation;
+  }
+
+  const char *DBGWExecuterPool::getGroupName() const
+  {
+    return m_group.getName().c_str();
+  }
+
+  bool DBGWExecuterPool::isIgnoreResult() const
+  {
+    return m_group.isIgnoreResult();
+  }
+
   DBGWGroup::DBGWGroup(const string &fileName, const string &name,
       const string &description, bool bInactivate, bool bIgnoreResult) :
     m_fileName(fileName), m_name(name), m_description(description),
     m_bInactivate(bInactivate), m_bIgnoreResult(bIgnoreResult),
-    m_nModular(0), m_nSchedule(0)
+    m_nModular(0), m_nSchedule(0), m_executerPool(*this)
   {
   }
 
   DBGWGroup::~DBGWGroup()
   {
+    m_hostList.clear();
+    m_executerPool.close();
   }
 
   void DBGWGroup::addHost(DBGWHostSharedPtr pHost)
@@ -138,6 +428,8 @@ namespace dbgw
 
   DBGWConnectionSharedPtr DBGWGroup::getConnection()
   {
+    DBGW_FAULT_PARTIAL_CONNECT_FAIL(m_name.c_str());
+
     int min = 0, max = 0;
     if (m_nModular <= 0)
       {
@@ -174,6 +466,16 @@ namespace dbgw
     throw e;
   }
 
+  void DBGWGroup::initPool(size_t nCount)
+  {
+    m_executerPool.init(nCount);
+  }
+
+  DBGWExecuter *DBGWGroup::getExecuter()
+  {
+    return m_executerPool.getExecuter();
+  }
+
   const string &DBGWGroup::getFileName() const
   {
     return m_fileName;
@@ -208,20 +510,24 @@ namespace dbgw
 
   DBGWService::~DBGWService()
   {
+    m_groupList.clear();
   }
 
   void DBGWService::addGroup(DBGWGroupSharedPtr pGroup)
   {
-    DBGWGroupHashMap::iterator it = m_groupMap.find(pGroup->getName());
-    if (it != m_groupMap.end())
+    for (DBGWGroupList::iterator it = m_groupList.begin(); it
+        != m_groupList.end(); it++)
       {
-        DuplicateGroupNameException e(pGroup->getName(), pGroup->getFileName(),
-            it->first);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
+        if ((*it)->getName() == pGroup->getName())
+          {
+            DuplicateGroupNameException e(pGroup->getName(), pGroup->getFileName(),
+                (*it)->getName());
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
       }
 
-    m_groupMap[pGroup->getName()] = pGroup;
+    m_groupList.push_back(pGroup);
   }
 
   const string &DBGWService::getFileName() const
@@ -241,278 +547,195 @@ namespace dbgw
 
   bool DBGWService::empty() const
   {
-    return m_groupMap.empty();
+    return m_groupList.empty();
   }
 
-  DBGWGroupHashMap &DBGWService::getGroupMap()
-  {
-    return m_groupMap;
-  }
-
-  DBGWSQLConnectionManager::DBGWSQLConnectionManager(DBGWConnector *pConnector) :
-    m_pConnector(pConnector), m_bClosed(false)
+  DBGWResource::DBGWResource() :
+    m_nRefCount(0)
   {
   }
 
-  DBGWSQLConnectionManager::~DBGWSQLConnectionManager()
+  DBGWResource::~DBGWResource()
   {
-    if (m_bClosed)
+  }
+
+  void DBGWResource::modifyRefCount(int nDelta)
+  {
+    m_nRefCount += nDelta;
+  }
+
+  int DBGWResource::getRefCount()
+  {
+    return m_nRefCount;
+  }
+
+  const int DBGWVersionedResource::INVALID_VERSION = -1;
+
+  DBGWVersionedResource::DBGWVersionedResource() :
+    m_nVersion(INVALID_VERSION)
+  {
+  }
+
+  DBGWVersionedResource::~DBGWVersionedResource()
+  {
+    MutexLock lock(&m_mutex);
+
+    m_resourceMap.clear();
+  }
+
+  int DBGWVersionedResource::getVersion()
+  {
+    MutexLock lock(&m_mutex);
+
+    if (m_nVersion > INVALID_VERSION)
+      {
+        m_pResource->modifyRefCount(1);
+      }
+
+    return m_nVersion;
+  }
+
+  void DBGWVersionedResource::closeVersion(int nVersion)
+  {
+    if (nVersion <= INVALID_VERSION)
       {
         return;
       }
 
-    try
-      {
-        close();
-      }
-    catch (DBGWException &e)
-      {
-      }
-  }
+    MutexLock lock(&m_mutex);
 
-  void DBGWSQLConnectionManager::addConnectionGroup(DBGWGroupSharedPtr pGroup)
-  {
-    try
+    DBGWResource *pResource = getResourceWithUnlock(nVersion);
+    pResource->modifyRefCount(-1);
+
+    DBGWResourceMap::iterator it = m_resourceMap.begin();
+    while (it != m_resourceMap.end())
       {
-        DBGWSQLConnection conn;
-        conn.groupName = pGroup->getName();
-        conn.pConnection = pGroup->getConnection();
-        conn.bIgnoreResult = pGroup->isIgnoreResult();
-        conn.bNeedCommitOrRollback = false;
-        m_connectionMap[conn.groupName] = conn;
-      }
-    catch (DBGWException &e)
-      {
-        if (pGroup->isIgnoreResult() == false)
+        if (it->second->getRefCount() <= 0)
           {
-            throw;
-          }
-      }
-  }
-
-  DBGWPreparedStatementSharedPtr DBGWSQLConnectionManager::preparedStatement(
-      const DBGWBoundQuerySharedPtr p_query)
-  {
-    DBGWLogger logger(p_query->getGroupName(), p_query->getSqlName());
-
-    DBGWSQLConnectionHashMap::iterator cit = m_connectionMap.find(
-        p_query->getGroupName());
-    if (cit != m_connectionMap.end())
-      {
-        if (!m_bAutocommit)
-          {
-            cit->second.bNeedCommitOrRollback = true;
-          }
-
-        DBGWPreparedStatementHashMap::const_iterator it =
-            m_preparedStatmentMap.find(p_query->getSqlKey());
-        if (it != m_preparedStatmentMap.end())
-          {
-            DBGW_LOG_INFO(logger.getLogMessage("reuse prepare statement.").
-                c_str());
-            it->second->setReused();
-            return it->second;
+            int i = it->first;
+            m_resourceMap.erase(it++);
           }
         else
           {
-            DBGWPreparedStatementSharedPtr p =
-                cit->second.pConnection->preparedStatement(p_query);
-            if (p == NULL)
-              {
-                throw getLastException();
-              }
-            m_preparedStatmentMap[p_query->getSqlKey()] = p;
-            return p;
+            ++it;
           }
-      }
-    else
-      {
-        NotExistConnException e(p_query->getGroupName());
-        DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
-        throw e;
       }
   }
 
-  bool DBGWSQLConnectionManager::isIgnoreResult(const char *szGroupName)
+  void DBGWVersionedResource::putResource(DBGWResourceSharedPtr pResource)
   {
-    DBGWSQLConnectionHashMap::const_iterator it = m_connectionMap.find(
-        szGroupName);
-    if (it != m_connectionMap.end())
+    MutexLock lock(&m_mutex);
+
+    if (m_pResource != NULL && m_nVersion > INVALID_VERSION)
       {
-        return it->second.bIgnoreResult;
+        m_resourceMap[m_nVersion] = m_pResource;
       }
-    else
-      {
-        NotExistConnException e(szGroupName);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
+
+    m_nVersion = (m_nVersion == INT_MAX) ? 0 : m_nVersion + 1;
+    m_pResource = pResource;
   }
 
-  void DBGWSQLConnectionManager::setAutocommit(bool bAutocommit)
+  DBGWResource *DBGWVersionedResource::getNewResource()
   {
-    DBGWInterfaceException exception;
+    MutexLock lock(&m_mutex);
 
-    m_bAutocommit = bAutocommit;
-    for (DBGWSQLConnectionHashMap::const_iterator it = m_connectionMap.begin(); it
-        != m_connectionMap.end(); it++)
+    if (m_nVersion <= INVALID_VERSION)
       {
-        if (it->second.pConnection->setAutocommit(bAutocommit) == false)
-          {
-            exception = getLastException();
-          }
+        return NULL;
       }
 
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-      {
-        throw exception;
-      }
+    return m_pResource.get();
   }
 
-  void DBGWSQLConnectionManager::commit()
+  DBGWResource *DBGWVersionedResource::getResource(int nVersion)
   {
-    DBGWInterfaceException exception;
+    MutexLock lock(&m_mutex);
 
-    for (DBGWSQLConnectionHashMap::iterator it = m_connectionMap.begin(); it
-        != m_connectionMap.end(); it++)
-      {
-        if (commit(it->second) == false)
-          {
-            exception = getLastException();
-          }
-      }
-
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-      {
-        throw exception;
-      }
+    return getResourceWithUnlock(nVersion);
   }
 
-  void DBGWSQLConnectionManager::rollback()
+  DBGWResource *DBGWVersionedResource::getResourceWithUnlock(int nVersion)
   {
-    DBGWInterfaceException exception;
-
-    for (DBGWSQLConnectionHashMap::iterator it = m_connectionMap.begin(); it
-        != m_connectionMap.end(); it++)
+    if (nVersion <= INVALID_VERSION)
       {
-        if (rollback(it->second) == false)
-          {
-            exception = getLastException();
-          }
-      }
-
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-      {
-        throw exception;
-      }
-  }
-
-  void DBGWSQLConnectionManager::close()
-  {
-    if (m_bClosed)
-      {
-        return;
-      }
-
-    DBGWInterfaceException exception;
-
-    m_bClosed = true;
-    for (DBGWPreparedStatementHashMap::iterator it =
-        m_preparedStatmentMap.begin(); it != m_preparedStatmentMap.end(); it++)
-      {
-        if (it->second->close() == false)
-          {
-            exception = getLastException();
-          }
-      }
-    m_preparedStatmentMap.clear();
-
-    for (DBGWSQLConnectionHashMap::iterator it = m_connectionMap.begin(); it
-        != m_connectionMap.end(); it++)
-      {
-        if (it->second.bNeedCommitOrRollback)
-          {
-            if (rollback(it->second) == false)
-              {
-                exception = getLastException();
-              }
-          }
-
-        if (m_pConnector->returnConnection(it->second.pConnection) == false)
-          {
-            exception = getLastException();
-          }
-      }
-    m_connectionMap.clear();
-
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-      {
-        throw exception;
-      }
-  }
-
-  DBGWStringList DBGWSQLConnectionManager::getGroupNameList() const
-  {
-    DBGWStringList groupNameList;
-    for (DBGWSQLConnectionHashMap::const_iterator it = m_connectionMap.begin(); it
-        != m_connectionMap.end(); it++)
-      {
-        groupNameList.push_back(it->second.groupName);
-      }
-    return groupNameList;
-  }
-
-  const DBGWConnection *DBGWSQLConnectionManager::getConnection(
-      const char *szGroupName) const
-  {
-    DBGWSQLConnectionHashMap::const_iterator cit = m_connectionMap.find(
-        szGroupName);
-    if (cit == m_connectionMap.end())
-      {
-        NotExistConnException e(szGroupName);
+        NotYetLoadedException e;
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
 
-    return cit->second.pConnection.get();
+    if (nVersion == m_nVersion)
+      {
+        return m_pResource.get();
+      }
+
+    DBGWResourceMap::iterator it = m_resourceMap.find(nVersion);
+    if (it == m_resourceMap.end())
+      {
+        NotExistVersionException e(nVersion);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    return it->second.get();
   }
 
-  bool DBGWSQLConnectionManager::commit(DBGWSQLConnection &connection)
+  size_t DBGWVersionedResource::size() const
   {
-    if (connection.bNeedCommitOrRollback)
-      {
-        DBGWLogger logger(connection.groupName.c_str());
-
-        connection.bNeedCommitOrRollback = false;
-        if (connection.pConnection->commit())
-          {
-            DBGW_LOG_INFO(logger.getLogMessage("commit").c_str());
-          }
-        else
-          {
-            return false;
-          }
-      }
-    return true;
+    return m_resourceMap.size();
   }
 
-  bool DBGWSQLConnectionManager::rollback(DBGWSQLConnection &connection)
+  void DBGWService::initPool(size_t nCount)
   {
-    if (connection.bNeedCommitOrRollback)
+    for (DBGWGroupList::iterator it = m_groupList.begin(); it
+        != m_groupList.end(); it++)
       {
-        DBGWLogger logger(connection.groupName.c_str());
-
-        connection.bNeedCommitOrRollback = false;
-        if (connection.pConnection->rollback())
+        if ((*it)->isInactivate() == true)
           {
-            DBGW_LOG_INFO(logger.getLogMessage("rollback").c_str());
+            continue;
           }
-        else
+
+        try
           {
-            return false;
+            (*it)->initPool(nCount);
+          }
+        catch (DBGWException &e)
+          {
+            if ((*it)->isIgnoreResult() == false)
+              {
+                throw;
+              }
+
+            clearException();
           }
       }
-    return true;
+  }
+
+  DBGWExecuterList DBGWService::getExecuterList()
+  {
+    DBGWExecuterList executerList;
+
+    for (DBGWGroupList::iterator it = m_groupList.begin(); it
+        != m_groupList.end(); it++)
+      {
+        if ((*it)->isInactivate() == true)
+          {
+            continue;
+          }
+
+        try
+          {
+            executerList.push_back((*it)->getExecuter());
+          }
+        catch (DBGWException &e)
+          {
+            if ((*it)->isIgnoreResult() == false)
+              {
+                throw;
+              }
+          }
+      }
+
+    return executerList;
   }
 
   /**
@@ -524,6 +747,7 @@ namespace dbgw
 
   DBGWQueryMapper::~DBGWQueryMapper()
   {
+    m_querySqlMap.clear();
   }
 
   void DBGWQueryMapper::addQuery(const string &sqlName, DBGWQuerySharedPtr pQuery)
@@ -531,33 +755,35 @@ namespace dbgw
     DBGWQuerySqlHashMap::iterator it = m_querySqlMap.find(sqlName);
     if (it != m_querySqlMap.end())
       {
-        DBGWQueryGroupHashMap &queryGroupMap = it->second;
+        DBGWQueryGroupList &queryGroupList = it->second;
         if (!strcmp(pQuery->getGroupName(), GROUP_NAME_ALL)
-            && !queryGroupMap.empty())
+            && !queryGroupList.empty())
           {
             DuplicateSqlNameException e(sqlName.c_str(), pQuery->getFileName(),
-                queryGroupMap.begin()->second-> getFileName());
+                queryGroupList[0]->getFileName());
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
 
-        DBGWQueryGroupHashMap::const_iterator cit = queryGroupMap.find(
-            pQuery->getGroupName());
-        if (cit != queryGroupMap.end())
+        for (DBGWQueryGroupList::const_iterator it = queryGroupList.begin(); it
+            != queryGroupList.end(); it++)
           {
-            DuplicateSqlNameException e(sqlName.c_str(), pQuery->getFileName(),
-                cit->second->getFileName());
-            DBGW_LOG_ERROR(e.what());
-            throw e;
+            if (!strcmp(pQuery->getGroupName(), (*it)->getGroupName()))
+              {
+                DuplicateSqlNameException e(sqlName.c_str(),
+                    pQuery->getFileName(), (*it)->getFileName());
+                DBGW_LOG_ERROR(e.what());
+                throw e;
+              }
           }
 
-        queryGroupMap[pQuery->getGroupName()] = pQuery;
+        queryGroupList.push_back(pQuery);
       }
     else
       {
-        DBGWQueryGroupHashMap queryGroupMap;
-        queryGroupMap[pQuery->getGroupName()] = pQuery;
-        m_querySqlMap[sqlName] = queryGroupMap;
+        DBGWQueryGroupList queryGroupList;
+        queryGroupList.push_back(pQuery);
+        m_querySqlMap[sqlName] = queryGroupList;
       }
   }
 
@@ -575,27 +801,24 @@ namespace dbgw
   DBGWBoundQuerySharedPtr DBGWQueryMapper::getQuery(const char *szSqlName,
       const char *szGroupName, const DBGWParameter *pParameter) const
   {
-    DBGWQuerySqlHashMap::const_iterator querySqlMapIt = m_querySqlMap.find(
+    DBGWQuerySqlHashMap::const_iterator it = m_querySqlMap.find(
         szSqlName);
-    if (querySqlMapIt == m_querySqlMap.end())
+    if (it == m_querySqlMap.end())
       {
         NotExistQueryInXmlException e(szSqlName);
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
 
-    const DBGWQueryGroupHashMap &queryGroupMap = querySqlMapIt->second;
-    DBGWQueryGroupHashMap::const_iterator groupMapIt = queryGroupMap.find(
-        GROUP_NAME_ALL);
-    if (groupMapIt != queryGroupMap.end())
+    const DBGWQueryGroupList &queryGroupList = it->second;
+    for (DBGWQueryGroupList::const_iterator it = queryGroupList.begin(); it
+        != queryGroupList.end(); it++)
       {
-        return groupMapIt->second->getDBGWBoundQuery(szGroupName, pParameter);
-      }
-
-    groupMapIt = queryGroupMap.find(szGroupName);
-    if (groupMapIt != queryGroupMap.end())
-      {
-        return groupMapIt->second->getDBGWBoundQuery(szGroupName, pParameter);
+        if (!strcmp((*it)->getGroupName(), GROUP_NAME_ALL) || !strcmp(
+            (*it)->getGroupName(), szGroupName))
+          {
+            return (*it)->getDBGWBoundQuery(szGroupName, pParameter);
+          }
       }
 
     return DBGWBoundQuerySharedPtr();
@@ -607,69 +830,56 @@ namespace dbgw
 
   DBGWConnector::~DBGWConnector()
   {
+    m_serviceList.clear();
   }
 
   void DBGWConnector::addService(DBGWServiceSharedPtr pService)
   {
-    DBGWServiceHashMap::iterator it = m_serviceMap.find(
-        pService->getNameSpace());
-    if (it != m_serviceMap.end())
+    for (DBGWServiceList::iterator it = m_serviceList.begin(); it
+        != m_serviceList.end(); it++)
       {
-        DuplicateNamespaceExeception e(pService->getNameSpace(),
-            pService->getFileName(), it->first);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
+        if ((*it)->getNameSpace() == pService->getNameSpace())
+          {
+            DuplicateNamespaceExeception e(pService->getNameSpace(),
+                pService->getFileName(), (*it)->getNameSpace());
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
       }
 
-    m_serviceMap[pService->getNameSpace()] = pService;
-  }
-
-  void DBGWConnector::clearService()
-  {
-    m_serviceMap.clear();
-  }
-
-  bool DBGWConnector::returnConnection(DBGWConnectionSharedPtr pConnection)
-  {
-    return pConnection->close();
+    m_serviceList.push_back(pService);
   }
 
   bool DBGWConnector::isValidateResult(const char *szNamespace) const
   {
-    DBGWServiceHashMap::const_iterator it = m_serviceMap.find(szNamespace);
-    if (it == m_serviceMap.end())
+    for (DBGWServiceList::const_iterator it = m_serviceList.begin(); it
+        != m_serviceList.end(); it++)
       {
-        NotExistNamespaceException e(szNamespace);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
+        if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
+          {
+            return (*it)->isValidateResult();
+          }
       }
 
-    return it->second->isValidateResult();
+    NotExistNamespaceException e(szNamespace);
+    DBGW_LOG_ERROR(e.what());
+    throw e;
   }
 
-  DBGWSQLConnectionManagerSharedPtr DBGWConnector::getSQLConnectionManger(
-      const char *szNamespace)
+  DBGWExecuterList DBGWConnector::getExecuterList(const char *szNamespace)
   {
-    DBGWServiceHashMap::iterator itMap = m_serviceMap.find(szNamespace);
-    if (itMap != m_serviceMap.end())
+    for (DBGWServiceList::iterator it = m_serviceList.begin(); it
+        != m_serviceList.end(); it++)
       {
-        const char *szConnectionUrl;
-        DBGWSQLConnectionManagerSharedPtr pConnGroupMgr(
-            new DBGWSQLConnectionManager(this));
-        DBGWGroupHashMap &groupMap = itMap->second->getGroupMap();
-        for (DBGWGroupHashMap::iterator it = groupMap.begin(); it
-            != groupMap.end(); it++)
+        if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
           {
-            pConnGroupMgr->addConnectionGroup(it->second);
+            return (*it)->getExecuterList();
           }
-        return pConnGroupMgr;
       }
-    else
-      {
-        NotExistNamespaceException e(szNamespace);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
+
+    NotExistNamespaceException e(szNamespace);
+    DBGW_LOG_ERROR(e.what());
+    throw e;
   }
 
   DBGWConfiguration::DBGWConfiguration()
@@ -688,10 +898,8 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
+    DBGWLogger::finalize();
     DBGWLogger::initialize();
-
-    m_stVersion.nConnectorVersion = INVALID_VERSION;
-    m_stVersion.nQueryMapperVersion = INVALID_VERSION;
   }
 
   DBGWConfiguration::DBGWConfiguration(const char *szConfFileName) :
@@ -701,10 +909,8 @@ namespace dbgw
 
     try
       {
+        DBGWLogger::finalize();
         DBGWLogger::initialize();
-
-        m_stVersion.nConnectorVersion = INVALID_VERSION;
-        m_stVersion.nQueryMapperVersion = INVALID_VERSION;
 
         if (loadConnector() == false)
           {
@@ -729,10 +935,8 @@ namespace dbgw
 
     try
       {
+        DBGWLogger::finalize();
         DBGWLogger::initialize();
-
-        m_stVersion.nConnectorVersion = INVALID_VERSION;
-        m_stVersion.nQueryMapperVersion = INVALID_VERSION;
 
         if (bLoadXml)
           {
@@ -769,7 +973,6 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWLogger::finalize();
   }
 
   bool DBGWConfiguration::loadConnector(const char *szXmlPath)
@@ -778,31 +981,20 @@ namespace dbgw
 
     try
       {
-        int nCurrVersion = m_stVersion.nConnectorVersion;
-        int nNextVersion = nCurrVersion == INT_MAX ? 0 : nCurrVersion + 1;
-
-        DBGWConnectorInfo info;
-        info.nRefCount = 0;
+        DBGWConnectorSharedPtr pConnector(new DBGWConnector());
 
         if (szXmlPath == NULL)
           {
-            DBGWConfigurationParser parser(m_confFileName, info.connector);
+            DBGWConfigurationParser parser(m_confFileName, pConnector);
             DBGWParser::parse(&parser);
           }
         else
           {
-            DBGWConnectorParser parser(szXmlPath, info.connector);
+            DBGWConnectorParser parser(szXmlPath, pConnector);
             DBGWParser::parse(&parser);
           }
 
-        m_connectorMap[nNextVersion] = info;
-
-        MutexLock lock(&g_version_mutex);
-        m_stVersion.nConnectorVersion = nNextVersion;
-        if (nCurrVersion != INVALID_VERSION)
-          {
-            modifyConnectorVersionRefCount(nCurrVersion, 0);
-          }
+        m_connResource.putResource(pConnector);
         return true;
       }
     catch (DBGWException &e)
@@ -818,38 +1010,27 @@ namespace dbgw
 
     try
       {
-        int nCurrVersion = m_stVersion.nQueryMapperVersion;
-        int nNextVersion = nCurrVersion == INT_MAX ? 0 : nCurrVersion + 1;
+        DBGWQueryMapperSharedPtr pQueryMapper(new DBGWQueryMapper());
 
-        DBGWQueryMapperInfo info;
-        info.nRefCount = 0;
-
-        if (bAppend && nCurrVersion > INVALID_VERSION)
+        DBGWQueryMapper *pPrevQueryMapper =
+            (DBGWQueryMapper *) m_queryResource.getNewResource();
+        if (bAppend && pPrevQueryMapper != NULL)
           {
-            DBGWQueryMapperInfoHashMap::iterator it = getQueryMapperInfo(
-                nCurrVersion);
-            info.queryMapper.copyFrom(it->second.queryMapper);
+            pQueryMapper->copyFrom(*pPrevQueryMapper);
           }
 
         if (szXmlPath == NULL)
           {
-            DBGWConfigurationParser parser(m_confFileName, info.queryMapper);
+            DBGWConfigurationParser parser(m_confFileName, pQueryMapper);
             DBGWParser::parse(&parser);
           }
         else
           {
-            DBGWQueryMapParser parser(szXmlPath, info.queryMapper);
+            DBGWQueryMapParser parser(szXmlPath, pQueryMapper);
             DBGWParser::parse(&parser);
           }
 
-        m_queryMapperMap[nNextVersion] = info;
-
-        MutexLock lock(&g_version_mutex);
-        m_stVersion.nQueryMapperVersion = nNextVersion;
-        if (nCurrVersion != INVALID_VERSION)
-          {
-            modifyQueryMapperVersionRefCount(nCurrVersion, 0);
-          }
+        m_queryResource.putResource(pQueryMapper);
         return true;
       }
     catch (DBGWException &e)
@@ -859,152 +1040,50 @@ namespace dbgw
       }
   }
 
-  void DBGWConfiguration::closeVersion(const DBGWConfigurationVersion &stVersion)
+#ifdef QA_TEST
+  int DBGWConfiguration::getConnectorSize() const
   {
-    modifyConnectorVersionRefCount(stVersion.nConnectorVersion, -1);
-    modifyQueryMapperVersionRefCount(stVersion.nQueryMapperVersion, -1);
+    return m_connResource.size();
   }
 
-  DBGWSQLConnectionManagerSharedPtr DBGWConfiguration::getSQLConnectionManger(
-      const DBGWConfigurationVersion &stVersion, const char *szNamespace)
+  int DBGWConfiguration::getQueryMapperSize() const
   {
-    int nVersion = stVersion.nConnectorVersion;
+    return m_queryResource.size();
+  }
+#endif
 
-    if (nVersion <= INVALID_VERSION)
-      {
-        NotYetLoadedException e;
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    DBGWConnectorInfoHashMap::iterator it = m_connectorMap.find(nVersion);
-    if (it == m_connectorMap.end())
-      {
-        NotExistVersionException e(nVersion);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    return it->second.connector.getSQLConnectionManger(szNamespace);
+  void DBGWConfiguration::closeVersion(const DBGWConfigurationVersion &stVersion)
+  {
+    m_connResource.closeVersion(stVersion.nConnectorVersion);
+    m_queryResource.closeVersion(stVersion.nQueryMapperVersion);
   }
 
   DBGWConfigurationVersion DBGWConfiguration::getVersion()
   {
-    MutexLock lock(&g_version_mutex);
+    DBGWConfigurationVersion stVersion;
+    stVersion.nConnectorVersion = m_connResource.getVersion();
+    stVersion.nQueryMapperVersion = m_queryResource.getVersion();
 
-    if (m_stVersion.nConnectorVersion <= INVALID_VERSION
-        || m_stVersion.nQueryMapperVersion <= INVALID_VERSION)
-      {
-        NotYetLoadedException e;
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    modifyConnectorVersionRefCount(m_stVersion.nConnectorVersion, 1);
-    modifyQueryMapperVersionRefCount(m_stVersion.nQueryMapperVersion, 1);
-
-    return m_stVersion;
+    return stVersion;
   }
 
-  DBGWBoundQuerySharedPtr DBGWConfiguration::getQuery(
-      const DBGWConfigurationVersion &stVersion, const char *szSqlName,
-      const char *szGroupName, const DBGWParameter *pParameter)
+  DBGWConnector *DBGWConfiguration::getConnector(
+      const DBGWConfigurationVersion &stVersion)
   {
-    int nVersion = stVersion.nQueryMapperVersion;
+    DBGWConnector *pConnector = (DBGWConnector *) m_connResource.getResource(
+        stVersion.nConnectorVersion);
 
-    DBGWQueryMapperInfoHashMap::iterator it = getQueryMapperInfo(nVersion);
-    if (it == m_queryMapperMap.end())
-      {
-        NotYetLoadedException e;
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    return it->second.queryMapper.getQuery(szSqlName, szGroupName, pParameter);
+    return pConnector;
   }
 
-  bool DBGWConfiguration::isValidateResult(
-      const DBGWConfigurationVersion &stVersion, const char *szNamespace) const
+  DBGWQueryMapper *DBGWConfiguration::getQueryMapper(
+      const DBGWConfigurationVersion &stVersion)
   {
-    int nVersion = stVersion.nConnectorVersion;
+    DBGWQueryMapper *pQueryMapper =
+        (DBGWQueryMapper *) m_queryResource.getResource(
+            stVersion.nQueryMapperVersion);
 
-    if (nVersion <= INVALID_VERSION)
-      {
-        NotYetLoadedException e;
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    DBGWConnectorInfoHashMap::const_iterator it = m_connectorMap.find(nVersion);
-    if (it == m_connectorMap.end())
-      {
-        NotExistVersionException e(nVersion);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    return it->second.connector.isValidateResult(szNamespace);
-  }
-
-  DBGWQueryMapperInfoHashMap::iterator DBGWConfiguration::getQueryMapperInfo(
-      int nVersion)
-  {
-    if (nVersion <= INVALID_VERSION)
-      {
-        return m_queryMapperMap.end();
-      }
-
-    DBGWQueryMapperInfoHashMap::iterator it = m_queryMapperMap.find(nVersion);
-    if (it == m_queryMapperMap.end())
-      {
-        NotExistVersionException e(nVersion);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    return it;
-  }
-
-  void DBGWConfiguration::modifyConnectorVersionRefCount(int nVersion, int delta)
-  {
-    int nCurrVersion = m_stVersion.nConnectorVersion;
-
-    if (nVersion <= INVALID_VERSION)
-      {
-        return;
-      }
-
-    DBGWConnectorInfoHashMap::iterator it = m_connectorMap.find(nVersion);
-    if (it == m_connectorMap.end())
-      {
-        NotExistVersionException e(nVersion);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
-
-    it->second.nRefCount += delta;
-    if (it->second.nRefCount == 0 && nVersion != nCurrVersion)
-      {
-        m_connectorMap.erase(it);
-      }
-  }
-
-  void DBGWConfiguration::modifyQueryMapperVersionRefCount(int nVersion,
-      int delta)
-  {
-    int nCurrVersion = m_stVersion.nQueryMapperVersion;
-
-    DBGWQueryMapperInfoHashMap::iterator it = getQueryMapperInfo(nVersion);
-    if (it == m_queryMapperMap.end())
-      {
-        return;
-      }
-
-    it->second.nRefCount += delta;
-    if (it->second.nRefCount == 0 && nVersion != nCurrVersion)
-      {
-        m_queryMapperMap.erase(it);
-      }
+    return pQueryMapper;
   }
 
 }

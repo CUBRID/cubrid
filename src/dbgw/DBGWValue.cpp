@@ -352,7 +352,7 @@ namespace dbgw
 
     try
       {
-        if (m_type != DBGW_VAL_TYPE_STRING)
+        if (m_type != DBGW_VAL_TYPE_STRING && m_type != DBGW_VAL_TYPE_CHAR)
           {
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_STRING);
             DBGW_LOG_ERROR(e.what());
@@ -635,10 +635,10 @@ namespace dbgw
      */
     if (m_valueList.size() <= nIndex)
       {
-        m_valueList.resize(nIndex);
+        m_valueList.resize(nIndex + 1);
       }
 
-    if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)
+    if (m_valueList[nIndex] != NULL)
       {
         removeIndexMap(nIndex);
       }
@@ -664,10 +664,10 @@ namespace dbgw
      */
     if (m_valueList.size() <= nIndex)
       {
-        m_valueList.resize(nIndex);
+        m_valueList.resize(nIndex + 1);
       }
 
-    if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)
+    if (m_valueList[nIndex] != NULL)
       {
         removeIndexMap(nIndex);
       }
@@ -694,10 +694,10 @@ namespace dbgw
      */
     if (m_valueList.size() <= nIndex)
       {
-        m_valueList.resize(nIndex);
+        m_valueList.resize(nIndex + 1);
       }
 
-    if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)
+    if (m_valueList[nIndex] != NULL)
       {
         removeIndexMap(nIndex);
       }
@@ -724,10 +724,10 @@ namespace dbgw
      */
     if (m_valueList.size() <= nIndex)
       {
-        m_valueList.resize(nIndex);
+        m_valueList.resize(nIndex + 1);
       }
 
-    if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)
+    if (m_valueList[nIndex] != NULL)
       {
         removeIndexMap(nIndex);
       }
@@ -754,10 +754,10 @@ namespace dbgw
      */
     if (m_valueList.size() <= nIndex)
       {
-        m_valueList.resize(nIndex);
+        m_valueList.resize(nIndex + 1);
       }
 
-    if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)
+    if (m_valueList[nIndex] != NULL)
       {
         removeIndexMap(nIndex);
       }
@@ -773,7 +773,7 @@ namespace dbgw
       {
         if (m_valueList.size() <= nIndex)
           {
-            m_valueList.resize(nIndex);
+            m_valueList.resize(nIndex + 1);
           }
 
         if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)

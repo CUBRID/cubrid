@@ -45,9 +45,8 @@ namespace dbgw
     bool setAutocommit(bool bAutocommit);
     bool commit();
     bool rollback();
-    const DBGWResultSharedPtr exec(const char *szSqlName);
     const DBGWResultSharedPtr exec(const char *szSqlName,
-        const DBGWParameter *pParameter);
+        const DBGWParameter *pParameter = NULL);
     bool close();
     void setValidateResult(bool bValidateResult);
 
@@ -57,13 +56,17 @@ namespace dbgw
   private:
     void validateResult(const DBGWLogger &logger, DBGWResultSharedPtr lhs,
         DBGWResultSharedPtr rhs);
+    void checkClientIsValid();
 
   private:
     DBGWConfiguration &m_configuration;
     DBGWConfigurationVersion m_stVersion;
-    DBGWSQLConnectionManagerSharedPtr m_pSqlConnectionManager;
+    DBGWConnector *m_pConnector;
+    DBGWQueryMapper *m_pQueryMapper;
+    DBGWExecuterList m_executerList;
     bool m_bClosed;
     bool m_bValidateResult;
+    bool m_bValidClient;
   };
 
 }

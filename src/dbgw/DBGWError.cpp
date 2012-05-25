@@ -334,6 +334,12 @@ namespace dbgw
   {
   }
 
+  InvalidClientException::InvalidClientException() throw() :
+    DBGWException(DBGWErrorCode::CLIENT_INVALID_CLIENT,
+        "The client is invalid.")
+  {
+  }
+
   NotAllowedNextException::NotAllowedNextException() throw() :
     DBGWException(DBGWErrorCode::RESULT_NOT_ALLOWED_NEXT,
         "The next() operation is allowed only select query.")
@@ -453,6 +459,13 @@ namespace dbgw
         DBGWErrorCode::XML_INVALID_PROPERTY_VALUE,
         boost::format("The value of property %s have to be [%s].")
         % szValue % szCorrectValueSet)
+  {
+  }
+
+  InvalidXMLSyntaxException::InvalidXMLSyntaxException(
+      const char *szXmlErrorMessage, const char *szFileName) throw() :
+    DBGWException(DBGWErrorCode::XML_INVALID_SYNTAX,
+        boost::format("%s in %s") % szXmlErrorMessage % szFileName)
   {
   }
 

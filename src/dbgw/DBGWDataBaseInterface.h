@@ -25,6 +25,15 @@ namespace dbgw
   namespace db
   {
 
+    typedef enum
+    {
+      DBGW_TRAN_UNKNOWN = 0,
+      DBGW_TRAN_READ_UNCOMMITED,
+      DBGW_TRAN_READ_COMMITED,
+      DBGW_TRAN_REPEATABLE_READ,
+      DBGW_TRAN_SERIALIZABLE
+    } DBGW_TRAN_ISOLATION;
+
     class DBGWPreparedStatement;
     class DBGWResult;
 
@@ -48,6 +57,7 @@ namespace dbgw
       virtual DBGWPreparedStatementSharedPtr preparedStatement(
           const DBGWBoundQuerySharedPtr p_query) = 0;
       virtual bool setAutocommit(bool bAutocommit) = 0;
+      virtual bool setIsolation(DBGW_TRAN_ISOLATION isolation) = 0;
       virtual bool commit() = 0;
       virtual bool rollback() = 0;
 
@@ -58,6 +68,10 @@ namespace dbgw
 
     protected:
       const DBGWLogger m_logger;
+
+    public:
+      /* For DEBUG */
+      virtual string dump() = 0;
 
     private:
       string m_host;
@@ -73,7 +87,7 @@ namespace dbgw
     class DBGWPreparedStatement
     {
     public:
-      DBGWPreparedStatement(const DBGWBoundQuerySharedPtr p_query);
+      DBGWPreparedStatement(DBGWBoundQuerySharedPtr pQuery);
       virtual ~ DBGWPreparedStatement();
 
       virtual bool close() = 0;
@@ -84,7 +98,7 @@ namespace dbgw
       virtual void setChar(size_t nIndex, char cValue);
       virtual void setParameter(const DBGWParameter *pParameter);
       DBGWResultSharedPtr execute();
-      virtual void setReused();
+      virtual void init(DBGWBoundQuerySharedPtr pQuery);
 
     public:
       virtual bool isReused() const;
@@ -99,7 +113,7 @@ namespace dbgw
       const DBGWLogger m_logger;
 
     private:
-      const DBGWBoundQuerySharedPtr m_pQuery;
+      DBGWBoundQuerySharedPtr m_pQuery;
       DBGWParameter m_parameter;
       bool m_bReuesed;
     };
@@ -140,6 +154,9 @@ namespace dbgw
 
     protected:
       const DBGWLogger m_logger;
+
+    protected:
+      void clear();
 
     private:
       int m_nAffectedRow;

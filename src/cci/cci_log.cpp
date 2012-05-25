@@ -38,9 +38,11 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <time.h>
+#include <direct.h>
 #else
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #endif
 
@@ -49,13 +51,15 @@
 #include <string>
 #include <map>
 
-#include "cci_log.h"
 #include "cci_common.h"
+#include "cci_log.h"
 
-static const int LOG_BUFFER_SIZE = 16384;
+static const int LOG_BUFFER_SIZE = 1024 * 20;
 static const int LOG_ER_OPEN = -1;
-static const long int LOG_FLUSH_SIZE = 1024 * 1024;	/* byte */
-static const long int LOG_FLUSH_USEC = 1 * 1000000;	/* usec */
+static const long int LOG_FLUSH_SIZE = 1024 * 1024; /* byte */
+static const long int LOG_FLUSH_USEC = 1 * 1000000; /* usec */
+static const char *cciLogLevelStr[] =
+{ "OFF", "ERROR", "WARN", "INFO", "DEBUG" };
 
 using namespace std;
 
@@ -92,8 +96,9 @@ namespace cci
 class _Logger
 {
 public:
-  _Logger(const char *path):base(path), roleTime(time(0)),
-    level(CCI_LOG_LEVEL_INFO), unflushedBytes(0), nextFlushTime(0)
+  _Logger(const char *path) :
+    base(path), roleTime(time(0)), level(CCI_LOG_LEVEL_INFO),
+    unflushedBytes(0), nextFlushTime(0), forceFlush(false)
   {
   }
 
@@ -155,14 +160,25 @@ public:
     return this->level >= level;
   }
 
+  void setForceFlush(bool forceFlush)
+  {
+    this->forceFlush = forceFlush;
+  }
+
 private:
   void write(const char *msg)
   {
+    if (!out.is_open())
+      {
+        return;
+      }
+
     out << msg;
 
     unflushedBytes += strlen(msg);
 
-    if (unflushedBytes >= LOG_FLUSH_SIZE || now() >= nextFlushTime)
+    if (forceFlush || unflushedBytes >= LOG_FLUSH_SIZE || now()
+        >= nextFlushTime)
       {
         flush();
       }
@@ -179,11 +195,11 @@ private:
     cal.tm_mon += 1;
 
     char buf[128];
-    unsigned long tid = getThreadId();
-    snprintf(buf, 128,
-        "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]", cal.tm_year,
-        cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min, cal.tm_sec,
-        (int)(tv.tv_usec / 1000), tid, cciLogLevelStr[level]);
+    unsigned long tid = gettid();
+    snprintf(buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
+        cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
+        cal.tm_sec, (int)(tv.tv_usec / 1000), tid,
+        cciLogLevelStr[level]);
 
     write(buf);
   }
@@ -273,7 +289,7 @@ private:
         *p = '\0';
         if (*q == sep[0] || *q == sep[1])
           {
-            makeDirectory(dir);
+            mkdir(dir, 0755);
           }
         q++;
       }
@@ -286,10 +302,6 @@ private:
     return tv.tv_usec;
   }
 
-protected:
-  virtual void makeDirectory(const char *path) = 0;
-  virtual unsigned int getThreadId() = 0;
-
 private:
   ofstream out;
   cci::_Mutex critical;
@@ -298,77 +310,27 @@ private:
   CCI_LOG_LEVEL level;
   long int unflushedBytes;
   long int nextFlushTime;
+  bool forceFlush;
 };
 
-#ifdef WINDOWS
-class WindowsLogger:public _Logger
+typedef map<string, _Logger *> MapPathLogger;
+typedef MapPathLogger::iterator IteratorPathLogger;
+static MapPathLogger mapPathLogger;
+
+Logger cci_log_add(const char *path)
 {
-public:
-  WindowsLogger(const char *path):_Logger(path)
-  {
-  }
-
-protected:
-  virtual void makeDirectory(const char *path)
-  {
-    CreateDirectory(path, NULL);
-  }
-
-  virtual unsigned int getThreadId()
-  {
-    return GetCurrentThreadId();
-  }
-};
-#else
-class LinuxLogger:public _Logger
-{
-public:
-  LinuxLogger(const char *path):_Logger(path)
-  {
-  }
-
-protected:
-  virtual void makeDirectory(const char *path)
-  {
-    mkdir(path, 0755);
-  }
-
-  virtual unsigned int getThreadId()
-  {
-    return getpid();
-  }
-};
-#endif
-
-typedef map < string, _Logger * >MapPathLogger;
-typedef
-MapPathLogger::iterator
-IteratorPathLogger;
-static
-MapPathLogger
-mapPathLogger;
-
-Logger
-cci_log_add(const char *path)
-{
-  _Logger *
-  logger = NULL;
+  _Logger *logger = NULL;
 
   try
     {
-#ifdef WINDOWS
-      logger = new WindowsLogger(path);
-#else
-      logger = new LinuxLogger(path);
-#endif
+      logger = new _Logger(path);
       logger->open();
     }
   catch (...)
     {
       if (logger != NULL)
         {
-          delete
-          logger;
+          delete logger;
         }
       return NULL;
     }
@@ -381,11 +343,9 @@ cci_log_add(const char *path)
   return logger;
 }
 
-Logger
-cci_log_get(const char *path)
+Logger cci_log_get(const char *path)
 {
-  IteratorPathLogger
-  i = mapPathLogger.find(path);
+  IteratorPathLogger i = mapPathLogger.find(path);
   if (i != mapPathLogger.end())
     {
       return i->second;
@@ -396,26 +356,20 @@ cci_log_get(const char *path)
     }
 }
 
-void
-cci_log_finalize(void)
+void cci_log_finalize(void)
 {
-  IteratorPathLogger
-  i = mapPathLogger.begin();
+  IteratorPathLogger i = mapPathLogger.begin();
 
   for (; i != mapPathLogger.end(); ++i)
     {
-      delete
-      i->
-      second;
+      delete i-> second;
     }
   mapPathLogger.clear();
 }
 
-void
-cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
+void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
 {
-  _Logger *
-  l = (_Logger *) logger;
+  _Logger *l = (_Logger *) logger;
 
   if (l == NULL)
     {
@@ -424,10 +378,8 @@ cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
 
   if (l->isLoggerWritable(level))
     {
-      char
-      buf[LOG_BUFFER_SIZE];
-      va_list
-      vl;
+      char buf[LOG_BUFFER_SIZE];
+      va_list vl;
 
       va_start(vl, format);
       vsnprintf(buf, LOG_BUFFER_SIZE, format, vl);
@@ -437,25 +389,19 @@ cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
     }
 }
 
-void
-cci_log_remove(const char *path)
+void cci_log_remove(const char *path)
 {
-  IteratorPathLogger
-  i = mapPathLogger.find(path);
+  IteratorPathLogger i = mapPathLogger.find(path);
   if (i != mapPathLogger.end())
     {
-      delete
-      i->
-      second;
+      delete i-> second;
       mapPathLogger.erase(i);
     }
 }
 
-void
-cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)
+void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)
 {
-  _Logger *
-  l = (_Logger *) logger;
+  _Logger *l = (_Logger *) logger;
 
   if (l == NULL)
     {
@@ -463,4 +409,16 @@ cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)
     }
 
   l->setLevel(level);
+}
+
+void cci_log_set_force_flush(Logger logger, bool force_flush)
+{
+  _Logger *l = (_Logger *) logger;
+
+  if (l == NULL)
+    {
+      return;
+    }
+
+  l->setForceFlush(force_flush);
 }

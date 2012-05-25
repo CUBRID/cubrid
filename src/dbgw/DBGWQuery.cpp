@@ -32,8 +32,6 @@ namespace dbgw
       const DBGWQuery &query) :
     m_sql(szSql), m_groupName(szGroupName), m_query(query)
   {
-    m_sqlKey = m_groupName;
-    m_sqlKey += ".";
     m_sqlKey += m_sql;
   }
 
@@ -170,10 +168,22 @@ namespace dbgw
         m_queryPartList.push_back(p);
         return true;
       case ':':
-        m_bindParamNameList.push_back(
-            m_query. substr(nStart + 1, nEnd - nStart - 1));
-        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
-        m_queryPartList.push_back(p);
+        /**
+         * in mysql, ':=' is session variable operator.
+         */
+        if (m_query[nStart + 1] == '=')
+          {
+            p = DBGWQueryPartSharedPtr(
+                new DBGWSQLQueryPart(m_query. substr(nStart, nEnd - nStart)));
+            m_queryPartList.push_back(p);
+          }
+        else
+          {
+            m_bindParamNameList.push_back(
+                m_query. substr(nStart + 1, nEnd - nStart - 1));
+            p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
+            m_queryPartList.push_back(p);
+          }
         return true;
       default:
         if (bForce || m_query[nEnd] == '#' || m_query[nEnd] == ':')

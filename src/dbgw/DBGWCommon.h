@@ -20,6 +20,7 @@
 #include <ext/hash_map>
 #include <vector>
 #include <stack>
+#include <list>
 #include <string>
 #include <iostream>
 #include <sstream>
@@ -28,64 +29,87 @@
 #include <boost/lexical_cast.hpp>
 #include <cci_log.h>
 #include <cas_cci.h>
+#include "DBGWMock.h"
 
 #ifndef DBGWHASHMAP_H_
 #define DBGWHASHMAP_H_
 
-#define QA_TEST			/* used to test private method */
-//#define MOCK_TEST             /* used to test cci fail test  */
-
-#ifdef MOCK_TEST
-#include "DBGWCCIMock.h"
-#else
-#include <cas_cci.h>
-#endif
-
 namespace __gnu_cxx
 {
-template<> struct hash<std::string>
-{
-	size_t operator ()(const std::string & x) const
-	{
-		return hash<const char *> ()(x.c_str());
-	}
-};
+  template<> struct hash<std::string>
+  {
+    size_t operator()(const std::string &x) const
+    {
+      return hash<const char *> ()(x.c_str());
+    }
+  };
 }
 
 namespace dbgw
 {
 
-using namespace __gnu_cxx;
-using namespace std;
-using namespace std::tr1;
+  using namespace __gnu_cxx;
+  using namespace std;
+  using namespace std::tr1;
 
-struct dbgwConstCharCompareFunc
-{
-	bool operator ()(const char *s1, const char *s2) const
-	{
-		return strcmp(s1, s2) == 0;
-	}
-};
+  struct dbgwConstCharCompareFunc
+  {
+    bool operator()(const char *s1, const char *s2) const
+    {
+      return strcmp(s1, s2) == 0;
+    }
+  };
 
-struct dbgwStringCompareFunc
-{
-	bool operator ()(const string & s1, const string & s2) const
-	{
-		return s1.compare(s2) == 0;
-	}
-};
+  struct dbgwStringCompareFunc
+  {
+    bool operator()(const string &s1, const string &s2) const
+    {
+      return s1.compare(s2) == 0;
+    }
+  };
 
-struct dbgwIntCompareFunc
-{
-	bool operator ()(int n1, int n2) const
-	{
-		return n1 == n2;
-	}
-};
+  struct dbgwIntCompareFunc
+  {
+    bool operator()(int n1, int n2) const
+    {
+      return n1 == n2;
+    }
+  };
 
-typedef vector<string> DBGWStringList;
-typedef vector<int> DBGWIntegerList;
-typedef long long int int64;
+  typedef vector<string> DBGWStringList;
+  typedef vector<int> DBGWIntegerList;
+  typedef long long int int64;
+
+  class Mutex
+  {
+  public:
+    Mutex();
+    ~ Mutex();
+
+    void lock();
+    void unlock();
+
+  private:
+    pthread_mutex_t m_stMutex;
+
+    Mutex(const Mutex &);
+    void operator=(const Mutex &);
+  };
+
+  class MutexLock
+  {
+  public:
+    explicit MutexLock(Mutex *pMutex);
+    ~MutexLock();
+    void unlock();
+
+  private:
+    Mutex *m_pMutex;
+    bool m_bUnlocked;
+
+    MutexLock(const MutexLock &);
+    void operator=(const MutexLock &);
+  };
 
 }
 

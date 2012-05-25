@@ -27,43 +27,44 @@ namespace dbgw
 
     enum Enum
     {
-      NO_ERROR 								= 0,
+      NO_ERROR                                  = 0,
 
-      CONF_NOT_EXIST_NAMESPACE 				= -100,
-      CONF_NOT_EXIST_QUERY_IN_XML 			= -101,
-      CONF_NOT_EXIST_ADDED_HOST 			= -102,
-      CONF_FETCH_HOST_FAIL 					= -103,
-      CONF_NOT_YET_LOADED 					= -104,
-      CONF_NOT_EXIST_VERSION 				= -105,
+      CONF_NOT_EXIST_NAMESPACE                  = -22100,
+      CONF_NOT_EXIST_QUERY_IN_XML               = -22101,
+      CONF_NOT_EXIST_ADDED_HOST                 = -22102,
+      CONF_FETCH_HOST_FAIL                      = -22103,
+      CONF_NOT_YET_LOADED                       = -22104,
+      CONF_NOT_EXIST_VERSION                    = -22105,
 
-      SQL_NOT_EXIST_CONN 					= -200,
-      SQL_INVALID_SQL 						= -201,
-      SQL_NOT_EXIST_PARAM 					= -202,
-      SQL_EXECUTE_BEFORE_PREPARE 			= -203,
+      SQL_NOT_EXIST_CONN                        = -22200,
+      SQL_INVALID_SQL                           = -22201,
+      SQL_NOT_EXIST_PARAM                       = -22202,
+      SQL_EXECUTE_BEFORE_PREPARE                = -22203,
 
-      VALUE_NOT_EXIST_SET 					= -300,
-      VALUE_MISMATCH_VALUE_TYPE 			= -301,
-      VALUE_INVALID_VALUE_TYPE 				= -302,
+      VALUE_NOT_EXIST_SET                       = -22300,
+      VALUE_MISMATCH_VALUE_TYPE                 = -22301,
+      VALUE_INVALID_VALUE_TYPE                  = -22302,
 
-      CLIENT_MULTISET_IGNORE_FLAG_FALSE 	= -400,
+      CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
+      CLIENT_INVALID_CLIENT                     = -22401,
 
-      RESULT_NOT_ALLOWED_NEXT 				= -500,
-      RESULT_NOT_ALLOWED_GET_METADATA 		= -501,
-      RESULT_NOT_ALLOWED_OPERATION 			= -502,
-      RESULT_VALIDATE_FAIL 					= -503,
+      RESULT_NOT_ALLOWED_NEXT                   = -22500,
+      RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
+      RESULT_NOT_ALLOWED_OPERATION              = -22502,
+      RESULT_VALIDATE_FAIL                      = -22503,
 
-      INTERFACE_ERROR 						= -600,
+      INTERFACE_ERROR                           = -22600,
 
-      XML_FAIL_CREATE_PARSER 				= -700,
-      XML_DUPLICATE_NAMESPACE 				= -701,
-      XML_DUPLICATE_SQLNAME 				= -702,
-      XML_DUPLICATE_GROUPNAME 				= -703,
-      XML_NOT_EXIST_NODE 					= -704,
-      XML_NOT_EXIST_PROPERTY 				= -705,
-      XML_INVALID_PROPERTY_VALUE 			= -706,
-      XML_INVALID_SYNTAX 					= -707,
+      XML_FAIL_CREATE_PARSER                    = -22700,
+      XML_DUPLICATE_NAMESPACE                   = -22701,
+      XML_DUPLICATE_SQLNAME                     = -22702,
+      XML_DUPLICATE_GROUPNAME                   = -22703,
+      XML_NOT_EXIST_NODE                        = -22704,
+      XML_NOT_EXIST_PROPERTY                    = -22705,
+      XML_INVALID_PROPERTY_VALUE                = -22706,
+      XML_INVALID_SYNTAX                        = -22707,
 
-      MUTEX_INIT_FAIL 						= -800
+      MUTEX_INIT_FAIL                           = -22800
     };
 
   }
@@ -209,6 +210,12 @@ namespace dbgw
     MultisetIgnoreResultFlagFalseException(const char *szSqlName) throw();
   };
 
+  class InvalidClientException: public DBGWException
+  {
+  public:
+    InvalidClientException() throw();
+  };
+
   class NotAllowedNextException: public DBGWException
   {
   public:
@@ -284,6 +291,13 @@ namespace dbgw
   public:
     InvalidPropertyValueException(const char *szValue,
         const char *szCorrectValueSet) throw();
+  };
+
+  class InvalidXMLSyntaxException: public DBGWException
+  {
+  public:
+    InvalidXMLSyntaxException(const char *szXmlErrorMessage,
+        const char *szFileName) throw();
   };
 
   class MutexInitFailException: public DBGWException

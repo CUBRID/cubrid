@@ -100,6 +100,13 @@ EXPORTS
 	cci_set_holdability
 	cci_get_holdability
 	
+	cci_log_get
+	cci_log_finalize
+	cci_log_write
+	cci_log_remove
+	cci_log_set_level
+	cci_log_set_force_flush
+	
 ;          WEP PRIVATE
 ; To implement your own Windows Exit Procedure add the following
 ; function to your application (referring to it in the .def file is

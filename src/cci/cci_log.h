@@ -46,9 +46,6 @@ typedef enum
   CCI_LOG_LEVEL_DEBUG
 } CCI_LOG_LEVEL;
 
-static const char *cciLogLevelStr[] =
-  { "OFF", "ERROR", "WARN", "INFO", "DEBUG" };
-
 #define CCI_LOG_ERROR(logger, ...) \
   do { \
           cci_log_write(CCI_LOG_LEVEL_ERROR, logger, __VA_ARGS__); \
@@ -74,12 +71,13 @@ extern "C"
 {
 #endif
 
-  extern Logger cci_log_get (const char *path);
-  extern void cci_log_finalize (void);
-  extern void cci_log_write (CCI_LOG_LEVEL level, Logger logger,
-			     const char *format, ...);
-  extern void cci_log_remove (const char *path);
-  extern void cci_log_set_level (Logger logger, CCI_LOG_LEVEL level);
+  extern Logger cci_log_get(const char *path);
+  extern void cci_log_finalize(void);
+  extern void cci_log_write(CCI_LOG_LEVEL level, Logger logger,
+      const char *format, ...);
+  extern void cci_log_remove(const char *path);
+  extern void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level);
+  extern void cci_log_set_force_flush(Logger logger, bool force_flush);
 
 #ifdef __cplusplus
 }

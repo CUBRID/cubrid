@@ -25,35 +25,6 @@ namespace dbgw
 
   using namespace db;
 
-  class Mutex
-  {
-  public:
-    inline Mutex();
-    inline ~ Mutex();
-
-    inline void lock();
-    inline void unlock();
-
-  private:
-    pthread_mutex_t m_stMutex;
-
-    Mutex(const Mutex &);
-    void operator=(const Mutex &);
-  };
-
-  class MutexLock
-  {
-  public:
-    explicit MutexLock(Mutex *pMutex);
-    ~MutexLock();
-
-  private:
-    Mutex *m_pMutex;
-
-    MutexLock(const MutexLock &);
-    void operator=(const MutexLock &);
-  };
-
   struct DBGWSQLConnection;
   class DBGWSQLConnectionManager;
   class DBGWConnector;
@@ -85,6 +56,78 @@ namespace dbgw
 
   typedef vector<DBGWHostSharedPtr> DBGWHostList;
 
+  class DBGWExecuterPool;
+
+  class DBGWGroup;
+
+  typedef hash_map<string, DBGWPreparedStatementSharedPtr, hash<string> ,
+          dbgwStringCompareFunc> DBGWPreparedStatementHashMap;
+
+  class DBGWExecuter
+  {
+  public:
+    virtual ~DBGWExecuter();
+
+    const DBGWResultSharedPtr execute(DBGWBoundQuerySharedPtr pQuery,
+        const DBGWParameter *pParameter = NULL);
+    void setAutocommit(bool bAutocommit);
+    void commit();
+    void rollback();
+    void close();
+    void destroy();
+
+  public:
+    const char *getGroupName() const;
+    bool isIgnoreResult() const;
+
+  private:
+    DBGWExecuter(DBGWExecuterPool &executerPool,
+        DBGWConnectionSharedPtr pConnection);
+    void init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation);
+    bool isInvalid() const;
+
+  private:
+    bool m_bClosed;
+    bool m_bDestroyed;
+    bool m_bAutocommit;
+    bool m_bInTran;
+    bool m_bInvalid;
+    DBGWConnectionSharedPtr m_pConnection;
+    /* (sqlName => DBGWPreparedStatement) */
+    DBGWPreparedStatementHashMap m_preparedStatmentMap;
+    DBGWExecuterPool &m_executerPool;
+
+    friend class DBGWExecuterPool;
+  };
+
+  typedef list<DBGWExecuter *> DBGWExecuterList;
+
+  class DBGWExecuterPool
+  {
+  public:
+    DBGWExecuterPool(DBGWGroup &group);
+    virtual ~DBGWExecuterPool();
+
+    void init(size_t nCount);
+    DBGWExecuter *getExecuter();
+    void returnExecuter(DBGWExecuter *pExecuter);
+    void close();
+    void setDefaultAutocommit(bool bAutocommit);
+    void setDefaultTransactionIsolation(DBGW_TRAN_ISOLATION isolation);
+
+  public:
+    const char *getGroupName() const;
+    bool isIgnoreResult() const;
+
+  private:
+    bool m_bClosed;
+    DBGWGroup &m_group;
+    DBGWExecuterList m_executerList;
+    Mutex m_poolMutex;
+    bool m_bAutocommit;
+    DBGW_TRAN_ISOLATION m_isolation;
+  };
+
   class DBGWGroup
   {
   public:
@@ -94,6 +137,8 @@ namespace dbgw
 
     void addHost(DBGWHostSharedPtr pHost);
     DBGWConnectionSharedPtr getConnection();
+    void initPool(size_t nCount);
+    DBGWExecuter *getExecuter();
 
   public:
     const string &getFileName() const;
@@ -111,12 +156,12 @@ namespace dbgw
     int m_nModular;
     int m_nSchedule;
     DBGWHostList m_hostList;
+    DBGWExecuterPool m_executerPool;
   };
 
   typedef shared_ptr<DBGWGroup> DBGWGroupSharedPtr;
 
-  typedef hash_map<string, DBGWGroupSharedPtr, hash<string> ,
-          dbgwStringCompareFunc> DBGWGroupHashMap;
+  typedef vector<DBGWGroupSharedPtr> DBGWGroupList;
 
   class DBGWService
   {
@@ -126,7 +171,8 @@ namespace dbgw
     virtual ~ DBGWService();
 
     void addGroup(DBGWGroupSharedPtr pGroup);
-    DBGWGroupHashMap &getGroupMap();
+    void initPool(size_t nCount);
+    DBGWExecuterList getExecuterList();
 
   public:
     const string &getFileName() const;
@@ -139,88 +185,54 @@ namespace dbgw
     string m_nameSpace;
     string m_description;
     bool m_bValidateResult;
-    /* hash by group name */
-    DBGWGroupHashMap m_groupMap;
+    /* (groupName => DBGWGroup) */
+    DBGWGroupList m_groupList;
   };
 
   typedef shared_ptr<DBGWService> DBGWServiceSharedPtr;
 
-  typedef hash_map<string, DBGWSQLConnection, hash<string> ,
-          dbgwStringCompareFunc> DBGWSQLConnectionHashMap;
+  typedef vector<DBGWServiceSharedPtr> DBGWServiceList;
 
-  typedef shared_ptr<DBGWSQLConnectionManager> DBGWSQLConnectionManagerSharedPtr;
-
-  typedef hash_map<string, DBGWPreparedStatementSharedPtr, hash<string> ,
-          dbgwStringCompareFunc> DBGWPreparedStatementHashMap;
-
-  struct DBGWSQLConnection
-  {
-    string groupName;
-    DBGWConnectionSharedPtr pConnection;
-    bool bIgnoreResult;
-    bool bNeedCommitOrRollback;
-  };
-
-  class DBGWSQLConnectionManager
+  class DBGWResource
   {
   public:
-    DBGWSQLConnectionManager(DBGWConnector *pConnector);
-    virtual ~ DBGWSQLConnectionManager();
+    DBGWResource();
+    virtual ~DBGWResource();
 
-    void addConnectionGroup(DBGWGroupSharedPtr pGroup);
-    DBGWPreparedStatementSharedPtr preparedStatement(
-        const DBGWBoundQuerySharedPtr p_query);
-    bool isIgnoreResult(const char *szGroupName);
-    void setAutocommit(bool bAutocommit);
-    void commit();
-    void rollback();
-    void close();
-
-  public:
-    DBGWStringList getGroupNameList() const;
-    const DBGWConnection *getConnection(const char *szGroupName) const;
+    void modifyRefCount(int nDelta);
+    int getRefCount();
 
   private:
-    bool commit(DBGWSQLConnection &connection);
-    bool rollback(DBGWSQLConnection &connection);
-
-  private:
-    DBGWConnector *m_pConnector;
-    DBGWSQLConnectionHashMap m_connectionMap;
-    DBGWPreparedStatementHashMap m_preparedStatmentMap;
-    bool m_bClosed;
-    bool m_bAutocommit;
+    int m_nRefCount;
   };
 
-  typedef hash_map<string, DBGWServiceSharedPtr, hash<string> ,
-          dbgwStringCompareFunc> DBGWServiceHashMap;
+  typedef shared_ptr<DBGWResource> DBGWResourceSharedPtr;
 
-  class DBGWConnector
+  class DBGWConnector: public DBGWResource
   {
   public:
     DBGWConnector();
     virtual ~ DBGWConnector();
 
     void addService(DBGWServiceSharedPtr pService);
-    void clearService();
-    bool returnConnection(DBGWConnectionSharedPtr pConnection);
-    DBGWSQLConnectionManagerSharedPtr getSQLConnectionManger(
-        const char *szNamespace);
+    DBGWExecuterList getExecuterList(const char *szNamespace);
 
   public:
     bool isValidateResult(const char *szNamespace) const;
 
   private:
-    /* hashed by namespace */
-    DBGWServiceHashMap m_serviceMap;
+    /* (namespace => DBGWService) */
+    DBGWServiceList m_serviceList;
   };
 
-  typedef hash_map<string, DBGWQuerySharedPtr, hash<string> ,
-          dbgwStringCompareFunc> DBGWQueryGroupHashMap;
-  typedef hash_map<string, DBGWQueryGroupHashMap, hash<string> ,
+  typedef shared_ptr<DBGWConnector> DBGWConnectorSharedPtr;
+
+  typedef vector<DBGWQuerySharedPtr> DBGWQueryGroupList;
+
+  typedef hash_map<string, DBGWQueryGroupList, hash<string> ,
           dbgwStringCompareFunc> DBGWQuerySqlHashMap;
 
-  class DBGWQueryMapper
+  class DBGWQueryMapper: public DBGWResource
   {
   public:
     DBGWQueryMapper();
@@ -235,11 +247,40 @@ namespace dbgw
         const char *szGroupName, const DBGWParameter *pParameter) const;
 
   private:
-    /* hash by sqlName */
+    /* (sqlName => (groupName => DBGWQuery)) */
     DBGWQuerySqlHashMap m_querySqlMap;
   };
 
-  typedef shared_ptr<const DBGWQueryMapper> DBGWQueryMapperConstSharedPtr;
+  typedef shared_ptr<DBGWQueryMapper> DBGWQueryMapperSharedPtr;
+
+  typedef hash_map<int, DBGWResourceSharedPtr, hash<int> , dbgwIntCompareFunc>
+  DBGWResourceMap;
+
+  class DBGWVersionedResource
+  {
+  public:
+    static const int INVALID_VERSION;
+
+  public:
+    DBGWVersionedResource();
+    virtual ~DBGWVersionedResource();
+
+    int getVersion();
+    void closeVersion(int nVersion);
+    void putResource(DBGWResourceSharedPtr pResource);
+    DBGWResource *getNewResource();
+    DBGWResource *getResource(int nVersion);
+    DBGWResource *getResourceWithUnlock(int nVersion);
+
+  public:
+    size_t size() const;
+
+  private:
+    Mutex m_mutex;
+    int m_nVersion;
+    DBGWResourceSharedPtr m_pResource;
+    DBGWResourceMap m_resourceMap;
+  };
 
   struct DBGWConfigurationVersion
   {
@@ -247,22 +288,11 @@ namespace dbgw
     int nQueryMapperVersion;
   };
 
-  struct DBGWConnectorInfo
-  {
-    int nRefCount;
-    DBGWConnector connector;
-  };
+  typedef hash_map<int, DBGWConnectorSharedPtr, hash<int> , dbgwIntCompareFunc>
+  DBGWConnectorHashMap;
 
-  struct DBGWQueryMapperInfo
-  {
-    int nRefCount;
-    DBGWQueryMapper queryMapper;
-  };
-
-  typedef hash_map<int, DBGWConnectorInfo, hash<int> , dbgwIntCompareFunc>
-  DBGWConnectorInfoHashMap;
-  typedef hash_map<int, DBGWQueryMapperInfo, hash<int> , dbgwIntCompareFunc>
-  DBGWQueryMapperInfoHashMap;
+  typedef hash_map<int, DBGWQueryMapperSharedPtr, hash<int> , dbgwIntCompareFunc>
+  DBGWQueryMapperHashMap;
 
   /**
    * External access class.
@@ -278,30 +308,20 @@ namespace dbgw
     bool loadConnector(const char *szXmlPath = NULL);
     bool loadQueryMapper(const char *szXmlPath = NULL, bool bAppend = false);
 
-#ifdef QA_TEST
   public:
-#else
+    int getConnectorSize() const;
+    int getQueryMapperSize() const;
+
   private:
-#endif
-    bool isValidateResult(const DBGWConfigurationVersion &stVersion,
-        const char *szNamespace) const;
     void closeVersion(const DBGWConfigurationVersion &stVersion);
-    DBGWSQLConnectionManagerSharedPtr
-    getSQLConnectionManger(const DBGWConfigurationVersion &stVersion,
-        const char *szNamespace);
     DBGWConfigurationVersion getVersion();
-    DBGWBoundQuerySharedPtr getQuery(
-        const DBGWConfigurationVersion &stVersion, const char *szSqlName,
-        const char *szGroupName, const DBGWParameter *pParameter);
-    DBGWQueryMapperInfoHashMap::iterator getQueryMapperInfo(int nVersion);
-    void modifyConnectorVersionRefCount(int nVersion, int delta);
-    void modifyQueryMapperVersionRefCount(int nVersion, int delta);
+    DBGWConnector *getConnector(const DBGWConfigurationVersion &stVersion);
+    DBGWQueryMapper *getQueryMapper(const DBGWConfigurationVersion &stVersion);
 
   private:
     string m_confFileName;
-    DBGWConfigurationVersion m_stVersion;
-    DBGWConnectorInfoHashMap m_connectorMap;
-    DBGWQueryMapperInfoHashMap m_queryMapperMap;
+    DBGWVersionedResource m_connResource;
+    DBGWVersionedResource m_queryResource;
 
     friend class DBGWClient;
   };

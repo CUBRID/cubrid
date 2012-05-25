@@ -68,6 +68,9 @@ extern "C"
 #define PATH_MAX		256
 #define mkdir(dir, mode)        _mkdir(dir)
 #define localtime_r(time, tm)   localtime_s((tm), (const time_t *)(time))
+#define gettid()                GetCurrentThreadId()
+#else
+#define gettid()                syscall(__NR_gettid)
 #endif
 
 #define API_SLOG(con) \

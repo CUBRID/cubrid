@@ -22,13 +22,13 @@ DBGW_DIR = $(SRC)/dbgw
 CCI_DIR = $(SRC)/cci
 BROKER_DIR = $(SRC)/broker
 
-AM_CPPFLAGS = @EXT_INC@ -DCAS_CUBRID
+AM_CPPFLAGS = @EXT_INC@ @DBGW_DEFS@
 
 dbgw3_includedir = $(includedir)
 
 dbgw3_include_HEADERS = \
 		$(CCI_DIR)/cci_log.h \
-        $(DBGW_DIR)/DBGWCCIMock.h \
+        $(DBGW_DIR)/DBGWMock.h \
         $(DBGW_DIR)/DBGWCommon.h \
         $(DBGW_DIR)/DBGWError.h \
         $(DBGW_DIR)/DBGWValue.h \
@@ -41,6 +41,8 @@ dbgw3_include_HEADERS = \
         $(DBGW_DIR)/DBGWClient.h
        
 dbgw3_SOURCES = \
+        $(DBGW_DIR)/DBGWMock.cpp \
+        $(DBGW_DIR)/DBGWCommon.cpp \
         $(DBGW_DIR)/DBGWError.cpp \
         $(DBGW_DIR)/DBGWValue.cpp \
         $(DBGW_DIR)/DBGWDataBaseInterface.cpp \

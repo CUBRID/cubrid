@@ -18,6 +18,7 @@
  */
 #include <expat.h>
 #include <fstream>
+#include <errno.h>
 #include <boost/algorithm/string.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
@@ -33,7 +34,9 @@ namespace dbgw
 
   static const int XML_FILE_BUFFER_SIZE = 4096;
 
+  static const char *XML_NODE_CONFIGURATION = "configuration";
   static const char *XML_NODE_CONNECTOR = "connector";
+  static const char *XML_NODE_QUERYMAP = "querymap";
 
   static const char *XML_NODE_SERVICE = "service";
   static const char *XML_NODE_SERVICE_PROP_NAMESPACE = "namespace";
@@ -45,6 +48,9 @@ namespace dbgw
   static const char *XML_NODE_GROUP_PROP_DESCRIPTION = "description";
   static const char *XML_NODE_GROUP_PROP_INACTIVATE = "inactivate";
   static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT = "ignore_result";
+
+  static const char *XML_NODE_POOL = "pool";
+  static const char *XML_NODE_POOL_PROP_SIZE = "pool-size";
 
   static const char *XML_NODE_DBINFO = "dbinfo";
   static const char *XML_NODE_DBINFO_PROP_DBNAME = "dbname";
@@ -77,11 +83,12 @@ namespace dbgw
   static const char *XML_NODE_LOG = "log";
   static const char *XML_NODE_LOG_PROP_LEVEL = "level";
   static const char *XML_NODE_LOG_PROP_PATH = "path";
+  static const char *XML_NODE_LOG_PROP_FORCE_FLUSH = "force-flush";
 
   static const char *XML_NODE_INCLUDE = "include";
   static const char *XML_NODE_INCLUDE_PROP_FILE = "file";
 
-  static const char *XML_NODE_CONFIGURATION = "configuration";
+  static const int POOL_DEFAULT_POOL_SIZE = 10;
 
   DBGWExpatXMLParser::DBGWExpatXMLParser(const string &fileName)
   {
@@ -136,6 +143,28 @@ namespace dbgw
     else
       {
         return "";
+      }
+  }
+
+  const char *DBGWExpatXMLProperties::getCString(const char *szName, bool bRequired)
+  {
+    for (int i = 0; m_pAttr[i] != NULL; i += 2)
+      {
+        if (!strcmp(m_pAttr[i], szName))
+          {
+            return m_pAttr[i + 1];
+          }
+      }
+
+    if (bRequired)
+      {
+        NotExistPropertyException e(m_nodeName.c_str(), szName);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+    else
+      {
+        return NULL;
       }
   }
 
@@ -210,7 +239,7 @@ namespace dbgw
 
   CCI_LOG_LEVEL DBGWExpatXMLProperties::getLogLevel(const char *szName)
   {
-    const char *szLogLevel = get(szName, true);
+    const char *szLogLevel = get(szName, false);
 
     if (!strcasecmp(szLogLevel, "off"))
       {
@@ -224,7 +253,7 @@ namespace dbgw
       {
         return CCI_LOG_LEVEL_WARN;
       }
-    if (!strcasecmp(szLogLevel, "info"))
+    if (!strcasecmp(szLogLevel, "info") || !strcmp(szLogLevel, ""))
       {
         return CCI_LOG_LEVEL_INFO;
       }
@@ -313,31 +342,43 @@ namespace dbgw
     if (fp == NULL)
       {
         CreateFailParserExeception e(pParser->getFileName().c_str());
-        DBGW_LOG_ERROR(e.what());
+        DBGW_LOG_ERROR("%s (%d)", e.what(), errno);
         throw e;
       }
 
+    DBGWInterfaceException exception;
     char buffer[XML_FILE_BUFFER_SIZE];
     enum XML_Status status = XML_STATUS_OK;
     enum XML_Error errCode;
     int nReadLen;
-    do
+    try
       {
-        nReadLen = fread(buffer, 1, XML_FILE_BUFFER_SIZE, fp);
-        status = XML_Parse(parser.get(), buffer, nReadLen, 0);
-
+        do
+          {
+            nReadLen = fread(buffer, 1, XML_FILE_BUFFER_SIZE, fp);
+            status = XML_Parse(parser.get(), buffer, nReadLen, 0);
+          }
+        while (nReadLen > 0 && status != XML_STATUS_ERROR);
       }
-    while (nReadLen > 0 && status != XML_STATUS_ERROR);
+    catch (DBGWException &e)
+      {
+        exception = e;
+      }
 
     fclose(fp);
 
     if (status == XML_STATUS_ERROR)
       {
         errCode = XML_GetErrorCode(parser.get());
-        DBGWException e(DBGWErrorCode::XML_INVALID_SYNTAX,
-            XML_ErrorString(errCode));
+        InvalidXMLSyntaxException e(XML_ErrorString(errCode),
+            pParser->m_fileName.c_str());
         DBGW_LOG_ERROR(e.what());
         throw e;
+      }
+
+    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+      {
+        throw exception;
       }
   }
 
@@ -424,8 +465,9 @@ namespace dbgw
   }
 
   DBGWConnectorParser::DBGWConnectorParser(const string &fileName,
-      DBGWConnector &connector) :
-    DBGWParser(fileName), m_connector(connector), m_pDBnfoMap(NULL)
+      DBGWConnectorSharedPtr pConnector) :
+    DBGWParser(fileName), m_pConnector(pConnector), m_pDBnfoMap(NULL),
+    m_nPoolSize(POOL_DEFAULT_POOL_SIZE)
   {
   }
 
@@ -443,6 +485,10 @@ namespace dbgw
     else if (!strcasecmp(szName, XML_NODE_GROUP))
       {
         parseGroup(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_POOL))
+      {
+        parsePool(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_DBINFO))
       {
@@ -468,7 +514,10 @@ namespace dbgw
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
+        m_pService->initPool(m_nPoolSize);
+
         m_pService = DBGWServiceSharedPtr();
+        m_nPoolSize = POOL_DEFAULT_POOL_SIZE;
       }
     else if (!strcasecmp(szName, XML_NODE_GROUP))
       {
@@ -505,7 +554,7 @@ namespace dbgw
             properties. get(XML_NODE_SERVICE_PROP_DESCRIPTION, false),
             properties. getBool(XML_NODE_SERVICE_PROP_VALIDATE_RESULT,
                 false)));
-    m_connector.addService(m_pService);
+    m_pConnector->addService(m_pService);
   }
 
   void DBGWConnectorParser::parseGroup(DBGWExpatXMLProperties &properties)
@@ -524,6 +573,16 @@ namespace dbgw
             properties. getBool(XML_NODE_GROUP_PROP_IGNORE_RESULT,
                 false)));
     m_pService->addGroup(m_pGroup);
+  }
+
+  void DBGWConnectorParser::parsePool(DBGWExpatXMLProperties &properties)
+  {
+    if (getParentElementName() != XML_NODE_SERVICE)
+      {
+        return;
+      }
+
+    m_nPoolSize = properties.getInt(XML_NODE_POOL_PROP_SIZE, true);
   }
 
   void DBGWConnectorParser::parseDBInfo(DBGWExpatXMLProperties &properties)
@@ -576,8 +635,8 @@ namespace dbgw
   }
 
   DBGWQueryMapParser::DBGWQueryMapParser(const string &fileName,
-      DBGWQueryMapper &queryMapper) :
-    DBGWParser(fileName), m_queryMapper(queryMapper),
+      DBGWQueryMapperSharedPtr pQueryMapper) :
+    DBGWParser(fileName), m_pQueryMapper(pQueryMapper),
     m_bExistQueryInSql(false), m_bExistQueryInGroup(false),
     m_nQueryLen(0)
   {
@@ -700,7 +759,7 @@ namespace dbgw
                 new DBGWQuery(getFileName(), m_szQueryBuffer, m_sqlName,
                     *it, m_queryType, m_inQueryParamMap,
                     m_outQueryParamMap));
-            m_queryMapper.addQuery(m_sqlName, p);
+            m_pQueryMapper->addQuery(m_sqlName, p);
           }
 
         m_bExistQueryInSql = true;
@@ -775,14 +834,14 @@ namespace dbgw
   }
 
   DBGWConfigurationParser::DBGWConfigurationParser(const string &fileName,
-      DBGWConnector &connector) :
-    DBGWParser(fileName), m_pConnector(&connector), m_pQueryMapper(NULL)
+      DBGWConnectorSharedPtr pConnector) :
+    DBGWParser(fileName), m_pConnector(pConnector)
   {
   }
 
   DBGWConfigurationParser::DBGWConfigurationParser(const string &fileName,
-      DBGWQueryMapper &m_queryMapper) :
-    DBGWParser(fileName), m_pConnector(NULL), m_pQueryMapper(&m_queryMapper)
+      DBGWQueryMapperSharedPtr pQueryMapper) :
+    DBGWParser(fileName), m_pQueryMapper(pQueryMapper)
   {
   }
 
@@ -810,8 +869,10 @@ namespace dbgw
         return;
       }
 
-    DBGWLogger::initialize(properties.getLogLevel(XML_NODE_LOG_PROP_LEVEL),
-        properties.get(XML_NODE_LOG_PROP_PATH, true));
+    DBGWLogger::setLogPath(properties.getCString(XML_NODE_LOG_PROP_PATH, false));
+    DBGWLogger::setLogLevel(properties.getLogLevel(XML_NODE_LOG_PROP_LEVEL));
+    DBGWLogger::setForceFlush(
+        properties.getBool(XML_NODE_LOG_PROP_FORCE_FLUSH, false));
   }
 
   void DBGWConfigurationParser::parseInclude(DBGWExpatXMLProperties &properties)
@@ -822,17 +883,17 @@ namespace dbgw
           {
             DBGWConnectorParser parser(
                 properties.get(XML_NODE_INCLUDE_PROP_FILE, true),
-                *m_pConnector);
+                m_pConnector);
             DBGWParser::parse(&parser);
           }
       }
-    if (getParentElementName() == "querymap")
+    else if (getParentElementName() == XML_NODE_QUERYMAP)
       {
         if (m_pQueryMapper != NULL)
           {
             DBGWQueryMapParser parser(
                 properties.get(XML_NODE_INCLUDE_PROP_FILE, true),
-                *m_pQueryMapper);
+                m_pQueryMapper);
             DBGWParser::parse(&parser);
           }
       }

@@ -27,7 +27,8 @@ namespace dbgw
 {
 
   static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
-  static const int LOG_BUFFER_SIZE = 16384;
+  static const int LOG_BUFFER_SIZE = 1024 * 20;
+  static Mutex g_logMutex;
 
   Logger DBGWLogger::m_logger = NULL;
   string DBGWLogger::m_logPath = DBGW_LOG_PATH;
@@ -48,46 +49,76 @@ namespace dbgw
 
   const string DBGWLogger::getLogMessage(const char *szMsg) const
   {
+    string message;
     if (m_groupName == "")
       {
-        return (boost::format("%s : %s") % m_sqlName % szMsg).str();
+        message += m_sqlName;
+        message += " : ";
+        message += szMsg;
       }
     else
       {
-        return (boost::format("%s.%s : %s") % m_groupName % m_sqlName % szMsg).str();
+        message += m_groupName;
+        message += ".";
+        message += m_sqlName;
+        message += " : ";
+        message += szMsg;
       }
+    return message;
   }
 
   void DBGWLogger::initialize()
   {
-    finalize();
-    m_logPath = DBGW_LOG_PATH;
-    m_logger = cci_log_get(m_logPath.c_str());
+    initialize(CCI_LOG_LEVEL_INFO, DBGW_LOG_PATH);
   }
 
   void DBGWLogger::initialize(CCI_LOG_LEVEL level, const char *szLogPath)
   {
-    finalize();
-    m_logPath = szLogPath;
-    m_logger = cci_log_get(m_logPath.c_str());
+    setLogPath(szLogPath);
+    setLogLevel(level);
+  }
+
+  void DBGWLogger::setLogPath(const char *szLogPath)
+  {
+    g_logMutex.lock();
+    if (szLogPath != NULL)
+      {
+        if (m_logger != NULL)
+          {
+            cci_log_remove(m_logPath.c_str());
+          }
+
+        m_logPath = szLogPath;
+        m_logger = cci_log_get(m_logPath.c_str());
+      }
+    g_logMutex.unlock();
+  }
+
+  void DBGWLogger::setLogLevel(CCI_LOG_LEVEL level)
+  {
     if (m_logger != NULL)
       {
         cci_log_set_level(m_logger, level);
       }
   }
 
+  void DBGWLogger::setForceFlush(bool bForceFlush)
+  {
+    if (m_logger != NULL)
+      {
+        cci_log_set_force_flush(m_logger, bForceFlush);
+      }
+  }
+
   void DBGWLogger::finalize()
   {
+    g_logMutex.lock();
     if (m_logger != NULL)
       {
         cci_log_remove(m_logPath.c_str());
         m_logger = NULL;
       }
-  }
-
-  Logger DBGWLogger::getInstance()
-  {
-    return m_logger;
+    g_logMutex.unlock();
   }
 
   void DBGWLogger::write(const char *szFile, int nLine, CCI_LOG_LEVEL level,
@@ -111,6 +142,11 @@ namespace dbgw
       {
         cci_log_write(level, m_logger, szLogFormat);
       }
+  }
+
+  const char *DBGWLogger::getLogPath()
+  {
+    return m_logPath.c_str();
   }
 
 }

@@ -61,12 +61,18 @@ namespace dbgw
       DBGWPreparedStatementSharedPtr preparedStatement(
           const DBGWBoundQuerySharedPtr p_query);
       bool setAutocommit(bool bAutocommit);
+      bool setIsolation(DBGW_TRAN_ISOLATION isolation);
       bool commit();
       bool rollback();
+
+    public:
+      /* For DEBUG */
+      string dump();
 
     private:
       bool m_bClosed;
       int m_hCCIConnection;
+      bool m_bAutocommit;
     };
 
     /**

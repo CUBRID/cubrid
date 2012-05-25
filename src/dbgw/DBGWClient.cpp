@@ -28,19 +28,52 @@
 namespace dbgw
 {
 
+  /**
+   * DBGWConfiguration
+   *    => version 0   : DBGWConnector, DBGWQueryMapper
+   *    => version 1   : DBGWConnector, DBGWQueryMapper
+   *    => version ... : DBGWConnector, DBGWQueryMapper
+   *
+   * DBGWConnector
+   *    => DBGWService
+   *          => DBGWGroup
+   *                => DBGWExecuterPool
+   *                      => DBGWExecuter
+   *
+   * DBGWQueryMapper
+   *    => DBGWQuery
+   *
+   * DBGWClient have to get version to get resource of DBGWConfiguration.
+   *
+   * each version of resource has reference count.
+   * DBGWConfiguration.getVersion() increase reference count.
+   * DBGWConfiguration.closeVersion() decrease reference count and
+   * delete if the reference count is 0.
+   *
+   * the version is increased when calling DBGWConfiguration.loadConnector() or
+   * DBGWConfiguration.loadQueryMapper().
+   *
+   * DBGWExecuter has db connection and prepared statement map.
+   * DBGWClient use DBGWExecuter to execute query and reuse prepared statement.
+   * DBGWExecuter is created by DBGWExecuterPool in each DBGWGroup
+   * when loading connector.xml file.
+   */
   DBGWClient::DBGWClient(DBGWConfiguration &configuration,
       const string &nameSpace) :
-    m_configuration(configuration), m_bClosed(false), m_bValidateResult(false)
+    m_configuration(configuration), m_bClosed(false), m_bValidateResult(false),
+    m_bValidClient(false)
   {
     clearException();
 
     try
       {
         m_stVersion = m_configuration.getVersion();
-        m_pSqlConnectionManager = m_configuration.getSQLConnectionManger(
-            m_stVersion, nameSpace.c_str());
-        m_bValidateResult = m_configuration.isValidateResult(m_stVersion,
-            nameSpace.c_str());
+        m_pConnector = m_configuration.getConnector(m_stVersion);
+        m_pQueryMapper = m_configuration.getQueryMapper(m_stVersion);
+
+        m_executerList = m_pConnector->getExecuterList(nameSpace.c_str());
+        m_bValidateResult = m_pConnector->isValidateResult(nameSpace.c_str());
+        m_bValidClient = true;
       }
     catch (DBGWException &e)
       {
@@ -71,7 +104,30 @@ namespace dbgw
 
     try
       {
-        m_pSqlConnectionManager->setAutocommit(bAutocommit);
+        checkClientIsValid();
+
+        DBGWInterfaceException exception;
+        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
+            != m_executerList.end(); it++)
+          {
+            if (*it == NULL)
+              {
+                continue;
+              }
+
+            try
+              {
+                (*it)->setAutocommit(bAutocommit);
+              }
+            catch (DBGWException &e)
+              {
+                exception = e;
+              }
+          }
+        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw exception;
+          }
         return true;
       }
     catch (DBGWException &e)
@@ -87,7 +143,30 @@ namespace dbgw
 
     try
       {
-        m_pSqlConnectionManager->commit();
+        checkClientIsValid();
+
+        DBGWInterfaceException exception;
+        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
+            != m_executerList.end(); it++)
+          {
+            if (*it == NULL)
+              {
+                continue;
+              }
+
+            try
+              {
+                (*it)->commit();
+              }
+            catch (DBGWException &e)
+              {
+                exception = e;
+              }
+          }
+        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw exception;
+          }
         return true;
       }
     catch (DBGWException &e)
@@ -103,7 +182,30 @@ namespace dbgw
 
     try
       {
-        m_pSqlConnectionManager->rollback();
+        checkClientIsValid();
+
+        DBGWInterfaceException exception;
+        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
+            != m_executerList.end(); it++)
+          {
+            if (*it == NULL)
+              {
+                continue;
+              }
+
+            try
+              {
+                (*it)->rollback();
+              }
+            catch (DBGWException &e)
+              {
+                exception = e;
+              }
+          }
+        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw exception;
+          }
         return true;
       }
     catch (DBGWException &e)
@@ -113,92 +215,89 @@ namespace dbgw
       }
   }
 
-  const DBGWResultSharedPtr DBGWClient::exec(const char *szSqlName)
-  {
-    return this->exec(szSqlName, NULL);
-  }
-
   const DBGWResultSharedPtr DBGWClient::exec(const char *szSqlName,
       const DBGWParameter *pParameter)
   {
     clearException();
 
-    bool bMakeResult = false;
-    bool bIgnoreResult = false;
-    const char *szGroupName = NULL;
-    DBGWResultSharedPtr pReturnResult;
-    DBGWResultSharedPtr pInternalResult;
-    DBGWStringList groupNameList = m_pSqlConnectionManager->getGroupNameList();
-    for (DBGWStringList::const_iterator it = groupNameList.begin(); it
-        != groupNameList.end(); it++)
+    try
       {
-        szGroupName = it->c_str();
-        bIgnoreResult = m_pSqlConnectionManager->isIgnoreResult(szGroupName);
-        try
+        checkClientIsValid();
+
+        bool bMakeResult = false;
+        DBGWResultSharedPtr pReturnResult, pInternalResult;
+        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
+            != m_executerList.end(); it++)
           {
-            DBGWLogger logger(szGroupName, szSqlName);
-            DBGWBoundQuerySharedPtr p_query = m_configuration.getQuery(
-                m_stVersion, szSqlName, szGroupName, pParameter);
-            if (p_query == NULL)
+            if (*it == NULL)
               {
                 continue;
               }
 
-            DBGW_LOG_INFO(logger.getLogMessage("fetch sqlmap. ").c_str(),
-                p_query->getSQL());
-
-            DBGWPreparedStatementSharedPtr pPreparedStatement =
-                m_pSqlConnectionManager->preparedStatement(p_query);
-
-            pPreparedStatement->setParameter(pParameter);
-
-            if (bIgnoreResult == false)
+            try
               {
-                if (bMakeResult)
+                DBGWLogger logger((*it)->getGroupName(), szSqlName);
+                DBGWBoundQuerySharedPtr pQuery = m_pQueryMapper->getQuery(
+                    szSqlName, (*it)->getGroupName(), pParameter);
+                if (pQuery == NULL)
                   {
-                    MultisetIgnoreResultFlagFalseException e(szSqlName);
-                    DBGW_LOG_ERROR(e.what());
-                    throw e;
+                    continue;
                   }
-                bMakeResult = true;
-                pReturnResult = pPreparedStatement->execute();
-                if (pReturnResult == NULL)
+
+                if ((*it)->isIgnoreResult() == false)
                   {
-                    throw getLastException();
+                    if (bMakeResult)
+                      {
+                        MultisetIgnoreResultFlagFalseException e(szSqlName);
+                        DBGW_LOG_ERROR(e.what());
+                        throw e;
+                      }
+
+                    bMakeResult = true;
+                    pReturnResult = (*it)->execute(pQuery, pParameter);
+                    if (pReturnResult == NULL)
+                      {
+                        throw getLastException();
+                      }
+                    DBGW_LOG_INFO(logger.getLogMessage("execute.").c_str());
                   }
-                DBGW_LOG_INFO(logger.getLogMessage("execute.").c_str());
-              }
-            else
-              {
-                pInternalResult = pPreparedStatement->execute();
-                if (pInternalResult == NULL)
+                else
                   {
-                    throw getLastException();
+                    pInternalResult = (*it)->execute(pQuery, pParameter);
+                    if (pInternalResult == NULL)
+                      {
+                        throw getLastException();
+                      }
+                    DBGW_LOG_INFO(logger.getLogMessage("execute. (ignore result)").c_str());
                   }
-                DBGW_LOG_INFO(logger.
-                    getLogMessage("execute. (ignore result)").
-                    c_str());
+
+                if (m_bValidateResult)
+                  {
+                    validateResult(logger, pReturnResult, pInternalResult);
+                  }
               }
-            if (m_bValidateResult)
-              {
-                validateResult(logger, pReturnResult, pInternalResult);
-              }
-          }
-        catch (ValidateFailException &e)
-          {
-            setLastException(e);
-            return DBGWResultSharedPtr();
-          }
-        catch (DBGWException &e)
-          {
-            if (bIgnoreResult == false)
+            catch (ValidateFailException &e)
               {
                 setLastException(e);
                 return DBGWResultSharedPtr();
               }
+            catch (DBGWException &e)
+              {
+                if ((*it)->isIgnoreResult() == false)
+                  {
+                    setLastException(e);
+                    return DBGWResultSharedPtr();
+                  }
+              }
           }
+
+        return pReturnResult;
       }
-    return pReturnResult;
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return DBGWResultSharedPtr();
+      }
   }
 
   bool DBGWClient::close()
@@ -212,26 +311,20 @@ namespace dbgw
 
     m_bClosed = true;
 
-    DBGWInterfaceException exception;
-    if (m_pSqlConnectionManager != NULL)
+    for (DBGWExecuterList::iterator it = m_executerList.begin(); it
+        != m_executerList.end(); it++)
       {
-        try
+        if (*it == NULL)
           {
-            m_pSqlConnectionManager->close();
+            continue;
           }
-        catch (DBGWException &e)
-          {
-            exception = getLastException();
-          }
+
+        (*it)->close();
       }
 
     try
       {
         m_configuration.closeVersion(m_stVersion);
-        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-          {
-            throw exception;
-          }
         return true;
       }
     catch (DBGWException &e)
@@ -325,6 +418,16 @@ namespace dbgw
 
         lhs->first();
         rhs->first();
+      }
+  }
+
+  void DBGWClient::checkClientIsValid()
+  {
+    if (m_bValidClient == false)
+      {
+        InvalidClientException e;
+        DBGW_LOG_ERROR(e.what());
+        throw e;
       }
   }
 

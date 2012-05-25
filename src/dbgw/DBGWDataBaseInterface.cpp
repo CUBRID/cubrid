@@ -164,10 +164,9 @@ namespace dbgw
       return m_dbInfoMap;
     }
 
-    DBGWPreparedStatement::DBGWPreparedStatement(
-        const DBGWBoundQuerySharedPtr p_query) :
-      m_logger(p_query->getGroupName(), p_query->getSqlName()),
-      m_pQuery(p_query), m_bReuesed(false)
+    DBGWPreparedStatement::DBGWPreparedStatement(DBGWBoundQuerySharedPtr pQuery) :
+      m_logger(pQuery->getGroupName(), pQuery->getSqlName()), m_pQuery(pQuery),
+      m_bReuesed(false)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -369,7 +368,7 @@ namespace dbgw
                     }
 
                   paramLogBuf.addLog(pValue->toString());
-                  typeLogBuf. addLog(getDBGWValueTypeString(pValue->getType()));
+                  typeLogBuf.addLog(getDBGWValueTypeString(pValue->getType()));
                 }
 
               DBGW_LOG_INFO(m_logger.getLogMessage(paramLogBuf.getLog().c_str()).c_str());
@@ -389,7 +388,7 @@ namespace dbgw
         }
     }
 
-    void DBGWPreparedStatement::setReused()
+    void DBGWPreparedStatement::init(DBGWBoundQuerySharedPtr pQuery)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -406,6 +405,8 @@ namespace dbgw
        * }
        */
       m_bReuesed = true;
+      m_pQuery = pQuery;
+      m_parameter.clear();
     }
 
     bool DBGWPreparedStatement::isReused() const
@@ -619,6 +620,11 @@ namespace dbgw
 
       DBGW_LOG_INFO(m_logger.getLogMessage("ResultSet").c_str());
       DBGW_LOG_INFO(m_logger.getLogMessage(headerLogBuf.getLog().c_str()).c_str());
+    }
+
+    void DBGWResult::clear()
+    {
+      DBGWValueSet::clear();
     }
 
   }

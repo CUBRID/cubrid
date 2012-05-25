@@ -343,6 +343,17 @@ then
 	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/lib -lowfsclient -ldl -lpthread"
 fi
 
+AC_ARG_ENABLE([mock],
+	[AS_HELP_STRING([--enable-mock],
+		[build as dbgw lib to use cci mock @<:@default=no@:>@])],
+	[enable_mock=$enableval],
+	[enable_mock=no])
+	
+if test "$enable_mock" = "yes"
+then
+	DBGW_DEFS="$DBGW_DEFS -DBUILD_MOCK"
+fi
+
 AC_MSG_CHECKING(for java home)
 if test "x$JAVA_HOME" != "x"; then
 	JAVA_BIN=$JAVA_HOME/bin
@@ -930,6 +941,7 @@ AC_SUBST([ORACLE_INC_PATH])
 AC_SUBST([BISON])
 AC_SUBST([OPTIONAL_DIR])
 AC_SUBST([EXPAT_LIBS])
+AC_SUBST([DBGW_DEFS])
 
 AH_TOP([
 #ifndef _CONFIG_H_

@@ -35,10 +35,13 @@ namespace dbgw
   public:
     static void initialize();
     static void initialize(CCI_LOG_LEVEL level, const char *szLogPath);
+    static void setLogPath(const char *szLogPath);
+    static void setLogLevel(CCI_LOG_LEVEL level);
+    static void setForceFlush(bool bForceFlush);
     static void finalize();
-    static Logger getInstance();
     static void write(const char *szFile, int nLine, CCI_LOG_LEVEL level,
         const char *szFormat, ...);
+    static const char *getLogPath();
 
   private:
     string m_groupName;
@@ -60,6 +63,11 @@ namespace dbgw
 #define DBGW_LOG_INFO(...) \
   do { \
     DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
+  } while (false)
+
+#define DBGW_LOG_DEBUG(...) \
+  do { \
+    DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
   } while (false)
 
 }
