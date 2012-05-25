@@ -5,17 +5,14 @@
 %define release        el5
 %define cubrid_user    cubrid
 
-Summary:       CUBRID: a very fast and reliable SQL database server
-Name:          CUBRID
+Summary:       An open source database highly optimized for Web applications
+Name:          cubrid
 Version:       %{cubrid_version}
 Release:       %{release}%{?dist}
-License:       GPLv2+/BSD
+License:       GPLv2+ and BSD
 Group:         Applications/Databases
-URL:           http://www.cubrid.com
-Source0:       cubrid-%{cubrid_version}.tar.gz
-Provides:      cubrid
-Vendor:        %{cubrid_vendor}
-Packager:      cubrid developer <cubrid@nhn.com>
+URL:           http://www.cubrid.org
+Source0:       %{name}-%{cubrid_version}.tar.gz
 Requires:      ncurses
 Requires:      libstdc++
 BuildRequires: gcc-c++
@@ -378,8 +375,11 @@ rm -rf %{buildroot}
 #%{_datadir}/cubrid/demo
 
 %changelog
-* Sun Jun 28 2009 Siwan Kim <siwankim@nhncorp.com>
+* Fri May 25 2012 Siwan Kim <siwankim@nhn.com>
+- Fix informations - Summary, Name, License,...
+
+* Sun Jun 28 2009 Siwan Kim <siwankim@nhn.com>
 - Renewal for 8.2.0
 
-* Mon Oct 06 2008 Siwan Kim <siwankim@nhncorp.com>
+* Mon Oct 06 2008 Siwan Kim <siwankim@nhn.com>
 - Initial import of spec.

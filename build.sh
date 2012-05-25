@@ -737,7 +737,7 @@ function build_rpm ()
     rpm)
       rpmbuild --define="_topdir $install_dir/rpmbuild" --define="_tmppath $install_dir/rpmbuild/tmp" --clean -tb --target=$build_target $source_tarball
       if [ $? -eq 0 ]; then
-	mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name-$build_number-*.$build_target.rpm $rpm_output_dir
+	mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name_lower-$build_number-*.$build_target.rpm $rpm_output_dir
       fi
     ;;
     *)
@@ -789,6 +789,8 @@ function build_package ()
 	  if [ $? -eq 0 ]; then
 	    output_packages="$output_packages $package_name"
 	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
+	  else
+	    false
 	  fi
 	fi
       ;;
@@ -808,6 +810,8 @@ function build_package ()
 	  if [ $? -eq 0 ]; then
 	    output_packages="$output_packages $package_name"
 	    rm -rf $build_dir/$package_basename
+	  else
+	    false
 	  fi
 	fi
       ;;
@@ -866,8 +870,10 @@ function build_package ()
 	  package_name="$product_name-$build_number...src.rpm"
 	  build_rpm $output_dir/$src_package_name $package
 	  if [ $? -eq 0 ]; then
-	    rpm_pkgs=$(cd $output_dir && ls $product_name-$build_number-*.src.rpm)
+	    rpm_pkgs=$(cd $output_dir && ls $product_name_lower-$build_number-*.src.rpm)
 	    [ $? -eq 0 ] && output_packages="$output_packages $rpm_pkgs"
+	  else
+	    false
 	  fi
 	fi
       ;;
@@ -879,8 +885,10 @@ function build_package ()
 	  package_name="$product_name-$build_number...rpm"
 	  build_rpm $output_dir/$src_package_name $package
 	  if [ $? -eq 0 ]; then
-	    rpm_pkgs=$(cd $output_dir && ls $product_name-$build_number-*.$build_target.rpm)
+	    rpm_pkgs=$(cd $output_dir && ls $product_name_lower-$build_number-*.$build_target.rpm)
 	    [ $? -eq 0 ] && output_packages="$output_packages $rpm_pkgs"
+	  else
+	    false
 	  fi
 	fi
       ;;
