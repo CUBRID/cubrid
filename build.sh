@@ -55,6 +55,7 @@ typeset -i serial
 build_number=""
 last_checking_msg=""
 output_packages=""
+without_cmserver=""
 
 function print_check ()
 {
@@ -225,6 +226,7 @@ function build_configure ()
 
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
+    without_cmserver="true"
     print_error "Manager server source path is not exist. It will not be built"
   fi
 
@@ -271,7 +273,12 @@ function build_configure ()
   print_result "OK"
 
   print_check "Configuring [with $configure_options]"
-  (cd $build_dir && $source_dir/configure $configure_prefix $configure_options)
+  if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
+    configure_dir=".."
+  else
+    configure_dir="$source_dir"
+  fi
+  (cd $build_dir && $configure_dir/configure $configure_prefix $configure_options)
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
@@ -730,15 +737,11 @@ function build_rpm ()
   case $rpm_target in
     srpm)
       rpmbuild --define="_topdir $install_dir/rpmbuild" --clean -ts $source_tarball
-      if [ $? -eq 0 ]; then
-	mv -f $install_dir/rpmbuild/SRPMS/$product_name-$build_number-*.src.rpm $rpm_output_dir
-      fi
+      [ $? -eq 0 ] && mv -f $install_dir/rpmbuild/SRPMS/$product_name_lower-$build_number-*.src.rpm $rpm_output_dir
     ;;
     rpm)
       rpmbuild --define="_topdir $install_dir/rpmbuild" --define="_tmppath $install_dir/rpmbuild/tmp" --clean -tb --target=$build_target $source_tarball
-      if [ $? -eq 0 ]; then
-	mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name_lower-$build_number-*.$build_target.rpm $rpm_output_dir
-      fi
+      [ $? -eq 0 ] && mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name_lower-$build_number-*.$build_target.rpm $rpm_output_dir
     ;;
     *)
       print_error "Unknown target"
@@ -754,6 +757,12 @@ function build_package ()
 
   if [ ! -d "$build_dir" ]; then
     print_fatal "Build directory not found. please build first"
+  fi
+
+  print_check "Checking manager server directory"
+  if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
+    without_cmserver="true"
+    print_error "Manager server source path is not exist. It will not be packaged"
   fi
 
   if [ ! -d $output_dir ]; then
@@ -829,7 +838,11 @@ function build_package ()
 	else
 	  package_name="$package_basename.sh"
 	fi
-	build_bin_pack $output_dir/$package_name $package
+	if [ "$package" = "shell" -a "$without_cmserver" = "true" ]; then
+	  print_info "CUBRID manager server is disabled. Skip shell package"
+	else
+	  build_bin_pack $output_dir/$package_name $package
+	fi
 	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
       ;;
       cci)
@@ -863,7 +876,9 @@ function build_package ()
 	fi
       ;;
       srpm)
-	if [ ! "$build_mode" = "release" ]; then
+	if [ "$without_cmserver" = "true" ]; then
+	  print_info "CUBRID manager server is disabled. Skip SRPM build"
+	elif [ ! "$build_mode" = "release" ]; then
 	  print_info "$build_mode mode SRPM is not supported. Skip"
 	  package_name="NONE"
 	else
@@ -878,7 +893,9 @@ function build_package ()
 	fi
       ;;
       rpm)
-	if [ ! "$build_mode" = "release" ]; then
+	if [ "$without_cmserver" = "true" ]; then
+	  print_info "CUBRID manager server is disabled. Skip RPM build"
+	elif [ ! "$build_mode" = "release" ]; then
 	  print_info "$build_mode mode RPM or SRPM is not supported. Skip"
 	  package_name="NONE"
 	else
@@ -1054,6 +1071,7 @@ function build_dist ()
       print_error "Pakcages with coverage mode is not supported. Skip"
       return 0
   esac
+
   build_package
 }
 
