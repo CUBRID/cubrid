@@ -986,6 +986,9 @@ relay_prepare_request:
       return 0;
     }
 
+  /* we should bind context and shard/cas after complete to allocate */
+  proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
+
   ctx_p->waiting_event = proxy_event_dup (event_p);
   if (ctx_p->waiting_event == NULL)
     {
@@ -998,8 +1001,6 @@ relay_prepare_request:
       goto free_context;
     }
   event_p = NULL;
-
-  proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
 
   ctx_p->func_code = func_code;
 
@@ -2122,8 +2123,6 @@ int
 fn_proxy_cas_relay_only (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 {
   int error;
-
-  assert (false);
 
   ENTER_FUNC ();
 
