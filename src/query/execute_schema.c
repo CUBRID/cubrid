@@ -11558,8 +11558,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *create_select = NULL;
   PT_NODE *create_index = NULL;
   DB_QUERY_TYPE *query_columns = NULL;
+  PT_NODE *tbl_opt = NULL;
+  bool reuse_oid = false;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
+  bool do_flush_class_mop = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -11593,9 +11596,25 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (node->info.create_entity.entity_type)
     {
     case PT_CLASS:
+
+      for (tbl_opt = node->info.create_entity.table_option_list;
+	   tbl_opt != NULL; tbl_opt = tbl_opt->next)
+	{
+	  assert (tbl_opt->node_type == PT_TABLE_OPTION);
+	  switch (tbl_opt->info.table_option.option)
+	    {
+	    case PT_TABLE_OPTION_REUSE_OID:
+	      reuse_oid = true;
+	      break;
+	    default:
+	      break;
+	    }
+	}
+
       if (node->info.create_entity.partition_info != NULL
 	  || create_like != NULL || create_select != NULL
-	  || node->info.create_entity.create_index != NULL)
+	  || node->info.create_entity.create_index != NULL
+	  || reuse_oid == true)
 	{
 	  error = tran_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY, false);
 	  if (error != NO_ERROR)
@@ -11604,6 +11623,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  do_rollback_on_error = true;
 	}
+
       if (create_like)
 	{
 	  ctemplate = dbt_copy_class (class_name, create_like, &source_class);
@@ -11686,56 +11706,57 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
     case PT_VCLASS:
       if (node->info.create_entity.with_check_option == PT_CASCADED)
-	error =
-	  sm_set_class_flag (class_obj, SM_CLASSFLAG_WITHCHECKOPTION, 1);
+	{
+	  error = sm_set_class_flag (class_obj,
+				     SM_CLASSFLAG_WITHCHECKOPTION, 1);
+	}
       else if (node->info.create_entity.with_check_option == PT_LOCAL)
 	{
-	  error =
-	    sm_set_class_flag (class_obj, SM_CLASSFLAG_LOCALCHECKOPTION, 1);
+	  error = sm_set_class_flag (class_obj,
+				     SM_CLASSFLAG_LOCALCHECKOPTION, 1);
 	}
       break;
+
     case PT_CLASS:
-      {
-	PT_NODE *tbl_opt = NULL;
-	bool reuse_oid = false;
+      if (create_like)
+	{
+	  assert (source_class != NULL);
 
-	for (tbl_opt = node->info.create_entity.table_option_list;
-	     tbl_opt != NULL; tbl_opt = tbl_opt->next)
-	  {
-	    assert (tbl_opt->node_type == PT_TABLE_OPTION);
-	    switch (tbl_opt->info.table_option.option)
-	      {
-	      case PT_TABLE_OPTION_REUSE_OID:
-		reuse_oid = true;
-		break;
-	      default:
-		break;
-	      }
-	  }
-
-	if (create_like)
-	  {
-	    assert (source_class != NULL);
-
-	    if (!reuse_oid && (source_class->flags & SM_CLASSFLAG_REUSE_OID))
-	      {
-		reuse_oid = true;
-	      }
-	  }
-	if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
-	  {
-	    error = er_errid ();
-	    break;
-	  }
-	if (reuse_oid)
-	  {
-	    error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REUSE_OID, 1);
-	  }
-	break;
-      }
+	  if (!reuse_oid && (source_class->flags & SM_CLASSFLAG_REUSE_OID))
+	    {
+	      reuse_oid = true;
+	    }
+	}
+      if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
+	{
+	  error = er_errid ();
+	  break;
+	}
+      if (reuse_oid)
+	{
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REUSE_OID, 1);
+	  if (error == NO_ERROR)
+	    {
+	      /* Need to flush class mop in order to reflect reuse_oid flag 
+	       * into catalog table.
+	       * Without flushing it, catalog information is incorrect 
+	       * under non-autocommit mode. 
+	       */
+	      do_flush_class_mop = true;
+	    }
+	}
+      break;
 
     default:
       break;
+    }
+
+  if (do_flush_class_mop == true)
+    {
+      assert (error == NO_ERROR && do_rollback_on_error == true);
+      assert (class_obj != NULL);
+
+      error = locator_flush_class (class_obj);
     }
 
   if (error != NO_ERROR)
@@ -11746,11 +11767,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   if (node->info.create_entity.partition_info != NULL)
     {
       SM_PARTITION_ALTER_INFO info;
+
       info.keycol[0] = 0;
       info.promoted_count = 0;
       info.promoted_names = NULL;
       info.root_tmpl = NULL;
       info.root_op = class_obj;
+
       error = do_create_partition (parser, node, &info);
       if (error != NO_ERROR)
 	{
@@ -11802,6 +11825,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
        create_index != NULL; create_index = create_index->next)
     {
       PT_NODE *save_next = NULL;
+
       create_index->info.index.indexed_class =
 	pt_entity (parser, node->info.create_entity.entity_name, NULL, NULL);
 
@@ -11847,7 +11871,6 @@ error_exit:
     }
   return error;
 }
-
 
 /*
  * do_copy_indexes() - Copies all the indexes of a given class to another
