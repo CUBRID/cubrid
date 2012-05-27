@@ -6252,11 +6252,16 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
-	  if (range && entity)
+	  if (range != NULL
+	      && entity != NULL && entity->info.name.original != NULL)
 	    {
 	      classop = db_find_class (entity->info.name.original);
-	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)
-		  != NO_ERROR)
+	      if (classop == NULL)
+		{
+		  break;
+		}
+	      if (au_fetch_class (classop, &class_, AU_FETCH_READ,
+				  AU_SELECT) != NO_ERROR)
 		{
 		  errid = er_errid ();
 		  if (errid == ER_AU_SELECT_FAILURE
@@ -6271,8 +6276,8 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 
 		  return NULL;
 		}
-	      if (classobj_find_class_index
-		  (class_, index->info.name.original))
+	      if (classobj_find_class_index (class_,
+					     index->info.name.original))
 		{
 		  /* found the class; resolve index name */
 		  found++;

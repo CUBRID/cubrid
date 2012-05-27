@@ -5733,6 +5733,12 @@ au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode,
       *class_ptr = NULL;
     }
 
+  if (op == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (Au_user == NULL && !Au_disable)
     {
       error = ER_AU_INVALID_USER;
