@@ -9251,7 +9251,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	{
 	  sc_info_ptr->system_class = false;
 	  node = pt_resolve_names (parser, node, sc_info_ptr);
-	  if (node->node_type == PT_CREATE_INDEX)
+	  if (!pt_has_error (parser) && node->node_type == PT_CREATE_INDEX)
 	    {
 	      pt_check_create_index (parser, node);
 	    }

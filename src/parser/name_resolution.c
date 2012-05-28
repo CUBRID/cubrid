@@ -185,6 +185,10 @@ static void fill_in_insert_default_function_arguments (PARSER_CONTEXT *
 
 static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser,
 					PT_NODE * statement);
+static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser,
+					  PT_NODE * name,
+					  PT_BIND_NAMES_ARG * bind_arg,
+					  int * is_spec_attr);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -2828,7 +2832,40 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		   */
 		  if (!pt_type_generic_func (parser, node))
 		    {
-		      if (parser_function_code != PT_EMPTY)
+		      PT_NODE *top_node = NULL;
+		      int is_spec_attr = 0;
+
+		      /* get top node */
+		      if (bind_arg != NULL && bind_arg->sc_info != NULL)
+			{
+			  top_node = bind_arg->sc_info->top_node;
+			}
+
+		     if (top_node != NULL
+			  && (top_node->node_type == PT_CREATE_INDEX
+			      || top_node->node_type == PT_ALTER_INDEX)
+			      || (top_node->node_type == PT_ALTER
+				  && top_node->info.alter.create_index
+				     != NULL))
+			{
+			  /* check if function name is a spec attribute */
+			  if (pt_function_name_is_spec_attr (parser, node,
+							     bind_arg,
+							     &is_spec_attr)
+			      != NO_ERROR)
+			    {
+			      return NULL;
+			    }
+			}
+
+		      /* show appropriate error message */
+		      if (is_spec_attr)
+			{
+			  PT_ERRORm (parser, node,
+				     MSGCAT_SET_PARSER_SEMANTIC,
+				     MSGCAT_SEMANTIC_PREFIX_INDEX_NOT_SUPPORTED);
+			}
+		      else if (parser_function_code != PT_EMPTY)
 			{
 			  PT_ERRORmf (parser, node,
 				      MSGCAT_SET_PARSER_SEMANTIC,
@@ -7320,4 +7357,63 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
 				     serial_name);
 
   return serial_mop;
+}
+
+/*
+ * pt_function_name_is_spec_attr () - checks if a generic function name is
+ *	actually an attribute name. It is used to distinguish between an error 
+ *	caused by the wrong usage of a prefix length index or an function
+ *      index.
+ *
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in): parser context
+ *   node(in): PT_FUNCTION node holding the function name to be searched
+ *   bind_arg(in): list of scopes
+ *   is_spec_attr(out): 1 if it is actually an attribute name, 0 otherwise
+ */
+static int
+pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE *node,
+			       PT_BIND_NAMES_ARG * bind_arg,
+			       int *is_spec_attr)
+{
+  SCOPES *scope = NULL;
+  PT_NODE *spec = NULL;
+  PT_NODE *attr = NULL;
+
+  assert (node->node_type == PT_FUNCTION);
+
+  *is_spec_attr = 0;
+  attr = pt_name (parser, node->info.function.generic_name);
+  if (attr == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
+
+  /* walk scopes (might be unnecessary) */
+  for (scope = bind_arg->scopes; scope; scope = scope->next)
+    {
+      /* walk specs */
+      for (spec = scope->specs; spec; spec = spec->next)
+	{
+	  if (pt_find_name_in_spec (parser, spec, attr) > 0)
+	    {
+	      *is_spec_attr = 1;
+	      break;
+	    }
+	}
+      if (*is_spec_attr == 1)
+	{
+	  /* no need to continue */
+	  break;
+	}
+    }
+
+  if (attr != NULL)
+    {
+      parser_free_node (parser, attr);
+    }
+
+  return NO_ERROR;
 }
