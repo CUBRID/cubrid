@@ -75,7 +75,7 @@ envvar_check_environment (void)
       /* 108 = sizeof (((struct sockaddr_un *) 0)->sun_path) */
       /* 12  = ("CUBRID65384" + 1) */
       envvar_name (name, _ENVVAR_MAX_LENGTH, "TMP");
-      if (IS_ABS_PATH (cubrid_tmp))
+      if (!IS_ABS_PATH (cubrid_tmp))
 	{
 	  fprintf (stderr, env_msg[ENV_MUST_ABS_PATH], name, cubrid_tmp);
 	  fflush (stderr);
