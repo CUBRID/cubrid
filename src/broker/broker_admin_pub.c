@@ -257,7 +257,9 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 	  NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
-	  strcpy (admin_err_msg, "The installation path is too long");
+	  snprintf (admin_err_msg, sizeof (admin_err_msg) - 1,
+		    "The socket path is too long (>%u): %s",
+		    MEMBER_SIZE (struct sockaddr_un, sun_path), path);
 	  return -1;
 	}
 #endif /* !WINDOWS */
