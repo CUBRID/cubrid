@@ -1668,8 +1668,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       if (class_->inheritance != NULL)
 	{
-	  count = ws_list_length ((DB_LIST *) class_->inheritance) + 1;
-	  strs = (char **) malloc (sizeof (char *) * count);
+	  count = ws_list_length ((DB_LIST *) class_->inheritance);
+	  strs = (char **) malloc (sizeof (char *) * (count + 1));
 	  if (strs == NULL)
 	    {
 	      goto error_exit;
@@ -1698,8 +1698,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       if (class_->users != NULL)
 	{
-	  count = ws_list_length ((DB_LIST *) class_->users) + 1;
-	  strs = (char **) malloc (sizeof (char *) * count);
+	  count = ws_list_length ((DB_LIST *) class_->users);
+	  strs = (char **) malloc (sizeof (char *) * (count + 1));
 	  if (strs == NULL)
 	    {
 	      goto error_exit;
@@ -1756,7 +1756,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * count + 1);
+	      strs = (char **) malloc (sizeof (char *) * (count + 1));
 	      if (strs == NULL)
 		{
 		  goto error_exit;
