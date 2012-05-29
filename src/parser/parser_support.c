@@ -4959,6 +4959,8 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
   ptr->no_subclasses = 0;
   ptr->no_attrs = 0;
   ptr->needs_pruning = 0;
+  ptr->no_lob_attrs = NULL;
+  ptr->lob_attr_ids = NULL;
 }
 
 /*

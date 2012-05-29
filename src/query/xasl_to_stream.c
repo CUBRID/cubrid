@@ -3360,6 +3360,8 @@ static char *
 xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
 {
   int offset = 0;
+  int i;
+  char *p;
 
   /* no_subclasses */
   ptr = or_pack_int (ptr, upd_cls->no_subclasses);
@@ -3396,6 +3398,46 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
   ptr = or_pack_int (ptr, upd_cls->needs_pruning);
   /* has_uniques */
   ptr = or_pack_int (ptr, upd_cls->has_uniques);
+
+  /* make sure no_lob_attrs and lob_attr_ids are both NULL or are both not
+   * NULL
+   */
+  assert ((upd_cls->no_lob_attrs && upd_cls->lob_attr_ids)
+	  || (!upd_cls->no_lob_attrs && !upd_cls->lob_attr_ids));
+  /* no_lob_attrs */
+  offset = xts_save_int_array (upd_cls->no_lob_attrs, upd_cls->no_subclasses);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+  /* lob_attr_ids */
+  if (upd_cls->lob_attr_ids)
+    {
+      offset =
+	xts_reserve_location_in_stream (upd_cls->no_subclasses *
+					sizeof (int));
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+      p = &xts_Stream_buffer[offset];
+      for (i = 0; i < upd_cls->no_subclasses; i++)
+	{
+	  offset = xts_save_int_array (upd_cls->lob_attr_ids[i],
+				       upd_cls->no_lob_attrs[i]);
+	  if (offset == ER_FAILED)
+	    {
+	      return NULL;
+	    }
+	  p = or_pack_int (p, offset);
+	}
+    }
+  else
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
 
   return ptr;
 }
@@ -5283,7 +5325,9 @@ xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls)
     OR_INT_SIZE +		/* no_attrs */
     PTR_SIZE +			/* att_id */
     OR_INT_SIZE +		/* needs pruning */
-    OR_INT_SIZE;		/* has_uniques */
+    OR_INT_SIZE +		/* has_uniques */
+    PTR_SIZE +			/* no_lob_attrs */
+    PTR_SIZE;			/* lob_attr_ids */
 
   return size;
 }

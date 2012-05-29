@@ -16412,6 +16412,25 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto error_return;
 	    }
 
+	  if (!class_info->needs_pruning)
+	    {
+	      class_info->no_lob_attrs = regu_int_array_alloc (no_subclasses);
+	      if (class_info->no_lob_attrs == NULL)
+		{
+		  goto error_return;
+		}
+	      class_info->lob_attr_ids = regu_int_array_alloc (no_subclasses);
+	      if (class_info->lob_attr_ids == NULL)
+		{
+		  goto error_return;
+		}
+	    }
+	  else
+	    {
+	      class_info->no_lob_attrs = 0;
+	      class_info->lob_attr_ids = 0;
+	    }
+
 	  j = 0;
 	  cl_name_node = node->info.spec.flat_entity_list;
 	  while (cl_name_node != NULL)
@@ -16431,6 +16450,60 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      COPY_OID (&class_info->class_oid[j], class_oid);
 	      HFID_COPY (&class_info->class_hfid[j], hfid);
+
+	      if (!class_info->needs_pruning)
+		{
+		  class_info->no_lob_attrs[j] = 0;
+		  class_info->lob_attr_ids[j] = 0;
+
+		  if (cl_name_node != node->info.spec.flat_entity_list
+		      && !class_info->needs_pruning)
+		    {
+		      /* lob attributes from root table are already handled */
+		      DB_ATTRIBUTE *attrs, *attr;
+
+		      attrs = db_get_attributes (class_obj);
+		      for (attr = attrs; attr; attr = attr->header.next)
+			{
+			  if ((attr->type->id == DB_TYPE_BLOB
+			       || attr->type->id == DB_TYPE_CLOB)
+			      && attr->class_mop !=
+			      node->info.spec.flat_entity_list->info.name.
+			      db_object)
+			    {
+			      /* count lob attributes that don't belong to the
+			       * root table
+			       */
+			      class_info->no_lob_attrs[j]++;
+			    }
+			}
+		      if (class_info->no_lob_attrs[j] != 0)
+			{
+			  /* some lob attributes were found, save their ids */
+			  int count = 0;
+
+			  class_info->lob_attr_ids[j] =
+			    regu_int_array_alloc (class_info->no_lob_attrs[j]);
+			  if (!class_info->lob_attr_ids[j])
+			    {
+			      goto error_return;
+			    }
+			  for (attr = attrs; attr; attr = attr->header.next)
+			    {
+			      if ((attr->type->id == DB_TYPE_BLOB
+				   || attr->type->id == DB_TYPE_CLOB)
+				  && attr->class_mop !=
+				  node->info.spec.flat_entity_list->info.name.
+				  db_object)
+				{
+				  class_info->lob_attr_ids[j][count++] =
+				    attr->id;
+				}
+			    }
+			}
+		    }
+		}
+
 	      cl_name_node = cl_name_node->next;
 	      j++;
 	    }

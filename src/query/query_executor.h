@@ -387,6 +387,9 @@ struct upddel_class_info
   int *att_id;			/* ID's of attributes (array)           */
   int needs_pruning;		/* perform partition pruning */
   int has_uniques;		/* whether there are unique constraints */
+
+  int *no_lob_attrs;		/* number of lob attributes for each subclass */
+  int **lob_attr_ids;		/* list of log attribute ids for each subclass */
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;

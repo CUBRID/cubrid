@@ -3159,6 +3159,9 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr,
 			     UPDDEL_CLASS_INFO * upd_cls)
 {
   int offset = 0;
+  int i;
+  char *p;
+
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -3224,6 +3227,65 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &upd_cls->needs_pruning);
   /* has_uniques */
   ptr = or_unpack_int (ptr, &upd_cls->has_uniques);
+
+  /* no_lob_attrs */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0 || upd_cls->no_subclasses == 0)
+    {
+      upd_cls->no_lob_attrs = NULL;
+    }
+  else
+    {
+      upd_cls->no_lob_attrs =
+	stx_restore_int_array (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset],
+			       upd_cls->no_subclasses);
+      if (upd_cls->no_lob_attrs == NULL)
+	{
+	  return NULL;
+	}
+    }
+  /* lob_attr_ids */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0 || upd_cls->no_subclasses == 0)
+    {
+      upd_cls->lob_attr_ids = NULL;
+    }
+  else
+    {
+      upd_cls->lob_attr_ids =
+	stx_alloc_struct (thread_p, upd_cls->no_subclasses * sizeof (int *));
+      if (!upd_cls->lob_attr_ids)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      p = &xasl_unpack_info->packed_xasl[offset];
+      for (i = 0; i < upd_cls->no_subclasses; i++)
+	{
+	  p = or_unpack_int (p, &offset);
+	  if (offset == 0 || upd_cls->no_lob_attrs[i] == 0)
+	    {
+	      upd_cls->lob_attr_ids[i] = NULL;
+	    }
+	  else
+	    {
+	      upd_cls->lob_attr_ids[i] =
+		stx_restore_int_array (thread_p,
+				       &xasl_unpack_info->packed_xasl[offset],
+				       upd_cls->no_lob_attrs[i]);
+	      if (upd_cls->lob_attr_ids[i] == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	}
+    }
+  /* make sure no_lob_attrs and lob_attr_ids are both NULL or are both not
+   * NULL
+   */
+  assert ((upd_cls->no_lob_attrs && upd_cls->lob_attr_ids)
+	  || (!upd_cls->no_lob_attrs && !upd_cls->lob_attr_ids));
 
   return ptr;
 }
