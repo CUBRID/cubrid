@@ -643,6 +643,11 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_OBJECT:
       result->info.value.data_value.op = DB_GET_OBJECT (val);
       result->data_type = pt_get_object_data_type (parser, val);
+      if (result->data_type == NULL)
+	{
+	  parser_free_node (parser, result);
+	  result = NULL;
+	}
       break;
     case DB_TYPE_TIME:
       if (db_time_to_string (buf, sizeof (buf), DB_GET_TIME (val)) == 0)
@@ -719,6 +724,11 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  result->type_enum = PT_TYPE_OBJECT;
 	  result->data_type = pt_get_object_data_type
 	    (parser, &result->info.value.db_value);
+	  if (result->data_type == NULL)
+	    {
+	      parser_free_node (parser, result);
+	      result = NULL;
+	    }
 	}
       break;
 
@@ -734,6 +744,11 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  result->type_enum = PT_TYPE_OBJECT;
 	  result->data_type = pt_get_object_data_type
 	    (parser, &result->info.value.db_value);
+	  if (result->data_type == NULL)
+	    {
+	      parser_free_node (parser, result);
+	      result = NULL;
+	    }
 	}
       break;
 

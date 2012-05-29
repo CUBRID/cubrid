@@ -4999,6 +4999,11 @@ locator_flush_all_instances (MOP class_mop, bool decache)
   int error_code = NO_ERROR;
   int map_status;
 
+  if (class_mop == NULL)
+    {
+      return ER_FAILED;
+    }
+
   class_obj = locator_fetch_class (class_mop, DB_FETCH_CLREAD_INSTREAD);
   if (class_obj == NULL)
     {
@@ -5043,6 +5048,14 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 	}
 
       locator_mflush_end (&mflush);
+      if (error_code == NO_ERROR)
+	{
+	  if (decache)
+	    {
+	      /* make sure we don't have anyone referencing us */
+	      ws_disconnect_deleted_instances (class_mop);
+	    }
+	}
     }
 
   return error_code;

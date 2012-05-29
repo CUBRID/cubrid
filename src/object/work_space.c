@@ -180,7 +180,6 @@ static AREA *Objlist_area = NULL;
 
 static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
-static void disconnect_deleted_instances (MOP classop);
 static void emergency_remove_dirty (MOP op);
 static int ws_map_dirty_internal (MAPFUNC function, void *args,
 				  bool classes_only);
@@ -1453,7 +1452,7 @@ ws_perm_oid (MOP mop, OID * newoid)
  */
 
 /*
- * disconnect_deleted_instances - called when a class MOP is being garbage
+ * ws_disconnect_deleted_instances - called when a class MOP is being garbage
  * collected
  *    return: void
  *    classop(in/out): class MOP
@@ -1465,8 +1464,8 @@ ws_perm_oid (MOP mop, OID * newoid)
  *    Here we make sure that any instance MOPs connected to this class
  *    get disconnected.
  */
-static void
-disconnect_deleted_instances (MOP classop)
+void
+ws_disconnect_deleted_instances (MOP classop)
 {
   MOP m, next;
 
@@ -1519,7 +1518,7 @@ ws_remove_resident_class (MOP classop)
   if (classop != sm_Root_class_mop)
     {
       /* make sure we don't have anyone referencing us */
-      disconnect_deleted_instances (classop);
+      ws_disconnect_deleted_instances (classop);
       ml_remove (&ws_Resident_classes, classop);
     }
 }
@@ -1758,7 +1757,9 @@ void
 ws_intern_instances (MOP class_mop)
 {
   if (locator_flush_all_instances (class_mop, DECACHE) != NO_ERROR)
-    return;
+    {
+      return;
+    }
 
   ws_filter_dirty ();
   ws_cull_mops ();
