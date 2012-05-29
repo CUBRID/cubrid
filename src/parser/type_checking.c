@@ -19919,7 +19919,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	      do
 		{
 		  if (PT_HAS_COLLATION (dt_node->type_enum)
-		      && dt_node->info.data_type.units != (int) codeset)
+		      && dt_node->info.data_type.collation_id != coll_id)
 		    {
 		      apply_wrap_cast = true;
 		      break;
@@ -19964,9 +19964,10 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  assert (PT_HAS_COLLATION (node->type_enum));
 
-	  /* wrap with cast when codeset changes and the node is not a CAST */
+	  /* always wrap with cast except when node is CAST expression (avoid
+	     CAST recursion) or force mode is enabled */
 	  if (!force_mode
-	      && (node->data_type->info.data_type.units != (int) codeset)
+	      && (node->data_type->info.data_type.collation_id != coll_id)
 	      && (node->node_type != PT_EXPR
 		  || node->info.expr.op != PT_CAST))
 	    {
@@ -20260,7 +20261,8 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	      || (arg1_coerc_level <= arg2_coerc_level));
 
       /* coerce arg2 collation */
-      if (arg1_coll != arg2_coll && !LANG_IS_COERCIBLE_COLL (arg2_coll))
+      if (arg1_coll != arg2_coll && arg1_coerc_level == arg2_coerc_level
+	  && !LANG_IS_COERCIBLE_COLL (arg2_coll))
 	{
 	  goto error;
 	}
