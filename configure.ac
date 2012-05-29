@@ -33,6 +33,7 @@ remember_CXXFLAGS="$CXXFLAGS"
 remember_LDFLAGS="$LDFLAGS"
 AC_PROG_CC
 AC_PROG_CXX
+AM_PROG_CC_C_O
 
 # Checks bit model feature.
 AC_ARG_ENABLE([64bit],
@@ -163,10 +164,10 @@ then
 	if test "x$hashstyle" != "x"
 	then
 		LDFLAGS="$LDFLAGS -Wl,--hash-style=both"
-		AC_LINK_IFELSE([
-                        #include <stdio.h>
-                        int main(void) { return 0; }
-                ], have_ld_hash_style=yes, have_ld_hash_style=no)
+		AC_LINK_IFELSE([AC_LANG_SOURCE([
+			#include <stdio.h>
+			int main(void) { return 0; }
+		])], have_ld_hash_style=yes, have_ld_hash_style=no)
 
 	else
 		have_ld_hash_style=no
@@ -200,7 +201,7 @@ AC_TRY_LINK([#include <netdb.h>],
 	],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_GLIBC, 1, [Using glibc version of gethostbyname_r()])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the `gethostbyname_r' function.])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])
 	],
 	[AC_MSG_RESULT([no])]
 )
@@ -213,7 +214,7 @@ AC_TRY_LINK([#include <netdb.h>],
 	],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_SOLARIS, 1, [Using Solaris gethostbyname_r()])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the `gethostbyname_r' function.])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])
 	],
 	[AC_MSG_RESULT([no])]
 )
@@ -225,14 +226,14 @@ AC_TRY_LINK([#include <netdb.h>],
 	],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HPUX, 1, [Using HPUX gethostbyname_r()])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the `gethostbyname_r' function.])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])
 	],
 	[AC_MSG_RESULT([no])]
 )
 
 # Check gcc atomic builtins
 AC_MSG_CHECKING([whether gcc provides atomic builtins])
-AC_RUN_IFELSE([
+AC_RUN_IFELSE([AC_LANG_SOURCE([
 	int main() {
   		long i, j, r;
 		i = 100; j = 200;
@@ -256,7 +257,7 @@ AC_RUN_IFELSE([
 		  return(1);
 		}
 		return(0);
-	}],
+	}])],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GCC_ATOMIC_BUILTINS, 1, [Define to 1 if your gcc provides atomic builtins.])
 	],
@@ -365,7 +366,7 @@ fi
 
 AC_ARG_WITH(jdbc,
 	AS_HELP_STRING([--without-jdbc],
-		[JDBC driver doesn't build @<:@default=no@:>@]),
+		[JDBC driver does not build @<:@default=no@:>@]),
 	[],
 	[with_jdbc=yes])
 AS_IF([test "x$with_jdbc" = "xyes"],
@@ -405,10 +406,10 @@ AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
 AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
 
 CFLAGS="$CFLAGS $JAVA_INC"
-AC_LINK_IFELSE([
+AC_LINK_IFELSE([AC_LANG_SOURCE([
 			#include <jni.h>
 			int main(void) { return 0; }
-		], [AC_MSG_RESULT(yes)],
+		])], [AC_MSG_RESULT(yes)],
 		[AC_MSG_ERROR([Cannot compile a JNI program. See config.log for details.])])
 
 AC_SUBST(JAVA_INC)
