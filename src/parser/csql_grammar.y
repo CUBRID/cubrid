@@ -2232,6 +2232,13 @@ create_stmt
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
+			if ($5 && $12)
+			  {
+			    /* not allowed unique with filter index */
+			    PT_ERRORm (this_parser, node,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			  }
 			if (node && ocs)
 			  {
 			    PT_NODE *col;
@@ -2252,6 +2259,16 @@ create_stmt
 			      }
 
 			    col = $11;
+			    if (col->info.sort_spec.expr->node_type == PT_EXPR)
+			      {
+			        if (node->info.index.unique)
+			          {
+			            /* not allowed unique with function index */
+			            PT_ERRORm (this_parser, node,
+			                       MSGCAT_SET_PARSER_SYNTAX,
+			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			          }
+			      }
 			    if ((parser_count_list (col) == 1)
 				&& (col->info.sort_spec.expr->node_type == PT_FUNCTION))
 			      {
@@ -2944,8 +2961,16 @@ alter_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
+			if ($5 && $10)
+			  {
+			    /* not allowed unique with filter index */
+			    PT_ERRORm (this_parser, node,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			  }
 			if (node && ocs)
 			  {
+			    PT_NODE *col;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 
@@ -2954,7 +2979,18 @@ alter_stmt
 			    ocs->info.spec.meta_class = PT_CLASS;
 
 			    node->info.index.indexed_class = ocs;
-			    node->info.index.column_names = $9;
+			    col = $9;
+			    if (col->info.sort_spec.expr->node_type == PT_EXPR)
+			      {
+			        if (node->info.index.unique)
+			          {
+			            /* not allowed unique with function index */
+			            PT_ERRORm (this_parser, node,
+			                       MSGCAT_SET_PARSER_SYNTAX,
+			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			          }
+			      }
+			    node->info.index.column_names = col;
 			    node->info.index.where = $10;
 
 			    $$ = node;
@@ -2982,8 +3018,15 @@ alter_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 
+			if ($5 && $11)
+			  {
+			    /* not allowed unique with filter index */
+			    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			  }
 			if (node && ocs)
 			  {
+			    PT_NODE *col;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $7;
@@ -2997,7 +3040,18 @@ alter_stmt
 			    ocs->info.spec.meta_class = PT_CLASS;
 
 			    node->info.index.indexed_class = ocs;
-			    node->info.index.column_names = $10;
+			    col = $10;
+			    if (col && col->info.sort_spec.expr->node_type == PT_EXPR)
+			      {
+			        if (node->info.index.unique)
+			          {
+			            /* not allowed unique with function index */
+			            PT_ERRORm (this_parser, node,
+			                       MSGCAT_SET_PARSER_SYNTAX,
+			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			          }
+			      }
+			    node->info.index.column_names = col;
 			    node->info.index.where = $11;
 
 			    $$ = node;
@@ -3268,6 +3322,7 @@ drop_stmt
 
 			if (node && ocs)
 			  {
+			    PT_NODE *col;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 
@@ -3278,7 +3333,19 @@ drop_stmt
 			    PARSER_SAVE_ERR_CONTEXT (ocs, @8.buffer_pos)
 
 			    node->info.index.indexed_class = ocs;
-			    node->info.index.column_names = $9;
+
+			    col = $9;
+			    if (col->info.sort_spec.expr->node_type == PT_EXPR)
+			      {
+			        if (node->info.index.unique)
+			          {
+			            /* not allowed unique with function index */
+			            PT_ERRORm (this_parser, node,
+			                       MSGCAT_SET_PARSER_SYNTAX,
+			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			          }
+			      }
+			    node->info.index.column_names = col;
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
@@ -3304,6 +3371,7 @@ drop_stmt
 
 			if (node && ocs)
 			  {
+			    PT_NODE *col;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $7;
@@ -3317,7 +3385,20 @@ drop_stmt
 			    ocs->info.spec.meta_class = PT_CLASS;
 			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
 			    node->info.index.indexed_class = ocs;
-			    node->info.index.column_names = $10;
+
+			    col = $10;
+			    if (col &&
+			        col->info.sort_spec.expr->node_type == PT_EXPR)
+			      {
+			        if (node->info.index.unique)
+			          {
+			            /* not allowed unique with function index */
+			            PT_ERRORm (this_parser, node,
+								   MSGCAT_SET_PARSER_SYNTAX,
+								   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			          }
+			      }
+			    node->info.index.column_names = col;
 
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -7504,17 +7585,20 @@ unique_constraint
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| UNIQUE opt_of_index_key opt_identifier index_column_name_list opt_where_clause
+	| UNIQUE opt_of_index_key opt_identifier index_column_name_list
 		{{
 
 			PT_NODE *node = NULL;
 			PT_NODE *sort_spec_cols = $4, *name_cols = NULL;
 
-			if ($5 == NULL)
+			if (sort_spec_cols->info.sort_spec.expr->node_type == PT_EXPR)
 			  {
-			    name_cols = pt_sort_spec_list_to_name_node_list (this_parser, sort_spec_cols);
+			    /* not allowed unique with function index */
+			    PT_ERRORm (this_parser, sort_spec_cols,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 			  }
-
+			name_cols = pt_sort_spec_list_to_name_node_list (this_parser, sort_spec_cols);
 			if (name_cols)
 			  {
 			    /* create constraint node */
@@ -7552,7 +7636,6 @@ unique_constraint
 				      }
 
 				    node->info.index.indexed_class = NULL;
-				    node->info.index.where = $5;
 				    node->info.index.column_names = sort_spec_cols;
 				    node->info.index.unique = 1;
 				  }
