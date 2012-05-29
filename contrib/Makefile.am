@@ -36,6 +36,7 @@ dist_hascripts_DATA = scripts/ha/README
 hafuncdir = ${hascriptsdir}/functions
 dist_hafunc_SCRIPTS = \
 	scripts/ha/functions/ha_check_copylog.sh \
+	scripts/ha/functions/ha_check_environment.sh \
 	scripts/ha/functions/ha_check_script.sh \
 	scripts/ha/functions/ha_repl_copylog.sh \
 	scripts/ha/functions/ha_repl_reset.sh \
