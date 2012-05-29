@@ -2584,7 +2584,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
   new_session =
-    db_open_buffer_local (statement->info.execute.query->info.value.text);
+    db_open_buffer_local ((char *) statement->info.execute.query->info.value.
+			  data_value.str->bytes);
   if (new_session == NULL)
     {
       return er_errid ();

@@ -257,10 +257,9 @@ pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string)
 	{
 	  node->info.value.data_value.str = pt_append_bytes
 	    (parser, NULL, value_string, strlen (value_string));
-	  node->info.value.text =
-	    (char *) node->info.value.data_value.str->bytes;
 	  node->type_enum = PT_TYPE_CHAR;
 	  node->info.value.string_type = ' ';
+	  PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
 	}
     }
   return node;
@@ -5929,7 +5928,7 @@ pt_fixup_column_type (PT_NODE * col)
 	  switch (col->info.value.string_type)
 	    {
 	    case 'B':
-	      fixed_precision = strlen (col->info.value.text);
+	      fixed_precision = col->info.value.data_value.str->length;
 	      if (fixed_precision == 0)
 		{
 		  fixed_precision = 1;
@@ -5937,7 +5936,7 @@ pt_fixup_column_type (PT_NODE * col)
 	      break;
 
 	    case 'X':
-	      fixed_precision = strlen (col->info.value.text);
+	      fixed_precision = col->info.value.data_value.str->length;
 	      if (fixed_precision == 0)
 		{
 		  fixed_precision = 1;

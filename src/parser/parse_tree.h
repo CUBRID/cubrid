@@ -563,6 +563,16 @@
         (p)->custom_print = save_custom;                        \
     } while (0)
 
+#define PT_NODE_PRINT_VALUE_TO_TEXT(p, n)			\
+    do {							\
+	if (!(p) || !(n) || (n)->node_type != PT_VALUE		\
+	    || (n)->info.value.text)				\
+	  {							\
+	    break;						\
+	  }							\
+	(n)->info.value.text = parser_print_tree ((p), (n));	\
+    } while (0)
+
 #define CAST_POINTER_TO_NODE(p)                          \
     do {                                                 \
         while ((p) && (p)->node_type == PT_POINTER) {    \
@@ -2412,7 +2422,11 @@ union pt_data_value
   DB_BIGINT bigint;
   float f;
   double d;
-  PARSER_VARCHAR *str;
+  PARSER_VARCHAR *str;		/* keeps as string different data type:
+				 * string data types (char, nchar, byte)
+				 * date and time data types
+				 * numeric
+				 */
   void *p;			/* what is this */
   DB_OBJECT *op;
   PT_TIME time;
@@ -2430,7 +2444,11 @@ union pt_data_value
 /* Info for the VALUE node */
 struct pt_value_info
 {
-  const char *text;		/* original text of numbers */
+  const char *text;		/* printed text of a value or of an expression
+				 * folded to a value.
+				 * NOTE: this is not the actual value of the
+				 * node. Use value in data_value instead.
+				 */
   PT_DATA_VALUE data_value;	/* see above UNION defs */
   DB_VALUE db_value;
   short db_value_is_initialized;

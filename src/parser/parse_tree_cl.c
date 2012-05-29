@@ -14583,6 +14583,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	    case PT_TYPE_DOUBLE:
 	      sprintf (s, "%#0.*g", DBL_DIG, p->info.value.data_value.d);
 	      break;
+	    case PT_TYPE_NUMERIC:
+	      strcpy (s, p->info.value.data_value.str->bytes);
+	      break;
 	    case PT_TYPE_INTEGER:
 	      sprintf (s, "%ld", p->info.value.data_value.i);
 	      break;
@@ -14606,41 +14609,67 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_DATE:
+      if (p->info.value.text)
+	{
+	  q = pt_append_nulstring (parser, q, p->info.value.text);
+	  break;
+	}
+      r = (char *) p->info.value.data_value.str->bytes;
       q = pt_append_nulstring (parser, q, "date ");
       q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, p->info.value.text,
-				   ((p->info.value.text)
-				    ? strlen (p->info.value.text) : 0));
+      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
       break;
     case PT_TYPE_TIME:
+      if (p->info.value.text)
+	{
+	  q = pt_append_nulstring (parser, q, p->info.value.text);
+	  break;
+	}
+      r = (char *) p->info.value.data_value.str->bytes;
       q = pt_append_nulstring (parser, q, "time ");
       q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, p->info.value.text,
-				   ((p->info.value.text)
-				    ? strlen (p->info.value.text) : 0));
+      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
       break;
     case PT_TYPE_TIMESTAMP:
+      if (p->info.value.text)
+	{
+	  q = pt_append_nulstring (parser, q, p->info.value.text);
+	  break;
+	}
+      r = (char *) p->info.value.data_value.str->bytes;
       q = pt_append_nulstring (parser, q, "timestamp ");
       q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, p->info.value.text,
-				   ((p->info.value.text)
-				    ? strlen (p->info.value.text) : 0));
+      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
       break;
     case PT_TYPE_DATETIME:
+      if (p->info.value.text)
+	{
+	  q = pt_append_nulstring (parser, q, p->info.value.text);
+	  break;
+	}
+      r = (char *) p->info.value.data_value.str->bytes;
       q = pt_append_nulstring (parser, q, "datetime ");
       q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, p->info.value.text,
-				   ((p->info.value.text)
-				    ? strlen (p->info.value.text) : 0));
+      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
+      if (p->info.value.text)
+	{
+	  if (parser->dont_prt_long_string
+	      && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	    {
+	      parser->long_string_skipped = 1;
+	      break;
+	    }
+	  q = pt_append_nulstring (parser, q, p->info.value.text);
+	  break;
+	}
+      r1 = p->info.value.data_value.str;
       if (parser->dont_prt_long_string)
 	{
-	  if (p->info.value.data_value.str
-	      && (p->info.value.data_value.str->length >=
-		  DONT_PRT_LONG_STRING_LENGTH))
+	  if (r1 && r1->length >= DONT_PRT_LONG_STRING_LENGTH)
 	    {
 	      parser->long_string_skipped = 1;
 	      break;
@@ -14653,12 +14682,11 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	char s[PT_MEMB_BUF_SIZE];
 
 	tmp = pt_append_string_prefix (parser, tmp, p);
-	if (p->info.value.data_value.str)
+	if (r1)
 	  {
-	    tmp = pt_append_quoted_string
-	      (parser, tmp,
-	       (char *) p->info.value.data_value.str->bytes,
-	       p->info.value.data_value.str->length);
+	    tmp =
+	      pt_append_quoted_string (parser, tmp, (char *) r1->bytes,
+				       r1->length);
 	  }
 	else
 	  {
@@ -14684,11 +14712,21 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
+      if (p->info.value.text)
+	{
+	  if (parser->dont_prt_long_string
+	      && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	    {
+	      parser->long_string_skipped = 1;
+	      break;
+	    }
+	  q = pt_append_nulstring (parser, q, p->info.value.text);
+	  break;
+	}
+      r1 = p->info.value.data_value.str;
       if (parser->dont_prt_long_string)
 	{
-	  if (p->info.value.data_value.str
-	      && (p->info.value.data_value.str->length >=
-		  DONT_PRT_LONG_STRING_LENGTH))
+	  if (r1 && r1->length >= DONT_PRT_LONG_STRING_LENGTH)
 	    {
 	      parser->long_string_skipped = 1;
 	      break;
@@ -14696,11 +14734,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
 
       q = pt_append_string_prefix (parser, q, p);
-      if (p->info.value.data_value.str)
+      if (r1)
 	{
-	  q = pt_append_quoted_string
-	    (parser, q, (char *) p->info.value.data_value.str->bytes,
-	     p->info.value.data_value.str->length);
+	  q = pt_append_quoted_string (parser, q, r1->bytes, r1->length);
 	}
       else
 	{

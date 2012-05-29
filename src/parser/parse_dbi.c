@@ -525,10 +525,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 
     case DB_TYPE_NUMERIC:
       db_numeric_string (val, "", temp, MAX_NUMERIC_STRING_SIZE);
-      result->info.value.text = (char *)
-	pt_get_varchar_bytes (pt_append_nulstring (parser,
-						   (PARSER_VARCHAR *) NULL,
-						   (const char *) temp));
+      result->info.value.data_value.str =
+	pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL,
+			     (const char *) temp);
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
@@ -554,8 +553,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.str =
 	pt_append_bytes (parser, NULL, bytes, size);
       result->info.value.data_value.str->length = size;
-      result->info.value.text =
-	(char *) result->info.value.data_value.str->bytes;
       if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_NCHAR)
 	{
 	  result->info.value.string_type = 'N';
@@ -621,8 +618,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	db_private_free_and_init (NULL, printed_bit);
 
 	result->info.value.data_value.str->length = size;
-	result->info.value.text =
-	  (char *) result->info.value.data_value.str->bytes;
 
 	result->data_type = parser_new_node (parser, PT_DATA_TYPE);
 	if (result->data_type == NULL)
@@ -656,7 +651,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       else
 	{
-	  result->info.value.text = pt_append_string (parser, NULL, buf);
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
       break;
     case DB_TYPE_UTIME:
@@ -666,7 +662,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       else
 	{
-	  result->info.value.text = pt_append_string (parser, NULL, buf);
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
       break;
     case DB_TYPE_DATETIME:
@@ -677,7 +674,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       else
 	{
-	  result->info.value.text = pt_append_string (parser, NULL, buf);
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
       break;
     case DB_TYPE_DATE:
@@ -687,7 +685,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       else
 	{
-	  result->info.value.text = pt_append_string (parser, NULL, buf);
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -3004,12 +3003,14 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       break;
 
     case PT_TYPE_NUMERIC:
-      if (numeric_coerce_string_to_num (value->info.value.text,
-					strlen (value->info.value.text),
-					db_value) != NO_ERROR)
+      if (numeric_coerce_string_to_num (value->info.value.data_value.str->
+					bytes,
+					value->info.value.data_value.str->
+					length, db_value) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_BAD_NUMERIC, value->info.value.text);
+		      MSGCAT_RUNTIME_BAD_NUMERIC,
+		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
       *more_type_info_needed = (value->data_type == NULL);
@@ -3020,10 +3021,12 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       break;
 
     case PT_TYPE_DATE:
-      if (db_string_to_date (value->info.value.text, &date) != NO_ERROR)
+      if (db_string_to_date (value->info.value.data_value.str->bytes, &date)
+	  != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_BAD_DATE, value->info.value.text);
+		      MSGCAT_RUNTIME_BAD_DATE,
+		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
       db_value_domain_init (db_value, DB_TYPE_DATE, 0, 0);
@@ -3031,10 +3034,12 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       break;
 
     case PT_TYPE_TIME:
-      if (db_string_to_time (value->info.value.text, &time) != NO_ERROR)
+      if (db_string_to_time (value->info.value.data_value.str->bytes, &time)
+	  != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_BAD_TIME, value->info.value.text);
+		      MSGCAT_RUNTIME_BAD_TIME,
+		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
       db_value_domain_init (db_value, DB_TYPE_TIME, 0, 0);
@@ -3042,21 +3047,24 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       break;
 
     case PT_TYPE_TIMESTAMP:
-      if (db_string_to_utime (value->info.value.text, &utime) != NO_ERROR)
+      if (db_string_to_utime (value->info.value.data_value.str->bytes, &utime)
+	  != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_BAD_UTIME, value->info.value.text);
+		      MSGCAT_RUNTIME_BAD_UTIME,
+		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
       db_make_timestamp (db_value, utime);
       break;
 
     case PT_TYPE_DATETIME:
-      if (db_string_to_datetime (value->info.value.text, &datetime) !=
-	  NO_ERROR)
+      if (db_string_to_datetime (value->info.value.data_value.str->bytes,
+				 &datetime) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_BAD_UTIME, value->info.value.text);
+		      MSGCAT_RUNTIME_BAD_UTIME,
+		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
       db_make_datetime (db_value, &datetime);
@@ -3096,7 +3104,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
     case PT_TYPE_VARBIT:
       if (value->info.value.string_type == 'B')
 	{
-	  src_length = strlen (value->info.value.text);
+	  src_length = value->info.value.data_value.str->length;
 	  dst_length = (src_length + 7) / 8;
 	  bits_converted = 0;
 	  bstring = db_private_alloc (NULL, dst_length + 1);
@@ -3106,9 +3114,10 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	      return (DB_VALUE *) NULL;
 	    }
-	  bits_converted = qstr_bit_to_bin (bstring, dst_length,
-					    (char *) value->info.value.text,
-					    src_length);
+	  bits_converted =
+	    qstr_bit_to_bin (bstring, dst_length,
+			     (char *) value->info.value.data_value.str->bytes,
+			     src_length);
 	  if (bits_converted != src_length)
 	    {
 	      db_private_free_and_init (NULL, bstring);
@@ -3125,7 +3134,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 	}
       else if (value->info.value.string_type == 'X')
 	{
-	  src_length = strlen (value->info.value.text);
+	  src_length = value->info.value.data_value.str->length;
 	  dst_length = (src_length + 1) / 2;
 	  bits_converted = 0;
 	  bstring = db_private_alloc (NULL, dst_length + 1);
@@ -3135,9 +3144,10 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	      return (DB_VALUE *) NULL;
 	    }
-	  bits_converted = qstr_hex_to_bin (bstring, dst_length,
-					    (char *) value->info.value.text,
-					    src_length);
+	  bits_converted =
+	    qstr_hex_to_bin (bstring, dst_length,
+			     (char *) value->info.value.data_value.str->bytes,
+			     src_length);
 	  if (bits_converted != src_length)
 	    {
 	      db_private_free_and_init (NULL, bstring);

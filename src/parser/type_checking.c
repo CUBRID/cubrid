@@ -9090,7 +9090,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	if (arg2->node_type == PT_VALUE)
 	  {
-	    type = db_check_time_date_format (arg2->info.value.text);
+	    type = db_check_time_date_format (arg2->info.value.data_value.
+					      str->bytes);
 	  }
 	else
 	  {
@@ -17955,10 +17956,25 @@ end:
 
       if (result != expr)
 	{
+	  if (alias_print == NULL
+	      || (PT_IS_VALUE_NODE (result) && !result->info.value.text))
+	    {
+	      /* print expr to alias_print */
+	      expr->alias_print = NULL;
+	      PT_NODE_PRINT_TO_ALIAS (parser, expr, PT_CONVERT_RANGE);
+	    }
+	  if (alias_print == NULL)
+	    {
+	      alias_print = expr->alias_print;
+	    }
 	  if (result->alias_print == NULL)
 	    {
-	      PT_NODE_PRINT_TO_ALIAS (parser, expr, PT_CONVERT_RANGE);
 	      result->alias_print =
+		pt_append_string (parser, NULL, alias_print);
+	    }
+	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text)
+	    {
+	      result->info.value.text =
 		pt_append_string (parser, NULL, expr->alias_print);
 	    }
 	  parser_free_tree (parser, expr);
@@ -17979,11 +17995,6 @@ end:
       else if (result->node_type == PT_VALUE)
 	{
 	  result->info.value.location = location;
-	  if (alias_print == NULL && result->info.value.text == NULL)
-	    {
-	      result->info.value.text =
-		pt_append_string (parser, NULL, result->alias_print);
-	    }
 	}
     }
 
@@ -18115,9 +18126,18 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
     {
       if (result != func)
 	{
+	  if (alias_print == NULL
+	      || (PT_IS_VALUE_NODE (result) && !result->info.value.text))
+	    {
+	      func->alias_print = NULL;
+	      PT_NODE_PRINT_TO_ALIAS (parser, func, PT_CONVERT_RANGE);
+	    }
+	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text)
+	    {
+	      result->info.value.text = func->alias_print;
+	    }
 	  if (alias_print == NULL)
 	    {
-	      PT_NODE_PRINT_TO_ALIAS (parser, func, PT_CONVERT_RANGE);
 	      alias_print = func->alias_print;
 	    }
 	  parser_free_tree (parser, func);
@@ -18146,11 +18166,6 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	   * level : the parent node is a PT_EXPR node with a
 	   * PT_FUNCTION_HOLDER operator type */
 	  result->info.value.location = location;
-	  if (result->info.value.text == NULL)
-	    {
-	      result->info.value.text =
-		pt_append_string (parser, NULL, result->alias_print);
-	    }
 	}
     }
 

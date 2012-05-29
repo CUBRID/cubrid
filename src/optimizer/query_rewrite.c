@@ -3244,7 +3244,7 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
 						      (&tmp_result),
 						      DB_GET_STRING_SIZE
 						      (&tmp_result));
-  bound->info.value.text = (char *) bound->info.value.data_value.str->bytes;
+  PT_NODE_PRINT_VALUE_TO_TEXT (parser, bound);
   (void) pt_value_to_db (parser, bound);
 
   assert (bound->info.value.db_value_is_initialized);
@@ -3375,7 +3375,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
   pattern_size = pattern->info.value.data_value.str->length;
   intl_char_count ((unsigned char *) pattern_str, pattern_size,
 		   codeset, &pattern_length);
-  pattern->info.value.text = pattern_str;
+  PT_NODE_PRINT_VALUE_TO_TEXT (parser, pattern);
 
   error_code = db_get_info_for_like_optimization (&compressed_pattern,
 						  has_escape_char,

@@ -601,13 +601,13 @@ qo_term_string (QO_TERM * term)
     default:
       assert_release (conj != NULL);
       if (conj)
-      {
-	PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
-	PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-	parser->print_db_value = NULL;
-	p = parser_print_tree (parser, conj);
-	parser->print_db_value = saved_func;
-      }
+	{
+	  PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
+	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+	  parser->print_db_value = NULL;
+	  p = parser_print_tree (parser, conj);
+	  parser->print_db_value = saved_func;
+	}
     }
 
   /* restore link */
@@ -10173,7 +10173,7 @@ get_const_value (QO_ENV * env, PT_NODE * val)
       return (double) val->info.value.data_value.i;
 
     case PT_TYPE_NUMERIC:
-      return (double) atof (val->info.value.text);
+      return (double) atof ((char *) val->info.value.data_value.str->bytes);
 
     default:
       QO_ASSERT (env, UNEXPECTED_CASE);

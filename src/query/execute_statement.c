@@ -5456,7 +5456,7 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type,
 	  str = statement->info.trigger_action.string;
 	  if (str->node_type == PT_VALUE)
 	    {
-	      *source = str->info.value.text;
+	      *source = (char *) str->info.value.data_value.str->bytes;
 	    }
 	}
       else

@@ -1974,7 +1974,8 @@ session_variable
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
-			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
+			    node->info.value.text =
+			      node->info.value.data_value.str->bytes;
 			  }
 
 			$$ = node;
@@ -4392,8 +4393,11 @@ alter_auto_increment_mysql_specific
 			  {
 			    if (val)
 			      {
-			        val->info.value.text = $3;
+				val->info.value.data_value.str =
+				  pt_append_bytes (this_parser, NULL, $3,
+						   strlen ($3));			        
 			        val->type_enum = PT_TYPE_NUMERIC;
+			        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 			       }
 
 			    node->info.alter.code = PT_CHANGE_AUTO_INCREMENT;
@@ -7343,8 +7347,11 @@ table_option
 			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 			if (val)
 			{
-			  val->info.value.text = $3;
+			  val->info.value.data_value.str =
+			    pt_append_bytes (this_parser, NULL, $3,
+					     strlen ($3));
 			  val->type_enum = PT_TYPE_NUMERIC;
+			  PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 			}
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_AUTO_INCREMENT, val);
@@ -8810,14 +8817,22 @@ column_ai_constraint_def
 
 			if (start_val)
 			  {
-			    start_val->info.value.text = $3;
+			    start_val->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3,
+					       strlen ($3));
 			    start_val->type_enum = PT_TYPE_NUMERIC;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							 start_val);
 			  }
 
 			if (increment_val)
 			  {
-			    increment_val->info.value.text = $5;
+			    increment_val->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $5,
+					       strlen ($5));
 			    increment_val->type_enum = PT_TYPE_NUMERIC;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							 increment_val);
 			  }
 
 			ai_node = parser_new_node (this_parser, PT_AUTO_INCREMENT);
@@ -9964,8 +9979,11 @@ serial_start
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
 			  {
-			    node->info.value.text = $3;
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3,
+					       strlen ($3));
 			    node->type_enum = PT_TYPE_NUMERIC;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -9981,8 +9999,11 @@ serial_increment
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
 			  {
-			    node->info.value.text = $3;
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3,
+					       strlen ($3));
 			    node->type_enum = PT_TYPE_NUMERIC;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -10000,8 +10021,11 @@ serial_min
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
 			  {
-			    node->info.value.text = $2;
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $2,
+					       strlen ($2));
 			    node->type_enum = PT_TYPE_NUMERIC;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			SET_CONTAINER_2 (ctn, node, FROM_NUMBER (0));
@@ -10026,8 +10050,11 @@ serial_max
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
 			  {
-			    node->info.value.text = $2;
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $2,
+					       strlen ($2));
 			    node->type_enum = PT_TYPE_NUMERIC;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			SET_CONTAINER_2 (ctn, node, FROM_NUMBER (0));
@@ -16413,8 +16440,8 @@ primitive_type
 				node2 = node->next;
 				while (node2 != NULL)
 				  {
-				    if (strcmp (node->info.value.text,
-						node2->info.value.text)
+				    if (strcmp (node->info.value.data_value.str->bytes,
+						node2->info.value.data_value.str->bytes)
 					== 0)
 					{
 					  /* found duplicate value */
@@ -16579,8 +16606,7 @@ opt_collation
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
-			    node->info.value.text =
-			      (char *) node->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -16612,8 +16638,7 @@ opt_charset
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
-			    node->info.value.text =
-			      (char *) node->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -16672,8 +16697,9 @@ signed_literal_
 			else if (node->type_enum == PT_TYPE_NUMERIC)
 			  {
 			    const char *min_big_int = "9223372036854775808";
-			    if ((strlen (node->info.value.text) == 19) &&
-			        (strcmp (node->info.value.text, min_big_int) == 0))
+			    if (node->info.value.data_value.str->length == 19
+				&& (strcmp (node->info.value.data_value.str->bytes,
+					    min_big_int) == 0))
 			      {
 				node->info.value.data_value.bigint = DB_BIGINT_MIN;
 				node->type_enum = PT_TYPE_BIGINT;
@@ -16682,9 +16708,17 @@ signed_literal_
 			      {
 				/*add minus:*/
 				char *minus_sign;
+				PARSER_VARCHAR *buf = 0;
 				minus_sign = pt_append_string (this_parser, NULL, "-");
-				node->info.value.text =
-				  pt_append_string (this_parser, minus_sign, node->info.value.text);
+				buf = pt_append_nulstring (this_parser, buf,
+							   minus_sign);
+				buf = pt_append_nulstring (this_parser, buf,
+							   node->info.value.
+							   data_value.str->
+							   bytes);
+				node->info.value.data_value.str = buf;
+				PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							     node);
 			      }
 			  }
 			else
@@ -16713,11 +16747,18 @@ signed_literal_
 			else
 			  {
 			    char *minus_sign;
+			    PARSER_VARCHAR *buf = 0;
 
 			    assert (node->type_enum == PT_TYPE_NUMERIC);
 			    minus_sign = pt_append_string (this_parser, NULL, "-");
 			    /*add minus:*/
-			    node->info.value.text = pt_append_string (this_parser, minus_sign, node->info.value.text);
+			    buf = pt_append_nulstring (this_parser, buf,
+						       minus_sign);
+			    buf = pt_append_nulstring (this_parser, buf,
+						       node->info.value.
+						       data_value.str->bytes);
+			    node->info.value.data_value.str = buf;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -18081,7 +18122,7 @@ char_string_literal
 			    str->info.value.data_value.str =
 			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
 					       strlen ($2));
-			    str->info.value.text = (char *) str->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
 			  }
 
 			$$ = str;
@@ -18153,7 +18194,7 @@ char_string
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, str, str_size);
-			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -18171,7 +18212,7 @@ char_string
 			    node->info.value.string_type = 'N';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $1, strlen ($1));
-			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -18191,7 +18232,7 @@ bit_string_literal
 			    str->info.value.data_value.str =
 			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
 					       strlen ($2));
-			    str->info.value.text = (char *) str->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
 			  }
 
 			$$ = str;
@@ -18219,7 +18260,7 @@ bit_string
 			    node->info.value.string_type = 'B';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $1, strlen ($1));
-			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -18237,7 +18278,7 @@ bit_string
 			    node->info.value.string_type = 'X';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $1, strlen ($1));
-			    node->info.value.text = (char *) node->info.value.data_value.str->bytes;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
 			$$ = node;
@@ -18283,6 +18324,11 @@ unsigned_integer
 				else
 				  {
 				    val->type_enum = PT_TYPE_NUMERIC;
+				    val->info.value.data_value.str =
+				      pt_append_bytes (this_parser, NULL,
+						       val->info.value.text,
+						       strlen (val->info.
+							       value.text));
 				  }
 			      }
 			  }
@@ -18351,6 +18397,11 @@ unsigned_real
 			      {
 				val->info.value.text = $1;
 				val->type_enum = PT_TYPE_NUMERIC;
+				val->info.value.data_value.str =
+				  pt_append_bytes (this_parser, NULL,
+						   val->info.value.text,
+						   strlen (val->info.value.
+							   text));
 			      }
 			  }
 
@@ -18874,7 +18925,18 @@ date_or_time_literal
 
 			PT_NODE *val = $2;
 			if (val)
-			  val->type_enum = PT_TYPE_DATE;
+			  {
+			    val->type_enum = PT_TYPE_DATE;
+			    if (val->info.value.text)
+			      {
+				/* overwrite text in order to print
+				 * "date value"
+				 */
+				 val->info.value.text = NULL;
+				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							      val);
+			      }
+			  }
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18884,7 +18946,18 @@ date_or_time_literal
 
 			PT_NODE *val = $2;
 			if (val)
-			  val->type_enum = PT_TYPE_TIME;
+			  {
+			    val->type_enum = PT_TYPE_TIME;
+			    if (val->info.value.text)
+			      {
+				/* overwrite text in order to print
+				 * "time value"
+				 */
+				 val->info.value.text = NULL;
+				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							      val);
+			      }
+			  }
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18894,7 +18967,18 @@ date_or_time_literal
 
 			PT_NODE *val = $2;
 			if (val)
-			  val->type_enum = PT_TYPE_TIMESTAMP;
+			  {
+			    val->type_enum = PT_TYPE_TIMESTAMP;
+			    if (val->info.value.text)
+			      {
+				/* overwrite text in order to print
+				 * "timestamp value"
+				 */
+				 val->info.value.text = NULL;
+				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							      val);
+			      }
+			  }
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18904,7 +18988,18 @@ date_or_time_literal
 
 			PT_NODE *val = $2;
 			if (val)
-			  val->type_enum = PT_TYPE_DATETIME;
+			  {
+			    val->type_enum = PT_TYPE_DATETIME;
+			    if (val->info.value.text)
+			      {
+				/* overwrite text in order to print
+				 * "datetime value"
+				 */
+				 val->info.value.text = NULL;
+				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
+							      val);
+			      }
+			  }
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -21496,7 +21591,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
       const char *cs_name;
       assert (charset_node->node_type == PT_VALUE);
 
-      cs_name = charset_node->info.value.text;
+      cs_name = (char *) charset_node->info.value.data_value.str->bytes;
 
       if (strcasecmp (cs_name, "utf8") == 0)
 	{
@@ -21524,7 +21619,8 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
 
       assert (coll_node->node_type == PT_VALUE);
 
-      lang_coll = lang_get_collation_by_name (coll_node->info.value.text);
+      lang_coll =
+	lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
       if (lang_coll != NULL)
 	{
 	  int coll_charset;
@@ -21547,7 +21643,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
 	{
 	  PT_ERRORmf (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_UNKNOWN_COLL,
-		      coll_node->info.value.text);
+		      coll_node->info.value.data_value.str->bytes);
 	  return 1;
 	}
     }

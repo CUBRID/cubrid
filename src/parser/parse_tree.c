@@ -906,7 +906,6 @@ pt_append_string (const PARSER_CONTEXT * parser,
   return s;
 }
 
-
 /*
  * pt_append_bytes () - appends a byte tail to a string for a given parser
  *   return:

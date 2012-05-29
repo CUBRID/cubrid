@@ -6910,8 +6910,7 @@ pt_make_empty_string (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
   empty_str->info.value.data_value.str = pt_append_nulstring (parser,
 							      NULL, "");
-  empty_str->info.value.text =
-    (char *) empty_str->info.value.data_value.str->bytes;
+  PT_NODE_PRINT_VALUE_TO_TEXT (parser, empty_str);
 
   return empty_str;
 }
@@ -7906,9 +7905,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 			dbname_val->info.value.data_value.str =
 			  pt_append_nulstring (parser, NULL, dbname);
-			dbname_val->info.value.text =
-			  (char *) dbname_val->info.value.data_value.
-			  str->bytes;
+			PT_NODE_PRINT_VALUE_TO_TEXT (parser, dbname_val);
 
 			db_string_free (dbname);
 
@@ -7947,9 +7944,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 			dbversion_val->info.value.data_value.str =
 			  pt_append_nulstring (parser, NULL, dbversion);
-			dbversion_val->info.value.text =
-			  (char *) dbversion_val->info.value.data_value.
-			  str->bytes;
+			PT_NODE_PRINT_VALUE_TO_TEXT (parser, dbversion_val);
 
 			db_string_free (dbversion);
 
@@ -8453,9 +8448,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    current_user_val->info.value.string_type = ' ';
 		    current_user_val->info.value.data_value.str =
 		      pt_append_nulstring (parser, NULL, username);
-		    current_user_val->info.value.text =
-		      (char *) current_user_val->info.value.data_value.
-		      str->bytes;
+		    PT_NODE_PRINT_VALUE_TO_TEXT (parser, current_user_val);
 
 		    /* copy data type (to apply collation and codeset) */
 		    assert (current_user_val->data_type == NULL);
@@ -8520,9 +8513,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		    current_user_val->info.value.data_value.str =
 		      pt_append_nulstring (parser, NULL, user);
-		    current_user_val->info.value.text =
-		      (char *) current_user_val->info.value.data_value.
-		      str->bytes;
+		    PT_NODE_PRINT_VALUE_TO_TEXT (parser, current_user_val);
 
 		    /* copy data type (to apply collation and codeset) */
 		    assert (current_user_val->data_type == NULL);
