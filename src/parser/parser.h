@@ -782,6 +782,8 @@ extern "C"
 					      int like_where_syntax,
 					      PT_NODE * like_or_where_expr,
 					      int is_show_full);
+  extern PT_NODE *pt_make_query_show_create_table (PARSER_CONTEXT * parser,
+						   PT_NODE * table_name);
   extern PT_NODE *pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 						  PT_NODE * view_identifier);
   extern PT_NODE *pt_make_query_show_grants_curr_usr (PARSER_CONTEXT *

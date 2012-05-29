@@ -140,6 +140,12 @@ typedef enum help_commands
   DB_HELP_USER
 } DB_HELP_COMMAND;
 
+typedef enum obj_print_type
+{
+  OBJ_PRINT_CSQL_SCHEMA_COMMAND = 0,
+  OBJ_PRINT_SHOW_CREATE_TABLE
+} OBJ_PRINT_TYPE;
+
 /*
  * COMMAND_HELP
  *
@@ -161,7 +167,7 @@ struct command_description
 
 /* Class help */
 extern void obj_print_help_free_class (CLASS_HELP * info);
-extern CLASS_HELP *obj_print_help_class (MOP op);
+extern CLASS_HELP *obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type);
 extern CLASS_HELP *obj_print_help_class_name (const char *name);
 
 /* Instance help */

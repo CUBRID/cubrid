@@ -55,6 +55,8 @@
 #include "parser_support.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
+#include "schema_manager.h"
+#include "object_print.h"
 
 #define DEFAULT_VAR "."
 
@@ -158,6 +160,10 @@ static void pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser,
 					 PT_NODE * select,
 					 const char *identifier_str,
 					 const char *col_alias);
+static void pt_add_string_col_to_sel_list (PARSER_CONTEXT * parser,
+					   PT_NODE * select,
+					   const char *identifier_str,
+					   const char *col_alias);
 static PT_NODE *pt_make_pred_name_int_val (PARSER_CONTEXT * parser,
 					   PT_OP_TYPE op_type,
 					   const char *col_name,
@@ -204,7 +210,8 @@ static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser,
 						 const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser,
 					   const char *user_name);
-
+static char *pt_help_show_create_table (PARSER_CONTEXT * parser,
+					PT_NODE * table_name);
 #define NULL_ATTRID -1
 
 /*
@@ -6259,6 +6266,38 @@ pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser, PT_NODE * select,
 }
 
 /*
+ * pt_add_string_col_to_sel_list() - builds a corresponding node for a table
+ *				   column and adds it to the end of the select
+ *				   list of a SELECT node
+ *
+ *   return: void
+ *   parser(in): Parser context
+ *   select(in): SELECT node
+ *   value_string(in): string value
+ *   col_alias(in): alias of the new select item
+ */
+static void
+pt_add_string_col_to_sel_list (PARSER_CONTEXT * parser, PT_NODE * select,
+			       const char *value_string,
+			       const char *col_alias)
+{
+  PT_NODE *sel_item = NULL;
+
+  assert (select != NULL);
+  assert (value_string != NULL);
+
+  sel_item = pt_make_string_value (parser, value_string);
+  if (sel_item == NULL)
+    {
+      return;
+    }
+  sel_item->alias_print = pt_append_string (parser, NULL, col_alias);
+
+  select->info.query.q.select.list =
+    parser_append_node (sel_item, select->info.query.q.select.list);
+}
+
+/*
  * pt_add_table_name_to_from_list() - builds a corresponding node for a table
  *				'spec' and adds it to the end of the FROM list
  *                              of a SELECT node
@@ -8107,6 +8146,270 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     }
 
   return node;
+}
+
+/*
+ * pt_help_show_create_table() help to generate create table string.
+ * return string of create table.
+ * parser(in) : Parser context
+ * table_name(in): table name node
+ */
+static char *
+pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
+{
+  DB_OBJECT *class_op;
+  CLASS_HELP *class_schema = NULL;
+  PARSER_VARCHAR *buffer;
+  char **line_ptr;
+
+  /* look up class in all schema's  */
+  class_op = sm_find_class (table_name->info.name.original);
+  if (class_op == NULL)
+    {
+      if (er_errid () != NO_ERROR)
+	{
+	  PT_ERRORc (parser, table_name, er_msg ());
+	}
+      return NULL;
+    }
+
+  if (!db_is_class (class_op))
+    {
+      PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_SEMANTIC,
+		   MSGCAT_SEMANTIC_IS_NOT_A, table_name->info.name.original,
+		   pt_show_misc_type (PT_CLASS));
+    }
+
+  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
+  if (class_schema == NULL)
+    {
+      int error;
+
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      if (error == ER_AU_SELECT_FAILURE)
+	{
+	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME,
+		       MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+		       "select", db_get_class_name (class_op));
+	}
+      else
+	{
+	  PT_ERRORc (parser, table_name, er_msg ());
+	}
+      return NULL;
+    }
+
+  buffer = NULL;
+  /* class name */
+  buffer = pt_append_nulstring (parser, buffer, "CREATE TABLE ");
+  buffer = pt_append_nulstring (parser, buffer, class_schema->name);
+
+  /* under or as subclass of */
+  if (class_schema->supers != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " UNDER ");
+
+      for (line_ptr = class_schema->supers; *line_ptr != NULL; line_ptr++)
+	{
+	  if (line_ptr != class_schema->supers)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+    }
+
+  /* class attributes */
+  if (class_schema->class_attributes != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " CLASS ATTRIBUTE (");
+
+      for (line_ptr = class_schema->class_attributes; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->class_attributes)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+
+      buffer = pt_append_nulstring (parser, buffer, ")");
+    }
+
+  /* attributes and constraints */
+  if (class_schema->attributes != NULL || class_schema->constraints != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " (");
+      if (class_schema->attributes != NULL)
+	{
+	  for (line_ptr = class_schema->attributes; *line_ptr != NULL;
+	       line_ptr++)
+	    {
+	      if (line_ptr != class_schema->attributes)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	}
+      if (class_schema->constraints != NULL)
+	{
+	  for (line_ptr = class_schema->constraints; *line_ptr != NULL;
+	       line_ptr++)
+	    {
+	      if (line_ptr != class_schema->constraints
+		  || class_schema->attributes != NULL)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	}
+      buffer = pt_append_nulstring (parser, buffer, ")");
+    }
+
+  /* reuse_oid flag */
+  if (sm_is_reuse_oid_class (class_op))
+    {
+      buffer = pt_append_nulstring (parser, buffer, " REUSE_OID ");
+    }
+
+  /* methods and class_methods  */
+  if (class_schema->methods != NULL || class_schema->class_methods != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " METHOD ");
+      for (line_ptr = class_schema->methods; *line_ptr != NULL; line_ptr++)
+	{
+	  if (line_ptr != class_schema->methods)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+
+      for (line_ptr = class_schema->class_methods; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->class_methods
+	      || *class_schema->methods != NULL)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, " CLASS ");
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+    }
+
+  /* method files */
+  if (class_schema->method_files != NULL)
+    {
+      char tmp[PATH_MAX + 2];
+
+      buffer = pt_append_nulstring (parser, buffer, " FILE ");
+      for (line_ptr = class_schema->method_files; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->method_files)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  snprintf (tmp, PATH_MAX + 2, "'%s'", *line_ptr);
+	  buffer = pt_append_nulstring (parser, buffer, tmp);
+	}
+    }
+
+  /* inherit */
+  if (class_schema->resolutions != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " INHERIT ");
+      for (line_ptr = class_schema->resolutions; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->resolutions)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+    }
+
+  /* partition */
+  if (class_schema->partition != NULL)
+    {
+      char **first_ptr;
+
+      line_ptr = class_schema->partition;
+      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+      line_ptr++;
+      if (*line_ptr != NULL)
+	{
+	  buffer = pt_append_nulstring (parser, buffer, " (");
+	  for (first_ptr = line_ptr; *line_ptr != NULL; line_ptr++)
+	    {
+	      if (line_ptr != first_ptr)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, ")");
+	}
+    }
+
+  if (class_schema != NULL)
+    {
+      obj_print_help_free_class (class_schema);
+    }
+  return ((char *) pt_get_varchar_bytes (buffer));
+}
+
+/*
+ * pt_make_query_show_create_table() builds the query used for SHOW CREATE
+ *				     TABLE
+ *
+ *    SELECT ¡®table_name¡¯ as TABLE, 'create table ...' as CREATE TABLE
+ *      FROM db_root
+ *
+ * return string of create table.
+ * parser(in) : Parser context
+ * table_name(in): table name node
+ */
+PT_NODE *
+pt_make_query_show_create_table (PARSER_CONTEXT * parser,
+				 PT_NODE * table_name)
+{
+  PT_NODE *select;
+  char *create_str;
+
+  assert (table_name != NULL);
+  assert (table_name->node_type == PT_NAME);
+
+  create_str = pt_help_show_create_table (parser, table_name);
+  if (create_str == NULL)
+    {
+      return NULL;
+    }
+
+  select = parser_new_node (parser, PT_SELECT);
+  if (select == NULL)
+    {
+      return NULL;
+    }
+
+  /*
+   * SELECT ¡®table_name¡¯ as TABLE, 'create table ...' as CREATE TABLE
+   *      FROM db_root
+   */
+  pt_add_string_col_to_sel_list (parser, select,
+				 table_name->info.name.original, "TABLE");
+  pt_add_string_col_to_sel_list (parser, select, create_str, "CREATE TABLE");
+
+  (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL,
+					 DB_AUTH_SELECT);
+  return select;
+
 }
 
 /*

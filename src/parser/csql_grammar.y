@@ -5794,6 +5794,19 @@ show_stmt
 		DBG_PRINT}}
 	| SHOW
 	  CREATE
+	  TABLE
+	  identifier
+		{{
+
+			PT_NODE *node = NULL;
+			node = pt_make_query_show_create_table (this_parser, $4);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SHOW
+	  CREATE
 	  VIEW
 	  identifier
 		{{

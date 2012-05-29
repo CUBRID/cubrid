@@ -158,31 +158,44 @@ static const char *obj_print_trigger_condition_time (TR_TRIGGER * trigger);
 static const char *obj_print_trigger_action_time (TR_TRIGGER * trigger);
 static PARSER_VARCHAR *obj_print_describe_domain (PARSER_CONTEXT * parser,
 						  PARSER_VARCHAR * buffer,
-						  TP_DOMAIN * domain);
+						  TP_DOMAIN * domain,
+						  OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser,
+					     PARSER_VARCHAR * buffer,
+					     const char *identifier,
+					     OBJ_PRINT_TYPE prt_type);
 static char *obj_print_describe_attribute (MOP class_p,
 					   PARSER_CONTEXT * parser,
-					   SM_ATTRIBUTE * attribute_p);
+					   SM_ATTRIBUTE * attribute_p,
+					   OBJ_PRINT_TYPE prt_type);
 static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
-						 MOP parts);
+						 MOP parts,
+						 OBJ_PRINT_TYPE prt_type);
 static char *obj_print_describe_partition_info (PARSER_CONTEXT * parser,
 						MOP partinfo);
 static char *obj_print_describe_constraint (PARSER_CONTEXT * parser,
 					    SM_CLASS * class_p,
 					    SM_CLASS_CONSTRAINT *
-					    constraint_p);
+					    constraint_p,
+					    OBJ_PRINT_TYPE prt_type);
 static PARSER_VARCHAR *obj_print_describe_argument (PARSER_CONTEXT * parser,
 						    PARSER_VARCHAR * buffer,
 						    SM_METHOD_ARGUMENT *
-						    argument_p);
+						    argument_p,
+						    OBJ_PRINT_TYPE prt_type);
 static PARSER_VARCHAR *obj_print_describe_signature (PARSER_CONTEXT * parser,
 						     PARSER_VARCHAR * buffer,
 						     SM_METHOD_SIGNATURE *
-						     signature_p);
+						     signature_p,
+						     OBJ_PRINT_TYPE prt_type);
 static PARSER_VARCHAR *obj_print_describe_method (PARSER_CONTEXT * parser,
-						  MOP op, SM_METHOD * method);
+						  MOP op, SM_METHOD * method,
+						  OBJ_PRINT_TYPE prt_type);
 static PARSER_VARCHAR *obj_print_describe_resolution (PARSER_CONTEXT * parser,
 						      SM_RESOLUTION *
-						      resolution_p);
+						      resolution_p,
+						      OBJ_PRINT_TYPE
+						      prt_type);
 static PARSER_VARCHAR *obj_print_describe_method_file (PARSER_CONTEXT *
 						       parser, MOP class_p,
 						       SM_METHOD_FILE *
@@ -357,6 +370,35 @@ obj_print_trigger_action_time (TR_TRIGGER * trigger)
   return (tr_time_as_string (time));
 }
 
+/*
+ * object_print_identifier() - help function to print identifier string.
+ *                             if prt_type is OBJ_PRINT_SHOW_CREATE_TABLE,
+ *                             we need wrap it with "[" and "]".
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  buffer(in) : current buffer pointer
+ *  identifier(in) : identifier string,.such as: table name.
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+static PARSER_VARCHAR *
+obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
+		      const char *identifier, OBJ_PRINT_TYPE prt_type)
+{
+  if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+    {
+      buffer = pt_append_nulstring (parser, buffer, identifier);
+    }
+  else
+    {				/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+      buffer = pt_append_nulstring (parser, buffer, "[");
+      buffer = pt_append_nulstring (parser, buffer, identifier);
+      buffer = pt_append_nulstring (parser, buffer, "]");
+    }
+
+  return buffer;
+}
+
 /* CLASS COMPONENT DESCRIPTION FUNCTIONS */
 
 /*
@@ -365,12 +407,13 @@ obj_print_trigger_action_time (TR_TRIGGER * trigger)
  *  parser(in) :
  *  buffer(in) : current buffer pointer
  *  domain(in) : domain structure to describe
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static PARSER_VARCHAR *
 obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			   TP_DOMAIN * domain)
+			   TP_DOMAIN * domain, OBJ_PRINT_TYPE prt_type)
 {
   TP_DOMAIN *temp_domain;
   char temp_buffer[27];
@@ -422,8 +465,9 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  if (temp_domain->class_mop != NULL)
 	    {
 	      buffer =
-		pt_append_nulstring (parser, buffer,
-				     sm_class_name (temp_domain->class_mop));
+		obj_print_identifier (parser, buffer,
+				      sm_class_name (temp_domain->class_mop),
+				      prt_type);
 	    }
 	  else
 	    {
@@ -481,7 +525,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    {
 	      buffer =
 		obj_print_describe_domain (parser, buffer,
-					   temp_domain->setdomain);
+					   temp_domain->setdomain, prt_type);
 	    }
 	  break;
 	case DB_TYPE_ENUMERATION:
@@ -534,12 +578,14 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *  class_p(in) : class being examined
  *  parser(in) :
  *  attribute_p(in) : attribute of the class
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static char *
 obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
-			      SM_ATTRIBUTE * attribute_p)
+			      SM_ATTRIBUTE * attribute_p,
+			      OBJ_PRINT_TYPE prt_type)
 {
   char *start;
   PARSER_VARCHAR *buffer;
@@ -551,13 +597,24 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
     }
 
   buffer = NULL;
-  sprintf (line, "%-20s ", attribute_p->header.name);
-  buffer = pt_append_nulstring (parser, buffer, line);
+  if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+    {
+      sprintf (line, "%-20s ", attribute_p->header.name);
+      buffer = pt_append_nulstring (parser, buffer, line);
+    }
+  else
+    {				/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+      buffer =
+	obj_print_identifier (parser, buffer, attribute_p->header.name,
+			      prt_type);
+      buffer = pt_append_nulstring (parser, buffer, " ");
+    }
 
   start = (char *) pt_get_varchar_bytes (buffer);
   /* could filter here but do in describe_domain */
 
-  buffer = obj_print_describe_domain (parser, buffer, attribute_p->domain);
+  buffer =
+    obj_print_describe_domain (parser, buffer, attribute_p->domain, prt_type);
 
   if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
     {
@@ -573,6 +630,39 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
       if (attribute_p->flags & SM_ATTFLAG_AUTO_INCREMENT)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " AUTO_INCREMENT ");
+
+	  assert (attribute_p->auto_increment != NULL);
+	  if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
+	    {
+	      DB_VALUE min_val, inc_val;
+	      char buf[DB_MAX_NUMERIC_PRECISION * 2 + 4];
+	      int offset;
+
+	      DB_MAKE_NULL (&min_val);
+	      DB_MAKE_NULL (&inc_val);
+	      if (db_get (attribute_p->auto_increment, "min_val", &min_val) !=
+		  NO_ERROR)
+		{
+		  return NULL;
+		}
+
+	      if (db_get
+		  (attribute_p->auto_increment, "increment_val",
+		   &inc_val) != NO_ERROR)
+		{
+		  pr_clear_value (&min_val);
+		  return NULL;
+		}
+
+	      offset = snprintf (buf, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ",
+				 numeric_db_value_print (&min_val));
+	      snprintf (buf + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)",
+			numeric_db_value_print (&inc_val));
+	      buffer = pt_append_nulstring (parser, buffer, buf);
+
+	      pr_clear_value (&min_val);
+	      pr_clear_value (&inc_val);
+	    }
 	}
       if (!DB_IS_NULL (&attribute_p->default_value.value)
 	  || attribute_p->default_value.default_expr != DB_DEFAULT_NONE)
@@ -624,8 +714,9 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
     {
       buffer = pt_append_nulstring (parser, buffer, " /* from ");
       buffer =
-	pt_append_nulstring (parser, buffer,
-			     sm_class_name (attribute_p->class_mop));
+	obj_print_identifier (parser, buffer,
+			      sm_class_name (attribute_p->class_mop),
+			      prt_type);
       buffer = pt_append_nulstring (parser, buffer, " */");
     }
 
@@ -641,11 +732,13 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
  *      return: char *
  *  parser(in) :
  *  parts(in) :
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static char *
-obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts)
+obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
+				    OBJ_PRINT_TYPE prt_type)
 {
   DB_VALUE ptype, pname, pval, ele;
   PARSER_VARCHAR *buffer;
@@ -669,7 +762,9 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts)
       && db_get (parts, PARTITION_ATT_PVALUES, &pval) == NO_ERROR)
     {
       buffer = pt_append_nulstring (parser, buffer, "PARTITION ");
-      buffer = pt_append_nulstring (parser, buffer, DB_GET_STRING (&pname));
+      buffer =
+	obj_print_identifier (parser, buffer, DB_GET_STRING (&pname),
+			      prt_type);
 
       switch (db_get_int (&ptype))
 	{
@@ -806,13 +901,15 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, MOP partinfo)
  *  parser(in) :
  *  class_p(in) : class being examined
  *  constraint_p(in) :
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static char *
 obj_print_describe_constraint (PARSER_CONTEXT * parser,
 			       SM_CLASS * class_p,
-			       SM_CLASS_CONSTRAINT * constraint_p)
+			       SM_CLASS_CONSTRAINT * constraint_p,
+			       OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
   SM_ATTRIBUTE **attribute_p;
@@ -828,39 +925,83 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
       return NULL;
     }
 
-  switch (constraint_p->type)
+  if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
     {
-    case SM_CONSTRAINT_INDEX:
-      buffer = pt_append_nulstring (parser, buffer, "INDEX ");
-      break;
-    case SM_CONSTRAINT_UNIQUE:
-      buffer = pt_append_nulstring (parser, buffer, "UNIQUE ");
-      break;
-    case SM_CONSTRAINT_REVERSE_INDEX:
-      buffer = pt_append_nulstring (parser, buffer, "REVERSE INDEX ");
-      break;
-    case SM_CONSTRAINT_REVERSE_UNIQUE:
-      buffer = pt_append_nulstring (parser, buffer, "REVERSE UNIQUE ");
-      break;
-    case SM_CONSTRAINT_PRIMARY_KEY:
-      buffer = pt_append_nulstring (parser, buffer, "PRIMARY KEY ");
-      break;
-    case SM_CONSTRAINT_FOREIGN_KEY:
-      buffer = pt_append_nulstring (parser, buffer, "FOREIGN KEY ");
-      break;
-    default:
-      buffer = pt_append_nulstring (parser, buffer, "CONSTRAINT ");
-      break;
+      switch (constraint_p->type)
+	{
+	case SM_CONSTRAINT_INDEX:
+	  buffer = pt_append_nulstring (parser, buffer, "INDEX ");
+	  break;
+	case SM_CONSTRAINT_UNIQUE:
+	  buffer = pt_append_nulstring (parser, buffer, "UNIQUE ");
+	  break;
+	case SM_CONSTRAINT_REVERSE_INDEX:
+	  buffer = pt_append_nulstring (parser, buffer, "REVERSE INDEX ");
+	  break;
+	case SM_CONSTRAINT_REVERSE_UNIQUE:
+	  buffer = pt_append_nulstring (parser, buffer, "REVERSE UNIQUE ");
+	  break;
+	case SM_CONSTRAINT_PRIMARY_KEY:
+	  buffer = pt_append_nulstring (parser, buffer, "PRIMARY KEY ");
+	  break;
+	case SM_CONSTRAINT_FOREIGN_KEY:
+	  buffer = pt_append_nulstring (parser, buffer, "FOREIGN KEY ");
+	  break;
+	default:
+	  buffer = pt_append_nulstring (parser, buffer, "CONSTRAINT ");
+	  break;
+	}
+
+      buffer = pt_append_nulstring (parser, buffer, constraint_p->name);
+      buffer = pt_append_nulstring (parser, buffer, " ON ");
+      buffer = pt_append_nulstring (parser, buffer, class_p->header.name);
+      buffer = pt_append_nulstring (parser, buffer, " (");
+
+      asc_desc = NULL;		/* init */
+      if (!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint_p->type))
+	{
+	  asc_desc = constraint_p->asc_desc;
+	}
     }
+  else
+    {				/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+      switch (constraint_p->type)
+	{
+	case SM_CONSTRAINT_INDEX:
+	case SM_CONSTRAINT_REVERSE_INDEX:
+	  buffer = pt_append_nulstring (parser, buffer, " INDEX ");
+	  buffer =
+	    obj_print_identifier (parser, buffer, constraint_p->name,
+				  prt_type);
+	  break;
+	case SM_CONSTRAINT_UNIQUE:
+	case SM_CONSTRAINT_REVERSE_UNIQUE:
+	  buffer = pt_append_nulstring (parser, buffer, " CONSTRAINT ");
+	  buffer =
+	    obj_print_identifier (parser, buffer, constraint_p->name,
+				  prt_type);
+	  buffer = pt_append_nulstring (parser, buffer, " UNIQUE KEY ");
+	  break;
+	case SM_CONSTRAINT_PRIMARY_KEY:
+	  buffer = pt_append_nulstring (parser, buffer, " CONSTRAINT ");
+	  buffer =
+	    obj_print_identifier (parser, buffer, constraint_p->name,
+				  prt_type);
+	  buffer = pt_append_nulstring (parser, buffer, " PRIMARY KEY ");
+	  break;
+	case SM_CONSTRAINT_FOREIGN_KEY:
+	  buffer = pt_append_nulstring (parser, buffer, " CONSTRAINT ");
+	  buffer =
+	    obj_print_identifier (parser, buffer, constraint_p->name,
+				  prt_type);
+	  buffer = pt_append_nulstring (parser, buffer, " FOREIGN KEY ");
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
 
-  buffer = pt_append_nulstring (parser, buffer, constraint_p->name);
-  buffer = pt_append_nulstring (parser, buffer, " ON ");
-  buffer = pt_append_nulstring (parser, buffer, class_p->header.name);
-  buffer = pt_append_nulstring (parser, buffer, " (");
-
-  asc_desc = NULL;		/* init */
-  if (!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint_p->type))
-    {
+      buffer = pt_append_nulstring (parser, buffer, " (");
       asc_desc = constraint_p->asc_desc;
     }
 
@@ -908,7 +1049,8 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	  buffer = pt_append_nulstring (parser, buffer, ", ");
 	}
       buffer =
-	pt_append_nulstring (parser, buffer, (*attribute_p)->header.name);
+	obj_print_identifier (parser, buffer, (*attribute_p)->header.name,
+			      prt_type);
 
       if (prefix_length)
 	{
@@ -956,24 +1098,35 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	}
 
       buffer = pt_append_nulstring (parser, buffer, " REFERENCES ");
-      buffer = pt_append_nulstring (parser, buffer, ref_cls->header.name);
+      buffer =
+	obj_print_identifier (parser, buffer, ref_cls->header.name, prt_type);
 
       buffer = pt_append_nulstring (parser, buffer, " ON DELETE ");
       buffer = pt_append_nulstring (parser, buffer,
 				    classobj_describe_foreign_key_action
 				    (constraint_p->fk_info->delete_action));
 
-      buffer = pt_append_nulstring (parser, buffer, ", ON UPDATE ");
+      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+	{
+	  buffer = pt_append_nulstring (parser, buffer, ",");
+	}
+      buffer = pt_append_nulstring (parser, buffer, " ON UPDATE ");
       buffer = pt_append_nulstring (parser, buffer,
 				    classobj_describe_foreign_key_action
 				    (constraint_p->fk_info->update_action));
 
       if (constraint_p->fk_info->cache_attr)
 	{
-	  buffer = pt_append_nulstring (parser, buffer, ", ON CACHE OBJECT ");
+	  if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ",");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, " ON CACHE OBJECT ");
+
 	  buffer =
-	    pt_append_nulstring (parser, buffer,
-				 constraint_p->fk_info->cache_attr);
+	    obj_print_identifier (parser, buffer,
+				  constraint_p->fk_info->cache_attr,
+				  prt_type);
 	}
     }
 
@@ -986,19 +1139,22 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
  *  parser(in) :
  *  buffer(in) : current buffer pointer
  *  argument_p(in) : method argument to describe
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static PARSER_VARCHAR *
 obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			     SM_METHOD_ARGUMENT * argument_p)
+			     SM_METHOD_ARGUMENT * argument_p,
+			     OBJ_PRINT_TYPE prt_type)
 {
   if (argument_p != NULL)
     {
       if (argument_p->domain != NULL)
 	{
 	  buffer =
-	    obj_print_describe_domain (parser, buffer, argument_p->domain);
+	    obj_print_describe_domain (parser, buffer, argument_p->domain,
+				       prt_type);
 	}
       else if (argument_p->type)
 	{
@@ -1019,13 +1175,15 @@ obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *  parser(in) :
  *  buffer(in) : current buffer pointer
  *  signature_p(in) : signature to describe
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static PARSER_VARCHAR *
 obj_print_describe_signature (PARSER_CONTEXT * parser,
 			      PARSER_VARCHAR * buffer,
-			      SM_METHOD_SIGNATURE * signature_p)
+			      SM_METHOD_SIGNATURE * signature_p,
+			      OBJ_PRINT_TYPE prt_type)
 {
   SM_METHOD_ARGUMENT *argument_p;
   int i;
@@ -1042,7 +1200,9 @@ obj_print_describe_signature (PARSER_CONTEXT * parser,
 	   argument_p = argument_p->next);
       if (argument_p != NULL)
 	{
-	  buffer = obj_print_describe_argument (parser, buffer, argument_p);
+	  buffer =
+	    obj_print_describe_argument (parser, buffer, argument_p,
+					 prt_type);
 	}
       else
 	{
@@ -1063,12 +1223,13 @@ obj_print_describe_signature (PARSER_CONTEXT * parser,
  *  parser(in) : current buffer pointer
  *  op(in) : class with method
  *  method_p(in) : method to describe
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static PARSER_VARCHAR *
 obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
-			   SM_METHOD * method_p)
+			   SM_METHOD * method_p, OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
   SM_METHOD_SIGNATURE *signature_p;
@@ -1082,7 +1243,8 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
     {
       return buffer;
     }
-  buffer = pt_append_nulstring (parser, buffer, method_p->header.name);
+  buffer =
+    obj_print_identifier (parser, buffer, method_p->header.name, prt_type);
   signature_p = method_p->signatures;
   if (signature_p == NULL)
     {
@@ -1091,7 +1253,8 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
   else
     {
       buffer = pt_append_nulstring (parser, buffer, "(");
-      buffer = obj_print_describe_signature (parser, buffer, signature_p);
+      buffer =
+	obj_print_describe_signature (parser, buffer, signature_p, prt_type);
       buffer = pt_append_nulstring (parser, buffer, ") ");
 
       if (signature_p->value != NULL)
@@ -1101,13 +1264,15 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
 	     line += strlen(line);
 	   */
 	  buffer =
-	    obj_print_describe_argument (parser, buffer, signature_p->value);
+	    obj_print_describe_argument (parser, buffer, signature_p->value,
+					 prt_type);
 	}
       if (signature_p->function_name != NULL)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " FUNCTION ");
 	  buffer =
-	    pt_append_nulstring (parser, buffer, signature_p->function_name);
+	    obj_print_identifier (parser, buffer, signature_p->function_name,
+				  prt_type);
 	}
     }
   /* add the inheritance source */
@@ -1116,8 +1281,8 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
 
       buffer = pt_append_nulstring (parser, buffer, "(from ");
       buffer =
-	pt_append_nulstring (parser, buffer,
-			     sm_class_name (method_p->class_mop));
+	obj_print_identifier (parser, buffer,
+			      sm_class_name (method_p->class_mop), prt_type);
       buffer = pt_append_nulstring (parser, buffer, ")");
     }
 
@@ -1129,37 +1294,46 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
  *      return: advanced buffer pointer
  *  parser(in) :
  *  resolution_p(in) : resolution to describe
+ *  prt_type(in): the print type: csql schema or show create table
  *
  */
 
 static PARSER_VARCHAR *
 obj_print_describe_resolution (PARSER_CONTEXT * parser,
-			       SM_RESOLUTION * resolution_p)
+			       SM_RESOLUTION * resolution_p,
+			       OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
   buffer = NULL;
 
   if (resolution_p != NULL)
     {
-      if (resolution_p->name_space == ID_CLASS)
+      if (prt_type != OBJ_PRINT_SHOW_CREATE_TABLE)
 	{
-	  buffer = pt_append_nulstring (parser, buffer, "inherit CLASS ");
-	}
-      else
-	{
-	  buffer = pt_append_nulstring (parser, buffer, "inherit ");
+	  if (resolution_p->name_space == ID_CLASS)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, "inherit CLASS ");
+	    }
+	  else
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, "inherit ");
+	    }
 	}
 
-      buffer = pt_append_nulstring (parser, buffer, resolution_p->name);
+      buffer =
+	obj_print_identifier (parser, buffer, resolution_p->name, prt_type);
       buffer = pt_append_nulstring (parser, buffer, " of ");
       buffer =
-	pt_append_nulstring (parser, buffer,
-			     sm_class_name (resolution_p->class_mop));
+	obj_print_identifier (parser, buffer,
+			      sm_class_name (resolution_p->class_mop),
+			      prt_type);
 
       if (resolution_p->alias != NULL)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " as ");
-	  buffer = pt_append_nulstring (parser, buffer, resolution_p->alias);
+	  buffer =
+	    obj_print_identifier (parser, buffer, resolution_p->alias,
+				  prt_type);
 	}
     }
   return buffer;
@@ -1402,10 +1576,11 @@ obj_print_help_free_class (CLASS_HELP * info)
  *                 information about the class.
  *   return: class help structure
  *   op(in): class object
+ *   prt_type(in): the print type: csql schema or show create table
  */
 
 CLASS_HELP *
-obj_print_help_class (MOP op)
+obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 {
   SM_CLASS *class_;
   SM_ATTRIBUTE *a;
@@ -1422,6 +1597,8 @@ obj_print_help_class (MOP op)
   int part_count = 0;
   SM_CLASS *subclass;
   char *description;
+  char name_buf[SM_MAX_IDENTIFIER_LENGTH + 2];
+  bool include_inherited;
 
   buffer = NULL;
   if (parser == NULL)
@@ -1433,6 +1610,7 @@ obj_print_help_class (MOP op)
       goto error_exit;
     }
 
+  include_inherited = (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND);
 
   if (!locator_is_class (op, DB_FETCH_READ) || locator_is_root (op))
     {
@@ -1455,7 +1633,16 @@ obj_print_help_class (MOP op)
 	  goto error_exit;
 	}
 
-      info->name = obj_print_copy_string ((char *) class_->header.name);
+      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+	{
+	  info->name = obj_print_copy_string ((char *) class_->header.name);
+	}
+      else
+	{			/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+	  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
+		    class_->header.name);
+	  info->name = obj_print_copy_string (name_buf);
+	}
 
       switch (class_->class_type)
 	{
@@ -1493,7 +1680,16 @@ obj_print_help_class (MOP op)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_class_name (super->op);
-	      strs[i] = obj_print_copy_string ((char *) kludge);
+	      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+		{
+		  strs[i] = obj_print_copy_string ((char *) kludge);
+		}
+	      else
+		{		/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+		  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
+			    kludge);
+		  strs[i] = obj_print_copy_string (name_buf);
+		}
 	      i++;
 	    }
 	  strs[i] = NULL;
@@ -1513,7 +1709,17 @@ obj_print_help_class (MOP op)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_class_name (user->op);
-	      strs[i] = obj_print_copy_string ((char *) kludge);
+	      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+		{
+		  strs[i] = obj_print_copy_string ((char *) kludge);
+		}
+	      else
+		{		/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+		  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
+			    kludge);
+		  strs[i] = obj_print_copy_string (name_buf);
+		}
+
 	      i++;
 	      if (au_fetch_class
 		  (user->op, &subclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
@@ -1530,87 +1736,198 @@ obj_print_help_class (MOP op)
 
       if (class_->attributes != NULL || class_->shared != NULL)
 	{
-	  count = class_->att_count + class_->shared_count + 1;
-	  strs = (char **) malloc (sizeof (char *) * count);
-	  if (strs == NULL)
+	  if (include_inherited)
 	    {
-	      goto error_exit;
+	      count = class_->att_count + class_->shared_count;
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (a = class_->ordered_attributes; a != NULL;
+		   a = a->order_link)
+		{
+		  if (a->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
 	    }
 
-	  i = 0;
-	  for (a = class_->ordered_attributes; a != NULL; a = a->order_link)
+	  if (count > 0)
 	    {
-	      description = obj_print_describe_attribute (op, parser, a);
-	      strs[i] = obj_print_copy_string (description);
-	      i++;
+	      strs = (char **) malloc (sizeof (char *) * count + 1);
+	      if (strs == NULL)
+		{
+		  goto error_exit;
+		}
+
+	      i = 0;
+	      for (a = class_->ordered_attributes; a != NULL;
+		   a = a->order_link)
+		{
+		  if (include_inherited
+		      || (!include_inherited && a->class_mop == op))
+		    {
+		      description =
+			obj_print_describe_attribute (op, parser, a,
+						      prt_type);
+		      if (description == NULL)
+			{
+			  goto error_exit;
+			}
+		      strs[i] = obj_print_copy_string (description);
+		      i++;
+		    }
+		}
+	      strs[i] = NULL;
+	      info->attributes = strs;
 	    }
-	  strs[i] = NULL;
-	  info->attributes = strs;
 	}
 
       if (class_->class_attributes != NULL)
 	{
-	  strs = (char **) malloc (sizeof (char *) *
-				   (class_->class_attribute_count + 1));
-	  if (strs == NULL)
+	  if (include_inherited)
 	    {
-	      goto error_exit;
+	      count = class_->class_attribute_count;
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (a = class_->class_attributes; a != NULL;
+		   a = (SM_ATTRIBUTE *) a->header.next)
+		{
+		  if (a->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
 	    }
 
-	  i = 0;
-	  for (a = class_->class_attributes; a != NULL;
-	       a = (SM_ATTRIBUTE *) a->header.next)
+	  if (count > 0)
 	    {
-	      description = obj_print_describe_attribute (op, parser, a);
-	      strs[i] = obj_print_copy_string (description);
-	      i++;
+	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      if (strs == NULL)
+		{
+		  goto error_exit;
+		}
+
+	      i = 0;
+	      for (a = class_->class_attributes; a != NULL;
+		   a = (SM_ATTRIBUTE *) a->header.next)
+		{
+		  if (include_inherited
+		      || (!include_inherited && a->class_mop == op))
+		    {
+		      description =
+			obj_print_describe_attribute (op, parser, a,
+						      prt_type);
+		      if (description == NULL)
+			{
+			  goto error_exit;
+			}
+		      strs[i] = obj_print_copy_string (description);
+		      i++;
+		    }
+		}
+	      strs[i] = NULL;
+	      info->class_attributes = strs;
 	    }
-	  strs[i] = NULL;
-	  info->class_attributes = strs;
 	}
 
       if (class_->methods != NULL)
 	{
-	  strs = (char **) malloc (sizeof (char *) *
-				   (class_->method_count + 1));
-	  if (strs == NULL)
+	  if (include_inherited)
 	    {
-	      goto error_exit;
+	      count = class_->method_count;
 	    }
-	  i = 0;
-	  for (m = class_->methods; m != NULL;
-	       m = (SM_METHOD *) m->header.next)
+	  else
 	    {
-	      buffer = obj_print_describe_method (parser, op, m);
-	      strs[i] =
-		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes (buffer));
-	      i++;
+	      count = 0;
+	      /* find the number own by itself */
+	      for (m = class_->methods; m != NULL;
+		   m = (SM_METHOD *) m->header.next)
+		{
+		  if (m->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
 	    }
-	  strs[i] = NULL;
-	  info->methods = strs;
+
+	  if (count > 0)
+	    {
+	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      if (strs == NULL)
+		{
+		  goto error_exit;
+		}
+	      i = 0;
+	      for (m = class_->methods; m != NULL;
+		   m = (SM_METHOD *) m->header.next)
+		{
+		  if (include_inherited
+		      || (!include_inherited && m->class_mop == op))
+		    {
+		      buffer =
+			obj_print_describe_method (parser, op, m, prt_type);
+		      strs[i] =
+			obj_print_copy_string ((char *)
+					       pt_get_varchar_bytes (buffer));
+		      i++;
+		    }
+		}
+	      strs[i] = NULL;
+	      info->methods = strs;
+	    }
 	}
 
       if (class_->class_methods != NULL)
 	{
-	  strs = (char **) malloc (sizeof (char *) *
-				   (class_->class_method_count + 1));
-	  if (strs == NULL)
+	  if (include_inherited)
 	    {
-	      goto error_exit;
+	      count = class_->class_method_count;
 	    }
-	  i = 0;
-	  for (m = class_->class_methods; m != NULL;
-	       m = (SM_METHOD *) m->header.next)
+	  else
 	    {
-	      buffer = obj_print_describe_method (parser, op, m);
-	      strs[i] =
-		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes (buffer));
-	      i++;
+	      count = 0;
+	      /* find the number own by itself */
+	      for (m = class_->class_methods; m != NULL;
+		   m = (SM_METHOD *) m->header.next)
+		{
+		  if (m->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
 	    }
-	  strs[i] = NULL;
-	  info->class_methods = strs;
+
+	  if (count > 0)
+	    {
+	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      if (strs == NULL)
+		{
+		  goto error_exit;
+		}
+	      i = 0;
+	      for (m = class_->class_methods; m != NULL;
+		   m = (SM_METHOD *) m->header.next)
+		{
+		  if (include_inherited
+		      || (!include_inherited && m->class_mop == op))
+		    {
+		      buffer =
+			obj_print_describe_method (parser, op, m, prt_type);
+		      strs[i] =
+			obj_print_copy_string ((char *)
+					       pt_get_varchar_bytes (buffer));
+		      i++;
+		    }
+		}
+	      strs[i] = NULL;
+	      info->class_methods = strs;
+	    }
 	}
 
       if (class_->resolutions != NULL)
@@ -1625,7 +1942,7 @@ obj_print_help_class (MOP op)
 
 	  for (r = class_->resolutions; r != NULL; r = r->next)
 	    {
-	      buffer = obj_print_describe_resolution (parser, r);
+	      buffer = obj_print_describe_resolution (parser, r, prt_type);
 	      strs[i] =
 		obj_print_copy_string ((char *)
 				       pt_get_varchar_bytes (buffer));
@@ -1637,23 +1954,47 @@ obj_print_help_class (MOP op)
 
       if (class_->method_files != NULL)
 	{
-	  count = ws_list_length ((DB_LIST *) class_->method_files);
-	  strs = (char **) malloc (sizeof (char *) * (count + 1));
-	  if (strs == NULL)
+	  if (include_inherited)
 	    {
-	      goto error_exit;
+	      count = ws_list_length ((DB_LIST *) class_->method_files);
 	    }
-	  i = 0;
-	  for (f = class_->method_files; f != NULL; f = f->next)
+	  else
 	    {
-	      buffer = obj_print_describe_method_file (parser, op, f);
-	      strs[i] =
-		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes (buffer));
-	      i++;
+	      count = 0;
+	      /* find the number own by itself */
+	      for (f = class_->method_files; f != NULL; f = f->next)
+		{
+		  if (f->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
 	    }
-	  strs[i] = NULL;
-	  info->method_files = strs;
+
+	  if (count > 0)
+	    {
+	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      if (strs == NULL)
+		{
+		  goto error_exit;
+		}
+	      i = 0;
+	      for (f = class_->method_files; f != NULL; f = f->next)
+		{
+		  if (include_inherited
+		      || (!include_inherited && f->class_mop == op))
+		    {
+		      buffer = obj_print_describe_method_file (parser, op, f);
+		      strs[i] =
+			obj_print_copy_string ((char *)
+					       pt_get_varchar_bytes (buffer));
+		      i++;
+		    }
+
+		}
+	      strs[i] = NULL;
+	      info->method_files = strs;
+	    }
 	}
 
       if (class_->query_spec != NULL)
@@ -1693,7 +2034,19 @@ obj_print_help_class (MOP op)
 	    {
 	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		{
-		  count++;
+		  /* Csql schema command will print all constraints, which
+		   * include the constraints belong to the table itself and
+		   * belong to the parent table.
+		   * But show create table will only print the constraints
+		   * which belong to the table itself.
+		   */
+		  if (include_inherited
+		      || (!include_inherited
+			  && c->attributes[0] != NULL
+			  && c->attributes[0]->class_mop == op))
+		    {
+		      count++;
+		    }
 		}
 	    }
 
@@ -1710,18 +2063,25 @@ obj_print_help_class (MOP op)
 		{
 		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		    {
-		      description = obj_print_describe_constraint (parser,
-								   class_, c);
-		      strs[i] = obj_print_copy_string (description);
-		      if (strs[i] == NULL)
+		      if (include_inherited
+			  || (!include_inherited
+			      && c->attributes[0] != NULL
+			      && c->attributes[0]->class_mop == op))
 			{
-			  info->constraints = strs;
-			  goto error_exit;
+			  description = obj_print_describe_constraint (parser,
+								       class_,
+								       c,
+								       prt_type);
+			  strs[i] = obj_print_copy_string (description);
+			  if (strs[i] == NULL)
+			    {
+			      info->constraints = strs;
+			      goto error_exit;
+			    }
+			  i++;
 			}
-		      i++;
 		    }
 		}
-
 	      strs[i] = NULL;
 	      info->constraints = strs;
 	    }
@@ -1731,6 +2091,8 @@ obj_print_help_class (MOP op)
       if (class_->partition_of != NULL
 	  && !do_is_partitioned_subclass (NULL, class_->header.name, NULL))
 	{
+	  bool is_print_partition = true;
+
 	  strs = (char **) malloc (sizeof (char *) * (part_count + 2));
 	  if (strs == NULL)
 	    {
@@ -1742,18 +2104,41 @@ obj_print_help_class (MOP op)
 	    obj_print_describe_partition_info (parser, class_->partition_of);
 	  strs[0] = obj_print_copy_string (description);
 	  i = 1;
-	  for (user = class_->users; user != NULL; user = user->next)
+
+	  /* Show create table will not print the sub partiton for hash 
+	   * partition table.
+	   */
+	  if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 	    {
-	      if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
-				  AU_SELECT) == NO_ERROR)
+	      DB_VALUE ptype;
+
+	      DB_MAKE_NULL (&ptype);
+	      if (db_get (class_->partition_of, PARTITION_ATT_PTYPE, &ptype)
+		  != NO_ERROR)
 		{
-		  if (subclass->partition_of)
+		  goto error_exit;
+		}
+	      is_print_partition =
+		(DB_GET_INTEGER (&ptype) != PT_PARTITION_HASH);
+	      pr_clear_value (&ptype);
+	    }
+
+	  if (is_print_partition)
+	    {
+	      for (user = class_->users; user != NULL; user = user->next)
+		{
+		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
+				      AU_SELECT) == NO_ERROR)
 		    {
-		      description =
-			obj_print_describe_partition_parts (parser,
-							    subclass->
-							    partition_of);
-		      strs[i++] = obj_print_copy_string (description);
+		      if (subclass->partition_of)
+			{
+			  description =
+			    obj_print_describe_partition_parts (parser,
+								subclass->
+								partition_of,
+								prt_type);
+			  strs[i++] = obj_print_copy_string (description);
+			}
 		    }
 		}
 	    }
@@ -1802,7 +2187,7 @@ obj_print_help_class_name (const char *name)
 
   if (class_ != NULL)
     {
-      help = obj_print_help_class (class_);
+      help = obj_print_help_class (class_, OBJ_PRINT_CSQL_SCHEMA_COMMAND);
     }
 
   return help;
@@ -2331,7 +2716,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 	}
       else
 	{
-	  cinfo = obj_print_help_class (obj);
+	  cinfo = obj_print_help_class (obj, OBJ_PRINT_CSQL_SCHEMA_COMMAND);
 	  if (cinfo != NULL)
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
