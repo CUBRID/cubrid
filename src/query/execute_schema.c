@@ -8752,6 +8752,11 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter,
       break;
     }
 
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   /* if we created new partitions, we need to propagate indexes here */
   switch (alter_op)
     {
