@@ -452,14 +452,11 @@ void
 shard_stmt_destroy (void)
 {
   T_SHARD_STMT *stmt_p = NULL;
-  int num_cas;
   int i;
 
   if (shard_Stmt.stmt_ent)
     {
-      num_cas = shard_Stmt.max_num_shard * shard_Stmt.num_cas_per_shard;
-
-      for (i = 0; i < num_cas; i++)
+      for (i = 0; i < shard_Stmt.max_num_stmt; i++)
 	{
 	  stmt_p = &(shard_Stmt.stmt_ent[i]);
 
