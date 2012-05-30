@@ -16229,9 +16229,11 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
     case PT_FORMAT:
     case PT_DATE_FORMAT:
     case PT_ADDDATE:
+    case PT_DATE_ADD:
     case PT_DATEDIFF:
     case PT_TIMEDIFF:
     case PT_SUBDATE:
+    case PT_DATE_SUB:
     case PT_FUNCTION_HOLDER:
       return true;
     default:
