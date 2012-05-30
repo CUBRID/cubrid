@@ -1293,7 +1293,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_DROP_PARTITION:
     case PT_ANALYZE_PARTITION:
     case PT_PROMOTE_PARTITION:
-      /* root class template has been edited and finished, update the 
+      /* root class template has been edited and finished, update the
        * references in the pinfo object
        */
       pinfo.root_op = vclass;
@@ -1585,7 +1585,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  crt_clause->next = NULL;
 
 	  /*
-	   * DO NOT WRITE REPLICATION LOG DURING PARTITION RELATED WORKS 
+	   * DO NOT WRITE REPLICATION LOG DURING PARTITION RELATED WORKS
 	   */
 	  if (alter_code == PT_APPLY_PARTITION ||
 	      alter_code == PT_REMOVE_PARTITION ||
@@ -8533,7 +8533,7 @@ cleanup:
  * pinfo (in/out) : partition alter context
  *
  * Note: Altering a partitioned class is an action that that involves two
- *  steps: 
+ *  steps:
  *    1. modifying the schema of the partitioned class
  *    2. redistributing the data to the new schema
  *  The "pre" action is the action responsible for schema modification.
@@ -8670,7 +8670,7 @@ do_alter_partitioning_pre (PARSER_CONTEXT * parser,
  * pinfo (in/out) : partition alter context
  *
  * Note: Altering a partitioned class is an action that that involves two
- *  steps: 
+ *  steps:
  *    1. modifying the schema of the partitioned class
  *    2. redistributing the data to the new schema
  *  The "post" action is the action responsible for redistributing data.
@@ -9638,7 +9638,7 @@ do_promote_partition (SM_CLASS * class_)
       return er_errid ();
     }
 
-  /* delpart is an OID pointing into _db_partition which needs to be 
+  /* delpart is an OID pointing into _db_partition which needs to be
    * deleted when we complete the promotion process
    */
   delpart = class_->partition_of;
@@ -9676,7 +9676,7 @@ do_promote_partition (SM_CLASS * class_)
       dbt_abort_class (ctemplate);
       return error;
     }
-  /* Make sure we do not copy anything that actually belongs to the 
+  /* Make sure we do not copy anything that actually belongs to the
    * root class (the class to which this partition belongs to)
    */
   ctemplate->inheritance = NULL;
@@ -9706,7 +9706,7 @@ do_promote_partition (SM_CLASS * class_)
       error = er_errid ();
     }
 
-  /* delete the tuple from _db_partition which indicates to this 
+  /* delete the tuple from _db_partition which indicates to this
    * partition
    */
   AU_DISABLE (au_save);
@@ -11742,10 +11742,10 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REUSE_OID, 1);
 	  if (error == NO_ERROR)
 	    {
-	      /* Need to flush class mop in order to reflect reuse_oid flag 
+	      /* Need to flush class mop in order to reflect reuse_oid flag
 	       * into catalog table.
-	       * Without flushing it, catalog information is incorrect 
-	       * under non-autocommit mode. 
+	       * Without flushing it, catalog information is incorrect
+	       * under non-autocommit mode.
 	       */
 	      do_flush_class_mop = true;
 	    }
@@ -12785,6 +12785,25 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       /* delete current serial */
       int save;
 
+      if (found_att->auto_increment == NULL)
+	{
+	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  MOP serial_class_mop, serial_mop;
+	  DB_IDENTIFIER serial_obj_id;
+
+	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+
+	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
+					  ctemplate->name,
+					  found_att->header.name);
+	  serial_mop =
+	    do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+				  auto_increment_name);
+	  found_att->auto_increment = serial_mop;
+	}
+
+      assert_release (found_att->auto_increment);
+
       error = au_check_serial_authorization (found_att->auto_increment);
       if (error != NO_ERROR)
 	{
@@ -12792,7 +12811,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	}
       AU_DISABLE (save);
 
-      assert (found_att->auto_increment);
       error = obj_delete (found_att->auto_increment);
 
       AU_ENABLE (save);
@@ -12813,13 +12831,9 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
       assert (attribute->info.attr_def.auto_increment != NULL);
 
-      if (db_Enable_replications <= 0)
-	{
-	  error = do_create_auto_increment_serial (parser,
-						   &auto_increment_obj,
-						   ctemplate->name,
-						   attribute);
-	}
+      error = do_create_auto_increment_serial (parser,
+					       &auto_increment_obj,
+					       ctemplate->name, attribute);
       if (error == NO_ERROR)
 	{
 	  if (found_att != NULL)
@@ -15791,7 +15805,7 @@ end:
  * parser(in): parser context
  * spec(in): class spec
  * expr(in): expression used with function index
- * return: pointer to SM_FUNCTION_INFO structure, containing the 
+ * return: pointer to SM_FUNCTION_INFO structure, containing the
  *	function index information
  */
 static SM_FUNCTION_INFO *
@@ -16288,7 +16302,7 @@ error:
 }
 
 /*
- * replace_names_alter_chg_attr() - Replaces the attribute name in a given 
+ * replace_names_alter_chg_attr() - Replaces the attribute name in a given
  *				    expression, based on the changes imposed
  *				    the ALTER CHANGE statement
  *   return: PT_NODE pointer
