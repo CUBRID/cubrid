@@ -97,6 +97,8 @@
 #define strtok_r            strtok_s
 #define strtoll             _strtoi64
 #define strtoull            _strtoui64
+#define stat		    _stati64
+#define fstat		    _fstati64
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define fileno		_fileno
