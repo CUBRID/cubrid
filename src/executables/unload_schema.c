@@ -2437,8 +2437,7 @@ emit_index_def (DB_OBJECT * class_)
   DB_ATTRIBUTE **atts, **att;
   const char *cls_name, *att_name;
   int partitioned_subclass = 0, au_save;
-  SM_CLASS *smclass, *supclass = NULL;
-  DB_VALUE classobj, pclass;
+  SM_CLASS *supclass = NULL;
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
@@ -2462,25 +2461,15 @@ emit_index_def (DB_OBJECT * class_)
 
   if (partitioned_subclass)
     {
-      DB_MAKE_NULL (&classobj);
-      DB_MAKE_NULL (&pclass);
+      DB_OBJECT *root_op = NULL;
       AU_DISABLE (au_save);
-
-      if (au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT) ==
-	  NO_ERROR && smclass->partition_of
-	  && db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
-		     &pclass) == NO_ERROR
-	  && DB_VALUE_TYPE (&pclass) == DB_TYPE_OBJECT
-	  && db_get (DB_PULL_OBJECT (&pclass), PARTITION_ATT_CLASSOF,
-		     &classobj) == NO_ERROR)
+      if (do_get_partition_parent (class_, &root_op) == NO_ERROR)
 	{
-	  if (DB_VALUE_TYPE (&classobj) == DB_TYPE_OBJECT
-	      && au_fetch_class (DB_PULL_OBJECT (&classobj), &supclass,
-				 AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+	  if (au_fetch_class (root_op, &supclass, AU_FETCH_READ, AU_SELECT)
+	      != NO_ERROR)
 	    {
 	      supclass = NULL;
 	    }
-	  pr_clear_value (&classobj);
 	}
 
       AU_ENABLE (au_save);

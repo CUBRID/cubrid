@@ -4475,10 +4475,7 @@ locator_mflush (MOP mop, void *mf)
 #endif /* CUBRID_DEBUG */
       return WS_MAP_FAIL;
     }
-
-  is_owner_partitioned =
-    (((SM_CLASS *) class_mop->object)->partition_of != NULL);
-
+  is_owner_partitioned = sm_is_partitioned_class (class_mop);
   if (WS_ISDIRTY (class_mop) && class_mop != mop)
     {
       /*

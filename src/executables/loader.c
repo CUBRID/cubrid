@@ -4480,7 +4480,7 @@ static int
 ldr_partition_info (LDR_CONTEXT * context)
 {
   SM_CLASS *smclass;
-  DB_VALUE pclassof, classobj;
+  DB_OBJECT *root_op = NULL;
   int error = NO_ERROR;
   int au_save;
 
@@ -4499,27 +4499,18 @@ ldr_partition_info (LDR_CONTEXT * context)
 
   if (smclass->partition_of && context->partition_of != smclass->partition_of)
     {
+      /* this is a partition, get the root table */
       context->partition_of = smclass->partition_of;
       context->psi = NULL;
       context->key_attr_idx = -1;
-      DB_MAKE_NULL (&pclassof);
-      DB_MAKE_NULL (&classobj);
 
-      error = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
-		      &pclassof);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
-      error = db_get (db_get_object (&pclassof), PARTITION_ATT_CLASSOF,
-		      &classobj);
+      error = do_get_partition_parent (context->cls, &root_op);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
 
-      error = do_init_partition_select (db_get_object (&classobj),
-					&context->psi);
+      error = do_init_partition_select (root_op, &context->psi);
     }
   else
     {
@@ -4530,8 +4521,6 @@ ldr_partition_info (LDR_CONTEXT * context)
 
 error_return:
   AU_ENABLE (au_save);
-  pr_clear_value (&pclassof);
-  pr_clear_value (&classobj);
 
   return error;
 }

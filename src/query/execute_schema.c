@@ -7096,81 +7096,62 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
 int
 do_get_partition_parent (DB_OBJECT * const classop, MOP * const parentop)
 {
-  int is_partition = NOT_PARTITION_CLASS;
-  int error_code = NO_ERROR;
+  int error = NO_ERROR;
   int au_save = 0;
   SM_CLASS *smclass = NULL;
-  DB_VALUE pname;
-  DB_VALUE pclassof;
-  DB_VALUE classobj;
 
-  db_make_null (&pname);
-  db_make_null (&pclassof);
-  db_make_null (&classobj);
+  if (classop == NULL)
+    {
+      assert_release (classop != NULL);
+      return ER_FAILED;
+    }
 
-  assert (classop != NULL);
-  assert (parentop != NULL && *parentop == NULL);
+  if (parentop == NULL || *parentop != NULL)
+    {
+      assert_release (parentop == NULL || *parentop != NULL);
+      return ER_FAILED;
+    }
   *parentop = NULL;
 
   AU_DISABLE (au_save);
 
-  error_code = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
-  if (error_code != NO_ERROR)
+  error = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
     {
       goto error_exit;
     }
+
   if (smclass->partition_of == NULL)
     {
+      /* not a partitioned class */
+      goto end;
+    }
+  if (smclass->inheritance == NULL || smclass->users != NULL)
+    {
+      /* this is the partitioned table, not a partition */
       goto end;
     }
 
-  error_code = db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname);
-  if (error_code != NO_ERROR)
+  if (smclass->inheritance->next != NULL)
     {
+      assert (false);
       goto error_exit;
     }
 
-  is_partition = DB_IS_NULL (&pname) ? PARTITIONED_CLASS : PARTITION_CLASS;
-  if (is_partition != PARTITION_CLASS)
-    {
-      goto end;
-    }
-
-  error_code = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
-		       &pclassof);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  error_code = db_get (DB_GET_OBJECT (&pclassof), PARTITION_ATT_CLASSOF,
-		       &classobj);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  *parentop = DB_PULL_OBJECT (&classobj);
-  assert (*parentop != NULL);
+  *parentop = smclass->inheritance->op;
 
 end:
   AU_ENABLE (au_save);
-  pr_clear_value (&pname);
-  pr_clear_value (&pclassof);
-  pr_clear_value (&classobj);
   smclass = NULL;
 
-  return error_code;
+  return error;
 
 error_exit:
   AU_ENABLE (au_save);
-  pr_clear_value (&pname);
-  pr_clear_value (&pclassof);
-  pr_clear_value (&classobj);
   smclass = NULL;
   *parentop = NULL;
 
-  return error_code;
+  return error;
 }
 
 /*
@@ -7191,7 +7172,7 @@ do_is_partitioned_classobj (int *is_partition,
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subcls;
-  DB_VALUE pname, pattr, psize, attrname, pclassof, classobj;
+  DB_VALUE pname, pattr, psize, attrname;
   int au_save, pcnt, i;
   MOP *subobjs = NULL;
   int error;
@@ -7219,8 +7200,6 @@ do_is_partitioned_classobj (int *is_partition,
   db_make_null (&pattr);
   db_make_null (&psize);
   db_make_null (&attrname);
-  db_make_null (&pclassof);
-  db_make_null (&classobj);
 
   if (db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname) != NO_ERROR)
     {
@@ -7231,13 +7210,22 @@ do_is_partitioned_classobj (int *is_partition,
   if (keyattr || sub_partitions)
     {
       if (*is_partition == PARTITION_CLASS)
-	{			/* sub-partition */
-	  if (db_get (smclass->partition_of, PARTITION_ATT_CLASSOF, &pclassof)
-	      != NO_ERROR
-	      || db_get (DB_GET_OBJECT (&pclassof), PARTITION_ATT_CLASSOF,
-			 &classobj) != NO_ERROR
-	      || au_fetch_class (DB_PULL_OBJECT (&classobj), &smclass,
-				 AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+	{
+	  /* Fetch the root partition class. Partitions can only inherit from
+	     one class which is the partitioned table */
+	  MOP root_op = NULL;
+	  int au_save = 0;
+
+	  error = do_get_partition_parent (classop, &root_op);
+	  if (error != NO_ERROR || root_op == NULL)
+	    {
+	      goto partition_failed;
+	    }
+
+	  error =
+	    au_fetch_class (root_op, &smclass, AU_FETCH_READ, AU_SELECT);
+
+	  if (error != NO_ERROR)
 	    {
 	      goto partition_failed;
 	    }
@@ -7309,8 +7297,6 @@ do_is_partitioned_classobj (int *is_partition,
   pr_clear_value (&pattr);
   pr_clear_value (&psize);
   pr_clear_value (&attrname);
-  pr_clear_value (&pclassof);
-  pr_clear_value (&classobj);
 
   return NO_ERROR;
 
@@ -7327,8 +7313,6 @@ partition_failed:
   pr_clear_value (&pattr);
   pr_clear_value (&psize);
   pr_clear_value (&attrname);
-  pr_clear_value (&pclassof);
-  pr_clear_value (&classobj);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
 

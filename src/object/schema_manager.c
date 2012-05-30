@@ -3041,14 +3041,22 @@ bool
 sm_is_partitioned_class (MOP op)
 {
   SM_CLASS *class_;
+  int save;
   bool result = false;
+
+  if (locator_is_root (op))
+    {
+      return false;
+    }
 
   if (op != NULL && locator_is_class (op, DB_FETCH_READ))
     {
+      AU_DISABLE (save);
       if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
 	{
 	  result = (class_->partition_of != NULL);
 	}
+      AU_ENABLE (save);
     }
 
   return result;
