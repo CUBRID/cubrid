@@ -113,6 +113,7 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
   r = select (max_fd + 1, rp, wp, ep, tp);
   for (i = 0; i < nfds; i++)
     {
+      fds[i].revents = 0;
       if ((fds[i].events & POLLIN) && FD_ISSET (fds[i].fd, rp))
 	{
 	  fds[i].revents |= POLLIN;
