@@ -12650,8 +12650,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     {
       if (attr_chg_prop->name_space == ID_ATTRIBUTE)
 	{
-	  assert (is_att_prop_set
-		  (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
+	  assert (is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				   ATT_CHG_PROPERTY_UNCHANGED)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
 				      ATT_CHG_TYPE_SET_CLS_COMPAT)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
@@ -12661,28 +12661,27 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	{
 	  assert (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE
 		  || attr_chg_prop->name_space == ID_SHARED_ATTRIBUTE);
-	  assert (!is_att_prop_set
-		  (attr_chg_prop->p[P_TYPE],
-		   ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG)
-		  && !is_att_prop_set
-		  (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NOT_SUPPORTED));
+	  assert (!is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG)
+		  && !is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				       ATT_CHG_TYPE_NOT_SUPPORTED));
 	}
 
     }
   else if (*change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE)
     {
-      assert (is_att_prop_set
-	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_UPGRADE));
+      assert (is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			       ATT_CHG_TYPE_UPGRADE));
     }
   else
     {
       assert (*change_mode == SM_ATTR_CHG_BEST_EFFORT);
       /* this mode is needed when:
        * - a type change other than UPGRADE */
-      assert (is_att_prop_set
-	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
-	      || is_att_prop_set
-	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE));
+      assert (is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			       ATT_CHG_TYPE_NEED_ROW_CHECK)
+	      || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				  ATT_CHG_TYPE_PSEUDO_UPGRADE));
     }
 
   /* default value: for CLASS and SHARED attributes this changes the value
@@ -12709,20 +12708,19 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       goto exit;
     }
 
-  error =
-    get_att_order_from_def (attribute, &change_first, &change_after_attr);
+  error = get_att_order_from_def (attribute, &change_first,
+				  &change_after_attr);
   if (error != NO_ERROR)
     {
       goto exit;
     }
 
-  error =
-    smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL,
-					 attr_db_domain,
-					 attr_chg_prop->name_space,
-					 new_default, new_default_expr,
-					 change_first, change_after_attr,
-					 &found_att);
+  error = smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name,
+					       NULL, attr_db_domain,
+					       attr_chg_prop->name_space,
+					       new_default, new_default_expr,
+					       change_first,
+					       change_after_attr, &found_att);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -12752,8 +12750,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   /* processing only for normal attributes */
 
   /* DEFAULT value */
-  if (is_att_prop_set
-      (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
+  if (is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE],
+		       ATT_CHG_PROPERTY_LOST))
     {
       pr_clear_value (&(found_att->default_value.value));
       found_att->default_value.default_expr = DB_DEFAULT_NONE;
@@ -12770,8 +12768,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       assert (attribute->info.attr_def.constrain_not_null != 0);
       /* constraint is added later when new constraints are created */
     }
-  else if (is_att_prop_set
-	   (attr_chg_prop->p[P_NOT_NULL], ATT_CHG_PROPERTY_LOST))
+  else if (is_att_prop_set (attr_chg_prop->p[P_NOT_NULL],
+			    ATT_CHG_PROPERTY_LOST))
     {
       error = dbt_constrain_non_null (ctemplate, attr_name,
 				      (attr_chg_prop->name_space ==
@@ -12780,8 +12778,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
 
   /* delete or (re-)create auto_increment attribute's serial object */
-  if (is_att_prop_set
-      (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
+  if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
 			  ATT_CHG_PROPERTY_LOST))
     {
@@ -12808,8 +12805,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       found_att->auto_increment = NULL;
     }
   /* create or re-create serial with new properties */
-  if (is_att_prop_set
-      (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
+  if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
 			  ATT_CHG_PROPERTY_GAINED))
     {
