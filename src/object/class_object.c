@@ -100,7 +100,8 @@ static DB_SEQ *classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO *
 						    filter_index_info);
 static SM_CONSTRAINT *classobj_make_constraint (const char *name,
 						SM_CONSTRAINT_TYPE type,
-						BTID * id);
+						BTID * id,
+						bool has_function_constraint);
 static void classobj_free_constraint (SM_CONSTRAINT * constraint);
 static int classobj_constraint_size (SM_CONSTRAINT * constraint);
 static bool classobj_cache_constraint_entry (const char *name,
@@ -180,6 +181,9 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
 				    SM_FUNCTION_INFO * func_index_info,
 				    SM_CLASS_CONSTRAINT * existing_con,
 				    SM_CLASS_CONSTRAINT ** primary_con);
+static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq,
+						    bool *
+						    has_function_constraint);
 
 void
 classobj_area_init (void)
@@ -1979,6 +1983,28 @@ classobj_has_unique_constraint (SM_CONSTRAINT * constraints)
   return false;
 }
 
+/*
+ * classobj_has_function_constraint () - check if has function constraint
+ *   return: true if an function constraint is contained in the
+ *	      constraint list, otherwise false.
+ *   constraints(in): constraint list
+ */
+bool
+classobj_has_function_constraint (SM_CONSTRAINT * constraints)
+{
+  SM_CONSTRAINT *c;
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (c->has_function)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 /* SM_CONSTRAINT */
 /*
  * classobj_make_constraint() - Creates a new constraint node.
@@ -1986,11 +2012,12 @@ classobj_has_unique_constraint (SM_CONSTRAINT * constraints)
  *   name(in): Constraint name
  *   type(in): Constraint type
  *   id(in): Unique BTID
+ *   has_function_constraint(in): true if is function constraint
  */
 
 static SM_CONSTRAINT *
 classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type,
-			  BTID * id)
+			  BTID * id, bool has_function_constraint)
 {
   SM_CONSTRAINT *constraint;
 
@@ -2005,6 +2032,7 @@ classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type,
   constraint->name = ws_copy_string (name);
   constraint->type = type;
   constraint->index = *id;
+  constraint->has_function = has_function_constraint;
 
   if (name && !constraint->name)
     {
@@ -2086,6 +2114,7 @@ classobj_cache_constraint_entry (const char *name,
   SM_ATTRIBUTE *att;
   SM_CONSTRAINT *ptr;
   bool ok = true;
+  bool has_function_constraint = false;
 
   /*
    *  Extract the first element of the sequence which is the
@@ -2133,10 +2162,26 @@ classobj_cache_constraint_entry (const char *name,
 	    }
 	  if (att != NULL)
 	    {
+	      if (constraint_type == SM_CONSTRAINT_INDEX
+		  || constraint_type == SM_CONSTRAINT_REVERSE_INDEX
+		  || constraint_type == SM_CONSTRAINT_UNIQUE
+		  || constraint_type == SM_CONSTRAINT_REVERSE_UNIQUE)
+		{
+		  if (classobj_check_function_constraint_info
+		      (constraint_seq, &has_function_constraint) != NO_ERROR)
+		    {
+		      pr_clear_value (&att_val);
+		      pr_clear_value (&id_val);
+		      ok = false;
+		      goto finish;
+		    }
+		}
+
 	      /*
 	       *  Add a new constraint node to the cache list
 	       */
-	      ptr = classobj_make_constraint (name, constraint_type, &id);
+	      ptr = classobj_make_constraint (name, constraint_type, &id,
+					      has_function_constraint);
 	      if (ptr == NULL)
 		{
 		  ok = false;
@@ -8105,4 +8150,120 @@ classobj_free_function_index_ref (SM_FUNCTION_INFO * func_index_info)
   ws_free_string (func_index_info->expr_stream);
   func_index_info->expr_str = NULL;
   func_index_info->expr_stream = NULL;
+}
+
+/*
+ * classobj_check_function_constraint_info() - check function constraint info
+ *   return: error code
+ *   constraint_seq(in): constraint sequence
+ *   has_function_constraint(in): true, if function constraint sequence 
+ */
+static int
+classobj_check_function_constraint_info (DB_SEQ * constraint_seq,
+					 bool * has_function_constraint)
+{
+  DB_VALUE bvalue, fvalue, avalue;
+  int constraint_seq_len = set_size (constraint_seq);
+  int j = 0;
+
+  assert (constraint_seq != NULL && has_function_constraint != NULL);
+
+  /* initializations */
+  *has_function_constraint = false;
+  db_make_null (&bvalue);
+  db_make_null (&avalue);
+  db_make_null (&fvalue);
+
+  if (set_get_element (constraint_seq, constraint_seq_len - 1, &bvalue)
+      != NO_ERROR)
+    {
+      goto structure_error;
+    }
+
+  if (DB_VALUE_TYPE (&bvalue) == DB_TYPE_SEQUENCE)
+    {
+      DB_SEQ *seq = DB_GET_SEQUENCE (&bvalue);
+      if (set_get_element (seq, 0, &fvalue) != NO_ERROR)
+	{
+	  pr_clear_value (&bvalue);
+	  goto structure_error;
+	}
+      if (DB_VALUE_TYPE (&fvalue) == DB_TYPE_INTEGER)
+	{
+	  /* don't care about prefix length */
+	}
+      else if (DB_VALUE_TYPE (&fvalue) == DB_TYPE_SEQUENCE)
+	{
+	  DB_SET *child_seq = DB_GET_SEQUENCE (&fvalue);
+	  int seq_size = set_size (seq);
+
+	  j = 0;
+	  while (true)
+	    {
+	      if (set_get_element (child_seq, 0, &avalue) != NO_ERROR)
+		{
+		  goto structure_error;
+		}
+
+	      if (DB_IS_NULL (&avalue)
+		  || DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
+		{
+		  goto structure_error;
+		}
+
+	      if (strcmp (DB_PULL_STRING (&avalue),
+			  SM_FUNCTION_INDEX_ID) == 0)
+		{
+		  *has_function_constraint = true;
+		  pr_clear_value (&avalue);
+		  break;
+		}
+
+	      pr_clear_value (&avalue);
+
+	      j++;
+	      if (j >= seq_size)
+		{
+		  break;
+		}
+
+	      pr_clear_value (&fvalue);
+	      if (set_get_element (seq, j, &fvalue) != NO_ERROR)
+		{
+		  goto structure_error;
+		}
+
+	      if (DB_VALUE_TYPE (&fvalue) != DB_TYPE_SEQUENCE)
+		{
+		  goto structure_error;
+		}
+
+	      child_seq = DB_GET_SEQUENCE (&fvalue);
+	    }
+	}
+      else
+	{
+	  goto structure_error;
+	}
+
+      pr_clear_value (&fvalue);
+      pr_clear_value (&bvalue);
+    }
+  else
+    {
+      goto structure_error;
+    }
+
+  return NO_ERROR;
+
+structure_error:
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+
+  /* clean up our values and return the error that has been set */
+  pr_clear_value (&fvalue);
+  pr_clear_value (&avalue);
+  pr_clear_value (&bvalue);
+
+  return er_errid ();
 }

@@ -168,6 +168,12 @@ typedef struct obj_template
    * UPDATE statements).
    */
   unsigned force_check_not_null:1;
+
+  /*
+   * Set if we ever make an assignment for an attribute that has the
+   * function key constraint.
+   */
+  unsigned function_key_modified:1;
 } OBJ_TEMPLATE, *OBT;
 
 /*

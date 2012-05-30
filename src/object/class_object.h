@@ -501,6 +501,7 @@ struct sm_constraint
   char *name;
   SM_CONSTRAINT_TYPE type;
   BTID index;
+  bool has_function;		/* true, if is a function constraint */
 };
 
 /*
@@ -1075,6 +1076,7 @@ extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
 					   SM_CONSTRAINT_TYPE type,
 					   BTID * id);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
+extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
 extern int classobj_decompose_property_oid (const char *buffer, int *volid,
 					    int *fileid, int *pageid);
 extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid,
