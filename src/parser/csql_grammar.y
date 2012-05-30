@@ -2234,7 +2234,13 @@ create_stmt
 
 			if ($5 && $12)
 			  {
-			    /* not allowed unique with filter index */
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
 			    PT_ERRORm (this_parser, node,
 			               MSGCAT_SET_PARSER_SYNTAX,
 			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -2263,7 +2269,14 @@ create_stmt
 			      {
 			        if (node->info.index.unique)
 			          {
-			            /* not allowed unique with function index */
+			            /* Currently, not allowed unique with filter/function
+			               index. However, may be introduced later, if it will
+			               be usefull. Unique filter/function index code is
+			               removed from grammar module only. It is kept yet in
+			               the others modules. This will allow us to easily
+			               support this feature later by adding in grammar
+			               only. If no need such feature, filter/function code
+			               must be removed from all modules. */
 			            PT_ERRORm (this_parser, node,
 			                       MSGCAT_SET_PARSER_SYNTAX,
 			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -2963,7 +2976,13 @@ alter_stmt
 
 			if ($5 && $10)
 			  {
-			    /* not allowed unique with filter index */
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
 			    PT_ERRORm (this_parser, node,
 			               MSGCAT_SET_PARSER_SYNTAX,
 			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -2984,7 +3003,14 @@ alter_stmt
 			      {
 			        if (node->info.index.unique)
 			          {
-			            /* not allowed unique with function index */
+			            /* Currently, not allowed unique with filter/function
+			               index. However, may be introduced later, if it will
+			               be usefull. Unique filter/function index code is
+			               removed from grammar module only. It is kept yet in
+			               the others modules. This will allow us to easily
+			               support this feature later by adding in grammar
+			               only. If no need such feature, filter/function code
+			               must be removed from all modules. */
 			            PT_ERRORm (this_parser, node,
 			                       MSGCAT_SET_PARSER_SYNTAX,
 			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -3020,7 +3046,13 @@ alter_stmt
 
 			if ($5 && $11)
 			  {
-			    /* not allowed unique with filter index */
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
 			    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
 			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 			  }
@@ -3045,7 +3077,14 @@ alter_stmt
 			      {
 			        if (node->info.index.unique)
 			          {
-			            /* not allowed unique with function index */
+			            /* Currently, not allowed unique with filter/function
+			               index. However, may be introduced later, if it will
+			               be usefull. Unique filter/function index code is
+			               removed from grammar module only. It is kept yet in
+			               the others modules. This will allow us to easily
+			               support this feature later by adding in grammar
+			               only. If no need such feature, filter/function code
+			               must be removed from all modules. */
 			            PT_ERRORm (this_parser, node,
 			                       MSGCAT_SET_PARSER_SYNTAX,
 			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -3339,7 +3378,14 @@ drop_stmt
 			      {
 			        if (node->info.index.unique)
 			          {
-			            /* not allowed unique with function index */
+			            /* Currently, not allowed unique with filter/function
+			               index. However, may be introduced later, if it will
+			               be usefull. Unique filter/function index code is
+			               removed from grammar module only. It is kept yet in
+			               the others modules. This will allow us to easily
+			               support this feature later by adding in grammar
+			               only. If no need such feature, filter/function code
+			               must be removed from all modules. */
 			            PT_ERRORm (this_parser, node,
 			                       MSGCAT_SET_PARSER_SYNTAX,
 			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -3392,7 +3438,14 @@ drop_stmt
 			      {
 			        if (node->info.index.unique)
 			          {
-			            /* not allowed unique with function index */
+			            /* Currently, not allowed unique with filter/function
+			               index. However, may be introduced later, if it will
+			               be usefull. Unique filter/function index code is
+			               removed from grammar module only. It is kept yet in
+			               the others modules. This will allow us to easily
+			               support this feature later by adding in grammar
+			               only. If no need such feature, filter/function code
+			               must be removed from all modules. */
 			            PT_ERRORm (this_parser, node,
 								   MSGCAT_SET_PARSER_SYNTAX,
 								   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
@@ -7593,7 +7646,13 @@ unique_constraint
 
 			if (sort_spec_cols->info.sort_spec.expr->node_type == PT_EXPR)
 			  {
-			    /* not allowed unique with function index */
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
 			    PT_ERRORm (this_parser, sort_spec_cols,
 			               MSGCAT_SET_PARSER_SYNTAX,
 			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);

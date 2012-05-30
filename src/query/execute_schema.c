@@ -232,6 +232,11 @@ static int add_query_to_virtual_class (PARSER_CONTEXT * parser,
 static int do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop,
 			    SM_CLASS * src_class);
 
+static int do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
+					      const char *const
+					      old_class_name,
+					      const char *const class_name);
+
 static int do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 					     PT_NODE * const alter);
 
@@ -1362,6 +1367,12 @@ do_alter_clause_rename_entity (PARSER_CONTEXT * const parser,
       goto error_exit;
     }
 
+  error_code = do_recreate_renamed_class_indexes (parser, old_name, new_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   /* We now need to update the current name of the class for the rest of the
      ALTER clauses. */
   for (tmp_clause = alter->next; tmp_clause != NULL;
@@ -2473,6 +2484,12 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	current_rename->info.rename.new_name->info.name.original;
 
       error = do_rename_internal (old_name, new_name);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      error = do_recreate_renamed_class_indexes (parser, old_name, new_name);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -11858,6 +11875,178 @@ error_exit:
     {
       tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
     }
+  return error;
+}
+
+/*
+ * do_recreate_renamed_class_indexes() - Recreate indexes of previously
+ *					  renamed class
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in): Parser context
+ *   old_class_name(in): the old name of the renamed class
+ *   class_name(in): the new name of the renamed class
+ *
+ *  Note : This function must be called after class renaming.
+ *	   Currently, only filter and function index are recreated since
+ *	   their expression must be modified and recompiled.
+ */
+static int
+do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
+				   const char *const old_class_name,
+				   const char *const class_name)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *c = NULL;
+  SM_CONSTRAINT_INFO *index_save_info = NULL, *saved = NULL;
+  SM_CLASS *class_ = NULL;
+  DB_OBJECT *classmop = NULL;
+
+  assert (parser != NULL && old_class_name != NULL && class_name != NULL);
+
+  classmop = db_find_class (class_name);
+  if (classmop == NULL)
+    {
+      return er_errid ();
+    }
+
+  if (au_fetch_class (classmop, &class_, AU_FETCH_READ, DB_AUTH_SELECT)
+      != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  if (class_->constraints == NULL)
+    {
+      /* no constraints, nothing to do */
+      return NO_ERROR;
+    }
+
+  if (class_->class_type != SM_CLASS_CT)
+    {
+      return ER_OBJ_NOT_A_CLASS;
+    }
+
+  for (c = class_->constraints; c; c = c->next)
+    {
+      if (c->type != SM_CONSTRAINT_INDEX
+	  && c->type != SM_CONSTRAINT_REVERSE_INDEX
+	  && c->type != SM_CONSTRAINT_UNIQUE
+	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE)
+	{
+	  continue;
+	}
+
+      if (c->func_index_info || c->filter_predicate)
+	{
+	  /* save constraints */
+	  error = sm_save_constraint_info (&index_save_info, c);
+	  if (error == NO_ERROR)
+	    {
+	      assert (index_save_info != NULL);
+	      saved = index_save_info;
+	      while (saved->next)
+		{
+		  saved = saved->next;
+		}
+	      if (c->func_index_info)
+		{
+		  /* recompile function index expression */
+		  error =
+		    do_recreate_func_index_constr ((PARSER_CONTEXT *) parser,
+						   saved, NULL,
+						   old_class_name,
+						   class_->header.name);
+		  if (error != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		}
+	      else
+		{
+		  /* recompile filter index expression */
+		  error =
+		    do_recreate_filter_index_constr ((PARSER_CONTEXT *)
+						     parser, saved,
+						     NULL, old_class_name,
+						     class_->header.name);
+		  if (error != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		}
+	    }
+	}
+    }
+
+  /* drop indexes */
+  for (saved = index_save_info; saved != NULL; saved = saved->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+	{
+	  error = sm_drop_constraint (classmop, saved->constraint_type,
+				      saved->name,
+				      (const char **) saved->att_names, false,
+				      false);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  error = sm_drop_index (classmop, saved->name);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+
+  /* add indexes */
+  for (saved = index_save_info; saved != NULL; saved = saved->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+	{
+	  error =
+	    sm_add_constraint (classmop, saved->constraint_type, saved->name,
+			       (const char **) saved->att_names,
+			       saved->asc_desc, saved->prefix_length, 0,
+			       saved->filter_predicate,
+			       saved->func_index_info);
+
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  error =
+	    sm_add_index (classmop, saved->constraint_type, saved->name,
+			  (const char **) saved->att_names, saved->asc_desc,
+			  saved->prefix_length, saved->filter_predicate,
+			  saved->func_index_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+
+  if (index_save_info != NULL)
+    {
+      sm_free_constraint_info (&index_save_info);
+    }
+
+  return NO_ERROR;
+
+error_exit:
+
+  if (index_save_info != NULL)
+    {
+      sm_free_constraint_info (&index_save_info);
+    }
+
   return error;
 }
 
