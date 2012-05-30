@@ -2921,8 +2921,8 @@ sm_mark_system_class (MOP classop, int on_or_off)
 
   if (classop != NULL)
     {
-      if ((error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE))
-	  == NO_ERROR)
+      error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  if (on_or_off)
 	    {
@@ -2991,8 +2991,8 @@ sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int on_or_off)
 
   if (classop != NULL)
     {
-      if ((error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE))
-	  == NO_ERROR)
+      error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  if (on_or_off)
 	    {
@@ -4033,8 +4033,8 @@ sm_class_has_triggers (DB_OBJECT * classop, int *status_ptr,
       return ER_OBJ_INVALID_ARGUMENT;
     }
 
-  if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ,
-			       AU_SELECT)) == NO_ERROR)
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
       status = sm_active_triggers (class_, event_type);
       if (status < 0)
@@ -4065,7 +4065,8 @@ sm_invalidate_trigger_cache (DB_OBJECT * classop)
   int error;
   SM_CLASS *class_;
 
-  if (!(error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)))
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
       class_->triggers_validated = 0;
     }
@@ -4263,12 +4264,13 @@ sm_add_trigger (DB_OBJECT * classop,
   SM_CLASS *class_;
 
   /* first fetch with authorization on the outer class */
-  if (!(error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_ALTER)))
+  error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_ALTER);
+  if (error == NO_ERROR)
     {
       /* Make sure all the affected subclasses are accessible. */
-      if (!(error = alter_trigger_hierarchy (classop, attribute,
-					     class_attribute, classop, NULL,
-					     0)))
+      error = alter_trigger_hierarchy (classop, attribute, class_attribute,
+				       classop, NULL, 0);
+      if (error == NO_ERROR)
 	{
 	  error = alter_trigger_hierarchy (classop, attribute,
 					   class_attribute, classop, trigger,
@@ -4308,12 +4310,12 @@ sm_drop_trigger (DB_OBJECT * classop,
     {
       error = NO_ERROR;
     }
-  else if (!error)
+  else if (error == NO_ERROR)
     {
       /* Make sure all the affected subclasses are accessible. */
-      if (!(error = alter_trigger_hierarchy (classop, attribute,
-					     class_attribute, classop, NULL,
-					     1)))
+      error = alter_trigger_hierarchy (classop, attribute, class_attribute,
+				       classop, NULL, 1);
+      if (error == NO_ERROR)
 	{
 	  error = alter_trigger_hierarchy (classop, attribute,
 					   class_attribute, classop, trigger,
@@ -4802,8 +4804,8 @@ find_attribute_op (MOP op, const char *name,
     }
   else
     {
-      if ((error = au_fetch_class (op, &class_, AU_FETCH_READ,
-				   AU_SELECT)) == NO_ERROR)
+      error = au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT);
+      if (error == NO_ERROR)
 	{
 	  att = classobj_find_attribute (class_, name, 0);
 	  if (att == NULL)
@@ -4863,17 +4865,18 @@ sm_get_att_name (MOP classop, int id)
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
 
-  if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT))
-      == NO_ERROR)
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
-      if ((att = classobj_find_attribute_id (class_, id, 0)) != NULL)
+      att = classobj_find_attribute_id (class_, id, 0);
+      if (att != NULL)
 	{
 	  name = att->header.name;
 	}
     }
 
   return name;
-}				/* sm_get_att_name() */
+}
 
 /*
  * sm_att_id() - Returns the internal id number assigned to the attribute.
@@ -4998,10 +5001,11 @@ sm_att_info (MOP classop, const char *name, int *idp,
   att = NULL;
   *sharedp = 0;
 
-  if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT))
-      == NO_ERROR)
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
-      if ((att = classobj_find_attribute (class_, name, class_attr)) == NULL)
+      att = classobj_find_attribute (class_, name, class_attr);
+      if (att == NULL)
 	{
 	  /* return error but don't call er_set */
 	  error = ER_SM_ATTRIBUTE_NOT_FOUND;
@@ -5067,9 +5071,9 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
 	      continue;
 	    }
 
-	  if (skip_prefix_index && num_atts > 0 &&
-	      con->attributes[0] != NULL &&
-	      con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
+	  if (skip_prefix_index && num_atts > 0
+	      && con->attributes[0] != NULL
+	      && con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
 	    {
 	      continue;
 	    }
@@ -5344,8 +5348,8 @@ sm_class_check_uniques (MOP classop)
   buf_start = buffer;
   buf_size = 200;		/* could use OR_ALIGNED_BUF_SIZE */
 
-  if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT))
-      == NO_ERROR)
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
       for (con = class_->constraints; con != NULL; con = con->next)
 	{
@@ -5359,8 +5363,8 @@ sm_class_check_uniques (MOP classop)
 		  buf_size = buf_size * 2;
 		  if (buf_malloced)
 		    {
-		      if ((buf_start = (char *)
-			   realloc (buf_start, buf_size)) == NULL)
+		      buf_start = (char *) realloc (buf_start, buf_size);
+		      if (buf_start == NULL)
 			{
 			  buf_malloced = 0;
 			  goto error_class_check_uniques;
@@ -5368,7 +5372,8 @@ sm_class_check_uniques (MOP classop)
 		    }
 		  else
 		    {
-		      if ((buf_start = malloc (buf_size)) == NULL)
+		      buf_start = malloc (buf_size);
+		      if (buf_start == NULL)
 			{
 			  goto error_class_check_uniques;
 			}
@@ -6161,8 +6166,8 @@ sm_get_attribute_descriptor (DB_OBJECT * op, const char *name,
   else
     {
       /* looking for an instance attribute */
-      if ((error = au_fetch_class (op, &class_, AU_FETCH_READ,
-				   AU_SELECT)) == NO_ERROR)
+      error = au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT);
+      if (error == NO_ERROR)
 	{
 	  att = classobj_find_attribute (class_, name, 0);
 	  if (att == NULL)
@@ -6235,7 +6240,8 @@ sm_get_method_descriptor (DB_OBJECT * op, const char *name,
   SM_DESCRIPTOR *desc;
   MOP classmop;
 
-  if (!(error = au_fetch_class (op, &class_, AU_FETCH_READ, AU_EXECUTE)))
+  error = au_fetch_class (op, &class_, AU_FETCH_READ, AU_EXECUTE);
+  if (error == NO_ERROR)
     {
       method = classobj_find_method (class_, name, class_method);
       if (method == NULL)
@@ -8676,7 +8682,8 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
        ((super != NULL) && (error == NO_ERROR)); super = super->next)
     {
       /* better not be any fetch errors at this point */
-      if (!(error = au_fetch_class_force (super->op, &class_, AU_FETCH_READ)))
+      error = au_fetch_class_force (super->op, &class_, AU_FETCH_READ);
+      if (error == NO_ERROR)
 	{
 	  /* if the class is being edited, be sure and get its updated trigger cache */
 	  if (class_->new_ != NULL)
@@ -8805,8 +8812,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
       for (c = constraints; c != NULL; c = c->next)
 	{
 	  /* ignore non-unique for now */
-	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type) ||
-	      c->type == SM_CONSTRAINT_FOREIGN_KEY)
+	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type)
+	      || c->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
 	      SM_ATTRIBUTE **attrs;
 	      int found_match;
@@ -10713,20 +10720,22 @@ drop_foreign_key_ref (MOP classop,
     }
   else
     {
-      if ((refcls_template = dbt_edit_class (ref_clsop)) == NULL)
+      refcls_template = dbt_edit_class (ref_clsop);
+      if (refcls_template == NULL)
 	{
 	  AU_ENABLE (save);
 	  return er_errid ();
 	}
 
-      if ((err =
-	   classobj_drop_foreign_key_ref (&(refcls_template->properties),
-					  &cons->index_btid)) != NO_ERROR)
+      err = classobj_drop_foreign_key_ref (&refcls_template->properties,
+					   &cons->index_btid);
+      if (err != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      if ((ref_clsop = dbt_finish_class (refcls_template)) == NULL)
+      ref_clsop = dbt_finish_class (refcls_template);
+      if (ref_clsop == NULL)
 	{
 	  err = er_errid ();
 	  goto error;
@@ -11074,28 +11083,33 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       for (con = flat_constraints;
 	   ((con != NULL) && (error == NO_ERROR)); con = con->next)
 	{
-	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type) ||
-	      con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
+	      || con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      if (classobj_put_index_id
-		  (&(flat->properties), con->type, con->name, con->attributes,
-		   con->asc_desc, con->attrs_prefix_length,
-		   &(con->index_btid), con->filter_predicate,
-		   con->fk_info, con->shared_cons_name,
-		   con->func_index_info) != NO_ERROR)
+	      if (classobj_put_index_id (&(flat->properties), con->type,
+					 con->name, con->attributes,
+					 con->asc_desc,
+					 con->attrs_prefix_length,
+					 &(con->index_btid),
+					 con->filter_predicate,
+					 con->fk_info,
+					 con->shared_cons_name,
+					 con->func_index_info) != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		}
 	    }
-	  else if (con->type == SM_CONSTRAINT_INDEX ||
-		   con->type == SM_CONSTRAINT_REVERSE_INDEX)
+	  else if (con->type == SM_CONSTRAINT_INDEX
+		   || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
-	      if (classobj_put_index_id
-		  (&(flat->properties), con->type, con->name, con->attributes,
-		   con->asc_desc, con->attrs_prefix_length,
-		   &(con->index_btid), con->filter_predicate,
-		   NULL, NULL, con->func_index_info) != NO_ERROR)
+	      if (classobj_put_index_id (&(flat->properties), con->type,
+					 con->name, con->attributes,
+					 con->asc_desc,
+					 con->attrs_prefix_length,
+					 &(con->index_btid),
+					 con->filter_predicate, NULL, NULL,
+					 con->func_index_info) != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -11381,12 +11395,14 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 	      break;
 	    }
 
-	  /* note that the previous operation will flush the current class representation
-	     along with the instances and clear the dirty bit, this is unnecessary if
-	     the class was only marked dirty in preparation for the new representation.
-	     Because the dirty bit is clear however, we must turn it back on after
-	     the new representation is installed so it will be properly flushed,
-	     the next time a transaction commits or locator_flush_all_instances is called
+	  /* note that the previous operation will flush the current class 
+	   * representation along with the instances and clear the dirty bit, 
+	   * this is unnecessary if the class was only marked dirty 
+	   * in preparation for the new representation.
+	   * Because the dirty bit is clear however, we must turn it back on 
+	   * after the new representation is installed so it will be properly 
+	   * flushed, the next time a transaction commits or 
+	   * locator_flush_all_instances is called
 	   */
 	  if (locator_update_class (classop) == NULL)
 	    {
@@ -11394,8 +11410,9 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 	    }
 
 	  /* !!! I've seen some cases where objects are left cached while this
-	     flag is on which is illegal.  Not sure how this happens but leave
-	     this trap so we can track it down.  Shouldn't be necessary */
+	   * flag is on which is illegal.  Not sure how this happens but leave
+	   * this trap so we can track it down.  Shouldn't be necessary 
+	   */
 	  if (ws_class_has_cached_objects (classop))
 	    {
 	      ERROR0 (error, ER_SM_CORRUPTED);
@@ -11404,9 +11421,11 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
 	  newrep = 1;
 
-	  /* Set the no_objects flag so we know that if no object dependencies are
-	     introduced on this representation, we don't have to generate another
-	     one the next time the class is updated. */
+	  /* Set the no_objects flag so we know that if no object dependencies 
+	   * are introduced on this representation, we don't have to generate 
+	   * another one the next time the class is updated. 
+	   */
+
 	  /* this used to be outside, think about why */
 	  WS_SET_NO_OBJECTS (classop);
 
@@ -11419,14 +11438,15 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
   error = transfer_disk_structures (classop, class_, flat);
 
-  /* Delete the trigger caches associated with attributes that
-     are no longer part of the class.  This will also mark the
-     triggers as invalid since their associated attribute has gone
-     away. */
+  /* Delete the trigger caches associated with attributes that are no longer 
+   * part of the class.  This will also mark the triggers as invalid 
+   * since their associated attribute has gone away. 
+   */
   invalidate_unused_triggers (classop, class_, flat);
 
   /* clear any attribute or method descriptor caches that reference this
-     class. */
+   * class. 
+   */
   sm_reset_descriptors (classop);
 
   /* install the template, the dirty bit must be on at this point */
@@ -11436,18 +11456,19 @@ install_new_representation (MOP classop, SM_CLASS * class_,
     }
 
   /* make absolutely sure this gets marked dirty after the installation,
-     this is usually redundant but the class could get flushed
-     during memory panics so we always must make sure it gets flushed again */
+   * this is usually redundant but the class could get flushed
+   * during memory panics so we always must make sure it gets flushed again 
+   */
   if (locator_update_class (classop) == NULL)
     {
       return er_errid ();
     }
 
   /* If the representation was incremented, invalidate any existing
-     statistics cache.  The next time statistics are requested, we'll
-     go to the server and get them based on the new catalog information.
-     This probably isn't necessary in all cases but let's be safe and
-     waste it unconditionally.
+   * statistics cache.  The next time statistics are requested, we'll
+   * go to the server and get them based on the new catalog information.
+   * This probably isn't necessary in all cases but let's be safe and
+   * waste it unconditionally.
    */
   if (newrep && class_->stats != NULL)
     {
@@ -11458,8 +11479,9 @@ install_new_representation (MOP classop, SM_CLASS * class_,
   /* formerly had classop->no_objects = 1 here, why ? */
 
   /* now that we don't always load methods immediately after editing,
-     must make sure that the methods_loaded flag is cleared so they
-     will be loaded the next time a message is sent */
+   * must make sure that the methods_loaded flag is cleared so they
+   * will be loaded the next time a message is sent 
+   */
   class_->methods_loaded = 0;
 
   return error;
@@ -11495,8 +11517,9 @@ lock_supers (SM_TEMPLATE * def, DB_OBJLIST * current,
     {
       if (!ml_find (def->inheritance, super->op))
 	{
-	  if ((error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
-				       AU_SELECT)) == NO_ERROR)
+	  error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
+				  AU_SELECT);
+	  if (error == NO_ERROR)
 	    {
 	      error = ml_append (oldlist, super->op, NULL);
 	    }
@@ -11509,8 +11532,9 @@ lock_supers (SM_TEMPLATE * def, DB_OBJLIST * current,
     {
       if (!ml_find (current, super->op))
 	{
-	  if ((error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
-				       AU_SELECT)) == NO_ERROR)
+	  error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
+				  AU_SELECT);
+	  if (error == NO_ERROR)
 	    {
 	      error = ml_append (newlist, super->op, NULL);
 	    }
@@ -11540,8 +11564,8 @@ update_supers (MOP classop, DB_OBJLIST * oldsupers, DB_OBJLIST * newsupers)
   for (super = oldsupers;
        ((super != NULL) && (error == NO_ERROR)); super = super->next)
     {
-      if ((error = au_fetch_class_force (super->op, &class_, AU_FETCH_UPDATE))
-	  == NO_ERROR)
+      error = au_fetch_class_force (super->op, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  ml_remove (&class_->users, classop);
 	}
@@ -11551,8 +11575,8 @@ update_supers (MOP classop, DB_OBJLIST * oldsupers, DB_OBJLIST * newsupers)
   for (super = newsupers;
        ((super != NULL) && (error == NO_ERROR)); super = super->next)
     {
-      if ((error = au_fetch_class_force (super->op, &class_, AU_FETCH_UPDATE))
-	  == NO_ERROR)
+      error = au_fetch_class_force (super->op, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  error = ml_append (&class_->users, classop, NULL);
 	}
@@ -11602,8 +11626,8 @@ update_supers_drop (MOP classop, DB_OBJLIST * supers)
   for (super = supers;
        ((super != NULL) && (error == NO_ERROR)); super = super->next)
     {
-      if ((error = au_fetch_class_force (super->op, &class_, AU_FETCH_UPDATE))
-	  == NO_ERROR)
+      error = au_fetch_class_force (super->op, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  ml_remove (&class_->users, classop);
 	}
@@ -11787,20 +11811,24 @@ flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class)
   for (sub = subclasses;
        ((sub != NULL) && (error == NO_ERROR)); sub = sub->next)
     {
-      if ((error = au_fetch_class_force (sub->op, &class_,
-					 AU_FETCH_UPDATE)) == NO_ERROR)
+      error = au_fetch_class_force (sub->op, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  /* make sure the catalog manager can handle another modification */
-	  if ((error = check_catalog_space (sub->op, class_)) == NO_ERROR)
+	  error = check_catalog_space (sub->op, class_);
+	  if (error == NO_ERROR)
 	    {
 	      /* make sure the run-time stuff is cached before editing, this
-	         is particularly important for the method file source class kludge */
-	      if ((error = sm_clean_class (sub->op, class_)) == NO_ERROR)
+	       * is particularly important for the method file source class 
+	       * kludge 
+	       */
+	      error = sm_clean_class (sub->op, class_);
+	      if (error == NO_ERROR)
 		{
 		  /* create a template */
-		  if ((utemplate =
-		       classobj_make_template (class_->header.name, sub->op,
-					       class_)) == NULL)
+		  utemplate = classobj_make_template (class_->header.name,
+						      sub->op, class_);
+		  if (utemplate == NULL)
 		    {
 		      error = er_errid ();
 		    }
@@ -12366,12 +12394,12 @@ sm_delete_class_mop (MOP op)
 	  return error;
 	}
 
-      if ((error = do_drop_partition (op, 1)) != NO_ERROR)
+      error = do_drop_partition (op, 1);
+      if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+	      tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
 	    }
 	  return error;
 	}
@@ -12432,6 +12460,7 @@ sm_delete_class_mop (MOP op)
 				  0))
 			    {
 			      int save;
+
 			      AU_DISABLE (save);
 			      error = obj_delete (att->auto_increment);
 			      AU_ENABLE (save);
@@ -12465,22 +12494,26 @@ sm_delete_class_mop (MOP op)
 		}
 	    }
 
-	  if ((error = lock_supers_drop (oldsupers)) != NO_ERROR)
+	  error = lock_supers_drop (oldsupers);
+	  if (error != NO_ERROR)
 	    {
 	      classobj_free_template (template_);
 	    }
 	  else
 	    {
 	      /* get write locks on all subclasses */
-	      if ((error = lock_subclasses (template_, NULL, class_->users,
-					    &oldsubs)) != NO_ERROR)
+	      error = lock_subclasses (template_, NULL, class_->users,
+				       &oldsubs);
+	      if (error != NO_ERROR)
 		{
 		  classobj_free_template (template_);
 		}
 	      else
 		{
-		  /* now we can assume that every class we need to touch has a write
-		     lock - attempt to flatten subclasses to reflect the deletion */
+		  /* now we can assume that every class we need to touch has 
+		   * a write lock - attempt to flatten subclasses to reflect 
+		   * the deletion 
+		   */
 		  error = flatten_subclasses (oldsubs, op);
 		  if (error != NO_ERROR)
 		    {
@@ -12512,86 +12545,101 @@ sm_delete_class_mop (MOP op)
 
 		      if (error != NO_ERROR)
 			{
-			  /* we had problems flushing, this may be due to an out of
-			     space condition, probably the transaction should
-			     be aborted as well */
+			  /* we had problems flushing, this may be due to 
+			   * an out of space condition, probably 
+			   * the transaction should be aborted as well 
+			   */
 			  abort_subclasses (oldsubs);
 			}
 		      else
 			{
-			  /* this section is critical, if any errors happen here,
-			     the workspace will be in an inconsistent state and the
-			     transaction will have to be aborted */
+			  /* this section is critical, if any errors happen 
+			   * here, the workspace will be in an inconsistent 
+			   * state and the transaction will have to be 
+			   * aborted 
+			   */
 
 			  /* now update the supers and users */
-			  if ((error =
-			       update_supers_drop (op,
-						   oldsupers)) == NO_ERROR
-			      && (error =
-				  update_subclasses (oldsubs)) == NO_ERROR)
+			  error = update_supers_drop (op, oldsupers);
+			  if (error == NO_ERROR)
 			    {
-
-			      /* OLD CODE, here we removed the class from the resident
-			       * class list, this causes bad problems for GC since the
-			       * class will be GC'd before instances have been decached.
-			       * This operation has been moved below with
-			       * ws_remove_resident_class().  Not sure if this is position
-			       * dependent.  If it doesn't cause any problems remove this
-			       * comment.
-			       */
-			      /* ml_remove(&ws_Resident_classes, op); */
-
-			      /* free any indexes, unique btids, or other associated
-			       * disk structures
-			       */
-			      transfer_disk_structures (op, class_, NULL);
-
-			      /* now that the class is gone, physically delete all
-			       * the triggers. Note that this does not just invalidate
-			       * the triggers, it deletes them forever.
-			       */
-			      remove_class_triggers (op, class_);
-
-			      /* This to be maintained as long as the class
-			       * is cached in the workspace, dirty or not.  When the
-			       * deleted class is flushed, the name is removed.
-			       * Assuming this doesn't cause problems, remove this comment
-			       */
-			      /* ws_drop_classname((MOBJ) class); */
-
-			      /* inform the locator - this will mark the class MOP as
-			       * deleted so all operations that require the current class
-			       * object must be done before calling this function */
-
-			      if (locator_remove_class (op) == NO_ERROR)
+			      error = update_subclasses (oldsubs);
+			      if (error == NO_ERROR)
 				{
+				  /* OLD CODE, here we removed the class from 
+				   * the resident class list, this causes bad 
+				   * problems for GC since the class will be 
+				   * GC'd before instances have been decached.
+				   * This operation has been moved below with
+				   * ws_remove_resident_class(). Not sure if 
+				   * this is position dependent.  
+				   * If it doesn't cause any problems remove 
+				   * this comment.
+				   */
+				  /* ml_remove(&ws_Resident_classes, op); */
 
-				  /* mark all instance MOPs as deleted, should the locator
-				   * be doing this ? */
+				  /* free any indexes, unique btids, or other 
+				   * associated disk structures
+				   */
+				  transfer_disk_structures (op, class_, NULL);
 
-				  ws_mark_instances_deleted (op);
+				  /* now that the class is gone, physically 
+				   * delete all the triggers. Note that this 
+				   * does not just invalidate the triggers, 
+				   * it deletes them forever.
+				   */
+				  remove_class_triggers (op, class_);
 
-				  /* make sure this is removed from the resident class list,
-				   * this will also make the class mop subject to garbage
-				   * collection.
-				   * This function will expect that all of the instances of
-				   * the class have been decached by this point ! */
+				  /* This to be maintained as long as the class
+				   * is cached in the workspace, dirty or not.
+				   * When the deleted class is flushed, 
+				   * the name is removed.
+				   * Assuming this doesn't cause problems, 
+				   * remove this comment
+				   */
+				  /* ws_drop_classname((MOBJ) class); */
 
-				  ws_remove_resident_class (op);
+				  /* inform the locator - this will mark 
+				   * the class MOP as deleted so all operations
+				   * that require the current class object 
+				   * must be done before calling this 
+				   * function 
+				   */
 
-				  classobj_free_template (template_);
-				}
-			      else
-				{
-				  /* an error occurred - we need to abort */
-				  error = er_errid ();
-				  if (error !=
-				      ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
-				      && error != ER_LK_UNILATERALLY_ABORTED)
+				  if (locator_remove_class (op) == NO_ERROR)
 				    {
-				      /* Not already aborted, so abort to savepoint */
-				      tran_abort_upto_savepoint
-					(UNIQUE_SAVEPOINT_NAME2);
+				      /* mark all instance MOPs as deleted, 
+				       * should the locator be doing this ? 
+				       */
+
+				      ws_mark_instances_deleted (op);
+
+				      /* make sure this is removed from 
+				       * the resident class list, this will 
+				       * also make the class mop subject 
+				       * to garbage collection.
+				       * This function will expect that all of 
+				       * the instances of the class have been 
+				       * decached by this point ! 
+				       */
+
+				      ws_remove_resident_class (op);
+
+				      classobj_free_template (template_);
+				    }
+				  else
+				    {
+				      /* an error occurred - we need to abort */
+				      error = er_errid ();
+				      if (error !=
+					  ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
+					  && error !=
+					  ER_LK_UNILATERALLY_ABORTED)
+					{
+					  /* Not already aborted, so abort to savepoint */
+					  tran_abort_upto_savepoint
+					    (UNIQUE_SAVEPOINT_NAME2);
+					}
 				    }
 				}
 			    }
@@ -12662,10 +12710,11 @@ sm_exist_index (MOP classop, const char *idxname, BTID * btid)
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
 
-  if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT))
-      == NO_ERROR)
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
-      if ((cons = classobj_find_class_index (class_, idxname)))
+      cons = classobj_find_class_index (class_, idxname);
+      if (cons)
 	{
 	  if (btid)
 	    {
@@ -12715,10 +12764,10 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
   assert (db_constraint_type == DB_CONSTRAINT_INDEX
 	  || db_constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
-  error =
-    sm_check_index_exist (classop, &out_shared_cons_name, db_constraint_type,
-			  constraint_name, attnames, asc_desc,
-			  filter_index, function_index);
+  error = sm_check_index_exist (classop, &out_shared_cons_name,
+				db_constraint_type, constraint_name,
+				attnames, asc_desc, filter_index,
+				function_index);
   if (error != NO_ERROR)
     {
       return error;
@@ -12870,10 +12919,10 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       attrs[n_attrs] = NULL;
 
       /* Make sure both the class and the instances are flushed before
-         creating the index.  NOTE THAT THIS WILL REMOVE THE DIRTY
-         BIT FROM THE CLASS OBJECT BEFORE THE INDEX HAS ACTUALLY BEEN
-         ATTACHED !  WE NEED TO MAKE SURE THE CLASS IS MARKED DIRTY
-         AGAIN AFTER THE INDEX LOAD.
+       * creating the index.  NOTE THAT THIS WILL REMOVE THE DIRTY
+       * BIT FROM THE CLASS OBJECT BEFORE THE INDEX HAS ACTUALLY BEEN
+       * ATTACHED !  WE NEED TO MAKE SURE THE CLASS IS MARKED DIRTY
+       * AGAIN AFTER THE INDEX LOAD.
        */
 
       if (locator_flush_class (classop) != NO_ERROR ||
@@ -12907,11 +12956,11 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       if (error == NO_ERROR)
 	{
 	  /* must bump the representation in order to get the index into
-	     the catalog unfortunate but not worth changing now, this is
-	     alot simpler than install_new_representation because there
-	     are no structural changes made to the instances
-	     - this must be an atomic operation.
-	     If this fails, the transaction must be aborted.
+	   * the catalog unfortunate but not worth changing now, this is
+	   * alot simpler than install_new_representation because there
+	   * are no structural changes made to the instances
+	   * - this must be an atomic operation.
+	   * If this fails, the transaction must be aborted.
 	   */
 	  if (classobj_snapshot_representation (class_))
 	    {
@@ -12942,14 +12991,16 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	    }
 
 	  /* now that the index is physically attached to the class, we must
-	     mark it as dirty and flush it again to make sure the catalog
-	     is updated correctly.  This is necessary because the allocation
-	     and loading of the instance are done at the same time.  We need
-	     to be able to allocate the index and flush the class BEFORE
-	     the loading to avoid this extra step. */
+	   * mark it as dirty and flush it again to make sure the catalog
+	   * is updated correctly.  This is necessary because the allocation
+	   * and loading of the instance are done at the same time.  We need
+	   * to be able to allocate the index and flush the class BEFORE
+	   * the loading to avoid this extra step. 
+	   */
 
 	  /* If either of these operations fail, the transaction should
-	     be aborted */
+	   * be aborted 
+	   */
 	  if (locator_update_class (classop) == NULL)
 	    {
 	      goto severe_error;
@@ -12961,10 +13012,10 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	    }
 
 	  /* since we almost always want to use the index after
-	     it has been created, cause the statistics for this
-	     class to be updated so that the optimizer is able
-	     to make use of the new index.  Recall that the optimizer
-	     looks at the statistics structures, not the schema structures.
+	   * it has been created, cause the statistics for this
+	   * class to be updated so that the optimizer is able
+	   * to make use of the new index.  Recall that the optimizer
+	   * looks at the statistics structures, not the schema structures.
 	   */
 	  if (sm_update_statistics (classop, false))
 	    {
@@ -13006,10 +13057,9 @@ general_error:
 
 severe_error:
   /* Something happened at a bad time, the database is in an inconsistent
-     state.  Must abort the transaction.
-     Save the error that caused the problem.
-     We should try to disable error overwriting when we
-     abort so the caller can find out what happened.
+   * state.  Must abort the transaction. Save the error that caused the problem.
+   * We should try to disable error overwriting when we abort so the caller 
+   * can find out what happened.
    */
   if (attrs != NULL)
     {
@@ -13218,8 +13268,8 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
   /* what happens if we formerly indexed the attribute, revoked index
      authorization and now want to remove it ? */
 
-  if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT))
-      == NO_ERROR)
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error == NO_ERROR)
     {
       att = classobj_find_attribute (class_, attname, 0);
       if (att == NULL || att->header.name_space != ID_ATTRIBUTE)
@@ -13487,7 +13537,6 @@ sm_produce_constraint_name (const char *class_name,
   return name;
 }
 
-
 /*
  * sm_produce_constraint_name_mop() - This function serves the same
  *    functionality as sm_produce_constraint_name() except that it accepts
@@ -13629,10 +13678,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
     {
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
-      error =
-	sm_add_index (classop, constraint_type, constraint_name, att_names,
-		      asc_desc, attrs_prefix_length,
-		      filter_index, function_index);
+      error = sm_add_index (classop, constraint_type, constraint_name,
+			    att_names, asc_desc, attrs_prefix_length,
+			    filter_index, function_index);
       break;
 
     case DB_CONSTRAINT_UNIQUE:
@@ -13726,13 +13774,13 @@ sm_drop_constraint (MOP classop,
       SM_CLASS *smcls = NULL;
 
       /* MySQL does not differentiate between index types. Therefore MySQL's
-         DROP INDEX idx ON tbl;
-         will drop idx even if it is a UNIQUE index.
-         On MySQL primary keys don't have names - and therefore should not be
-         considered here - while foreign keys need to be dropped in two steps:
-         first the constraint and then the associated index. We don't provide
-         compatibility for foreign keys because CUBRID's behavior makes much
-         more sense and changing it is difficult.
+       * DROP INDEX idx ON tbl;
+       * will drop idx even if it is a UNIQUE index.
+       * On MySQL primary keys don't have names - and therefore should not be
+       * considered here - while foreign keys need to be dropped in two steps:
+       * first the constraint and then the associated index. We don't provide
+       * compatibility for foreign keys because CUBRID's behavior makes much
+       * more sense and changing it is difficult.
        */
       if (au_fetch_class (classop, &smcls, AU_FETCH_READ, AU_SELECT) ==
 	  NO_ERROR)
@@ -13740,11 +13788,11 @@ sm_drop_constraint (MOP classop,
 	  const SM_CLASS_CONSTRAINT *const constraint =
 	    classobj_find_class_index (smcls, constraint_name);
 
-	  if (constraint != NULL &&
-	      (constraint->type == SM_CONSTRAINT_INDEX ||
-	       constraint->type == SM_CONSTRAINT_REVERSE_INDEX ||
-	       constraint->type == SM_CONSTRAINT_UNIQUE ||
-	       constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE))
+	  if (constraint != NULL
+	      && (constraint->type == SM_CONSTRAINT_INDEX
+		  || constraint->type == SM_CONSTRAINT_REVERSE_INDEX
+		  || constraint->type == SM_CONSTRAINT_UNIQUE
+		  || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE))
 	    {
 	      constraint_type = db_constraint_type (constraint);
 	    }
@@ -13839,9 +13887,9 @@ sm_is_possible_to_recreate_constraint (MOP class_mop,
       return true;
     }
 
-  if (constraint->type == SM_CONSTRAINT_NOT_NULL ||
-      constraint->type == SM_CONSTRAINT_INDEX ||
-      constraint->type == SM_CONSTRAINT_REVERSE_INDEX)
+  if (constraint->type == SM_CONSTRAINT_NOT_NULL
+      || constraint->type == SM_CONSTRAINT_INDEX
+      || constraint->type == SM_CONSTRAINT_REVERSE_INDEX)
     {
       return true;
     }
@@ -13939,9 +13987,6 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
   return;
 }
 
-
-
-
 /*
  * sm_touch_class () - makes sure that the XASL query cache is emptied
  *                     by performing a null operation on a class
@@ -13973,8 +14018,6 @@ exit:
   return error;
 }
 
-
-
 /*
  * sm_save_constraint_info() - Saves the information necessary to recreate a
  *			       constraint
@@ -13992,8 +14035,9 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
   int i = 0;
   SM_ATTRIBUTE **crt_att_p = NULL;
 
-  new_constraint =
-    (SM_CONSTRAINT_INFO *) calloc (1, sizeof (SM_CONSTRAINT_INFO));
+  new_constraint = (SM_CONSTRAINT_INFO *) calloc (1,
+						  sizeof
+						  (SM_CONSTRAINT_INFO));
   if (new_constraint == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -14020,8 +14064,8 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
     }
   assert (num_atts > 0);
 
-  new_constraint->att_names =
-    (char **) calloc (num_atts + 1, sizeof (char *));
+  new_constraint->att_names = (char **) calloc (num_atts + 1,
+						sizeof (char *));
   if (new_constraint->att_names == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -14155,6 +14199,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
     {
       int i = 0;
       int len = strlen (c->func_index_info->expr_str);
+
       new_constraint->func_index_info =
 	(SM_FUNCTION_INFO *) calloc (1, sizeof (SM_FUNCTION_INFO));
       if (new_constraint->func_index_info == NULL)
@@ -14164,10 +14209,12 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 		  sizeof (SM_FUNCTION_INFO));
 	  goto error_exit;
 	}
+
       new_constraint->func_index_info->type = c->func_index_info->type;
       new_constraint->func_index_info->precision =
 	c->func_index_info->precision;
       new_constraint->func_index_info->scale = c->func_index_info->scale;
+
       new_constraint->func_index_info->expr_str =
 	(char *) calloc (len + 1, sizeof (char));
       if (new_constraint->func_index_info->expr_str == NULL)
@@ -14177,6 +14224,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 		  (len + 1) * sizeof (char));
 	  goto error_exit;
 	}
+
       memcpy (new_constraint->func_index_info->expr_str,
 	      c->func_index_info->expr_str, len);
       new_constraint->func_index_info->expr_stream =
@@ -14623,11 +14671,10 @@ sm_truncate_class (MOP class_mop)
    * because of shared btree case. */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_index (class_mop, saved->constraint_type, saved->name,
-		      (const char **) saved->att_names, saved->asc_desc,
-		      saved->prefix_length,
-		      saved->filter_predicate, saved->func_index_info);
+      error = sm_add_index (class_mop, saved->constraint_type, saved->name,
+			    (const char **) saved->att_names, saved->asc_desc,
+			    saved->prefix_length, saved->filter_predicate,
+			    saved->func_index_info);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -14637,12 +14684,12 @@ sm_truncate_class (MOP class_mop)
   /* PK must be created earlier than FK, because of self referencing case */
   for (saved = unique_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_constraint (class_mop, saved->constraint_type, saved->name,
-			   (const char **) saved->att_names, saved->asc_desc,
-			   saved->prefix_length, 0,
-			   saved->filter_predicate, saved->func_index_info);
-
+      error = sm_add_constraint (class_mop, saved->constraint_type,
+				 saved->name,
+				 (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, 0,
+				 saved->filter_predicate,
+				 saved->func_index_info);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -14759,6 +14806,7 @@ sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs)
   int i;
 
   assert (attrs != NULL);
+
   for (i = 0; attrs[i] != NULL; i++)
     {
       if (attrs[i]->flags & SM_ATTFLAG_NON_NULL)
@@ -14766,5 +14814,6 @@ sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs)
 	  return 1;
 	}
     }
+
   return 0;
 }

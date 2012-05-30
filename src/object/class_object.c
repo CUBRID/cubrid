@@ -2278,22 +2278,21 @@ classobj_cache_constraints (SM_CLASS * class_)
     {
       return ok;
     }
+
   for (i = 0; i < num_constraint_types && ok; i++)
     {
-      if (classobj_get_prop
-	  (class_->properties, Constraint_properties[i], &un_value) > 0)
+      if (classobj_get_prop (class_->properties, Constraint_properties[i], 
+			     &un_value) > 0)
 	{
 	  if (DB_VALUE_TYPE (&un_value) == DB_TYPE_SEQUENCE)
 	    {
 	      un_seq = DB_GET_SEQUENCE (&un_value);
-	      ok =
-		classobj_cache_constraint_list (un_seq, class_,
-						Constraint_types[i]);
+	      ok = classobj_cache_constraint_list (un_seq, class_, 
+						   Constraint_types[i]);
 	    }
 	  pr_clear_value (&un_value);
 	}
     }
-
 
   return ok;
 }
