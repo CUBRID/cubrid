@@ -1235,6 +1235,9 @@ catalog_store_attribute_value (THREAD_ENTRY * thread_p, void *value,
 			       int length, CATALOG_RECORD * catalog_record_p,
 			       PGSLOTID * remembered_slot_id_p)
 {
+  int offset = 0;
+  int bufsize;
+
   if (catalog_write_unwritten_portion (thread_p, catalog_record_p,
 				       remembered_slot_id_p,
 				       length) != NO_ERROR)
@@ -1242,10 +1245,45 @@ catalog_store_attribute_value (THREAD_ENTRY * thread_p, void *value,
       return ER_FAILED;
     }
 
-  (void) memcpy (catalog_record_p->recdes.data + catalog_record_p->offset,
-		 value, length);
-  catalog_record_p->offset += length;
+  while (offset < length)
+    {
+      if (length - offset <=
+	  catalog_record_p->recdes.area_size - catalog_record_p->offset)
+	{
+	  /* if the size of the value is smaller than or equals to the
+	   * remaining size of the recdes.data, just copy the value into the
+	   * recdes.data buffer and adjust the offset.
+	   */
+	  bufsize = length - offset;
+	  (void) memcpy (catalog_record_p->recdes.data +
+			 catalog_record_p->offset, (char *) value + offset,
+			 bufsize);
+	  catalog_record_p->offset += bufsize;
+	  break;
+	}
+      else
+	{
+	  /* if the size of the value is larger than the whole size of the 
+	   * recdes.data, we need split the value over N pages. The first N-1
+	   * pages need to be stored into pages, while the last page can be 
+	   * stored in the recdes.data buffer as the existing routine.
+	   */
+	  assert (catalog_record_p->offset == 0);
+	  bufsize = catalog_record_p->recdes.area_size;
+	  (void) memcpy (catalog_record_p->recdes.data,
+			 (char *) value + offset, bufsize);
+	  offset += bufsize;
 
+	  /* write recdes.data and fill catalog_record_p as new page */
+	  catalog_record_p->offset = catalog_record_p->recdes.area_size;
+	  catalog_record_p->recdes.length = catalog_record_p->offset;
+	  if (catalog_put_record_into_page (thread_p, catalog_record_p, 1,
+					    remembered_slot_id_p) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
   return NO_ERROR;
 }
 
@@ -1426,16 +1464,55 @@ static int
 catalog_fetch_attribute_value (THREAD_ENTRY * thread_p, void *value,
 			       int length, CATALOG_RECORD * catalog_record_p)
 {
+  int offset = 0;
+  int bufsize;
+
   if (catalog_read_unread_portion (thread_p, catalog_record_p, length) !=
       NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  (void) memcpy (value,
-		 catalog_record_p->recdes.data + catalog_record_p->offset,
-		 length);
-  catalog_record_p->offset += length;
+  while (offset < length)
+    {
+      if (length - offset <=
+	  catalog_record_p->recdes.length - catalog_record_p->offset)
+	{
+	  /* if the size of the value is smaller than or equals to the
+	   * remaining length of the recdes.data, just read the value from the
+	   * recdes.data buffer and adjust the offset.
+	   */
+	  bufsize = length - offset;
+	  (void) memcpy ((char *) value + offset,
+			 catalog_record_p->recdes.data +
+			 catalog_record_p->offset, bufsize);
+	  catalog_record_p->offset += bufsize;
+	  break;
+	}
+      else
+	{
+	  /* if the size of the value is larger than the whole length of the
+	   * recdes.data, that means the value has been stored in N pages, we
+	   * need to fetch these N pages and read value from them. in first N-1
+	   * page, the whole page will be read into the value buffer, while in
+	   * last page, the remaining value will be read into value buffer as
+	   * the existing routine.
+	   */
+	  assert (catalog_record_p->offset == 0);
+	  bufsize = catalog_record_p->recdes.length;
+	  (void) memcpy ((char *) value + offset,
+			 catalog_record_p->recdes.data, bufsize);
+	  offset += bufsize;
+
+	  /* read next page and fill the catalog_record_p */
+	  catalog_record_p->offset = catalog_record_p->recdes.length;
+	  if (catalog_get_record_from_page (thread_p, catalog_record_p) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
 
   return NO_ERROR;
 }
