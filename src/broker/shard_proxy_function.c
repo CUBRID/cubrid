@@ -1861,6 +1861,12 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
       ctx_p->prepared_stmt = NULL;
       ctx_p->is_prepare_for_execute = false;
 
+      if (ctx_p->waiting_event)
+	{
+	  proxy_event_free (ctx_p->waiting_event);
+	  ctx_p->waiting_event = NULL;
+	}
+
       EXIT_FUNC ();
       return 0;
     }
