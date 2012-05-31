@@ -3418,6 +3418,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
   PT_NODE *def, *att, *dtyp, *sdtyp;
   DB_OBJECT *cls;
   const char *att_nam, *typ_nam, *styp_nam;
+  PT_NODE *node = NULL, *temp = NULL;
 
   for (def = attr_defs;
        def != NULL && def->node_type == PT_ATTR_DEF; def = def->next)
@@ -3552,6 +3553,92 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 		default:
 		  break;
 		}
+	    }
+	}
+
+      if (def->type_enum == PT_TYPE_ENUMERATION)
+	{
+	  unsigned int count = 0;
+	  int pad_size = 0, trimmed_length = 0, trimmed_size = 0;
+	  int char_count = 0;
+	  unsigned char pad[8];
+
+	  if (def->data_type == NULL
+	      || def->data_type->info.data_type.enumeration == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "invalid enumeration type");
+	    }
+	  node = def->data_type->info.data_type.enumeration;
+
+	  /* because enumeration doesn't have a collation we will use
+	     ISO88591 */
+	  intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
+
+	  /* count number of elements and remove trailing pads for each
+	     element */
+	  temp = node;
+	  while (temp != NULL)
+	    {
+	      intl_char_count (temp->info.value.data_value.str->bytes,
+			       temp->info.value.data_value.str->length,
+			       INTL_CODESET_ISO88591, &char_count);
+	      qstr_trim_trailing (pad, pad_size,
+				  temp->info.value.data_value.str->bytes,
+				  pt_node_to_db_type (temp), char_count,
+				  temp->info.value.data_value.str->length,
+				  INTL_CODESET_ISO88591, &trimmed_length,
+				  &trimmed_size);
+	      if (trimmed_size < temp->info.value.data_value.str->length)
+		{
+		  temp->info.value.data_value.str =
+		    pt_append_bytes (parser, NULL,
+				     temp->info.value.data_value.str->bytes,
+				     trimmed_size);
+		  temp->info.value.data_value.str->length = trimmed_size;
+		  if (node->info.value.db_value_is_in_workspace)
+		    {
+		      db_value_clear (&node->info.value.db_value);
+		    }
+		  if (node->info.value.db_value_is_initialized)
+		    {
+		      node->info.value.db_value_is_initialized = false;
+		      pt_value_to_db (parser, temp);
+		    }
+		}
+
+	      temp = temp->next;
+
+	      count++;
+	    }
+
+	  /* check that number of elements is lower or equal than
+	     DB_UINT16_MAX */
+	  if (count > DB_UINT16_MAX)
+	    {
+	      PT_ERRORmf2 (parser, def,
+			   MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_ENUM_TYPE_TOO_MANY_VALUES,
+			   count, DB_UINT16_MAX);
+	    }
+
+	  /* check duplicates */
+	  while (node != NULL && temp == NULL)
+	    {
+	      temp = node->next;
+	      while (temp != NULL)
+		{
+		  if (strcmp (node->info.value.data_value.str->bytes,
+			      temp->info.value.data_value.str->bytes) == 0)
+		    {
+		      PT_ERRORm (parser, temp,
+				 MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_ENUM_TYPE_DUPLICATE_VALUES);
+
+		      break;
+		    }
+		  temp = temp->next;
+		}
+	      node = node->next;
 	    }
 	}
 

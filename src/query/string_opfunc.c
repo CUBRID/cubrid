@@ -181,15 +181,6 @@ static void trim_leading (const unsigned char *trim_charset_ptr,
 			  INTL_CODESET codeset,
 			  unsigned char **lead_trimmed_ptr,
 			  int *lead_trimmed_length, int *lead_trimmed_size);
-static void trim_trailing (const unsigned char *trim_charset_ptr,
-			   int trim_charset_size,
-			   const unsigned char *src_ptr,
-			   DB_TYPE src_type,
-			   int src_length,
-			   int src_size,
-			   INTL_CODESET codeset,
-			   int *trail_trimmed_length,
-			   int *trail_trimmed_size);
 static int qstr_pad (MISC_OPERAND pad_operand,
 		     int pad_length,
 		     const unsigned char *pad_charset_ptr,
@@ -757,11 +748,11 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	}
       else if (result_type == DB_TYPE_VARNCHAR)
 	{
-	  /* This is going to look a lot like trim_trailing.  We don't call
-	     trim_trailing because he works on length of characters and we
-	     need to work on length of bytes.  We could calculate the length
-	     in characters, but that requires a full scan of the strings
-	     which is not necessary. */
+	  /* This is going to look a lot like qstr_trim_trailing.  We don't
+	     call qstr_trim_trailing because he works on length of characters
+	     and we need to work on length of bytes.  We could calculate the
+	     length in characters, but that requires a full scan of the
+	     strings which is not necessary. */
 	  for (t = intl_prev_char (string1 + size1, codeset, &n);
 	       t >= string1 && n == pad_size
 	       && memcmp (t, pad, pad_size) == 0;
@@ -980,11 +971,11 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	}
       else if (result_type == DB_TYPE_VARNCHAR)
 	{
-	  /* This is going to look a lot like trim_trailing.  We don't call
-	   * trim_trailing because he works on length of characters and we
-	   * need to work on length of bytes.  We could calculate the length
-	   * in characters, but that requires a full scan of the strings
-	   * which is not necessary.
+	  /* This is going to look a lot like qstr_trim_trailing.  We don't
+	   * call qstr_trim_trailing because he works on length of characters
+	   * and we need to work on length of bytes.  We could calculate the
+	   * length in characters, but that requires a full scan of the
+	   * strings which is not necessary.
 	   */
 	  int i, pad_size, trim_length, cmp_flag, prev_size;
 	  unsigned char *prev_ptr, *current_ptr, pad[2];
@@ -3549,12 +3540,13 @@ qstr_trim (MISC_OPERAND trim_operand,
 
   if (trim_operand == TRAILING || trim_operand == BOTH)
     {
-      trim_trailing (trim_charset, trim_charset_size,
-		     lead_trimmed_ptr,
-		     src_type,
-		     lead_trimmed_length,
-		     lead_trimmed_size,
-		     codeset, &trail_trimmed_length, &trail_trimmed_size);
+      qstr_trim_trailing (trim_charset, trim_charset_size,
+			  lead_trimmed_ptr,
+			  src_type,
+			  lead_trimmed_length,
+			  lead_trimmed_size,
+			  codeset,
+			  &trail_trimmed_length, &trail_trimmed_size);
     }
 
   /* setup result */
@@ -3667,7 +3659,7 @@ trim_leading (const unsigned char *trim_charset_ptr,
 }
 
 /*
- * trim_trailing () -
+ * qstr_trim_trailing () -
  *
  * Arguments:
  *       trim_charset_ptr: (in)  Single character trim string.
@@ -3688,15 +3680,15 @@ trim_leading (const unsigned char *trim_charset_ptr,
  *     characters and the resultant length of the string.
  *
  */
-static void
-trim_trailing (const unsigned char *trim_charset_ptr,
-	       int trim_charset_size,
-	       const unsigned char *src_ptr,
-	       DB_TYPE src_type,
-	       int src_length,
-	       int src_size,
-	       INTL_CODESET codeset,
-	       int *trail_trimmed_length, int *trail_trimmed_size)
+void
+qstr_trim_trailing (const unsigned char *trim_charset_ptr,
+		    int trim_charset_size,
+		    const unsigned char *src_ptr,
+		    DB_TYPE src_type,
+		    int src_length,
+		    int src_size,
+		    INTL_CODESET codeset,
+		    int *trail_trimmed_length, int *trail_trimmed_size)
 {
   int prev_src_char_size, prev_trim_char_size;
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
@@ -8472,9 +8464,9 @@ varchar_truncated (const unsigned char *s,
   intl_pad_char (codeset, pad, &pad_size);
   intl_char_size ((unsigned char *) s, s_length, codeset, &s_size);
 
-  trim_trailing (pad, pad_size,
-		 s, s_type, s_length, s_size, codeset,
-		 &trim_length, &trim_size);
+  qstr_trim_trailing (pad, pad_size,
+		      s, s_type, s_length, s_size, codeset,
+		      &trim_length, &trim_size);
 
   if (trim_length > used_chars)
     {

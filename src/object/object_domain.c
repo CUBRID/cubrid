@@ -8346,13 +8346,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  {
 		    db_enum = &DOM_GET_ENUM_ELEM (desired_domain, i);
 		    size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
-		    if (val_str_size != size)
-		      {
-			continue;
-		      }
 
-		    if (memcmp (val_str,
-				DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
+		    /* because enumeration doesn't have a collation we will
+		       use LANG_COLL_ISO_BINARY for comparison */
+		    if (QSTR_COMPARE
+			(LANG_COLL_ISO_BINARY, val_str, val_str_size,
+			 DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
 		      {
 			break;
 		      }

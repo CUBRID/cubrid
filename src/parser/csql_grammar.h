@@ -1090,7 +1090,7 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2616 of glr.c.  */
+/* Line 2604 of glr.c.  */
 #line 1095 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1

@@ -400,4 +400,15 @@ extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);
 extern int db_value_to_enumeration_value (const DB_VALUE * src,
 					  DB_VALUE * result,
 					  const TP_DOMAIN * enum_domain);
+
+extern void qstr_trim_trailing (const unsigned char *trim_charset_ptr,
+				int trim_charset_size,
+				const unsigned char *src_ptr,
+				DB_TYPE src_type,
+				int src_length,
+				int src_size,
+				INTL_CODESET codeset,
+				int *trail_trimmed_length,
+				int *trail_trimmed_size);
+
 #endif /* _STRING_OPFUNC_H_ */

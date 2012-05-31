@@ -16566,56 +16566,20 @@ primitive_type
 	| ENUM '(' char_string_literal_list ')'
 	  {{
 			container_2 ctn;
-			
+
 			PT_NODE *dt =
 			  parser_new_node (this_parser, PT_DATA_TYPE);
-			PT_NODE *node = $3, *node2 = NULL;
-			unsigned int count = 0;
-			
-			PARSER_SAVE_ERR_CONTEXT (dt, @3.buffer_pos)
-			
-			if (dt != NULL)
-			  {
-			    dt->type_enum = PT_TYPE_ENUMERATION;
-			    while (node != NULL && node2 == NULL)
-			      {
-				node2 = node->next;
-				while (node2 != NULL)
-				  {
-				    if (strcmp (node->info.value.data_value.str->bytes,
-						node2->info.value.data_value.str->bytes)
-					== 0)
-					{
-					  /* found duplicate value */
-					  PT_ERRORm(this_parser, dt,
-						    MSGCAT_SET_PARSER_SEMANTIC,
-						    MSGCAT_SEMANTIC_ENUM_TYPE_DUPLICATE_VALUES);
 
-					  break;
-					}
-				    node2 = node2->next;
-				  }
-				count++;
-				node = node->next;
-			      }
-			    if (node2 == NULL)
-			      {
-				if (count > DB_UINT16_MAX)
-				  {
-				    /* invalid values count */
-				    PT_ERRORmf2(this_parser, dt,
-						MSGCAT_SET_PARSER_SEMANTIC,
-						MSGCAT_SEMANTIC_ENUM_TYPE_TOO_MANY_VALUES,
-						count, DB_UINT16_MAX);
-				  }
-				else
-				  {
-				    dt->info.data_type.enumeration = $3;
-				  }
-			      }
-			  }
+			if (dt != NULL)
+			{
+			  dt->type_enum = PT_TYPE_ENUMERATION;
+			  dt->info.data_type.enumeration = $3;
+			}
+
+			PARSER_SAVE_ERR_CONTEXT (dt, @3.buffer_pos)
+
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_ENUMERATION), dt);
-			
+
 			$$ = ctn;
 	  DBG_PRINT}}
 	;
