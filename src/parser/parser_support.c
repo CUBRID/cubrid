@@ -278,7 +278,6 @@ pt_and (PARSER_CONTEXT * parser, const PT_NODE * arg1, const PT_NODE * arg2)
   PT_NODE *node;
 
   node = parser_new_node (parser, PT_EXPR);
-
   if (node)
     {
       parser_init_node (node);
@@ -360,7 +359,6 @@ pt_name (PARSER_CONTEXT * parser, const char *name)
   PT_NODE *node;
 
   node = parser_new_node (parser, PT_NAME);
-
   if (node)
     {
       parser_init_node (node);
@@ -384,7 +382,6 @@ pt_table_option (PARSER_CONTEXT * parser, const PT_TABLE_OPTION_TYPE option,
   PT_NODE *node;
 
   node = parser_new_node (parser, PT_TABLE_OPTION);
-
   if (node)
     {
       parser_init_node (node);
@@ -411,7 +408,6 @@ pt_expression (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1,
   PT_NODE *node;
 
   node = parser_new_node (parser, PT_EXPR);
-
   if (node)
     {
       parser_init_node (node);
@@ -463,7 +459,6 @@ pt_node_list (PARSER_CONTEXT * parser, PT_MISC_TYPE list_type, PT_NODE * list)
   PT_NODE *node;
 
   node = parser_new_node (parser, PT_NODE_LIST);
-
   if (node)
     {
       node->info.node_list.list_type = list_type;
@@ -489,7 +484,6 @@ pt_entity (PARSER_CONTEXT * parser, const PT_NODE * entity_name,
   PT_NODE *node;
 
   node = parser_new_node (parser, PT_SPEC);
-
   if (node)
     {
       parser_init_node (node);
@@ -513,16 +507,26 @@ static bool
 pt_datatypes_match (const PT_NODE * a, const PT_NODE * b)
 {
   if (!a && !b)
-    return true;		/* both non objects, ok */
+    {
+      return true;		/* both non objects, ok */
+    }
   if (!a || !b)
-    return true;		/* typed and untyped node, ignore difference */
+    {
+      return true;		/* typed and untyped node, ignore difference */
+    }
   if (a->type_enum != PT_TYPE_OBJECT && b->type_enum != PT_TYPE_OBJECT)
-    return true;		/* both non objects again, ok */
+    {
+      return true;		/* both non objects again, ok */
+    }
 
   if (a->type_enum != PT_TYPE_OBJECT || b->type_enum != PT_TYPE_OBJECT)
-    return false;
+    {
+      return false;
+    }
   if (a->info.data_type.virt_object != b->info.data_type.virt_object)
-    return false;
+    {
+      return false;
+    }
 
   /* both the same flavor virtual objects */
   return true;
@@ -543,44 +547,62 @@ pt_name_equal (PARSER_CONTEXT * parser, const PT_NODE * name1,
 	       const PT_NODE * name2)
 {
   if (!name1 || !name2)
-    return false;
+    {
+      return false;
+    }
 
   CAST_POINTER_TO_NODE (name1);
   CAST_POINTER_TO_NODE (name2);
 
   if (name1->node_type != PT_NAME)
-    return false;
+    {
+      return false;
+    }
 
   if (name2->node_type != PT_NAME)
-    return false;
+    {
+      return false;
+    }
 
   /* identity */
   if (name1 == name2)
-    return true;
+    {
+      return true;
+    }
 
   /* are the id's equal? */
   if (name1->info.name.spec_id != name2->info.name.spec_id)
-    return false;
+    {
+      return false;
+    }
 
   /* raw names the same? (NULL not allowed here) */
   if (!name1->info.name.original)
-    return false;
+    {
+      return false;
+    }
   if (!name2->info.name.original)
-    return false;
+    {
+      return false;
+    }
 
   if (name1->info.name.meta_class != name2->info.name.meta_class)
     {
       /* check for equivalence class PT_SHARED == PT_NORMAL */
       if (name1->info.name.meta_class != PT_SHARED
 	  && name1->info.name.meta_class != PT_NORMAL)
-	return false;
+	{
+	  return false;
+	}
       if (name2->info.name.meta_class != PT_SHARED
 	  && name2->info.name.meta_class != PT_NORMAL)
-	return false;
+	{
+	  return false;
+	}
     }
 
-  if (intl_identifier_casecmp
-      (name1->info.name.original, name2->info.name.original) != 0)
+  if (intl_identifier_casecmp (name1->info.name.original,
+			       name2->info.name.original) != 0)
     {
       return false;
     }
@@ -1594,13 +1616,19 @@ pt_where_part (const PT_NODE * node)
   if (node)
     {
       if (node->node_type == PT_SELECT)
-	return node->info.query.q.select.where;
+	{
+	  return node->info.query.q.select.where;
+	}
 
       if (node->node_type == PT_UPDATE)
-	return node->info.update.search_cond;
+	{
+	  return node->info.update.search_cond;
+	}
 
       if (node->node_type == PT_DELETE)
-	return node->info.delete_.search_cond;
+	{
+	  return node->info.delete_.search_cond;
+	}
     }
 
   return NULL;
@@ -1776,7 +1804,9 @@ pt_operator_part (const PT_NODE * node)
   if (node)
     {
       if (node->node_type == PT_EXPR)
-	return node->info.expr.op;
+	{
+	  return node->info.expr.op;
+	}
     }
 
   return 0;
@@ -1794,16 +1824,24 @@ pt_class_part (const PT_NODE * node)
   if (node)
     {
       if (node->node_type == PT_UPDATE)
-	return node->info.update.spec;
+	{
+	  return node->info.update.spec;
+	}
 
       if (node->node_type == PT_DELETE)
-	return node->info.delete_.spec;
+	{
+	  return node->info.delete_.spec;
+	}
 
       if (node->node_type == PT_INSERT)
-	return node->info.insert.spec;
+	{
+	  return node->info.insert.spec;
+	}
 
       if (node->node_type == PT_SELECT)
-	return node->info.query.q.select.from;
+	{
+	  return node->info.query.q.select.from;
+	}
     }
 
   return NULL;
@@ -1877,8 +1915,8 @@ pt_values_part (const PT_NODE * node)
 {
   if (node
       && node->node_type == PT_INSERT
-      && node->info.insert.value_clauses->info.node_list.list_type
-      != PT_IS_SUBQUERY)
+      && (node->info.insert.value_clauses->info.node_list.list_type
+	  != PT_IS_SUBQUERY))
     {
       return node->info.insert.value_clauses;
     }
@@ -2406,7 +2444,9 @@ pt_get_select_from_spec (const PT_NODE * spec)
       || from_spec->node_type != PT_SPEC
       || !(from_name = from_spec->info.spec.entity_name)
       || from_name->node_type != PT_NAME)
-    return NULL;
+    {
+      return NULL;
+    }
 
   return from_name;
 }
@@ -2423,9 +2463,10 @@ pt_get_select_from_name (PARSER_CONTEXT * parser, const PT_NODE * spec)
   PT_NODE *from_name;
   char *result = NULL;
 
-  if ((from_name = pt_get_select_from_spec (spec)) != NULL)
+  from_name = pt_get_select_from_spec (spec);
+  if (from_name != NULL)
     {
-      if (!from_name->info.name.resolved)
+      if (from_name->info.name.resolved == NULL)
 	{
 	  result = (char *) from_name->info.name.original;
 	}
@@ -2599,7 +2640,6 @@ pt_insert_host_var (PARSER_CONTEXT * parser, PT_NODE * h_var, PT_NODE * list)
 	  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
 	  return NULL;
 	}
-
 
       new_node->next = list;
       list = new_node;
@@ -3137,8 +3177,6 @@ pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list)
   return (s2 == NULL) ? true : false;
 }
 
-
-
 /*
  *
  * Function group:
@@ -3169,7 +3207,9 @@ regu_bytes_alloc (int length)
       return NULL;
     }
   else
-    return ptr;
+    {
+      return ptr;
+    }
 }
 
 /*
@@ -3272,7 +3312,9 @@ regu_strcmp (const char *name1, const char *name2,
       return 0;
     }
   else
-    return ((i < 0) ? -1 : 1);
+    {
+      return ((i < 0) ? -1 : 1);
+    }
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -4879,7 +4921,9 @@ regu_oid_array_alloc (int size)
   int i;
 
   if (size == 0)
-    return NULL;
+    {
+      return NULL;
+    }
 
   ptr = (OID *) pt_alloc_packing_buf (sizeof (OID) * size);
   if (ptr == NULL)
@@ -4924,7 +4968,9 @@ regu_hfid_array_alloc (int size)
   int i;
 
   if (size == 0)
-    return NULL;
+    {
+      return NULL;
+    }
 
   ptr = (HFID *) pt_alloc_packing_buf (sizeof (HFID) * size);
   if (ptr == NULL)
@@ -5992,6 +6038,7 @@ static void
 pt_fixup_select_columns_type (PT_NODE * columns)
 {
   PT_NODE *col = NULL;
+
   for (col = columns; col != NULL; col = col->next)
     {
       pt_fixup_column_type (col);
@@ -6619,6 +6666,7 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
   sel_item->info.function.function_type = PT_COUNT_STAR;
   query->info.query.q.select.list =
     parser_append_node (sel_item, query->info.query.q.select.list);
+
   return query;
 }
 

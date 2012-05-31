@@ -606,24 +606,18 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
       break;
     case PT_CAST_INVALID:
       PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		   MSGCAT_SEMANTIC_CANT_COERCE_TO, pt_short_print (parser,
-								   node->
-								   info.expr.
-								   arg1),
+		   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   pt_short_print (parser, node->info.expr.arg1),
 		   pt_show_type_enum (cast_type));
       break;
     case PT_CAST_UNSUPPORTED:
       PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		   MSGCAT_SEMANTIC_COERCE_UNSUPPORTED, pt_short_print (parser,
-								       node->
-								       info.
-								       expr.
-								       arg1),
+		   MSGCAT_SEMANTIC_COERCE_UNSUPPORTED,
+		   pt_short_print (parser, node->info.expr.arg1),
 		   pt_show_type_enum (cast_type));
       break;
     }
-
-}				/* pt_check_cast_op */
+}
 
 /*
  * pt_check_user_exists () -  given 'user.class', check that 'user' exists
@@ -1186,9 +1180,9 @@ pt_objects_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt,
       else
 	{
 	  return ((s_class_type->info.name.db_object ==
-		   d_class_dt_type->info.name.db_object) ||
-		  db_is_subclass (s_class_type->info.name.db_object,
-				  d_class_dt_type->info.name.db_object));
+		   d_class_dt_type->info.name.db_object)
+		  || db_is_subclass (s_class_type->info.name.db_object,
+				     d_class_dt_type->info.name.db_object));
 	}
     }
 }
@@ -1206,9 +1200,9 @@ pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt,
 {
 
   /* a wildcard destination object accepts any other object type */
-  if (!d_class_dt ||
-      (d_class_dt->node_type == PT_DATA_TYPE
-       && !d_class_dt->info.data_type.entity))
+  if (!d_class_dt
+      || (d_class_dt->node_type == PT_DATA_TYPE
+	  && !d_class_dt->info.data_type.entity))
     {
       return 1;
     }
@@ -1231,9 +1225,11 @@ pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt,
       return 0;
     }
 
-  return pt_objects_assignable (parser, d_class_dt, s_class) ||
-    pt_is_real_class_of_vclass (parser, s_class->data_type, d_class_dt) ||
-    pt_is_real_class_of_vclass (parser, d_class_dt, s_class->data_type);
+  return (pt_objects_assignable (parser, d_class_dt, s_class)
+	  || pt_is_real_class_of_vclass (parser, s_class->data_type,
+					 d_class_dt)
+	  || pt_is_real_class_of_vclass (parser, d_class_dt,
+					 s_class->data_type));
 }
 
 /*
@@ -1260,8 +1256,8 @@ pt_class_compatible (PARSER_CONTEXT * parser, const PT_NODE * class1,
     }
   else
     {
-      return (pt_class_assignable (parser, class1->data_type, class2) ||
-	      pt_class_assignable (parser, class2->data_type, class1));
+      return (pt_class_assignable (parser, class1->data_type, class2)
+	      || pt_class_assignable (parser, class2->data_type, class1));
     }
 }
 
@@ -1384,10 +1380,10 @@ pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type,
       dest_type->info.name.meta_class = PT_CLASS;
     }
 
-  return (src_type->info.name.db_object == dest_type->info.name.db_object ||
-	  db_is_subclass (src_type->info.name.db_object,
-			  dest_type->info.name.db_object) ||
-	  mq_is_real_class_of_vclass (parser, src_type, dest_type));
+  return (src_type->info.name.db_object == dest_type->info.name.db_object
+	  || db_is_subclass (src_type->info.name.db_object,
+			     dest_type->info.name.db_object)
+	  || mq_is_real_class_of_vclass (parser, src_type, dest_type));
 }
 
 /*
@@ -1458,8 +1454,8 @@ pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_col,
 	    {
 	      if (st->type_enum == dt->type_enum)
 		{
-		  if ((st->type_enum != PT_TYPE_OBJECT) ||
-		      (pt_type_assignable (parser, dt, st)))
+		  if ((st->type_enum != PT_TYPE_OBJECT)
+		      || (pt_type_assignable (parser, dt, st)))
 		    {
 		      found = 1;
 		      break;
@@ -1491,8 +1487,8 @@ static int
 pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1,
 			  const PT_NODE * col2, bool view_definition_context)
 {
-  if (!col1 || !PT_IS_COLLECTION_TYPE (col1->type_enum) ||
-      !col2 || !PT_IS_COLLECTION_TYPE (col2->type_enum))
+  if (!col1 || !PT_IS_COLLECTION_TYPE (col1->type_enum)
+      || !col2 || !PT_IS_COLLECTION_TYPE (col2->type_enum))
     {
       return 0;
     }
@@ -2553,9 +2549,13 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
     }
 
   if (parameter && parameter->info.name.original)
-    sprintf (param1_name, "%s", parameter->info.name.original);
+    {
+      sprintf (param1_name, "%s", parameter->info.name.original);
+    }
   else
-    sprintf (param1_name, "%s_%p", "p1", stmt_node);
+    {
+      sprintf (param1_name, "%s_%p", "p1", stmt_node);
+    }
   sprintf (param2_name, "%s_%p", "p2", stmt_node);
   sprintf (alias1_name, "%s_%p", "c1", stmt_node);
 
@@ -2609,7 +2609,9 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   else
     {
       while (list->next != NULL)
-	list = list->next;
+	{
+	  list = list->next;
+	}
       list->next = s1;
     }
   list = s1;
@@ -2691,7 +2693,8 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
 
   /* To resolve out parameter at compile time,
      put the parameter into the label table with null value */
-  if ((param1_dbvalp = db_value_create ()) == NULL)
+  param1_dbvalp = db_value_create ();
+  if (param1_dbvalp == NULL)
     {
       parser->custom_print = save_custom;
       return NULL;
@@ -2737,7 +2740,8 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
 	{
 	  parser_free_tree (parser, *where_ptr);
 	}
-      if ((*where_ptr = parser_new_node (parser, PT_EXPR)) == NULL)
+      *where_ptr = parser_new_node (parser, PT_EXPR);
+      if (*where_ptr == NULL)
 	{
 	  return NULL;
 	}
@@ -2853,7 +2857,8 @@ pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
 
   /* To resolve out parameter at compile time,
      put the parameter into the label table with null value */
-  if ((param1_dbvalp = db_value_create ()) == NULL)
+  param1_dbvalp = db_value_create ();
+  if (param1_dbvalp == NULL)
     {
       return NULL;
     }
@@ -2862,7 +2867,9 @@ pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
       db_make_set (param1_dbvalp, db_set_create_basic (NULL, NULL));
       if (pt_associate_label_with_value (param1_name,
 					 param1_dbvalp) != NO_ERROR)
-	return NULL;
+	{
+	  return NULL;
+	}
     }
   stmt = pt_append_string (parser, NULL, "DELETE FROM ");
   stmt = pt_append_string (parser, stmt, text_class_name);
@@ -2939,7 +2946,9 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
   entity = (spec ? spec->info.spec.entity_name : NULL);
   class_name = (entity ? entity->info.name.original : NULL);
   if (class_name == NULL)
-    return;
+    {
+      return;
+    }
 
   a = insert->info.insert.attr_list;
 
@@ -3018,7 +3027,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 	      parser_free_tree (parser, lhs);
 	      parser_free_tree (parser, rhs);
 
-	      /*if (pt_assignment_compatible(parser, attr, v)) */
+	      /* if (pt_assignment_compatible(parser, attr, v)) */
 	      attr_name = a->info.name.original;
 	      if (a->type_enum != v->type_enum)
 		{
@@ -3069,6 +3078,7 @@ pt_resolve_update_external (PARSER_CONTEXT * parser, PT_NODE * update)
   class_name = (entity ? entity->info.name.original : NULL);
   alias = (spec ? spec->info.spec.range_var : NULL);
   alias_name = (alias ? alias->info.name.original : NULL);
+
   if (class_name && (db_obj = db_find_class (class_name)))
     {
       for (a = update->info.update.assignment; a; a = a->next)
@@ -3082,18 +3092,22 @@ pt_resolve_update_external (PARSER_CONTEXT * parser, PT_NODE * update)
 		{
 		  attr_name = lhs->info.name.original;
 		  db_att = db_get_attribute (db_obj, attr_name);
+
 		  if (db_att && sm_has_text_domain (db_att, 0))
 		    {
 		      PT_NAME_INFO_SET_FLAG (lhs, PT_NAME_INFO_EXTERNAL);
 		      if (pt_append_statements_on_update
 			  (parser, update, class_name, attr_name, alias_name,
 			   rhs, &update->info.update.search_cond) == NULL)
-			goto exit_on_error;
+			{
+			  goto exit_on_error;
+			}
 		    }
 		}
 	    }
 	}
     }
+
   return;
 
 exit_on_error:
@@ -3123,6 +3137,7 @@ pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delete)
   class_name = (entity ? entity->info.name.original : NULL);
   alias = (spec ? spec->info.spec.range_var : NULL);
   alias_name = (alias ? alias->info.name.original : NULL);
+
   if (class_name && (db_obj = db_find_class (class_name)))
     {
       db_att = db_get_attributes_force (db_obj);
@@ -3130,10 +3145,11 @@ pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delete)
 	{
 	  if (sm_has_text_domain (db_att, 0))
 	    {
-	      if (pt_append_statements_on_delete
-		  (parser, delete, class_name,
-		   db_attribute_name (db_att),
-		   alias_name, &delete->info.delete_.search_cond) == NULL)
+	      if (pt_append_statements_on_delete (parser, delete, class_name,
+						  db_attribute_name (db_att),
+						  alias_name,
+						  &delete->info.delete_.
+						  search_cond) == NULL)
 		{
 		  goto exit_on_error;
 		}
@@ -3141,6 +3157,7 @@ pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delete)
 	  db_att = db_attribute_next (db_att);
 	}
     }
+
   return;
 
 exit_on_error:
@@ -3184,9 +3201,11 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	  if (attr && sm_has_text_domain (attr, 0))
 	    {
-	      stmt_list = pt_append_statements_on_change_default
-		(parser, stmt_list,
-		 alter, class_name, a->info.name.original, v);
+	      stmt_list =
+		pt_append_statements_on_change_default (parser, stmt_list,
+							alter, class_name,
+							a->info.name.original,
+							v);
 	      if (stmt_list == NULL)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC,
@@ -3197,6 +3216,7 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       alter->info.alter.internal_stmts = stmt_list;
     }
+
   return;
 }
 
@@ -3306,6 +3326,7 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree,
 			    void *arg, int *continue_walk)
 {
   PT_NODE **default_expr = (PT_NODE **) arg;
+
   if (tree == NULL || !PT_IS_EXPR_NODE (tree))
     {
       *continue_walk = PT_STOP_WALK;
@@ -3321,9 +3342,12 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree,
     case PT_UNIX_TIMESTAMP:
       *default_expr = tree;
       *continue_walk = PT_STOP_WALK;
+      break;
+
     default:
       break;
     }
+
   return tree;
 }
 
@@ -3342,6 +3366,7 @@ pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree,
 			    void *arg, int *continue_walk)
 {
   PT_NODE **agg_function = (PT_NODE **) arg;
+
   if (tree == NULL || (!PT_IS_EXPR_NODE (tree) && !PT_IS_FUNCTION (tree)))
     {
       *continue_walk = PT_STOP_WALK;
@@ -3410,6 +3435,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_SMALLINT:
 	      break;
+
 	    case PT_TYPE_NUMERIC:
 	      if (dtyp->info.data_type.dec_precision != 0)
 		{
@@ -3418,6 +3444,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 			      att_nam);
 		}
 	      break;
+
 	    default:
 	      PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_INVALID_AUTO_INCREMENT_DOMAIN,
@@ -3507,6 +3534,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 			      MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
 			      typ_nam);
 		}
+
 	      switch (class_type)
 		{
 		case PT_CLASS:
@@ -3532,8 +3560,8 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
       if (def->info.attr_def.attr_type == PT_NORMAL
 	  && PT_NAME_INFO_IS_FLAGED (att, PT_NAME_INFO_EXTERNAL))
 	{
-	  if ((class_type != PT_CLASS) ||
-	      (def->info.attr_def.data_default != NULL)
+	  if ((class_type != PT_CLASS)
+	      || (def->info.attr_def.data_default != NULL)
 	      || (def->info.attr_def.constrain_not_null == 1))
 	    {
 	      /* prevent vclass definition or set default */
@@ -3545,11 +3573,13 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    }
 	  if (stmt->node_type == PT_CREATE_ENTITY)
 	    {
-	      if ((stmt->info.create_entity.internal_stmts =
-		   pt_append_statements_on_add_attribute
-		   (parser,
-		    stmt->info.create_entity.internal_stmts, stmt, self,
-		    att_nam, def)) == NULL)
+	      stmt->info.create_entity.internal_stmts =
+		pt_append_statements_on_add_attribute (parser,
+						       stmt->info.
+						       create_entity.
+						       internal_stmts, stmt,
+						       self, att_nam, def);
+	      if (stmt->info.create_entity.internal_stmts == NULL)
 		{
 		  return;
 		}
@@ -3561,11 +3591,12 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 
 	      entity_nam = stmt->info.alter.entity_name;
 	      cls_nam = entity_nam->info.name.original;
-	      if ((stmt->info.alter.internal_stmts =
-		   pt_append_statements_on_add_attribute
-		   (parser,
-		    stmt->info.alter.internal_stmts, stmt,
-		    cls_nam, att_nam, def)) == NULL)
+	      stmt->info.alter.internal_stmts =
+		pt_append_statements_on_add_attribute (parser,
+						       stmt->info.alter.
+						       internal_stmts, stmt,
+						       cls_nam, att_nam, def);
+	      if (stmt->info.alter.internal_stmts == NULL)
 		{
 		  return;
 		}
@@ -3704,9 +3735,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_ADD_ATTR_MTHD:
       if (type == PT_VCLASS)
 	{
-	  for (attr =
-	       alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr;
-	       attr = attr->next)
+	  for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	       attr; attr = attr->next)
 	    {
 	      if (attr->info.attr_def.auto_increment != NULL)
 		{
@@ -3727,6 +3757,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    pt_check_data_default (parser, attr->info.attr_def.data_default);
 	}
       break;
+
     case PT_ALTER_DEFAULT:
       for (attr = alter->info.alter.alter_clause.ch_attr_def.attr_name_list;
 	   attr; attr = attr->next)
@@ -3749,9 +3780,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	pt_check_data_default (parser, alter->info.alter.alter_clause.
 			       ch_attr_def.data_default_list);
       /* fall through, no break */
+
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
       break;
+
     case PT_CHANGE_ATTR:
       {
 	PT_NODE *const att_def =
@@ -3781,6 +3814,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  }
       }
       break;
+
     case PT_MODIFY_ATTR_MTHD:
       pt_check_attribute_domain (parser,
 				 alter->info.alter.alter_clause.
@@ -3796,14 +3830,14 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    pt_check_data_default (parser, attr->info.attr_def.data_default);
 	}
       break;
+
     case PT_RENAME_ATTR_MTHD:
       if (is_partitioned && keyattr[0]
 	  && (alter->info.alter.alter_clause.rename.element_type ==
 	      PT_ATTRIBUTE))
 	{
-	  if (!strncmp
-	      (alter->info.alter.alter_clause.rename.old_name->info.
-	       name.original, keyattr, DB_MAX_IDENTIFIER_LENGTH))
+	  if (!strncmp (alter->info.alter.alter_clause.rename.old_name->info.
+			name.original, keyattr, DB_MAX_IDENTIFIER_LENGTH))
 	    {
 	      PT_ERRORmf (parser,
 			  alter->info.alter.alter_clause.rename.old_name,
@@ -3812,6 +3846,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
       break;
+
     case PT_DROP_ATTR_MTHD:
       for (att = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
 	   att != NULL && att->node_type == PT_NAME; att = att->next)
@@ -3819,26 +3854,31 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  att_nam = att->info.name.original;
 	  is_meta = (att->info.name.meta_class == PT_META_ATTR);
 	  db_att =
-	    (DB_ATTRIBUTE *) (is_meta ?
-			      db_get_class_attribute (db, att_nam)
+	    (DB_ATTRIBUTE *) (is_meta
+			      ? db_get_class_attribute (db, att_nam)
 			      : db_get_attribute_force (db, att_nam));
 	  if (db_att)
 	    {
 	      /* an inherited attribute can not be dropped by the heir */
 	      super = (DB_OBJECT *) db_attribute_class (db_att);
 	      if (super != db)
-		PT_ERRORmf2 (parser, att,
-			     MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_HEIR_CANT_CHANGE_IT,
-			     att_nam, db_get_class_name (super));
+		{
+		  PT_ERRORmf2 (parser, att,
+			       MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_HEIR_CANT_CHANGE_IT,
+			       att_nam, db_get_class_name (super));
+		}
 	      if (is_partitioned && keyattr[0])
 		{
 		  if (!strncmp (att_nam, keyattr, DB_MAX_IDENTIFIER_LENGTH))
-		    PT_ERRORmf (parser, att,
-				MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_PARTITION_KEY_COLUMN,
-				att_nam);
+		    {
+		      PT_ERRORmf (parser, att,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_PARTITION_KEY_COLUMN,
+				  att_nam);
+		    }
 		}
+
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	      /* if it is TEXT typed attr, collect name of the domain class */
 	      if (sm_has_text_domain (db_att, 0))
@@ -3855,16 +3895,14 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				      db_get_class_name (dom_cls));
 		}
 #endif /* ENABLE_UNUSED_FUNCTION */
+
 	    }
 	  else
 	    {
 	      /* perhaps it's a method */
 	      db_mthd = (DB_METHOD *) (is_meta
-				       ?
-				       db_get_class_method
-				       (db,
-					att_nam) :
-				       db_get_method (db, att_nam));
+				       ? db_get_class_method (db, att_nam)
+				       : db_get_method (db, att_nam));
 	      if (!db_mthd)
 		{
 		  if (!is_meta)
@@ -3902,6 +3940,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
 #endif /* ENABLE_UNUSED_FUNCTION */
       break;
+
     case PT_APPLY_PARTITION:
     case PT_REMOVE_PARTITION:
     case PT_ANALYZE_PARTITION:
@@ -3956,6 +3995,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
       break;
+
     case PT_ADD_QUERY:
     case PT_MODIFY_QUERY:
       if (type != PT_CLASS
@@ -3999,12 +4039,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  pt_check_create_view (parser, alter);
 	}
-
       break;
+
     case PT_ADD_SUPCLASS:
     case PT_DROP_SUPCLASS:
-      for (sup =
-	   alter->info.alter.super.sup_class_list;
+      for (sup = alter->info.alter.super.sup_class_list;
 	   sup != NULL; sup = sup->next)
 	{
 	  sup_nam = sup->info.name.original;
@@ -4023,6 +4062,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 #endif /* ENABLE_UNUSED_FUNCTION */
 	    }
+
 	  if (!super
 	      || do_is_partitioned_subclass (&ss_partition, sup_nam, NULL))
 	    {
@@ -4050,33 +4090,46 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    {
 		    case PT_CLASS:
 		      if (!db_is_class (super))
-			PT_ERRORmf2 (parser, sup, MSGCAT_SET_PARSER_SEMANTIC,
-				     MSGCAT_SEMANTIC_NONCLASS_PARENT, cls_nam,
-				     sup_nam);
+			{
+			  PT_ERRORmf2 (parser, sup,
+				       MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_NONCLASS_PARENT,
+				       cls_nam, sup_nam);
+			}
 		      break;
 		    case PT_VCLASS:
 		      if (!db_is_vclass (super))
-			PT_ERRORmf2 (parser, sup, MSGCAT_SET_PARSER_SEMANTIC,
-				     MSGCAT_SEMANTIC_NONVCLASS_PARENT,
-				     cls_nam, sup_nam);
+			{
+			  PT_ERRORmf2 (parser, sup,
+				       MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_NONVCLASS_PARENT,
+				       cls_nam, sup_nam);
+			}
 		      break;
 		    default:
 		      break;
 		    }
+
 		  if (db_is_superclass (super, db))
-		    PT_ERRORmf2 (parser, sup,
-				 MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_ALREADY_SUPERCLASS,
-				 sup_nam, cls_nam);
+		    {
+		      PT_ERRORmf2 (parser, sup,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_ALREADY_SUPERCLASS,
+				   sup_nam, cls_nam);
+		    }
 		  if (db == super)
-		    PT_ERRORmf (parser, sup,
-				MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_SUPERCLASS_CYCLE, sup_nam);
+		    {
+		      PT_ERRORmf (parser, sup,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_SUPERCLASS_CYCLE, sup_nam);
+		    }
 		  if (db_is_subclass (super, db))
-		    PT_ERRORmf2 (parser, sup,
-				 MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_ALREADY_SUBCLASS,
-				 sup_nam, cls_nam);
+		    {
+		      PT_ERRORmf2 (parser, sup,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_ALREADY_SUBCLASS,
+				   sup_nam, cls_nam);
+		    }
 		}
 	    }
 	}
@@ -4164,10 +4217,14 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
   PT_NODE *f_arg;
 
   if (func == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   if (func->node_type != PT_FUNCTION)
-    return 0;
+    {
+      return 0;
+    }
 
   switch (func->info.function.function_type)
     {
@@ -4196,6 +4253,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
 	}
       f_arg = f_arg->next;
     }
+
   return cnt;
 }
 
@@ -4227,7 +4285,6 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
       assert (expr->info.expr.arg1 != NULL);
       return pt_find_partition_column_count_func (expr->info.expr.arg1,
 						  name_node);
-      break;
     case PT_PLUS:
     case PT_MINUS:
     case PT_TIMES:
@@ -4378,6 +4435,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
 	  return -1;
 	}
       break;
+
     default:
       return -1;		/* unsupported expression */
     }
@@ -4392,7 +4450,9 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
       else if (expr->info.expr.arg1->node_type == PT_VALUE)
 	{
 	  if (expr->info.expr.arg1->type_enum == PT_TYPE_NULL)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	}
       else if (expr->info.expr.arg1->node_type == PT_EXPR)
 	{
@@ -4640,7 +4700,9 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
   if (!stmt
       || (stmt->node_type != PT_CREATE_ENTITY && stmt->node_type != PT_ALTER))
-    return;
+    {
+      return;
+    }
 
   if (stmt->node_type == PT_CREATE_ENTITY)
     {
@@ -5387,9 +5449,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     }
 
   /* get partition information : count, name, type */
-  if (au_fetch_class
-      (dbobj, &smclass, AU_FETCH_READ,
-       AU_SELECT) != NO_ERROR || smclass->partition_of == NULL)
+  if (au_fetch_class (dbobj, &smclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR
+      || smclass->partition_of == NULL)
     {
       PT_ERRORmf (parser,
 		  stmt->info.alter.entity_name,
@@ -5446,8 +5507,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   for (objs = smclass->users; objs; objs = objs->next)
     {
 
-      if (au_fetch_class (objs->op, &subcls,
-			  AU_FETCH_READ,
+      if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ,
 			  AU_SELECT) != NO_ERROR || !subcls->partition_of)
 	{
 	  continue;		/* not partitioned or no authority */
@@ -5460,9 +5520,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       db_make_null (&pattr);
       if (psize == NULL)
 	{			/* RANGE or LIST */
-	  if (db_get
-	      (subcls->partition_of,
-	       PARTITION_ATT_PNAME, &pname)
+	  if (db_get (subcls->partition_of, PARTITION_ATT_PNAME, &pname)
 	      || (part_name = DB_GET_STRING (&pname)) == NULL)
 	    {			/* get partition type */
 	    invalid_partition_info_fail:
@@ -7006,7 +7064,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   for (parent = node->info.create_entity.supclass_list;
        parent != NULL; parent = parent->next)
     {
-      if ((db_obj = pt_find_class (parser, parent)) != NULL)
+      db_obj = pt_find_class (parser, parent);
+      if (db_obj != NULL)
 	{
 	  parent->info.name.db_object = db_obj;
 	  pt_check_user_owns_class (parser, parent);

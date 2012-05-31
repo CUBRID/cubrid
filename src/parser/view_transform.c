@@ -1968,7 +1968,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	      parser_free_tree (parser, tmp_class);
 	    }
 
-	  if (!(derived_table = class_spec->info.spec.derived_table))
+	  derived_table = class_spec->info.spec.derived_table;
+	  if (derived_table != NULL)
 	    {			/* error */
 	      goto exit_on_error;
 	    }
@@ -2067,7 +2068,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
       if (result)
 	{
 	  if (PT_IS_QUERY (result))
-	    result->info.query.id = (UINTPTR) result;
+	    {
+	      result->info.query.id = (UINTPTR) result;
+	    }
 	}
       else
 	{
@@ -2105,12 +2108,16 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	      result = mq_union_bump_correlation (parser, arg1, arg2);
 	      /* reset node_type in case it was difference or intersection */
 	      if (result)
-		result->node_type = query_spec->node_type;
+		{
+		  result->node_type = query_spec->node_type;
+		}
 	    }
 	  else
 	    {
 	      if (query_spec->node_type == PT_INTERSECTION)
-		result = NULL;
+		{
+		  result = NULL;
+		}
 	      else if (query_spec->node_type == PT_DIFFERENCE)
 		{
 		  result = arg1;
@@ -2118,9 +2125,13 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	      else
 		{
 		  if (arg1)
-		    result = arg1;
+		    {
+		      result = arg1;
+		    }
 		  else
-		    result = arg2;
+		    {
+		      result = arg2;
+		    }
 		}
 	    }
 	}			/* else */
@@ -2148,7 +2159,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
     }
 
   if (result)
-    result->next = statement_next;
+    {
+      result->next = statement_next;
+    }
 
   return result;
 
