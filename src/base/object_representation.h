@@ -966,6 +966,7 @@ struct or_buf
 #define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN(ptr, alignment) == ptr))
 
 extern int or_rep_id (RECDES * record);
+extern int or_set_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern char *or_class_name (RECDES * record);
 

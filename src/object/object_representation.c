@@ -320,6 +320,58 @@ or_rep_id (RECDES * record)
 }
 
 /*
+ * or_set_rep_id () - set representation id for record
+ * return : error code or NO_ERROR
+ * record (in/out): record
+ * repid (in)	  : new representation
+ *
+ * Note: This function changes the representation id of a record. It should
+ * only be used in update/insert operations on partitioned tables. Each
+ * partition is viewed by the heap/btree operations as a different class
+ * and it might have a different representation id than the one of the root
+ * table. However, when partitioning a table, we guarantee that the actual
+ * disk representation is the same as the one of the root table (even though
+ * the actual id might differ). Do not use this function in another context!
+ */
+int
+or_set_rep_id (RECDES * record, int repid)
+{
+  OR_BUF orep, *buf;
+  bool is_bound_bit = false;
+  int offset_size = 0;
+  unsigned int new_bits = 0;
+
+  if (record->length < OR_HEADER_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+      return ER_FAILED;
+    }
+
+  OR_BUF_INIT2 (orep, record->data, record->area_size);
+  buf = &orep;
+
+  /* read REPR_ID flags */
+  if (OR_GET_BOUND_BIT_FLAG (record->data))
+    {
+      is_bound_bit = true;
+    }
+  offset_size = OR_GET_OFFSET_SIZE (record->data);
+
+  /* construct new REPR_ID element */
+  new_bits = repid;
+  if (is_bound_bit)
+    {
+      new_bits |= OR_BOUND_BIT_FLAG;
+    }
+  OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
+
+  /* write new REPR_ID to the record */
+  or_put_int (buf + OR_REP_OFFSET, new_bits);
+
+  return NO_ERROR;
+}
+
+/*
  * or_chn - extracts cache coherency number from the disk representation of an
  * object
  *    return: cache coherency number (chn), or -1 for error

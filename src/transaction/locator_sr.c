@@ -211,11 +211,6 @@ static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 				OID * new_class_oid, HFID * new_class_hfid,
 				RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				int has_index, int *force_count);
-static int locator_setup_heap_attr (THREAD_ENTRY * thread_p, OID * class_oid,
-				    OID * obj_oid,
-				    HEAP_SCANCACHE * scan_cache,
-				    RECDES * recdes,
-				    HEAP_CACHE_ATTRINFO * attr_info);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 					   LC_COPYAREA * force_area);
 
@@ -5036,8 +5031,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
       if (has_index && !locator_Dont_check_foreign_key)
 	{
 	  error_code =
-	    locator_check_foreign_key (thread_p, hfid,
-				       class_oid, oid, recdes,
+	    locator_check_foreign_key (thread_p, &real_hfid,
+				       &real_class_oid, oid, recdes,
 				       &new_recdes,
 				       &is_cached, &cache_attr_copyarea);
 	  if (error_code != NO_ERROR)
@@ -5051,9 +5046,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
-	      if (heap_update
-		  (thread_p, hfid, class_oid, oid, recdes, &isold_object,
-		   scan_cache) == NULL)
+	      if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
+			       recdes, &isold_object, scan_cache) == NULL)
 		{
 		  error_code = ER_FAILED;
 		  goto error1;
@@ -5110,58 +5104,6 @@ error2:
 }
 
 /*
- * locator_setup_heap_attr () - setup a attribute info object
- * return :  error code or NO_ERROR
- * thread_p (in)  :
- * class_oid (in) :
- * obj_oid (in)	  :
- * scan_cache (in):
- * recdes (in)	  :
- * attr_info (in/out) :
- */
-static int
-locator_setup_heap_attr (THREAD_ENTRY * thread_p, OID * class_oid,
-			 OID * obj_oid, HEAP_SCANCACHE * scan_cache,
-			 RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
-{
-  int error = NO_ERROR;
-  bool clear_attr_info = false, clear_attr_values = false;
-  SCAN_CODE scan = S_SUCCESS;
-
-  assert (attr_info != NULL);
-
-  error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, attr_info);
-  if (error != NO_ERROR)
-    {
-      goto error_return;
-    }
-  clear_attr_info = true;
-
-  /* Set the values from the provided RECDES. The recdes contains the result
-   * of the update operation
-   */
-  error = heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, attr_info);
-  if (error != NO_ERROR)
-    {
-      goto error_return;
-    }
-  clear_attr_values = true;
-
-  return NO_ERROR;
-
-error_return:
-  if (clear_attr_values)
-    {
-      heap_attrinfo_clear_dbvalues (attr_info);
-    }
-  if (clear_attr_info)
-    {
-      heap_attrinfo_end (thread_p, attr_info);
-    }
-  return error;
-}
-
-/*
  * locator_move_record () - relocate a record from a partitioned class
  * return : error code or NO_ERROR
  * thread_p (in)	: caller thread
@@ -5173,7 +5115,12 @@ error_return:
  * recdes (in)		: record
  * scan_cache (in)	: scan cache
  * has_index (in)	: true if the class has indexes
- * force_count (in/out)	: 
+ * force_count (in/out)	:
+ * 
+ * Note: this function calls locator_delete_force on the current object oid
+ * and locator_insert_force for the RECDES it receives. The record has already
+ * been set to be used by the receiving class when it went through the pruning
+ * algorithm (see function partition_find_partition_for_record)
  */
 static int
 locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
@@ -5182,46 +5129,16 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 		     HEAP_SCANCACHE * scan_cache, int has_index,
 		     int *force_count)
 {
-  HEAP_CACHE_ATTRINFO attr_info_old, attr_info_new;
-  bool clear_old_attr_info = false, clear_new_attr_info = false;
-  int error = NO_ERROR, i;
+  int error = NO_ERROR;
   OID new_obj_oid;
   HEAP_SCANCACHE insert_scan_cache;
 
-  error =
-    locator_setup_heap_attr (thread_p, old_class_oid, obj_oid, scan_cache,
-			     recdes, &attr_info_old);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-  clear_old_attr_info = true;
-
-  /* Initialize an attr_info structure based on the new class */
-  error = heap_attrinfo_start (thread_p, new_class_oid, -1, NULL,
-			       &attr_info_new);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-  clear_new_attr_info = true;
-
-  /* use heap set for each value from old attr_info */
-  for (i = 0; i < attr_info_old.num_values; i++)
-    {
-      error =
-	heap_attrinfo_set (NULL, attr_info_old.values[i].attrid,
-			   &attr_info_old.values[i].dbvalue, &attr_info_new);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-    }
+  /* delete this record from the class it currently resides in */
   error = locator_delete_force (thread_p, old_hfid, obj_oid, true,
 				SINGLE_ROW_DELETE, scan_cache, force_count);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      return error;
     }
 
   /* initialize a scan cache structure for inserting */
@@ -5231,29 +5148,23 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 				    SINGLE_ROW_INSERT);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      return error;
     }
 
+  /* insert the new record */
   error =
-    locator_attribute_info_force (thread_p, new_class_hfid, &new_obj_oid,
-				  &attr_info_new, NULL, 0, LC_FLUSH_INSERT,
-				  SINGLE_ROW_INSERT, &insert_scan_cache,
-				  force_count, false,
-				  REPL_INFO_TYPE_STMT_NORMAL);
-
+    locator_insert_force (thread_p, new_class_hfid, new_class_oid,
+			  &new_obj_oid, recdes, has_index, SINGLE_ROW_INSERT,
+			  &insert_scan_cache, force_count);
   locator_end_force_scan_cache (thread_p, &insert_scan_cache);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   COPY_OID (obj_oid, &new_obj_oid);
 
-cleanup:
-  if (clear_old_attr_info)
-    {
-      heap_attrinfo_end (thread_p, &attr_info_old);
-    }
-  if (clear_new_attr_info)
-    {
-      heap_attrinfo_end (thread_p, &attr_info_new);
-    }
-  return error;
+  return NO_ERROR;
 }
 
 /*

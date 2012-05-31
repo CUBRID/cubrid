@@ -1598,13 +1598,14 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  /*
 	   * DO NOT WRITE REPLICATION LOG DURING PARTITION RELATED WORKS
 	   */
-	  if (alter_code == PT_APPLY_PARTITION ||
-	      alter_code == PT_REMOVE_PARTITION ||
-	      alter_code == PT_ADD_PARTITION ||
-	      alter_code == PT_ADD_HASHPARTITION ||
-	      alter_code == PT_COALESCE_PARTITION ||
-	      alter_code == PT_REORG_PARTITION ||
-	      alter_code == PT_ANALYZE_PARTITION)
+	  if (alter_code == PT_APPLY_PARTITION
+	      || alter_code == PT_REMOVE_PARTITION
+	      || alter_code == PT_ADD_PARTITION
+	      || alter_code == PT_ADD_HASHPARTITION
+	      || alter_code == PT_COALESCE_PARTITION
+	      || alter_code == PT_REORG_PARTITION
+	      || alter_code == PT_ANALYZE_PARTITION
+	      || alter_code == PT_PROMOTE_PARTITION)
 	    {
 	      db_set_suppress_repl_on_transaction (true);
 	    }
@@ -1612,13 +1613,14 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  error_code = do_alter_one_clause_with_template (parser, crt_clause);
 
 	  /* Do not suppress writing replication log. */
-	  if (alter_code == PT_APPLY_PARTITION ||
-	      alter_code == PT_REMOVE_PARTITION ||
-	      alter_code == PT_ADD_PARTITION ||
-	      alter_code == PT_ADD_HASHPARTITION ||
-	      alter_code == PT_COALESCE_PARTITION ||
-	      alter_code == PT_REORG_PARTITION ||
-	      alter_code == PT_ANALYZE_PARTITION)
+	  if (alter_code == PT_APPLY_PARTITION
+	      || alter_code == PT_REMOVE_PARTITION
+	      || alter_code == PT_ADD_PARTITION
+	      || alter_code == PT_ADD_HASHPARTITION
+	      || alter_code == PT_COALESCE_PARTITION
+	      || alter_code == PT_REORG_PARTITION
+	      || alter_code == PT_ANALYZE_PARTITION
+	      || alter_code == PT_PROMOTE_PARTITION)
 	    {
 	      db_set_suppress_repl_on_transaction (false);
 	    }

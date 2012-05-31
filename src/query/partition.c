@@ -3138,6 +3138,33 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
   COPY_OID (partition_oid, &pruned->partition->class_oid);
   HFID_COPY (partition_hfid, &pruned->partition->class_hfid);
 
+  if (!OID_EQ (class_oid, partition_oid))
+    {
+      /* Update representation id of the record to that of the pruned
+       * partition. For any other operation than pruning, the new
+       * representation id should be obtained by constructing a new 
+       * HEAP_ATTRIBUTE_INFO structure for the new class, copying values
+       * from this record to that structure and then transforming it to disk.
+       * Since we're working with partitioned tables, we can guarantee that,
+       * except for the actual representation id bits, the new record will be
+       * exactly the same. Because of this, we can take a shortcut here and
+       * only update the bits from the representation id
+       */
+      REPR_ID newrep_id = NULL_REPRID, oldrep_id = NULL_REPRID;
+      newrep_id = heap_get_class_repr_id (pinfo->thread_p, partition_oid);
+      if (newrep_id <= 0)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      oldrep_id = or_rep_id (recdes);
+      if (newrep_id != oldrep_id)
+	{
+	  /* set newrep_id */
+	  error = or_set_rep_id (recdes, newrep_id);
+	}
+    }
+
 cleanup:
   if (clear_dbvalues)
     {
