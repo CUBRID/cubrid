@@ -371,7 +371,8 @@ namespace dbgw
       {
         errCode = XML_GetErrorCode(parser.get());
         InvalidXMLSyntaxException e(XML_ErrorString(errCode),
-            pParser->m_fileName.c_str());
+            pParser->m_fileName.c_str(), XML_GetCurrentLineNumber(parser.get()),
+            XML_GetCurrentColumnNumber(parser.get()));
         DBGW_LOG_ERROR(e.what());
         throw e;
       }

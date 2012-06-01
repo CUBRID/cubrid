@@ -232,6 +232,8 @@ namespace dbgw
   typedef hash_map<string, DBGWQueryGroupList, hash<string> ,
           dbgwStringCompareFunc> DBGWQuerySqlHashMap;
 
+  typedef list<string> DBGWQueryNameList;
+
   class DBGWQueryMapper: public DBGWResource
   {
   public:
@@ -241,6 +243,10 @@ namespace dbgw
     void addQuery(const string &sqlName, DBGWQuerySharedPtr pQuery);
     void clearQuery();
     void copyFrom(const DBGWQueryMapper &src);
+
+  public:
+    size_t size() const;
+    DBGWQueryNameList getQueryNameList() const;
 
   public:
     DBGWBoundQuerySharedPtr getQuery(const char *szSqlName,

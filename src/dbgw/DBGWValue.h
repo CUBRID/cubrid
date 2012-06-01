@@ -48,11 +48,7 @@ namespace dbgw
   {
   public:
     DBGWValue();
-    DBGWValue(DBGWValueType type, void *pValue);
-    DBGWValue(int nValue, bool bNull = false);
-    DBGWValue(const char *szValue, bool bNull = false);
-    DBGWValue(int64 lValue, bool bNull = false);
-    DBGWValue(char cValue, bool bNull = false);
+    DBGWValue(DBGWValueType type, void *pValue, bool bNull = false);
     DBGWValue(const DBGWRawValue &rawValue, DBGWValueType type,
         bool bNull = false);
     DBGWValue(const DBGWValue &value);
@@ -149,6 +145,7 @@ namespace dbgw
     virtual ~ DBGWParameter();
 
   public:
+    const DBGWValue *getValue(size_t nIndex) const;
     const DBGWValue *getValue(const char *szKey, size_t nPosition) const;
   };
 

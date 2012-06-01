@@ -52,6 +52,7 @@ namespace dbgw
 
   public:
     bool isClosed() const;
+    const DBGWQueryMapper *getQueryMapper() const;
 
   private:
     void validateResult(const DBGWLogger &logger, DBGWResultSharedPtr lhs,

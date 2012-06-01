@@ -276,6 +276,16 @@ namespace dbgw
                     validateResult(logger, pReturnResult, pInternalResult);
                   }
               }
+            catch (ValidateTypeFailException &e)
+              {
+                setLastException(e);
+                return DBGWResultSharedPtr();
+              }
+            catch (ValidateValueFailException &e)
+              {
+                setLastException(e);
+                return DBGWResultSharedPtr();
+              }
             catch (ValidateFailException &e)
               {
                 setLastException(e);
@@ -358,6 +368,11 @@ namespace dbgw
     return m_bClosed;
   }
 
+  const DBGWQueryMapper *DBGWClient::getQueryMapper() const
+  {
+    return m_pQueryMapper;
+  }
+
   void DBGWClient::validateResult(const DBGWLogger &logger,
       DBGWResultSharedPtr lhs, DBGWResultSharedPtr rhs)
   {
@@ -398,8 +413,20 @@ namespace dbgw
 
                 if (pRhs == NULL)
                   {
-                    ValidateFailException
+                    ValidateValueFailException
                     e(cit->name.c_str(), pLhs->toString());
+                    DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
+                        c_str());
+                    throw e;
+                  }
+
+                if (pLhs->getType() != pRhs->getType())
+                  {
+                    ValidateTypeFailException e(cit->name.c_str(),
+                        pLhs->toString(),
+                        getDBGWValueTypeString(pLhs->getType()),
+                        pRhs->toString(),
+                        getDBGWValueTypeString(pRhs->getType()));
                     DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
                         c_str());
                     throw e;
@@ -407,7 +434,7 @@ namespace dbgw
 
                 if (*pLhs != *pRhs)
                   {
-                    ValidateFailException e(cit->name.c_str(),
+                    ValidateValueFailException e(cit->name.c_str(),
                         pLhs->toString(), pRhs->toString());
                     DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
                         c_str());

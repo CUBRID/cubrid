@@ -402,6 +402,7 @@ namespace dbgw
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
+          DBGW_LOG_INFO(m_logger.getLogMessage("connection commit.").c_str());
           return true;
         }
       catch (DBGWException &e)
@@ -427,6 +428,7 @@ namespace dbgw
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
+          DBGW_LOG_INFO(m_logger.getLogMessage("connection rollback.").c_str());
           return true;
         }
       catch (DBGWException &e)
@@ -587,7 +589,7 @@ namespace dbgw
               utype = CCI_U_TYPE_NULL;
             }
           return cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_BIGINT,
-              &lValue, CCI_U_TYPE_BIGINT, 0);
+              &lValue, utype, 0);
         }
       else
         {
@@ -607,7 +609,7 @@ namespace dbgw
               utype = CCI_U_TYPE_NULL;
             }
           return cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
-              (void *) szValue, CCI_U_TYPE_STRING, 0);
+              (void *) szValue, utype, 0);
         }
       else
         {
@@ -627,7 +629,7 @@ namespace dbgw
             }
           szBuffer[1] = '\0';
           return cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
-              (void *) szBuffer, CCI_U_TYPE_CHAR, 0);
+              (void *) szBuffer, utype, 0);
         }
       else
         {

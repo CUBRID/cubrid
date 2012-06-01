@@ -61,8 +61,8 @@ namespace dbgw
     m_stValue.szValue = NULL;
   }
 
-  DBGWValue::DBGWValue(DBGWValueType type, void *pValue) :
-    m_type(type)
+  DBGWValue::DBGWValue(DBGWValueType type, void *pValue, bool bNull) :
+    m_type(type), m_bNull(bNull)
   {
     clearException();
     try
@@ -78,11 +78,9 @@ namespace dbgw
               {
               case DBGW_VAL_TYPE_INT:
                 m_stValue.nValue = *(int *) pValue;
-                m_bNull = false;
                 break;
               case DBGW_VAL_TYPE_LONG:
                 m_stValue.lValue = *(int64 *) pValue;
-                m_bNull = false;
                 break;
               case DBGW_VAL_TYPE_STRING:
                 if (*(char **) pValue == NULL)
@@ -93,14 +91,12 @@ namespace dbgw
                 else
                   {
                     m_stValue.szValue = strdup((char *) pValue);
-                    m_bNull = false;
                   }
                 break;
               case DBGW_VAL_TYPE_CHAR:
                 m_stValue.szValue = (char *) malloc(sizeof(char) * 2);
                 m_stValue.szValue[0] = *(char *) pValue;
                 m_stValue.szValue[1] = '\0';
-                m_bNull = false;
                 break;
               default:
                 InvalidValueTypeException e(type);
@@ -112,53 +108,6 @@ namespace dbgw
     catch (DBGWException &e)
       {
         setLastException(e);
-      }
-  }
-
-  DBGWValue::DBGWValue(int nValue, bool bNull) :
-    m_type(DBGW_VAL_TYPE_INT), m_bNull(bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    m_stValue.nValue = nValue;
-  }
-
-  DBGWValue::DBGWValue(const char *szValue, bool bNull) :
-    m_type(DBGW_VAL_TYPE_STRING), m_bNull(bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    if (szValue != NULL)
-      {
-        m_stValue.szValue = strdup(szValue);
-      }
-    else
-      {
-        m_stValue.szValue = NULL;
       }
   }
 
@@ -231,48 +180,6 @@ namespace dbgw
       {
         m_stValue = value.m_stValue;
       }
-  }
-
-  DBGWValue::DBGWValue(int64 lValue, bool bNull) :
-    m_type(DBGW_VAL_TYPE_LONG), m_bNull(bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    m_stValue.lValue = lValue;
-  }
-
-  DBGWValue::DBGWValue(char cValue, bool bNull) :
-    m_type(DBGW_VAL_TYPE_CHAR), m_bNull(bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    m_stValue.szValue = (char *) malloc(sizeof(char) * 2);
-    m_stValue.szValue[0] = cValue;
-    m_stValue.szValue[1] = '\0';
   }
 
   DBGWValue::DBGWValue(DBGWValueType type, size_t length, bool bNull) :
@@ -672,7 +579,7 @@ namespace dbgw
         removeIndexMap(nIndex);
       }
 
-    DBGWValueSharedPtr p(new DBGWValue(nValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
     m_valueList[nIndex] = p;
   }
 
@@ -702,7 +609,7 @@ namespace dbgw
         removeIndexMap(nIndex);
       }
 
-    DBGWValueSharedPtr p(new DBGWValue(szValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
     m_valueList[nIndex] = p;
   }
 
@@ -732,7 +639,7 @@ namespace dbgw
         removeIndexMap(nIndex);
       }
 
-    DBGWValueSharedPtr p(new DBGWValue(lValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
     m_valueList[nIndex] = p;
   }
 
@@ -762,7 +669,7 @@ namespace dbgw
         removeIndexMap(nIndex);
       }
 
-    DBGWValueSharedPtr p(new DBGWValue(cValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
     m_valueList[nIndex] = p;
   }
 
@@ -818,7 +725,7 @@ namespace dbgw
 
   void DBGWValueSet::put(const char *szKey, int nValue, bool bNull)
   {
-    DBGWValueSharedPtr p(new DBGWValue(nValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
     m_indexMap[szKey] = m_valueList.size();
     m_valueList.push_back(p);
   }
@@ -839,7 +746,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(szValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
     m_indexMap[szKey] = m_valueList.size();
     m_valueList.push_back(p);
   }
@@ -860,7 +767,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(lValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
     m_indexMap[szKey] = m_valueList.size();
     m_valueList.push_back(p);
   }
@@ -881,7 +788,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(cValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
     m_indexMap[szKey] = m_valueList.size();
     m_valueList.push_back(p);
   }
@@ -942,7 +849,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(nValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
     m_valueList.push_back(p);
   }
 
@@ -962,7 +869,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(szValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
     m_valueList.push_back(p);
   }
 
@@ -982,7 +889,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(lValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
     m_valueList.push_back(p);
   }
 
@@ -1002,7 +909,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(cValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
     m_valueList.push_back(p);
   }
 
@@ -1395,6 +1302,11 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
+  }
+
+  const DBGWValue *DBGWParameter::getValue(size_t nIndex) const
+  {
+    return DBGWValueSet::getValue(nIndex);
   }
 
   const DBGWValue *DBGWParameter::getValue(const char *szKey, size_t nPosition) const

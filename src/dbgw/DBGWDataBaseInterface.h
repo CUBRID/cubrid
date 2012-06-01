@@ -113,6 +113,9 @@ namespace dbgw
       const DBGWLogger m_logger;
 
     private:
+      string dump() const;
+
+    private:
       DBGWBoundQuerySharedPtr m_pQuery;
       DBGWParameter m_parameter;
       bool m_bReuesed;

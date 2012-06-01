@@ -377,7 +377,18 @@ namespace dbgw
   {
   }
 
-  ValidateFailException::ValidateFailException(const char *szName,
+  ValidateTypeFailException::ValidateTypeFailException(const char *szName,
+      const string &lhs, const char *szLhsType, const string &rhs,
+      const char *szRhsType) throw() :
+    DBGWException(
+        DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL,
+        (boost::format(
+            "The %s's type is different each other. %s (%s) != %s (%s)")
+            % szName % lhs % szLhsType % rhs % szRhsType).str())
+  {
+  }
+
+  ValidateValueFailException::ValidateValueFailException(const char *szName,
       const string &lhs) throw() :
     DBGWException(
         DBGWErrorCode::RESULT_VALIDATE_FAIL,
@@ -387,12 +398,11 @@ namespace dbgw
   {
   }
 
-  ValidateFailException::ValidateFailException(const char *szName,
+  ValidateValueFailException::ValidateValueFailException(const char *szName,
       const string &lhs, const string &rhs) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_VALIDATE_FAIL,
-        (boost::format(
-            "The %s's value is different each other. %s != %s")
+        DBGWErrorCode::RESULT_VALIDATE_VALUE_FAIL,
+        (boost::format("The %s's value is different each other. %s != %s")
             % szName % lhs % rhs).str())
   {
   }
@@ -463,9 +473,10 @@ namespace dbgw
   }
 
   InvalidXMLSyntaxException::InvalidXMLSyntaxException(
-      const char *szXmlErrorMessage, const char *szFileName) throw() :
+      const char *szXmlErrorMessage, const char *szFileName, int nLine, int nCol) throw() :
     DBGWException(DBGWErrorCode::XML_INVALID_SYNTAX,
-        boost::format("%s in %s") % szXmlErrorMessage % szFileName)
+        boost::format("%s in %s, line %d, column %d") % szXmlErrorMessage
+        % szFileName % nLine % nCol)
   {
   }
 

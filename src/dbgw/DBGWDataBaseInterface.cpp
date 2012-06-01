@@ -336,6 +336,17 @@ namespace dbgw
       return m_parameter;
     }
 
+    string DBGWPreparedStatement::dump() const
+    {
+      LogBuffer paramLogBuf("Parameters:");
+      for (size_t i = 0; i < m_parameter.size(); i++)
+        {
+          paramLogBuf.addLog(m_parameter.getValue(i)->toString());
+        }
+
+      return paramLogBuf.getLog();
+    }
+
     void DBGWPreparedStatement::setParameter(const DBGWParameter *pParameter)
     {
       if (pParameter != NULL)
@@ -350,6 +361,8 @@ namespace dbgw
 
       try
         {
+          DBGW_LOG_DEBUG(m_logger.getLogMessage(m_pQuery->getSQL()).c_str());
+
           if (m_parameter.size() > 0)
             {
               LogBuffer paramLogBuf("Parameters:");
@@ -371,6 +384,7 @@ namespace dbgw
                   typeLogBuf.addLog(getDBGWValueTypeString(pValue->getType()));
                 }
 
+              DBGW_LOG_DEBUG(m_logger.getLogMessage(dump().c_str()).c_str());
               DBGW_LOG_INFO(m_logger.getLogMessage(paramLogBuf.getLog().c_str()).c_str());
               DBGW_LOG_INFO(m_logger.getLogMessage(typeLogBuf.getLog().c_str()).c_str());
 

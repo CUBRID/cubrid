@@ -52,6 +52,8 @@ namespace dbgw
       RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
       RESULT_NOT_ALLOWED_OPERATION              = -22502,
       RESULT_VALIDATE_FAIL                      = -22503,
+      RESULT_VALIDATE_TYPE_FAIL                 = -22504,
+      RESULT_VALIDATE_VALUE_FAIL                = -22505,
 
       INTERFACE_ERROR                           = -22600,
 
@@ -240,8 +242,20 @@ namespace dbgw
   public:
     ValidateFailException() throw();
     ValidateFailException(int lhs, int rhs) throw();
-    ValidateFailException(const char *szName, const string &lhs) throw();
-    ValidateFailException(const char *szName, const string &lhs,
+  };
+
+  class ValidateTypeFailException: public DBGWException
+  {
+  public:
+    ValidateTypeFailException(const char *szName, const string &lhs,
+        const char *szLhsType, const string &rhs, const char *szRhsType) throw();
+  };
+
+  class ValidateValueFailException: public DBGWException
+  {
+  public:
+    ValidateValueFailException(const char *szName, const string &lhs) throw();
+    ValidateValueFailException(const char *szName, const string &lhs,
         const string &rhs) throw();
   };
 
@@ -297,7 +311,7 @@ namespace dbgw
   {
   public:
     InvalidXMLSyntaxException(const char *szXmlErrorMessage,
-        const char *szFileName) throw();
+        const char *szFileName, int nLine, int nCol) throw();
   };
 
   class MutexInitFailException: public DBGWException

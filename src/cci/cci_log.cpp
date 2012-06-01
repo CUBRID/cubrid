@@ -102,9 +102,11 @@ public:
   {
   }
 
-  virtual ~ _Logger()
+  virtual ~_Logger()
   {
+    critical.lock();
     flush();
+    critical.unlock();
     if (out.is_open())
       {
         out.close();
@@ -315,56 +317,99 @@ private:
 
 typedef map<string, _Logger *> MapPathLogger;
 typedef MapPathLogger::iterator IteratorPathLogger;
-static MapPathLogger mapPathLogger;
+
+class _LogManager
+{
+public:
+  _LogManager()
+  {
+  }
+
+  virtual ~_LogManager()
+  {
+    clear();
+  }
+
+  Logger getLog(const char *path)
+  {
+    IteratorPathLogger it = loggers.find(path);
+    if (it == loggers.end())
+      {
+        return addLog(path);
+      }
+
+    return it->second;
+  }
+
+  Logger addLog(const char *path)
+  {
+    _Logger *logger = NULL;
+
+    try
+      {
+        logger = new _Logger(path);
+        logger->open();
+      }
+    catch (...)
+      {
+        if (logger != NULL)
+          {
+            delete logger;
+          }
+        return NULL;
+      }
+
+    if (logger != NULL)
+      {
+        loggers[path] = logger;
+      }
+
+    return logger;
+  }
+
+  void removeLog(const char *path)
+  {
+    IteratorPathLogger it = loggers.find(path);
+    if (it != loggers.end())
+      {
+        delete it->second;
+        loggers.erase(it);
+      }
+  }
+
+  void clear()
+  {
+    IteratorPathLogger it = loggers.begin();
+    while (it != loggers.end())
+      {
+        if (it->second != NULL)
+          {
+            delete it->second;
+          }
+        ++it;
+      }
+    loggers.clear();
+  }
+
+private:
+  MapPathLogger loggers;
+};
+
+static _LogManager logManager;
 
 Logger cci_log_add(const char *path)
 {
-  _Logger *logger = NULL;
-
-  try
-    {
-      logger = new _Logger(path);
-      logger->open();
-    }
-  catch (...)
-    {
-      if (logger != NULL)
-        {
-          delete logger;
-        }
-      return NULL;
-    }
-
-  if (logger != NULL)
-    {
-      mapPathLogger[path] = logger;
-    }
-
-  return logger;
+  return logManager.addLog(path);
 }
 
 Logger cci_log_get(const char *path)
 {
-  IteratorPathLogger i = mapPathLogger.find(path);
-  if (i != mapPathLogger.end())
-    {
-      return i->second;
-    }
-  else
-    {
-      return cci_log_add(path);
-    }
+  return logManager.getLog(path);
 }
 
 void cci_log_finalize(void)
 {
-  IteratorPathLogger i = mapPathLogger.begin();
-
-  for (; i != mapPathLogger.end(); ++i)
-    {
-      delete i-> second;
-    }
-  mapPathLogger.clear();
+  logManager.clear();
 }
 
 void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
@@ -391,12 +436,7 @@ void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
 
 void cci_log_remove(const char *path)
 {
-  IteratorPathLogger i = mapPathLogger.find(path);
-  if (i != mapPathLogger.end())
-    {
-      delete i-> second;
-      mapPathLogger.erase(i);
-    }
+  logManager.removeLog(path);
 }
 
 void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)

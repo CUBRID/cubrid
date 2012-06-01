@@ -77,8 +77,7 @@ namespace dbgw
   };
 
   typedef vector<string> DBGWStringList;
-  typedef vector<int> DBGWIntegerList;
-  typedef long long int int64;
+  typedef int64_t int64;
 
   class Mutex
   {

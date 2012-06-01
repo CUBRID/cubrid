@@ -798,6 +798,24 @@ namespace dbgw
         src.m_querySqlMap.end());
   }
 
+  size_t DBGWQueryMapper::size() const
+  {
+    return m_querySqlMap.size();
+  }
+
+  DBGWQueryNameList DBGWQueryMapper::getQueryNameList() const
+  {
+    DBGWQueryNameList list;
+    DBGWQuerySqlHashMap::const_iterator it = m_querySqlMap.begin();
+    while (it != m_querySqlMap.end())
+      {
+        list.push_back(it->first);
+        ++it;
+      }
+
+    return list;
+  }
+
   DBGWBoundQuerySharedPtr DBGWQueryMapper::getQuery(const char *szSqlName,
       const char *szGroupName, const DBGWParameter *pParameter) const
   {
@@ -1040,7 +1058,6 @@ namespace dbgw
       }
   }
 
-#ifdef QA_TEST
   int DBGWConfiguration::getConnectorSize() const
   {
     return m_connResource.size();
@@ -1050,7 +1067,6 @@ namespace dbgw
   {
     return m_queryResource.size();
   }
-#endif
 
   void DBGWConfiguration::closeVersion(const DBGWConfigurationVersion &stVersion)
   {
