@@ -282,7 +282,7 @@ broker_delete_proxy_conn_by_proxy_id (int proxy_id)
 int
 broker_register_proxy_conn (SOCKET fd, int proxy_id)
 {
-  int ret;
+  int ret = 0;
   T_PROXY_CONN_ENT *ent_p;
 
   pthread_mutex_lock (&proxy_conn_mutex);
