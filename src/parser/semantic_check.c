@@ -3567,6 +3567,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	      || def->data_type->info.data_type.enumeration == NULL)
 	    {
 	      PT_INTERNAL_ERROR (parser, "invalid enumeration type");
+	      return;
 	    }
 	  node = def->data_type->info.data_type.enumeration;
 
@@ -3595,13 +3596,13 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 				     temp->info.value.data_value.str->bytes,
 				     trimmed_size);
 		  temp->info.value.data_value.str->length = trimmed_size;
-		  if (node->info.value.db_value_is_in_workspace)
+		  if (temp->info.value.db_value_is_in_workspace)
 		    {
-		      db_value_clear (&node->info.value.db_value);
+		      db_value_clear (&temp->info.value.db_value);
 		    }
-		  if (node->info.value.db_value_is_initialized)
+		  if (temp->info.value.db_value_is_initialized)
 		    {
-		      node->info.value.db_value_is_initialized = false;
+		      temp->info.value.db_value_is_initialized = false;
 		      pt_value_to_db (parser, temp);
 		    }
 		}
