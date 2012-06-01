@@ -67,8 +67,6 @@
 #include <errno.h>
 #include <assert.h>
 
-#define MAP_FAILED  NULL
-
 /* not defined errno on Windows */
 #define ENOMSG      100
 

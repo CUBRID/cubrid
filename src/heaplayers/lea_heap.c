@@ -50,28 +50,8 @@
 #define system_malloc my_malloc
 #define system_free my_free
 
-/*
- * my_malloc - system_malloc hook function 
- *    return: memory allocated
- *    sz(in): request memory size
- */
-static void *
-my_malloc (size_t sz)
-{
-  return malloc (sz);
-}
-
-/*
- * my_free -  system_free hook function
- *    return: memory allocated
- *    p(in):
- */
-static int
-my_free (void *p)
-{
-  free (p);
-  return 0;
-}
+static void *my_malloc (size_t sz);
+static int my_free (void *p);
 
 /*
  * override  default DEFAULT_GRANULARITY
@@ -133,6 +113,37 @@ static void munmap_is_to_be_called (void *m, void *ptr, MMAP_TRACE_H * h);
 
 #define ENABLE_SEPARATE_MMAP_EVENT_TRACE
 #include "malloc_2_8_3.c"
+
+/*
+ * my_malloc - system_malloc hook function 
+ *    return: memory allocated
+ *    sz(in): request memory size
+ */
+static void *
+my_malloc (size_t sz)
+{
+  void *ptr = malloc (sz);
+  if (ptr != NULL)
+    {
+      return ptr;
+    }
+  else
+    {
+      return CMFAIL;
+    }
+}
+
+/*
+ * my_free -  system_free hook function
+ *    return: memory allocated
+ *    p(in):
+ */
+static int
+my_free (void *p)
+{
+  free (p);
+  return 0;
+}
 
 /* ------------------------------------------------------------------------- */
 /* HL_LEA_HEAP IMPLEMENTATION */

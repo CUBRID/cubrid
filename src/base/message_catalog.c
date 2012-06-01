@@ -426,6 +426,11 @@ load_msgcat (const char *path)
     {
       data = MapViewOfFile (map_handle, FILE_MAP_READ, 0, 0, 0);
     }
+
+  if (data == NULL)
+    {
+      return NULL;
+    }
 #else
   fd = open (path, O_RDONLY);
   if (fd == -1)
@@ -441,12 +446,12 @@ load_msgcat (const char *path)
 
   data = mmap (0, (size_t) st.st_size, PROT_READ, MAP_SHARED, fd, (off_t) 0);
   close (fd);
-#endif
 
   if (data == MAP_FAILED)
     {
       return NULL;
     }
+#endif
 
   if (ntohl ((UINT32) ((struct nls_cat_hdr *) data)->_magic) != NLS_MAGIC)
     {
