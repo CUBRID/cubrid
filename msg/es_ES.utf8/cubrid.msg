@@ -1557,6 +1557,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
 251 Initial value is invalid.
 252 Prefix index is not supported.
+253 '%s' function cannot be used for function based index.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

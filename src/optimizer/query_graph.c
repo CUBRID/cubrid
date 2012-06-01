@@ -1103,7 +1103,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (pt_is_function_index_expr (tree))
+  if (pt_is_function_index_expr (parser, tree, false))
     {
       if (!pt_is_join_expr (tree, &spec_id))
 	{
@@ -1488,7 +1488,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
   bool found = false;
   PT_NODE *aux = attr;
 
-  if (pt_is_function_index_expr (attr))
+  if (pt_is_function_index_expr (env->parser, attr, false))
     {
       /*
        * The node should be the same for each argument of expression =>
@@ -1688,7 +1688,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
   int i;
   bool found = false;
 
-  if (pt_is_function_index_expr (name))
+  if (pt_is_function_index_expr (env->parser, name, false))
     {
       int k = -1;
       /* we search through the segments that come from a function
@@ -2249,10 +2249,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      lhs_indexable = 0;
 	    }
 	}
-      if (lhs_indexable && (pt_is_function_index_expr (lhs_expr)
-			    || (lhs_expr && lhs_expr->info.expr.op == PT_PRIOR
-				&& pt_is_function_index_expr (lhs_expr->info.
-							      expr.arg1))))
+      if (lhs_indexable
+	  && (pt_is_function_index_expr (parser, lhs_expr, false)
+	      || (lhs_expr && lhs_expr->info.expr.op == PT_PRIOR
+		  && pt_is_function_index_expr (parser,
+						lhs_expr->info.expr.arg1,
+						false))))
 	{
 	  /* we should be dealing with a function indexable expression,
 	   * so we must check if a segment has been associated with it
@@ -2375,10 +2377,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      rhs_indexable = 0;
 	    }
 	}
-      if (rhs_indexable && (pt_is_function_index_expr (rhs_expr)
-			    || (rhs_expr && rhs_expr->info.expr.op == PT_PRIOR
-				&& pt_is_function_index_expr (rhs_expr->info.
-							      expr.arg1))))
+      if (rhs_indexable
+	  && (pt_is_function_index_expr (term->env->parser, rhs_expr, false)
+	      || (rhs_expr && rhs_expr->info.expr.op == PT_PRIOR
+		  && pt_is_function_index_expr (term->env->parser,
+						rhs_expr->info.expr.arg1,
+						false))))
 	{
 	  /* we should be dealing with a function indexable expression,
 	   * so we must check if a segment has been associated with it
@@ -3007,7 +3011,7 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 	{
 	  *continue_walk = PT_STOP_WALK;
 	}
-      if (pt_is_function_index_expr (tree))
+      if (pt_is_function_index_expr (parser, tree, false))
 	{
 	  int count_bits = bitset_cardinality (QO_ENV_TMP_BITSET (env));
 	  (void) set_seg_node (tree, env, QO_ENV_TMP_BITSET (env));
@@ -3719,7 +3723,7 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
     {
       return is_local_name (env, expr->info.expr.arg1);
     }
-  else if (pt_is_function_index_expr (expr))
+  else if (pt_is_function_index_expr (env->parser, expr, false))
     {
       if (expr->info.expr.op == PT_FUNCTION_HOLDER)
 	{

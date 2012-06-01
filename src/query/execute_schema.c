@@ -16141,18 +16141,8 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   if (*stmt != NULL && !pt_has_error (parser))
     {
       expr = (*stmt)->info.query.q.select.list;
-      if (expr && !pt_is_function_index_expr (expr))
+      if (expr && !pt_is_function_index_expr (parser, expr, true))
 	{
-	  if (pt_is_const_expr_node (expr))
-	    {
-	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
-	    }
-	  else
-	    {
-	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
-	    }
 	  error = ER_FAILED;
 	  goto error;
 	}

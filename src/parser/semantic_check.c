@@ -9434,18 +9434,11 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	  if (node && !pt_has_error (parser))
 	    {
 	      if (node->info.index.function_expr &&
-		  !pt_is_function_index_expr (node->info.index.function_expr))
+		  !pt_is_function_index_expr (parser,
+					      node->info.index.function_expr,
+					      true))
 		{
-		  if (pt_is_const_expr_node (node->info.index.function_expr))
-		    {
-		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
-		    }
-		  else
-		    {
-		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
-		    }
+		  break;
 		}
 	    }
 
@@ -9564,22 +9557,11 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 			}
 
 		      if (p->info.index.function_expr
-			  && !pt_is_function_index_expr (p->info.index.
-							 function_expr))
+			  && !pt_is_function_index_expr (parser,
+							 p->info.index.
+							 function_expr, true))
 			{
-			  if (pt_is_const_expr_node (p->info.index.
-						     function_expr))
-			    {
-			      PT_ERRORm (parser, node,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
-			    }
-			  else
-			    {
-			      PT_ERRORm (parser, node,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
-			    }
+			  break;
 			}
 		      if (p && !pt_has_error (parser))
 			{
@@ -12891,7 +12873,8 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (col->info.sort_spec.expr->node_type != PT_NAME)
 	{
-	  if (pt_is_function_index_expr (col->info.sort_spec.expr))
+	  if (pt_is_function_index_expr (parser, col->info.sort_spec.expr,
+					 true))
 	    {
 	      node->info.index.function_expr =
 		parser_copy_tree (parser, col->info.sort_spec.expr);
@@ -12900,16 +12883,6 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      if (pt_is_const_expr_node (col->info.sort_spec.expr))
-		{
-		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
-		}
-	      else
-		{
-		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
-		}
 	      return;
 	    }
 	  fnc_cnt++;

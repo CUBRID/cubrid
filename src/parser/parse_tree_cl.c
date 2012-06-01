@@ -16235,6 +16235,22 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
     case PT_SUBDATE:
     case PT_DATE_SUB:
     case PT_FUNCTION_HOLDER:
+    case PT_BIT_LENGTH:
+    case PT_OCTET_LENGTH:
+    case PT_IFNULL:
+    case PT_LOCATE:
+    case PT_SUBSTRING:
+    case PT_SUBSTR:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_NULLIF:
+    case PT_TO_CHAR:
+    case PT_TO_DATE:
+    case PT_TO_DATETIME:
+    case PT_TO_TIMESTAMP:
+    case PT_TO_TIME:
+    case PT_TO_NUMBER:
+    case PT_TRIM:
       return true;
     default:
       return false;
@@ -16253,7 +16269,8 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
  *   expr(in): PT_EXPR
  */
 bool
-pt_is_function_index_expr (PT_NODE * expr)
+pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
+			   bool report_error)
 {
   PT_NODE *func = NULL;
   PT_NODE *arg = NULL;
@@ -16265,9 +16282,32 @@ pt_is_function_index_expr (PT_NODE * expr)
     {
       return false;
     }
-  if (!pt_is_allowed_as_function_index (expr->info.expr.op)
-      || pt_is_const_expr_node (expr) || pt_is_nested_expr (expr))
+  if (!pt_is_allowed_as_function_index (expr->info.expr.op))
     {
+      if (report_error)
+	{
+	  PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+		      pt_show_binopcode (expr->info.expr.op));
+	}
+      return false;
+    }
+  if (pt_is_const_expr_node (expr))
+    {
+      if (report_error)
+	{
+	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+  		     MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+	}
+      return false;
+    }
+  if (pt_is_nested_expr (expr))
+    {
+      if (report_error)
+	{
+	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
+	}
       return false;
     }
   return true;
