@@ -220,6 +220,8 @@ static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *,
 								 QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a,
+						       QO_PLAN * b);
 static QO_PLAN_COMPARE_RESULT qo_cover_index_plans_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *,
 							  QO_PLAN *);
@@ -11040,6 +11042,97 @@ search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
 }
 
 /*
+ * qo_plan_iscan_terms_cmp () - compare 2 index scan plans with terms
+ *   return:  one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
+ *   a(in):
+ *   b(in):
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  int a_range, b_range;		/* num iscan range terms */
+  int a_filter, b_filter;	/* num iscan filter terms */
+
+  if (!qo_is_interesting_order_scan (a) || !qo_is_interesting_order_scan (b))
+    {
+      assert_release (qo_is_interesting_order_scan (a));
+      assert_release (qo_is_interesting_order_scan (b));
+
+      return PLAN_COMP_UNK;
+    }
+
+  a_range = bitset_cardinality (&(a->plan_un.scan.terms));
+  a_filter = bitset_cardinality (&(a->plan_un.scan.kf_terms));
+
+  b_range = bitset_cardinality (&(b->plan_un.scan.terms));
+  b_filter = bitset_cardinality (&(b->plan_un.scan.kf_terms));
+
+  /* STEP 1: check by terms containment */
+
+  if (bitset_is_equivalent (&(a->plan_un.scan.terms),
+			    &(b->plan_un.scan.terms)))
+    {
+      /* both plans have the same range terms
+       * we will check now the key filter terms
+       */
+      if (a_filter > b_filter)
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (a_filter < b_filter)
+	{
+	  return PLAN_COMP_GT;
+	}
+
+      /* both have the same range terms and same number of filters
+       */
+      return PLAN_COMP_EQ;
+    }
+  else if (bitset_subset (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
+    {
+      return PLAN_COMP_LT;
+    }
+  else if (bitset_subset (&(b->plan_un.scan.terms), &(a->plan_un.scan.terms)))
+    {
+      return PLAN_COMP_GT;
+    }
+
+  /* STEP 2: check by term cardinality */
+
+  if (a->plan_un.scan.equi == b->plan_un.scan.equi)
+    {
+      if (a_range == b_range)
+	{
+	  /* both plans have the same number of range terms
+	   * we will check now the key filter terms
+	   */
+	  if (a_filter > b_filter)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	  else if (a_filter < b_filter)
+	    {
+	      return PLAN_COMP_GT;
+	    }
+
+	  /* both have the same number of range terms and same number of filters
+	   */
+	  return PLAN_COMP_EQ;
+	}
+      else if (a_range > b_range)
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (a_range < b_range)
+	{
+	  return PLAN_COMP_GT;
+	}
+    }
+
+  return PLAN_COMP_EQ;		/* is equal with terms not cost */
+}
+
+/*
  * qo_group_by_skip_plans_cmp () - compare 2 index scan plans by group by skip
  *   return:  one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
@@ -11067,37 +11160,7 @@ qo_group_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
     {
       if (b_ent->groupby_skip)
 	{
-	  if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
-	    {
-	      if (bitset_cardinality ((&b->plan_un.scan.terms)) == 0)
-		{
-		  return PLAN_COMP_LT;
-		}
-	    }
-	  else
-	    {
-	      if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
-		{
-		  return PLAN_COMP_GT;
-		}
-	    }
-	  /* both plans have the same number of range terms
-	   * we will check now the key filter terms
-	   */
-	  if (bitset_cardinality (&(a->plan_un.scan.kf_terms)) > 0)
-	    {
-	      if (bitset_cardinality ((&b->plan_un.scan.kf_terms)) == 0)
-		{
-		  return PLAN_COMP_LT;
-		}
-	    }
-	  else
-	    {
-	      if (bitset_cardinality (&(b->plan_un.scan.kf_terms)) > 0)
-		{
-		  return PLAN_COMP_GT;
-		}
-	    }
+	  return qo_plan_iscan_terms_cmp (a, b);
 	}
       else
 	{
@@ -11143,37 +11206,7 @@ qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
     {
       if (b_ent->orderby_skip)
 	{
-	  if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
-	    {
-	      if (bitset_cardinality ((&b->plan_un.scan.terms)) == 0)
-		{
-		  return PLAN_COMP_LT;
-		}
-	    }
-	  else
-	    {
-	      if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
-		{
-		  return PLAN_COMP_GT;
-		}
-	    }
-	  /* both plans have the same number of range terms
-	   * we will check now the key filter terms
-	   */
-	  if (bitset_cardinality (&(a->plan_un.scan.kf_terms)) > 0)
-	    {
-	      if (bitset_cardinality ((&b->plan_un.scan.kf_terms)) == 0)
-		{
-		  return PLAN_COMP_LT;
-		}
-	    }
-	  else
-	    {
-	      if (bitset_cardinality (&(b->plan_un.scan.kf_terms)) > 0)
-		{
-		  return PLAN_COMP_GT;
-		}
-	    }
+	  return qo_plan_iscan_terms_cmp (a, b);
 	}
       else
 	{
