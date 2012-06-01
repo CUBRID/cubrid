@@ -61,7 +61,8 @@ namespace dbgw
         value.nValue = atoi(szValue);
         break;
       case DBGW_VAL_TYPE_LONG:
-        value.lValue = atol(szValue);
+        value.lValue = boost::lexical_cast<int64>(szValue);
+        break;
       default:
         value.szValue = (char *) szValue;
       }
