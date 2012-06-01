@@ -3788,9 +3788,11 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	    }
 
 	  compared_expr = pt_get_first_arg_ignore_prior (crt_expr);
-	  if (!pt_is_attr (compared_expr))
+	  if (!pt_is_attr (compared_expr)
+	      && !pt_is_function_index_expr (parser, compared_expr, false))
 	    {
-	      /* LHS is not an attribute so it cannot currently have an index.
+	      /* LHS is not an attribute or an expression supported as
+	       * function index so it cannot currently have an index.
 	       * The transformation could still be useful as it might provide
 	       * faster execution time in some scenarios.
 	       */
