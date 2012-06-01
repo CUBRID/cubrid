@@ -371,7 +371,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
   srv_handle->schema_type = -1;
-  auto_commit_mode = cas_mysql_autocommit (auto_commit_mode);
+  cas_mysql_autocommit (auto_commit_mode);
   srv_handle->auto_commit_mode = auto_commit_mode;
 
   ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
@@ -606,6 +606,14 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   srv_handle->max_row = max_row;
   srv_handle->max_col_size = max_col_size;
+
+#ifndef LIBCAS_FOR_JSP
+  if (has_stmt_result_set (srv_handle->stmt_type) == false
+      && srv_handle->auto_commit_mode == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+#endif /* !LIBCAS_FOR_JSP */
 
   for (i = 0; i < num_bind; i++)
     {
