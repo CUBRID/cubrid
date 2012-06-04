@@ -77,7 +77,7 @@ public class CUBRIDPoolDataSourceBase extends CUBRIDDataSourceBase {
 	}
 
 	public void setMaxStatements(int no) {
-		maxStatements = 0;
+		maxStatements = no;
 	}
 
 	public void setInitialPoolSize(int size) {
