@@ -359,7 +359,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "info");
 	}
     }
-#if defined(CUBRID_SHARD)
+#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "acl") == 0)
     {
       char *br_name = NULL;
@@ -395,7 +395,7 @@ main (int argc, char **argv)
 	  return -1;
 	}
     }
-#endif /* CUBRID_SHARD */
+#endif /* !CUBRID_SHARD */
   else
     {
       goto usage;
