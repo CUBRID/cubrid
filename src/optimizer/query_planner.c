@@ -3699,8 +3699,8 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* iscan vs iscan index rule comparison */
 
   {
-    int at, bt;			/* num iscan range terms */
-    int at_kf, bt_kf;		/* num iscan filter terms */
+    int a_range, b_range;	/* num iscan range terms */
+    int a_filter, b_filter;	/* num iscan filter terms */
     QO_NODE_INDEX_ENTRY *a_ni, *b_ni;
     QO_INDEX_ENTRY *a_ent, *b_ent;
     QO_ATTR_CUM_STATS *a_cum, *b_cum;
@@ -3724,14 +3724,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
     a_last = i;
     /* index range terms */
-    at = bitset_cardinality (&(a->plan_un.scan.terms));
+    a_range = bitset_cardinality (&(a->plan_un.scan.terms));
     /* index filter terms */
-    at_kf = bitset_cardinality (&(a->plan_un.scan.kf_terms));
+    a_filter = bitset_cardinality (&(a->plan_un.scan.kf_terms));
 
     /* set the last equal range term */
     if (!(a->plan_un.scan.equi))
       {
-	at--;
+	a_range--;
       }
 
     /* index entry of b spec */
@@ -3747,14 +3747,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
     b_last = i;
     /* index range terms */
-    bt = bitset_cardinality (&(b->plan_un.scan.terms));
+    b_range = bitset_cardinality (&(b->plan_un.scan.terms));
     /* index filter terms */
-    bt_kf = bitset_cardinality (&(b->plan_un.scan.kf_terms));
+    b_filter = bitset_cardinality (&(b->plan_un.scan.kf_terms));
 
     /* set the last equal range term */
     if (!(b->plan_un.scan.equi))
       {
-	bt--;
+	b_range--;
       }
 
     /* STEP 1: take the smaller search condition */
@@ -3763,30 +3763,32 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     if (a_ent == b_ent)
       {
 	/* check for search condition */
-	if (at == bt && at_kf == bt_kf)
+	if (a_range == b_range && a_filter == b_filter)
 	  {
 	    ;			/* go ahead */
 	  }
-	else if (at >= bt && at_kf >= bt_kf)
+	else if (a_range >= b_range && a_filter >= b_filter)
 	  {
 	    return PLAN_COMP_LT;
 	  }
-	else if (at <= bt && at_kf <= bt_kf)
+	else if (a_range <= b_range && a_filter <= b_filter)
 	  {
 	    return PLAN_COMP_GT;
 	  }
       }
 
+    /* STEP 1-1: check by terms containment */
+
     /* check for same search condition */
-    if (bitset_is_equivalent
-	(&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
+    if (bitset_is_equivalent (&(a->plan_un.scan.terms),
+			      &(b->plan_un.scan.terms)))
       {
 	/* take the one which has more key filters */
-	if (at_kf > bt_kf)
+	if (a_filter > b_filter)
 	  {
 	    return PLAN_COMP_LT;
 	  }
-	else if (at_kf < bt_kf)
+	else if (a_filter < b_filter)
 	  {
 	    return PLAN_COMP_GT;
 	  }
@@ -3801,6 +3803,46 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	    return PLAN_COMP_GT;
 	  }
       }
+    else if (bitset_subset (&(a->plan_un.scan.terms),
+			    &(b->plan_un.scan.terms)))
+      {
+	/* take the smaller index key range */
+	return PLAN_COMP_LT;
+      }
+    else if (bitset_subset (&(b->plan_un.scan.terms),
+			    &(a->plan_un.scan.terms)))
+      {
+	/* take the smaller index key range */
+	return PLAN_COMP_GT;
+      }
+
+    /* STEP 1-2: check by term cardinality */
+
+    if (a->plan_un.scan.equi == b->plan_un.scan.equi)
+      {
+	if (a_range == b_range)
+	  {
+	    /* both plans have the same number of range terms
+	     * we will check now the key filter terms
+	     */
+	    if (a_filter > b_filter)
+	      {
+		return PLAN_COMP_LT;
+	      }
+	    else if (a_filter < b_filter)
+	      {
+		return PLAN_COMP_GT;
+	      }
+	  }
+	else if (a_range > b_range)
+	  {
+	    return PLAN_COMP_LT;
+	  }
+	else if (a_range < b_range)
+	  {
+	    return PLAN_COMP_GT;
+	  }
+      }
 
     /* STEP 2: take the smaller access pages */
 
@@ -3810,16 +3852,16 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
 
     /* btree partial-key stats */
-    if (at == a_ent->col_num)
+    if (a_range == a_ent->col_num)
       {
 	a_keys = a_cum->keys;
       }
-    else if (at > 0 && at < a_last)
+    else if (a_range > 0 && a_range < a_last)
       {
-	a_keys = a_cum->pkeys[at - 1];
+	a_keys = a_cum->pkeys[a_range - 1];
       }
     else
-      {				/* at == 0 */
+      {				/* a_range == 0 */
 	a_keys = 1;		/* init as full range */
 	if (a_last > 0)
 	  {
@@ -3853,16 +3895,16 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     a_pages = a_leafs + a_cum->height - 1;
 
     /* btree partial-key stats */
-    if (bt == b_ent->col_num)
+    if (b_range == b_ent->col_num)
       {
 	b_keys = b_cum->keys;
       }
-    else if (bt > 0 && bt < b_last)
+    else if (b_range > 0 && b_range < b_last)
       {
-	b_keys = b_cum->pkeys[bt - 1];
+	b_keys = b_cum->pkeys[b_range - 1];
       }
     else
-      {				/* bt == 0 */
+      {				/* b_range == 0 */
 	b_keys = 1;		/* init as full range */
 	if (b_last > 0)
 	  {
