@@ -9680,8 +9680,22 @@ do_promote_partition (SM_CLASS * class_)
       return error;
     }
   /* Make sure we do not copy anything that actually belongs to the
-   * root class (the class to which this partition belongs to)
+   * root class (the class to which this partition belongs to).
+   * This includes: auto_increment flags, unique indexes, primary keys, 
+   * and foreign keys
    */
+  for (smattr = ctemplate->attributes; smattr != NULL;
+       smattr = (SM_ATTRIBUTE *) smattr->header.next)
+    {
+      /* reset flags that belong to the root partitioned table */
+      smattr->auto_increment = NULL;
+      smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
+      smattr->flags &= ~(SM_ATTFLAG_PRIMARY_KEY);
+      smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+      smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+      smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
+    }
+
   ctemplate->inheritance = NULL;
   ctemplate->methods = NULL;
   ctemplate->resolutions = NULL;
@@ -9701,6 +9715,10 @@ do_promote_partition (SM_CLASS * class_)
     {
       /* remove the partition information from properties */
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PARTITION);
+      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
+      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
+      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
+      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
     }
 
   if (dbt_finish_class (ctemplate) == NULL)
