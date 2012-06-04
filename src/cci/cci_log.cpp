@@ -361,7 +361,9 @@ public:
 
     if (logger != NULL)
       {
+        critical.lock();
         loggers[path] = logger;
+        critical.unlock();
       }
 
     return logger;
@@ -369,16 +371,19 @@ public:
 
   void removeLog(const char *path)
   {
+    critical.lock();
     IteratorPathLogger it = loggers.find(path);
     if (it != loggers.end())
       {
         delete it->second;
         loggers.erase(it);
       }
+    critical.unlock();
   }
 
   void clear()
   {
+    critical.lock();
     IteratorPathLogger it = loggers.begin();
     while (it != loggers.end())
       {
@@ -389,10 +394,12 @@ public:
         ++it;
       }
     loggers.clear();
+    critical.unlock();
   }
 
 private:
   MapPathLogger loggers;
+  cci::_Mutex critical;
 };
 
 static _LogManager logManager;
