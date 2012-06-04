@@ -95,7 +95,7 @@ public class CUBRIDOID {
 			throw new IllegalArgumentException();
 		}
 
-		if (attrNames.length != attrNames.length) {
+		if (attrNames.length != values.length) {
 			throw new IllegalArgumentException();
 		}
 
