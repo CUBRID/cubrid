@@ -292,7 +292,9 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 int
 cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
 {
-  char *base = NULL, *althosts = NULL;
+  char *base = NULL, *file = NULL, *althosts = NULL;
+  char path[PATH_MAX];
+
   T_URL_PROPERTY props[] = {
     {"altHosts", STRING_PROPERTY, &althosts},
     {"rcTime", INT_PROPERTY, &handle->rc_time},
@@ -300,7 +302,7 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
     {"queryTimeout", INT_PROPERTY, &handle->query_timeout},
     {"disconnectOnQueryTimeout", BOOL_PROPERTY,
      &handle->disconnect_on_query_timeout},
-    {"logFile", STRING_PROPERTY, &handle->log_filename},
+    {"logFile", STRING_PROPERTY, &file},
     {"logOnException", BOOL_PROPERTY, &handle->log_on_exception},
     {"logSlowQueries", BOOL_PROPERTY, &handle->log_slow_queries},
     {"slowQueryThresholdMillis", INT_PROPERTY,
@@ -325,7 +327,6 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
   if (althosts != NULL)
     {
       error = cci_url_set_althosts (handle, althosts);
-      free (althosts);
       if (error != CCI_ER_NO_ERROR)
 	{
 	  goto set_properties_end;
@@ -333,35 +334,53 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
     }
 
   /* for logging */
-  if (handle->log_filename == NULL)
+  if (handle->log_on_exception || handle->log_slow_queries
+      || handle->log_trace_api || handle->log_trace_network)
     {
-      char file[PATH_MAX];
-
-      if (base == NULL)
+      if (file == NULL)
 	{
-	  snprintf (file, PATH_MAX, "logs/cci_%04d.log", handle->id);
+	  if (base == NULL)
+	    {
+	      snprintf (path, PATH_MAX, "cci_%04d.log", handle->id);
+	    }
+	  else
+	    {
+	      snprintf (path, PATH_MAX, "%s/cci_%04d.log", base, handle->id);
+	    }
 	}
       else
 	{
-	  snprintf (file, PATH_MAX, "%s/cci_%04d.log", base, handle->id);
-	  free (base);
+	  if (base == NULL)
+	    {
+	      snprintf (path, PATH_MAX, "%s", file);
+	    }
+	  else
+	    {
+	      snprintf (path, PATH_MAX, "%s/%s", base, file);
+	    }
 	}
-      handle->log_filename = strdup (file);
+
+      handle->log_filename = strdup (path);
       if (handle->log_filename == NULL)
 	{
 	  error = CCI_ER_NO_MORE_MEMORY;
 	  goto set_properties_end;
 	}
-    }
 
-  if (handle->log_on_exception || handle->log_slow_queries
-      || handle->log_trace_api || handle->log_trace_network)
-    {
       handle->logger = cci_log_get (handle->log_filename);
+      if (handle->logger == NULL)
+	{
+	  error = CCI_ER_INVALID_URL;
+	  goto set_properties_end;
+	}
       cci_log_set_level (handle->logger, CCI_LOG_LEVEL_DEBUG);
     }
 
 set_properties_end:
+  FREE_MEM (althosts);
+  FREE_MEM (base);
+  FREE_MEM (file);
+
   API_SLOG (handle);
   API_ELOG (handle, error);
   return error;
