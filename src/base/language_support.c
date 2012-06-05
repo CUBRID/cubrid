@@ -512,9 +512,6 @@ lang_init_console_txt_conv (void)
 
   if (lang_Loc_data == NULL || lang_Loc_data->txt_conv == NULL)
     {
-#if !defined(WINDOWS)
-      (void) setlocale (LC_CTYPE, "");
-#endif
       return;
     }
 
