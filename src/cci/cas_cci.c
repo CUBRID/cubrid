@@ -297,6 +297,13 @@ cci_end (void)
 }
 
 int
+cci_get_version_string (char *str, size_t len)
+{
+  snprintf (str, len, "%s", build_number);
+  return 0;
+}
+
+int
 cci_get_version (int *major, int *minor, int *patch)
 {
 #ifdef CCI_DEBUG

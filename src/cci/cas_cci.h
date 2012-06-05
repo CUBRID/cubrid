@@ -657,6 +657,7 @@ extern "C"
   extern void cci_init (void);
   extern void cci_end (void);
 
+  extern int cci_get_version_string (char *str, size_t len);
   extern int cci_get_version (int *major, int *minor, int *patch);
   extern int CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip,
 					     int port,
