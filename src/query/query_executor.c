@@ -8420,33 +8420,38 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  error =
-		    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes,
-						 &crt_del_lob_info->
-						 attr_info);
-		  if (error != NO_ERROR)
+		  if (scan_code == S_SUCCESS)
 		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  for (i = 0; i < cls_info->no_lob_attrs; i++)
-		    {
-		      DB_VALUE *attr_valp =
-			&crt_del_lob_info->attr_info.values[i].dbvalue;
-		      if (!db_value_is_null (attr_valp))
+		      error =
+			heap_attrinfo_read_dbvalues (thread_p, oid, &recdes,
+						     &crt_del_lob_info->
+						     attr_info);
+		      if (error != NO_ERROR)
 			{
-			  DB_ELO *elo;
-			  error = NO_ERROR;
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      for (i = 0; i < cls_info->no_lob_attrs; i++)
+			{
+			  DB_VALUE *attr_valp =
+			    &crt_del_lob_info->attr_info.values[i].dbvalue;
+			  if (!db_value_is_null (attr_valp))
+			    {
+			      DB_ELO *elo;
+			      error = NO_ERROR;
 
-			  assert (db_value_type (attr_valp) == DB_TYPE_BLOB ||
-				  db_value_type (attr_valp) == DB_TYPE_CLOB);
-			  elo = db_get_elo (attr_valp);
-			  if (elo)
-			    {
-			      error = db_elo_delete (elo);
-			    }
-			  if (error != NO_ERROR)
-			    {
-			      GOTO_EXIT_ON_ERROR;
+			      assert (db_value_type (attr_valp) ==
+				      DB_TYPE_BLOB
+				      || db_value_type (attr_valp) ==
+				      DB_TYPE_CLOB);
+			      elo = db_get_elo (attr_valp);
+			      if (elo)
+				{
+				  error = db_elo_delete (elo);
+				}
+			      if (error != NO_ERROR)
+				{
+				  GOTO_EXIT_ON_ERROR;
+				}
 			    }
 			}
 		    }
