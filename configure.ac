@@ -452,14 +452,14 @@ AC_ARG_WITH([libedit],
 
 if test "$with_libedit" = "builtin"
 then
-	AC_CONFIG_SUBDIRS([external/libedit-20100424-3.0])
+	AC_CONFIG_SUBDIRS([external/libedit-20120522-3.0])
 	LIBEDIT_LIBS="\$(top_builddir)/external/lib/libedit.la"
 	LIBEDIT_INC="-I\$(top_builddir)/external/include"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS libedit-20100424-3.0"
+	EXTERNAL_PKGS="$EXTERNAL_PKGS libedit-20120522-3.0"
 else
 	LIBEDIT_LIBS="-L$with_libedit/lib -ledit"
 	LIBEDIT_INC="-I$with_libedit/include"
-	EXTERNAL_DIST="$EXTERNAL_DIST libedit-20100424-3.0"
+	EXTERNAL_DIST="$EXTERNAL_DIST libedit-20120522-3.0"
 fi
 AC_MSG_RESULT([$with_libedit])
 
