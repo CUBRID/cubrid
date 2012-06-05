@@ -404,7 +404,7 @@ cci_connect_with_url (char *url, char *user, char *password)
   char buf[LINE_MAX];
   char *conn_string;
   char *property = NULL;
-  char *p, *q, *end;
+  char *p, *q, *end, *nextp;
   char *host, *dbname;
   int port;
   int error;
@@ -466,18 +466,21 @@ cci_connect_with_url (char *url, char *user, char *password)
     }
 
   p = conn_string + 11;
-  host = strtok_r (p, ":", &q);
-  if (host == NULL)
+  nextp = strchr (p, ':');
+  if (nextp == NULL)
     {
       return CCI_ER_INVALID_URL;
     }
+  *nextp = '\0';
+  host = p;
 
-  p = strtok_r (NULL, ":", &q);
-  if (p == NULL)
+  p = nextp + 1;
+  nextp = strchr (p, ':');
+  if (nextp == NULL)
     {
       return CCI_ER_INVALID_URL;
     }
-
+  *nextp = '\0';
   end = NULL;
   port = (int) strtol (p, &end, 10);
   if (port <= 0 || (end != NULL && end[0] != '\0'))
@@ -485,30 +488,52 @@ cci_connect_with_url (char *url, char *user, char *password)
       return CCI_ER_INVALID_URL;
     }
 
-  dbname = strtok_r (NULL, ":", &q);
-  if (dbname == NULL)
+  p = nextp + 1;
+  nextp = strchr (p, ':');
+  if (nextp != NULL)
     {
-      return CCI_ER_INVALID_URL;
+      *nextp = '\0';
     }
+  dbname = p;
 
-  p = strtok_r (NULL, ":", &q);
-  if (p != NULL)
+  if (nextp != NULL)
     {
+      p = nextp + 1;
+      nextp = strchr (p, ':');
+      if (nextp != NULL)
+	{
+	  *nextp = '\0';
+	}
+
       if (use_url)
 	{
 	  user = p;
 	}
     }
+
+  if (nextp != NULL)
+    {
+      p = nextp + 1;
+      nextp = strchr (p, ':');
+      if (nextp != NULL)
+	{
+	  *nextp = '\0';
+	}
+      if (use_url)
+	{
+	  password = p;
+	}
+    }
+
   if (user[0] == '\0')
     {
       /* A user don't exist in the parameter and url */
       user = (char *) "public";
     }
 
-  p = strtok_r (NULL, ":", &q);
-  if (use_url)
+  if (nextp != NULL && *(nextp + 1) != '\0')
     {
-      password = (p == NULL) ? (char *) "" : p;
+      return CCI_ER_INVALID_URL;
     }
 
   con_handle_id = cci_get_new_handle_id (host, port, dbname, user, password);

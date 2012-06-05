@@ -245,7 +245,10 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
   char *token, *save_data = NULL, *end;
   int i, error = CCI_ER_NO_ERROR;
 
-  for (i = 0;; i++, data = NULL)
+  memcpy (handle->alter_hosts[0].ip_addr, handle->ip_addr, 4);
+  handle->alter_hosts[0].port = handle->port;
+
+  for (i = 1;; i++, data = NULL)
     {
       char *host, *port, *save_alter = NULL;
       int v;
