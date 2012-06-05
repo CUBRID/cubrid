@@ -529,7 +529,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
       if (srv_handle != NULL && srv_handle->stmt_type == CUBRID_STMT_SELECT)
 #else
-      if (srv_handle != NULL && srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+      if (srv_handle != NULL
+	  && srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
 #endif
 	{
 	  fetch_flag = 1;
@@ -826,6 +827,48 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
       if (max_str_len <= 0 || max_str_len > DB_MAX_STRING_LENGTH)
 	max_str_len = DB_MAX_STRING_LENGTH;
       net_buf_cp_int (net_buf, max_str_len, NULL);
+    }
+  else if (param_name == CCI_PARAM_NO_BACKSLASH_ESCAPES)
+    {
+      char *p;
+      char buffer[LINE_MAX];
+      int err_code, no_backslash_escapes;
+
+      strncpy (buffer, "no_backslash_escapes", LINE_MAX);
+      err_code = db_get_system_parameters (buffer, LINE_MAX);
+
+      if (err_code != NO_ERROR)
+	{
+	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return FN_KEEP_CONN;
+	}
+
+      p = strchr (buffer, '=');
+
+      if (p == NULL)
+	{
+	  ERROR_INFO_SET (CAS_ER_DBMS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return FN_KEEP_CONN;
+	}
+
+      p++;
+
+      if (strncasecmp (p, "y", 1) == 0)
+	{
+	  no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_TRUE;
+	}
+      else
+	{
+	  no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_FALSE;
+	}
+
+      cas_log_write (0, true, "get_db_parameter no_backslash_escapes %d",
+		     no_backslash_escapes);
+
+      net_buf_cp_int (net_buf, 0, NULL);
+      net_buf_cp_int (net_buf, no_backslash_escapes, NULL);
     }
   else
     {

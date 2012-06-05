@@ -228,9 +228,9 @@ CCI_FREE_FUNCTION cci_free = free;
 
 
 #ifdef CCI_DEBUG
-/* 
+/*
  * cci debug message file.
- * CAUTION: this file size is not limited 
+ * CAUTION: this file size is not limited
  */
 static FILE *cci_debug_fp = NULL;
 static const char *cci_debug_filename = "cci.log";
@@ -1709,6 +1709,133 @@ cci_get_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
 
   con_handle->ref_count = 0;
   return err_code;
+}
+
+long
+cci_escape_string (int con_h_id, char *to, const char *from,
+		   unsigned long length, T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle;
+  int ansi_quote;
+  int retval = 0;
+  unsigned long i;
+  char *target_ptr = to;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg ("cci_escape_string %d", con_h_id));
+#endif
+
+  err_buf_reset (err_buf);
+
+  while (1)
+    {
+      MUTEX_LOCK (con_handle_table_mutex);
+
+      con_handle = hm_find_con_handle (con_h_id);
+      if (con_handle == NULL)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  return CCI_ER_CON_HANDLE;
+	}
+
+      if (con_handle->ref_count > 0)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  SLEEP_MILISEC (0, 100);
+	}
+      else
+	{
+	  con_handle->ref_count = 1;
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  break;
+	}
+    }
+
+  if (IS_OUT_TRAN_STATUS (con_handle))
+    {
+      retval = cas_connect (con_handle, err_buf);
+    }
+
+  if (retval < 0)
+    {
+      goto err_exit;
+    }
+
+  if (con_handle->no_backslash_escapes == CCI_NO_BACKSLASH_ESCAPES_NOT_SET)
+    {
+      retval = qe_get_db_parameter (con_handle,
+				    CCI_PARAM_NO_BACKSLASH_ESCAPES,
+				    &con_handle->no_backslash_escapes,
+				    err_buf);
+
+      if (retval < 0)
+	{
+	  goto err_exit;
+	}
+    }
+
+  for (i = 0; i < length; i++)
+    {
+      if (from[i] == '\'')
+	{
+	  /* single-quote is converted to two-single-quote */
+	  *(target_ptr) = '\'';
+	  *(target_ptr + 1) = '\'';
+	  target_ptr += 2;
+	}
+      else if (con_handle->no_backslash_escapes ==
+	       CCI_NO_BACKSLASH_ESCAPES_FALSE)
+	{
+	  if (from[i] == '\0')
+	    {
+	      /* ASCII 0 is converted to "\" + "0" */
+	      *(target_ptr) = '\\';
+	      *(target_ptr + 1) = '0';
+	      target_ptr += 2;
+	    }
+	  else if (from[i] == '\r')
+	    {
+	      /* carrage return is converted to "\" + "r" */
+	      *(target_ptr) = '\\';
+	      *(target_ptr + 1) = 'r';
+	      target_ptr += 2;
+	    }
+	  else if (from[i] == '\n')
+	    {
+	      /* new line is converted to "\" + "n" */
+	      *(target_ptr) = '\\';
+	      *(target_ptr + 1) = 'n';
+	      target_ptr += 2;
+	    }
+	  else if (from[i] == '\\')
+	    {
+	      /* \ is converted to \\ */
+	      *(target_ptr) = '\\';
+	      *(target_ptr + 1) = '\\';
+	      target_ptr += 2;
+	    }
+	  else
+	    {
+	      *(target_ptr) = from[i];
+	      target_ptr++;
+	    }
+	}
+      else
+	{
+	  *(target_ptr) = from[i];
+	  target_ptr++;
+	}
+    }
+
+  /* terminating NULL char */
+  *target_ptr = '\0';
+
+  con_handle->ref_count = 0;
+  return ((long) (target_ptr - to));
+
+err_exit:
+  con_handle->ref_count = 0;
+  return ((long) retval);
 }
 
 int
@@ -4396,8 +4523,11 @@ cci_get_err_msg (int err_code, char *buf, int bufsize)
 static void
 err_buf_reset (T_CCI_ERROR * err_buf)
 {
-  err_buf->err_code = 0;
-  err_buf->err_msg[0] = '\0';
+  if (err_buf)
+    {
+      err_buf->err_code = 0;
+      err_buf->err_msg[0] = '\0';
+    }
 }
 
 static int
@@ -4559,9 +4689,13 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
   err_code = cas_connect_internal (con_handle, err_buf, connect);
 
   /* req_handle_table should be managed by list too. */
-  if ((*connect) && IS_BROKER_STMT_POOL (con_handle))
+  if (((*connect) != 0) && IS_BROKER_STMT_POOL (con_handle))
     {
       hm_invalidate_all_req_handle (con_handle);
+    }
+  if ((*connect) != 0)
+    {
+      con_handle->no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_NOT_SET;
     }
 
   return err_code;

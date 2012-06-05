@@ -825,6 +825,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->deferred_close_handle_count = 0;
 
   con_handle->is_holdable = 0;
+  con_handle->no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_NOT_SET;
 
   return 0;
 }

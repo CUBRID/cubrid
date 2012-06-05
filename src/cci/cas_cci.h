@@ -218,6 +218,14 @@ extern "C"
     CCI_AUTOCOMMIT_TRUE
   } CCI_AUTOCOMMIT_MODE;
 
+  typedef enum
+  {
+    CCI_NO_BACKSLASH_ESCAPES_NOT_SET = -1,
+    CCI_NO_BACKSLASH_ESCAPES_FALSE = 0,
+    CCI_NO_BACKSLASH_ESCAPES_TRUE = 1
+  } CCI_NO_BACKSLASH_ESCAPES_MODE;
+
+
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
  ************************************************************************/
@@ -314,7 +322,10 @@ extern "C"
     CCI_PARAM_LOCK_TIMEOUT = 2,
     CCI_PARAM_MAX_STRING_LENGTH = 3,
     CCI_PARAM_AUTO_COMMIT = 4,
-    CCI_PARAM_LAST = CCI_PARAM_AUTO_COMMIT
+    CCI_PARAM_LAST = CCI_PARAM_AUTO_COMMIT,
+
+    /* below parameters are used internally */
+    CCI_PARAM_NO_BACKSLASH_ESCAPES = 5
   } T_CCI_DB_PARAM;
 
   typedef enum
@@ -685,6 +696,8 @@ extern "C"
 				   void *value, T_CCI_ERROR * err_buf);
   extern int cci_set_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,
 				   void *value, T_CCI_ERROR * err_buf);
+  extern long cci_escape_string (int con_h_id, char *to, const char *from,
+				 unsigned long length, T_CCI_ERROR * err_buf);
   extern int cci_close_req_handle (int req_handle);
   extern int cci_cursor (int req_handle,
 			 int offset,

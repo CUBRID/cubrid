@@ -234,6 +234,7 @@ typedef struct
   int deferred_close_handle_count;
   void *logger;
   int is_holdable;
+  int no_backslash_escapes;
 } T_CON_HANDLE;
 
 /************************************************************************
