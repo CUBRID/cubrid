@@ -5540,6 +5540,20 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  attribute = PT_TR_ATTR_NAME (attr);
 	}
+      error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (smclass->partition_of != NULL && smclass->users == NULL)
+	{
+	  /* Triggers must be created on the partitioned table, not on a
+	   * specific partition
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_INVALID_PARTITION_REQUEST, 0);
+	  return ER_INVALID_PARTITION_REQUEST;
+	}
     }
   cond = PT_NODE_COND (statement);
   cond_time = PT_NODE_COND_TIME (statement);
@@ -5581,17 +5595,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = (void *) value;
 #endif
 
-  if (class_ == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  if (smclass->users != NULL)
+  if (smclass != NULL && smclass->users != NULL)
     {
       /* We have to flush the newly created trigger if the class it belongs to
        * has subclasses. This is because the same trigger is assigned to the
