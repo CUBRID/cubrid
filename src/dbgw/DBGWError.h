@@ -44,6 +44,7 @@ namespace dbgw
       VALUE_NOT_EXIST_SET                       = -22300,
       VALUE_MISMATCH_VALUE_TYPE                 = -22301,
       VALUE_INVALID_VALUE_TYPE                  = -22302,
+      VALUE_INVALID_VALUE_FORMAT                = -22303,
 
       CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
       CLIENT_INVALID_CLIENT                     = -22401,
@@ -66,7 +67,8 @@ namespace dbgw
       XML_INVALID_PROPERTY_VALUE                = -22706,
       XML_INVALID_SYNTAX                        = -22707,
 
-      MUTEX_INIT_FAIL                           = -22800
+      EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
+      EXTERNAL_STANDARD_ERROR                   = -22801
     };
 
   }
@@ -79,6 +81,7 @@ namespace dbgw
     DBGWException(int nErrorCode, const string &errorMessage) throw();
     DBGWException(int nErrorCode, const boost::format &fmt) throw();
     DBGWException(const DBGWException &exception) throw();
+    DBGWException(const std::exception &exception) throw();
     virtual ~ DBGWException() throw();
 
   public:
@@ -109,6 +112,7 @@ namespace dbgw
         const boost::format &fmt) throw();
     DBGWInterfaceException(const DBGWException &exception) throw();
     DBGWInterfaceException(const DBGWInterfaceException &exception) throw();
+    DBGWInterfaceException(const std::exception &exception) throw();
 
   public:
     int getInterfaceErrorCode() const;
@@ -204,6 +208,12 @@ namespace dbgw
   public:
     InvalidValueTypeException(int type) throw();
     InvalidValueTypeException(const char *szType) throw();
+  };
+
+  class InvalidValueFormatException: public DBGWException
+  {
+  public:
+    InvalidValueFormatException(const char *szType, const char *szFormat) throw();
   };
 
   class MultisetIgnoreResultFlagFalseException: public DBGWException

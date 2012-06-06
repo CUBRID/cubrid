@@ -123,7 +123,6 @@ namespace dbgw
           int nAffectedRow, bool bFetchData);
       void doMakeMetadata(MetaDataList &metaList);
       DBGWValueSharedPtr makeValue(int nColNo, const Metadata &stMetadata);
-      void convertDateFormat(DBGWRawValue &rawValue, char *szBuffer, int utype);
 
     private:
       int m_hCCIRequest;

@@ -125,6 +125,13 @@ namespace dbgw
   {
   }
 
+  DBGWException::DBGWException(const std::exception &exception) throw() :
+    std::exception(exception),
+    m_nErrorCode(DBGWErrorCode::EXTERNAL_STANDARD_ERROR),
+    m_errorMessage(exception.what()), m_what(exception.what())
+  {
+  }
+
   DBGWException::~DBGWException() throw()
   {
   }
@@ -196,6 +203,12 @@ namespace dbgw
       const DBGWInterfaceException &exception) throw() :
     DBGWException(exception),
     m_nInterfaceErrorCode(exception.m_nInterfaceErrorCode)
+  {
+  }
+
+  DBGWInterfaceException::DBGWInterfaceException(
+      const std::exception &exception) throw() :
+    DBGWException(exception), m_nInterfaceErrorCode(DBGWErrorCode::NO_ERROR)
   {
   }
 
@@ -321,6 +334,13 @@ namespace dbgw
   InvalidValueTypeException::InvalidValueTypeException(const char *szType) throw() :
     DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
         boost::format("The value type %s is invalid.") % szType)
+  {
+  }
+
+  InvalidValueFormatException::InvalidValueFormatException(const char *szType,
+      const char *szFormat) throw() :
+    DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
+        boost::format("The %s is not valid %s type.") % szFormat % szType)
   {
   }
 
@@ -481,7 +501,7 @@ namespace dbgw
   }
 
   MutexInitFailException::MutexInitFailException() throw() :
-    DBGWException(DBGWErrorCode::MUTEX_INIT_FAIL,
+    DBGWException(DBGWErrorCode::EXTERNAL_MUTEX_INIT_FAIL,
         "Failed to init mutex object.")
   {
   }

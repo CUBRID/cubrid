@@ -42,6 +42,7 @@ namespace dbgw
         {
         case DBGW_VAL_TYPE_STRING:
         case DBGW_VAL_TYPE_CHAR:
+        case DBGW_VAL_TYPE_DATETIME:
           return CCI_A_TYPE_STR;
         case DBGW_VAL_TYPE_INT:
           return CCI_A_TYPE_INT;
@@ -69,6 +70,10 @@ namespace dbgw
         case CCI_U_TYPE_NCHAR:
         case CCI_U_TYPE_VARNCHAR:
           return DBGW_VAL_TYPE_STRING;
+        case CCI_U_TYPE_DATE:
+        case CCI_U_TYPE_DATETIME:
+        case CCI_U_TYPE_TIMESTAMP:
+          return DBGW_VAL_TYPE_DATETIME;
         default:
           DBGW_LOG_WARN((boost::
               format
@@ -535,6 +540,7 @@ namespace dbgw
               nResult = doBindInt(i + 1, pValue);
               break;
             case DBGW_VAL_TYPE_STRING:
+            case DBGW_VAL_TYPE_DATETIME:
               nResult = doBindString(i + 1, pValue);
               break;
             case DBGW_VAL_TYPE_LONG:
@@ -772,6 +778,7 @@ namespace dbgw
           throw e;
         }
 
+      metaList.clear();
       for (int i = 0; i < nColNum; i++)
         {
           Metadata stMetadata;
@@ -801,45 +808,10 @@ namespace dbgw
           throw e;
         }
 
-      char szBuffer[32];
-      if (stMetadata.orgType == CCI_U_TYPE_TIMESTAMP || stMetadata.orgType
-          == CCI_U_TYPE_DATE || stMetadata.orgType == CCI_U_TYPE_DATETIME)
-        {
-          convertDateFormat(rawValue, szBuffer, stMetadata.orgType);
-        }
       pValue = DBGWValueSharedPtr(
           new DBGWValue(rawValue, stMetadata.type, nIndicator == -1));
 
       return pValue;
-    }
-
-    void DBGWCUBRIDResult::convertDateFormat(DBGWRawValue &rawValue,
-        char *szBuffer, int utype)
-    {
-      char *p = szBuffer;
-      const char *q = rawValue.szValue;
-
-      if (q == NULL)
-        {
-          return;
-        }
-
-      memcpy(p, q, 10);
-      p += 10;
-      q += 10;
-
-      if (utype == CCI_U_TYPE_DATE)
-        {
-          memcpy(p, "T00:00:00+09:00\0", 16);
-        }
-      else
-        {
-          *(p++) = 'T';
-          memcpy(p, q + 1, 8);
-          memcpy(p + 8, "+09:00\0", 7);
-        }
-
-      rawValue.szValue = szBuffer;
     }
 
   }

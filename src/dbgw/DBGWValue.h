@@ -29,7 +29,8 @@ namespace dbgw
     DBGW_VAL_TYPE_INT = 0,
     DBGW_VAL_TYPE_STRING,
     DBGW_VAL_TYPE_LONG,
-    DBGW_VAL_TYPE_CHAR
+    DBGW_VAL_TYPE_CHAR,
+    DBGW_VAL_TYPE_DATETIME
   };
 
   const char *getDBGWValueTypeString(int type);
@@ -60,6 +61,7 @@ namespace dbgw
     bool getCString(char **pValue) const;
     bool getLong(int64 *pValue) const;
     bool getChar(char *pValue) const;
+    bool getDateTime(struct tm *pValue) const;
     DBGWValueType getType() const;
     void *getVoidPtr() const;
     int getLength() const;
@@ -69,6 +71,9 @@ namespace dbgw
   public:
     bool operator==(const DBGWValue &value) const;
     bool operator!=(const DBGWValue &value) const;
+
+  private:
+    struct tm toTm() const;
 
   private:
     DBGWValueType m_type;
@@ -117,11 +122,13 @@ namespace dbgw
     virtual bool getCString(const char *szKey, char **pValue) const;
     virtual bool getLong(const char *szKey, int64 *pValue) const;
     virtual bool getChar(const char *szKey, char *pValue) const;
+    virtual bool getDateTime(const char *szKey, struct tm *pValue) const;
     virtual const DBGWValue *getValue(size_t nIndex) const;
     virtual bool getInt(int nIndex, int *pValue) const;
     virtual bool getCString(int nIndex, char **pValue) const;
     virtual bool getLong(int nIndex, int64 *pValue) const;
     virtual bool getChar(int nIndex, char *pValue) const;
+    virtual bool getDateTime(int nIndex, struct tm *pValue) const;
     virtual size_t size() const;
 
   public:

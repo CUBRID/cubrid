@@ -16,6 +16,8 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
+#include <boost/date_time/gregorian/gregorian.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
 #include "DBGWValue.h"
@@ -36,6 +38,8 @@ namespace dbgw
         return "LONG";
       case DBGW_VAL_TYPE_CHAR:
         return "CHAR";
+      case DBGW_VAL_TYPE_DATETIME:
+        return "DATETIME";
       default:
         return "UNDEFINED";
       }
@@ -83,6 +87,7 @@ namespace dbgw
                 m_stValue.lValue = *(int64 *) pValue;
                 break;
               case DBGW_VAL_TYPE_STRING:
+              case DBGW_VAL_TYPE_DATETIME:
                 if (*(char **) pValue == NULL)
                   {
                     m_stValue.szValue = NULL;
@@ -90,7 +95,7 @@ namespace dbgw
                   }
                 else
                   {
-                    m_stValue.szValue = strdup((char *) pValue);
+                    m_stValue.szValue = strdup(*(char **) pValue);
                   }
                 break;
               case DBGW_VAL_TYPE_CHAR:
@@ -133,6 +138,7 @@ namespace dbgw
       {
       case DBGW_VAL_TYPE_STRING:
       case DBGW_VAL_TYPE_CHAR:
+      case DBGW_VAL_TYPE_DATETIME:
         if (rawValue.szValue != NULL)
           {
             m_stValue.szValue = strdup(rawValue.szValue);
@@ -259,7 +265,8 @@ namespace dbgw
 
     try
       {
-        if (m_type != DBGW_VAL_TYPE_STRING && m_type != DBGW_VAL_TYPE_CHAR)
+        if (m_type != DBGW_VAL_TYPE_STRING && m_type != DBGW_VAL_TYPE_CHAR
+            && m_type != DBGW_VAL_TYPE_DATETIME)
           {
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_STRING);
             DBGW_LOG_ERROR(e.what());
@@ -329,6 +336,29 @@ namespace dbgw
       }
   }
 
+  bool DBGWValue::getDateTime(struct tm *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        if (m_type != DBGW_VAL_TYPE_DATETIME)
+          {
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        *pValue = toTm();
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   DBGWValueType DBGWValue::getType() const
   {
     /**
@@ -383,6 +413,7 @@ namespace dbgw
         switch (m_type)
           {
           case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_DATETIME:
             if (m_stValue.szValue == NULL)
               {
                 return 0;
@@ -422,6 +453,7 @@ namespace dbgw
           {
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_CHAR:
+          case DBGW_VAL_TYPE_DATETIME:
             if (m_stValue.szValue == NULL)
               {
                 return "";
@@ -438,6 +470,11 @@ namespace dbgw
           }
       }
     catch (DBGWException &e)
+      {
+        setLastException(e);
+        return "";
+      }
+    catch (std::exception &e)
       {
         setLastException(e);
         return "";
@@ -469,6 +506,7 @@ namespace dbgw
           case DBGW_VAL_TYPE_CHAR:
             return *m_stValue.szValue == *value.m_stValue.szValue;
           case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_DATETIME:
             return strcmp(m_stValue.szValue, m_stValue.szValue) == 0;
           default:
             InvalidValueTypeException e(m_type);
@@ -486,6 +524,28 @@ namespace dbgw
   bool DBGWValue::operator!=(const DBGWValue &value) const
   {
     return !(operator ==(value));
+  }
+
+  struct tm DBGWValue::toTm() const
+  {
+    try
+      {
+        int nYear, nMonth, nDay;
+        int nHour = 0, nMin = 0, nSec = 0, nMilSec = 0;
+
+        sscanf(m_stValue.szValue, "%d-%d-%d %d:%d:%d.%d", &nYear, &nMonth, &nDay, &nHour,
+            &nMin, &nSec, &nMilSec);
+
+        return to_tm(
+            boost::posix_time::ptime(boost::gregorian::date(nYear, nMonth, nDay),
+                boost::posix_time::time_duration(nHour, nMin, nSec, nMilSec)));
+      }
+    catch (...)
+      {
+        InvalidValueFormatException e("DateTime", m_stValue.szValue);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
   }
 
   DBGWValueSet::DBGWValueSet()
@@ -683,7 +743,7 @@ namespace dbgw
             m_valueList.resize(nIndex + 1);
           }
 
-        if (m_valueList[nIndex]->getType() != DBGW_VAL_TYPE_UNDEFINED)
+        if (m_valueList[nIndex] != NULL)
           {
             removeIndexMap(nIndex);
           }
@@ -869,6 +929,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
+
     DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
     m_valueList.push_back(p);
   }
@@ -1097,6 +1158,29 @@ namespace dbgw
       }
   }
 
+  bool DBGWValueSet::getDateTime(const char *szKey, struct tm *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        const DBGWValue *p = getValue(szKey);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->getDateTime(pValue);
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   const DBGWValue *DBGWValueSet::getValue(size_t nIndex) const
   {
     clearException();
@@ -1202,6 +1286,29 @@ namespace dbgw
         else
           {
             return p->getChar(pValue);
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::getDateTime(int nIndex, struct tm *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        const DBGWValue *p = getValue(nIndex);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->getDateTime(pValue);
           }
       }
     catch (DBGWException &e)
