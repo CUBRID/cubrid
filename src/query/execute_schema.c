@@ -8850,7 +8850,8 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  /* If the names array is to small to accept a new element,
 	   * reallocate it
 	   */
-	  char **buf = (char **) realloc (names, 10 * sizeof (char *));
+	  char **buf =
+	    (char **) realloc (names, (allocated + 10) * sizeof (char *));
 	  if (buf == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
