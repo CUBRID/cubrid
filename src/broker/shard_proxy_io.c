@@ -1936,7 +1936,9 @@ proxy_socket_io_write_internal (T_SOCKET_IO * sock_io_p)
       goto write_end;
     }
 
-  if (write_len < remain)
+  send_buffer->offset += write_len;
+
+  if (send_buffer->offset < send_buffer->length)
     {
       FD_SET (sock_io_p->fd, &wnewset);
       return write_len;
