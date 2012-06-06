@@ -1969,7 +1969,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	    }
 
 	  derived_table = class_spec->info.spec.derived_table;
-	  if (derived_table != NULL)
+	  if (derived_table == NULL)
 	    {			/* error */
 	      goto exit_on_error;
 	    }
