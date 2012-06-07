@@ -2007,8 +2007,7 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       || srv_handle->is_no_data)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
+      goto fetch_error;
     }
 
   stmt = srv_handle->session;
@@ -2041,16 +2040,14 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	    {
 	      err_code =
 		ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
-	      NET_BUF_ERR_SET (net_buf);
-	      return err_code;
+	      goto fetch_error;
 	    }
 	  break;
 	}
       else if (!ORA_SUCCESS (ret))
 	{
 	  err_code = cas_oracle_get_errno ();
-	  NET_BUF_ERR_SET (net_buf);
-	  return err_code;
+	  goto fetch_error;
 	}
       net_buf_cp_int (net_buf, cursor_pos, NULL);
       net_buf_cp_object (net_buf, &tuple_obj);
@@ -2060,6 +2057,21 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
     }
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, tuple);
   return ret;
+
+fetch_error:
+  NET_BUF_ERR_SET (net_buf);
+#if defined(CUBRID_SHARD)
+#ifndef LIBCAS_FOR_JSP
+  if (srv_handle->auto_commit_mode == TRUE
+      && srv_handle->forward_only_cursor == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+#endif /* !LIBCAS_FOR_JSP */
+#endif /* CUBRID_SHARD */
+  errors_in_transaction++;
+
+  return err_code;
 }
 
 int
