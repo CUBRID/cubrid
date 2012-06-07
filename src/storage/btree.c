@@ -450,7 +450,8 @@ static int btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY *
 						       int offset,
 						       VPID * first_ovfl_vpid,
 						       OID * class_oid);
-
+static int btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
+			     int slot_id, RECDES * rec, int is_peeking);
 /*
  * btree_clear_key_value () -
  *   return: cleared flag
@@ -12758,6 +12759,56 @@ error:
 }
 
 /*
+ * btree_get_record -
+ *   return:
+ *
+ *   page_p(in):
+ *   slot_id(in):
+ *   rec(out):
+ *   is_peeking(in):
+ */
+static int
+btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int slot_id,
+		  RECDES * rec, int is_peeking)
+{
+#if !defined(NDEBUG)
+  int num_records, key_cnt;
+  char *header_ptr;
+
+  if (btree_get_header_ptr (page_p, &header_ptr) == NULL)
+    {
+      goto error;
+    }
+
+  if (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE)
+    {
+      assert (BTREE_GET_NODE_KEY_CNT (header_ptr) + 1
+	      == spage_number_of_records (page_p));
+    }
+  else
+    {
+      assert (BTREE_GET_NODE_KEY_CNT (header_ptr) + 2
+	      == spage_number_of_records (page_p));
+    }
+#endif
+
+  if (slot_id == HEADER)
+    {
+      goto error;
+    }
+
+  if (spage_get_record (page_p, slot_id, rec, is_peeking) != S_SUCCESS)
+    {
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+  return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+}
+
+/*
  * btree_find_last_leaf () -
  *   return: page pointer
  *   btid(in):
@@ -12837,16 +12888,12 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 	  /* for empty leaf-page, retry one more */
 	  if (key_cnt <= 0)
 	    {
-	      if (num_records >= 2)
+	      /* get the last sibling record */
+	      if (btree_get_record (thread_p, P, num_records - 2,
+				    &rec, PEEK) == NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, Q);
 
-		  /* get the last sibling record */
-		  if (spage_get_record (P, num_records - 2, &rec, PEEK)
-		      != S_SUCCESS)
-		    {
-		      goto error;
-		    }
 		  btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
 		  Q_vpid = nleaf.pnt;
 		  Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE,
@@ -14194,7 +14241,8 @@ exit_on_error:
  */
 static int
 btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
-				  bool is_iss, bool * is_key_range_satisfied,
+				  bool is_iss,
+				  bool * is_key_range_satisfied,
 				  bool * is_key_filter_satisfied,
 				  bool need_to_check_null)
 {
@@ -14806,8 +14854,9 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
    */
 
   /* fix the current leaf page again */
-  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			   PGBUF_UNCONDITIONAL_LATCH);
+  bts->C_page =
+    pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH);
   if (bts->C_page == NULL)
     {
       goto exit_on_error;
@@ -15694,8 +15743,8 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 		    int oids_size, FILTER_INFO * filter,
 		    INDX_SCAN_ID * index_scan_id_p,
 		    bool need_construct_btid_int, bool need_count_only,
-		    DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower,
-		    bool need_to_check_null)
+		    DB_BIGINT * key_limit_upper,
+		    DB_BIGINT * key_limit_lower, bool need_to_check_null)
 {
   OID *mem_oid_ptr;
   int pg_oid_cnt;
