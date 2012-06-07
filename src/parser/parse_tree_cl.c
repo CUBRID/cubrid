@@ -5509,10 +5509,15 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_APPLY_PARTITION:
       if (p->info.alter.alter_clause.partition.info)
 	{
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+
 	  r1 = pt_print_bytes_l (parser,
 				 p->info.alter.alter_clause.partition.info);
 	  q = pt_append_nulstring (parser, q, " partition by ");
 	  q = pt_append_varchar (parser, q, r1);
+
+	  parser->custom_print = save_custom;
 	}
       break;
     case PT_REMOVE_PARTITION:
@@ -5521,6 +5526,9 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_REORG_PARTITION:
       if (p->info.alter.alter_clause.partition.name_list)
 	{
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+
 	  r1 =
 	    pt_print_bytes_l (parser,
 			      p->info.alter.alter_clause.partition.name_list);
@@ -5535,6 +5543,8 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_varchar (parser, q, r2);
 	      q = pt_append_nulstring (parser, q, " ) ");
 	    }
+
+	  parser->custom_print = save_custom;
 	}
       break;
     case PT_ANALYZE_PARTITION:
@@ -5689,9 +5699,12 @@ static PARSER_VARCHAR *
 pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
+  unsigned int saved_cp = parser->custom_print;
 
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
+  parser->custom_print = saved_cp;
 
   b = pt_append_nulstring (parser, b, "alter");
   if (p->info.index.reverse)
@@ -6555,9 +6568,14 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.create_entity.partition_info)
     {
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
+
       r1 = pt_print_bytes_l (parser, p->info.create_entity.partition_info);
       q = pt_append_nulstring (parser, q, " partition by ");
       q = pt_append_varchar (parser, q, r1);
+
+      parser->custom_print = save_custom;
     }
 
   if (p->info.create_entity.create_select)
@@ -6636,8 +6654,20 @@ static PARSER_VARCHAR *
 pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1 = 0, *r2 = 0, *r3 = 0, *r4 = 0;
+  unsigned int saved_cp = parser->custom_print;
 
-  r2 = pt_print_bytes_l (parser, p->info.index.column_names);
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+
+  if (p->info.index.function_expr == NULL)
+    {
+      /* normal index */
+      r2 = pt_print_bytes_l (parser, p->info.index.column_names);
+    }
+  else
+    {
+      /* function index */
+      r2 = pt_print_bytes_l (parser, p->info.index.function_expr);
+    }
 
   if (!(parser->custom_print & PT_SUPPRESS_INDEX))
     {
@@ -6694,6 +6724,8 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " where ");
       b = pt_append_varchar (parser, b, r4);
     }
+
+  parser->custom_print = saved_cp;
 
   return b;
 }
@@ -8193,9 +8225,12 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
   const char *index_name = NULL;
+  unsigned int saved_cp = parser->custom_print;
 
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
+  parser->custom_print = saved_cp;
 
   b = pt_append_nulstring (parser, b, "drop");
   if (p->info.index.hint != PT_HINT_NONE)
