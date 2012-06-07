@@ -248,7 +248,7 @@ public class CUBRIDDriver implements Driver {
 			resolvedUrl = "jdbc:cubrid:" + hostname + ":" + port + ":"
 					+ db_name + ":" + user + "::";
 			if (prop_string != null) {
-				resolvedUrl += "?" + prop_string;
+				resolvedUrl += prop_string;
 			}
 
 			connProperties.setProperties(info);
