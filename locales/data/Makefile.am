@@ -18,8 +18,6 @@
 
 datadir = @CUBRID_SHLOCALESDIR@/data
 
-data_DATA = ducet.txt unicodedata.txt
-
 dist_data_DATA = ducet.txt unicodedata.txt
 
 SUBDIRS = ldml codepages

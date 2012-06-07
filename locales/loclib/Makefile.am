@@ -19,6 +19,4 @@
 
 loclibdir = @CUBRID_SHLOCALESDIR@/loclib
 
-loclib_DATA = build_locale.sh $(top_srcdir)/src/base/locale_lib_common.h
-
 dist_loclib_DATA = build_locale.sh $(top_srcdir)/src/base/locale_lib_common.h

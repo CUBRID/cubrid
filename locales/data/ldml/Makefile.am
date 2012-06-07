@@ -19,7 +19,5 @@
 
 ldmldir = @CUBRID_SHLOCALESDIR@/data/ldml
 
-ldml_DATA = cubrid_de_DE.xml cubrid_es_ES.xml cubrid_fr_FR.xml cubrid_it_IT.xml cubrid_ja_JP.xml cubrid_km_KH.xml cubrid_ko_KR.xml cubrid_tr_TR.xml cubrid_vi_VN.xml cubrid_zh_CN.xml
-
 dist_ldml_DATA = cubrid_de_DE.xml cubrid_es_ES.xml cubrid_fr_FR.xml cubrid_it_IT.xml cubrid_ja_JP.xml cubrid_km_KH.xml cubrid_ko_KR.xml cubrid_tr_TR.xml cubrid_vi_VN.xml cubrid_zh_CN.xml
 

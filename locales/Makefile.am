@@ -17,14 +17,6 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-localesdir = @CUBRID_SHLOCALESDIR@
-
 SUBDIRS = data loclib
 
-locales_DATA = make_locale.sh
-dist_locales_DATA = make_locale.sh
-
-install-data-hook:
-	cp $(top_srcdir)/locales/make_locale.sh $(prefix)/bin/make_locale.sh
-	chmod 755 $(prefix)/bin/make_locale.sh
-	rm -f $(prefix)/locales/make_locale.sh
+dist_bin_SCRIPTS = make_locale.sh
