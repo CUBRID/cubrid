@@ -68,13 +68,11 @@ public class UTimedDataInputStream {
 	    try {
 		return stream.readInt();
 	    } catch (SocketTimeoutException e) {
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-		if (timeout <= 0) {
-		    continue;
-		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
 		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
 		    throw new SocketTimeoutException(msg);
 		}
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
 	    }
 	}
     }
@@ -95,13 +93,11 @@ public class UTimedDataInputStream {
 		stream.readFully(b);
 		return;
 	    } catch (SocketTimeoutException e) {
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-		if (timeout <= 0) {
-		    continue;
-		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
 		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
 		    throw new SocketTimeoutException(msg);
 		}
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
 	    }
 	}
     }
@@ -113,13 +109,11 @@ public class UTimedDataInputStream {
 	    try {
 		return stream.read(b);
 	    } catch (SocketTimeoutException e) {
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-		if (timeout <= 0) {
-		    continue;
-		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
 		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
 		    throw new SocketTimeoutException(msg);
 		}
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
 	    }
 	}
     }
@@ -135,13 +129,11 @@ public class UTimedDataInputStream {
 	    try {
 		return stream.read(b, off, len);
 	    } catch (SocketTimeoutException e) {
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-		if (timeout <= 0) {
-		    continue;
-		} else if (timeout - (System.currentTimeMillis() - begin) <= 0) {
+		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
 		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
 		    throw new SocketTimeoutException(msg);
 		}
+		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
 	    }
 	}
     }

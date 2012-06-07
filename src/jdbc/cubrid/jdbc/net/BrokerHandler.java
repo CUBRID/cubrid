@@ -34,9 +34,9 @@ public class BrokerHandler {
 		    toBroker.close();
 		    throw new UJciException(UErrorCode.ER_TIMEOUT);
 		}
-		toBroker.setSoTimeout(TIMEOUT_UNIT);
 	    }
 
+	    toBroker.setSoTimeout(TIMEOUT_UNIT);
 	    in = new UTimedDataInputStream(toBroker.getInputStream(), ip, port, timeout);
 	    out = new DataOutputStream(toBroker.getOutputStream());
 	    out.write(UConnection.driverInfo);
@@ -67,8 +67,14 @@ public class BrokerHandler {
 
 	    return toBroker;
 	} catch (SocketTimeoutException e) {
+	    if (toBroker != null) {
+		toBroker.close();
+	    }
 	    throw new UJciException(UErrorCode.ER_TIMEOUT, e);
 	} catch (IOException e) {
+	    if (toBroker != null) {
+		toBroker.close();
+	    }
 	    throw new UJciException(UErrorCode.ER_CONNECTION, e);
 	} finally {
 	}

@@ -251,9 +251,11 @@ public class UConnection {
 	    	    	checkReconnect();
 	    	    	endTransaction(true);
 		} catch (UJciException e) {
+		    	clientSocketClose();
 	    	    	e.toUError(errorHandler);
 	    	    	throw new CUBRIDException(errorHandler, e);
 		} catch (IOException e) {
+		    	clientSocketClose();
 		    	if (e instanceof SocketTimeoutException) {
 		    	    	throw new CUBRIDException(CUBRIDJDBCErrorCode.request_timeout, e);
 		    	}
@@ -412,8 +414,9 @@ public class UConnection {
 		 */
 
 		if (!isServerSideJdbc) {
-		    	if (client != null)
+			if (client != null) {
 		    	    	clientSocketClose();
+			}
 		}
 		// System.gc();
 		// UJCIManager.deleteInList(this);
@@ -539,8 +542,9 @@ public class UConnection {
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR
 				|| keepConnection == false) // jci 3.0
 		{
-			if (type == false)
+			if (type == false) {
 				errorHandler.clear();
+			}
 
 			clientSocketClose();
 			needReconnection = true;
@@ -1509,6 +1513,9 @@ public class UConnection {
 		output = new DataOutputStream(client.getOutputStream());
 		input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
 		timeout -= (System.currentTimeMillis() - begin);
+		if (timeout <= 0) {
+		    throw new UJciException(UErrorCode.ER_TIMEOUT);
+		}
 		connectDB(timeout);
 
 		CUBRIDDriver.setLastConnectInfo(url, makeConnectInfo(CASIp, CASPort));
