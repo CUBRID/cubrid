@@ -228,8 +228,11 @@ namespace dbgw
               connectionUrl << ":" << dbInfoMap["althosts"] << "&";
             }
 
-          connectionUrl << "logFile=" << DBGWLogger::getLogPath()
-              << "&logOnException=true&logSlowQueries=true";
+          if (DBGWLogger::getLogLevel() == CCI_LOG_LEVEL_DEBUG)
+            {
+              connectionUrl << "logFile=" << DBGWLogger::getLogPath()
+                  << "&logOnException=true&logSlowQueries=true&logTraceApi=true";
+            }
 
           m_hCCIConnection = cci_connect_with_url(
               const_cast<char *>(connectionUrl.str().c_str()),
@@ -239,7 +242,8 @@ namespace dbgw
             {
               CUBRIDException e(m_hCCIConnection, "Failed to connect database.");
               string replace(e.what());
-              replace += "(" + connectionUrl.str();
+              replace += "(";
+              replace += connectionUrl.str();
               replace += ")";
               DBGW_LOG_ERROR(m_logger.getLogMessage(replace.c_str()).c_str());
               throw e;

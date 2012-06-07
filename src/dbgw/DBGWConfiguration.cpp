@@ -319,7 +319,6 @@ namespace dbgw
         catch (DBGWException &e)
           {
             bError = true;
-            usleep(1000);
           }
 
         if (bError)

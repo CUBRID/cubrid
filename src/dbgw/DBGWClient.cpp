@@ -293,7 +293,7 @@ namespace dbgw
               }
             catch (DBGWException &e)
               {
-                if ((*it)->isIgnoreResult() == false)
+                if ((*it)->isIgnoreResult() == false || m_bValidateResult)
                   {
                     setLastException(e);
                     return DBGWResultSharedPtr();
@@ -420,6 +420,15 @@ namespace dbgw
                     throw e;
                   }
 
+                if (*pLhs != *pRhs)
+                  {
+                    ValidateValueFailException e(cit->name.c_str(),
+                        pLhs->toString(), pRhs->toString());
+                    DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
+                        c_str());
+                    throw e;
+                  }
+
                 if (pLhs->getType() != pRhs->getType())
                   {
                     ValidateTypeFailException e(cit->name.c_str(),
@@ -427,15 +436,6 @@ namespace dbgw
                         getDBGWValueTypeString(pLhs->getType()),
                         pRhs->toString(),
                         getDBGWValueTypeString(pRhs->getType()));
-                    DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
-                        c_str());
-                    throw e;
-                  }
-
-                if (*pLhs != *pRhs)
-                  {
-                    ValidateValueFailException e(cit->name.c_str(),
-                        pLhs->toString(), pRhs->toString());
                     DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
                         c_str());
                     throw e;

@@ -342,11 +342,18 @@ namespace dbgw
 
     try
       {
+        memset(pValue, 0, sizeof(struct tm));
+
         if (m_type != DBGW_VAL_TYPE_DATETIME)
           {
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
             DBGW_LOG_ERROR(e.what());
             throw e;
+          }
+
+        if (isNull())
+          {
+            return true;
           }
 
         *pValue = toTm();
@@ -494,7 +501,7 @@ namespace dbgw
       {
         if (getType() != value.getType())
           {
-            return false;
+            return toString() == value.toString();
           }
 
         switch (getType())
@@ -1181,6 +1188,30 @@ namespace dbgw
       }
   }
 
+  bool DBGWValueSet::isNull(const char *szKey, bool *pNull) const
+  {
+    clearException();
+
+    try
+      {
+        const DBGWValue *p = getValue(szKey);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            *pNull = p->isNull();
+            return true;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   const DBGWValue *DBGWValueSet::getValue(size_t nIndex) const
   {
     clearException();
@@ -1309,6 +1340,30 @@ namespace dbgw
         else
           {
             return p->getDateTime(pValue);
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::isNull(int nIndex, bool *pNull) const
+  {
+    clearException();
+
+    try
+      {
+        const DBGWValue *p = getValue(nIndex);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            *pNull = p->isNull();
+            return true;
           }
       }
     catch (DBGWException &e)

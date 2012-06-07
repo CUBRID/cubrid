@@ -42,12 +42,14 @@ namespace dbgw
     static void write(const char *szFile, int nLine, CCI_LOG_LEVEL level,
         const char *szFormat, ...);
     static const char *getLogPath();
+    static CCI_LOG_LEVEL getLogLevel();
 
   private:
     string m_groupName;
     string m_sqlName;
     static Logger m_logger;
     static string m_logPath;
+    static CCI_LOG_LEVEL m_logLevel;
   };
 
 #define DBGW_LOG_ERROR(...) \

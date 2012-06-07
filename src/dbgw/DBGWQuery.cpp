@@ -33,6 +33,10 @@ namespace dbgw
     m_sql(szSql), m_groupName(szGroupName), m_query(query)
   {
     m_sqlKey += m_sql;
+
+    m_sql += "/* SQL : ";
+    m_sql += m_query.getSqlName();
+    m_sql += " */";
   }
 
   DBGWBoundQuery::DBGWBoundQuery(const DBGWBoundQuery &query) :

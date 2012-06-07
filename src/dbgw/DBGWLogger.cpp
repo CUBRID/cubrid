@@ -32,6 +32,7 @@ namespace dbgw
 
   Logger DBGWLogger::m_logger = NULL;
   string DBGWLogger::m_logPath = DBGW_LOG_PATH;
+  CCI_LOG_LEVEL DBGWLogger::m_logLevel = CCI_LOG_LEVEL_INFO;
 
   DBGWLogger::DBGWLogger(const string &sqlName) :
     m_sqlName(sqlName)
@@ -147,6 +148,11 @@ namespace dbgw
   const char *DBGWLogger::getLogPath()
   {
     return m_logPath.c_str();
+  }
+
+  CCI_LOG_LEVEL DBGWLogger::getLogLevel()
+  {
+    return m_logLevel;
   }
 
 }

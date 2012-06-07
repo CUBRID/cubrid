@@ -123,12 +123,14 @@ namespace dbgw
     virtual bool getLong(const char *szKey, int64 *pValue) const;
     virtual bool getChar(const char *szKey, char *pValue) const;
     virtual bool getDateTime(const char *szKey, struct tm *pValue) const;
+    virtual bool isNull(const char *szKey, bool *pNull) const;
     virtual const DBGWValue *getValue(size_t nIndex) const;
     virtual bool getInt(int nIndex, int *pValue) const;
     virtual bool getCString(int nIndex, char **pValue) const;
     virtual bool getLong(int nIndex, int64 *pValue) const;
     virtual bool getChar(int nIndex, char *pValue) const;
     virtual bool getDateTime(int nIndex, struct tm *pValue) const;
+    virtual bool isNull(int nIndex, bool *pNull) const;
     virtual size_t size() const;
 
   public:
