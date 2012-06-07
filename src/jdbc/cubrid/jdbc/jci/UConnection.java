@@ -1512,9 +1512,11 @@ public class UConnection {
 		client = BrokerHandler.connectBroker(CASIp, CASPort, timeout);
 		output = new DataOutputStream(client.getOutputStream());
 		input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
-		timeout -= (System.currentTimeMillis() - begin);
-		if (timeout <= 0) {
-		    throw new UJciException(UErrorCode.ER_TIMEOUT);
+		if (timeout > 0) {
+			timeout -= (System.currentTimeMillis() - begin);
+			if (timeout <= 0) {
+			    throw new UJciException(UErrorCode.ER_TIMEOUT);
+			}
 		}
 		connectDB(timeout);
 
