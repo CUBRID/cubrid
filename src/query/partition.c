@@ -1441,28 +1441,35 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
   DB_VALUE val;
 
   *status = MATCH_NOT_FOUND;
-  /* We have a problem here because type checking might not have 
-   * coerced val to the type of the column. If this is the case, we have to
-   * do it here
-   */
   col_domain = pinfo->partition_pred->func_regu->domain;
-  if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (val_p))
-    {
-      if (tp_value_cast (val_p, &val, col_domain, false)
-	  == DOMAIN_INCOMPATIBLE)
-	{
-	  pinfo->error_code = ER_FAILED;
-	  *status = MATCH_NOT_FOUND;
-	  return NULL;
-	}
-    }
-  else
-    {
-      pr_clone_value (val_p, &val);
-    }
   switch (op)
     {
     case PO_EQ:
+      if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (val_p))
+	{
+	  /* We have a problem here because type checking might not have 
+	   * coerced val to the type of the column. If this is the case, we
+	   * have to do it here
+	   */
+	  if (tp_value_cast (val_p, &val, col_domain, false)
+	      == DOMAIN_INCOMPATIBLE)
+	    {
+	      /* We cannot set an error here because this is not considered
+	       * to be an error when scanning regular tables either. We
+	       * can consider this predicate to be always false so status to
+	       * MATCH_OK to simulate the case when no appropriate partition
+	       * was found.
+	       */
+	      er_clear ();
+	      *status = MATCH_OK;
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  pr_clone_value (val_p, &val);
+	}
+
       idx = mht_get_hash_number (hash_size, &val);
       /* Start from 1 because we're using position 0 for the master class */
       parts = partition_add_node_to_list (pinfo->thread_p, parts,
@@ -1474,7 +1481,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
       {
 	DB_COLLECTION *values = NULL;
 	int size = 0, i, idx;
-	if (!db_value_type_is_collection (&val))
+	if (!db_value_type_is_collection (val_p))
 	  {
 	    *status = MATCH_NOT_FOUND;
 	    /* This is an error and it should be handled outside of the
@@ -1482,7 +1489,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 	     */
 	    return NULL;
 	  }
-	values = DB_GET_COLLECTION (&val);
+	values = DB_GET_COLLECTION (val_p);
 	size = db_set_size (values);
 	if (size < 0)
 	  {
@@ -1499,6 +1506,19 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 		*status = MATCH_NOT_FOUND;
 		return NULL;
 	      }
+	    if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (&col))
+	      {
+		/* A failed coercion is not an error in this case,
+		 * we should just skip over it
+		 */
+		if (tp_value_cast (val_p, &val, col_domain, false)
+		    == DOMAIN_INCOMPATIBLE)
+		  {
+		    er_clear ();
+		    continue;
+		  }
+	      }
+
 	    idx = mht_get_hash_number (hash_size, &col);
 	    parts = partition_add_node_to_list (pinfo->thread_p, parts,
 						&pinfo->partitions[idx + 1]);
