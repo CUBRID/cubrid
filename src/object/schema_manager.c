@@ -10728,6 +10728,23 @@ drop_foreign_key_ref (MOP classop,
     }
   else
     {
+      /* Before editing the referenced class, we have to make sure that
+       * this constraint belongs to the class we're dropping it from. If this
+       * is an inherited constraint (for example, a foreign key created on a
+       * superclass), we have to keep it. This constraint belongs to a
+       * superclass if at least one of the attributes it references does not
+       * belong to this class (i.e: it was inherited).
+       */
+      SM_ATTRIBUTE **attribute_p = NULL;
+      for (attribute_p = cons->attributes; *attribute_p != NULL;
+	   attribute_p++)
+	{
+	  if ((*attribute_p)->class_mop != classop)
+	    {
+	      AU_ENABLE (save);
+	      return NO_ERROR;
+	    }
+	}
       refcls_template = dbt_edit_class (ref_clsop);
       if (refcls_template == NULL)
 	{
