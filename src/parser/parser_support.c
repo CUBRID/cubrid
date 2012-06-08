@@ -4821,6 +4821,40 @@ regu_int_array_alloc (int size)
     }
 }
 
+/*
+ * regu_int_pointer_array_alloc () -
+ *   return: int **
+ *   size(in): size of the array to be allocated
+ *
+ * Note: Memory allocation function for arrays of int pointers
+ */
+int **
+regu_int_pointer_array_alloc (int size)
+{
+  int *ptr;
+  int i;
+
+  if (size == 0)
+    {
+      return NULL;
+    }
+
+  ptr = (int **) pt_alloc_packing_buf (sizeof (int *) * size);
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+  else
+    {
+      for (i = 0; i < size; i++)
+	{
+	  *(ptr + i) = 0;
+	}
+      return ptr;
+    }
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_int_array_db_alloc () -

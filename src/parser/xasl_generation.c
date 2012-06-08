@@ -16377,6 +16377,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (i = no_classes - 1, node = statement->info.delete_.spec;
 	   i >= 0 && node != NULL; node = node->next)
 	{
+	  bool found_lob = false;
+
 	  if (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 	    {
 	      /* skip classes from which we're not deleting */
@@ -16419,7 +16421,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  goto error_return;
 		}
-	      class_info->lob_attr_ids = regu_int_array_alloc (no_subclasses);
+	      class_info->lob_attr_ids =
+		regu_int_pointer_array_alloc (no_subclasses);
 	      if (class_info->lob_attr_ids == NULL)
 		{
 		  goto error_return;
@@ -16427,8 +16430,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      class_info->no_lob_attrs = 0;
-	      class_info->lob_attr_ids = 0;
+	      class_info->no_lob_attrs = NULL;
+	      class_info->lob_attr_ids = NULL;
 	    }
 
 	  j = 0;
@@ -16454,10 +16457,9 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (!class_info->needs_pruning)
 		{
 		  class_info->no_lob_attrs[j] = 0;
-		  class_info->lob_attr_ids[j] = 0;
+		  class_info->lob_attr_ids[j] = NULL;
 
-		  if (cl_name_node != node->info.spec.flat_entity_list
-		      && !class_info->needs_pruning)
+		  if (cl_name_node != node->info.spec.flat_entity_list)
 		    {
 		      /* lob attributes from root table are already handled */
 		      DB_ATTRIBUTE *attrs, *attr;
@@ -16475,15 +16477,17 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       * root table
 			       */
 			      class_info->no_lob_attrs[j]++;
+			      found_lob = true;
 			    }
 			}
-		      if (class_info->no_lob_attrs[j] != 0)
+		      if (class_info->no_lob_attrs[j] > 0)
 			{
 			  /* some lob attributes were found, save their ids */
 			  int count = 0;
 
 			  class_info->lob_attr_ids[j] =
-			    regu_int_array_alloc (class_info->no_lob_attrs[j]);
+			    regu_int_array_alloc (class_info->
+						  no_lob_attrs[j]);
 			  if (!class_info->lob_attr_ids[j])
 			    {
 			      goto error_return;
@@ -16506,6 +16510,16 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      cl_name_node = cl_name_node->next;
 	      j++;
+	    }
+
+	  if (!found_lob)
+	    {
+	      /* no lob attributes were found, no_lob_attrs and lob_attr_ids
+	       * can be set to NULL.
+	       * this avoids keeping useless information in xasl
+	       */
+	      class_info->no_lob_attrs = NULL;
+	      class_info->lob_attr_ids = NULL;
 	    }
 	}
 

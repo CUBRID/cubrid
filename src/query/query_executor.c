@@ -355,6 +355,18 @@ struct btree_unique_stats_update_info
   BTREE_UNIQUE_STATS *unique_stat_info;	/* array of statistical info */
 };
 
+/* used for deleting lob files */
+typedef struct del_lob_info DEL_LOB_INFO;
+struct del_lob_info
+{
+  OID *class_oid;		/* OID of the class that has lob attributes */
+  HFID *class_hfid;		/* class hfid */
+
+  HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
+
+  DEL_LOB_INFO *next;		/* next DEL_LOB_INFO in a list */
+};
+
 /* used for internal update/delete execution */
 typedef struct upddel_class_info_internal UPDDEL_CLASS_INFO_INTERNAL;
 struct upddel_class_info_internal
@@ -373,18 +385,7 @@ struct upddel_class_info_internal
 
   int no_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
-};
-
-/* used for deleting lob files */
-typedef struct del_lob_info DEL_LOB_INFO;
-struct del_lob_info
-{
-  OID *class_oid;		/* OID of the class that has lob attributes */
-  HFID *class_hfid;		/* class hfid */
-
-  HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
-
-  DEL_LOB_INFO *next;		/* next DEL_LOB_INFO in a list */
+  DEL_LOB_INFO *crt_del_lob_info; /* DEL_LOB_INFO for current class_oid */
 };
 
 static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
@@ -8181,7 +8182,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   UPDDEL_CLASS_INFO *del_cls = NULL;
   UPDDEL_CLASS_INFO_INTERNAL *classes_info = NULL, *cls_info = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
-  DEL_LOB_INFO *crt_del_lob_info = NULL;
   RECDES recdes;
 
   class_oid_cnt = delete_->no_classes;
@@ -8339,7 +8339,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	      class_oid = DB_GET_OID (valp);
 
-	      if (class_oid && !OID_EQ (&cls_info->prev_class_oid, class_oid))
+	      if (class_oid
+		  && (cls_info->class_oid == NULL
+		      || !OID_EQ (cls_info->class_oid, class_oid)))
 		{
 		  /* find class HFID */
 		  error =
@@ -8378,7 +8380,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 							   scan_cache);
 		    }
 		  unique_stats_info[class_oid_idx].scan_cache_inited = false;
-		  cls_info = &classes_info[class_oid_idx];
 
 		  if (locator_start_force_scan_cache
 		      (thread_p, &unique_stats_info[class_oid_idx].scan_cache,
@@ -8387,26 +8388,28 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		  unique_stats_info[class_oid_idx].scan_cache_inited = true;
+
 		  if (cls_info->no_lob_attrs)
 		    {
-		      crt_del_lob_info =
+		      cls_info->crt_del_lob_info =
 			qexec_change_delete_lob_info (thread_p, xasl_state,
 						      cls_info,
 						      &del_lob_info_list);
-		      if (crt_del_lob_info == NULL)
+		      if (cls_info->crt_del_lob_info == NULL)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
 		    }
 		  else
 		    {
-		      crt_del_lob_info = NULL;
+		      cls_info->crt_del_lob_info = NULL;
 		    }
 		}
 
-	      if (crt_del_lob_info)
+	      if (cls_info->crt_del_lob_info)
 		{
 		  /* delete lob files */
+		  DEL_LOB_INFO *crt_del_lob_info = cls_info->crt_del_lob_info;
 		  SCAN_CODE scan_code;
 		  int error;
 		  int i;
@@ -8702,7 +8705,6 @@ qexec_create_delete_lob_info (THREAD_ENTRY * thread_p,
   return del_lob_info;
 
 error:
-  heap_attrinfo_end (thread_p, &del_lob_info->attr_info);
   if (del_lob_info)
     {
       db_private_free (thread_p, del_lob_info);
@@ -20818,6 +20820,7 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
 	}
       class_->no_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
+      class_->crt_del_lob_info = NULL;
     }
   *classes = local_classes;
   return NO_ERROR;
@@ -20851,7 +20854,7 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 	  class_info->subclass_idx = 0;
 
 	  class_info->no_lob_attrs = 0;
-	  class_info->lob_attr_ids = 0;
+	  class_info->lob_attr_ids = NULL;
 	  return NO_ERROR;
 	}
       /* look through the class partitions for the current_oid */
@@ -20864,7 +20867,7 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 	      class_info->subclass_idx = 0;
 
 	      class_info->no_lob_attrs = 0;
-	      class_info->lob_attr_ids = 0;
+	      class_info->lob_attr_ids = NULL;
 	      break;
 	    }
 	}
@@ -20888,7 +20891,7 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 	      else
 		{
 		  class_info->no_lob_attrs = 0;
-		  class_info->lob_attr_ids = 0;
+		  class_info->lob_attr_ids = NULL;
 		}
 	      break;
 	    }

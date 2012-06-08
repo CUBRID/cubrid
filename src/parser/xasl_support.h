@@ -68,6 +68,7 @@ extern int *regu_int_array_db_alloc (int size);
 /* for regu_machead_array () */
 extern KEY_RANGE *regu_keyrange_array_alloc (int size);
 extern int *regu_int_array_alloc (int size);
+extern int **regu_int_pointer_array_alloc (int size);
 extern OID *regu_oid_array_alloc (int size);
 extern HFID *regu_hfid_array_alloc (int size);
 extern UPDDEL_CLASS_INFO *regu_upddel_class_info_array_alloc (int size);
