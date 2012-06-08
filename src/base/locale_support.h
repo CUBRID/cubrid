@@ -53,12 +53,14 @@
  * If the value of 'next' has this bit set, then the next sequence is a
  * contraction, and the lower part of value indicates the contraction id
  * Otherwise, the 'next' value indicates a Unicode codepoint */
-#define INTL_NEXT_MASK_CONTR  0x80000000
+#define INTL_MASK_CONTR  0x80000000
 
 #define INTL_IS_NEXT_CONTR(v) \
-  (((v) & INTL_NEXT_MASK_CONTR) == INTL_NEXT_MASK_CONTR)
+  (((v) & INTL_MASK_CONTR) == INTL_MASK_CONTR)
 
-#define INTL_GET_NEXT_CONTR_ID(v) ((v) & (~INTL_NEXT_MASK_CONTR))
+#define INTL_CONTR_FOUND(v) ((v) == INTL_MASK_CONTR)
+
+#define INTL_GET_NEXT_CONTR_ID(v) ((v) & (~INTL_MASK_CONTR))
 
 /*
  * Encoding of L1-L3 UCA weights on 32 bit unsigned int:

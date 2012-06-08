@@ -7928,7 +7928,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_MONETARY:
 	  {
-	    int max_size = DBL_MAX_DIGITS + 2 + 1 + 1;
+	    /* monetary symbol = 3
+	     * sign = 1
+	     * dot = 1
+	     * fraction digits = 2
+	     * NUL terminator = 1*/
+	    int max_size = DBL_MAX_DIGITS + 3 + 1 + 1 + 2 + 1;
 	    char *new_string;
 	    char *p;
 
@@ -7938,9 +7943,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		return DOMAIN_ERROR;
 	      }
 
-	    sprintf (new_string, "%s%.*f",
-		     lang_currency_symbol (DB_GET_MONETARY (src)->type),
-		     2, DB_GET_MONETARY (src)->amount);
+	    snprintf (new_string, max_size - 1, "%s%.*f",
+		      lang_currency_symbol (DB_GET_MONETARY (src)->type),
+		      2, DB_GET_MONETARY (src)->amount);
+	    new_string[max_size - 1] = '\0';
 
 	    p = new_string + strlen (new_string);
 	    for (--p; p >= new_string && *p == '0'; p--)

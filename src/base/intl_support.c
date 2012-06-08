@@ -2563,6 +2563,9 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
   int res;
   bool use_original_str1, use_original_str2;
 
+  unsigned int *casing_arr;
+  int casing_multiplier;
+
   assert (alphabet != NULL);
   assert (str1 != NULL);
   assert (str2 != NULL);
@@ -2579,7 +2582,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
 
   alpha_cnt = alphabet->l_count;
 
-  if (alphabet->lower_multiplier == 1)
+  if (alphabet->lower_multiplier == 1 && alphabet->upper_multiplier == 1)
     {
       if (cp1 < (unsigned int) alpha_cnt)
 	{
@@ -2602,18 +2605,33 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
       return 0;
     }
 
-  assert (alphabet->lower_multiplier > 1);
+  /* 
+   * Multipliers can be either 1 or 2, as imposed by the LDML parsing code.
+   * Currently, alphabets with both multipliers equal to 2 are not supported
+   * for case sensitive comparisons.
+   */
+  assert (alphabet->lower_multiplier == 1 || alphabet->upper_multiplier == 1);
+  if (alphabet->lower_multiplier > alphabet->upper_multiplier)
+    {
+      casing_arr = alphabet->lower_cp;
+      casing_multiplier = alphabet->lower_multiplier;
+    }
+  else
+    {
+      casing_arr = alphabet->upper_cp;
+      casing_multiplier = alphabet->upper_multiplier;
+    }
 
   use_original_str1 = true;
   if (cp1 < (unsigned int) alpha_cnt)
     {
       memcpy (l_array_1,
-	      &(alphabet->lower_cp[cp1 * alphabet->lower_multiplier]),
-	      alphabet->lower_multiplier * sizeof (unsigned int));
+	      &(casing_arr[cp1 * casing_multiplier]),
+	      casing_multiplier * sizeof (unsigned int));
 
       if (cp1 != l_array_1[0])
 	{
-	  l_count_1 = alphabet->lower_multiplier;
+	  l_count_1 = casing_multiplier;
 	  while (l_count_1 > 1 && l_array_1[l_count_1 - 1] == 0)
 	    {
 	      l_count_1--;
@@ -2627,12 +2645,12 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
   if (cp2 < (unsigned int) alpha_cnt)
     {
       memcpy (l_array_2,
-	      &(alphabet->lower_cp[cp2 * alphabet->lower_multiplier]),
-	      alphabet->lower_multiplier * sizeof (unsigned int));
+	      &(casing_arr[cp2 * casing_multiplier]),
+	      casing_multiplier * sizeof (unsigned int));
 
       if (cp2 != l_array_2[0])
 	{
-	  l_count_2 = alphabet->lower_multiplier;
+	  l_count_2 = casing_multiplier;
 	  while (l_count_2 > 1 && l_array_2[l_count_2 - 1] == 0)
 	    {
 	      l_count_2--;
@@ -2645,13 +2663,13 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
   if (use_original_str1)
     {
       (void) intl_utf8_to_cp_list (str1, size_str1, l_array_1,
-				   alphabet->lower_multiplier, &l_count_1);
+				   casing_multiplier, &l_count_1);
     }
 
   if (use_original_str2)
     {
       (void) intl_utf8_to_cp_list (str2, size_str2, l_array_2,
-				   alphabet->lower_multiplier, &l_count_2);
+				   casing_multiplier, &l_count_2);
     }
 
   l_count = MIN (l_count_1, l_count_2);

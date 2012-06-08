@@ -123,9 +123,6 @@ static int load_unicode_data (const LOCALE_DATA * ld);
 static int create_alphabet (ALPHABET_DATA * a, const int max_letters,
 			    const int lower_multiplier,
 			    const int upper_multiplier);
-static int string_to_cp_list (const char *s, uint32 * cp_list,
-			      const int cp_list_size);
-
 static int count_full_decomp_cp (int cp);
 static int count_decomp_steps (int cp);
 static int unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps,
@@ -351,7 +348,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 
       if ((int) cp_src >= a_tailoring->sett_max_letters)
 	{
-	  LOG_LOCALE_ERROR ("Codepoint for casint rule exceeds maximum"
+	  LOG_LOCALE_ERROR ("Codepoint for casing rule exceeds maximum"
 			    " allowed value", ER_LOC_GEN, true);
 	  er_status = ER_LOC_GEN;
 	  goto error;
@@ -518,8 +515,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 		   uc->gen_cat_id == CAT_Ll)
 	    {
 	      /* lower case codepoints */
-	      cp_count = string_to_cp_list (str_p, uc->upper_cp,
-					    INTL_CASING_EXPANSION_MULTIPLIER);
+	      cp_count =
+		string_to_int_array (str_p, uc->upper_cp,
+				     INTL_CASING_EXPANSION_MULTIPLIER, " ");
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
 		  snprintf (err_msg, sizeof (err_msg) - 1, "Invalid line %d"
@@ -539,8 +537,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 		   uc->gen_cat_id == CAT_Lu)
 	    {
 	      /* lower case codepoints */
-	      cp_count = string_to_cp_list (str_p, uc->lower_cp,
-					    INTL_CASING_EXPANSION_MULTIPLIER);
+	      cp_count =
+		string_to_int_array (str_p, uc->lower_cp,
+				     INTL_CASING_EXPANSION_MULTIPLIER, " ");
 
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
@@ -594,8 +593,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 		  if (str_p != NULL)
 		    {
 		      uc->unicode_mapping_cp_count =
-			string_to_cp_list (str_p, uc->unicode_mapping,
-					   UNICODE_DECOMP_MAP_CP_COUNT);
+			string_to_int_array (str_p, uc->unicode_mapping,
+					     UNICODE_DECOMP_MAP_CP_COUNT,
+					     " ");
 		    }
 		  break;
 		}
@@ -669,6 +669,14 @@ create_alphabet (ALPHABET_DATA * a, const int max_letters,
   assert (upper_multiplier > 0 &&
 	  upper_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
 
+  if (lower_multiplier > 1 && upper_multiplier > 1)
+    {
+      LOG_LOCALE_ERROR ("CUBRID does not support collations with both lower "
+			"and upper multipliers with values above 1.",
+			ER_LOC_GEN, true);
+      return ER_LOC_GEN;
+    }
+
   memset (a, 0, sizeof (ALPHABET_DATA));
 
   if (max_letters <= 0 || max_letters > MAX_UNICODE_CHARS)
@@ -720,46 +728,56 @@ er_exit:
 }
 
 /* 
- * string_to_cp_list() - builds a list of codepoints from a string
+ * string_to_int_array() - builds a list of codepoints from a string
  *
  * Returns: count of codepoints found
  * s(in): nul-terminated string
  * cp_list(out): array of codepoints
  * cp_list_size(in): maximum allowed size of codepoint list
+ * delims(in) : possible delimiters between values
  *
- *  Note : the string containts unsigned integers in hexadecimal separated
- *	   by space
+ *  Note : the string containts unsigned integers in hexadecimal.
  *	   The case of returned number of codepoints is greater than
  *	    'cp_list_size' should be handled as error.
  *	   
  */
-static int
-string_to_cp_list (const char *s, uint32 * cp_list, const int cp_list_size)
+int
+string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size,
+		     const char *delims)
 {
   int i = 0;
+  char *str;
+  char *str_end;
+  char *str_cursor;
+
   assert (cp_list != NULL);
 
-  do
+  str = s;
+  str_end = s + strlen (s);
+
+  while (str != NULL && str < str_end)
     {
       uint32 code = 0;
 
-      code = strtol (s, NULL, 16);
+      code = strtol (str, &str_cursor, 16);
+
+      if (str_cursor <= str)
+	{
+	  break;
+	}
 
       if (i < cp_list_size)
 	{
 	  *cp_list++ = code;
 	}
-
       i++;
-      s = strchr (s, ' ');
 
-      if (s == NULL)
+      while (str_cursor < str_end && strchr (delims, *str_cursor) != NULL)
 	{
-	  break;
+	  str_cursor++;
 	}
-      s++;
+      str = str_cursor;
     }
-  while (*s != '\0');
 
   return i;
 }

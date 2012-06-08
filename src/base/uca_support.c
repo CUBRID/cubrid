@@ -24,14 +24,14 @@
 
 #include <errno.h>
 #include "utility.h"
-#include "intl_support.h"
 #include "environment_variable.h"
 #include "locale_support.h"
 #include "error_manager.h"
 #include "porting.h"
-#include "intl_support.h"
 
+#include "intl_support.h"
 #include "uca_support.h"
+#include "unicode_support.h"
 
 #define DUCET_FILE "ducet.txt"
 
@@ -323,6 +323,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
       char is_ignorable[4] = { -1, -1, -1, -1 };
       UCA_COLL_CE_LIST *ce_list = NULL;
       UCA_CP cp_list[LOC_MAX_UCA_CHARS_SEQ];
+      uint32 cp_int_list[LOC_MAX_UCA_CHARS_SEQ];
       int cp_list_count = 0;
       bool is_allowed = true;
 
@@ -370,28 +371,32 @@ load_ducet (const char *file_path, const int sett_contr_policy)
       /* Count number of chars in Uncode item e.g. 
        * codenum will be greater that 1 if contraction found.
        */
-      codenum = 0;
-      cp_list[cp_list_count++] = cp;
-      s = strtok (str, " \t");
-      while (s)
+      codenum = 1;
+      cp_int_list[cp_list_count++] = cp;
+      strtol (str, &s, 16);
+      codenum += string_to_int_array (s, &(cp_int_list[1]),
+				      LOC_MAX_UCA_CHARS_SEQ - 1, " \t");
+
+      if (codenum > LOC_MAX_UCA_CHARS_SEQ)
 	{
-	  s = strtok (NULL, " \t");
-	  codenum++;
+	  /* If the number of codepoints found in the input string is greater
+	   * than LOC_MAX_UCA_CHARS_SEQ, only the first LOC_MAX_UCA_CHARS_SEQ
+	   * are used, and no error is thrown.
+	   */
+	  codenum = LOC_MAX_UCA_CHARS_SEQ;
+	}
 
-	  if (s != NULL)
+      cp_list_count = codenum;
+
+      for (i = 0; i < codenum; i++)
+	{
+	  if (cp_int_list[i] < 0 || cp_int_list[i] > MAX_UCA_CODEPOINT)
 	    {
-	      int token_cp;
-
-	      token_cp = strtol (s, NULL, 16);
-
-	      if (token_cp <= 0 || token_cp > 0xFFFF)
-		{
-		  is_allowed = false;
-		  break;
-		}
-
-	      cp_list[cp_list_count++] = (UCA_CP) token_cp;
+	      is_allowed = false;
+	      cp_list_count = i;
+	      break;
 	    }
+	  cp_list[i] = (UCA_CP) cp_int_list[i];
 	}
 
       if (!is_allowed)
@@ -1986,7 +1991,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
 
       assert (found == true);
 
-      lc->opt_coll.next_cp[cp] = opt_idx | INTL_NEXT_MASK_CONTR;
+      lc->opt_coll.next_cp[cp] = opt_idx | INTL_MASK_CONTR;
     }
 
   /* adjust 'next' contractions values for all contractions */
@@ -2027,7 +2032,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
 
       assert (found == true);
 
-      initial_coll_tag[i].contr_ref.next = opt_idx | INTL_NEXT_MASK_CONTR;
+      initial_coll_tag[i].contr_ref.next = opt_idx | INTL_MASK_CONTR;
     }
 
   /* overwrite contractions in sorted order */
@@ -2160,7 +2165,7 @@ set_next_value_for_coll_key (LOCALE_COLLATION * lc,
       if (coll_key->type == COLL_KEY_TYPE_CP)
 	{
 	  lc->opt_coll.next_cp[coll_key->val.cp] =
-	    next_key->val.contr_id | INTL_NEXT_MASK_CONTR;
+	    next_key->val.contr_id | INTL_MASK_CONTR;
 	}
       else
 	{
@@ -2168,7 +2173,7 @@ set_next_value_for_coll_key (LOCALE_COLLATION * lc,
 	  assert (coll_key->val.contr_id < lc->opt_coll.count_contr);
 
 	  lc->opt_coll.contr_list[coll_key->val.contr_id].next =
-	    next_key->val.contr_id | INTL_NEXT_MASK_CONTR;
+	    next_key->val.contr_id | INTL_MASK_CONTR;
 	}
     }
 
@@ -3592,7 +3597,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       make_coll_key (&key, COLL_KEY_TYPE_CONTR, i);
       ce_list = get_ce_list_from_coll_key (&key);
 
-      coll_key_list[coll_key_list_cnt++] = i | INTL_NEXT_MASK_CONTR;
+      coll_key_list[coll_key_list_cnt++] = i | INTL_MASK_CONTR;
 
       err_status = add_opt_coll_contraction (lc, &key, 0, true);
       if (err_status != NO_ERROR)

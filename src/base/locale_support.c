@@ -5818,7 +5818,7 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
 
       for (i = 0; i < coll->count_contr; i++)
 	{
-	  coll_key_list[i + cp_count] = i | INTL_NEXT_MASK_CONTR;
+	  coll_key_list[i + cp_count] = i | INTL_MASK_CONTR;
 	}
 
       /* Order by weight. */

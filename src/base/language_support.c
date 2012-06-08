@@ -164,7 +164,8 @@ static COLL_CONTRACTION *lang_get_contr_for_string (const COLL_DATA *
 static void lang_get_uca_w_l13 (const COLL_DATA * coll_data,
 				const unsigned char *str, const int size,
 				UCA_L13_W ** uca_w_l13, int *num_ce,
-				unsigned char **str_next);
+				unsigned char **str_next,
+				unsigned int *cp_out);
 static void lang_get_uca_w_l4 (const COLL_DATA * coll_data,
 			       const unsigned char *str, const int size,
 			       UCA_L4_W ** uca_w_l4, int *num_ce,
@@ -174,7 +175,7 @@ static int lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data,
 					 const unsigned char *str1,
 					 const int size1,
 					 const unsigned char *str2,
-					 const int size2);
+					 const int size2, int *offset);
 static int lang_strcmp_utf8_uca (const LANG_COLLATION * lang_coll,
 				 const unsigned char *str1, const int size1,
 				 const unsigned char *str2, const int size2);
@@ -2453,13 +2454,14 @@ static UCA_L4_W uca_l4_max_weight = 0xffff;
  *   uca_w_l13(out): pointer to weight array
  *   num_ce(out): number of Collation Elements
  *   str_next(out): pointer to next collatable element in string
- *
+ *   cp_out(out): INTL_MASK_CONTR if contraction found, 
+ *		  codepoint value otherwise
  */
 static void
 lang_get_uca_w_l13 (const COLL_DATA * coll_data,
 		    const unsigned char *str, const int size,
 		    UCA_L13_W ** uca_w_l13, int *num_ce,
-		    unsigned char **str_next)
+		    unsigned char **str_next, unsigned int *cp_out)
 {
   unsigned int cp;
   const int alpha_cnt = coll_data->w_count;
@@ -2468,6 +2470,8 @@ lang_get_uca_w_l13 (const COLL_DATA * coll_data,
   assert (size > 0);
 
   cp = intl_utf8_to_cp (str, size, str_next);
+
+  *cp_out = cp;
 
   if (cp < (unsigned int) alpha_cnt)
     {
@@ -2485,6 +2489,7 @@ lang_get_uca_w_l13 (const COLL_DATA * coll_data,
 	  *uca_w_l13 = contr->uca_w_l13;
 	  *num_ce = contr->uca_num;
 	  *str_next = (unsigned char *) str + contr->size;
+	  *cp_out = INTL_MASK_CONTR;
 	}
       else
 	{
@@ -2575,7 +2580,8 @@ lang_get_uca_w_l4 (const COLL_DATA * coll_data,
 static int
 lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 			      const unsigned char *str1, const int size1,
-			      const unsigned char *str2, const int size2)
+			      const unsigned char *str2, const int size2,
+			      int *offset)
 {
   const unsigned char *str1_end;
   const unsigned char *str2_end;
@@ -2588,8 +2594,36 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
   int ce_index1 = 0, ce_index2 = 0;
   unsigned int w1 = 0, w2 = 0;
 
+  bool compute_offset = false;
+  unsigned int str1_cp_contr = 0, str2_cp_contr = 0;
+  int cmp_offset = 0;
+
+  int result = 0;
+
+  assert (offset != NULL && *offset > -1);
+
   str1_end = str1 + size1;
   str2_end = str2 + size2;
+
+  if (level == 0)
+    {
+      assert (*offset == 0);
+      compute_offset = true;
+    }
+  else
+    {
+      cmp_offset = *offset;
+      if (cmp_offset > 0)
+	{
+	  assert (cmp_offset <= size1);
+	  assert (cmp_offset <= size2);
+	  str1 += cmp_offset;
+	  str2 += cmp_offset;
+
+	}
+      compute_offset = false;
+    }
+
   str1_next = (unsigned char *) str1;
   str2_next = (unsigned char *) str2;
 
@@ -2612,7 +2646,8 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 	  else
 	    {
 	      lang_get_uca_w_l13 (coll_data, str1, str1_end - str1,
-				  &uca_w_l13_1, &num_ce1, &str1_next);
+				  &uca_w_l13_1, &num_ce1, &str1_next,
+				  &str1_cp_contr);
 	    }
 	  assert (num_ce1 > 0);
 
@@ -2636,12 +2671,34 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 	  else
 	    {
 	      lang_get_uca_w_l13 (coll_data, str2, str2_end - str2,
-				  &uca_w_l13_2, &num_ce2, &str2_next);
+				  &uca_w_l13_2, &num_ce2, &str2_next,
+				  &str2_cp_contr);
 	    }
 
 	  assert (num_ce2 > 0);
 
 	  ce_index2 = 0;
+	}
+
+      if (compute_offset)
+	{
+	  if (ce_index1 == 0 && ce_index2 == 0)
+	    {
+	      if (!INTL_CONTR_FOUND (str1_cp_contr) &&
+		  str1_cp_contr == str2_cp_contr)
+		{
+		  assert (!INTL_CONTR_FOUND (str2_cp_contr));
+		  cmp_offset += str1_next - str1;
+		}
+	      else
+		{
+		  compute_offset = false;
+		}
+	    }
+	  else if (ce_index1 != ce_index2)
+	    {
+	      compute_offset = false;
+	    }
 	}
 
     compare:
@@ -2695,11 +2752,13 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 	}
       else if (w1 > w2)
 	{
-	  return 1;
+	  result = 1;
+	  goto exit;
 	}
       else if (w1 < w2)
 	{
-	  return -1;
+	  result = -1;
+	  goto exit;
 	}
 
       ce_index1++;
@@ -2711,22 +2770,30 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 
   if (str1_end - str1 > 0 || str2_end - str2 > 0)
     {
-      return lang_strcmp_check_trail_spaces (str1, str1_end - str1,
-					     str2, str2_end - str2);
+      result = lang_strcmp_check_trail_spaces (str1, str1_end - str1,
+					       str2, str2_end - str2);
+      goto exit;
     }
   else
     {
       if (num_ce1 > num_ce2)
 	{
-	  return 1;
+	  result = 1;
+	  goto exit;
 	}
       else if (num_ce1 < num_ce2)
 	{
-	  return -1;
+	  result = -1;
+	  goto exit;
 	}
     }
 
-  return 0;
+exit:
+  if (level == 0)
+    {
+      *offset = cmp_offset;
+    }
+  return result;
 }
 
 /*
@@ -2765,8 +2832,11 @@ lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
 {
   int res;
 
+  int cmp_offset = 0;
+
   /* compare level 1 */
-  res = lang_strcmp_utf8_uca_w_level (coll_data, 0, str1, size1, str2, size2);
+  res = lang_strcmp_utf8_uca_w_level (coll_data, 0, str1, size1, str2, size2,
+				      &cmp_offset);
   if (res != 0)
     {
       return res;
@@ -2778,7 +2848,7 @@ lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
 	{
 	  /* compare level 3 (casing) */
 	  res = lang_strcmp_utf8_uca_w_level (coll_data, 2, str1, size1,
-					      str2, size2);
+					      str2, size2, &cmp_offset);
 	  if (res != 0)
 	    {
 	      /* reverse order when caseFirst == UPPER */
@@ -2791,7 +2861,8 @@ lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
   assert (coll_data->uca_opt.sett_strength >= TAILOR_SECONDARY);
 
   /* compare level 2 */
-  res = lang_strcmp_utf8_uca_w_level (coll_data, 1, str1, size1, str2, size2);
+  res = lang_strcmp_utf8_uca_w_level (coll_data, 1, str1, size1, str2, size2,
+				      &cmp_offset);
   if (res != 0)
     {
       /* TODO : this is not full "frech order"
@@ -2806,7 +2877,8 @@ lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
     }
 
   /* compare level 3 */
-  res = lang_strcmp_utf8_uca_w_level (coll_data, 2, str1, size1, str2, size2);
+  res = lang_strcmp_utf8_uca_w_level (coll_data, 2, str1, size1, str2, size2,
+				      &cmp_offset);
   if (res != 0)
     {
       /* reverse order when caseFirst == UPPER */
@@ -2819,7 +2891,8 @@ lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
     }
 
   /* compare level 4 */
-  res = lang_strcmp_utf8_uca_w_level (coll_data, 3, str1, size1, str2, size2);
+  res = lang_strcmp_utf8_uca_w_level (coll_data, 3, str1, size1, str2, size2,
+				      &cmp_offset);
   if (res != 0)
     {
       /* reverse order when caseFirst == UPPER */

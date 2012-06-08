@@ -59,6 +59,8 @@ extern "C"
   extern void unicode_decompose_string (char *str_in, const int size_in,
 					char *str_out, int *size_out,
 					const UNICODE_NORMALIZATION * norm);
+  extern int string_to_int_array (char *s, uint32 * cp_list,
+				  const int cp_list_size, const char *delims);
 
 #ifdef __cplusplus
 }
