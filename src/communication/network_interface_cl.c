@@ -8522,6 +8522,11 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       ptr = or_unpack_int (ptr, &stat_info->pages);
       ptr = or_unpack_int (ptr, &stat_info->height);
       ptr = or_unpack_int (ptr, &stat_info->keys);
+
+      assert_release (stat_info->leafs > 0);
+      assert_release (stat_info->pages > 0);
+      assert_release (stat_info->height > 0);
+      assert_release (stat_info->keys >= 0);
     }
 
   return status;
@@ -8540,6 +8545,11 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
     }
 
   success = btree_get_stats (NULL, stat_info);
+
+  assert_release (stat_info->leafs > 0);
+  assert_release (stat_info->pages > 0);
+  assert_release (stat_info->height > 0);
+  assert_release (stat_info->keys >= 0);
 
   EXIT_SERVER ();
 

@@ -3617,13 +3617,13 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
   DB_BIGINT bi;
   DB_VALUE tmpval, *tmpval_p;
 
-  tmpval_p = value;
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  if (!value)
+  if (value == NULL)
     {
       return ER_FAILED;
     }
+
+  tmpval_p = value;
+  type = DB_VALUE_DOMAIN_TYPE (value);
 
   if (DB_IS_NULL (value))
     {

@@ -662,7 +662,8 @@ act_monetary (char *token)
   const unsigned char *p = (const unsigned char *) token;
   double amt;
 
-  if ((value = get_value (DB_TYPE_MONETARY)) != NULL)
+  value = get_value (DB_TYPE_MONETARY);
+  if (value != NULL)
     {
       if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_MONETARY)
 	{
@@ -720,7 +721,8 @@ act_date (char *token)
   DB_VALUE *value;
   int args, month, day, year;
 
-  if ((value = get_value (DB_TYPE_DATE)) != NULL)
+  value = get_value (DB_TYPE_DATE);
+  if (value != NULL)
     {
       if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_DATE)
 	{
@@ -755,7 +757,8 @@ act_time (char *token, int ttype)
   int args, hour, minute, second;
   char half[8];
 
-  if ((value = get_value (DB_TYPE_TIME)) != NULL)
+  value = get_value (DB_TYPE_TIME);
+  if (value != NULL)
     {
       if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_TIME)
 	{
@@ -842,7 +845,8 @@ act_datetime (char *token)
   int hour, minute, second, millisecond;
   DB_DATETIME datetime;
 
-  if ((value = get_value (DB_TYPE_DATETIME)) != NULL)
+  value = get_value (DB_TYPE_DATETIME);
+  if (value != NULL)
     {
       if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_DATETIME)
 	{

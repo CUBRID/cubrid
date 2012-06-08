@@ -2138,7 +2138,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 		  }
 	      }
 	  }
-	if (key_val_range->range >= GE_INF && key_val_range->range <= GT_INF)
+	else if (key_val_range->range >= GE_INF
+		 && key_val_range->range <= GT_INF)
 	  {
 	    /* to fix multi-column index NULL problem */
 	    if (DB_IS_NULL (&key_val_range->key1))
@@ -2148,7 +2149,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 		return ret;
 	      }
 	  }
-	if (key_val_range->range >= INF_LE && key_val_range->range <= INF_LT)
+	else if (key_val_range->range >= INF_LE
+		 && key_val_range->range <= INF_LT)
 	  {
 	    /* to fix multi-column index NULL problem */
 	    if (DB_IS_NULL (&key_val_range->key2))
@@ -2161,7 +2163,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	break;
       }
     default:
-      assert (false);
+      assert_release (false);
       break;			/* impossible case */
     }
 

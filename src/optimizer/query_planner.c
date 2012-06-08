@@ -3699,19 +3699,20 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* iscan vs iscan index rule comparison */
 
   {
-    int a_range, b_range;	/* num iscan range terms */
-    int a_filter, b_filter;	/* num iscan filter terms */
     QO_NODE_INDEX_ENTRY *a_ni, *b_ni;
     QO_INDEX_ENTRY *a_ent, *b_ent;
     QO_ATTR_CUM_STATS *a_cum, *b_cum;
-    int i;
+    int a_range, b_range;	/* num iscan range terms */
+    int a_filter, b_filter;	/* num iscan filter terms */
     int a_last, b_last;		/* the last partial-key indicator */
     int a_keys, b_keys;		/* num keys */
     int a_pages, b_pages;	/* num access index pages */
     int a_leafs, b_leafs;	/* num access index leaf pages */
+    int i;
     QO_TERM *term;
 
-    /* index entry of a spec */
+    /* index entry of spec 'a'
+     */
     a_ni = a->plan_un.scan.index;
     a_ent = (a_ni)->head;
     a_cum = &(a_ni)->cum_stats;
@@ -3723,18 +3724,19 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  }
       }
     a_last = i;
+
     /* index range terms */
     a_range = bitset_cardinality (&(a->plan_un.scan.terms));
+    if (!(a->plan_un.scan.equi))
+      {
+	a_range--;		/* set the last equal range term */
+      }
+
     /* index filter terms */
     a_filter = bitset_cardinality (&(a->plan_un.scan.kf_terms));
 
-    /* set the last equal range term */
-    if (!(a->plan_un.scan.equi))
-      {
-	a_range--;
-      }
-
-    /* index entry of b spec */
+    /* index entry of spec 'b'
+     */
     b_ni = b->plan_un.scan.index;
     b_ent = (b_ni)->head;
     b_cum = &(b_ni)->cum_stats;
@@ -3746,16 +3748,16 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  }
       }
     b_last = i;
+
     /* index range terms */
     b_range = bitset_cardinality (&(b->plan_un.scan.terms));
-    /* index filter terms */
-    b_filter = bitset_cardinality (&(b->plan_un.scan.kf_terms));
-
-    /* set the last equal range term */
     if (!(b->plan_un.scan.equi))
       {
-	b_range--;
+	b_range--;		/* set the last equal range term */
       }
+
+    /* index filter terms */
+    b_filter = bitset_cardinality (&(b->plan_un.scan.kf_terms));
 
     /* STEP 1: take the smaller search condition */
 
@@ -3777,74 +3779,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  }
       }
 
-    /* STEP 1-1: check by terms containment */
+    /* STEP 2: check by index terms */
 
-    /* check for same search condition */
-    if (bitset_is_equivalent (&(a->plan_un.scan.terms),
-			      &(b->plan_un.scan.terms)))
+    temp_res = qo_plan_iscan_terms_cmp (a, b);
+    if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
       {
-	/* take the one which has more key filters */
-	if (a_filter > b_filter)
-	  {
-	    return PLAN_COMP_LT;
-	  }
-	else if (a_filter < b_filter)
-	  {
-	    return PLAN_COMP_GT;
-	  }
-
-	/* take the smaller index */
-	if (a_cum->pages < b_cum->pages)
-	  {
-	    return PLAN_COMP_LT;
-	  }
-	else if (a_cum->pages > b_cum->pages)
-	  {
-	    return PLAN_COMP_GT;
-	  }
-      }
-    else if (bitset_subset (&(a->plan_un.scan.terms),
-			    &(b->plan_un.scan.terms)))
-      {
-	/* take the smaller index key range */
-	return PLAN_COMP_LT;
-      }
-    else if (bitset_subset (&(b->plan_un.scan.terms),
-			    &(a->plan_un.scan.terms)))
-      {
-	/* take the smaller index key range */
-	return PLAN_COMP_GT;
+	return temp_res;
       }
 
-    /* STEP 1-2: check by term cardinality */
-
-    if (a->plan_un.scan.equi == b->plan_un.scan.equi)
-      {
-	if (a_range == b_range)
-	  {
-	    /* both plans have the same number of range terms
-	     * we will check now the key filter terms
-	     */
-	    if (a_filter > b_filter)
-	      {
-		return PLAN_COMP_LT;
-	      }
-	    else if (a_filter < b_filter)
-	      {
-		return PLAN_COMP_GT;
-	      }
-	  }
-	else if (a_range > b_range)
-	  {
-	    return PLAN_COMP_LT;
-	  }
-	else if (a_range < b_range)
-	  {
-	    return PLAN_COMP_GT;
-	  }
-      }
-
-    /* STEP 2: take the smaller access pages */
+    /* STEP 3: take the smaller access pages */
 
     if (a->variable_io_cost != b->variable_io_cost)
       {
@@ -3946,7 +3889,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	return PLAN_COMP_GT;
       }
 
-    /* STEP 3: take the smaller index */
+    /* STEP 4: take the smaller index */
     if (a_cum->pages > a_cum->height && b_cum->pages > b_cum->height)
       {
 	/* each index is big enough */
@@ -3960,7 +3903,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  }
       }
 
-    /* STEP 4: take the smaller key range */
+    /* STEP 5: take the smaller key range */
     if (a_keys > b_keys)
       {
 	return PLAN_COMP_LT;
@@ -11092,6 +11035,9 @@ search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
 static QO_PLAN_COMPARE_RESULT
 qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 {
+  QO_NODE_INDEX_ENTRY *a_ni, *b_ni;
+  QO_INDEX_ENTRY *a_ent, *b_ent;
+  QO_ATTR_CUM_STATS *a_cum, *b_cum;
   int a_range, b_range;		/* num iscan range terms */
   int a_filter, b_filter;	/* num iscan filter terms */
 
@@ -11103,10 +11049,38 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_UNK;
     }
 
+  /* index entry of spec 'a'
+   */
+  a_ni = a->plan_un.scan.index;
+  a_ent = (a_ni)->head;
+  a_cum = &(a_ni)->cum_stats;
+  assert (a_cum != NULL);
+
+  /* index range terms */
   a_range = bitset_cardinality (&(a->plan_un.scan.terms));
+  if (!(a->plan_un.scan.equi))
+    {
+      a_range--;		/* set the last equal range term */
+    }
+
+  /* index filter terms */
   a_filter = bitset_cardinality (&(a->plan_un.scan.kf_terms));
 
+  /* index entry of spec 'b'
+   */
+  b_ni = b->plan_un.scan.index;
+  b_ent = (b_ni)->head;
+  b_cum = &(b_ni)->cum_stats;
+  assert (b_cum != NULL);
+
+  /* index range terms */
   b_range = bitset_cardinality (&(b->plan_un.scan.terms));
+  if (!(b->plan_un.scan.equi))
+    {
+      b_range--;		/* set the last equal range term */
+    }
+
+  /* index filter terms */
   b_filter = bitset_cardinality (&(b->plan_un.scan.kf_terms));
 
   /* STEP 1: check by terms containment */
@@ -11127,6 +11101,31 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* both have the same range terms and same number of filters
+       */
+      if (a_cum && b_cum)
+	{
+	  /* take the smaller index pages */
+	  if (a_cum->pages < b_cum->pages)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	  else if (a_cum->pages > b_cum->pages)
+	    {
+	      return PLAN_COMP_GT;
+	    }
+
+	  /* take the smaller index key_size */
+	  if (a_cum->key_size < b_cum->key_size)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	  else if (a_cum->key_size > b_cum->key_size)
+	    {
+	      return PLAN_COMP_GT;
+	    }
+	}
+
+      /* both have the same number of index pages and key_size
        */
       return PLAN_COMP_EQ;
     }

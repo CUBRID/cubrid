@@ -8609,7 +8609,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   char *recset_data = NULL;
   int oid_size;
   bool dummy;
-  INT16 max_free;
+  int max_free;
   int key_len, offset;
   char *keyvalp;		/* for recovery purposes */
   int keyval_len, recset_length;	/* for recovery purposes */
