@@ -945,8 +945,9 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
    */
   if (entity->info.spec.flat_entity_list)
     {
-      cls = sm_find_class (entity->info.spec.flat_entity_list->info.name.
-			   resolved);
+      cls =
+	sm_find_class (entity->info.spec.flat_entity_list->info.name.
+		       original);
       if (cls)
 	{
 	  constraints = sm_class_constraints (cls);
@@ -1127,7 +1128,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  if (constraints->func_index_info)
 		    {
 		      char *expr_str =
-			parser_print_tree_with_quotes (env->parser, tree);
+			parser_print_function_index_expr (env->parser, tree);
 		      if (!intl_identifier_casecmp (expr_str, constraints->
 						    func_index_info->
 						    expr_str))
@@ -1697,7 +1698,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
        * match
        */
       const char *expr_str =
-	parser_print_tree_with_quotes (QO_ENV_PARSER (env), name);
+	parser_print_function_index_expr (QO_ENV_PARSER (env), name);
       for (i = 0; (!found) && (i < env->nsegs); i++)
 	{
 	  if (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, i)) == false)
@@ -8471,8 +8472,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
     case QO_TC_OTHER:
       {
 	if (conj
-	    && conj->node_type == PT_VALUE
-            && conj->info.value.location == 0)
+	    && conj->node_type == PT_VALUE && conj->info.value.location == 0)
 	  {
 	    /* is an always-false or always-true WHERE condition */
 	    fprintf (f, " (dummy sarg term)");

@@ -2351,6 +2351,34 @@ parser_print_tree_with_quotes (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * parser_print_function_index_expr () - prints function index candidate
+ *					 expressions
+ *
+ *  return: printed expression as char *
+ *  parser: parser context
+ *  expr: candidate expression for function index
+ *
+ *  NOTE: PT_NAME nodes will not print info.name.resolved, they will use
+ *	  the original table name in order to match the expression with
+ *	  the function based index
+ */
+char *
+parser_print_function_index_expr (PARSER_CONTEXT * parser,
+				  const PT_NODE * expr)
+{
+  unsigned int save_custom = parser->custom_print;
+  char *result;
+
+  assert (expr && PT_IS_EXPR_NODE (expr));
+
+  parser->custom_print |= PT_FORCE_ORIGINAL_TABLE_NAME;
+  result = parser_print_tree_with_quotes (parser, expr);
+  parser->custom_print = save_custom;
+
+  return result;
+}
+
+/*
  * parser_print_tree_list() -
  *   return:
  *   parser(in):
@@ -12278,7 +12306,31 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
        * If there is a non-zero length resolved name, print it,
        * followed by ".".
        */
-      q = pt_append_name (parser, q, p->info.name.resolved);
+      if ((parser->custom_print & PT_FORCE_ORIGINAL_TABLE_NAME)
+	  && (p->info.name.meta_class == PT_NORMAL))
+	{
+	  /* make sure spec_id points to original table */
+	  PT_NODE *original_spec;
+
+	  assert (p->info.name.spec_id);
+	  original_spec = (PT_NODE *) p->info.name.spec_id;
+	  if (original_spec->info.spec.entity_name
+	      && original_spec->info.spec.entity_name->info.name.original)
+	    {
+	      q =
+		pt_append_name (parser, q,
+				original_spec->info.spec.entity_name->info.
+				name.original);
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.resolved);
+	    }
+	}
+      else
+	{
+	  q = pt_append_name (parser, q, p->info.name.resolved);
+	}
       /* this is to catch OID_ATTR's which don't have their meta class set
        * correctly. It should probably not by unconditional.
        */
@@ -16332,7 +16384,7 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
       if (report_error)
 	{
 	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
-  		     MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+		     MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
 	}
       return false;
     }
@@ -16454,43 +16506,46 @@ pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id)
 
   if (expr->info.expr.op != PT_FUNCTION_HOLDER)
     {
-      if (PT_IS_NAME_NODE (expr->info.expr.arg1))
+      arg = pt_function_index_skip_expr (expr->info.expr.arg1);
+      if (PT_IS_NAME_NODE (arg))
 	{
 	  if (*spec_id == 0)
 	    {
-	      *spec_id = expr->info.expr.arg1->info.name.spec_id;
+	      *spec_id = arg->info.name.spec_id;
 	    }
 	  else
 	    {
-	      if (*spec_id != expr->info.expr.arg1->info.name.spec_id)
+	      if (*spec_id != arg->info.name.spec_id)
 		{
 		  return true;
 		}
 	    }
 	}
-      if (PT_IS_NAME_NODE (expr->info.expr.arg2))
+      arg = pt_function_index_skip_expr (expr->info.expr.arg2);
+      if (PT_IS_NAME_NODE (arg))
 	{
 	  if (*spec_id == 0)
 	    {
-	      *spec_id = expr->info.expr.arg2->info.name.spec_id;
+	      *spec_id = arg->info.name.spec_id;
 	    }
 	  else
 	    {
-	      if (*spec_id != expr->info.expr.arg2->info.name.spec_id)
+	      if (*spec_id != arg->info.name.spec_id)
 		{
 		  return true;
 		}
 	    }
 	}
-      if (PT_IS_NAME_NODE (expr->info.expr.arg3))
+      arg = pt_function_index_skip_expr (expr->info.expr.arg3);
+      if (PT_IS_NAME_NODE (arg))
 	{
 	  if (*spec_id == 0)
 	    {
-	      *spec_id = expr->info.expr.arg3->info.name.spec_id;
+	      *spec_id = arg->info.name.spec_id;
 	    }
 	  else
 	    {
-	      if (*spec_id != expr->info.expr.arg3->info.name.spec_id)
+	      if (*spec_id != arg->info.name.spec_id)
 		{
 		  return true;
 		}
@@ -16502,15 +16557,16 @@ pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id)
       func = expr->info.expr.arg1;
       for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
-	  if (PT_IS_NAME_NODE (arg))
+	  PT_NODE *tmp = pt_function_index_skip_expr (arg);
+	  if (PT_IS_NAME_NODE (tmp))
 	    {
 	      if (*spec_id == 0)
 		{
-		  *spec_id = arg->info.name.spec_id;
+		  *spec_id = tmp->info.name.spec_id;
 		}
 	      else
 		{
-		  if (*spec_id != arg->info.name.spec_id)
+		  if (*spec_id != tmp->info.name.spec_id)
 		    {
 		      return true;
 		    }

@@ -621,7 +621,13 @@ enum pt_custom_print
   PT_INTERNAL_PRINT = 0x40000,
   PT_SUPPRESS_INDEX = 0x80000,
   PT_SUPPRESS_ORDERING = 0x100000,
-  PT_PRINT_QUOTES = 0x200000
+  PT_PRINT_QUOTES = 0x200000,
+  PT_FORCE_ORIGINAL_TABLE_NAME = 0x400000	/* this is for PT_NAME nodes.
+						 * prints original table name 
+						 * instead of printing resolved
+						 * NOTE: spec_id must point to
+						 * original table
+						 */
 };
 
 /* all statement node types should be assigned their API statement enumeration */

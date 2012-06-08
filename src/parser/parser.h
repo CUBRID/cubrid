@@ -112,6 +112,8 @@ extern "C"
 				  const PT_NODE * node);
   extern char *parser_print_tree_with_quotes (PARSER_CONTEXT * parser,
 					      const PT_NODE * node);
+  extern char *parser_print_function_index_expr (PARSER_CONTEXT * parser,
+						 const PT_NODE * expr);
   extern char *parser_print_tree_list (PARSER_CONTEXT * parser,
 				       const PT_NODE * p);
   extern char *pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node);
