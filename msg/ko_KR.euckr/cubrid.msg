@@ -1558,6 +1558,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 251 초기값이 잘못되었습니다.
 252 Prefix index is not supported.
 253 '%s' function cannot be used for function based index.
+254 Invalid index column definition: %s
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

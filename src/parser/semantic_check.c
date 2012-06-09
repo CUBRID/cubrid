@@ -7328,7 +7328,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 static void
 pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *name, *prefix_length;
+  PT_NODE *name, *prefix_length, *col, *col_expr;
   DB_OBJECT *db_obj;
   int cons_count;
 
@@ -7354,6 +7354,41 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
 
+      /* Check if the columns are valid. We only allow expressions and
+       * attribute names. The actual expressions will be validated later,
+       * we're only interested in the node type
+       */
+      for (col = node->info.index.column_names; col != NULL; col = col->next)
+	{
+	  if (col->node_type != PT_SORT_SPEC)
+	    {
+	      assert_release (col->node_type == PT_SORT_SPEC);
+	      return;
+	    }
+	  col_expr = col->info.sort_spec.expr;
+	  if (col_expr == NULL)
+	    {
+	      continue;
+	    }
+	  if (col_expr->node_type == PT_NAME)
+	    {
+	      /* make sure this is not a parameter */
+	      if (col_expr->info.name.meta_class != PT_NORMAL)
+		{
+		  PT_ERRORmf (parser, col_expr, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_INVALID_INDEX_COLUMN,
+			      pt_short_print (parser, col_expr));
+		  return;
+		}
+	    }
+	  else if (col_expr->node_type != PT_EXPR)
+	    {
+	      PT_ERRORmf (parser, col_expr, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_INVALID_INDEX_COLUMN,
+			  pt_short_print (parser, col_expr));
+	      return;
+	    }
+	}
       /* make sure we don't mix up index types */
       cons_count = 0;
 
