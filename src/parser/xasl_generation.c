@@ -20539,7 +20539,7 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 			   PT_COMPOSITE_LOCKING composite_locking)
 {
   PT_NODE *statement, *spec, *save_spec, *save_next;
-  PT_NODE *search_cond;
+  PT_NODE *search_cond, *where;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -20562,25 +20562,33 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
     info->update.search_cond : info->update.del_search_cond;
   if (search_cond)
     {
-      PT_NODE *node = parser_new_node (parser, PT_EXPR);
-      if (node)
+      if (info->search_cond)
 	{
-	  node->info.expr.op = PT_AND;
-	  node->info.expr.arg1 =
-	    parser_copy_tree_list (parser, info->search_cond);
-	  node->info.expr.arg2 = parser_copy_tree_list (parser, search_cond);
+	  where = parser_new_node (parser, PT_EXPR);
+	  if (where)
+	    {
+	      where->info.expr.op = PT_AND;
+	      where->info.expr.arg1 =
+		parser_copy_tree_list (parser, info->search_cond);
+	      where->info.expr.arg2 =
+		parser_copy_tree_list (parser, search_cond);
+	    }
+	  else
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
 	}
-      statement->info.query.q.select.where = node;
+      else
+	{
+	  where = parser_copy_tree_list (parser, search_cond);
+	}
     }
   else
     {
-      statement->info.query.q.select.where =
-	parser_copy_tree_list (parser, info->search_cond);
+      where = parser_copy_tree_list (parser, info->search_cond);
     }
-  if (!statement->info.query.q.select.where)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-    }
+  statement->info.query.q.select.where = where;
 
   /* add the class and instance OIDs to the select list */
   spec = save_spec = statement->info.query.q.select.from;
@@ -20764,7 +20772,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	  return NULL;
 	}
-      if (statement->info.merge.update.del_search_cond)
+      if (statement->info.merge.update.has_delete)
 	{
 	  /* generate XASL for UPDATE DELETE part */
 	  delete_xasl = pt_to_merge_delete_xasl (parser, statement);

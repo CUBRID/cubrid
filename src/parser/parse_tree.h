@@ -2348,6 +2348,7 @@ struct pt_merge_info
     PT_NODE *search_cond;	/* PT_EXPR */
     PT_NODE *del_search_cond;	/* PT_EXPR */
     bool do_class_attrs;	/* whether it is on class attributes */
+    bool has_delete;		/* whether it has a delete clause */
   } update;
   struct
   {

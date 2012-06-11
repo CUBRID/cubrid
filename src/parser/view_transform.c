@@ -4183,7 +4183,7 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   if (merge_statement->info.merge.update.assignment)
     {
       (void) pt_mark_spec_list_for_update (parser, merge_statement);
-      if (merge_statement->info.merge.update.del_search_cond)
+      if (merge_statement->info.merge.update.has_delete)
 	{
 	  from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
 	}

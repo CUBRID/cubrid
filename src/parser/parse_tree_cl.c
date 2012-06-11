@@ -15607,6 +15607,7 @@ pt_init_merge (PT_NODE * p)
   p->info.merge.update.search_cond = NULL;
   p->info.merge.update.del_search_cond = NULL;
   p->info.merge.update.do_class_attrs = false;
+  p->info.merge.update.has_delete = false;
   p->info.merge.waitsecs_hint = NULL;
   p->info.merge.hint = PT_HINT_NONE;
   p->info.merge.server_op = false;
@@ -15677,12 +15678,19 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_and_list (parser, p->info.merge.update.search_cond);
 	  q = pt_append_varchar (parser, q, r1);
 	}
-      if (p->info.merge.update.del_search_cond)
+      if (p->info.merge.update.has_delete)
 	{
 	  q = pt_append_nulstring (parser, q, " delete where ");
-	  r1 =
-	    pt_print_and_list (parser, p->info.merge.update.del_search_cond);
-	  q = pt_append_varchar (parser, q, r1);
+	  if (p->info.merge.update.del_search_cond)
+	    {
+	      r1 = pt_print_and_list (parser,
+				      p->info.merge.update.del_search_cond);
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, "(true)");
+	    }
 	}
     }
   if (p->info.merge.insert.value_clauses)

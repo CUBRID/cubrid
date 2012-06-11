@@ -6743,6 +6743,10 @@ merge_update_clause
 			    merge->info.merge.update.assignment = $6;
 			    merge->info.merge.update.search_cond = $7;
 			    merge->info.merge.update.del_search_cond = $8;
+			    if ($8)
+			      {
+				merge->info.merge.update.has_delete = true;
+			      }
 			  }
 
 		DBG_PRINT}}

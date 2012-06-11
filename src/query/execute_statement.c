@@ -14170,7 +14170,7 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
 	  goto exit;
 	}
       /* DELETE statement triggers */
-      if (statement->info.merge.update.del_search_cond)
+      if (statement->info.merge.update.has_delete)
 	{
 	  result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_DELETE,
 					 class_, 0, NULL);
@@ -14388,7 +14388,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (statement->info.merge.update.del_search_cond)
+      if (statement->info.merge.update.has_delete)
 	{
 	  /* make the SELECT statement for OID list to be deleted */
 	  del_select_stmt =
@@ -14535,7 +14535,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* do delete part */
-      if (statement->info.merge.update.del_search_cond)
+      if (statement->info.merge.update.has_delete)
 	{
 	  /* flush necessary objects before execute */
 	  err = sm_flush_objects (class_obj);
@@ -14731,7 +14731,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 				       TR_EVENT_STATEMENT_UPDATE);
 	}
       if (err == NO_ERROR && !has_trigger
-	  && statement->info.merge.update.del_search_cond)
+	  && statement->info.merge.update.has_delete)
 	{
 	  err =
 	    sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
@@ -15294,7 +15294,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* delete part */
-	  if (err >= NO_ERROR && statement->info.merge.update.del_search_cond)
+	  if (err >= NO_ERROR && statement->info.merge.update.has_delete)
 	    {
 	      PT_NODE *select_stmt;
 
