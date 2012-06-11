@@ -931,10 +931,13 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 		    "ALTER \"%s\" CHANGE \"%s\" DEFAULT %s", class_name,
 		    attr_name, defaultv);
 	}
+      lang_set_parser_use_client_charset (false);
       if (db_execute (buf, &result, &error_stats) < 0)
 	{
+	  lang_set_parser_use_client_charset (true);
 	  goto error_return;
 	}
+      lang_set_parser_use_client_charset (true);
       db_query_end (result);
     }
 
@@ -1928,7 +1931,10 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 		"select [key_attr_name], [asc_desc] from [db_index_key] where [class_name]='%s' and [index_name]='%s' order by [key_order] asc",
 		classname, db_constraint_name (con));
 
+      lang_set_parser_use_client_charset (false);
       db_execute (query, &result, &query_error);
+      lang_set_parser_use_client_charset (true);
+
       end = db_query_first_tuple (result);
 
       while (end == 0)

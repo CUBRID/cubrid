@@ -3770,6 +3770,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
   return 0;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * intl_check_string - Checks if a string contains valid sequences in current
  *		       codeset
@@ -3779,15 +3780,17 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
  *   buf(in): buffer
  *   size(out): size of buffer (negative values accepted, in this case buffer
  *		is assumed to be NUL terminated)
+ *   codeset(in): codeset assumed for buf
  */
 int
-intl_check_string (const char *buf, int size, char **pos)
+intl_check_string (const char *buf, int size, char **pos,
+		   const INTL_CODESET codeset)
 {
   if (!intl_String_validation)
     {
       return 0;
     }
-  if (lang_charset () == INTL_CODESET_UTF8)
+  if (codeset == INTL_CODESET_UTF8)
     {
       return intl_check_utf8 ((const unsigned char *) buf, size, pos);
     }
@@ -3819,6 +3822,29 @@ intl_is_bom_magic (const char *buf, const int size)
 
   return false;
 }
+
+/*
+ * intl_charset_print_name() - returns parser text to print for a charset
+ *
+ *   return: charset text or NULL if codeset is invalid
+ *   codeset(in):
+ */
+const char *
+intl_charset_print_name (const INTL_CODESET codeset)
+{
+  switch (codeset)
+    {
+    case INTL_CODESET_ISO88591:
+      return "_iso";
+    case INTL_CODESET_UTF8:
+      return "_utf8";
+    default:
+      break;
+    }
+
+  return NULL;
+}
+#endif /* SERVER_MODE */
 
 /* UTF-8 to console routines */
 

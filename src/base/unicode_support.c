@@ -1235,6 +1235,7 @@ exit:
   return err_status;
 }
 
+#if !defined (SERVER_MODE)
 /* 
  * unicode_string_need_compose() - Checks if a string needs composition
  *				   and returns the size required by fully
@@ -1248,7 +1249,8 @@ exit:
  * norm(in) : the unicode data for normalization
  *
  *  Note : this is light check, since full check requires more complex
- *	   processing - same as composing algorithm
+ *	   processing - same as composing algorithm.
+ *	   All input is assumed in UTF-8 character set
  */
 bool
 unicode_string_need_compose (const char *str_in, const int size_in,
@@ -1261,11 +1263,6 @@ unicode_string_need_compose (const char *str_in, const int size_in,
   assert (size_out != NULL);
 
   *size_out = 0;
-
-  if (lang_charset () != INTL_CODESET_UTF8)
-    {
-      return false;
-    }
 
   if (!PRM_UNICODE_INPUT_NORMALIZATION || norm == NULL
       || size_in == 0 || str_in == NULL)
@@ -1409,6 +1406,8 @@ unicode_compose_string (const char *str_in, const int size_in,
  * size_in(in) : size of string in bytes
  * decomp_size(out) : size required by decomposed form in bytes
  * norm(in) : the unicode context in which the normalization is performed
+ *
+ *  Note : Input string is assumed UTF-8 character set.
  */
 bool
 unicode_string_need_decompose (char *str_in, const int size_in,
@@ -1545,7 +1544,7 @@ unicode_decompose_string (char *str_in, const int size_in,
 
   *size_out = dest_cursor - str_out;
 }
-
+#endif /* SERVER_MODE */
 /* 
  * comp_func_unicode_cp_mapping() - compare function for sorting a group of
  *				    unicode decompositions starting with the

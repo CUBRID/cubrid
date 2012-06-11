@@ -70,6 +70,8 @@ extern int yycolumn_end;
 %x DELIMITED_ID_NAME
 %x BRACKET_ID_NAME
 %x BACKTICK_ID_NAME
+%x QUOTED_ISO_STRING
+%x QUOTED_UTF8_STRING
 
 
 
@@ -829,6 +831,16 @@ extern int yycolumn_end;
 										return UNSIGNED_REAL;
 									}
 
+_[iI][sS][oO][']		{
+					BEGIN (QUOTED_ISO_STRING);
+					csql_yylval.cptr = pt_append_string(this_parser, NULL, "");
+				}
+
+_[uU][tT][fF]8[']		{
+					BEGIN (QUOTED_UTF8_STRING);
+					csql_yylval.cptr = pt_append_string(this_parser, NULL, "");
+				}
+
 ([a-zA-Z_#]|([\xc2-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* { begin_token(yytext);   
 							   if (strlen(yytext) >= 254) 
 							     yytext[254] = 0;
@@ -887,6 +899,16 @@ extern int yycolumn_end;
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, "");
 				}
 
+<QUOTED_ISO_STRING>[']		{
+					BEGIN(INITIAL);
+					return ISO_STRING;
+				}
+				
+<QUOTED_UTF8_STRING>[']		{
+					BEGIN(INITIAL);
+					return UTF8_STRING;
+				}
+				
 <QUOTED_NCHAR_STRING>[']	{
 					BEGIN(INITIAL);
 					return NCHAR_STRING;
@@ -939,13 +961,13 @@ extern int yycolumn_end;
 					return BacktickDelimitedIdName;
 				}
 
-<QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,DELIMITED_ID_NAME,BRACKET_ID_NAME,BACKTICK_ID_NAME>\n	{
+<QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,DELIMITED_ID_NAME,BRACKET_ID_NAME,BACKTICK_ID_NAME,QUOTED_ISO_STRING,QUOTED_UTF8_STRING>\n	{
 					this_parser->line = yyline++;
 					this_parser->column = yycolumn = yycolumn_end = 0;
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\n");
 				}
 
-<QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING><<EOF>>	{
+<QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,QUOTED_ISO_STRING,QUOTED_UTF8_STRING><<EOF>>	{
 					BEGIN(INITIAL);
 					csql_yyerror("unterminated string");
 					return UNTERMINATED_STRING;
@@ -957,7 +979,7 @@ extern int yycolumn_end;
 					return UNTERMINATED_IDENTIFIER;
 				}
 
-<QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING>[^'\n\\]+	{
+<QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING,QUOTED_ISO_STRING,QUOTED_UTF8_STRING>[^'\n\\]+	{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext);
 				}
 
@@ -981,7 +1003,7 @@ extern int yycolumn_end;
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext);
 				}
 
-<QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING>['][']	{
+<QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING,QUOTED_ISO_STRING,QUOTED_UTF8_STRING>['][']	{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "'");
 				}
 
@@ -993,7 +1015,7 @@ extern int yycolumn_end;
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "`");
 				}
 
-<QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING>{
+<QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,QUOTED_ISO_STRING,QUOTED_UTF8_STRING>{
 
 "\\n"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,

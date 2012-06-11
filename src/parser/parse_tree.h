@@ -622,12 +622,13 @@ enum pt_custom_print
   PT_SUPPRESS_INDEX = 0x80000,
   PT_SUPPRESS_ORDERING = 0x100000,
   PT_PRINT_QUOTES = 0x200000,
-  PT_FORCE_ORIGINAL_TABLE_NAME = 0x400000	/* this is for PT_NAME nodes.
+  PT_FORCE_ORIGINAL_TABLE_NAME = 0x400000,	/* this is for PT_NAME nodes.
 						 * prints original table name 
 						 * instead of printing resolved
 						 * NOTE: spec_id must point to
 						 * original table
 						 */
+  PT_SUPPRESS_CHARSET_PRINT = 0x800000
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -690,6 +691,7 @@ enum pt_node_type
   PT_SET_SESSION_VARIABLES = CUBRID_STMT_SET_SESSION_VARIABLES,
   PT_DROP_SESSION_VARIABLES = CUBRID_STMT_DROP_SESSION_VARIABLES,
   PT_MERGE = CUBRID_STMT_MERGE,
+  PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be
 					   distinct from statements */
@@ -1381,6 +1383,7 @@ typedef struct view_cache_info VIEW_CACHE_INFO;
 typedef struct semantic_chk_info SEMANTIC_CHK_INFO;
 
 typedef struct parser_hint PT_HINT;
+typedef struct pt_set_names_info PT_SET_NAMES_INFO;
 
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
@@ -2358,6 +2361,13 @@ struct pt_merge_info
   bool server_op;		/* whether it can be server-side operation */
 };
 
+/* Info for SET NAMES */
+struct pt_set_names_info
+{
+  PT_NODE *charset_node;	/* PT_VALUE */
+  PT_NODE *collation_node;	/* PT_VALUE */
+};
+
 /* Info for VALUE nodes
   these are intended to parallel the definitions in dbi.h and be
   identical whenever possible
@@ -2461,6 +2471,8 @@ struct pt_value_info
   short db_value_is_in_workspace;
   short location;		/* 0 : WHERE; n : join condition of n-th FROM */
   char string_type;		/* ' ', 'N', 'B', or 'X' */
+  bool print_charset;
+  bool print_collation;
 };
 
 
@@ -2650,6 +2662,7 @@ union pt_statement_info
   PT_SAVEPOINT_INFO savepoint;
   PT_SCOPE_INFO scope;
   PT_SERIAL_INFO serial;
+  PT_SET_NAMES_INFO set_names;
   PT_SET_OPT_LVL_INFO set_opt_lvl;
   PT_SET_SYS_PARAMS_INFO set_sys_params;
   PT_SET_TRIGGER_INFO set_trigger;

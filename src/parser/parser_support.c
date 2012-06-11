@@ -8602,7 +8602,9 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
     "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value]);";
 
+  lang_set_parser_use_client_charset (false);
   node = parser_parse_string (parser, query);
+  lang_set_parser_use_client_charset (true);
   if (node == NULL)
     {
       return NULL;
@@ -8672,7 +8674,9 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'adaptive_flush_log_pages' as [variable] , exec_stats('Num_adaptive_flush_log_pages') as [value])"
     "UNION ALL (SELECT 'adaptive_flush_max_pages' as [variable] , exec_stats('Num_adaptive_flush_max_pages') as [value]);";
 
+  lang_set_parser_use_client_charset (false);
   node = parser_parse_string (parser, query);
+  lang_set_parser_use_client_charset (true);
   if (node == NULL)
     {
       return NULL;
@@ -9718,4 +9722,116 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       node = node->next;
     }
+}
+
+/*
+ * pt_check_grammar_charset_collation () - validates a pair of charset and
+ *	  collation nodes and return the associated identifiers
+ *   return:  error status
+ *   parser(in): the parser context
+ *   charset_node(in): node containing charset string (PT_VALUE)
+ *   coll_node(in): node containing collation string (PT_VALUE)
+ *   charset(in): validated value for charset (INTL_CHARSET)
+ *   coll_id(in): validated value for collation
+ */
+int
+pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
+				    PT_NODE * charset_node,
+				    PT_NODE * coll_node,
+				    int *charset, int *coll_id)
+{
+  bool has_user_charset = false;
+
+  assert (charset != NULL);
+  assert (coll_id != NULL);
+
+  *charset = LANG_SYS_CODESET;
+  *coll_id = LANG_SYS_COLLATION;
+
+  if (charset_node != NULL)
+    {
+      const char *cs_name;
+      assert (charset_node->node_type == PT_VALUE);
+
+      assert (charset_node->info.value.data_value.str != NULL);
+
+      cs_name = (char *) charset_node->info.value.data_value.str->bytes;
+
+      if (strcasecmp (cs_name, "utf8") == 0)
+	{
+	  *charset = INTL_CODESET_UTF8;
+	}
+      else if (strcasecmp (cs_name, "iso88591") == 0
+	       || strcasecmp (cs_name, "iso") == 0)
+	{
+	  *charset = INTL_CODESET_ISO88591;
+	}
+      else
+	{
+	  PT_ERRORm (parser, charset_node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_CHARSET);
+
+	  return ER_GENERIC_ERROR;
+	}
+
+      has_user_charset = true;
+    }
+
+  if (coll_node != NULL)
+    {
+      LANG_COLLATION *lang_coll;
+
+      assert (coll_node->node_type == PT_VALUE);
+
+      assert (coll_node->info.value.data_value.str != NULL);
+      lang_coll = lang_get_collation_by_name (coll_node->info.value.
+					      data_value.str->bytes);
+
+      if (lang_coll != NULL)
+	{
+	  int coll_charset;
+
+	  *coll_id = lang_coll->coll.coll_id;
+	  coll_charset = (int) lang_coll->codeset;
+
+	  if (has_user_charset && coll_charset != *charset)
+	    {
+	      /* error incompatible charset and collation */
+	      PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+	      return ER_GENERIC_ERROR;
+	    }
+
+	  /* default charset for this collation */
+	  *charset = coll_charset;
+	}
+      else
+	{
+	  PT_ERRORmf (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_UNKNOWN_COLL,
+		      coll_node->info.value.data_value.str->bytes);
+	  return ER_GENERIC_ERROR;
+	}
+    }
+  else
+    {
+      assert (coll_node == NULL);
+      /* set a default collation for a charset */
+
+      if (*charset == INTL_CODESET_ISO88591)
+	{
+	  *coll_id = LANG_COLL_ISO_BINARY;
+	}
+      else if (*charset == INTL_CODESET_KSC5601_EUC)
+	{
+	  *coll_id = LANG_COLL_EUCKR_BINARY;
+	}
+      else
+	{
+	  assert (*charset == INTL_CODESET_UTF8);
+	  *coll_id = LANG_COLL_UTF8_BINARY;
+	}
+    }
+
+  return NO_ERROR;
 }

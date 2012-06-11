@@ -1212,7 +1212,9 @@ au_find_user (const char *user_name)
 	  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME,
 		   upper_case_name);
 
+	  lang_set_parser_use_client_charset (false);
 	  error = db_execute (query, &query_result, &query_error);
+	  lang_set_parser_use_client_charset (true);
 	  /* error is row count if not negative. */
 	  if (error > 0)
 	    {

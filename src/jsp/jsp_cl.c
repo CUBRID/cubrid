@@ -1526,7 +1526,7 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
   v = DB_GET_STRING (value);
   v_size = (v != NULL) ? strlen (v) : 0;
 
-  if (v_size > 0
+  if (v_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8
       && unicode_string_need_decompose (v, v_size, &decomp_size,
 					lang_get_generic_unicode_norm ()))
     {
@@ -2116,15 +2116,17 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 
   size_in = strlen (val);
 
-  if (intl_check_string (val, size_in, &invalid_pos) != 0)
+  if (intl_check_string (val, size_in, &invalid_pos,
+			 lang_get_client_charset ()) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - val);
       return NULL;
     }
 
-  if (unicode_string_need_compose (val, size_in, &composed_size,
-				   lang_get_generic_unicode_norm ()))
+  if (lang_get_client_charset () == INTL_CODESET_UTF8
+      && unicode_string_need_compose (val, size_in, &composed_size,
+				      lang_get_generic_unicode_norm ()))
     {
       char *composed;
       bool is_composed = false;
@@ -2155,6 +2157,8 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
     }
 
   db_make_string (retval, val);
+  db_put_cs_and_collation (retval, lang_get_client_charset (),
+			   lang_get_client_collation ());
   retval->need_clear = true;
 
   return ptr;

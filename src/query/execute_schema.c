@@ -65,7 +65,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
 
 #define QUERY_MAX_SIZE	1024 * 1024
-#define MAX_FILTER_PREDICATE_STRING_LENGTH 100
+#define MAX_FILTER_PREDICATE_STRING_LENGTH 128
 
 typedef enum
 {
@@ -15918,6 +15918,7 @@ do_run_update_query_for_class (char *query, MOP class_mop,
 
   *row_count = -1;
 
+  lang_set_parser_use_client_charset (false);
   session = db_open_buffer (query);
   if (session == NULL)
     {
@@ -15978,6 +15979,8 @@ do_run_update_query_for_class (char *query, MOP class_mop,
   *row_count = db_get_parser (session)->execution_values.row_count;
 
 end:
+  lang_set_parser_use_client_charset (true);
+
   if (session != NULL)
     {
       db_free_query (session);

@@ -279,6 +279,12 @@ extern "C"
   extern int lang_set_national_charset (const char *codeset_name);
   extern int lang_charset_space_char (INTL_CODESET codeset, char *space_char,
 				      int *space_size);
+  extern void lang_set_client_charset_coll (const INTL_CODESET codeset,
+					    const int collation_id);
+  extern INTL_CODESET lang_get_client_charset (void);
+  extern int lang_get_client_collation (void);
+  extern void lang_set_parser_use_client_charset (bool use);
+  extern bool lang_get_parser_use_client_charset (void);
 #endif				/* !SERVER_MODE */
 
   extern int lang_load_library (const char *lib_file, void **handle);

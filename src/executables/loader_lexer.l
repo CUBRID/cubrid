@@ -30,6 +30,7 @@
 #include "memory_alloc.h"
 #include "utility.h"
 #include "intl_support.h"
+#include "language_support.h"
 
 /*#define LEXER_DEBUG*/
 
@@ -764,7 +765,8 @@ loader_make_string_by_yytext (void)
       str->need_free_val = true;
     }
 
-  if (intl_check_string (str->val, str->size, &invalid_pos) != 0)
+  if (intl_check_string (str->val, str->size, &invalid_pos,
+			 LANG_SYS_CODESET) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - str->val);
@@ -826,7 +828,8 @@ loader_make_string_by_buffer (void)
 	}
     }
     
-  if (intl_check_string (str->val, str->size, &invalid_pos) != 0)
+  if (intl_check_string (str->val, str->size, &invalid_pos,
+			 LANG_SYS_CODESET) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - str->val);

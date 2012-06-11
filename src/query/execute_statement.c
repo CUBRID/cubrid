@@ -2822,6 +2822,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = jsp_drop_stored_procedure (parser, statement);
 	  break;
 
+	case PT_SET_NAMES:
+	  error = do_set_names (parser, statement);
+	  break;
+
 	default:
 	  er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
 		  ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -3142,6 +3146,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_DROP_SESSION_VARIABLES:
       err = do_drop_session_variables (parser, statement);
+      break;
+    case PT_SET_NAMES:
+      err = do_set_names (parser, statement);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
@@ -15430,4 +15437,36 @@ exit:
     }
 
   return (err < NO_ERROR) ? err : result;
+}
+
+/*
+ * do_set_names() - Set the client charset and collation.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a set transaction statement
+ *
+ * Note:
+ */
+int
+do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = ER_GENERIC_ERROR;
+  int charset_id, collation_id;
+
+  if (statement->info.set_names.charset_node != NULL)
+    {
+      error = pt_check_grammar_charset_collation (parser,
+						  statement->info.set_names.
+						  charset_node,
+						  statement->info.set_names.
+						  collation_node, &charset_id,
+						  &collation_id);
+    }
+
+  if (error == NO_ERROR)
+    {
+      lang_set_client_charset_coll ((INTL_CODESET) charset_id, collation_id);
+    }
+
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 }

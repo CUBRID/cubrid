@@ -3699,7 +3699,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 
 	net_arg_get_str (&value, &val_size, net_value);
 
-	if (intl_check_string (value, val_size, &invalid_pos) != 0)
+	if (intl_check_string (value, val_size, &invalid_pos,
+			       lang_get_client_charset ()) != 0)
 	  {
 	    char msg[12];
 	    snprintf (msg, sizeof (msg), "%d",
@@ -3708,8 +3709,9 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }
 
-	if (unicode_string_need_compose (value, val_size, &composed_size,
-					 lang_get_generic_unicode_norm ()))
+	if (lang_get_client_charset () == INTL_CODESET_UTF8
+	    && unicode_string_need_compose (value, val_size, &composed_size,
+					    lang_get_generic_unicode_norm ()))
 	  {
 	    char *composed = NULL;
 
@@ -3752,6 +3754,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	else
 	  {
 	    err_code = db_make_string (&db_val, value);
+	    db_put_cs_and_collation (&db_val, lang_get_client_charset (),
+				     lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
       }
@@ -3769,7 +3773,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 
 	val_size--;
 
-	if (intl_check_string (value, val_size, &invalid_pos) != 0)
+	if (intl_check_string (value, val_size, &invalid_pos,
+			       lang_get_client_charset ()) != 0)
 	  {
 	    char msg[12];
 	    snprintf (msg, sizeof (msg), "%d",
@@ -3778,8 +3783,9 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }
 
-	if (unicode_string_need_compose (value, val_size, &composed_size,
-					 lang_get_generic_unicode_norm ()))
+	if (lang_get_client_charset () == INTL_CODESET_UTF8
+	    && unicode_string_need_compose (value, val_size, &composed_size,
+					    lang_get_generic_unicode_norm ()))
 	  {
 	    char *composed = NULL;
 
@@ -3810,8 +3816,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	intl_char_count ((unsigned char *) value, val_size,
 			 LANG_COERCIBLE_CODESET, &val_length);
 	err_code = db_make_nchar (&db_val, val_length, value, val_size,
-				  LANG_COERCIBLE_CODESET,
-				  LANG_COERCIBLE_COLL);
+				  lang_get_client_charset (),
+				  lang_get_client_collation ());
 	db_val.need_clear = is_composed;
       }
       break;
@@ -4172,9 +4178,14 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
 
-	need_decomp =
-	  unicode_string_need_decompose (str, bytes_size, &decomp_size,
-					 lang_get_generic_unicode_norm ());
+	if (DB_GET_STRING_CODESET (val) == INTL_CODESET_UTF8)
+	  {
+	    need_decomp =
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
+					     lang_get_generic_unicode_norm
+					     ());
+	  }
+
 
 	if (need_decomp)
 	  {
@@ -4222,9 +4233,13 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
 
-	need_decomp =
-	  unicode_string_need_decompose (nchar, bytes_size, &decomp_size,
-					 lang_get_generic_unicode_norm ());
+	if (DB_GET_STRING_CODESET (val) == INTL_CODESET_UTF8)
+	  {
+	    need_decomp =
+	      unicode_string_need_decompose (nchar, bytes_size, &decomp_size,
+					     lang_get_generic_unicode_norm
+					     ());
+	  }
 
 	if (need_decomp)
 	  {
@@ -7195,8 +7210,10 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
   T_QUERY_RESULT *q_result = NULL;
   int err_code;
 
+  lang_set_parser_use_client_charset (false);
   if (!(session = db_open_buffer (sql_stmt)))
     {
+      lang_set_parser_use_client_charset (true);
       return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
     }
   if ((stmt_id = db_compile_statement (session)) < 0)
@@ -7206,7 +7223,9 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
       return err_code;
     }
   stmt_type = db_get_statement_type (session, stmt_id);
+  lang_set_parser_use_client_charset (false);
   num_result = db_execute_statement (session, stmt_id, &result);
+  lang_set_parser_use_client_charset (true);
 #ifndef LIBCAS_FOR_JSP
   as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
   as_info->num_queries_processed++;

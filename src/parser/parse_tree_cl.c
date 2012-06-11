@@ -281,6 +281,8 @@ static PT_NODE *pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p,
 					PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
 				 PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p,
+				    PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_set_session_variables (PARSER_CONTEXT * parser,
 						PT_NODE * p,
 						PT_NODE_FUNCTION g,
@@ -387,6 +389,7 @@ static PT_NODE *pt_init_resolution (PT_NODE * p);
 static PT_NODE *pt_init_revoke (PT_NODE * p);
 static PT_NODE *pt_init_rollback_work (PT_NODE * p);
 static PT_NODE *pt_init_select (PT_NODE * p);
+static PT_NODE *pt_init_set_names (PT_NODE * p);
 static PT_NODE *pt_init_set_session_variables (PT_NODE * p);
 static PT_NODE *pt_init_drop_session_variables (PT_NODE * p);
 static PT_NODE *pt_init_sort_spec (PT_NODE * p);
@@ -522,6 +525,8 @@ static PARSER_VARCHAR *pt_print_savepoint (PARSER_CONTEXT * parser,
 					   PT_NODE * p);
 static PARSER_VARCHAR *pt_print_scope (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_set_names (PARSER_CONTEXT * parser,
+					   PT_NODE * p);
 static PARSER_VARCHAR *pt_print_set_session_variables (PARSER_CONTEXT *
 						       parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_session_variables (PARSER_CONTEXT *
@@ -2633,6 +2638,8 @@ pt_show_node_type (PT_NODE * node)
       return "SAVEPOINT";
     case PT_SELECT:
       return "SELECT";
+    case PT_SET_NAMES:
+      return "SET NAMES";
     case PT_SET_OPT_LVL:
       return "SET OPT LVL";
     case PT_SET_SYS_PARAMS:
@@ -4489,6 +4496,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_SAVEPOINT] = pt_apply_savepoint;
   pt_apply_func_array[PT_SCOPE] = pt_apply_scope;
   pt_apply_func_array[PT_SELECT] = pt_apply_select;
+  pt_apply_func_array[PT_SET_NAMES] = pt_apply_set_names;
   pt_apply_func_array[PT_SET_OPT_LVL] = pt_apply_set_opt_lvl;
   pt_apply_func_array[PT_SET_SYS_PARAMS] = pt_apply_set_sys_params;
   pt_apply_func_array[PT_SET_TRIGGER] = pt_apply_set_trigger;
@@ -4594,6 +4602,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_SAVEPOINT] = pt_init_savepoint;
   pt_init_func_array[PT_SCOPE] = pt_init_scope;
   pt_init_func_array[PT_SELECT] = pt_init_select;
+  pt_init_func_array[PT_SET_NAMES] = pt_init_set_names;
   pt_init_func_array[PT_SET_OPT_LVL] = pt_init_set_opt_lvl;
   pt_init_func_array[PT_SET_SYS_PARAMS] = pt_init_set_sys_params;
   pt_init_func_array[PT_SET_TRIGGER] = pt_init_set_trigger;
@@ -4700,6 +4709,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_SAVEPOINT] = pt_print_savepoint;
   pt_print_func_array[PT_SCOPE] = pt_print_scope;
   pt_print_func_array[PT_SELECT] = pt_print_select;
+  pt_print_func_array[PT_SET_NAMES] = pt_print_set_names;
   pt_print_func_array[PT_SET_OPT_LVL] = pt_print_set_opt_lvl;
   pt_print_func_array[PT_SET_SYS_PARAMS] = pt_print_set_sys_params;
   pt_print_func_array[PT_SET_TRIGGER] = pt_print_set_trigger;
@@ -13491,6 +13501,66 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
+/* SET_NAMES */
+/*
+ * pt_apply_set_names () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p,
+		    PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.set_names.charset_node =
+    g (parser, p->info.set_names.charset_node, arg);
+  p->info.set_names.collation_node =
+    g (parser, p->info.set_names.collation_node, arg);
+  return p;
+}
+
+/*
+ * pt_init_set_names () -
+ *   return:
+ *   p(in):
+ */
+static PT_NODE *
+pt_init_set_names (PT_NODE * p)
+{
+  return (p);
+}
+
+/*
+ * pt_print_set_names () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_set_names (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = NULL, *r1;
+
+  b = pt_append_nulstring (parser, b, "set names ");
+
+  assert (p->info.set_names.charset_node != NULL);
+  if (p->info.set_names.charset_node != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.set_names.charset_node);
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.set_names.collation_node != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.set_names.collation_node);
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  return b;
+}
+
 /* SET_OPTIMIZATION_LEVEL */
 /*
  * pt_apply_set_opt_lvl () -
@@ -14446,6 +14516,8 @@ static PT_NODE *
 pt_init_value (PT_NODE * p)
 {
   p->info.value.location = 0;
+  p->info.value.print_charset = false;
+  p->info.value.print_collation = false;
   return p;
 }
 
@@ -14616,6 +14688,34 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   char s[PT_MEMB_PRINTABLE_BUF_SIZE];
   const char *r;
+  int prt_coll_id = -1;
+  INTL_CODESET prt_cs = INTL_CODESET_NONE;
+
+  if (PT_HAS_COLLATION (p->type_enum))
+    {
+      prt_coll_id = (p->data_type != NULL)
+	? (p->data_type->info.data_type.collation_id) : LANG_SYS_COLLATION;
+
+      if (!(p->info.value.print_collation)
+	  || (prt_coll_id == LANG_SYS_COLLATION
+	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT)))
+	{
+	  prt_coll_id = -1;
+	}
+
+      prt_cs = (p->data_type != NULL)
+	? (INTL_CODESET) (p->data_type->info.data_type.units)
+	: LANG_SYS_CODESET;
+
+      /* do not print charset introducer for NCHAR and VARNCHAR */
+      if (!(p->info.value.print_charset)
+	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR)
+	  || (prt_cs == LANG_SYS_CODESET
+	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT)))
+	{
+	  prt_cs = INTL_CODESET_NONE;
+	}
+    }
 
   switch (p->type_enum)
     {
@@ -14750,7 +14850,21 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	      parser->long_string_skipped = 1;
 	      break;
 	    }
+
+	  if (prt_cs != INTL_CODESET_NONE)
+	    {
+	      q = pt_append_nulstring (parser, q,
+				       intl_charset_print_name (prt_cs));
+	    }
+
 	  q = pt_append_nulstring (parser, q, p->info.value.text);
+
+	  if (prt_coll_id != -1)
+	    {
+	      q = pt_append_nulstring (parser, q, " COLLATE ");
+	      q = pt_append_nulstring (parser, q,
+				       lang_get_collation_name (prt_coll_id));
+	    }
 	  break;
 	}
       r1 = p->info.value.data_value.str;
@@ -14769,6 +14883,12 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	char s[PT_MEMB_BUF_SIZE];
 
 	tmp = pt_append_string_prefix (parser, tmp, p);
+	if (prt_cs != INTL_CODESET_NONE)
+	  {
+	    tmp = pt_append_nulstring (parser, tmp,
+				       intl_charset_print_name (prt_cs));
+	  }
+
 	if (r1)
 	  {
 	    tmp =
@@ -14785,13 +14905,30 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  {
 	    q = pt_append_nulstring (parser, q, "cast(");
 	    q = pt_append_varchar (parser, q, tmp);
-	    sprintf (s, " as %s(%d))", pt_show_type_enum (p->type_enum),
-		     dt->info.data_type.precision);
+	    if (prt_coll_id != -1)
+	      {
+		sprintf (s, " as %s(%d) COLLATE %s)",
+			 pt_show_type_enum (p->type_enum),
+			 dt->info.data_type.precision,
+			 lang_get_collation_name (prt_coll_id));
+	      }
+	    else
+	      {
+		sprintf (s, " as %s(%d))", pt_show_type_enum (p->type_enum),
+			 dt->info.data_type.precision);
+	      }
 	    q = pt_append_nulstring (parser, q, s);
 	  }
 	else
 	  {
 	    q = pt_append_varchar (parser, q, tmp);
+
+	    if (prt_coll_id != -1)
+	      {
+		q = pt_append_nulstring (parser, q, " COLLATE ");
+		q = pt_append_nulstring (parser, q, lang_get_collation_name
+					 (prt_coll_id));
+	      }
 	  }
       }
       break;
@@ -14807,7 +14944,21 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	      parser->long_string_skipped = 1;
 	      break;
 	    }
+
+
+	  if (prt_cs != INTL_CODESET_NONE)
+	    {
+	      q = pt_append_nulstring (parser, q,
+				       intl_charset_print_name (prt_cs));
+	    }
 	  q = pt_append_nulstring (parser, q, p->info.value.text);
+
+	  if (prt_coll_id != -1)
+	    {
+	      q = pt_append_nulstring (parser, q, " COLLATE ");
+	      q = pt_append_nulstring (parser, q,
+				       lang_get_collation_name (prt_coll_id));
+	    }
 	  break;
 	}
       r1 = p->info.value.data_value.str;
@@ -14821,6 +14972,11 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
 
       q = pt_append_string_prefix (parser, q, p);
+      if (prt_cs != INTL_CODESET_NONE)
+	{
+	  q = pt_append_nulstring (parser, q,
+				   intl_charset_print_name (prt_cs));
+	}
       if (r1)
 	{
 	  q = pt_append_quoted_string (parser, q, r1->bytes, r1->length);
@@ -14828,6 +14984,13 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  q = pt_append_nulstring (parser, q, "''");
+	}
+
+      if (prt_coll_id != -1)
+	{
+	  q = pt_append_nulstring (parser, q, " COLLATE ");
+	  q = pt_append_nulstring (parser, q,
+				   lang_get_collation_name (prt_coll_id));
 	}
       break;
     case PT_TYPE_MONETARY:

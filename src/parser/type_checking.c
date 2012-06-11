@@ -19957,6 +19957,9 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      node = pt_wrap_collection_with_cast_op (parser, node,
 						      node->type_enum, dt);
+	    }
+	  else if (dt != NULL)
+	    {
 	      parser_free_node (parser, dt);
 	    }
 	}
@@ -19995,6 +19998,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 					  dt);
 		}
 
+	      /* 'dt' is copied in 'pt_wrap_with_cast_op' */
 	      parser_free_node (parser, dt);
 	    }
 	  else
@@ -20652,6 +20656,7 @@ coerce_result:
 					   dt->info.data_type.precision,
 					   dt->info.data_type.dec_precision,
 					   dt);
+	  /* 'dt' is copied in 'pt_wrap_with_cast_op' */
 	  parser_free_node (parser, dt);
 	  if (new_node == NULL)
 	    {

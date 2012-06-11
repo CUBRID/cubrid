@@ -848,6 +848,10 @@ extern "C"
 
   extern DB_OBJECT *pt_resolve_serial (PARSER_CONTEXT * parser,
 				       PT_NODE * serial_name_node);
+  extern int pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
+						 PT_NODE * charset_node,
+						 PT_NODE * coll_node,
+						 int *charset, int *coll_id);
 #ifdef __cplusplus
 }
 #endif

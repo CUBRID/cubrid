@@ -1303,6 +1303,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
+115 invalid set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

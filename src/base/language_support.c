@@ -489,6 +489,10 @@ lang_init_full (void)
 
   set_current_locale (true);
 
+#if !defined (SERVER_MODE)
+  lang_set_client_charset_coll (LANG_SYS_CODESET, LANG_SYS_COLLATION);
+#endif
+
   lang_Fully_Initialized = true;
 
   return (lang_Fully_Initialized);
@@ -1836,6 +1840,12 @@ static const DB_CHARSET lang_Db_charsets[] = {
 
 static int lang_Server_charset_Initialized = 0;
 
+/* client side charset and collation */
+static INTL_CODESET lang_Client_charset = INTL_CODESET_ISO88591;
+static int lang_Client_collation_id = LANG_COLL_ISO_BINARY;
+static int lang_Client_charset_Initialized = 0;
+static bool lang_Parser_use_client_charset = true;
+
 /*
  * lang_server_charset_init - Initializes the global value of the server's
  *                            charset
@@ -2140,6 +2150,78 @@ lang_charset_space_char (INTL_CODESET codeset, char *space_char,
   space_char[0] = '\0';
   return ER_FAILED;
 }
+
+/*
+ * lang_set_client_charset_coll - Sets Client's charset and collation
+ *   return: none
+ */
+void
+lang_set_client_charset_coll (const INTL_CODESET codeset,
+			      const int collation_id)
+{
+  assert (codeset == INTL_CODESET_ISO88591
+	  || codeset == INTL_CODESET_UTF8
+	  || codeset == INTL_CODESET_KSC5601_EUC);
+
+  assert (collation_id >= 0 && collation_id < lang_count_collations);
+
+  lang_Client_charset = codeset;
+  lang_Client_collation_id = collation_id;
+  lang_Client_charset_Initialized = 1;
+}
+
+/*
+ * lang_get_client_charset - Gets Client's charset
+ *   return: codeset
+ */
+INTL_CODESET
+lang_get_client_charset (void)
+{
+  if (!lang_Client_charset_Initialized)
+    {
+      lang_set_client_charset_coll (LANG_SYS_CODESET, LANG_SYS_COLLATION);
+    }
+
+  return lang_Client_charset;
+}
+
+/*
+ * lang_get_client_collation - Gets Client's charset
+ *   return: codeset
+ */
+int
+lang_get_client_collation (void)
+{
+  if (!lang_Client_charset_Initialized)
+    {
+      lang_set_client_charset_coll (LANG_SYS_CODESET, LANG_SYS_COLLATION);
+    }
+
+  return lang_Client_collation_id;
+}
+
+/*
+ * lang_set_parser_use_client_charset - set if next parsing operation should
+ *				        use client's setting of charset and
+ *					collation
+ */
+void
+lang_set_parser_use_client_charset (bool use)
+{
+  lang_Parser_use_client_charset = use;
+}
+
+/*
+ * lang_get_parser_use_client_charset - checks if parser should use client's
+ *					charset and collation
+ *   return:
+ */
+bool
+lang_get_parser_use_client_charset (void)
+{
+  return lang_Parser_use_client_charset;
+}
+
 #endif /* !SERVER_MODE */
 
 

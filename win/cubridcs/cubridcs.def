@@ -136,6 +136,8 @@ EXPORTS
     db_get_bit
     db_get_cacheinfo
     db_get_char
+    db_get_string_codeset
+    db_get_string_collation
     db_get_class
     db_get_class_attribute
     db_get_class_attributes
@@ -233,6 +235,7 @@ EXPORTS
     db_ping_server
     db_push_values
     db_put
+	db_put_cs_and_collation	
     db_query_column_count
     db_query_end
     db_query_first_tuple
@@ -454,7 +457,10 @@ EXPORTS
     intl_char_count
     intl_identifier_casecmp
     lang_charset
+	lang_get_client_charset
+	lang_get_client_collation
 	lang_get_generic_unicode_norm
+	lang_set_parser_use_client_charset
     msgcat_gets
     msgcat_open
     optarg

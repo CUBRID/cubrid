@@ -1643,6 +1643,7 @@ typedef enum
 #define SQLX_CMD_CREATE_STORED_PROCEDURE   CUBRID_STMT_CREATE_STORED_PROCEDURE
 #define SQLX_CMD_DROP_STORED_PROCEDURE   CUBRID_STMT_DROP_STORED_PROCEDURE
 #define SQLX_CMD_SELECT_UPDATE   CUBRID_STMT_SELECT_UPDATE
+#define SQLX_CMD_SET_NAMES   CUBRID_STMT_SET_NAMES
 #define SQLX_MAX_CMD_TYPE   CUBRID_MAX_STMT_TYPE
 
 /* Structure used to contain information about the position of
@@ -3806,4 +3807,6 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
+extern int db_put_cs_and_collation (DB_VALUE * value, const int codeset,
+				    const int collation_id);
 #endif /* _DBI_COMPAT_H_ */

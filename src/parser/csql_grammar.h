@@ -559,7 +559,9 @@
      HEX_STRING = 776,
      CPP_STYLE_HINT = 777,
      C_STYLE_HINT = 778,
-     SQL_STYLE_HINT = 779
+     SQL_STYLE_HINT = 779,
+     ISO_STRING = 780,
+     UTF8_STRING = 781
    };
 #endif
 
@@ -998,12 +1000,17 @@ static int parser_count_list (PT_NODE * list);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
-static int pt_check_grammar_charset_collation (PARSER_CONTEXT *parser,
-					       PT_NODE * charset_node,
-					       PT_NODE * coll_node,
-					       int *charset, int *coll_id);
 static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
 				   const char *str, const int str_size);
+static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
+						const PT_TYPE_ENUM char_type,
+						const char *str,
+						const INTL_CODESET codeset);
+static void pt_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *c_node,
+				 const int codeset_id,
+				 const int collation_id, bool force);
+static void pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
+					PT_NODE *coll_node);
 
 static PT_MISC_TYPE parser_attr_type;
 
@@ -1079,7 +1086,7 @@ typedef struct YYLTYPE
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 546 "../../src/parser/csql_grammar.y"
+#line 551 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1091,7 +1098,7 @@ typedef union YYSTYPE
   container_10 c10;
 }
 /* Line 2604 of glr.c.  */
-#line 1095 "../../src/parser/csql_grammar.h"
+#line 1102 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

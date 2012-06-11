@@ -438,7 +438,7 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 
       if (select_list == NULL)
 	{
-	  /* if arg1 or arg2 is null, there need be resolved firstly.*/
+	  /* if arg1 or arg2 is null, there need be resolved firstly. */
 	  if (arg1 == NULL || arg2 == NULL)
 	    {
 	      return NULL;
@@ -605,7 +605,9 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
       else
 	{
+	  parser->custom_print |= PT_SUPPRESS_CHARSET_PRINT;
 	  t = pt_get_node_title (parser, s, f);
+	  parser->custom_print &= ~PT_SUPPRESS_CHARSET_PRINT;
 
 	  if (t == NULL)
 	    {

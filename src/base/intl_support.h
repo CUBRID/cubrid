@@ -267,8 +267,12 @@ extern "C"
   extern int intl_mbs_cmp (const char *mbs1, const char *mbs2);
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
-  extern int intl_check_string (const char *buf, int size, char **pos);
+#if !defined (SERVER_MODE)
+  extern int intl_check_string (const char *buf, int size, char **pos,
+				const INTL_CODESET codeset);
   extern bool intl_is_bom_magic (const char *buf, const int size);
+  extern const char *intl_charset_print_name (const INTL_CODESET codeset);
+#endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint,
 			      unsigned char *utf8_seq);
   extern int intl_cp_to_dbcs (const unsigned int codepoint,

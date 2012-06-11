@@ -2724,12 +2724,12 @@ db_get_string_size (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INTL_CODESET
+int
 db_get_string_codeset (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
 
-  return (INTL_CODESET) value->data.ch.info.codeset;
+  return value->data.ch.info.codeset;
 }
 
 /*
@@ -5768,4 +5768,33 @@ db_domain_collation_id (const DB_DOMAIN * domain)
     }
 
   return (collation_id);
+}
+
+/*
+ * db_put_cs_and_collation() - Set the charset and collation.
+ * return	   : error code
+ * cs(in)	   : codeset
+ * collation_id(in): collation identifier
+ */
+int
+db_put_cs_and_collation (DB_VALUE * value, const int codeset,
+			 const int collation_id)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  if (TP_TYPE_HAS_COLLATION (value->domain.general_info.type))
+    {
+      value->data.ch.info.codeset = (char) codeset;
+      value->domain.char_info.collation_id = collation_id;
+    }
+  else
+    {
+      error = ER_QPROC_INVALID_DATATYPE;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+	      0);
+    }
+
+  return error;
 }

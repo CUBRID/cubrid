@@ -295,8 +295,6 @@ extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
 extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset,
 			    const int collation_id, const char *str,
 			    const int size);
-extern INTL_CODESET db_get_string_codeset (const DB_VALUE * value);
-extern int db_get_string_collation (const DB_VALUE * value);
 
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);

@@ -1000,4 +1000,9 @@ extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
+extern int db_put_cs_and_collation (DB_VALUE * value, const int codeset,
+				    const int collation_id);
+extern int db_get_string_codeset (const DB_VALUE * value);
+extern int db_get_string_collation (const DB_VALUE * value);
+
 #endif /* _DBTYPE_H_ */
