@@ -80,7 +80,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/LTCG"
-				AdditionalDependencies="odbc32.lib odbccp32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib ..\external\lib\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -175,7 +175,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/LTCG"
-				AdditionalDependencies="odbc32.lib odbccp32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib ..\external\lib64\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -272,7 +272,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/VERBOSE:LIB "
-				AdditionalDependencies="odbc32.lib odbccp32.lib wsock32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib wsock32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib ..\external\lib\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -367,7 +367,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/VERBOSE:LIB "
-				AdditionalDependencies="odbc32.lib odbccp32.lib wsock32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib wsock32.lib ..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib ..\external\lib64\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -460,7 +460,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib ..\..\src\odbc\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib ..\..\src\odbc\cas_cci.lib wsock32.lib ..\external\lib\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -552,7 +552,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib ..\..\src\odbc\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib ..\..\src\odbc\cas_cci.lib wsock32.lib ..\external\lib64\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"

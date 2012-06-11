@@ -22,7 +22,7 @@ SRC = $(top_srcdir)/src
 BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 
-AM_CPPFLAGS = @SRC_INC@ @SYS_DEFS@ @VERSION_DEFS@
+AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ @SYS_DEFS@ @VERSION_DEFS@
 
 include_HEADERS = \
 	$(BROKER_DIR)/cas_error.h \
@@ -41,7 +41,7 @@ libcascci_la_SOURCES = \
 	$(CCI_DIR)/cci_common.c \
 	$(CCI_DIR)/cci_log.cpp \
 	$(CCI_DIR)/cci_properties.c
-libcascci_la_LDFLAGS = -version-number @LT_VERSION@
+libcascci_la_LDFLAGS = -version-number @LT_VERSION@ @EXT_LIBS@
 
 VERSIONED_FILES = \
 	$(CCI_DIR)/cas_cci.c \

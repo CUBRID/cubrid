@@ -83,7 +83,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="true"
-				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib ..\external\lib\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="2"
 				MergedIDLBaseFileName="$(OutDir)\_CUBRIDProvider.idl"
@@ -184,7 +184,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="true"
-				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib ..\external\lib64\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="2"
 				MergedIDLBaseFileName="$(OutDir)\_CUBRIDProvider.idl"
@@ -284,7 +284,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="true"
-				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib ..\external\lib\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				IgnoreEmbeddedIDL="false"
@@ -388,7 +388,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="true"
-				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib ..\external\lib64\libregex38a.lib"
 				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				IgnoreEmbeddedIDL="false"

@@ -224,7 +224,7 @@ cci_url_parse_properties (T_URL_PROPERTY props[], int len, char *properties)
       return CCI_ER_INVALID_URL;
     }
 
-  token = strtok_r (properties, "&", &save_url);
+  token = strtok_r (properties, "?&", &save_url);
   while (token != NULL && error == CCI_ER_NO_ERROR)
     {
       char *name, *value, *save_property = NULL;

@@ -401,13 +401,15 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 int
 cci_connect_with_url (char *url, char *user, char *password)
 {
+  char *token[MAX_URL_MATCH_COUNT];
+  int error;
+  unsigned i;
+
   char buf[LINE_MAX];
-  char *conn_string;
   char *property = NULL;
-  char *p, *q, *end, *nextp;
+  char *end = NULL;
   char *host, *dbname;
   int port;
-  int error;
   int con_handle_id;
   bool use_url = false;
   T_CON_HANDLE *con_handle = NULL;
@@ -433,96 +435,34 @@ cci_connect_with_url (char *url, char *user, char *password)
       password = (char *) "";
     }
 
-  if (user[0] == '\0' && password[0] != '\0')
-    {
-      /* error - cci_connect_with_url (url, "", "pass") */
-      return CCI_ER_CONNECT;
-    }
   if (user[0] == '\0')
     {
+      if (password[0] != '\0')
+	{
+	  /* error - cci_connect_with_url (url, "", "pass") */
+	  return CCI_ER_CONNECT;
+	}
       use_url = true;
     }
 
-#if defined(WINDOWS)
-  if (wsa_initialize () < 0)
+  error = cci_url_match (url, token);
+  if (error != CCI_ER_NO_ERROR)
     {
-      return CCI_ER_CONNECT;
-    }
-#endif
-
-  strncpy (buf, url, LINE_MAX);
-  buf[LINE_MAX - 1] = '\0';
-  property = strchr (buf, '?');
-  if (property != NULL)
-    {
-      *property = '\0';		/* replace '?' to '\0' */
-      property += 1;
+      return error;
     }
 
-  conn_string = buf;
-  if (strncasecmp (conn_string, "cci:cubrid:", 11) != 0)
+  host = token[0];
+  port = (int) strtol (token[1], &end, 10);
+  dbname = token[2];
+  if (use_url)
     {
-      return CCI_ER_INVALID_URL;
+      user = token[3];
+      password = token[4];
     }
-
-  p = conn_string + 11;
-  nextp = strchr (p, ':');
-  if (nextp == NULL)
+  property = token[5];
+  if (property == NULL)
     {
-      return CCI_ER_INVALID_URL;
-    }
-  *nextp = '\0';
-  host = p;
-
-  p = nextp + 1;
-  nextp = strchr (p, ':');
-  if (nextp == NULL)
-    {
-      return CCI_ER_INVALID_URL;
-    }
-  *nextp = '\0';
-  end = NULL;
-  port = (int) strtol (p, &end, 10);
-  if (port <= 0 || (end != NULL && end[0] != '\0'))
-    {
-      return CCI_ER_INVALID_URL;
-    }
-
-  p = nextp + 1;
-  nextp = strchr (p, ':');
-  if (nextp != NULL)
-    {
-      *nextp = '\0';
-    }
-  dbname = p;
-
-  if (nextp != NULL)
-    {
-      p = nextp + 1;
-      nextp = strchr (p, ':');
-      if (nextp != NULL)
-	{
-	  *nextp = '\0';
-	}
-
-      if (use_url)
-	{
-	  user = p;
-	}
-    }
-
-  if (nextp != NULL)
-    {
-      p = nextp + 1;
-      nextp = strchr (p, ':');
-      if (nextp != NULL)
-	{
-	  *nextp = '\0';
-	}
-      if (use_url)
-	{
-	  password = p;
-	}
+      property = "";
     }
 
   if (user[0] == '\0')
@@ -531,10 +471,12 @@ cci_connect_with_url (char *url, char *user, char *password)
       user = (char *) "public";
     }
 
-  if (nextp != NULL && *(nextp + 1) != '\0')
+#if defined(WINDOWS)
+  if (wsa_initialize () < 0)
     {
-      return CCI_ER_INVALID_URL;
+      return CCI_ER_CONNECT;
     }
+#endif
 
   con_handle_id = cci_get_new_handle_id (host, port, dbname, user, password);
   if (con_handle_id >= 0)
@@ -547,8 +489,8 @@ cci_connect_with_url (char *url, char *user, char *password)
 	}
 
       snprintf (con_handle->url, SRV_CON_URL_SIZE,
-		"cci:cubrid:%s:%d:%s:%s:********:%c%s",
-		host, port, dbname, user, property ? '?' : '\0', property);
+		"cci:cubrid:%s:%d:%s:%s:********:%s",
+		host, port, dbname, user, property);
       if (property != NULL)
 	{
 	  error = cci_conn_set_properties (con_handle, property);
@@ -597,6 +539,10 @@ cci_connect_with_url (char *url, char *user, char *password)
     }
 
 ret:
+  for (i = 0; i < MAX_URL_MATCH_COUNT; i++)
+    {
+      FREE_MEM (token[i]);
+    }
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg

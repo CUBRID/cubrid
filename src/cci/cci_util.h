@@ -56,6 +56,7 @@
 /************************************************************************
  * EXPORTED DEFINITIONS							*
  ************************************************************************/
+#define MAX_URL_MATCH_COUNT 6	/* sizeof (match_idx) / sizeof (int) - 1 */
 
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
@@ -82,9 +83,11 @@ extern void ut_double_to_str (double value, char *str);
 extern void ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type,
 			    char *str);
 extern void ut_oid_to_str (T_OBJECT * oid, char *str);
-extern void ut_lob_to_str (T_LOB *lob, char *str);
+extern void ut_lob_to_str (T_LOB * lob, char *str);
 extern void ut_bit_to_str (char *bit_str, int size, char *str);
 extern int ut_is_deleted_oid (T_OBJECT * oid);
+
+extern int cci_url_match (const char *src, char *token[]);
 
 #ifdef UNICODE_DATA
 extern char *ut_ansi_to_unicode (char *str);

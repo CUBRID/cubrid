@@ -45,6 +45,8 @@ import java.util.Hashtable;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UJCIManager;
@@ -79,7 +81,8 @@ public class CUBRIDDriver implements Driver {
 	public static final String default_user = "public";
 	public static final String default_password = "";
 
-	private final static String CUBRID_JDBC_URL_HEADER = "jdbc:cubrid";
+	private final static String URL_PATTERN =
+	    "jdbc:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
 	private final static String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
 
 	static {
@@ -133,157 +136,98 @@ public class CUBRIDDriver implements Driver {
 	 */
 
 	public Connection connect(String url, Properties info) throws SQLException {
-		String magickey, hostname, db_name, dummy, conn_string, prop_string;
-		String user = null, passwd = null;
-		int prop_pos = 0;
-		int port;
-		UConnection u_con;
-		String resolvedUrl;
-		ConnectionProperties connProperties;
+	    if (!acceptsURL(url)) {
+		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+	    }
 
-		if (!acceptsURL(url))
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+	    if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
+		return defaultConnection();
+	    }
 
-		if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
-			return defaultConnection();
-		} else {
-			// parse url
-			try {
-				prop_pos = url.indexOf('?');
+	    Pattern pattern = Pattern.compile(URL_PATTERN, Pattern.CASE_INSENSITIVE);
+	    Matcher matcher = pattern.matcher(url);
+	    if (!matcher.find()) {
+		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+	    }
 
-				if (prop_pos != -1) {
-					conn_string = url.substring(0, prop_pos);
-					prop_string = url.substring(prop_pos, url.length());
-				} else {
-					conn_string = url;
-					prop_string = null;
-				}
+	    String dummy;
+	    String host = matcher.group(2);
+	    String portString = matcher.group(3);
+	    String db = matcher.group(4);
+	    String user = matcher.group(5);
+	    String pass = matcher.group(6);
+	    String prop = matcher.group(7);
+	    int port = default_port;
 
-				StringTokenizer tokenizer = new StringTokenizer(conn_string,
-						":", true);
-				dummy = tokenizer.nextToken();
-				if (dummy.equals(":")) {
-					throw new Exception("Invalid URL");
-				} else {
-					tokenizer.nextToken();
-				}
+	    UConnection u_con;
+	    String resolvedUrl;
+	    ConnectionProperties connProperties;
 
-				magickey = tokenizer.nextToken();
-				if (magickey.equals(":")) {
-					throw new Exception("Invalid URL");
-				} else {
-					tokenizer.nextToken();
-				}
+	    if (host == null || host.length() == 0) {
+		host = default_hostname;
+	    }
 
-				hostname = tokenizer.nextToken();
-				if (hostname.equals(":")) {
-					hostname = default_hostname;
-				} else {
-					tokenizer.nextToken();
-				}
+	    if (portString == null || portString.length() == 0) {
+		port = default_port;
+	    } else {
+		port = Integer.parseInt(portString);
+	    }
 
-				dummy = tokenizer.nextToken();
-				if (dummy.equals(":")) {
-					port = default_port;
-				} else {
-					port = Integer.parseInt(dummy);
-					tokenizer.nextToken();
-				}
+	    connProperties = new ConnectionProperties();
+	    connProperties.setProperties(prop);
 
-				db_name = tokenizer.nextToken();
-				if (db_name.equals(":")) {
-					throw new CUBRIDException(CUBRIDJDBCErrorCode.no_dbname);
-				}
+	    // getting informations from the Properties object
+	    dummy = info.getProperty("user");
+	    if (dummy != null) {
+		user = dummy;
+	    }
+	    dummy = info.getProperty("password");
+	    if (dummy != null) {
+		pass = dummy;
+	    }
 
-				/*
-				 * Both user and password are optional. Test if there are more
-				 * tokens available to prevent NoSuchElementException.
-				 */
-				if (tokenizer.hasMoreTokens()) {
-					/* skip ':' */
-					tokenizer.nextToken();
-					if (tokenizer.hasMoreTokens()) {
-						user = tokenizer.nextToken();
-						if (user.equals(":")) {
-							user = null;
-						}
-					}
-				}
-				if (tokenizer.hasMoreTokens()) {
-					/* skip ':' */
-					tokenizer.nextToken();
-					if (tokenizer.hasMoreTokens()) {
-						passwd = tokenizer.nextToken();
-						if (passwd.equals(":")) {
-							passwd = null;
-						}
-					}
-				}
-			} catch (CUBRIDException e) {
-				throw e;
-			} catch (Exception e) {
-				throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
-			}
+	    if (user == null) {
+		user = default_user;
+	    }
+	    if (pass == null) {
+		pass = default_password;
+	    }
 
-			connProperties = new ConnectionProperties();
-			connProperties.setProperties(prop_string);
+	    resolvedUrl = "jdbc:cubrid:" + host + ":" + port + ":" + db + ":" + user + ":********:";
+	    if (prop != null) {
+		resolvedUrl += prop;
+	    }
 
-			// getting informations from the Properties object
-			dummy = info.getProperty("user");
-			if (dummy != null) {
-				user = dummy;
-			}
-			dummy = info.getProperty("password");
-			if (dummy != null) {
-				passwd = dummy;
-			}
+	    connProperties.setProperties(info);
 
-			if (user == null) {
-				user = default_user;
-			}
-			if (passwd == null) {
-				passwd = default_password;
-			}
+	    dummy = connProperties.getAltHosts();
+	    if (dummy != null) {
+		ArrayList<String> altHostList = new ArrayList<String>();
+		altHostList.add(host + ":" + port);
 
-			resolvedUrl = "jdbc:cubrid:" + hostname + ":" + port + ":"
-					+ db_name + ":" + user + "::";
-			if (prop_string != null) {
-				resolvedUrl += prop_string;
-			}
-
-			connProperties.setProperties(info);
-
-			dummy = connProperties.getAltHosts();
-			if (dummy != null) {
-				ArrayList<String> altHostList = new ArrayList<String>();
-				altHostList.add(hostname + ":" + port);
-
-				StringTokenizer st = new StringTokenizer(dummy, ",", false);
-				while (st.hasMoreTokens()) {
-					altHostList.add(st.nextToken());
-				}
-				try {
-					u_con = UJCIManager.connect(altHostList, db_name, user,
-							passwd, resolvedUrl);
-				} catch (CUBRIDException e) {
-					throw e;
-				}
-			} else {
-				try {
-					u_con = UJCIManager.connect(hostname, port, db_name, user,
-							passwd, resolvedUrl);
-				} catch (CUBRIDException e) {
-					throw e;
-				}
-			}
-
-		    	u_con.setCharset(connProperties.getCharSet());
-			u_con.setZeroDateTimeBehavior(connProperties.getZeroDateTimeBehavior());
+		StringTokenizer st = new StringTokenizer(dummy, ",", false);
+		while (st.hasMoreTokens()) {
+		    altHostList.add(st.nextToken());
 		}
+		try {
+		    u_con = UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
+		} catch (CUBRIDException e) {
+		    throw e;
+		}
+	    } else {
+		try {
+		    u_con = UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
+		} catch (CUBRIDException e) {
+		    throw e;
+		}
+	    }
 
-		u_con.setConnectionProperties(connProperties);
-		u_con.tryConnect();
-		return new CUBRIDConnection(u_con, url, user);
+	    u_con.setCharset(connProperties.getCharSet());
+	    u_con.setZeroDateTimeBehavior(connProperties.getZeroDateTimeBehavior());
+
+	    u_con.setConnectionProperties(connProperties);
+	    u_con.tryConnect();
+	    return new CUBRIDConnection(u_con, url, user);
 	}
 
 	public Connection defaultConnection() throws SQLException {
@@ -309,19 +253,24 @@ public class CUBRIDDriver implements Driver {
 	}
 
 	public boolean acceptsURL(String url) throws SQLException {
-	    if (url == null)
-            return false;
+	    if (url == null) {
+                return false;
+	    }
 
-        String urlHeader = CUBRID_JDBC_URL_HEADER;
-        String className = CUBRIDDriver.class.getName();
-        if (className.matches(".*oracle.*")) {
-            urlHeader += "-oracle";
-        } else if (className.matches(".*mysql.*")) {
-            urlHeader += "-mysql";
-        }
-        
-        return url.toLowerCase().startsWith(urlHeader)
-                || url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION);
+	    if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
+		return true;
+	    }
+
+	    Pattern pattern = Pattern.compile(URL_PATTERN, Pattern.CASE_INSENSITIVE);
+	    Matcher matcher = pattern.matcher(url);
+	    if (matcher.find()) {
+		String match = matcher.group();
+		if (match.equals(url)) {
+		    return true;
+		}
+	    }
+
+	    return false;
 	}
 
 	public DriverPropertyInfo[] getPropertyInfo(String url, Properties info)

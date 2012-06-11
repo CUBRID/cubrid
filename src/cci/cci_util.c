@@ -48,6 +48,8 @@
 #include <winsock2.h>
 #include <windows.h>
 #endif
+#include <sys/types.h>
+#include <regex38a.h>
 
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*
@@ -79,6 +81,9 @@ static char *wstr2str (WCHAR * wstr, UINT CodePage);
 static WCHAR *str2wstr (char *str, UINT CodePage);
 #endif
 static char is_float_str (char *str);
+static void *cci_reg_malloc (void *dummy, size_t s);
+static void *cci_reg_realloc (void *dummy, void *p, size_t s);
+static void cci_reg_free (void *dummy, void *p);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -611,4 +616,96 @@ is_float_str (char *str)
     return 1;
 
   return 0;
+}
+
+static void *
+cci_reg_malloc (void *dummy, size_t s)
+{
+  return cci_malloc (s);
+}
+
+static void *
+cci_reg_realloc (void *dummy, void *p, size_t s)
+{
+  return cci_realloc (p, s);
+}
+
+static void
+cci_reg_free (void *dummy, void *p)
+{
+  cci_free (p);
+}
+
+int
+cci_url_match (const char *src, char *token[])
+{
+  static const char *pattern =
+    "cci:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
+  static int match_idx[] = { 2, 3, 4, 5, 6, 7, -1 };
+
+  unsigned i, len;
+  int error;
+  cub_regex_t regex;
+  cub_regmatch_t match[100];
+
+  char b[256];
+
+  cub_regset_malloc (cci_reg_malloc);
+  cub_regset_realloc (cci_reg_realloc);
+  cub_regset_free (cci_reg_free);
+
+  error = cub_regcomp (&regex, pattern, CUB_REG_EXTENDED | CUB_REG_ICASE);
+  if (error != CUB_REG_OKAY)
+    {
+      /* should not reach on this */
+      cub_regerror (error, &regex, b, 256);
+      fprintf (stderr, "cub_regcomp : %s\n", b);
+      cub_regfree (&regex);
+      return CCI_ER_INVALID_URL;	/* pattern compilation error */
+    }
+
+  len = strlen (src);
+  error = cub_regexec (&regex, src, len, 100, match, 0);
+  if (error == CUB_REG_NOMATCH)
+    {
+      cub_regfree (&regex);
+      return CCI_ER_INVALID_URL;	/* invalid url */
+    }
+  if (error != CUB_REG_OKAY)
+    {
+      /* should not reach on this */
+      cub_regerror (error, &regex, b, 256);
+      fprintf (stderr, "cub_regcomp : %s\n", b);
+      cub_regfree (&regex);
+      return CCI_ER_INVALID_URL;	/* regexec error */
+    }
+
+  if (match[0].rm_eo - match[0].rm_so != len)
+    {
+      cub_regfree (&regex);
+      return CCI_ER_INVALID_URL;	/* invalid url */
+    }
+
+  for (i = 0; match_idx[i] != -1; i++)
+    {
+      token[i] = NULL;
+    }
+
+  error = CCI_ER_NO_ERROR;
+  for (i = 0; match_idx[i] != -1 && match[match_idx[i]].rm_so != -1; i++)
+    {
+      const char *t = src + match[match_idx[i]].rm_so;
+      size_t n = match[match_idx[i]].rm_eo - match[match_idx[i]].rm_so;
+      token[i] = malloc (n + 1);
+      if (token[i] == NULL)
+	{
+	  error = CCI_ER_NO_MORE_MEMORY;	/* out of memory */
+	  break;
+	}
+      strncpy (token[i], t, n);
+      token[i][n] = '\0';
+    }
+
+  cub_regfree (&regex);
+  return error;
 }
