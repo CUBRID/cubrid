@@ -6731,6 +6731,8 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
    *    the index (maybe even for further columns, but we are only interested
    *    in the second column right now);
    *  - obviously are multi-column indexes
+   *  - not a filter index
+   *  - not with HQ
    */
 
   /* ISS has no meaning on single column indexes */
@@ -6744,6 +6746,13 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   if (env->pt_tree->node_type == PT_SELECT &&
       env->pt_tree->info.query.q.select.connect_by)
     {
+      return false;
+    }
+
+  assert (index_entry->constraints != NULL);
+  if (index_entry->constraints->filter_predicate != NULL)
+    {
+      /* do not allow filter ISS with filter index */
       return false;
     }
 
