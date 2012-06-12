@@ -387,7 +387,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* must call pt_evaluate_tree */
 	  pt_evaluate_tree (parser, vc, db_value, 1);
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      /* to maintain the list to free all the allocated */
 	      to_break = true;
@@ -405,7 +405,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();

@@ -188,7 +188,7 @@ static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser,
 static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser,
 					  PT_NODE * name,
 					  PT_BIND_NAMES_ARG * bind_arg,
-					  int * is_spec_attr);
+					  int *is_spec_attr);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -881,7 +881,8 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
       return;
     }
 
-  if ((table = spec->info.spec.derived_table))
+  table = spec->info.spec.derived_table;
+  if (table)
     {
       /* evaluate the names of the current table.
        * The name scope of the first spec, is only the outer level scopes.
@@ -913,7 +914,8 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
        * By temporarily nulling the previous next pointer, the scope
        * is restricted at this level to the previous spec's. */
       spec->next = NULL;
-      if ((table = next->info.spec.derived_table))
+      table = next->info.spec.derived_table;
+      if (table)
 	{
 	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg,
 				    pt_bind_names_post, bind_arg);
@@ -1536,7 +1538,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
-      if (parser->error_msgs)
+      if (pt_has_error (parser))
 	{
 	  parser_free_tree (parser, node);
 	  node = NULL;
@@ -2841,12 +2843,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 			  top_node = bind_arg->sc_info->top_node;
 			}
 
-		     if (top_node != NULL
+		      if (top_node != NULL
 			  && (top_node->node_type == PT_CREATE_INDEX
 			      || top_node->node_type == PT_ALTER_INDEX)
-			      || (top_node->node_type == PT_ALTER
-				  && top_node->info.alter.create_index
-				     != NULL))
+			  || (top_node->node_type == PT_ALTER
+			      && top_node->info.alter.create_index != NULL))
 			{
 			  /* check if function name is a spec attribute */
 			  if (pt_function_name_is_spec_attr (parser, node,
@@ -3036,14 +3037,14 @@ pt_bind_value_to_hostvar_local (PARSER_CONTEXT * parser, PT_NODE * node,
 PT_NODE *
 pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  if (!parser->error_msgs)
+  if (!pt_has_error (parser))
     {
       node =
 	parser_walk_tree (parser, node, pt_bind_value_to_hostvar_local, NULL,
 			  NULL, NULL);
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       node = NULL;
     }
@@ -3181,7 +3182,7 @@ pt_find_class_attribute (PARSER_CONTEXT * parser, PT_NODE * cls,
       int db_err;
 
       db_err = er_errid ();
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  if (db_err == ER_AU_SELECT_FAILURE
 	      || db_err == ER_AU_AUTHORIZATION_FAILURE)
@@ -4671,7 +4672,7 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 		    }
 		  /* make sure the selector variable refers to an entity
 		   * spec that is a subclass of the arg1->data_type class. */
-		  if (!parser->error_msgs && arg1->data_type
+		  if (!pt_has_error (parser) && arg1->data_type
 		      && arg1->data_type->node_type == PT_DATA_TYPE
 		      && (arg1dt = arg1->data_type->info.data_type.entity)
 		      && arg1dt->node_type == PT_NAME
@@ -6489,7 +6490,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 		      &chk_parent, pt_continue_walk, NULL);
 
   /* resolve names in search conditions, assignments, and assignations */
-  if (!parser->error_msgs)
+  if (!pt_has_error (parser))
     {
       PT_NODE *idx_name = NULL;
       if (statement->node_type == PT_CREATE_INDEX
@@ -7372,7 +7373,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
  *   is_spec_attr(out): 1 if it is actually an attribute name, 0 otherwise
  */
 static int
-pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE *node,
+pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 			       PT_BIND_NAMES_ARG * bind_arg,
 			       int *is_spec_attr)
 {

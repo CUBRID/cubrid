@@ -842,7 +842,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 			{
 			  pt_evaluate_tree_having_serial (parser, val,
 							  &tmp_val, 1);
-			  if (!parser->error_msgs)
+			  if (!pt_has_error (parser))
 			    {
 			      insert_value = &tmp_val;
 			    }

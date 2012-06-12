@@ -6836,7 +6836,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
       attr_def_list_ptr = &stmt->info.alter.alter_clause.query.attr_def_list;
     }
 
-  if (*qry_specs_ptr == NULL || parser->error_msgs != NULL)
+  if (*qry_specs_ptr == NULL || pt_has_error (parser))
     {
       return;
     }
@@ -9353,17 +9353,18 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
       sc_info_ptr->system_class = false;
       node = pt_resolve_names (parser, node, sc_info_ptr);
-      if (sc_info_ptr->system_class && PT_IS_QUERY (node))
-	{
-	  /* do not cache the result if a system class is involved
-	     in the query */
-	  node->info.query.reexecute = 1;
-	  node->info.query.do_cache = 0;
-	  node->info.query.do_not_cache = 1;
-	}
 
       if (!pt_has_error (parser))
 	{
+	  if (sc_info_ptr->system_class && PT_IS_QUERY (node))
+	    {
+	      /* do not cache the result if a system class is involved
+	         in the query */
+	      node->info.query.reexecute = 1;
+	      node->info.query.do_cache = 0;
+	      node->info.query.do_not_cache = 1;
+	    }
+
 	  if (node->node_type == PT_UPDATE
 	      || node->node_type == PT_DELETE
 	      || node->node_type == PT_INSERT
@@ -9397,16 +9398,8 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	  if (!pt_has_error (parser))
 	    {
 	      /* remove unnecessary variable */
-	      sc_info_ptr->unbound_hostvar = false;
 	      node = parser_walk_tree (parser, node, NULL, NULL,
 				       pt_semantic_check_local, sc_info_ptr);
-	      if (node && sc_info_ptr->unbound_hostvar)
-		{
-		  node->cannot_prepare = 1;
-		}
-
-	      /* because the statement has some PT_HOST_VAR whose data type
-	         was not bound, we cannot prepare it; see pt_eval_type() */
 
 	      if (!pt_has_error (parser))
 		{
@@ -9674,7 +9667,7 @@ pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
 
   /* resolve names */
   error = pt_quick_resolve_names (parser, spec_p, node_p, &sc_info);
-  if (error != NO_ERROR || parser->error_msgs != NULL)
+  if (error != NO_ERROR || pt_has_error (parser))
     {
       return NULL;
     }
@@ -11015,7 +11008,12 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  query = pt_semantic_check (parser, query);
 	  if (pt_has_error (parser) || !query)
 	    {
-	      return er_errid ();
+	      error = er_errid ();
+	      if (error == NO_ERROR)
+		{
+		  error = ER_FAILED;	/* defense code */
+		}
+	      return error;
 	    }
 
 	  query->info.query.limit = limit;

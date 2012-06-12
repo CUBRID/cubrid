@@ -274,8 +274,10 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 
   assert (parser != NULL);
 
-  if (!tree || !val)
-    return false;
+  if (tree == NULL || val == NULL)
+    {
+      return false;
+    }
 
   switch (tree->node_type)
     {
@@ -415,7 +417,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
       break;
     }
 
-  return (result && !parser->error_msgs);
+  return (result && !pt_has_error (parser));
 }
 
 /*
@@ -892,7 +894,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
   assert (parser != NULL);
 
-  if (!tree || !db_values || parser->error_msgs)
+  if (tree == NULL || db_values == NULL || pt_has_error (parser))
     {
       return;
     }
@@ -910,7 +912,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
     case PT_DOT_:
     case PT_NAME:
-      if (!pt_eval_path_expr (parser, tree, db_values) && !parser->error_msgs)
+      if (!pt_eval_path_expr (parser, tree, db_values)
+	  && !pt_has_error (parser))
 	{
 	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
 		      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
@@ -994,17 +997,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  /* evaluate operands */
 	  pt_evaluate_tree (parser, arg1, &opd1, 1);
-	  if (arg2 && !parser->error_msgs)
+	  if (arg2 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree (parser, arg2, &opd2, 1);
 	    }
 
-	  if (arg3 && !parser->error_msgs)
+	  if (arg3 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree (parser, arg3, &opd3, 1);
 	    }
 
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      break;
 	    }
@@ -1048,9 +1051,9 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
       temp = mq_translate (parser, temp);
 
-      if (!temp)
+      if (temp == NULL)
 	{
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1071,7 +1074,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  regu_free_listid ((QFILE_LIST_ID *) temp->etc);
 	  pt_end_query (parser);
 	}
-      else if (!parser->error_msgs)
+      else if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, tree, db_error_string (3));
 	}
@@ -1084,7 +1087,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	{
 	  error = ER_DO_INSERT_TOO_MANY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1106,7 +1109,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    {
 	      db_make_pointer (db_values, temp);
 	    }
-	  else if (!parser->error_msgs)
+	  else if (!pt_has_error (parser))
 	    {
 	      if (temp != NULL)
 		{
@@ -1132,7 +1135,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 	  db_value_free (val);
 	}
-      else if (!parser->error_msgs)
+      else if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, tree, db_error_string (3));
 	}
@@ -1155,7 +1158,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      db_make_null (db_values);
 	    }
 	}
-      else if (!parser->error_msgs)
+      else if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, tree, db_error_string (3));
 	}
@@ -1179,7 +1182,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
 				  db_values, &tree->data_type) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1196,7 +1199,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
 				  db_values, &tree->data_type) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1213,7 +1216,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (pt_seq_value_to_db (parser, tree->info.function.arg_list,
 				  db_values, &tree->data_type) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1230,7 +1233,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
 				  db_values, 0) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1247,7 +1250,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
 				  db_values, 0) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1264,7 +1267,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
 				  db_values, 1) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1333,7 +1336,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
   assert (parser != NULL);
 
-  if (!tree || !db_values || parser->error_msgs)
+  if (tree == NULL || db_values == NULL || pt_has_error (parser))
     {
       return;
     }
@@ -1361,7 +1364,8 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
     case PT_DOT_:
     case PT_NAME:
-      if (!pt_eval_path_expr (parser, tree, db_values) && !parser->error_msgs)
+      if (!pt_eval_path_expr (parser, tree, db_values)
+	  && !pt_has_error (parser))
 	{
 	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
 		      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
@@ -1508,7 +1512,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	  type1 =
 	    (PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE) opd1.domain.
 					       general_info.type);
-	  if (arg2 && !parser->error_msgs)
+	  if (arg2 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg2, &opd2, 1);
 	      type2 = arg2->type_enum;
@@ -1543,7 +1547,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		  break;
 		}		/* switch (op) */
 	    }
-	  if (arg3 && !parser->error_msgs)
+	  if (arg3 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg3, &opd3, 1);
 	      type3 = arg3->type_enum;
@@ -1594,7 +1598,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		  break;
 		}		/* switch (op) */
 	    }
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      pr_clear_value (&opd1);
 	      pr_clear_value (&opd2);
@@ -1643,9 +1647,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
       temp = mq_translate (parser, temp);
 
-      if (!temp)
+      if (temp == NULL)
 	{
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1670,7 +1674,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	  regu_free_listid ((QFILE_LIST_ID *) temp->etc);
 	  pt_end_query (parser);
 	}
-      else if (!parser->error_msgs)
+      else if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, tree, db_error_string (3));
 	}
@@ -1686,7 +1690,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	{
 	  error = ER_DO_INSERT_TOO_MANY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1706,7 +1710,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    {
 	      db_make_pointer (db_values, temp);
 	    }
-	  else if (!parser->error_msgs)
+	  else if (!pt_has_error (parser))
 	    {
 	      if (temp != NULL)
 		{
@@ -1732,7 +1736,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  db_value_free (val);
 	}
-      else if (!parser->error_msgs)
+      else if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, tree, db_error_string (3));
 	}
@@ -1755,7 +1759,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	      db_make_null (db_values);
 	    }
 	}
-      else if (!parser->error_msgs)
+      else if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, tree, db_error_string (3));
 	}
@@ -1779,7 +1783,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
 				  db_values, &tree->data_type) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1796,7 +1800,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
 				  db_values, &tree->data_type) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1813,7 +1817,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	  if (pt_seq_value_to_db (parser, tree->info.function.arg_list,
 				  db_values, &tree->data_type) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1830,7 +1834,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
 				  db_values, 0) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1846,7 +1850,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
 				  db_values, 0) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1862,7 +1866,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
 				  db_values, 1) == NULL
-	      && !parser->error_msgs)
+	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }

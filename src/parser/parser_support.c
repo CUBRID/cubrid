@@ -2321,7 +2321,7 @@ pt_reset_error (PARSER_CONTEXT * parser)
 {
   if (parser)
     {
-      if (parser->error_msgs)
+      if (pt_has_error (parser))
 	{
 	  parser_free_tree (parser, parser->error_msgs);
 	  parser->error_msgs = NULL;

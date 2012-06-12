@@ -14941,7 +14941,7 @@ predicate_expr_sub
 			opd2 = $3;
 			e = parser_make_expression ($2, $1, NULL, NULL);
 
-			if (e && this_parser->error_msgs == NULL)
+			if (e && !pt_has_error (this_parser))
 			  {
 
 			    e->info.expr.arg2 = opd2;
@@ -20571,7 +20571,7 @@ parser_main (PARSER_CONTEXT * parser)
   rv = yyparse ();
   pt_cleanup_hint (parser, parser_hint_table);
 
-  if (parser->error_msgs || parser->stack_top <= 0 || !parser->node_stack)
+  if (pt_has_error (parser) || parser->stack_top <= 0 || !parser->node_stack)
     {
       parser->statements = NULL;
     }

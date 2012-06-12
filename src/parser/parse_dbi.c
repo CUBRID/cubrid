@@ -832,7 +832,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values,
        element != NULL; element = element->next, indx++)
     {
       pt_evaluate_tree_internal (parser, element, &e_val, 1, true);
-      if (parser->error_msgs == NULL)
+      if (!pt_has_error (parser))
 	{
 	  if (db_seq_put (DB_GET_SEQUENCE (db_value), indx, &e_val)
 	      != NO_ERROR)
@@ -890,7 +890,7 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values,
   for (element = *values; element != NULL; element = element->next)
     {
       pt_evaluate_tree_internal (parser, element, &e_val, 1, true);
-      if (parser->error_msgs == NULL)
+      if (!pt_has_error (parser))
 	{
 	  if (db_set_add (db_get_set (db_value), &e_val) != NO_ERROR)
 	    {

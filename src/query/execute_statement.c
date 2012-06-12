@@ -3801,7 +3801,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
     return er_errid ();
 
   pt_evaluate_tree (parser, arg, &db_val, 1);
-  if (parser->error_msgs || DB_IS_NULL (&db_val))
+  if (pt_has_error (parser) || DB_IS_NULL (&db_val))
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
@@ -4172,7 +4172,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      pt_evaluate_tree (parser, mode->info.isolation_lvl.level, &val,
 				1);
 
-	      if (parser->error_msgs)
+	      if (pt_has_error (parser))
 		{
 		  return ER_GENERIC_ERROR;
 		}
@@ -4188,7 +4188,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 	case PT_TIMEOUT:
 	  pt_evaluate_tree (parser, mode->info.timeout.val, &val, 1);
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      return ER_GENERIC_ERROR;
 	    }
@@ -4254,7 +4254,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
       {
 	DB_VALUE plan;
 	pt_evaluate_tree (parser, statement->info.get_opt_lvl.args, &plan, 1);
-	if (parser->error_msgs)
+	if (pt_has_error (parser))
 	  {
 	    return ER_OBJ_INVALID_ARGUMENTS;
 	  }
@@ -4315,7 +4315,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   pt_evaluate_tree (parser, p1, &val1, 1);
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       pr_clear_value (&val1);
       return NO_ERROR;
@@ -4331,7 +4331,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
       plan = DB_GET_STRING (&val1);
       p2 = p1->next;
       pt_evaluate_tree (parser, p2, &val2, 1);
-      if (parser->error_msgs)
+      if (pt_has_error (parser))
 	{
 	  pr_clear_value (&val1);
 	  pr_clear_value (&val2);
@@ -4397,7 +4397,7 @@ do_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       pt_evaluate_tree (parser, val, &db_val, 1);
 
-      if (parser->error_msgs)
+      if (pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	}
@@ -7055,7 +7055,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  pt_evaluate_tree (parser, rhs, assign->db_val, multi_assign_cnt);
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      error = ER_GENERIC_ERROR;
 	    }
@@ -9627,7 +9627,7 @@ do_evaluate (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   pt_evaluate_tree (parser, expr, &expr_value, 1);
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       return ER_PT_SEMANTIC;
@@ -11383,7 +11383,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  else
 	    {
 	      pt_evaluate_tree_having_serial (parser, vc, &db_value, 1);
-	      if (parser->error_msgs)
+	      if (pt_has_error (parser))
 		{
 		  (void) pt_report_to_ersys (parser, PT_EXECUTION);
 		  error = er_errid ();
@@ -11414,7 +11414,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	   */
 	  db_value_clear (&db_value);
 
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      if (error < NO_ERROR)
 		{
@@ -12715,7 +12715,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
 
   pt_evaluate_tree (parser, target, &target_value, 1);
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       return er_errid ();
@@ -12736,7 +12736,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  obj = DB_GET_OBJECT ((&target_value));
 	}
 
-      if (!obj || parser->error_msgs)
+      if (obj == NULL || pt_has_error (parser))
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
@@ -12779,7 +12779,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      pt_evaluate_tree (parser, vc, &db_value, 1);
-	      if (parser->error_msgs)
+	      if (pt_has_error (parser))
 		{
 		  /* to maintain the list to free all the allocated */
 		  to_break = true;
@@ -12803,7 +12803,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
       /*
        * Call the method.
        */
-      if (parser->error_msgs)
+      if (pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  error = er_errid ();

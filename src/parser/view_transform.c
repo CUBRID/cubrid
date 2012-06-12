@@ -2525,7 +2525,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  if (subquery != NULL)
 		    {
 
-		      if (parser->error_msgs || tree == NULL)
+		      if (tree == NULL || pt_has_error (parser))
 			{
 			  /* an error was discovered parsing the sub query. */
 			  return NULL;
@@ -3898,7 +3898,7 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
     {
       mq_check_update (parser, update_statement);
     }
-  if (!update_statement && !parser->error_msgs)
+  if (update_statement == NULL && !pt_has_error (parser))
     {
       PT_ERRORm (parser, &save, MSGCAT_SET_PARSER_RUNTIME,
 		 MSGCAT_RUNTIME_UPDATE_EMPTY);
@@ -4107,7 +4107,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  insert_statement->next = next;
 	}
     }
-  else if (!parser->error_msgs)
+  else if (!pt_has_error (parser))
     {
       PT_ERRORm (parser, &save, MSGCAT_SET_PARSER_RUNTIME,
 		 MSGCAT_RUNTIME_INSERT_EMPTY);
@@ -4145,7 +4145,7 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
 	  return NULL;
 	}
     }
-  else if (!parser->error_msgs)
+  else if (!pt_has_error (parser))
     {
       PT_ERRORm (parser, &save, MSGCAT_SET_PARSER_RUNTIME,
 		 MSGCAT_RUNTIME_DELETE_EMPTY);
@@ -5527,7 +5527,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
 	}
     }
 
-  if (statements && !parser->error_msgs)
+  if (statements && !pt_has_error (parser))
     {
       parser->oid_included = PT_INCLUDE_OID_TRUSTME;
 
@@ -5535,7 +5535,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
 
       statements[0] = pt_add_row_oid_name (parser, statements[0]);
 
-      if (statements[0] && !parser->error_msgs)
+      if (statements[0] && !pt_has_error (parser))
 	{
 	  symbols->attrs = statements[0]->info.query.q.select.list;
 	  symbols->number_of_attrs = pt_length_of_select_list (symbols->attrs,
@@ -5559,7 +5559,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
 	    mq_translate_subqueries (parser, class_object, symbols->attrs,
 				     NULL);
 
-	  if (!parser->error_msgs && symbols->vquery_for_query)
+	  if (!pt_has_error (parser) && symbols->vquery_for_query)
 	    {
 	      if (mq_updatable (parser, symbols->vquery_for_query))
 		{
@@ -7514,11 +7514,11 @@ mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr,
       (*value) = mq_translate_value (parser, *value);
       result = pt_invert (parser, attr, *value);
 
-      if (!result)
+      if (result == NULL)
 	{
 	  /* error not invertable/updatable */
 	  /* don't want to repeat this error */
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORmf (parser, attr, MSGCAT_SET_PARSER_RUNTIME,
 			  MSGCAT_RUNTIME_VASG_TGT_UNINVERTBL,
@@ -7568,7 +7568,7 @@ mq_invert_insert_subquery (PARSER_CONTEXT * parser, PT_NODE ** attr,
     case PT_INTERSECTION:
       mq_invert_insert_subquery (parser, attr,
 				 subquery->info.query.q.union_.arg1);
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  mq_invert_insert_subquery (parser, attr,
 				     subquery->info.query.q.union_.arg2);
@@ -7582,7 +7582,7 @@ mq_invert_insert_subquery (PARSER_CONTEXT * parser, PT_NODE ** attr,
       break;
     }
 
-  while (!parser->error_msgs && *attr)
+  while (*attr && !pt_has_error (parser))
     {
       attr_next = (*attr)->next;
       (*attr)->next = NULL;
@@ -9427,7 +9427,7 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser,
 
   if (!select_statement)
     {
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  const char *real_class_name = "<unknown>";
 	  if (real_class && real_class->info.name.original)
@@ -9468,7 +9468,7 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser,
 	}
     }
 
-  if (!parser->error_msgs)
+  if (!pt_has_error (parser))
     {
       PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC,
 		   MSGCAT_SEMANTIC_CLASS_DOES_NOT_HAVE,
@@ -9704,7 +9704,7 @@ mq_evaluate_expression (PARSER_CONTEXT * parser, PT_NODE * expr,
 		 MSGCAT_RUNTIME_NO_EXPR_TO_EVALUATE);
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       error = ER_PT_SEMANTIC;
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -9754,7 +9754,7 @@ mq_evaluate_expression_having_serial (PARSER_CONTEXT * parser, PT_NODE * expr,
 		 MSGCAT_RUNTIME_NO_EXPR_TO_EVALUATE);
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       error = ER_PT_SEMANTIC;
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -9817,7 +9817,7 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name,
     (parser, vclass_object, &attr, &real, PT_NORMAL_SELECT, DB_AUTH_SELECT,
      &spec_id);
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       error = ER_PT_SEMANTIC;
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -9966,12 +9966,12 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name,
 	  value_holder->info.value.data_value.set = NULL;
 	}
     }
-  else if (!parser->error_msgs)
+  else if (!pt_has_error (parser))
     {
       PT_INTERNAL_ERROR (parser, "translate");
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       error = ER_PT_SEMANTIC;
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -10026,7 +10026,7 @@ mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object,
       flat = subquery->info.query.q.select.from->info.spec.flat_entity_list;
     }
 
-  if (!flat && !parser->error_msgs)
+  if (flat == NULL && !pt_has_error (parser))
     {
       PT_NODE dummy;
       dummy.line_number = 0;
@@ -10036,7 +10036,7 @@ mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object,
 		  db_get_class_name (vclass_object));
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
     }
@@ -10106,7 +10106,7 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
       statement = pt_compile (parser, statement);
     }
 
-  if (statement && !parser->error_msgs)
+  if (statement && !pt_has_error (parser))
     {
       error = mq_evaluate_expression
 	(parser, statement->info.query.q.select.list, value, object,
@@ -10191,7 +10191,7 @@ mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs,
       stmt = pt_compile (parser, stmt);
     }
 
-  if (!stmt || parser->error_msgs)
+  if (stmt == NULL || pt_has_error (parser))
     {
       err = ER_PT_SEMANTIC;
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -10303,7 +10303,7 @@ mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class,
 						   (PT_NODE *) s_class,
 						   PT_NORMAL_SELECT,
 						   DB_AUTH_SELECT) != NULL);
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       parser_free_tree (parser, parser->error_msgs);
     }

@@ -1451,7 +1451,7 @@ pt_internal_error (PARSER_CONTEXT * parser, const char *file,
   node.column_number = 0;
   node.buffer_pos = -1;
 
-  if (parser && !parser->error_msgs)
+  if (parser && !pt_has_error (parser))
     {
       pt_frob_error (parser, &node, "System error (%s) in %s (line: %d)",
 		     what, file, line);
@@ -1928,7 +1928,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
   node->info.error_msg.error_message =
     pt_append_string (parser, node->info.error_msg.error_message, msg);
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       parser_append_node (node, parser->error_msgs);
     }
@@ -2021,14 +2021,12 @@ pt_frob_error (PARSER_CONTEXT * parser,
 PT_NODE *
 pt_get_errors (PARSER_CONTEXT * parser)
 {
-  if (!parser)
+  if (parser == NULL)
     {
       return NULL;
     }
-  else
-    {
-      return parser->error_msgs;
-    }
+
+  return parser->error_msgs;
 }
 
 /*
@@ -9008,6 +9006,10 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   int print_from = 0;
   PT_NODE *arg3;
 
+  assert_release (p != p->info.expr.arg1);
+  assert_release (p != p->info.expr.arg2);
+  assert_release (p != p->info.expr.arg3);
+
   if (p->info.expr.paren_type == 1)
     {
       q = pt_append_nulstring (parser, q, "(");
@@ -11574,7 +11576,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (q)
 	    {
-	      if (parser->error_msgs)
+	      if (pt_has_error (parser))
 		{
 		  parser_free_tree (parser, parser->error_msgs);
 		}
@@ -11582,7 +11584,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      return q;
 	    }
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      parser_free_tree (parser, parser->error_msgs);
 	    }

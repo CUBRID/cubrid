@@ -1428,8 +1428,6 @@ struct semantic_chk_info
   int Oracle_outerjoin_subq_num;	/* Oracle style outer join check */
   int Oracle_outerjoin_path_num;	/* Oracle style outer join check */
   bool donot_fold;		/* false - off, true - on */
-  bool unbound_hostvar;		/* found a hostvar
-				   whose data type is unbound */
   bool system_class;		/* system class(es) is(are) referenced */
 };
 

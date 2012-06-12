@@ -261,7 +261,7 @@ qo_check_condition_yields_null (PARSER_CONTEXT * parser, PT_NODE * path_spec,
    * Ignore any error returned from semantic type check.
    * Just wanted to evaluate where clause with nulled spec names.
    */
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       parser_free_tree (parser, parser->error_msgs);
       parser->error_msgs = NULL;

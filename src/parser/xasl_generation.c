@@ -995,7 +995,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       XASL_SET_FLAG (xasl, XASL_HAS_NOCYCLE);
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       return NULL;
     }
@@ -2186,7 +2186,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (node && pred == NULL)
     {
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  PT_INTERNAL_ERROR (parser, "generate predicate");
 	}
@@ -4676,7 +4676,7 @@ pt_pop_symbol_info (PARSER_CONTEXT * parser)
     }
   else
     {
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  PT_INTERNAL_ERROR (parser, "generate");
 	}
@@ -5266,7 +5266,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	  if (sort_mode == SORT_LIST_AFTER_ISCAN ||
 	      sort_mode == SORT_LIST_ORDERBY)
 	    {			/* internal error */
-	      if (!parser->error_msgs)
+	      if (!pt_has_error (parser))
 		{
 		  PT_INTERNAL_ERROR (parser, "generate order_by");
 		}
@@ -5313,7 +5313,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	  /* internal error */
 	  if (node->info.sort_spec.pos_descr.dom == NULL)
 	    {
-	      if (!parser->error_msgs)
+	      if (!pt_has_error (parser))
 		{
 		  PT_INTERNAL_ERROR
 		    (parser,
@@ -7057,7 +7057,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_PARAMETER:
 		  val = regu_dbval_alloc ();
 		  pt_evaluate_tree (parser, node, val, 1);
-		  if (!parser->error_msgs)
+		  if (!pt_has_error (parser))
 		    {
 		      regu = pt_make_regu_constant (parser, val,
 						    pt_node_to_db_type (node),
@@ -7077,7 +7077,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      /* a method call that can be evaluated as a constant expression. */
 	      val = regu_dbval_alloc ();
 	      pt_evaluate_tree (parser, node, val, 1);
-	      if (!parser->error_msgs)
+	      if (!pt_has_error (parser))
 		{
 		  regu = pt_make_regu_constant (parser, val,
 						pt_node_to_db_type (node),
@@ -8979,7 +8979,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		  val = regu_dbval_alloc ();
 		  pt_evaluate_tree (parser, node, val, 1);
-		  if (!parser->error_msgs)
+		  if (!pt_has_error (parser))
 		    {
 		      regu = pt_make_regu_constant (parser, val,
 						    pt_node_to_db_type (node),
@@ -9037,7 +9037,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
   if (regu == NULL)
     {
-      if (parser->error_msgs == NULL)
+      if (!pt_has_error (parser))
 	{
 	  PT_INTERNAL_ERROR (parser, "generate var");
 	}
@@ -9124,7 +9124,7 @@ pt_regu_to_dbvalue (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
     }
   else
     {
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  PT_INTERNAL_ERROR (parser, "generate val");
 	}
@@ -9389,7 +9389,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		  else
 		    {
 		      /* system error, we should have understood this name. */
-		      if (!parser->error_msgs)
+		      if (!pt_has_error (parser))
 			{
 			  PT_INTERNAL_ERROR (parser, "generate attr");
 			}
@@ -9491,9 +9491,9 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	   * Note that this subquery has also just been determined to be
 	   * a correlated subquery.
 	   */
-	  if (!symbols->stack)
+	  if (symbols->stack == NULL)
 	    {
-	      if (!parser->error_msgs)
+	      if (!pt_has_error (parser))
 		{
 		  PT_INTERNAL_ERROR (parser, "generate attr");
 		}
@@ -9530,7 +9530,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		}
 	      else
 		{
-		  if (!parser->error_msgs)
+		  if (!pt_has_error (parser))
 		    {
 		      PT_INTERNAL_ERROR (parser, "generate attr");
 		    }
@@ -9545,7 +9545,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
       regu = NULL;
     }
 
-  if (!regu && !parser->error_msgs)
+  if (regu == NULL && !pt_has_error (parser))
     {
       const char *p = "unknown";
 
@@ -11748,10 +11748,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		}
 	    }
 
-	  if (!access
-	      || (!regu_attributes_pred
-		  && !regu_attributes_rest && table_info->attribute_list)
-	      || parser->error_msgs)
+	  if (access == NULL
+	      || (regu_attributes_pred == NULL
+		  && regu_attributes_rest == NULL
+		  && table_info->attribute_list) || pt_has_error (parser))
 	    {
 	      /* an error condition */
 	      access = NULL;
@@ -13418,7 +13418,7 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   assert (parser != NULL);
 
-  if (xasl && select_node && !parser->error_msgs)
+  if (xasl && select_node && !pt_has_error (parser))
     {
       ret = qo_to_xasl (plan, xasl);
 
@@ -13505,7 +13505,7 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   assert (parser != NULL);
 
-  if (xasl && select_node && !parser->error_msgs)
+  if (xasl && select_node && !pt_has_error (parser))
     {
       from = select_node->info.query.q.select.from;
 
@@ -13625,7 +13625,7 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   assert (parser != NULL);
 
-  if (xasl && select_node && !parser->error_msgs
+  if (xasl && select_node && !pt_has_error (parser)
       && (table1 = select_node->info.query.q.select.from)
       && (table2 = select_node->info.query.q.select.from->next)
       && !select_node->info.query.q.select.from->next->next)
@@ -14316,7 +14316,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   /* verify everything worked */
   if (!xasl->outptr_list || !xasl->spec_list || !xasl->val_list
-      || !groupby_ok || !orderby_ok || parser->error_msgs)
+      || !groupby_ok || !orderby_ok || pt_has_error (parser))
     {
       goto exit_on_error;
     }
@@ -14556,7 +14556,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   /* verify everything worked */
   if (!xasl->outptr_list ||
-      !xasl->spec_list || !xasl->val_list || parser->error_msgs)
+      !xasl->spec_list || !xasl->val_list || pt_has_error (parser))
     {
       goto exit_on_error;
     }
@@ -14907,14 +14907,16 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 
 	default:
-	  if (!parser->error_msgs)
-	    PT_INTERNAL_ERROR (parser, "generate xasl");
+	  if (!pt_has_error (parser))
+	    {
+	      PT_INTERNAL_ERROR (parser, "generate xasl");
+	    }
 	  /* should never get here */
 	  break;
 	}
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       xasl = NULL;		/* signal error occurred */
     }
@@ -14978,7 +14980,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       /* if the previous request to get a driver caused a deadlock
          following message would make confuse */
-      if (!parser->abort && !parser->error_msgs)
+      if (!parser->abort && !pt_has_error (parser))
 	{
 	  PT_INTERNAL_ERROR (parser, "generate xasl");
 	}
@@ -17174,7 +17176,7 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
     }
 
-  if (parser->error_msgs || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+  if (pt_has_error (parser) || er_errid () == ER_LK_UNILATERALLY_ABORTED)
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -17262,7 +17264,7 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  if (parser->error_msgs || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+  if (pt_has_error (parser) || er_errid () == ER_LK_UNILATERALLY_ABORTED)
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -17352,7 +17354,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  xasl_Supp_info.query_list = NULL;
 	}
 
-      if (node && !parser->error_msgs)
+      if (node && !pt_has_error (parser))
 	{
 	  node->next = next;
 	  xasl = (XASL_NODE *) node->info.query.xasl;
@@ -18779,7 +18781,7 @@ pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list,
       if (node->info.sort_spec.pos_descr.pos_no <= 0)
 	{
 	  /* internal error */
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_INTERNAL_ERROR (parser, "generate order_by");
 	    }
@@ -18807,7 +18809,7 @@ pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list,
 	  /* still no domain ? -> internal error */
 	  if (node->info.sort_spec.pos_descr.dom == NULL)
 	    {
-	      if (!parser->error_msgs)
+	      if (!pt_has_error (parser))
 		{
 		  PT_INTERNAL_ERROR (parser, "generate order_by");
 		}

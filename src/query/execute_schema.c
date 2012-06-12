@@ -6603,7 +6603,7 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
     }
 
   /* eval. fail-ignore constant type mismatch etc... */
-  if (ppi->parser->error_msgs)
+  if (pt_has_error (ppi->parser))
     {
       parser_free_tree (ppi->parser, ppi->parser->error_msgs);
       ppi->parser->error_msgs = NULL;

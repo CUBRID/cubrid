@@ -320,9 +320,10 @@ db_parse_one_statement (DB_SESSION * session)
 	}
     }
 
-  if (parse_one_statement (1) == 0 &&
-      session->parser->error_msgs == NULL &&
-      session->parser->stack_top > 0 && session->parser->node_stack != NULL)
+  if (parse_one_statement (1) == 0
+      && !pt_has_error (session->parser)
+      && session->parser->stack_top > 0
+      && session->parser->node_stack != NULL)
     {
       session->parser->statements =
 	(PT_NODE **) parser_alloc (session->parser, 2 * sizeof (PT_NODE *));
@@ -636,7 +637,7 @@ db_compile_statement_local (DB_SESSION * session)
   /* do semantic check for the statement */
   statement_result = pt_compile (parser, statement);
 
-  if (!statement_result || pt_has_error (parser))
+  if (statement_result == NULL || pt_has_error (parser))
     {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
       return er_errid ();

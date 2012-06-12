@@ -4604,7 +4604,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	  msg_temp = parser->error_msgs;
 	  (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET,
 				  arg2->data_type);
-	  if (parser->error_msgs)
+	  if (pt_has_error (parser))
 	    {
 	      /* ignore errors */
 	      parser_free_tree (parser, parser->error_msgs);
@@ -4626,7 +4626,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 		      parser->error_msgs = NULL;
 		      (void) pt_coerce_value (parser, temp, temp,
 					      common_type, NULL);
-		      if (parser->error_msgs)
+		      if (pt_has_error (parser))
 			{
 			  parser_free_tree (parser, parser->error_msgs);
 			}
@@ -5267,7 +5267,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
 
   if (PT_IS_PARAMETERIZED_TYPE (expr->type_enum)
       && pt_upd_domain_info (parser, arg1, arg2, op, expr->type_enum,
-			     expr) < 0)
+			     expr) != NO_ERROR)
     {
       expr = NULL;
       return ER_FAILED;
@@ -5908,7 +5908,7 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  /* If the conjunct is not a NULL or a logical type, then there's
 	     a problem. But don't say anything if somebody else has already
 	     complained */
-	  if (parser->error_msgs == NULL)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORm (parser, where, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_WANT_LOGICAL_WHERE);
@@ -6822,83 +6822,31 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *spec = NULL;
   SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
   bool arg1_is_false = false;
-  /* check if there is a host var whose data type is unbound.
-     What is set to sc_info.unbound_hostvar will be examined
-     in pt_check_with_info() and propagated to node->cannot_prepare. */
+
   switch (node->node_type)
     {
     case PT_EXPR:
       node = pt_eval_expr_type (parser, node);
       if (node == NULL)
 	{
+	  assert (false);
 	  PT_INTERNAL_ERROR (parser, "pt_eval_type");
 	  return NULL;
-	}
-      if (node->node_type == PT_EXPR)
-	{
-	  arg2 = node->info.expr.arg2;
-	}
-      else
-	{
-	  arg2 = NULL;
-	}
-      if (parser->set_host_var == 0 && arg2 != NULL && PT_IS_FUNCTION (arg2)
-	  && PT_IS_COLLECTION_TYPE (arg2->type_enum))
-	{
-	  PT_NODE *v;
-
-	  for (v = arg2->info.function.arg_list; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_HOSTVAR (v) && v->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
-	    }
 	}
       break;
 
     case PT_FUNCTION:
       node = pt_eval_function_type (parser, node);
-
       if (node == NULL)
 	{
+	  assert (false);
 	  PT_INTERNAL_ERROR (parser, "pt_eval_type");
 	  return NULL;
-	}
-
-      if (parser->set_host_var == 0
-	  && node->node_type != PT_VALUE
-	  && !PT_IS_COLLECTION_TYPE (node->type_enum))
-	{
-	  PT_NODE *v;
-
-	  for (v = node->info.function.arg_list; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_HOSTVAR (v) && v->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
-	    }
 	}
       break;
 
     case PT_METHOD_CALL:
       node = pt_eval_method_call_type (parser, node);
-      if (parser->set_host_var == 0)
-	{
-	  PT_NODE *v;
-
-	  for (v = node->info.method_call.arg_list; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_HOSTVAR (v) && v->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
-	    }
-	}
       break;
 
     case PT_CREATE_INDEX:
@@ -6913,21 +6861,6 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_UPDATE:
       node->info.update.search_cond =
 	pt_where_type (parser, node->info.update.search_cond);
-      if (parser->set_host_var == 0)
-	{
-	  PT_NODE *v;
-
-	  for (v = node->info.update.assignment; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_ASSIGN_NODE (v)
-		  && PT_IS_HOSTVAR (v->info.expr.arg2)
-		  && v->info.expr.arg2->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
-	    }
-	}
       break;
 
     case PT_MERGE:
@@ -6946,18 +6879,6 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 	  PT_NODE *list = NULL;
 	  PT_NODE *attr = NULL;
 	  DB_DOMAIN *d;
-
-	  /* update part */
-	  for (v = node->info.merge.update.assignment; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_ASSIGN_NODE (v)
-		  && PT_IS_HOSTVAR (v->info.expr.arg2)
-		  && v->info.expr.arg2->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
-	    }
 
 	  /* insert part */
 	  for (list = node->info.merge.insert.value_clauses; list != NULL;
@@ -6992,20 +6913,6 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 
 	      node->data_type = parser_copy_tree_list (parser, dt);
-	    }
-	}
-
-      if (parser->set_host_var == 0)
-	{
-	  PT_NODE *v;
-
-	  for (v = node->info.query.q.select.list; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_HOSTVAR (v) && v->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
 	    }
 	}
 
@@ -7057,20 +6964,6 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 
 	      node->data_type = parser_copy_tree_list (parser, dt);
-	    }
-	}
-
-      if (parser->set_host_var == 0)
-	{
-	  PT_NODE *v;
-
-	  for (v = node->info.do_.expr; v != NULL; v = v->next)
-	    {
-	      if (PT_IS_HOSTVAR (v) && v->expected_domain == NULL)
-		{
-		  sc_info->unbound_hostvar = true;
-		  break;
-		}
 	    }
 	}
       break;
@@ -7966,7 +7859,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if ((arg3 = node->info.expr.arg3))
+  arg3 = node->info.expr.arg3;
+  if (arg3)
     {
       arg3_type = arg3->type_enum;
       if (arg3->node_type == PT_HOST_VAR && arg3->type_enum == PT_TYPE_MAYBE)
@@ -8732,7 +8626,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 						  p, s, arg2->data_type);
 		  if (new_att == NULL)
 		    {
-		      return NULL;
+		      node->type_enum = PT_TYPE_NONE;
+		      goto error;
 		    }
 		  node->info.expr.arg1 = arg1 = new_att;
 		  arg1_type = arg2_type;
@@ -8786,7 +8681,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 						  p, s, arg1->data_type);
 		  if (new_att == NULL)
 		    {
-		      return NULL;
+		      node->type_enum = PT_TYPE_NONE;
+		      goto error;
 		    }
 		  node->info.expr.arg2 = arg2 = new_att;
 		  arg2_type = arg1_type;
@@ -8927,7 +8823,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 						  0, NULL);
 		  if (new_att == NULL)
 		    {
-		      break;
+		      node->type_enum = PT_TYPE_NONE;
+		      goto error;
 		    }
 		  PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_NOFAIL);
 		  node->info.expr.arg1 = arg1 = new_att;
@@ -8939,7 +8836,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 				      TP_FLOATING_PRECISION_VALUE, 0, NULL);
 	      if (new_att == NULL)
 		{
-		  break;
+		  node->type_enum = PT_TYPE_NONE;
+		  goto error;
 		}
 	      PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_NOFAIL);
 	      node->info.expr.arg2 = arg2 = new_att;
@@ -9029,7 +8927,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = PT_TYPE_NONE;
       if (arg2 == NULL)
 	{
-	  return NULL;
+	  goto error;
 	}
       node->type_enum = PT_TYPE_LOGICAL;
       break;
@@ -9268,7 +9166,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	}
 
-      arg3_type = arg3->type_enum;
       if (arg3_type != PT_TYPE_NA && arg3_type != PT_TYPE_NULL
 	  && arg3_type != PT_TYPE_LOGICAL && arg3_type != PT_TYPE_MAYBE)
 	{
@@ -9392,7 +9289,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (PT_IS_PARAMETERIZED_TYPE (common_type)
       && pt_upd_domain_info (parser, (op == PT_IF) ? arg3 : arg1, arg2, op,
-			     common_type, node) < 0)
+			     common_type, node) != NO_ERROR)
     {
       node->type_enum = PT_TYPE_NONE;
     }
@@ -11044,7 +10941,8 @@ pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser,
 {
   int result = -1;
 
-  if (!src || !PT_IS_CHAR_STRING_TYPE (src->type_enum) || parser->error_msgs)
+  if (src == NULL
+      || !PT_IS_CHAR_STRING_TYPE (src->type_enum) || pt_has_error (parser))
     {
       return result;
     }

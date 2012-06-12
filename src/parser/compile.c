@@ -591,7 +591,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (!parser->error_msgs
+  if (!pt_has_error (parser)
       && locator_lockhint_classes (lcks.num_classes,
 				   (const char **) lcks.classes, lcks.locks,
 				   lcks.only_all, true) != LC_CLASSNAME_EXIST)
@@ -1378,7 +1378,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 	  statement->info.scope.stmt->info.trigger_action.expression)
 	{
 	  statement->si_datetime = statement->info.scope.stmt->info.
-				    trigger_action.expression->si_datetime;
+	    trigger_action.expression->si_datetime;
 	}
     }
 
