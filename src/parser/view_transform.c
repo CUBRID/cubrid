@@ -1230,6 +1230,7 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	case PT_SELECT:
 	  if (statement->info.query.q.select.group_by	/* aggregate */
 	      || statement->info.query.q.select.having	/* aggregate */
+	      || statement->info.query.q.select.connect_by	/* HQ */
 	      || statement->info.query.q.select.from == NULL	/* no spec */
 	      || statement->info.query.q.select.from->next	/* join */
 	      || statement->info.query.q.select.from->info.spec.derived_table	/* derived */
