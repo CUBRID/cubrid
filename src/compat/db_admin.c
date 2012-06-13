@@ -464,7 +464,7 @@ db_login (const char *name, const char *password)
 {
   int retval;
 
-  retval = au_login (name, password);
+  retval = au_login (name, password, false);
 
   return (retval);
 }
@@ -603,7 +603,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user,
 {
   int retval;
 
-  retval = au_login (db_user, db_password);
+  retval = au_login (db_user, db_password, false);
   if (retval != NO_ERROR)
     {
       return retval;

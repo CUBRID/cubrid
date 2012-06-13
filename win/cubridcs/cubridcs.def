@@ -397,6 +397,7 @@ EXPORTS
     util_byte_to_size_string
     util_size_string_to_byte
     au_get_public_user_name
+    au_login
 ;
 ; utility functions
 ;

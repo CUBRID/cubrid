@@ -158,7 +158,8 @@ extern int au_install (void);
 extern int au_force_write_new_auth (void);
 extern int au_add_method_check_authorization (void);
 extern int au_start (void);
-extern int au_login (const char *name, const char *password);
+extern int au_login (const char *name, const char *password,
+		     bool ignore_dba_privilege);
 
 extern void au_disable_passwords (void);
 extern int au_set_user (MOP newuser);

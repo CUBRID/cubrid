@@ -61,6 +61,7 @@
 #include "language_support.h"
 #include "unicode_support.h"
 #include "transaction_cl.h"
+#include "authenticate.h"
 
 #include "dbi.h"
 
@@ -532,7 +533,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
     {
       int err_code;
 
-      err_code = db_login (db_user, db_passwd);
+      err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
 	{
 	  ux_database_shutdown ();
@@ -719,7 +720,8 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
     }
 
 #ifndef LIBCAS_FOR_JSP
-  if ((flag & CCI_PREPARE_HOLDABLE) && (as_info->cur_keep_con == KEEP_CON_OFF))
+  if ((flag & CCI_PREPARE_HOLDABLE)
+      && (as_info->cur_keep_con == KEEP_CON_OFF))
     {
       err_code = ERROR_INFO_SET (CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF,
 				 CAS_ERROR_INDICATOR);

@@ -534,7 +534,8 @@ static int fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 			AU_FETCHMODE fetchmode);
 
 static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode);
-static int au_perform_login (const char *name, const char *password);
+static int au_perform_login (const char *name, const char *password,
+			     bool ignore_dba_privilege);
 
 static CLASS_GRANT *make_class_grant (CLASS_USER * user, int cache);
 static CLASS_USER *make_class_user (MOP user_obj);
@@ -6078,7 +6079,8 @@ au_set_user (MOP newuser)
  *       Assumes authorization has been disabled.
  */
 static int
-au_perform_login (const char *name, const char *password)
+au_perform_login (const char *name, const char *password,
+		  bool ignore_dba_privilege)
 {
   int error = NO_ERROR;
   MOP user;
@@ -6119,7 +6121,9 @@ au_perform_login (const char *name, const char *password)
 	       * changed without entering passwords
 	       */
 
-	      if (!Au_ignore_passwords && !au_is_dba_group_member (Au_user))
+	      if (!Au_ignore_passwords
+		  && (!au_is_dba_group_member (Au_user)
+		      || ignore_dba_privilege))
 		{
 		  pass = NULL;
 		  if (!DB_IS_NULL (&value) && db_get_object (&value) != NULL)
@@ -6193,6 +6197,7 @@ au_perform_login (const char *name, const char *password)
  *   return: error code
  *   name(in): user name
  *   password(in): password
+ *   ignore_dba_privilege(in) : whether ignore dba's privilege or not in login
  *
  * Note: If a database has already been restarted, the user will be validated
  *       immediately, otherwise the name and password are simply saved
@@ -6200,7 +6205,7 @@ au_perform_login (const char *name, const char *password)
  *       bo_restart is called.
  */
 int
-au_login (const char *name, const char *password)
+au_login (const char *name, const char *password, bool ignore_dba_privilege)
 {
   int error = NO_ERROR;
   int save;
@@ -6241,7 +6246,7 @@ au_login (const char *name, const char *password)
     {
       /* Change users within an active database. */
       AU_DISABLE (save);
-      error = au_perform_login (name, password);
+      error = au_perform_login (name, password, ignore_dba_privilege);
       AU_ENABLE (save);
     }
   return (error);
@@ -6269,11 +6274,12 @@ au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user,
 	  if (password != NULL && IS_STRING (password))
 	    {
 	      error =
-		au_login (db_get_string (user), db_get_string (password));
+		au_login (db_get_string (user), db_get_string (password),
+			  false);
 	    }
 	  else
 	    {
-	      error = au_login (db_get_string (user), NULL);
+	      error = au_login (db_get_string (user), NULL, false);
 	    }
 	}
     }
@@ -6417,7 +6423,8 @@ au_start (void)
 	    }
 
 	  error =
-	    au_perform_login (Au_user_name, Au_user_password_des_oldstyle);
+	    au_perform_login (Au_user_name, Au_user_password_des_oldstyle,
+			      false);
 	}
     }
 
