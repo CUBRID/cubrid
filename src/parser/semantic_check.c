@@ -4777,7 +4777,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_TYPE_ENUM contype = PT_TYPE_NONE;
   PT_VALUE_LINKS vlinks = { NULL, NULL };
   PT_VALUE_LINKS *pvl, *delpvl;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   PT_NODE *expr_type;
   SM_CLASS *smclass;
   SM_ATTRIBUTE *smatt;
@@ -6790,7 +6790,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *prev_qry;
   const char *name = NULL;
   int attr_count = 0;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   assert (parser != NULL);
 
@@ -9275,7 +9275,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		    PT_NODE * node, SEMANTIC_CHK_INFO * info)
 {
   PT_NODE *next;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   SEMANTIC_CHK_INFO *sc_info_ptr = info;
   bool save_donot_fold = false;
 
@@ -9661,7 +9661,7 @@ PT_NODE *
 pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
 			      PT_NODE ** node_p)
 {
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   int error = NO_ERROR;
   PT_NODE *node = NULL;
 
@@ -10315,7 +10315,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
   int result_isnull = 0;
   PT_NODE *tmp;
   PT_NODE *msgs;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   assert (parser != NULL);
   msgs = parser->error_msgs;

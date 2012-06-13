@@ -1679,7 +1679,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   DB_VALUE *val;
   int err = NO_ERROR;
   SERVER_INFO server_info;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   if (result != NULL)
     {

@@ -3921,7 +3921,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *flat, *temp, **last;
   PT_NODE save = *insert_statement;
   bool viable;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   int what_for = DB_AUTH_INSERT;
 
   insert_statement->next = NULL;
@@ -4177,7 +4177,7 @@ static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   PT_NODE *from, *flat;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   /* flag spec for update/delete */
   from = merge_statement->info.merge.into;
@@ -5769,7 +5769,7 @@ static PT_NODE *
 mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *next;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   if (!node)
     {

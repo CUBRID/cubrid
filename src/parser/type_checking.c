@@ -18207,7 +18207,7 @@ PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser,
 		  PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   if (pt_has_error (parser))
     {

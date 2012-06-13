@@ -2248,7 +2248,7 @@ meth_push_conjuncts (PARSER_CONTEXT * parser, UINTPTR spec_id,
   METH_INFO5 info5;
   METH_INFO1 info1;
   int outside_refs, nested_meths;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   info5.new_where = NULL;
   info5.spec_id = spec_id;

@@ -16071,7 +16071,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   FUNC_PRED *func_pred;
   int error;
   const char *class_name = NULL;
@@ -16264,7 +16264,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 {
   PT_NODE **stmt;
   PT_NODE *where_predicate;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   PARSER_VARCHAR *filter_expr = NULL;
   PRED_EXPR_WITH_CONTEXT *filter_predicate;
   int error;
