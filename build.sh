@@ -377,6 +377,8 @@ if [ -d $target_dir ]; then
     if [ "$overwrite" != "y" ] && [ "$overwrite" != "yes" ]; then
         exit 0
     fi
+else
+    mkdir -p $target_dir
 fi
 
 . ./version.sh
@@ -408,23 +410,14 @@ fi
 #gzip -d ${PRODUCT_CODE}-product.tar.gz
 gzip -d ${PRODUCT_NAME}-product.tar.gz
 
-temp_dir=`mktemp -d -p .`
-(cd $temp_dir && tar --extract --no-same-owner --file=../${PRODUCT_NAME}-product.tar > /dev/null 2>&1)
+(cd $target_dir && tar --extract --no-same-owner --file=$cwd/${PRODUCT_NAME}-product.tar > /dev/null 2>&1)
 if [ $? != 0 ]; then
-    (cd $temp_dir && tar xfo ../${PRODUCT_NAME}-product.tar)
+    (cd $target_dir && tar xfo $cwd/${PRODUCT_NAME}-product.tar)
     if [ $? != 0 ]; then
         exit 1
     fi
 fi
 
-if [ -d $target_dir ]; then
-    set +o noglob
-    cp -r $temp_dir/${PRODUCT_NAME}/* ${target_dir} > /dev/null 2>&1
-    set -o noglob
-else
-    mv -f $temp_dir/${PRODUCT_NAME} ${target_dir} > /dev/null 2>&1
-fi
-rm -rf $temp_dir
 mkdir -p $target_dir/var/log/error_log
 chmod 777 $target_dir/var/log/error_log
 
@@ -701,8 +694,9 @@ function build_bin_pack ()
     fi
   done
 
-  (cd $install_dir && tar zcf CUBRID-product.tar.gz $product_name &&
-    mv -f CUBRID_Install.sh $package_file &&
+  (cd $install_dir/$product_name &&
+    tar zcf $install_dir/CUBRID-product.tar.gz * &&
+    cd $install_dir && mv -f CUBRID_Install.sh $package_file &&
     tar cf - CUBRID-product.tar.gz CUBRID_Setup.sh COPYING version.sh check_glibc_version >> $package_file)
 
   for file in $conf_files; do
