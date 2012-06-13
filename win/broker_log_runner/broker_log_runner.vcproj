@@ -66,7 +66,6 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libregex38a.lib"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib"
-				IgnoreDefaultLibraryNames="libcmt.lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -141,7 +140,6 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libregex38a.lib"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
-				IgnoreDefaultLibraryNames="libcmt.lib"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
 			/>
@@ -216,7 +214,6 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libregex38a.lib"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib"
-				IgnoreDefaultLibraryNames="libcmt.lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -294,7 +291,6 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libregex38a.lib"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
-				IgnoreDefaultLibraryNames="libcmt.lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
