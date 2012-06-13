@@ -177,6 +177,7 @@ namespace dbgw
       }
 
     m_bClosed = true;
+    m_preparedStatmentMap.clear();
 
     if (m_bInTran)
       {

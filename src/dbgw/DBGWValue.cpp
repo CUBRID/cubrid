@@ -127,11 +127,11 @@ namespace dbgw
      *
      * try
      * {
-     * 		blur blur blur;
+     *          blur blur blur;
      * }
      * catch (DBGWException &e)
      * {
-     * 		setLastException(e);
+     *          setLastException(e);
      * }
      */
     switch (type)
@@ -142,10 +142,15 @@ namespace dbgw
         if (rawValue.szValue != NULL)
           {
             m_stValue.szValue = strdup(rawValue.szValue);
+            if (m_stValue.szValue == NULL)
+              {
+                m_bNull = true;
+              }
           }
         else
           {
             m_stValue.szValue = NULL;
+            m_bNull = true;
           }
         break;
       default:
@@ -164,27 +169,35 @@ namespace dbgw
      *
      * try
      * {
-     * 		blur blur blur;
+     *          blur blur blur;
      * }
      * catch (DBGWException &e)
      * {
-     * 		setLastException(e);
+     *          setLastException(e);
      * }
      */
-    if (m_type == DBGW_VAL_TYPE_STRING)
+    switch (m_type)
       {
-        if (!value.m_stValue.szValue)
+      case DBGW_VAL_TYPE_STRING:
+      case DBGW_VAL_TYPE_CHAR:
+      case DBGW_VAL_TYPE_DATETIME:
+        if (value.m_stValue.szValue != NULL)
           {
             m_stValue.szValue = strdup(value.m_stValue.szValue);
+            if (m_stValue.szValue == NULL)
+              {
+                m_bNull = true;
+              }
           }
         else
           {
             m_stValue.szValue = NULL;
+            m_bNull = true;
           }
-      }
-    else
-      {
+        break;
+      default:
         m_stValue = value.m_stValue;
+        break;
       }
   }
 
@@ -227,7 +240,8 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    if (m_type == DBGW_VAL_TYPE_STRING || m_type == DBGW_VAL_TYPE_CHAR)
+    if (m_type == DBGW_VAL_TYPE_STRING || m_type == DBGW_VAL_TYPE_CHAR
+        || m_type == DBGW_VAL_TYPE_DATETIME)
       {
         if (m_stValue.szValue != NULL)
           {

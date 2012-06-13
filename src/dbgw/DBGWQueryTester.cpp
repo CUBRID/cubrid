@@ -87,7 +87,7 @@ namespace dbgw
         return;
       }
 
-    if (pResult == NULL)
+    if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
       {
         DBGWInterfaceException e = getLastException();
         if (e.getErrorCode() == DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL)

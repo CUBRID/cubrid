@@ -278,18 +278,21 @@ namespace dbgw
               }
             catch (ValidateTypeFailException &e)
               {
+                pReturnResult->first();
                 setLastException(e);
-                return DBGWResultSharedPtr();
+                return pReturnResult;
               }
             catch (ValidateValueFailException &e)
               {
+                pReturnResult->first();
                 setLastException(e);
-                return DBGWResultSharedPtr();
+                return pReturnResult;
               }
             catch (ValidateFailException &e)
               {
+                pReturnResult->first();
                 setLastException(e);
-                return DBGWResultSharedPtr();
+                return pReturnResult;
               }
             catch (DBGWException &e)
               {
