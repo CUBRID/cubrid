@@ -1197,46 +1197,12 @@ public class UConnection {
 		}
 
 		try {
-			synchronized (input) {
-				if (checkCasMsg == null) {
-					int msgSize = 1;
-					checkCasMsg = new byte[9];
-					checkCasMsg[0] = (byte) ((msgSize >>> 24) & 0xFF);
-					checkCasMsg[1] = (byte) ((msgSize >>> 16) & 0xFF);
-					checkCasMsg[2] = (byte) ((msgSize >>> 8) & 0xFF);
-					checkCasMsg[3] = (byte) ((msgSize >>> 0) & 0xFF);
-					checkCasMsg[4] = (byte) casinfo[CAS_INFO_STATUS];
-					checkCasMsg[5] = (byte) casinfo[CAS_INFO_RESERVED_1];
-					checkCasMsg[6] = (byte) casinfo[CAS_INFO_RESERVED_2];
-					checkCasMsg[7] = (byte) casinfo[CAS_INFO_RESERVED_3];
-					checkCasMsg[8] = UFunctionCode.CHECK_CAS;
-				} else {
-					checkCasMsg[4] = (byte) casinfo[CAS_INFO_STATUS];
-					checkCasMsg[5] = (byte) casinfo[CAS_INFO_RESERVED_1];
-					checkCasMsg[6] = (byte) casinfo[CAS_INFO_RESERVED_2];
-					checkCasMsg[7] = (byte) casinfo[CAS_INFO_RESERVED_3];
-				}
-
-				byte[] prev_casinfo = casinfo;
-				output.write(checkCasMsg);
-				int res = input.readInt();
-				byte[] l_casinfo = new byte[CAS_INFO_SIZE];
-				input.readByte(l_casinfo);
-				casinfo = l_casinfo;
-
-				if (UJCIUtil.isConsoleDebug()) {
-					printCasInfo(prev_casinfo, casinfo);
-				}
-
-				if (res == 0)
-					return true;
-				if (res < 4)
-					return false;
-				res = input.readInt();
-				if (res < 0)
-					return false;
-			}
+			outBuffer.newRequest(output, UFunctionCode.CHECK_CAS);
+			send_recv_msg();
 		} catch (IOException e) {
+		    	logException(e);
+			return false;
+		} catch (UJciException e) {
 		    	logException(e);
 			return false;
 		}

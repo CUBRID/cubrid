@@ -450,64 +450,21 @@ net_cancel_request (T_CON_HANDLE * con_handle)
 int
 net_check_cas_request (T_CON_HANDLE * con_handle)
 {
-  char msg[9];
-  MSG_HEADER msg_header;
-  int data_size;
-  int ret_value = -1;
-  char status[4];
-  int broker_port;
-
-  if (con_handle->alter_host_id < 0)
-    {
-      broker_port = con_handle->port;
-    }
-  else
-    {
-      broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
-    }
-
-  if (IS_INVALID_SOCKET (con_handle->sock_fd))
-    return 0;
+  int err_code;
+  char msg = CAS_FC_CHECK_CAS;
 
   API_SLOG (con_handle);
-  init_msg_header (&msg_header);
-
-  data_size = 1;
-  data_size = htonl (data_size);
-  memcpy (msg, (char *) &data_size, 4);
-
-  /* just send con->cas_info to cas for debuging */
-  msg[4] = con_handle->cas_info[CAS_INFO_STATUS];
-  msg[5] = con_handle->cas_info[CAS_INFO_RESERVED_1];
-  msg[6] = con_handle->cas_info[CAS_INFO_RESERVED_2];
-  msg[7] = con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG];
-  msg[8] = CAS_FC_CHECK_CAS;
-
-  if (net_send_stream (con_handle->sock_fd, msg, sizeof (msg)) < 0)
+  err_code = net_send_msg (con_handle, &msg, 1);
+  if (err_code < 0)
     {
-      API_ELOG (con_handle, -1);
-      return -1;
+      API_ELOG (con_handle, err_code);
+      return err_code;
     }
 
-  if (net_recv_int (con_handle->sock_fd, broker_port, &ret_value) < 0)
-    {
-      API_ELOG (con_handle, -2);
-      return -1;
-    }
+  err_code = net_recv_msg (con_handle, NULL, NULL, NULL);
 
-  if (net_recv_stream (con_handle->sock_fd, broker_port, status, 4, 0) < 0)
-    {
-      API_ELOG (con_handle, -3);
-      return -1;
-    }
-
-  con_handle->cas_info[CAS_INFO_STATUS] = status[0];
-  con_handle->cas_info[CAS_INFO_RESERVED_1] = status[1];
-  con_handle->cas_info[CAS_INFO_RESERVED_2] = status[2];
-  con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG] = status[3];
-
-  API_ELOG (con_handle, ret_value);
-  return ret_value;
+  API_ELOG (con_handle, err_code);
+  return err_code;
 }
 
 int

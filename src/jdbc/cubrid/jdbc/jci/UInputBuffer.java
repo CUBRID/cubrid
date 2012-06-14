@@ -77,20 +77,20 @@ class UInputBuffer {
 		}
 
 		capacity = UJCIUtil.bytes2int(headerData, 0);
+		casinfo = new byte[CAS_INFO_SIZE];
+		System.arraycopy(headerData, 4, casinfo, 0, 4);
+		con.setCASInfo(casinfo);
 
-		if (capacity < 0) {
+		if (capacity <= 0) {
+			resCode = 0;
 			capacity = 0;
 			return;
 		}
-
-		casinfo = new byte[CAS_INFO_SIZE];
-		System.arraycopy(headerData, 4, casinfo, 0, 4);
 
 		buffer = new byte[capacity];
 		readData();
 
 		resCode = readInt();
-		con.setCASInfo(casinfo);
 
 		if (resCode < 0) {
 			int eCode = readInt();
