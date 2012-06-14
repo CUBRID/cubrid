@@ -616,11 +616,9 @@ public class UStatement {
 
 		UInputBuffer inBuffer = null;
 		errorHandler = new UError();
-		boolean retry_flag = true;
 
 		if (isClosed == true) {
 			if (relatedConnection.brokerInfoStatementPooling() == true) {
-				retry_flag = false;
 				UStatement tmp_ustmt = relatedConnection.prepare(sql_stmt,
 						prepare_flag, true);
 				relatedConnection.pooled_ustmts.remove(tmp_ustmt);
@@ -739,8 +737,7 @@ public class UStatement {
 			if (errorHandler.getJdbcErrorCode() == -111) {
 				relatedConnection.need_checkcas = true;
 			}
-			if (relatedConnection.brokerInfoStatementPooling() == true
-					&& retry_flag == true) {
+			if (relatedConnection.brokerInfoStatementPooling() == true) {
 				if (errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 					close();
 				} else if (relatedConnection.need_checkcas
