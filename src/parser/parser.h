@@ -431,6 +431,9 @@ extern "C"
   extern int pt_check_same_datatype (const PARSER_CONTEXT * parser,
 				     const PT_NODE * p, const PT_NODE * q);
 
+  extern int pt_check_unique_names (PARSER_CONTEXT * parser,
+				    const PT_NODE * p);
+
   extern PT_NODE *pt_gather_constraints (PARSER_CONTEXT * parser,
 					 PT_NODE * tree);
   extern int pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1,

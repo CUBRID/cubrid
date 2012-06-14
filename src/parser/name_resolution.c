@@ -3475,6 +3475,84 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 }
 
 /*
+ * pt_check_unique_names () - make sure the spec names are different.
+ *
+ *   return: 1 if names are all unique, 0 if duplicate name
+ *   parser(in):
+ *   p(in): a PT_SPEC node (list)
+
+ * Note :
+ * If names in range_var are resolved, use pt_check_unique_exposed () instead.
+ * This was specially created for DELETE statement which needs to verify
+ * that specs have unique names before calling pt_class_pre_fetch ();
+ * otherwise it crashes.
+ */
+int
+pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
+{
+  PT_NODE *q;
+
+  while (p)
+    {
+      char *p_name = NULL;
+      if (p->node_type != PT_SPEC)
+        {
+	  p = p->next;
+	  continue;
+	}
+      if (p->info.spec.range_var && PT_IS_NAME_NODE (p->info.spec.range_var))
+	{
+	  p_name = p->info.spec.range_var->info.name.original;
+	}
+      else if (p->info.spec.entity_name
+	       && PT_IS_NAME_NODE (p->info.spec.entity_name))
+	{
+	  p_name = p->info.spec.entity_name->info.name.original;
+	}
+      else
+	{
+	  p = p->next;
+	  continue;
+	}
+      q = p->next;		/* q = next spec */
+      while (q)
+	{			/* check that p->range !=
+				   q->range to the end of list */
+	  char *q_name = NULL;
+	  if (q->node_type != PT_SPEC)
+	    {
+	      q = q->next;
+	      continue;
+	    }
+	  if (q->info.spec.range_var
+	      && PT_IS_NAME_NODE (q->info.spec.range_var))
+	    {
+	      q_name = q->info.spec.range_var->info.name.original;
+	    }
+	  else if (q->info.spec.entity_name
+		   && PT_IS_NAME_NODE (q->info.spec.entity_name))
+	    {
+	      q_name = q->info.spec.entity_name->info.name.original;
+	    }
+	  else
+	    {
+	      q = q->next;
+	      continue;
+	    }
+	  if (!pt_str_compare (p_name, q_name, CASE_INSENSITIVE))
+	    {
+	      PT_ERRORmf (parser, q, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_DUPLICATE_CLASS_OR_ALIAS, q_name);
+	      return 0;
+	    }
+	  q = q->next;		/* check the next one inner loop */
+	}
+      p = p->next;		/* go to next one outer loop */
+    }
+  return 1;			/* OK */
+}
+
+/*
  * pt_common_attribute () - find the attributes that are identical
  *                          on both lists (i.e. the intersection)
  *   return: returns a modified version of p
@@ -7375,7 +7453,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
 static int
 pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 			       PT_BIND_NAMES_ARG * bind_arg,
-			       int *is_spec_attr)
+			       int * is_spec_attr)
 {
   SCOPES *scope = NULL;
   PT_NODE *spec = NULL;
