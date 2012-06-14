@@ -136,18 +136,18 @@ proxy_send_request_to_cas_with_new_event (T_PROXY_CONTEXT * ctx_p,
 					  unsigned int type, int from,
 					  T_PROXY_EVENT_FUNC req_func)
 {
-  int error;
+  int error = 0;
   T_PROXY_EVENT *event_p = NULL;
 
   event_p = proxy_event_new_with_req (type, from, req_func);
   if (event_p == NULL)
     {
+      error = -1;
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to make request event. (error:%d). context(%s).",
 		 error, proxy_str_context (ctx_p));
 
-      error = -1;
-      goto error;
+      goto error_return;
     }
 
   error = proxy_send_request_to_cas (ctx_p, event_p);
@@ -157,18 +157,18 @@ proxy_send_request_to_cas_with_new_event (T_PROXY_CONTEXT * ctx_p,
 		 "Failed to send request to CAS. "
 		 "(error=%d). context(%s). evnet(%s).", error,
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
-      goto error;
+      goto error_return;
     }
-  else if (error > 0)
+  else if (error > 0)		/* TODO : DELETE */
     {
-      goto error;
+      goto error_return;
     }
 
   event_p = NULL;
 
   return error;
 
-error:
+error_return:
   if (event_p != NULL)
     {
       proxy_event_free (event_p);
@@ -181,7 +181,7 @@ int
 proxy_send_response_to_client (T_PROXY_CONTEXT * ctx_p,
 			       T_PROXY_EVENT * event_p)
 {
-  int error;
+  int error = 0;
   int length;
   T_CLIENT_IO *cli_io_p;
 
@@ -219,17 +219,18 @@ proxy_send_response_to_client_with_new_event (T_PROXY_CONTEXT * ctx_p,
 					      unsigned int type, int from,
 					      T_PROXY_EVENT_FUNC resp_func)
 {
-  int error;
+  int error = 0;
   T_PROXY_EVENT *event_p = NULL;
 
   event_p = proxy_event_new_with_rsp (type, from, resp_func);
   if (event_p == NULL)
     {
+      error = -1;
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to make response event. (error:%d). context(%s).",
 		 error, proxy_str_context (ctx_p));
 
-      goto error;
+      goto error_return;
     }
 
   error = proxy_send_response_to_client (ctx_p, event_p);
@@ -240,14 +241,14 @@ proxy_send_response_to_client_with_new_event (T_PROXY_CONTEXT * ctx_p,
 		 "(error=%d). context(%s). evnet(%s).", error,
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
 
-      goto error;
+      goto error_return;
     }
 
   event_p = NULL;
 
   return error;
 
-error:
+error_return:
   if (event_p != NULL)
     {
       proxy_event_free (event_p);
@@ -262,9 +263,9 @@ proxy_send_prepared_stmt_to_client (T_PROXY_CONTEXT * ctx_p,
 {
   int error;
   int length;
-  char *prepare_resp;
+  char *prepare_resp = NULL;
   T_CLIENT_IO *cli_io_p;
-  T_PROXY_EVENT *event_p;
+  T_PROXY_EVENT *event_p = NULL;
 
   prepare_resp = proxy_dup_msg (stmt_p->reply_buffer);
   if (prepare_resp == NULL)
@@ -283,12 +284,12 @@ proxy_send_prepared_stmt_to_client (T_PROXY_CONTEXT * ctx_p,
 		 "(%s, %s). context(%s).", "PROXY_EVENT_IO_WRITE",
 		 "PROXY_EVENT_FROM_CLIENT", proxy_str_context (ctx_p));
 
-      EXIT_FUNC ();
-      return -1;
+      goto error_return;
     }
 
   length = get_msg_length (prepare_resp);
   proxy_event_set_buffer (event_p, prepare_resp, length);
+  prepare_resp = NULL;
 
   error = proxy_send_response_to_client (ctx_p, event_p);
   if (error)
@@ -297,16 +298,26 @@ proxy_send_prepared_stmt_to_client (T_PROXY_CONTEXT * ctx_p,
 		 "to the client. (error:%d). context(%s). event(%s). ", error,
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
 
-      proxy_event_free (event_p);
-      event_p = NULL;
-
-      EXIT_FUNC ();
-      return -1;
+      goto error_return;
     }
   event_p = NULL;
 
   EXIT_FUNC ();
   return 0;
+
+error_return:
+  if (prepare_resp != NULL)
+    {
+      FREE_MEM (prepare_resp);
+    }
+
+  if (event_p != NULL)
+    {
+      proxy_event_free (event_p);
+      event_p = NULL;
+    }
+  EXIT_FUNC ();
+  return -1;
 }
 
 static void
@@ -1229,6 +1240,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	  goto free_context;
 	}
       proxy_event_set_buffer (new_event_p, prepare_request, length);
+      prepare_request = NULL;
 
       ctx_p->is_prepare_for_execute = true;
       ctx_p->prepared_stmt = stmt_p;
@@ -1315,6 +1327,11 @@ free_context:
 	  proxy_event_free (new_event_p);
 	  new_event_p = NULL;
 	}
+    }
+
+  if (prepare_request)
+    {
+      FREE_MEM (prepare_request);
     }
 
   ctx_p->free_context = true;
@@ -1944,9 +1961,12 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
       return 0;
     }
 
+  /* The following codes does not use */
+
   ctx_p->prepared_stmt = NULL;
 
   /* REPLACE SRV_H_ID */
+  stmt_h_id_n = htonl (stmt_p->stmt_h_id);
   srv_h_id_pos = (char *) (response_p + srv_h_id_offset);
   memcpy (srv_h_id_pos, &stmt_h_id_n, NET_SIZE_INT);
 

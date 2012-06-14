@@ -178,6 +178,7 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
 
   shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
 
+  FREE_MEM (env);
   return;
 }
 
@@ -311,7 +312,7 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
 
   T_SHM_APPL_SERVER *shm_as_p;
   T_SHM_PROXY *shm_proxy_p;
-  T_PROXY_INFO *proxy_info_p, *first_proxy_info_p;
+  T_PROXY_INFO *proxy_info_p = NULL, *first_proxy_info_p = NULL;
   T_SHM_SHARD_KEY_STAT *key_stat_p, *first_key_stat_p;
   T_SHM_SHARD_CONN_STAT *shard_stat_p, *first_shard_stat_p;
   T_SHARD_INFO *shard_info_p, *first_shard_info_p;
@@ -524,7 +525,11 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
       shard_info_p->next = 0;
 
     }
-  proxy_info_p->next = 0;
+
+  if (proxy_info_p != NULL)
+    {
+      proxy_info_p->next = 0;
+    }
 
   /* SHARD TODO : will delete */
 #if 0
@@ -773,6 +778,10 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
   if (as_info_p->last_access_time)
     {
       at_tm_p = localtime (&as_info_p->last_access_time);
+      if (at_tm_p == NULL)
+	{
+	  return;
+	}
       sprintf (last_access_time, "%d/%02d/%02d %02d:%02d:%02d",
 	       at_tm_p->tm_year + 1900, at_tm_p->tm_mon + 1,
 	       at_tm_p->tm_mday, at_tm_p->tm_hour, at_tm_p->tm_min,
@@ -812,6 +821,10 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
   if (as_info_p->last_connect_time)
     {
       ct_tm_p = localtime (&as_info_p->last_connect_time);
+      if (ct_tm_p == NULL)
+	{
+	  return;
+	}
       sprintf (last_connect_time, "%d/%02d/%02d %02d:%02d:%02d",
 	       ct_tm_p->tm_year + 1900, ct_tm_p->tm_mon + 1,
 	       ct_tm_p->tm_mday, ct_tm_p->tm_hour, ct_tm_p->tm_min,

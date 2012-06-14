@@ -1895,6 +1895,11 @@ metadata_monitor (void)
       if (shm_metadata_cp == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
+
+	  if (key_stat_items != NULL)
+	    {
+	      free ((char *) key_stat_items);
+	    }
 	  return -1;
 	}
 

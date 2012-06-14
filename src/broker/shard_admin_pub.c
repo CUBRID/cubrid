@@ -256,8 +256,22 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   char *shm_as_cp = NULL;
+  time_t cur_time = time (NULL);
   struct tm ct;
   char cmd_buf[BUFSIZ];
+
+#if defined(WINDOWS)
+  if (localtime_r (&cur_time, &ct) < 0)
+    {
+      return -1;
+    }
+#else /* WINDOWS */
+  if (localtime_r (&cur_time, &ct) == NULL)
+    {
+      return -1;
+    }
+#endif /* !WINDOWS */
+  ct.tm_year += 1900;
 
   if (br_info_p->pid)
     {
@@ -412,6 +426,7 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
       uw_shm_detach (shm_as_p);
       uw_shm_destroy (br_info_p->appl_server_shm_id);
 #endif
+      FREE_MEM (env);
       return -1;
     }
 #endif /* WINDOWS */
@@ -669,6 +684,7 @@ shard_as_activate (int as_shm_id,
   as_info_p->uts_status = UTS_STATUS_CON_WAIT;
   as_info_p->service_flag = SERVICE_ON;
 
+  FREE_MEM (env);
   return 0;
 }
 

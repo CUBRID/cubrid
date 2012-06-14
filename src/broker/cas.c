@@ -129,7 +129,7 @@ void set_cas_info_size (void);
 
 #ifndef LIBCAS_FOR_JSP
 const char *program_name;
-char broker_name[32];
+char broker_name[BROKER_NAME_LEN];
 int psize_at_start;
 
 int shm_as_index;
@@ -332,7 +332,7 @@ main (int argc, char *argv[])
 #endif
 {
   T_NET_BUF net_buf;
-  SOCKET proxy_sock_fd;
+  SOCKET proxy_sock_fd = INVALID_SOCKET;
   char read_buf[1024];
   int err_code;
   char *t, *db_sessionid;
@@ -445,7 +445,10 @@ conn_retry:
 	    shard_info_p->db_name, shard_info_p->db_conn_info);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   strncpy (db_user, shard_info_p->db_user, SRV_CON_DBUSER_SIZE - 1);
+  db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
+
   strncpy (db_passwd, shard_info_p->db_password, SRV_CON_DBPASSWD_SIZE - 1);
+  db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 
   if (req_info.client_version >= CAS_MAKE_VER (8, 2, 0))
     {
@@ -1438,6 +1441,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   error_info_clear ();
   init_msg_header (&client_msg_header);
   init_msg_header (&cas_msg_header);
+
+#ifndef LIBCAS_FOR_JSP
+  old_con_status = as_info->con_status;
+#endif
+
 #if defined(CUBRID_SHARD)
   err_code = net_read_process (sock_fd, &client_msg_header, req_info);
   if (err_code < 0)
@@ -1461,7 +1469,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #else /* CUBRID_SHARD */
 #ifndef LIBCAS_FOR_JSP
-  old_con_status = as_info->con_status;
   if (as_info->cur_keep_con == KEEP_CON_AUTO)
     {
       err_code = net_read_int_keep_con_auto (sock_fd,

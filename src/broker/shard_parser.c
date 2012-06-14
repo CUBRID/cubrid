@@ -789,14 +789,14 @@ sp_get_string_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
 {
   char *p = (char *) parser_p->cursor.pos++;
 
-  while (*parser_p->cursor.pos && *parser_p->cursor.pos != *p)
-    {
-      parser_p->cursor.pos++;
-    }
-
   if (parser_p->cursor.pos == NULL)
     {
       return ER_SP_INVALID_SYNTAX;
+    }
+
+  while (*parser_p->cursor.pos && *parser_p->cursor.pos != *p)
+    {
+      parser_p->cursor.pos++;
     }
 
   return sp_make_string_sp_value (&hint_p->value, p + 1,

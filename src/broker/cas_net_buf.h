@@ -69,7 +69,11 @@
      net_buf_error_msg_set(NET_BUF, ERR_INDICATOR, ERR_CODE, ERR_MSG, __FILE__, __LINE__)
 
 #define NET_BUF_KBYTE                   1024
+#if defined(CUBRID_SHARD)
+#define NET_BUF_SIZE                    (512 * NET_BUF_KBYTE)
+#else
 #define NET_BUF_SIZE                    (16 * NET_BUF_KBYTE)
+#endif
 #define NET_BUF_EXTRA_SIZE              (64 * NET_BUF_KBYTE)
 #define NET_BUF_ALLOC_SIZE              (NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
 

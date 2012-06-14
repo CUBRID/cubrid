@@ -2235,7 +2235,6 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
 
       FD_CLR (sock_io_p->fd, &wnewset);
 
-      assert (false);
       return;
     }
 

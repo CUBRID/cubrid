@@ -245,7 +245,7 @@ shard_metadata_read_key (const char *filename)
   char line[LINE_MAX], *p;
   char section[LINE_MAX];
   int len;
-  FILE *file;
+  FILE *file = NULL;
 
   char key_column[SHARD_KEY_COLUMN_LEN];
 
@@ -282,7 +282,7 @@ shard_metadata_read_key (const char *filename)
 	}
 
       len = strlen (line);
-      if (line[0] == '\0')
+      if (line[0] == '\0' || len <= 0)
 	{
 	  continue;
 	}
@@ -292,7 +292,8 @@ shard_metadata_read_key (const char *filename)
 	  if (nargs == 1)
 	    {
 	      trim (section);
-	      if (strcasecmp (section, key_column) != 0)
+	      if (strncasecmp (section, key_column, SHARD_KEY_COLUMN_LEN) !=
+		  0)
 		{
 		  strncpy (key_column, section, sizeof (key_column) - 1);
 
@@ -361,6 +362,11 @@ error_return:
       free_and_init (shm_key_p);
     }
 
+  if (file != NULL)
+    {
+      fclose (file);
+    }
+
   return NULL;
 }
 
@@ -373,7 +379,7 @@ shard_metadata_read_conn (const char *filename)
   char line[LINE_MAX], *p;
   char path[PATH_MAX];
   int len;
-  FILE *file;
+  FILE *file = NULL;
 
   T_SHM_SHARD_CONN *shm_conn_p = NULL;
   T_SHARD_CONN *conn_p = NULL;
@@ -446,6 +452,11 @@ error_return:
   if (shm_conn_p)
     {
       free_and_init (shm_conn_p);
+    }
+
+  if (file != NULL)
+    {
+      fclose (file);
     }
 
   return NULL;

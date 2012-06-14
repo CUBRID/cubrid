@@ -89,7 +89,7 @@ struct t_error_info
 extern int restart_is_needed (void);
 
 extern const char *program_name;
-extern char broker_name[32];
+extern char broker_name[BROKER_NAME_LEN];
 
 #if defined(CUBRID_SHARD)
 extern int shm_proxy_id;
