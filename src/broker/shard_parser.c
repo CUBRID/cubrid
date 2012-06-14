@@ -787,12 +787,13 @@ sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p)
 static int
 sp_get_string_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
 {
-  char *p = (char *) parser_p->cursor.pos++;
+  char *p;
 
   if (parser_p->cursor.pos == NULL)
     {
       return ER_SP_INVALID_SYNTAX;
     }
+  p = (char *) parser_p->cursor.pos++;
 
   while (*parser_p->cursor.pos && *parser_p->cursor.pos != *p)
     {
