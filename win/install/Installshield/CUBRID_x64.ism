@@ -107,6 +107,7 @@
 		<row><td>JDBC</td><td>{88159C1F-B1FA-459D-B8CD-2C6995EFDB82}</td><td>JDBC</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>ODBC</td><td>{AC82C62C-829A-4B02-A546-93C214952E58}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>OLEDB</td><td>{584E36DE-7E5C-4F7F-8FC8-9ED14EA43FE5}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>locales</td><td>{EE6B422E-6E00-4FCE-8E3A-00C836068280}</td><td>LOCALES</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>msg</td><td>{E98137A1-F67B-4C6E-BF83-60059F362216}</td><td>MSG</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
@@ -178,6 +179,7 @@
 		<row><td>DesktopFolder</td><td/><td>Desktop</td><td/><td>3</td><td/></row>
 		<row><td>FOLDER_FONTS</td><td>WINDIR</td><td>Fonts Folder</td><td/><td>0</td><td/></row>
 		<row><td>ISRUNTIMETEXTSUBS</td><td/><td>Script-defined Folders</td><td/><td>0</td><td/></row>
+		<row><td>LOCALES</td><td>TARGETDIR</td><td>locales</td><td/><td>0</td><td/></row>
 		<row><td>JDBC</td><td>TARGETDIR</td><td>jdbc</td><td/><td>0</td><td/></row>
 		<row><td>MSG</td><td>TARGETDIR</td><td>msg</td><td/><td>0</td><td/></row>
 		<row><td>PLUGINS</td><td>CUBRIDMANAGER</td><td>plugins</td><td/><td>0</td><td/></row>
@@ -222,6 +224,7 @@
 		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td>OLEDB</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td>CCI</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>CUBRID</td></row>
+		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>locales</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>msg</td></row>
 	</table>
 
@@ -316,6 +319,7 @@
 		<row><td>libesql.lib</td><td>CUBRID</td><td>libesql.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\libesql.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>loadjava.exe</td><td>CUBRID</td><td>loadjava.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\loadjava.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\logging.properties</td><td>1</td><td>NewSubFolder8</td></row>
+		<row><td>make_locale.bat</td><td>CUBRID</td><td>make_locale.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\make_locale.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>migrate_r30.exe</td><td>CUBRID</td><td>migrate_r30.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_r30.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>readme</td><td>CUBRID</td><td>README</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\README</td><td>1</td><td/></row>
@@ -359,6 +363,7 @@
 		<row><td>JDBC</td><td/><td/><td>_7AA7B79B_2B45_4714_A5B4_B933918E7AEE_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>ODBC</td><td/><td/><td>_14223EE5_76E1_4525_9AFA_F99B34C67702_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>OLEDB</td><td/><td/><td>_CC188D73_72AC_4608_816E_D660DBEBFC3C_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>locales</td><td/><td/><td>_4E464296_39B2_492F_883A_54122B58A112_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>msg</td><td/><td/><td>_D3051DC3_008A_4972_BD79_5572BA0DF955_FILTER</td><td/><td/><td/><td/></row>
 	</table>
 
@@ -425,6 +430,7 @@
 		<col def="S0">IncludeFiles</col>
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
+		<row><td>locales</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\locales</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 		<row><td>msg</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\msg</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 	</table>
 
