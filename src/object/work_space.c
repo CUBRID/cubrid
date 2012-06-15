@@ -1779,6 +1779,22 @@ ws_release_instance (MOP mop)
     }
 }
 
+/*
+ * ws_release_user_instance - set the released field of a user mop
+ *    return: void
+ *    mop(out): mop to set released field
+ */
+void
+ws_release_user_instance (MOP mop)
+{
+  if (db_is_system_class (mop->class_mop))
+    {
+      return;
+    }
+
+  ws_release_instance (mop);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_gc_mop - callback function for the garbage collector that will be

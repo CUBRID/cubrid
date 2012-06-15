@@ -516,6 +516,7 @@ extern void ws_mark_instances_deleted (MOP class_op);
 extern void ws_remove_resident_class (MOP class_op);
 extern void ws_intern_instances (MOP class_mop);
 extern void ws_release_instance (MOP class_mop);
+extern void ws_release_user_instance (MOP mop);
 extern void ws_disconnect_deleted_instances (MOP class_mop);
 
 /* object cache */

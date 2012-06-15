@@ -1413,6 +1413,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   numeric_coerce_string_to_num ("99999999999999999999999999999999999999",
 				DB_MAX_NUMERIC_PRECISION, &e38);
 
+  assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
   if (auto_increment_node == NULL)
     {
@@ -1443,6 +1444,8 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
 		     AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
   if (serial_name == NULL)
     {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
 
@@ -1469,7 +1472,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
-	  error = er_errid ();
+	  error = ER_INVALID_SERIAL_VALUE;
 	  goto end;
 	}
 
@@ -1514,7 +1517,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
-	  error = er_errid ();
+	  error = ER_INVALID_SERIAL_VALUE;
 	  goto end;
 	}
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);

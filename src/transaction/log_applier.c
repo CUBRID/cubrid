@@ -4332,7 +4332,7 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   assert (new_object == object);
-  ws_release_instance (new_object);
+  ws_release_user_instance (new_object);
   object = new_object = NULL;
 
   la_release_page_buffer (old_pageid);
@@ -4373,7 +4373,7 @@ error_rtn:
   assert (new_object == NULL || new_object == object);
   if (object)
     {
-      ws_release_instance (object);
+      ws_release_user_instance (object);
       object = new_object = NULL;
     }
 
@@ -4521,7 +4521,7 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   assert (object == NULL);
-  ws_release_instance (new_object);
+  ws_release_user_instance (new_object);
   new_object = NULL;
 
   la_release_page_buffer (old_pageid);
@@ -4560,13 +4560,13 @@ error_rtn:
 
   if (object)
     {
-      ws_release_instance (object);
+      ws_release_user_instance (object);
       object = NULL;
     }
 
   if (new_object)
     {
-      ws_release_instance (new_object);
+      ws_release_user_instance (new_object);
       new_object = NULL;
     }
 
