@@ -31,6 +31,7 @@
 #include <sys/param.h>
 #include <syslog.h>
 #endif /* not WINDOWS */
+#include <assert.h>
 
 #include "porting.h"
 #include "connection_globals.h"
@@ -637,6 +638,9 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 	{
 	  (void) css_test_for_server_errors (entry, eid);
 
+	  assert (css_is_valid_request_id
+		  (entry->conn, CSS_RID_FROM_EID (eid)));
+
 	  /* 0 means that it isn't a communication error with server */
 	  return 0;
 	}
@@ -662,10 +666,13 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
 	}
 #endif
+      assert (css_is_valid_request_id (entry->conn, CSS_RID_FROM_EID (eid)));
       return css_Errno;
     }
 
   css_Errno = SERVER_WAS_NOT_FOUND;
+
+  assert (css_is_valid_request_id (entry->conn, CSS_RID_FROM_EID (eid)));
   return css_Errno;
 }
 

@@ -65,6 +65,8 @@ extern char *css_return_data_buffer (CSS_CONN_ENTRY * conn,
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern char *css_return_oob_buffer (int *buffer_size);
 #endif
+extern bool css_is_valid_request_id (CSS_CONN_ENTRY * conn,
+				     unsigned short request_id);
 
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id, char **buffer,

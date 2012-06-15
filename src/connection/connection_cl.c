@@ -32,6 +32,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -113,8 +114,6 @@ static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name,
 						    CSS_CONN_ENTRY * conn,
 						    int port_id,
 						    unsigned short *rid);
-static bool css_is_valid_request_id (CSS_CONN_ENTRY * conn,
-				     unsigned short request_id);
 static int css_return_queued_data (CSS_CONN_ENTRY * conn,
 				   unsigned short request_id, char **buffer,
 				   int *buffer_size, int *rc);
@@ -586,6 +585,7 @@ begin:
 	    }
 	  else
 	    {
+	      assert_release (false);
 	      /*
 	       * This is the case where data length is zero, but if the
 	       * user registered a buffer, we should return the buffer
@@ -601,6 +601,12 @@ begin:
 #if defined(CS_MODE)
 	  if (type == ABORT_TYPE)
 	    {
+	      /*
+	       * if the user registered a buffer, we should return the buffer
+	       */
+	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
+	      *buffer_size = 0;
+
 	      return SERVER_ABORTED;
 	    }
 #endif /* CS_MODE */
@@ -1183,7 +1189,7 @@ css_does_master_exist (int port_id)
  *   conn(in):
  *   request_id(in):
  */
-static bool
+bool
 css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if defined(CS_MODE)
