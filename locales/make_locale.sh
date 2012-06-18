@@ -22,17 +22,18 @@ function show_usage ()
 {
   echo "Usage: $APP_NAME [OPTIONS] [LOCALE]"
   echo " OPTIONS"
-  echo "  -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 32]"
-  echo "  -m arg  Set build mode(release or debug); [default: release]"
-  echo "          Values for arg: i386, x86, 32, 32bit, x86_64, x64, 64, 64bit"
-  echo "  -? | -h Show this help message and exit"
-  echo "  LOCALE  The locale name for which to build the library (de_DE, fr_FR etc.)"
-  echo "          (Ommit param to build all configured locales)"
+  echo "    -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 32]"
+  echo "            Values for arg: i386, x86, 32, 32bit, x86_64, x64, 64, 64bit"
+  echo "    -m arg  Set build mode(release or debug); [default: release]"
+  echo "    -? | -h Show this help message and exit"
+  echo ""
+  echo " LOCALE  The locale name for which to build the library (de_DE, fr_FR etc.)"
+  echo "         (Ommit param to build all configured locales)"
   echo " EXAMPLES"
-  echo " $APP_NAME                         # Build and pack all locales (32/release)"
-  echo " $APP_NAME -t 32bit de_DE          # 32bit release library for de_DE (German) locale"
-  echo " $APP_NAME -t x64 -m debug         # Create 64bit debug mode library with all locales"
-  echo " $APP_NAME -t 64bit -m debug de_DE # Create 64bit debug mode library for de_DE locale"
+  echo "   $APP_NAME                         # Build and pack all locales (32/release)"
+  echo "   $APP_NAME -t 32bit de_DE          # 32bit release library for de_DE (German) locale"
+  echo "   $APP_NAME -t x64 -m debug         # Create 64bit debug mode library with all locales"
+  echo "   $APP_NAME -t 64bit -m debug de_DE # Create 64bit debug mode library for de_DE locale"
   echo ""
 }
 
@@ -56,7 +57,7 @@ LOCALE_PARAM=
 		    GOTO error_build_mode
 		  fi
 	   ;;
-      h|\?|* ) show_usage; echo "Invalid parameter."; exit 1;;
+      h|\?|* ) show_usage; exit 1;;
     esac
   done
   shift $(($OPTIND - 1))
@@ -125,7 +126,7 @@ echo "Done."
 cd $current_dir
 fi
 
-echo "Copying $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so to $CUBRID\lib"
+echo "Copying $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so to $CUBRID/lib"
 cp $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so $CUBRID/lib/libcubrid_$SELECTED_LOCALE.so
 echo "Done."
 

@@ -952,5 +952,6 @@ valid options:\n\
                       -a, --identifier-alphabet, -c, -w; default : 0\n\
   -e, --end-value     filtering option; ending codepoint for \n\
                       -a, --identifier-alphabet, -c, -w; \n\
-                      default : maximum value read from locale shared library\n
+                      default : maximum value read from locale shared library\n\
+  -z, --normalization   dump normalization data; default : disable\n
 
