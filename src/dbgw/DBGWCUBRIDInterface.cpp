@@ -218,19 +218,20 @@ namespace dbgw
               << dbInfoMap["dbname"] << ":" << dbInfoMap["dbuser"] << ":"
               << dbInfoMap["dbpasswd"] << ":";
 
+          char cAmp = '&';
           cit = dbInfoMap.find("althosts");
           if (cit == dbInfoMap.end())
             {
-              connectionUrl << "?";
+              cAmp = '?';
             }
           else
             {
-              connectionUrl << ":" << dbInfoMap["althosts"] << "&";
+              connectionUrl << dbInfoMap["althosts"];
             }
 
           if (DBGWLogger::getLogLevel() == CCI_LOG_LEVEL_DEBUG)
             {
-              connectionUrl << "logFile=" << DBGWLogger::getLogPath()
+              connectionUrl << cAmp << "logFile=" << DBGWLogger::getLogPath()
                   << "&logOnException=true&logSlowQueries=true&logTraceApi=true";
             }
 
@@ -728,6 +729,7 @@ namespace dbgw
       if (m_cursorPos == CCI_CURSOR_FIRST)
         {
           makeMetaData();
+          clear();
         }
 
       T_CCI_ERROR cciError;
@@ -735,7 +737,6 @@ namespace dbgw
       if ((nResult = cci_cursor(m_hCCIRequest, 1, (T_CCI_CURSOR_POS) m_cursorPos,
           &cciError)) == 0)
         {
-          m_cursorPos = CCI_CURSOR_CURRENT;
           nResult = cci_fetch(m_hCCIRequest, &cciError);
           if (nResult != CCI_ER_NO_ERROR)
             {
@@ -744,16 +745,26 @@ namespace dbgw
               throw e;
             }
 
-          clear();
           int i = 1;
-          DBGWValueSharedPtr pValue;
           const MetaDataList *pMetaList = getMetaDataList();
           for (MetaDataList::const_iterator it = pMetaList->begin(); it
-              != pMetaList->end(); it++)
+              != pMetaList->end(); it++, i++)
             {
-              pValue = makeValue(i++, *it);
-              put(it->name.c_str(), pValue);
+              if (it->type == DBGW_VAL_TYPE_INT)
+                {
+                  makeInt(it->name.c_str(), i, it->orgType);
+                }
+              else if (it->type == DBGW_VAL_TYPE_LONG)
+                {
+                  makeLong(it->name.c_str(), i, it->orgType);
+                }
+              else
+                {
+                  makeString(it->name.c_str(), i, it->type, it->orgType);
+                }
             }
+
+          m_cursorPos = CCI_CURSOR_CURRENT;
           return true;
         }
 
@@ -793,18 +804,13 @@ namespace dbgw
         }
     }
 
-    DBGWValueSharedPtr DBGWCUBRIDResult::makeValue(int nColNo,
-        const Metadata &stMetadata)
+    void DBGWCUBRIDResult::makeInt(const char *szColName, int nColNo, int utype)
     {
-      DBGWValueSharedPtr pValue;
-      DBGWRawValue rawValue;
-      rawValue.szValue = NULL;
-
-      int atype = convertValueTypeToCCIAType(stMetadata.type);
-      int utype = stMetadata.orgType;
+      int nValue;
+      int atype = convertValueTypeToCCIAType(DBGW_VAL_TYPE_INT);
       int nIndicator = 0;
       int nResult = cci_get_data(m_hCCIRequest, nColNo, atype,
-          (void *) &rawValue, &nIndicator);
+          (void *) &nValue, &nIndicator);
       if (nResult != CCI_ER_NO_ERROR)
         {
           CUBRIDException e(nResult, "Failed to get data.");
@@ -812,10 +818,75 @@ namespace dbgw
           throw e;
         }
 
-      pValue = DBGWValueSharedPtr(
-          new DBGWValue(rawValue, stMetadata.type, nIndicator == -1));
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          DBGWValueSharedPtr pValue(
+              new DBGWValue(DBGW_VAL_TYPE_INT, (void *) &nValue,
+                  nIndicator == -1, nIndicator));
+          put(szColName, pValue);
+        }
+      else
+        {
+          replace(nColNo - 1, DBGW_VAL_TYPE_INT, (void *) &nValue,
+              nIndicator == -1, nIndicator);
+        }
+    }
 
-      return pValue;
+    void DBGWCUBRIDResult::makeLong(const char *szColName, int nColNo, int utype)
+    {
+      int64 lValue;
+      int atype = convertValueTypeToCCIAType(DBGW_VAL_TYPE_LONG);
+      int nIndicator = 0;
+      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype,
+          (void *) &lValue, &nIndicator);
+      if (nResult != CCI_ER_NO_ERROR)
+        {
+          CUBRIDException e(nResult, "Failed to get data.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          DBGWValueSharedPtr pValue(
+              new DBGWValue(DBGW_VAL_TYPE_LONG, (void *) &lValue,
+                  nIndicator == -1, nIndicator));
+          put(szColName, pValue);
+        }
+      else
+        {
+          replace(nColNo - 1, DBGW_VAL_TYPE_LONG, (void *) &lValue,
+              nIndicator == -1, nIndicator);
+        }
+    }
+
+    void DBGWCUBRIDResult::makeString(const char *szColName, int nColNo,
+        DBGWValueType type, int utype)
+    {
+      char *szValue;
+      int atype = convertValueTypeToCCIAType(type);
+      int nIndicator = 0;
+      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype,
+          (void *) &szValue, &nIndicator);
+      if (nResult != CCI_ER_NO_ERROR)
+        {
+          CUBRIDException e(nResult, "Failed to get data.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          DBGWValueSharedPtr pValue(
+              new DBGWValue(type, (void *) szValue, nIndicator == -1,
+                  nIndicator));
+          put(szColName, pValue);
+        }
+      else
+        {
+          replace(nColNo - 1, type, (void *) szValue, nIndicator == -1,
+              nIndicator);
+        }
     }
 
   }

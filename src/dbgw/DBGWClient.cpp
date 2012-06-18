@@ -25,8 +25,13 @@
 #include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 
+#define MAKE_STRI(x) #x
+#define MAKE_STR(x) MAKE_STRI(x)
+
 namespace dbgw
 {
+
+  const char *DBGWClient::szVersionString = "VERSION=" MAKE_STR(BUILD_NUMBER);
 
   /**
    * DBGWConfiguration
@@ -263,6 +268,12 @@ namespace dbgw
                   }
                 else
                   {
+                    if (m_bValidateResult == false
+                        && pQuery->getType() == DBGWQueryType::SELECT)
+                      {
+                        continue;
+                      }
+
                     pInternalResult = (*it)->execute(pQuery, pParameter);
                     if (pInternalResult == NULL)
                       {
@@ -408,11 +419,11 @@ namespace dbgw
         while (lhs->next() && rhs->next())
           {
             const MetaDataList *pMetaList = lhs->getMetaDataList();
-            for (MetaDataList::const_iterator cit = pMetaList->begin(); cit
-                != pMetaList->end(); cit++)
+            MetaDataList::const_iterator cit = pMetaList->begin();
+            for (int i = 0; i < lhs->size(); i++, cit++)
               {
-                pLhs = lhs->getValue(cit->name.c_str());
-                pRhs = rhs->getValue(cit->name.c_str());
+                pLhs = lhs->getValue(i);
+                pRhs = rhs->getValue(i);
 
                 if (pRhs == NULL)
                   {

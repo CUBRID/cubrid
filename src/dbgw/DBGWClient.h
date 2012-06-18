@@ -68,6 +68,9 @@ namespace dbgw
     bool m_bClosed;
     bool m_bValidateResult;
     bool m_bValidClient;
+
+  private:
+    static const char *szVersionString;
   };
 
 }

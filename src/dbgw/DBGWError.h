@@ -68,7 +68,8 @@ namespace dbgw
       XML_INVALID_SYNTAX                        = -22707,
 
       EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
-      EXTERNAL_STANDARD_ERROR                   = -22801
+      EXTERNAL_STANDARD_ERROR                   = -22801,
+      EXTERNAL_MEMORY_ALLOC_FAIL                = -22802
     };
 
   }
@@ -328,6 +329,12 @@ namespace dbgw
   {
   public:
     MutexInitFailException() throw();
+  };
+
+  class MemoryAllocationFail: public DBGWException
+  {
+  public:
+    MemoryAllocationFail(int nSize) throw();
   };
 
 }

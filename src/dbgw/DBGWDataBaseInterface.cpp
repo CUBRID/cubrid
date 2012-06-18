@@ -365,28 +365,32 @@ namespace dbgw
 
           if (m_parameter.size() > 0)
             {
-              LogBuffer paramLogBuf("Parameters:");
-              LogBuffer typeLogBuf("Types:");
-
-              const DBGWValue *pValue = NULL;
-              DBGWQueryParameter stParam;
-              for (int i = 0, size = getQuery()->getBindNum(); i < size; i++)
+              if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
                 {
-                  stParam = getQuery()->getBindParam(i);
-                  pValue = m_parameter.getValue(stParam.name.c_str(),
-                      stParam.nIndex);
-                  if (pValue == NULL)
+                  LogBuffer paramLogBuf("Parameters:");
+                  LogBuffer typeLogBuf("Types:");
+
+                  const DBGWValue *pValue = NULL;
+                  DBGWQueryParameter stParam;
+                  for (int i = 0, size = getQuery()->getBindNum(); i < size; i++)
                     {
-                      throw getLastException();
+                      stParam = getQuery()->getBindParam(i);
+                      pValue = m_parameter.getValue(stParam.name.c_str(),
+                          stParam.nIndex);
+                      if (pValue == NULL)
+                        {
+                          throw getLastException();
+                        }
+
+                      paramLogBuf.addLog(pValue->toString());
+                      typeLogBuf.addLog(
+                          getDBGWValueTypeString(pValue->getType()));
                     }
 
-                  paramLogBuf.addLog(pValue->toString());
-                  typeLogBuf.addLog(getDBGWValueTypeString(pValue->getType()));
+                  DBGW_LOG_DEBUG(m_logger.getLogMessage(dump().c_str()).c_str());
+                  DBGW_LOG_INFO(m_logger.getLogMessage(paramLogBuf.getLog().c_str()).c_str());
+                  DBGW_LOG_INFO(m_logger.getLogMessage(typeLogBuf.getLog().c_str()).c_str());
                 }
-
-              DBGW_LOG_DEBUG(m_logger.getLogMessage(dump().c_str()).c_str());
-              DBGW_LOG_INFO(m_logger.getLogMessage(paramLogBuf.getLog().c_str()).c_str());
-              DBGW_LOG_INFO(m_logger.getLogMessage(typeLogBuf.getLog().c_str()).c_str());
 
               bind();
 
@@ -520,13 +524,15 @@ namespace dbgw
               throw getLastException();
             }
 
-          LogBuffer resultLogBuf("Result:");
-          for (MetaDataList::const_iterator it = m_metaList.begin(); it
-              != m_metaList.end(); it++)
+          if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
             {
-              resultLogBuf.addLog(getValue(it->name.c_str())->toString());
+              LogBuffer resultLogBuf("Result:");
+              for (size_t i = 0; i < size(); i++)
+                {
+                  resultLogBuf.addLog(getValue(i)->toString());
+                }
+              DBGW_LOG_INFO(m_logger.getLogMessage(resultLogBuf.getLog().c_str()).c_str());
             }
-          DBGW_LOG_INFO(m_logger.getLogMessage(resultLogBuf.getLog().c_str()).c_str());
 
           return true;
         }
@@ -625,15 +631,18 @@ namespace dbgw
     {
       doMakeMetadata(m_metaList);
 
-      LogBuffer headerLogBuf("Header:");
-
-      for (size_t i = 0; i < m_metaList.size(); i++)
+      if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
         {
-          headerLogBuf.addLog(m_metaList[i].name);
-        }
+          LogBuffer headerLogBuf("Header:");
 
-      DBGW_LOG_INFO(m_logger.getLogMessage("ResultSet").c_str());
-      DBGW_LOG_INFO(m_logger.getLogMessage(headerLogBuf.getLog().c_str()).c_str());
+          for (size_t i = 0; i < m_metaList.size(); i++)
+            {
+              headerLogBuf.addLog(m_metaList[i].name);
+            }
+
+          DBGW_LOG_INFO(m_logger.getLogMessage("ResultSet").c_str());
+          DBGW_LOG_INFO(m_logger.getLogMessage(headerLogBuf.getLog().c_str()).c_str());
+        }
     }
 
     void DBGWResult::clear()

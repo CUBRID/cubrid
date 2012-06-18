@@ -54,20 +54,21 @@ namespace dbgw
       const char *szValue, bool bNull)
   {
     DBGWValueSharedPtr pValue;
-    DBGWRawValue value;
-    switch (type)
-      {
-      case DBGW_VAL_TYPE_INT:
-        value.nValue = atoi(szValue);
-        break;
-      case DBGW_VAL_TYPE_LONG:
-        value.lValue = boost::lexical_cast<int64>(szValue);
-        break;
-      default:
-        value.szValue = (char *) szValue;
-      }
 
-    pValue = DBGWValueSharedPtr(new DBGWValue(value, type, bNull));
+    if (type == DBGW_VAL_TYPE_INT)
+      {
+        int nValue = atoi(szValue);
+        pValue = DBGWValueSharedPtr(new DBGWValue(type, (void *) &nValue, bNull));
+      }
+    else if (type == DBGW_VAL_TYPE_LONG)
+      {
+        int64 lValue = boost::lexical_cast<int64>(szValue);
+        pValue = DBGWValueSharedPtr(new DBGWValue(type, (void *) &lValue, bNull));
+      }
+    else
+      {
+        pValue = DBGWValueSharedPtr(new DBGWValue(type, (void *) szValue, bNull));
+      }
 
     if (szName == NULL)
       {

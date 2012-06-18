@@ -52,6 +52,7 @@ namespace dbgw
   extern DBGW_FAULT_TYPE dbgw_mock_get_fault();
   extern const char *dbgw_mock_get_group();
 
+  extern void dbgw_mock_clear_fault();
   extern void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group = NULL);
 
 #ifdef BUILD_MOCK

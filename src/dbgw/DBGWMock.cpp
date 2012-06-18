@@ -124,6 +124,19 @@ namespace dbgw
     return nResult;
   }
 
+  int cci_mock_set_autocommit(int con_h_id, CCI_AUTOCOMMIT_MODE autocommit_mode)
+  {
+    T_CCI_ERROR err_buf;
+
+    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(&err_buf);
+
+    int nResult = cci_set_autocommit(con_h_id, autocommit_mode);
+
+    CCI_FAULT_EXEC_AFTER_RETURN_ERR(&err_buf);
+
+    return nResult;
+  }
+
 
   __thread DBGW_FAULT_TYPE g_dbgw_fault_type = DBGW_FAULT_TYPE_NONE;
   __thread char *g_dbgw_fault_group = NULL;
@@ -137,6 +150,20 @@ namespace dbgw
   const char *dbgw_mock_get_group()
   {
     return g_dbgw_fault_group;
+  }
+
+  void dbgw_mock_clear_fault()
+  {
+    cci_mock_clear_fault();
+
+    g_dbgw_fault_type = DBGW_FAULT_TYPE_NONE;
+
+    if (g_dbgw_fault_group != NULL)
+      {
+        free(g_dbgw_fault_group);
+      }
+
+    g_dbgw_fault_group = NULL;
   }
 
   void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group)

@@ -506,4 +506,10 @@ namespace dbgw
   {
   }
 
+  MemoryAllocationFail::MemoryAllocationFail(int nSize) throw() :
+    DBGWException(DBGWErrorCode::EXTERNAL_MEMORY_ALLOC_FAIL,
+        boost::format("Failed to allocate memory size (%d).") % nSize)
+  {
+  }
+
 }

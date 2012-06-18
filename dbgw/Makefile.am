@@ -22,7 +22,7 @@ DBGW_DIR = $(SRC)/dbgw
 CCI_DIR = $(SRC)/cci
 BROKER_DIR = $(SRC)/broker
 
-AM_CPPFLAGS = @EXT_INC@ @DBGW_DEFS@
+AM_CPPFLAGS = @EXT_INC@ @DBGW_DEFS@ @VERSION_DEFS@
 
 # DBGW Season 3 Library
 dbgw3_includedir = $(includedir)
@@ -50,7 +50,7 @@ dbgw3_SOURCES = \
         $(DBGW_DIR)/DBGWQuery.cpp \
         $(DBGW_DIR)/DBGWLogger.cpp \
         $(DBGW_DIR)/DBGWConfiguration.cpp \
-        $(DBGW_DIR)/DBGWClient.cpp                                                               
+        $(DBGW_DIR)/DBGWClient.cpp
 lib_LTLIBRARIES = libdbgw3.la
 libdbgw3_la_SOURCES = \
         $(dbgw3_SOURCES)
@@ -85,7 +85,8 @@ dbgw3_query_tester_LDADD = @EXPAT_LIBS@ @CCI_LIB@
 
 VERSIONED_FILES = \
         $(BASE_DIR)/release_string.c \
-        $(DBGW_DIR)/xml.c
-
+        $(DBGW_DIR)/DBGWClient.cpp \
+        $(DBGW_DIR)/DBGWCUBRIDInterface.cpp \
+        $(DBGW_DIR)/DBGWConfiguration.cpp
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 		touch $@

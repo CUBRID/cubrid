@@ -41,6 +41,7 @@ namespace dbgw
     static void finalize();
     static void write(const char *szFile, int nLine, CCI_LOG_LEVEL level,
         const char *szFormat, ...);
+    static bool isWritable(CCI_LOG_LEVEL level);
     static const char *getLogPath();
     static CCI_LOG_LEVEL getLogLevel();
 
@@ -54,22 +55,30 @@ namespace dbgw
 
 #define DBGW_LOG_ERROR(...) \
   do { \
-    DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
+    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
+      DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
+    } \
   } while (false)
 
 #define DBGW_LOG_WARN(...) \
   do { \
-    DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_WARN, __VA_ARGS__); \
+    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
+      DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_WARN, __VA_ARGS__); \
+    } \
   } while (false)
 
 #define DBGW_LOG_INFO(...) \
   do { \
-    DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
+    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
+      DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
+    } \
   } while (false)
 
 #define DBGW_LOG_DEBUG(...) \
   do { \
-    DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
+    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
+      DBGWLogger::write(__FILE__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
+    } \
   } while (false)
 
 }

@@ -458,6 +458,18 @@ void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)
   l->setLevel(level);
 }
 
+bool cci_log_is_writable(Logger logger, CCI_LOG_LEVEL level)
+{
+  _Logger *l = (_Logger *) logger;
+
+  if (l == NULL)
+    {
+      return false;
+    }
+
+  return l->isLoggerWritable(level);
+}
+
 void cci_log_set_force_flush(Logger logger, bool force_flush)
 {
   _Logger *l = (_Logger *) logger;

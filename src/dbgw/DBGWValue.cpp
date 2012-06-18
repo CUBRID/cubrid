@@ -45,8 +45,10 @@ namespace dbgw
       }
   }
 
+  const int DBGWValue::DEFUALT_INC_SIZE = 1024;
+
   DBGWValue::DBGWValue() :
-    m_type(DBGW_VAL_TYPE_UNDEFINED), m_bNull(false)
+    m_type(DBGW_VAL_TYPE_UNDEFINED), m_bNull(false), m_nSize(-1)
   {
     /**
      * We don't need to clear error because this api will not make error.
@@ -62,52 +64,42 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    m_stValue.szValue = NULL;
+    memset(&m_stValue, 0, sizeof(DBGWRawValue));
   }
 
-  DBGWValue::DBGWValue(DBGWValueType type, void *pValue, bool bNull) :
-    m_type(type), m_bNull(bNull)
+  DBGWValue::DBGWValue(DBGWValueType type, const void *pValue, bool bNull,
+      int nSize) :
+    m_type(type), m_bNull(bNull), m_nSize(-1)
   {
     clearException();
     try
       {
-        if (pValue == NULL)
+        memset(&m_stValue, 0, sizeof(DBGWRawValue));
+        init(type, pValue, bNull, nSize);
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+      }
+  }
+
+  DBGWValue::DBGWValue(const DBGWValue &value) :
+    m_type(value.m_type), m_bNull(value.m_bNull), m_nSize(-1)
+  {
+    clearException();
+
+    try
+      {
+        memset(&m_stValue, 0, sizeof(DBGWRawValue));
+        if (m_type == DBGW_VAL_TYPE_STRING || m_type == DBGW_VAL_TYPE_DATETIME
+            || m_type == DBGW_VAL_TYPE_CHAR)
           {
-            m_stValue.szValue = NULL;
-            m_bNull = true;
+            init(m_type, (void *) value.m_stValue.szValue, m_bNull,
+                value.m_nSize);
           }
         else
           {
-            switch (m_type)
-              {
-              case DBGW_VAL_TYPE_INT:
-                m_stValue.nValue = *(int *) pValue;
-                break;
-              case DBGW_VAL_TYPE_LONG:
-                m_stValue.lValue = *(int64 *) pValue;
-                break;
-              case DBGW_VAL_TYPE_STRING:
-              case DBGW_VAL_TYPE_DATETIME:
-                if (*(char **) pValue == NULL)
-                  {
-                    m_stValue.szValue = NULL;
-                    m_bNull = true;
-                  }
-                else
-                  {
-                    m_stValue.szValue = strdup(*(char **) pValue);
-                  }
-                break;
-              case DBGW_VAL_TYPE_CHAR:
-                m_stValue.szValue = (char *) malloc(sizeof(char) * 2);
-                m_stValue.szValue[0] = *(char *) pValue;
-                m_stValue.szValue[1] = '\0';
-                break;
-              default:
-                InvalidValueTypeException e(type);
-                DBGW_LOG_ERROR(e.what());
-                throw e;
-              }
+            init(m_type, (void *) &value.m_stValue, m_bNull);
           }
       }
     catch (DBGWException &e)
@@ -116,91 +108,10 @@ namespace dbgw
       }
   }
 
-  DBGWValue::DBGWValue(const DBGWRawValue &rawValue, DBGWValueType type,
-      bool bNull) :
-    m_type(type), m_bNull(bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     *          blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     *          setLastException(e);
-     * }
-     */
-    switch (type)
-      {
-      case DBGW_VAL_TYPE_STRING:
-      case DBGW_VAL_TYPE_CHAR:
-      case DBGW_VAL_TYPE_DATETIME:
-        if (rawValue.szValue != NULL)
-          {
-            m_stValue.szValue = strdup(rawValue.szValue);
-            if (m_stValue.szValue == NULL)
-              {
-                m_bNull = true;
-              }
-          }
-        else
-          {
-            m_stValue.szValue = NULL;
-            m_bNull = true;
-          }
-        break;
-      default:
-        m_stValue = rawValue;
-        break;
-      }
-  }
-
-  DBGWValue::DBGWValue(const DBGWValue &value) :
-    m_type(value.m_type), m_bNull(value.m_bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     *          blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     *          setLastException(e);
-     * }
-     */
-    switch (m_type)
-      {
-      case DBGW_VAL_TYPE_STRING:
-      case DBGW_VAL_TYPE_CHAR:
-      case DBGW_VAL_TYPE_DATETIME:
-        if (value.m_stValue.szValue != NULL)
-          {
-            m_stValue.szValue = strdup(value.m_stValue.szValue);
-            if (m_stValue.szValue == NULL)
-              {
-                m_bNull = true;
-              }
-          }
-        else
-          {
-            m_stValue.szValue = NULL;
-            m_bNull = true;
-          }
-        break;
-      default:
-        m_stValue = value.m_stValue;
-        break;
-      }
-  }
-
+#if defined (ENABLE_UNUSED_FUNCTION)
+  /**
+   * This is used only MySQL Interface
+   */
   DBGWValue::DBGWValue(DBGWValueType type, size_t length, bool bNull) :
     m_type(type), m_bNull(bNull)
   {
@@ -223,6 +134,7 @@ namespace dbgw
         m_stValue.szValue = (char *) malloc(sizeof(char) * length);
       }
   }
+#endif
 
   DBGWValue::~DBGWValue()
   {
@@ -247,6 +159,22 @@ namespace dbgw
           {
             free(m_stValue.szValue);
           }
+      }
+  }
+
+  bool DBGWValue::set(DBGWValueType type, void *pValue, bool bNull, int nSize)
+  {
+    clearException();
+
+    try
+      {
+        init(type, pValue, bNull, nSize);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
       }
   }
 
@@ -287,7 +215,14 @@ namespace dbgw
             throw e;
           }
 
-        *pValue = m_stValue.szValue;
+        if (isNull())
+          {
+            *pValue = NULL;
+          }
+        else
+          {
+            *pValue = m_stValue.szValue;
+          }
         return true;
       }
     catch (DBGWException &e)
@@ -333,7 +268,7 @@ namespace dbgw
             throw e;
           }
 
-        if (m_stValue.szValue == NULL)
+        if (isNull())
           {
             *pValue = 0;
           }
@@ -399,6 +334,10 @@ namespace dbgw
     return m_type;
   }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
+  /**
+   * This is used only MySQL.
+   */
   void *DBGWValue::getVoidPtr() const
   {
     /**
@@ -424,6 +363,7 @@ namespace dbgw
         return (void *) &m_stValue;
       }
   }
+#endif
 
   int DBGWValue::getLength() const
   {
@@ -465,7 +405,7 @@ namespace dbgw
 
     try
       {
-        if (m_bNull)
+        if (isNull())
           {
             return "NULL";
           }
@@ -475,10 +415,6 @@ namespace dbgw
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_CHAR:
           case DBGW_VAL_TYPE_DATETIME:
-            if (m_stValue.szValue == NULL)
-              {
-                return "";
-              }
             return m_stValue.szValue;
           case DBGW_VAL_TYPE_INT:
             return boost::lexical_cast<string>(m_stValue.nValue);
@@ -504,7 +440,19 @@ namespace dbgw
 
   bool DBGWValue::isNull() const
   {
-    return m_bNull;
+    if (m_bNull == true)
+      {
+        return true;
+      }
+    else if (m_type == DBGW_VAL_TYPE_CHAR || m_type == DBGW_VAL_TYPE_STRING
+        || m_type == DBGW_VAL_TYPE_DATETIME)
+      {
+        return m_stValue.szValue == NULL;
+      }
+    else
+      {
+        return false;
+      }
   }
 
   bool DBGWValue::operator==(const DBGWValue &value) const
@@ -518,6 +466,11 @@ namespace dbgw
             return toString() == value.toString();
           }
 
+        if (isNull() != value.isNull())
+          {
+            return false;
+          }
+
         switch (getType())
           {
           case DBGW_VAL_TYPE_INT:
@@ -525,10 +478,9 @@ namespace dbgw
           case DBGW_VAL_TYPE_LONG:
             return m_stValue.lValue == value.m_stValue.lValue;
           case DBGW_VAL_TYPE_CHAR:
-            return *m_stValue.szValue == *value.m_stValue.szValue;
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_DATETIME:
-            return strcmp(m_stValue.szValue, m_stValue.szValue) == 0;
+            return toString() == value.toString();
           default:
             InvalidValueTypeException e(m_type);
             DBGW_LOG_ERROR(e.what());
@@ -545,6 +497,89 @@ namespace dbgw
   bool DBGWValue::operator!=(const DBGWValue &value) const
   {
     return !(operator ==(value));
+  }
+
+  void DBGWValue::init(DBGWValueType type, const void *pValue, bool bNull,
+      int nSize)
+  {
+    if (type == DBGW_VAL_TYPE_UNDEFINED)
+      {
+        InvalidValueTypeException e(type);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    if (m_type != type)
+      {
+        MismatchValueTypeException e(m_type, type);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    if (pValue == NULL)
+      {
+        m_bNull = true;
+        return;
+      }
+
+    if (m_type == DBGW_VAL_TYPE_STRING || m_type == DBGW_VAL_TYPE_DATETIME)
+      {
+        char *p = (char *) pValue;
+
+        if (nSize <= 0)
+          {
+            nSize = strlen(p) + 1;
+          }
+
+        if (m_nSize <= nSize)
+          {
+            m_nSize = nSize + DEFUALT_INC_SIZE;
+            if (m_stValue.szValue != NULL)
+              {
+                free(m_stValue.szValue);
+              }
+
+            m_stValue.szValue = (char *) malloc(m_nSize);
+            if (m_stValue.szValue == NULL)
+              {
+                m_bNull = true;
+                m_nSize = -1;
+                MemoryAllocationFail e(m_nSize);
+                DBGW_LOG_ERROR(e.what());
+                throw e;
+              }
+          }
+        memcpy(m_stValue.szValue, p, nSize);
+        m_stValue.szValue[nSize] = '\0';
+      }
+    else if (m_type == DBGW_VAL_TYPE_CHAR)
+      {
+        m_nSize = 2;
+        if (m_stValue.szValue == NULL)
+          {
+            m_stValue.szValue = (char *) malloc(2);
+            if (m_stValue.szValue == NULL)
+              {
+                m_bNull = true;
+                m_nSize = -1;
+                MemoryAllocationFail e(2);
+                DBGW_LOG_ERROR(e.what());
+                throw e;
+              }
+          }
+
+        m_stValue.szValue[0] = *(char *) pValue;
+        m_stValue.szValue[1] = '\0';
+      }
+    else if (m_type == DBGW_VAL_TYPE_INT)
+      {
+        m_stValue.nValue = *(int *) pValue;
+      }
+    else if (m_type == DBGW_VAL_TYPE_LONG)
+      {
+        m_stValue.lValue = *(int64 *) pValue;
+      }
+    return;
   }
 
   struct tm DBGWValue::toTm() const
@@ -690,7 +725,8 @@ namespace dbgw
         removeIndexMap(nIndex);
       }
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
+        bNull));
     m_valueList[nIndex] = p;
   }
 
@@ -754,7 +790,8 @@ namespace dbgw
     m_valueList[nIndex] = p;
   }
 
-  bool DBGWValueSet::set(size_t nIndex, DBGWValueType type, void *pValue)
+  bool DBGWValueSet::set(size_t nIndex, DBGWValueType type, void *pValue,
+      bool bNull, int nSize)
   {
     clearException();
     try
@@ -769,7 +806,7 @@ namespace dbgw
             removeIndexMap(nIndex);
           }
 
-        DBGWValueSharedPtr p(new DBGWValue(type, pValue));
+        DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
         if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
           {
             throw getLastException();
@@ -827,7 +864,8 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
+        bNull));
     m_indexMap[szKey] = m_valueList.size();
     m_valueList.push_back(p);
   }
@@ -874,12 +912,13 @@ namespace dbgw
     m_valueList.push_back(p);
   }
 
-  bool DBGWValueSet::put(const char *szKey, DBGWValueType type, void *pValue)
+  bool DBGWValueSet::put(const char *szKey, DBGWValueType type, void *pValue,
+      bool bNull, int nSize)
   {
     clearException();
     try
       {
-        DBGWValueSharedPtr p(new DBGWValue(type, pValue));
+        DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
         if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
           {
             throw getLastException();
@@ -951,7 +990,8 @@ namespace dbgw
      * }
      */
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, &szValue, bNull));
+    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
+        bNull));
     m_valueList.push_back(p);
   }
 
@@ -995,17 +1035,41 @@ namespace dbgw
     m_valueList.push_back(p);
   }
 
-  bool DBGWValueSet::put(DBGWValueType type, void *pValue)
+  bool DBGWValueSet::put(DBGWValueType type, const void *pValue,
+      bool bNull, int nSize)
   {
     clearException();
     try
       {
-        DBGWValueSharedPtr p(new DBGWValue(type, pValue));
+        DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
         if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
           {
             throw getLastException();
           }
         m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::replace(size_t nIndex, DBGWValueType type,
+      void *pValue, bool bNull, int nSize)
+  {
+    clearException();
+    try
+      {
+        if (m_valueList.size() <= nIndex || m_valueList[nIndex] == NULL)
+          {
+            NotExistSetException e(nIndex);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        m_valueList[nIndex]->set(type, pValue, bNull, nSize);
         return true;
       }
     catch (DBGWException &e)

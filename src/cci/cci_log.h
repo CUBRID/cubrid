@@ -48,22 +48,30 @@ typedef enum
 
 #define CCI_LOG_ERROR(logger, ...) \
   do { \
-          cci_log_write(CCI_LOG_LEVEL_ERROR, logger, __VA_ARGS__); \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_ERROR)) { \
+      cci_log_write(CCI_LOG_LEVEL_ERROR, logger, __VA_ARGS__); \
+    } \
   } while (false)
 
 #define CCI_LOG_WARN(logger, ...) \
   do { \
-          cci_log_write(CCI_LOG_LEVEL_WARN, logger, __VA_ARGS__); \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_WARN)) { \
+      cci_log_write(CCI_LOG_LEVEL_WARN, logger, __VA_ARGS__); \
+    } \
   } while (false)
 
 #define CCI_LOG_INFO(logger, ...) \
   do { \
-          cci_log_write(CCI_LOG_LEVEL_INFO, logger, __VA_ARGS__); \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_INFO)) { \
+      cci_log_write(CCI_LOG_LEVEL_INFO, logger, __VA_ARGS__); \
+    } \
   } while (false)
 
 #define CCI_LOG_DEBUG(logger, ...) \
   do { \
-          cci_log_write(CCI_LOG_LEVEL_DEBUG, logger, __VA_ARGS__); \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_DEBUG)) { \
+      cci_log_write(CCI_LOG_LEVEL_DEBUG, logger, __VA_ARGS__); \
+    } \
   } while (false)
 
 #ifdef __cplusplus
@@ -77,6 +85,7 @@ extern "C"
       const char *format, ...);
   extern void cci_log_remove(const char *path);
   extern void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level);
+  extern bool cci_log_is_writable(Logger logger, CCI_LOG_LEVEL level);
   extern void cci_log_set_force_flush(Logger logger, bool force_flush);
 
 #ifdef __cplusplus

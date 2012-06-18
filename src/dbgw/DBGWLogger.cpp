@@ -125,24 +125,29 @@ namespace dbgw
   void DBGWLogger::write(const char *szFile, int nLine, CCI_LOG_LEVEL level,
       const char *szFormat, ...)
   {
-    const char *szBase = strrchr(szFile, '/');
-    szBase = szBase ? (szBase + 1) : szFile;
-    char fileLineBuf[32];
-    snprintf(fileLineBuf, 32, "%s:%d", szBase, nLine);
-
-    char prefixBuf[LOG_BUFFER_SIZE];
-    snprintf(prefixBuf, LOG_BUFFER_SIZE, " %-31s %s", fileLineBuf, szFormat);
-
-    char szLogFormat[LOG_BUFFER_SIZE];
-    va_list vl;
-    va_start(vl, szFormat);
-    vsnprintf(szLogFormat, LOG_BUFFER_SIZE, prefixBuf, vl);
-    va_end(vl);
-
     if (m_logger != NULL)
       {
+        const char *szBase = strrchr(szFile, '/');
+        szBase = szBase ? (szBase + 1) : szFile;
+        char fileLineBuf[32];
+        snprintf(fileLineBuf, 32, "%s:%d", szBase, nLine);
+
+        char prefixBuf[LOG_BUFFER_SIZE];
+        snprintf(prefixBuf, LOG_BUFFER_SIZE, " %-31s %s", fileLineBuf, szFormat);
+
+        char szLogFormat[LOG_BUFFER_SIZE];
+        va_list vl;
+        va_start(vl, szFormat);
+        vsnprintf(szLogFormat, LOG_BUFFER_SIZE, prefixBuf, vl);
+        va_end(vl);
+
         cci_log_write(level, m_logger, szLogFormat);
       }
+  }
+
+  bool DBGWLogger::isWritable(CCI_LOG_LEVEL level)
+  {
+    return cci_log_is_writable(m_logger, level);
   }
 
   const char *DBGWLogger::getLogPath()
