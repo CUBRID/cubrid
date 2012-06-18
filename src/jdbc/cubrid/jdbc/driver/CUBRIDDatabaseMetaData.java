@@ -36,6 +36,8 @@ import java.sql.ResultSet;
 import java.sql.RowIdLifetime;
 import java.sql.SQLException;
 
+import java.util.StringTokenizer;
+
 import cubrid.jdbc.jci.UColumnInfo;
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UError;
@@ -55,12 +57,16 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	UConnection u_con;
 	UError error;
 	boolean is_closed;
+	int major_version;
+	int minor_version;
 
 	protected CUBRIDDatabaseMetaData(CUBRIDConnection c) {
 		con = c;
 		u_con = con.u_con;
 		error = null;
 		is_closed = false;
+		major_version = -1;
+		minor_version = -1;
 	}
 
 	/*
@@ -128,6 +134,12 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		switch (error.getErrorCode()) {
 		case UErrorCode.ER_NO_ERROR:
+			StringTokenizer st = new StringTokenizer(ver, ".");
+			if (st.countTokens() == 4) {	// ex) 8.4.9.9999(major.minor.patch.build
+				this.major_version = Integer.parseInt(st.nextToken());
+				this.minor_version = Integer.parseInt(st.nextToken());
+			}
+			
 			return ver;
 		default:
 			throw con.createCUBRIDException(error);
@@ -2051,12 +2063,18 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized int getDatabaseMajorVersion() throws SQLException {
 		checkIsOpen();
-		return -1;
+		if (this.major_version == -1) {
+			getDatabaseProductVersion();
+		}
+		return this.major_version;
 	}
 
 	public synchronized int getDatabaseMinorVersion() throws SQLException {
 		checkIsOpen();
-		return -1;
+		if (this.minor_version == -1) {
+			getDatabaseProductVersion();
+		}
+		return this.minor_version;
 	}
 
 	public synchronized int getJDBCMajorVersion() throws SQLException {
