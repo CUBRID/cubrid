@@ -32,6 +32,7 @@
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "string_opfunc.h"
+#include "unicode_support.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -1346,20 +1347,93 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       {
-	int dummy;
-	result = string_to_string (db_get_char (value, &dummy),
+	int dummy, bytes_size, decomp_size;
+	bool need_decomp = false;
+	char *str;
+	char *decomposed = NULL;
+
+	str = db_get_char (value, &dummy);
+	bytes_size = db_get_string_size (value);
+	if (DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	  {
+	    need_decomp =
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
+					     lang_get_generic_unicode_norm
+					     ());
+	  }
+
+	if (need_decomp)
+	  {
+	    decomposed = (char *) malloc (decomp_size * sizeof (char));
+	    if (decomposed != NULL)
+	      {
+		unicode_decompose_string (str, bytes_size, decomposed,
+					  &decomp_size,
+					  lang_get_generic_unicode_norm ());
+
+		str = decomposed;
+		bytes_size = decomp_size;
+	      }
+	    else
+	      {
+		return NULL;
+	      }
+	  }
+
+	result = string_to_string (str,
 				   default_string_profile.string_delimiter,
-				   '\0', db_get_string_size (value), &len);
+				   '\0', bytes_size, &len);
+	if (decomposed != NULL)
+	  {
+	    free_and_init (decomposed);
+	  }
 
       }
       break;
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       {
-	int dummy;
-	result = string_to_string (db_get_nchar (value, &dummy),
+	int dummy, bytes_size, decomp_size;
+	bool need_decomp = false;
+	char *str;
+	char *decomposed = NULL;
+
+	str = db_get_char (value, &dummy);
+	bytes_size = db_get_string_size (value);
+	if (DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	  {
+	    need_decomp =
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
+					     lang_get_generic_unicode_norm
+					     ());
+	  }
+
+	if (need_decomp)
+	  {
+	    decomposed = (char *) malloc (decomp_size * sizeof (char));
+	    if (decomposed != NULL)
+	      {
+		unicode_decompose_string (str, bytes_size, decomposed,
+					  &decomp_size,
+					  lang_get_generic_unicode_norm ());
+
+		str = decomposed;
+		bytes_size = decomp_size;
+	      }
+	    else
+	      {
+		return NULL;
+	      }
+	  }
+
+	result = string_to_string (str,
 				   default_string_profile.string_delimiter,
-				   'N', db_get_string_size (value), &len);
+				   'N', bytes_size, &len);
+
+	if (decomposed != NULL)
+	  {
+	    free_and_init (decomposed);
+	  }
       }
       break;
     case DB_TYPE_VARBIT:
