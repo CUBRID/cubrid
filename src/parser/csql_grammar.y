@@ -2370,9 +2370,10 @@ create_stmt
 				  }
 				else
 				  {
-				    PT_ERRORm (this_parser, node, 
-					       MSGCAT_SET_PARSER_SYNTAX,
-					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				    PT_ERRORmf (this_parser, col->info.sort_spec.expr, 
+						MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+						pt_show_function (col->info.sort_spec.expr->info.function.function_type));
 				  }
 			      }
 			     node->info.index.where = $12;
