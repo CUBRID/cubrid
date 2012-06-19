@@ -522,6 +522,8 @@ namespace dbgw
         return;
       }
 
+	m_bNull = bNull;
+
     if (m_type == DBGW_VAL_TYPE_STRING || m_type == DBGW_VAL_TYPE_DATETIME)
       {
         char *p = (char *) pValue;
