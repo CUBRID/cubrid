@@ -2243,7 +2243,15 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 				      keyval, pk_cls_oid, &unique_oid,
 				      true) != BTREE_KEY_FOUND)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 1, fk_name);
+      char *val_print = NULL;
+
+      val_print = pr_valstring (keyval);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name,
+	      (val_print ? val_print : "unknown value"));
+      if (val_print)
+	{
+	  free_and_init (val_print);
+	}
       ret = ER_FK_INVALID;
       goto exit_on_error;
     }

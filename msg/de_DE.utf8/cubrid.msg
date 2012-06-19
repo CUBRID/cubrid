@@ -987,7 +987,7 @@ $ LOADDB
 919 The class '%s' referred by the foreign key does not have the primary key.
 920 The foreign key '%s' does not include the primary key member '%s'.
 921 The domain of the foreign key member '%s' is different from that of the primary key member '%s'.
-922 The constraint of the foreign key '%s' is invalid.
+922 The constraint of the foreign key '%s' is invalid, due to value '%s'.
 923 The primary key '%s' referred by a foreign key '%s' is not supposed to be dropped.
 924 Update/Delete operations are restricted by the foreign key '%s'.
 925 Acquiring lock for the foreign key '%s' has failed.
