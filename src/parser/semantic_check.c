@@ -13008,8 +13008,11 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
 
   if (info.is_valid_expr == false)
     {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+	}
     }
 
   if (info.is_null_atts)
@@ -13316,6 +13319,9 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 
 	default:
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
+		      pt_show_binopcode (node->info.expr.op));
 	  info->is_valid_expr = false;
 	  break;
 	}
@@ -13336,6 +13342,9 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  /* valid expression, nothing to do */
 	  break;
 	default:
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
+		      pt_show_function (node->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 	}
