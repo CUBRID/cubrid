@@ -1399,6 +1399,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   DB_VALUE e38;
   char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  size_t name_len;
 
   db_make_null (&e38);
   db_make_null (&value);
@@ -1439,13 +1440,13 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   att_name = att_downcase_name;
 
   /* serial_name : <class_name>_ai_<att_name> */
-  serial_name =
-    (char *) malloc (strlen (class_name) + strlen (att_name) +
-		     AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
+  name_len = (strlen (class_name) + strlen (att_name)
+	      + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
+  serial_name = (char *) malloc (name_len);
   if (serial_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
       goto end;
     }
 

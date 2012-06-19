@@ -4332,6 +4332,13 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   assert (new_object == object);
+
+  /* This prevents from dangling references to serial objects 
+   * during replication. 
+   * The typical scenario is to update serials, cull mops which clears 
+   * the mop up, and then truncate the table which leads updating 
+   * the serial mop to reset its values. 
+   */
   ws_release_user_instance (new_object);
   object = new_object = NULL;
 
@@ -4373,6 +4380,12 @@ error_rtn:
   assert (new_object == NULL || new_object == object);
   if (object)
     {
+      /* This prevents from dangling references to serial objects 
+       * during replication. 
+       * The typical scenario is to update serials, cull mops which clears 
+       * the mop up, and then truncate the table which leads updating 
+       * the serial mop to reset its values. 
+       */
       ws_release_user_instance (object);
       object = new_object = NULL;
     }
@@ -4521,6 +4534,13 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   assert (object == NULL);
+
+  /* This prevents from dangling references to serial objects 
+   * during replication. 
+   * The typical scenario is to update serials, cull mops which clears 
+   * the mop up, and then truncate the table which leads updating 
+   * the serial mop to reset its values. 
+   */
   ws_release_user_instance (new_object);
   new_object = NULL;
 
@@ -4560,12 +4580,24 @@ error_rtn:
 
   if (object)
     {
+      /* This prevents from dangling references to serial objects 
+       * during replication. 
+       * The typical scenario is to update serials, cull mops which clears 
+       * the mop up, and then truncate the table which leads updating 
+       * the serial mop to reset its values. 
+       */
       ws_release_user_instance (object);
       object = NULL;
     }
 
   if (new_object)
     {
+      /* This prevents from dangling references to serial objects 
+       * during replication. 
+       * The typical scenario is to update serials, cull mops which clears 
+       * the mop up, and then truncate the table which leads updating 
+       * the serial mop to reset its values. 
+       */
       ws_release_user_instance (new_object);
       new_object = NULL;
     }
