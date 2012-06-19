@@ -132,6 +132,9 @@ extern int catcls_get_cardinality (THREAD_ENTRY * thread_p,
 extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
 					   int *charset_id_p, char *lang_buf,
 					   const int lang_buf_size);
+extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
+				    LANG_COLL_COMPAT ** db_collations,
+				    int *coll_cnt);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p,
@@ -5285,7 +5288,7 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
       goto exit;
     }
 
-  heap_scancache_quick_start (&scan_cache);
+  (void) heap_scancache_quick_start (&scan_cache);
 
   if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
 		NULL_CHN) != S_SUCCESS)
@@ -5333,7 +5336,7 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
       strcpy (lang_buf, LANG_NAME_ENGLISH);
     }
 
-  heap_scancache_end (thread_p, &scan_cache);
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   /* read values of the single record in heap */
   error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
@@ -5389,7 +5392,230 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
     }
 
 exit:
-  heap_scancache_end (thread_p, &scan_cache);
+  (void) heap_scancache_end (thread_p, &scan_cache);
+  heap_attrinfo_end (thread_p, &attr_info);
+
+  return error;
+}
+
+/*
+ * catcls_get_db_collation () - get infomation on all collation in DB
+ *				stored in the "_db_collation" system table
+ *
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)  : thread context
+ *   db_collations(out): array of collation info
+ *   coll_cnt(out): number of collations found in DB
+ *
+ *  Note : This function is called during server initialization, for this
+ *	   reason, no locks are required on the class.
+ */
+int
+catcls_get_db_collation (THREAD_ENTRY * thread_p,
+			 LANG_COLL_COMPAT ** db_collations, int *coll_cnt)
+{
+  OID class_oid;
+  OID inst_oid;
+  HFID hfid;
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  const char *class_name = "_db_collation";
+  int i;
+  int error = NO_ERROR;
+  int att_id_cnt = 0;
+  int max_coll_cnt;
+  int coll_id_att_id = -1, coll_name_att_id = -1, charset_id_att_id = -1,
+    checksum_att_id = -1;
+  int alloc_size;
+
+  assert (db_collations != NULL);
+  assert (coll_cnt != NULL);
+
+  OID_SET_NULL (&class_oid);
+  OID_SET_NULL (&inst_oid);
+
+  error =
+    catcls_find_class_oid_by_class_name (thread_p, class_name, &class_oid);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (OID_ISNULL (&class_oid))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME,
+	      1, class_name);
+      goto exit;
+    }
+
+  error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  (void) heap_scancache_quick_start (&scan_cache);
+
+  if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
+		NULL_CHN) != S_SUCCESS)
+    {
+      goto exit;
+    }
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      const char *rec_attr_name_p = or_get_attrname (&recdes, i);
+      if (rec_attr_name_p == NULL)
+	{
+	  goto exit;
+	}
+
+      if (strcmp (CT_DBCOLL_COLL_ID_COLUMN, rec_attr_name_p) == 0)
+	{
+	  coll_id_att_id = i;
+	  att_id_cnt++;
+	}
+      else if (strcmp (CT_DBCOLL_COLL_NAME_COLUMN, rec_attr_name_p) == 0)
+	{
+	  coll_name_att_id = i;
+	  att_id_cnt++;
+	}
+      else if (strcmp (CT_DBCOLL_CHARSET_ID_COLUMN, rec_attr_name_p) == 0)
+	{
+	  charset_id_att_id = i;
+	  att_id_cnt++;
+	}
+      else if (strcmp (CT_DBCOLL_CHECKSUM_COLUMN, rec_attr_name_p) == 0)
+	{
+	  checksum_att_id = i;
+	  att_id_cnt++;
+	}
+      if (att_id_cnt >= 4)
+	{
+	  break;
+	}
+    }
+
+  if (att_id_cnt != 4)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto exit;
+    }
+
+  (void) heap_scancache_end (thread_p, &scan_cache);
+
+  /* read values of all records in heap */
+  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+    {
+      goto exit;
+    }
+
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true,
+				false, LOCKHINT_NONE);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  max_coll_cnt = LANG_MAX_COLLATIONS;
+  alloc_size = max_coll_cnt * sizeof (LANG_COLL_COMPAT);
+  *db_collations = (LANG_COLL_COMPAT *) db_private_alloc (thread_p,
+							  alloc_size);
+  if (*db_collations == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, alloc_size);
+      goto exit;
+    }
+
+  *coll_cnt = 0;
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes,
+		    &scan_cache, PEEK) == S_SUCCESS)
+    {
+      HEAP_ATTRVALUE *heap_value = NULL;
+      LANG_COLL_COMPAT *curr_coll;
+
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes,
+				       &attr_info) != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (*coll_cnt >= max_coll_cnt)
+	{
+	  max_coll_cnt = max_coll_cnt * 2;
+	  alloc_size = max_coll_cnt * sizeof (LANG_COLL_COMPAT);
+	  *db_collations =
+	    (LANG_COLL_COMPAT *) db_private_realloc (thread_p, *db_collations,
+						     alloc_size);
+	  if (db_collations == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, alloc_size);
+	      goto exit;
+	    }
+	}
+
+      curr_coll = &((*db_collations)[(*coll_cnt)++]);
+      memset (curr_coll, 0, sizeof (LANG_COLL_COMPAT));
+
+      for (i = 0, heap_value = attr_info.values;
+	   i < attr_info.num_values; i++, heap_value++)
+	{
+	  if (heap_value->attrid == coll_id_att_id)
+	    {
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_INTEGER);
+
+	      curr_coll->coll_id = DB_GET_INTEGER (&heap_value->dbvalue);
+	    }
+	  else if (heap_value->attrid == coll_name_att_id)
+	    {
+	      char *lang_str = NULL;
+	      int lang_str_len;
+
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_STRING);
+
+	      lang_str = DB_GET_STRING (&heap_value->dbvalue);
+	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
+	      lang_str_len = MIN (lang_str_len,
+				  sizeof (curr_coll->coll_name));
+
+	      strncpy (curr_coll->coll_name, lang_str, lang_str_len);
+	      curr_coll->coll_name[lang_str_len] = '\0';
+	    }
+	  else if (heap_value->attrid == charset_id_att_id)
+	    {
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_INTEGER);
+
+	      curr_coll->codeset =
+		(INTL_CODESET) DB_GET_INTEGER (&heap_value->dbvalue);
+	    }
+	  else if (heap_value->attrid == checksum_att_id)
+	    {
+	      char *checksum_str = NULL;
+	      int str_len;
+
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_STRING);
+
+	      checksum_str = DB_GET_STRING (&heap_value->dbvalue);
+	      str_len = (checksum_str != NULL) ? strlen (checksum_str) : 0;
+
+	      assert (str_len == 32);
+
+	      strncpy (curr_coll->checksum, checksum_str, str_len);
+	      curr_coll->checksum[str_len] = '\0';
+	    }
+	}
+    }
+
+exit:
+  (void) heap_scancache_end (thread_p, &scan_cache);
   heap_attrinfo_end (thread_p, &attr_info);
 
   return error;

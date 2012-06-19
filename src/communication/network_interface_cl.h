@@ -39,6 +39,7 @@
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"
+#include "language_support.h"
 
 typedef struct server_info SERVER_INFO;
 struct server_info
@@ -542,6 +543,10 @@ extern off_t es_posix_get_file_size (const char *path);
 
 extern int locator_upgrade_instances_domain (OID * class_oid,
 					     int attribute_id);
+extern int boot_get_server_locales (LANG_COLL_COMPAT ** server_collations,
+				    LANG_LOCALE_COMPAT ** server_locales,
+				    int *server_coll_cnt,
+				    int *server_locales_cnt);
 
 /* session state API */
 extern int csession_check_session (SESSION_ID * session_id, int *row_count);

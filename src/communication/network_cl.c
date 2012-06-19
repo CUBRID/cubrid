@@ -453,6 +453,8 @@ net_histo_setup_names (void)
     "NET_SERVER_BO_COMPACT_DB_START";
   net_Req_buffer[NET_SERVER_BO_COMPACT_DB_STOP].name =
     "NET_SERVER_BO_COMPACT_DB_STOP";
+  net_Req_buffer[NET_SERVER_BO_GET_LOCALES_INFO].name =
+    "NET_SERVER_BO_GET_LOCALES_INFO";
 
   net_Req_buffer[NET_SERVER_TM_SERVER_COMMIT].name =
     "NET_SERVER_TM_SERVER_COMMIT";

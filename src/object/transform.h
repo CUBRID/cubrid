@@ -153,6 +153,14 @@ typedef struct tf_ct_class
 #define CTV_STORED_PROC_ARGS_NAME  "db_stored_procedure_args"
 #define CTV_PARTITION_NAME         "db_partition"
 
+#define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
+#define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
+#define CT_DBCOLL_CHARSET_ID_COLUMN	   "charset_id"
+#define CT_DBCOLL_BUILT_IN_COLUMN	   "built_in"
+#define CT_DBCOLL_EXPANSIONS_COLUMN	   "expansions"
+#define CT_DBCOLL_CONTRACTIONS_COLUMN	   "contractions"
+#define CT_DBCOLL_CHECKSUM_COLUMN	   "checksum"
+
 #define SET_AUTO_INCREMENT_SERIAL_NAME(SR_NAME, CL_NAME, AT_NAME)  \
                          sprintf(SR_NAME, "%s_ai_%s", CL_NAME, AT_NAME)
 

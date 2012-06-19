@@ -9465,3 +9465,125 @@ cleanup:
 			   OR_ALIGNED_BUF_START (a_reply),
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+ * sboot_get_locales_info () - get info about locales
+ * return : void
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) :
+ * reqlen (in) :
+ */
+void
+sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid,
+			char *request, int reqlen)
+{
+  int err = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = NULL, *ptr = NULL, *data_reply = NULL;
+  int size = 0, i;
+  int len_str;
+  const int collation_cnt = lang_collation_count ();
+  const int lang_cnt = lang_locales_count (false);
+  const int locales_cnt = lang_locales_count (true);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* compute size of packed information */
+  for (i = 0; i < collation_cnt; i++)
+    {
+      LANG_COLLATION *lc = lang_get_collation (i);
+
+      assert (lc != NULL);
+
+      size += 2 * OR_INT_SIZE;	/* collation id , codeset */
+      size += or_packed_string_length (lc->coll.coll_name, &len_str);
+      size += or_packed_string_length (lc->coll.checksum, &len_str);
+    }
+
+  for (i = 0; i < lang_cnt; i++)
+    {
+      const LANG_LOCALE_DATA *lld = lang_get_first_locale_for_lang (i);
+
+      assert (lld != NULL);
+
+      do
+	{
+	  size += or_packed_string_length (lld->lang_name, &len_str);
+	  size += OR_INT_SIZE;	/* codeset */
+	  size += or_packed_string_length (lld->checksum, &len_str);
+
+	  lld = lld->next_lld;
+	}
+      while (lld != NULL);
+    }
+
+  size += 2 * OR_INT_SIZE;	/* collation_cnt, locales_cnt */
+
+  data_reply = (char *) malloc (size);
+  if (data_reply != NULL)
+    {
+      ptr = or_pack_int (data_reply, collation_cnt);
+      ptr = or_pack_int (ptr, locales_cnt);
+
+      /* pack collation information : */
+      for (i = 0; i < collation_cnt; i++)
+	{
+	  LANG_COLLATION *lc = lang_get_collation (i);
+
+	  assert (lc != NULL);
+
+	  ptr = or_pack_int (ptr, lc->coll.coll_id);
+
+	  len_str = strlen (lc->coll.coll_name);
+	  ptr = or_pack_string_with_length (ptr, lc->coll.coll_name, len_str);
+
+	  ptr = or_pack_int (ptr, (int) lc->codeset);
+
+	  len_str = strlen (lc->coll.checksum);
+	  ptr = or_pack_string_with_length (ptr, lc->coll.checksum, len_str);
+	}
+
+      /* pack locale information : */
+      for (i = 0; i < lang_cnt; i++)
+	{
+	  const LANG_LOCALE_DATA *lld = lang_get_first_locale_for_lang (i);
+
+	  assert (lld != NULL);
+
+	  do
+	    {
+	      len_str = strlen (lld->lang_name);
+	      ptr = or_pack_string_with_length (ptr, lld->lang_name, len_str);
+
+	      ptr = or_pack_int (ptr, lld->codeset);
+
+	      len_str = strlen (lld->checksum);
+	      ptr = or_pack_string_with_length (ptr, lld->checksum, len_str);
+
+	      lld = lld->next_lld;
+	    }
+	  while (lld != NULL);
+	}
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      size);
+      return_error_to_client (thread_p, rid);
+      size = 0;
+      err = ER_FAILED;
+    }
+
+  ptr = or_pack_int (reply, size);
+  ptr = or_pack_int (ptr, err);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     data_reply, size);
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+}

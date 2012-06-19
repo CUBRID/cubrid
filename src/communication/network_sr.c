@@ -213,6 +213,12 @@ net_server_init (void)
   net_Requests[NET_SERVER_BO_COMPACT_DB_STOP].name =
     "NET_SERVER_BO_COMPACT_DB_STOP";
 
+  net_Requests[NET_SERVER_BO_GET_LOCALES_INFO].action_attribute = 0;
+  net_Requests[NET_SERVER_BO_GET_LOCALES_INFO].
+    processing_function = sboot_get_locales_info;
+  net_Requests[NET_SERVER_BO_GET_LOCALES_INFO].name =
+    "NET_SERVER_BO_GET_LOCALES_INFO";
+
   /*
    * transaction
    */

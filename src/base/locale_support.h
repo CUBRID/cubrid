@@ -347,6 +347,8 @@ struct coll_data
   unsigned int cp_first_contr_offset;
   /* # of codepoints in 'cp_first_contr_array' */
   unsigned int cp_first_contr_count;
+
+  char checksum[32 + 1];
 };
 
 typedef struct coll_tailoring COLL_TAILORING;
@@ -598,6 +600,8 @@ struct locale_data
    * buffer is nul-terminated */
   char data_buffer[LOC_DATA_BUFF_SIZE];
   int data_buf_count;
+
+  char checksum[32 + 1];
 };
 
 #ifdef __cplusplus

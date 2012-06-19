@@ -42,6 +42,7 @@
 #include "message_catalog.h"
 #include "language_support.h"
 #include "system_parameter.h"
+#include "md5.h"
 #include "locale_support.h"
 
 
@@ -201,6 +202,10 @@ static void locale_make_calendar_parse_order (LOCALE_DATA * ld);
 static int locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE
 					     lsd_type, const char *lsd_key,
 					     bool * exist);
+static int locale_compute_coll_checksum (COLL_DATA * cd);
+static int locale_alphabet_data_size (ALPHABET_DATA * a);
+static int locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf);
+static int locale_compute_locale_checksum (LOCALE_DATA * ld);
 
 #define PRINT_DEBUG_START(d, a, m, s)				      \
    do {								      \
@@ -4644,10 +4649,28 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	    }
 	  lc->opt_coll.coll_id = locale_alloc_collation_id ();
 	}
+
+      er_status = locale_compute_coll_checksum (&(lc->opt_coll));
+      if (er_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (is_verbose)
+	{
+	  printf ("ID : %d | Checksum : %s\n", lc->opt_coll.coll_id,
+		  lc->opt_coll.checksum);
+	}
+    }
+
+  er_status = locale_compute_locale_checksum (&ld);
+  if (er_status != NO_ERROR)
+    {
+      goto exit;
     }
 
   if (is_verbose)
     {
+      printf ("\n Locale checksum :%s\n", ld.checksum);
       printf ("\n*** Saving locale to C source file...\n");
     }
 
@@ -5112,6 +5135,9 @@ locale_save_to_C_file (LOCALE_FILE * lf, LOCALE_DATA * ld)
 
   locale_save_normalization_to_C_file (fp, ld);
 
+  PRINT_STRING_VAR_TO_C_FILE (fp, "locale_checksum", ld->checksum,
+			      ld->locale_name);
+
   fclose (fp);
   return 0;
 
@@ -5422,6 +5448,8 @@ locale_save_collation_data_to_C_file (FILE * fp, COLL_DATA * cd)
 				 cd->cp_first_contr_array, cd->coll_name);
     }
 
+  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_checksum", cd->checksum,
+			      cd->coll_name);
   return 0;
 }
 
@@ -6869,4 +6897,411 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
     {
       printf (" -> CP: %04X", um->cp);
     }
+}
+
+
+/*
+ * hash_to_string() - converts a 16 byte hash to the hex representation
+ *
+ * hashString(in):
+ * hexString(out):
+ */
+static void
+hash_to_string (const char *hashString, char *hexString)
+{
+  static char const hexDigits[] = "0123456789abcdef";
+  int i = 16;
+
+  while (i > 0)
+    {
+      i--;
+
+      /* least significant digit last */
+      hexString[(i << 1) + 1] = hexDigits[hashString[i] & 0x0F];
+      hexString[(i << 1)] = hexDigits[(hashString[i] & 0xF0) >> 4];
+    }
+  hexString[32] = '\0';
+}
+
+/* 
+ * locale_compute_coll_checksum() - Computes the MD5 checksum of collation
+ *
+ * Returns: error status
+ * coll_data(in/out):
+ */
+static int
+locale_compute_coll_checksum (COLL_DATA * cd)
+{
+  int input_size = 0;
+  char *input_buf = NULL;
+  char *buf_pos;
+  char hash[33];
+
+  if (cd->uca_opt.sett_expansions)
+    {
+      /* Weights L1-L3 */
+      input_size += cd->uca_exp_num * cd->w_count * sizeof (cd->uca_w_l13[0]);
+      if (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY)
+	{
+	  /* Weights L4 */
+	  input_size += cd->uca_exp_num * cd->w_count
+	    * sizeof (cd->uca_w_l4[0]);
+	}
+    }
+  else
+    {
+      /* single level weights */
+      input_size += cd->w_count * sizeof (cd->weights[0]);
+    }
+
+  /* next_cp */
+  input_size += cd->w_count * sizeof (cd->next_cp[0]);
+
+  if (cd->count_contr > 0)
+    {
+      /* contractions list */
+      input_size += cd->count_contr * sizeof (COLL_CONTRACTION);
+
+      input_size += sizeof (cd->contr_min_size);
+      input_size += sizeof (cd->cp_first_contr_offset);
+      input_size += sizeof (cd->cp_first_contr_count);
+    }
+
+  input_size += sizeof (UCA_OPTIONS);
+
+  /* build buffer */
+  input_buf = (char *) malloc (input_size);
+  if (input_buf == NULL)
+    {
+      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
+      return ER_LOC_GEN;
+    }
+
+  buf_pos = input_buf;
+
+  if (cd->uca_opt.sett_expansions)
+    {
+      memcpy (buf_pos, cd->uca_w_l13, cd->uca_exp_num * cd->w_count
+	      * sizeof (cd->uca_w_l13[0]));
+      buf_pos += cd->uca_exp_num * cd->w_count * sizeof (cd->uca_w_l13[0]);
+
+      if (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY)
+	{
+	  /* Weights L4 */
+	  memcpy (buf_pos, cd->uca_w_l4, cd->uca_exp_num * cd->w_count
+		  * sizeof (cd->uca_w_l4[0]));
+
+	  buf_pos += cd->uca_exp_num * cd->w_count * sizeof (cd->uca_w_l4[0]);
+	}
+    }
+  else
+    {
+      memcpy (buf_pos, cd->weights, cd->w_count * sizeof (cd->weights[0]));
+      buf_pos += cd->w_count * sizeof (cd->weights[0]);
+    }
+
+  /* next_cp */
+  memcpy (buf_pos, cd->next_cp, cd->w_count * sizeof (cd->next_cp[0]));
+  buf_pos += cd->w_count * sizeof (cd->next_cp[0]);
+
+  if (cd->count_contr > 0)
+    {
+      /* contractions list */
+      memcpy (buf_pos, cd->contr_list, cd->count_contr
+	      * sizeof (COLL_CONTRACTION));
+      buf_pos += cd->count_contr * sizeof (COLL_CONTRACTION);
+
+
+      memcpy (buf_pos, &(cd->contr_min_size), sizeof (cd->contr_min_size));
+      buf_pos += sizeof (cd->contr_min_size);
+
+      memcpy (buf_pos, &(cd->cp_first_contr_offset),
+	      sizeof (cd->cp_first_contr_offset));
+      buf_pos += sizeof (cd->cp_first_contr_offset);
+
+      memcpy (buf_pos, &(cd->cp_first_contr_count),
+	      sizeof (cd->cp_first_contr_count));
+      buf_pos += sizeof (cd->cp_first_contr_count);
+    }
+
+  memcpy (buf_pos, &(cd->uca_opt), sizeof (UCA_OPTIONS));
+  buf_pos += sizeof (UCA_OPTIONS);
+
+  assert (buf_pos - input_buf == input_size);
+
+  md5_buffer (input_buf, input_size, hash);
+
+  free (input_buf);
+
+  hash_to_string (hash, cd->checksum);
+
+  return NO_ERROR;
+}
+
+/* 
+ * locale_alphabet_data_size() - Computes the size required by alphabet data
+ *
+ * Returns: size in bytes
+ * a(in):
+ */
+static int
+locale_alphabet_data_size (ALPHABET_DATA * a)
+{
+  int input_size = 0;
+
+  input_size += sizeof (a->a_type);
+  input_size += a->l_count * a->lower_multiplier * sizeof (a->lower_cp[0]);
+  input_size += a->l_count * a->upper_multiplier * sizeof (a->upper_cp[0]);
+
+  return input_size;
+}
+
+/* 
+ * locale_alphabet_data_to_buf() - Saves alphabet data to a buffer
+ *
+ * Returns: size in bytes
+ * a(in):
+ * buf(out):
+ *
+ *  Note : this is used in for data checksum purpose
+ */
+static int
+locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf)
+{
+  char *buf_pos = buf;
+
+  memcpy (buf_pos, &(a->a_type), sizeof (a->a_type));
+  buf_pos += sizeof (a->a_type);
+
+  memcpy (buf_pos, a->lower_cp,
+	  a->l_count * a->lower_multiplier * sizeof (a->lower_cp[0]));
+  buf_pos += a->l_count * a->lower_multiplier * sizeof (a->lower_cp[0]);
+
+  memcpy (buf_pos, a->upper_cp,
+	  a->l_count * a->upper_multiplier * sizeof (a->upper_cp[0]));
+  buf_pos += a->l_count * a->upper_multiplier * sizeof (a->upper_cp[0]);
+
+  return buf_pos - buf;
+}
+
+/* 
+ * locale_compute_locale_checksum() - Computes the MD5 checksum of locale data
+ *
+ * Returns: error status
+ * ld(in/out):
+ */
+static int
+locale_compute_locale_checksum (LOCALE_DATA * ld)
+{
+  int input_size = 0;
+  char *input_buf = NULL;
+  char *buf_pos;
+  char hash[33];
+
+  input_size += sizeof (ld->dateFormat);
+  input_size += sizeof (ld->timeFormat);
+  input_size += sizeof (ld->datetimeFormat);
+  input_size += sizeof (ld->timestampFormat);
+
+  input_size += sizeof (ld->month_names_abbreviated);
+  input_size += sizeof (ld->month_names_wide);
+  input_size += sizeof (ld->day_names_abbreviated);
+  input_size += sizeof (ld->day_names_wide);
+  input_size += sizeof (ld->am_pm);
+
+  input_size += sizeof (ld->day_names_abbr_parse_order);
+  input_size += sizeof (ld->day_names_wide_parse_order);
+  input_size += sizeof (ld->month_names_abbr_parse_order);
+  input_size += sizeof (ld->month_names_wide_parse_order);
+  input_size += sizeof (ld->am_pm_parse_order);
+
+  input_size += sizeof (ld->number_decimal_sym);
+  input_size += sizeof (ld->number_group_sym);
+  input_size += sizeof (ld->default_currency_code);
+
+  input_size += locale_alphabet_data_size (&(ld->alphabet));
+  input_size += locale_alphabet_data_size (&(ld->identif_alphabet));
+
+  input_size += sizeof (ld->txt_conv.conv_type);
+  if (ld->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE
+      || ld->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
+    {
+      TEXT_CONVERSION *tc = &(ld->txt_conv);
+
+      input_size += sizeof (tc->first_lead_byte);
+      input_size += sizeof (tc->utf8_first_cp);
+      input_size += sizeof (tc->utf8_last_cp);
+      input_size += sizeof (tc->text_first_cp);
+      input_size += sizeof (tc->text_last_cp);
+
+      input_size += strlen (tc->nl_lang_str);
+      input_size += strlen (tc->win_codepages);
+
+      input_size += (tc->utf8_last_cp - tc->utf8_first_cp + 1)
+	* sizeof (CONV_CP_TO_BYTES);
+      input_size += (tc->text_last_cp - tc->text_first_cp + 1)
+	* sizeof (CONV_CP_TO_BYTES);
+    }
+
+  input_size += sizeof (ld->unicode_normalization.is_enabled);
+  if (ld->unicode_normalization.is_enabled)
+    {
+      UNICODE_NORMALIZATION *un = &(ld->unicode_normalization);
+
+      input_size += MAX_UNICODE_CHARS * sizeof (un->unicode_mapping_index[0]);
+      input_size += MAX_UNICODE_CHARS * sizeof (un->list_full_decomp[0]);
+
+      input_size += un->unicode_mappings_count * sizeof (UNICODE_MAPPING);
+    }
+
+  /* build buffer */
+  input_buf = (char *) malloc (input_size);
+  if (input_buf == NULL)
+    {
+      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
+      return ER_LOC_GEN;
+    }
+
+  buf_pos = input_buf;
+
+  /* formats */
+  memcpy (buf_pos, ld->dateFormat, sizeof (ld->dateFormat));
+  buf_pos += sizeof (ld->dateFormat);
+
+  memcpy (buf_pos, ld->timeFormat, sizeof (ld->timeFormat));
+  buf_pos += sizeof (ld->timeFormat);
+
+  memcpy (buf_pos, ld->datetimeFormat, sizeof (ld->datetimeFormat));
+  buf_pos += sizeof (ld->datetimeFormat);
+
+  memcpy (buf_pos, ld->timestampFormat, sizeof (ld->timestampFormat));
+  buf_pos += sizeof (ld->timestampFormat);
+
+  /* calendar names */
+  memcpy (buf_pos, ld->month_names_abbreviated,
+	  sizeof (ld->month_names_abbreviated));
+  buf_pos += sizeof (ld->month_names_abbreviated);
+
+  memcpy (buf_pos, ld->month_names_wide, sizeof (ld->month_names_wide));
+  buf_pos += sizeof (ld->month_names_wide);
+
+  memcpy (buf_pos, ld->day_names_abbreviated,
+	  sizeof (ld->day_names_abbreviated));
+  buf_pos += sizeof (ld->day_names_abbreviated);
+
+  memcpy (buf_pos, ld->day_names_wide, sizeof (ld->day_names_wide));
+  buf_pos += sizeof (ld->day_names_wide);
+
+  memcpy (buf_pos, ld->am_pm, sizeof (ld->am_pm));
+  buf_pos += sizeof (ld->am_pm);
+
+  /* calendar parsing order */
+  memcpy (buf_pos, ld->day_names_abbr_parse_order,
+	  sizeof (ld->day_names_abbr_parse_order));
+  buf_pos += sizeof (ld->day_names_abbr_parse_order);
+
+  memcpy (buf_pos, ld->day_names_wide_parse_order,
+	  sizeof (ld->day_names_wide_parse_order));
+  buf_pos += sizeof (ld->day_names_wide_parse_order);
+
+  memcpy (buf_pos, ld->month_names_abbr_parse_order,
+	  sizeof (ld->month_names_abbr_parse_order));
+  buf_pos += sizeof (ld->month_names_abbr_parse_order);
+
+  memcpy (buf_pos, ld->month_names_wide_parse_order,
+	  sizeof (ld->month_names_wide_parse_order));
+  buf_pos += sizeof (ld->month_names_wide_parse_order);
+
+  memcpy (buf_pos, ld->am_pm_parse_order, sizeof (ld->am_pm_parse_order));
+  buf_pos += sizeof (ld->am_pm_parse_order);
+
+  /* number symbols */
+  memcpy (buf_pos, &(ld->number_decimal_sym),
+	  sizeof (ld->number_decimal_sym));
+  buf_pos += sizeof (ld->number_decimal_sym);
+
+  memcpy (buf_pos, &(ld->number_group_sym), sizeof (ld->number_group_sym));
+  buf_pos += sizeof (ld->number_group_sym);
+
+  memcpy (buf_pos, &(ld->default_currency_code),
+	  sizeof (ld->default_currency_code));
+  buf_pos += sizeof (ld->default_currency_code);
+
+  /* alphabets */
+  buf_pos += locale_alphabet_data_to_buf (&(ld->alphabet), buf_pos);
+  buf_pos += locale_alphabet_data_to_buf (&(ld->identif_alphabet), buf_pos);
+
+  /* text conversion */
+  memcpy (buf_pos, &(ld->txt_conv.conv_type),
+	  sizeof (ld->txt_conv.conv_type));
+  buf_pos += sizeof (ld->txt_conv.conv_type);
+
+  if (ld->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE
+      || ld->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
+    {
+      TEXT_CONVERSION *tc = &(ld->txt_conv);
+
+      memcpy (buf_pos, &(tc->first_lead_byte), sizeof (tc->first_lead_byte));
+      buf_pos += sizeof (tc->first_lead_byte);
+
+      memcpy (buf_pos, &(tc->utf8_first_cp), sizeof (tc->utf8_first_cp));
+      buf_pos += sizeof (tc->utf8_first_cp);
+
+      memcpy (buf_pos, &(tc->utf8_last_cp), sizeof (tc->utf8_last_cp));
+      buf_pos += sizeof (tc->utf8_last_cp);
+
+      memcpy (buf_pos, &(tc->text_first_cp), sizeof (tc->text_first_cp));
+      buf_pos += sizeof (tc->text_first_cp);
+
+      memcpy (buf_pos, &(tc->text_last_cp), sizeof (tc->text_last_cp));
+      buf_pos += sizeof (tc->text_last_cp);
+
+      memcpy (buf_pos, tc->nl_lang_str, strlen (tc->nl_lang_str));
+      buf_pos += strlen (tc->nl_lang_str);
+
+      memcpy (buf_pos, tc->win_codepages, strlen (tc->win_codepages));
+      buf_pos += strlen (tc->win_codepages);
+
+      memcpy (buf_pos, tc->utf8_to_text,
+	      (tc->utf8_last_cp - tc->utf8_first_cp + 1)
+	      * sizeof (CONV_CP_TO_BYTES));
+      buf_pos += (tc->utf8_last_cp - tc->utf8_first_cp + 1)
+	* sizeof (CONV_CP_TO_BYTES);
+
+      memcpy (buf_pos, tc->text_to_utf8,
+	      (tc->text_last_cp - tc->text_first_cp + 1)
+	      * sizeof (CONV_CP_TO_BYTES));
+      buf_pos += (tc->text_last_cp - tc->text_first_cp + 1)
+	* sizeof (CONV_CP_TO_BYTES);
+    }
+
+  memcpy (buf_pos, &(ld->unicode_normalization.is_enabled),
+	  sizeof (ld->unicode_normalization.is_enabled));
+  buf_pos += sizeof (ld->unicode_normalization.is_enabled);
+  if (ld->unicode_normalization.is_enabled)
+    {
+      UNICODE_NORMALIZATION *un = &(ld->unicode_normalization);
+
+      memcpy (buf_pos, un->unicode_mapping_index,
+	      MAX_UNICODE_CHARS * sizeof (un->unicode_mapping_index[0]));
+      buf_pos += MAX_UNICODE_CHARS * sizeof (un->unicode_mapping_index[0]);
+
+      memcpy (buf_pos, un->list_full_decomp,
+	      MAX_UNICODE_CHARS * sizeof (un->list_full_decomp[0]));
+      buf_pos += MAX_UNICODE_CHARS * sizeof (un->list_full_decomp[0]);
+
+      memcpy (buf_pos, un->unicode_mappings,
+	      un->unicode_mappings_count * sizeof (UNICODE_MAPPING));
+      buf_pos += un->unicode_mappings_count * sizeof (UNICODE_MAPPING);
+    }
+
+  assert (buf_pos - input_buf == input_size);
+
+  md5_buffer (input_buf, input_size, hash);
+
+  free (input_buf);
+
+  hash_to_string (hash, ld->checksum);
+
+  return NO_ERROR;
 }

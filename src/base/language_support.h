@@ -43,6 +43,9 @@
 #define LANG_CHARSET_EUCKR      "euckr"
 #define LANG_NAME_DEFAULT 	LANG_NAME_ENGLISH
 
+#define LANG_MAX_COLLATIONS  32
+#define LANG_MAX_LOADED_LOCALES  32
+
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
@@ -206,10 +209,29 @@ struct lang_locale_data
 
   UNICODE_NORMALIZATION unicode_norm;
 
+  char *checksum;
+
   void (*initloc) (LANG_LOCALE_DATA * ld);	/* locale data init function */
   bool is_user_data;		/* TRUE  if lang data is loaded from DLL/so
 				 * FALSE if built-in
 				 */
+};
+
+typedef struct lang_coll_compat LANG_COLL_COMPAT;
+struct lang_coll_compat
+{
+  int coll_id;
+  char coll_name[COLL_NAME_SIZE];
+  INTL_CODESET codeset;
+  char checksum[32 + 1];
+};
+
+typedef struct lang_locale_compat LANG_LOCALE_COMPAT;
+struct lang_locale_compat
+{
+  char lang_name[LANG_MAX_LANGNAME];
+  INTL_CODESET codeset;
+  char checksum[32 + 1];
 };
 
 #ifdef __cplusplus
@@ -222,6 +244,7 @@ extern "C"
   extern void lang_init_console_txt_conv (void);
   extern void lang_final (void);
   extern bool lang_check_init (void);
+  extern int lang_locales_count (bool check_codeset);
   extern const char *lang_get_Loc_name (void);
   extern const char *lang_get_user_loc_name (void);
   extern const char *lang_get_Lang_name (void);
@@ -239,6 +262,8 @@ extern "C"
   extern const LANG_LOCALE_DATA *lang_locale (void);
   extern const LANG_LOCALE_DATA *lang_get_specific_locale
     (const INTL_LANG lang, const INTL_CODESET codeset);
+  extern const LANG_LOCALE_DATA *lang_get_first_locale_for_lang
+    (const INTL_LANG lang);
   extern const char *lang_get_lang_name_from_id (const INTL_LANG lang_id);
   extern int lang_set_flag_from_lang (const char *lang_str, bool user_format,
 				      int *flag);
@@ -303,6 +328,10 @@ extern "C"
 
   extern UNICODE_NORMALIZATION *lang_get_generic_unicode_norm (void);
   extern void lang_set_generic_unicode_norm (UNICODE_NORMALIZATION * norm);
+  extern int lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
+				     const int coll_cnt, bool is_client);
+  extern int lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
+				       const int loc_cnt);
 #ifdef __cplusplus
 }
 #endif

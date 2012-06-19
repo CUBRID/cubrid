@@ -129,6 +129,9 @@ extern int catcls_finalize_class_oid_to_oid_hash_table ();
 extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
 					   int *charset_id_p, char *lang_buf,
 					   const int lang_buf_size);
+extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
+				    LANG_COLL_COMPAT ** db_collations,
+				    int *coll_cnt);
 
 #if defined(SA_MODE)
 extern void boot_client_all_finalize (bool is_er_final);
@@ -3392,6 +3395,34 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       }
   }
 #endif
+
+  /* check server collations with database collations */
+  {
+    LANG_COLL_COMPAT *db_collations = NULL;
+    int db_coll_cnt;
+
+    error_code = catcls_get_db_collation (thread_p, &db_collations,
+					  &db_coll_cnt);
+    if (error_code != NO_ERROR)
+      {
+	if (db_collations != NULL)
+	  {
+	    db_private_free (thread_p, db_collations);
+	  }
+	goto error;
+      }
+
+    if (db_collations != NULL)
+      {
+	error_code = lang_check_coll_compat (db_collations, db_coll_cnt,
+					     false);
+	db_private_free (thread_p, db_collations);
+	if (error_code != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+  }
 
   /* if starting jvm fail, it would be ignored. */
   (void) jsp_start_server (db_name, db->pathname);

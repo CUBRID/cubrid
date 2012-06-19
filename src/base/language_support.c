@@ -95,14 +95,13 @@ extern TEXT_CONVERSION con_iso_8859_1_conv;
 extern TEXT_CONVERSION con_iso_8859_9_conv;
 
 /* all loaded locales */
-#define MAX_LOADED_LOCALES  32
-static LANG_LOCALE_DATA *lang_loaded_locales[MAX_LOADED_LOCALES] = { NULL };
+static LANG_LOCALE_DATA *lang_loaded_locales[LANG_MAX_LOADED_LOCALES] =
+  { NULL };
 
 static int lang_count_locales = 0;
 
 /* all loaded collations */
-#define MAX_COLLATIONS  32
-static LANG_COLLATION *lang_collations[MAX_COLLATIONS] = { NULL };
+static LANG_COLLATION *lang_collations[LANG_MAX_COLLATIONS] = { NULL };
 
 static int lang_count_collations = 0;
 
@@ -255,7 +254,8 @@ static LANG_COLLATION coll_iso_binary = {
    LANG_COLL_GENERIC_SORT_OPT,
    NULL, NULL, 0,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "54735f231842c3a673161fc90670989b"},
   lang_fastcmp_iso_88591,
   lang_next_alpha_char_iso88591,
   lang_split_point_iso,
@@ -269,7 +269,8 @@ static LANG_COLLATION coll_utf8_binary = {
    LANG_COLL_GENERIC_SORT_OPT,
    lang_weight_EN_cs, lang_next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "d16a9a3825e263f76028c1e8c3cd043d"},
   /* compare functions handles bytes, no need to handle UTF-8 chars */
   lang_fastcmp_byte,
   /* 'next' and 'split_point' functions must handle UTF-8 chars */
@@ -285,7 +286,8 @@ static LANG_COLLATION coll_iso88591_en_cs = {
    LANG_COLL_GENERIC_SORT_OPT,
    NULL, NULL, 0,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "707cef004e58be204d999d8a2abb4cc3"},
   lang_fastcmp_iso_88591,
   lang_next_alpha_char_iso88591,
   lang_split_point_iso,
@@ -299,7 +301,8 @@ static LANG_COLLATION coll_iso88591_en_ci = {
    LANG_COLL_GENERIC_SORT_OPT,
    lang_weight_EN_ci, lang_next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "b3fb4c073fbc76c5ec302da9128d9542"},
   lang_fastcmp_byte,
   lang_next_coll_byte,
   lang_split_point_iso,
@@ -313,7 +316,8 @@ static LANG_COLLATION coll_utf8_en_cs = {
    LANG_COLL_GENERIC_SORT_OPT,
    lang_weight_EN_cs, lang_next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "1bdb1b1f630edc508be37f66dfdce7b0"},
   lang_fastcmp_byte,
   lang_next_coll_char_utf8,
   lang_split_point_utf8,
@@ -327,7 +331,8 @@ static LANG_COLLATION coll_utf8_en_ci = {
    LANG_COLL_GENERIC_SORT_OPT,
    lang_weight_EN_ci, lang_next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "3050bc8e9814b196f4bbb84759aab77c"},
   lang_fastcmp_byte,
   lang_next_coll_char_utf8,
   lang_split_point_utf8,
@@ -341,7 +346,8 @@ static LANG_COLLATION coll_utf8_tr_cs = {
    LANG_COLL_GENERIC_SORT_OPT,
    lang_weight_TR, lang_next_alpha_char_TR, LANG_CHAR_COUNT_TR,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "52f12f045d2fc90c3a818d0b334485d7"},
   lang_strcmp_utf8,
   lang_next_coll_char_utf8,
   lang_split_point_utf8,
@@ -355,7 +361,8 @@ static LANG_COLLATION coll_iso88591_ko_cs = {
    LANG_COLL_GENERIC_SORT_OPT,
    NULL, NULL, 0,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "1e453eefb8103415d4a3edfc623c251f"},
   lang_fastcmp_ko,
   lang_next_alpha_char_ko,
   lang_split_point_iso,
@@ -369,7 +376,8 @@ static LANG_COLLATION coll_utf8_ko_cs = {
    LANG_COLL_GENERIC_SORT_OPT,
    lang_weight_EN_cs, lang_next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "422c85ede1e265a761078763d2240c81"},
   lang_strcmp_utf8,
   lang_next_coll_char_utf8,
   lang_split_point_utf8,
@@ -383,7 +391,8 @@ static LANG_COLLATION coll_euckr_bin = {
    LANG_COLL_GENERIC_SORT_OPT,
    NULL, NULL, 0,
    LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR},
+   LANG_COLL_NO_CONTR,
+   "18fb633e87f0a3a785ef38cf2a6a7789"},
   lang_fastcmp_ko,
   lang_next_alpha_char_ko,
   lang_split_point_iso,
@@ -429,7 +438,7 @@ lang_init (void)
   for (i = 0; i < (int) (sizeof (built_in_collations)
 			 / sizeof (built_in_collations[0])); i++)
     {
-      register_collation (built_in_collations[i]);
+      (void) register_collation (built_in_collations[i]);
     }
 
   /* register all built-in locales allowed in current charset 
@@ -735,6 +744,36 @@ lang_check_init (void)
 }
 
 /*
+ * lang_locales_count - 
+ *   return: number of locales in the system
+ */
+int
+lang_locales_count (bool check_codeset)
+{
+  int i;
+  int count;
+
+  if (!check_codeset)
+    {
+      return lang_count_locales;
+    }
+
+  count = 0;
+  for (i = 0; i < lang_count_locales; i++)
+    {
+      LANG_LOCALE_DATA *lld = lang_loaded_locales[i];
+      do
+	{
+	  count++;
+	  lld = lld->next_lld;
+	}
+      while (lld != NULL);
+    }
+
+  return count;
+}
+
+/*
  * init_user_locales -
  *   return: error code
  *
@@ -820,7 +859,7 @@ init_user_locales (void)
 
 	      assert (l_id >= INTL_LANG_USER_DEF_START);
 
-	      if (l_id >= MAX_LOADED_LOCALES)
+	      if (l_id >= LANG_MAX_LOADED_LOCALES)
 		{
 		  er_status = ER_LOC_INIT;
 		  LOG_LOCALE_ERROR ("too many locales", er_status, true);
@@ -946,20 +985,25 @@ error:
 
 /*
  * register_collation - registers a collation
- *   return: -1 if collation id does not match, 0 otherwise
+ *   return: error code
  *   coll(in): collation structure
  */
 static int
 register_collation (LANG_COLLATION * coll)
 {
   assert (coll != NULL);
-  assert (lang_count_collations < MAX_COLLATIONS);
-
-  assert (coll->coll.coll_id == lang_count_collations);
+  assert (lang_count_collations < LANG_MAX_COLLATIONS);
 
   if (coll->coll.coll_id != lang_count_collations)
     {
-      return -1;
+      char err_msg[ERR_MSG_SIZE];
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Invalid collation numeric identifier : %d (expecting %d) "
+		" for collation '%s'. Check locales configuration file.",
+		coll->coll.coll_id, lang_count_collations,
+		coll->coll.coll_name);
+      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+      return ER_LOC_INIT;
     }
 
   lang_collations[lang_count_collations++] = coll;
@@ -969,7 +1013,7 @@ register_collation (LANG_COLLATION * coll)
       coll->init_coll (coll);
     }
 
-  return 0;
+  return NO_ERROR;
 }
 
 /*
@@ -1166,7 +1210,7 @@ register_lang_locale_data (LANG_LOCALE_DATA * lld)
   if (last_lang_locale == NULL)
     {
       /* no other locales exists with the same name */
-      assert (lang_count_locales < MAX_LOADED_LOCALES);
+      assert (lang_count_locales < LANG_MAX_LOADED_LOCALES);
       lang_loaded_locales[lang_count_locales++] = lld;
     }
   else
@@ -1457,7 +1501,7 @@ lang_locale (void)
 
 /*
  * lang_get_specific_locale - returns language locale of a specific language
- *   return: language locale data
+ *  return: language locale data
  *  lang(in): 
  *  codeset(in): 
  */
@@ -1485,6 +1529,28 @@ lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
     }
 
   return lang_Loc_data;
+}
+
+
+/*
+ * lang_get_first_locale_for_lang - returns first locale for language
+ *  return: language locale data or NULL if language id is not valid
+ *  lang(in): 
+ */
+const LANG_LOCALE_DATA *
+lang_get_first_locale_for_lang (const INTL_LANG lang)
+{
+  if (!lang_Initialized)
+    {
+      lang_init ();
+    }
+
+  if ((int) lang < lang_count_locales)
+    {
+      return lang_loaded_locales[lang];
+    }
+
+  return NULL;
 }
 
 /*
@@ -3696,6 +3762,7 @@ static LANG_LOCALE_DATA lc_English_iso88591 = {
   ',',
   DB_CURRENCY_DOLLAR,
   LANG_NO_NORMALIZATION,
+  "6ae1bf7f15e6f132c4361761d203c1b4",
   lang_initloc_en_iso88591,
   false
 };
@@ -3732,6 +3799,7 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
   ',',
   DB_CURRENCY_DOLLAR,
   LANG_NO_NORMALIZATION,
+  "945bead220ece6f4d020403835308785",
   lang_initloc_en_utf8,
   false
 };
@@ -4007,6 +4075,7 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
   '.',
   DB_CURRENCY_TL,
   LANG_NO_NORMALIZATION,
+  "b9ac135bdf8100b205ebb6b7e0e9c3df",
   lang_initloc_tr_iso,
   false
 };
@@ -4041,6 +4110,7 @@ static LANG_LOCALE_DATA lc_Turkish_utf8 = {
   '.',
   DB_CURRENCY_TL,
   LANG_NO_NORMALIZATION,
+  "a6c90a844ad44f78d0b1a3a9a87ddb2f",
   lang_initloc_tr_utf8,
   false
 };
@@ -4244,6 +4314,7 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   '.',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
+  "8710ffb79b191c2158d4c498e8bc7dea",
   lang_initloc_ko_iso,
   false
 };
@@ -4281,6 +4352,7 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
   ',',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
+  "802cff8e10d857952241d19b50a13a27",
   lang_initloc_ko_utf8,
   false
 };
@@ -4317,6 +4389,7 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
   '.',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
+  "c46ff948b4147323edfba0c51f96fe47",
   lang_initloc_ko_euc,
   false
 };
@@ -4366,7 +4439,6 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
   int *temp_num_sym;
   int err_status = NO_ERROR;
   int i, count_coll_to_load;
-  int er_status = NO_ERROR;
   const char *alpha_suffix = NULL;
   bool load_w_identifier_name;
   int txt_conv_type;
@@ -4378,6 +4450,18 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 
   SHLIB_GET_ADDR (lld->lang_name, "locale_name", char *, lib_handle,
 		  lf->locale_name);
+
+  SHLIB_GET_ADDR (lld->checksum, "locale_checksum", char *, lib_handle,
+		  lf->locale_name);
+  if (strlen (lld->checksum) != 32)
+    {
+      snprintf (err_msg, sizeof (err_msg) - 1, "invalid checksum in locale"
+		" library %s", lf->lib_file);
+      err_status = ER_LOC_INIT;
+      LOG_LOCALE_ERROR (err_msg, err_status, true);
+      goto exit;
+    }
+
   SHLIB_GET_ADDR (lld->date_format, "date_format", char *,
 		  lib_handle, lld->lang_name);
   SHLIB_GET_ADDR (lld->time_format, "time_format", char *,
@@ -4672,14 +4756,11 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 	  lang_coll->split_point = lang_split_point_utf8;
 	}
 
-      if (register_collation (lang_coll) != 0)
+      err_status = register_collation (lang_coll);
+      if (err_status != NO_ERROR)
 	{
 	  assert (lang_coll != NULL);
 	  free (lang_coll);
-	  er_status = ER_LOC_INIT;
-	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Invalid collation identifier : %s", coll->coll_name);
-	  LOG_LOCALE_ERROR (err_msg, er_status, true);
 	  goto exit;
 	}
 
@@ -4795,6 +4876,7 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
   int *temp_num_sym;
   char err_msg[ERR_MSG_SIZE];
   int err_status = NO_ERROR;
+  char *coll_checksum = NULL;
 
   assert (cd != NULL);
   assert (lib_handle != NULL);
@@ -4813,6 +4895,11 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
       LOG_LOCALE_ERROR (err_msg, err_status, true);
       goto exit;
     }
+
+  SHLIB_GET_ADDR (coll_checksum, "coll_checksum", char *, lib_handle,
+		  cd->coll_name);
+  strncpy (cd->checksum, coll_checksum, 32);
+  cd->checksum[32] = '\0';
 
   SHLIB_GET_VAL (cd->coll_id, "coll_id", int, lib_handle, cd->coll_name);
 
@@ -5142,4 +5229,185 @@ lang_free_collations (void)
     }
 
   lang_count_collations = 0;
+}
+
+/*
+ * lang_check_coll_compat - checks compatibility of current collations (of
+ *			    running process) with a reference set of
+ *			    collations
+ * Returns : error code
+ * coll_array(in): reference collations
+ * coll_cnt(in):
+ * is_client(in): true if this is called when checking client against server
+ *		  false if checking server against database
+ */
+int
+lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
+			const int coll_cnt, bool is_client)
+{
+#define CLIENT_TEXT "client"
+#define SERVER_TEXT "server"
+#define DB_TEXT "database"
+
+  char err_msg[ERR_MSG_SIZE];
+  int i;
+  int er_status = NO_ERROR;
+
+  assert (coll_array != NULL);
+  assert (coll_cnt > 0);
+
+  if (lang_count_collations != coll_cnt)
+    {
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Number of collations between %s do not match:"
+		"%s has %d collations, %s has %d collations",
+		is_client ? CLIENT_TEXT " and " SERVER_TEXT
+		: SERVER_TEXT " and " DB_TEXT,
+		is_client ? CLIENT_TEXT : SERVER_TEXT, lang_count_collations,
+		is_client ? SERVER_TEXT : DB_TEXT, coll_cnt);
+      er_status = ER_LOC_INIT;
+      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+      goto exit;
+    }
+
+  for (i = 0; i < coll_cnt; i++)
+    {
+      const LANG_COLL_COMPAT *ref_c;
+      LANG_COLLATION *coll;
+
+      ref_c = &(coll_array[i]);
+
+      if (ref_c->coll_id < 0 || ref_c->coll_id > lang_count_collations)
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Collation '%s' with id %d of %s is not configured on %s",
+		    ref_c->coll_name, ref_c->coll_id,
+		    is_client ? SERVER_TEXT : DB_TEXT,
+		    is_client ? CLIENT_TEXT : SERVER_TEXT);
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	  goto exit;
+	}
+
+      /* collation id is valid, check if same collation */
+      coll = lang_get_collation (ref_c->coll_id);
+
+      if (strcmp (coll->coll.coll_name, ref_c->coll_name))
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Names of collation with id %d do not match :"
+		    "on %s is '%s'; on %s is '%s'",
+		    ref_c->coll_id,
+		    is_client ? SERVER_TEXT : DB_TEXT, ref_c->coll_name,
+		    is_client ? CLIENT_TEXT : SERVER_TEXT,
+		    coll->coll.coll_name);
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	  goto exit;
+	}
+
+      if (coll->codeset != ref_c->codeset)
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Codesets of collation '%s' with id %d do not match :"
+		    "%s codeset is %d; %s codeset is %d",
+		    ref_c->coll_name, ref_c->coll_id,
+		    is_client ? SERVER_TEXT : DB_TEXT, ref_c->codeset,
+		    is_client ? CLIENT_TEXT : SERVER_TEXT, coll->codeset);
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	  goto exit;
+	}
+
+      if (strcasecmp (coll->coll.checksum, ref_c->checksum))
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Collation '%s' with id %d has changed :"
+		    "on %s checksum is '%s'; on %s checksum is '%s'",
+		    ref_c->coll_name, ref_c->coll_id,
+		    is_client ? SERVER_TEXT : DB_TEXT, ref_c->checksum,
+		    is_client ? CLIENT_TEXT : SERVER_TEXT,
+		    coll->coll.checksum);
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	  goto exit;
+	}
+    }
+exit:
+  return er_status;
+}
+
+/*
+ * lang_check_locale_compat - checks compatibility of current locales (of
+ *			      running process) with a reference set of
+ *			      locales
+ * Returns : error code
+ * loc_array(in): reference locales
+ * loc_cnt(in):
+ */
+int
+lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
+			  const int loc_cnt)
+{
+  char err_msg[ERR_MSG_SIZE];
+  int i, j;
+  int er_status = NO_ERROR;
+
+  assert (loc_array != NULL);
+  assert (loc_cnt > 0);
+
+  /* locales compatibility check is always between client and server;
+   * all locales configured by client must be defined by server
+   * it is not mandatory that all server locales are defined by client */
+  for (i = 0; i < lang_count_locales; i++)
+    {
+      LANG_LOCALE_DATA *lld = lang_loaded_locales[i];
+      const LANG_LOCALE_COMPAT *ref_loc = NULL;
+      bool ref_found = false;
+
+      do
+	{
+	  for (j = 0; j < loc_cnt; j++)
+	    {
+	      ref_loc = &(loc_array[j]);
+
+	      if (lld->codeset == ref_loc->codeset &&
+		  strcasecmp (lld->lang_name, ref_loc->lang_name) == 0)
+		{
+		  ref_found = true;
+		  break;
+		}
+	    }
+
+	  if (!ref_found)
+	    {
+	      snprintf (err_msg, sizeof (err_msg) - 1,
+			"Locale '%s' with codeset %d not found on server",
+			lld->lang_name, lld->codeset);
+	      er_status = ER_LOC_INIT;
+	      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	      goto exit;
+	    }
+
+	  assert (ref_found);
+
+	  if (strcasecmp (ref_loc->checksum, lld->checksum))
+	    {
+	      snprintf (err_msg, sizeof (err_msg) - 1,
+			"Locale '%s' with codeset %d has changed:"
+			"on %s, checksum is '%s'; on %s checksum is '%s'",
+			ref_loc->lang_name, ref_loc->codeset,
+			SERVER_TEXT, ref_loc->checksum,
+			CLIENT_TEXT, lld->checksum);
+	      er_status = ER_LOC_INIT;
+	      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	      goto exit;
+	    }
+	  lld = lld->next_lld;
+
+	}
+      while (lld != NULL);
+    }
+exit:
+  return er_status;
 }

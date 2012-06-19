@@ -196,7 +196,7 @@ static int boot_define_view_stored_procedure (void);
 static int boot_define_view_stored_procedure_arguments (void);
 static int catcls_class_install (void);
 static int catcls_vclass_install (void);
-
+static int boot_check_locales (void);
 /*
  * boot_client () -
  *
@@ -1076,13 +1076,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  lang_server_charset_init ();
-
-  if (!lang_check_server_env ())
+  error_code = boot_check_locales ();
+  if (error_code != NO_ERROR)
     {
-      error_code = ER_INVALID_SERVER_CHARSET;
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_INVALID_SERVER_CHARSET, 0);
       goto error;
     }
 
@@ -3305,24 +3301,29 @@ boot_add_collations (MOP class_mop)
       assert (lang_coll->coll.coll_id == i);
 
       DB_MAKE_INTEGER (&val, i);
-      db_put_internal (obj, "coll_id", &val);
+      db_put_internal (obj, CT_DBCOLL_COLL_ID_COLUMN, &val);
 
       DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.coll_name,
 		       strlen (lang_coll->coll.coll_name),
 		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      db_put_internal (obj, "coll_name", &val);
+      db_put_internal (obj, CT_DBCOLL_COLL_NAME_COLUMN, &val);
 
       DB_MAKE_INTEGER (&val, (int) (lang_coll->codeset));
-      db_put_internal (obj, "charset_id", &val);
+      db_put_internal (obj, CT_DBCOLL_CHARSET_ID_COLUMN, &val);
 
       DB_MAKE_INTEGER (&val, lang_coll->built_in);
-      db_put_internal (obj, "built_in", &val);
+      db_put_internal (obj, CT_DBCOLL_BUILT_IN_COLUMN, &val);
 
       DB_MAKE_INTEGER (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
-      db_put_internal (obj, "expansions", &val);
+      db_put_internal (obj, CT_DBCOLL_EXPANSIONS_COLUMN, &val);
 
       DB_MAKE_INTEGER (&val, lang_coll->coll.count_contr);
-      db_put_internal (obj, "contractions", &val);
+      db_put_internal (obj, CT_DBCOLL_CONTRACTIONS_COLUMN, &val);
+
+      assert (strlen (lang_coll->coll.checksum) == 32);
+      DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.checksum, 32,
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_put_internal (obj, CT_DBCOLL_CHECKSUM_COLUMN, &val);
     }
 
   return NO_ERROR;
@@ -3343,37 +3344,50 @@ boot_define_collations (MOP class_mop)
 
   def = smt_edit_class_mop (class_mop);
 
-  error_code = smt_add_attribute (def, "coll_id", "integer", NULL);
+  error_code = smt_add_attribute (def, CT_DBCOLL_COLL_ID_COLUMN, "integer",
+				  NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "coll_name", "varchar(32)", NULL);
+  error_code = smt_add_attribute (def, CT_DBCOLL_COLL_NAME_COLUMN,
+				  "varchar(32)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "charset_id", "integer", NULL);
+  error_code = smt_add_attribute (def, CT_DBCOLL_CHARSET_ID_COLUMN, "integer",
+				  NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "built_in", "integer", NULL);
+  error_code = smt_add_attribute (def, CT_DBCOLL_BUILT_IN_COLUMN, "integer",
+				  NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "expansions", "integer", NULL);
+  error_code = smt_add_attribute (def, CT_DBCOLL_EXPANSIONS_COLUMN, "integer",
+				  NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "contractions", "integer", NULL);
+  error_code = smt_add_attribute (def, CT_DBCOLL_CONTRACTIONS_COLUMN,
+				  "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, CT_DBCOLL_CHECKSUM_COLUMN,
+				  "varchar(32)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5071,4 +5085,64 @@ boot_clear_host_connected (void)
 #if defined(CS_MODE)
   boot_Host_connected[0] = '\0';
 #endif
+}
+
+/*
+ * boot_clear_host_connected () -
+ */
+static int
+boot_check_locales (void)
+{
+  int error_code = NO_ERROR;
+#if defined(CS_MODE)
+  LANG_COLL_COMPAT *server_collations = NULL;
+  LANG_LOCALE_COMPAT *server_locales = NULL;
+  int server_coll_cnt, server_locales_cnt;
+#endif
+
+  (void) lang_server_charset_init ();
+
+  if (!lang_check_server_env ())
+    {
+      error_code = ER_INVALID_SERVER_CHARSET;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_INVALID_SERVER_CHARSET, 0);
+      goto exit;
+    }
+
+#if defined(CS_MODE)
+  error_code = boot_get_server_locales (&server_collations, &server_locales,
+					&server_coll_cnt,
+					&server_locales_cnt);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error_code = lang_check_coll_compat (server_collations, server_coll_cnt,
+				       true);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error_code = lang_check_locale_compat (server_locales, server_locales_cnt);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  if (server_collations != NULL)
+    {
+      free_and_init (server_collations);
+    }
+  if (server_locales != NULL)
+    {
+      free_and_init (server_locales);
+    }
+#else
+exit:
+#endif
+  return error_code;
 }

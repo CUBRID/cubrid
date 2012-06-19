@@ -9932,3 +9932,134 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
   return error;
 #endif /* !CS_MODE */
 }
+
+/*
+ * boot_get_server_locales () - get information about server locales
+ *
+ * return : error code or no error
+ */
+int
+boot_get_server_locales (LANG_COLL_COMPAT ** server_collations,
+			 LANG_LOCALE_COMPAT ** server_locales,
+			 int *server_coll_cnt, int *server_locales_cnt)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = NULL;
+  char *reply_data = NULL;
+  char *ptr = NULL;
+  int reply_size = 0, temp_int, i, dummy;
+  char *temp_str;
+
+  assert (server_collations != NULL);
+  assert (server_locales != NULL);
+  assert (server_coll_cnt != NULL);
+  assert (server_locales_cnt != NULL);
+
+  *server_collations = NULL;
+  *server_locales = NULL;
+  *server_coll_cnt = 0;
+  *server_locales_cnt = 0;
+
+  req_error = net_client_request2 (NET_SERVER_BO_GET_LOCALES_INFO,
+				   NULL, 0,
+				   OR_ALIGNED_BUF_START (a_reply),
+				   OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &reply_data, &reply_size);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  /* unpack data size */
+  ptr = or_unpack_int (reply, &dummy);
+  /* unpack error code */
+  ptr = or_unpack_int (ptr, &req_error);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  assert (req_error == NO_ERROR);
+  assert (reply_data != NULL);
+
+  ptr = or_unpack_int (reply_data, server_coll_cnt);
+  ptr = or_unpack_int (ptr, server_locales_cnt);
+
+  *server_collations =
+    (LANG_COLL_COMPAT *) malloc (*server_coll_cnt
+				 * sizeof (LANG_COLL_COMPAT));
+  if (*server_collations == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      reply_size);
+      req_error = ER_FAILED;
+      goto error;
+    }
+
+  *server_locales =
+    (LANG_LOCALE_COMPAT *) malloc (*server_locales_cnt
+				   * sizeof (LANG_LOCALE_COMPAT));
+  if (*server_locales == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      reply_size);
+      req_error = ER_FAILED;
+      goto error;
+    }
+
+  for (i = 0; i < *server_coll_cnt; i++)
+    {
+      LANG_COLL_COMPAT *ref_coll = &((*server_collations)[i]);
+
+      ptr = or_unpack_int (ptr, &(ref_coll->coll_id));
+
+      ptr = or_unpack_string_nocopy (ptr, &(temp_str));
+      strncpy (ref_coll->coll_name, temp_str,
+	       sizeof (ref_coll->coll_name) - 1);
+      ref_coll->coll_name[sizeof (ref_coll->coll_name) - 1] = '\0';
+
+      ptr = or_unpack_int (ptr, &(temp_int));
+      ref_coll->codeset = (INTL_CODESET) temp_int;
+
+      ptr = or_unpack_string_nocopy (ptr, &(temp_str));
+      strncpy (ref_coll->checksum, temp_str, sizeof (ref_coll->checksum) - 1);
+      ref_coll->checksum[sizeof (ref_coll->checksum) - 1] = '\0';
+    }
+
+  for (i = 0; i < *server_locales_cnt; i++)
+    {
+      LANG_LOCALE_COMPAT *ref_loc = &((*server_locales)[i]);
+
+      ptr = or_unpack_string_nocopy (ptr, &(temp_str));
+      strncpy (ref_loc->lang_name, temp_str, sizeof (ref_loc->lang_name) - 1);
+      ref_loc->lang_name[sizeof (ref_loc->lang_name) - 1] = '\0';
+
+      ptr = or_unpack_int (ptr, &(temp_int));
+      ref_loc->codeset = (INTL_CODESET) temp_int;
+
+      ptr = or_unpack_string_nocopy (ptr, &(temp_str));
+      strncpy (ref_loc->checksum, temp_str, sizeof (ref_loc->checksum) - 1);
+      ref_loc->checksum[sizeof (ref_loc->checksum) - 1] = '\0';
+    }
+
+
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+  return req_error;
+
+error:
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+
+  return req_error;
+#else
+  return -1;
+#endif
+}
