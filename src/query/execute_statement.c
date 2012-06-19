@@ -130,6 +130,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   SM_ATTRIBUTE *att;
   SM_CLASS *smclass;
   int error;
+  TP_DOMAIN_STATUS status;
   assert (class_name->node_type == PT_NAME);
 
   error = au_fetch_class_force (class_name->info.name.db_object, &smclass,
@@ -177,24 +178,17 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    {
 	      return error;
 	    }
-
-	  if (TP_DOMAIN_TYPE (att->domain) !=
-	      DB_VALUE_TYPE (&att->default_value.value))
+	  /* make sure the default value can be used for this attribute */
+	  status =
+	    tp_value_strict_cast (&att->default_value.value,
+				  &att->default_value.value, att->domain);
+	  if (status != DOMAIN_COMPATIBLE)
 	    {
-	      /* make sure the default value can be used for this attribute */
-	      TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-	      status =
-		tp_value_cast (&att->default_value.value,
-			       &att->default_value.value, att->domain, false);
-	      if (status != DOMAIN_COMPATIBLE)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
-			  2,
-			  pr_type_name (DB_VALUE_TYPE
-					(&att->default_value.value)),
-			  pr_type_name (TP_DOMAIN_TYPE (att->domain)));
-		  return ER_FAILED;
-		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (DB_VALUE_TYPE
+				    (&att->default_value.value)),
+		      pr_type_name (TP_DOMAIN_TYPE (att->domain)));
+	      return ER_FAILED;
 	    }
 	}
     }
