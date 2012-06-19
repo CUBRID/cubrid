@@ -18,6 +18,7 @@
  */
 
 #include <set>
+#include <cstdio>
 #include <expat.h>
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
