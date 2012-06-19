@@ -239,6 +239,9 @@ static PT_NODE *pt_check_vclass_query_spec (PARSER_CONTEXT * parser,
 static PT_NODE *pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser,
 						PT_NODE * qry,
 						PT_NODE * attrs);
+static PT_NODE *pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser,
+						    PT_NODE * qry,
+						    PT_NODE * attrs);
 static void pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static void pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -6755,6 +6758,148 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 }
 
 /*
+ * pt_check_default_vclass_query_spec () -
+ *   return: new attrs node including default values
+ *   parser(in):
+ *   qry(in):
+ *   attrs(in):
+ *
+ * For all those view attributes that don't have implicit default values,
+ * copy the default values from the original table
+ *
+ * NOTE: there are two ways attrs is constructed at this point:
+ *  - stmt: create view (attr_list) as select... and the attrs will be created
+ * directly from the statement
+ *  - stmt: create view as select... and the attrs will be created from the
+ * query's select list
+ * In both cases, each attribute in attrs will correspond to the column in the
+ * select list at the same index
+ */
+static PT_NODE *
+pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
+				    PT_NODE * attrs)
+{
+  PT_NODE *attr, *col;
+  PT_NODE *columns = pt_get_select_list (parser, qry);
+  PT_NODE *default_data = NULL;
+  PT_NODE *default_value = NULL;
+  PT_NODE *spec, *entity_name;
+  DB_OBJECT *obj;
+  DB_ATTRIBUTE *col_attr;
+
+  /* Import default value from referenced table for those attributes in the
+   * the view that have no default value.
+   */
+  for (attr = attrs, col = columns; attr && col;
+       attr = attr->next, col = col->next)
+    {
+      if (!attr->info.attr_def.data_default)
+	{
+	  if (col->node_type == PT_NAME)
+	    {
+	      /* found matching column */
+	      if (col->info.name.spec_id == 0)
+		{
+		  continue;
+		}
+	      spec = (PT_NODE *) col->info.name.spec_id;
+	      entity_name = spec->info.spec.entity_name;
+	      if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
+		{
+		  continue;
+		}
+	      obj = entity_name->info.name.db_object;
+	      if (!obj)
+		{
+		  continue;
+		}
+	      col_attr =
+		db_get_attribute_force (obj, col->info.name.original);
+	      if (!col_attr)
+		{
+		  continue;
+		}
+
+	      if (DB_IS_NULL (&col_attr->default_value.value)
+		  && (col_attr->default_value.default_expr ==
+		      DB_DEFAULT_NONE))
+		{
+		  /* don't create any default node if default value is null
+		   * unless default expression type is not DB_DEFAULT_NONE
+		   */
+		  continue;
+		}
+
+	      if (col_attr->default_value.default_expr == DB_DEFAULT_NONE)
+		{
+		  default_value =
+		    pt_dbval_to_value (parser,
+				       &col_attr->default_value.value);
+		  if (!default_value)
+		    {
+		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto error;
+		    }
+
+		  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+		  if (!default_data)
+		    {
+		      parser_free_tree (parser, default_value);
+		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto error;
+		    }
+		  default_data->info.data_default.default_value =
+		    default_value;
+		  default_data->info.data_default.shared = PT_DEFAULT;
+		  default_data->info.data_default.default_expr =
+		    DB_DEFAULT_NONE;
+		}
+	      else
+		{
+		  default_value = parser_new_node (parser, PT_EXPR);
+		  if (default_value)
+		    {
+		      default_value->info.expr.op =
+			pt_op_type_from_default_expr_type (col_attr->
+							   default_value.
+							   default_expr);
+		    }
+		  else
+		    {
+		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto error;
+		    }
+
+		  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+		  if (!default_data)
+		    {
+		      parser_free_tree (parser, default_value);
+		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto error;
+		    }
+		  default_data->info.data_default.default_value =
+		    default_value;
+		  default_data->info.data_default.shared = PT_DEFAULT;
+		  default_data->info.data_default.default_expr =
+		    col_attr->default_value.default_expr;
+		}
+	      attr->info.attr_def.data_default = default_data;
+	    }
+	}
+    }
+
+  return attrs;
+
+error:
+  parser_free_tree (parser, attrs);
+  return NULL;
+}
+
+/*
  * pt_check_create_view () - do semantic checks on a create vclass statement
  *   or an "ALTER VIEW AS SELECT" statement
  *
@@ -6988,6 +7133,18 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  return;
 	}
       crt_qry = result_stmt;
+
+      all_attrs = pt_check_default_vclass_query_spec (parser, crt_qry,
+						      all_attrs);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+      if (all_attrs == NULL)
+	{
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	  return;
+	}
 
       result_stmt = pt_type_cast_vclass_query_spec (parser, crt_qry,
 						    all_attrs);
