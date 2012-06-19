@@ -339,9 +339,9 @@ static void *er_malloc_helper (int size, const char *file, int line);
 static void er_emergency (const char *file, int line, const char *fmt, ...);
 static int er_vsprintf (ER_FMT * fmt, va_list * ap);
 
-static int er_call_stack_init ();
+static int er_call_stack_init (void);
 static int er_fname_free (const void *key, void *data, void *args);
-static void er_call_stack_final ();
+static void er_call_stack_final (void);
 
 /* vector of functions to call when an error is set */
 static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
@@ -556,7 +556,7 @@ er_event_final (void)
  *   return: error code
  */
 static int
-er_call_stack_init ()
+er_call_stack_init (void)
 {
 #if defined(LINUX)
   fname_table = mht_create (0, 100, mht_5strhash,
@@ -1071,7 +1071,7 @@ er_fname_free (const void *key, void *data, void *args)
  *   return: none
  */
 static void
-er_call_stack_final ()
+er_call_stack_final (void)
 {
 #if defined(LINUX)
   if (fname_table == NULL)
