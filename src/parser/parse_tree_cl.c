@@ -1890,12 +1890,13 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 			MSGCAT_SYNTAX_BEFORE_END_OF_STMT);
       /* size of constant string "before ' '\n" to be printed along with the
          actual context - do not count format parameter "%s", of size 2 */
-      int context_len = strlen (before_context_str) - 2;
+      int before_context_len = strlen (before_context_str) - 2;
+      int context_len = strlen (context);
       int end_of_statement = 0;
       int str_len = 0;
       char *s = NULL;
 
-      if ((strlen (context) == 1) && (*context <= 32))
+      if ((context_len == 0) || ((context_len == 1) && (*context <= 32)))
 	{
 	  end_of_statement = 1;
 	  /* size of constant string "before END OF STATEMENT\n" */
@@ -1903,7 +1904,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	}
       else
 	{
-	  str_len = strlen (context) + context_len;
+	  str_len = context_len + before_context_len;
 	}
       s = parser_allocate_string_buffer (parser, str_len, sizeof (char));
       if (s == NULL)
