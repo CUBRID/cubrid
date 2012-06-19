@@ -260,7 +260,6 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   if (db_alias == NULL || db_alias[0] == '\0')
     return -1;
 
-
   if (get_db_connect_status () != DB_CONNECTION_STATUS_CONNECTED
       || database_name[0] == '\0' || strcmp (database_name, db_alias) != 0)
     {
@@ -2536,6 +2535,11 @@ cas_mysql_num_fields (MYSQL_RES * metaResult)
 static int
 get_db_connect_status (void)
 {
+  if (!is_server_alive ())
+    {
+      set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+    }
+
   return mysql_connect_status;
 }
 
@@ -2555,6 +2559,11 @@ bool
 is_server_alive (void)
 {
   int ret;
+
+  if (_db_conn == NULL)
+    {
+      return false;
+    }
 
   if (mysql_ping (_db_conn))
     {
