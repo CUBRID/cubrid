@@ -516,13 +516,13 @@ namespace dbgw
         throw e;
       }
 
-    if (pValue == NULL)
+    if (pValue == NULL || bNull)
       {
         m_bNull = true;
         return;
       }
 
-	m_bNull = bNull;
+    m_bNull = bNull;
 
     if (m_type == DBGW_VAL_TYPE_STRING || m_type == DBGW_VAL_TYPE_DATETIME)
       {
