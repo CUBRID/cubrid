@@ -20101,8 +20101,33 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	  goto exit;
 	}
 
-      error = db_value_coerce (&(value->dbvalue), &(value->dbvalue),
-			       dest_dom);
+      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dest_dom))
+	  && !TP_IS_CHAR_TYPE (src_type)
+	  && PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == false)
+	{
+	  /* If destination is char/varchar, we need to first cast the value
+	   * to a string with no precision, then to destination type with
+	   * the desired precision.
+	   */
+	  TP_DOMAIN *string_dom;
+	  if (TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_NCHAR
+	      || TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_VARNCHAR)
+	    {
+	      string_dom = tp_domain_resolve_default (DB_TYPE_VARNCHAR);
+	    }
+	  else
+	    {
+	      string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+	    }
+	  error = db_value_coerce (&(value->dbvalue), &(value->dbvalue),
+				   string_dom);
+	}
+
+      if (error == NO_ERROR)
+	{
+	  error = db_value_coerce (&(value->dbvalue), &(value->dbvalue),
+				   dest_dom);
+	}
       if (error != NO_ERROR)
 	{
 	  bool set_default_value = false;
