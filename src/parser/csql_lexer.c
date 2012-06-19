@@ -6836,7 +6836,7 @@ csql_yyerror_explicit (int line, int column)
 void
 csql_yyerror (const char *s)
 {
-  char *token_val = csql_yyget_text ();
+  char *token_val = NULL;
   char *next_ptr = csql_yyget_text () + csql_yyget_leng () + 1;
   char saved_char = yy_hold_char; /* retain the character following the last
 				   * character of the current token */
@@ -6844,6 +6844,19 @@ csql_yyerror (const char *s)
   char *context_saved_char_str = NULL;
   int end_statement = 0;
   int free_msg = 0;
+  int token_len = csql_yyget_leng () + 1;
+  
+  /* make a copy of the token value before the buffer flush */
+  if (CSQL_MAXNAME < csql_yyget_leng () + 1)
+    {
+      token_len = CSQL_MAXNAME;
+    }
+  token_val = (char *) csql_yyalloc (token_len);
+  if (token_val == NULL)
+    {
+      YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+    }
+  snprintf (token_val, token_len, "%s", csql_yyget_text ());
   
   end_of_stmt_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
 				    MSGCAT_SET_PARSER_SYNTAX,
@@ -6981,6 +6994,11 @@ csql_yyerror (const char *s)
 	  csql_yyfree (msg);
 	}
    }
+
+   if (token_val)
+     {
+       csql_yyfree (token_val);
+     }
 }
 
 int
