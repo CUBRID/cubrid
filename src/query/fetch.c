@@ -2868,32 +2868,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       else
 	{
 	  int cmp;
-	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain))
-	      || QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->rightptr->domain)))
-	    {
-	      if (db_string_compare (peek_left, peek_right,
-				     arithptr->value) != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      DB_VALUE tmp_val, tmp_val2;
 
-	      if (db_string_lower (peek_left, &tmp_val) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      if (db_string_lower (peek_right, &tmp_val2) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      if (db_string_compare (&tmp_val, &tmp_val2,
-				     arithptr->value) != NO_ERROR)
-		{
-		  goto error;
-		}
+	  if (db_string_compare (peek_left, peek_right,
+				 arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
 	    }
 	  cmp = db_get_int (arithptr->value);
 	  if (cmp < 0)

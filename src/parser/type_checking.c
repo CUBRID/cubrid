@@ -13639,35 +13639,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       else
 	{
-	  if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (arg1))
-	      || QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (arg2)))
+	  if (db_string_compare (arg1, arg2, result) != NO_ERROR)
 	    {
-	      if (db_string_compare (arg1, arg2, result) != NO_ERROR)
-		{
-		  PT_ERRORc (parser, o1, er_msg ());
-		  return 0;
-		}
+	      PT_ERRORc (parser, o1, er_msg ());
+	      return 0;
 	    }
-	  else
-	    {
-	      DB_VALUE tmp_val2;
 
-	      if (db_string_lower (arg1, &tmp_val) != NO_ERROR)
-		{
-		  PT_ERRORc (parser, o1, er_msg ());
-		  return 0;
-		}
-	      if (db_string_lower (arg2, &tmp_val2) != NO_ERROR)
-		{
-		  PT_ERRORc (parser, o2, er_msg ());
-		  return 0;
-		}
-	      if (db_string_compare (&tmp_val, &tmp_val2, result) != NO_ERROR)
-		{
-		  PT_ERRORc (parser, o1, er_msg ());
-		  return 0;
-		}
-	    }
 	  cmp = db_get_int (result);
 	  if (cmp < 0)
 	    {
