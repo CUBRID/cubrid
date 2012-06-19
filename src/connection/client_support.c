@@ -638,8 +638,8 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 	{
 	  (void) css_test_for_server_errors (entry, eid);
 
-	  assert (css_is_valid_request_id
-		  (entry->conn, CSS_RID_FROM_EID (eid)));
+	  assert (css_is_valid_request_id (entry->conn,
+					   CSS_RID_FROM_EID (eid)));
 
 	  /* 0 means that it isn't a communication error with server */
 	  return 0;

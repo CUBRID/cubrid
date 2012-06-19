@@ -1740,6 +1740,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 			 char *buffer, int buffer_size)
 {
   int rc = 0;
+
   assert (conn != NULL);
 
   rc = css_send_data (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
@@ -1765,6 +1766,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				   int buffer_size)
 {
   int rc = 0;
+
   assert (conn != NULL);
 
   if (buffer_size > 0 && buffer != NULL)
@@ -1885,6 +1887,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				     char *buffer2, int buffer2_size)
 {
   int rc = 0;
+
   assert (conn != NULL);
 
   if (buffer2 == NULL || buffer2_size <= 0)
@@ -1925,6 +1928,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				     char *buffer3, int buffer3_size)
 {
   int rc = 0;
+
   assert (conn != NULL);
 
   if (buffer3 == NULL || buffer3_size <= 0)
@@ -1956,6 +1960,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 			  char *buffer, int buffer_size)
 {
   int rc;
+
   assert (conn != NULL);
 
   rc = css_send_error (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
@@ -1972,6 +1977,7 @@ unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
   int rc = 0;
+
   assert (conn != NULL);
 
   rc = css_send_abort_request (conn, CSS_RID_FROM_EID (eid));
@@ -1990,6 +1996,7 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
   char *error_buffer;
   int error_size, rc, errid = NO_ERROR;
+
   assert (conn != NULL);
 
   if (css_return_queued_error (conn, CSS_RID_FROM_EID (eid),
@@ -2013,6 +2020,7 @@ css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 			      char **buffer, int *size)
 {
   int rc = 0;
+
   assert (conn != NULL);
 
   *size = 0;
