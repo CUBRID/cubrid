@@ -2303,7 +2303,7 @@ create_stmt
 			  }
 			if (node && ocs)
 			  {
-			    PT_NODE *col;
+			    PT_NODE *col, *temp;
 
 			    ocs->info.spec.entity_name = $10;
 			    ocs->info.spec.only_all = PT_ONLY;
@@ -2321,21 +2321,26 @@ create_stmt
 			      }
 
 			    col = $11;
-			    if (col->info.sort_spec.expr->node_type == PT_EXPR)
+			    if (node->info.index.unique)
 			      {
-			        if (node->info.index.unique)
+			        for (temp = col; temp != NULL; temp = temp->next)
 			          {
-			            /* Currently, not allowed unique with filter/function
-			               index. However, may be introduced later, if it will
-			               be usefull. Unique filter/function index code is
-			               removed from grammar module only. It is kept yet in
-			               the others modules. This will allow us to easily
-			               support this feature later by adding in grammar
-			               only. If no need such feature, filter/function code
-			               must be removed from all modules. */
-			            PT_ERRORm (this_parser, node,
-			                       MSGCAT_SET_PARSER_SYNTAX,
-			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
 			          }
 			      }
 			    if ((parser_count_list (col) == 1)
@@ -3046,7 +3051,7 @@ alter_stmt
 			  }
 			if (node && ocs)
 			  {
-			    PT_NODE *col;
+			    PT_NODE *col, *temp;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $7;
@@ -3061,23 +3066,29 @@ alter_stmt
 
 			    node->info.index.indexed_class = ocs;
 			    col = $10;
-			    if (col && col->info.sort_spec.expr->node_type == PT_EXPR)
+			    if (node->info.index.unique)
 			      {
-			        if (node->info.index.unique)
+			        for (temp = col; temp != NULL; temp = temp->next)
 			          {
-			            /* Currently, not allowed unique with filter/function
-			               index. However, may be introduced later, if it will
-			               be usefull. Unique filter/function index code is
-			               removed from grammar module only. It is kept yet in
-			               the others modules. This will allow us to easily
-			               support this feature later by adding in grammar
-			               only. If no need such feature, filter/function code
-			               must be removed from all modules. */
-			            PT_ERRORm (this_parser, node,
-			                       MSGCAT_SET_PARSER_SYNTAX,
-			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
 			          }
 			      }
+
 			    node->info.index.column_names = col;
 			    node->info.index.where = $11;
 
@@ -3350,7 +3361,7 @@ drop_stmt
 
 			if (node && ocs)
 			  {
-			    PT_NODE *col;
+			    PT_NODE *col, *temp;
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $7;
@@ -3366,22 +3377,26 @@ drop_stmt
 			    node->info.index.indexed_class = ocs;
 
 			    col = $10;
-			    if (col &&
-			        col->info.sort_spec.expr->node_type == PT_EXPR)
+			    if (node->info.index.unique)
 			      {
-			        if (node->info.index.unique)
+			        for (temp = col; temp != NULL; temp = temp->next)
 			          {
-			            /* Currently, not allowed unique with filter/function
-			               index. However, may be introduced later, if it will
-			               be usefull. Unique filter/function index code is
-			               removed from grammar module only. It is kept yet in
-			               the others modules. This will allow us to easily
-			               support this feature later by adding in grammar
-			               only. If no need such feature, filter/function code
-			               must be removed from all modules. */
-			            PT_ERRORm (this_parser, node,
-								   MSGCAT_SET_PARSER_SYNTAX,
-								   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
 			          }
 			      }
 			    node->info.index.column_names = col;
@@ -7582,20 +7597,23 @@ unique_constraint
 		{{
 
 			PT_NODE *node = NULL;
-			PT_NODE *sort_spec_cols = $4, *name_cols = NULL;
+			PT_NODE *sort_spec_cols = $4, *name_cols = NULL, *temp;
 
-			if (sort_spec_cols->info.sort_spec.expr->node_type == PT_EXPR)
+			for (temp = sort_spec_cols; temp != NULL; temp = temp->next)
 			  {
-			    /* Currently, not allowed unique with filter/function index.
-			       However, may be introduced later, if it will be usefull.
-			       Unique filter/function index code is removed from
-			       grammar module only. It is kept yet in the others modules.
-			       This will allow us to easily support this feature later by
-			       adding in grammar only. If no need such feature,
-			       filter/function code must be removed from all modules. */
-			    PT_ERRORm (this_parser, sort_spec_cols,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			    if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			      {
+			        /* Currently, not allowed unique with filter/function
+			           index. However, may be introduced later, if it will be
+			           usefull. Unique filter/function index code is removed
+			           from grammar module only. It is kept yet in the others
+			           modules. This will allow us to easily support this
+			           feature later by adding in grammar only. If no need
+			           such feature, filter/function code must be removed
+			           from all modules. */
+			         PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+			                    MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			      }
 			  }
 			name_cols = pt_sort_spec_list_to_name_node_list (this_parser, sort_spec_cols);
 			if (name_cols)
