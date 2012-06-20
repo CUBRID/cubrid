@@ -620,7 +620,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      flag_append_new_line = true;
 	    }
-	  if (iswspace ((wint_t) * ptr))
+	  if (*ptr == '\n' || *ptr == '\r')
 	    {
 	      *ptr = '\0';
 	      line_length--;
