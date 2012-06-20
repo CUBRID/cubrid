@@ -11904,12 +11904,11 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
   while (attr)
     {
       if (db_attribute_is_non_null (attr)
-	  && (db_value_type (db_attribute_default (attr)) == DB_TYPE_NULL)
+	  && db_value_is_null (db_attribute_default (attr))
+	  && attr->default_value.default_expr == DB_DEFAULT_NONE
 	  && (is_attr_not_in_insert_list (parser, attr_list,
 					  db_attribute_name (attr))
-	      || (has_default_values_list
-		  && db_value_is_null (db_attribute_default (attr))
-		  && attr->default_value.default_expr == DB_DEFAULT_NONE))
+	      || has_default_values_list)
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
