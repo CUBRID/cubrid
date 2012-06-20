@@ -2326,13 +2326,13 @@ classobj_cache_constraints (SM_CLASS * class_)
 
   for (i = 0; i < num_constraint_types && ok; i++)
     {
-      if (classobj_get_prop (class_->properties, Constraint_properties[i], 
+      if (classobj_get_prop (class_->properties, Constraint_properties[i],
 			     &un_value) > 0)
 	{
 	  if (DB_VALUE_TYPE (&un_value) == DB_TYPE_SEQUENCE)
 	    {
 	      un_seq = DB_GET_SEQUENCE (&un_value);
-	      ok = classobj_cache_constraint_list (un_seq, class_, 
+	      ok = classobj_cache_constraint_list (un_seq, class_,
 						   Constraint_types[i]);
 	    }
 	  pr_clear_value (&un_value);
@@ -3450,7 +3450,7 @@ classobj_cache_not_null_constraints (const char *class_name,
 	  constraint_name = sm_produce_constraint_name (class_name,
 							DB_CONSTRAINT_NOT_NULL,
 							att_names, NULL,
-							NULL, NULL);
+							NULL);
 	  if (constraint_name == NULL)
 	    {
 	      goto memory_error;
@@ -6215,8 +6215,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 
   auto_cons_name = sm_produce_constraint_name (like_class_name,
 					       constraint_type, att_names,
-					       constraint->asc_desc, NULL,
-					       NULL);
+					       constraint->asc_desc, NULL);
   /* check if constraint's name was generated automatically */
   if (auto_cons_name != NULL
       && strcmp (auto_cons_name, constraint->name) == 0)
