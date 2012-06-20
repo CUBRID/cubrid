@@ -4510,6 +4510,12 @@ ldr_partition_info (LDR_CONTEXT * context)
 	  goto error_return;
 	}
 
+      if (root_op == NULL)
+	{
+	  /* this is the partitioned class */
+	  root_op = context->cls;
+	}
+
       error = do_init_partition_select (root_op, &context->psi);
     }
   else
