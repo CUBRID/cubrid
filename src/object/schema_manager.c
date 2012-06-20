@@ -478,8 +478,7 @@ static int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
 					 const char **att_names,
-					 const int *asc_desc,
-					 SM_FUNCTION_INFO * func_info);
+					 const int *asc_desc);
 
 static const char *sm_locate_method_file (SM_CLASS * class_,
 					  const char *function);
@@ -13355,14 +13354,12 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
  *   type(in): Constraint Type
  *   att_names(in): Attribute Names
  *   asc_desc(in): asc/desc info list
- *   func_info(in): function info
  */
 
 static char *
 sm_default_constraint_name (const char *class_name,
 			    DB_CONSTRAINT_TYPE type,
-			    const char **att_names, const int *asc_desc,
-			    SM_FUNCTION_INFO * func_info)
+			    const char **att_names, const int *asc_desc)
 {
   const char **ptr;
   char *name = NULL;
@@ -13398,18 +13395,9 @@ sm_default_constraint_name (const char *class_name,
       name_length = sizeof (prefix);
       name_length += strlen (class_name);	/* class name */
 
-      if (func_info)
+      for (ptr = att_names; *ptr != NULL; ptr++)
 	{
-	  n_attrs = func_info->attr_index_start;
-	  name_length +=
-	    intl_identifier_lower_string_size (func_info->expr_str);
-	}
-      else
-	{
-	  for (ptr = att_names; *ptr != NULL; ptr++)
-	    {
-	      n_attrs++;
-	    }
+	  n_attrs++;
 	}
 
       i = 0;
@@ -13450,27 +13438,11 @@ sm_default_constraint_name (const char *class_name,
 	  /* Class name */
 	  strcat (name, class_name);
 
-	  if (func_info)
-	    {
-	      n_attrs++;
-	    }
 	  /* separated list of attribute names */
 	  k = 0;
 	  i = 0;
-	  for (ptr = att_names; (*ptr != NULL) && (k < n_attrs); ptr++, i++)
+	  for (ptr = att_names; k < n_attrs; ptr++, i++)
 	    {
-	      if (func_info && (k == func_info->col_id))
-		{
-		  strcat (name, "_");
-
-		  intl_identifier_lower (func_info->expr_str + 1,
-					 &name[strlen (name)]);
-		  k++;
-		}
-	      if (k == n_attrs)
-		{
-		  break;
-		}
 	      do_desc = false;	/* init */
 	      if (asc_desc)
 		{
@@ -13533,8 +13505,7 @@ char *
 sm_produce_constraint_name (const char *class_name,
 			    DB_CONSTRAINT_TYPE constraint_type,
 			    const char **att_names,
-			    const int *asc_desc, const char *given_name,
-			    SM_FUNCTION_INFO * func_info)
+			    const int *asc_desc, const char *given_name)
 {
   char *name = NULL;
   size_t name_size;
@@ -13542,7 +13513,7 @@ sm_produce_constraint_name (const char *class_name,
   if (given_name == NULL)
     {
       name = sm_default_constraint_name (class_name, constraint_type,
-					 att_names, asc_desc, func_info);
+					 att_names, asc_desc);
     }
   else
     {
@@ -13580,7 +13551,7 @@ sm_produce_constraint_name_mop (MOP classop,
 				const int *asc_desc, const char *given_name)
 {
   return sm_produce_constraint_name (sm_class_name (classop), constraint_type,
-				     att_names, asc_desc, given_name, NULL);
+				     att_names, asc_desc, given_name);
 }
 
 /*
@@ -13601,7 +13572,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl,
 {
   return sm_produce_constraint_name (template_classname (tmpl),
 				     constraint_type, att_names, asc_desc,
-				     given_name, NULL);
+				     given_name);
 }
 
 /*

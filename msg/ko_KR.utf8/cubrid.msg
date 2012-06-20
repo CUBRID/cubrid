@@ -1218,7 +1218,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 27 잘못된 형식의 get trigger trace 구문입니다.\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
 28 잘못된 형식의 get trigger depth 구문입니다.\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
 29 잘못된 형식의 get stat 구문입니다.\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-30 잘못된 형식의 create index 구문입니다.\n  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list
+30 잘못된 형식의 create index 구문입니다.\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
 31 잘못된 형식의 create user 구문입니다.\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 잘못된 형식의 create trigger 구문입니다.\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}

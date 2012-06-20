@@ -104,8 +104,7 @@ extern char *sm_produce_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE constraint_type,
 					 const char **att_names,
 					 const int *asc_desc,
-					 const char *given_name,
-					 SM_FUNCTION_INFO * fi_info);
+					 const char *given_name);
 extern char *sm_produce_constraint_name_mop (MOP classop,
 					     DB_CONSTRAINT_TYPE
 					     constraint_type,

@@ -1218,7 +1218,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 27 invalid get trigger trace\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
 28 invalid get trigger depth\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
 29 invalid get stat\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list
+30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
 31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}

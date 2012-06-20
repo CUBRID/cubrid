@@ -2277,7 +2277,7 @@ create_stmt
 	  opt_unique					/* 5 */
 	  INDEX						/* 6 */
 		{ pop_msg(); }  			/* 7 */
-	  opt_identifier				/* 8 */
+	  identifier				        /* 8 */
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
@@ -3021,75 +3021,6 @@ alter_stmt
 	  opt_reverse					/* 4 */
 	  opt_unique					/* 5 */
 	  INDEX						/* 6 */
-	  ON_						/* 7 */
-	  only_class_name				/* 8 */
-	  index_column_name_list			/* 9 */
-	  opt_where_clause				/* 10 */
-	  REBUILD					/* 11 */
-		{{
-
-			PT_NODE *node = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
-
-			if ($5 && $10)
-			  {
-			    /* Currently, not allowed unique with filter/function index.
-			       However, may be introduced later, if it will be usefull.
-			       Unique filter/function index code is removed from
-			       grammar module only. It is kept yet in the others modules.
-			       This will allow us to easily support this feature later by
-			       adding in grammar only. If no need such feature,
-			       filter/function code must be removed from all modules. */
-			    PT_ERRORm (this_parser, node,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			  }
-			if (node && ocs)
-			  {
-			    PT_NODE *col;
-			    node->info.index.reverse = $4;
-			    node->info.index.unique = $5;
-
-			    ocs->info.spec.entity_name = $8;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-
-			    node->info.index.indexed_class = ocs;
-			    col = $9;
-			    if (col->info.sort_spec.expr->node_type == PT_EXPR)
-			      {
-			        if (node->info.index.unique)
-			          {
-			            /* Currently, not allowed unique with filter/function
-			               index. However, may be introduced later, if it will
-			               be usefull. Unique filter/function index code is
-			               removed from grammar module only. It is kept yet in
-			               the others modules. This will allow us to easily
-			               support this feature later by adding in grammar
-			               only. If no need such feature, filter/function code
-			               must be removed from all modules. */
-			            PT_ERRORm (this_parser, node,
-			                       MSGCAT_SET_PARSER_SYNTAX,
-			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			          }
-			      }
-			    node->info.index.column_names = col;
-			    node->info.index.where = $10;
-
-			    $$ = node;
-			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			  }
-
-		DBG_PRINT}}
-	| ALTER						/* 1 */
-		{					/* 2 */
-			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
-			parser_push_hint_node(node);
-		}
-	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
 	  identifier					/* 7 */
 	  ON_						/* 8 */
 	  only_class_name				/* 9 */
@@ -3397,61 +3328,6 @@ drop_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DROP						/* 1 */
-		{					/* 2 */
-			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
-			parser_push_hint_node(node);
-		}
-	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  ON_						/* 7 */
-	  only_class_name				/* 8 */
-	  index_column_name_list			/* 9 */
-		{{
-
-			PT_NODE *node = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
-
-			if (node && ocs)
-			  {
-			    PT_NODE *col;
-			    node->info.index.reverse = $4;
-			    node->info.index.unique = $5;
-
-			    ocs->info.spec.entity_name = $8;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-
-			    PARSER_SAVE_ERR_CONTEXT (ocs, @8.buffer_pos)
-
-			    node->info.index.indexed_class = ocs;
-
-			    col = $9;
-			    if (col->info.sort_spec.expr->node_type == PT_EXPR)
-			      {
-			        if (node->info.index.unique)
-			          {
-			            /* Currently, not allowed unique with filter/function
-			               index. However, may be introduced later, if it will
-			               be usefull. Unique filter/function index code is
-			               removed from grammar module only. It is kept yet in
-			               the others modules. This will allow us to easily
-			               support this feature later by adding in grammar
-			               only. If no need such feature, filter/function code
-			               must be removed from all modules. */
-			            PT_ERRORm (this_parser, node,
-			                       MSGCAT_SET_PARSER_SYNTAX,
-			                       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			          }
-			      }
-			    node->info.index.column_names = col;
-			    $$ = node;
-			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			  }
 
 		DBG_PRINT}}
 	| DROP						/* 1 */
@@ -8505,6 +8381,12 @@ attr_constraint_def
 				    if (constraint->info.index.index_name == NULL)
 				      {
 					constraint->info.index.index_name = name;
+					if (name == NULL)
+					  {
+					    PT_ERRORm (this_parser, constraint, 
+						       MSGCAT_SET_PARSER_SYNTAX,
+					               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					  }
 				      }
 				  }
 			      }
@@ -8518,7 +8400,7 @@ attr_constraint_def
 
 attr_index_def
 	: index_or_key
-	  opt_identifier
+	  identifier
 	  index_column_name_list
 	  opt_where_clause
 		{{

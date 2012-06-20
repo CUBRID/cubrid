@@ -2695,8 +2695,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
     }
   cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
 				      (const char **) attnames,
-				      asc_desc, constraint_name,
-				      func_index_info);
+				      asc_desc, constraint_name);
   if (cname == NULL)
     {
       error = er_errid ();
@@ -3386,7 +3385,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
 				      (const char **) attnames,
-				      asc_desc, index_name, func_index_info);
+				      asc_desc, index_name);
   if (cname == NULL)
     {
       if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
@@ -12085,7 +12084,6 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
   int error = NO_ERROR;
   const char **att_names = NULL;
   SM_CLASS_CONSTRAINT *c;
-  char *auto_cons_name = NULL;
   char *new_cons_name = NULL;
   SM_CONSTRAINT_INFO *index_save_info = NULL;
   DB_CONSTRAINT_TYPE constraint_type;
@@ -12114,29 +12112,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	}
 
       constraint_type = db_constraint_type (c);
-      auto_cons_name = sm_produce_constraint_name (src_class->header.name,
-						   constraint_type, att_names,
-						   c->asc_desc, NULL, NULL);
-
-      /* check if constraint's name was generated automatically */
-      if (auto_cons_name != NULL && strcmp (auto_cons_name, c->name) == 0)
-	{
-	  /* regenerate name automatically for new class */
-	  new_cons_name = sm_produce_constraint_name_mop (classmop,
-							  constraint_type,
-							  att_names,
-							  c->asc_desc, NULL);
-	}
-      else
-	{
-	  /* use name given by user */
-	  new_cons_name = (char *) c->name;
-	}
-
-      if (auto_cons_name != NULL)
-	{
-	  sm_free_constraint_name (auto_cons_name);
-	}
+      new_cons_name = (char *) c->name;
 
       if (c->func_index_info || c->filter_predicate)
 	{
