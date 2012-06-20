@@ -8061,6 +8061,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
+  p->info.query.is_order_dependent = false;
   return p;
 }
 
@@ -9001,6 +9002,7 @@ pt_init_expr (PT_NODE * p)
 {
   p->info.expr.flag = 0;
   p->info.expr.location = 0;
+  p->info.expr.is_order_dependent = false;
   return p;
 }
 
@@ -11152,6 +11154,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.partition_by = NULL;
   p->info.function.analytic.order_by = NULL;
   p->info.function.hidden_column = 0;
+  p->info.function.is_order_dependent = false;
   return p;
 }
 
@@ -11878,6 +11881,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
+  p->info.query.is_order_dependent = false;
   return p;
 }
 
@@ -13073,6 +13077,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
+  p->info.query.is_order_dependent = false;
   return p;
 }
 
@@ -14074,6 +14079,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
+  p->info.query.is_order_dependent = false;
   return p;
 }
 

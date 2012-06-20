@@ -485,6 +485,26 @@
 #define PT_IS_SORT_SPEC_NODE(n) \
         ( (n) ? ((n)->node_type == PT_SORT_SPEC) : false )
 
+#define PT_IS_ORDER_DEPENDENT(n) \
+        ( (n) ? \
+          (PT_IS_EXPR_NODE (n) ? (n)->info.expr.is_order_dependent \
+            : (PT_IS_FUNCTION(n) ? (n)->info.function.is_order_dependent \
+            : (PT_IS_QUERY(n) ? (n)->info.query.is_order_dependent : false))) \
+          : false)
+
+#define PT_SET_ORDER_DEPENDENT_FLAG(n, f) \
+        do { \
+          if ((n)) \
+            { \
+              if (PT_IS_EXPR_NODE (n)) \
+                (n)->info.expr.is_order_dependent = (f); \
+              else if (PT_IS_FUNCTION (n)) \
+                (n)->info.function.is_order_dependent = (f); \
+              else if (PT_IS_QUERY (n)) \
+                (n)->info.query.is_order_dependent = (f); \
+            } \
+        } while (0)
+
 #if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements
@@ -1891,6 +1911,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (short) (f)
 #define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (short) ~(f)
   short location;		/* 0 : WHERE; n : join condition of n-th FROM */
+  bool is_order_dependent;	/* true if expression is order dependent */
 };
 
 
@@ -1910,11 +1931,12 @@ struct pt_function_info
   char hidden_column;		/* used for updates and deletes for
 				 * the class OID column */
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
+  bool is_order_dependent;	/* true if function is order dependent */
   struct
   {
-    bool is_analytic;		/* is analytic clause */
     PT_NODE *partition_by;	/* partition PT_SORT_SPEC list */
     PT_NODE *order_by;		/* ordering PT_SORT_SPEC list */
+    bool is_analytic;		/* is analytic clause */
   } analytic;
 };
 
@@ -2211,6 +2233,7 @@ struct pt_query_info
   void *xasl;			/* xasl proc pointer */
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */
+  bool is_order_dependent;	/* true if query is order dependent */
   union
   {
     PT_SELECT_INFO select;

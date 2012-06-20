@@ -483,6 +483,29 @@ static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *arg,
 				       int *continue_walk);
 
+static bool mq_is_order_dependent_node (PT_NODE * node);
+
+static bool mq_mark_order_dependent_nodes (PT_NODE * node);
+
+static PT_NODE *mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser,
+						  PT_NODE * node,
+						  PT_NODE * select,
+						  int *unique);
+
+static PT_NODE *mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser,
+						  PT_NODE * select,
+						  int *unique);
+
+static PT_NODE *mq_bump_order_dep_corr_lvl_pre (PARSER_CONTEXT * parser,
+						PT_NODE * node, void *arg,
+						int *continue_walk);
+
+static PT_NODE *mq_bump_order_dep_corr_lvl_post (PARSER_CONTEXT * parser,
+						 PT_NODE * node, void *arg,
+						 int *continue_walk);
+
+static void mq_bump_order_dep_corr_lvl (PARSER_CONTEXT * parser,
+					PT_NODE * node);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -3780,6 +3803,7 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   PT_NODE *order_by = NULL;
   PT_NODE *into = NULL;
   PT_MISC_TYPE all_distinct = PT_ALL;
+  int unique = 0;
 
   if (select_statement)
     {
@@ -3813,6 +3837,54 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	     bute the view is on a "distinct" query, the result
 	     is still distinct. */
 	  select_statement->info.query.all_distinct = all_distinct;
+	}
+    }
+
+  /* check for order dependent nodes */
+  if (select_statement != NULL && select_statement->node_type == PT_SELECT
+      && select_statement->info.query.order_by != NULL)
+    {
+      PT_NODE *list = NULL;
+      int order_dep_count = 0, list_pos = 1;
+
+      /* check select list for order dependent nodes */
+      list = select_statement->info.query.q.select.list;
+      while (list != NULL)
+	{
+	  if (mq_is_order_dependent_node (list))
+	    {
+	      PT_NODE *sort_spec = select_statement->info.query.order_by;
+	      bool is_sorted = false;
+
+	      /* search in sort spec */
+	      while (sort_spec != NULL)
+		{
+		  is_sorted |=
+		    (sort_spec->info.sort_spec.pos_descr.pos_no == list_pos);
+		  sort_spec = sort_spec->next;
+		}
+
+	      if (!is_sorted)
+		{
+		  /* mark nodes */
+		  mq_mark_order_dependent_nodes (list);
+		  order_dep_count++;
+		}
+	    }
+
+	  list = list->next;
+	  list_pos++;
+	}
+
+      if (order_dep_count > 0)
+	{
+	  /* rewrite statement */
+	  select_statement =
+	    mq_rewrite_order_dependent_query (parser, select_statement,
+					      &unique);
+
+	  /* reset IDs and recompile paths */
+	  mq_reset_ids_in_statement (parser, select_statement);
 	}
     }
 
@@ -5792,6 +5864,8 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INTERSECTION:
       node = parser_walk_tree (parser, node, mq_push_paths, NULL,
 			       mq_translate_local, NULL);
+
+      mq_bump_order_dep_corr_lvl (parser, node);
 
       node = parser_walk_tree (parser, node,
 			       mq_mark_location, NULL,
@@ -10396,4 +10470,727 @@ get_authorization_name (DB_AUTH auth)
     default:
       return "";
     }
+}
+
+/*
+ * mq_is_order_dependent_node - determine if node's evaluation result depends
+ *                              on tuple order
+ *   return: true if result is dependent of order, false otherwise
+ *   node(in): node to check
+ *
+ * NOTE: a node is said to be order dependent if at least one of it's descendant
+ * nodes is a session variable assignment (eg. @a := expr).
+ */
+static bool
+mq_is_order_dependent_node (PT_NODE * node)
+{
+  bool res = false;
+
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  /* check expression node */
+  if (PT_IS_EXPR_NODE (node))
+    {
+      if (node->info.expr.op == PT_DEFINE_VARIABLE)
+	{
+	  /* we found an assignment, no need to look further */
+	  return true;
+	}
+
+      /* recurse arguments */
+      if (node->info.expr.arg1 != NULL)
+	{
+	  res = mq_is_order_dependent_node (node->info.expr.arg1) || res;
+	}
+
+      if (node->info.expr.arg2 != NULL)
+	{
+	  res = mq_is_order_dependent_node (node->info.expr.arg2) || res;
+	}
+
+      if (node->info.expr.arg3 != NULL)
+	{
+	  res = mq_is_order_dependent_node (node->info.expr.arg3) || res;
+	}
+    }
+
+  /* check function node */
+  if (PT_IS_FUNCTION (node))
+    {
+      PT_NODE *arg = node->info.function.arg_list;
+
+      /* recurse arguments */
+      while (arg != NULL)
+	{
+	  res = mq_is_order_dependent_node (arg) || res;
+
+	  arg = arg->next;
+	}
+    }
+
+  return res;
+}
+
+/*
+ * mq_mark_order_dependent_nodes - in an order dependent node tree, mark nodes
+ *                                 that are order dependent
+ *   returns: true if node or one of it's children were marked as order
+ *            dependent, false otherwise
+ *
+ * NOTE: this function is called recursively. it will mark session variable
+ * nodes and all their ancestors up to the root.
+ */
+static bool
+mq_mark_order_dependent_nodes (PT_NODE * node)
+{
+  bool res = false;
+
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  /* check expression */
+  if (PT_IS_EXPR_NODE (node))
+    {
+      if (node->info.expr.op == PT_DEFINE_VARIABLE
+	  || node->info.expr.op == PT_EVALUATE_VARIABLE)
+	{
+	  /* session variable found */
+	  res = true;
+	}
+
+      /* recurse arguments */
+      if (node->info.expr.arg1 != NULL)
+	{
+	  res = mq_mark_order_dependent_nodes (node->info.expr.arg1) || res;
+	}
+
+      if (node->info.expr.arg2 != NULL)
+	{
+	  res = mq_mark_order_dependent_nodes (node->info.expr.arg2) || res;
+	}
+
+      if (node->info.expr.arg3 != NULL)
+	{
+	  res = mq_mark_order_dependent_nodes (node->info.expr.arg3) || res;
+	}
+    }
+
+  /* check functions */
+  if (PT_IS_FUNCTION (node))
+    {
+      PT_NODE *arg = node->info.function.arg_list;
+
+      /* recurse arguments */
+      while (arg != NULL)
+	{
+	  res = mq_mark_order_dependent_nodes (arg) || res;
+
+	  arg = arg->next;
+	}
+    }
+
+  /* set flag */
+  PT_SET_ORDER_DEPENDENT_FLAG (node, res);
+
+  return res;
+}
+
+/*
+ * mq_rewrite_order_dependent_nodes - rewrite order dependent nodes in a tree
+ *   returns: rewritten node or tree
+ *   parser(in): parser context
+ *   node(in): node to rewrite
+ *   select(in): parent SELECT query
+ *   unique(in/out): pointer to an int counter, used for unique name generation
+ *
+ * NOTE: this function will take all order independent subtrees and add them to
+ * the derived table select list, thus making sure the expressions are
+ * evaluated in the correct context.
+ */
+static PT_NODE *
+mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser, PT_NODE * node,
+				  PT_NODE * select, int *unique)
+{
+  PT_NODE *attr = NULL, *as_attr = NULL;
+  PT_NODE *spec = NULL, *dt_query = NULL;
+  char *name = NULL;
+
+  if (node == NULL || select == NULL)
+    {
+      /* nothing to do */
+      return node;
+    }
+
+  if (select->node_type != PT_SELECT)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid parent query");
+      return NULL;
+    }
+
+  /* retrieve derived table spec */
+  spec = select->info.query.q.select.from;
+  if (spec == NULL || spec->info.spec.range_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid spec");
+      return NULL;
+    }
+
+  /* retrieve derived table query */
+  dt_query = spec->info.spec.derived_table;
+  if (dt_query == NULL || dt_query->node_type != PT_SELECT)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid derived table");
+      return NULL;
+    }
+
+  if (PT_IS_ORDER_DEPENDENT (node))
+    {
+      /* node is order dependent */
+      if (PT_IS_EXPR_NODE (node))
+	{
+	  /* walk expression arguments */
+	  if (node->info.expr.arg1 != NULL)
+	    {
+	      node->info.expr.arg1 =
+		mq_rewrite_order_dependent_nodes (parser,
+						  node->info.expr.arg1,
+						  select, unique);
+	    }
+
+	  if (node->info.expr.arg2 != NULL)
+	    {
+	      node->info.expr.arg2 =
+		mq_rewrite_order_dependent_nodes (parser,
+						  node->info.expr.arg2,
+						  select, unique);
+	    }
+
+	  if (node->info.expr.arg3 != NULL)
+	    {
+	      node->info.expr.arg3 =
+		mq_rewrite_order_dependent_nodes (parser,
+						  node->info.expr.arg3,
+						  select, unique);
+	    }
+	}
+      else if (PT_IS_FUNCTION (node))
+	{
+	  PT_NODE *list = node->info.function.arg_list;
+	  PT_NODE *saved_next = NULL, *prev = NULL, *ret_node;
+
+	  /* walk function arguments */
+	  while (list != NULL)
+	    {
+	      /* unlink */
+	      saved_next = list->next;
+	      list->next = NULL;
+
+	      /* rewrite tree */
+	      ret_node =
+		mq_rewrite_order_dependent_nodes (parser, list, select,
+						  unique);
+
+	      if (ret_node == NULL)
+		{
+		  if (!pt_has_error (parser))
+		    {
+		      /* error should have been set, but making sure */
+		      PT_INTERNAL_ERROR (parser, "node rewrite failed");
+		    }
+		  return NULL;
+		}
+
+	      /* relink */
+	      ret_node->next = saved_next;
+	      if (prev != NULL)
+		{
+		  prev->next = ret_node;
+		}
+
+	      /* advance */
+	      prev = ret_node;
+	      list = list->next;
+	    }
+	}
+
+      /* done */
+      return node;
+    }
+
+  /* we now have an order independent node */
+
+  if (node->node_type == PT_VALUE)
+    {
+      /* ignore values, no need to move them around */
+      return node;
+    }
+
+  /* add node to select list of derived table */
+  dt_query->info.query.q.select.list =
+    parser_append_node (node, dt_query->info.query.q.select.list);
+
+  /* generate unique name for subexpression */
+  name = (char *) mq_generate_name (parser, "sx", unique);
+  if (name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "name generation failed");
+      return NULL;
+    }
+
+  /* add to as_attr_list of derived table's spec */
+  as_attr = pt_name (parser, name);
+  if (as_attr == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+  as_attr->info.name.spec_id = spec->info.spec.id;
+  as_attr->type_enum = node->type_enum;
+  as_attr->data_type = parser_copy_tree (parser, node->data_type);
+  as_attr->etc = node->etc;
+
+  spec->info.spec.as_attr_list =
+    parser_append_node (as_attr, spec->info.spec.as_attr_list);
+
+  /* replace node with reference to derived table field */
+  attr = pt_name (parser, name);
+  if (as_attr == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+  attr->info.name.resolved = spec->info.spec.range_var->info.name.original;
+  attr->info.name.spec_id = spec->info.spec.id;
+  attr->type_enum = node->type_enum;
+  attr->data_type = parser_copy_tree (parser, node->data_type);
+  attr->etc = node->etc;
+
+  return attr;
+}
+
+/*
+ * mq_rewrite_order_dependent_query - rewrite a query that has order dependent
+ *                                    nodes in the select list
+ *   returns: rewritten query
+ *   parser(in): parser context
+ *   select(in): SELECT statement node
+ *   unique(in/out): pointer to an int counter, used for unique name generation
+ *
+ * EXAMPLE: the function will rewrite the query:
+ *
+ *   SELECT a, b, @a := @a + (c * 3)
+ *   FROM t ORDER BY a
+ *
+ * to the following:
+ *
+ *   SELECT a, b, @a := @a + expr
+ *   FROM (
+ *          SELECT a, b, (c * 3) AS expr
+ *          FROM t ORDER BY a
+ *        ) dt
+ *
+ * thus ensuring that @a is correctly evaluated after sorting
+ */
+static PT_NODE *
+mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select,
+				  int *unique)
+{
+  PT_NODE *parent = NULL;
+  PT_NODE *dt = NULL, *dt_range_var = NULL;
+  PT_NODE *list = NULL, *list_prev = NULL, *list_next = NULL;
+  PT_NODE *as_attr = NULL;
+  PT_NODE *attr = NULL;
+  int list_pos = 1;
+
+  if (select == NULL)
+    {
+      /* nothing to do */
+      return NULL;
+    }
+
+  /* allocate new SELECT node */
+  parent = parser_new_node (parser, PT_SELECT);
+  if (parent == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  /* allocate derived table spec node */
+  dt = parser_new_node (parser, PT_SPEC);
+  if (dt == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  /* allocate spec's range var (using static name, should not be ambiguous) */
+  dt_range_var = pt_name (parser, "dt_sort");
+  if (dt_range_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  /* original select will now be a subquery */
+  parent->info.query.is_subquery = select->info.query.is_subquery;
+  select->info.query.is_subquery = PT_IS_SUBQUERY;
+
+  /* set up spec */
+  dt->info.spec.id = (UINTPTR) dt;
+  dt->info.spec.derived_table = select;
+  dt->info.spec.derived_table_type = PT_IS_SUBQUERY;
+  dt->info.spec.range_var = dt_range_var;
+  dt->info.spec.join_type = PT_JOIN_NONE;
+
+  /* new SELECT will query a derived table */
+  parent->info.query.q.select.from = dt;
+  parent->info.query.correlation_level = select->info.query.correlation_level;
+  parent->info.query.composite_locking = select->info.query.composite_locking;
+  parent->info.query.oids_included = select->info.query.oids_included;
+
+  /*
+   * we now have the original SELECT (with both order dependent and order
+   * independent nodes in the select list) written as a derived table of an
+   * empty parent SELECT. first step is to:
+   * a. add an entry in the spec's as_attr_list for the order independent nodes
+   * b. add an entry in the parent select list for the order independent nodes
+   * c. move the order dependent nodes in the parent select list
+   */
+
+  list = select->info.query.q.select.list;
+  list_prev = NULL;
+  list_next = list->next;
+  list_pos = 1;			/* ORDER BY clause indexes position from 1 */
+  while (list != NULL)
+    {
+      if (list->is_hidden_column)
+	{
+	  /* skip hidden columns */
+	  list_prev = list;
+	  list = list->next;
+	  if (list)
+	    {
+	      list_next = list->next;
+	    }
+
+	  continue;
+	}
+
+      if (!PT_IS_ORDER_DEPENDENT (list))
+	{
+	  char *name = NULL;
+
+	  /* this node is order independent so it stays in the derived table's
+	     select list */
+
+	  /* generate name */
+	  if (list->node_type == PT_NAME)
+	    {
+	      name = (char *) list->info.name.original;
+	    }
+	  else
+	    {
+	      name =
+		(char *) mq_generate_name (parser, (const char *) "ex",
+					   unique);
+	    }
+
+	  /* add entry in spec's as_attr_list */
+	  as_attr = pt_name (parser, name);
+	  if (as_attr == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "node alloc fail");
+	      return NULL;
+	    }
+
+	  as_attr->info.name.spec_id = dt->info.spec.id;
+	  as_attr->type_enum = list->type_enum;
+	  as_attr->data_type = parser_copy_tree (parser, list->data_type);
+	  as_attr->etc = list->etc;
+
+	  dt->info.spec.as_attr_list =
+	    parser_append_node (as_attr, dt->info.spec.as_attr_list);
+
+	  /* add entry in new select list */
+	  attr = pt_name (parser, name);
+	  if (attr == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "node alloc fail");
+	      return NULL;
+	    }
+
+	  attr->info.name.resolved = dt_range_var->info.name.original;
+	  attr->info.name.spec_id = dt->info.spec.id;
+	  attr->type_enum = list->type_enum;
+	  attr->data_type = parser_copy_tree (parser, list->data_type);
+	  attr->etc = list->etc;
+
+	  parent->info.query.q.select.list =
+	    parser_append_node (attr, parent->info.query.q.select.list);
+
+	  /* advance in list */
+	  list_prev = list;
+	  list = list_next;
+	  if (list)
+	    {
+	      list_next = list->next;
+	    }
+
+	  /* advance position in list */
+	  list_pos++;
+	}
+      else
+	{
+	  PT_NODE *sort_spec = select->info.query.order_by;
+
+	  /* this node is order dependent so it goes in the parent select
+	     list */
+
+	  /* link PREV to NEXT */
+	  if (list_prev != NULL)
+	    {
+	      list_prev->next = list_next;
+	    }
+	  else
+	    {
+	      select->info.query.q.select.list = list_next;
+	    }
+
+	  /* destroy NEXT link of node */
+	  list->next = NULL;
+
+	  /* append node to parent select list */
+	  parent->info.query.q.select.list =
+	    parser_append_node (list, parent->info.query.q.select.list);
+
+	  /* adjust ORDER BY nodes */
+	  while (sort_spec && sort_spec->node_type == PT_SORT_SPEC)
+	    {
+	      if (sort_spec->info.sort_spec.pos_descr.pos_no > list_pos)
+		{
+		  sort_spec->info.sort_spec.pos_descr.pos_no--;
+		  sort_spec->info.sort_spec.expr->info.value.data_value.i--;
+		}
+
+	      sort_spec = sort_spec->next;
+	    }
+
+	  /* advance list and NEXT; prev stays the same */
+	  list = list_next;
+	  if (list)
+	    {
+	      list_next = list->next;
+	    }
+	}
+    }
+
+  /* second step is to iterate trough the order dependent nodes (which are now
+   * in the parent select list) and, for each of them, add nodes in the derived
+   * table consisting of all order independent subexpressions */
+  list = parent->info.query.q.select.list;
+  while (list != NULL)
+    {
+      if (PT_IS_ORDER_DEPENDENT (list))
+	{
+	  /* process subexpressions */
+	  (void) mq_rewrite_order_dependent_nodes (parser, list, parent,
+						   unique);
+	}
+
+      /* advance list */
+      list = list->next;
+    }
+
+  /* mark new SELECT as order dependent so we can bump it's correlation level
+     later on */
+  PT_SET_ORDER_DEPENDENT_FLAG (parent, true);
+
+  return parent;
+}
+
+/*
+ * mq_bump_order_dep_corr_lvl_pre - walk_tree function for bumping correlation
+ *                                  levels of order dependent SELECTs
+ *   parser(in): parser context
+ *   node(in): node
+ *   arg(in/out): parent node stack
+ *   continue_walk(in/out): walk type
+ *
+ * NOTE: for the sake of simplicity, the stack is implemented as a double
+ * linked list of "PT_EXPR" PT_NODEs, with the following topology:
+ *    n->next: will hold a pointer to the next item in the list
+ *    n->info.expr.arg2: will hold a pointer to the previous item in the list
+ *    n->info.expr.arg1: will hold a pointer to the actual node
+ *
+ * NOTE: nodes are pushed in the pre function and popped in the post function
+ */
+static PT_NODE *
+mq_bump_order_dep_corr_lvl_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+				void *arg, int *continue_walk)
+{
+  PT_NODE **stack = (PT_NODE **) arg;
+  PT_NODE *stack_head = NULL, *stack_end = NULL;
+  PT_NODE *stack_item = NULL, *stack_prev = NULL;
+
+  if (node == NULL || parser == NULL || stack == NULL || !PT_IS_QUERY (node))
+    {
+      return node;
+    }
+
+  /* set up stack pointers */
+  stack_head = stack_end = *stack;
+  while (stack_end != NULL && stack_end->next != NULL)
+    {
+      stack_end = stack_end->next;
+    }
+
+  /* push node in stack */
+  stack_item = parser_new_node (parser, PT_EXPR);
+  if (stack_item == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return node;
+    }
+
+  stack_item->next = NULL;
+  stack_item->info.expr.arg1 = node;
+  stack_item->info.expr.arg2 = stack_end;
+
+  if (stack_end != NULL)
+    {
+      /* link to last item */
+      stack_end->next = stack_item;
+      stack_end = stack_item;
+    }
+  else
+    {
+      /* first item */
+      stack_head = stack_end = stack_item;
+      *stack = stack_item;
+    }
+
+  /* process node */
+  if (PT_IS_ORDER_DEPENDENT (node))
+    {
+      PT_NODE *item = NULL, *prev = NULL;
+      int corr_diff = 0;
+
+      stack_item = stack_end;
+      while (stack_item != NULL && stack_item->info.expr.arg2 != NULL)
+	{
+	  /* due to the walk_tree function, all items in lists are pushed in
+	   * the stack before any of them is popped; here, we skip same-level
+	   * nodes */
+	  stack_prev = stack_item->info.expr.arg2;
+	  while (stack_prev
+		 && stack_prev->info.expr.arg1->next
+		 == stack_prev->next->info.expr.arg1)
+	    {
+	      stack_prev = stack_prev->info.expr.arg2;
+	    }
+
+	  if (stack_prev == NULL)
+	    {
+	      /* stack_item is in top level list; should never get here ... */
+	      assert (false);
+	      break;
+	    }
+
+	  /* get node and previous node */
+	  item = stack_item->info.expr.arg1;
+	  prev = stack_prev->info.expr.arg1;
+	  corr_diff =
+	    item->info.query.correlation_level -
+	    prev->info.query.correlation_level;
+
+	  /* check correlation levels */
+	  if (item != NULL && prev != NULL && corr_diff <= 0)
+	    {
+	      /* same correlation level or parent has greater correlation
+	         level; not acceptable */
+	      corr_diff = -corr_diff + 1;
+
+	      (void) mq_bump_correlation_level (parser, item, corr_diff,
+						item->info.query.
+						correlation_level);
+
+	      item->info.query.correlation_level += corr_diff;
+	    }
+
+	  /* peek back in stack list */
+	  stack_item = stack_prev;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * mq_bump_order_dep_corr_lvl_post - walk_tree post function for bumping
+ *                                   correlation levels of order dependent
+ *                                   SELECTs
+ *   parser(in): parser context
+ *   node(in): node
+ *   arg(in/out): parent node stack
+ *   continue_walk(in/out): walk type
+ *
+ * NOTE: this function only pops nodes from the stack
+ */
+static PT_NODE *
+mq_bump_order_dep_corr_lvl_post (PARSER_CONTEXT * parser, PT_NODE * node,
+				 void *arg, int *continue_walk)
+{
+  PT_NODE **stack = (PT_NODE **) arg;
+  PT_NODE *stack_item = NULL;
+
+  if (node == NULL || parser == NULL || stack == NULL || !PT_IS_QUERY (node))
+    {
+      return node;
+    }
+
+  /* node is query, pop from stack */
+  stack_item = *stack;
+  while (stack_item != NULL && stack_item->next != NULL)
+    {
+      stack_item = stack_item->next;
+    }
+
+  if (stack_item != NULL && stack_item->info.expr.arg2)
+    {
+      stack_item->info.expr.arg2->next = NULL;
+    }
+  else
+    {
+      *stack = NULL;
+    }
+
+  if (stack_item != NULL)
+    {
+      parser_free_node (parser, stack_item);
+    }
+
+  return node;
+}
+
+/*
+ * mq_bump_order_dep_corr_lvl - bump correlation levels for order dependent
+ *                              SELECTs
+ *   parser(in): parser context
+ *   node(in): root node
+ */
+static void
+mq_bump_order_dep_corr_lvl (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *stack = NULL;
+
+  /* bump order dependent SELECTs */
+  (void) parser_walk_tree (parser, node, mq_bump_order_dep_corr_lvl_pre,
+			   (void *) &stack, mq_bump_order_dep_corr_lvl_post,
+			   (void *) &stack);
 }
