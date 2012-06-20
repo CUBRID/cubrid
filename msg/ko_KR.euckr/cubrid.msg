@@ -1,4 +1,3 @@
-
 $
 $ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
 $
@@ -735,7 +734,7 @@ $ LOADDB
 667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 없습니다.
 668 내부 에러: Unknown domain type '%1$d'.
 669 최대 클라이언트 수 %1$d이(가) 초과되어 서버가 연결을 거부하였습니다.
-670 오퍼레이션은 하나 또는 그 이상의 UNIQUE 제약 사항을 위반하였습니다.
+670 오퍼레이션은 하나 또는 그 이상의 UNIQUE 제약 사항을 위반하였습니다. 클래스 %5$s(CLASS_OID: %6$d|%7$d|%8$d)의 인덱스 %1$s(B+tree: %2$d|%3$d|%4$d). 키: %9$s(OID: %10$d|%11$d|%12$d).
 671 트랜잭션(index %2$d, %3$s@%4$s|%5$d)에 연관된 socket %1$d에서 네트워크 read/write 에러가 발생하였습니다.
 672 트랜잭션(index %2$d, %3$s@%4$s|%5$d)에 연관된 socket %1$d이 단절되었습니다.
 673 서버가 다운되고 있기 때문에 서버로의 연결은 단절되었습니다.

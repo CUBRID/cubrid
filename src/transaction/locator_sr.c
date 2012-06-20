@@ -5124,7 +5124,7 @@ error2:
  * scan_cache (in)	: scan cache
  * has_index (in)	: true if the class has indexes
  * force_count (in/out)	:
- * 
+ *
  * Note: this function calls locator_delete_force on the current object oid
  * and locator_insert_force for the RECDES it receives. The record has already
  * been set to be used by the receiving class when it went through the pruning
@@ -6050,8 +6050,10 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 	       + tdes->unique_stat_info[s].num_keys)
 	      != tdes->unique_stat_info[s].num_oids)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_BTREE_UNIQUE_FAILED, 0);
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
+						&mobjs->objs.class_oid,
+						&tdes->unique_stat_info[s].
+						btid);
 	      error_code = ER_BTREE_UNIQUE_FAILED;
 	      goto error;
 	    }

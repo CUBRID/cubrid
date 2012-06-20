@@ -686,9 +686,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-  /* change "print_key_value_on_unique_error" parameter */
-  sysprm_change_server_parameters ("print_key_value_on_unique_error=1");
-
   /* if schema file is specified, do schema loading */
   if (schema_file != NULL)
     {

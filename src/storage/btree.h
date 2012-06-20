@@ -82,6 +82,10 @@ enum
 #define BTREE_NORMAL_KEY 0
 #define BTREE_OVERFLOW_KEY 1
 
+#define BTREE_SET_UNIQUE_VIOLATION_ERROR(THREAD,KEY,OID,C_OID,BTID) \
+        btree_set_unique_violation_error(THREAD, KEY, OID, C_OID, BTID, \
+                                         __FILE__, __LINE__)
+
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
 struct btid_int
@@ -431,5 +435,11 @@ extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					 HEAP_CACHE_ATTRINFO * attr_info);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize,
 			     TP_DOMAIN * btree_domainp, int key_minmax);
+extern int btree_set_unique_violation_error (THREAD_ENTRY * thread_p,
+					     DB_VALUE * key,
+					     OID * obj_oid,
+					     OID * class_oid, BTID * btid,
+					     const char *filename,
+					     int lineno);
 
 #endif /* _BTREE_H_ */

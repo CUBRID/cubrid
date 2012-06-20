@@ -1931,7 +1931,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL},
   {PRM_NAME_UNIQUE_ERROR_KEY_VALUE,
    (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE |
-    PRM_HIDDEN),
+    PRM_HIDDEN | PRM_DEPRECATED),
    (void *) &prm_unique_error_key_value_default,
    (void *) &PRM_UNIQUE_ERROR_KEY_VALUE,
    (void *) NULL, (void *) NULL,

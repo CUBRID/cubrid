@@ -385,7 +385,7 @@ struct upddel_class_info_internal
 
   int no_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
-  DEL_LOB_INFO *crt_del_lob_info; /* DEL_LOB_INFO for current class_oid */
+  DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
 };
 
 static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
@@ -6080,7 +6080,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
       else if (sb_scan == S_END)
 	{
-	  /* if curr_spec is a partitioned class, do not move to the next 
+	  /* if curr_spec is a partitioned class, do not move to the next
 	     spec unless we went through all partitions */
 	  SCAN_CODE s_parts =
 	    qexec_init_next_partition (thread_p, xasl->curr_spec);
@@ -7924,8 +7924,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		       unique_stat_info[t].num_keys) !=
 		      unique_stat_info[t].num_oids)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_BTREE_UNIQUE_FAILED, 0);
+		      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
+							upd_cls->class_oid,
+							&unique_stat_info[t].
+							btid);
 		      GOTO_EXIT_ON_ERROR;
 		    }
 

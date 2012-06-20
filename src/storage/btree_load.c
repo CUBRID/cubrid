@@ -1825,8 +1825,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	      /* instance level uniqueness checking */
 	      if (BTREE_IS_UNIQUE (load_args->btid))
 		{		/* unique index */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_BTREE_UNIQUE_FAILED, 0);
+		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, &this_key,
+						    &this_oid,
+						    &this_class_oid,
+						    load_args->btid->
+						    sys_btid);
 		  goto error;
 		}
 

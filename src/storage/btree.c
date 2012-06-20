@@ -3031,8 +3031,8 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
       /* check if the btree is unique */
       if ((status == NO_ERROR) && (xbtree_test_unique (thread_p, &btid) != 1))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNIQUE_FAILED,
-		  0);
+	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
+					    NULL, &btid);
 	  status = ER_BTREE_UNIQUE_FAILED;
 	}
     }
@@ -8867,12 +8867,14 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 	      if (PRM_HA_MODE != HA_MODE_OFF && op_type == MULTI_ROW_UPDATE)
 		{
 		  ret = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
 		}
 	      else
 		{
+		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, oid,
+						    cls_oid, btid->sys_btid);
 		  ret = ER_BTREE_UNIQUE_FAILED;
 		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
 	    }
 	  goto exit_on_error;
 	}
@@ -20140,6 +20142,60 @@ btree_get_next_overflow_vpid (char *header_ptr, VPID * overflow_vpid_ptr)
   overflow_vpid_ptr->volid = OR_GET_SHORT (ptr);
 
   return overflow_vpid_ptr;
+}
+
+int
+btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
+				  OID * obj_oid, OID * class_oid, BTID * btid,
+				  const char *filename, int lineno)
+{
+  char *keyval = NULL;
+  char *class_name = NULL;
+  char *index_name = NULL;
+
+  if (key)
+    {
+      keyval = pr_valstring (key);
+    }
+  if (class_oid)
+    {
+      class_name = heap_get_class_name (thread_p, class_oid);
+      if (heap_get_indexinfo_of_btid (thread_p,
+				      class_oid, btid,
+				      NULL, NULL, NULL, NULL,
+				      &index_name) != NO_ERROR)
+	{
+	  index_name = NULL;
+	}
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNIQUE_FAILED, 12,
+	  (index_name) ? index_name : "*UNKNOWN-INDEX*",
+	  (btid) ? btid->vfid.volid : -1,
+	  (btid) ? btid->vfid.fileid : -1,
+	  (btid) ? btid->root_pageid : -1,
+	  (class_name) ? class_name : "*UNKNOWN-CLASS*",
+	  (class_oid) ? class_oid->volid : -1,
+	  (class_oid) ? class_oid->pageid : -1,
+	  (class_oid) ? class_oid->slotid : -1,
+	  (keyval) ? keyval : "*UNKNOWN-KEY*",
+	  (obj_oid) ? obj_oid->volid : -1,
+	  (obj_oid) ? obj_oid->pageid : -1, (obj_oid) ? obj_oid->slotid : -1);
+
+  if (keyval)
+    {
+      free_and_init (keyval);
+    }
+  if (index_name)
+    {
+      free_and_init (index_name);
+    }
+  if (class_name)
+    {
+      free_and_init (class_name);
+    }
+
+  return NO_ERROR;
 }
 
 static void
