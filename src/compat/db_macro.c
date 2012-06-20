@@ -344,11 +344,13 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
  * scale(in)       : scale.
  * codeset(in)     : codeset.
  * collation_id(in): collation_id.
+ * enumeration(in) : enumeration elements for DB_TYPE_ENUMERATION.
  */
 int
 db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
 		     const int precision, const int scale,
-		     const int codeset, const int collation_id)
+		     const int codeset, const int collation_id,
+		     const DB_ENUMERATION * enumeration)
 {
   int error;
 
@@ -472,7 +474,16 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.char_info.collation_id = collation_id;
       break;
     case DB_TYPE_ENUMERATION:
-      db_make_enumeration (value, 0, (char *) "\40", 1);
+      if (enumeration == NULL || enumeration->count <= 0)
+	{
+	  db_make_enumeration (value, 0, (char *) "\40", 1);
+	}
+      else
+	{
+	  db_make_enumeration (value, 1,
+			       enumeration->elements[0].str_val.medium.buf,
+			       enumeration->elements[0].str_val.medium.size);
+	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
     default:
@@ -495,11 +506,13 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
  * scale(in)	   : scale.
  * codeset(in)     : codeset.
  * collation_id(in): collation_id.
+ * enumeration(in) : enumeration elements for DB_TYPE_ENUMERATION.
  */
 int
 db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 		     const int precision, const int scale,
-		     const int codeset, const int collation_id)
+		     const int codeset, const int collation_id,
+		     const DB_ENUMERATION * enumeration)
 {
   int error;
 
@@ -640,7 +653,18 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->domain.char_info.collation_id = collation_id;
       break;
     case DB_TYPE_ENUMERATION:
-      db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377", 1);
+      if (enumeration == NULL || enumeration->count <= 0)
+	{
+	  db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377", 1);
+	}
+      else
+	{
+	  db_make_enumeration (value, enumeration->count,
+			       enumeration->elements[enumeration->count -
+						     1].str_val.medium.buf,
+			       enumeration->elements[enumeration->count -
+						     1].str_val.medium.size);
+	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
     default:
@@ -663,11 +687,13 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
  * scale(in)	   : scale
  * codeset(in)     : codeset.
  * collation_id(in): collation_id.
+ * enumeration(in) : enumeration elements for DB_TYPE_ENUMERATION
  */
 int
 db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
 			 const int precision, const int scale,
-			 const int codeset, const int collation_id)
+			 const int codeset, const int collation_id,
+			 DB_ENUMERATION * enumeration)
 {
   int error = NO_ERROR;
 
@@ -751,6 +777,19 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.buf = (char *) "";
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
+      break;
+    case DB_TYPE_ENUMERATION:
+      if (enumeration != NULL && enumeration->count > 0)
+	{
+	  db_make_enumeration (value, 1,
+			       enumeration->elements[0].str_val.medium.buf,
+			       enumeration->elements[0].str_val.medium.size);
+	}
+      else
+	{
+	  db_value_domain_min (value, type, precision, scale, codeset,
+			       collation_id, enumeration);
+	}
       break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;

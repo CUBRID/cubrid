@@ -13694,6 +13694,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	    }
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
 	default:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	  break;
@@ -13705,6 +13708,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	{
 	case DB_TYPE_SHORT:
 	case DB_TYPE_FLOAT:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_BIGINT:
@@ -13749,6 +13753,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
 	case DB_TYPE_MONETARY:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_NUMERIC:
@@ -13816,6 +13821,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
 	case DB_TYPE_MONETARY:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_CHAR:
@@ -13846,6 +13852,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
@@ -13879,6 +13886,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
@@ -13911,6 +13919,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
@@ -13949,6 +13958,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	    }
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
 	default:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	  break;
@@ -13974,6 +13986,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	    }
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	default:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
@@ -14003,6 +14018,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	    }
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	default:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
@@ -14042,6 +14060,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	    }
 	  break;
+	case DB_TYPE_ENUMERATION:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
 	default:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	  break;
@@ -14062,6 +14083,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_TIME:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
@@ -14104,6 +14126,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	case DB_TYPE_TIME:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_CHAR:
@@ -14277,6 +14300,31 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	      assert (false);
 	      attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_DIFF;
 	    }
+	}
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_MONETARY:
+	case DB_TYPE_ENUMERATION:
+	case DB_TYPE_DATE:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIME:
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
 	}
       break;
 

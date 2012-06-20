@@ -11392,7 +11392,8 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 					       dp->precision,
 					       dp->scale,
 					       dp->codeset,
-					       dp->collation_id) == NO_ERROR)
+					       dp->collation_id,
+					       &dp->enumeration) == NO_ERROR)
 		      && (llim = pt_dbval_to_value (parser, &value))
 		      && (temp = parser_copy_tree (parser, col))
 		      && (expr = parser_new_node (parser, PT_EXPR))

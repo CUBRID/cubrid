@@ -853,14 +853,17 @@ extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type,
 				 const int precision, const int scale);
 extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type,
 				const int precision, const int scale,
-				const int codeset, const int collation_id);
+				const int codeset, const int collation_id,
+				const DB_ENUMERATION * enumeration);
 extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
 				const int precision, const int scale,
-				const int codeset, const int collation_id);
+				const int codeset, const int collation_id,
+				const DB_ENUMERATION * enumeration);
 extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
 				    const int precision, const int scale,
 				    const int codeset,
-				    const int collation_id);
+				    const int collation_id,
+				    DB_ENUMERATION * enumeration);
 extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
 				 const int precision, const int scale);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);

@@ -23016,7 +23016,7 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
 	    db_value_domain_min (bound, DB_TYPE_VARCHAR,
 				 DB_VALUE_PRECISION (pattern),
 				 DB_VALUE_SCALE (pattern),
-				 codeset, collation_id);
+				 codeset, collation_id, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -23028,7 +23028,7 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
 	    db_value_domain_max (bound, DB_TYPE_VARCHAR,
 				 DB_VALUE_PRECISION (pattern),
 				 DB_VALUE_SCALE (pattern),
-				 codeset, collation_id);
+				 codeset, collation_id, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;

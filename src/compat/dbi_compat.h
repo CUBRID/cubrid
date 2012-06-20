@@ -2587,9 +2587,13 @@ extern int db_value_compare (const DB_VALUE * value1,
 extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type,
 				 const int precision, const int scale);
 extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale);
+				const int precision, const int scale,
+				const int codeset, const int collation_id,
+				const DB_ENUMERATION * enumeration);
 extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale);
+				const int precision, const int scale,
+				const int codeset, const int collation_id,
+				const DB_ENUMERATION * enumeration);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);
 extern DB_TYPE db_value_domain_type (const DB_VALUE * value);
 extern DB_TYPE db_value_type (const DB_VALUE * value);

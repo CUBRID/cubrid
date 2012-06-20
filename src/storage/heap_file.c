@@ -20236,7 +20236,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 					   dest_type,
 					   dest_prec, dest_dom->scale,
 					   dest_dom->codeset,
-					   dest_dom->collation_id);
+					   dest_dom->collation_id,
+					   &dest_dom->enumeration);
 	      if (error != NO_ERROR)
 		{
 		  /* this should not happen */
@@ -20252,7 +20253,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 					   dest_type,
 					   dest_prec, dest_dom->scale,
 					   dest_dom->codeset,
-					   dest_dom->collation_id);
+					   dest_dom->collation_id,
+					   &dest_dom->enumeration);
 	      if (error != NO_ERROR)
 		{
 		  /* this should not happen */
@@ -20269,7 +20271,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 					       dest_type,
 					       dest_prec, dest_dom->scale,
 					       dest_dom->codeset,
-					       dest_dom->collation_id);
+					       dest_dom->collation_id,
+					       &dest_dom->enumeration);
 	      if (error != NO_ERROR)
 		{
 		  /* this should not happen */
