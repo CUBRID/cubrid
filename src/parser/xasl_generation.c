@@ -13774,19 +13774,25 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   assert (parser != NULL);
 
-  if (!(symbols = parser->symbols))
+  symbols = parser->symbols;
+  if (symbols == NULL)
     {
       return NULL;
     }
 
-  if (!select_node || select_node->node_type != PT_SELECT ||
-      !(from = select_node->info.query.q.select.from))
+  if (select_node == NULL || select_node->node_type != PT_SELECT)
+    {
+      return NULL;
+    }
+
+  from = select_node->info.query.q.select.from;
+  if (from == NULL)
     {
       return NULL;
     }
 
   xasl = regu_xasl_node_alloc (BUILDLIST_PROC);
-  if (!xasl)
+  if (xasl == NULL)
     {
       return NULL;
     }
@@ -13795,8 +13801,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   xasl->next = NULL;
 
   /* assume parse tree correct, and PT_DISTINCT only other possibility */
-  xasl->option = (select_node->info.query.all_distinct == PT_ALL)
-    ? Q_ALL : Q_DISTINCT;
+  if (select_node->info.query.all_distinct == PT_ALL)
+    {
+      xasl->option = Q_ALL;
+    }
+  else
+    {
+      xasl->option = Q_DISTINCT;
+    }
 
   unbox = UNBOX_AS_VALUE;
 
@@ -14114,7 +14126,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   pt_set_aptr (parser, select_node, xasl);
 
-  if (!qo_plan || !pt_gen_optimized_plan (parser, xasl, select_node, qo_plan))
+  if (qo_plan == NULL
+      || !pt_gen_optimized_plan (parser, xasl, select_node, qo_plan))
     {
       while (from)
 	{

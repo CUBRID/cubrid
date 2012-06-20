@@ -252,8 +252,7 @@ extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl,
 extern bool qfile_has_next_page (PAGE_PTR page_p);
 extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * list_id_p,
-					      VALPTR_LIST * valptr_list_p,
-					      bool * resolved_all);
+					      VALPTR_LIST * valptr_list_p);
 extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p,
 					 QFILE_LIST_ID * list_id_p,
 					 PAGE_PTR curr_page_p, VPID * vpid_p,

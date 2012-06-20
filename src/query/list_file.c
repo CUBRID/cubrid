@@ -6710,15 +6710,15 @@ qfile_has_next_page (PAGE_PTR page_p)
 int
 qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 				   QFILE_LIST_ID * list_id_p,
-				   VALPTR_LIST * valptr_list_p,
-				   bool * resolved_all)
+				   VALPTR_LIST * valptr_list_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count = 0;
 
-  assert (resolved_all != NULL);
+  assert (list_id_p != NULL);
 
-  *resolved_all = true;
+  list_id_p->is_domain_resolved = true;
+
   reg_var_p = valptr_list_p->valptrp;
 
   for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
@@ -6743,9 +6743,9 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 	      /* In this case, we cannot resolve the value's domain.
 	       * We will try to do for the next tuple.
 	       */
-	      if (*resolved_all == true)
+	      if (list_id_p->is_domain_resolved)
 		{
-		  *resolved_all = false;
+		  list_id_p->is_domain_resolved = false;
 		}
 	    }
 	  else
@@ -6769,7 +6769,7 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 
 exit_on_error:
 
-  *resolved_all = false;
+  list_id_p->is_domain_resolved = false;
   return ER_FAILED;
 }
 

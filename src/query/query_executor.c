@@ -542,6 +542,13 @@ static int qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 				     XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK *
 				     composite_lock, int upd_del_cls_cnt);
+static QPROC_TPLDESCR_STATUS qexec_generate_tuple_descriptor (THREAD_ENTRY *
+							      thread_p,
+							      QFILE_LIST_ID *
+							      list_id,
+							      VALPTR_LIST *
+							      outptr_list,
+							      VAL_DESCR * vd);
 static int qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				    XASL_STATE * xasl_state,
 				    QFILE_TUPLE_RECORD * tplrec);
@@ -1134,6 +1141,69 @@ exit_on_error:
 }
 
 /*
+ * qexec_generate_tuple_descriptor () -
+ *   return: status
+ *   thread_p(in)   :
+ *   list_id(in/out)     :
+ *   outptr_list(in) :
+ *   vd(in) :
+ *
+ */
+static QPROC_TPLDESCR_STATUS
+qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p,
+				 QFILE_LIST_ID * list_id,
+				 VALPTR_LIST * outptr_list, VAL_DESCR * vd)
+{
+  QPROC_TPLDESCR_STATUS status;
+  size_t size;
+
+  status = QPROC_TPLDESCR_FAILURE;	/* init */
+
+  /* make f_valp array */
+  if (list_id->tpl_descr.f_valp == NULL && list_id->type_list.type_cnt > 0)
+    {
+      size = list_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
+
+      list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
+      if (list_id->tpl_descr.f_valp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  goto exit_on_error;
+	}
+    }
+
+  /* build tuple descriptor */
+  status =
+    qdata_generate_tuple_desc_for_valptr_list (thread_p,
+					       outptr_list,
+					       vd, &(list_id->tpl_descr));
+  if (status == QPROC_TPLDESCR_FAILURE)
+    {
+      goto exit_on_error;
+    }
+
+  if (list_id->is_domain_resolved == false)
+    {
+      /* Resolve DB_TYPE_VARIABLE domains.
+       * It will be done when generating the first tuple.
+       */
+      if (qfile_update_domains_on_type_list (thread_p,
+					     list_id,
+					     outptr_list) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  return status;
+
+exit_on_error:
+
+  return QPROC_TPLDESCR_FAILURE;
+}
+
+/*
  * qexec_end_one_iteration () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   :
@@ -1146,8 +1216,6 @@ static int
 qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
 {
-  QFILE_TUPLE_DESCRIPTOR *tdp;
-  QFILE_LIST_ID *xlist_id;
   QPROC_TPLDESCR_STATUS tpldescr_status;
   int ret = NO_ERROR;
 
@@ -1169,43 +1237,13 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (xasl->type == BUILDLIST_PROC)
     {
-      /* make f_valp array */
-      xlist_id = xasl->list_id;
-      if ((xlist_id->tpl_descr.f_valp == NULL)
-	  && (xlist_id->type_list.type_cnt > 0))
-	{
-	  size_t size = xlist_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
-	  xlist_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
-	  if (xlist_id->tpl_descr.f_valp == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      /* build tuple descriptor */
-      tdp = &((xasl->list_id)->tpl_descr);
-      tpldescr_status =
-	qdata_generate_tuple_desc_for_valptr_list (thread_p,
-						   xasl->outptr_list,
-						   &xasl_state->vd, tdp);
+      tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
+							 xasl->list_id,
+							 xasl->outptr_list,
+							 &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
 	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (xlist_id->is_domain_resolved == false)
-	{
-	  /* Resolve DB_TYPE_VARIABLE domains.
-	   * It will be done when generating the first tuple.
-	   */
-	  if (qfile_update_domains_on_type_list
-	      (thread_p, xlist_id, xasl->outptr_list,
-	       &xlist_id->is_domain_resolved) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
 	}
 
       switch (tpldescr_status)
@@ -3240,8 +3278,6 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 {
   XASL_NODE *xptr;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_DESCRIPTOR *tdp;
-  QFILE_LIST_ID *xlist_id;
   QPROC_TPLDESCR_STATUS tpldescr_status;
   XASL_STATE *xasl_state = gbstate->xasl_state;
 
@@ -3262,19 +3298,24 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 
   for (xptr = gbstate->eptr_list; xptr; xptr = xptr->next)
     {
-      if (qexec_execute_mainblock (thread_p, xptr, gbstate->xasl_state) !=
-	  NO_ERROR)
+      if (qexec_execute_mainblock (thread_p, xptr, xasl_state) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
     }
 
-  ev_res = (gbstate->having_pred
-	    ? eval_pred (thread_p, gbstate->having_pred,
-			 &gbstate->xasl_state->vd, NULL) : V_TRUE);
-  if (ev_res == V_ERROR)
+  if (gbstate->having_pred)
     {
-      GOTO_EXIT_ON_ERROR;
+      ev_res = eval_pred (thread_p, gbstate->having_pred,
+			  &xasl_state->vd, NULL);
+      if (ev_res == V_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  else
+    {
+      ev_res = V_TRUE;
     }
 
   if (ev_res == V_TRUE)
@@ -3311,46 +3352,14 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	    }
 	}
 
-      /* make f_valp array */
-      xlist_id = gbstate->output_file;
-      if ((xlist_id->tpl_descr.f_valp == NULL)
-	  && (xlist_id->type_list.type_cnt > 0))
-	{
-	  size_t size = xlist_id->type_list.type_cnt * sizeof (DB_VALUE *);
-	  xlist_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
-	  if (xlist_id->tpl_descr.f_valp == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      /* build tuple descriptor */
-      tdp = &(gbstate->output_file->tpl_descr);
-      tpldescr_status =
-	qdata_generate_tuple_desc_for_valptr_list (thread_p,
-						   gbstate->g_outptr_list,
-						   &gbstate->xasl_state->vd,
-						   tdp);
-
+      tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
+							 gbstate->output_file,
+							 gbstate->
+							 g_outptr_list,
+							 &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
 	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (xlist_id->is_domain_resolved == false)
-	{
-	  /* Resolve DB_TYPE_VARIABLE domains.
-	   * It will be done when generating the first tuple.
-	   */
-	  if (qfile_update_domains_on_type_list
-	      (thread_p, gbstate->output_file,
-	       gbstate->g_outptr_list,
-	       &xlist_id->is_domain_resolved) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
 	}
 
       switch (tpldescr_status)
@@ -3380,7 +3389,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	    }
 
 	  if (qdata_copy_valptr_list_to_tuple
-	      (thread_p, gbstate->g_outptr_list, &gbstate->xasl_state->vd,
+	      (thread_p, gbstate->g_outptr_list, &xasl_state->vd,
 	       gbstate->output_tplrec) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -10993,8 +11002,6 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
   QFILE_LIST_ID *t_list_id = NULL;
   int status = NO_ERROR;
   int ls_flag = 0;
-  QFILE_TUPLE_DESCRIPTOR *tdp;
-  QFILE_LIST_ID *xlist_id;
   QPROC_TPLDESCR_STATUS tpldescr_status;
   DB_LOGICAL ev_res = V_UNKNOWN;
   QFILE_LIST_ID *output = NULL;
@@ -11078,28 +11085,10 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
 
   if (buildvalue->having_pred == NULL || ev_res == V_TRUE)
     {
-
-      /* make f_valp array */
-      xlist_id = xasl->list_id;
-      if ((xlist_id->tpl_descr.f_valp == NULL)
-	  && (xlist_id->type_list.type_cnt > 0))
-	{
-	  size_t size = xlist_id->type_list.type_cnt * sizeof (DB_VALUE *);
-	  xlist_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
-	  if (xlist_id->tpl_descr.f_valp == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      /* build tuple descriptor */
-      tdp = &((xasl->list_id)->tpl_descr);
-      tpldescr_status =
-	qdata_generate_tuple_desc_for_valptr_list (thread_p,
-						   xasl->outptr_list,
-						   &xasl_state->vd, tdp);
+      tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
+							 xasl->list_id,
+							 xasl->outptr_list,
+							 &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -15739,31 +15728,11 @@ qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p,
 			      OUTPTR_LIST * outptr_list,
 			      VAL_DESCR * vd, QFILE_TUPLE_RECORD * tplrec)
 {
-  QFILE_TUPLE_DESCRIPTOR *tdp;
   QPROC_TPLDESCR_STATUS tpldescr_status;
 
-  /* make f_valp array */
-  if ((list_id->tpl_descr.f_valp == NULL)
-      && (list_id->type_list.type_cnt > 0))
-    {
-      list_id->tpl_descr.f_valp =
-	(DB_VALUE **) malloc (list_id->type_list.type_cnt *
-			      DB_SIZEOF (DB_VALUE *));
-
-      if (list_id->tpl_descr.f_valp == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  list_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
-
-  /* build tuple descriptor */
-  tdp = &(list_id->tpl_descr);
-  tpldescr_status =
-    qdata_generate_tuple_desc_for_valptr_list (thread_p,
-					       outptr_list, vd, tdp);
+  tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
+						     list_id, outptr_list,
+						     vd);
   if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
     {
       return ER_FAILED;
@@ -17010,8 +16979,6 @@ static void
 qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 				 GROUPBY_STATE * gbstate, int rollup_level)
 {
-  QFILE_TUPLE_DESCRIPTOR *tdp;
-  QFILE_LIST_ID *xlist_id;
   QPROC_TPLDESCR_STATUS tpldescr_status;
   XASL_NODE *xptr;
   DB_LOGICAL ev_res;
@@ -17039,20 +17006,25 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
   /* evaluate subqueries in HAVING predicate */
   for (xptr = gbstate->eptr_list; xptr; xptr = xptr->next)
     {
-      if (qexec_execute_mainblock (thread_p, xptr, gbstate->xasl_state) !=
-	  NO_ERROR)
+      if (qexec_execute_mainblock (thread_p, xptr, xasl_state) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
     }
 
   /* evaluate HAVING predicate */
-  ev_res = (gbstate->having_pred
-	    ? eval_pred (thread_p, gbstate->having_pred,
-			 &gbstate->xasl_state->vd, NULL) : V_TRUE);
-  if (ev_res == V_ERROR)
+  if (gbstate->having_pred)
     {
-      GOTO_EXIT_ON_ERROR;
+      ev_res = eval_pred (thread_p, gbstate->having_pred,
+			  &xasl_state->vd, NULL);
+      if (ev_res == V_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  else
+    {
+      ev_res = V_TRUE;
     }
 
   /* evaluate groupby_num predicates */
@@ -17071,20 +17043,6 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
   if (ev_res != V_TRUE)
     {
       goto wrapup;
-    }
-
-  /* make f_valp array */
-  xlist_id = gbstate->output_file;
-  if ((xlist_id->tpl_descr.f_valp == NULL)
-      && (xlist_id->type_list.type_cnt > 0))
-    {
-      xlist_id->tpl_descr.f_valp =
-	(DB_VALUE **) malloc (xlist_id->type_list.type_cnt *
-			      sizeof (DB_VALUE *));
-      if (xlist_id->tpl_descr.f_valp == NULL)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
     }
 
   /*
@@ -17143,13 +17101,10 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* build tuple descriptor */
-  tdp = &(gbstate->output_file->tpl_descr);
-  tpldescr_status =
-    qdata_generate_tuple_desc_for_valptr_list (thread_p,
-					       gbstate->g_outptr_list,
-					       &gbstate->xasl_state->vd, tdp);
-
+  tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
+						     gbstate->output_file,
+						     gbstate->g_outptr_list,
+						     &xasl_state->vd);
   if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
     {
       GOTO_EXIT_ON_ERROR;
@@ -17181,7 +17136,7 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	    }
 	}
       if (qdata_copy_valptr_list_to_tuple
-	  (thread_p, gbstate->g_outptr_list, &gbstate->xasl_state->vd,
+	  (thread_p, gbstate->g_outptr_list, &xasl_state->vd,
 	   gbstate->output_tplrec) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -18817,17 +18772,6 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (!list_id->is_domain_resolved)
-    {
-      /* Resolve DB_TYPE_VARIABLE domains. */
-      if (qfile_update_domains_on_type_list
-	  (thread_p, list_id, analytic_state->a_outptr_list,
-	   &list_id->is_domain_resolved) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-    }
-
   if (qexec_insert_tuple_into_list (thread_p, list_id,
 				    analytic_state->a_outptr_list,
 				    &xasl_state->vd,
@@ -18987,7 +18931,17 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
       analytic_state->offset = lsid.curr_offset;
       analytic_state->tplno = lsid.curr_tplno;
 
-      if (func_p->function != PT_ROW_NUMBER)
+      if (func_p->function == PT_ROW_NUMBER)
+	{
+	  if (qfile_add_tuple_to_list (thread_p,
+				       analytic_state->output_file,
+				       tplrec.tpl) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lsid);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      else
 	{
 	  if (fetch_val_list (thread_p, analytic_state->a_regu_list,
 			      &xasl_state->vd, NULL, NULL, tplrec.tpl,
@@ -18996,36 +18950,12 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 	      qfile_close_scan (thread_p, &lsid);
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	}
 
-      list_id = analytic_state->output_file;
-      if (!list_id->is_domain_resolved)
-	{
-	  /* Resolve DB_TYPE_VARIABLE domains. */
-	  if (qfile_update_domains_on_type_list
-	      (thread_p, list_id, analytic_state->a_outptr_list,
-	       &list_id->is_domain_resolved) != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &lsid);
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      if (func_p->function == PT_ROW_NUMBER)
-	{
-	  if (qfile_add_tuple_to_list (thread_p, list_id, tplrec.tpl)
-	      != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &lsid);
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-      else
-	{
-	  if (qexec_insert_tuple_into_list (thread_p, list_id,
+	  if (qexec_insert_tuple_into_list (thread_p,
+					    analytic_state->output_file,
 					    analytic_state->a_outptr_list,
-					    &xasl_state->vd, &output_tplrec)
-	      != NO_ERROR)
+					    &xasl_state->vd,
+					    &output_tplrec) != NO_ERROR)
 	    {
 	      qfile_close_scan (thread_p, &lsid);
 	      GOTO_EXIT_ON_ERROR;
