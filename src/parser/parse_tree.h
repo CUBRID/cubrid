@@ -2725,10 +2725,15 @@ struct pt_filter_index_info
   PT_NODE *atts;		/* attributes */
   int atts_count;		/* attributes count */
   int depth;			/* expression depth */
-  bool is_valid_expr;		/* true, if invalid filter index expression */
   bool *is_null_atts;		/* for each filter index attribute
 				   true, when "is null index_attribute" term
 				   is contained in filter index expression */
+  bool has_keys_in_expression;	/* true, if an index key appear in
+				   expression */
+  bool is_constant_expression;	/* true, if expression is constant */
+  bool is_valid_expr;		/* true, if invalid filter index expression */
+  bool has_not;			/* true, when not operator is found in
+				   filter index expression */
 };
 
 /*

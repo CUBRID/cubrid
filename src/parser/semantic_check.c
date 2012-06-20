@@ -327,7 +327,8 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser,
 						 void *arg,
 						 int *continue_walk);
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
-					PT_NODE * atts, PT_NODE * node);
+					PT_NODE * atts, PT_NODE * node,
+					MOP db_obj);
 
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
@@ -7652,7 +7653,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   /* if this is a filter index, check that the filter is a valid filter
      expression. */
   pt_check_filter_index_expr (parser, node->info.index.column_names,
-			      node->info.index.where);
+			      node->info.index.where, db_obj);
 }
 
 /*
@@ -9597,9 +9598,30 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
 	  if (!pt_has_error (parser) && node->node_type == PT_ALTER_INDEX)
 	    {
-	      pt_check_filter_index_expr (parser,
-					  node->info.index.column_names,
-					  node->info.index.where);
+	      DB_OBJECT *db_obj = NULL;
+	      PT_NODE *name = NULL;
+
+	      if (node->info.index.indexed_class)
+		{
+		  name =
+		    node->info.index.indexed_class->info.spec.entity_name;
+		  db_obj = db_find_class (name->info.name.original);
+
+		  if (db_obj == NULL)
+		    {
+		      PT_ERRORmf (parser, name,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_IS_NOT_A_CLASS,
+				  name->info.name.original);
+		    }
+		}
+
+	      if (!pt_has_error (parser))
+		{
+		  pt_check_filter_index_expr (parser,
+					      node->info.index.column_names,
+					      node->info.index.where, db_obj);
+		}
 	    }
 
 	  if (!pt_has_error (parser))
@@ -13125,10 +13147,11 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
  * parser (in)	: parser context
  * atts (in): an attribute definition list
  * node (in) : root node of expression tree
+ * db_obj (in) : class mop
  */
 static void
 pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
-			    PT_NODE * node)
+			    PT_NODE * node, MOP db_obj)
 {
   PT_FILTER_INDEX_INFO info;
   int atts_count = 0, i = 0;
@@ -13159,18 +13182,80 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
       info.is_null_atts[i] = false;
     }
   info.is_valid_expr = true;
+  info.is_constant_expression = true;
+  info.has_keys_in_expression = false;
   info.depth = 0;
+  info.has_not = false;
 
   (void) parser_walk_tree (parser, node, pt_check_filter_index_expr_pre,
 			   &info, pt_check_filter_index_expr_post, &info);
 
+  /* at least one key must be contained in filter expression or
+     at least one key must be not null constrained */
+  if (info.is_valid_expr == true && info.is_constant_expression == false
+      && info.has_keys_in_expression == false)
+    {
+      PT_NODE *attr = NULL, *p_nam = NULL;
+      SM_CLASS *smclass = NULL;
+      SM_ATTRIBUTE *smatt = NULL;
+      int i;
+      bool has_not_null_constraint;
+
+      /* search for null constraints */
+      i = 0;
+      has_not_null_constraint = false;
+      for (attr = info.atts; attr != NULL && has_not_null_constraint == false;
+	   attr = attr->next, i++)
+	{
+	  if (attr->node_type == PT_SORT_SPEC)
+	    {
+	      p_nam = attr->info.sort_spec.expr;
+	    }
+	  else if (attr->node_type == PT_ATTR_DEF)
+	    {
+	      p_nam = attr->info.attr_def.attr_name;
+	    }
+
+	  if (p_nam == NULL || p_nam->node_type != PT_NAME)
+	    {
+	      continue;		/* give up */
+	    }
+
+	  if (smclass == NULL)
+	    {
+	      assert (db_obj != NULL);
+	      if (au_fetch_class (db_obj, &smclass, AU_FETCH_READ,
+				  AU_SELECT) != NO_ERROR)
+		{
+		  info.is_valid_expr = false;
+		  break;
+		}
+	    }
+
+	  for (smatt = smclass->attributes; smatt != NULL;
+	       smatt = (SM_ATTRIBUTE *) smatt->header.next)
+	    {
+	      if (SM_COMPARE_NAMES (smatt->header.name,
+				    p_nam->info.name.original) == 0)
+		{
+		  if (db_attribute_is_non_null (smatt))
+		    {
+		      has_not_null_constraint = true;
+		    }
+		  break;
+		}
+	    }
+	}
+
+      if (has_not_null_constraint == false)
+	{
+	  info.is_valid_expr = false;
+	}
+    }
   if (info.is_valid_expr == false)
     {
-      if (!pt_has_error (parser))
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
-	}
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
     }
 
   if (info.is_null_atts)
@@ -13195,9 +13280,27 @@ pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_FILTER_INDEX_INFO *info = (PT_FILTER_INDEX_INFO *) arg;
   assert (info != NULL);
 
-  if (node->node_type == PT_EXPR || node->node_type == PT_FUNCTION)
+  switch (node->node_type)
     {
+    case PT_EXPR:
       info->depth--;
+      switch (node->info.expr.op)
+	{
+	case PT_NOT:
+	  info->has_not = !(info->has_not);
+	  break;
+
+	default:
+	  break;
+	}
+      break;
+
+    case PT_FUNCTION:
+      info->depth--;
+      break;
+
+    default:
+      break;
     }
 
   return node;
@@ -13234,14 +13337,12 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       switch (node->info.expr.op)
 	{
 	case PT_AND:
-	case PT_NOT:
 	case PT_BETWEEN:
 	case PT_NOT_BETWEEN:
 	case PT_LIKE:
 	case PT_NOT_LIKE:
 	case PT_IS_IN:
 	case PT_IS_NOT_IN:
-	case PT_IS_NOT_NULL:
 	case PT_IS:
 	case PT_IS_NOT:
 	case PT_EXISTS:
@@ -13422,12 +13523,22 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_CONV:
 	  /* valid expression, nothing to do */
 	  break;
+	case PT_NOT:
+	  info->has_not = !(info->has_not);
+	  break;
 	case PT_IS_NULL:
+	case PT_IS_NOT_NULL:
 	  {
 	    PT_NODE *attr = NULL, *p_nam = NULL;
 	    PT_NODE *arg1 = NULL;
 	    int i = 0, j = 0;
 
+	    if ((node->info.expr.op == PT_IS_NULL && info->has_not == true)
+		|| (node->info.expr.op == PT_IS_NOT_NULL
+		    && info->has_not == false))
+	      {
+		break;
+	      }
 	    arg1 = node->info.expr.arg1;
 	    if (arg1 == NULL || arg1->node_type != PT_NAME ||
 		arg1->info.name.original == NULL || info->atts == NULL)
@@ -13435,7 +13546,8 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		break;
 	      }
 
-	    for (attr = info->atts; attr != NULL; attr = attr->next)
+	    i = 0;
+	    for (attr = info->atts; attr != NULL; attr = attr->next, i++)
 	      {
 		if (attr->node_type == PT_SORT_SPEC)
 		  {
@@ -13470,8 +13582,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 
 		    break;
 		  }
-
-		i++;
 	      }
 	  }
 	  break;
@@ -13510,11 +13620,40 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 
     case PT_NAME:
       /* only allow attribute names */
+      info->is_constant_expression = false;
       if (node->info.name.meta_class != PT_META_ATTR
 	  && node->info.name.meta_class != PT_NORMAL)
 	{
 	  /* valid expression, nothing to do */
 	  info->is_valid_expr = false;
+	}
+      else if (info->has_keys_in_expression == false)
+	{
+	  PT_NODE *attr = NULL, *p_nam = NULL;
+	  for (attr = info->atts; attr != NULL; attr = attr->next)
+	    {
+	      if (attr->node_type == PT_SORT_SPEC)
+		{
+		  p_nam = attr->info.sort_spec.expr;
+		}
+	      else if (attr->node_type == PT_ATTR_DEF)
+		{
+		  p_nam = attr->info.attr_def.attr_name;
+		}
+
+	      if (p_nam == NULL || p_nam->node_type != PT_NAME)
+		{
+		  continue;	/* give up */
+		}
+
+	      if (!pt_str_compare (p_nam->info.name.original,
+				   node->info.name.original,
+				   CASE_INSENSITIVE))
+		{
+		  info->has_keys_in_expression = true;
+		  break;
+		}
+	    }
 	}
       break;
 
