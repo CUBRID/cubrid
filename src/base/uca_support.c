@@ -2219,6 +2219,7 @@ add_opt_coll_contraction (LOCALE_COLLATION * lc,
     }
 
   opt_contr = &(lc->opt_coll.contr_list[lc->opt_coll.count_contr++]);
+  memset (opt_contr, 0, sizeof (COLL_CONTRACTION));
 
   p_buf = opt_contr->c_buf;
 
