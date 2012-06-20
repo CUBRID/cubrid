@@ -9507,6 +9507,19 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
 	       smclass->header.name, name->info.name.original);
+
+      /* Before promoting, make sure to recreate filter and function indexes
+       * because the expression used in these indexes depends on the
+       * partitioned class name, not on the partition name
+       */
+      error =
+	do_recreate_renamed_class_indexes (parser, smclass->header.name,
+					   subclass_name);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
       subclass = sm_find_class (subclass_name);
       if (subclass == NULL)
 	{
