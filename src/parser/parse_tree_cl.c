@@ -5983,6 +5983,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
   char s[PT_MEMB_BUF_SIZE];
+  bool show_collation = false;
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
       && p->info.attr_def.attr_type == PT_META_ATTR)
@@ -6023,10 +6024,11 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
-    case PT_TYPE_BIT:
-    case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+      show_collation = true;
+    case PT_TYPE_BIT:
+    case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->data_type)
@@ -6061,6 +6063,15 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      sprintf (s, "(%d)", precision);
 	      q = pt_append_nulstring (parser, q, s);
 	    }
+
+	  if (show_collation)
+	    {
+	      sprintf (s, " collate %s",
+		       lang_get_collation_name (p->data_type->info.data_type.
+						collation_id));
+	      q = pt_append_nulstring (parser, q, s);
+	    }
+
 	}
       break;
     case PT_TYPE_DOUBLE:
