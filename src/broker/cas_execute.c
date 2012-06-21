@@ -6523,7 +6523,7 @@ get_domain_str (DB_DOMAIN * domain)
       int avail_size;
       char *domain_str_p;
 
-      size = strlen (p);
+      size = strlen (p) + 1;
       if (precision_str[0] != '\0')
 	{
 	  size += strlen (precision_str) + 2;
@@ -6532,7 +6532,7 @@ get_domain_str (DB_DOMAIN * domain)
 	{
 	  size += strlen (scale_str) + 1;
 	}
-      domain_str = (char *) malloc (size + 1);
+      domain_str = (char *) malloc (size);
       if (domain_str == NULL)
 	{
 	  return NULL;
