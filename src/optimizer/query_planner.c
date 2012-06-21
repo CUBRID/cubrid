@@ -1807,6 +1807,10 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
 	}
+      else
+	{
+	  bitset_add (&(plan->plan_un.scan.kf_terms), t);
+	}
     }				/* for (t = ... ) */
 
   /* exclude key filter terms from sargs terms */
@@ -2126,8 +2130,7 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &plan->plan_un.scan.terms, f);
 
       /* print index covering */
-      if (plan->plan_un.scan.index
-	  && plan->plan_un.scan.index->head->cover_segments
+      if (qo_plan_coverage_index (plan)
 	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
 	{
 	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 0)
@@ -3458,8 +3461,7 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p,
       /* if the sort plan contains a index plan with segment covering,
        * prefer it
        */
-      if (qo_is_interesting_order_scan (scan_plan_p)
-	  && scan_plan_p->plan_un.scan.index->head->cover_segments)
+      if (qo_plan_coverage_index (scan_plan_p))
 	{
 	  if (scan_plan_p->plan_un.scan.index->head ==
 	      sort_subplan_p->plan_un.scan.index->head)
@@ -3603,16 +3605,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
     {
-      if (qo_is_interesting_order_scan (a)
-	  && a->plan_un.scan.index->head->cover_segments
-	  && qo_is_seq_scan (b))
+      if (qo_plan_coverage_index (a) && qo_is_seq_scan (b))
 	{
 	  return PLAN_COMP_LT;
 	}
 
-      if (qo_is_interesting_order_scan (b)
-	  && b->plan_un.scan.index->head->cover_segments
-	  && qo_is_seq_scan (a))
+      if (qo_plan_coverage_index (b) && qo_is_seq_scan (a))
 	{
 	  return PLAN_COMP_GT;
 	}
@@ -10447,6 +10445,10 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
 	}
+      else
+	{
+	  bitset_add (&(plan->plan_un.scan.kf_terms), t);
+	}
     }				/* for (t = ... ) */
 
   /* exclude key filter terms from sargs terms */
@@ -11728,6 +11730,10 @@ qo_index_scan_group_by_new (QO_INFO * info, QO_NODE * node,
 	    {
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
+	}
+      else
+	{
+	  bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	}
     }				/* for (t = ... ) */
 

@@ -1826,9 +1826,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 		   * is normal term, we push them to key filter
 		   * instead of sarg term.
 		   */
-		  if (qo_is_iscan (inner)
-		      && inner->plan_un.scan.index->head
-		      && inner->plan_un.scan.index->head->cover_segments)
+		  if (qo_plan_coverage_index (inner))
 		    {
 		      bitset_add (&(inner->plan_un.scan.kf_terms), i);
 		      bitset_difference (&predset,
@@ -2537,6 +2535,26 @@ qo_plan_skip_groupby (QO_PLAN * plan)
 	  plan->plan_un.scan.index->head->groupby_skip) ? true : false;
 }
 
+/*
+ * qo_plan_coverage_index () - check the plan info for coverage index
+ *   return: true/false
+ *   plan(in): QO_PLAN
+ */
+bool
+qo_plan_coverage_index (QO_PLAN * plan)
+{
+  if (qo_is_interesting_order_scan (plan)
+      && plan->plan_un.scan.index->head
+      && plan->plan_un.scan.index->head->cover_segments)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
 /******************************************************************************
  *  qo_xasl support functions
  *****************************************************************************/
@@ -2950,7 +2968,7 @@ regu_ptr_list_create ()
  *                         and frees each node (the containing node, NOT the
  *                         actual REGU_VARIABLE).
  *   list(in): the REGU_PTR_LIST. It can be NULL.
- *   return: 
+ *   return:
  */
 static void
 regu_ptr_list_free (REGU_PTR_LIST list)
@@ -2968,7 +2986,7 @@ regu_ptr_list_free (REGU_PTR_LIST list)
 /*
  * regu_ptr_list_add_regu () - adds a pointer to a regu variable to the list,
  *                             initializing the list if required.
- * 
+ *
  * regu(in): REGU_VAR ptr to add to the head of the list
  * list(in): the initial list. It can be NULL - in this case it will be initialised.
  * return: the list with the added element, or NULL on error.

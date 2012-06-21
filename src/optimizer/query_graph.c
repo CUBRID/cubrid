@@ -1820,15 +1820,16 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   else
     {
       /* conjunct->node_type == PT_VALUE */
+      if (!pt_false_search_condition (QO_ENV_PARSER (env), conjunct))
+	{
+	  /* is an always-true WHERE condition */
+	  QO_TERM_SELECTIVITY (term) = 1.0;
+	}
+
       if (conjunct->info.value.location == 0)
 	{
 	  /* is an always-false WHERE condition */
 	  QO_TERM_CLASS (term) = QO_TC_OTHER;	/* is dummy */
-	  if (!pt_false_search_condition (QO_ENV_PARSER (env), conjunct))
-	    {
-	      /* is an always-true WHERE condition */
-	      QO_TERM_SELECTIVITY (term) = 1.0;
-	    }
 	}
       else
 	{
@@ -1849,7 +1850,15 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	      QO_TERM_JOIN_TYPE (term) = NO_JOIN;
 	      QO_TERM_PT_EXPR (term) = conjunct;
 	      QO_TERM_LOCATION (term) = conjunct->info.value.location;
-	      QO_TERM_SELECTIVITY (term) = 0.0;
+	      if (!pt_false_search_condition (QO_ENV_PARSER (env), conjunct))
+		{
+		  /* is an always-true WHERE condition */
+		  QO_TERM_SELECTIVITY (term) = 1.0;
+		}
+	      else
+		{
+		  QO_TERM_SELECTIVITY (term) = 0.0;
+		}
 	      QO_TERM_RANK (term) = 0;
 	      QO_TERM_FLAG (term) = 0;	/* init */
 	      QO_TERM_IDX (term) = env->nterms;
