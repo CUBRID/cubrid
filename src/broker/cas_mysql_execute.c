@@ -1394,7 +1394,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	      T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
-  int err_code;
+  int err_code = 0;
   int num_tuple;
   int tuple;
   T_QUERY_RESULT *result;
@@ -1419,16 +1419,6 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else if (err_code == MYSQL_NO_DATA)
 	{
-	  if (shm_appl->select_auto_commit == ON)
-	    {
-	      hm_srv_handle_set_fetch_completed (srv_handle);
-	    }
-
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
-	    {
-	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-	    }
-
 	  break;
 	}
       memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
@@ -1448,10 +1438,29 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
 
       cursor_pos++;
+      if (num_tuple < cursor_pos)
+	{
+	  err_code = MYSQL_NO_DATA;
+	  break;
+	}
+    }
+
+  if (err_code == MYSQL_NO_DATA)
+    {
+      if (shm_appl->select_auto_commit == ON)
+	{
+	  hm_srv_handle_set_fetch_completed (srv_handle);
+	}
+
+      if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	}
     }
 
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, tuple);
   return 0;
+
 }
 
 #if 0
