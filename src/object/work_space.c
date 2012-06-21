@@ -1257,6 +1257,19 @@ ws_perm_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
 	  return ER_FAILED;
 	}
     }
+
+  /* Make sure that we have the new class in workspace */
+  if (class_mop->object == NULL)
+    {
+      int error = NO_ERROR;
+      SM_CLASS *smclass = NULL;
+      /* No need to check authorization here */
+      error = au_fetch_class_force (class_mop, &smclass, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   mop->class_mop = class_mop;
   ws_perm_oid (mop, new_oid);
   if (relink)
