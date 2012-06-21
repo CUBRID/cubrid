@@ -384,6 +384,8 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
       proxy_context_set_out_tran (ctx_p);
       ctx_p->prepared_stmt = NULL;
       ctx_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
+
+      proxy_context_free_stmt (ctx_p);
     }
 
 end:

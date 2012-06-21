@@ -376,6 +376,9 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid)
       if (!(stmt_p->num_pinned == 0)
 	  || !(stmt_p->lru_next == NULL && stmt_p->lru_prev == NULL))
 	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Invalid statement LRU. statement(%s).",
+		     shard_str_stmt (stmt_p));
 	  return NULL;
 	}
     }
@@ -388,7 +391,8 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid)
 	}
       else
 	{
-	  PROXY_DEBUG_LOG ("Exceeds max prepared statement. ");
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Exceeds max prepared statement. ");
 	  return NULL;
 	}
     }
