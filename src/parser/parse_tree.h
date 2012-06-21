@@ -911,7 +911,6 @@ typedef enum
   PT_PATH_INNER,		/* types of join which may emulate path */
   PT_PATH_OUTER,
   PT_PATH_OUTER_WEASEL,
-  PT_ADT,			/* class-like user defined type */
   PT_LOCAL,			/* local or cascaded view check option */
   PT_CASCADED,
   PT_CURRENT,

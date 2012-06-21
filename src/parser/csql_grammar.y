@@ -948,7 +948,6 @@ typedef struct YYLTYPE
 %token ADD
 %token ADD_MONTHS
 %token AFTER
-%token ALIAS
 %token ALL
 %token ALLOCATE
 %token ALTER
@@ -958,7 +957,6 @@ typedef struct YYLTYPE
 %token AS
 %token ASC
 %token ASSERTION
-%token ASYNC
 %token AT
 %token ATTACH
 %token ATTRIBUTE
@@ -990,14 +988,12 @@ typedef struct YYLTYPE
 %token CLASSES
 %token CLOB_
 %token CLOSE
-%token CLUSTER
 %token COALESCE
 %token COLLATE
 %token COLLATION
 %token COLUMN
 %token COMMIT
 %token COMP_NULLSAFE_EQ
-%token COMPLETION
 %token CONNECT
 %token CONNECT_BY_ISCYCLE
 %token CONNECT_BY_ISLEAF
@@ -1040,7 +1036,6 @@ typedef struct YYLTYPE
 %token DESCRIBE
 %token DESCRIPTOR
 %token DIAGNOSTICS
-%token DICTIONARY
 %token DIFFERENCE_
 %token DISCONNECT
 %token DISTINCT
@@ -1060,7 +1055,6 @@ typedef struct YYLTYPE
 %token EVALUATE
 %token EXCEPT
 %token EXCEPTION
-%token EXCLUDE
 %token EXEC
 %token EXECUTE
 %token EXISTS
@@ -1116,7 +1110,6 @@ typedef struct YYLTYPE
 %token KEYLIMIT
 %token LANGUAGE
 %token LAST
-%token LDB
 %token LEADING_
 %token LEAVE
 %token LEFT
@@ -1164,17 +1157,13 @@ typedef struct YYLTYPE
 %token OCTET_LENGTH
 %token OF
 %token OFF_
-%token OID_
 %token ON_
 %token ONLY
 %token OPEN
-%token OPERATION
-%token OPERATORS
 %token OPTIMIZATION
 %token OPTION
 %token OR
 %token ORDER
-%token OTHERS
 %token OUT_
 %token OUTER
 %token OUTPUT
@@ -1182,20 +1171,15 @@ typedef struct YYLTYPE
 %token OVERLAPS
 %token PARAMETERS
 %token PARTIAL
-%token PENDANT
 %token POSITION
 %token PRECISION
-%token PREORDER
 %token PREPARE
 %token PRESERVE
 %token PRIMARY
 %token PRIOR
-%token Private
 %token PRIVILEGES
 %token PROCEDURE
 %token PROMOTE
-%token PROTECTED
-%token PROXY
 %token QUERY
 %token READ
 %token REBUILD
@@ -1204,7 +1188,6 @@ typedef struct YYLTYPE
 %token REFERENCES
 %token REFERENCING
 %token REGEXP
-%token REGISTER
 %token RELATIVE_
 %token RENAME
 %token REPLACE
@@ -1256,7 +1239,6 @@ typedef struct YYLTYPE
 %token SQLWARNING
 %token STATISTICS
 %token String
-%token STRUCTURE
 %token SUBCLASS
 %token SUBSET
 %token SUBSETEQ
@@ -1270,13 +1252,10 @@ typedef struct YYLTYPE
 %token SYS_DATETIME
 %token SYS_TIME_
 %token SYS_TIMESTAMP
-%token SYS_USER
 %token SYSTEM_USER
 %token TABLE
 %token TEMPORARY
-%token TEST
 %token THEN
-%token THERE
 %token Time
 %token TIMESTAMP
 %token TIMEZONE_HOUR
@@ -1290,7 +1269,6 @@ typedef struct YYLTYPE
 %token TRIM
 %token True
 %token TRUNCATE
-%token TYPE
 %token UNDER
 %token Union
 %token UNIQUE
@@ -1312,9 +1290,6 @@ typedef struct YYLTYPE
 %token VARYING
 %token VCLASS
 %token VIEW
-%token VIRTUAL
-%token VISIBLE
-%token WAIT
 %token WHEN
 %token WHENEVER
 %token WHERE
@@ -2194,7 +2169,7 @@ create_stmt
 
 			if (CONTAINER_AT_1 ($14) != NULL)
 			  {
-			    if ((PT_MISC_TYPE) $4 == PT_ADT || $6 != NULL || $7 != NULL || $10 != NULL
+			    if ($6 != NULL || $7 != NULL || $10 != NULL
 				|| $11 != NULL || $12 != NULL)
 			      {
 				PT_ERRORf (this_parser, qc, "check syntax at %s",
@@ -4366,12 +4341,6 @@ opt_class_type
 		{{
 
 			$$ = PT_CLASS;
-
-		DBG_PRINT}}
-	| TYPE
-		{{
-
-			$$ = PT_ADT;
 
 		DBG_PRINT}}
 	;
@@ -7240,12 +7209,6 @@ of_class_table_type
 			$$ = PT_CLASS;
 
 		DBG_PRINT}}
-	| TYPE
-		{{
-
-			$$ = PT_ADT;
-
-		DBG_PRINT}}
 	;
 
 of_view_vclass
@@ -9197,15 +9160,6 @@ isolation_level_spec
 			container_4 ctn;
 			SET_CONTAINER_4 (ctn, $1, FROM_NUMBER (PT_NO_ISOLATION_LEVEL),
 					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (0));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| ASYNC WORKSPACE
-		{{
-
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, FROM_NUMBER (PT_NO_ISOLATION_LEVEL),
-					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (1));
 			$$ = ctn;
 
 		DBG_PRINT}}
