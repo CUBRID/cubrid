@@ -1458,7 +1458,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
       if (is_net_timed_out ())
 	{
+#if defined(CAS_FOR_MYSQL)
+	  cas_log_msg = "SESSION TIMEOUT OR MYSQL CONNECT TIMEOUT";
+#else
 	  cas_log_msg = "SESSION TIMEOUT";
+#endif
 	}
       else
 	{
@@ -1896,7 +1900,11 @@ net_read_process (SOCKET proxy_sock_fd,
     }
   else
     {
+#if defined(CAS_FOR_MYSQL)
+      net_timeout_set (MYSQL_CONNECT_TIMEOUT);
+#else
       net_timeout_set (-1);
+#endif
     }
 
   do
@@ -1936,6 +1944,11 @@ net_read_process (SOCKET proxy_sock_fd,
 		  ret_value = -1;
 		  break;
 		}
+#if defined(CAS_FOR_MYSQL)
+	      /* MYSQL_CONNECT_TIMEOUT case */
+	      ret_value = -1;
+	      break;
+#endif
 	    }
 	}
       else

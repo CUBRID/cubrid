@@ -33,6 +33,7 @@
 
 #define NET_MIN_TIMEOUT		2
 #define NET_DEFAULT_TIMEOUT	60
+#define MYSQL_CONNECT_TIMEOUT	(5*60*60) /* 5 hour. MySQL timeout = 8 hour */
 
 #ifndef MIN
 #define MIN(X, Y)	((X) < (Y) ? (X) : (Y))
