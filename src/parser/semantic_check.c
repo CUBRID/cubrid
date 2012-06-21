@@ -13190,7 +13190,8 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
   (void) parser_walk_tree (parser, node, pt_check_filter_index_expr_pre,
 			   &info, pt_check_filter_index_expr_post, &info);
 
-  /* at least one key must be contained in filter expression or
+  /* at least one key must be contained in filter expression (without IS_NULL
+     operator, or variations like "not a is not null") or
      at least one key must be not null constrained */
   if (info.is_valid_expr == true && info.is_constant_expression == false
       && info.has_keys_in_expression == false)
@@ -13630,7 +13631,9 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       else if (info->has_keys_in_expression == false)
 	{
 	  PT_NODE *attr = NULL, *p_nam = NULL;
-	  for (attr = info->atts; attr != NULL; attr = attr->next)
+	  int i;
+	  i = 0;
+	  for (attr = info->atts; attr != NULL; attr = attr->next, i++)
 	    {
 	      if (attr->node_type == PT_SORT_SPEC)
 		{
@@ -13646,9 +13649,10 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		  continue;	/* give up */
 		}
 
-	      if (!pt_str_compare (p_nam->info.name.original,
+	      if ((pt_str_compare (p_nam->info.name.original,
 				   node->info.name.original,
-				   CASE_INSENSITIVE))
+				   CASE_INSENSITIVE) == 0)
+		  && (info->is_null_atts[i] == 0))
 		{
 		  info->has_keys_in_expression = true;
 		  break;
