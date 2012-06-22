@@ -27,7 +27,7 @@
 			<value>-73, -74, -75</value>
 		</property>
 		<property name="deadlockLoserCodes">
-			<value>-72, -966, -967, -968</value>
+			<value>-72, -966, -967, -968, -1075</value>
 		</property>
 				
   </bean>
