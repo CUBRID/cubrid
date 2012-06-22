@@ -218,6 +218,11 @@ extern "C"
     CCI_AUTOCOMMIT_TRUE
   } CCI_AUTOCOMMIT_MODE;
 
+#define SET_AUTOCOMMIT_FROM_CASINFO(c) \
+  (c)->autocommit_mode = \
+  (c)->cas_info[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_AUTOCOMMIT ? \
+      CCI_AUTOCOMMIT_TRUE : CCI_AUTOCOMMIT_FALSE
+
   typedef enum
   {
     CCI_NO_BACKSLASH_ESCAPES_NOT_SET = -1,
@@ -675,7 +680,11 @@ extern "C"
 					     int port,
 					     char *db_name,
 					     char *db_user, char *dbpasswd);
+  extern int cci_connect_ex (char *ip, int port, char *db, char *user,
+			     char *pass, T_CCI_ERROR * error);
   extern int cci_connect_with_url (char *url, char *user, char *password);
+  extern int cci_connect_with_url_ex (char *url, char *user, char *pass,
+				      T_CCI_ERROR * error);
   extern int cci_disconnect (int con_handle, T_CCI_ERROR * err_buf);
   extern int cci_end_tran (int con_handle, char type, T_CCI_ERROR * err_buf);
   extern int cci_prepare (int con_handle,

@@ -327,26 +327,16 @@ cci_get_version (int *major, int *minor, int *patch)
   return 0;
 }
 
-int
-CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
-				char *db_user, char *dbpasswd)
+static int
+cci_connect_internal (char *ip, int port, char *db, char *user, char *pass,
+		      T_CCI_ERROR * errout)
 {
-  int con_handle_id, error;
-  T_CON_HANDLE *con_handle;
+  int conn_id;
+  T_CON_HANDLE *conn;
+  int ret = CCI_ER_NO_ERROR;
 
-#ifdef CCI_DEBUG
-  int pid = getpid ();
-#endif
-
-  if (ip == NULL || port < 0
-      || db_name == NULL || db_user == NULL || dbpasswd == NULL)
+  if (ip == NULL || port < 0 || db == NULL || user == NULL || pass == NULL)
     {
-#ifdef CCI_DEBUG
-      CCI_DEBUG_PRINT (print_debug_msg
-		       ("cci_connect fail (pid %d): %s %d %s %s %s", pid, ip,
-			port, DEBUG_STR (db_name), DEBUG_STR (db_user),
-			DEBUG_STR (dbpasswd)));
-#endif
       return CCI_ER_CONNECT;
     }
 
@@ -357,49 +347,66 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
     }
 #endif
 
-  con_handle_id = cci_get_new_handle_id (ip, port, db_name, db_user,
-					 dbpasswd);
-  if (con_handle_id >= 0)
+  conn_id = cci_get_new_handle_id (ip, port, db, user, pass);
+  if (conn_id < 0)
     {
-      con_handle = hm_find_con_handle (con_handle_id);
-      if (con_handle != NULL)
-	{
-	  SET_START_TIME_FOR_LOGIN (con_handle);
-
-	  con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-	  error = cci_get_db_version (con_handle_id, NULL, 0);
-
-	  if (error < 0)
-	    {
-	      hm_con_handle_free (con_handle_id);
-	      con_handle_id = error;
-	    }
-	  else
-	    {
-	      con_handle->autocommit_mode =
-		(con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
-		 & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
-	      RESET_START_TIME (con_handle);
-	    }
-	}
-      else
-	{
-	  con_handle_id = CCI_ER_CON_HANDLE;
-	}
+      return conn_id;
     }
 
-#ifdef CCI_DEBUG
-  CCI_DEBUG_PRINT (print_debug_msg
-		   ("cci_connect (pid %d, h:%d): %s %d %s %s %s", pid,
-		    con_handle_id, ip, port, DEBUG_STR (db_name),
-		    DEBUG_STR (db_user), DEBUG_STR (dbpasswd)));
-#endif
+  conn = hm_find_con_handle (conn_id);
+  if (conn == NULL)
+    {
+      return CCI_ER_CON_HANDLE;
+    }
 
-  return con_handle_id;
+  SET_START_TIME_FOR_LOGIN (conn);
+  ret = cas_connect (conn, errout);
+  if (ret < 0)
+    {
+      hm_con_handle_free (conn_id);
+      return ret;
+    }
+  ret = qe_end_tran (conn, CCI_TRAN_COMMIT, errout);
+  if (ret < 0)
+    {
+      hm_con_handle_free (conn_id);
+      return ret;
+    }
+  SET_AUTOCOMMIT_FROM_CASINFO (conn);
+  RESET_START_TIME (conn);
+
+  return conn_id;
 }
 
 int
-cci_connect_with_url (char *url, char *user, char *password)
+cci_connect_ex (char *ip, int port, char *db, char *user, char *pass,
+		T_CCI_ERROR * errout)
+{
+  return cci_connect_internal (ip, port, db, user, pass, errout);
+}
+
+int
+CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
+				char *db_user, char *dbpasswd)
+{
+  int id;
+#ifdef CCI_DEBUG
+  int pid = getpid ();
+#endif
+
+  id = cci_connect_internal (ip, port, db_name, db_user, dbpasswd, NULL);
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_connect (pid %d, h:%d): %s %d %s %s %s", pid,
+		    id, ip, port, DEBUG_STR (db_name),
+		    DEBUG_STR (db_user), DEBUG_STR (dbpasswd)));
+#endif
+  return id;
+}
+
+static int
+cci_connect_with_url_internal (char *url, char *user, char *pass,
+			       T_CCI_ERROR * errout)
 {
   char *token[MAX_URL_MATCH_COUNT];
   int error;
@@ -410,14 +417,14 @@ cci_connect_with_url (char *url, char *user, char *password)
   char *end = NULL;
   char *host, *dbname;
   int port;
-  int con_handle_id;
+  int conn_id;
   bool use_url = false;
-  T_CON_HANDLE *con_handle = NULL;
+  T_CON_HANDLE *conn = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_connect_with_url %s %s %s",
-		    DEBUG_STR (url), DEBUG_STR (user), DEBUG_STR (password)));
+		    DEBUG_STR (url), DEBUG_STR (user), DEBUG_STR (pass)));
 #endif
 
   if (url == NULL)
@@ -425,19 +432,26 @@ cci_connect_with_url (char *url, char *user, char *password)
       return CCI_ER_CONNECT;
     }
 
+#if defined(WINDOWS)
+  if (wsa_initialize () < 0)
+    {
+      return CCI_ER_CONNECT;
+    }
+#endif
+
   /* The NULL is same as "". */
   if (user == NULL)
     {
       user = (char *) "";
     }
-  if (password == NULL)
+  if (pass == NULL)
     {
-      password = (char *) "";
+      pass = (char *) "";
     }
 
   if (user[0] == '\0')
     {
-      if (password[0] != '\0')
+      if (pass[0] != '\0')
 	{
 	  /* error - cci_connect_with_url (url, "", "pass") */
 	  return CCI_ER_CONNECT;
@@ -457,12 +471,12 @@ cci_connect_with_url (char *url, char *user, char *password)
   if (use_url)
     {
       user = token[3];
-      password = token[4];
+      pass = token[4];
     }
   property = token[5];
   if (property == NULL)
     {
-      property = "";
+      property = (char *) "";
     }
 
   if (user[0] == '\0')
@@ -471,72 +485,60 @@ cci_connect_with_url (char *url, char *user, char *password)
       user = (char *) "public";
     }
 
-#if defined(WINDOWS)
-  if (wsa_initialize () < 0)
+  conn_id = cci_get_new_handle_id (host, port, dbname, user, pass);
+  if (conn_id < 0)
     {
-      return CCI_ER_CONNECT;
+      goto ret;
     }
-#endif
 
-  con_handle_id = cci_get_new_handle_id (host, port, dbname, user, password);
-  if (con_handle_id >= 0)
+  conn = hm_find_con_handle (conn_id);
+  if (conn == NULL)
     {
-      con_handle = hm_find_con_handle (con_handle_id);
-      if (con_handle == NULL)
+      conn_id = CCI_ER_CON_HANDLE;
+      goto ret;
+    }
+
+  snprintf (conn->url, SRV_CON_URL_SIZE,
+	    "cci:cubrid:%s:%d:%s:%s:********:%s",
+	    host, port, dbname, user, property);
+  if (property != NULL)
+    {
+      error = cci_conn_set_properties (conn, property);
+      API_SLOG (conn);
+      if (conn->log_trace_api)
 	{
-	  con_handle_id = CCI_ER_CON_HANDLE;
+	  CCI_LOG_DEBUG (conn->logger, "URL[%s]", url);
+	}
+      if (error < 0)
+	{
+	  hm_con_handle_free (conn_id);
+	  conn_id = error;
 	  goto ret;
 	}
 
-      snprintf (con_handle->url, SRV_CON_URL_SIZE,
-		"cci:cubrid:%s:%d:%s:%s:********:%s",
-		host, port, dbname, user, property);
-      if (property != NULL)
+      if (conn->alter_host_count > 0)
 	{
-	  error = cci_conn_set_properties (con_handle, property);
-	  API_SLOG (con_handle);
-	  if (con_handle->log_trace_api)
-	    {
-	      CCI_LOG_DEBUG (con_handle->logger, "URL[%s]", url);
-	    }
-	  if (error < 0)
-	    {
-	      hm_con_handle_free (con_handle_id);
-	      con_handle_id = error;
-	      goto ret;
-	    }
-
-	  if (con_handle->alter_host_count > 0)
-	    {
-	      con_handle->alter_host_id = 0;
-	    }
-	}
-
-      SET_START_TIME_FOR_LOGIN (con_handle);
-
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-      error = cci_get_db_version (con_handle_id, NULL, 0);
-
-      if (error < 0)
-	{
-	  hm_con_handle_free (con_handle_id);
-	  con_handle_id = error;
-	}
-      else
-	{
-	  if (con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
-	      & CAS_INFO_FLAG_MASK_AUTOCOMMIT)
-	    {
-	      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-	    }
-	  else
-	    {
-	      con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
-	    }
-
-	  RESET_START_TIME (con_handle);
+	  conn->alter_host_id = 0;
 	}
     }
+
+  SET_START_TIME_FOR_LOGIN (conn);
+  error = cas_connect (conn, errout);
+  if (error < 0)
+    {
+      hm_con_handle_free (conn_id);
+      conn_id = error;
+      goto ret;
+    }
+  error = qe_end_tran (conn, CCI_TRAN_COMMIT, errout);
+  if (error < 0)
+    {
+      hm_con_handle_free (conn_id);
+      conn_id = error;
+      goto ret;
+    }
+  SET_AUTOCOMMIT_FROM_CASINFO (conn);
+  RESET_START_TIME (conn);
 
 ret:
   for (i = 0; i < MAX_URL_MATCH_COUNT; i++)
@@ -546,14 +548,27 @@ ret:
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
-		   ("cci_connect_with_url return %d", con_handle_id));
+		   ("cci_connect_with_url return %d", conn_id));
 #endif
-  if (con_handle_id >= 0)
+  if (conn_id >= 0)
     {
-      API_ELOG (con_handle, con_handle_id);
+      API_ELOG (conn, conn_id);
     }
 
-  return con_handle_id;
+  return conn_id;
+}
+
+int
+cci_connect_with_url (char *url, char *user, char *password)
+{
+  return cci_connect_with_url_internal (url, user, password, NULL);
+}
+
+int
+cci_connect_with_url_ex (char *url, char *user, char *pass,
+			 T_CCI_ERROR * errout)
+{
+  return cci_connect_with_url_internal (url, user, pass, errout);
 }
 
 static int
