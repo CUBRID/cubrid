@@ -236,7 +236,7 @@ $set 5 MSGCAT_SET_ERROR
 169 Cannot remove user %s from the database.
 170 No user logged in.
 171 Incorrect or missing password.
-172 Password string cannot have more than 31 characters.
+172 Password string cannot have more than 31 bytes.
 173 Could not locate database file "%1$s".
 174 Could not obtain write access to database file "%1$s".
 175 Badly formatted database file "%1$s".
