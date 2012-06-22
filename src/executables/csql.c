@@ -190,6 +190,8 @@ static void csql_exit_session (int error);
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 				    const void *stream, int line_no);
 
+static bool check_incomplete_string (char *line_read);
+
 #if !defined(GNU_Readline)
 #if !defined(WINDOWS)
 /*
@@ -347,6 +349,48 @@ display_buffer (void)
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGPIPE, csql_pipe_save);
 #endif /* !WINDOWS */
+}
+
+
+static bool
+check_incomplete_string (char *line_read)
+{
+  char *ptr;
+  int line_length = strlen (line_read);
+  bool single_quote_on = false;
+  bool double_quote_on = false;
+
+  for (ptr = line_read; ptr < line_read + line_length; ptr++)
+    {
+      if (!double_quote_on && *ptr == '\'')
+	{
+	  if (ptr[1] == '\'')	/* escape by '' */
+	    {
+	      ptr++;
+	      continue;
+	    }
+
+	  single_quote_on = !single_quote_on;
+	}
+
+      if (!PRM_ANSI_QUOTES && !single_quote_on && *ptr == '\"')
+	{
+	  if (ptr[1] == '\"')	/* escape by "" */
+	    {
+	      ptr++;
+	      continue;
+	    }
+
+	  double_quote_on = !double_quote_on;
+	}
+
+      if (!PRM_NO_BACKSLASH_ESCAPES && *ptr == '\\')
+	{
+	  ptr++;
+	}
+    }
+
+  return (single_quote_on || double_quote_on);
 }
 
 /*
@@ -629,10 +673,11 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      break;
 	    }
-
 	}
 
-      if (incomplete_prev_line || !CSQL_SESSION_COMMAND_PREFIX (line_read[0]))
+      if (incomplete_prev_line ||
+	  !CSQL_SESSION_COMMAND_PREFIX (line_read[0]) || 
+	  check_incomplete_string (line_read))
 	{
 	  bool line_continuation = false;
 
