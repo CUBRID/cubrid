@@ -37,6 +37,9 @@ namespace dbgw
           const string &replace) throw();
       virtual ~ CUBRIDException() throw();
 
+    public:
+      virtual bool isConnectionError() const;
+
     protected:
       virtual void doCreateErrorMessage();
 

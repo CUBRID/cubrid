@@ -297,7 +297,7 @@ namespace dbgw
         if (m_type != DBGW_VAL_TYPE_DATETIME)
           {
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
-            DBGW_LOG_ERROR(e.what());
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
 

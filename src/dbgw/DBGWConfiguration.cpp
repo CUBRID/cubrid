@@ -82,7 +82,7 @@ namespace dbgw
 
   DBGWExecuter::DBGWExecuter(DBGWExecuterPool &executerPool,
       DBGWConnectionSharedPtr pConnection) :
-    m_bClosed(false), m_bDestroyed(false), m_bAutocommit(false),
+    m_bClosed(false), m_bDestroyed(false), m_bAutocommit(true),
     m_bInTran(false), m_bInvalid(false), m_pConnection(pConnection),
     m_executerPool(executerPool)
   {
@@ -113,32 +113,49 @@ namespace dbgw
         m_bInTran = true;
       }
 
-    DBGWPreparedStatementSharedPtr pStmt;
-    DBGWPreparedStatementHashMap::iterator it = m_preparedStatmentMap.find(
-        pQuery->getSqlKey());
-    if (it != m_preparedStatmentMap.end())
+    try
       {
-        pStmt = it->second;
-
-        if (pStmt != NULL)
+        DBGWPreparedStatementSharedPtr pStmt;
+        DBGWPreparedStatementHashMap::iterator it = m_preparedStatmentMap.find(
+            pQuery->getSqlKey());
+        if (it != m_preparedStatmentMap.end())
           {
-            pStmt->init(pQuery);
-          }
-      }
+            pStmt = it->second;
 
-    if (pStmt == NULL)
-      {
-        pStmt = m_pConnection->preparedStatement(pQuery);
+            if (pStmt != NULL)
+              {
+                pStmt->init(pQuery);
+              }
+          }
+
         if (pStmt == NULL)
+          {
+            pStmt = m_pConnection->preparedStatement(pQuery);
+            if (pStmt == NULL)
+              {
+                throw getLastException();
+              }
+            m_preparedStatmentMap[pQuery->getSqlKey()] = pStmt;
+          }
+
+        pStmt->setParameter(pParameter);
+
+        DBGWResultSharedPtr pResult = pStmt->execute();
+        if (pResult == NULL)
           {
             throw getLastException();
           }
-        m_preparedStatmentMap[pQuery->getSqlKey()] = pStmt;
+
+        return pResult;
       }
-
-    pStmt->setParameter(pParameter);
-
-    return pStmt->execute();
+    catch (DBGWInterfaceException &e)
+      {
+        if (e.isConnectionError())
+          {
+            m_bInvalid = true;
+          }
+        throw;
+      }
   }
 
   void DBGWExecuter::setAutocommit(bool bAutocommit)
@@ -291,7 +308,6 @@ namespace dbgw
   DBGWExecuter *DBGWExecuterPool::getExecuter()
   {
     DBGWExecuter *pExecuter = NULL;
-    bool bError = false;
     do
       {
         try
@@ -307,34 +323,26 @@ namespace dbgw
             m_executerList.pop_front();
             m_poolMutex.unlock();
 
-            if (pExecuter->isInvalid())
-              {
-                bError = true;
-              }
-            else
-              {
-                pExecuter->init(m_bAutocommit, m_isolation);
-                bError = false;
-              }
+            pExecuter->init(m_bAutocommit, m_isolation);
           }
         catch (DBGWException &e)
-          {
-            bError = true;
-          }
-
-        if (bError)
           {
             if (pExecuter != NULL)
               {
                 delete pExecuter;
+                pExecuter = NULL;
               }
           }
       }
-    while (bError == true);
+    while (pExecuter == NULL);
 
     if (pExecuter == NULL)
       {
         pExecuter = new DBGWExecuter(*this, m_group.getConnection());
+        if (pExecuter != NULL)
+          {
+            pExecuter->init(m_bAutocommit, m_isolation);
+          }
       }
 
     return pExecuter;
@@ -342,6 +350,17 @@ namespace dbgw
 
   void DBGWExecuterPool::returnExecuter(DBGWExecuter *pExecuter)
   {
+    if (pExecuter == NULL)
+      {
+        return;
+      }
+
+    if (pExecuter->isInvalid())
+      {
+        delete pExecuter;
+        return;
+      }
+
     MutexLock lock(&m_poolMutex);
 
     m_executerList.push_back(pExecuter);

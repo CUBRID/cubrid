@@ -217,6 +217,11 @@ namespace dbgw
     return m_nInterfaceErrorCode;
   }
 
+  bool DBGWInterfaceException::isConnectionError() const
+  {
+    return true;
+  }
+
   NotExistNamespaceException::NotExistNamespaceException(const char *szNamespace) throw() :
     DBGWException(
         DBGWErrorCode::CONF_NOT_EXIST_NAMESPACE,

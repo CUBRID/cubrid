@@ -117,6 +117,7 @@ namespace dbgw
 
   public:
     int getInterfaceErrorCode() const;
+    virtual bool isConnectionError() const;
 
   protected:
     int m_nInterfaceErrorCode;

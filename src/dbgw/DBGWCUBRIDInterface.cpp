@@ -141,6 +141,23 @@ namespace dbgw
     {
     }
 
+    bool CUBRIDException::isConnectionError() const
+    {
+      if (m_nInterfaceErrorCode == CCI_ER_NO_ERROR)
+        {
+          return false;
+        }
+
+      switch (m_nInterfaceErrorCode)
+        {
+        case CCI_ER_CON_HANDLE:
+        case CCI_ER_COMMUNICATION:
+          return true;
+        default:
+          return false;
+        }
+    }
+
     DBGWCUBRIDConnection::DBGWCUBRIDConnection(const string &groupName,
         const string &host, int nPort, const DBGWDBInfoHashMap &dbInfoMap) :
       DBGWConnection(groupName, host, nPort, dbInfoMap), m_bClosed(false),
