@@ -755,7 +755,8 @@ enum pt_node_type
   PT_NODE_LIST,
   PT_TABLE_OPTION,
   PT_ATTR_ORDERING,
-  PT_NODE_NUMBER		/* This is the number of node types */
+  PT_NODE_NUMBER,		/* This is the number of node types */
+  PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
 
 
@@ -1245,7 +1246,10 @@ typedef enum
 
   /* rlike operator */
   PT_RLIKE, PT_NOT_RLIKE, PT_RLIKE_BINARY, PT_NOT_RLIKE_BINARY,
-  PT_TO_ENUMERATION_VALUE
+  PT_TO_ENUMERATION_VALUE,
+
+  /* This is the last entry. Please add a new one before it. */
+  PT_LAST_OPCODE
 } PT_OP_TYPE;
 
 

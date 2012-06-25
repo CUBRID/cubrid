@@ -5469,11 +5469,18 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 	}
 
       /* this will recursively expand the query spec into
-       * local queries
+       * local queries.
+       * The mq_push_paths will convert the expression as CNF. if subquery is
+       * in the expression, it may be copied several times. To avoid repeatedly
+       * convert the expressions in subqueries and improve performance, we
+       * put mq_push_paths as post function.
        */
-      local_query = parser_walk_tree (parser, query_spec,
-				      mq_push_paths, NULL, mq_translate_local,
-				      NULL);
+      local_query =
+	parser_walk_tree (parser, query_spec, NULL, NULL, mq_push_paths,
+			  NULL);
+      local_query =
+	parser_walk_tree (parser, query_spec, NULL, NULL, mq_translate_local,
+			  NULL);
 
       local_query = pt_add_row_oid_name (parser, local_query);
 
@@ -6013,8 +6020,15 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      node = parser_walk_tree (parser, node, mq_push_paths, NULL,
-			       mq_translate_local, NULL);
+      /*
+       * The mq_push_paths will convert the expression as CNF. if subquery is
+       * in the expression, it may be copied several times. To avoid repeatedly
+       * convert the expressions in subqueries and improve performance, we
+       * put mq_push_paths as post function.
+       */
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_push_paths, NULL);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_translate_local,
+			       NULL);
 
       mq_bump_order_dep_corr_lvl (parser, node);
 
@@ -6060,8 +6074,16 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
-      node = parser_walk_tree (parser, node, mq_push_paths, NULL,
-			       mq_translate_local, NULL);
+      /*
+       * The mq_push_paths will convert the expression as CNF. if subquery is
+       * in the expression, it may be copied several times. To avoid repeatedly
+       * convert the expressions in subqueries and improve performance, we
+       * put mq_push_paths as post function.
+       */
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_push_paths, NULL);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_translate_local,
+			       NULL);
+
       node = parser_walk_tree (parser, node,
 			       mq_mark_location, NULL,
 			       mq_check_non_updatable_vclass_oid, NULL);

@@ -48,6 +48,15 @@ struct find_id_info
   bool tag_subqueries;
 };
 
+typedef struct similarity_context SIMILARITY_CONTEXT;
+struct similarity_context
+{
+  int max_number_of_nodes;	/* the max number of nodes */
+  int number_of_nodes;		/* the number of nodes */
+  unsigned int accumulated_opcode;	/* the accumulated value of op type */
+  unsigned int accumulated_node_type;	/* the accumulated value of node type */
+};
+
 static PT_NODE *pt_and_or_form (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_negate_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -77,7 +86,9 @@ static void pt_tag_terms_with_specs (PARSER_CONTEXT * parser, PT_NODE * terms,
 static PT_NODE *pt_tag_start_of_cnf_post (PARSER_CONTEXT * parser,
 					  PT_NODE * node, void *arg,
 					  int *continue_walk);
-
+static PT_NODE *pt_calculate_similarity (PARSER_CONTEXT * parser,
+					 PT_NODE * node, void *arg,
+					 int *continue_walk);
 
 
 /*
@@ -547,6 +558,48 @@ pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * pt_calculate_similarity () - calculate the similarity of the pt_node
+ *                            for quick comparision.
+ *   return: PT_NODE
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in/out)
+ */
+static PT_NODE *
+pt_calculate_similarity (PARSER_CONTEXT * parser, PT_NODE * node,
+			 void *arg, int *continue_walk)
+{
+  SIMILARITY_CONTEXT *ctx = (SIMILARITY_CONTEXT *) arg;
+
+  ctx->number_of_nodes++;
+  if (ctx->max_number_of_nodes != -1
+      && ctx->number_of_nodes > ctx->max_number_of_nodes)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  ctx->accumulated_node_type *= PT_LAST_NODE_NUMBER;
+  ctx->accumulated_node_type += node->node_type;
+  if (node->node_type == PT_EXPR)
+    {
+      ctx->accumulated_opcode *= PT_LAST_OPCODE;
+      ctx->accumulated_opcode += node->info.expr.op;
+    }
+
+  if (node->is_cnf_start)
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_LEAF_WALK;
+    }
+  return node;
+}
+
+/*
  * pt_transform_cnf_post () -
  *   return: CNF/DNF list
  *   parser(in):
@@ -562,6 +615,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
   CNF_MODE *mode = (CNF_MODE *) arg;
   unsigned int save_custom;
   char *lhs_str, *rhs_str;
+  SIMILARITY_CONTEXT lhs_ctx, rhs_ctx;
   PT_NODE *common_list, *lhs_prev, *rhs_prev, *arg1, *arg2;
   bool common_found;
   int num_markers;
@@ -644,8 +698,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	  common_found = false;
 
-	  /* get parse tree string */
-	  lhs_str = parser_print_tree (parser, lhs);
+	  lhs_str = NULL;
+
+	  lhs_ctx.max_number_of_nodes = -1;
+	  lhs_ctx.number_of_nodes = 0;
+	  lhs_ctx.accumulated_opcode = 0;
+	  lhs_ctx.accumulated_node_type = 0;
+	  (void) parser_walk_tree (parser, lhs, pt_calculate_similarity,
+				   &lhs_ctx, NULL, NULL);
 
 	  /* traverse RHS list */
 	  rhs_prev = NULL;
@@ -653,13 +713,36 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      rhs_next = rhs->next;
 
-	      /* get parse tree string */
-	      rhs_str = parser_print_tree (parser, rhs);
+	      rhs_ctx.max_number_of_nodes = lhs_ctx.number_of_nodes;
+	      rhs_ctx.number_of_nodes = 0;
+	      rhs_ctx.accumulated_opcode = 0;
+	      rhs_ctx.accumulated_node_type = 0;
+	      (void) parser_walk_tree (parser, rhs, pt_calculate_similarity,
+				       &rhs_ctx, NULL, NULL);
 
-	      if (!pt_str_compare (lhs_str, rhs_str, CASE_SENSITIVE))
-		{		/* found common cnf */
-		  common_found = true;
-		  break;
+	      /*
+	       * Because the cost of parser_print_tree() is very high. we use
+	       * a simple way to test whether lhs and rhs node are similar.
+	       * Only when they are similar, we call parser_print_tree().
+	       */
+	      if (lhs_ctx.number_of_nodes == rhs_ctx.number_of_nodes
+		  && lhs_ctx.accumulated_node_type ==
+		  rhs_ctx.accumulated_node_type
+		  && lhs_ctx.accumulated_opcode == rhs_ctx.accumulated_opcode)
+		{
+		  if (lhs_str == NULL)
+		    {
+		      /* get parse tree string */
+		      lhs_str = parser_print_tree (parser, lhs);
+		    }
+		  /* get parse tree string */
+		  rhs_str = parser_print_tree (parser, rhs);
+
+		  if (!pt_str_compare (lhs_str, rhs_str, CASE_SENSITIVE))
+		    {		/* found common cnf */
+		      common_found = true;
+		      break;
+		    }
 		}
 
 	      rhs_prev = rhs;
