@@ -502,6 +502,16 @@ hm_srv_handle_reset_active (void)
   active_handle_count = 0;
 }
 
+int
+hm_srv_handle_get_current_count (void)
+{
+#if !defined(LIBCAS_FOR_JSP)
+  return current_handle_count;
+#else
+  return 0;
+#endif
+}
+
 void
 hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle, bool hold)
 {

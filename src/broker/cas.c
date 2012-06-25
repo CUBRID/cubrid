@@ -597,6 +597,15 @@ conn_proxy_retry:
 	    signal (SIGUSR1, SIG_IGN);
 #endif /* !WINDOWS */
 	    as_info->last_access_time = time (NULL);
+
+#if defined(CUBRID_SHARD)
+	    if (as_info->con_status == CON_STATUS_OUT_TRAN
+		&& hm_srv_handle_get_current_count () >=
+		shm_appl->max_prepared_stmt_count)
+	      {
+		fn_ret = FN_CLOSE_CONN;
+	      }
+#endif
 	  }
 
 	prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
@@ -1173,15 +1182,6 @@ main (int argc, char *argv[])
 		signal (SIGUSR1, SIG_IGN);
 #endif /* !WINDOWS */
 		as_info->last_access_time = time (NULL);
-
-#if defined(CUBRID_SHARD)
-		if (as_info->con_status == CON_STATUS_OUT_TRAN
-		    && current_handle_count >=
-		    shm_appl->max_prepared_stmt_count)
-		  {
-		    fn_ret = FN_CLOSE_CONN;
-		  }
-#endif
 	      }
 
 	    prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
