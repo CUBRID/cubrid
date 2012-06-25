@@ -482,6 +482,10 @@ static const char *get_authorization_name (DB_AUTH auth);
 static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *arg,
 				       int *continue_walk);
+static PT_NODE *mq_update_order_by (PARSER_CONTEXT * parser,
+				    PT_NODE * statement,
+				    PT_NODE * query_order_by,
+				    PT_NODE * class_);
 
 static bool mq_is_order_dependent_node (PT_NODE * node);
 
@@ -1744,6 +1748,118 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * mq_update_order_by() - update the position number of order by clause and
+ * 			add hidden column(s) at the end of the output list if
+ * 			necessary.
+ *   return: PT_NODE *, parse tree with local db table/class queries expanded
+ *    to local db expressions
+ *   parser(in): parser context
+ *   statement(in): statement into which class will be expanded
+ *   query_order_by(in): the order by of query of class 
+ *   class(in): class name of class that will be expanded
+ *
+ *   Note:
+ *   It includes 3 steps to update the position number of order by clause.
+ *   1) Get the attr info from the vclass;
+ *   2) Find the corresponding attr by the position number of order by clause;
+ *   3) Compare the corresponding attr with the attr of output list,
+ *     a) if attr is in output list, update the position number of order by
+ *     clause;
+ *     b) if not, append a hidden column at the end of the output list, and
+ *     update the position number of order by clause.
+ *
+ */
+static PT_NODE *
+mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
+		    PT_NODE * query_order_by, PT_NODE * class_)
+{
+  PT_NODE *order, *val;
+  PT_NODE *attributes, *attr;
+  PT_NODE *node, *result;
+  PT_NODE *save_data_type;
+  int i;
+
+  assert (statement->node_type == PT_SELECT && query_order_by != NULL);
+
+  statement->info.query.order_by = parser_append_node (parser_copy_tree_list
+						       (parser,
+							query_order_by),
+						       statement->info.query.
+						       order_by);
+
+  /* 1 get vclass spec attrs */
+  attributes = mq_fetch_attributes (parser, class_);
+  if (attributes == NULL)
+    {
+      return NULL;
+    }
+
+  for (attr = attributes; attr != NULL; attr = attr->next)
+    {
+      /* set spec_id */
+      attr->info.name.spec_id = class_->info.name.spec_id;
+    }
+
+  /* update the position number of order by clause */
+  for (order = statement->info.query.order_by; order != NULL;
+       order = order->next)
+    {
+      assert (order->node_type == PT_SORT_SPEC);
+
+      val = order->info.sort_spec.expr;
+      assert (val->node_type == PT_VALUE);
+
+      /* 2 find the corresponding attribute */
+      for (i = 1, attr = attributes; i < val->info.value.data_value.i; i++)
+	{
+	  assert (attr != NULL);
+	  attr = attr->next;
+	}
+
+      assert (attr != NULL);
+      save_data_type = attr->data_type;
+      attr->data_type = NULL;
+
+      for (node = statement->info.query.q.select.list, i = 1;
+	   node != NULL; node = node->next, i++)
+	{
+	  /* 3 check whether attr is found in output list */
+	  if (pt_name_equal (parser, node, attr))
+	    {
+	      /* if yes, update position number of order by clause */
+	      val->info.value.data_value.i = i;
+	      order->info.sort_spec.pos_descr.pos_no = i;
+	      break;
+	    }
+	}
+
+      /* if attr is not found in output list, append a hidden
+       * column at the end of the output list.
+       */
+      if (node == NULL)
+	{
+	  result = parser_copy_tree (parser, attr);
+	  if (result == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	      return NULL;
+	    }
+	  /* mark as a hidden column */
+	  result->is_hidden_column = 1;
+	  parser_append_node (result, statement->info.query.q.select.list);
+
+	  /* update position number of order by clause */
+	  val->info.value.data_value.i = i;
+	  order->info.sort_spec.pos_descr.pos_no = i;
+	}
+
+      attr->data_type = save_data_type;
+    }
+
+  return statement;
+}
+
+/*
  * mq_substitute_subquery_in_statement() - This takes a subquery expansion of
  *      a class_, in the form of a select, or union of selects,
  *      and a parse tree containing references to the class and its attributes,
@@ -1882,6 +1998,13 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	      goto exit_on_error;
 	    }
 
+	  tmp_class = parser_copy_tree (parser, class_);
+	  if (tmp_class == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  tmp_class->info.name.spec_id = derived_class->info.name.spec_id;
+
 	  /* now, derived_table has been derived.  */
 	  if (pt_has_aggregate (parser, query_spec))
 	    {
@@ -1926,11 +2049,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	    {
 	      if (query_spec->info.query.order_by)
 		{
-		  derived_table->info.query.order_by =
-		    parser_append_node (parser_copy_tree_list
-					(parser,
-					 query_spec->info.query.order_by),
-					derived_table->info.query.order_by);
+		  /* update the position number of order by clause */
+		  derived_table =
+		    mq_update_order_by (parser, derived_table,
+					query_spec->info.query.order_by,
+					tmp_class);
+		  if (derived_table == NULL)
+		    {
+		      goto exit_on_error;
+		    }
 		  derived_table->info.query.order_siblings =
 		    query_spec->info.query.order_siblings;
 		}
@@ -1960,13 +2087,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				    derived_table->info.query.q.select.
 				    using_index);
 	    }
-
-	  tmp_class = parser_copy_tree (parser, class_);
-	  if (tmp_class == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	  tmp_class->info.name.spec_id = derived_class->info.name.spec_id;
 
 	  class_spec->info.spec.derived_table =
 	    mq_substitute_select_in_statement (parser,
@@ -2047,11 +2167,17 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	      assert (query_spec->info.query.orderby_for == NULL);
 	      if (!order_by && query_spec->info.query.order_by)
 		{
-		  tmp_result->info.query.order_by =
-		    parser_append_node (parser_copy_tree_list
-					(parser,
-					 query_spec->info.query.order_by),
-					tmp_result->info.query.order_by);
+		  /* update the position number of order by clause and add a
+		   * hidden column into the output list if necessary.
+		   */
+		  tmp_result =
+		    mq_update_order_by (parser, tmp_result,
+					query_spec->info.query.order_by,
+					class_);
+		  if (tmp_result == NULL)
+		    {
+		      goto exit_on_error;
+		    }
 		}
 	    }
 
@@ -2117,8 +2243,25 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	}
       else
 	{
+	  PT_NODE *inside_order_by = NULL;
+	  assert (statement->node_type == PT_SELECT && order_by == NULL);
+
 	  arg1 = query_spec->info.query.q.union_.arg1;
 	  arg2 = query_spec->info.query.q.union_.arg2;
+
+	  if (query_spec->info.query.order_by != NULL)
+	    {
+	      /* update the position number of order by clause */
+	      statement =
+		mq_update_order_by (parser, statement,
+				    query_spec->info.query.order_by, class_);
+	      if (statement == NULL)
+		{
+		  goto exit_on_error;
+		}
+	      inside_order_by = statement->info.query.order_by;
+	      statement->info.query.order_by = NULL;
+	    }
 
 	  arg1 = mq_substitute_subquery_in_statement (parser, statement, arg1,
 						      class_, order_by,
@@ -2156,6 +2299,26 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 		    {
 		      result = arg2;
 		    }
+		}
+	    }
+
+	  if (result != NULL)
+	    {
+	      if (query_spec->info.query.order_by != NULL)
+		{
+		  result->info.query.order_by = inside_order_by;
+		  result->info.query.order_siblings =
+		    query_spec->info.query.order_siblings;
+		}
+
+	      if (query_spec->info.query.orderby_for != NULL)
+		{
+		  result->info.query.orderby_for =
+		    parser_append_node (parser_copy_tree_list (parser,
+							       query_spec->
+							       info.query.
+							       orderby_for),
+					result->info.query.orderby_for);
 		}
 	    }
 	}			/* else */
@@ -4452,8 +4615,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   else
     {
       /* see 'xtests/10010_vclass_set.sql' and 'err_xtests/check21.sql' */
-      if (select_statement->info.query.all_distinct == PT_ALL
-	  && select_statement->info.query.is_subquery == 0
+      if (select_statement->info.query.is_subquery == 0
 	  && select_statement->info.query.is_view_spec == 0
 	  && select_statement->info.query.oids_included == 0
 	  && mq_is_union_translation (parser, from))
@@ -5313,18 +5475,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 				      mq_push_paths, NULL, mq_translate_local,
 				      NULL);
 
-      if (local_query != NULL && local_query->node_type == PT_SELECT)
-	{
-	  order_by = local_query->info.query.order_by;
-	  local_query->info.query.order_by = NULL;
-	}
-
       local_query = pt_add_row_oid_name (parser, local_query);
-
-      if (local_query != NULL && local_query->node_type == PT_SELECT)
-	{
-	  local_query->info.query.order_by = order_by;
-	}
 
       mq_set_types (parser, local_query, attributes,
 		    class_object, cascaded_check);
