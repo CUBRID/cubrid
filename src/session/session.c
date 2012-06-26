@@ -109,6 +109,7 @@ typedef struct session_state
   PREPARED_STATEMENT *statements;
   SESSION_QUERY_ENTRY *queries;
   struct timeval session_timeout;
+  SOCKET related_socket;
 } SESSION_STATE;
 
 /* the active sessions storage */
@@ -317,7 +318,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
  *	 session starts.
  */
 int
-session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
+session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
 {
   static bool overflow = false;
   SESSION_STATE *session_p = NULL;
@@ -338,6 +339,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
   session_p->session_variables = NULL;
   session_p->statements = NULL;
   session_p->queries = NULL;
+  session_p->related_socket = INVALID_SOCKET;
 
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
@@ -371,20 +373,20 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
       do
 	{
 	  sessions.last_sesson_id++;
-	  *session_id = sessions.last_sesson_id;
+	  key->id = sessions.last_sesson_id;
 	}
-      while (mht_get (sessions.sessions_table, session_id) != NULL);
+      while (mht_get (sessions.sessions_table, &key->id) != NULL);
     }
   else
     {
       sessions.last_sesson_id++;
-      *session_id = sessions.last_sesson_id;
+      key->id = sessions.last_sesson_id;
     }
 
-  session_p->session_id = *session_id;
-  *session_key = *session_id;
+  session_p->session_id = key->id;
+  *session_key = key->id;
 
-  er_log_debug (ARG_FILE_LINE, "adding session with id %u\n", *session_id);
+  er_log_debug (ARG_FILE_LINE, "adding session with id %u\n", key->id);
 
   (void) mht_put (sessions.sessions_table, session_key, session_p);
 
@@ -496,18 +498,27 @@ session_free_session (const void *key, void *data, void *args)
  *   session_id(in) : the identifier for the session
  */
 int
-session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
+session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 {
+  SESSION_STATE *session_p;
   int error = NO_ERROR;
 
-  er_log_debug (ARG_FILE_LINE, "removing session %u", session_id);
+  er_log_debug (ARG_FILE_LINE, "removing session %u", key->id);
 
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  error = mht_rem (sessions.sessions_table, &session_id,
+  session_p = (SESSION_STATE *) mht_get (sessions.sessions_table, &key->id);
+  if (session_p == NULL || session_p->related_socket != key->fd)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+      return ER_SES_SESSION_EXPIRED;
+    }
+
+  error = mht_rem (sessions.sessions_table, &key->id,
 		   session_free_session, NULL);
   csect_exit (CSECT_SESSION_STATE);
 
@@ -531,21 +542,20 @@ session_print_active_sessions (const void *key, void *data, void *args)
  *   session_id(in) : the identifier for the session
  */
 int
-session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
+session_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 {
   SESSION_STATE *session_p = NULL;
   int error = NO_ERROR;
 
   er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n",
-		session_id);
+		key->id);
 
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  session_p = (SESSION_STATE *) mht_get (sessions.sessions_table,
-					 &session_id);
+  session_p = (SESSION_STATE *) mht_get (sessions.sessions_table, &key->id);
   if (session_p == NULL)
     {
       csect_exit (CSECT_SESSION_STATE);
@@ -559,6 +569,40 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
     }
+
+  csect_exit (CSECT_SESSION_STATE);
+
+  return error;
+}
+
+/*
+ * session_set_session_key () -
+ *   return          : NO_ERROR or error code
+ *   session_key(in) : the identifier for the session
+ */
+int
+session_set_session_key (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
+{
+  SESSION_STATE *session_p = NULL;
+  int error = NO_ERROR;
+
+  er_log_debug (ARG_FILE_LINE, "set related socket for session_id %u\n",
+		key->id);
+
+  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  session_p = (SESSION_STATE *) mht_get (sessions.sessions_table, &key->id);
+  if (session_p == NULL)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+      return ER_SES_SESSION_EXPIRED;
+    }
+
+  session_p->related_socket = key->fd;
 
   csect_exit (CSECT_SESSION_STATE);
 
@@ -996,12 +1040,13 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
  *   session_id(out): session_id
  */
 int
-session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
+session_get_session_id (THREAD_ENTRY * thread_p, SESSION_KEY * key)
 {
-  assert (session_id != NULL);
+  assert (key != NULL);
 
 #if !defined(SERVER_MODE)
-  *session_id = thread_get_current_session_id ();
+  key->id = thread_get_current_session_id ();
+  key->fd = INVALID_SOCKET;
 
   return NO_ERROR;
 #else
@@ -1015,7 +1060,8 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
       return ER_FAILED;
     }
 
-  *session_id = thread_p->conn_entry->session_id;
+  key->id = thread_p->conn_entry->session_id;
+  key->fd = thread_p->conn_entry->fd;
 
   return NO_ERROR;
 #endif /*SERVER_MODE */
@@ -1031,12 +1077,12 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
 int
 session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
 
   assert (value != NULL);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1052,8 +1098,8 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
@@ -1082,7 +1128,7 @@ int
 session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
 			    bool force)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   bool need_coercion = false;
 
@@ -1097,7 +1143,7 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
     }
 
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1113,8 +1159,8 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
@@ -1159,10 +1205,10 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
 int
 session_begin_insert_values (THREAD_ENTRY * thread_p)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1178,8 +1224,8 @@ session_begin_insert_values (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
@@ -1204,12 +1250,12 @@ session_begin_insert_values (THREAD_ENTRY * thread_p)
 int
 session_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
 
   assert (row_count != NULL);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1225,8 +1271,8 @@ session_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
@@ -1249,10 +1295,10 @@ session_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
 int
 session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1267,8 +1313,8 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
@@ -1304,7 +1350,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
 				   char *name, char *alias_print, char *info,
 				   int info_len)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
@@ -1325,13 +1371,13 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
   stmt_p->info = info;
   stmt_p->next = NULL;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       err = ER_FAILED;
       goto error;
     }
 
-  er_log_debug (ARG_FILE_LINE, "create statement %s(%d)\n", name, id);
+  er_log_debug (ARG_FILE_LINE, "create statement %s(%d)\n", name, key.id);
 
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
@@ -1346,12 +1392,12 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
       goto error;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
 
-      er_log_debug (ARG_FILE_LINE, "session with id %d not found\n", id);
+      er_log_debug (ARG_FILE_LINE, "session with id %d not found\n", key.id);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       err = ER_FAILED;
       goto error;
@@ -1412,7 +1458,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
 
   csect_exit (CSECT_SESSION_STATE);
 
-  er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, id);
+  er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, key.id);
 
   return NO_ERROR;
 
@@ -1455,7 +1501,7 @@ int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 				char **info, int *info_len, XASL_ID * xasl_id)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
@@ -1466,13 +1512,13 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 
   assert (xasl_id != NULL);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
   er_log_debug (ARG_FILE_LINE, "getting info for %s from session_id %d\n",
-		name, id);
+		name, key.id);
 
   if (csect_enter_as_reader (thread_p, CSECT_SESSION_STATE, INF_WAIT)
       != NO_ERROR)
@@ -1486,8 +1532,8 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -1547,7 +1593,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       /* if we don't have an alias print, we do not search for the XASL id */
       XASL_ID_SET_NULL (xasl_id);
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
-		    id);
+		    key.id);
       return NO_ERROR;
     }
 
@@ -1556,11 +1602,12 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
     {
       XASL_ID_SET_NULL (xasl_id);
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
-		    id);
+		    key.id);
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name, id);
+      er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name,
+		    key.id);
       XASL_ID_COPY (xasl_id, &entry->xasl_id);
     }
 
@@ -1576,18 +1623,19 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 int
 session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL, *prev = NULL;
   int err = NO_ERROR;
   bool found = false;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  er_log_debug (ARG_FILE_LINE, "dropping %s from session_id %d\n", name, id);
+  er_log_debug (ARG_FILE_LINE, "dropping %s from session_id %d\n", name,
+		key.id);
 
   if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
@@ -1600,8 +1648,8 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -1673,13 +1721,13 @@ int
 session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
 			       const int count)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   int i = 0;
 
   assert (count % 2 == 0);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1695,8 +1743,8 @@ session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -1729,13 +1777,13 @@ int
 session_define_variable (THREAD_ENTRY * thread_p, DB_VALUE * name,
 			 DB_VALUE * value, DB_VALUE * result)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   int err = NO_ERROR;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1749,8 +1797,8 @@ session_define_variable (THREAD_ENTRY * thread_p, DB_VALUE * name,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -1783,7 +1831,7 @@ int
 session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 		      DB_VALUE * result)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   const char *name_str;
   SESSION_VARIABLE *var;
@@ -1793,7 +1841,7 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   name_str = DB_GET_STRING (name);
   assert (name_str != NULL);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1810,8 +1858,8 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -1876,7 +1924,7 @@ int
 session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 			      DB_VALUE ** result)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   int name_len;
   const char *name_str;
@@ -1895,7 +1943,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   name_str = DB_GET_STRING (name);
   name_len = (name_str != NULL) ? strlen (name_str) : 0;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1905,8 +1953,8 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
@@ -1967,11 +2015,11 @@ int
 session_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
 				const int count)
 {
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
   int i = 0;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1987,8 +2035,8 @@ session_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -2286,12 +2334,12 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p,
 				QMGR_QUERY_ENTRY * qentry_p)
 {
   SESSION_STATE *state_p = NULL;
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_QUERY_ENTRY *sqentry_p = NULL, *current = NULL;
 
   assert (qentry_p != NULL);
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return;
     }
@@ -2307,8 +2355,8 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p,
       return;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -2391,10 +2439,10 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p,
 			       QMGR_QUERY_ENTRY * qentry_p)
 {
   SESSION_STATE *state_p = NULL;
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_QUERY_ENTRY *sentry_p = NULL;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2411,8 +2459,8 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -2448,10 +2496,10 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p,
 				 const QUERY_ID query_id)
 {
   SESSION_STATE *state_p = NULL;
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_QUERY_ENTRY *sentry_p = NULL, *prev = NULL;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2468,8 +2516,8 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -2517,10 +2565,10 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p,
 				const QUERY_ID query_id)
 {
   SESSION_STATE *state_p = NULL;
-  SESSION_ID id;
+  SESSION_KEY key;
   SESSION_QUERY_ENTRY *sentry_p = NULL, *prev = NULL;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2537,8 +2585,8 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  state_p = mht_get (sessions.sessions_table, &id);
-  if (state_p == NULL)
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
     {
       csect_exit (CSECT_SESSION_STATE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);

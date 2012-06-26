@@ -32,13 +32,13 @@
  * it
  */
 int
-xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
+xsession_create_new (THREAD_ENTRY * thread_p, SESSION_KEY * key)
 {
   int status = NO_ERROR;
 
-  assert (session_id != NULL);
+  assert (key != NULL);
 
-  return session_state_create (thread_p, session_id);
+  return session_state_create (thread_p, key);
 }
 
 /*
@@ -49,9 +49,20 @@ xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
  * and updates the last access timeout for it
  */
 int
-xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
+xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 {
-  return session_check_session (thread_p, session_id);
+  return session_check_session (thread_p, key);
+}
+
+/*
+ *  xsession_set_session_key () -
+ *  return          : error code
+ *  session_key (in) : session identifier
+ */
+int
+xsession_set_session_key (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
+{
+  return session_set_session_key (thread_p, key);
 }
 
 /*
@@ -61,9 +72,9 @@ xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
  *  thread_p (in)
  */
 int
-xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_ID session_id)
+xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 {
-  return session_state_destroy (thread_p, session_id);
+  return session_state_destroy (thread_p, key);
 }
 
 /*

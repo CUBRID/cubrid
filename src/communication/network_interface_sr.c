@@ -3514,7 +3514,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   TRAN_STATE tran_state;
   int area_size, strlen1, strlen2, strlen3;
   char *reply, *area, *ptr;
-  SESSION_ID session_id;
+  SESSION_KEY session_key;
   int row_count = DB_ROW_COUNT_NOT_SET;
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -3536,7 +3536,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &client_credential.process_id);
   ptr = or_unpack_int (ptr, &client_lock_wait);
   ptr = or_unpack_int (ptr, &xint);
-  ptr = or_unpack_int (ptr, &session_id);
+  ptr = or_unpack_int (ptr, &session_key.id);
   client_isolation = (TRAN_ISOLATION) xint;
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
@@ -3555,17 +3555,19 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       return_error_to_client (thread_p, rid);
     }
 
-  if (session_id == DB_EMPTY_SESSION
-      || xsession_check_session (thread_p, session_id) != NO_ERROR)
+  if (session_key.id == DB_EMPTY_SESSION
+      || xsession_check_session (thread_p, &session_key) != NO_ERROR)
     {
       /* create new session */
-      if (xsession_create_new (thread_p, &session_id) != NO_ERROR)
+      if (xsession_create_new (thread_p, &session_key) != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
 	}
     }
+  session_key.fd = thread_p->conn_entry->fd;
+  xsession_set_session_key (thread_p, &session_key);
 
-  thread_p->conn_entry->session_id = session_id;
+  thread_p->conn_entry->session_id = session_key.id;
   xsession_get_row_count (thread_p, &row_count);
 
   area_size = OR_INT_SIZE	/* tran_index */
@@ -3608,7 +3610,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_pack_int (ptr, (int) server_credential.log_page_size);
       ptr = or_pack_float (ptr, server_credential.disk_compatibility);
       ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
-      ptr = or_pack_int (ptr, session_id);
+      ptr = or_pack_int (ptr, session_key.id);
       ptr = or_pack_int (ptr, row_count);
     }
 
@@ -8794,20 +8796,20 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
   int err = NO_ERROR;
-  SESSION_ID session_id = DB_EMPTY_SESSION;
+  SESSION_KEY key = { DB_EMPTY_SESSION, INVALID_SOCKET };
   int row_count = -1;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, &session_id);
+  (void) or_unpack_int (request, &key.id);
 
-  if (xsession_check_session (thread_p, session_id) != NO_ERROR)
+  if (xsession_check_session (thread_p, &key) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
       /* create new session */
-      if (xsession_create_new (thread_p, &session_id) != NO_ERROR)
+      if (xsession_create_new (thread_p, &key) != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
 	}
@@ -8815,12 +8817,15 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
   /* update session_id for this connection */
   assert (thread_p != NULL);
   assert (thread_p->conn_entry != NULL);
-  thread_p->conn_entry->session_id = session_id;
+
+  key.fd = thread_p->conn_entry->fd;
+  xsession_set_session_key (thread_p, &key);
+  thread_p->conn_entry->session_id = key.id;
 
   /* get row count */
   xsession_get_row_count (thread_p, &row_count);
 
-  ptr = or_pack_int (reply, session_id);
+  ptr = or_pack_int (reply, key.id);
   or_pack_int (ptr, row_count);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
@@ -8843,14 +8848,15 @@ ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid,
 		      char *request, int reqlen)
 {
   int err = NO_ERROR;
-  SESSION_ID sess_id = DB_EMPTY_SESSION;
+  SESSION_KEY key;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, &sess_id);
+  (void) or_unpack_int (request, &key.id);
+  key.fd = thread_p->conn_entry->fd;
 
-  err = xsession_end_session (thread_p, sess_id);
+  err = xsession_end_session (thread_p, &key);
 
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,

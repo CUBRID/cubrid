@@ -430,13 +430,14 @@ extern int xboot_compact_stop (THREAD_ENTRY * thread_p);
 extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p,
 					      OID * class_oid, int att_id);
 
-extern int xsession_create_new (THREAD_ENTRY * thread_p,
-				SESSION_ID * session_id);
+extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_KEY * key);
 extern int xsession_check_session (THREAD_ENTRY * thread_p,
-				   const SESSION_ID session_id);
+				   const SESSION_KEY * key);
+extern int xsession_set_session_key (THREAD_ENTRY * thread_p,
+				     const SESSION_KEY * key);
 
 extern int xsession_end_session (THREAD_ENTRY * thread,
-				 const SESSION_ID session_id);
+				 const SESSION_KEY * key);
 
 extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
 extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);

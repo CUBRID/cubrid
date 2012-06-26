@@ -4000,6 +4000,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   int err_code = NO_ERROR;
   int tran_index = NULL_TRAN_INDEX;
   int row_count = DB_ROW_COUNT_NOT_SET;
+  SESSION_KEY key;
 
   ENTER_SERVER ();
 
@@ -4012,18 +4013,21 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       return NULL_TRAN_INDEX;
     }
 
+  key.fd = INVALID_SOCKET;
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      err_code = xsession_create_new (NULL, &db_Session_id);
+      err_code = xsession_create_new (NULL, &key);
     }
   else
     {
-      if (xsession_check_session (NULL, db_Session_id) != NO_ERROR)
+      key.id = db_Session_id;
+      if (xsession_check_session (NULL, &key) != NO_ERROR)
 	{
-	  err_code = xsession_create_new (NULL, &db_Session_id);
+	  err_code = xsession_create_new (NULL, &key);
 	}
     }
 
+  db_Session_id = key.id;
   xsession_get_row_count (NULL, &row_count);
   EXIT_SERVER ();
 
@@ -4553,13 +4557,16 @@ csession_check_session (SESSION_ID * session_id, int *row_count)
   return NO_ERROR;
 #else
   int result = NO_ERROR;
+  SESSION_KEY key;
 
   ENTER_SERVER ();
 
-  if (xsession_check_session (NULL, *session_id) != NO_ERROR)
+  key.id = *session_id;
+  key.fd = INVALID_SOCKET;
+  if (xsession_check_session (NULL, &key) != NO_ERROR)
     {
       /* create new session */
-      if (xsession_create_new (NULL, session_id) != NO_ERROR)
+      if (xsession_create_new (NULL, &key) != NO_ERROR)
 	{
 	  result = ER_FAILED;
 	}
@@ -4611,10 +4618,13 @@ csession_end_session (SESSION_ID session_id)
   return NO_ERROR;
 #else
   int result = NO_ERROR;
+  SESSION_KEY key;
 
   ENTER_SERVER ();
 
-  result = xsession_end_session (NULL, session_id);
+  key.id = session_id;
+  key.fd = INVALID_SOCKET;
+  result = xsession_end_session (NULL, &key);
 
   EXIT_SERVER ();
 

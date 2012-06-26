@@ -302,6 +302,9 @@ public class ConnectionProperties {
 
     ZeroDateTimeBehaviorConnectionProperty zeroDateTimeBehavior = new ZeroDateTimeBehaviorConnectionProperty(
 	    "zeroDateTimeBehavior", UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION);
+    
+    IntegerConnectionProperty hiddenSession = new IntegerConnectionProperty(
+	    "hiddenSession", 0, 0, Integer.MAX_VALUE);
 
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
@@ -341,5 +344,9 @@ public class ConnectionProperties {
 
     public String getZeroDateTimeBehavior() {
 	return zeroDateTimeBehavior.getValueAsString();
+    }
+
+    public int getSessionId() {
+	return hiddenSession.getValueAsInteger();
     } 
 }

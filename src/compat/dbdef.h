@@ -419,6 +419,15 @@ typedef unsigned int SESSION_ID;
 /* uninitialized value for row count */
 #define DB_ROW_COUNT_NOT_SET -2
 
+typedef struct session_key SESSION_KEY;
+struct session_key
+{
+  /* hash key for a session */
+  SESSION_ID id;
+  /* relative(last registered) connection's file descriptor */
+  int fd;
+};
+
 typedef enum
 {
   DB_PARTITION_HASH = 0,

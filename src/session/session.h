@@ -31,15 +31,16 @@
 extern bool sessions_is_states_table_initialized (void);
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
-extern int session_state_create (THREAD_ENTRY * thread_p,
-				 SESSION_ID * session_id);
+extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key);
 extern int session_state_destroy (THREAD_ENTRY * thread_p,
-				  const SESSION_ID session_id);
+				  const SESSION_KEY * key);
 extern int session_check_session (THREAD_ENTRY * thread_p,
-				  const SESSION_ID session_id);
+				  const SESSION_KEY * key);
+extern int session_set_session_key (THREAD_ENTRY * thread_p,
+				    const SESSION_KEY * key);
 extern int session_remove_expired_sessions (struct timeval *timeout);
 extern int session_get_session_id (THREAD_ENTRY * thread_p,
-				   SESSION_ID * session_id);
+				   SESSION_KEY * key);
 extern int session_get_last_insert_id (THREAD_ENTRY * thread_p,
 				       DB_VALUE * value);
 extern int session_set_last_insert_id (THREAD_ENTRY * thread_p,

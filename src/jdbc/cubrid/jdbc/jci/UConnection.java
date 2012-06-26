@@ -161,7 +161,6 @@ public class UConnection {
 	private int brokerVersion = 0;
 
 	private boolean isServerSideJdbc = false;
-	private byte[] checkCasMsg = null;
 	boolean skip_checkcas;
 	boolean need_checkcas;
 	Vector<UStatement> pooled_ustmts;
@@ -1803,6 +1802,7 @@ public class UConnection {
 
     public void setConnectionProperties(ConnectionProperties connProperties) {
 	this.connectionProperties = connProperties;
+	sessionId = connectionProperties.getSessionId();
     }
 
     private Log getLogger() {
