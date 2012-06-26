@@ -329,9 +329,13 @@ extern "C"
   extern UNICODE_NORMALIZATION *lang_get_generic_unicode_norm (void);
   extern void lang_set_generic_unicode_norm (UNICODE_NORMALIZATION * norm);
   extern int lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
-				     const int coll_cnt, bool is_client);
+				     const int coll_cnt,
+				     const char *client_text,
+				     const char *server_text);
   extern int lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
-				       const int loc_cnt);
+				       const int loc_cnt,
+				       const char *client_text,
+				       const char *server_text);
 #ifdef __cplusplus
 }
 #endif

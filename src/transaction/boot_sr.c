@@ -3415,7 +3415,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     if (db_collations != NULL)
       {
 	error_code = lang_check_coll_compat (db_collations, db_coll_cnt,
-					     false);
+					     "server", "database");
 	db_private_free (thread_p, db_collations);
 	if (error_code != NO_ERROR)
 	  {

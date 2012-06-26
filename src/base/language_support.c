@@ -5238,33 +5238,31 @@ lang_free_collations (void)
  * Returns : error code
  * coll_array(in): reference collations
  * coll_cnt(in):
- * is_client(in): true if this is called when checking client against server
- *		  false if checking server against database
+ * client_text(in): text to display in message error for client (this can be
+ *		    "server" when checking server vs database)
+ * server_text(in): text to display in message error for server (this can be
+ *		    "database" when checking server vs database)
  */
 int
 lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
-			const int coll_cnt, bool is_client)
+			const int coll_cnt, const char *client_text,
+			const char *server_text)
 {
-#define CLIENT_TEXT "client"
-#define SERVER_TEXT "server"
-#define DB_TEXT "database"
-
   char err_msg[ERR_MSG_SIZE];
   int i;
   int er_status = NO_ERROR;
 
   assert (coll_array != NULL);
   assert (coll_cnt > 0);
+  assert (client_text != NULL);
+  assert (server_text != NULL);
 
   if (lang_count_collations != coll_cnt)
     {
       snprintf (err_msg, sizeof (err_msg) - 1,
-		"Number of collations between %s do not match:"
+		"Number of collations do not match : "
 		"%s has %d collations, %s has %d collations",
-		is_client ? CLIENT_TEXT " and " SERVER_TEXT
-		: SERVER_TEXT " and " DB_TEXT,
-		is_client ? CLIENT_TEXT : SERVER_TEXT, lang_count_collations,
-		is_client ? SERVER_TEXT : DB_TEXT, coll_cnt);
+		client_text, lang_count_collations, server_text, coll_cnt);
       er_status = ER_LOC_INIT;
       LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
       goto exit;
@@ -5282,8 +5280,7 @@ lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Collation '%s' with id %d of %s is not configured on %s",
 		    ref_c->coll_name, ref_c->coll_id,
-		    is_client ? SERVER_TEXT : DB_TEXT,
-		    is_client ? CLIENT_TEXT : SERVER_TEXT);
+		    client_text, server_text);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
@@ -5295,12 +5292,10 @@ lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
       if (strcmp (coll->coll.coll_name, ref_c->coll_name))
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Names of collation with id %d do not match :"
-		    "on %s is '%s'; on %s is '%s'",
-		    ref_c->coll_id,
-		    is_client ? SERVER_TEXT : DB_TEXT, ref_c->coll_name,
-		    is_client ? CLIENT_TEXT : SERVER_TEXT,
-		    coll->coll.coll_name);
+		    "Names of collation with id %d do not match : "
+		    "on %s, is '%s'; on %s, is '%s'",
+		    ref_c->coll_id, client_text, ref_c->coll_name,
+		    server_text, coll->coll.coll_name);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
@@ -5309,11 +5304,10 @@ lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
       if (coll->codeset != ref_c->codeset)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Codesets of collation '%s' with id %d do not match :"
-		    "%s codeset is %d; %s codeset is %d",
+		    "Codesets of collation '%s' with id %d do not match : "
+		    "on %s, codeset is %d; on %s, codeset is %d",
 		    ref_c->coll_name, ref_c->coll_id,
-		    is_client ? SERVER_TEXT : DB_TEXT, ref_c->codeset,
-		    is_client ? CLIENT_TEXT : SERVER_TEXT, coll->codeset);
+		    client_text, ref_c->codeset, server_text, coll->codeset);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
@@ -5322,12 +5316,11 @@ lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
       if (strcasecmp (coll->coll.checksum, ref_c->checksum))
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Collation '%s' with id %d has changed :"
-		    "on %s checksum is '%s'; on %s checksum is '%s'",
+		    "Collation '%s' with id %d has changed : "
+		    "on %s, checksum is '%s'; on %s, checksum is '%s'",
 		    ref_c->coll_name, ref_c->coll_id,
-		    is_client ? SERVER_TEXT : DB_TEXT, ref_c->checksum,
-		    is_client ? CLIENT_TEXT : SERVER_TEXT,
-		    coll->coll.checksum);
+		    client_text, ref_c->checksum,
+		    server_text, coll->coll.checksum);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
@@ -5344,10 +5337,13 @@ exit:
  * Returns : error code
  * loc_array(in): reference locales
  * loc_cnt(in):
+ * client_text(in): text to display in message error for client
+ * server_text(in): text to display in message error for server
  */
 int
 lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
-			  const int loc_cnt)
+			  const int loc_cnt, const char *client_text,
+			  const char *server_text)
 {
   char err_msg[ERR_MSG_SIZE];
   int i, j;
@@ -5356,17 +5352,16 @@ lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
   assert (loc_array != NULL);
   assert (loc_cnt > 0);
 
-  /* locales compatibility check is always between client and server;
-   * all locales configured by client must be defined by server
-   * it is not mandatory that all server locales are defined by client */
+  /* check that each locale from client is defined by server */
   for (i = 0; i < lang_count_locales; i++)
     {
       LANG_LOCALE_DATA *lld = lang_loaded_locales[i];
       const LANG_LOCALE_COMPAT *ref_loc = NULL;
-      bool ref_found = false;
 
       do
 	{
+	  bool ref_found = false;
+
 	  for (j = 0; j < loc_cnt; j++)
 	    {
 	      ref_loc = &(loc_array[j]);
@@ -5382,8 +5377,10 @@ lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
 	  if (!ref_found)
 	    {
 	      snprintf (err_msg, sizeof (err_msg) - 1,
-			"Locale '%s' with codeset %d not found on server",
-			lld->lang_name, lld->codeset);
+			"Locale '%s' with codeset %d loaded by %s "
+			"not found on %s",
+			lld->lang_name, lld->codeset, client_text,
+			server_text);
 	      er_status = ER_LOC_INIT;
 	      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	      goto exit;
@@ -5394,11 +5391,11 @@ lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
 	  if (strcasecmp (ref_loc->checksum, lld->checksum))
 	    {
 	      snprintf (err_msg, sizeof (err_msg) - 1,
-			"Locale '%s' with codeset %d has changed:"
-			"on %s, checksum is '%s'; on %s checksum is '%s'",
+			"Locale '%s' with codeset %d has changed : "
+			"on %s, checksum is '%s'; on %s, checksum is '%s'",
 			ref_loc->lang_name, ref_loc->codeset,
-			SERVER_TEXT, ref_loc->checksum,
-			CLIENT_TEXT, lld->checksum);
+			server_text, ref_loc->checksum,
+			client_text, lld->checksum);
 	      er_status = ER_LOC_INIT;
 	      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	      goto exit;
@@ -5408,6 +5405,61 @@ lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
 	}
       while (lld != NULL);
     }
+
+  /* check that each locale from server is loaded by client */
+  for (j = 0; j < loc_cnt; j++)
+    {
+      bool loc_found = false;
+      const LANG_LOCALE_COMPAT *ref_loc = NULL;
+      LANG_LOCALE_DATA *lld = NULL;
+
+      ref_loc = &(loc_array[j]);
+
+      for (i = 0; i < lang_count_locales && !loc_found; i++)
+	{
+	  lld = lang_loaded_locales[i];
+
+	  do
+	    {
+	      if (lld->codeset == ref_loc->codeset &&
+		  strcasecmp (lld->lang_name, ref_loc->lang_name) == 0)
+		{
+		  loc_found = true;
+		  break;
+		}
+	      lld = lld->next_lld;
+	    }
+	  while (lld != NULL);
+	}
+
+      if (!loc_found)
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Locale '%s' with codeset %d defined on %s "
+		    "is not loaded by %s",
+		    ref_loc->lang_name, ref_loc->codeset, server_text,
+		    client_text);
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	  goto exit;
+	}
+
+      assert (loc_found && lld != NULL);
+
+      if (strcasecmp (ref_loc->checksum, lld->checksum))
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Locale '%s' with codeset %d has changed : "
+		    "on %s, checksum is '%s'; on %s, checksum is '%s'",
+		    ref_loc->lang_name, ref_loc->codeset,
+		    server_text, ref_loc->checksum,
+		    client_text, lld->checksum);
+	  er_status = ER_LOC_INIT;
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+	  goto exit;
+	}
+    }
+
 exit:
   return er_status;
 }

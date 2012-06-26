@@ -196,7 +196,7 @@ static int boot_define_view_stored_procedure (void);
 static int boot_define_view_stored_procedure_arguments (void);
 static int catcls_class_install (void);
 static int catcls_vclass_install (void);
-static int boot_check_locales (void);
+static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 /*
  * boot_client () -
  *
@@ -1076,7 +1076,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  error_code = boot_check_locales ();
+  error_code = boot_check_locales (client_credential);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -5091,13 +5091,15 @@ boot_clear_host_connected (void)
  * boot_clear_host_connected () -
  */
 static int
-boot_check_locales (void)
+boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   int error_code = NO_ERROR;
 #if defined(CS_MODE)
   LANG_COLL_COMPAT *server_collations = NULL;
   LANG_LOCALE_COMPAT *server_locales = NULL;
   int server_coll_cnt, server_locales_cnt;
+  char cli_text[PATH_MAX];
+  char srv_text[DB_MAX_IDENTIFIER_LENGTH + 10];
 #endif
 
   (void) lang_server_charset_init ();
@@ -5119,14 +5121,20 @@ boot_check_locales (void)
       goto exit;
     }
 
+  (void) basename_r (client_credential->program_name, cli_text,
+		     sizeof (cli_text));
+  snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'",
+	    client_credential->db_name);
+
   error_code = lang_check_coll_compat (server_collations, server_coll_cnt,
-				       true);
+				       cli_text, srv_text);
   if (error_code != NO_ERROR)
     {
       goto exit;
     }
 
-  error_code = lang_check_locale_compat (server_locales, server_locales_cnt);
+  error_code = lang_check_locale_compat (server_locales, server_locales_cnt,
+					 cli_text, srv_text);
   if (error_code != NO_ERROR)
     {
       goto exit;
