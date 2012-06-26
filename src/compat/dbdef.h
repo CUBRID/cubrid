@@ -422,10 +422,10 @@ typedef unsigned int SESSION_ID;
 typedef struct session_key SESSION_KEY;
 struct session_key
 {
-  /* hash key for a session */
-  SESSION_ID id;
-  /* relative(last registered) connection's file descriptor */
-  int fd;
+  SESSION_ID id;		/* hash key for a session. */
+  int fd;			/* the socket(file) descriptor of 
+				 * the associated connection. 
+				 */
 };
 
 typedef enum
