@@ -6081,11 +6081,8 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       /* no type is a blank attr def, as in view creation */
       break;
     case PT_TYPE_ENUMERATION:
-      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       r1 = pt_print_bytes_l (parser, p->data_type);
-      q = pt_append_nulstring (parser, q, "(");
       q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
