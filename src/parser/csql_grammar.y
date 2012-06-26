@@ -1739,8 +1739,8 @@ stmt_
 opt_from_table_spec_list
 	: /* empty */
 		{ $$ = NULL; }
-	| FROM table_spec_list
-		{ $$ = $2; }
+	| FROM ON_ table_spec_list
+		{ $$ = $3; }
 	;
 
 
@@ -6438,6 +6438,15 @@ delete_from_using
 
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, NULL, $2, FROM_NUMBER(0));
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| table_spec
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, NULL, $1, FROM_NUMBER(0));
 
 			$$ = ctn;
 
