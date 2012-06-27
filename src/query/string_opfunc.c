@@ -21088,17 +21088,14 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
 	  h = 0;
 	}
     }
-
-  if (_x != _v && _x != -1)	/* accept %v only if %x and %V only if %X */
+  if (h24 == 0 && h > 12)
     {
       goto conversion_error;
     }
 
-  if (am == 1 && h != -1)
+  if (_x != _v && _x != -1)	/* accept %v only if %x and %V only if %X */
     {
-      h += 12;
-      /* reset AM flag */
-      am = -1;
+      goto conversion_error;
     }
 
   days[2] += LEAP (y);
@@ -21170,6 +21167,12 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
       if ((am != -1 && h > 12) || (am == -1 && h > 23))
 	{
 	  goto conversion_error;
+	}
+      if (am == 1 && h != -1)
+	{
+	  h += 12;
+	  /* reset AM flag */
+	  am = -1;
 	}
 
       if (mi > 59)
