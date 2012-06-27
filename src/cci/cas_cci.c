@@ -117,7 +117,9 @@ int wsa_initialize ();
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
 #define IS_ER_COMMUNICATION(e) \
   ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
-#define IS_SERVER_DOWN(e) (e == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+#define IS_SERVER_DOWN(e) \
+  (((e) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED) \
+   || ((e) == ER_OBJ_NO_CONNECT))
 
 /* default value of each datesource property */
 #define CCI_DS_POOL_SIZE_DEFAULT 			10
@@ -1251,7 +1253,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
-  if (IS_BROKER_STMT_POOL (con_handle) || req_handle->is_closed)
+  if (IS_BROKER_STMT_POOL (con_handle))
     {
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
     }
@@ -5145,7 +5147,7 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 {
   int err_code = 0;
 
-  if (req_handle->valid && !req_handle->is_closed)
+  if (req_handle->valid)
     {
       return err_code;
     }
@@ -5154,8 +5156,8 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
   err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
 			 req_handle->prepare_flag, err_buf, 1);
 
-  if (IS_ER_COMMUNICATION (err_code) &&
-      con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
+  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
+      || IS_SERVER_DOWN (err_buf->err_code))
     {
       int connect_done;
 

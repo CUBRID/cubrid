@@ -722,6 +722,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       FREE_MEM (result_msg);
     }
 
+  req_handle->is_closed = 0;
 
   return res_count;
 
