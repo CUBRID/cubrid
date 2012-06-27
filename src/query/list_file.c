@@ -355,6 +355,8 @@ static int
 #endif /* SERVER_MODE */
 static DB_VALUE
   * qfile_get_list_cache_entry_param_values (QFILE_LIST_CACHE_ENTRY * ent);
+static int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
+					     QFILE_LIST_ID * list_id_p);
 
 /* qfile_modify_type_list () -
  *   return:
@@ -1326,11 +1328,11 @@ qfile_finalize (void)
  *       the list file identifier is set. The first page of the list
  *       file is allocated only when the first tuple is inserted to
  *       list file, if any.
- *	 A 'SORT_LIST' is associated to the output list file according to 
+ *	 A 'SORT_LIST' is associated to the output list file according to
  *	 'sort_list_p' input argument (if not null), or created if the
  *	 QFILE_FLAG_DISTINCT flag is specified; if neither QFILE_FLAG_DISTINCT
  *	 or 'sort_list_p' are supplied, no SORT_LIST is associated.
- *	 
+ *
  */
 QFILE_LIST_ID *
 qfile_open_list (THREAD_ENTRY * thread_p,
@@ -1481,6 +1483,68 @@ qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
     }
 
   list_id_p->last_pgptr = NULL;
+}
+
+/*
+ * qfile_reopen_list_as_append_mode () -
+ *   thread_p(in) :
+ *   list_id_p(in):
+ *
+ * Note:
+ */
+static int
+qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
+				  QFILE_LIST_ID * list_id_p)
+{
+  PAGE_PTR last_page_ptr;
+  QMGR_TEMP_FILE *temp_file_p;
+
+  if (list_id_p->tfile_vfid == NULL)
+    {
+      /* Invalid list_id_p. list_id_p might be cleared or not be opened.
+       * list_id_p must have valid QMGR_TEMP_FILE to reopen.
+       */
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  if (VPID_ISNULL (&list_id_p->first_vpid))
+    {
+      assert_release (VPID_ISNULL (&list_id_p->last_vpid));
+      assert_release (list_id_p->last_pgptr == NULL);
+
+      return NO_ERROR;
+    }
+
+  if (list_id_p->last_pgptr != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  temp_file_p = list_id_p->tfile_vfid;
+
+  if (temp_file_p->membuf && list_id_p->last_vpid.volid == NULL_VOLID)
+    {
+      /* The last page is in the membuf */
+      assert_release (temp_file_p->membuf_last ==
+		      list_id_p->last_vpid.pageid);
+      last_page_ptr = temp_file_p->membuf[temp_file_p->membuf_last];
+    }
+  else
+    {
+      assert_release (!VPID_ISNULL (&list_id_p->last_vpid));
+      last_page_ptr = pgbuf_fix (thread_p, &list_id_p->last_vpid, OLD_PAGE,
+				 PGBUF_LATCH_WRITE,
+				 PGBUF_UNCONDITIONAL_LATCH);
+      if (last_page_ptr == NULL)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  list_id_p->last_pgptr = last_page_ptr;
+
+  return NO_ERROR;
 }
 
 static bool
@@ -3130,35 +3194,59 @@ static QFILE_LIST_ID *
 qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p,
 		  QFILE_LIST_ID * list_id2_p, int flag)
 {
-  QFILE_LIST_ID *result_list_id_p;
+  QFILE_LIST_ID *result_list_id_p, *base, *tail;
 
-  result_list_id_p = qfile_open_list (thread_p, &list_id1_p->type_list, NULL,
-				      list_id1_p->query_id, flag);
+  if (list_id1_p->tuple_cnt == 0)
+    {
+      base = list_id2_p;
+      tail = NULL;
+    }
+  else if (list_id2_p->tuple_cnt == 0)
+    {
+      base = list_id1_p;
+      tail = NULL;
+    }
+  else
+    {
+      base = list_id1_p;
+      tail = list_id2_p;
+    }
+
+  result_list_id_p = qfile_clone_list_id (base, false);
   if (result_list_id_p == NULL)
     {
       return NULL;
     }
 
-  if (qfile_unify_types (result_list_id_p, list_id2_p) != NO_ERROR)
+  if (tail != NULL)
     {
-      goto end;
+      if (qfile_reopen_list_as_append_mode (thread_p,
+					    result_list_id_p) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (qfile_unify_types (result_list_id_p, tail) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (qfile_copy_tuple (thread_p, result_list_id_p, tail) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      qfile_close_list (thread_p, result_list_id_p);
     }
 
-  if (qfile_copy_tuple (thread_p, result_list_id_p, list_id1_p) != NO_ERROR)
-    {
-      goto end;
-    }
+  /* clear base list_id to prevent double free of tfile_vfid */
+  qfile_clear_list_id (base);
 
-  if (qfile_copy_tuple (thread_p, result_list_id_p, list_id2_p) != NO_ERROR)
-    {
-      goto end;
-    }
-
-  qfile_close_list (thread_p, result_list_id_p);
   return result_list_id_p;
 
-end:
-  qfile_close_and_free_list_file (thread_p, result_list_id_p);
+error:
+  qfile_close_list (thread_p, result_list_id_p);
+  qfile_free_list_id (result_list_id_p);
   return NULL;
 }
 
@@ -6705,7 +6793,7 @@ qfile_has_next_page (PAGE_PTR page_p)
  * qfile_update_domains_on_type_list() - Update domain pointers belongs to
  *   type list of a given list file
  *  return: error code
- *  
+ *
  */
 int
 qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
