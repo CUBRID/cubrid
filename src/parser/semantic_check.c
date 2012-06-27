@@ -8658,6 +8658,24 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 				   NULL, NULL);
 	}
 
+      if (node->info.query.q.select.group_by != NULL
+	  && node->info.query.q.select.group_by->with_rollup)
+	{
+	  bool has_gbynum = false;
+
+	  /* we do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM () */
+	  (void) parser_walk_tree (parser, node->info.query.q.select.having,
+				   pt_check_groupbynum_pre, NULL,
+				   pt_check_groupbynum_post,
+				   (void *) &has_gbynum);
+
+	  if (has_gbynum)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_CANNOT_USE_GROUPBYNUM_WITH_ROLLUP);
+	    }
+	}
+
       node = pt_semantic_type (parser, node, info);
       break;
 

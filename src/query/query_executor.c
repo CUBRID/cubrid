@@ -190,6 +190,7 @@ struct groupby_state
   QFILE_TUPLE_RECORD *output_tplrec;
   int input_recs;
   int rollup_levels;
+  int with_rollup;
 
   SORT_CMP_FUNC *cmp_fn;
   LK_COMPOSITE_LOCK *composite_lock;
@@ -3068,6 +3069,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->current_key.area_size = DB_PAGESIZE;
 
   gbstate->output_tplrec = tplrec;
+  gbstate->with_rollup = with_rollup;
 
   if (with_rollup)
     {
@@ -3612,7 +3614,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	    }
 
 	  /* handle the rollup groups */
-	  if (info->g_rollup_agg_list)
+	  if (info->with_rollup)
 	    {
 	      nkeys = info->key_info.nkeys;
 
@@ -3836,7 +3838,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (gbstate.input_recs != 0)
     {
       qexec_gby_finalize_group (thread_p, &gbstate);
-      if (gbstate.g_rollup_agg_list)
+      if (gbstate.with_rollup)
 	{
 	  int i;
 	  for (i = gbstate.rollup_levels - 1; i >= 0; i--)
@@ -16990,14 +16992,15 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
     }
 
   if (gbstate->g_rollup_agg_list == NULL
-      || rollup_level >= gbstate->rollup_levels
-      || gbstate->g_rollup_agg_list[rollup_level] == NULL)
+      || rollup_level >= gbstate->rollup_levels)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (qdata_finalize_aggregate_list (thread_p,
-				     gbstate->g_rollup_agg_list[rollup_level])
+  if (gbstate->g_rollup_agg_list[rollup_level] != NULL
+      && qdata_finalize_aggregate_list (thread_p,
+					gbstate->
+					g_rollup_agg_list[rollup_level])
       != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -17012,75 +17015,35 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* evaluate HAVING predicate */
-  if (gbstate->having_pred)
+  /* move aggregate rollup values in aggregate list for predicate evaluation
+     and possibly insertion in list file */
+  if (gbstate->g_rollup_agg_list[rollup_level] != NULL)
     {
-      ev_res = eval_pred (thread_p, gbstate->having_pred,
-			  &xasl_state->vd, NULL);
-      if (ev_res == V_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-    }
-  else
-    {
-      ev_res = V_TRUE;
-    }
+      AGGREGATE_TYPE *agg_list = gbstate->g_agg_list;
+      AGGREGATE_TYPE *rollup_agg_list =
+	gbstate->g_rollup_agg_list[rollup_level];
 
-  /* evaluate groupby_num predicates */
-  if (ev_res == V_TRUE)
-    {
-      if (gbstate->grbynum_val)
+      while (agg_list != NULL && rollup_agg_list != NULL)
 	{
-	  ev_res = qexec_eval_grbynum_pred (thread_p, gbstate);
-	  if (ev_res == V_ERROR)
+	  if (agg_list->function != PT_GROUPBY_NUM)
 	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-    }
-
-  if (ev_res != V_TRUE)
-    {
-      goto wrapup;
-    }
-
-  /*
-   * bind constant regu variables corresponding to aggregates in g_outptr_list
-   * to db values computed by rollup aggregates
-   */
-  if (gbstate->g_outptr_list)	/* sanity check */
-    {
-      AGGREGATE_TYPE *agg_list;
-      AGGREGATE_TYPE *rollup_agg_list;
-      REGU_VARIABLE_LIST list = gbstate->g_outptr_list->valptrp;
-
-      while (list)
-	{
-	  if (list->value.type == TYPE_CONSTANT)
-	    {
-	      agg_list = gbstate->g_agg_list;
-	      rollup_agg_list = gbstate->g_rollup_agg_list[rollup_level];
-
-	      while (agg_list && rollup_agg_list)
+	      if (rollup_agg_list->value != NULL && agg_list->value != NULL)
 		{
-		  if (list->value.value.dbvalptr == agg_list->value)
-		    {
-		      list->value.value.dbvalptr = rollup_agg_list->value;
-		      break;
-		    }
-		  else if (list->value.value.dbvalptr == agg_list->value2)
-		    {
-		      list->value.value.dbvalptr = rollup_agg_list->value2;
-		      break;
-		    }
+		  pr_clear_value (agg_list->value);
+		  *agg_list->value = *rollup_agg_list->value;
+		  DB_MAKE_NULL (rollup_agg_list->value);
+		}
 
-		  agg_list = agg_list->next;
-		  rollup_agg_list = rollup_agg_list->next;
+	      if (rollup_agg_list->value2 != NULL && agg_list->value2 != NULL)
+		{
+		  pr_clear_value (agg_list->value2);
+		  *agg_list->value2 = *rollup_agg_list->value2;
+		  DB_MAKE_NULL (rollup_agg_list->value2);
 		}
 	    }
 
-	  list = list->next;
+	  agg_list = agg_list->next;
+	  rollup_agg_list = rollup_agg_list->next;
 	}
     }
 
@@ -17098,6 +17061,22 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	    }
 	  i++;
 	  gby_vallist = gby_vallist->next;
+	}
+    }
+
+  /* evaluate HAVING predicates for summary row */
+  ev_res = V_TRUE;
+  if (gbstate->having_pred != NULL)
+    {
+      ev_res =
+	eval_pred (thread_p, gbstate->having_pred, &xasl_state->vd, NULL);
+      if (ev_res == V_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      else if (ev_res != V_TRUE)
+	{
+	  goto wrapup;
 	}
     }
 
@@ -17153,47 +17132,8 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
     }
 
 wrapup:
-  /*
-   * restore db values bindings for constant regu variables corresponding to
-   * aggregates in g_outptr_list
-   */
-  if (gbstate->g_outptr_list)	/* sanity check */
-    {
-      AGGREGATE_TYPE *agg_list;
-      AGGREGATE_TYPE *rollup_agg_list;
-      REGU_VARIABLE_LIST list = gbstate->g_outptr_list->valptrp;
-
-      while (list)
-	{
-	  if (list->value.type == TYPE_CONSTANT)
-	    {
-	      agg_list = gbstate->g_agg_list;
-	      rollup_agg_list = gbstate->g_rollup_agg_list[rollup_level];
-
-	      while (agg_list && rollup_agg_list)
-		{
-		  if (list->value.value.dbvalptr == rollup_agg_list->value)
-		    {
-		      list->value.value.dbvalptr = agg_list->value;
-		      break;
-		    }
-		  else if (list->value.value.dbvalptr ==
-			   rollup_agg_list->value2)
-		    {
-		      list->value.value.dbvalptr = agg_list->value2;
-		      break;
-		    }
-
-		  agg_list = agg_list->next;
-		  rollup_agg_list = rollup_agg_list->next;
-		}
-	    }
-
-	  list = list->next;
-	}
-    }
-
-  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_rollup_agg_list[rollup_level]);
+  /* clear agg_list, since we moved rollup values here beforehand */
+  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_agg_list);
   return;
 
 exit_on_error:

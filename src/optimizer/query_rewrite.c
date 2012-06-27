@@ -6828,10 +6828,11 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		    }
 		}
 
-	      /* Not found aggregate function in cnf node.
+	      /* Not found aggregate function in cnf node and no ROLLUP clause.
 	       * So, move it from HAVING clause to WHERE clause.
 	       */
-	      if (!info.agg_found)
+	      if (!info.agg_found
+		  && !node->info.query.q.select.group_by->with_rollup)
 		{
 		  /* delete cnf node from HAVING clause */
 		  if (!prev)
