@@ -114,27 +114,29 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       goto print_backup_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_backup_usage;
     }
 
-  backup_path =
-    utility_get_option_string_value (arg_map, BACKUP_DESTINATION_PATH_S, 0);
-  remove_log_archives =
-    utility_get_option_bool_value (arg_map, BACKUP_REMOVE_ARCHIVE_S);
+  backup_path = utility_get_option_string_value (arg_map,
+						 BACKUP_DESTINATION_PATH_S,
+						 0);
+  remove_log_archives = utility_get_option_bool_value (arg_map,
+						       BACKUP_REMOVE_ARCHIVE_S);
   backup_level = utility_get_option_int_value (arg_map, BACKUP_LEVEL_S);
-  backup_verbose_file =
-    utility_get_option_string_value (arg_map, BACKUP_OUTPUT_FILE_S, 0);
+  backup_verbose_file = utility_get_option_string_value (arg_map,
+							 BACKUP_OUTPUT_FILE_S,
+							 0);
   no_check = utility_get_option_bool_value (arg_map, BACKUP_NO_CHECK_S);
   check = !no_check;
-  backup_num_threads =
-    utility_get_option_int_value (arg_map, BACKUP_THREAD_COUNT_S);
+  backup_num_threads = utility_get_option_int_value (arg_map,
+						     BACKUP_THREAD_COUNT_S);
   compress_flag = utility_get_option_bool_value (arg_map, BACKUP_COMPRESS_S);
-  skip_activelog =
-    utility_get_option_bool_value (arg_map, BACKUP_EXCEPT_ACTIVE_LOG_S);
+  skip_activelog = utility_get_option_bool_value (arg_map,
+						  BACKUP_EXCEPT_ACTIVE_LOG_S);
   sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
 
@@ -189,14 +191,15 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       if (check)
 	{
 	  int check_flag = 0;
+
 	  check_flag |= CHECKDB_FILE_TRACKER_CHECK;
 	  check_flag |= CHECKDB_HEAP_CHECK_ALLHEAPS;
 	  check_flag |= CHECKDB_CT_CHECK_CAT_CONSISTENCY;
 	  check_flag |= CHECKDB_BTREE_CHECK_ALL_BTREES;
 	  check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
 
-	  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR ||
-	      boot_check_db_consistency (check_flag, 0, 0) != NO_ERROR)
+	  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
+	      || boot_check_db_consistency (check_flag, 0, 0) != NO_ERROR)
 	    {
 	      const char *tmpname;
 	      if ((tmpname = er_msglog_filename ()) == NULL)
@@ -307,23 +310,24 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       goto print_addvol_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_addvol_usage;
     }
 
-  volext_npages_string =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  volext_npages_string = utility_get_option_string_value (arg_map,
+							  OPTION_STRING_TABLE,
+							  1);
   if (volext_npages_string)
     {
       util_print_deprecated ("number-of-pages");
       volext_npages = atoi (volext_npages_string);
     }
 
-  volext_size_str =
-    utility_get_option_string_value (arg_map, ADDVOL_VOLUME_SIZE_S, 0);
+  volext_size_str = utility_get_option_string_value (arg_map,
+						     ADDVOL_VOLUME_SIZE_S, 0);
   if (volext_size_str)
     {
       if (util_size_string_to_byte (volext_size_str, &volext_size) !=
@@ -337,10 +341,10 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       volext_size = -1;
     }
 
-  volext_name =
-    utility_get_option_string_value (arg_map, ADDVOL_VOLUME_NAME_S, 0);
-  volext_pathname =
-    utility_get_option_string_value (arg_map, ADDVOL_FILE_PATH_S, 0);
+  volext_name = utility_get_option_string_value (arg_map,
+						 ADDVOL_VOLUME_NAME_S, 0);
+  volext_pathname = utility_get_option_string_value (arg_map,
+						     ADDVOL_FILE_PATH_S, 0);
   if (volext_pathname != NULL)
     {
       memset (real_volext_path_buf, 0, sizeof (real_volext_path_buf));
@@ -349,10 +353,11 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	  volext_pathname = real_volext_path_buf;
 	}
     }
-  volext_comments =
-    utility_get_option_string_value (arg_map, ADDVOL_COMMENT_S, 0);
-  volext_string_purpose =
-    utility_get_option_string_value (arg_map, ADDVOL_PURPOSE_S, 0);
+  volext_comments = utility_get_option_string_value (arg_map,
+						     ADDVOL_COMMENT_S, 0);
+  volext_string_purpose = utility_get_option_string_value (arg_map,
+							   ADDVOL_PURPOSE_S,
+							   0);
   if (volext_string_purpose == NULL)
     {
       volext_string_purpose = "generic";
@@ -596,8 +601,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       goto print_check_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_check_usage;
@@ -625,11 +630,11 @@ checkdb (UTIL_FUNCTION_ARG * arg)
     {
       char n[SM_MAX_IDENTIFIER_LENGTH];
       char *p;
+
       for (i = 0; i < num_tables; i++)
 	{
-	  p =
-	    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE,
-					     i + 1);
+	  p = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE,
+					       i + 1);
 	  if (p == NULL)
 	    {
 	      continue;
@@ -687,6 +692,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	  int added = 0;
 	  int ret_val =
 	    db_add_filter_and_function_index_to_catalog_classes (&added);
+
 	  if (ret_val == NO_ERROR)
 	    {
 	      if (added)
@@ -705,10 +711,11 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	}
 #endif
 
-      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR ||
-	  boot_check_db_consistency (flag, oids, num_tables) != NO_ERROR)
+      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
+	  || boot_check_db_consistency (flag, oids, num_tables) != NO_ERROR)
 	{
 	  const char *tmpname;
+
 	  if ((tmpname = er_msglog_filename ()) == NULL)
 	    {
 	      tmpname = "/dev/null";
@@ -797,15 +804,15 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       goto print_space_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_space_usage;
     }
 
-  output_file =
-    utility_get_option_string_value (arg_map, SPACE_OUTPUT_FILE_S, 0);
+  output_file = utility_get_option_string_value (arg_map,
+						 SPACE_OUTPUT_FILE_S, 0);
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
 
@@ -1154,8 +1161,8 @@ acldb (UTIL_FUNCTION_ARG * arg)
 
   reload = utility_get_option_bool_value (arg_map, ACLDB_RELOAD_S);
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_acl_usage;
@@ -1231,18 +1238,19 @@ lockdb (UTIL_FUNCTION_ARG * arg)
       goto print_lock_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_lock_usage;
     }
 
-  output_file =
-    utility_get_option_string_value (arg_map, LOCK_OUTPUT_FILE_S, 0);
-
+  output_file = utility_get_option_string_value (arg_map, LOCK_OUTPUT_FILE_S,
+						 0);
   if (output_file == NULL)
-    outfp = stdout;
+    {
+      outfp = stdout;
+    }
   else
     {
       outfp = fopen (output_file, "w");
@@ -1450,11 +1458,13 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 
   /* see if we have anything do do */
   for (i = 0; i < info->num_trans; i++)
-    if (doesmatch_transaction (&info->tran[i], tran_index, username, hostname,
-			       progname))
-      {
-	break;
-      }
+    {
+      if (doesmatch_transaction (&info->tran[i], tran_index, username,
+				 hostname, progname))
+	{
+	  break;
+	}
+    }
 
   if (i >= info->num_trans)
     {
@@ -1468,7 +1478,9 @@ kill_transactions (TRANS_INFO * info, int tran_index,
   else
     {
       if (!verify)
-	ok = 1;
+	{
+	  ok = 1;
+	}
       else
 	{
 	  ok = 0;
@@ -1487,18 +1499,20 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 					   KILLTRAN_MSG_TABLE_UNDERSCORE));
 
 	  for (i = 0; i < info->num_trans; i++)
-	    if (doesmatch_transaction (&info->tran[i], tran_index, username,
-				       hostname, progname))
-	      {
-		fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-						 MSGCAT_UTIL_SET_KILLTRAN,
-						 KILLTRAN_MSG_TABLE_ENTRY),
-			 info->tran[i].tran_index,
-			 TRAN_STATE_CHAR (info->tran[i].state),
-			 info->tran[i].db_user, info->tran[i].host_name,
-			 info->tran[i].process_id,
-			 info->tran[i].program_name);
-	      }
+	    {
+	      if (doesmatch_transaction (&info->tran[i], tran_index, username,
+					 hostname, progname))
+		{
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+						   MSGCAT_UTIL_SET_KILLTRAN,
+						   KILLTRAN_MSG_TABLE_ENTRY),
+			   info->tran[i].tran_index,
+			   TRAN_STATE_CHAR (info->tran[i].state),
+			   info->tran[i].db_user, info->tran[i].host_name,
+			   info->tran[i].process_id,
+			   info->tran[i].program_name);
+		}
+	    }
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_KILLTRAN,
 					   KILLTRAN_MSG_TABLE_UNDERSCORE));
@@ -1510,7 +1524,9 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 
 	  ch = getc (stdin);
 	  if (ch == 'Y' || ch == 'y')
-	    ok = 1;
+	    {
+	      ok = 1;
+	    }
 	}
 
       if (ok)
@@ -1564,15 +1580,21 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 			       info->tran[i].process_id,
 			       info->tran[i].program_name);
 		      if (er_errid () != NO_ERROR)
-			fprintf (stdout, "%s\n", db_error_string (3));
+			{
+			  fprintf (stdout, "%s\n", db_error_string (3));
+			}
 		      else	/* probably it is the case of timeout */
-			fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-							 MSGCAT_UTIL_SET_KILLTRAN,
-							 KILLTRAN_MSG_KILL_TIMEOUT));
+			{
+			  fprintf (stdout,
+				   msgcat_message (MSGCAT_CATALOG_UTILS,
+						   MSGCAT_UTIL_SET_KILLTRAN,
+						   KILLTRAN_MSG_KILL_TIMEOUT));
+			}
 		      nfailures++;
 		    }
 		}
 	    }
+
 	  if (nfailures > 0)
 	    {
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1613,8 +1635,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
       goto print_killtran_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_killtran_usage;
@@ -1622,17 +1644,17 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
   kill_tran_index =
     utility_get_option_int_value (arg_map, KILLTRAN_KILL_TRANSACTION_INDEX_S);
-  kill_user =
-    utility_get_option_string_value (arg_map, KILLTRAN_KILL_USER_NAME_S, 0);
-  kill_host =
-    utility_get_option_string_value (arg_map, KILLTRAN_KILL_HOST_NAME_S, 0);
-  kill_progname =
-    utility_get_option_string_value (arg_map, KILLTRAN_KILL_PROGRAM_NAME_S,
-				     0);
+  kill_user = utility_get_option_string_value (arg_map,
+					       KILLTRAN_KILL_USER_NAME_S, 0);
+  kill_host = utility_get_option_string_value (arg_map,
+					       KILLTRAN_KILL_HOST_NAME_S, 0);
+  kill_progname = utility_get_option_string_value (arg_map,
+						   KILLTRAN_KILL_PROGRAM_NAME_S,
+						   0);
 
   force = utility_get_option_bool_value (arg_map, KILLTRAN_FORCE_S);
-  dba_password =
-    utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
+  dba_password = utility_get_option_string_value (arg_map,
+						  KILLTRAN_DBA_PASSWORD_S, 0);
   dump_trantab_flag =
     utility_get_option_bool_value (arg_map, KILLTRAN_DISPLAY_INFORMATION_S);
 
@@ -1643,13 +1665,21 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
   isbatch = 0;
   if (kill_tran_index != -1)
-    isbatch++;
+    {
+      isbatch++;
+    }
   if (kill_user != NULL && strlen (kill_user) != 0)
-    isbatch++;
+    {
+      isbatch++;
+    }
   if (kill_host != NULL && strlen (kill_host) != 0)
-    isbatch++;
+    {
+      isbatch++;
+    }
   if (kill_progname != NULL && strlen (kill_progname) != 0)
-    isbatch++;
+    {
+      isbatch++;
+    }
   if (isbatch > 1)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1674,8 +1704,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
-      if (error == ER_AU_INVALID_PASSWORD &&
-	  (dba_password == NULL || strlen (dba_password) == 0))
+      if (error == ER_AU_INVALID_PASSWORD
+	  && (dba_password == NULL || strlen (dba_password) == 0))
 	{
 	  /*
 	   * prompt for a valid password and try again, need a reusable
@@ -1688,12 +1718,18 @@ killtran (UTIL_FUNCTION_ARG * arg)
 					     MSGCAT_UTIL_SET_KILLTRAN,
 					     KILLTRAN_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
-	    passbuf = (char *) NULL;
+	    {
+	      passbuf = (char *) NULL;
+	    }
 	  dba_password = passbuf;
 	  if (db_login ("dba", dba_password) != NO_ERROR)
-	    goto error_exit;
+	    {
+	      goto error_exit;
+	    }
 	  else
-	    error = db_restart (arg->command_name, TRUE, database_name);
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
 	}
 
       if (error)
@@ -1719,11 +1755,11 @@ killtran (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (dump_trantab_flag ||
-      (kill_tran_index == -1
-       && (kill_user == NULL || strlen (kill_user) == 0)
-       && (kill_host == NULL || strlen (kill_host) == 0)
-       && (kill_progname == NULL || strlen (kill_progname) == 0)))
+  if (dump_trantab_flag
+      || (kill_tran_index == -1
+	  && (kill_user == NULL || strlen (kill_user) == 0)
+	  && (kill_host == NULL || strlen (kill_host) == 0)
+	  && (kill_progname == NULL || strlen (kill_progname) == 0)))
     {
       dump_trantb (info);
     }
@@ -1781,16 +1817,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
   bool drop_flag = false;
   FILE *outfp = NULL;
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_plandump_usage;
     }
 
   drop_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_S);
-  output_file =
-    utility_get_option_string_value (arg_map, PLANDUMP_OUTPUT_FILE_S, 0);
+  output_file = utility_get_option_string_value (arg_map,
+						 PLANDUMP_OUTPUT_FILE_S, 0);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1891,19 +1927,21 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       goto print_dumpparam_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_dumpparam_usage;
     }
 
-  output_file =
-    utility_get_option_string_value (arg_map, PARAMDUMP_OUTPUT_FILE_S, 0);
+  output_file = utility_get_option_string_value (arg_map,
+						 PARAMDUMP_OUTPUT_FILE_S, 0);
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
 
   if (output_file == NULL)
-    outfp = stdout;
+    {
+      outfp = stdout;
+    }
   else
     {
       outfp = fopen (output_file, "w");
@@ -2187,8 +2225,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
       goto print_changemode_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_changemode_usage;
@@ -2349,8 +2387,8 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto print_copylog_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_copylog_usage;
@@ -2556,23 +2594,22 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   char executable_path[PATH_MAX];
 #endif
 
-
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_applylog_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_applylog_usage;
     }
 
-  log_path =
-    utility_get_option_string_value (arg_map, APPLYLOG_LOG_PATH_S, 0);
-  max_mem_size =
-    utility_get_option_int_value (arg_map, APPLYLOG_MAX_MEM_SIZE_S);
+  log_path = utility_get_option_string_value (arg_map, APPLYLOG_LOG_PATH_S,
+					      0);
+  max_mem_size = utility_get_option_int_value (arg_map,
+					       APPLYLOG_MAX_MEM_SIZE_S);
 
   if (check_database_name (database_name))
     {
@@ -2816,25 +2853,25 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_applied_info = check_copied_info = check_master_info = false;
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_applyinfo_usage;
     }
 
-  master_node_name =
-    utility_get_option_string_value (arg_map, APPLYINFO_REMOTE_NAME_S, 0);
+  master_node_name = utility_get_option_string_value (arg_map,
+						      APPLYINFO_REMOTE_NAME_S,
+						      0);
   if (master_node_name != NULL)
     {
       check_master_info = true;
     }
 
-  check_applied_info =
-    utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
-
-  log_path =
-    utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
+  check_applied_info = utility_get_option_bool_value (arg_map,
+						      APPLYINFO_APPLIED_INFO_S);
+  log_path = utility_get_option_string_value (arg_map,
+					      APPLYINFO_COPIED_LOG_PATH_S, 0);
   if (log_path != NULL)
     {
       log_path = realpath (log_path, log_path_buf);
@@ -2887,10 +2924,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  goto check_applied_info_end;
 	}
 
-      error =
-	la_log_page_check (local_database_name, log_path, pageid,
-			   check_applied_info, check_copied_info, verbose);
-
+      error = la_log_page_check (local_database_name, log_path, pageid,
+				 check_applied_info, check_copied_info,
+				 verbose);
       (void) db_shutdown ();
     }
   else if (check_copied_info)
@@ -2899,9 +2935,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       strcpy (local_database_name, database_name);
       strcat (local_database_name, "@localhost");
 
-      error =
-	la_log_page_check (local_database_name, log_path, pageid,
-			   check_applied_info, check_copied_info, verbose);
+      error = la_log_page_check (local_database_name, log_path, pageid,
+				 check_applied_info, check_copied_info,
+				 verbose);
     }
 
 check_applied_info_end:

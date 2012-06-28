@@ -321,22 +321,23 @@ createdb (UTIL_FUNCTION_ARG * arg)
   char *log_volume_str;
   char *log_page_str;
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
     {
       goto error_exit;
     }
 
-  output_file_name =
-    utility_get_option_string_value (arg_map, CREATE_OUTPUT_FILE_S, 0);
+  output_file_name = utility_get_option_string_value (arg_map,
+						      CREATE_OUTPUT_FILE_S,
+						      0);
   program_name = arg->command_name;
-  volume_path =
-    utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
+  volume_path = utility_get_option_string_value (arg_map,
+						 CREATE_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
   lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
-  host_name =
-    utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
+  host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S,
+					       0);
   overwrite = utility_get_option_bool_value (arg_map, CREATE_REPLACE_S);
   verbose = utility_get_option_bool_value (arg_map, CREATE_VERBOSE_S);
   comment = utility_get_option_string_value (arg_map, CREATE_COMMENT_S, 0);
@@ -359,11 +360,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
       db_page_size = IO_PAGESIZE;
     }
 
-  db_page_str =
-    utility_get_option_string_value (arg_map, CREATE_DB_PAGE_SIZE_S, 0);
+  db_page_str = utility_get_option_string_value (arg_map,
+						 CREATE_DB_PAGE_SIZE_S, 0);
   if (db_page_str != NULL)
     {
       UINT64 v;
+
       if (util_size_string_to_byte ((const char *) db_page_str, &v) !=
 	  NO_ERROR)
 	{
@@ -373,8 +375,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   make_valid_page_size (&db_page_size);
 
-  db_volume_str =
-    utility_get_option_string_value (arg_map, CREATE_DB_VOLUME_SIZE_S, 0);
+  db_volume_str = utility_get_option_string_value (arg_map,
+						   CREATE_DB_VOLUME_SIZE_S,
+						   0);
   if (db_volume_str == NULL)
     {
       db_volume_size = PRM_DB_VOLUME_SIZE;
@@ -399,8 +402,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   db_volume_size = (UINT64) db_volume_pages *(UINT64) db_page_size;
 
-  log_page_str =
-    utility_get_option_string_value (arg_map, CREATE_LOG_PAGE_SIZE_S, 0);
+  log_page_str = utility_get_option_string_value (arg_map,
+						  CREATE_LOG_PAGE_SIZE_S, 0);
   if (log_page_str == NULL)
     {
       log_page_size = db_page_size;
@@ -408,6 +411,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   else
     {
       UINT64 v;
+
       if (util_size_string_to_byte ((const char *) log_page_str, &v)
 	  != NO_ERROR)
 	{
@@ -417,8 +421,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   make_valid_page_size (&log_page_size);
 
-  log_volume_str =
-    utility_get_option_string_value (arg_map, CREATE_LOG_VOLUME_SIZE_S, 0);
+  log_volume_str = utility_get_option_string_value (arg_map,
+						    CREATE_LOG_VOLUME_SIZE_S,
+						    0);
   if (log_volume_str == NULL)
     {
       log_volume_size = PRM_LOG_VOLUME_SIZE;
@@ -432,8 +437,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  log_volume_pages =
-    utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_COUNT_S);
+  log_volume_pages = utility_get_option_int_value (arg_map,
+						   CREATE_LOG_PAGE_COUNT_S);
   if (log_volume_pages != -1)
     {
       util_print_deprecated ("--" CREATE_LOG_PAGE_COUNT_L);
@@ -443,8 +448,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
       log_volume_pages = log_volume_size / log_page_size;
     }
 
-  if (database_name == 0 || database_name[0] == 0 ||
-      utility_get_option_string_table_size (arg_map) != 1)
+  if (database_name == 0 || database_name[0] == 0
+      || utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_create_usage;
     }
@@ -660,17 +665,18 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   bool force_delete;
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_delete_usage;
     }
 
-  output_file_name =
-    utility_get_option_string_value (arg_map, DELETE_OUTPUT_FILE_S, 0);
-  force_delete =
-    utility_get_option_bool_value (arg_map, DELETE_DELETE_BACKUP_S);
+  output_file_name = utility_get_option_string_value (arg_map,
+						      DELETE_OUTPUT_FILE_S,
+						      0);
+  force_delete = utility_get_option_bool_value (arg_map,
+						DELETE_DELETE_BACKUP_S);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -821,14 +827,14 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   bool partial_recovery;
   BO_RESTART_ARG restart_arg;
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  up_to_date =
-    utility_get_option_string_value (arg_map, RESTORE_UP_TO_DATE_S, 0);
-  partial_recovery =
-    utility_get_option_bool_value (arg_map, RESTORE_PARTIAL_RECOVERY_S);
-  restart_arg.printtoc =
-    utility_get_option_bool_value (arg_map, RESTORE_LIST_S);
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
+  up_to_date = utility_get_option_string_value (arg_map,
+						RESTORE_UP_TO_DATE_S, 0);
+  partial_recovery = utility_get_option_bool_value (arg_map,
+						    RESTORE_PARTIAL_RECOVERY_S);
+  restart_arg.printtoc = utility_get_option_bool_value (arg_map,
+							RESTORE_LIST_S);
   restart_arg.stopat = -1;
   restart_arg.backuppath =
     utility_get_option_string_value (arg_map, RESTORE_BACKUP_FILE_PATH_S, 0);
@@ -923,22 +929,23 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   const char *control_file_name;
   bool force_delete;
 
-  src_db_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  dest_db_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  src_db_name = utility_get_option_string_value (arg_map,
+						 OPTION_STRING_TABLE, 0);
+  dest_db_name = utility_get_option_string_value (arg_map,
+						  OPTION_STRING_TABLE, 1);
   if (src_db_name == NULL || dest_db_name == NULL)
     {
       goto print_rename_usage;
     }
 
-  ext_path =
-    utility_get_option_string_value (arg_map, RENAME_EXTENTED_VOLUME_PATH_S,
-				     0);
-  control_file_name =
-    utility_get_option_string_value (arg_map, RENAME_CONTROL_FILE_S, 0);
-  force_delete =
-    utility_get_option_bool_value (arg_map, RENAME_DELETE_BACKUP_S);
+  ext_path = utility_get_option_string_value (arg_map,
+					      RENAME_EXTENTED_VOLUME_PATH_S,
+					      0);
+  control_file_name = utility_get_option_string_value (arg_map,
+						       RENAME_CONTROL_FILE_S,
+						       0);
+  force_delete = utility_get_option_bool_value (arg_map,
+						RENAME_DELETE_BACKUP_S);
 
   if (utility_get_option_string_table_size (arg_map) != 2)
     {
@@ -1031,8 +1038,8 @@ installdb (UTIL_FUNCTION_ARG * arg)
       goto print_install_usage;
     }
 
-  server_name =
-    utility_get_option_string_value (arg_map, INSTALL_SERVER_NAME_S, 0);
+  server_name = utility_get_option_string_value (arg_map,
+						 INSTALL_SERVER_NAME_S, 0);
   db_path = utility_get_option_string_value (arg_map, INSTALL_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, INSTALL_LOG_PATH_S, 0);
 
@@ -1142,28 +1149,29 @@ copydb (UTIL_FUNCTION_ARG * arg)
   const char *control_file_name;
   bool overwrite, delete_src, copy_lob_path;
 
-  src_db_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  dest_db_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  src_db_name = utility_get_option_string_value (arg_map,
+						 OPTION_STRING_TABLE, 0);
+  dest_db_name = utility_get_option_string_value (arg_map,
+						  OPTION_STRING_TABLE, 1);
   if (src_db_name == NULL || dest_db_name == NULL)
     {
       goto print_copy_usage;
     }
 
-  server_name =
-    utility_get_option_string_value (arg_map, COPY_SERVER_NAME_S, 0);
+  server_name = utility_get_option_string_value (arg_map, COPY_SERVER_NAME_S,
+						 0);
   db_path = utility_get_option_string_value (arg_map, COPY_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, COPY_LOG_PATH_S, 0);
   lob_path = utility_get_option_string_value (arg_map, COPY_LOB_PATH_S, 0);
-  ext_path =
-    utility_get_option_string_value (arg_map, COPY_EXTENTED_VOLUME_PATH_S, 0);
-  control_file_name =
-    utility_get_option_string_value (arg_map, COPY_CONTROL_FILE_S, 0);
+  ext_path = utility_get_option_string_value (arg_map,
+					      COPY_EXTENTED_VOLUME_PATH_S, 0);
+  control_file_name = utility_get_option_string_value (arg_map,
+						       COPY_CONTROL_FILE_S,
+						       0);
   overwrite = utility_get_option_bool_value (arg_map, COPY_REPLACE_S);
   delete_src = utility_get_option_bool_value (arg_map, COPY_DELETE_SOURCE_S);
-  copy_lob_path =
-    utility_get_option_bool_value (arg_map, COPY_COPY_LOB_PATH_S);
+  copy_lob_path = utility_get_option_bool_value (arg_map,
+						 COPY_COPY_LOB_PATH_S);
 
   if (utility_get_option_string_table_size (arg_map) != 2)
     {
@@ -1261,8 +1269,8 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
       goto print_optimize_usage;
     }
 
-  class_name =
-    utility_get_option_string_value (arg_map, OPTIMIZE_CLASS_NAME_S, 0);
+  class_name = utility_get_option_string_value (arg_map,
+						OPTIMIZE_CLASS_NAME_S, 0);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1294,8 +1302,8 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 
   if (class_name != NULL && class_name[0] != 0)
     {
-      if ((class_mop = db_find_class (class_name)) == NULL ||
-	  sm_update_statistics (class_mop, true) != NO_ERROR)
+      if ((class_mop = db_find_class (class_name)) == NULL
+	  || sm_update_statistics (class_mop, true) != NO_ERROR)
 	{
 	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
@@ -1831,9 +1839,8 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
       goto print_alterdbhost_usage;
     }
 
-  host_name =
-    utility_get_option_string_value (arg_map, ALTERDBHOST_HOST_S, 0);
-
+  host_name = utility_get_option_string_value (arg_map, ALTERDBHOST_HOST_S,
+					       0);
   if (check_database_name (db_name))
     {
       goto error_exit;
@@ -2008,8 +2015,8 @@ genlocale (UTIL_FUNCTION_ARG * arg)
     }
   else if (str_count == 1)
     {
-      locale_str =
-	utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+      locale_str = utility_get_option_string_value (arg_map,
+						    OPTION_STRING_TABLE, 0);
       if (locale_str == NULL)
 	{
 	  goto print_genlocale_usage;
@@ -2022,9 +2029,8 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 
   is_verbose = utility_get_option_bool_value (arg_map, GENLOCALE_VERBOSE_S);
 
-  input_path =
-    utility_get_option_string_value (arg_map, GENLOCALE_INPUT_PATH_S, 0);
-
+  input_path = utility_get_option_string_value (arg_map,
+						GENLOCALE_INPUT_PATH_S, 0);
   if (input_path != NULL && is_scan_locales)
     {
       goto print_genlocale_usage;
@@ -2198,11 +2204,11 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 
   str_count = utility_get_option_string_table_size (arg_map);
 
-  locale_str =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  locale_str = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE,
+						0);
 
-  input_path =
-    utility_get_option_string_value (arg_map, DUMPLOCALE_INPUT_PATH_S, 0);
+  input_path = utility_get_option_string_value (arg_map,
+						DUMPLOCALE_INPUT_PATH_S, 0);
 
   if (utility_get_option_bool_value (arg_map, DUMPLOCALE_CALENDAR_S))
     {
@@ -2214,19 +2220,19 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
       dl_settings |= DUMPLOCALE_IS_NUMBERING;
     }
 
-  alphabet_type =
-    utility_get_option_string_value (arg_map, DUMPLOCALE_ALPHABET_S, 0);
+  alphabet_type = utility_get_option_string_value (arg_map,
+						   DUMPLOCALE_ALPHABET_S, 0);
   if (alphabet_type != NULL)
     {
-      if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_S) == 0 ||
-	  strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_L) == 0)
+      if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_S) == 0
+	  || strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_L) == 0)
 	{
 	  dl_settings |= DUMPLOCALE_IS_ALPHABET;
 	  dl_settings |= DUMPLOCALE_IS_ALPHABET_LOWER;
 	  dl_settings &= ~DUMPLOCALE_IS_ALPHABET_UPPER;
 	}
-      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_S) == 0 ||
-	       strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_L) == 0)
+      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_S) == 0
+	       || strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_L) == 0)
 	{
 	  dl_settings |= DUMPLOCALE_IS_ALPHABET;
 	  dl_settings &= ~DUMPLOCALE_IS_ALPHABET_LOWER;
@@ -2247,15 +2253,15 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 				     DUMPLOCALE_IDENTIFIER_ALPHABET_S, 0);
   if (alphabet_type != NULL)
     {
-      if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_S) == 0 ||
-	  strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_L) == 0)
+      if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_S) == 0
+	  || strcmp (alphabet_type, DUMPLOCALE_ALPHABET_LOWER_L) == 0)
 	{
 	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET;
 	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER;
 	  dl_settings &= ~DUMPLOCALE_IS_IDENTIFIER_ALPHABET_UPPER;
 	}
-      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_S) == 0 ||
-	       strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_L) == 0)
+      else if (strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_S) == 0
+	       || strcmp (alphabet_type, DUMPLOCALE_ALPHABET_UPPER_L) == 0)
 	{
 	  dl_settings |= DUMPLOCALE_IS_IDENTIFIER_ALPHABET;
 	  dl_settings &= ~DUMPLOCALE_IS_IDENTIFIER_ALPHABET_LOWER;
@@ -2278,8 +2284,8 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
     {
       dl_settings |= DUMPLOCALE_IS_COLLATION_WEIGHT_ORDER;
     }
-  start_value =
-    utility_get_option_int_value (arg_map, DUMPLOCALE_START_VALUE_S);
+  start_value = utility_get_option_int_value (arg_map,
+					      DUMPLOCALE_START_VALUE_S);
   end_value = utility_get_option_int_value (arg_map, DUMPLOCALE_END_VALUE_S);
 
   if (utility_get_option_bool_value (arg_map, DUMPLOCALE_NORMALIZATION_S))
@@ -2373,8 +2379,8 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
   /* Do the actual dumping. */
   for (loc_index = 0; loc_index < count_loc; loc_index++)
     {
-      err_status =
-	locale_check_and_set_default_files (&(lf[loc_index]), true);
+      err_status = locale_check_and_set_default_files (&(lf[loc_index]),
+						       true);
       if (err_status != NO_ERROR)
 	{
 	  goto error;
@@ -2396,9 +2402,8 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto error;
 	}
-      err_status =
-	locale_dump (&lld, &(lf[loc_index]), dl_settings, start_value,
-		     end_value);
+      err_status = locale_dump (&lld, &(lf[loc_index]), dl_settings,
+				start_value, end_value);
       if (err_status != NO_ERROR)
 	{
 	  goto error;
