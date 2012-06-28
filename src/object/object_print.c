@@ -523,9 +523,23 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, " OF ");
 	  if (temp_domain->setdomain != NULL)
 	    {
-	      buffer =
-		obj_print_describe_domain (parser, buffer,
-					   temp_domain->setdomain, prt_type);
+	      if (temp_domain->setdomain->next != NULL
+		  && prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, "(");
+		  buffer =
+		    obj_print_describe_domain (parser, buffer,
+					       temp_domain->setdomain,
+					       prt_type);
+		  buffer = pt_append_nulstring (parser, buffer, ")");
+		}
+	      else
+		{
+		  buffer =
+		    obj_print_describe_domain (parser, buffer,
+					       temp_domain->setdomain,
+					       prt_type);
+		}
 	    }
 	  break;
 	case DB_TYPE_ENUMERATION:

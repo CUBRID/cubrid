@@ -8363,25 +8363,31 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   if (class_schema->methods != NULL || class_schema->class_methods != NULL)
     {
       buffer = pt_append_nulstring (parser, buffer, " METHOD ");
-      for (line_ptr = class_schema->methods; *line_ptr != NULL; line_ptr++)
+      if (class_schema->methods != NULL)
 	{
-	  if (line_ptr != class_schema->methods)
+	  for (line_ptr = class_schema->methods; *line_ptr != NULL;
+	       line_ptr++)
 	    {
-	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	      if (line_ptr != class_schema->methods)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
 	    }
-	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
 	}
-
-      for (line_ptr = class_schema->class_methods; *line_ptr != NULL;
-	   line_ptr++)
+      if (class_schema->class_methods != NULL)
 	{
-	  if (line_ptr != class_schema->class_methods
-	      || *class_schema->methods != NULL)
+	  for (line_ptr = class_schema->class_methods; *line_ptr != NULL;
+	       line_ptr++)
 	    {
-	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	      if (line_ptr != class_schema->class_methods
+		  || class_schema->methods != NULL)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, " CLASS ");
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
 	    }
-	  buffer = pt_append_nulstring (parser, buffer, " CLASS ");
-	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
 	}
     }
 
