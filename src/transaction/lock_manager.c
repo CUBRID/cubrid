@@ -2852,6 +2852,10 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
       (void) lock_set_error_for_timeout (thread_p, entry_ptr);
       return LOCK_RESUMED_TIMEOUT;
 
+    case LOCK_RESUMED_INTERRUPT:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      return LOCK_RESUMED_INTERRUPT;
+
     case LOCK_SUSPENDED:
     default:
       /* Probabely, the waiting structure has not been removed
@@ -9437,13 +9441,19 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	  double etime;
 	  (void) gettimeofday (&tv, NULL);
 	  etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
-	  if ((LK_CAN_TIMEOUT (thrd->lockwait_msecs)
-	       && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
-	      || logtb_is_interrupted_tran (NULL, true, &ignore,
-					    thrd->tran_index))
+	  if (LK_CAN_TIMEOUT (thrd->lockwait_msecs)
+	      && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 	    {
 	      /* wake up the thread */
 	      lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_TIMEOUT);
+	      return true;
+	    }
+	  else if (logtb_is_interrupted_tran (NULL, true, &ignore,
+					      thrd->tran_index))
+	    {
+	      /* wake up the thread */
+	      lock_resume ((LK_ENTRY *) thrd->lockwait,
+			   LOCK_RESUMED_INTERRUPT);
 	      return true;
 	    }
 	  else
