@@ -30,6 +30,7 @@
 
 package cubrid.jdbc.jci;
 
+
 public class UJciException extends Exception {
     	private static final long serialVersionUID = 4464106407657785825L;
 
@@ -60,11 +61,11 @@ public class UJciException extends Exception {
 	void toUError(UError error) {
 		if (jciErrCode == UErrorCode.ER_DBMS) {
 			String msg;
-			if (serverErrIndicator == UErrorCode.DBMS_ERROR_INDICATOR)
+			if (serverErrIndicator == UErrorCode.DBMS_ERROR_INDICATOR) {
 				msg = getMessage();
-			else
+			} else {
 				msg = UErrorCode.codeToCASMessage(serverErrCode);
-
+			}
 			error.setDBError(serverErrCode, msg);
 		} else if (jciErrCode == UErrorCode.ER_UNKNOWN) {
 			error.setErrorMessage(jciErrCode, getMessage());

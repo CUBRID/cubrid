@@ -41,11 +41,13 @@ public class UError {
 	public final static int DRIVER_ERROR_CODE_BASE = -2100;
 	public final static int METHOD_USER_ERROR_BASE = -10000;
 
+	private UConnection connection = null;
 	private int jciErrorCode;
 	private int serverErrorCode;
 	private String errorMessage;
 
-	UError() {
+	UError(UConnection c) {
+	    	connection = c;
 		jciErrorCode = UErrorCode.ER_NO_ERROR;
 	}
 
@@ -58,6 +60,9 @@ public class UError {
 	}
 
 	public String getErrorMsg() {
+	    	if (connection != null) {
+	    	    return connection.url + '\n' + errorMessage;
+	    	}
 		return errorMessage;
 	}
 
@@ -71,6 +76,7 @@ public class UError {
 	}
 
 	void copyValue(UError object) {
+	    	connection = object.connection;
 		jciErrorCode = object.jciErrorCode;
 		errorMessage = object.errorMessage;
 		serverErrorCode = object.serverErrorCode;

@@ -121,7 +121,7 @@ public class UStatement {
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
 			boolean assign_only, String sql, byte _prepare_flag)
 			throws UJciException {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedC);
 		if (assign_only) {
 			relatedConnection = relatedC;
 			tmp_inbuffer = inBuffer;
@@ -186,7 +186,7 @@ public class UStatement {
 		relatedConnection = relatedC;
 		// oidString = oString;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		serverHandler = -1;
 
@@ -220,7 +220,7 @@ public class UStatement {
 		relatedConnection = relatedC;
 		schemaType = type;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		serverHandler = inBuffer.getResCode();
 		totalTupleNumber = inBuffer.readInt();
@@ -246,7 +246,7 @@ public class UStatement {
 		relatedConnection = u_con;
 		outBuffer = u_con.outBuffer;
 		statementType = NORMAL;
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		bindParameter = null;
 		fetchSize = DEFAULT_FETCH_SIZE;
 		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
@@ -277,7 +277,7 @@ public class UStatement {
 		relatedConnection = u_stmt.relatedConnection;
 		outBuffer = u_stmt.outBuffer;
 		statementType = NORMAL;
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		bindParameter = null;
 		fetchSize = DEFAULT_FETCH_SIZE;
 		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
@@ -302,7 +302,7 @@ public class UStatement {
 	}
 
 	public void registerOutParameter(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (index < 0 || index >= parameterNumber) {
 			errorHandler.setErrorCode(UErrorCode.ER_BIND_INDEX);
 			return;
@@ -399,7 +399,7 @@ public class UStatement {
 			return;
 		}
 		if (type == UUType.U_TYPE_NULL && value != null) {
-			errorHandler = new UError();
+			errorHandler = new UError(relatedConnection);
 			errorHandler.setErrorCode(UErrorCode.ER_INVALID_ARGUMENT);
 			return;
 		}
@@ -416,7 +416,7 @@ public class UStatement {
 			try {
 				collectionData = new CUBRIDArray(values);
 			} catch (UJciException e) {
-				errorHandler = new UError();
+				errorHandler = new UError(relatedConnection);
 				e.toUError(errorHandler);
 				return;
 			}
@@ -438,7 +438,7 @@ public class UStatement {
 	}
 
 	public void addBatch() {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		if (bindParameter == null)
 			return;
@@ -461,7 +461,7 @@ public class UStatement {
 	}
 
 	public UError cancel() {
-		UError localError = new UError();
+		UError localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return localError;
@@ -482,7 +482,7 @@ public class UStatement {
 	}
 
 	public void clearBatch() {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -495,7 +495,7 @@ public class UStatement {
 	}
 
 	synchronized public void clearBind() {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -509,7 +509,7 @@ public class UStatement {
 
 	synchronized public void close(boolean close_srv_handle) {
 		try {
-			errorHandler = new UError();
+			errorHandler = new UError(relatedConnection);
 
 			if (isClosed == true) {
 				errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -538,7 +538,7 @@ public class UStatement {
 	}
 
 	synchronized public boolean cursorIsInstance(int cursor) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return false;
@@ -582,7 +582,7 @@ public class UStatement {
 		}
 	}
 	synchronized public void deleteCursor(int cursor) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -615,7 +615,7 @@ public class UStatement {
 		flushLobStreams();
 
 		UInputBuffer inBuffer = null;
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		if (isClosed == true) {
 			if (relatedConnection.brokerInfoStatementPooling() == true) {
@@ -808,7 +808,7 @@ public class UStatement {
 	}
 
 	synchronized public CUBRIDOID executeInsert(boolean isAsync) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -833,7 +833,7 @@ public class UStatement {
 	synchronized public UBatchResult executeBatch() {
 		UInputBuffer inBuffer;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		try {
 			synchronized (relatedConnection) {
 				relatedConnection.checkReconnect();
@@ -914,7 +914,7 @@ public class UStatement {
 	}
 
 	synchronized public void fetch() {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -943,7 +943,7 @@ public class UStatement {
 	}
 
 	synchronized public BigDecimal getBigDecimal(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -958,7 +958,7 @@ public class UStatement {
 	}
 
 	synchronized public boolean getBoolean(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -973,7 +973,7 @@ public class UStatement {
 	}
 
 	synchronized public byte getByte(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -988,7 +988,7 @@ public class UStatement {
 	}
 
 	synchronized public byte[] getBytes(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1003,7 +1003,7 @@ public class UStatement {
 	}
 
 	synchronized public Object getCollection(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1020,7 +1020,7 @@ public class UStatement {
 	public UColumnInfo[] getColumnInfo() {
 		UError localError;
 
-		localError = new UError();
+		localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1033,7 +1033,7 @@ public class UStatement {
 	public HashMap<String, Integer> getColumnNameToIndexMap() {
 		UError localError;
 
-		localError = new UError();
+		localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1044,7 +1044,7 @@ public class UStatement {
 	}
 
 	synchronized public CUBRIDOID getColumnOID(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1059,7 +1059,7 @@ public class UStatement {
 	}
 
 	synchronized public CUBRIDOID getCursorOID() {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -1072,7 +1072,7 @@ public class UStatement {
 	}
 
 	synchronized public CUBRIDBlob getBlob(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1087,7 +1087,7 @@ public class UStatement {
 	}
 
 	synchronized public CUBRIDClob getClob(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1102,7 +1102,7 @@ public class UStatement {
 	}
 
 	synchronized public Date getDate(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1117,7 +1117,7 @@ public class UStatement {
 	}
 
 	synchronized public double getDouble(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1132,7 +1132,7 @@ public class UStatement {
 	}
 
 	public int getExecuteResult() {
-		UError localError = new UError();
+		UError localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1143,7 +1143,7 @@ public class UStatement {
 	}
 
 	public int getFetchDirection() {
-		UError localError = new UError();
+		UError localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1154,7 +1154,7 @@ public class UStatement {
 	}
 
 	public int getFetchSize() {
-		UError localError = new UError();
+		UError localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1165,7 +1165,7 @@ public class UStatement {
 	}
 
 	synchronized public float getFloat(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1180,7 +1180,7 @@ public class UStatement {
 	}
 
 	synchronized public int getInt(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1196,7 +1196,7 @@ public class UStatement {
 	}
 
 	synchronized public long getLong(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1212,7 +1212,7 @@ public class UStatement {
 	}
 
 	synchronized public Object getObject(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1258,7 +1258,7 @@ public class UStatement {
 	public UResultInfo[] getResultInfo() {
 		UError localError;
 
-		localError = new UError();
+		localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1269,7 +1269,7 @@ public class UStatement {
 	}
 
 	synchronized public short getShort(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1284,7 +1284,7 @@ public class UStatement {
 	}
 
 	public boolean getSqlType() {
-		UError localError = new UError();
+		UError localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1303,7 +1303,7 @@ public class UStatement {
 	}
 
 	synchronized public String getString(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1318,7 +1318,7 @@ public class UStatement {
 	}
 
 	synchronized public Time getTime(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1333,7 +1333,7 @@ public class UStatement {
 	}
 
 	synchronized public Timestamp getTimestamp(int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 
 		Object obj = beforeGetXXX(index);
 		if (obj == null)
@@ -1352,7 +1352,7 @@ public class UStatement {
 	}
 
 	public boolean isOIDIncluded() {
-		UError localError = new UError();
+		UError localError = new UError(relatedConnection);
 		if (isClosed == true) {
 			localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			errorHandler = localError;
@@ -1365,7 +1365,7 @@ public class UStatement {
 	synchronized public void moveCursor(int offset, int origin) {
 		UInputBuffer inBuffer;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -1444,7 +1444,7 @@ public class UStatement {
 	synchronized public boolean nextResult() {
 		UInputBuffer inBuffer;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return false;
@@ -1518,7 +1518,7 @@ public class UStatement {
 	synchronized public void reFetch() {
 		UInputBuffer inBuffer;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -1560,7 +1560,7 @@ public class UStatement {
 	}
 
 	synchronized public void setFetchDirection(int direction) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -1575,7 +1575,7 @@ public class UStatement {
 	}
 
 	synchronized public void setFetchSize(int size) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -1594,7 +1594,7 @@ public class UStatement {
 
 	synchronized public void updateRows(int cursorPosition, int[] indexes,
 			Object[] values) {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -1646,7 +1646,7 @@ public class UStatement {
 	synchronized public String getQueryplan() {
 		String plan = null;
 
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -1681,7 +1681,7 @@ public class UStatement {
 	}
 
 	synchronized public boolean getGeneratedKeys() {
-		errorHandler = new UError();
+		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return false;
@@ -1722,7 +1722,7 @@ public class UStatement {
 	private void bindValue(int index, byte type, Object data) {
 		UError localError;
 
-		localError = new UError();
+		localError = new UError(relatedConnection);
 		if (bindParameter == null || index < 0 || index >= parameterNumber) {
 			localError.setErrorCode(UErrorCode.ER_BIND_INDEX);
 			errorHandler = localError;

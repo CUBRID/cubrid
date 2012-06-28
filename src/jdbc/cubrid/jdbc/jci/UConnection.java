@@ -152,7 +152,7 @@ public class UConnection {
 	private int lastIsolationLevel;
 	private int lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
 	private boolean lastAutoCommit = true;
-	private String dbname, user, passwd, url;
+	String dbname, user, passwd, url;
 	private ArrayList<String> altHosts = null;
 	private int connectedHostId = 0;
 	// jci 3.0
@@ -201,7 +201,7 @@ public class UConnection {
 		update_executed = false;
 
 		needReconnection = true;
-	    	errorHandler = new UError();
+	    	errorHandler = new UError(this);
 	}
 
 	UConnection(ArrayList<String> altHostList, String dbname, String user,
@@ -214,12 +214,12 @@ public class UConnection {
 		update_executed = false;
 
 		needReconnection = true;
-	    	errorHandler = new UError();
+	    	errorHandler = new UError(this);
 	}
 
 	// This constructor is called on the server side.
 	UConnection(Socket socket, Object curThread) throws CUBRIDException {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		try {
 			client = socket;
 			client.setTcpNoDelay(true);
@@ -318,7 +318,7 @@ public class UConnection {
 
 	synchronized public void addElementToSet(CUBRIDOID oid,
 			String attributeName, Object value) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -338,7 +338,7 @@ public class UConnection {
 	}
 
 	synchronized public UBatchResult batchExecute(String batchSqlStmt[]) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -396,7 +396,7 @@ public class UConnection {
 	}
 
 	synchronized public void close() {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -424,7 +424,7 @@ public class UConnection {
 
 	synchronized public void dropElementInSequence(CUBRIDOID oid,
 			String attributeName, int index) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -455,7 +455,7 @@ public class UConnection {
 
 	synchronized public void dropElementInSet(CUBRIDOID oid,
 			String attributeName, Object value) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -475,7 +475,7 @@ public class UConnection {
 	}
 
 	synchronized public void endTransaction(boolean type) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -561,7 +561,7 @@ public class UConnection {
 			String[] attributeName) {
 		UStatement returnValue = null;
 
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -602,7 +602,7 @@ public class UConnection {
 	}
 
 	synchronized public String getDatabaseProductVersion() {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -631,7 +631,7 @@ public class UConnection {
 	}
 
 	synchronized public int getIsolationLevel() {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (UJCIUtil.isMMDB()) {
 			return CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
@@ -673,7 +673,7 @@ public class UConnection {
 		if (sql == null)
 			return null;
 
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -713,7 +713,7 @@ public class UConnection {
 			String arg2, byte flag) {
 		UStatement returnValue = null;
 
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -767,7 +767,7 @@ public class UConnection {
 
 	synchronized public int getSizeOfCollection(CUBRIDOID oid,
 			String attributeName) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return 0;
@@ -801,7 +801,7 @@ public class UConnection {
 
 	synchronized public void insertElementIntoSequence(CUBRIDOID oid,
 			String attributeName, int index, Object value) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -833,7 +833,7 @@ public class UConnection {
 			byte prepareFlag, boolean recompile_flag) {
 		UStatement returnValue = null;
 
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -901,7 +901,7 @@ public class UConnection {
 
 	synchronized public void putByOID(CUBRIDOID oid, String attributeName[],
 			Object values[]) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -940,7 +940,7 @@ public class UConnection {
 
 	synchronized public void putElementInSequence(CUBRIDOID oid,
 			String attributeName, int index, Object value) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -961,7 +961,7 @@ public class UConnection {
 	}
 
 	synchronized public void setIsolationLevel(int level) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (!UJCIUtil.isMMDB()) {
 			if (isClosed == true) {
@@ -996,7 +996,7 @@ public class UConnection {
 	}
 
 	synchronized public void setLockTimeout(int timeout) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -1084,7 +1084,7 @@ public class UConnection {
 	}
 
 	synchronized public void xa_endTransaction(Xid xid, boolean type) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -1112,7 +1112,7 @@ public class UConnection {
 	}
 
 	synchronized public void xa_prepare(Xid xid) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -1134,7 +1134,7 @@ public class UConnection {
 	}
 
 	synchronized public Xid[] xa_recover() {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -1233,7 +1233,7 @@ public class UConnection {
 	}
 
 	synchronized public Object oidCmd(CUBRIDOID oid, byte cmd) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -1272,7 +1272,7 @@ public class UConnection {
 	}
 
 	synchronized public byte[] lobNew(int lob_type) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -1314,7 +1314,7 @@ public class UConnection {
 
 	synchronized public int lobWrite(byte[] packedLobHandle, long offset,
 			byte[] buf, int start, int len) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return -1;
@@ -1353,7 +1353,7 @@ public class UConnection {
 
 	synchronized public int lobRead(byte[] packedLobHandle, long offset,
 			byte[] buf, int start, int len) {
-		errorHandler = new UError();
+		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return -1;
