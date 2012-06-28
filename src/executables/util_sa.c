@@ -1862,6 +1862,8 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
       host_name = host_name_buf;
     }
 
+  er_init (NULL, ER_NEVER_EXIT);
+
   /* get the database directory information in write mode */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
