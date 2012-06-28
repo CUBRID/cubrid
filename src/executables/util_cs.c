@@ -397,7 +397,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -685,8 +685,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       if (repair == true)
 	{
 	  int added = 0;
-	  int ret_val = 
-		 db_add_filter_and_function_index_to_catalog_classes (&added);
+	  int ret_val =
+	    db_add_filter_and_function_index_to_catalog_classes (&added);
 	  if (ret_val == NO_ERROR)
 	    {
 	      if (added)
@@ -864,7 +864,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   /* should have little copyright herald message ? */

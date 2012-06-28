@@ -540,7 +540,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
   sysprm_set_force (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, "-1");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
@@ -706,7 +706,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -971,7 +971,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -1199,7 +1199,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
