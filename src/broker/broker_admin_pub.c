@@ -828,15 +828,19 @@ finale:
 }
 
 int
-admin_broker_on_cmd (int master_shm_id, const char *broker_name)
+admin_on_cmd (int master_shm_id, const char *broker_name)
 {
-#if defined(CUBRID_SHARD)
-  /* SHARD TODO : not implemented yet */
-  return 0;
-#else
   int i;
   T_SHM_BROKER *shm_br;
   int res = 0;
+#if defined(CUBRID_SHARD)
+  int j;
+  char *shm_metadata_p = NULL;
+  char *shm_appl_svr_p = NULL;
+  T_SHM_APPL_SERVER *shm_as_p = NULL;
+  T_SHM_PROXY *proxy_p = NULL;
+  T_PROXY_INFO *proxy_info_p;
+#endif /* CUBRID_SHARD */
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
@@ -860,8 +864,48 @@ admin_broker_on_cmd (int master_shm_id, const char *broker_name)
 	    }
 	  else
 	    {
+#if defined(CUBRID_SHARD)
+	      shm_metadata_p =
+		shard_metadata_initialize (&(shm_br->br_info[i]));
+	      if (shm_metadata_p)
+		{
+		  shm_appl_svr_p =
+		    shard_shm_initialize (&(shm_br->br_info[i]),
+					  shm_metadata_p);
+		  if (shm_appl_svr_p)
+		    {
+		      shm_as_p = shard_shm_get_appl_server (shm_appl_svr_p);
+		      proxy_p = shard_shm_get_proxy (shm_appl_svr_p);
+		    }
+		}
+
+	      if (shm_as_p == NULL || proxy_p == NULL)
+		{
+		  uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+		  uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
+
+		  res = -1;
+		  break;
+		}
+
+	      for (j = 0, proxy_info_p =
+		   shard_shm_get_first_proxy_info (proxy_p); proxy_info_p;
+		   j++, proxy_info_p =
+		   shard_shm_get_next_proxy_info (proxy_info_p))
+		{
+		  snprintf (proxy_info_p->access_log_file,
+			    CONF_LOG_FILE_LEN - 1, "%s/%s_%d.access",
+			    CUBRID_BASE_DIR, shm_br->br_info[i].name, j);
+		  dir_repath (proxy_info_p->access_log_file);
+		}
+
+	      res =
+		shard_process_activate (master_shm_id, &(shm_br->br_info[i]),
+					shm_br, shm_appl_svr_p);
+#else
 	      res =
 		br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
+#endif /* CUBRID_SHARD */
 	    }
 	  break;
 	}
@@ -870,22 +914,39 @@ admin_broker_on_cmd (int master_shm_id, const char *broker_name)
     {
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
       uw_shm_detach (shm_br);
+#if defined(CUBRID_SHARD)
+      if (shm_appl_svr_p)
+	{
+	  uw_shm_detach (shm_appl_svr_p);
+	}
+      if (shm_metadata_p)
+	{
+	  uw_shm_detach (shm_metadata_p);
+	}
+#endif /* CUBRID_SHARD */
+
       return -1;
     }
 
   uw_shm_detach (shm_br);
+#if defined(CUBRID_SHARD)
+  if (shm_appl_svr_p)
+    {
+      uw_shm_detach (shm_appl_svr_p);
+    }
+  if (shm_metadata_p)
+    {
+      uw_shm_detach (shm_metadata_p);
+    }
+#endif /* CUBRID_SHARD */
+
 
   return res;
-#endif /* CUBRID_SHARD */
 }
 
 int
-admin_broker_off_cmd (int master_shm_id, const char *broker_name)
+admin_off_cmd (int master_shm_id, const char *broker_name)
 {
-#if defined(CUBRID_SHARD)
-  /* SHARD TODO : not implemented yet */
-  return 0;
-#else
   int i;
   T_SHM_BROKER *shm_br;
 
@@ -919,7 +980,11 @@ admin_broker_off_cmd (int master_shm_id, const char *broker_name)
 	    }
 	  else
 	    {
+#if defined(CUBRID_SHARD)
+	      shard_process_inactivate (&shm_br->br_info[i]);
+#else
 	      br_inactivate (&(shm_br->br_info[i]));
+#endif /* CUBRID_SHARD */
 	    }
 	  break;
 	}
@@ -933,7 +998,6 @@ admin_broker_off_cmd (int master_shm_id, const char *broker_name)
 
   uw_shm_detach (shm_br);
   return 0;
-#endif /* CUBRID_SHARD */
 }
 
 int
@@ -1079,15 +1143,18 @@ admin_broker_resume_cmd (int master_shm_id, const char *broker_name)
 }
 
 int
-admin_broker_reset_cmd (int master_shm_id, const char *broker_name)
+admin_reset_cmd (int master_shm_id, const char *broker_name)
 {
-#if defined(CUBRID_SHARD)
-  /* SHARD TODO : not implemented yet */
-  return 0;
-#else
   int i, br_index;
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
+#if defined(CUBRID_SHARD)
+  T_BROKER_INFO *br_info_p;
+  T_SHM_PROXY *proxy_p = NULL;
+  T_PROXY_INFO *proxy_info_p;
+  T_SHARD_INFO *shard_info_p;
+  char *shm_as_cp = NULL;
+#endif /* CUBRID_SHARD */
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
@@ -1125,6 +1192,44 @@ admin_broker_reset_cmd (int master_shm_id, const char *broker_name)
       return -1;
     }
 
+#if defined(CUBRID_SHARD)
+  br_info_p = &(shm_br->br_info[br_index]);
+  shm_as_cp =
+    (char *) uw_shm_open (br_info_p->appl_server_shm_id, SHM_APPL_SERVER,
+			  SHM_MODE_ADMIN);
+  if (shm_as_cp == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      uw_shm_detach (shm_br);
+      return -1;
+    }
+  proxy_p = shard_shm_get_proxy (shm_as_cp);
+  if (proxy_p == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      uw_shm_detach (shm_br);
+      uw_shm_detach (shm_as_cp);
+      return -1;
+    }
+
+  for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+       proxy_info_p;
+       proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+    {
+      for (shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+	   shard_info_p;
+	   shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+	{
+	  for (i = 0; i < shard_info_p->num_appl_server; i++)
+	    {
+	      shard_info_p->as_info[i].reset_flag = TRUE;
+	    }
+	}
+    }
+  uw_shm_detach (shm_as_cp);
+#else
   shm_appl =
     (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].
 				       appl_server_shm_id, SHM_APPL_SERVER,
@@ -1141,15 +1246,15 @@ admin_broker_reset_cmd (int master_shm_id, const char *broker_name)
     {
       shm_appl->as_info[i].reset_flag = TRUE;
     }
-
   uw_shm_detach (shm_appl);
+#endif /* CUBRID_SHARD */
+
   uw_shm_detach (shm_br);
   return 0;
-#endif /* CUBRID_SHARD */
 }
 
 int
-admin_broker_info_cmd (int master_shm_id)
+admin_info_cmd (int master_shm_id)
 {
   T_SHM_BROKER *shm_br;
 

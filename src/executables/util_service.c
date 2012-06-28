@@ -50,15 +50,15 @@
 
 typedef enum
 {
-  SERVICE,
-  SERVER,
-  BROKER,
-  MANAGER,
-  HEARTBEAT,
-  UTIL_HELP,
-  UTIL_VERSION,
-  ADMIN,
-  SHARD
+  SERVICE = 0,
+  SERVER = 1,
+  BROKER = 2,
+  MANAGER = 3,
+  HEARTBEAT = 4,
+  UTIL_HELP = 6,
+  UTIL_VERSION = 7,
+  ADMIN = 8,
+  SHARD = 38
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -67,8 +67,8 @@ typedef enum
   STOP,
   RESTART,
   STATUS,
-  DEACTIVATE,
   ACTIVATE,
+  DEACTIVATE,
   DEREGISTER,
   LIST,
   RELOAD,
@@ -178,7 +178,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
   {ON, COMMAND_TYPE_ON, MASK_BROKER | MASK_SHARD},
   {OFF, COMMAND_TYPE_OFF, MASK_BROKER | MASK_SHARD},
-  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER | MASK_SHARD},
+  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_SHARD},
   {-1, "", MASK_ALL}
 };
@@ -1626,8 +1626,11 @@ process_shard (int command_type, int argc, const char **argv,
 	}
       break;
     case RESTART:
-      process_broker (STOP, 0, NULL, process_window_service);
-      process_broker (START, 0, NULL, process_window_service);
+      process_shard (STOP, 0, NULL, process_window_service);
+#if defined (WINDOWS)
+      Sleep (500);
+#endif
+      process_shard (START, 0, NULL, process_window_service);
       break;
     case STATUS:
       {

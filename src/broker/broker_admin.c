@@ -221,6 +221,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
+#endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "on") == 0)
     {
       if (argc < 3)
@@ -228,7 +229,7 @@ main (int argc, char **argv)
 	  printf ("%s on <broker-name>\n", argv[0]);
 	  return -1;
 	}
-      if (admin_broker_on_cmd (master_shm_id, argv[2]) < 0)
+      if (admin_on_cmd (master_shm_id, argv[2]) < 0)
 	{
 	  printf ("%s\n", admin_err_msg);
 	}
@@ -245,7 +246,7 @@ main (int argc, char **argv)
 	  printf ("%s on <broker-name>\n", argv[0]);
 	  return -1;
 	}
-      if (admin_broker_off_cmd (master_shm_id, argv[2]) < 0)
+      if (admin_off_cmd (master_shm_id, argv[2]) < 0)
 	{
 	  printf ("%s\n", admin_err_msg);
 	}
@@ -255,6 +256,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
+#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "suspend") == 0)
     {
       if (argc < 3)
@@ -289,6 +291,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
+#endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "reset") == 0)
     {
       if (argc < 3)
@@ -296,7 +299,7 @@ main (int argc, char **argv)
 	  printf ("%s reset <broker-name>\n", argv[0]);
 	  return -1;
 	}
-      if (admin_broker_reset_cmd (master_shm_id, argv[2]) < 0)
+      if (admin_reset_cmd (master_shm_id, argv[2]) < 0)
 	{
 	  printf ("%s\n", admin_err_msg);
 	}
@@ -306,6 +309,7 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
+#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "job_first") == 0)
     {
       int broker_status, i;
@@ -350,7 +354,7 @@ main (int argc, char **argv)
 #endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "info") == 0)
     {
-      if (admin_broker_info_cmd (master_shm_id) < 0)
+      if (admin_info_cmd (master_shm_id) < 0)
 	{
 	  printf ("%s\n", admin_err_msg);
 	}
@@ -405,7 +409,8 @@ main (int argc, char **argv)
 
 usage:
 #if defined(CUBRID_SHARD)
-  printf ("%s (start | stop | info)\n", argv[0]);
+  printf ("%s (start | stop | restart | on | off"
+	  " | reset | info)\n", argv[0]);
 #else
   printf ("%s (start | stop | add | drop | restart"
 	  " | on | off | suspend | resume | reset | job_first | info | acl)\n",

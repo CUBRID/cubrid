@@ -46,12 +46,12 @@ int admin_stop_cmd (int);
 int admin_add_cmd (int, const char *);
 int admin_restart_cmd (int, const char *, int);
 int admin_drop_cmd (int, const char *);
-int admin_broker_on_cmd (int, const char *);
-int admin_broker_off_cmd (int, const char *);
+int admin_on_cmd (int, const char *);
+int admin_off_cmd (int, const char *);
 int admin_broker_suspend_cmd (int, const char *);
 int admin_broker_resume_cmd (int, const char *);
-int admin_broker_reset_cmd (int, const char *);
-int admin_broker_info_cmd (int);
+int admin_reset_cmd (int, const char *);
+int admin_info_cmd (int);
 int admin_get_broker_status (int, const char *);
 int admin_broker_job_first_cmd (int, const char *, int);
 int admin_broker_conf_change (int, const char *, const char *, const char *,

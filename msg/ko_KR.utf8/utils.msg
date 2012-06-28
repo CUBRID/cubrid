@@ -136,6 +136,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    shard\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -221,6 +222,17 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 34 설정에 오류가 있습니다. %s %s\n
 35 메모리 할당에 실패하였습니다.\n
 36 서버가 HA 모드로 설정되지 않았습니다.\n
+62 cubrid 유틸리티, 버전 %s\n\
+사용법: %s shard <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
+    on          <샤드 이름>\n\
+    off         <샤드 이름>\n\
+    reset       <샤드 이름>\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n

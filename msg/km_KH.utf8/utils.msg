@@ -135,6 +135,7 @@ Available service's utilities:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    shard\n\
 \n\
 Available administrator's utilities:\n\
     addvoldb\n\
@@ -220,6 +221,17 @@ Available command:\n\
 34 Invalid Parameter. %s %s\n
 35 Cannot allocate memory.\n
 36 The server was not configured for HA.\n
+62 cubrid utility, version %s\n\
+usage: %s shard <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
+    on          shard-name\n\
+    off         shard-name\n\
+    reset       shard-name\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n

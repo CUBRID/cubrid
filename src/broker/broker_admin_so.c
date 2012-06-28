@@ -472,7 +472,7 @@ uc_on (const char *br_name, char *err_msg)
       return -1;
     }
 
-  if (admin_broker_on_cmd (master_shm_id, br_name) < 0)
+  if (admin_on_cmd (master_shm_id, br_name) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
@@ -498,7 +498,7 @@ uc_off (const char *br_name, char *err_msg)
       return -1;
     }
 
-  if (admin_broker_off_cmd (master_shm_id, br_name) < 0)
+  if (admin_off_cmd (master_shm_id, br_name) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
