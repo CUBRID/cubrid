@@ -23,77 +23,77 @@
 namespace dbgw
 {
 
-  __thread DBGWInterfaceException *g_pException;
+  static const int MAX_ERROR_MESSAGE_SIZE = 2048;
+
+  __thread int g_nErrorCode;
+  __thread int g_nInterfaceErrorCode;
+  __thread char g_szErrorMessage[MAX_ERROR_MESSAGE_SIZE];
+  __thread char g_szFormattedErrorMessage[MAX_ERROR_MESSAGE_SIZE];
+
+  static void setErrorMessage(char *szTarget, const char *szErrorMessage)
+  {
+    if (szErrorMessage == NULL)
+      {
+        strcpy(szTarget, "");
+      }
+    else
+      {
+        int nErrorMessageSize = strlen(szErrorMessage);
+        if (nErrorMessageSize > MAX_ERROR_MESSAGE_SIZE - 1)
+          {
+            nErrorMessageSize = MAX_ERROR_MESSAGE_SIZE - 1;
+          }
+        memcpy(szTarget, szErrorMessage, nErrorMessageSize);
+        szTarget[nErrorMessageSize] = '\0';
+      }
+  }
 
   void setLastException(const DBGWInterfaceException &exception)
   {
-    if (g_pException != NULL)
-      {
-        delete g_pException;
-      }
-
-    g_pException = new DBGWInterfaceException(exception);
+    g_nErrorCode = exception.getErrorCode();
+    g_nInterfaceErrorCode = exception.getInterfaceErrorCode();
+    setErrorMessage(g_szErrorMessage, exception.getErrorMessage());
+    setErrorMessage(g_szFormattedErrorMessage, exception.what());
   }
 
   void clearException()
   {
-    if (g_pException != NULL)
-      {
-        delete g_pException;
-      }
-    g_pException = NULL;
+    g_nErrorCode = DBGWErrorCode::NO_ERROR;
+    g_nInterfaceErrorCode = DBGWErrorCode::NO_ERROR;
+    strcpy(g_szErrorMessage, "");
+    strcpy(g_szFormattedErrorMessage, "");
   }
 
   DBGWInterfaceException getLastException()
   {
-    if (g_pException == NULL)
+    if (g_nInterfaceErrorCode != DBGWErrorCode::NO_ERROR)
       {
-        return DBGWInterfaceException();
+        return DBGWInterfaceException(g_nInterfaceErrorCode, g_szErrorMessage);
       }
     else
       {
-        return DBGWInterfaceException(*g_pException);;
+        return DBGWException(g_nErrorCode, g_szErrorMessage);
       }
   }
 
   int getLastErrorCode()
   {
-    if (g_pException == NULL)
-      {
-        return DBGWErrorCode::NO_ERROR;
-      }
-
-    return g_pException->getErrorCode();
+    return g_nErrorCode;
   }
 
   int getLastInterfaceErrorCode()
   {
-    if (g_pException == NULL)
-      {
-        return DBGWErrorCode::NO_ERROR;
-      }
-
-    return g_pException->getInterfaceErrorCode();
+    return g_nInterfaceErrorCode;
   }
 
   const char *getLastErrorMessage()
   {
-    if (g_pException == NULL)
-      {
-        return "";
-      }
-
-    return g_pException->getErrorMessage();
+    return g_szErrorMessage;
   }
 
   const char *getFormattedErrorMessage()
   {
-    if (g_pException == NULL)
-      {
-        return "";
-      }
-
-    return g_pException->what();
+    return g_szFormattedErrorMessage;
   }
 
   DBGWException::DBGWException() throw() :
