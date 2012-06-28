@@ -48,6 +48,7 @@ namespace dbgw
     const char *getCString(const char *szName, bool bRequired);
     int getInt(const char *szName, bool bRequired);
     bool getBool(const char *szName, bool bRequired);
+    void getValidateResult(const char *szName, bool bValidateResult[]);
     DBGWValueType getValueType(const char *szName);
     CCI_LOG_LEVEL getLogLevel(const char *szName);
 

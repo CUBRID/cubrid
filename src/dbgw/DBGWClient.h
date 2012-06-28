@@ -42,13 +42,13 @@ namespace dbgw
     DBGWClient(DBGWConfiguration &configuration, const string &nameSpace);
     virtual ~ DBGWClient();
 
+    bool setForceValidateResult(const char *szNamespace);
     bool setAutocommit(bool bAutocommit);
     bool commit();
     bool rollback();
     const DBGWResultSharedPtr exec(const char *szSqlName,
         const DBGWParameter *pParameter = NULL);
     bool close();
-    void setValidateResult(bool bValidateResult);
 
   public:
     bool isClosed() const;
@@ -65,8 +65,8 @@ namespace dbgw
     DBGWConnector *m_pConnector;
     DBGWQueryMapper *m_pQueryMapper;
     DBGWExecuterList m_executerList;
+    string m_namespace;
     bool m_bClosed;
-    bool m_bValidateResult;
     bool m_bValidClient;
 
   private:

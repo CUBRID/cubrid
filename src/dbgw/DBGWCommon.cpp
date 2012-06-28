@@ -18,12 +18,7 @@
  */
 #include "DBGWCommon.h"
 #include "DBGWError.h"
-#include "DBGWValue.h"
 #include "DBGWLogger.h"
-#include "DBGWQuery.h"
-#include "DBGWDataBaseInterface.h"
-#include "DBGWConfiguration.h"
-#include "DBGWClient.h"
 
 namespace dbgw
 {

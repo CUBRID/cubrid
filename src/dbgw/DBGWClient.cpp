@@ -65,7 +65,7 @@ namespace dbgw
    */
   DBGWClient::DBGWClient(DBGWConfiguration &configuration,
       const string &nameSpace) :
-    m_configuration(configuration), m_bClosed(false), m_bValidateResult(false),
+    m_configuration(configuration), m_namespace(nameSpace), m_bClosed(false),
     m_bValidClient(false)
   {
     clearException();
@@ -77,7 +77,6 @@ namespace dbgw
         m_pQueryMapper = m_configuration.getQueryMapper(m_stVersion);
 
         m_executerList = m_pConnector->getExecuterList(nameSpace.c_str());
-        m_bValidateResult = m_pConnector->isValidateResult(nameSpace.c_str());
         m_bValidClient = true;
       }
     catch (DBGWException &e)
@@ -100,6 +99,22 @@ namespace dbgw
     catch (DBGWException &e)
       {
         setLastException(e);
+      }
+  }
+
+  bool DBGWClient::setForceValidateResult(const char *szNamespace)
+  {
+    clearException();
+
+    try
+      {
+        m_pConnector->setForceValidateResult(szNamespace);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
       }
   }
 
@@ -229,6 +244,7 @@ namespace dbgw
       {
         checkClientIsValid();
 
+        bool bValidateResult = false;
         bool bMakeResult = false;
         DBGWResultSharedPtr pReturnResult, pInternalResult;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
@@ -247,6 +263,12 @@ namespace dbgw
                 if (pQuery == NULL)
                   {
                     continue;
+                  }
+
+                if (pReturnResult == NULL && pInternalResult == NULL)
+                  {
+                    bValidateResult = m_pConnector->isValidateResult(
+                        m_namespace.c_str(), pQuery->getType());
                   }
 
                 if ((*it)->isIgnoreResult() == false)
@@ -268,7 +290,7 @@ namespace dbgw
                   }
                 else
                   {
-                    if (m_bValidateResult == false
+                    if (bValidateResult == false
                         && pQuery->getType() == DBGWQueryType::SELECT)
                       {
                         continue;
@@ -282,7 +304,7 @@ namespace dbgw
                     DBGW_LOG_INFO(logger.getLogMessage("execute. (ignore result)").c_str());
                   }
 
-                if (m_bValidateResult)
+                if (bValidateResult)
                   {
                     validateResult(logger, pReturnResult, pInternalResult);
                   }
@@ -307,7 +329,7 @@ namespace dbgw
               }
             catch (DBGWException &e)
               {
-                if ((*it)->isIgnoreResult() == false || m_bValidateResult)
+                if ((*it)->isIgnoreResult() == false || bValidateResult)
                   {
                     setLastException(e);
                     return DBGWResultSharedPtr();
@@ -356,11 +378,6 @@ namespace dbgw
         setLastException(e);
         return false;
       }
-  }
-
-  void DBGWClient::setValidateResult(bool bValidateResult)
-  {
-    m_bValidateResult = bValidateResult;
   }
 
   bool DBGWClient::isClosed() const
@@ -420,7 +437,7 @@ namespace dbgw
           {
             const MetaDataList *pMetaList = lhs->getMetaDataList();
             MetaDataList::const_iterator cit = pMetaList->begin();
-            for (int i = 0; i < lhs->size(); i++, cit++)
+            for (size_t i = 0; i < lhs->size(); i++, cit++)
               {
                 pLhs = lhs->getValue(i);
                 pRhs = rhs->getValue(i);
@@ -438,7 +455,7 @@ namespace dbgw
                   {
                     ValidateValueFailException e(cit->name.c_str(),
                         pLhs->toString(), pRhs->toString());
-                    DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
+                    DBGW_LOG_WARN(logger.getLogMessage(e.what()).
                         c_str());
                     throw e;
                   }

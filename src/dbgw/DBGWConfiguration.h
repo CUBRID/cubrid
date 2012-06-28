@@ -163,30 +163,39 @@ namespace dbgw
 
   typedef vector<DBGWGroupSharedPtr> DBGWGroupList;
 
+  typedef boost::uniform_int<int> Distributer;
+  typedef boost::variate_generator<boost::mt19937 &, Distributer> Generator;
+
   class DBGWService
   {
   public:
     DBGWService(const string &fileName, const string &nameSpace,
-        const string &description, bool bValidateResult);
+        const string &description, bool bValidateResult[], int nValidateRatio);
     virtual ~ DBGWService();
 
     void addGroup(DBGWGroupSharedPtr pGroup);
     void initPool(size_t nCount);
+    void setForceValidateResult();
     DBGWExecuterList getExecuterList();
+    bool isValidateResult(DBGWQueryType::Enum type);
 
   public:
     const string &getFileName() const;
     const string &getNameSpace() const;
-    bool isValidateResult() const;
     bool empty() const;
 
   private:
     string m_fileName;
     string m_nameSpace;
     string m_description;
-    bool m_bValidateResult;
+    bool m_bValidateResult[DBGWQueryType::SIZE];
+    int m_nValidateRatio;
     /* (groupName => DBGWGroup) */
     DBGWGroupList m_groupList;
+
+    /* for generate random */
+    boost::mt19937 m_base;
+    Generator m_generator;
   };
 
   typedef shared_ptr<DBGWService> DBGWServiceSharedPtr;
@@ -215,10 +224,11 @@ namespace dbgw
     virtual ~ DBGWConnector();
 
     void addService(DBGWServiceSharedPtr pService);
+    void setForceValidateResult(const char *szNamespace);
     DBGWExecuterList getExecuterList(const char *szNamespace);
 
   public:
-    bool isValidateResult(const char *szNamespace) const;
+    bool isValidateResult(const char *szNamespace, DBGWQueryType::Enum type) const;
 
   private:
     /* (namespace => DBGWService) */

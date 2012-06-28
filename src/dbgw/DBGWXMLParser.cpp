@@ -19,7 +19,6 @@
 #include <expat.h>
 #include <fstream>
 #include <errno.h>
-#include <boost/algorithm/string.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
 #include "DBGWLogger.h"
@@ -42,12 +41,13 @@ namespace dbgw
   static const char *XML_NODE_SERVICE_PROP_NAMESPACE = "namespace";
   static const char *XML_NODE_SERVICE_PROP_DESCRIPTION = "description";
   static const char *XML_NODE_SERVICE_PROP_VALIDATE_RESULT = "validate-result";
+  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RATIO = "validate-ratio";
 
   static const char *XML_NODE_GROUP = "group";
   static const char *XML_NODE_GROUP_PROP_NAME = "name";
   static const char *XML_NODE_GROUP_PROP_DESCRIPTION = "description";
   static const char *XML_NODE_GROUP_PROP_INACTIVATE = "inactivate";
-  static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT = "ignore_result";
+  static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT = "ignore-result";
 
   static const char *XML_NODE_POOL = "pool";
   static const char *XML_NODE_POOL_PROP_SIZE = "pool-size";
@@ -209,6 +209,45 @@ namespace dbgw
     else
       {
         return false;
+      }
+  }
+
+  void DBGWExpatXMLProperties::getValidateResult(const char *szName,
+      bool bValidateResult[])
+  {
+    memset(bValidateResult, 0, sizeof(bValidateResult));
+
+    const char *szValidateResult = getCString(szName, false);
+    if (szValidateResult == NULL)
+      {
+        return;
+      }
+
+    DBGWStringList queryTypeList;
+    boost::split(queryTypeList, szValidateResult, boost::is_any_of(","));
+    for (DBGWStringList::iterator it = queryTypeList.begin(); it
+        != queryTypeList.end(); it++)
+      {
+        boost::trim(*it);
+        if (!strcasecmp(it->c_str(), "select"))
+          {
+            bValidateResult[DBGWQueryType::SELECT] = true;
+          }
+        else if (!strcasecmp(it->c_str(), "dml"))
+          {
+            bValidateResult[DBGWQueryType::DML] = true;
+          }
+        else if (!strcasecmp(it->c_str(), "procedure"))
+          {
+            bValidateResult[DBGWQueryType::PROCEDURE] = true;
+          }
+        else
+          {
+            InvalidPropertyValueException e(szValidateResult,
+                "SELECT|PROCEDURE|DML");
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
       }
   }
 
@@ -548,13 +587,17 @@ namespace dbgw
         return;
       }
 
+    bool bValidateResult[DBGWQueryType::SIZE];
+    properties.getValidateResult(XML_NODE_SERVICE_PROP_VALIDATE_RESULT,
+        bValidateResult);
+
     m_pService = DBGWServiceSharedPtr(
         new DBGWService(
             getFileName(),
-            properties. get(XML_NODE_SERVICE_PROP_NAMESPACE, true),
-            properties. get(XML_NODE_SERVICE_PROP_DESCRIPTION, false),
-            properties. getBool(XML_NODE_SERVICE_PROP_VALIDATE_RESULT,
-                false)));
+            properties.get(XML_NODE_SERVICE_PROP_NAMESPACE, true),
+            properties.get(XML_NODE_SERVICE_PROP_DESCRIPTION, false),
+            bValidateResult,
+            properties.getInt(XML_NODE_SERVICE_PROP_VALIDATE_RATIO, false)));
     m_pConnector->addService(m_pService);
   }
 
@@ -571,7 +614,7 @@ namespace dbgw
             properties.get(XML_NODE_GROUP_PROP_NAME, true),
             properties.get(XML_NODE_GROUP_PROP_DESCRIPTION, false),
             properties.getBool(XML_NODE_GROUP_PROP_INACTIVATE, false),
-            properties. getBool(XML_NODE_GROUP_PROP_IGNORE_RESULT,
+            properties.getBool(XML_NODE_GROUP_PROP_IGNORE_RESULT,
                 false)));
     m_pService->addGroup(m_pGroup);
   }

@@ -16,8 +16,6 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
-#include <set>
-#include <boost/algorithm/string.hpp>
 #include <expat.h>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
@@ -28,6 +26,7 @@
 #include "DBGWCUBRIDInterface.h"
 #include "DBGWConfiguration.h"
 #include "DBGWXMLParser.h"
+#include "DBGWMock.h"
 
 namespace dbgw
 {
@@ -521,10 +520,24 @@ namespace dbgw
   }
 
   DBGWService::DBGWService(const string &fileName, const string &nameSpace,
-      const string &description, bool bValidateResult) :
+      const string &description, bool bValidateResult[], int nValidateRatio) :
     m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
-    m_bValidateResult(bValidateResult)
+    m_nValidateRatio(nValidateRatio),
+    m_generator(m_base, Distributer(0, 99))
   {
+    memset(m_bValidateResult, 0, sizeof(m_bValidateResult));
+    memcpy(m_bValidateResult, bValidateResult, sizeof(bValidateResult));
+
+    if (m_nValidateRatio < 0)
+      {
+        m_nValidateRatio = 0;
+      }
+    else if (m_nValidateRatio > 100)
+      {
+        m_nValidateRatio = 100;
+      }
+
+    m_base.seed(std::time(0));
   }
 
   DBGWService::~DBGWService()
@@ -559,9 +572,15 @@ namespace dbgw
     return m_nameSpace;
   }
 
-  bool DBGWService::isValidateResult() const
+  bool DBGWService::isValidateResult(DBGWQueryType::Enum type)
   {
-    return m_bValidateResult;
+    if (type == DBGWQueryType::UNDEFINED || m_bValidateResult[type] == false)
+      {
+        return false;
+      }
+
+    int nRandom = m_generator();
+    return nRandom < m_nValidateRatio;
   }
 
   bool DBGWService::empty() const
@@ -729,6 +748,12 @@ namespace dbgw
       }
   }
 
+  void DBGWService::setForceValidateResult()
+  {
+    memset(&m_bValidateResult, 1, sizeof(m_bValidateResult));
+    m_nValidateRatio = 100;
+  }
+
   DBGWExecuterList DBGWService::getExecuterList()
   {
     DBGWExecuterList executerList;
@@ -887,14 +912,31 @@ namespace dbgw
     m_serviceList.push_back(pService);
   }
 
-  bool DBGWConnector::isValidateResult(const char *szNamespace) const
+  void DBGWConnector::setForceValidateResult(const char *szNamespace)
   {
     for (DBGWServiceList::const_iterator it = m_serviceList.begin(); it
         != m_serviceList.end(); it++)
       {
         if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
           {
-            return (*it)->isValidateResult();
+            return (*it)->setForceValidateResult();
+          }
+      }
+
+    NotExistNamespaceException e(szNamespace);
+    DBGW_LOG_ERROR(e.what());
+    throw e;
+  }
+
+  bool DBGWConnector::isValidateResult(const char *szNamespace,
+      DBGWQueryType::Enum type) const
+  {
+    for (DBGWServiceList::const_iterator it = m_serviceList.begin(); it
+        != m_serviceList.end(); it++)
+      {
+        if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
+          {
+            return (*it)->isValidateResult(type);
           }
       }
 

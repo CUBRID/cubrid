@@ -31,7 +31,7 @@ namespace dbgw
 
     enum Enum
     {
-      UNDEFINED = -1, SELECT = 0, PROCEDURE, DML
+      UNDEFINED = -1, SELECT = 0, PROCEDURE, DML, SIZE
     };
 
   }

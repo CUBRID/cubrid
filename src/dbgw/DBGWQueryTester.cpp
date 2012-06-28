@@ -17,8 +17,6 @@
  *
  */
 
-#include <set>
-#include <cstdio>
 #include <expat.h>
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
@@ -173,7 +171,7 @@ namespace dbgw
         throw getLastException();
       }
 
-    client.setValidateResult(true);
+    client.setForceValidateResult(m_namespace.c_str());
     client.setAutocommit(false);
 
     DBGWQueryNameList queryNameList = client.getQueryMapper()->getQueryNameList();

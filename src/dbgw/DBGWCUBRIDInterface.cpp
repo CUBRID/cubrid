@@ -23,6 +23,7 @@
 #include "DBGWQuery.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWCUBRIDInterface.h"
+#include "DBGWMock.h"
 
 #ifdef BUILD_MOCK
 #define cci_connect_with_url cci_mock_connect_with_url
