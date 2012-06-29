@@ -246,6 +246,7 @@ namespace dbgw
 
         bool bValidateResult = false;
         bool bMakeResult = false;
+        DBGWInterfaceException validateFailException;
         DBGWResultSharedPtr pReturnResult, pInternalResult;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
             != m_executerList.end(); it++)
@@ -309,27 +310,42 @@ namespace dbgw
                     validateResult(logger, pReturnResult, pInternalResult);
                   }
               }
-            catch (ValidateTypeFailException &e)
-              {
-                pReturnResult->first();
-                setLastException(e);
-                return pReturnResult;
-              }
-            catch (ValidateValueFailException &e)
-              {
-                pReturnResult->first();
-                setLastException(e);
-                return pReturnResult;
-              }
-            catch (ValidateFailException &e)
-              {
-                pReturnResult->first();
-                setLastException(e);
-                return pReturnResult;
-              }
             catch (DBGWException &e)
               {
-                if ((*it)->isIgnoreResult() == false || bValidateResult)
+                if (bValidateResult)
+                  {
+                    DBGWException &ne = e;
+                    if (e.getErrorCode() != DBGWErrorCode::RESULT_VALIDATE_FAIL
+                        && e.getErrorCode() != DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL
+                        && e.getErrorCode() != DBGWErrorCode::RESULT_VALIDATE_VALUE_FAIL)
+                      {
+                        /**
+                         * Change error code for client to identify validation fail.
+                         */
+                        ValidateFailException ve(e);
+                        ne = ve;
+                      }
+
+                    if (pReturnResult != NULL)
+                      {
+                        /**
+                         * We don't need to execute query of remaining groups.
+                         * Because primary query is already executed.
+                         */
+                        pReturnResult->first();
+                        setLastException(ne);
+                        return pReturnResult;
+                      }
+                    else
+                      {
+                        /**
+                         * There is chance to change last error code by executing query of remaining groups.
+                         * So we must save exception.
+                         */
+                        validateFailException = ne;
+                      }
+                  }
+                else if ((*it)->isIgnoreResult() == false)
                   {
                     setLastException(e);
                     return DBGWResultSharedPtr();
@@ -337,6 +353,10 @@ namespace dbgw
               }
           }
 
+        if (bValidateResult && getLastErrorCode() == DBGWErrorCode::NO_ERROR)
+          {
+            setLastException(validateFailException);
+          }
         return pReturnResult;
       }
     catch (DBGWException &e)

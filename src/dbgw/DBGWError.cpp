@@ -381,6 +381,15 @@ namespace dbgw
   {
   }
 
+  ValidateFailException::ValidateFailException(const DBGWException &exception) throw() :
+    DBGWException(
+        DBGWErrorCode::RESULT_VALIDATE_FAIL,
+        (boost::format(
+            "Some of group is failed to execute query. %s")
+            % exception.what()).str())
+  {
+  }
+
   ValidateFailException::ValidateFailException(int lhs, int rhs) throw() :
     DBGWException(
         DBGWErrorCode::RESULT_VALIDATE_FAIL,

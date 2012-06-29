@@ -250,6 +250,7 @@ namespace dbgw
   {
   public:
     ValidateFailException() throw();
+    ValidateFailException(const DBGWException &exception) throw();
     ValidateFailException(int lhs, int rhs) throw();
   };
 
