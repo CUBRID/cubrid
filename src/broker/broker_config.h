@@ -230,6 +230,7 @@ struct t_broker_info
   char shard_key_function_name[PATH_MAX];
 
   int proxy_log_max_size;
+  int proxy_max_prepared_stmt_count;
 #endif				/* CUBRID_SHARD */
 };
 

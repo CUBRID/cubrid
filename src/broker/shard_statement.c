@@ -279,7 +279,13 @@ shard_stmt_pin (T_SHARD_STMT * stmt_p)
 		       shard_str_stmt (stmt_p));
 
       error = shard_stmt_lru_delete (stmt_p);
+      if (error < 0)
+	{
+	  stmt_p->num_pinned -= 1;
+	  return error;
+	}
     }
+
   return error;
 }
 
@@ -305,6 +311,11 @@ shard_stmt_unpin (T_SHARD_STMT * stmt_p)
       stmt_p->num_pinned = 0;
 
       error = shard_stmt_lru_insert (stmt_p);
+      if (error < 0)
+	{
+	  stmt_p->num_pinned += 1;
+	  return error;
+	}
     }
 
   return error;

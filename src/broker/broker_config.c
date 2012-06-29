@@ -825,6 +825,16 @@ broker_config_read_internal (const char *conf_file,
 	ini_getuint_max (ini, sec_name, "PROXY_LOG_MAX_SIZE",
 			 DEFAULT_PROXY_LOG_MAX_SIZE, MAX_PROXY_LOG_MAX_SIZE,
 			 &lineno);
+
+      br_info[num_brs].proxy_max_prepared_stmt_count =
+	ini_getint (ini, sec_name, "PROXY_MAX_PREPARED_STMT_COUNT",
+		    DEFAULT_MAX_PREPARED_STMT_COUNT, &lineno);
+      if (br_info[num_brs].proxy_max_prepared_stmt_count < 1)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
 #endif /* CUBRID_SHARD */
       num_brs++;
     }
@@ -1194,6 +1204,10 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	       br_info[i].shard_key_library_name);
       fprintf (fp, "SHARD_KEY_FUNCTION_NAME\t\t=%s\n",
 	       br_info[i].shard_key_function_name);
+      fprintf (fp, "PROXY_LOG_MAX_SIZE\t\t=%d\n",
+	       br_info[i].proxy_log_max_size);
+      fprintf (fp, "PROXY_MAX_PREPARED_STMT_COUNT\t\t=%d\n",
+	       br_info[i].proxy_max_prepared_stmt_count);
 
       shard_metadata_dump (fp, br_info[i].metadata_shm_id);
       shard_shm_dump_appl_server (fp, br_info[i].appl_server_shm_id);

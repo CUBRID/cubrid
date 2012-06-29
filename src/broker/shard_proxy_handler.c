@@ -385,7 +385,10 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
       ctx_p->prepared_stmt = NULL;
       ctx_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
 
-      proxy_context_free_stmt (ctx_p);
+      if (ctx_p->dont_free_statement == false)
+	{
+	  proxy_context_free_stmt (ctx_p);
+	}
     }
 
 end:
@@ -1060,6 +1063,7 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
   ctx_p->is_client_in_tran = false;
   ctx_p->is_cas_in_tran = false;
   ctx_p->waiting_dummy_prepare = false;
+  ctx_p->dont_free_statement = false;
 
   if (ctx_p->waiting_event)
     {
@@ -1102,6 +1106,7 @@ proxy_context_set_in_tran (T_PROXY_CONTEXT * ctx_p, int shard_id, int cas_id)
   ctx_p->is_in_tran = true;
   ctx_p->shard_id = shard_id;
   ctx_p->cas_id = cas_id;
+  ctx_p->dont_free_statement = false;
 
   return;
 }
@@ -1295,6 +1300,7 @@ proxy_context_find_stmt (T_PROXY_CONTEXT * ctx_p, int stmt_h_id)
 T_CONTEXT_STMT *
 proxy_context_add_stmt (T_PROXY_CONTEXT * ctx_p, T_SHARD_STMT * stmt_p)
 {
+  int error = 0;
   T_CONTEXT_STMT *stmt_list_p;
 
   stmt_list_p = proxy_context_find_stmt (ctx_p, stmt_p->stmt_h_id);
@@ -1310,12 +1316,18 @@ proxy_context_add_stmt (T_PROXY_CONTEXT * ctx_p, T_SHARD_STMT * stmt_p)
       return NULL;
     }
 
+  error = shard_stmt_pin (stmt_p);
+  if (error < 0)
+    {
+      FREE_MEM (stmt_list_p);
+
+      return NULL;
+    }
+
   stmt_list_p->stmt_h_id = stmt_p->stmt_h_id;
 
   stmt_list_p->next = ctx_p->stmt_list;
   ctx_p->stmt_list = stmt_list_p;
-
-  shard_stmt_pin (stmt_p);
 
   return stmt_list_p;
 }

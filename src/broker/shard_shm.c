@@ -449,7 +449,7 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
       proxy_info_p->max_client = shm_proxy_p->max_client;
       proxy_info_p->cur_client = 0;
       proxy_info_p->max_prepared_stmt_count =
-	br_info_p->max_prepared_stmt_count;
+	br_info_p->proxy_max_prepared_stmt_count;
       proxy_info_p->proxy_log_reset = 0;
       proxy_info_p->proxy_access_log_reset = 0;
 

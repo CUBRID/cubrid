@@ -241,6 +241,7 @@ struct t_proxy_context
 				 */
   bool is_cas_in_tran;		/* cas transaction status */
   bool waiting_dummy_prepare;
+  bool dont_free_statement;
 
   /* context */
   T_PROXY_EVENT *waiting_event;

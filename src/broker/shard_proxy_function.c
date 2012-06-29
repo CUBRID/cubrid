@@ -1209,6 +1209,15 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
 
+  /* save statement to the context */
+  if (proxy_context_add_stmt (ctx_p, stmt_p) == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to link statement to context. statement(%s). context(%s).",
+		 shard_str_stmt (stmt_p), proxy_str_context (ctx_p));
+      goto free_context;
+    }
+
   /* 
    * find stored server handle id for this shard/cas, if exist, do execute 
    * with it. otherwise, do dummy prepare for exeucte to get server handle id.
@@ -1590,6 +1599,7 @@ fn_proxy_client_con_close (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   /* set client tran status as OUT_TRAN, when con_close */
   ctx_p->is_client_in_tran = false;
   ctx_p->free_on_client_io_write = true;
+  ctx_p->dont_free_statement = false;
 
   if (ctx_p->is_in_tran)
     {
@@ -1728,6 +1738,8 @@ fn_proxy_cas_end_tran (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   int error;
 
   ENTER_FUNC ();
+
+  ctx_p->dont_free_statement = false;
 
   if (ctx_p->free_on_client_io_write)
     {
@@ -1940,6 +1952,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
        * request again.
        */
 
+      ctx_p->prepared_stmt = NULL;
       ctx_p->is_prepare_for_execute = false;
 
       assert (ctx_p->waiting_event);	// __FOR_DEBUG
@@ -1959,6 +1972,14 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 
       EXIT_FUNC ();
       return 0;
+    }
+  else
+    {
+      /* 
+       * after dummy prepare, 
+       * we must not free(unpin) statment event though tran status is OUT_TRAN. 
+       */
+      ctx_p->dont_free_statement = true;
     }
 
   /* The following codes does not use */
