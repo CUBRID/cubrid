@@ -80,7 +80,6 @@ namespace dbgw
     DBGWException() throw();
     DBGWException(int nErrorCode) throw();
     DBGWException(int nErrorCode, const string &errorMessage) throw();
-    DBGWException(int nErrorCode, const boost::format &fmt) throw();
     DBGWException(const DBGWException &exception) throw();
     DBGWException(const std::exception &exception) throw();
     virtual ~ DBGWException() throw();
@@ -109,8 +108,6 @@ namespace dbgw
     DBGWInterfaceException(int nInterfaceErrorCode) throw();
     DBGWInterfaceException(int nInterfaceErrorCode,
         const string &errorMessage) throw();
-    DBGWInterfaceException(int nInterfaceErrorCode,
-        const boost::format &fmt) throw();
     DBGWInterfaceException(const DBGWException &exception) throw();
     DBGWInterfaceException(const DBGWInterfaceException &exception) throw();
     DBGWInterfaceException(const std::exception &exception) throw();

@@ -16,6 +16,9 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
+#include <boost/random/uniform_int.hpp>
+#include <boost/random/variate_generator.hpp>
+#include <boost/random/mersenne_twister.hpp>
 #include <expat.h>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
@@ -30,6 +33,12 @@
 
 namespace dbgw
 {
+
+  typedef boost::uniform_int<int> Distributer;
+  typedef boost::variate_generator<boost::mt19937 &, Distributer> Generator;
+
+  static boost::mt19937 g_base(std::time(0));
+  static Generator g_generator(g_base, Distributer(0, 99));
 
   static const char *GROUP_NAME_ALL = "__ALL__";
 
@@ -522,8 +531,7 @@ namespace dbgw
   DBGWService::DBGWService(const string &fileName, const string &nameSpace,
       const string &description, bool bValidateResult[], int nValidateRatio) :
     m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
-    m_nValidateRatio(nValidateRatio),
-    m_generator(m_base, Distributer(0, 99))
+    m_nValidateRatio(nValidateRatio)
   {
     memset(m_bValidateResult, 0, sizeof(m_bValidateResult));
     memcpy(m_bValidateResult, bValidateResult, sizeof(bValidateResult));
@@ -536,8 +544,6 @@ namespace dbgw
       {
         m_nValidateRatio = 100;
       }
-
-    m_base.seed(std::time(0));
   }
 
   DBGWService::~DBGWService()
@@ -579,7 +585,7 @@ namespace dbgw
         return false;
       }
 
-    int nRandom = m_generator();
+    int nRandom = g_generator();
     return nRandom < m_nValidateRatio;
   }
 

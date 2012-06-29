@@ -16,6 +16,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
+#include <boost/format.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
 #include "DBGWValue.h"
@@ -113,12 +114,6 @@ namespace dbgw
     createErrorMessage();
   }
 
-  DBGWException::DBGWException(int nErrorCode, const boost::format &fmt) throw() :
-    m_nErrorCode(nErrorCode), m_errorMessage(fmt.str())
-  {
-    createErrorMessage();
-  }
-
   DBGWException::DBGWException(const DBGWException &exception) throw() :
     std::exception(exception), m_nErrorCode(exception.m_nErrorCode),
     m_errorMessage(exception.m_errorMessage), m_what(exception.m_what)
@@ -187,13 +182,6 @@ namespace dbgw
   {
   }
 
-  DBGWInterfaceException::DBGWInterfaceException(int nInterfaceErrorCode,
-      const boost::format &fmt) throw() :
-    DBGWException(DBGWErrorCode::INTERFACE_ERROR, fmt),
-    m_nInterfaceErrorCode(nInterfaceErrorCode)
-  {
-  }
-
   DBGWInterfaceException::DBGWInterfaceException(const DBGWException &exception) throw() :
     DBGWException(exception), m_nInterfaceErrorCode(DBGWErrorCode::NO_ERROR)
   {
@@ -225,16 +213,16 @@ namespace dbgw
   NotExistNamespaceException::NotExistNamespaceException(const char *szNamespace) throw() :
     DBGWException(
         DBGWErrorCode::CONF_NOT_EXIST_NAMESPACE,
-        boost::format("The %s namespace is not exist.")
-        % szNamespace)
+        (boost::format("The %s namespace is not exist.")
+            % szNamespace).str())
   {
   }
 
   NotExistQueryInXmlException::NotExistQueryInXmlException(const char *szSqlName) throw() :
     DBGWException(
         DBGWErrorCode::CONF_NOT_EXIST_QUERY_IN_XML,
-        boost::format("The %s query is not exist in xml.")
-        % szSqlName)
+        (boost::format("The %s query is not exist in xml.")
+            % szSqlName).str())
   {
   }
 
@@ -268,8 +256,8 @@ namespace dbgw
   NotExistConnException::NotExistConnException(const char *szGroupName) throw() :
     DBGWException(
         DBGWErrorCode::SQL_NOT_EXIST_CONN,
-        boost::format("The %s connection group is not exist.")
-        % szGroupName)
+        (boost::format("The %s connection group is not exist.")
+            % szGroupName).str())
   {
   }
 
@@ -277,25 +265,25 @@ namespace dbgw
       const char *szSqlName) throw() :
     DBGWException(
         DBGWErrorCode::SQL_INVALID_SQL,
-        boost::format("Cannot parse sql %s in %s.") % szSqlName
-        % szFileName)
+        (boost::format("Cannot parse sql %s in %s.") % szSqlName
+            % szFileName).str())
   {
   }
 
   NotExistParamException::NotExistParamException(int nIndex) throw() :
     DBGWException(
         DBGWErrorCode::SQL_NOT_EXIST_PARAM,
-        boost::format(
+        (boost::format(
             "The bind parameter (index : %d) is not exist.")
-        % nIndex)
+            % nIndex).str())
   {
   }
 
   NotExistParamException::NotExistParamException(string name) throw() :
     DBGWException(
         DBGWErrorCode::SQL_NOT_EXIST_PARAM,
-        boost::format("The bind parameter (key : %s) is not exist.")
-        % name)
+        (boost::format("The bind parameter (key : %s) is not exist.")
+            % name).str())
   {
   }
 
@@ -307,16 +295,16 @@ namespace dbgw
 
   NotExistSetException::NotExistSetException(const char *szKey) throw() :
     DBGWException(DBGWErrorCode::VALUE_NOT_EXIST_SET,
-        boost::format("The %s key is not exist in set.") % szKey)
+        (boost::format("The %s key is not exist in set.") % szKey).str())
   {
   }
 
   NotExistSetException::NotExistSetException(size_t nIndex) throw() :
     DBGWException(
         DBGWErrorCode::VALUE_NOT_EXIST_SET,
-        boost::format(
+        (boost::format(
             "The value of position %d is not exist in set.")
-        % nIndex)
+            % nIndex).str())
   {
   }
 
@@ -324,28 +312,28 @@ namespace dbgw
       int convType) throw() :
     DBGWException(
         DBGWErrorCode::VALUE_MISMATCH_VALUE_TYPE,
-        boost::format("Cannot cast %s to %s.")
-        % getDBGWValueTypeString(orgType)
-        % getDBGWValueTypeString(convType))
+        (boost::format("Cannot cast %s to %s.")
+            % getDBGWValueTypeString(orgType)
+            % getDBGWValueTypeString(convType)).str())
   {
   }
 
   InvalidValueTypeException::InvalidValueTypeException(int type) throw() :
     DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-        boost::format("The value type %d is invalid.") % type)
+        (boost::format("The value type %d is invalid.") % type).str())
   {
   }
 
   InvalidValueTypeException::InvalidValueTypeException(const char *szType) throw() :
     DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-        boost::format("The value type %s is invalid.") % szType)
+        (boost::format("The value type %s is invalid.") % szType).str())
   {
   }
 
   InvalidValueFormatException::InvalidValueFormatException(const char *szType,
       const char *szFormat) throw() :
     DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-        boost::format("The %s is not valid %s type.") % szFormat % szType)
+        (boost::format("The %s is not valid %s type.") % szFormat % szType).str())
   {
   }
 
@@ -353,9 +341,9 @@ namespace dbgw
       const char *szSqlName) throw() :
     DBGWException(
         DBGWErrorCode::CLIENT_MULTISET_IGNORE_FLAG_FALSE,
-        boost::format(
+        (boost::format(
             "The 'ignore_result' flag should be set false only once in %s.")
-        % szSqlName)
+            % szSqlName).str())
   {
   }
 
@@ -381,9 +369,9 @@ namespace dbgw
       const char *szOperation, const char *szQueryType) throw() :
     DBGWException(
         DBGWErrorCode::RESULT_NOT_ALLOWED_OPERATION,
-        boost::format(
+        (boost::format(
             "The %s operation is only allowed for query type %s.")
-        % szOperation % szQueryType)
+            % szOperation % szQueryType).str())
   {
   }
 
@@ -435,8 +423,8 @@ namespace dbgw
   CreateFailParserExeception::CreateFailParserExeception(const char *szFileName) throw() :
     DBGWException(
         DBGWErrorCode::XML_FAIL_CREATE_PARSER,
-        boost::format("Cannot create xml parser from %s.")
-        % szFileName)
+        (boost::format("Cannot create xml parser from %s.")
+            % szFileName).str())
   {
   }
 
@@ -445,9 +433,9 @@ namespace dbgw
       const string &fileNameOld) throw() :
     DBGWException(
         DBGWErrorCode::XML_DUPLICATE_NAMESPACE,
-        boost::format(
+        (boost::format(
             "The namspace %s in %s is already exist in %s.")
-        % nameSpace % fileNameNew % fileNameOld)
+            % nameSpace % fileNameNew % fileNameOld).str())
   {
   }
 
@@ -455,8 +443,8 @@ namespace dbgw
       const char *szFileNameNew, const char *szFileNameOld) throw() :
     DBGWException(
         DBGWErrorCode::XML_DUPLICATE_SQLNAME,
-        boost::format("The %s in %s is already exist in %s.")
-        % szSqlName % szFileNameNew % szFileNameOld)
+        (boost::format("The %s in %s is already exist in %s.")
+            % szSqlName % szFileNameNew % szFileNameOld).str())
   {
   }
 
@@ -465,8 +453,8 @@ namespace dbgw
       const string &fileNameOld) throw() :
     DBGWException(
         DBGWErrorCode::XML_DUPLICATE_GROUPNAME,
-        boost::format("The %s in %s is already exist in %s.")
-        % groupName % fileNameNew % fileNameOld)
+        (boost::format("The %s in %s is already exist in %s.")
+            % groupName % fileNameNew % fileNameOld).str())
   {
   }
 
@@ -474,8 +462,8 @@ namespace dbgw
       const char *szXmlFile) throw() :
     DBGWException(
         DBGWErrorCode::XML_NOT_EXIST_NODE,
-        boost::format("The %s node is not exist in %s.")
-        % szNodeName % szXmlFile)
+        (boost::format("The %s node is not exist in %s.")
+            % szNodeName % szXmlFile).str())
   {
   }
 
@@ -483,8 +471,8 @@ namespace dbgw
       const char *szPropName) throw() :
     DBGWException(
         DBGWErrorCode::XML_NOT_EXIST_PROPERTY,
-        boost::format("Cannot find %s property of %s node.")
-        % szPropName % szNodeName)
+        (boost::format("Cannot find %s property of %s node.")
+            % szPropName % szNodeName).str())
   {
   }
 
@@ -492,16 +480,16 @@ namespace dbgw
       const char *szValue, const char *szCorrectValueSet) throw() :
     DBGWException(
         DBGWErrorCode::XML_INVALID_PROPERTY_VALUE,
-        boost::format("The value of property %s have to be [%s].")
-        % szValue % szCorrectValueSet)
+        (boost::format("The value of property %s have to be [%s].")
+            % szValue % szCorrectValueSet).str())
   {
   }
 
   InvalidXMLSyntaxException::InvalidXMLSyntaxException(
       const char *szXmlErrorMessage, const char *szFileName, int nLine, int nCol) throw() :
     DBGWException(DBGWErrorCode::XML_INVALID_SYNTAX,
-        boost::format("%s in %s, line %d, column %d") % szXmlErrorMessage
-        % szFileName % nLine % nCol)
+        (boost::format("%s in %s, line %d, column %d") % szXmlErrorMessage
+            % szFileName % nLine % nCol).str())
   {
   }
 
@@ -513,7 +501,7 @@ namespace dbgw
 
   MemoryAllocationFail::MemoryAllocationFail(int nSize) throw() :
     DBGWException(DBGWErrorCode::EXTERNAL_MEMORY_ALLOC_FAIL,
-        boost::format("Failed to allocate memory size (%d).") % nSize)
+        (boost::format("Failed to allocate memory size (%d).") % nSize).str())
   {
   }
 

@@ -163,9 +163,6 @@ namespace dbgw
 
   typedef vector<DBGWGroupSharedPtr> DBGWGroupList;
 
-  typedef boost::uniform_int<int> Distributer;
-  typedef boost::variate_generator<boost::mt19937 &, Distributer> Generator;
-
   class DBGWService
   {
   public:
@@ -192,10 +189,6 @@ namespace dbgw
     int m_nValidateRatio;
     /* (groupName => DBGWGroup) */
     DBGWGroupList m_groupList;
-
-    /* for generate random */
-    boost::mt19937 m_base;
-    Generator m_generator;
   };
 
   typedef shared_ptr<DBGWService> DBGWServiceSharedPtr;

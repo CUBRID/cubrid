@@ -17,6 +17,7 @@
  *
  */
 
+#include <boost/lexical_cast.hpp>
 #include <expat.h>
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
