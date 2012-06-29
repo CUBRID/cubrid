@@ -115,6 +115,7 @@ static int css_Client_id = 0;
 static pthread_mutex_t css_Client_id_lock = PTHREAD_MUTEX_INITIALIZER;
 static CSS_CONN_ENTRY *css_Free_conn_anchor = NULL;
 static int css_Num_free_conn = 0;
+static int css_Num_max_conn = 101;	/* default max_clients + 1 for conn with master */
 static CSS_CRITICAL_SECTION css_Free_conn_csect;
 
 CSS_CONN_ENTRY *css_Conn_array = NULL;
@@ -235,7 +236,7 @@ css_get_next_client_id (void)
 	}
 
       retry = false;
-      for (i = 0; overflow && i < PRM_CSS_MAX_CLIENTS; i++)
+      for (i = 0; overflow && i < css_Num_max_conn; i++)
 	{
 	  if (css_Conn_array[i].client_id == css_Client_id)
 	    {
@@ -417,6 +418,9 @@ css_init_conn_list (void)
   int i, err;
   CSS_CONN_ENTRY *conn;
 
+  /* max_clients + 1 for conn with master */
+  css_Num_max_conn = PRM_CSS_MAX_CLIENTS + 1;
+
   if (css_Conn_array != NULL)
     {
       return NO_ERROR;
@@ -427,14 +431,14 @@ css_init_conn_list (void)
    *         + 1(conn with master)
    */
   css_Conn_array = (CSS_CONN_ENTRY *)
-    malloc (sizeof (CSS_CONN_ENTRY) * (PRM_CSS_MAX_CLIENTS));
+    malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
   if (css_Conn_array == NULL)
     {
       return ER_CSS_CONN_INIT;
     }
 
   /* initialize all CSS_CONN_ENTRY */
-  for (i = 0; i < PRM_CSS_MAX_CLIENTS; i++)
+  for (i = 0; i < css_Num_max_conn; i++)
     {
       conn = &css_Conn_array[i];
       conn->idx = i;
@@ -453,7 +457,7 @@ css_init_conn_list (void)
 	  return ER_CSS_CONN_INIT;
 	}
 
-      if (i < PRM_CSS_MAX_CLIENTS - 1)
+      if (i < css_Num_max_conn - 1)
 	{
 	  conn->next = &css_Conn_array[i + 1];
 	}
@@ -466,7 +470,7 @@ css_init_conn_list (void)
   /* initialize active conn list, used for stopping all threads */
   css_Active_conn_anchor = NULL;
   css_Free_conn_anchor = &css_Conn_array[0];
-  css_Num_free_conn = PRM_CSS_MAX_CLIENTS;
+  css_Num_free_conn = css_Num_max_conn;
 
   err = csect_initialize_critical_section (&css_Active_conn_csect);
   if (err != NO_ERROR)
@@ -517,7 +521,7 @@ css_final_conn_list (void)
   csect_finalize_critical_section (&css_Active_conn_csect);
   csect_finalize_critical_section (&css_Free_conn_csect);
 
-  for (i = 0; i < PRM_CSS_MAX_CLIENTS; i++)
+  for (i = 0; i < css_Num_max_conn; i++)
     {
       conn = &css_Conn_array[i];
       csect_finalize_critical_section (&conn->csect);
@@ -581,8 +585,7 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
 
   css_Num_active_conn++;
 
-  assert (css_Num_active_conn > 0
-	  && css_Num_active_conn <= PRM_CSS_MAX_CLIENTS);
+  assert (css_Num_active_conn > 0 && css_Num_active_conn <= css_Num_max_conn);
 
   csect_exit_critical_section (&css_Active_conn_csect);
 }
@@ -612,7 +615,7 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   css_Free_conn_anchor = conn;
 
   css_Num_free_conn++;
-  assert (css_Num_free_conn > 0 && css_Num_free_conn <= PRM_CSS_MAX_CLIENTS);
+  assert (css_Num_free_conn > 0 && css_Num_free_conn <= css_Num_max_conn);
 
   csect_exit_critical_section (&css_Free_conn_csect);
 }
@@ -648,7 +651,7 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 
 	  css_Num_active_conn--;
 	  assert (css_Num_active_conn >= 0
-		  && css_Num_active_conn < PRM_CSS_MAX_CLIENTS);
+		  && css_Num_active_conn < css_Num_max_conn);
 
 	  break;
 	}
