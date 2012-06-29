@@ -5210,12 +5210,9 @@ catcls_get_cardinality (THREAD_ENTRY * thread_p, const char *class_name,
   assert_release (BTID_IS_EQUAL (&(p_stat_info->btid), &found_btid));
   assert_release (p_stat_info->key_size > 0);
 
-  /* get the BTREE_STATS only for the concerned BTID */
-  error = btree_get_stats (thread_p, p_stat_info);
-  if (error != NO_ERROR)
-    {
-      goto exit_cleanup;
-    }
+  /* since btree_get_stats is too slow, use the old statistics.
+     the user must previously execute 'update statistics on class_name',
+     in order to get updated statistics. */
 
   if (key_pos >= p_stat_info->key_size || key_pos < 0)
     {
