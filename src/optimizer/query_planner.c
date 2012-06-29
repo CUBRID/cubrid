@@ -10575,7 +10575,8 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	  /* this type of plan does not need the index to be covered if there
 	   * are only kf terms
 	   */
-	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms))
+	      && index_entryp->constraints->func_index_info == NULL)
 	    {
 	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
 	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
@@ -10627,8 +10628,15 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 			   &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
-	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
-	  bitset_difference (&kf_terms, &range_terms);
+	  if (index_entryp->constraints->func_index_info == NULL)
+	    {
+	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	      bitset_difference (&kf_terms, &range_terms);
+	    }
+	  else
+	    {
+	      BITSET_CLEAR (kf_terms);
+	    }
 	  /* generate index scan plan */
 	  planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
 					      &range_terms,
@@ -10646,8 +10654,15 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 			   &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
-	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
-	  bitset_difference (&kf_terms, &range_terms);
+	  if (index_entryp->constraints->func_index_info == NULL)
+	    {
+	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	      bitset_difference (&kf_terms, &range_terms);
+	    }
+	  else
+	    {
+	      BITSET_CLEAR (kf_terms);
+	    }
 	  /* generate index scan plan */
 	  planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
 					      &range_terms,
@@ -10676,8 +10691,15 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	       t != -1; t = bitset_next_member (&iter))
 	    {
 	      bitset_add (&range_terms, t);
-	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
-	      bitset_difference (&kf_terms, &range_terms);
+	      if (index_entryp->constraints->func_index_info == NULL)
+		{
+		  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+		  bitset_difference (&kf_terms, &range_terms);
+		}
+	      else
+		{
+		  BITSET_CLEAR (kf_terms);
+		}
 	      /* generate index scan plan */
 	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
 						  &range_terms,
@@ -10700,8 +10722,15 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	       t != -1; t = bitset_next_member (&iter))
 	    {
 	      bitset_add (&range_terms, t);
-	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
-	      bitset_difference (&kf_terms, &range_terms);
+	      if (index_entryp->constraints->func_index_info == NULL)
+		{
+		  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+		  bitset_difference (&kf_terms, &range_terms);
+		}
+	      else
+		{
+		  BITSET_CLEAR (kf_terms);
+		}
 	      /* generate index scan plan */
 	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
 						  &range_terms,
@@ -10730,7 +10759,8 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	   * also when we do not have covering.
 	   * For example (select * from T where col is not null order by col)
 	   */
-	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms))
+	      && index_entryp->constraints->func_index_info == NULL)
 	    {
 	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
 
