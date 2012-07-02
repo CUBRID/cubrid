@@ -430,7 +430,7 @@ static int
 sp_parse_sql_internal (SP_PARSER_CTX * parser_p)
 {
   int error = NO_ERROR;
-  SP_TOKEN token_type;
+  SP_TOKEN token_type = TT_NONE;
 
   while (*parser_p->cursor.pos)
     {
@@ -498,6 +498,10 @@ sp_get_token_type (const char *sql, SP_TOKEN * token)
       break;
     case '"':
       *token = TT_DOUBLE_QUOTED;
+      break;
+    case '\\':
+      /* escape char */
+      p += 1;
       break;
     case '/':
       switch (*p)

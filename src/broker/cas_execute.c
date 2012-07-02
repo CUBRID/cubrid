@@ -6111,6 +6111,10 @@ get_num_markers (char *stmt)
 	{
 	  state = (state == OUT_STR) ? IN_STR : OUT_STR;
 	}
+      else if (*p == '\\' && *(p + 1) == '\'' && state == IN_STR)
+	{
+	  p += 2;
+	}
     }
   return num_q;
 }
