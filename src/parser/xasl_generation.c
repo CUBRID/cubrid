@@ -4532,9 +4532,10 @@ pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
    * we do not have the same luxury with derived tables, so get them all
    * (and in order). */
   table_info->attribute_list =
-    (table_spec->info.spec.flat_entity_list)
-    ? table_spec->info.spec.referenced_attrs
-    : table_spec->info.spec.as_attr_list;
+    (table_spec->info.spec.flat_entity_list != NULL
+     && table_spec->info.spec.derived_table == NULL)
+     ? table_spec->info.spec.referenced_attrs
+     : table_spec->info.spec.as_attr_list;
 
   table_info->value_list = pt_make_val_list (table_info->attribute_list);
 
@@ -11982,7 +11983,8 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 {
   ACCESS_SPEC_TYPE *access = NULL;
 
-  if (spec->info.spec.flat_entity_list)
+  if (spec->info.spec.flat_entity_list != NULL
+      && spec->info.spec.derived_table == NULL)
     {
       access = pt_to_class_spec_list (parser, spec,
 				      where_key_part, where_part, index_part);
