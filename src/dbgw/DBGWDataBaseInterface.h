@@ -150,6 +150,13 @@ namespace dbgw
       int getAffectedRow() const;
 
     protected:
+      void makeColumnValues();
+      void makeValue(bool bReplace, const char *szColName, int nColNo,
+          DBGWValueType type, void *pValue, bool bNull, int nSize);
+      virtual void doMakeInt(const char *szColName, int nColNo, int orgType) = 0;
+      virtual void doMakeLong(const char *szColName, int nColNo, int orgType) = 0;
+      virtual void doMakeString(const char *szColName, int nColNo,
+          DBGWValueType type, int orgType) = 0;
       void makeMetaData();
       virtual void doMakeMetadata(MetaDataList &metaList) = 0;
       virtual bool doFirst() = 0;

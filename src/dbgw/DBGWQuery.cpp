@@ -97,109 +97,109 @@ namespace dbgw
     m_inQueryParamMap(inQueryParamMap),
     m_outQueryParamMap(outQueryParamMap)
   {
-    int nStart = 0;
-    int nEnd = 0;
-    int nLen = m_query.size();
+    /**
+     * Example :
+     *
+     * SELECT * FROM A
+     * WHERE
+     *  COL_A = :COL_A
+     *  AND COL_B = #COL_B
+     *  AND COL_C = 'BLAH BLAH #COL_C'
+     *  AND @SESSSION_VAR := @SESSSION_VAR + 1
+     *  AND COL_D = 'BLAH BLAH :COL_D'
+     */
+    const char *p = m_query.c_str();
+    const char *q = p;
+    char cQuotationMark = 0;
     char cToken = 0;
-    while (nEnd < nLen)
+
+    while (*p)
       {
-        switch (m_query[nEnd])
+        if (*p == '\'' || *p == '"')
           {
-          case '\'':
-          case '"':
-            if (cToken == m_query[nEnd])
+            if (cQuotationMark == 0)
               {
-                cToken = 0;
+                cQuotationMark = *p;
               }
-            else if (cToken != '#' && cToken != ':')
+            else if (cQuotationMark == *p)
               {
-                cToken = m_query[nEnd];
+                cQuotationMark = 0;
               }
-            break;
-          case '#':
-          case ':':
-            if (cToken == '\'' || cToken == '"')
-              {
-                break;
-              }
-
-            if (cToken == '#' || cToken == ':')
-              {
-                InvalidSqlException e(fileName.c_str(), sqlName.c_str());
-                DBGW_LOG_ERROR(e.what());
-                throw e;
-              }
-
-            if (addQueryPart(cToken, nStart, nEnd, false))
-              {
-                cToken = m_query[nEnd];
-                nStart = nEnd;
-              }
-            break;
-          case ')':
-          case ' ':
-          case ',':
-          case '\t':
-          case '\n':
-            if (addQueryPart(cToken, nStart, nEnd, false))
-              {
-                cToken = 0;
-                nStart = nEnd;
-              }
-            break;
           }
-        ++nEnd;
+        else if (*p == '#')
+          {
+            /**
+             * 3. ` AND COL_B = ` is added to normal query part.
+             * 5. ` AND COL_C = 'BLAH BLAH` is added to normal query part.
+             */
+            addQueryPart(cToken, q, p);
+            q = p;
+            cToken = *p;
+          }
+        else if (cQuotationMark == 0 && *p == ':')
+          {
+            /**
+             * 1. `SELECT * FROM A WHERE COL_A = ` is added to normal query part.
+             * 7. `' AND @SESSSION_VAR ` is added to normal query part.
+             */
+            addQueryPart(cToken, q, p);
+            q = p;
+            cToken = *p;
+          }
+        else if (cToken != 0 && !isalnum(*p) && (*p != '_' && *p != '-'))
+          {
+            if (cToken == ':' && p - q > 1)
+              {
+                /**
+                 * 2. `:COL_A` is added to bind query part.
+                 */
+                addQueryPart(cToken, q, p);
+                q = p;
+              }
+            else if (cToken == '#')
+              {
+                /**
+                 * 4. `#COL_B` is added to replace query part.
+                 * 6. `#COL_C` is added to replace query part.
+                 */
+                addQueryPart(cToken, q, p);
+                q = p;
+              }
+            cToken = 0;
+          }
+        ++p;
       }
-    if (nStart != nEnd)
-      {
-        addQueryPart(cToken, nStart, nEnd, true);
-      }
+    /**
+     * 8. `:= @SESSSION_VAR + 1 AND COL_D = 'BLAH BLAH :COL_D'` is added to normal query part.
+     */
+    addQueryPart(cToken, q, p);
   }
 
   DBGWQuery::~DBGWQuery()
   {
   }
 
-  bool DBGWQuery::addQueryPart(char cToken, int nStart, int nEnd, bool bForce)
+  void DBGWQuery::addQueryPart(char cToken, const char *szStart, const char *szEnd)
   {
+    string part;
     DBGWQueryPartSharedPtr p;
     switch (cToken)
       {
       case '#':
-        p = DBGWQueryPartSharedPtr(
-            new DBGWReplaceQueryPart(m_logger,
-                m_query. substr(nStart + 1, nEnd - nStart - 1)));
+        part = string(szStart + 1, szEnd - szStart - 1);
+        p = DBGWQueryPartSharedPtr(new DBGWReplaceQueryPart(m_logger, part));
         m_queryPartList.push_back(p);
-        return true;
+        break;
       case ':':
-        /**
-         * in mysql, ':=' is session variable operator.
-         */
-        if (m_query[nStart + 1] == '=')
-          {
-            p = DBGWQueryPartSharedPtr(
-                new DBGWSQLQueryPart(m_query. substr(nStart, nEnd - nStart)));
-            m_queryPartList.push_back(p);
-          }
-        else
-          {
-            m_bindParamNameList.push_back(
-                m_query. substr(nStart + 1, nEnd - nStart - 1));
-            p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
-            m_queryPartList.push_back(p);
-          }
-        return true;
+        part = string(szStart + 1, szEnd - szStart - 1);
+        m_bindParamNameList.push_back(part);
+        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
+        m_queryPartList.push_back(p);
+        break;
       default:
-        if (bForce || m_query[nEnd] == '#' || m_query[nEnd] == ':')
-          {
-            p
-              = DBGWQueryPartSharedPtr(
-                  new DBGWSQLQueryPart(
-                      m_query. substr(nStart, nEnd - nStart)));
-            m_queryPartList.push_back(p);
-            return true;
-          }
-        return false;
+        part = string(szStart, szEnd - szStart);
+        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart(part));
+        m_queryPartList.push_back(p);
       }
   }
 

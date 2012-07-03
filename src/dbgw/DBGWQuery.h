@@ -101,7 +101,7 @@ namespace dbgw
     const char *getQuery() const;
 
   private:
-    bool addQueryPart(char cToken, int nStart, int nEnd, bool bForce);
+    void addQueryPart(char cToken, const char *szStart, const char *szEnd);
 
   private:
     class DBGWQueryPart;

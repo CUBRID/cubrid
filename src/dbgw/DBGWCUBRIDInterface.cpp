@@ -764,24 +764,7 @@ namespace dbgw
               throw e;
             }
 
-          int i = 1;
-          const MetaDataList *pMetaList = getMetaDataList();
-          for (MetaDataList::const_iterator it = pMetaList->begin(); it
-              != pMetaList->end(); it++, i++)
-            {
-              if (it->type == DBGW_VAL_TYPE_INT)
-                {
-                  makeInt(it->name.c_str(), i, it->orgType);
-                }
-              else if (it->type == DBGW_VAL_TYPE_LONG)
-                {
-                  makeLong(it->name.c_str(), i, it->orgType);
-                }
-              else
-                {
-                  makeString(it->name.c_str(), i, it->type, it->orgType);
-                }
-            }
+          makeColumnValues();
 
           m_cursorPos = CCI_CURSOR_CURRENT;
           return true;
@@ -823,7 +806,7 @@ namespace dbgw
         }
     }
 
-    void DBGWCUBRIDResult::makeInt(const char *szColName, int nColNo, int utype)
+    void DBGWCUBRIDResult::doMakeInt(const char *szColName, int nColNo, int utype)
     {
       int nValue;
       int atype = convertValueTypeToCCIAType(DBGW_VAL_TYPE_INT);
@@ -837,21 +820,11 @@ namespace dbgw
           throw e;
         }
 
-      if (m_cursorPos == CCI_CURSOR_FIRST)
-        {
-          DBGWValueSharedPtr pValue(
-              new DBGWValue(DBGW_VAL_TYPE_INT, (void *) &nValue,
-                  nIndicator == -1, nIndicator));
-          put(szColName, pValue);
-        }
-      else
-        {
-          replace(nColNo - 1, DBGW_VAL_TYPE_INT, (void *) &nValue,
-              nIndicator == -1, nIndicator);
-        }
+      makeValue(m_cursorPos != CCI_CURSOR_FIRST, szColName, nColNo,
+          DBGW_VAL_TYPE_INT, (void *) &nValue, nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::makeLong(const char *szColName, int nColNo, int utype)
+    void DBGWCUBRIDResult::doMakeLong(const char *szColName, int nColNo, int utype)
     {
       int64 lValue;
       int atype = convertValueTypeToCCIAType(DBGW_VAL_TYPE_LONG);
@@ -865,21 +838,11 @@ namespace dbgw
           throw e;
         }
 
-      if (m_cursorPos == CCI_CURSOR_FIRST)
-        {
-          DBGWValueSharedPtr pValue(
-              new DBGWValue(DBGW_VAL_TYPE_LONG, (void *) &lValue,
-                  nIndicator == -1, nIndicator));
-          put(szColName, pValue);
-        }
-      else
-        {
-          replace(nColNo - 1, DBGW_VAL_TYPE_LONG, (void *) &lValue,
-              nIndicator == -1, nIndicator);
-        }
+      makeValue(m_cursorPos != CCI_CURSOR_FIRST, szColName, nColNo,
+          DBGW_VAL_TYPE_LONG, (void *) &lValue, nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::makeString(const char *szColName, int nColNo,
+    void DBGWCUBRIDResult::doMakeString(const char *szColName, int nColNo,
         DBGWValueType type, int utype)
     {
       char *szValue;
@@ -894,18 +857,8 @@ namespace dbgw
           throw e;
         }
 
-      if (m_cursorPos == CCI_CURSOR_FIRST)
-        {
-          DBGWValueSharedPtr pValue(
-              new DBGWValue(type, (void *) szValue, nIndicator == -1,
-                  nIndicator));
-          put(szColName, pValue);
-        }
-      else
-        {
-          replace(nColNo - 1, type, (void *) szValue, nIndicator == -1,
-              nIndicator);
-        }
+      makeValue(m_cursorPos != CCI_CURSOR_FIRST, szColName, nColNo, type,
+          (void *) szValue, nIndicator == -1, nIndicator);
     }
 
   }

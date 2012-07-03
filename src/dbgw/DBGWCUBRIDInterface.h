@@ -125,9 +125,10 @@ namespace dbgw
       DBGWCUBRIDResult(const DBGWLogger &logger, int hCCIRequest,
           int nAffectedRow, bool bFetchData);
       void doMakeMetadata(MetaDataList &metaList);
-      void makeInt(const char *szColName, int nColNo, int utype);
-      void makeLong(const char *szColName, int nColNo, int utype);
-      void makeString(const char *szColName, int nColNo, DBGWValueType type, int utype);
+      void doMakeInt(const char *szColName, int nColNo, int utype);
+      void doMakeLong(const char *szColName, int nColNo, int utype);
+      void doMakeString(const char *szColName, int nColNo, DBGWValueType type,
+          int utype);
 
     private:
       int m_hCCIRequest;

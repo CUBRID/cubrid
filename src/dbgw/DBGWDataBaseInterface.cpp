@@ -608,6 +608,42 @@ namespace dbgw
         }
     }
 
+    void DBGWResult::makeColumnValues()
+    {
+      int i = 1;
+      const MetaDataList *pMetaList = getMetaDataList();
+      for (MetaDataList::const_iterator it = pMetaList->begin(); it
+          != pMetaList->end(); it++, i++)
+        {
+          if (it->type == DBGW_VAL_TYPE_INT)
+            {
+              doMakeInt(it->name.c_str(), i, it->orgType);
+            }
+          else if (it->type == DBGW_VAL_TYPE_LONG)
+            {
+              doMakeLong(it->name.c_str(), i, it->orgType);
+            }
+          else
+            {
+              doMakeString(it->name.c_str(), i, it->type, it->orgType);
+            }
+        }
+    }
+
+    void DBGWResult::makeValue(bool bReplace, const char *szColName, int nColNo,
+        DBGWValueType type, void *pValue, bool bNull, int nSize)
+    {
+      if (bReplace)
+        {
+          replace(nColNo - 1, type, pValue, bNull, nSize);
+        }
+      else
+        {
+          DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
+          put(szColName, p);
+        }
+    }
+
     bool DBGWResult::isNeedFetch() const
     {
       /**
