@@ -602,7 +602,7 @@ namespace dbgw
     catch (...)
       {
         InvalidValueFormatException e("DateTime", m_stValue.szValue);
-        DBGW_LOG_ERROR(e.what());
+        DBGW_LOG_WARN(e.what());
         throw e;
       }
   }

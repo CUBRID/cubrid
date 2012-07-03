@@ -533,8 +533,7 @@ namespace dbgw
     m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
     m_nValidateRatio(nValidateRatio)
   {
-    memset(m_bValidateResult, 0, sizeof(m_bValidateResult));
-    memcpy(m_bValidateResult, bValidateResult, sizeof(bValidateResult));
+    memcpy(m_bValidateResult, bValidateResult, sizeof(m_bValidateResult));
 
     if (m_nValidateRatio < 0)
       {
