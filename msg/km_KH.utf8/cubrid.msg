@@ -1152,8 +1152,8 @@ $ LOADDB
 1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 Cannot compile regular expression: '%s'
 1086 Cannot execute regular expression: '%s'
-1087 Locale initialization : %s.
-1088 Locale generation : %s.
+1087 Locale initialization: %s.
+1088 Locale generation: %s.
 1089 Cannot prepare statement of type '%s' with host variables.
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.

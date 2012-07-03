@@ -1151,8 +1151,8 @@ $ LOADDB
 1084 체크포인트에서 사용할 수 없는 페이지가 존재합니다. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 정규 표현식을 컴파일할 수 없습니다: '%s'
 1086 정규 표현식을 실행할 수 없습니다: '%s'
-1087 Locale initialization : %s.
-1088 Locale generation : %s.
+1087 Locale initialization: %s.
+1088 Locale generation: %s.
 1089 Cannot prepare statement of type '%s' with host variables.
 1090 Backup active log '%s' started.
 1091 Backup active log '%s' finished.

@@ -5096,21 +5096,45 @@ lang_load_library (const char *lib_file, void **handle)
 {
   int err_status = NO_ERROR;
   char err_msg[ERR_MSG_SIZE];
+#if defined(WINDOWS)
+  DWORD loading_err;
+  char *lpMsgBuf;
+  UINT error_mode = 0;
+#else
+  char *error;
+#endif
 
   assert (lib_file != NULL);
 
-  *handle =
 #if defined(WINDOWS)
-    LoadLibrary (lib_file);
+  error_mode = SetErrorMode (SEM_NOOPENFILEERRORBOX | SEM_FAILCRITICALERRORS);
+  *handle = LoadLibrary (lib_file);
+  SetErrorMode (error_mode);
+  loading_err = GetLastError ();
 #else
-    dlopen (lib_file, RTLD_NOW);
+  dlerror ();			/* Clear any existing error */
+  *handle = dlopen (lib_file, RTLD_NOW);
 #endif
 
   if (*handle == NULL)
     {
       err_status = ER_LOC_INIT;
+#if defined(WINDOWS)
+      FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER
+		     | FORMAT_MESSAGE_FROM_SYSTEM
+		     | FORMAT_MESSAGE_ARGUMENT_ARRAY,
+		     NULL,
+		     loading_err,
+		     MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
+		     (char *) &lpMsgBuf, 1, &lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
-		"Error loading library %s", lib_file);
+		"Error loading library %s\n%s", lib_file, lpMsgBuf);
+      LocalFree (lpMsgBuf);
+#else
+      error = dlerror ();
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Error loading library %s\n %s", lib_file, error);
+#endif
       LOG_LOCALE_ERROR (err_msg, err_status, true);
     }
 

@@ -146,7 +146,7 @@
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 1, msg); \
       if (do_print) \
 	{ \
-	  fprintf (stderr, "Error processing locales : %s\n", msg); \
+	  fprintf (stderr, "Error processing locales: %s\n", msg); \
 	} \
     } while (0)
 
