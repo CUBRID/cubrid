@@ -10440,7 +10440,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
       cache_attr->is_fk_cache_attr = true;
     }
 
-  if (con->shared_cons_name)
+  if (con->shared_cons_name != NULL)
     {
       existing_con = classobj_find_constraint_by_name (class_->constraints,
 						       con->shared_cons_name);
@@ -10493,7 +10493,8 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 	}
       *recache_cls_cons = true;
     }
-  else if (!classobj_is_exist_foreign_key_ref (ref_clsop, con->fk_info))
+  else if (!classobj_is_exist_foreign_key_ref (ref_clsop, con->fk_info)
+	   || con->shared_cons_name != NULL)
     {
       if (update_foreign_key_ref (ref_clsop, con->fk_info) != NO_ERROR)
 	{
@@ -11419,13 +11420,13 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 	      break;
 	    }
 
-	  /* note that the previous operation will flush the current class 
-	   * representation along with the instances and clear the dirty bit, 
-	   * this is unnecessary if the class was only marked dirty 
+	  /* note that the previous operation will flush the current class
+	   * representation along with the instances and clear the dirty bit,
+	   * this is unnecessary if the class was only marked dirty
 	   * in preparation for the new representation.
-	   * Because the dirty bit is clear however, we must turn it back on 
-	   * after the new representation is installed so it will be properly 
-	   * flushed, the next time a transaction commits or 
+	   * Because the dirty bit is clear however, we must turn it back on
+	   * after the new representation is installed so it will be properly
+	   * flushed, the next time a transaction commits or
 	   * locator_flush_all_instances is called
 	   */
 	  if (locator_update_class (classop) == NULL)
@@ -11435,7 +11436,7 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
 	  /* !!! I've seen some cases where objects are left cached while this
 	   * flag is on which is illegal.  Not sure how this happens but leave
-	   * this trap so we can track it down.  Shouldn't be necessary 
+	   * this trap so we can track it down.  Shouldn't be necessary
 	   */
 	  if (ws_class_has_cached_objects (classop))
 	    {
@@ -11445,9 +11446,9 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
 	  newrep = 1;
 
-	  /* Set the no_objects flag so we know that if no object dependencies 
-	   * are introduced on this representation, we don't have to generate 
-	   * another one the next time the class is updated. 
+	  /* Set the no_objects flag so we know that if no object dependencies
+	   * are introduced on this representation, we don't have to generate
+	   * another one the next time the class is updated.
 	   */
 
 	  /* this used to be outside, think about why */
@@ -11462,14 +11463,14 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
   error = transfer_disk_structures (classop, class_, flat);
 
-  /* Delete the trigger caches associated with attributes that are no longer 
-   * part of the class.  This will also mark the triggers as invalid 
-   * since their associated attribute has gone away. 
+  /* Delete the trigger caches associated with attributes that are no longer
+   * part of the class.  This will also mark the triggers as invalid
+   * since their associated attribute has gone away.
    */
   invalidate_unused_triggers (classop, class_, flat);
 
   /* clear any attribute or method descriptor caches that reference this
-   * class. 
+   * class.
    */
   sm_reset_descriptors (classop);
 
@@ -11481,7 +11482,7 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
   /* make absolutely sure this gets marked dirty after the installation,
    * this is usually redundant but the class could get flushed
-   * during memory panics so we always must make sure it gets flushed again 
+   * during memory panics so we always must make sure it gets flushed again
    */
   if (locator_update_class (classop) == NULL)
     {
@@ -11504,7 +11505,7 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
   /* now that we don't always load methods immediately after editing,
    * must make sure that the methods_loaded flag is cleared so they
-   * will be loaded the next time a message is sent 
+   * will be loaded the next time a message is sent
    */
   class_->methods_loaded = 0;
 
@@ -11843,8 +11844,8 @@ flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class)
 	  if (error == NO_ERROR)
 	    {
 	      /* make sure the run-time stuff is cached before editing, this
-	       * is particularly important for the method file source class 
-	       * kludge 
+	       * is particularly important for the method file source class
+	       * kludge
 	       */
 	      error = sm_clean_class (sub->op, class_);
 	      if (error == NO_ERROR)
@@ -12534,9 +12535,9 @@ sm_delete_class_mop (MOP op)
 		}
 	      else
 		{
-		  /* now we can assume that every class we need to touch has 
-		   * a write lock - attempt to flatten subclasses to reflect 
-		   * the deletion 
+		  /* now we can assume that every class we need to touch has
+		   * a write lock - attempt to flatten subclasses to reflect
+		   * the deletion
 		   */
 		  error = flatten_subclasses (oldsubs, op);
 		  if (error != NO_ERROR)
@@ -12569,18 +12570,18 @@ sm_delete_class_mop (MOP op)
 
 		      if (error != NO_ERROR)
 			{
-			  /* we had problems flushing, this may be due to 
-			   * an out of space condition, probably 
-			   * the transaction should be aborted as well 
+			  /* we had problems flushing, this may be due to
+			   * an out of space condition, probably
+			   * the transaction should be aborted as well
 			   */
 			  abort_subclasses (oldsubs);
 			}
 		      else
 			{
-			  /* this section is critical, if any errors happen 
-			   * here, the workspace will be in an inconsistent 
-			   * state and the transaction will have to be 
-			   * aborted 
+			  /* this section is critical, if any errors happen
+			   * here, the workspace will be in an inconsistent
+			   * state and the transaction will have to be
+			   * aborted
 			   */
 
 			  /* now update the supers and users */
@@ -12590,61 +12591,61 @@ sm_delete_class_mop (MOP op)
 			      error = update_subclasses (oldsubs);
 			      if (error == NO_ERROR)
 				{
-				  /* OLD CODE, here we removed the class from 
-				   * the resident class list, this causes bad 
-				   * problems for GC since the class will be 
+				  /* OLD CODE, here we removed the class from
+				   * the resident class list, this causes bad
+				   * problems for GC since the class will be
 				   * GC'd before instances have been decached.
 				   * This operation has been moved below with
-				   * ws_remove_resident_class(). Not sure if 
-				   * this is position dependent.  
-				   * If it doesn't cause any problems remove 
+				   * ws_remove_resident_class(). Not sure if
+				   * this is position dependent.
+				   * If it doesn't cause any problems remove
 				   * this comment.
 				   */
 				  /* ml_remove(&ws_Resident_classes, op); */
 
-				  /* free any indexes, unique btids, or other 
+				  /* free any indexes, unique btids, or other
 				   * associated disk structures
 				   */
 				  transfer_disk_structures (op, class_, NULL);
 
-				  /* now that the class is gone, physically 
-				   * delete all the triggers. Note that this 
-				   * does not just invalidate the triggers, 
+				  /* now that the class is gone, physically
+				   * delete all the triggers. Note that this
+				   * does not just invalidate the triggers,
 				   * it deletes them forever.
 				   */
 				  remove_class_triggers (op, class_);
 
 				  /* This to be maintained as long as the class
 				   * is cached in the workspace, dirty or not.
-				   * When the deleted class is flushed, 
+				   * When the deleted class is flushed,
 				   * the name is removed.
-				   * Assuming this doesn't cause problems, 
+				   * Assuming this doesn't cause problems,
 				   * remove this comment
 				   */
 				  /* ws_drop_classname((MOBJ) class); */
 
-				  /* inform the locator - this will mark 
+				  /* inform the locator - this will mark
 				   * the class MOP as deleted so all operations
-				   * that require the current class object 
-				   * must be done before calling this 
-				   * function 
+				   * that require the current class object
+				   * must be done before calling this
+				   * function
 				   */
 
 				  if (locator_remove_class (op) == NO_ERROR)
 				    {
-				      /* mark all instance MOPs as deleted, 
-				       * should the locator be doing this ? 
+				      /* mark all instance MOPs as deleted,
+				       * should the locator be doing this ?
 				       */
 
 				      ws_mark_instances_deleted (op);
 
-				      /* make sure this is removed from 
-				       * the resident class list, this will 
-				       * also make the class mop subject 
+				      /* make sure this is removed from
+				       * the resident class list, this will
+				       * also make the class mop subject
 				       * to garbage collection.
-				       * This function will expect that all of 
-				       * the instances of the class have been 
-				       * decached by this point ! 
+				       * This function will expect that all of
+				       * the instances of the class have been
+				       * decached by this point !
 				       */
 
 				      ws_remove_resident_class (op);
@@ -13019,11 +13020,11 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	   * is updated correctly.  This is necessary because the allocation
 	   * and loading of the instance are done at the same time.  We need
 	   * to be able to allocate the index and flush the class BEFORE
-	   * the loading to avoid this extra step. 
+	   * the loading to avoid this extra step.
 	   */
 
 	  /* If either of these operations fail, the transaction should
-	   * be aborted 
+	   * be aborted
 	   */
 	  if (locator_update_class (classop) == NULL)
 	    {
@@ -13082,7 +13083,7 @@ general_error:
 severe_error:
   /* Something happened at a bad time, the database is in an inconsistent
    * state.  Must abort the transaction. Save the error that caused the problem.
-   * We should try to disable error overwriting when we abort so the caller 
+   * We should try to disable error overwriting when we abort so the caller
    * can find out what happened.
    */
   if (attrs != NULL)
