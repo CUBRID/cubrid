@@ -764,8 +764,8 @@ typedef struct YYLTYPE
 %type <node> host_param_output
 %type <node> param_
 %type <node> opt_where_clause
-%type <node> opt_startwith_clause
-%type <node> opt_connectby_clause
+%type <node> startwith_clause
+%type <node> connectby_clause
 %type <node> opt_groupby_clause
 %type <node> group_spec_list
 %type <node> group_spec
@@ -924,6 +924,7 @@ typedef struct YYLTYPE
 %type <c3> delete_from_using
 
 %type <c2> extended_table_spec_list
+%type <c2> opt_startwith_connectby_clause
 %type <c2> opt_of_where_cursor
 %type <c2> opt_data_type
 %type <c2> opt_create_as_clause
@@ -10653,19 +10654,18 @@ opt_from_clause
 
 		DBG_PRINT}}
 	  opt_where_clause		/* $4 */
-	  opt_startwith_clause		/* $5 */
-	  opt_connectby_clause		/* $6 */
-	  opt_groupby_clause		/* $7 */
-	  opt_with_rollup		/* $8 */
-	  opt_having_clause 		/* $9 */
-	  opt_using_index_clause	/* $10 */
-	  opt_with_increment_clause	/* $11 */
+	  opt_startwith_connectby_clause/* $5 */
+	  opt_groupby_clause		/* $6 */
+	  opt_with_rollup		/* $7 */
+	  opt_having_clause 		/* $8 */
+	  opt_using_index_clause	/* $9 */
+	  opt_with_increment_clause	/* $10 */
 		{{
 
 			PT_NODE *n;
 			bool is_dummy_select;
 			PT_NODE *node = parser_pop_select_stmt_node ();
-			int with_rollup = $8;
+			int with_rollup = $7;
 			parser_pop_hint_node ();
 
 			is_dummy_select = false;
@@ -10710,15 +10710,15 @@ opt_from_clause
 			    if (parser_found_Oracle_outer == true)
 			      PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
 
-			    node->info.query.q.select.start_with = n = $5;
+			    node->info.query.q.select.start_with = n = CONTAINER_AT_0 ($5);
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
-			    node->info.query.q.select.connect_by = n = $6;
+			    node->info.query.q.select.connect_by = n = CONTAINER_AT_1 ($5);
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
-			    node->info.query.q.select.group_by = n = $7;
+			    node->info.query.q.select.group_by = n = $6;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
@@ -10735,7 +10735,7 @@ opt_from_clause
 				  }
 			      }
 
-			    node->info.query.q.select.having = n = $9;
+			    node->info.query.q.select.having = n = $8;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
@@ -10757,9 +10757,9 @@ opt_from_clause
 
 			    node->info.query.q.select.using_index =
 			      (node->info.query.q.select.using_index ?
-			       parser_make_link (node->info.query.q.select.using_index, $10) : $10);
+			       parser_make_link (node->info.query.q.select.using_index, $9) : $9);
 
-			    node->info.query.q.select.with_increment = $11;
+			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
 			  }
 
@@ -11292,14 +11292,42 @@ opt_where_clause
 		DBG_PRINT}}
 	;
 
-opt_startwith_clause
+opt_startwith_connectby_clause
 	: /* empty */
 		{{
 
-			$$ = NULL;
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
 
 		DBG_PRINT}}
-	|	{
+	| startwith_clause connectby_clause
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $1, $2);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| connectby_clause startwith_clause
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, $1);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| connectby_clause
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, $1);
+			$$ = ctn;
+
+		DBG_PRINT}}
+
+startwith_clause
+	:	{
 			parser_save_and_set_pseudoc (0);
 		}
 	  START_ WITH search_condition
@@ -11312,14 +11340,8 @@ opt_startwith_clause
 		DBG_PRINT}}
 	;
 
-opt_connectby_clause
-	: /* empty */
-		{{
-
-			$$ = NULL;
-
-		DBG_PRINT}}
-	|	{
+connectby_clause
+	:	{
 			parser_save_and_set_prc (1);
 			parser_save_and_set_serc (0);
 			parser_save_and_set_pseudoc (0);
