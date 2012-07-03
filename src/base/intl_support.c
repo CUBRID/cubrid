@@ -3526,7 +3526,7 @@ intl_utf8_to_cp_list (const unsigned char *utf8, const int size,
  *  This function should be used only when the UTF-8 string enters the CUBRID
  *  system.
  */
-static bool
+bool
 intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 {
   const unsigned char *p = buf;

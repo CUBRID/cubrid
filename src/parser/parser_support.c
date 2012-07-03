@@ -9767,8 +9767,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
 	{
 	  *charset = INTL_CODESET_UTF8;
 	}
-      else if (strcasecmp (cs_name, "iso88591") == 0
-	       || strcasecmp (cs_name, "iso") == 0)
+      else if (strcasecmp (cs_name, "iso88591") == 0)
 	{
 	  *charset = INTL_CODESET_ISO88591;
 	}

@@ -1108,6 +1108,29 @@ lang_collation_count (void)
 }
 
 /*
+ * lang_get_codeset_name - get charset string equivalent
+ *   return: charset string or empty string
+ *   codeset_id(in): charset/codeset id
+ */
+const char *
+lang_get_codeset_name (int codeset_id)
+{
+  switch (codeset_id)
+    {
+    case INTL_CODESET_UTF8:
+      return "utf8";
+    case INTL_CODESET_ISO88591:
+      return "iso88591";
+    }
+
+  /* codeset_id is propagated downwards from the grammar, so it is either
+   * INTL_CODESET_UTF8 or INTL_CODESET_ISO88591 */
+  assert (false);
+
+  return "";
+}
+
+/*
  * lang_user_alphabet_w_coll - 
  *   return: id of default collation
  */

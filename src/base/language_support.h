@@ -49,11 +49,13 @@
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
+#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
+  ? LANG_COLL_UTF8_BINARY :					 \
+  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
+    LANG_COLL_ISO_BINARY))
+
 /* collation and charset do be used by system : */
-#define LANG_SYS_COLLATION  ((lang_charset() == INTL_CODESET_UTF8) \
-	? LANG_COLL_UTF8_BINARY :				   \
-	((lang_charset() == INTL_CODESET_KSC5601_EUC) ?		   \
-	 LANG_COLL_EUCKR_BINARY : LANG_COLL_ISO_BINARY))
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
 
 #define LANG_SYS_CODESET  lang_charset()
 
@@ -280,6 +282,7 @@ extern "C"
   extern const char *lang_get_collation_name (const int coll_id);
   extern LANG_COLLATION *lang_get_collation_by_name (const char *coll_name);
   extern int lang_collation_count (void);
+  extern const char *lang_get_codeset_name (int codeset_id);
   extern const ALPHABET_DATA *lang_user_alphabet_w_coll
     (const int collation_id);
   extern TEXT_CONVERSION *lang_get_txt_conv (void);

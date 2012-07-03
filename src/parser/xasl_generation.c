@@ -4534,8 +4534,8 @@ pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
   table_info->attribute_list =
     (table_spec->info.spec.flat_entity_list != NULL
      && table_spec->info.spec.derived_table == NULL)
-     ? table_spec->info.spec.referenced_attrs
-     : table_spec->info.spec.as_attr_list;
+    ? table_spec->info.spec.referenced_attrs
+    : table_spec->info.spec.as_attr_list;
 
   table_info->value_list = pt_make_val_list (table_info->attribute_list);
 
@@ -7188,7 +7188,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_WEEKF
 		  || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME
-		  || node->info.expr.op == PT_DEFINE_VARIABLE)
+		  || node->info.expr.op == PT_DEFINE_VARIABLE
+		  || node->info.expr.op == PT_CHR)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -7299,7 +7300,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_LOG2
 		       || node->info.expr.op == PT_LOG10
 		       || node->info.expr.op == PT_ABS
-		       || node->info.expr.op == PT_CHR
 		       || node->info.expr.op == PT_OCTET_LENGTH
 		       || node->info.expr.op == PT_BIT_LENGTH
 		       || node->info.expr.op == PT_CHAR_LENGTH

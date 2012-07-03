@@ -9200,6 +9200,14 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " chr(");
       q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL &&
+	  p->info.expr.arg2->node_type == PT_VALUE)
+	{
+	  q = pt_append_nulstring (parser, q, " using ");
+	  q = pt_append_nulstring (parser, q, lang_get_codeset_name
+				   (p->info.expr.arg2->
+				    info.value.data_value.i));
+	}
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_INSTR:

@@ -141,7 +141,8 @@ extern int db_string_concatenate (const DB_VALUE * string1,
 				  const DB_VALUE * string2,
 				  DB_VALUE * result,
 				  DB_DATA_STATUS * data_status);
-extern int db_string_chr (DB_VALUE * res, DB_VALUE * dbval1);
+extern int db_string_chr (DB_VALUE * res, DB_VALUE * dbval1,
+			  DB_VALUE * dbval2);
 extern int db_string_instr (const DB_VALUE * src_string,
 			    const DB_VALUE * sub_string,
 			    const DB_VALUE * start_pos, DB_VALUE * result);

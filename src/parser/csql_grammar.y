@@ -111,7 +111,6 @@ static FUNCTION_MAP functions[] = {
   {"char_to_blob", PT_CHAR_TO_BLOB},
   {"char_to_clob", PT_CHAR_TO_CLOB},
   {"character_length", PT_CHAR_LENGTH},
-  {"chr", PT_CHR},
   {"clob_from_file", PT_CLOB_FROM_FILE},
   {"clob_length", PT_CLOB_LENGTH},
   {"clob_to_char", PT_CLOB_TO_CHAR},
@@ -899,6 +898,7 @@ typedef struct YYLTYPE
 %type <node> delete_name_list
 %type <node> opt_collation
 %type <node> opt_charset
+%type <node> opt_using_charset
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1345,6 +1345,7 @@ typedef struct YYLTYPE
 %token <cptr> CACHE
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
+%token <cptr> CHR
 %token <cptr> COLUMNS
 %token <cptr> COMMITTED
 %token <cptr> COST
@@ -13274,6 +13275,18 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CHR
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CHR); }
+	  '(' expression_ opt_using_charset ')'
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_make_expression (PT_CHR, $4, $5, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| CAST
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
 	  '(' expression_ AS data_type ')'
@@ -16687,6 +16700,92 @@ opt_charset
 		DBG_PRINT}}
 	;
 
+opt_using_charset
+	: /* empty */
+		{{
+
+			int charset = lang_charset ();
+			PT_NODE *node;
+
+			node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+			    node->info.value.data_value.i = charset;
+			  }
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+			$$ = node;
+
+		DBG_PRINT}}
+	| USING char_string_literal
+		{{
+
+			PT_NODE *charset_node = $2;
+			int dummy;
+			int charset = lang_charset ();
+			PT_NODE *node;
+
+			if (charset_node)
+			{
+			  if (pt_check_grammar_charset_collation
+			      (this_parser, charset_node, NULL, &charset, &dummy) == 0)
+			    {
+			      parser_free_node (this_parser, charset_node);
+			    }
+			}
+			node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+			    node->info.value.data_value.i = charset;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| USING IdName
+		{{
+
+			PT_NODE *temp_node = NULL;
+			int dummy;
+			int charset = lang_charset ();
+			PT_NODE *node;
+
+			temp_node = parser_new_node (this_parser, PT_VALUE);
+
+			if (temp_node)
+			  {
+			    temp_node->type_enum = PT_TYPE_CHAR;
+			    temp_node->info.value.string_type = ' ';
+			    temp_node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, temp_node);
+			  }
+
+			if (temp_node)
+			{
+			  if (pt_check_grammar_charset_collation
+				(this_parser, temp_node, NULL, &charset, &dummy) == 0)
+			    {
+				parser_free_node (this_parser, temp_node);
+			    }
+			}
+
+			node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+			    node->info.value.data_value.i = charset;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
 set_type
 	: SET_OF
 		{{
@@ -17239,6 +17338,16 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| CHR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			    p->info.name.original = $1;
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -20672,7 +20781,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_BIN:
     case PT_CEIL:
     case PT_CHAR_LENGTH:	/* char_length, length, lengthb */
-    case PT_CHR:
     case PT_EXP:
     case PT_FLOOR:
     case PT_LAST_DAY:

@@ -155,6 +155,9 @@ extern int yycolumn_end;
 									      csql_yylval.cptr = pt_makename(yytext);
 									      return CHARSET; }
 [cC][hH][eE][cC][kK]							{ begin_token(yytext);   return CHECK; }
+[cC][hH][rR]								{ begin_token(yytext); 
+										csql_yylval.cptr = pt_makename(yytext);
+										return CHR; }
 [cC][lL][aA][sS][sS]							{ begin_token(yytext);   return CLASS; }
 [cC][lL][aA][sS][sS][eE][sS]						{ begin_token(yytext);   return CLASSES; }
 [cC][lL][oO][bB]							{ begin_token(yytext);   return CLOB_; }

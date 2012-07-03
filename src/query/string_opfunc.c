@@ -1437,112 +1437,153 @@ db_string_concatenate (const DB_VALUE * string1,
  *   return: NO_ERROR, or ER_code
  *   res(OUT)   : resultant db_value node
  *   dbval1(IN) : first db_value node
+ *   dbval2(IN) : charset name to use
  */
 
 int
-db_string_chr (DB_VALUE * res, DB_VALUE * dbval1)
+db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
 {
-  DB_TYPE res_type;
-  int itmp;
-  DB_BIGINT bi;
-  double dtmp;
-  char buf[2];
-  DB_VALUE v;
-  int ret = NO_ERROR;
-  const int max_char_val = (lang_charset () == INTL_CODESET_UTF8) ? 128 : 256;
+  DB_TYPE arg_type;
+  DB_BIGINT temp_bigint = 0;
+  unsigned int temp_arg = 0, uint_arg = 0;
+  int itmp = 0;
 
-  res_type = DB_VALUE_DOMAIN_TYPE (dbval1);
+  DB_BIGINT bi = 0;
 
-  if (res_type == DB_TYPE_NULL || DB_IS_NULL (dbval1))
+  double dtmp = 0;
+
+  char *num_as_bytes = NULL;
+  char *invalid_pos = NULL;
+  int num_byte_count = 0;
+  int i, codeset = -1, collation = -1;
+  int err_status = NO_ERROR;
+
+  arg_type = DB_VALUE_DOMAIN_TYPE (dbval1);
+
+  assert (dbval1 != NULL && dbval2 != NULL);
+
+  if (arg_type == DB_TYPE_NULL || DB_IS_NULL (dbval1))
     {
-      return ret;
+      goto exit;
     }
 
-  switch (res_type)
+  assert (DB_VALUE_DOMAIN_TYPE (dbval2) == DB_TYPE_INTEGER);
+
+  codeset = DB_GET_INTEGER (dbval2);
+  if (codeset != INTL_CODESET_UTF8 && codeset != INTL_CODESET_ISO88591)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      err_status = ER_OBJ_INVALID_ARGUMENTS;
+      goto exit;
+    }
+
+  /* Get value according to DB_TYPE */
+  switch (arg_type)
     {
     case DB_TYPE_SHORT:
       itmp = DB_GET_SHORT (dbval1);
-      if (itmp < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) (itmp % max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     case DB_TYPE_INTEGER:
       itmp = DB_GET_INTEGER (dbval1);
-      if (itmp < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) (itmp % max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     case DB_TYPE_BIGINT:
       bi = DB_GET_BIGINT (dbval1);
-      if (bi < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) (bi % max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     case DB_TYPE_FLOAT:
       dtmp = DB_GET_FLOAT (dbval1);
-      if (dtmp < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) fmod (floor (dtmp), max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     case DB_TYPE_DOUBLE:
       dtmp = DB_GET_DOUBLE (dbval1);
-      if (dtmp < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) fmod (floor (dtmp), max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_num_to_double (db_locate_numeric (dbval1),
 				    DB_VALUE_SCALE (dbval1), &dtmp);
-      if (dtmp < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) fmod (floor (dtmp), max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     case DB_TYPE_MONETARY:
       dtmp = (DB_GET_MONETARY (dbval1))->amount;
-      if (dtmp < 0)
-	{
-	  break;
-	}
-      buf[0] = (char) fmod (floor (dtmp), max_char_val);
-      buf[1] = '\0';
-      DB_MAKE_CHAR (&v, 1, buf, 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      pr_clone_value (&v, res);
       break;
     default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      err_status = ER_GENERIC_ERROR;
+      goto exit;
       break;
     }				/* switch */
 
-  return ret;
+  /* bi, dtmp and itmp have the default value set to 0, so temp_bigint will
+   * hold the numeric representation of the first argument, regardless of
+   * its type. */
+  temp_bigint = bi + (DB_BIGINT) round (fmod (dtmp, 0x100000000)) + itmp;
+
+  if (temp_bigint >= 0)
+    {
+      temp_arg = DB_UINT32_MAX & temp_bigint;
+    }
+  else
+    {
+      temp_arg = DB_UINT32_MAX & (-temp_bigint);
+      temp_arg = DB_UINT32_MAX - temp_arg + 1;
+    }
+  uint_arg = temp_arg;
+
+  if (temp_arg == 0)
+    {
+      num_byte_count = 1;
+    }
+  else
+    {
+      while (temp_arg > 0)
+	{
+	  num_byte_count++;
+	  temp_arg >>= 8;
+	}
+    }
+
+  num_as_bytes = (char *)
+    db_private_alloc (NULL, (1 + num_byte_count) * sizeof (char));
+  if (num_as_bytes == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+  temp_arg = uint_arg;
+
+  for (i = num_byte_count - 1; i >= 0; i--)
+    {
+      num_as_bytes[i] = (char) (temp_arg & 0xFF);
+      temp_arg >>= 8;
+    }
+  num_as_bytes[num_byte_count] = '\0';
+
+  if (codeset == INTL_CODESET_UTF8 &&
+      intl_check_utf8 ((const unsigned char *) num_as_bytes,
+		       num_byte_count, &invalid_pos) != 0)
+    {
+      DB_MAKE_NULL (res);
+      db_private_free (NULL, num_as_bytes);
+
+      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	{
+	  err_status = NO_ERROR;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  err_status = ER_OBJ_INVALID_ARGUMENTS;
+	}
+      goto exit;
+    }
+
+  collation = LANG_GET_BINARY_COLLATION (codeset);
+
+  db_make_varchar (res, DB_DEFAULT_PRECISION, num_as_bytes, num_byte_count,
+		   codeset, collation);
+  res->need_clear = true;
+
+exit:
+  return err_status;
 }
 
 /*

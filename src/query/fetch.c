@@ -172,6 +172,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DATE_FORMAT:
     case T_STR_TO_DATE:
     case T_CURRENT_VALUE:
+    case T_CHR:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -442,7 +443,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_CEIL:
     case T_SIGN:
     case T_ABS:
-    case T_CHR:
     case T_EXP:
     case T_SQRT:
     case T_PRIOR:
@@ -1053,11 +1053,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CHR:
-      if (DB_IS_NULL (peek_right))
+      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_string_chr (arithptr->value, peek_right) != NO_ERROR)
+      else if (db_string_chr (arithptr->value, peek_left,
+			      peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}

@@ -795,9 +795,13 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
 
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
       /* return type */
       sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_CHAR;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
 
       def->overloads[num++] = sig;
 
@@ -10627,7 +10631,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       break;
     case PT_CHR:
       assert (dt != NULL);
-      dt->info.data_type.precision = 1;
+      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       break;
 
     case PT_MD5:
@@ -12513,6 +12517,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
   typ1 = (arg1) ? DB_VALUE_TYPE (arg1) : DB_TYPE_NULL;
   typ2 = (arg2) ? DB_VALUE_TYPE (arg2) : DB_TYPE_NULL;
   cmp = 0;
+  db_make_null (result);
 
   switch (op)
     {
@@ -15164,7 +15169,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_CHR:
-      error = db_string_chr (result, arg1);
+      error = db_string_chr (result, arg1, arg2);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

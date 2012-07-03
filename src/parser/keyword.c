@@ -88,6 +88,7 @@ static KEYWORD_RECORD keywords[] = {
   {CHARSET, "CHARSET", 1},
   {CHARACTER_SET_, "CHARACTER_SET", 1},
   {CHECK, "CHECK", 0},
+  {CHR, "CHR", 1},
   {CLASS, "CLASS", 0},
   {CLASSES, "CLASSES", 0},
   {CLOB_, "CLOB", 0},
