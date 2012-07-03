@@ -10672,7 +10672,6 @@ error_return:
  *	  it cannot be violated by the template insert because those values
  *	  will be NULL, and NULL values don't generate unique key violations.
  */
-
 static int
 build_predicate_for_unique_constraint (PARSER_CONTEXT * parser,
 				       PT_NODE * spec, DB_OTMPL * templ,
@@ -10754,22 +10753,23 @@ cleanup:
  * Notes: This function builds the parse tree for a SELECT statement that
  *	  returns a list of OIDs that would cause a unique constraint
  *	  violation. This function is used for the broker-side execution of
- *	  "insert .. on duplicate key update" and "replace " statements.
+ *	  "insert .. on duplicate key update" and "replace" statements.
  *	  Example:
  *	  for table t(i int , str string, d date) with unique
  *	  indexes t(i) and t(str,d),
  *	  INSERT INTO t(i,str,d) VALUES(1,'1','01-01-01') ON DUPLICATE KEY
  *	      UPDATE i = 2;
  *	  builds the SELECT statement:
- *	  SELECT t FROM t WHERE i = 1 OR (str = '1' AND d = '01-01-01');
+ *	  SELECT t FROM t WHERE i = 1 UNION 
+ *        SELECT t FROM t WHERE (str = '1' AND d = '01-01-01');
  */
-
 static int
 build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
 			PT_NODE * spec, PT_NODE * class_specs,
 			PT_NODE ** statement, bool for_update)
 {
   PT_NODE *where = NULL, *stmt = NULL;
+  PT_NODE *union_stmt = NULL, *arg1 = NULL, *arg2 = NULL;
   SM_CLASS_CONSTRAINT *constraint = NULL;
   SM_CLASS *class_ = NULL;
   int error = NO_ERROR;
@@ -10783,9 +10783,9 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
   *statement = NULL;
 
   /* Populate the defaults and auto_increment values here because we need them
-     when building the WHERE clause for the SELECT statement. These values
-     will not be reassigned if the template will eventually be inserted as
-     they are already populated.
+   * when building the WHERE clause for the SELECT statement. These values
+   * will not be reassigned if the template will eventually be inserted as
+   * they are already populated.
    */
   error = obt_populate_known_arguments (tmpl);
   if (error != NO_ERROR)
@@ -10794,93 +10794,106 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
     }
 
   /* build the WHERE predicate:
-     The WHERE predicate checks to see if any constraints would be violated
-     by the insert statement by checking new values against the values already
-     stored.
+   * The WHERE predicate checks to see if any constraints would be violated
+   * by the insert statement by checking new values against the values already
+   * stored.
    */
   for (constraint = class_->constraints; constraint != NULL;
        constraint = constraint->next)
     {
-      PT_NODE *predicate = NULL;
       if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type))
 	{
 	  continue;
 	}
 
+      where = NULL;
       error = build_predicate_for_unique_constraint (parser, spec, tmpl,
-						     constraint, &predicate);
+						     constraint, &where);
       if (error != NO_ERROR)
 	{
 	  goto error_cleanup;
 	}
 
-      if (predicate == NULL)
+      if (where == NULL)
 	{
 	  continue;
 	}
 
-      /* OR current predicate with the rest of the expression */
-      if (where == NULL)
+      /* create a select statement */
+      stmt = parser_new_node (parser, PT_SELECT);
+      if (stmt != NULL)
 	{
-	  where = predicate;
+	  stmt->info.query.q.select.from = parser_copy_tree_list (parser,
+								  spec);
+	  /* add in the class specs to the spec list */
+	  stmt->info.query.q.select.from =
+	    parser_append_node (parser_copy_tree_list (parser, class_specs),
+				stmt->info.query.q.select.from);
+
+	  stmt->info.query.q.select.where = where;
+
+	  /* will add the class and instance OIDs later */
+
+	  if (arg1 == NULL)
+	    {
+	      arg1 = stmt;
+	    }
+	  else
+	    {
+	      arg2 = stmt;
+	    }
 	}
       else
 	{
-	  where = pt_expression_2 (parser, PT_OR, where, predicate);
-	  if (where == NULL)
+	  error = er_errid ();
+	  goto error_cleanup;
+	}
+
+      if (arg1 && arg2)
+	{
+	  stmt = arg1 = pt_union (parser, arg1, arg2);
+	  if (stmt == NULL)
 	    {
 	      error = er_errid ();
 	      goto error_cleanup;
 	    }
+	  stmt->info.query.all_distinct = PT_DISTINCT;
+
+	  arg2 = NULL;
 	}
     }
 
-  if (where == NULL)
+  if (stmt == NULL)
     {
       /* we didn't find any constraint that could be violated */
       return error;
     }
 
-  /* create the select statement */
-  if ((stmt = parser_new_node (parser, PT_SELECT)) != NULL)
+  /* add the class and instance OIDs to the select list */
+  stmt = pt_add_row_classoid_name (parser, stmt, 0);
+  stmt = pt_add_row_oid_name (parser, stmt);
+
+  stmt = mq_reset_ids_in_statement (parser, stmt);
+
+  if (for_update)
     {
-      stmt->info.query.q.select.from = parser_copy_tree_list (parser, spec);
-
-      /* add in the class specs to the spec list */
-      stmt->info.query.q.select.from =
-	parser_append_node (parser_copy_tree_list (parser, class_specs),
-			    stmt->info.query.q.select.from);
-
-      stmt->info.query.q.select.where = parser_copy_tree_list (parser, where);
-
-      /* add the class and instance OIDs to the select list */
-      stmt = pt_add_row_classoid_name (parser, stmt, 0);
-      stmt = pt_add_row_oid_name (parser, stmt);
-
-      stmt->info.query.composite_locking =
-	(for_update ? PT_COMPOSITE_LOCKING_UPDATE :
-	 PT_COMPOSITE_LOCKING_DELETE);
-
-      *statement = stmt;
+      stmt->info.query.composite_locking = PT_COMPOSITE_LOCKING_UPDATE;
     }
   else
     {
-      error = er_errid ();
-      goto error_cleanup;
+      stmt->info.query.composite_locking = PT_COMPOSITE_LOCKING_DELETE;
     }
+
+  *statement = stmt;
 
   return error;
 
 error_cleanup:
-  if (where != NULL)
+  if (stmt != NULL)
     {
-      parser_free_tree (parser, where);
+      parser_free_tree (parser, stmt);
     }
 
-  if (*statement)
-    {
-      parser_free_tree (parser, *statement);
-    }
   return error;
 }
 
@@ -10904,7 +10917,6 @@ error_cleanup:
  *	  If this function returns 0 then no rows were updated and the caller
  *	  should proceed with the insert.
  */
-
 static int
 do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
 			    PT_NODE * spec, PT_NODE * class_specs,
