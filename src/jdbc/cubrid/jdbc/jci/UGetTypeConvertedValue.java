@@ -220,39 +220,41 @@ abstract public class UGetTypeConvertedValue {
 		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 	}
 
-	static public String getString(Object data) throws UJciException {
-		if (data == null)
-			return null;
-		else if (data instanceof String)
-			return ((String) data);
-		else if ((data instanceof Number) || (data instanceof Boolean)
-				|| (data instanceof Date) || (data instanceof Time)) {
-			return data.toString();
-		} else if (data instanceof Timestamp) {
-			String form;
+    static public String getString(Object data) throws UJciException {
+	if (data == null) {
+	    return null;
+	} else if (data instanceof String) {
+	    return ((String) data);
+	} else if (data instanceof BigDecimal) {
+	    return ((BigDecimal) data).toPlainString();
+	} else if ((data instanceof Number) || (data instanceof Boolean)
+		|| (data instanceof Date) || (data instanceof Time)) {
+	    return data.toString();
+	} else if (data instanceof Timestamp) {
+	    String form;
 
-			if (CUBRIDTimestamp.isTimestampType((Timestamp) data)) {
-				form = "yyyy-MM-dd HH:mm:ss";
-			} else {
-				form = "yyyy-MM-dd HH:mm:ss.SSS";
-			}
+	    if (CUBRIDTimestamp.isTimestampType((Timestamp) data)) {
+		form = "yyyy-MM-dd HH:mm:ss";
+	    } else {
+		form = "yyyy-MM-dd HH:mm:ss.SSS";
+	    }
 
-			java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(form);
+	    java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(form);
 
-			return f.format(data);
-		} else if (data instanceof CUBRIDOID) {
-			try {
-				return ((CUBRIDOID) data).getOidString();
-			} catch (Exception e) {
-				return "";
-			}
-		} else if (data instanceof byte[]) {
-			return UGetTypeConvertedValue.getHexaDecimalString((byte[]) data);
-		} else if ((data instanceof Blob) || (data instanceof Clob)) {
-			return data.toString();
-		}
-		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	    return f.format(data);
+	} else if (data instanceof CUBRIDOID) {
+	    try {
+		return ((CUBRIDOID) data).getOidString();
+	    } catch (Exception e) {
+		return "";
+	    }
+	} else if (data instanceof byte[]) {
+	    return UGetTypeConvertedValue.getHexaDecimalString((byte[]) data);
+	} else if ((data instanceof Blob) || (data instanceof Clob)) {
+	    return data.toString();
 	}
+	throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+    }
 
 	static public Time getTime(Object data) throws UJciException {
 		if (data == null)

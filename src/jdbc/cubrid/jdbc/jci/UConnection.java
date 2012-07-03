@@ -232,6 +232,9 @@ public class UConnection {
 			needReconnection = false;
 			casinfo = new byte[CAS_INFO_SIZE];
 			casinfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
+			casinfo[CAS_INFO_RESERVED_1] = 0;
+			casinfo[CAS_INFO_RESERVED_2] = 0;
+			casinfo[CAS_INFO_RESERVED_3] = 0;
 			isServerSideJdbc = true;
 			lastAutoCommit = false;
 			this.curThread = curThread;

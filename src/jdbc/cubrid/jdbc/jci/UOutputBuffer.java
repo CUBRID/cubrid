@@ -383,7 +383,7 @@ class UOutputBuffer {
 		if (values[i] == null) {
 		    collection_size += addNull();
 		} else {
-		    collection_size += addStringWithNull(values[i].toString());
+		    collection_size += addStringWithNull(UGetTypeConvertedValue.getString(values[i]));
 		}
 	    }
 	    break;
