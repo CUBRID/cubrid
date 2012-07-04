@@ -605,9 +605,10 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
 
       for (c = constraints; c != NULL; c = c->next)
 	{
-	  if ((c->type == SM_CONSTRAINT_INDEX) ||
-	      (c->type == SM_CONSTRAINT_REVERSE_INDEX)
-	      || (c->attributes[0]->class_mop == filter_class))
+	  if (c->type == SM_CONSTRAINT_INDEX
+	      || c->type == SM_CONSTRAINT_REVERSE_INDEX
+	      || c->type == SM_CONSTRAINT_FOREIGN_KEY
+	      || c->attributes[0]->class_mop == filter_class)
 	    {
 	      if (classobj_put_index_id
 		  (new_properties, c->type, c->name, c->attributes,

@@ -536,7 +536,8 @@ static int sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint);
 static int sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain);
 static const char *sm_type_name (DB_TYPE id);
 #endif
-
+static int filter_foreign_keys (SM_TEMPLATE * template_,
+				SM_CLASS * super_class);
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -8894,8 +8895,13 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			    }
 			  pr_clear_value (&btid_val);
 
-			  /* Raise an error if the B-trees are not equal */
-			  if (!BTID_IS_EQUAL (&btid, &c->index_btid))
+			  /* Raise an error if the B-trees are not equal and
+			   * the constraint is an unique constraint. Foreign
+			   * key constraints do not share the same index so
+			   * it's expected to have different btid in this case
+			   */
+			  if (!BTID_IS_EQUAL (&btid, &c->index_btid)
+			      && SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
 			    {
 			      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS,
 				      c->name);
@@ -8903,9 +8909,16 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			}
 		      else
 			{
+			  BTID index_btid;
+			  BTID_SET_NULL (&index_btid);
+			  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+			    {
+			      /* unique indexes are shared indexes */
+			      BTID_COPY (&index_btid, &c->index_btid);
+			    }
 			  if (classobj_put_index
 			      (&(flat->properties), c->type, c->name, attrs,
-			       c->asc_desc, &c->index_btid,
+			       c->asc_desc, &index_btid,
 			       c->filter_predicate,
 			       c->fk_info, NULL,
 			       c->func_index_info) != NO_ERROR)
@@ -8923,6 +8936,16 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 
       /* make sure we free the transient constraint list */
       classobj_free_class_constraints (constraints);
+
+      if (error != NO_ERROR)
+	{
+	  /* drop foreign keys that were dropped in the superclass */
+	  error = filter_foreign_keys (flat, class_);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
     }
 
   return error;
@@ -9806,12 +9829,6 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 		    {
 		      found = classobj_find_class_constraint (constraints,
 							      SM_CONSTRAINT_PRIMARY_KEY,
-							      constraint_name);
-		    }
-		  if (!found)
-		    {
-		      found = classobj_find_class_constraint (constraints,
-							      SM_CONSTRAINT_FOREIGN_KEY,
 							      constraint_name);
 		    }
 		}
@@ -10721,23 +10738,6 @@ drop_foreign_key_ref (MOP classop,
     }
   else
     {
-      /* Before editing the referenced class, we have to make sure that
-       * this constraint belongs to the class we're dropping it from. If this
-       * is an inherited constraint (for example, a foreign key created on a
-       * superclass), we have to keep it. This constraint belongs to a
-       * superclass if at least one of the attributes it references does not
-       * belong to this class (i.e: it was inherited).
-       */
-      SM_ATTRIBUTE **attribute_p = NULL;
-      for (attribute_p = cons->attributes; *attribute_p != NULL;
-	   attribute_p++)
-	{
-	  if ((*attribute_p)->class_mop != classop)
-	    {
-	      AU_ENABLE (save);
-	      return NO_ERROR;
-	    }
-	}
       refcls_template = dbt_edit_class (ref_clsop);
       if (refcls_template == NULL)
 	{
@@ -11101,8 +11101,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   for (con = flat_constraints;
        ((con != NULL) && (error == NO_ERROR)); con = con->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type) ||
-	  con->type == SM_CONSTRAINT_FOREIGN_KEY)
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
 	{
 	  if (BTID_IS_NULL (&(con->index_btid)))
 	    {
@@ -14849,4 +14848,116 @@ sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs)
     }
 
   return 0;
+}
+
+/*
+ * filter_foreign_keys () - filter foreign keys which were droped from the
+ *			    inherited class
+ * return : error code or NO_ERROR
+ * template_ (in/out) : class template
+ * super_class (in) : superclass
+ */
+static int
+filter_foreign_keys (SM_TEMPLATE * template_, SM_CLASS * super_class)
+{
+  SM_CLASS_CONSTRAINT *old_constraints = NULL, *new_constraints = NULL;
+  SM_CLASS_CONSTRAINT *c, *new_con;
+  DB_SEQ *seq;
+  DB_VALUE oldval, newval;
+  int error = NO_ERROR, found = 0;
+
+  assert_release (template_ != NULL && super_class != NULL);
+  if (template_ == NULL || super_class == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (super_class->new_ == NULL)
+    {
+      /* superclass was not edited, nothing to do here */
+      return NO_ERROR;
+    }
+
+  DB_MAKE_NULL (&oldval);
+  DB_MAKE_NULL (&newval);
+
+  /* get old constraints */
+  error =
+    classobj_make_class_constraints (super_class->properties,
+				     super_class->attributes,
+				     &old_constraints);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto cleanup;
+    }
+
+  /* get new constraints */
+  error =
+    classobj_make_class_constraints (super_class->new_->properties,
+				     super_class->new_->attributes,
+				     &new_constraints);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto cleanup;
+    }
+
+  for (c = old_constraints; c != NULL; c = c->next)
+    {
+      if (c->type != SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  continue;
+	}
+      /* search for this constraint in the new constraints */
+      new_con =
+	classobj_find_class_constraint (new_constraints, c->type, c->name);
+
+      if (new_con == NULL)
+	{
+	  /* drop this constraint from the template since it was dropped from
+	   * the superclass
+	   */
+	  found =
+	    classobj_get_prop (template_->properties,
+			       classobj_map_constraint_to_property (c->type),
+			       &oldval);
+	  if (found == 0)
+	    {
+	      ERROR1 (error, ER_SM_CONSTRAINT_NOT_FOUND, c->name);
+	      goto cleanup;
+	    }
+
+	  seq = DB_GET_SEQ (&oldval);
+	  found = classobj_drop_prop (seq, c->name);
+	  if (found == 0)
+	    {
+	      error = er_errid ();
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+
+	  DB_MAKE_SEQ (&newval, seq);
+
+	  classobj_put_prop (template_->properties,
+			     classobj_map_constraint_to_property (c->type),
+			     &newval);
+
+	  pr_clear_value (&oldval);
+	  pr_clear_value (&newval);
+	}
+    }
+
+cleanup:
+  classobj_free_class_constraints (old_constraints);
+  classobj_free_class_constraints (new_constraints);
+
+  pr_clear_value (&oldval);
+  pr_clear_value (&newval);
+
+  return error;
 }
