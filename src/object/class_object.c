@@ -820,7 +820,7 @@ classobj_make_index_attr_prefix_seq (int num_attrs,
  * classobj_make_index_attr_prefix_seq() - Make sequence which contains
  *                                         filter predicate
  *   return: sequence
- *   filter_index_info(in): filter predicate 
+ *   filter_index_info(in): filter predicate
  */
 static DB_SEQ *
 classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
@@ -2091,11 +2091,11 @@ classobj_constraint_size (SM_CONSTRAINT * constraint)
  *   name(in): Constraint name
  *   constraint_seq(in): Constraint entry.  This is a sequence of the form:
  *      {
- *	    "B-tree ID", 
+ *	    "B-tree ID",
  *	    [ "att_name", "asc_dsc", ]
  *	    [ "att_name", "asc_dsc", ]
  *	    {fk_info | pk_info | prefix_length}
- *	    "filter_predicate" 
+ *	    "filter_predicate"
  *	}
  *   class(in): Class pointer.
  *   constraint_type(in):
@@ -2224,7 +2224,7 @@ finish:
  *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
  *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
  *	    {fk_info | pk_info | prefix_length}
- *	    "filter_predicate" 
+ *	    "filter_predicate"
  *	}
  *   class(in): Class pointer
  *   constraint_type(in):
@@ -2772,7 +2772,7 @@ classobj_make_index_prefix_info (DB_SEQ * prefix_seq, int num_attrs)
  * classobj_make_index_filter_pred_info() - Make index filter predicate
  *					    from sequence
  *   return: SM_PREDICATE_INFO *
- *   pred_seq(in): sequence which contains filter predicate 
+ *   pred_seq(in): sequence which contains filter predicate
  */
 static SM_PREDICATE_INFO *
 classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
@@ -2988,7 +2988,7 @@ classobj_make_class_constraints (DB_SET * class_props,
 
 	  /* this sequence is an alternating pair of constraint
 	   * name & info sequence, as by:
-	   * 
+	   *
 	   * {
 	   *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate},
 	   *    name, { BTID, [att_name, asc_dsc],  {fk_info | pk_info | prefix_length, filter_predicate},
@@ -8155,7 +8155,7 @@ classobj_free_function_index_ref (SM_FUNCTION_INFO * func_index_info)
  * classobj_check_function_constraint_info() - check function constraint info
  *   return: error code
  *   constraint_seq(in): constraint sequence
- *   has_function_constraint(in): true, if function constraint sequence 
+ *   has_function_constraint(in): true, if function constraint sequence
  */
 static int
 classobj_check_function_constraint_info (DB_SEQ * constraint_seq,

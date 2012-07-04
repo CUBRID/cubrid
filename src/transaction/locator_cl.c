@@ -75,7 +75,7 @@ struct locator_mflush_cache
   LOCATOR_MFLUSH_TEMP_OID *mop_toids;	/* List of objects with temp. OIDs   */
   LOCATOR_MFLUSH_TEMP_OID *mop_uoids;	/* List of object which we're updating
 					 * in a partitioned class. We have to
-					 * keep track of this because they 
+					 * keep track of this because they
 					 * might return with a different class
 					 * and we have to mark them
 					 * accordingly
@@ -5545,7 +5545,11 @@ locator_remove_class (MOP class_mop)
   insts_hfid = sm_heap (class_obj);
   if (insts_hfid->vfid.fileid != NULL_FILEID)
     {
-      (void) heap_destroy_newly_created (insts_hfid);
+      error_code = heap_destroy_newly_created (insts_hfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* Delete the class name */

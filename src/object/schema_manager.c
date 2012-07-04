@@ -10165,9 +10165,9 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 	}
     }
 
-  if (ref_count == 1 && btree_delete_index (index) != NO_ERROR)
+  if (ref_count == 1)
     {
-      error = er_errid ();
+      error = btree_delete_index (index);
     }
 
   return error;
@@ -10186,20 +10186,13 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 static int
 rem_class_from_index (OID * oid, BTID * index, HFID * heap)
 {
-  int error = NO_ERROR;
-
   /* If there is no heap, then there cannot be instances to remove. */
   if (HFID_IS_NULL (heap))
     {
-      return error;
+      return NO_ERROR;
     }
 
-  if (!locator_remove_class_from_index (oid, index, heap))
-    {
-      error = er_errid ();
-    }
-
-  return error;
+  return locator_remove_class_from_index (oid, index, heap);
 }
 
 /*
@@ -10943,6 +10936,10 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       error = classobj_make_class_constraints (flat->properties,
 					       flat->instance_attributes,
 					       &flat_constraints);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   /* loop over each old constraint */
@@ -10974,14 +10971,24 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	      /* destroy the old index but only if we're the owner of it ! */
 	      if (is_index_owner (classop, con))
 		{
-		  deallocate_index (class_->constraints, &con->index_btid);
+		  error = deallocate_index (class_->constraints,
+					    &con->index_btid);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 	      /* If we're not the owner of it, then only remove this class
 	         from the B-tree (the B-tree will still exist) */
 	      else
 		{
-		  rem_class_from_index (WS_OID (classop), &con->index_btid,
-					&class_->header.heap);
+		  error = rem_class_from_index (WS_OID (classop),
+						&con->index_btid,
+						&class_->header.heap);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 
 	      BTID_SET_NULL (&con->index_btid);
@@ -11015,7 +11022,12 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 			}
 		    }
 
-		  deallocate_index (class_->constraints, &con->index_btid);
+		  error = deallocate_index (class_->constraints,
+					    &con->index_btid);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		  BTID_SET_NULL (&con->index_btid);
 		}
 	    }
@@ -11030,12 +11042,13 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
        con != NULL; con = next)
     {
       next = con->next;
-      if (con->attributes[0] != NULL &&
-	  sm_filter_index_pred_have_invalid_attrs (con,
-						   (char *) class_->header.
-						   name, class_->attributes,
-						   flat->
-						   instance_attributes) ==
+      if (con->attributes[0] != NULL
+	  && sm_filter_index_pred_have_invalid_attrs (con,
+						      (char *) class_->
+						      header.name,
+						      class_->attributes,
+						      flat->
+						      instance_attributes) ==
 	  false)
 	{
 	  prev = con;
@@ -11064,7 +11077,12 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		    }
 		}
 
-	      deallocate_index (class_->constraints, &con->index_btid);
+	      error =
+		deallocate_index (class_->constraints, &con->index_btid);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
 	      BTID_SET_NULL (&con->index_btid);
 	    }
 	  classobj_free_class_constraints (con);
@@ -11111,15 +11129,16 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
 	      || con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      if (classobj_put_index_id (&(flat->properties), con->type,
-					 con->name, con->attributes,
-					 con->asc_desc,
-					 con->attrs_prefix_length,
-					 &(con->index_btid),
-					 con->filter_predicate,
-					 con->fk_info,
-					 con->shared_cons_name,
-					 con->func_index_info) != NO_ERROR)
+	      error = classobj_put_index_id (&(flat->properties), con->type,
+					     con->name, con->attributes,
+					     con->asc_desc,
+					     con->attrs_prefix_length,
+					     &(con->index_btid),
+					     con->filter_predicate,
+					     con->fk_info,
+					     con->shared_cons_name,
+					     con->func_index_info);
+	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -11128,13 +11147,14 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  else if (con->type == SM_CONSTRAINT_INDEX
 		   || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
-	      if (classobj_put_index_id (&(flat->properties), con->type,
-					 con->name, con->attributes,
-					 con->asc_desc,
-					 con->attrs_prefix_length,
-					 &(con->index_btid),
-					 con->filter_predicate, NULL, NULL,
-					 con->func_index_info) != NO_ERROR)
+	      error = classobj_put_index_id (&(flat->properties), con->type,
+					     con->name, con->attributes,
+					     con->asc_desc,
+					     con->attrs_prefix_length,
+					     &(con->index_btid),
+					     con->filter_predicate, NULL,
+					     NULL, con->func_index_info);
+	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -12404,6 +12424,13 @@ sm_delete_class_mop (MOP op)
   SM_ATTRIBUTE *att;
   int is_partition = 0, subdel = 0;
   SM_CLASS_CONSTRAINT *pk;
+  char *fk_name = NULL;
+
+  if (op == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   error = do_is_partitioned_classobj (&is_partition, op, NULL, NULL);
   if (error != NO_ERROR)
@@ -12431,258 +12458,267 @@ sm_delete_class_mop (MOP op)
       subdel = 1;
     }
 
-  /* if the delete fails, we'll need to rollback to savepoint */
-  error = tran_savepoint (UNIQUE_SAVEPOINT_NAME2, false);
-  if (error < 0)
-    {
-      goto fail_end;
-    }
-
   oldsubs = NULL;
   oldsupers = NULL;
+
+  /* if the delete fails, we'll need to rollback to savepoint */
+  error = tran_savepoint (UNIQUE_SAVEPOINT_NAME2, false);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   sm_bump_schema_version ();
 
-  if (op != NULL)
+  /* op should be a class */
+  if (!locator_is_class (op, DB_FETCH_WRITE))
     {
-      /* op should be a class */
-      if (!locator_is_class (op, DB_FETCH_WRITE))
-	{
-	  ERROR0 (error, ER_OBJ_NOT_A_CLASS);
-	}
-      /* Authorization + pre-lock subclass lattice to the extent possible */
-      else if ((error = au_fetch_class (op, &class_, AU_FETCH_WRITE,
-					AU_ALTER)) == NO_ERROR
-	       && (error = lockhint_subclasses (NULL, class_)) == NO_ERROR)
-	{
-	  char *fk_name = NULL;
+      ERROR0 (error, ER_OBJ_NOT_A_CLASS);
 
-	  pk = classobj_find_cons_primary_key (class_->constraints);
-	  if (pk && pk->fk_info
-	      && classobj_is_pk_referred (op, pk->fk_info, false, &fk_name))
-	    {
-	      ERROR2 (error, ER_FK_CANT_DROP_PK_REFERRED, pk->name, fk_name);
-	      goto fail_end;
-	    }
+      goto end;
+    }
+  /* Authorization + pre-lock subclass lattice to the extent possible */
+  error = au_fetch_class (op, &class_, AU_FETCH_WRITE, AU_ALTER);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  error = lockhint_subclasses (NULL, class_);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
-	  /* remove auto_increment serial object if exist */
-	  if (db_Enable_replications <= 0)
+  pk = classobj_find_cons_primary_key (class_->constraints);
+  if (pk && pk->fk_info
+      && classobj_is_pk_referred (op, pk->fk_info, false, &fk_name))
+    {
+      ERROR2 (error, ER_FK_CANT_DROP_PK_REFERRED, pk->name, fk_name);
+      goto end;
+    }
+
+  /* remove auto_increment serial object if exist */
+  if (db_Enable_replications <= 0)
+    {
+      for (att = class_->ordered_attributes; att; att = att->order_link)
+	{
+	  if (att->auto_increment != NULL)
 	    {
-	      for (att = class_->ordered_attributes;
-		   att; att = att->order_link)
+	      DB_VALUE name_val;
+	      char *class_name;
+
+	      error = db_get (att->auto_increment, "class_name", &name_val);
+	      if (error == NO_ERROR)
 		{
-		  if (att->auto_increment != NULL)
+		  class_name = DB_GET_STRING (&name_val);
+		  if (class_name != NULL
+		      && (strcmp (class_->header.name, class_name) == 0))
 		    {
-		      DB_VALUE name_val;
-		      char *class_name;
+		      int save;
 
-		      error = db_get (att->auto_increment, "class_name",
-				      &name_val);
-		      if (error == NO_ERROR)
-			{
-			  class_name = DB_GET_STRING (&name_val);
-			  if (class_name != NULL
-			      && (strcmp (class_->header.name, class_name) ==
-				  0))
-			    {
-			      int save;
-
-			      AU_DISABLE (save);
-			      error = obj_delete (att->auto_increment);
-			      AU_ENABLE (save);
-			    }
-			  db_value_clear (&name_val);
-			}
-
-		      if (error != NO_ERROR)
-			{
-			  goto fail_end;
-			}
+		      AU_DISABLE (save);
+		      error = obj_delete (att->auto_increment);
+		      AU_ENABLE (save);
 		    }
+		  db_value_clear (&name_val);
 		}
-	    }
 
-	  /* we don't really need this but some of the support routines use it */
-	  template_ = classobj_make_template (NULL, op, class_);
-	  if (template_ == NULL)
-	    {
-	      error = er_errid ();
-	      goto fail_end;
-	    }
-
-	  if (class_->inheritance != NULL)
-	    {
-	      oldsupers = ml_copy (class_->inheritance);
-	      if (oldsupers == NULL)
-		{
-		  error = er_errid ();
-		  goto fail_end;
-		}
-	    }
-
-	  error = lock_supers_drop (oldsupers);
-	  if (error != NO_ERROR)
-	    {
-	      classobj_free_template (template_);
-	    }
-	  else
-	    {
-	      /* get write locks on all subclasses */
-	      error = lock_subclasses (template_, NULL, class_->users,
-				       &oldsubs);
 	      if (error != NO_ERROR)
 		{
-		  classobj_free_template (template_);
-		}
-	      else
-		{
-		  /* now we can assume that every class we need to touch has
-		   * a write lock - attempt to flatten subclasses to reflect
-		   * the deletion
-		   */
-		  error = flatten_subclasses (oldsubs, op);
-		  if (error != NO_ERROR)
-		    {
-		      abort_subclasses (oldsubs);
-		    }
-		  else
-		    {
-		      /* flush all instances of this class */
-		      switch (class_->class_type)
-			{
-			case SM_CLASS_CT:
-			  if (locator_flush_all_instances (op, true) !=
-			      NO_ERROR)
-			    {
-			      error = er_errid ();
-			    }
-			  break;
-
-			case SM_VCLASS_CT:
-			  if (vid_flush_all_instances (op, true) != NO_ERROR)
-			    {
-			      error = er_errid ();
-			    }
-			  break;
-
-			default:
-			  break;
-			}
-
-		      if (error != NO_ERROR)
-			{
-			  /* we had problems flushing, this may be due to
-			   * an out of space condition, probably
-			   * the transaction should be aborted as well
-			   */
-			  abort_subclasses (oldsubs);
-			}
-		      else
-			{
-			  /* this section is critical, if any errors happen
-			   * here, the workspace will be in an inconsistent
-			   * state and the transaction will have to be
-			   * aborted
-			   */
-
-			  /* now update the supers and users */
-			  error = update_supers_drop (op, oldsupers);
-			  if (error == NO_ERROR)
-			    {
-			      error = update_subclasses (oldsubs);
-			      if (error == NO_ERROR)
-				{
-				  /* OLD CODE, here we removed the class from
-				   * the resident class list, this causes bad
-				   * problems for GC since the class will be
-				   * GC'd before instances have been decached.
-				   * This operation has been moved below with
-				   * ws_remove_resident_class(). Not sure if
-				   * this is position dependent.
-				   * If it doesn't cause any problems remove
-				   * this comment.
-				   */
-				  /* ml_remove(&ws_Resident_classes, op); */
-
-				  /* free any indexes, unique btids, or other
-				   * associated disk structures
-				   */
-				  transfer_disk_structures (op, class_, NULL);
-
-				  /* now that the class is gone, physically
-				   * delete all the triggers. Note that this
-				   * does not just invalidate the triggers,
-				   * it deletes them forever.
-				   */
-				  remove_class_triggers (op, class_);
-
-				  /* This to be maintained as long as the class
-				   * is cached in the workspace, dirty or not.
-				   * When the deleted class is flushed,
-				   * the name is removed.
-				   * Assuming this doesn't cause problems,
-				   * remove this comment
-				   */
-				  /* ws_drop_classname((MOBJ) class); */
-
-				  /* inform the locator - this will mark
-				   * the class MOP as deleted so all operations
-				   * that require the current class object
-				   * must be done before calling this
-				   * function
-				   */
-
-				  if (locator_remove_class (op) == NO_ERROR)
-				    {
-				      /* mark all instance MOPs as deleted,
-				       * should the locator be doing this ?
-				       */
-
-				      ws_mark_instances_deleted (op);
-
-				      /* make sure this is removed from
-				       * the resident class list, this will
-				       * also make the class mop subject
-				       * to garbage collection.
-				       * This function will expect that all of
-				       * the instances of the class have been
-				       * decached by this point !
-				       */
-
-				      ws_remove_resident_class (op);
-
-				      classobj_free_template (template_);
-				    }
-				  else
-				    {
-				      /* an error occurred - we need to abort */
-				      error = er_errid ();
-				      if (error !=
-					  ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
-					  && error !=
-					  ER_LK_UNILATERALLY_ABORTED)
-					{
-					  /* Not already aborted, so abort to savepoint */
-					  tran_abort_upto_savepoint
-					    (UNIQUE_SAVEPOINT_NAME2);
-					}
-				    }
-				}
-			    }
-			}
-		    }
+		  goto end;
 		}
 	    }
 	}
     }
 
-  ml_free (oldsupers);
-  ml_free (oldsubs);
-
-fail_end:
-
-  if (subdel && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+  /* we don't really need this but some of the support routines use it */
+  template_ = classobj_make_template (NULL, op, class_);
+  if (template_ == NULL)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+      error = er_errid ();
+      goto end;
+    }
+
+  if (class_->inheritance != NULL)
+    {
+      oldsupers = ml_copy (class_->inheritance);
+      if (oldsupers == NULL)
+	{
+	  error = er_errid ();
+	  goto end;
+	}
+    }
+
+  error = lock_supers_drop (oldsupers);
+  if (error != NO_ERROR)
+    {
+      classobj_free_template (template_);
+
+      goto end;
+    }
+
+  /* get write locks on all subclasses */
+  error = lock_subclasses (template_, NULL, class_->users, &oldsubs);
+  if (error != NO_ERROR)
+    {
+      classobj_free_template (template_);
+
+      goto end;
+    }
+
+  /* now we can assume that every class we need to touch has
+   * a write lock - attempt to flatten subclasses to reflect
+   * the deletion
+   */
+  error = flatten_subclasses (oldsubs, op);
+  if (error != NO_ERROR)
+    {
+      abort_subclasses (oldsubs);
+
+      goto end;
+    }
+
+  /* flush all instances of this class */
+  switch (class_->class_type)
+    {
+    case SM_CLASS_CT:
+      if (locator_flush_all_instances (op, true) != NO_ERROR)
+	{
+	  error = er_errid ();
+	}
+      break;
+
+    case SM_VCLASS_CT:
+      if (vid_flush_all_instances (op, true) != NO_ERROR)
+	{
+	  error = er_errid ();
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (error != NO_ERROR)
+    {
+      /* we had problems flushing, this may be due to
+       * an out of space condition, probably
+       * the transaction should be aborted as well
+       */
+      abort_subclasses (oldsubs);
+
+      goto end;
+    }
+
+  /* this section is critical, if any errors happen
+   * here, the workspace will be in an inconsistent
+   * state and the transaction will have to be
+   * aborted
+   */
+
+  /* now update the supers and users */
+  error = update_supers_drop (op, oldsupers);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  error = update_subclasses (oldsubs);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* OLD CODE, here we removed the class from
+   * the resident class list, this causes bad
+   * problems for GC since the class will be
+   * GC'd before instances have been decached.
+   * This operation has been moved below with
+   * ws_remove_resident_class(). Not sure if
+   * this is position dependent.
+   * If it doesn't cause any problems remove
+   * this comment.
+   */
+  /* ml_remove(&ws_Resident_classes, op); */
+
+  /* free any indexes, unique btids, or other
+   * associated disk structures
+   */
+  error = transfer_disk_structures (op, class_, NULL);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* now that the class is gone, physically
+   * delete all the triggers. Note that this
+   * does not just invalidate the triggers,
+   * it deletes them forever.
+   */
+  remove_class_triggers (op, class_);
+
+  /* This to be maintained as long as the class
+   * is cached in the workspace, dirty or not.
+   * When the deleted class is flushed,
+   * the name is removed.
+   * Assuming this doesn't cause problems,
+   * remove this comment
+   */
+  /* ws_drop_classname((MOBJ) class); */
+
+  /* inform the locator - this will mark
+   * the class MOP as deleted so all operations
+   * that require the current class object
+   * must be done before calling this
+   * function
+   */
+
+  error = locator_remove_class (op);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* mark all instance MOPs as deleted,
+   * should the locator be doing this ?
+   */
+
+  ws_mark_instances_deleted (op);
+
+  /* make sure this is removed from
+   * the resident class list, this will
+   * also make the class mop subject
+   * to garbage collection.
+   * This function will expect that all of
+   * the instances of the class have been
+   * decached by this point !
+   */
+
+  ws_remove_resident_class (op);
+
+  classobj_free_template (template_);
+
+
+end:
+  if (oldsupers != NULL)
+    {
+      ml_free (oldsupers);
+    }
+  if (oldsubs != NULL)
+    {
+      ml_free (oldsubs);
+    }
+
+  if (error != NO_ERROR && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
+      && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      if (subdel == 1)
+	{
+	  tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+	}
+      else
+	{
+	  tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_NAME2);
+	}
     }
 
   return error;
