@@ -418,7 +418,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
   const char *new_name, *old_name, *domain;
   DB_CTMPL *ctemplate = NULL;
-  DB_OBJECT *vclass, *sup_class;
+  DB_OBJECT *vclass, *sup_class, *partition_obj;
   int error = NO_ERROR;
   DB_ATTRIBUTE *found_attr, *def_attr;
   DB_METHOD *found_mthd;
@@ -1211,6 +1211,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       partition_savepoint = true;
 
       error = do_alter_partitioning_pre (parser, alter, &pinfo);
+      if (ctemplate->partition_of == NULL
+	  && ctemplate->current->partition_of != NULL)
+	{
+	  /* delete this object after ctemplate object is finished */
+	  partition_obj = ctemplate->current->partition_of;
+	}
+      else
+	{
+	  partition_obj = NULL;
+	}
       break;
 
     default:
@@ -1301,6 +1311,18 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       /* root class template has been edited and finished, update the
        * references in the pinfo object
        */
+      if (partition_obj != NULL)
+	{
+	  /* delete it here */
+	  int save;
+	  AU_DISABLE (save);
+	  error = obj_delete (partition_obj);
+	  AU_ENABLE (save);
+	  if (error != NO_ERROR)
+	    {
+	      goto alter_partition_fail;
+	    }
+	}
       pinfo.root_op = vclass;
       pinfo.root_tmpl = NULL;
       error = do_alter_partitioning_post (parser, alter, &pinfo);
@@ -7436,7 +7458,6 @@ do_drop_partition (MOP class_, int drop_sub_flag)
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subclass;
-  DB_VALUE pname;
   int au_save;
   MOP delobj, delpart;
   int error = NO_ERROR;
@@ -7456,8 +7477,6 @@ do_drop_partition (MOP class_, int drop_sub_flag)
     }
 
   AU_DISABLE (au_save);
-
-  db_make_null (&pname);
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
@@ -7468,19 +7487,12 @@ do_drop_partition (MOP class_, int drop_sub_flag)
       goto fail_return;
     }
 
-  error = db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname);
-  if (error != NO_ERROR)
+  if (smclass->users == NULL)
     {
-      goto fail_return;
-    }
-  if (!DB_IS_NULL (&pname))
-    {
-      goto fail_return;		/* partitioned sub-class */
-    }
-
-  error = obj_delete (smclass->partition_of);
-  if (error != NO_ERROR)
-    {
+      /* this is a partition, not the partitioned table */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
+      error = ER_FAILED;
       goto fail_return;
     }
 
@@ -7516,12 +7528,16 @@ do_drop_partition (MOP class_, int drop_sub_flag)
 	}
     }
 
+  error = obj_delete (smclass->partition_of);
+  if (error != NO_ERROR)
+    {
+      goto fail_return;
+    }
+
   error = NO_ERROR;
 
 fail_return:
   AU_ENABLE (au_save);
-
-  pr_clear_value (&pname);
   return error;
 }
 
@@ -8881,17 +8897,6 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
   /* keep the promoted names in the partition alter context */
   pinfo->promoted_names = names;
   pinfo->promoted_count = names_count;
-
-  /* mark this class as not partitioned */
-  AU_DISABLE (au_save);
-  error = obj_delete (pinfo->root_tmpl->partition_of);
-  if (error != NO_ERROR)
-    {
-      AU_ENABLE (au_save);
-      goto error_return;
-    }
-  AU_ENABLE (au_save);
-
   pinfo->root_tmpl->partition_of = NULL;
 
   return NO_ERROR;
@@ -9546,19 +9551,8 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
        * class template on which an edit operation was started. We can use
        * it to perform the update.
        */
-      MOP partition_info = NULL;
       int au_save = 0;
       assert (pinfo->root_tmpl != NULL);
-
-      partition_info = pinfo->root_tmpl->partition_of;
-      AU_DISABLE (au_save);
-      error = obj_delete (partition_info);
-      AU_ENABLE (au_save);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
       pinfo->root_tmpl->partition_of = NULL;
     }
   else
