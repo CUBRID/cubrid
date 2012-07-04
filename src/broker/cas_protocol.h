@@ -186,13 +186,21 @@ enum t_cas_func_code
   CAS_FC_MAX
 };
 
+typedef enum t_cas_protocol T_CAS_PROTOCOL;
+enum t_cas_protocol
+{
+  PROTOCOL_V0 = 0,		/* old protocol */
+  PROTOCOL_V1 = 1,		/* query_timeout and query_cancel */
+  PROTOCOL_V2 = 2		/* send columns meta-data with the result for executing */
+};
+
 #if defined(CUBRID_SHARD)
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
 #endif /* CUBRID_SHARD */
 
 /* Current protocol version */
-#define CAS_PROTOCOL_VERSION    (0x01)
+#define CAS_PROTOCOL_VERSION    (0x02)
 
 /* Indicates version variable holds CAS protocol version. */
 #define CAS_PROTO_INDICATOR     (0x40)
@@ -202,6 +210,8 @@ enum t_cas_func_code
         ((T_BROKER_VERSION) (CAS_PROTO_INDICATOR << 24 | (VER)))
 #define CAS_PROTO_CURRENT_VER           \
         ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CAS_PROTOCOL_VERSION))
+
+#define DOES_CLIENT_UNDERSTAND_THE_PROTOCOL(CLIENT, REQUIRE) ((CLIENT) >= CAS_PROTO_MAKE_VER((REQUIRE)))
 
 /* Pack/unpack CAS protocol version to/from network. */
 #define CAS_PROTO_VER_MASK      (0x3F)

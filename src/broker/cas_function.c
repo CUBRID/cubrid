@@ -484,7 +484,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
    * query timeout is transferred from a driver only if protocol version 1
    * or above.
    */
-  if (req_info->client_version >= CAS_PROTO_MAKE_VER (1))
+  if (req_info->client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       client_supports_query_timeout = true;
       bind_value_index++;
@@ -526,19 +526,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
   net_arg_get_str (&param_mode, &param_mode_size, argv[arg_idx++]);
   if (prepared_srv_h_id != NULL)
     {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      if (srv_handle != NULL && srv_handle->stmt_type == CUBRID_STMT_SELECT)
-#else
-      if (srv_handle != NULL
-	  && srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
-#endif
-	{
-	  fetch_flag = 1;
-	}
-      else
-	{
-	  fetch_flag = 0;
-	}
       if (srv_handle->auto_commit_mode == true)
 	{
 	  auto_commit_mode = true;
@@ -552,9 +539,23 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     }
   else
     {
-      net_arg_get_char (fetch_flag, argv[arg_idx++]);
+      arg_idx++;		/* ignore the fetch_flag from a client */
       net_arg_get_char (auto_commit_mode, argv[arg_idx++]);
       net_arg_get_char (forward_only_cursor, argv[arg_idx++]);
+    }
+
+  /* ignore the fetch_flag from a driver */
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+#else
+  if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+#endif
+    {
+      fetch_flag = 1;
+    }
+  else
+    {
+      fetch_flag = 0;
     }
 
   clt_cache_time_ptr = &clt_cache_time;

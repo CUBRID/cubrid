@@ -603,6 +603,7 @@ EXPORTS
     db_resolution_name
     db_resolution_next
     db_revoke
+    db_rewind_statement
     db_savepoint_transaction
     db_send
     db_send_argarray

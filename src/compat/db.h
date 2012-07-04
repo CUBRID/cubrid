@@ -322,6 +322,7 @@ extern int db_drop_attribute_internal (DB_OBJECT * classobj,
 extern void db_set_sync_flag (DB_SESSION * session, QUERY_EXEC_MODE flag);
 extern DB_SESSION *db_open_buffer_local (const char *buffer);
 extern int db_compile_statement_local (DB_SESSION * session);
+extern void db_rewind_statement (DB_SESSION * session);
 extern int db_execute_statement_local (DB_SESSION * session,
 				       int stmt, DB_QUERY_RESULT ** result);
 extern void db_close_session_local (DB_SESSION * session);

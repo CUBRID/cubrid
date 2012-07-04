@@ -687,11 +687,8 @@ public class UStatement {
 				} else {
 					outBuffer.addNull();
 				}
-				/* fetch flag */
-				if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT)
-					outBuffer.addByte((byte) 1);
-				else
-					outBuffer.addByte((byte) 0);
+				// fetch flag is unused
+				outBuffer.addByte((byte) 0);
 
 				outBuffer.addByte(relatedConnection.getAutoCommit()
 						&& (!isGeneratedKeys) ? (byte) 1 : (byte) 0);
@@ -723,6 +720,17 @@ public class UStatement {
 			}
 
 			readResultInfo(inBuffer);
+			if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
+			    	inBuffer.readInt(); // result_cache_lifetime
+			    	commandTypeIs = inBuffer.readByte();
+			    	inBuffer.readInt(); // num_markers
+				isUpdatable = (inBuffer.readByte() == 1) ? true : false;
+				columnNumber = inBuffer.readInt();
+				readColumnInfo(inBuffer);
+				if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+					columnNumber = parameterNumber + 1;
+				}
+			}
 		} catch (UJciException e) {
 		    	relatedConnection.logException(e);
 			e.toUError(errorHandler);

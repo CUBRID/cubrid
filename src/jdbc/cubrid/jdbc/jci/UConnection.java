@@ -81,7 +81,7 @@ public class UConnection {
 	private final static String magicString = "CUBRK";
 	private final static byte CAS_CLIENT_JDBC = 3;
 	/* Current protocol version */
-	private final static byte CAS_PROTOCOL_VERSION = 0x01;
+	private final static byte CAS_PROTOCOL_VERSION = 0x02;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 
@@ -132,6 +132,10 @@ public class UConnection {
 	public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
 	public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
 	public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
+
+	public static final int PROTOCOL_V0 = 0;
+	public static final int PROTOCOL_V1 = 1;
+	public static final int PROTOCOL_V2 = 2;
 
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;

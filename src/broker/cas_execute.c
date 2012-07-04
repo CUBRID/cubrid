@@ -141,7 +141,6 @@ struct t_attr_table
   char is_key;
 };
 
-extern int db_check_session (void);
 extern void histo_print (FILE * stream);
 extern void histo_clear (void);
 
@@ -1383,7 +1382,29 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       net_buf_cp_byte (net_buf, 0);
     }
 
-  return (execute_info_set (srv_handle, net_buf, client_version, flag));
+  err_code = execute_info_set (srv_handle, net_buf, client_version, flag);
+  if (err_code != NO_ERROR)
+    {
+      goto execute_error;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+    {
+      int result_cache_lifetime =
+	get_client_result_cache_lifetime (session, stmt_id);
+      net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
+      net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
+      net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+      err_code = prepare_column_list_info_set (session, flag,
+					       srv_handle->q_result, net_buf,
+					       client_version);
+      if (err_code != NO_ERROR)
+	{
+	  goto execute_error;
+	}
+    }
+
+  return err_code;
 
 execute_error:
   NET_BUF_ERR_SET (net_buf);
@@ -1474,6 +1495,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 #endif
 
   q_res_idx = 0;
+  db_rewind_statement (session);
   while (1)
     {
       if (is_prepared == FALSE)
@@ -1656,7 +1678,29 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       net_buf_cp_byte (net_buf, 0);
     }
 
-  return (execute_info_set (srv_handle, net_buf, client_version, flag));
+  err_code = execute_info_set (srv_handle, net_buf, client_version, flag);
+  if (err_code != NO_ERROR)
+    {
+      goto execute_all_error;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+    {
+      int result_cache_lifetime =
+	get_client_result_cache_lifetime (session, stmt_id);
+      net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
+      net_buf_cp_byte (net_buf, srv_handle->q_result[0].stmt_type);
+      net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+      err_code = prepare_column_list_info_set (session, flag,
+					       &srv_handle->q_result[0],
+					       net_buf, client_version);
+      if (err_code != NO_ERROR)
+	{
+	  goto execute_all_error;
+	}
+    }
+
+  return err_code;
 
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
@@ -1777,7 +1821,29 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   net_buf_cp_byte (net_buf, 0);	/* client cache reusable - always false */
 
-  return (execute_info_set (srv_handle, net_buf, client_version, flag));
+  err_code = execute_info_set (srv_handle, net_buf, client_version, flag);
+  if (err_code != NO_ERROR)
+    {
+      goto execute_error;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+    {
+      int result_cache_lifetime =
+	get_client_result_cache_lifetime (session, stmt_id);
+      net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
+      net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
+      net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+      err_code = prepare_column_list_info_set (session, flag,
+					       srv_handle->q_result, net_buf,
+					       client_version);
+      if (err_code != NO_ERROR)
+	{
+	  goto execute_error;
+	}
+    }
+
+  return err_code;
 
 execute_error:
   NET_BUF_ERR_SET (net_buf);
@@ -3705,8 +3771,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 			       lang_get_client_charset ()) != 0)
 	  {
 	    char msg[12];
-	    snprintf (msg, sizeof (msg), "%d",
-		      (invalid_pos != NULL) ? (invalid_pos - value) : 0);
+	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
+	    snprintf (msg, sizeof (msg), "%ld", p);
 	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }
@@ -3779,8 +3845,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 			       lang_get_client_charset ()) != 0)
 	  {
 	    char msg[12];
-	    snprintf (msg, sizeof (msg), "%d",
-		      (invalid_pos != NULL) ? (invalid_pos - value) : 0);
+	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
+	    snprintf (msg, sizeof (msg), "%ld", p);
 	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }

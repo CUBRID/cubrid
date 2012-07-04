@@ -554,7 +554,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   int i;
   int err_code = 0;
   int res_count;
-  char *result_msg = NULL;
+  char *result_msg = NULL, *msg;
   int result_msg_size;
   T_CCI_QUERY_RESULT *qr = NULL;
   char fetch_flag;
@@ -581,14 +581,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       ADD_ARG_BYTES (&net_buf, NULL, 0);
     }
 
-  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
-    {
-      fetch_flag = 1;
-    }
-  else
-    {
-      fetch_flag = 0;
-    }
+  fetch_flag = 0;		/* fetch flag is unused */
   ADD_ARG_BYTES (&net_buf, &fetch_flag, 1);
 
   if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE)
@@ -604,7 +597,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       /* query timeout - CCI does not support query timeout by itself. */
       ADD_ARG_INT (&net_buf, 0);
@@ -695,11 +688,22 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   hm_req_handle_fetch_buf_free (req_handle);
   req_handle->cursor_pos = 0;
 
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+    {
+      char *msg = result_msg + (result_msg_size - remain_msg_size);
+      err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
+      if (err_code < 0)
+	{
+	  FREE_MEM (result_msg);
+	  return err_code;
+	}
+    }
+
   /* If fetch_flag is 1, executing query and fetching data
      is processed together.
      So, fetching results are included in result_msg.
    */
-  if (fetch_flag)
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
     {
       int num_tuple;
 
@@ -791,7 +795,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       /* query timeout - CCI does not support query timeout by itself. */
       ADD_ARG_INT (&net_buf, 0);
@@ -3989,6 +3993,7 @@ prepare_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
 
   req_handle->num_bind = num_bind_info;
   req_handle->num_col_info = num_col_info;
+  FREE_MEM (req_handle->col_info);
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
@@ -4707,6 +4712,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
     }
 
   req_handle->num_col_info = num_col_info;
+  FREE_MEM (req_handle->col_info);
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;

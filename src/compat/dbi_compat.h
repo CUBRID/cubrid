@@ -3607,6 +3607,7 @@ extern DB_SESSION *db_open_file_name (const char *name);
 extern int db_statement_count (DB_SESSION * session);
 
 extern int db_compile_statement (DB_SESSION * session);
+extern void db_rewind_statement (DB_SESSION * session);
 
 extern DB_SESSION_ERROR *db_get_errors (DB_SESSION * session);
 

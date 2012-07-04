@@ -429,7 +429,7 @@ cas_log_query_cancel (int dummy, ...)
   tv.tv_sec = query_cancel_time / 1000;
   tv.tv_usec = (query_cancel_time % 1000) * 1000;
 
-  if (as_info->clt_version >= CAS_PROTO_MAKE_VER (1))
+  if (as_info->clt_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       char ip_str[16];
       ut_get_ipv4_string (ip_str, 16, as_info->cas_clt_ip);

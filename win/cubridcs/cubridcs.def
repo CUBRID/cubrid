@@ -280,6 +280,7 @@ EXPORTS
     db_get_last_insert_id
     db_get_variable
     db_revoke
+    db_rewind_statement
     db_savepoint_transaction
     db_send
     db_send_argarray

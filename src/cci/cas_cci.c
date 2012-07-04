@@ -1274,8 +1274,8 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 	  return CCI_ER_THREAD_RUNNING;
 	}
 
-      err_code =
-	qe_execute (req_handle, con_handle, flag, max_col_size, err_buf);
+      err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
+			     err_buf);
     }
   if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
       || IS_SERVER_DOWN (err_buf->err_code))

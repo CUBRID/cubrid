@@ -587,7 +587,7 @@ db_compile_statement_local (DB_SESSION * session)
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
     {
-      return stmt_ndx;
+      return stmt_ndx + 1;
     }
 
   /* forget about any previous parsing errors, if any */
@@ -675,16 +675,6 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
-  if (cmd_type != CUBRID_STMT_EXECUTE_PREPARE)
-    {
-      /* reset auto parameterized variables */
-      for (i = 0, hv = parser->host_variables + parser->host_var_count;
-	   i < parser->auto_param_count; i++, hv++)
-	{
-	  db_value_clear (hv);
-	}
-    }
-  parser->auto_param_count = 0;
   /* translate views or virtual classes into base classes */
   statement_result = mq_translate (parser, statement);
   if (!statement_result || pt_has_error (parser))
@@ -794,6 +784,20 @@ db_compile_statement (DB_SESSION * session)
   statement_id = db_compile_statement_local (session);
 
   return statement_id;
+}
+
+/*
+ * db_rewind_statement() -
+ * return:
+ * session(in) :
+ */
+void
+db_rewind_statement (DB_SESSION * session)
+{
+  if (session->dimension == session->stmt_ndx)
+    {
+      session->stmt_ndx = 1;
+    }
 }
 
 /*

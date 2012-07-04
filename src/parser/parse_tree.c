@@ -1118,8 +1118,9 @@ parser_create_parser (void)
 
   /* initialization */
   parser->is_in_and_list = false;
-
   parser->is_holdable = false;
+  parser->auto_param_count = 0;
+
   return parser;
 }
 
