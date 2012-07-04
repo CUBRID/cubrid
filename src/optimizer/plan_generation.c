@@ -2555,6 +2555,28 @@ qo_plan_coverage_index (QO_PLAN * plan)
     }
 }
 
+/*
+ * qo_plan_filtered_index () - check the plan info for filtered index
+ *   return: true/false
+ *   plan(in): QO_PLAN
+ */
+bool
+qo_plan_filtered_index (QO_PLAN * plan)
+{
+  if (qo_is_interesting_order_scan (plan))
+    {
+      QO_NODE_INDEX_ENTRY *index = plan->plan_un.scan.index;
+      if (index != NULL && index->head != NULL
+	  && index->head->constraints != NULL
+	  && index->head->constraints->filter_predicate != NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 /******************************************************************************
  *  qo_xasl support functions
  *****************************************************************************/
@@ -2595,7 +2617,15 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   else if (nterms <= 0 && nkfterms <= 0 &&
 	   bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
-      return NULL;
+      if (qo_plan_filtered_index (plan))
+	{
+	  /* if scan filtered index do not return */
+	  ;
+	}
+      else
+	{
+	  return NULL;
+	}
     }
 
   if (plan->plan_un.scan.index == NULL)
