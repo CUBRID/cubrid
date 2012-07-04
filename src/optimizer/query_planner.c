@@ -846,13 +846,15 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
   /* we must have the first index column appear as the first sort column, so
    * we pretend the number of equi columns is zero, to force it to match
    * the sort list and the index columns one-for-one. */
-  if (index_entryp->is_iss_candidate)
+  if (index_entryp->is_iss_candidate ||
+      index_entryp->constraints->func_index_info != NULL)
     {
       equi_nterms = 0;
     }
 
   key_type = NULL;		/* init */
-  if (asc_or_desc != PT_DESC)
+  if (asc_or_desc != PT_DESC &&
+      index_entryp->constraints->func_index_info == NULL)
     {				/* is not reverse index */
       key_type = index_entryp->key_type;
       if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
@@ -882,6 +884,10 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
 	  key_type = key_type->next;
 	}
+      else if (index_entryp->constraints->func_index_info != NULL)
+	{
+	  asc_or_desc = PT_ASC;
+	}
 
       seg_idx = (index_entryp->seg_idxs[i]);
       if (seg_idx == -1)
@@ -897,23 +903,26 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	  break;		/* give up */
 	}
 
-      /* skip segment of const eq term */
-      terms = &(QO_SEG_INDEX_TERMS (seg));
-      is_const_eq_term = false;
-      for (j = bitset_iterate (terms, &bi); j != -1;
-	   j = bitset_next_member (&bi))
+      if (index_entryp->constraints->func_index_info == NULL)
 	{
-	  expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
-	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ) &&
-	      (PT_IS_CONST (expr->info.expr.arg1) ||
-	       PT_IS_CONST (expr->info.expr.arg2)))
+	  /* skip segment of const eq term */
+	  terms = &(QO_SEG_INDEX_TERMS (seg));
+	  is_const_eq_term = false;
+	  for (j = bitset_iterate (terms, &bi); j != -1;
+	       j = bitset_next_member (&bi))
 	    {
-	      is_const_eq_term = true;
+	      expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
+	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ) &&
+		  (PT_IS_CONST (expr->info.expr.arg1) ||
+		   PT_IS_CONST (expr->info.expr.arg2)))
+		{
+		  is_const_eq_term = true;
+		}
 	    }
-	}
-      if (is_const_eq_term)
-	{
-	  continue;
+	  if (is_const_eq_term)
+	    {
+	      continue;
+	    }
 	}
 
       pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
