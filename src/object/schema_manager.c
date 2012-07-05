@@ -9963,9 +9963,16 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 
       if (function_index)
 	{
-	  fi_domain = tp_domain_resolve (function_index->type, NULL,
-					 function_index->precision,
-					 function_index->scale, NULL);
+	  fi_domain = tp_domain_new (function_index->type);
+					 
+	  fi_domain->precision = function_index->precision;
+	  fi_domain->scale = function_index->scale;
+	  if (function_index->asc_desc)
+	    {
+	      fi_domain->is_desc = 1;
+	    }
+	  fi_domain = tp_domain_cache (fi_domain);
+
 	  if (function_index->attr_index_start == 0)
 	    {
 	      /* if this is a single column function index, the key domain
@@ -10088,7 +10095,10 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	    {
 	      int last_key_desc = 0;
 
-	      if (reverse || (asc_desc && asc_desc[n_attrs - 1] == 1))
+	      if (reverse || (asc_desc && asc_desc[n_attrs - 1] == 1)
+		  || (function_index && function_index->asc_desc 
+		      && (function_index->col_id == function_index->
+							   attr_index_start)))
 		{
 		  last_key_desc = true;
 		}
@@ -14276,10 +14286,8 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
       new_constraint->func_index_info->col_id = c->func_index_info->col_id;
       new_constraint->func_index_info->attr_index_start =
 	c->func_index_info->attr_index_start;
-      new_constraint->func_index_info->type = c->func_index_info->type;
-      new_constraint->func_index_info->precision =
-	c->func_index_info->precision;
-      new_constraint->func_index_info->scale = c->func_index_info->scale;
+      new_constraint->func_index_info->asc_desc = 
+	c->func_index_info->asc_desc;
     }
   if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
     {

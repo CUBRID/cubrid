@@ -9661,8 +9661,8 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	    {
 	      if (node->info.index.function_expr &&
 		  !pt_is_function_index_expr (parser,
-					      node->info.index.function_expr,
-					      true))
+					      node->info.index.function_expr->
+					      info.sort_spec.expr, true))
 		{
 		  break;
 		}
@@ -9756,7 +9756,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		    {
 		      sc_info_ptr->system_class = false;
 		      p = pt_resolve_names (parser, p, sc_info_ptr);
-		      if (p)
+		      if (p && !pt_has_error (parser))
 			{
 			  pt_check_create_index (parser, p);
 			}
@@ -9783,9 +9783,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 			}
 
 		      if (p->info.index.function_expr
-			  && !pt_is_function_index_expr (parser,
-							 p->info.index.
-							 function_expr, true))
+			  && !pt_is_function_index_expr (parser, p->info.index.
+							 function_expr->
+							 info.sort_spec.expr,
+							 true))
 			{
 			  break;
 			}
@@ -13108,8 +13109,7 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (pt_is_function_index_expr (parser, col->info.sort_spec.expr,
 					 true))
 	    {
-	      node->info.index.function_expr =
-		parser_copy_tree (parser, col->info.sort_spec.expr);
+	      node->info.index.function_expr = parser_copy_tree (parser, col);
 	      node->info.index.func_pos = i;
 	      rem = col;
 	    }
@@ -13131,7 +13131,8 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
       PT_NODE *list, *arg, *n;
       node->info.index.column_names =
 	pt_remove_from_list (parser, rem, node->info.index.column_names);
-      list = pt_expr_to_sort_spec (parser, node->info.index.function_expr);
+      list = pt_expr_to_sort_spec (parser, node->info.index.function_expr->
+				   info.sort_spec.expr);
 
       for (arg = list; arg != NULL; arg = arg->next)
 	{

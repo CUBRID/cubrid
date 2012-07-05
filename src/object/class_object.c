@@ -7877,7 +7877,9 @@ check_filter_function:
 	  && (func_index_info->attr_index_start ==
 	      existing_con->func_index_info->attr_index_start)
 	  && (func_index_info->col_id ==
-	      existing_con->func_index_info->col_id))
+	      existing_con->func_index_info->col_id)
+	  && (func_index_info->asc_desc ==
+	      existing_con->func_index_info->asc_desc))
 	{
 	  return ret;
 	}
@@ -8082,6 +8084,14 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
     }
   fi_info->scale = DB_GET_INT (&val);
   pr_clear_value (&val);
+
+  if (set_get_element (func_seq, 7, &val))
+    {
+      goto error;
+    }
+  fi_info->asc_desc = DB_GET_INT (&val);
+  pr_clear_value (&val);
+
   return fi_info;
 
 error:
@@ -8109,7 +8119,7 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
       return NULL;
     }
 
-  fi_seq = set_create_sequence (7);
+  fi_seq = set_create_sequence (8);
 
   db_make_string (&val, func_index_info->expr_str);
   set_put_element (fi_seq, 0, &val);
@@ -8134,6 +8144,9 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
 
   db_make_int (&val, func_index_info->scale);
   set_put_element (fi_seq, 6, &val);
+
+  db_make_int (&val, func_index_info->asc_desc);
+  set_put_element (fi_seq, 7, &val);
 
   return fi_seq;
 }

@@ -2544,6 +2544,10 @@ emit_index_def (DB_OBJECT * class_)
 		    }
 		  fprintf (output_file,
 			   constraint->func_index_info->expr_str);
+		  if (constraint->func_index_info->asc_desc)
+		    {
+		      fprintf (output_file, "%s", " DESC");
+		    }
 
 		  k++;
 		  if (k == n_attrs)

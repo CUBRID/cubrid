@@ -642,6 +642,7 @@ struct sm_function_info
   int expr_stream_size;
   int col_id;
   int attr_index_start;
+  int asc_desc;
 };
 
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;

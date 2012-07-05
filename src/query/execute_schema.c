@@ -330,7 +330,7 @@ static int do_run_update_query_for_class (char *query, MOP class_mop,
 static SM_FUNCTION_INFO *pt_node_to_function_index (PARSER_CONTEXT *
 						    parser,
 						    PT_NODE * spec,
-						    PT_NODE * expr,
+						    PT_NODE * sort_spec,
 						    DO_INDEX do_index);
 static int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 					  SM_CONSTRAINT_INFO * constr,
@@ -3295,9 +3295,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  func_index_info->col_id = idx->func_index_info->col_id;
 	  func_index_info->attr_index_start =
 	    idx->func_index_info->attr_index_start;
-	  func_index_info->type = idx->func_index_info->type;
-	  func_index_info->precision = idx->func_index_info->precision;
-	  func_index_info->scale = idx->func_index_info->scale;
+	  func_index_info->asc_desc = idx->func_index_info->asc_desc;
 	}
     }
   else
@@ -16038,11 +16036,22 @@ end:
  */
 static SM_FUNCTION_INFO *
 pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
-			   PT_NODE * expr, DO_INDEX do_index)
+			   PT_NODE * node, DO_INDEX do_index)
 {
   int nr_const = 0, nr_attrs = 0, i = 0, k = 0;
   SM_FUNCTION_INFO *func_index_info;
   FUNC_PRED *func_pred;
+  PT_NODE *expr = NULL;
+
+  if (node->node_type == PT_SORT_SPEC)
+    {
+      expr = node->info.sort_spec.expr;
+    }
+  else
+    {
+      expr = node;
+    }
+
   func_index_info = (SM_FUNCTION_INFO *)
     db_ws_alloc (sizeof (SM_FUNCTION_INFO));
 
@@ -16060,6 +16069,11 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
     {
       func_index_info->precision = TP_FLOATING_PRECISION_VALUE;
       func_index_info->scale = 0;
+    }
+  if (node->node_type == PT_SORT_SPEC)
+    {
+      func_index_info->asc_desc = (node->info.sort_spec.asc_or_desc == PT_ASC 
+				   ? 0 : 1);
     }
   func_index_info->expr_str = parser_print_tree_with_quotes (parser, expr);
   func_index_info->expr_stream = NULL;

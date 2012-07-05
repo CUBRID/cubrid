@@ -879,16 +879,6 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 
   for (i = equi_nterms; i < index_entryp->nsegs; i++)
     {
-      if (key_type)
-	{
-	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
-	  key_type = key_type->next;
-	}
-      else if (index_entryp->constraints->func_index_info != NULL)
-	{
-	  asc_or_desc = PT_ASC;
-	}
-
       seg_idx = (index_entryp->seg_idxs[i]);
       if (seg_idx == -1)
 	{			/* not exist in query */
@@ -896,6 +886,21 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	}
 
       seg = QO_ENV_SEG (env, seg_idx);
+
+      if (key_type)
+	{
+	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
+	  key_type = key_type->next;
+	}
+      else if (index_entryp->constraints->func_index_info != NULL)
+	{
+	  if (QO_SEG_FUNC_INDEX (seg) == true)
+	    {
+	      asc_or_desc = index_entryp->constraints->func_index_info->
+						  asc_desc ? PT_DESC : PT_ASC;
+	    }
+	}
+
       node = QO_SEG_PT_NODE (seg);
       if (node->node_type == PT_DOT_)
 	{
