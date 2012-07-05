@@ -23816,7 +23816,8 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
       return ER_GENERIC_ERROR;
     }
 
-  if (intl_lang_id == INTL_LANG_KOREAN && intl_lang_id != lang_id ())
+  if (codeset == INTL_CODESET_KSC5601_EUC &&
+      intl_lang_id == INTL_LANG_KOREAN && intl_lang_id != lang_id ())
     {
       /* korean names dot not use compatible codeset, we use
        * specific code to print them */
