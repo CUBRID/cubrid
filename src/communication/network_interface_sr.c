@@ -5608,7 +5608,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if (list_id)
     {
-      qfile_free_list_id (list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
 }
 
@@ -5847,7 +5847,7 @@ cleanup:
      this one on the server */
   if (q_result)
     {
-      qfile_free_list_id (q_result);
+      QFILE_FREE_AND_INIT_LIST_ID (q_result);
     }
 }
 

@@ -45,6 +45,15 @@
 #define QFILE_IS_LIST_CACHE_DISABLED \
   (PRM_LIST_QUERY_CACHE_MODE == 0 || PRM_LIST_MAX_QUERY_CACHE_ENTRIES <= 0)
 
+#define QFILE_FREE_AND_INIT_LIST_ID(list_id) \
+  do {                                       \
+    if (list_id != NULL)                     \
+    {                                        \
+      qfile_free_list_id (list_id);          \
+      list_id = NULL;                        \
+    }                                        \
+  } while (0)
+
 typedef struct qfile_page_header QFILE_PAGE_HEADER;
 struct qfile_page_header
 {

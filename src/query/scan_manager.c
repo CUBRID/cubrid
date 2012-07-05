@@ -816,8 +816,7 @@ exit_on_error:
 
   if (indx_cov->list_id != NULL)
     {
-      qfile_free_list_id (indx_cov->list_id);
-      indx_cov->list_id = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (indx_cov->list_id);
     }
 
   if (indx_cov->tplrec != NULL)
@@ -3364,8 +3363,7 @@ exit_on_error:
     }
   if (isidp->indx_cov.list_id != NULL)
     {
-      qfile_free_list_id (isidp->indx_cov.list_id);
-      isidp->indx_cov.list_id = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
     }
   if (isidp->indx_cov.tplrec != NULL)
     {
@@ -3816,7 +3814,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (indx_cov_p->list_id != NULL)
 	    {
 	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
-	      qfile_free_list_id (indx_cov_p->list_id);
+	      QFILE_FREE_AND_INIT_LIST_ID (indx_cov_p->list_id);
 
 	      indx_cov_p->list_id = qfile_open_list (thread_p,
 						     indx_cov_p->type_list,
@@ -4149,7 +4147,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qfile_close_list (thread_p, isidp->indx_cov.list_id);
 	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
-	  qfile_free_list_id (isidp->indx_cov.list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
 	}
       if (isidp->indx_cov.type_list != NULL)
 	{
@@ -4759,7 +4757,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 						isidp->indx_cov.lsid);
 			      qfile_destroy_list (thread_p,
 						  isidp->indx_cov.list_id);
-			      qfile_free_list_id (isidp->indx_cov.list_id);
+			      QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.
+							   list_id);
 			      isidp->indx_cov.list_id =
 				qfile_open_list (thread_p,
 						 isidp->indx_cov.type_list,

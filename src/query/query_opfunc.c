@@ -5836,11 +5836,11 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p,
 
   if (qfile_copy_list_id (agg_p->list_id, list_id_p, true) != NO_ERROR)
     {
-      qfile_free_list_id (list_id_p);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
       return ER_FAILED;
     }
 
-  qfile_free_list_id (list_id_p);
+  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
 
   return NO_ERROR;
 }

@@ -524,24 +524,14 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 void
 qfile_free_list_id (QFILE_LIST_ID * list_id_p)
 {
-  if (list_id_p->tpl_descr.f_valp)
-    {
-      free_and_init (list_id_p->tpl_descr.f_valp);
-    }
-
-  if (list_id_p->sort_list)
-    {
-      qfile_free_sort_list (list_id_p->sort_list);
-      list_id_p->sort_list = NULL;
-    }
-
-  if (list_id_p->type_list.domp != NULL)
-    {
-      free_and_init (list_id_p->type_list.domp);
-    }
-
-  free_and_init (list_id_p);
+  /* This function is remained for debugging purpose.
+   * Do not call this function directly.
+   * Use QFILE_FREE_AND_INIT_LIST_ID macro.
+   */
+  qfile_clear_list_id (list_id_p);
+  free (list_id_p);
 }
+
 
 /*
  * qfile_free_sort_list () -
@@ -3122,8 +3112,7 @@ error:
   if (dest_list_id_p)
     {
       qfile_close_list (thread_p, dest_list_id_p);
-      qfile_free_list_id (dest_list_id_p);
-      dest_list_id_p = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (dest_list_id_p);
     }
   goto success;
 }
@@ -3176,7 +3165,7 @@ qfile_close_and_free_list_file (THREAD_ENTRY * thread_p,
 				QFILE_LIST_ID * list_id)
 {
   qfile_close_list (thread_p, list_id);
-  qfile_free_list_id (list_id);
+  QFILE_FREE_AND_INIT_LIST_ID (list_id);
 }
 
 /*
@@ -4270,7 +4259,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   qfile_close_list (thread_p, list_id_p);
   qfile_destroy_list (thread_p, list_id_p);
   qfile_copy_list_id (list_id_p, srlist_id, true);
-  qfile_free_list_id (srlist_id);
+  QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 
   return list_id_p;
 }
@@ -4470,7 +4459,7 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 			     dup_list_id_p->tfile_vfid) != NO_ERROR)
     {
       qfile_destroy_list (thread_p, dup_list_id_p);
-      qfile_free_list_id (dup_list_id_p);
+      QFILE_FREE_AND_INIT_LIST_ID (dup_list_id_p);
       return NULL;
     }
 

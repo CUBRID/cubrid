@@ -602,8 +602,7 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
 
   if (query_p->list_id != NULL)
     {
-      qfile_free_list_id (query_p->list_id);
-      query_p->list_id = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
     }
 
   query_p->next = NULL;
@@ -652,8 +651,7 @@ qmgr_free_query_entry_list (THREAD_ENTRY * thread_p,
 
       if (tmp_query_p->list_id != NULL)
 	{
-	  qfile_free_list_id (tmp_query_p->list_id);
-	  tmp_query_p->list_id = NULL;
+	  QFILE_FREE_AND_INIT_LIST_ID (tmp_query_p->list_id);
 	}
 
       tmp_query_p->next = NULL;
@@ -1246,8 +1244,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
 
 	  if (query_p != NULL && query_p->list_id != NULL)
 	    {
-	      qfile_free_list_id (query_p->list_id);
-	      query_p->list_id = (QFILE_LIST_ID *) NULL;
+	      QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 	    }
 
 #if defined (SERVER_MODE)
@@ -1625,7 +1622,7 @@ qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * tran_entry_p,
  * If there's an error, NULL will be returned.
  *
  * Note2: It is the caller's responsibility to free output QFILE_LIST_ID
- * by calling qfile_free_list_id().
+ * by calling QFILE_FREE_AND_INIT_LIST_ID().
  */
 QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
@@ -1963,8 +1960,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	    {
 	      if (query_p->list_id)
 		{
-		  qfile_free_list_id (query_p->list_id);
-		  query_p->list_id = NULL;
+		  QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 		}
 	      /* error occurred during executing the query */
 	      goto error;
@@ -2045,7 +2041,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 		  if (tmp_list_id_p)
 		    {
 		      qfile_destroy_list (thread_p, list_id_p);
-		      qfile_free_list_id (list_id_p);
+		      QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
 		      list_id_p = tmp_list_id_p;
 		    }
 		}
@@ -2116,8 +2112,7 @@ error:
   /* free QFILE_LIST_ID */
   if (list_id_p)
     {
-      qfile_free_list_id (list_id_p);
-      list_id_p = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
     }
 
   /* end the use of the cached result if any when an error occurred */
@@ -2297,8 +2292,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 	{			/* error has occurred */
 	  if (query_p->list_id)
 	    {
-	      qfile_free_list_id (query_p->list_id);
-	      query_p->list_id = NULL;
+	      QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 	    }
 	}
 
@@ -2501,8 +2495,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   /* destroy query result list file */
   if (query_p->list_id != NULL)
     {
-      qfile_free_list_id (query_p->list_id);
-      query_p->list_id = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 
       /* free external volumes, if any */
       rc = qmgr_free_query_temp_file_by_query_entry (thread_p, query_p,
@@ -2817,8 +2810,7 @@ again:
       if (q->list_id != NULL)
 	{
 	  qfile_close_list (thread_p, q->list_id);
-	  qfile_free_list_id (q->list_id);
-	  q->list_id = NULL;
+	  QFILE_FREE_AND_INIT_LIST_ID (q->list_id);
 	}
 
       /* Note: In cases of abort, the qm must delete its own

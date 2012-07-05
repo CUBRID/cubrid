@@ -2285,7 +2285,7 @@ qexec_get_xasl_list_id (XASL_NODE * xasl)
       QFILE_CLEAR_LIST_ID (list_id);
       if (qfile_copy_list_id (list_id, xasl->list_id, true) != NO_ERROR)
 	{
-	  qfile_free_list_id (list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (list_id);
 	  return (QFILE_LIST_ID *) NULL;
 	}
       qfile_clear_list_id (xasl->list_id);
@@ -3138,8 +3138,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
   if (gbstate->output_file)
     {
       qfile_close_list (thread_p, gbstate->output_file);
-      qfile_free_list_id (gbstate->output_file);
-      gbstate->output_file = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (gbstate->output_file);
     }
 
   /* cleanup rollup aggregates lists */
@@ -4841,7 +4840,7 @@ exit_on_error:
   if (list_idp)
     {
       qfile_close_list (thread_p, list_idp);
-      qfile_free_list_id (list_idp);
+      QFILE_FREE_AND_INIT_LIST_ID (list_idp);
     }
 
   list_idp = NULL;
@@ -5552,7 +5551,7 @@ exit_on_error:
   if (list_idp)
     {
       qfile_close_list (thread_p, list_idp);
-      qfile_free_list_id (list_idp);
+      QFILE_FREE_AND_INIT_LIST_ID (list_idp);
     }
 
   list_idp = NULL;
@@ -5685,7 +5684,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* make this the resultant list file */
   qfile_copy_list_id (xasl->list_id, list_id, true);
-  qfile_free_list_id (list_id);
+  QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
   return NO_ERROR;
 
@@ -10823,7 +10822,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  }
 		if (t_list_id)
 		  {
-		    qfile_free_list_id (t_list_id);
+		    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 		  }
 		GOTO_EXIT_ON_ERROR;
 	      }
@@ -10836,10 +10835,10 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    if (qfile_copy_list_id (xasl->list_id, t_list_id, true) !=
 		NO_ERROR)
 	      {
-		qfile_free_list_id (t_list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 		GOTO_EXIT_ON_ERROR;
 	      }			/* if */
-	    qfile_free_list_id (t_list_id);
+	    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 	  }
       }
       break;
@@ -10890,7 +10889,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  }
 		if (t_list_id)
 		  {
-		    qfile_free_list_id (t_list_id);
+		    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 		  }
 		GOTO_EXIT_ON_ERROR;
 	      }
@@ -10903,11 +10902,11 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    if (qfile_copy_list_id (xasl->list_id, t_list_id, true) !=
 		NO_ERROR)
 	      {
-		qfile_free_list_id (t_list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 		GOTO_EXIT_ON_ERROR;
 	      }			/* if */
 
-	    qfile_free_list_id (t_list_id);
+	    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 	  }
 	break;
       }
@@ -11082,8 +11081,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
     }
 
   output = xasl->list_id;
-  qfile_free_list_id (t_list_id);
-  t_list_id = NULL;
+  QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
   if (buildvalue->having_pred == NULL || ev_res == V_TRUE)
     {
@@ -11143,8 +11141,7 @@ end:
   QEXEC_CLEAR_AGG_LIST_VALUE (buildvalue->agg_list);
   if (t_list_id)
     {
-      qfile_free_list_id (t_list_id);
-      t_list_id = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
   if (output)
     {
@@ -11272,8 +11269,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-      qfile_free_list_id (t_list_id);
-      t_list_id = NULL;
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
       break;
 
     default:
@@ -11288,7 +11284,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 success:
   if (t_list_id)
     {
-      qfile_free_list_id (t_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
   return status;
 
@@ -15285,7 +15281,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      qfile_close_scan (thread_p, &lfscan_id_lst2tmp);
 	      qfile_close_list (thread_p, listfile2_tmp);
 	      qfile_destroy_list (thread_p, listfile2_tmp);
-	      qfile_free_list_id (listfile2_tmp);
+	      QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
 
 	      listfile2_tmp = qfile_open_list (thread_p,
 					       &type_list,
@@ -15304,7 +15300,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  qfile_close_list (thread_p, listfile1);
 	  qfile_destroy_list (thread_p, listfile1);
-	  qfile_free_list_id (listfile1);
+	  QFILE_FREE_AND_INIT_LIST_ID (listfile1);
 	}
       listfile1 = listfile2;
 
@@ -15316,18 +15312,18 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       qfile_close_list (thread_p, listfile1);
       qfile_destroy_list (thread_p, listfile1);
-      qfile_free_list_id (listfile1);
+      QFILE_FREE_AND_INIT_LIST_ID (listfile1);
     }
 
   qfile_close_list (thread_p, listfile2);
   qfile_destroy_list (thread_p, listfile2);
-  qfile_free_list_id (listfile2);
+  QFILE_FREE_AND_INIT_LIST_ID (listfile2);
 
   if (has_order_siblings_by)
     {
       qfile_close_list (thread_p, listfile2_tmp);
       qfile_destroy_list (thread_p, listfile2_tmp);
-      qfile_free_list_id (listfile2_tmp);
+      QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
     }
 
   if (type_list.domp)
@@ -15441,7 +15437,7 @@ exit_on_error:
 
       qfile_close_list (thread_p, listfile1);
       qfile_destroy_list (thread_p, listfile1);
-      qfile_free_list_id (listfile1);
+      QFILE_FREE_AND_INIT_LIST_ID (listfile1);
     }
 
   if (listfile2)
@@ -15460,14 +15456,14 @@ exit_on_error:
 
       qfile_close_list (thread_p, listfile2);
       qfile_destroy_list (thread_p, listfile2);
-      qfile_free_list_id (listfile2);
+      QFILE_FREE_AND_INIT_LIST_ID (listfile2);
     }
 
   if (listfile2_tmp)
     {
       qfile_close_list (thread_p, listfile2_tmp);
       qfile_destroy_list (thread_p, listfile2_tmp);
-      qfile_free_list_id (listfile2_tmp);
+      QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
     }
 
   if (son_index)
@@ -16642,7 +16638,7 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  goto exit_on_error;
 	}
 
-      qfile_free_list_id (t_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   if (connect_by->input_list_id->type_list.type_cnt == 0)
@@ -16660,7 +16656,7 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  goto exit_on_error;
 	}
 
-      qfile_free_list_id (t_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   if (type_list.domp)
@@ -16715,7 +16711,7 @@ exit_on_error:
 
   if (t_list_id)
     {
-      qfile_free_list_id (t_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   return ER_FAILED;
