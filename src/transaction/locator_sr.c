@@ -3975,6 +3975,16 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 	    {
 	      char *val_print = NULL;
 
+	      val_print = pr_valstring (key_dbvalue);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2,
+		      index->fk->fkname,
+		      (val_print ? val_print : "unknown value"));
+	      error_code = ER_FK_INVALID;
+	      if (val_print)
+		{
+		  free_and_init (val_print);
+		}
+
 	      if (key_dbvalue == &dbvalue)
 		{
 		  pr_clear_value (&dbvalue);
@@ -3985,16 +3995,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 		  continue;
 		}
 
-	      val_print = pr_valstring (key_dbvalue);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2,
-		      index->fk->fkname,
-		      (val_print ? val_print : "unknown value"));
-	      if (val_print)
-		{
-		  free_and_init (val_print);
-		}
-
-	      error_code = ER_FK_INVALID;
 	      goto error;
 	    }
 

@@ -2248,15 +2248,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
     {
       char *val_print = NULL;
 
-      if (DB_VALUE_DOMAIN_TYPE (keyval) == DB_TYPE_MIDXKEY
-	  && keyval->data.midxkey.domain == NULL)
-	{
-	  val_print = NULL;
-	}
-      else
-	{
-	  val_print = pr_valstring (keyval);
-	}
+      val_print = pr_valstring (keyval);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name,
 	      (val_print ? val_print : "unknown value"));
       if (val_print)

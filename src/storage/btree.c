@@ -2892,6 +2892,13 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 			     index_scan_id.oid_list.oidp,
 			     2 * sizeof (OID), NULL, &index_scan_id,
 			     is_all_class_srch);
+      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY &&
+	  key->data.midxkey.domain == NULL)
+	{
+	  /* set the appropriate domain, as it might be needed for printing
+	   * if the unique constraint is violated */
+	  key->data.midxkey.domain = btree_scan.btid_int.key_type;
+	}
 
       btree_scan_clear_key (&btree_scan);
 
