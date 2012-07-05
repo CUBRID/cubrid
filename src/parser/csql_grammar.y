@@ -21231,35 +21231,13 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
     case PT_BLOB_TO_BIT:
     case PT_CLOB_TO_CHAR:
-      if (c != 1 && c != 2)
+      if (c != 1)
 	{
 	  return NULL;
 	}
 
       a1 = args;
-      if (c == 2)
-	/*
-	   {
-	   a2 = parser_new_node (this_parser, PT_VALUE);
-	   if (a2)
-	   {
-	   if (key->op == PT_BLOB_TO_BIT)
-	   {
-	   a2->type_enum = PT_TYPE_VARBIT;
-	   }
-	   else if (key->op == PT_CLOB_FROM_FILE)
-	   { 
-	   a2->type_enum = PT_TYPE_VARCHAR;
-	   }
-	   }
-	   }
-	   else
-	 */
-	{
-	  a2 = a1->next;
-	  a1->next = NULL;
-	}
-      return parser_make_expression (key->op, a1, a2, NULL);
+      return parser_make_expression (key->op, a1, NULL, NULL);
 
     case PT_BLOB_FROM_FILE:
     case PT_CLOB_FROM_FILE:

@@ -4415,7 +4415,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
       || strncmp (rx_compiled_pattern, pattern_char_string_p,
 		  pattern_length) != 0)
     {
-      /* regex must be recompiled if regex object is not specified, pattern is 
+      /* regex must be recompiled if regex object is not specified, pattern is
          not specified or compiled pattern does not match current pattern */
 
       /* update compiled pattern */
@@ -5894,7 +5894,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
 
       if (j == 0 && needle_len == 0 && stack_str[i] == ',')
 	{
-	  /* if the needle is a empty string and the current token is also an 
+	  /* if the needle is a empty string and the current token is also an
 	     empty string, we have found a match */
 	  DB_MAKE_INT (result, position);
 	  return NO_ERROR;
@@ -6888,7 +6888,7 @@ db_get_string_length (const DB_VALUE * value)
  *          src: Pointer to string.
  *       s_unit: Size of the string.
  *	codeset: codeset
- * collation_id: collation 
+ * collation_id: collation
  *
  * Returns: void
  *
@@ -8874,7 +8874,7 @@ qstr_coerce (const unsigned char *src,
 
   if (dest_codeset == INTL_CODESET_ISO88591)
     {
-      /* when coercing to ISO charset, we just handle the original bytes as 
+      /* when coercing to ISO charset, we just handle the original bytes as
        * characters */
       if (src_codeset == INTL_CODESET_UTF8
 	  && (copy_length < dest_precision
@@ -8892,7 +8892,7 @@ qstr_coerce (const unsigned char *src,
     }
   else
     {
-      /* copy_length = number of characters, count the bytes according to 
+      /* copy_length = number of characters, count the bytes according to
        * source codeset */
       intl_char_size ((unsigned char *) src, copy_length, src_codeset,
 		      &copy_size);
@@ -22171,7 +22171,7 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value,
   assert (src_value != NULL && result_value != NULL);
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
-  if (length_value == NULL)
+  if (length_value == NULL || DB_VALUE_TYPE (length_value) == DB_TYPE_NULL)
     {
       length_type = DB_TYPE_INTEGER;
       max_length = -1;
@@ -22181,7 +22181,7 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value,
       length_type = DB_VALUE_DOMAIN_TYPE (length_value);
       max_length = db_get_int (length_value);
     }
-  if (src_type == DB_TYPE_NULL || length_type == DB_TYPE_NULL)
+  if (src_type == DB_TYPE_NULL)
     {
       DB_MAKE_NULL (result_value);
       return NO_ERROR;
@@ -22356,7 +22356,7 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * length_value,
   assert (src_value != NULL && result_value != NULL);
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
-  if (length_value == NULL)
+  if (length_value == NULL || DB_VALUE_TYPE (length_value) == DB_TYPE_NULL)
     {
       length_type = DB_TYPE_INTEGER;
       max_length = -1;
@@ -22366,7 +22366,8 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * length_value,
       length_type = DB_VALUE_DOMAIN_TYPE (length_value);
       max_length = db_get_int (length_value);
     }
-  if (src_type == DB_TYPE_NULL || length_type == DB_TYPE_NULL)
+
+  if (src_type == DB_TYPE_NULL)
     {
       DB_MAKE_NULL (result_value);
       return NO_ERROR;
@@ -23932,7 +23933,7 @@ convert_locale_number (char *sz, const int size,
  *  returns: error code or NO_ERROR
  *   param(in): parameter to turn to hex
  *   result(out): varchar db_value with hex representation
- * 
+ *
  * Note:
  *  If param is a generic string, the hex representation will be the
  *  concatenation of hex values of each byte.
@@ -23943,9 +23944,9 @@ convert_locale_number (char *sz, const int size,
 int
 db_hex (const DB_VALUE * param, DB_VALUE * result)
 {
-  /* String length limits for numeric values of param. When param is numeric, 
+  /* String length limits for numeric values of param. When param is numeric,
    * it will be cast to BIGINT db type and then internally to UINT64.
-   * hex_lenght_limits[i] is the upper limit of the closed set of integers 
+   * hex_lenght_limits[i] is the upper limit of the closed set of integers
    * that can be represented in hex on i digits. */
   const UINT64 hex_length_limits[UINT64_MAX_HEX_DIGITS + 1] = {
     0x0, 0xF, 0xFF, 0xFFF, 0xFFFF,
@@ -24105,7 +24106,7 @@ error:
  *  returns: error code or NO_ERROR
  *   param(in): string
  *   result(out): smallint db_value of ASCII code
- * 
+ *
  * Note:
  *  If param is a zero-length string, result should be zero.
  *  If param is DB null, result should be DB null
@@ -24205,7 +24206,7 @@ error:
  *   from_base(in): base of num
  *   to_base(in): base to convert num to
  *   result(out): string db_value with number in new base
- * 
+ *
  * Note:
  *  From_base and to_base should satisfy 2 <= abs(base) <= 36
  */
@@ -24228,8 +24229,8 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
   bool num_is_signed = false, res_is_signed = false;
   bool res_has_minus = false;
 
-  /* string representations of input number and result; size of buffer is 
-     maximum computable value in base 2 (64 digits) + sign (1 digit) + NULL 
+  /* string representations of input number and result; size of buffer is
+     maximum computable value in base 2 (64 digits) + sign (1 digit) + NULL
      terminator (1 byte) */
   unsigned char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
@@ -24337,7 +24338,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
       num_p_str = DB_PULL_BIT (num, &num_size);
       num_size = QSTR_NUM_BYTES (num_size);
 
-      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted 
+      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted
          bytes, not the size of the hex string; also, we convert at most 64
          digits even if we need only 16 in order to let strtoll handle
          overflow (weird stuff happens there ...) */
