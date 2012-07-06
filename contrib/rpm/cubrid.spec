@@ -15,6 +15,7 @@ URL:           http://www.cubrid.org
 Source0:       %{name}-%{cubrid_version}.tar.gz
 Requires:      ncurses libstdc++ libgcrypt coreutils /usr/sbin/useradd /usr/sbin/groupadd
 BuildRequires: gcc-c++ elfutils-libelf-devel ncurses-devel libstdc++-devel glibc-devel boost-devel
+BuildRequires: ant >= 0:1.6.0 java-devel >= 0:1.5.0 libgcrypt-devel
 BuildRoot:     %{_tmppath}/%{name}-%{version}-build
 Prefix:        %{_prefix}
 AutoReq:       no
