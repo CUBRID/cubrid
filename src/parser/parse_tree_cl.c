@@ -5285,7 +5285,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	    assert (attrs->info.attr_def.attr_type != PT_CLASS);
 	    r1 = pt_print_bytes (parser, attrs);
 	    q = pt_append_varchar (parser, q, r1);
-	    q = pt_append_nulstring(parser, q, " ");
+	    q = pt_append_nulstring (parser, q, " ");
 
 	    if (attrs->info.attr_def.ordering_info != NULL)
 	      {
@@ -5759,11 +5759,21 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
       const char *index_name = p->info.index.index_name->info.name.original;
       b = pt_append_bytes (parser, b, index_name, strlen (index_name));
     }
-  b = pt_append_nulstring (parser, b, " on ");
-  b = pt_append_varchar (parser, b, r1);
-  b = pt_append_nulstring (parser, b, " (");
-  b = pt_append_varchar (parser, b, r2);
-  b = pt_append_nulstring (parser, b, ") ");
+
+  if (r1 != NULL)
+    {
+      b = pt_append_nulstring (parser, b, " on ");
+      b = pt_append_varchar (parser, b, r1);
+
+      if (r2 != NULL)
+	{
+	  b = pt_append_nulstring (parser, b, " (");
+	  b = pt_append_varchar (parser, b, r2);
+	  b = pt_append_nulstring (parser, b, ")");
+	}
+    }
+
+  b = pt_append_nulstring (parser, b, " ");
 
   if (p->info.index.where)
     {
