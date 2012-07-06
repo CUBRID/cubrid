@@ -8845,28 +8845,25 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
 
     case PT_NAME:
-      {
-	if (PT_IS_OID_NAME (node) &&
-	    !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_GENERATED_OID) &&
-	    !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_ALLOW_REUSABLE_OID))
-	  {
-	    PT_NODE *data_type = node->data_type;
+      if (PT_IS_OID_NAME (node)
+	  && !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_GENERATED_OID)
+	  && !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_ALLOW_REUSABLE_OID))
+	{
+	  PT_NODE *data_type = node->data_type;
 
-	    if (data_type != NULL && data_type->type_enum == PT_TYPE_OBJECT)
-	      {
-		const char *name =
-		  data_type->info.data_type.entity->info.name.original;
-		DB_OBJECT *class_obj = db_find_class (name);
+	  if (data_type != NULL && data_type->type_enum == PT_TYPE_OBJECT)
+	    {
+	      const char *name =
+		data_type->info.data_type.entity->info.name.original;
+	      DB_OBJECT *class_obj = db_find_class (name);
 
-		if (class_obj != NULL && sm_is_reuse_oid_class (class_obj))
-		  {
-		    PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
-				name);
-		  }
-	      }
-	  }
-      }
+	      if (class_obj != NULL && sm_is_reuse_oid_class (class_obj))
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION, name);
+		}
+	    }
+	}
       break;
 
     case PT_MERGE:
@@ -9041,7 +9038,9 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser,
 	   */
 	  arg1 = parser_copy_tree (parser, conj->info.expr.arg1);
 	  if (arg1 == NULL)
-	    goto out_of_mem;
+	    {
+	      goto out_of_mem;
+	    }
 	}
       else
 	{
@@ -9065,7 +9064,9 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser,
 	  /* attach both arguments to the new path segment */
 	  new_path->info.expr.arg1 = parser_copy_tree (parser, arg1);
 	  if (new_path->info.expr.arg1 == NULL)
-	    goto out_of_mem;
+	    {
+	      goto out_of_mem;
+	    }
 
 	  new_path->info.expr.arg2 = arg2;
 
@@ -9278,7 +9279,6 @@ pt_expand_isnull_preds_helper (PARSER_CONTEXT * parser, PT_NODE * node,
       && node->info.expr.op == PT_IS_NULL
       && node->info.expr.arg1->node_type == PT_DOT_)
     {
-
       chain_info.chain_ptr = chain_info.chain;
       chain_info.chain_size = PT_CHAIN_LENGTH;
       chain_info.chain_length = 0;
