@@ -1802,12 +1802,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* CUBRID_SHARD */
 
 #ifndef LIBCAS_FOR_JSP
-#if defined(CUBRID_SHARD)
-  if (as_info->reset_flag)
-#else
-  if (as_info->reset_flag && as_info->con_status != CON_STATUS_IN_TRAN
-      && as_info->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
-#endif
+  if (as_info->reset_flag
+      && ((as_info->con_status != CON_STATUS_IN_TRAN
+	   && as_info->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
+	  || (get_db_connect_status () == -1)))
     {
       cas_log_debug (ARG_FILE_LINE,
 		     "process_request: reset_flag && !CON_STATUS_IN_TRAN "

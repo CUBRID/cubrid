@@ -32,6 +32,11 @@
 #define ORACLE_NULL     -1
 #define ORACLE_NOT_NULL 0
 
+/* GLOBAL STATE */
+#define DB_CONNECTION_STATUS_NOT_CONNECTED      0
+#define DB_CONNECTION_STATUS_CONNECTED          1
+#define DB_CONNECTION_STATUS_RESET              -1
+
 typedef struct oracle_info ORACLE_INFO;
 struct oracle_info
 {

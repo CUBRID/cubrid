@@ -223,7 +223,6 @@ static int cas_mysql_stmt_execute (MYSQL_STMT * stmt);
 static int cas_mysql_stmt_fetch (MYSQL_STMT * stmt);
 static int cas_mysql_end_tran (int tran_type);
 static int cas_mysql_num_fields (MYSQL_RES * metaResult);
-static int get_db_connect_status (void);
 static bool cas_mysql_autocommit (bool autoCommit);
 static int db_value_clear (DB_VALUE * value);
 
@@ -483,6 +482,13 @@ ux_end_tran (int tran_type, bool reset_con_status)
     {
       errors_in_transaction++;
     }
+
+#ifndef LIBCAS_FOR_JSP
+  if (get_db_connect_status () == DB_CONNECTION_STATUS_RESET)
+    {
+      as_info->reset_flag = TRUE;
+    }
+#endif /* !LIBCAS_FOR_JSP */
 
   return err_code;
 }
@@ -2541,7 +2547,7 @@ cas_mysql_num_fields (MYSQL_RES * metaResult)
   return mysql_num_fields (metaResult);
 }
 
-static int
+int
 get_db_connect_status (void)
 {
   if (!is_server_alive ())

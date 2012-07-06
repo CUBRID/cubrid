@@ -193,6 +193,7 @@ extern SESSION_ID ux_get_session_id (void);
 extern void ux_set_session_id (const SESSION_ID session_id);
 
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+extern int get_db_connect_status (void);
 extern void set_db_connect_status (int status);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)

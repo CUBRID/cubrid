@@ -95,6 +95,18 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
       cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
       break;
     }
+#elif defined(CAS_FOR_ORACLE)
+  switch (err_info.err_number)
+    {
+    case 3114:			/* ORA-03114: not connected to ORACLE */
+    case 3113:			/* ORA-03113: end-of-file on communication channel */
+    case 1012:			/* ORA-01012: not logged on */
+    case 28:			/* ORA-00028: your session has been killed */
+      as_info->reset_flag = TRUE;
+      set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+      cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
+      break;
+    }
 #endif /* CAS_FOR_MYSQL */
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 #ifndef LIBCAS_FOR_JSP

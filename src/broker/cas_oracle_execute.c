@@ -90,6 +90,8 @@ static int cas_oracle_write_to_lob (OCILobLocator * locp, char *buf,
 
 static ORACLE_INFO _db_info;
 static int _offset_row_count;
+static int oracle_connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+
 
 int
 cas_oracle_query_cancel (void)
@@ -185,6 +187,8 @@ cas_oracle_connect_db (char *tns, char *db_user, char *db_pass,
 		  strlen (db_user), (text *) db_pass, strlen (db_pass),
 		  (text *) tns, strlen (tns));
   GOTO_ORA_ERROR (ret, oracle_connect_error);
+
+  set_db_connect_status (DB_CONNECTION_STATUS_CONNECTED);
   return ret;
 
 oracle_connect_error:
@@ -261,7 +265,9 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 
   if (ux_is_database_connected ())
     {
-      if (strcmp (ORA_NAME, db_alias) != 0 || strcmp (ORA_USER, db_user) != 0)
+      if (get_db_connect_status () != DB_CONNECTION_STATUS_CONNECTED
+	  || strcmp (ORA_NAME, db_alias) != 0
+	  || strcmp (ORA_USER, db_user) != 0)
 	{
 	  ux_database_shutdown ();
 	}
@@ -309,6 +315,8 @@ ux_database_shutdown (void)
   ORA_NAME[0] = 0;
   ORA_USER[0] = 0;
   ORA_PASS[0] = 0;
+
+  set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
 }
 
 int
@@ -345,13 +353,21 @@ ux_end_tran (int tran_type, bool reset_con_status)
 	  as_info->con_status = CON_STATUS_OUT_TRAN;
 	  as_info->transaction_start_time = (time_t) 0;
 	}
-      return ret;
     }
   else
     {
       errors_in_transaction++;
-      return cas_oracle_get_errno ();
+      ret = cas_oracle_get_errno ();
     }
+
+#ifndef LIBCAS_FOR_JSP
+  if (get_db_connect_status () == DB_CONNECTION_STATUS_RESET)
+    {
+      as_info->reset_flag = TRUE;
+    }
+#endif /* !LIBCAS_FOR_JSP */
+
+  return ret;
 }
 
 static void
@@ -2273,11 +2289,21 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   return -1;
 }
 
+int
+get_db_connect_status (void)
+{
+  if (!is_server_alive ())
+    {
+      set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+    }
+
+  return oracle_connect_status;
+}
+
 void
 set_db_connect_status (int status)
 {
-  /* TODO: for debug */
-  printf ("%s(%d)\n", "set_db_connect_status", status);
+  oracle_connect_status = status;
 }
 
 bool

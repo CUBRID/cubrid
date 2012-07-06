@@ -309,8 +309,6 @@ static bool has_stmt_result_set (T_QUERY_RESULT * q_result);
 static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
 #endif /* !LIBCAS_FOR_JSP */
 
-static int get_db_connect_status (void);
-
 static char *convert_db_value_to_string (DB_VALUE * value,
 					 DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
@@ -8589,7 +8587,7 @@ check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 }
 #endif /* !LIBCAS_FOR_JSP */
 
-static int
+int
 get_db_connect_status (void)
 {
   return db_Connect_status;
