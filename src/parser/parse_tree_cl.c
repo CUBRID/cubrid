@@ -5285,6 +5285,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	    assert (attrs->info.attr_def.attr_type != PT_CLASS);
 	    r1 = pt_print_bytes (parser, attrs);
 	    q = pt_append_varchar (parser, q, r1);
+	    q = pt_append_nulstring(parser, q, " ");
 
 	    if (attrs->info.attr_def.ordering_info != NULL)
 	      {
