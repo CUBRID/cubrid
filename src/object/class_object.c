@@ -7801,7 +7801,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
  * |   | /UK(desc) | new idx  |   share   | new idx | new idx  |   error   |
  * | i |    /R-UK: |          |           |         |          |           |
  * | n +-----------+----------+-----------+---------+----------+-----------+
- * | d |       FK: |  share   |  new idx  |  share  |  share   |   share   |
+ * | d |       FK: | new idx  |  new idx  |  share  |  share   |   share   |
  * | e +-----------+----------+-----------+---------+----------+-----------+
  * | x | idx(asc): |  error   |  new idx  |  share  |  error   |  new idx  |
  * |   +-----------+----------+-----------+---------+----------+-----------+
@@ -7844,16 +7844,23 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
       goto check_filter_function;
     }
 
-  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY
-      && SM_IS_SHARE_WITH_FOREIGN_KEY (existing_con))
+  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
     {
-      ret = SM_SHARE_INDEX;
-      if (existing_con->filter_predicate != NULL
-	  || existing_con->func_index_info != NULL)
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
 	{
 	  ret = SM_CREATE_NEW_INDEX;
+	  return ret;
 	}
-      return ret;
+      else if (SM_IS_SHARE_WITH_FOREIGN_KEY (existing_con->type))
+	{
+	  ret = SM_SHARE_INDEX;
+	  if (existing_con->filter_predicate != NULL
+	      || existing_con->func_index_info != NULL)
+	    {
+	      ret = SM_CREATE_NEW_INDEX;
+	    }
+	  return ret;
+	}
     }
 
   if (constraint_type == DB_CONSTRAINT_INDEX

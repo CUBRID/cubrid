@@ -118,11 +118,9 @@
           (c) == SM_CONSTRAINT_REVERSE_INDEX)     \
           ? true : false )
 
-#define SM_IS_SHARE_WITH_FOREIGN_KEY(cons) \
-	(((cons)->type == SM_CONSTRAINT_FOREIGN_KEY || \
-	  (cons)->type == SM_CONSTRAINT_UNIQUE      || \
-	  (cons)->type == SM_CONSTRAINT_PRIMARY_KEY || \
-	  (cons)->type == SM_CONSTRAINT_INDEX)      \
+#define SM_IS_SHARE_WITH_FOREIGN_KEY(c) \
+	(((c) == SM_CONSTRAINT_FOREIGN_KEY || \
+	  (c) == SM_CONSTRAINT_INDEX)         \
 	  ? true : false)
 
 #define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) \
