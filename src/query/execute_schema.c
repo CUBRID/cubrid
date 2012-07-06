@@ -13222,6 +13222,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		      attr_chg_properties->p[P_S_CONSTR_PK] |=
 			ATT_CHG_PROPERTY_PRESENT_OLD;
 		    }
+		  attr_chg_properties->p[P_NOT_NULL] |=
+		    ATT_CHG_PROPERTY_PRESENT_NEW;
 		  save_constr = true;
 		}
 	      /* non-unique index */
