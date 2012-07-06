@@ -8939,12 +8939,13 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 
       if (error != NO_ERROR)
 	{
-	  /* drop foreign keys that were dropped in the superclass */
-	  error = filter_foreign_keys (flat, class_);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
+	  break;
+	}
+      /* drop foreign keys that were dropped in the superclass */
+      error = filter_foreign_keys (flat, class_);
+      if (error != NO_ERROR)
+	{
+	  break;
 	}
     }
 
