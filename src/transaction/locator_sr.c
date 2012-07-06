@@ -6376,7 +6376,7 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p,
  *       For delete, the attr_info does not need to be given.
  */
 int
-locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
+locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 			      OID * oid, HEAP_CACHE_ATTRINFO * attr_info,
 			      ATTR_ID * att_id, int n_att_id,
 			      LC_COPYAREA_OPERATION operation, int op_type,
@@ -6389,13 +6389,24 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
   RECDES copy_recdes;
   RECDES *old_recdes = NULL;
   int error_code = NO_ERROR;
-
+  HFID class_hfid;
+  OID class_oid;
   /*
    * While scanning objects, the given scancache does not fix the last
    * accessed page. So, the object must be copied to the record descriptor.
    */
   copy_recdes.data = NULL;
 
+  /* Backup the provided class_oid and class_hfid because the
+   * locator actions bellow will change them if this is a pruning
+   * operation. This changes must not be reflected in the calls to this
+   * function.
+   */
+  HFID_COPY (&class_hfid, hfid);
+  if (attr_info != NULL)
+    {
+      COPY_OID (&class_oid, &attr_info->class_oid);
+    }
   switch (operation)
     {
     case LC_FLUSH_UPDATE:
@@ -6463,7 +6474,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
       if (LC_IS_FLUSH_INSERT (operation))
 	{
 	  error_code =
-	    locator_insert_force (thread_p, hfid, &attr_info->class_oid, oid,
+	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid,
 				  &new_recdes, true, op_type, scan_cache,
 				  force_count);
 	}
@@ -6471,7 +6482,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 	{
 	  assert (LC_IS_FLUSH_UPDATE (operation));
 	  error_code =
-	    locator_update_force (thread_p, hfid, &attr_info->class_oid, oid,
+	    locator_update_force (thread_p, &class_hfid, &class_oid, oid,
 				  old_recdes, &new_recdes, true, att_id,
 				  n_att_id, op_type, scan_cache, force_count,
 				  not_check_fk, repl_info);
@@ -6486,7 +6497,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
       break;
 
     case LC_FLUSH_DELETE:
-      error_code = locator_delete_force (thread_p, hfid, oid, true,
+      error_code = locator_delete_force (thread_p, &class_hfid, oid, true,
 					 op_type, scan_cache, force_count);
       break;
 

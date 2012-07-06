@@ -7851,12 +7851,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  op = LC_FLUSH_UPDATE;
 		  actual_op_type = (op_type == MULTI_ROW_UPDATE_PRUNING) ?
 		    MULTI_ROW_UPDATE : SINGLE_ROW_UPDATE;
-
-		  /* attr_info now points to the partition where we actually
-		   * inserted the record (if the partition has changed).
-		   */
-		  COPY_OID (&cls_info->prev_class_oid,
-			    &cls_info->attr_info.class_oid);
 		}
 	      if (error != NO_ERROR && error != ER_HEAP_UNKNOWN_OBJECT)
 		{

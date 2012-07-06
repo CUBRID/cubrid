@@ -75,8 +75,8 @@ locator_start_force_scan_cache (THREAD_ENTRY * thread_p,
 				int op_type);
 extern void locator_end_force_scan_cache (THREAD_ENTRY * thread_p,
 					  HEAP_SCANCACHE * scan_cache);
-extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
-					 OID * oid,
+extern int locator_attribute_info_force (THREAD_ENTRY * thread_p,
+					 const HFID * hfid, OID * oid,
 					 HEAP_CACHE_ATTRINFO * attr_info,
 					 ATTR_ID * att_id, int n_att_id,
 					 LC_COPYAREA_OPERATION operation,
