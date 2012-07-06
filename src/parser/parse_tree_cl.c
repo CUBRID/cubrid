@@ -5469,7 +5469,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, names);
       r2 = pt_print_bytes (parser, defaults);
       q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " set default ");
+      q = pt_append_nulstring (parser, q, " set ");
       q = pt_append_varchar (parser, q, r2);
       break;
     case PT_ADD_SUPCLASS:
