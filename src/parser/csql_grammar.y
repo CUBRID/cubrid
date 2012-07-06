@@ -3102,7 +3102,8 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER VIEW
+	| ALTER
+	  view_or_vclass
 	  class_name
 	  AS
 	  csql_query
@@ -3124,6 +3125,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+	
+view_or_vclass
+	: VIEW
+	| VCLASS
 	;
 
 alter_clause_list

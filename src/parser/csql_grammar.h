@@ -543,7 +543,7 @@
 
 
 /* Copy the first part of user declarations.  */
-#line 28 "../../src/parser/csql_grammar.y"
+#line 28 "../src/parser/csql_grammar.y"
 
 #define YYMAXDEPTH	1000000
 
@@ -1061,7 +1061,7 @@ typedef struct YYLTYPE
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 550 "../../src/parser/csql_grammar.y"
+#line 550 "../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1073,7 +1073,7 @@ typedef union YYSTYPE
   container_10 c10;
 }
 /* Line 2616 of glr.c.  */
-#line 1077 "../../src/parser/csql_grammar.h"
+#line 1077 "../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
