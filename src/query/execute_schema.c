@@ -551,7 +551,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  error = do_add_attributes (parser, ctemplate,
 				     alter->info.alter.alter_clause.
-				     attr_mthd.attr_def_list, NULL);
+				     attr_mthd.attr_def_list,
+				     alter->info.alter.constraint_list, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
@@ -666,7 +667,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	/* add the new attributes */
 	error = do_add_attributes (parser, ctemplate,
 				   alter->info.alter.alter_clause.query.
-				   attr_def_list, NULL);
+				   attr_def_list,
+				   alter->info.alter.constraint_list, NULL);
 	if (error != NO_ERROR)
 	  {
 	    goto reset_query_error;
@@ -3670,7 +3672,8 @@ static int adjust_partition_range (DB_OBJLIST * objs);
 static int adjust_partition_size (MOP class_);
 static const char *get_attr_name (PT_NODE * attribute);
 static int do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
-			     PT_NODE * atts, bool error_on_not_normal);
+			     PT_NODE * atts, PT_NODE * constraints,
+			     bool error_on_not_normal);
 static int do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
 						DB_CTMPL * ctemplate,
 						DB_QUERY_TYPE * column);
@@ -9939,6 +9942,7 @@ get_attr_name (PT_NODE * attribute)
  *   parser(in): Parser context
  *   ctemplate(in/out): Class template
  *   attribute(in/out): Attribute to add
+ *   constraints(in/out): the constraints of the class
  *   error_on_not_normal(in): whether to flag an error on class and shared
  *                            attributes or not
  *
@@ -9946,7 +9950,8 @@ get_attr_name (PT_NODE * attribute)
  */
 static int
 do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
-		  PT_NODE * attribute, bool error_on_not_normal)
+		  PT_NODE * attribute, PT_NODE * constraints,
+		  bool error_on_not_normal)
 {
   const char *attr_name;
   int meta, shared;
@@ -9960,6 +9965,8 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   SM_NAME_SPACE name_space = ID_NULL;
   bool add_first = false;
   const char *add_after_attr = NULL;
+  PT_NODE *cnstr, *pk_attr;
+  DB_DEFAULT_EXPR_TYPE default_expr_type = DB_DEFAULT_NONE;
 
   DB_MAKE_NULL (&stack_value);
   attr_name = get_attr_name (attribute);
@@ -9990,14 +9997,40 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       goto error_exit;
     }
 
-  /* don't allow a default value of NULL for NOT NULL constrained columns */
-  if (default_value && DB_IS_NULL (default_value) &&
-      attribute->info.attr_def.constrain_not_null)
+  if (default_value && DB_IS_NULL (default_value))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
-      error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
-      goto error_exit;
+      /* don't allow a default value of NULL for NOT NULL constrained columns */
+      if (attribute->info.attr_def.constrain_not_null)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
+	  error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
+	  goto error_exit;
+	}
+
+      /* don't allow a default value of NULL in new PK constraint */
+      for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
+	{
+	  if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
+	    {
+	      break;
+	    }
+	}
+      if (cnstr != NULL)
+	{
+	  for (pk_attr = cnstr->info.constraint.un.primary_key.attrs;
+	       pk_attr != NULL; pk_attr = pk_attr->next)
+	    {
+	      if (intl_identifier_casecmp (pk_attr->info.name.original,
+					   attr_name) == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_CANNOT_HAVE_PK_DEFAULT_NULL, 1, attr_name);
+		  error = ER_CANNOT_HAVE_PK_DEFAULT_NULL;
+		  goto error_exit;
+		}
+	    }
+	}
     }
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
@@ -10027,13 +10060,16 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     }
 
   default_info = attribute->info.attr_def.data_default;
+  if (default_info != NULL)
+    {
+      default_expr_type = default_info->info.data_default.default_expr;
+      default_value = &stack_value;
+    }
   error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL,
-					    attr_db_domain, &stack_value,
+					    attr_db_domain, default_value,
 					    name_space, add_first,
 					    add_after_attr,
-					    default_info ? default_info->info.
-					    data_default.
-					    default_expr : DB_DEFAULT_NONE);
+					    default_expr_type);
 
   db_value_clear (&stack_value);
 
@@ -10232,6 +10268,7 @@ get_attribute_with_name (PT_NODE * atts, const char *name)
  *   parser(in): Parser context
  *   ctemplate(in/out): Class template
  *   atts(in/out): Attributes to add
+ *   constraints(in/out): the constraints of the class
  *   create_select_columns(in): the column list of a select for
  *                              CREATE ... AS SELECT statements
  *
@@ -10239,7 +10276,8 @@ get_attribute_with_name (PT_NODE * atts, const char *name)
  */
 int
 do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
-		   PT_NODE * atts, DB_QUERY_TYPE * create_select_columns)
+		   PT_NODE * atts, PT_NODE * constraints,
+		   DB_QUERY_TYPE * create_select_columns)
 {
   PT_NODE *crt_attr;
   DB_QUERY_TYPE *column;
@@ -10252,7 +10290,9 @@ do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       if (query_get_column_with_name (create_select_columns, attr_name) ==
 	  NULL)
 	{
-	  error = do_add_attribute (parser, ctemplate, crt_attr, false);
+	  error =
+	    do_add_attribute (parser, ctemplate, crt_attr, constraints,
+			      false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -10268,7 +10308,8 @@ do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       crt_attr = get_attribute_with_name (atts, col_name);
       if (crt_attr != NULL)
 	{
-	  error = do_add_attribute (parser, ctemplate, crt_attr, true);
+	  error =
+	    do_add_attribute (parser, ctemplate, crt_attr, constraints, true);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -11322,6 +11363,7 @@ do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
   error = do_add_attributes (parser, ctemplate,
 			     pt_node->info.create_entity.attr_def_list,
+			     pt_node->info.create_entity.constraint_list,
 			     create_select_columns);
   if (error != NO_ERROR)
     {
@@ -11330,7 +11372,7 @@ do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
   error = do_add_attributes (parser, ctemplate,
 			     pt_node->info.create_entity.class_attr_def_list,
-			     NULL);
+			     NULL, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -15491,7 +15533,6 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   /* ptr_def is either NULL or pointing to address of def_value */
   assert (ptr_def == NULL || ptr_def == &def_value);
 
-  /* check if the class has a default NULL and a NOT NULL constraint */
   if (ptr_def && DB_IS_NULL (ptr_def)
       && attribute->info.attr_def.data_default->info.data_default.
       default_expr == DB_DEFAULT_NONE)
@@ -15505,6 +15546,14 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
 	      error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
+	      goto exit;
+	    }
+	  else if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
+	    {
+	      /* don't allow a default value of NULL in new PK constraint */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_CANNOT_HAVE_PK_DEFAULT_NULL, 1, attr_name);
+	      error = ER_CANNOT_HAVE_PK_DEFAULT_NULL;
 	      goto exit;
 	    }
 	}
@@ -16074,7 +16123,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
     }
   if (node->node_type == PT_SORT_SPEC)
     {
-      func_index_info->asc_desc = (node->info.sort_spec.asc_or_desc == PT_ASC 
+      func_index_info->asc_desc = (node->info.sort_spec.asc_or_desc == PT_ASC
 				   ? 0 : 1);
     }
   func_index_info->expr_str = parser_print_tree_with_quotes (parser, expr);

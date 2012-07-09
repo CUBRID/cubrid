@@ -1370,8 +1370,9 @@
 
 #define ER_HF_MAX_BESTSPACE_ENTRIES                 -1093
 #define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1094
+#define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1095
 
-#define ER_LAST_ERROR                               -1095
+#define ER_LAST_ERROR                               -1096
 
 #define DB_TRUE 1
 #define DB_FALSE 0

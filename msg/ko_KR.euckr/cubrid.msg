@@ -1159,7 +1159,8 @@ $ LOADDB
 1092 User name is too long.
 1093 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
 1094 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
-1095 마지막 에러
+1095 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
+1096 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

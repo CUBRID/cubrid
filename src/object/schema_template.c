@@ -1437,6 +1437,13 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
 	  return error;
 	}
+      else if (proposed_value && DB_IS_NULL (proposed_value)
+	       && default_expr == DB_DEFAULT_NONE
+	       && (att->flags & SM_ATTFLAG_PRIMARY_KEY))
+	{
+	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
+	  return error;
+	}
 
       value = proposed_value;
       status = tp_domain_check (att->domain, value, TP_EXACT_MATCH);

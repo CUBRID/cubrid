@@ -127,6 +127,7 @@ extern int do_add_queries (PARSER_CONTEXT * parser,
 			   DB_CTMPL * ctemplate, const PT_NODE * queries);
 extern int do_add_attributes (PARSER_CONTEXT * parser,
 			      DB_CTMPL * ctemplate, PT_NODE * atts,
+			      PT_NODE * constraints,
 			      DB_QUERY_TYPE * create_select_columns);
 extern int do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints);
 extern int do_check_fk_constraints (DB_CTMPL * ctemplate,
