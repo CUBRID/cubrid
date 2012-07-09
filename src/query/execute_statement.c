@@ -2338,6 +2338,14 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      /* reset started flag because current_val changed */
+      DB_MAKE_INT (&value, 0);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
+      if (error < 0)
+	{
+	  goto end;
+	}
+      pr_clear_value (&value);
     }
 
   /* increment_val */
