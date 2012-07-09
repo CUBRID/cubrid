@@ -9652,8 +9652,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	      if (node->info.index.where &&
 		  pt_false_search_condition (parser, node->info.index.where))
 		{
-		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_INVALID_FILTER_INDEX,
+			      pt_short_print (parser,
+					      node->info.index.where));
 		}
 	    }
 
@@ -9783,9 +9785,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 			}
 
 		      if (p->info.index.function_expr
-			  && !pt_is_function_index_expr (parser, p->info.index.
-							 function_expr->
-							 info.sort_spec.expr,
+			  && !pt_is_function_index_expr (parser,
+							 p->info.index.
+							 function_expr->info.
+							 sort_spec.expr,
 							 true))
 			{
 			  break;
@@ -13274,8 +13277,9 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
     }
   if (info.is_valid_expr == false)
     {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_INVALID_FILTER_INDEX,
+		  pt_short_print (parser, node));
     }
 
   if (info.is_null_atts)

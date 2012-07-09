@@ -16478,8 +16478,9 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 
       if (strlen (new_pred.pred_string) > MAX_FILTER_PREDICATE_STRING_LENGTH)
 	{
-	  PT_ERRORm (parser, where_predicate, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_FILTER_INDEX);
+	  PT_ERRORmf (parser, where_predicate, MSGCAT_SET_ERROR,
+		      -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH),
+		      MAX_FILTER_PREDICATE_STRING_LENGTH);
 	  error = ER_FAILED;
 	  goto error;
 	}

@@ -1539,7 +1539,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 229 Updating class attributes and instance attributes not allowed in the same statement.
 230 Updating virtual class hierarchies is not allowed.
 231 Host variables not allowed in DDL statement.
-232 Invalid filter expression for index.
+232 Invalid filter expression (%s) for index.
 233 Multiple or nested functions are not allowed in a function index definition.
 234 Invalid index specification.
 235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
