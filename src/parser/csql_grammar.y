@@ -19623,7 +19623,7 @@ parser_save_and_set_cannot_cache (bool value)
 	  return;
 	}
 
-      memcpy (new_p, parser_cannot_cache_stack, parser_cannot_cache_limit);
+      memcpy (new_p, parser_cannot_cache_stack, parser_cannot_cache_limit * sizeof (bool));
       if (parser_cannot_cache_stack != parser_cannot_cache_stack_default)
 	free (parser_cannot_cache_stack);
 
@@ -19715,7 +19715,7 @@ parser_save_and_set_wjc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_wjc_stack, parser_wjc_limit);
+      memcpy (new_p, parser_wjc_stack, parser_wjc_limit * sizeof (int));
       if (parser_wjc_stack != parser_wjc_stack_default)
 	free (parser_wjc_stack);
 
@@ -19754,7 +19754,7 @@ parser_save_and_set_ic (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_instnum_stack, parser_instnum_limit);
+      memcpy (new_p, parser_instnum_stack, parser_instnum_limit * sizeof (int));
       if (parser_instnum_stack != parser_instnum_stack_default)
 	free (parser_instnum_stack);
 
@@ -19794,7 +19794,7 @@ parser_save_and_set_gc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_groupbynum_stack, parser_groupbynum_limit);
+      memcpy (new_p, parser_groupbynum_stack, parser_groupbynum_limit * sizeof (int));
       if (parser_groupbynum_stack != parser_groupbynum_stack_default)
 	free (parser_groupbynum_stack);
 
@@ -19833,7 +19833,7 @@ parser_save_and_set_oc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_orderbynum_stack, parser_orderbynum_limit);
+      memcpy (new_p, parser_orderbynum_stack, parser_orderbynum_limit * sizeof (int));
       if (parser_orderbynum_stack != parser_orderbynum_stack_default)
 	free (parser_orderbynum_stack);
 
@@ -19873,7 +19873,7 @@ parser_save_and_set_sysc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_sysc_stack, parser_sysc_limit);
+      memcpy (new_p, parser_sysc_stack, parser_sysc_limit * sizeof (int));
       if (parser_sysc_stack != parser_sysc_stack_default)
 	free (parser_sysc_stack);
 
@@ -19913,7 +19913,7 @@ parser_save_and_set_prc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_prc_stack, parser_prc_limit);
+      memcpy (new_p, parser_prc_stack, parser_prc_limit * sizeof (int));
       if (parser_prc_stack != parser_prc_stack_default)
 	free (parser_prc_stack);
 
@@ -19953,7 +19953,7 @@ parser_save_and_set_cbrc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_cbrc_stack, parser_cbrc_limit);
+      memcpy (new_p, parser_cbrc_stack, parser_cbrc_limit * sizeof (int));
       if (parser_cbrc_stack != parser_cbrc_stack_default)
 	free (parser_cbrc_stack);
 
@@ -19993,7 +19993,7 @@ parser_save_and_set_serc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_serc_stack, parser_serc_limit);
+      memcpy (new_p, parser_serc_stack, parser_serc_limit * sizeof (int));
       if (parser_serc_stack != parser_serc_stack_default)
 	free (parser_serc_stack);
 
@@ -20033,7 +20033,7 @@ parser_save_and_set_pseudoc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_pseudoc_stack, parser_pseudoc_limit);
+      memcpy (new_p, parser_pseudoc_stack, parser_pseudoc_limit * sizeof (int));
       if (parser_pseudoc_stack != parser_pseudoc_stack_default)
 	free (parser_pseudoc_stack);
 
@@ -20073,7 +20073,7 @@ parser_save_and_set_sqc (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_sqc_stack, parser_sqc_limit);
+      memcpy (new_p, parser_sqc_stack, parser_sqc_limit * sizeof (int));
       if (parser_sqc_stack != parser_sqc_stack_default)
 	free (parser_sqc_stack);
 
@@ -20113,7 +20113,7 @@ parser_save_and_set_hvar (int value)
 	  return;
 	}
 
-      memcpy (new_p, parser_hvar_stack, parser_hvar_limit);
+      memcpy (new_p, parser_hvar_stack, parser_hvar_limit * sizeof (int));
       if (parser_hvar_stack != parser_hvar_stack_default)
 	free (parser_hvar_stack);
 
@@ -20153,7 +20153,7 @@ parser_save_found_Oracle_outer ()
 	  return;
 	}
 
-      memcpy (new_p, parser_oracle_stack, parser_oracle_limit);
+      memcpy (new_p, parser_oracle_stack, parser_oracle_limit * sizeof (int));
       if (parser_oracle_stack != parser_oracle_stack_default)
 	free (parser_oracle_stack);
 
@@ -20228,7 +20228,7 @@ parser_push_orderby_node (PT_NODE * node)
 	  return;
 	}
 
-      memcpy (new_p, parser_orderby_node_stack, parser_orderby_node_limit);
+      memcpy (new_p, parser_orderby_node_stack, parser_orderby_node_limit * sizeof (PT_NODE *));
       if (parser_orderby_node_stack != parser_orderby_node_stack_default)
 	free (parser_orderby_node_stack);
 
@@ -20274,7 +20274,7 @@ parser_push_select_stmt_node (PT_NODE * node)
 	  return;
 	}
 
-      memcpy (new_p, parser_select_node_stack, parser_select_node_limit);
+      memcpy (new_p, parser_select_node_stack, parser_select_node_limit * sizeof (PT_NODE *));
       if (parser_select_node_stack != parser_select_node_stack_default)
 	free (parser_select_node_stack);
 
@@ -20321,7 +20321,7 @@ parser_push_hint_node (PT_NODE * node)
 	  return;
 	}
 
-      memcpy (new_p, parser_hint_node_stack, parser_hint_node_limit);
+      memcpy (new_p, parser_hint_node_stack, parser_hint_node_limit * sizeof (PT_NODE *));
       if (parser_hint_node_stack != parser_hint_node_stack_default)
 	free (parser_hint_node_stack);
 
@@ -20364,7 +20364,7 @@ parser_push_join_type (int v)
 	  return;
 	}
 
-      memcpy (new_p, parser_join_type_stack, parser_join_type_limit);
+      memcpy (new_p, parser_join_type_stack, parser_join_type_limit * sizeof (int));
       if (parser_join_type_stack != parser_join_type_stack_default)
 	free (parser_join_type_stack);
 
