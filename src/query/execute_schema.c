@@ -392,6 +392,10 @@ static int do_redistribute_partitions_data (const char *class_name,
 					    bool should_update,
 					    bool should_insert);
 
+static int do_find_auto_increment_serial (MOP * auto_increment_obj,
+					  const char *class_name,
+					  const char *attr_name);
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -7835,6 +7839,69 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
   return NO_ERROR;
 }
 
+
+/*
+ * do_find_auto_increment_serial() -
+ *   return: Error code
+ *   auto_increment_obj(out):
+ *   class_name(in):
+ *   atrr_name(in):
+ *
+ * Note:
+ */
+static int
+do_find_auto_increment_serial (MOP * auto_increment_obj,
+			       const char *class_name, const char *attr_name)
+{
+  MOP serial_class = NULL;
+  char *serial_name = NULL;
+  int serial_name_size;
+  DB_IDENTIFIER serial_obj_id;
+  int error = NO_ERROR;
+
+  assert (class_name != NULL && attr_name != NULL);
+
+  *auto_increment_obj = NULL;
+
+  serial_class = sm_find_class (CT_SERIAL_NAME);
+  if (serial_class == NULL)
+    {
+      error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  serial_name_size = strlen (class_name) + strlen (attr_name)
+    + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1;
+
+  serial_name = (char *) malloc (serial_name_size);
+  if (serial_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name_size);
+      goto end;
+    }
+
+  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, attr_name);
+
+  *auto_increment_obj = do_get_serial_obj_id (&serial_obj_id,
+					      serial_class, serial_name);
+  if (*auto_increment_obj == NULL)
+    {
+      error = ER_QPROC_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name);
+      goto end;
+    }
+
+end:
+  if (serial_name != NULL)
+    {
+      free_and_init (serial_name);
+    }
+
+  return error;
+}
+
 /*
  * adjust_partition_range() -
  *   return: Error code
@@ -10093,6 +10160,16 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 						       &auto_increment_obj,
 						       ctemplate->name,
 						       attribute);
+	    }
+	  else
+	    {
+	      /* HA mode, applylogdb
+	       * the serial obj has been inserted when applying the last log item
+	       * So, just get the serial obj here
+	       */
+	      error = do_find_auto_increment_serial (&auto_increment_obj,
+						     ctemplate->name,
+						     attr_name);
 	    }
 	  if (error == NO_ERROR)
 	    {
