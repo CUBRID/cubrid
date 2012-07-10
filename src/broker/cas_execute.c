@@ -633,6 +633,9 @@ ux_is_database_connected (void)
 void
 ux_get_default_setting ()
 {
+  int err_code = 0;
+  char buffer[LINE_MAX], *p;
+
   ux_get_tran_setting (&cas_default_lock_timeout,
 		       &cas_default_isolation_level);
   if (cas_default_isolation_level < TRAN_MINVALUE_ISOLATION
@@ -649,6 +652,33 @@ ux_get_default_setting ()
     {
       cas_db_sys_param[0] = '\0';
     }
+
+
+  cas_default_no_backslash_escapes = true;
+
+  strncpy (buffer, "no_backslash_escapes", LINE_MAX);
+  err_code = db_get_system_parameters (buffer, LINE_MAX);
+  if (err_code != NO_ERROR)
+    {
+      return;
+    }
+
+  p = strchr (buffer, '=');
+  if (p == NULL)
+    {
+      return;
+    }
+
+  if (*(p + 1) == 'y')
+    {
+      cas_default_no_backslash_escapes = true;
+    }
+  else
+    {
+      cas_default_no_backslash_escapes = false;
+    }
+
+  return;
 }
 
 void
@@ -6175,9 +6205,10 @@ get_num_markers (char *stmt)
 	{
 	  state = (state == OUT_STR) ? IN_STR : OUT_STR;
 	}
-      else if (*p == '\\' && *(p + 1) == '\'' && state == IN_STR)
+      else if (cas_default_no_backslash_escapes == false
+	       && *p == '\\' && state == IN_STR)
 	{
-	  p += 2;
+	  p++;
 	}
     }
   return num_q;

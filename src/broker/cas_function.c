@@ -831,39 +831,11 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
     }
   else if (param_name == CCI_PARAM_NO_BACKSLASH_ESCAPES)
     {
-      char *p;
-      char buffer[LINE_MAX];
-      int err_code, no_backslash_escapes;
+      int no_backslash_escapes;
 
-      strncpy (buffer, "no_backslash_escapes", LINE_MAX);
-      err_code = db_get_system_parameters (buffer, LINE_MAX);
-
-      if (err_code != NO_ERROR)
-	{
-	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (net_buf);
-	  return FN_KEEP_CONN;
-	}
-
-      p = strchr (buffer, '=');
-
-      if (p == NULL)
-	{
-	  ERROR_INFO_SET (CAS_ER_DBMS, CAS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (net_buf);
-	  return FN_KEEP_CONN;
-	}
-
-      p++;
-
-      if (strncasecmp (p, "y", 1) == 0)
-	{
-	  no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_TRUE;
-	}
-      else
-	{
-	  no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_FALSE;
-	}
+      no_backslash_escapes = ((cas_default_no_backslash_escapes == true)
+			      ? CCI_NO_BACKSLASH_ESCAPES_TRUE :
+			      CCI_NO_BACKSLASH_ESCAPES_FALSE);
 
       cas_log_write (0, true, "get_db_parameter no_backslash_escapes %d",
 		     no_backslash_escapes);
