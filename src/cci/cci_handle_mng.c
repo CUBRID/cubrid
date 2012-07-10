@@ -112,7 +112,6 @@ static int new_req_handle_id (T_CON_HANDLE * con_handle);
 static void con_handle_content_free (T_CON_HANDLE * con_handle);
 static void ipstr2uchar (char *ip_str, unsigned char *ip_addr);
 static int is_ip_str (char *ip_str);
-static int hostname2uchar (char *hostname, unsigned char *ip_addr);
 
 static int hm_find_ha_status_index (T_CON_HANDLE * con_handle);
 
@@ -931,18 +930,4 @@ is_ip_str (char *ip_str)
     }
 
   return 1;
-}
-
-static int
-hostname2uchar (char *hostname, unsigned char *ip_addr)
-{
-  struct hostent *hp;
-
-  hp = gethostbyname (hostname);
-  if (hp == NULL)
-    return -1;
-
-  memcpy (ip_addr, hp->h_addr_list[0], 4);
-
-  return 0;
 }

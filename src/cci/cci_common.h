@@ -247,6 +247,7 @@ extern "C"
 #if defined(WINDOWS)
 #define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
   typedef int socklen_t;
+  typedef unsigned long in_addr_t;
 #else
   typedef int SOCKET;
 #define INVALID_SOCKET (-1)
@@ -463,6 +464,8 @@ extern "C"
   extern void *mht_get (MHT_TABLE * ht, void *key);
   extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
   extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
+
+  extern int hostname2uchar (char *host, unsigned char *ip_addr);
 
 /************************************************************************
  * PUBLIC VARIABLES							*

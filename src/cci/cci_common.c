@@ -30,6 +30,30 @@
 
 #include <ctype.h>
 
+#if defined (WINDOWS)
+#include <winsock2.h>
+#include <windows.h>
+#else
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <sys/uio.h>
+#include <sys/un.h>
+#include <sys/ioctl.h>
+#endif
+
+#if defined(AIX)
+#include <netinet/if_ether.h>
+#include <net/if_dl.h>
+#endif /* AIX */
+#if defined(SOLARIS)
+#include <sys/filio.h>
+#endif /* SOLARIS */
+#if defined(sun)
+#include <sys/sockio.h>
+#endif /* sun */
+
 #include "cci_common.h"
 #include "cas_cci.h"
 
@@ -966,4 +990,77 @@ mht_put_data (MHT_TABLE * ht, void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
   return mht_put_internal (ht, key, data, MHT_OPT_KEEP_KEY);
+}
+
+#ifndef HAVE_GETHOSTBYNAME_R
+static cci_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif /* HAVE_GETHOSTBYNAME_R */
+
+int
+hostname2uchar (char *host, unsigned char *ip_addr)
+{
+  in_addr_t in_addr;
+
+  /*
+   * First try to convert to the host name as a dotten-decimal number.
+   * Only if that fails do we call gethostbyname.
+   */
+  in_addr = inet_addr (host);
+  if (in_addr != INADDR_NONE)
+    {
+      memcpy ((void *) ip_addr, (void *) &in_addr, sizeof (in_addr));
+      return CCI_ER_NO_ERROR;
+    }
+  else
+    {
+#ifdef HAVE_GETHOSTBYNAME_R
+# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+      struct hostent *hp, hent;
+      int herr;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0
+	  || hp == NULL)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
+# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+      struct hostent hent;
+      int herr;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
+# elif defined (HAVE_GETHOSTBYNAME_R_HPUX)
+      struct hostent hent;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf) == -1)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
+# else
+#   error "HAVE_GETHOSTBYNAME_R"
+# endif
+#else /* HAVE_GETHOSTBYNAME_R */
+      struct hostent *hp;
+
+      cci_mutex_lock (&gethostbyname_lock);
+      hp = gethostbyname (host);
+      if (hp == NULL)
+	{
+	  cci_mutex_unlock (&gethostbyname_lock);
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+      cci_mutex_unlock (&gethostbyname_lock);
+#endif /* !HAVE_GETHOSTBYNAME_R */
+    }
+
+  return CCI_ER_NO_ERROR;
 }
