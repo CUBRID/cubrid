@@ -411,6 +411,11 @@ util_split_ha_node (const char *str)
   char *start_node;
 
   start_node = strchr (str, '@');
+  if (start_node == NULL || str == start_node)
+    {
+      return NULL;
+    }
+
   return util_split_string (start_node + 1, " ,:");
 }
 
@@ -549,8 +554,8 @@ util_make_ha_conf (HA_CONF * ha_conf)
   if (ha_conf->node_names == NULL)
     {
       const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-      fprintf (stderr, message);
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+      fprintf (stderr, message, PRM_NAME_HA_NODE_LIST, "");
       return false;
     }
 
