@@ -10483,7 +10483,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	case PT_SEARCHED_CASE:
 	  r1 = pt_print_bytes (parser, p->info.expr.arg3);
 	  r2 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r3 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
+	  r3 = (p->info.expr.arg2 == NULL
+		|| p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
 	    : pt_print_bytes (parser, p->info.expr.arg2);
 
 	  if (!p->info.expr.continued_case)
