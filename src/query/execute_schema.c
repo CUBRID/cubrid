@@ -2624,6 +2624,19 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
   SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 },
     *p_pred_index_info = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
+  int is_partition = NOT_PARTITION_CLASS;
+
+  error = do_is_partitioned_classobj (&is_partition, obj, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (is_partition == PARTITION_CLASS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
+      return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+    }
 
   nnames = pt_length_of_list (column_names);
 
@@ -7237,6 +7250,21 @@ do_is_partitioned_classobj (int *is_partition,
     }
   if (!smclass->partition_of)
     {
+      AU_ENABLE (au_save);
+      return NO_ERROR;
+    }
+
+  if (sub_partitions == NULL && keyattr == NULL)
+    {
+      /* Only get partition status (partitioned/not partitioned) */
+      if (smclass->users == NULL)
+	{
+	  *is_partition = PARTITION_CLASS;
+	}
+      else
+	{
+	  *is_partition = PARTITIONED_CLASS;
+	}
       AU_ENABLE (au_save);
       return NO_ERROR;
     }
