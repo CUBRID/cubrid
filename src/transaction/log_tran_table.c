@@ -2501,20 +2501,21 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {
-      /* In order to prevent performance degradation, we use log_Clock
+      /* In order to prevent performance degradation, we use log_Clock_msec
        * set by thread_log_clock_thread instead of calling gettimeofday here
        * if the system supports atomic built-ins.
        */
 #if defined(HAVE_ATOMIC_BUILTINS)
-      now = log_Clock;
+      now = log_Clock_msec;
 #else /* HAVE_ATOMIC_BUILTINS */
       gettimeofday (&tv, NULL);
-      now = tv.tv_sec;
+      now = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
 #endif /* HAVE_ATOMIC_BUILTINS */
       if (tdes->query_timeout < now)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"logtb_is_interrupted_tdes: timeout %d seconds delayed (expected=%d, now=%d)",
+			"logtb_is_interrupted_tdes: timeout %d milliseconds "
+			"delayed (expected=%d, now=%d)",
 			(now - tdes->query_timeout), tdes->query_timeout,
 			now);
 	  interrupt = true;

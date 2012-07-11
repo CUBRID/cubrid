@@ -561,6 +561,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   char forward_only_cursor;
   int remain_msg_size = 0;
   int remained_time = 0;
+  bool use_server_query_cancel = false;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -597,9 +598,25 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
-      /* query timeout - CCI does not support query timeout by itself. */
+      /* In PROTOCOL_V2, cci driver use server query timeout feature,
+       * when disconnect_on_query_timeout is false.
+       */
+      int timeout = 0;
+
+      if (TIMEOUT_IS_SET (con_handle)
+	  && con_handle->disconnect_on_query_timeout == false)
+	{
+	  use_server_query_cancel = true;
+	  timeout = con_handle->current_timeout;
+	}
+      ADD_ARG_INT (&net_buf, timeout);
+    }
+  else if (hm_get_broker_version (con_handle) >=
+	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+    {
+      /* cci does not use server query timeout in PROTOCOL_V1 */
       ADD_ARG_INT (&net_buf, 0);
     }
 
@@ -639,8 +656,11 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   net_buf_clear (&net_buf);
 
-  res_count = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
-				    err_buf, remained_time);
+  res_count = net_recv_msg_timeout (con_handle, &result_msg,
+				    &result_msg_size, err_buf,
+				    ((use_server_query_cancel) ?
+				     0 : remained_time));
+
   if (res_count < 0)
     {
       err_code = res_count;
@@ -757,6 +777,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char prepare_flag = 0;
   char execute_flag = CCI_EXEC_QUERY_ALL;
   int prepare_argc_count = 3;
+  bool use_server_query_cancel = false;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -795,9 +816,25 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
-      /* query timeout - CCI does not support query timeout by itself. */
+      /* In PROTOCOL_V2, cci driver use server query timeout feature,
+       * when disconnect_on_query_timeout is false.
+       */
+      int timeout = 0;
+
+      if (TIMEOUT_IS_SET (con_handle)
+	  && con_handle->disconnect_on_query_timeout == false)
+	{
+	  use_server_query_cancel = true;
+	  timeout = con_handle->current_timeout;
+	}
+      ADD_ARG_INT (&net_buf, timeout);
+    }
+  else if (hm_get_broker_version (con_handle) >=
+	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+    {
+      /* cci does not use server query timeout in PROTOCOL_V1 */
       ADD_ARG_INT (&net_buf, 0);
     }
 
@@ -833,7 +870,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   /* prepare result */
   result_code =
     net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size, err_buf,
-			  remained_time);
+			  ((use_server_query_cancel) ? 0 : remained_time));
 
   if (result_code < 0)
     {

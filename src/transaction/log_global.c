@@ -113,8 +113,8 @@ LOG_GLOBAL log_Gl = {
 };
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-/* Current time in seconds */
-UINT64 log_Clock = 0;
+/* Current time in milliseconds */
+UINT64 log_Clock_msec = 0;
 #endif /* HAVE_ATOMIC_BUILTINS */
 
 /* Name of the database and logs */

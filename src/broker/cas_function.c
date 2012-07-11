@@ -564,6 +564,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
   if (client_supports_query_timeout == true)
     {
       net_arg_get_int (&app_query_timeout, argv[arg_idx++]);
+
+      if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+						PROTOCOL_V2))
+	{
+	  /* protocol version v1 driver send query timeout in second */
+	  app_query_timeout *= 1000;
+	}
     }
   else
     {
@@ -2491,12 +2498,15 @@ void
 set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 {
 #ifndef LIBCAS_FOR_JSP
+  int broker_timeout_in_millis = shm_appl->query_timeout * 1000;
+
   if (tran_is_in_libcas () == false)
     {
-      if (query_timeout == 0 || shm_appl->query_timeout == 0)
+      if (query_timeout == 0 || broker_timeout_in_millis == 0)
 	{
-	  tran_set_query_timeout (query_timeout + shm_appl->query_timeout);
-	  if (query_timeout == 0 && shm_appl->query_timeout == 0)
+	  tran_set_query_timeout (query_timeout + broker_timeout_in_millis);
+
+	  if (query_timeout == 0 && broker_timeout_in_millis == 0)
 	    {
 	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			     "set query timeout to 0 (no limit)");
@@ -2504,23 +2514,24 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 	  else
 	    {
 	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			     "set query timeout to %d (from %s)",
-			     (query_timeout + shm_appl->query_timeout),
+			     "set query timeout to %d milliseconds (from %s)",
+			     (query_timeout + broker_timeout_in_millis),
 			     (query_timeout > 0 ? "app" : "broker"));
 	    }
 	}
-      else if (query_timeout > shm_appl->query_timeout)
+      else if (query_timeout > broker_timeout_in_millis)
 	{
-	  tran_set_query_timeout (shm_appl->query_timeout);
+	  tran_set_query_timeout (broker_timeout_in_millis);
 	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			 "set query timeout to %d (from broker)",
-			 shm_appl->query_timeout);
+			 "set query timeout to %d milliseconds (from broker)",
+			 broker_timeout_in_millis);
 	}
       else
 	{
 	  tran_set_query_timeout (query_timeout);
 	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			 "set query timeout to %d (from app)", query_timeout);
+			 "set query timeout to %d milliseconds (from app)",
+			 query_timeout);
 	}
     }
 #else

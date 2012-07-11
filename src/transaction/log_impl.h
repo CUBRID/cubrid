@@ -1524,7 +1524,7 @@ extern LOG_LOGGING_STAT log_Stat;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 /* Current time in seconds */
-extern UINT64 log_Clock;
+extern UINT64 log_Clock_msec;
 #endif /* HAVE_ATOMIC_BUILTINS */
 
 /* Name of the database and logs */

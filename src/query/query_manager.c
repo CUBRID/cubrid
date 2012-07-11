@@ -757,7 +757,7 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id,
       /* Maybe it is a holdable result and we'll find it in the session state
        * object. In order to be able to use this result, we need to create
        * a new entry for this query in the transaction query entries and copy
-       * result information from the session. 
+       * result information from the session.
        */
       query_p = qmgr_allocate_query_entry (thread_p);
       if (query_p == NULL)
@@ -1616,6 +1616,7 @@ qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * tran_entry_p,
  *   flagp(in)  : flag to determine if this is an asynchronous query
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
+ *   query_timeout(in) : query_timeout in millisec.
  *
  * Note1: The query result is returned through a list id (actually the list
  * file). Query id is put for further refernece to this query entry.
@@ -2446,7 +2447,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 				   query_id);
   if (query_p == NULL)
     {
-      /* maybe this is a holdable result and we'll find it in the 
+      /* maybe this is a holdable result and we'll find it in the
          session state object */
       xsession_remove_query_entry_info (thread_p, query_id);
       qmgr_unlock_mutex (&tran_entry_p->lock);
@@ -3822,7 +3823,7 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 /*
  * qmgr_free_temp_file_list () - free temporary files in tfile_vfid_p
  * return : error code or NO_ERROR
- * thread_p (in) : 
+ * thread_p (in) :
  * tfile_vfid_p (in)  : temporary files list
  * query_id (in)      : query id
  * is_error (in)      : true if query was unsuccessful
@@ -5197,7 +5198,7 @@ qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p)
  *                                     descriptor
  *   return: void
  *   tran_index(in):
- *   query_timeout(in): in seconds
+ *   query_timeout(in): milli seconds
  */
 void
 qmgr_set_query_timeout_to_tdes (int tran_index, int query_timeout)
@@ -5213,14 +5214,15 @@ qmgr_set_query_timeout_to_tdes (int tran_index, int query_timeout)
     {
       if (query_timeout > 0)
 	{
-	  /* We use log_Clock instead of calling gettimeofday
+	  /* We use log_Clock_msec instead of calling gettimeofday
 	   * if the system supports atomic built-ins.
 	   */
 #if defined(HAVE_ATOMIC_BUILTINS)
-	  tdes_p->query_timeout = log_Clock + query_timeout;
+	  tdes_p->query_timeout = log_Clock_msec + query_timeout;
 #else /* HAVE_ATOMIC_BUILTINS */
 	  gettimeofday (&tv, NULL);
-	  tdes_p->query_timeout = tv.tv_sec + query_timeout;
+	  tdes_p->query_timeout =
+	    (tv.tv_sec * 1000) + (tv.tv_usec / 1000) + query_timeout;
 #endif /* HAVE_ATOMIC_BUILTINS */
 	}
       else if (query_timeout == 0)

@@ -700,7 +700,12 @@ public class UStatement {
 				/*
 				 * query timeout support only if protocol version 1 or above
 				 */
-				if (relatedConnection.protoVersionIsAbove(1)) {
+				if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
+					/* send queryTimeout in milliseconds */
+					outBuffer.addInt(queryTimeout * 1000);
+				}
+				else if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V1)) {
+					/* send queryTimeout in seconds */
 					outBuffer.addInt(queryTimeout);
 				}
 

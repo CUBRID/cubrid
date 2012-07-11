@@ -825,7 +825,7 @@ loop:
 		}
 	      else if (stop_phase == THREAD_STOP_LOGWR)
 		{
-		  /* 
+		  /*
 		   * we can only wakeup LWT when waiting on THREAD_LOGWR_SUSPENDED.
 		   */
 		  r =
@@ -882,7 +882,7 @@ loop:
       goto loop;
     }
 
-  /* 
+  /*
    * we must not block active connection before terminating log writer thread.
    */
   if (stop_phase == THREAD_STOP_LOGWR)
@@ -3288,7 +3288,7 @@ thread_log_clock_thread (void *arg_p)
   int rv = 0;
   struct timeval now;
 
-  assert (sizeof (log_Clock) >= sizeof (now.tv_sec));
+  assert (sizeof (log_Clock_msec) >= sizeof (now.tv_sec));
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
   /* wait until THREAD_CREATE() finishes */
@@ -3302,12 +3302,14 @@ thread_log_clock_thread (void *arg_p)
 
   while (!tsd_ptr->shutdown)
     {
+      INT64 clock_milli_sec;
       er_clear ();
 
-      /* set time for every 500 ms */
+      /* set time for every 200 ms */
       gettimeofday (&now, NULL);
-      ATOMIC_TAS_64 (&log_Clock, now.tv_sec);
-      thread_sleep (0, 500000);
+      clock_milli_sec = (now.tv_sec * 1000) + (now.tv_usec / 1000);
+      ATOMIC_TAS_64 (&log_Clock_msec, clock_milli_sec);
+      thread_sleep (0, 200000);
 
       if (tsd_ptr->shutdown)
 	{

@@ -69,7 +69,7 @@ bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 int tm_Tran_ID = -1;
 
-/* Timeout(seconds) for queries.
+/* Timeout(milli seconds) for queries.
  *
  * JDBC can send a bundle of queries to a CAS by setting CCI_EXEC_QUERY_ALL flag.
  * In this case, we will apply this timeout to all of queries.
@@ -1547,7 +1547,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
 /*
  * tran_set_query_timeout() -
  *   return: void
- *   query_timeout(in): timeout seconds to be shipped to "query_execute_query"
+ *   query_timeout(in): timeout in milliseconds to be shipped to "query_execute_query"
  *                      and "query_prepare_and_execute_query"
  */
 void
@@ -1558,7 +1558,7 @@ tran_set_query_timeout (int query_timeout)
 
 /*
  * tran_get_query_timeout() -
- *   return: timeout (seconds)
+ *   return: timeout (milliseconds)
  */
 int
 tran_get_query_timeout (void)
