@@ -4995,7 +4995,9 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 				 * are stored */
   int error_code = NO_ERROR;
   int map_status;
-
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST class_list;
+  DB_OBJLIST *obj = NULL;
   if (class_mop == NULL)
     {
       return ER_FAILED;
@@ -5011,47 +5013,81 @@ locator_flush_all_instances (MOP class_mop, bool decache)
     {
       return vid_flush_all_instances (class_mop, decache);
     }
-  hfid = sm_heap (class_obj);
-  /*
-   * Flush all instances of the class
-   */
-  /* TODO this code should flush all the partitions of a partitioned class. */
-  error_code = locator_mflush_initialize (&mflush, class_mop, class_obj,
-					  hfid, decache, MANY_MFLUSHES);
-  if (error_code == NO_ERROR)
+
+  class_ = (SM_CLASS *) class_obj;
+
+  class_list.next = NULL;
+  class_list.op = class_mop;
+
+  if (class_->partition_of != NULL && class_->users != NULL)
     {
+      /* This is a partitioned class. Also flush instances belonging to 
+       * partitions.
+       */
+      error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,
+					      decache, MANY_MFLUSHES);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      class_list.next = class_->users;
+    }
+  else
+    {
+      hfid = sm_heap (class_obj);
+      error_code = locator_mflush_initialize (&mflush, class_mop, class_obj,
+					      hfid, decache, MANY_MFLUSHES);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  /* Iterate through classes and flush only those which have been loaded
+   * into the workspace.
+   */
+  for (obj = &class_list; obj != NULL && error_code == NO_ERROR;
+       obj = obj->next)
+    {
+      if (obj->op->object == NULL)
+	{
+	  /* This class is not in the workspace, skip it */
+	  continue;
+	}
+
       if (decache)
 	{
 	  /* decache all instances of this class */
-	  map_status = ws_map_class (class_mop, locator_mflush, &mflush);
+	  map_status = ws_map_class (obj->op, locator_mflush, &mflush);
 	}
       else
 	{
 	  /* flush all dirty instances of this class */
-	  map_status =
-	    ws_map_class_dirty (class_mop, locator_mflush, &mflush);
+	  map_status = ws_map_class_dirty (obj->op, locator_mflush, &mflush);
 	}
 
       if (map_status == WS_MAP_FAIL)
 	{
 	  error_code = ER_FAILED;
 	}
-      else if (map_status == WS_MAP_SUCCESS)
-	{
-	  if (mflush.mobjs->num_objs != 0)
-	    {
-	      error_code = locator_mflush_force (&mflush);
-	    }
-	}
+    }
 
-      locator_mflush_end (&mflush);
-      if (error_code == NO_ERROR)
+  if (mflush.mobjs->num_objs != 0)
+    {
+      error_code = locator_mflush_force (&mflush);
+    }
+
+  locator_mflush_end (&mflush);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (decache)
+    {
+      for (obj = &class_list; obj != NULL; obj = obj->next)
 	{
-	  if (decache)
-	    {
-	      /* make sure we don't have anyone referencing us */
-	      ws_disconnect_deleted_instances (class_mop);
-	    }
+	  ws_disconnect_deleted_instances (obj->op);
 	}
     }
 
