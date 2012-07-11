@@ -128,7 +128,7 @@ struct xasl_id
     } while (0)
 
 #define XASL_ID_IS_NULL(X) \
-    ((X)->first_vpid.pageid == NULL_PAGEID)
+    ((X) && (X)->first_vpid.pageid == NULL_PAGEID)
 
 #define XASL_ID_COPY(X1, X2) \
     *(X1) = *(X2)

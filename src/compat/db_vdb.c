@@ -1795,7 +1795,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       bool do_recompile = false;
       if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT)
 	{
-	  if (XASL_ID_IS_NULL (statement->xasl_id)
+	  if (!statement->xasl_id || XASL_ID_IS_NULL (statement->xasl_id)
 	      || statement->info.execute.recompile)
 	    {
 	      do_recompile = true;
