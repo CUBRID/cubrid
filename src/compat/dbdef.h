@@ -98,9 +98,9 @@ typedef enum
 
   DB_SUBSET = -3,		/* strict subset for set types.         */
   DB_UNK = -2,			/* unknown                              */
-  DB_LT = -1,			/* cannonical less than                 */
+  DB_LT = -1,			/* canonical less than                 */
   DB_EQ = 0,			/* equal                                */
-  DB_GT = 1,			/* cannonical greater than,             */
+  DB_GT = 1,			/* canonical greater than,             */
   DB_NE = 2,			/* not equal because types incomparable */
   DB_SUPERSET = 3		/* strict superset for set types.       */
 } DB_VALUE_COMPARE_RESULT;

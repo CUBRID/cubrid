@@ -8934,12 +8934,35 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 			}
 		    }
 		}
+	      else if (TP_IS_CHAR_TYPE (vtype1)
+		       && TP_IS_DATE_OR_TIME_TYPE (vtype2))
+		{
+		  /* vtype2 is the date or time type, coerce value 1 */
+		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
+		  status = tp_value_coerce (v1, &temp1, d2);
+		  if (status == DOMAIN_COMPATIBLE)
+		    {
+		      v1 = &temp1;
+		      vtype1 = DB_VALUE_TYPE (v1);
+		    }
+		}
+	      else if (TP_IS_DATE_OR_TIME_TYPE (vtype1)
+		       && TP_IS_CHAR_TYPE (vtype2))
+		{
+		  /* vtype1 is the date or time type, coerce value 2 */
+		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);
+		  status = tp_value_coerce (v2, &temp2, d1);
+		  if (status == DOMAIN_COMPATIBLE)
+		    {
+		      v2 = &temp2;
+		      vtype2 = DB_VALUE_TYPE (v2);
+		    }
+		}
 	      else if (tp_more_general_type (vtype1, vtype2) > 0)
 		{
-		  /* vtype1 is more general, corce value 2 */
-		  status = tp_value_coerce (v2, &temp2,
-					    tp_domain_resolve_default
-					    (vtype1));
+		  /* vtype1 is more general, coerce value 2 */
+		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);
+		  status = tp_value_coerce (v2, &temp2, d1);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      /*
@@ -8957,9 +8980,8 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	      else
 		{
 		  /* coerce value1 to value2's type */
-		  status =
-		    tp_value_coerce (v1, &temp1,
-				     tp_domain_resolve_default (vtype2));
+		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
+		  status = tp_value_coerce (v1, &temp1, d2);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      /*
