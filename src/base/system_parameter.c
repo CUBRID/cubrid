@@ -2509,7 +2509,23 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
   struct stat stat_buf;
   int r = NO_ERROR;
   char *s;
-
+  if (reload)
+  {
+	  for (i = 0; i < NUM_PRM; i++)
+	  {
+		  if (PRM_IS_RELOADABLE (prm_Def[i].flag))
+		  {
+			  if (PRM_HAS_DEFAULT (prm_Def[i].flag))
+			  {
+				  (void) prm_set_default (&prm_Def[i]);
+			  }
+			  else
+			  {
+				  prm_Def[i].value = (void *) NULL;
+			  }
+		  }
+	  }
+  }
   if (db_name == NULL)
     {
       /* initialize message catalog at here because there could be a code path
