@@ -4831,7 +4831,7 @@ regu_int_array_alloc (int size)
 int **
 regu_int_pointer_array_alloc (int size)
 {
-  int *ptr;
+  int **ptr;
   int i;
 
   if (size == 0)
