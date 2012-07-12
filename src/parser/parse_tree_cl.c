@@ -6753,8 +6753,9 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.index.index_name)
     {
       const char *index_name = p->info.index.index_name->info.name.original;
-      b = pt_append_nulstring (parser, b, " ");
+      b = pt_append_nulstring (parser, b, " [");
       b = pt_append_bytes (parser, b, index_name, strlen (index_name));
+      b = pt_append_nulstring (parser, b, "]");
     }
 
   if (!(parser->custom_print & PT_SUPPRESS_INDEX))
