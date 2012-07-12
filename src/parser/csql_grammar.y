@@ -19466,7 +19466,7 @@ alter_partition_clause_for_alter_list
 			  }
 
 		DBG_PRINT}}
-	| COALESCE PARTITION unsigned_integer
+	| COALESCE PARTITION literal_w_o_param
 		{{
 
 			PT_NODE *alt = parser_get_alter_node ();
