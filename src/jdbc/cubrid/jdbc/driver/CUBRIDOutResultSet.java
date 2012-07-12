@@ -58,6 +58,7 @@ public class CUBRIDOutResultSet extends CUBRIDResultSet {
 
 		u_stmt = new UStatement(ucon, srv_handle);
 		column_info = u_stmt.getColumnInfo();
+		col_name_to_index = u_stmt.getColumnNameToIndexMap();
 		number_of_rows = u_stmt.getExecuteResult();
 
 		created = true;
