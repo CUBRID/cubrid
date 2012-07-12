@@ -63,6 +63,7 @@
 #define UNIQUE_SAVEPOINT_MULTIPLE_ALTER "mULTIPLEaLTER"
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
 #define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
+#define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
@@ -3044,6 +3045,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     *p_pred_index_info = NULL;
   bool free_funtion_expr_str = false;
   const char *class_name = NULL;
+  bool do_rollback = false;
 
   /* TODO refactor this code, the code in create_or_drop_index_helper and the
      code in do_drop_index in order to remove duplicate code */
@@ -3488,6 +3490,13 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       if (error == NO_ERROR)
 	{
+	  error = tran_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX, false);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	  do_rollback = true;
+
 	  error = sm_drop_constraint (obj, ctype, cname,
 				      (const char **) attnames, false, false);
 	  if (error != NO_ERROR)
@@ -3574,6 +3583,13 @@ error_exit:
       free_cls = false;
     }
 
+  if (do_rollback == true)
+    {
+      if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	}
+    }
   error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ?
     ER_FAILED : error;
 
