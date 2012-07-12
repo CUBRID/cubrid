@@ -16632,6 +16632,15 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
     {
       return false;
     }
+  if (expr->node_type == PT_VALUE)
+    {
+      if (report_error)
+	{
+	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_CONSTANT_IN_FUNCTION_INDEX_NOT_ALLOWED);
+	}
+      return false;
+    }
   if (expr->node_type != PT_EXPR)
     {
       return false;
