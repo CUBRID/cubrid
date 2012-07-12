@@ -9795,7 +9795,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* check uniques */
-  if (insert->has_uniques && scan_cache_op_type == MULTI_ROW_INSERT)
+  if (scan_cache_op_type == MULTI_ROW_INSERT)
     {
       /* In this case, consider only single class.
        * Therefore, uniqueness checking is performed based on
