@@ -240,6 +240,9 @@ static int do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 static int do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 					     PT_NODE * const alter);
 
+static int do_alter_change_owner (PARSER_CONTEXT * const parser,
+				  PT_NODE * const alter);
+
 static int do_change_att_schema_only (PARSER_CONTEXT * parser,
 				      DB_CTMPL * ctemplate,
 				      PT_NODE * attribute,
@@ -1616,6 +1619,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 	case PT_CHANGE_ATTR:
 	  error_code = do_alter_clause_change_attribute (parser, crt_clause);
+	  break;
+	case PT_CHANGE_OWNER:
+	  error_code = do_alter_change_owner (parser, crt_clause);
 	  break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so
@@ -12895,6 +12901,43 @@ exit:
 
   /* restore writing to replication logs */
   db_set_suppress_repl_on_transaction (false);
+
+  return error;
+}
+
+/*
+ * do_alter_change_owner() - change the owner of a class/vclass
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_CHANGE_OWNER claus
+ */
+static int
+do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj = NULL;
+  DB_VALUE returnval, class_val, user_val;
+  PT_NODE *class_, *user;
+
+  assert (alter != NULL);
+
+  class_ = alter->info.alter.entity_name;
+  assert (class_ != NULL);
+
+  user = alter->info.alter.alter_clause.user.user_name;
+  assert (user != NULL);
+
+  db_make_null (&returnval);
+
+  db_make_string (&class_val, class_->info.name.original);
+  db_make_string (&user_val, user->info.name.original);
+
+  au_change_owner_method (obj, &returnval, &class_val, &user_val);
+
+  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+    {
+      error = DB_GET_ERROR (&returnval);
+    }
 
   return error;
 }

@@ -567,6 +567,107 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * jsp_alter_stored_procedure_owner
+ *   return: if failed return error code else NO_ERROR
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
+				  PT_NODE * statement)
+{
+  int err = NO_ERROR;
+  PT_NODE *sp_name, *sp_owner;
+  const char *name_str, *owner_str;
+  PT_MISC_TYPE type, real_type;
+  MOP sp_mop, new_owner;
+  DB_VALUE user_val, sp_type_val;
+  int save;
+
+  assert (statement != NULL);
+
+  CHECK_MODIFICATION_ERROR ();
+
+  if (PRM_BLOCK_DDL_STATEMENT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
+  type = PT_NODE_SP_TYPE (statement);
+  sp_name = statement->info.sp.name;
+  sp_owner = statement->info.sp.owner;
+  assert (sp_name != NULL && sp_owner != NULL);
+
+  name_str = sp_name->info.name.original;
+  owner_str = sp_owner->info.name.original;
+  assert (name_str != NULL && owner_str != NULL);
+
+  AU_DISABLE (save);
+
+  /* authentication */
+  if (!au_is_dba_group_member (Au_user))
+    {
+      err = ER_AU_DBA_ONLY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1,
+	      "change stored procedure owner");
+      goto error;
+    }
+
+  /* existence of sp */
+  sp_mop = jsp_find_stored_procedure (name_str);
+  if (sp_mop == NULL)
+    {
+      err = er_errid ();
+      goto error;
+    }
+
+  /* existence of new owner */
+  new_owner = db_find_user (owner_str);
+  if (new_owner == NULL)
+    {
+      err = ER_OBJ_OBJECT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, owner_str);
+      goto error;
+    }
+
+  /* check type */
+  err = db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  if (real_type != jsp_map_pt_misc_to_sp_type (type))
+    {
+      err = ER_SP_INVALID_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2,
+	      name_str,
+	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
+      goto error;
+    }
+
+  /* change the owner */
+  db_make_object (&user_val, new_owner);
+  err = obj_set (sp_mop, SP_ATTR_OWNER, &user_val);
+  if (err < 0)
+    {
+      goto error;
+    }
+
+error:
+
+  AU_ENABLE (save);
+
+  return err;
+}
+
+/*
  * jsp_map_pt_misc_to_sp_type
  *   return : stored procedure type ( Procedure or Function )
  *   pt_enum(in): Misc Types

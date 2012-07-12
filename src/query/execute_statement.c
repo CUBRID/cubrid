@@ -2824,6 +2824,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = jsp_create_stored_procedure (parser, statement);
 	  break;
 
+	case PT_ALTER_STORED_PROCEDURE_OWNER:
+	  error = jsp_alter_stored_procedure_owner (parser, statement);
+	  break;
+
 	case PT_DROP_STORED_PROCEDURE:
 	  error = jsp_drop_stored_procedure (parser, statement);
 	  break;
@@ -3134,6 +3138,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_STORED_PROCEDURE:
       err = jsp_create_stored_procedure (parser, statement);
+      break;
+    case PT_ALTER_STORED_PROCEDURE_OWNER:
+      err = jsp_alter_stored_procedure_owner (parser, statement);
       break;
     case PT_DROP_STORED_PROCEDURE:
       err = jsp_drop_stored_procedure (parser, statement);
@@ -5708,11 +5715,15 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJLIST *triggers, *t;
   double priority = TR_LOWEST_PRIORITY;
   DB_TRIGGER_STATUS status;
+  PT_NODE *trigger_owner, *trigger_name;
+  const char *trigger_owner_name;
+  DB_VALUE returnval, trigger_name_val, user_val;
 
   CHECK_MODIFICATION_ERROR ();
 
   triggers = NULL;
   p_node = statement->info.alter_trigger.trigger_priority;
+  trigger_owner = statement->info.alter_trigger.trigger_owner;
   speclist = statement->info.alter_trigger.trigger_spec_list;
   if (convert_speclist_to_objlist (&triggers, speclist))
     {
@@ -5724,15 +5735,20 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
   status = TR_STATUS_INVALID;
 
-  if (p_node == NULL)
+  if (trigger_owner != NULL)
+    {
+      trigger_owner_name = trigger_owner->info.name.original;
+      trigger_name = speclist->info.trigger_spec_list.trigger_name_list;
+    }
+  else if (p_node != NULL)
+    {
+      priority = get_priority (parser, p_node);
+    }
+  else
     {
       status =
 	convert_misc_to_tr_status (statement->info.
 				   alter_trigger.trigger_status);
-    }
-  else
-    {
-      priority = get_priority (parser, p_node);
     }
 
   if (error == NO_ERROR)
@@ -5756,6 +5772,29 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (error == NO_ERROR && p_node != NULL)
 		{
 		  error = tr_set_priority (t->op, priority, false);
+		}
+
+	      if (error == NO_ERROR && trigger_owner != NULL)
+		{
+		  assert (trigger_name != NULL);
+
+		  db_make_null (&returnval);
+
+		  db_make_string (&trigger_name_val,
+				  trigger_name->info.name.original);
+		  db_make_string (&user_val, trigger_owner_name);
+
+		  au_change_trigger_owner_method (t->op, &returnval,
+						  &trigger_name_val,
+						  &user_val);
+
+		  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+		    {
+		      error = DB_GET_ERROR (&returnval);
+		      break;
+		    }
+
+		  trigger_name = trigger_name->next;
 		}
 	    }
 	}
@@ -13747,6 +13786,10 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_CREATE_STORED_PROCEDURE:
       repl_schema.statement_type = CUBRID_STMT_CREATE_STORED_PROCEDURE;
+      break;
+
+    case PT_ALTER_STORED_PROCEDURE_OWNER:
+      repl_schema.statement_type = CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER;
       break;
 
     case PT_DROP_STORED_PROCEDURE:

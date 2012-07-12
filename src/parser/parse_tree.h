@@ -702,6 +702,7 @@ enum pt_node_type
   PT_RENAME_TRIGGER = CUBRID_STMT_RENAME_TRIGGER,
 
   PT_CREATE_STORED_PROCEDURE = CUBRID_STMT_CREATE_STORED_PROCEDURE,
+  PT_ALTER_STORED_PROCEDURE_OWNER = CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER,
   PT_DROP_STORED_PROCEDURE = CUBRID_STMT_DROP_STORED_PROCEDURE,
   PT_PREPARE_STATEMENT = CUBRID_STMT_PREPARE_STATEMENT,
   PT_EXECUTE_PREPARE = CUBRID_STMT_EXECUTE_PREPARE,
@@ -1069,7 +1070,8 @@ typedef enum
   PT_DROP_PRIMARY_CLAUSE,
   PT_DROP_FK_CLAUSE,
   PT_CHANGE_ATTR,
-  PT_CHANGE_AUTO_INCREMENT
+  PT_CHANGE_AUTO_INCREMENT,
+  PT_CHANGE_OWNER
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1535,6 +1537,10 @@ struct pt_alter_info
     {
       PT_NODE *start_value;
     } auto_increment;
+    struct
+    {
+      PT_NODE *user_name;	/* user name for PT_CHANGE_OWNER */
+    } user;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */
@@ -1554,6 +1560,7 @@ struct pt_alter_trigger_info
 {
   PT_NODE *trigger_spec_list;	/* PT_TRIGGER_SPEC_LIST */
   PT_NODE *trigger_priority;	/* PT_VALUE */
+  PT_NODE *trigger_owner;	/* PT_NAME */
   PT_MISC_TYPE trigger_status;	/* ACTIVE, INACTIVE */
 };
 
@@ -2562,6 +2569,7 @@ struct pt_stored_proc_info
   PT_NODE *name;
   PT_NODE *param_list;
   PT_NODE *java_method;
+  PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
   PT_MISC_TYPE type;
   PT_TYPE_ENUM ret_type;
 };

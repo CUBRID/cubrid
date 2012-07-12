@@ -481,6 +481,9 @@ extern int yycolumn_end;
 [oO][uU][tT][pP][uU][tT]						{ begin_token(yytext);   return OUTPUT; }
 [oO][vV][eE][rR]							{ begin_token(yytext);	 return OVER; }
 [oO][vV][eE][rR][lL][aA][pP][sS]					{ begin_token(yytext);   return OVERLAPS; }
+[oO][wW][nN][eE][rR]							{ begin_token(yytext);   
+																		csql_yylval.cptr = pt_makename(yytext);
+																		return OWNER; }
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ begin_token(yytext);   return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ begin_token(yytext);   return PARTIAL; }
 [pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ begin_token(yytext);   

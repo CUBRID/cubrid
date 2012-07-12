@@ -1111,6 +1111,7 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_RENAME_TRIGGER:
 	case PT_ALTER_TRIGGER:
 	case PT_CREATE_STORED_PROCEDURE:
+	case PT_ALTER_STORED_PROCEDURE_OWNER:
 	case PT_DROP_STORED_PROCEDURE:
 	  return true;
 	default:
@@ -8458,7 +8459,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
  * pt_make_query_show_create_table() builds the query used for SHOW CREATE
  *				     TABLE
  *
- *    SELECT ¡®table_name¡¯ as TABLE, 'create table ...' as CREATE TABLE
+ *    SELECT 'table_name' as TABLE, 'create table ...' as CREATE TABLE
  *      FROM db_root
  *
  * return string of create table.
@@ -8488,7 +8489,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser,
     }
 
   /*
-   * SELECT ¡®table_name¡¯ as TABLE, 'create table ...' as CREATE TABLE
+   * SELECT 'table_name' as TABLE, 'create table ...' as CREATE TABLE
    *      FROM db_root
    */
   pt_add_string_col_to_sel_list (parser, select,

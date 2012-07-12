@@ -67,6 +67,8 @@ typedef enum
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser,
 					PT_NODE * statement);
+extern int jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
+					     PT_NODE * statement);
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser,
 				      PT_NODE * statement);
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser,

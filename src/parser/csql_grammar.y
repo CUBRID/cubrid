@@ -922,6 +922,7 @@ typedef struct YYLTYPE
 %type <c3> opt_ref_rule_list
 %type <c3> of_serial_option
 %type <c3> delete_from_using
+%type <c3> trigger_status_or_priority_or_change_owner
 
 %type <c2> extended_table_spec_list
 %type <c2> opt_startwith_connectby_clause
@@ -929,7 +930,6 @@ typedef struct YYLTYPE
 %type <c2> opt_data_type
 %type <c2> opt_create_as_clause
 %type <c2> create_as_clause
-%type <c2> trigger_status_or_priority
 %type <c2> serial_min
 %type <c2> serial_max
 %type <c2> of_cached_num
@@ -1390,6 +1390,7 @@ typedef struct YYLTYPE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
 %token <cptr> OFFSET
+%token <cptr> OWNER
 %token <cptr> PARTITION
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
@@ -2914,7 +2915,7 @@ alter_stmt
 	| ALTER
 	  TRIGGER
 	  identifier_list
-	  trigger_status_or_priority
+	  trigger_status_or_priority_or_change_owner
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_TRIGGER);
@@ -2930,6 +2931,7 @@ alter_stmt
 			    node->info.alter_trigger.trigger_spec_list = list;
 			    node->info.alter_trigger.trigger_status = TO_NUMBER (CONTAINER_AT_0 ($4));
 			    node->info.alter_trigger.trigger_priority = CONTAINER_AT_1 ($4);
+			    node->info.alter_trigger.trigger_owner = CONTAINER_AT_2 ($4);
 			  }
 
 			$$ = node;
@@ -3121,6 +3123,50 @@ alter_stmt
 			    
 			    pt_gather_constraints (this_parser, node);
 			  }
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER
+	  PROCEDURE
+	  identifier
+	  OWNER
+	  TO
+	  identifier
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE_OWNER);
+
+			if (node != NULL)
+			  {
+			    node->info.sp.name = $3;
+			    node->info.sp.type = PT_SP_PROCEDURE;
+			    node->info.sp.ret_type = PT_TYPE_NONE;
+			    node->info.sp.owner = $6;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER
+	  FUNCTION
+	  identifier
+	  OWNER
+	  TO
+	  identifier
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE_OWNER);
+
+			if (node != NULL)
+			  {
+			    node->info.sp.name = $3;
+			    node->info.sp.type = PT_SP_FUNCTION;
+			    node->info.sp.ret_type = PT_TYPE_NONE;
+			    node->info.sp.owner = $6;
+			  }
+
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -4385,6 +4431,16 @@ alter_clause_for_alter_list
 	|        alter_auto_increment_mysql_specific
 	| MODIFY alter_modify_clause_for_alter_list
 	| CHANGE alter_change_clause_for_alter_list
+	| OWNER TO identifier
+		{{
+			PT_NODE *alt = parser_get_alter_node();
+
+			if (alt)
+			  {
+			    alt->info.alter.code = PT_CHANGE_OWNER;
+			    alt->info.alter.alter_clause.user.user_name = $3;
+			  }
+		DBG_PRINT}}
 	;
 
 alter_clause_cubrid_specific
@@ -9947,20 +10003,28 @@ trigger_spec_list
 		DBG_PRINT}}
 	;
 
-trigger_status_or_priority
+trigger_status_or_priority_or_change_owner
 	: trigger_status
 		{{
 
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER ($1), NULL);
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, FROM_NUMBER ($1), NULL, NULL);
 			$$ = ctn;
 
 		DBG_PRINT}}
 	| trigger_priority
 		{{
 
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_MISC_DUMMY), $1);
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_MISC_DUMMY), $1, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OWNER TO identifier
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_MISC_DUMMY), NULL, $3);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -17741,6 +17805,16 @@ identifier
 
 		DBG_PRINT}}
 	| OFFSET
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| OWNER
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

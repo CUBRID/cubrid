@@ -410,6 +410,9 @@ static PARSER_VARCHAR *pt_print_alter_index (PARSER_CONTEXT * parser,
 static PARSER_VARCHAR *pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_serial (PARSER_CONTEXT * parser,
 					      PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_stored_procedure_owner (PARSER_CONTEXT *
+							      parser,
+							      PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_trigger (PARSER_CONTEXT * parser,
 					       PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_user (PARSER_CONTEXT * parser,
@@ -4516,6 +4519,8 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CONSTRAINT] = pt_apply_constraint;
   pt_apply_func_array[PT_POINTER] = pt_apply_pointer;
   pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_stored_procedure;
+  pt_apply_func_array[PT_ALTER_STORED_PROCEDURE_OWNER] =
+    pt_apply_stored_procedure;
   pt_apply_func_array[PT_DROP_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_PREPARE_STATEMENT] = pt_apply_prepare;
   pt_apply_func_array[PT_EXECUTE_PREPARE] = pt_apply_prepare;
@@ -4623,6 +4628,8 @@ pt_init_init_f (void)
   pt_init_func_array[PT_POINTER] = pt_init_pointer;
 
   pt_init_func_array[PT_CREATE_STORED_PROCEDURE] = pt_init_stored_procedure;
+  pt_init_func_array[PT_ALTER_STORED_PROCEDURE_OWNER] =
+    pt_init_stored_procedure;
   pt_init_func_array[PT_DROP_STORED_PROCEDURE] = pt_init_stored_procedure;
   pt_init_func_array[PT_PREPARE_STATEMENT] = pt_init_prepare;
   pt_init_func_array[PT_EXECUTE_PREPARE] = pt_init_prepare;
@@ -4730,6 +4737,8 @@ pt_init_print_f (void)
   pt_print_func_array[PT_POINTER] = pt_print_pointer;
   pt_print_func_array[PT_CREATE_STORED_PROCEDURE] =
     pt_print_create_stored_procedure;
+  pt_print_func_array[PT_ALTER_STORED_PROCEDURE_OWNER] =
+    pt_print_alter_stored_procedure_owner;
   pt_print_func_array[PT_DROP_STORED_PROCEDURE] =
     pt_print_drop_stored_procedure;
   pt_print_func_array[PT_PREPARE_STATEMENT] = NULL;	/* prepared statements should never need to be printed */
@@ -5112,6 +5121,12 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
   switch (p->info.alter.code)
     {
     default:
+      break;
+    case PT_CHANGE_OWNER:
+      r1 =
+	pt_print_bytes_l (parser, p->info.alter.alter_clause.user.user_name);
+      q = pt_append_nulstring (parser, q, " owner to ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_ADD_QUERY:
       r1 = pt_print_bytes_l (parser, p->info.alter.alter_clause.query.query);
@@ -5887,7 +5902,13 @@ pt_print_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, "alter trigger ");
   b = pt_append_varchar (parser, b, r1);
 
-  if (p->info.alter_trigger.trigger_priority)
+  if (p->info.alter_trigger.trigger_owner != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_trigger.trigger_owner);
+      b = pt_append_nulstring (parser, b, " owner to ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+  else if (p->info.alter_trigger.trigger_priority)
     {
       r1 = pt_print_bytes (parser, p->info.alter_trigger.trigger_priority);
       b = pt_append_nulstring (parser, b, " priority ");
@@ -7607,6 +7628,43 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   return q;
 
+}
+
+/*
+ * pt_print_alter_stored_procedure_owner () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_alter_stored_procedure_owner (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+  PT_STORED_PROC_INFO *sp_info;
+
+  assert (p != NULL);
+
+  sp_info = &(p->info.sp);
+
+  r1 = pt_print_bytes_l (parser, sp_info->name);
+  q = pt_append_nulstring (parser, q, "alter");
+
+  if (sp_info->type == PT_SP_PROCEDURE)
+    {
+      q = pt_append_nulstring (parser, q, " procedure ");
+    }
+  else
+    {
+      q = pt_append_nulstring (parser, q, " function ");
+    }
+
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " owner to ");
+
+  r1 = pt_print_bytes_l (parser, sp_info->owner);
+  q = pt_append_varchar (parser, q, r1);
+
+  return q;
 }
 
 /*
