@@ -4995,9 +4995,10 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 				 * are stored */
   int error_code = NO_ERROR;
   int map_status;
-  SM_CLASS *class_ = NULL;
   DB_OBJLIST class_list;
   DB_OBJLIST *obj = NULL;
+  bool is_partitioned = false;
+
   if (class_mop == NULL)
     {
       return ER_FAILED;
@@ -5014,12 +5015,20 @@ locator_flush_all_instances (MOP class_mop, bool decache)
       return vid_flush_all_instances (class_mop, decache);
     }
 
-  class_ = (SM_CLASS *) class_obj;
-
-  class_list.next = NULL;
   class_list.op = class_mop;
+  class_list.next = NULL;
 
-  if (class_->partition_of != NULL && class_->users != NULL)
+  if (!locator_is_root (class_mop))
+    {
+      SM_CLASS *class_ = (SM_CLASS *) class_obj;
+      if (class_->partition_of != NULL && class_->users != NULL)
+	{
+	  is_partitioned = true;
+	  class_list.next = class_->users;
+	}
+    }
+
+  if (is_partitioned)
     {
       /* This is a partitioned class. Also flush instances belonging to 
        * partitions.
@@ -5030,7 +5039,6 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 	{
 	  return error_code;
 	}
-      class_list.next = class_->users;
     }
   else
     {
@@ -5049,7 +5057,7 @@ locator_flush_all_instances (MOP class_mop, bool decache)
   for (obj = &class_list; obj != NULL && error_code == NO_ERROR;
        obj = obj->next)
     {
-      if (obj->op->object == NULL)
+      if (obj->op == NULL || obj->op->object == NULL)
 	{
 	  /* This class is not in the workspace, skip it */
 	  continue;
