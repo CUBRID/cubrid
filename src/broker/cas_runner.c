@@ -177,6 +177,7 @@ static int think_time = 0;
 static int qa_test_flag = 0;
 static int num_replica = 1;
 static int dump_query_plan = 0;
+static int autocommit_mode = 0;
 
 static double *run_time_exec;
 static FILE *cas_error_fp;
@@ -481,10 +482,13 @@ get_args (int argc, char *argv[])
 {
   int c;
 
-  while ((c = getopt (argc, argv, "QbqI:P:d:u:p:t:r:o:e:f:n:h:R:")) != EOF)
+  while ((c = getopt (argc, argv, "aQbqI:P:d:u:p:t:r:o:e:f:n:h:R:")) != EOF)
     {
       switch (c)
 	{
+	case 'a':
+	  autocommit_mode = 1;
+	  break;
 	case 'b':
 	  batch_mode = 1;
 	  break;
@@ -559,7 +563,7 @@ get_args (int argc, char *argv[])
 
 getargs_err:
   fprintf (stderr,
-	   "usage : %s -I cas_ip -P cas_port -d dbname [-u dbuser] [-p dbpasswd] [-t num_thread] [-r repeat_count] [-o result_file] exec_script_file\n",
+	   "usage : %s -I cas_ip -P cas_port -d dbname [-u dbuser] [-p dbpasswd] [-t num_thread] [-r repeat_count] [-Q] [-o result_file] exec_script_file\n",
 	   argv[0]);
   return -1;
 }
@@ -683,6 +687,22 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
       goto end_cas_runner;
     }
 #endif
+
+  if (autocommit_mode)
+    {
+      if (cci_set_autocommit (con_h, CCI_AUTOCOMMIT_TRUE) < 0)
+	{
+	  fprintf (stderr, "cannot set autocommit mode");
+	  goto end_cas_runner;
+	}
+#ifdef DUP_RUN
+      if (cci_set_autocommit (dup_con_h, CCI_AUTOCOMMIT_TRUE) < 0)
+	{
+	  fprintf (stderr, "DUP_RUN cannot set autocommit mode");
+	  goto end_cas_runner;
+	}
+#endif
+    }
 
   while (1)
     {
@@ -1128,13 +1148,17 @@ process_endtran (int con_h, int *req_h)
 {
   int res, i;
   T_CCI_ERROR cci_error;
-  res = cci_end_tran (con_h, CCI_TRAN_ROLLBACK, &cci_error);
-  if (res < 0)
+
+  if (!autocommit_mode)
     {
-      fprintf (cas_error_fp, "end tran error\nconnection handle id %d\n",
-	       con_h);
+      res = cci_end_tran (con_h, CCI_TRAN_ROLLBACK, &cci_error);
+      if (res < 0)
+	{
+	  fprintf (cas_error_fp, "end tran error\nconnection handle id %d\n",
+		   con_h);
+	}
+      PRINT_CCI_ERROR (res, &cci_error);
     }
-  PRINT_CCI_ERROR (res, &cci_error);
 
   for (i = 0; i < SERVER_HANDLE_ALLOC_SIZE; i++)
     {
