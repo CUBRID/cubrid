@@ -3253,7 +3253,7 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr,
     }
   else
     {
-      upd_cls->lob_attr_ids =
+      upd_cls->lob_attr_ids = (int **)
 	stx_alloc_struct (thread_p, upd_cls->no_subclasses * sizeof (int *));
       if (!upd_cls->lob_attr_ids)
 	{
