@@ -144,7 +144,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /*
    * Open db
@@ -159,7 +159,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      ignore_err_flag = PRM_UNLOADDB_IGNORE_ERROR;
+      ignore_err_flag = prm_get_bool_value (PRM_ID_UNLOADDB_IGNORE_ERROR);
 
       if (db_set_isolation (TRAN_REP_CLASS_REP_INSTANCE) != NO_ERROR)
 	{
@@ -168,7 +168,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
       if (!status)
 	{
-	  db_set_lock_timeout (PRM_UNLOADDB_LOCK_TIMEOUT);
+	  db_set_lock_timeout (prm_get_integer_value
+			       (PRM_ID_UNLOADDB_LOCK_TIMEOUT));
 	}
 
       if (!input_filename)

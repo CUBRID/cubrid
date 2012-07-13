@@ -1379,7 +1379,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
   *curname = NULL;
   *tempname = NULL;
 
-  if (!PRM_MYSQL_TRIGGER_CORRELATION_NAMES)
+  if (!prm_get_bool_value (PRM_ID_MYSQL_TRIGGER_CORRELATION_NAMES))
     {
       switch (trigger->event)
 	{
@@ -4459,8 +4459,9 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	{
 	  /* should have been done by now */
 	  if (tr_Current_depth <= 1
-	      && ++act->exec_cnt > PRM_RESET_TR_PARSER
-	      && PRM_RESET_TR_PARSER > 0)
+	      && ++act->exec_cnt >
+	      prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
+	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	    {
 	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
 	      act->parser = NULL;
@@ -4662,8 +4663,9 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	  break;
 	case TR_ACT_EXPRESSION:
 	  if (tr_Current_depth <= 1
-	      && ++act->exec_cnt > PRM_RESET_TR_PARSER
-	      && PRM_RESET_TR_PARSER > 0)
+	      && ++act->exec_cnt >
+	      prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
+	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	    {
 	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
 	      act->parser = NULL;

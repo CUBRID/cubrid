@@ -2038,7 +2038,7 @@ pr_clear_value (DB_VALUE * value)
   if (DB_IS_NULL (value))
     {
       need_clear = false;
-      if (PRM_ORACLE_STYLE_EMPTY_STRING)
+      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	{
 	  if (value->need_clear)
 	    {			/* need to check */

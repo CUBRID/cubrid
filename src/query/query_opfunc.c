@@ -968,7 +968,7 @@ qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time,
 
   db_time_decode (&result, &hour, &minute, &second);
 
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_TIME (result_p, hour, minute, second);
     }
@@ -1013,7 +1013,7 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
   result = (utime + add_time) % SECONDS_OF_ONE_DAY;
   db_time_decode (&result, &hour, &minute, &second);
 
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_TIME (result_p, hour, minute, second);
     }
@@ -1143,7 +1143,7 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
       return ER_QPROC_OVERFLOW_HAPPENED;
     }
 
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_UTIME (result_p, utmp);
     }
@@ -1202,7 +1202,7 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
       return ER_QPROC_OVERFLOW_HAPPENED;
     }
 
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_UTIME (result_p, utmp);
     }
@@ -1260,7 +1260,7 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
 	      0);
       return ER_QPROC_OVERFLOW_HAPPENED;
     }
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_UTIME (result_p, (unsigned int) utmp);	/* truncate to 4bytes time_t */
     }
@@ -1373,7 +1373,7 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p,
 
   db_date_decode (&utmp, &month, &day, &year);
 
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_DATE (result_p, month, day, year);
     }
@@ -1424,7 +1424,7 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p,
     }
 
   db_date_decode (&utmp, &month, &day, &year);
-  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
       DB_MAKE_DATE (result_p, month, day, year);
     }
@@ -1477,7 +1477,7 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi,
 
   tmp_date = (DB_DATE) utmp;
   db_date_decode (&tmp_date, &month, &day, &year);
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
       DB_MAKE_DATE (result_p, month, day, year);
     }
@@ -2046,7 +2046,7 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 				       result_p, domain_p);
 
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -2174,7 +2174,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     }
 
   /* plus as concat : when both operands are string or bit */
-  if (PRM_PLUS_AS_CONCAT == true)
+  if (prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) == true)
     {
       if (TP_IS_CHAR_BIT_TYPE (type1) && TP_IS_CHAR_BIT_TYPE (type2))
 	{
@@ -4031,7 +4031,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 
     case DB_TYPE_STRING:
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -4670,7 +4670,7 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     case DB_TYPE_DATETIME:
     case DB_TYPE_STRING:
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -5300,7 +5300,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     case DB_TYPE_DATE:
     case DB_TYPE_STRING:
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -5376,8 +5376,8 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       er_status = tp_value_str_auto_cast_to_number (dbval_p, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -5421,7 +5421,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
@@ -5671,7 +5671,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
        * NVL function to explicitly convert the expression to a
        * zero-length string.
        */
-      if (!PRM_ORACLE_STYLE_EMPTY_STRING)
+      if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	{
 	  return NO_ERROR;
 	}
@@ -8830,7 +8830,8 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
 		   agg_p->domain : NULL);
   if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, agg_p->value,
 			       result_domain,
-			       PRM_GROUP_CONCAT_MAX_LEN,
+			       prm_get_integer_value
+			       (PRM_ID_GROUP_CONCAT_MAX_LEN),
 			       "GROUP_CONCAT()") != NO_ERROR)
     {
       pr_clear_value (dbvalue);
@@ -8862,7 +8863,8 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p,
     {
       if (qdata_concatenate_dbval (thread_p, agg_p->value, agg_p->value2,
 				   agg_p->value, result_domain,
-				   PRM_GROUP_CONCAT_MAX_LEN,
+				   prm_get_integer_value
+				   (PRM_ID_GROUP_CONCAT_MAX_LEN),
 				   "GROUP_CONCAT()") != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -8875,7 +8877,8 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p,
 
   if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, agg_p->value,
 			       result_domain,
-			       PRM_GROUP_CONCAT_MAX_LEN,
+			       prm_get_integer_value
+			       (PRM_ID_GROUP_CONCAT_MAX_LEN),
 			       "GROUP_CONCAT()") != NO_ERROR)
     {
       pr_clear_value (dbvalue);

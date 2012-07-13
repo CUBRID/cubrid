@@ -109,8 +109,8 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -227,7 +227,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 				    dtmp);
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
@@ -281,8 +281,8 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -406,7 +406,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 				    dtmp);
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
@@ -608,8 +608,8 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
 						    &res_type);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -641,7 +641,7 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 				    dtmp);
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
@@ -818,7 +818,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
   return NO_ERROR;
 
 sqrt_error:
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;
@@ -879,7 +879,7 @@ db_power_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   return NO_ERROR;
 
 pow_overflow:
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;
@@ -891,7 +891,7 @@ pow_overflow:
     }
 
 pow_error:
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;
@@ -993,8 +993,8 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1047,7 +1047,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1151,8 +1151,8 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1205,7 +1205,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1309,8 +1309,8 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1364,7 +1364,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1464,8 +1464,8 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1515,7 +1515,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1615,8 +1615,8 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1665,7 +1665,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1703,7 +1703,7 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   er_status = tp_value_str_auto_cast_to_number (value1, &cast_value1, &type1);
   if (er_status != NO_ERROR
-      || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
+      || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true
 	  && type1 != DB_TYPE_DOUBLE))
     {
       return er_status;
@@ -1821,8 +1821,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1877,7 +1877,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -1942,8 +1942,8 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
 						    &type2);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1965,7 +1965,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_INVALID_DATATYPE, 0);
@@ -2038,7 +2038,7 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       return db_mod_monetary (result, value1, value2);
 
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -2172,8 +2172,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value1, &cast_value,
 						    &type1);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type1 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type1 != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -2275,7 +2275,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 				    dtmp);
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -2283,7 +2283,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
     }
 
-  if (er_errid () < 0 && PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+  if (er_errid () < 0
+      && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
     {
       return ER_FAILED;
     }
@@ -2998,8 +2999,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = tp_value_str_auto_cast_to_number (value1, &cast_value,
 						    &type1);
       if (er_status != NO_ERROR
-	  || (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true
-	      && type1 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true && type1 != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -3067,7 +3068,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       }
       break;
     default:
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
@@ -3328,7 +3329,7 @@ db_acos_dbval (DB_VALUE * result, DB_VALUE * value)
   return NO_ERROR;
 
 error:
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;
@@ -3378,7 +3379,7 @@ db_asin_dbval (DB_VALUE * result, DB_VALUE * value)
   return NO_ERROR;
 
 error:
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;

@@ -86,7 +86,8 @@ static int rv;
 /* The victim candidate flusher (performed as a deamon) finds
    victim candidates(fcnt == 0) from the bottom of each LRU list.
    and flushes them if they are in dirty state. */
-#define PGBUF_LRU_SIZE         ((int) (PRM_PB_NBUFFERS/pgbuf_Pool.num_LRU_list))
+#define PGBUF_LRU_SIZE \
+  ((int) (prm_get_integer_value (PRM_ID_PB_NBUFFERS)/pgbuf_Pool.num_LRU_list))
 
 #define PGBUF_MIN_NUM_VICTIMS (MAX (1, (int) (PGBUF_LRU_SIZE * 0.1)))
 
@@ -105,8 +106,9 @@ static int rv;
 
 /* size of one buffer page <BCB, page> */
 #define PGBUF_BCB_SIZE       (sizeof(PGBUF_BCB))
-#define PGBUF_IOPAGE_BUFFER_SIZE     ((size_t)(offsetof(PGBUF_IOPAGE_BUFFER, iopage) + \
-                                               SIZEOF_IOPAGE_PAGESIZE_AND_GUARD()))
+#define PGBUF_IOPAGE_BUFFER_SIZE \
+  ((size_t)(offsetof(PGBUF_IOPAGE_BUFFER, iopage) + \
+  SIZEOF_IOPAGE_PAGESIZE_AND_GUARD()))
 /* size of buffer hash entry */
 #define PGBUF_BUFFER_HASH_SIZE       (sizeof(PGBUF_BUFFER_HASH))
 /* size of buffer lock record */
@@ -125,9 +127,11 @@ static int rv;
   ((PGBUF_BCB *)((char *)&(pgbuf_Pool.BCB_table[0])+(PGBUF_BCB_SIZE*(i))))
 
 #define PGBUF_FIND_IOPAGE_PTR(i) \
-  ((PGBUF_IOPAGE_BUFFER *)((char *)&(pgbuf_Pool.iopage_table[0])+(PGBUF_IOPAGE_BUFFER_SIZE*(i))))
+  ((PGBUF_IOPAGE_BUFFER *)((char *)&(pgbuf_Pool.iopage_table[0]) \
+  +(PGBUF_IOPAGE_BUFFER_SIZE*(i))))
 
-#define PGBUF_FIND_BUFFER_GUARD(bufptr) (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE])
+#define PGBUF_FIND_BUFFER_GUARD(bufptr) \
+  (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE])
 
 /* macros for casting pointers */
 #define CAST_PGPTR_TO_BFPTR(bufptr, pgptr)                              \
@@ -168,12 +172,16 @@ static int rv;
         do { \
             int _loop; \
             rv = EBUSY; \
-            for (_loop = 0; _loop < PRM_MUTEX_BUSY_WAITING_CNT; _loop++) { \
+            for (_loop = 0; \
+		 _loop < \
+		 prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT); \
+		 _loop++) \
+	      { \
                 rv = pthread_mutex_trylock (&(m)); \
                 if (rv == 0) { \
                     rv = NO_ERROR; \
                     break; \
-                } \
+              } \
             } \
             if (rv != 0) { \
                 rv = pthread_mutex_lock (&m); \
@@ -652,7 +660,7 @@ pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2)
 int
 pgbuf_initialize (void)
 {
-  pgbuf_Pool.num_buffers = PRM_PB_NBUFFERS;
+  pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
   if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
     {
 #if defined(CUBRID_DEBUG)
@@ -938,7 +946,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
   int rv;
 #endif /* SERVER_MODE */
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_FETCH)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_FETCH)
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
@@ -1173,7 +1182,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_FREE)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_FREE)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -1260,7 +1270,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * since its operations and their implications are very expensive.
    * Too much I/O
    */
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       /*
        * Check if the content of the page is consistent and then scramble
@@ -1466,7 +1477,8 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -1764,7 +1776,8 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -1828,7 +1841,8 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2227,7 +2241,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
   int sleep_nsecs;
   int rv;
 
-  sleep_nsecs = (PRM_LOG_CHECKPOINT_SLEEP_MSECS * 1000);
+  sleep_nsecs =
+    (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS) * 1000);
 #endif /* SERVER_MODE */
 
   /* Things must be truly flushed up to this lsa */
@@ -2407,7 +2422,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	   * Do not cache the page in the page buffer pool.
 	   * Read the needed portion of the page directly from disk
 	   */
-	  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >=
+	  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
 	      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid,
@@ -2501,7 +2516,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	  /* Do not cache the page in the page buffer pool.
 	   * Write the desired portion of the page directly to disk
 	   */
-	  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >=
+	  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
 	      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid,
@@ -2563,7 +2578,8 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 {
   PGBUF_BCB *bufptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2606,7 +2622,8 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 {
   FILEIO_PAGE *io_pgptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2635,7 +2652,8 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 {
   PGBUF_BCB *bufptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2715,7 +2733,8 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 {
   PGBUF_BCB *bufptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2747,7 +2766,8 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2772,7 +2792,8 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2796,7 +2817,8 @@ pgbuf_get_volume_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >= PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -3220,7 +3242,7 @@ pgbuf_initialize_lru_list (void)
 
   /* set the number of LRU lists */
   pgbuf_Pool.last_flushed_LRU_list_idx = -1;
-  pgbuf_Pool.num_LRU_list = PRM_PB_NUM_LRU_CHAINS;
+  pgbuf_Pool.num_LRU_list = prm_get_integer_value (PRM_ID_PB_NUM_LRU_CHAINS);
   if (pgbuf_Pool.num_LRU_list == 0)
     {
       /* system define it as an optimal value internally. */
@@ -4673,7 +4695,8 @@ one_phase:
 		  goto two_phase;
 		}
 
-	      if (loop_cnt++ < PRM_MUTEX_BUSY_WAITING_CNT)
+	      if (loop_cnt++ <
+		  prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT))
 		{
 		  goto mutex_lock;
 		}
@@ -4735,7 +4758,8 @@ try_again:
 		  return NULL;
 		}
 
-	      if (loop_cnt++ < PRM_MUTEX_BUSY_WAITING_CNT)
+	      if (loop_cnt++ <
+		  prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT))
 		{
 		  goto mutex_lock2;
 		}
@@ -5614,7 +5638,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid)
     {
       found = false;
       check_count = MAX (PGBUF_MIN_NUM_VICTIMS,
-			 (int) (PGBUF_LRU_SIZE * PRM_PB_BUFFER_FLUSH_RATIO));
+			 (int) (PGBUF_LRU_SIZE *
+				prm_get_float_value
+				(PRM_ID_PB_BUFFER_FLUSH_RATIO)));
 
       /* search for non dirty PGBUF */
       while (bufptr != NULL && check_count > 0
@@ -5686,14 +5712,17 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 	      pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].
 				    LRU_mutex);
 	      pgbuf_flush_victim_candidate (thread_p,
-					    PRM_PB_BUFFER_FLUSH_RATIO);
+					    prm_get_float_value
+					    (PRM_ID_PB_BUFFER_FLUSH_RATIO));
 	      MUTEX_LOCK_VIA_BUSY_WAIT (rv,
 					pgbuf_Pool.buf_LRU_list[lru_idx].
 					LRU_mutex);
 	    }
 #else
 	  pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
-	  pgbuf_flush_victim_candidate (thread_p, PRM_PB_BUFFER_FLUSH_RATIO);
+	  pgbuf_flush_victim_candidate (thread_p,
+					prm_get_float_value
+					(PRM_ID_PB_BUFFER_FLUSH_RATIO));
 	  MUTEX_LOCK_VIA_BUSY_WAIT (rv,
 				    pgbuf_Pool.buf_LRU_list[lru_idx].
 				    LRU_mutex);
@@ -6516,7 +6545,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
   else
     {
       if (bufptr->fcnt <= 0
-	  && (PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL >=
+	  && (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
 	      PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	{
 	  int i;

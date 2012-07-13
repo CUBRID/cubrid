@@ -1563,7 +1563,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
       def->overloads[num++] = sig;
 
-      if (PRM_PLUS_AS_CONCAT)
+      if (prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT))
 	{
 	  /* char + char */
 	  sig.arg1_type.is_generic = true;
@@ -4048,7 +4048,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr,
 	{
 	  return ER_FAILED;
 	}
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  PT_EXPR_INFO_SET_FLAG (new_node, PT_EXPR_INFO_CAST_NOFAIL);
 	}
@@ -7309,7 +7309,8 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 			    return NULL;
 			  }
 
-			if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+			if (prm_get_bool_value
+			    (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 			  {
 			    PT_EXPR_INFO_SET_FLAG (arg_list,
 						   PT_EXPR_INFO_CAST_NOFAIL);
@@ -7888,7 +7889,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       {
 	if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
 	  {
-	    if (PRM_ORACLE_STYLE_EMPTY_STRING == false
+	    if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == false
 		|| (!PT_IS_STRING_TYPE (arg1_type)
 		    && !PT_IS_STRING_TYPE (arg2_type)))
 	      {
@@ -7901,7 +7902,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    node->type_enum = PT_TYPE_MAYBE;
 	    goto cannot_use_signature;
 	  }
-	if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+	if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 	  {
 	    /* in mysql mode, PT_PLUS is not defined on date and number */
 	    break;
@@ -7974,7 +7975,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    node->type_enum = PT_TYPE_MAYBE;
 	    goto cannot_use_signature;
 	  }
-	if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+	if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 	  {
 	    /* in mysql mode - does is not defined on date and number */
 	    break;
@@ -8975,7 +8976,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		    node->type_enum = PT_TYPE_NONE;
 		    goto error;
 		  }
-		if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+		if (prm_get_bool_value
+		    (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		  {
 		    PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_NOFAIL);
 		  }
@@ -9714,7 +9716,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_SMALLINT:
 	    case PT_TYPE_INTEGER:
 	    case PT_TYPE_BIGINT:
-	      if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
 		{
 		  common_type = PT_TYPE_TIMESTAMP;
 		}
@@ -9750,7 +9752,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_SMALLINT:
 	    case PT_TYPE_INTEGER:
 	    case PT_TYPE_BIGINT:
-	      if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
 		{
 		  common_type = PT_TYPE_TIME;
 		}
@@ -9779,7 +9781,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_SMALLINT:
 	    case PT_TYPE_INTEGER:
 	    case PT_TYPE_BIGINT:
-	      if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
 		{
 		  common_type = PT_TYPE_DATE;
 		}
@@ -10453,7 +10455,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 						  arg1_dec_prec :
 						  arg2_dec_prec);
 	      dt->info.data_type.units = 0;
-	      if (!PRM_COMPAT_NUMERIC_DIVISION_SCALE && op == PT_DIVIDE)
+	      if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE)
+		  && op == PT_DIVIDE)
 		{
 		  if (dt->info.data_type.dec_precision <
 		      DB_DEFAULT_NUMERIC_DIVISION_SCALE)
@@ -12503,7 +12506,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
   /* do not coerce arg1, arg2 for STRCAT */
   if (op == PT_PLUS && PT_IS_STRING_TYPE (rTyp))
     {
-      if (PRM_PLUS_AS_CONCAT)
+      if (prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT))
 	{
 	  op = PT_STRCAT;
 	}
@@ -13106,7 +13109,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  if (tp_value_cast (arg1, &tmp_val, domain, false) !=
 	      DOMAIN_COMPATIBLE)
 	    {
-	      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+		  == false)
 		{
 		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC,
 			       MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -13215,7 +13219,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       if (typ1 == DB_TYPE_NULL || (typ2 == DB_TYPE_NULL && o2))
 	{
 	  bool check_empty_string;
-	  check_empty_string = (PRM_ORACLE_STYLE_EMPTY_STRING) ? true : false;
+	  check_empty_string =
+	    (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? true :
+	    false;
 
 	  if (!check_empty_string || !PT_IS_STRING_TYPE (rTyp))
 	    {
@@ -13768,7 +13774,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	   * this should be done in a more generic code : but,
 	   * pt_common_type_op is expected to return TYPE_NONE in this case*/
 	  if (PT_IS_CHAR_STRING_TYPE (rTyp) &&
-	      (op != PT_PLUS || PRM_PLUS_AS_CONCAT == false))
+	      (op != PT_PLUS
+	       || prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) == false))
 	    {
 	      rTyp = PT_TYPE_DOUBLE;
 	    }
@@ -13780,7 +13787,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	{
 	  bool check_empty_string;
 
-	  check_empty_string = (PRM_ORACLE_STYLE_EMPTY_STRING) ? true : false;
+	  check_empty_string =
+	    (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? true :
+	    false;
 	  if (!check_empty_string || op != PT_PLUS
 	      || !PT_IS_STRING_TYPE (rTyp))
 	    {
@@ -14833,7 +14842,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	{
 	  bool check_empty_string;
 
-	  check_empty_string = (PRM_ORACLE_STYLE_EMPTY_STRING) ? true : false;
+	  check_empty_string =
+	    (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? true :
+	    false;
 
 	  if (!check_empty_string || !PT_IS_STRING_TYPE (rTyp))
 	    {
@@ -15248,7 +15259,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  return 1;
 	}
 
-      if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 	{
 	  DB_VALUE tmp_len, tmp_arg2, tmp_arg3;
 	  int pos, len;
@@ -16784,7 +16795,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	    DB_VALUE slash_char;
 	    char const *slash_str = "\\";
 
-	    if (PRM_NO_BACKSLASH_ESCAPES == false && DB_IS_NULL (esc_char))
+	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
+		&& DB_IS_NULL (esc_char))
 	      {
 		/* when compat_mode=mysql, the slash '\\' is an escape character for
 		   LIKE pattern, unless user explicitly specifies otherwise. */
@@ -17389,9 +17401,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
     }
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING && (op == PT_STRCAT || op == PT_PLUS
-					|| op == PT_CONCAT
-					|| op == PT_CONCAT_WS))
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
+      && (op == PT_STRCAT || op == PT_PLUS || op == PT_CONCAT
+	  || op == PT_CONCAT_WS))
     {
       TP_DOMAIN *domain;
 
@@ -18462,7 +18474,7 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 
 	if (err == DOMAIN_COMPATIBLE
 	    && src->node_type == PT_HOST_VAR
-	    && PRM_HOSTVAR_LATE_BINDING == false)
+	    && prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) == false)
 	  {
 	    /* when the type of the host variable is compatible to coerce,
 	     * it is enough. NEVER change the node type to PT_VALUE. */

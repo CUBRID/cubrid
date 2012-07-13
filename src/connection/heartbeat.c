@@ -425,7 +425,9 @@ hb_process_master_request (void)
     {
       po[0].fd = hb_Conn->fd;
       po[0].events = POLLIN;
-      r = poll (po, 1, PRM_TCP_CONNECTION_TIMEOUT * 1000);
+      r =
+	poll (po, 1,
+	      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
       switch (r)
 	{
 	case 0:
@@ -595,7 +597,8 @@ hb_create_master_reader (void)
      Its performance highly depends on the pthread's scope and it's related
      kernel parameters. */
   rv = pthread_attr_setscope (thread_attr,
-			      PRM_PTHREAD_SCOPE_PROCESS ?
+			      prm_get_bool_value
+			      (PRM_ID_PTHREAD_SCOPE_PROCESS) ?
 			      PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
@@ -609,9 +612,12 @@ hb_create_master_reader (void)
 
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size != (size_t) PRM_THREAD_STACKSIZE)
+  if (ts_size != (size_t) prm_get_integer_value (PRM_ID_THREAD_STACKSIZE))
     {
-      rv = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
+      rv =
+	pthread_attr_setstacksize (&thread_attr,
+				   prm_get_integer_value
+				   (PRM_ID_THREAD_STACKSIZE));
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,

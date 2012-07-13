@@ -4617,7 +4617,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
   HEAP_SCANCACHE scan_cache;
   HFID hfid;
   OID *oid_buf = NULL;
-  int oid_buf_size = (int) (DB_PAGESIZE * PRM_BT_OID_NBUFFERS);
+  int oid_buf_size =
+    (int) (DB_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS));
   BTREE_SCAN bt_scan;
   INDX_SCAN_ID isid;
   KEY_VAL_RANGE key_val_range;
@@ -5341,7 +5342,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
       /* remove XASL cache entries which is relevant with that class */
       if (!OID_IS_ROOTOID (oid)
-	  && PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
+	  && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
 	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -5352,7 +5353,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	}
 
       if (!OID_IS_ROOTOID (oid)
-	  && PRM_FILTER_PRED_MAX_CACHE_ENTRIES > 0
+	  && prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
 	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid)
 	  != NO_ERROR)
 	{
@@ -5691,7 +5692,7 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 
       /* remove XASL cache entries which is relevant with that class */
       if (!OID_IS_ROOTOID (oid)
-	  && PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
+	  && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
 	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -5702,7 +5703,7 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 	}
 
       if (!OID_IS_ROOTOID (oid)
-	  && PRM_FILTER_PRED_MAX_CACHE_ENTRIES > 0
+	  && prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
 	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid)
 	  != NO_ERROR)
 	{

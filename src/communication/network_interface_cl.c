@@ -3925,6 +3925,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   char *request, *reply, *area, *ptr;
   int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  SESSION_PARAM *session_params = NULL;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -3939,7 +3940,8 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
     + OR_INT_SIZE		/* process_id */
     + OR_INT_SIZE		/* client_lock_wait */
     + OR_INT_SIZE		/* client_isolation */
-    + OR_INT_SIZE;		/* session state id */
+    + OR_INT_SIZE		/* session state id */
+    + sysprm_packed_local_session_parameters_length ();	/* session parameters */
   request = (char *) malloc (request_size);
   if (request)
     {
@@ -3955,6 +3957,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, client_lock_wait);
       ptr = or_pack_int (ptr, (int) client_isolation);
       ptr = or_pack_int (ptr, db_Session_id);
+      ptr = sysprm_pack_local_session_parameters (ptr);
 
       req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT,
 				       request, request_size, reply,
@@ -3983,6 +3986,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
 	      ptr = or_unpack_int (ptr, &db_Session_id);
 	      ptr = or_unpack_int (ptr, &row_count);
+	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
 	    }
 	  free_and_init (area);
 	}
@@ -3993,7 +3997,8 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (request_size));
     }
-
+  sysprm_update_client_session_parameters (session_params);
+  sysprm_free_session_parameters (&session_params);
   db_update_row_count_cache (row_count);
   return tran_index;
 #else /* CS_MODE */
@@ -8703,27 +8708,51 @@ sysprm_change_server_parameters (const char *data)
 {
 #if defined(CS_MODE)
   int rc = PRM_ERR_COMM_ERR;
-  int request_size, strlen, req_error;
-  char *request, *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  int request_size, strlen, req_error, replydata_length;
+  int i, *diff_data = NULL;
+  char *request, *reply, *replydata;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  replydata = NULL;
   request_size = length_const_string (data, &strlen);
   request = (char *) malloc (request_size);
   if (request)
     {
       pack_const_string_with_length (request, data, strlen);
-      req_error = net_client_request (NET_SERVER_PRM_SET_PARAMETERS,
-				      request, request_size,
-				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				      NULL, 0, NULL, 0);
+      req_error = net_client_request2 (NET_SERVER_PRM_SET_PARAMETERS,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, &replydata,
+				       &replydata_length);
       if (!req_error)
 	{
-	  or_unpack_int (reply, &rc);
+	  /* skip one field where the length of replydata is kept */
+	  or_unpack_int (reply + OR_INT_SIZE, &rc);
 	}
-
+      if (rc != NO_ERROR)
+	{
+	  free_and_init (request);
+	  if (replydata)
+	    {
+	      free_and_init (replydata);
+	    }
+	  return rc;
+	}
+      if (sysprm_unpack_different_session_parameters (replydata, &diff_data)
+	  != NULL)
+	{
+	  int count = diff_data[0];
+	  for (i = 0; i < count; i++)
+	    {
+	      prm_update_prm_different_flag (diff_data[2 * i + 1],
+					     diff_data[2 * i + 2]);
+	    }
+	}
+      free_and_init (replydata);
       free_and_init (request);
+      free_and_init (diff_data);
     }
   return rc;
 #else /* CS_MODE */
@@ -9233,7 +9262,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 bool
 histo_is_supported (void)
 {
-  return PRM_ENABLE_HISTO;
+  return prm_get_bool_value (PRM_ID_ENABLE_HISTO);
 }
 
 int

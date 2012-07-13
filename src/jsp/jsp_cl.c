@@ -470,7 +470,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -521,7 +521,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -591,7 +591,7 @@ jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);

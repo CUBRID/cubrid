@@ -8711,7 +8711,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 
 	  /* STEP 2: check that grouped things are single valued */
-	  if (PRM_ONLY_FULL_GROUP_BY || !info.group_by)
+	  if (prm_get_bool_value (PRM_ID_ONLY_FULL_GROUP_BY)
+	      || !info.group_by)
 	    {
 	      (void) parser_walk_tree (parser,
 				       node->info.query.q.select.list,

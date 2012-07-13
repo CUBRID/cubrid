@@ -1187,7 +1187,7 @@ db_string_concatenate (const DB_VALUE * string1,
        * NVL function to explicitly convert the expression to a
        * zero-length string.
        */
-      if (PRM_ORACLE_STYLE_EMPTY_STRING)
+      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	{
 	  if (DB_IS_NULL (string1) && QSTR_IS_ANY_CHAR_OR_BIT (string_type2))
 	    {
@@ -1225,7 +1225,8 @@ db_string_concatenate (const DB_VALUE * string1,
        * NVL function to explicitly convert the expression to a
        * zero-length string.
        */
-      check_empty_string = PRM_ORACLE_STYLE_EMPTY_STRING ? true : false;
+      check_empty_string =
+	prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) ? true : false;
 
       if (check_empty_string && DB_IS_NULL (string1)
 	  && QSTR_IS_ANY_CHAR_OR_BIT (string_type2))
@@ -1563,7 +1564,7 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
       DB_MAKE_NULL (res);
       db_private_free (NULL, num_as_bytes);
 
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  err_status = NO_ERROR;
 	}
@@ -1793,11 +1794,11 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 	  len = 0;
 	}
 
-      if (len > PRM_STRING_MAX_SIZE_BYTES)
+      if (len > prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_QPROC_STRING_SIZE_TOO_BIG, 2, len,
-		  PRM_STRING_MAX_SIZE_BYTES);
+		  prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 	  DB_MAKE_NULL (result);
 	  return NO_ERROR;
 	}
@@ -2177,7 +2178,7 @@ db_string_repeat (const DB_VALUE * src_string,
 	  return error_status;
 	}
 
-      if (PRM_ORACLE_STYLE_EMPTY_STRING == true
+      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
 	  && DB_IS_NULL (&dummy)
 	  && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&dummy)))
 	{
@@ -2282,7 +2283,7 @@ db_string_substring_index (DB_VALUE * src_string,
   delim_type = DB_VALUE_DOMAIN_TYPE (delim_string);
 
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING == true)
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
     {
       if (DB_IS_NULL (src_string))
 	{
@@ -2672,7 +2673,7 @@ db_string_insert_substring (DB_VALUE * src_string,
   src_type = DB_VALUE_DOMAIN_TYPE (src_string);
   substr_type = DB_VALUE_DOMAIN_TYPE (sub_string);
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING == true)
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
     {
       if (DB_IS_NULL (src_string))
 	{
@@ -2788,7 +2789,7 @@ db_string_insert_substring (DB_VALUE * src_string,
 	  goto exit;
 	}
 
-      if (PRM_ORACLE_STYLE_EMPTY_STRING == true
+      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
 	  && DB_IS_NULL (&string1)
 	  && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&string1)))
 	{
@@ -2824,7 +2825,7 @@ db_string_insert_substring (DB_VALUE * src_string,
 	  goto exit;
 	}
 
-      if (PRM_ORACLE_STYLE_EMPTY_STRING == true
+      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
 	  && DB_IS_NULL (&string2)
 	  && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&string2)))
 	{
@@ -4534,7 +4535,8 @@ cleanup:
       *comp_pattern = rx_compiled_pattern;
     }
 
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS && error_status != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+      && error_status != NO_ERROR)
     {
       /* we must not return an error code */
       *result = V_UNKNOWN;
@@ -5951,7 +5953,7 @@ match_not_found:
 
 error_return:
   DB_MAKE_NULL (result);
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
       return NO_ERROR;
@@ -6041,7 +6043,7 @@ error_return:
     }
   pr_clear_value (result);
   DB_MAKE_NULL (result);
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
       return NO_ERROR;
@@ -6307,7 +6309,7 @@ error_return:
       db_private_free (NULL, res_s);
     }
   DB_MAKE_NULL (result);
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       /* clear error and return NULL */
       er_clear ();
@@ -7661,11 +7663,11 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
   result_size = MAX (result_size, new_size);
   result_size = MAX (result_size, src_size);
 
-  if (result_size > PRM_STRING_MAX_SIZE_BYTES)
+  if (result_size > prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 	      ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
-	      PRM_STRING_MAX_SIZE_BYTES);
+	      prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 
       DB_MAKE_NULL (result);
       return NO_ERROR;
@@ -7688,7 +7690,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
 			  (char *) r, (int) MIN (result_size, src_size),
 			  codeset, DB_GET_STRING_COLLATION (src_string));
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING == true
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
       && DB_IS_NULL (result)
       && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (result)))
     {
@@ -8053,7 +8055,7 @@ qstr_concatenate (const unsigned char *s1,
 	  *result_type = DB_TYPE_CHAR;
 	}
 
-      if (*result_size > PRM_STRING_MAX_SIZE_BYTES)
+      if (*result_size > prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  goto size_error;
 	}
@@ -8141,7 +8143,7 @@ qstr_concatenate (const unsigned char *s1,
 
       *result_size = s1_size + s2_size;
 
-      if (*result_size > PRM_STRING_MAX_SIZE_BYTES)
+      if (*result_size > prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  goto size_error;
 	}
@@ -8216,7 +8218,8 @@ qstr_concatenate (const unsigned char *s1,
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  error_status, 2, *result_size, PRM_STRING_MAX_SIZE_BYTES);
+	  error_status, 2, *result_size,
+	  prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
   /*
    * Error handler
@@ -8328,7 +8331,7 @@ qstr_bit_concatenate (const unsigned char *s1,
       *result_size = QSTR_NUM_BYTES (*result_length);
 
 
-      if (*result_size > PRM_STRING_MAX_SIZE_BYTES)
+      if (*result_size > prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  goto size_error;
 	}
@@ -8396,7 +8399,7 @@ qstr_bit_concatenate (const unsigned char *s1,
 
       *result_size = QSTR_NUM_BYTES (*result_length);
 
-      if (*result_size > PRM_STRING_MAX_SIZE_BYTES)
+      if (*result_size > prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  goto size_error;
 	}
@@ -8457,7 +8460,8 @@ qstr_bit_concatenate (const unsigned char *s1,
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  error_status, 2, *result_size, PRM_STRING_MAX_SIZE_BYTES);
+	  error_status, 2, *result_size,
+	  prm_get_integer_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
 
   /*
@@ -9947,7 +9951,7 @@ db_get_date_dayofyear (const DB_VALUE * src_date, DB_VALUE * result)
        */
       er_clear ();
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -10001,7 +10005,7 @@ db_get_date_weekday (const DB_VALUE * src_date, const int mode,
        */
       er_clear ();
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -10071,7 +10075,7 @@ db_get_date_quarter (const DB_VALUE * src_date, DB_VALUE * result)
     {
       er_clear ();
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -10139,7 +10143,7 @@ db_get_date_totaldays (const DB_VALUE * src_date, DB_VALUE * result)
       er_clear ();
       DB_MAKE_NULL (result);
 
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -10281,7 +10285,7 @@ db_add_days_to_year (const DB_VALUE * src_year, const DB_VALUE * src_days,
 error:
   DB_MAKE_NULL (result);
 
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -10334,7 +10338,7 @@ db_convert_to_time (const DB_VALUE * src_hour,
 error:
   DB_MAKE_NULL (result);
 
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -10400,7 +10404,7 @@ db_convert_sec_to_time (const DB_VALUE * src, DB_VALUE * result)
 error:
   DB_MAKE_NULL (result);
 
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -10438,7 +10442,7 @@ db_convert_time_to_sec (const DB_VALUE * src_date, DB_VALUE * result)
       er_clear ();
       DB_MAKE_NULL (result);
 
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -10610,7 +10614,7 @@ db_get_date_week (const DB_VALUE * src_date, const DB_VALUE * mode,
   int month = 0, day = 0, year = 0;
   int second = 0, minute = 0, hour = 0;
   int ms = 0;
-  int calc_mode = PRM_DEFAULT_WEEK_FORMAT;
+  int calc_mode = prm_get_integer_value (PRM_ID_DEFAULT_WEEK_FORMAT);
   int week_number = 0;
   int retval;
 
@@ -10632,7 +10636,7 @@ db_get_date_week (const DB_VALUE * src_date, const DB_VALUE * mode,
 
   if (DB_IS_NULL (mode))
     {
-      calc_mode = PRM_DEFAULT_WEEK_FORMAT;
+      calc_mode = prm_get_integer_value (PRM_ID_DEFAULT_WEEK_FORMAT);
     }
   else
     {
@@ -10655,7 +10659,7 @@ db_get_date_week (const DB_VALUE * src_date, const DB_VALUE * mode,
 error:
   er_clear ();
   DB_MAKE_NULL (result);
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -10696,7 +10700,7 @@ db_get_date_item (const DB_VALUE * src_date, const int item_type,
        */
       er_clear ();
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -10751,7 +10755,7 @@ db_get_time_item (const DB_VALUE * src_date, const int item_type,
     {
       er_clear ();
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -11317,7 +11321,7 @@ db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day)
   if (month == 0 && day == 0 && year == 0)
     {
       DB_MAKE_NULL (result_day);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -18789,7 +18793,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       if (m == 0 && d == 0 && y == 0)
 	{
 	  DB_MAKE_NULL (result);
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
 	    }
@@ -18861,7 +18865,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	  && ms == 0)
 	{
 	  DB_MAKE_NULL (result);
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
 	    }
@@ -18935,7 +18939,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
 	  DB_MAKE_NULL (result);
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
 	    }
@@ -19656,7 +19660,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
       if (m == 0 && d == 0 && y == 0)
 	{
 	  DB_MAKE_NULL (result);
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
 	    }
@@ -19692,7 +19696,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  if (m == 0 && d == 0 && y == 0)
 	    {
 	      DB_MAKE_NULL (result);
-	      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		{
 		  return NO_ERROR;
 		}
@@ -19729,7 +19733,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	      && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
 	      DB_MAKE_NULL (result);
-	      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		{
 		  return NO_ERROR;
 		}
@@ -19767,7 +19771,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  && ms == 0)
 	{
 	  DB_MAKE_NULL (result);
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
 	    }
@@ -19829,7 +19833,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
 	  DB_MAKE_NULL (result);
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
 	    }
@@ -20494,7 +20498,8 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
       /* '%' without format specifier */
       else if (WHITESPACE (format2_s[i]) && i > 0 && format2_s[i - 1] == '%')
 	{
-	  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      false)
 	    {
 	      error_status = ER_OBJ_INVALID_ARGUMENTS;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -20574,7 +20579,8 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
 	      /* do not accept a double % */
 	      if (j > 1 && format_s[j - 2] == '%')
 		{
-		  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+		  if (prm_get_bool_value
+		      (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 		    {
 		      error_status = ER_OBJ_INVALID_ARGUMENTS;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status,
@@ -21101,7 +21107,8 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
 	    }
 	  else if (sstr[i] != format_s[j] && format_s[j] != '%')
 	    {
-	      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == false)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+		  == false)
 		{
 		  error_status = ER_OBJ_INVALID_ARGUMENTS;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -21411,7 +21418,7 @@ conversion_error:
       db_private_free_and_init (NULL, format_s);
     }
 
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       error_status = NO_ERROR;
     }
@@ -21454,7 +21461,7 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value,
       != NO_ERROR)
     {
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -21548,7 +21555,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value,
       (date_value, &y, &m, &d, &hour, &min, &sec, &ms, NULL) != NO_ERROR)
     {
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -21673,7 +21680,7 @@ db_date_diff (const DB_VALUE * date_value1, const DB_VALUE * date_value2,
     {
       er_clear ();
       DB_MAKE_NULL (result);
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
 	}
@@ -21778,7 +21785,7 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format,
 
 error:
   DB_MAKE_NULL (result);
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -21910,7 +21917,7 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
 
 error:
   DB_MAKE_NULL (result);
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -24096,7 +24103,7 @@ error:
     {
       DB_MAKE_NULL (result);
     }
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -24194,7 +24201,7 @@ error:
     {
       DB_MAKE_NULL (result);
     }
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }
@@ -24432,7 +24439,7 @@ error:
     {
       DB_MAKE_NULL (result);
     }
-  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
     }

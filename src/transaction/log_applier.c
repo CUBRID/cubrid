@@ -1935,9 +1935,10 @@ la_ignore_on_error (int errid)
 
   errid = abs (errid);
 
-  if (PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST)
+  if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST))
     {
-      if (PRM_HA_APPLYLOGDB_IGNORE_ERROR_LIST[errid] == true)
+      if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST)
+	  [errid] == true)
 	{
 	  return true;
 	}
@@ -1957,9 +1958,10 @@ la_retry_on_error (int errid)
     }
 
   errid = abs (errid);
-  if (PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST)
+  if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST))
     {
-      if (PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST[errid] == true)
+      if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST)
+	  [errid] == true)
 	{
 	  return true;
 	}
@@ -6332,7 +6334,7 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num,
 			int nxarv_num)
 {
   int error = NO_ERROR;
-  int log_max_archives = PRM_LOG_MAX_ARCHIVES;
+  int log_max_archives = prm_get_integer_value (PRM_ID_LOG_MAX_ARCHIVES);
   const char *info_reason, *catmsg;
   char archive_name[PATH_MAX] = { '\0', }, archive_name_first[PATH_MAX];
   int first_arv_num_to_delete = -1;
@@ -6610,7 +6612,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr,
 		  sizeof (struct log_header));
 
-	  if (PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS >= 0)
+	  if (prm_get_integer_value
+	      (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
 	    {
 	      if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
 		  && LSA_EQ (&last_eof_lsa, &final_log_hdr.eof_lsa))
@@ -6619,7 +6622,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  assert_release (now >= last_eof_time);
 
 		  if ((now - last_eof_time) >=
-		      PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
+		      prm_get_integer_value
+		      (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS))
 		    {
 		      clear_owner = true;
 		      error =

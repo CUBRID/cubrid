@@ -2519,11 +2519,13 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 	  do_read = false;
 #ifndef WINDOWS
 	  if ((logwr_Gl.mode == LOGWR_MODE_SEMISYNC)
-	      && (PRM_LOG_BG_FLUSH_INTERVAL_MSECS > 0))
+	      && (prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS) >
+		  0))
 	    {
 	      error =
 		css_receive_data_from_server_with_timeout (rc, &reply, &size,
-							   PRM_LOG_BG_FLUSH_INTERVAL_MSECS);
+							   prm_get_integer_value
+							   (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS));
 	      if (error == INTERRUPTED_READ)
 		{
 		  logwr_Gl.force_flush = true;
@@ -4317,7 +4319,9 @@ net_client_init (const char *dbname, const char *hostname)
   /* don't really need to do this every time but bruce says its ok -
      we probably need to guarentee that a css_terminate is always
      called before this */
-  error = css_client_init (PRM_TCP_PORT_ID, dbname, hostname);
+  error =
+    css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname,
+		     hostname);
   if (error != NO_ERROR)
     {
       goto end;

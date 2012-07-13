@@ -410,9 +410,10 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
   databases = last = NULL;
 
 #if defined(SERVER_MODE)
-  if (PRM_HA_MODE && PRM_HA_NODE_LIST)
+  if (prm_get_integer_value (PRM_ID_HA_MODE)
+      && prm_get_string_value (PRM_ID_HA_NODE_LIST))
     {
-      str = strchr (PRM_HA_NODE_LIST, '@');
+      str = strchr (prm_get_string_value (PRM_ID_HA_NODE_LIST), '@');
       ha_node_list = (str) ? str + 1 : NULL;
     }
 #endif
@@ -1485,9 +1486,11 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
     }
 
   /* get the hosts list from parameters */
-  if (PRM_CFG_DB_HOSTS != NULL && *PRM_CFG_DB_HOSTS != '\0')
+  if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL
+      && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
     {
-      host_list_length += strlen (PRM_CFG_DB_HOSTS) + 1;
+      host_list_length +=
+	strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
     }
 
   /*
@@ -1528,9 +1531,10 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
 	}
     }
   /* append the hosts from the parameter to the list */
-  if (PRM_CFG_DB_HOSTS != NULL && *PRM_CFG_DB_HOSTS != '\0')
+  if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL
+      && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
     {
-      str_ptr = PRM_CFG_DB_HOSTS;
+      str_ptr = prm_get_string_value (PRM_ID_CFG_DB_HOSTS);
       while (*str_ptr != '\0')
 	{
 	  str_ptr = cfg_pop_host (str_ptr, host_ptr, &host_length);

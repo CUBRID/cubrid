@@ -1132,7 +1132,8 @@ ldr_clear_context (LDR_CONTEXT * context)
   context->inst_total = 0;
   context->inst_num = -1;
 
-  context->flush_interval = PRM_LOADDB_FLUSH_INTERVAL;
+  context->flush_interval =
+    prm_get_integer_value (PRM_ID_LOADDB_FLUSH_INTERVAL);
 
   context->table = NULL;
 

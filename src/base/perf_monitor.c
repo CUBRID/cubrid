@@ -2041,12 +2041,15 @@ mnt_server_check_stats_threshold (int tran_index,
   unsigned int *stats_ptr;
   int *prm_ptr;
 
-  if (PRM_MNT_STATS_THRESHOLD)
+  if (prm_get_integer_list_value (PRM_ID_MNT_STATS_THRESHOLD))
     {
-      size = (unsigned int) PRM_MNT_STATS_THRESHOLD[0];
+      size =
+	(unsigned int)
+	prm_get_integer_list_value (PRM_ID_MNT_STATS_THRESHOLD)[0];
       size = MIN (size, MNT_SIZE_OF_SERVER_EXEC_STATS - 1);
       stats_ptr = (unsigned int *) stats;
-      prm_ptr = (int *) &PRM_MNT_STATS_THRESHOLD[1];
+      prm_ptr =
+	(int *) &prm_get_integer_list_value (PRM_ID_MNT_STATS_THRESHOLD)[1];
 
       for (i = 0; i < size; i++)
 	{

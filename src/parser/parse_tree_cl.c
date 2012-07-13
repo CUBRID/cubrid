@@ -43,6 +43,7 @@
 #include "object_print.h"
 #include "optimizer.h"
 #include "serial.h"
+#include "system_parameter.h"
 
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100
@@ -2327,6 +2328,13 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
   string = pt_print_bytes (parser, node);
   if (string)
     {
+      if ((parser->custom_print & PT_PRINT_DIFFERENT_SESSION_PRMS) != 0)
+	{
+	  char *str = sysprm_print_different_session_parameters ();
+	  string = pt_append_nulstring (parser, string, "?");
+	  string = pt_append_nulstring (parser, string, str);
+	  free_and_init (str);
+	}
       return (char *) string->bytes;
     }
   return NULL;

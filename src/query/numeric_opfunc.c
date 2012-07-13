@@ -1971,7 +1971,7 @@ numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
       prec = DB_MAX_NUMERIC_PRECISION;
     }
 
-  if (!PRM_COMPAT_NUMERIC_DIVISION_SCALE
+  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE)
       && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
     {
       int new_scale, new_prec;

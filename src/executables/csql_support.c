@@ -1040,7 +1040,7 @@ csql_is_statement_end (const char *str)
 	      state = CSQL_STATE_GENERAL;
 	      break;
 	    }
-	  if (*p == '\\' && !PRM_NO_BACKSLASH_ESCAPES)
+	  if (*p == '\\' && !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
 	    {
 	      p++;
 	      break;
@@ -1053,7 +1053,7 @@ csql_is_statement_end (const char *str)
 	      state = CSQL_STATE_GENERAL;
 	      break;
 	    }
-	  if (*p == '\\' && !PRM_NO_BACKSLASH_ESCAPES)
+	  if (*p == '\\' && !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
 	    {
 	      p++;
 	      break;

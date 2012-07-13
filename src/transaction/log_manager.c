@@ -904,7 +904,8 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    */
   log_Gl.append.vdes = fileio_format (thread_p, db_fullname, log_Name_active,
 				      LOG_DBLOG_ACTIVE_VOLID, npages,
-				      PRM_LOG_SWEEP_CLEAN, true, false,
+				      prm_get_bool_value
+				      (PRM_ID_LOG_SWEEP_CLEAN), true, false,
 				      LOG_PAGESIZE, false);
   loghdr_pgptr = logpb_create_header_page (thread_p);
   if (log_Gl.append.vdes == NULL_VOLDES
@@ -927,7 +928,8 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 
-  log_Gl.chkpt_every_npages = PRM_LOG_CHECKPOINT_NPAGES;
+  log_Gl.chkpt_every_npages =
+    prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
   /* Flush the log header */
 
@@ -1044,7 +1046,7 @@ log_set_no_logging (void)
       log_No_logging = true;
       error_code = NO_ERROR;
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG && log_No_logging)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && log_No_logging)
 	{
 	  fprintf (stdout, "**Running without logging**\n");
 	  fflush (stdout);
@@ -1091,9 +1093,9 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 				  prefix_logname, ismedia_crash, stopat,
 				  false);
 
-  log_No_logging = PRM_LOG_NO_LOGGING;
+  log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
 #if !defined(NDEBUG)
-  if (PRM_LOG_TRACE_DEBUG && log_No_logging)
+  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && log_No_logging)
     {
       fprintf (stdout, "**Running without logging**\n");
       fflush (stdout);
@@ -1447,7 +1449,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   log_Gl.rcv_phase = LOG_RESTARTED;
 
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
-  log_Gl.chkpt_every_npages = PRM_LOG_CHECKPOINT_NPAGES;
+  log_Gl.chkpt_every_npages =
+    prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
   if (!LSA_EQ (&log_Gl.append.prev_lsa, &log_Gl.prior_info.prev_lsa))
     {
@@ -1466,9 +1469,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    *
    * Don't checkpoint to sizes smaller than the number of log buffers
    */
-  if (log_Gl.chkpt_every_npages < PRM_LOG_NBUFFERS)
+  if (log_Gl.chkpt_every_npages < prm_get_integer_value (PRM_ID_LOG_NBUFFERS))
     {
-      log_Gl.chkpt_every_npages = PRM_LOG_NBUFFERS;
+      log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
     }
 
   /* Next checkpoint should be run at ... */
@@ -1489,7 +1492,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   logpb_initialize_arv_page_info_table ();
   logpb_initialize_logging_statistics ();
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       int vdes = NULL_VOLDES;
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
@@ -1850,7 +1853,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   logtb_undefine_trantable (thread_p);
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       if (log_Gl.bg_archive_info.vdes != NULL_VOLDES)
 	{
@@ -4953,7 +4956,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
 
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  time_t xxtime = time (NULL);
 
@@ -4970,7 +4973,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  time_t xxtime = time (NULL);
 
@@ -5176,7 +5179,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
   (void) partition_decache_class (thread_p, &class->class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
-  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
+  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
       && (qexec_remove_xasl_cache_ent_by_class (thread_p,
 						&class->class_oid) !=
 	  NO_ERROR))
@@ -5189,7 +5192,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
 		    class->class_oid.volid);
     }
   /* remove filter predicatecache entries which are relevant with this class */
-  if (PRM_FILTER_PRED_MAX_CACHE_ENTRIES > 0
+  if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
       && (qexec_remove_filter_pred_cache_ent_by_class (thread_p,
 						       &class->class_oid) !=
 	  NO_ERROR))
@@ -6638,7 +6641,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	     */
 	    if (LOG_ISRESTARTED () && tdes->isloose_end == false)
 	      {
-		wait_msecs = PRM_LK_TIMEOUT_SECS;
+		wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
 
 		if (wait_msecs > 0)
 		  {
@@ -6742,7 +6745,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	  state = TRAN_UNACTIVE_ABORTED;
 	}
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  time_t xxtime = time (NULL);
 
@@ -9135,7 +9138,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
       /* Forward */
       if (lsa.pageid < 0)
 	{
-	  if (PRM_LOG_MEDIA_FAILURE_SUPPORT != 0)
+	  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT) != 0)
 	    {
 	      lsa.pageid = 0;
 	    }

@@ -1074,7 +1074,8 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 4,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 
 /*
@@ -1107,7 +1108,8 @@ css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 6,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 
 /*
@@ -1144,7 +1146,8 @@ css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 8,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 
 #if defined(CS_MODE) || defined(SA_MODE)
@@ -1174,7 +1177,8 @@ css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 10,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 #endif /* CS_MODE || SA_MODE */
 
@@ -1219,7 +1223,8 @@ css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 12,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 
 #if defined(CS_MODE) || defined(SA_MODE)
@@ -1253,7 +1258,8 @@ css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 14,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 #endif /* CS_MODE || SA_MODE */
 
@@ -1307,7 +1313,8 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 16,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1462,7 +1469,9 @@ int
 css_net_read_header (SOCKET fd, char *buffer, int *maxlen)
 {
   /* timeout in milli-seconds in css_net_recv() */
-  return css_net_recv (fd, buffer, maxlen, PRM_TCP_CONNECTION_TIMEOUT * 1000);
+  return css_net_recv (fd, buffer, maxlen,
+		       prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		       1000);
 }
 
 static void
@@ -1529,7 +1538,8 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
     {
       /* timeout in milli-second in css_net_send() */
       if (css_net_send (conn, (char *) &local_header, sizeof (NET_HEADER),
-			PRM_TCP_CONNECTION_TIMEOUT * 1000) == NO_ERRORS)
+			prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
+			* 1000) == NO_ERRORS)
 	{
 	  return NO_ERRORS;
 	}
@@ -2066,12 +2076,14 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
 
   /* timeout in milli-seconds in css_net_send() */
   rc = css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
-		     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+		     prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		     1000);
   if (rc == NO_ERRORS)
     {
       /* timeout in milli-seconds in css_net_send() */
       return (css_net_send (conn, buffer, buffer_size,
-			    PRM_TCP_CONNECTION_TIMEOUT * 1000));
+			    prm_get_integer_value
+			    (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
     }
   else
     {

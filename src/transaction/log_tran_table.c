@@ -244,7 +244,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
    * When second time this function invoked during normal processing,
    * just return.
    */
-  total_indices = PRM_CSS_MAX_CLIENTS + 1;
+  total_indices = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
   if (log_Gl.rcv_phase == LOG_RESTARTED
       && total_indices <= NUM_TOTAL_TRAN_INDICES)
     {
@@ -391,9 +391,11 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
    * Total number of transaction descriptor is set to the value of
    * max_clients+1
    */
-  if (num_expected_tran_indices < PRM_CSS_MAX_CLIENTS + 1)
+  if (num_expected_tran_indices <
+      prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1)
     {
-      num_expected_tran_indices = PRM_CSS_MAX_CLIENTS + 1;
+      num_expected_tran_indices =
+	prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
     }
 
   if (num_expected_tran_indices < LOG_SYSTEM_TRAN_INDEX)
@@ -2835,7 +2837,7 @@ logtb_disable_replication (THREAD_ENTRY * thread_p)
 void
 logtb_enable_replication (THREAD_ENTRY * thread_p)
 {
-  if (PRM_HA_MODE != HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       db_Enable_replications = 1;
       er_log_debug (ARG_FILE_LINE,
@@ -2864,7 +2866,7 @@ logtb_disable_update (THREAD_ENTRY * thread_p)
 void
 logtb_enable_update (THREAD_ENTRY * thread_p)
 {
-  if (PRM_READ_ONLY_MODE == false)
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) == false)
     {
       db_Disable_modifications = 0;
       er_log_debug (ARG_FILE_LINE,
@@ -2940,7 +2942,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       tdes->isloose_end = true;
       log_Gl.trantable.num_client_loose_end_indices++;
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  const char *str_tmp;
 	  switch (tdes->state)
@@ -2973,7 +2975,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       tdes->isloose_end = true;
       log_Gl.trantable.num_prepared_loose_end_indices++;
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
 		   "\n*** Transaction = %d (index = %d) is"
@@ -2993,7 +2995,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       tdes->isloose_end = true;
       log_Gl.trantable.num_coord_loose_end_indices++;
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
 		   "\n*** Transaction = %d (index = %d) needs to"

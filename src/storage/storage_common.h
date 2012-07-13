@@ -150,7 +150,9 @@ struct log_lsa
 typedef char *PAGE_PTR;		/* Pointer to a page */
 
 #define ISCAN_OID_BUFFER_SIZE \
-  ((((int) (IO_PAGESIZE * PRM_BT_OID_NBUFFERS)) / OR_OID_SIZE) * OR_OID_SIZE)
+  ((((int) (IO_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS))) \
+    / OR_OID_SIZE) \
+   * OR_OID_SIZE)
 
 /* TYPE DEFINITIONS RELATED TO KEY AND VALUES */
 

@@ -267,18 +267,18 @@ qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
 static bool
 qmgr_is_not_allowed_result_cache (QUERY_FLAG flag)
 {
-  return (PRM_LIST_QUERY_CACHE_MODE == 0
-	  || (PRM_LIST_QUERY_CACHE_MODE == 1
+  return (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 0
+	  || (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 1
 	      && (flag & RESULT_CACHE_INHIBITED))
-	  || (PRM_LIST_QUERY_CACHE_MODE == 2
+	  || (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 2
 	      && !(flag & RESULT_CACHE_REQUIRED)));
 }
 
 static bool
 qmgr_can_not_get_result_from_cache (QUERY_FLAG flag)
 {
-  return (PRM_LIST_QUERY_CACHE_MODE == 0
-	  || (PRM_LIST_QUERY_CACHE_MODE > 0
+  return (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 0
+	  || (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) > 0
 	      && ((flag) & NOT_FROM_RESULT_CACHE)));
 }
 
@@ -880,9 +880,9 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
   int i;
 
 #if defined (SERVER_MODE)
-  if (count <= PRM_CSS_MAX_CLIENTS + 1)
+  if (count <= prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1)
     {
-      count = PRM_CSS_MAX_CLIENTS + 1;
+      count = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
     }
 #endif
 
@@ -3491,7 +3491,8 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
     }
 
   num_buffer_pages = (membuf_type == TEMP_FILE_MEMBUF_NORMAL) ?
-    PRM_TEMP_MEM_BUFFER_PAGES : PRM_INDEX_SCAN_KEY_BUFFER_PAGES;
+    prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) :
+    prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
   tfile_vfid_p =
     qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list
@@ -3642,7 +3643,8 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     }
 
   tfile_vfid_p->total_count = 0;
-  tfile_vfid_p->membuf_last = PRM_TEMP_MEM_BUFFER_PAGES - 1;
+  tfile_vfid_p->membuf_last =
+    prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
   tfile_vfid_p->membuf = NULL;
   tfile_vfid_p->membuf_npages = 0;
   tfile_vfid_p->membuf_type = TEMP_FILE_MEMBUF_NONE;
@@ -5048,7 +5050,8 @@ qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p,
     }
 
   num_buffer_pages = (membuf_type == TEMP_FILE_MEMBUF_NORMAL) ?
-    PRM_TEMP_MEM_BUFFER_PAGES : PRM_INDEX_SCAN_KEY_BUFFER_PAGES;
+    prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) :
+    prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
   pthread_mutex_init (&temp_file_list_p->mutex, NULL);
   rv = pthread_mutex_lock (&temp_file_list_p->mutex);

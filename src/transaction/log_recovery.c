@@ -2010,7 +2010,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
       && difftime (*stop_at, last_at_time) < 0)
     {
 #if !defined(NDEBUG)
-      if (PRM_LOG_TRACE_DEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -2983,7 +2983,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 		}
 
 #if !defined(NDEBUG)
-	      if (PRM_LOG_TRACE_DEBUG)
+	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -3579,7 +3579,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      /* GET AFTER DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 #if !defined(NDEBUG)
-	      if (PRM_LOG_TRACE_DEBUG)
+	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
@@ -3698,7 +3698,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 				  &log_lsa, log_pgptr);
 
 #if !defined(NDEBUG)
-	      if (PRM_LOG_TRACE_DEBUG)
+	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"
@@ -3773,7 +3773,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 				  &log_lsa, log_pgptr);
 
 #if !defined(NDEBUG)
-	      if (PRM_LOG_TRACE_DEBUG)
+	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
 		  fprintf (stdout,
 			   "TRACE EXT REDOING[3]: LSA = %lld|%d, Rv_index = %s\n",
@@ -3863,7 +3863,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 
 #if !defined(NDEBUG)
-	      if (PRM_LOG_TRACE_DEBUG)
+	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[4]: LSA = %lld|%d, Rv_index = %s,\n"
@@ -3969,7 +3969,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      /* GET COMPENSATING DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 #if !defined(NDEBUG)
-	      if (PRM_LOG_TRACE_DEBUG)
+	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[5]: LSA = %lld|%d, Rv_index = %s,\n"
@@ -4568,7 +4568,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undoredo),
 				      &log_lsa, log_pgptr);
 #if !defined(NDEBUG)
-		  if (PRM_LOG_TRACE_DEBUG)
+		  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		    {
 		      fprintf (stdout,
 			       "TRACE UNDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
@@ -4641,7 +4641,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 				      &log_lsa, log_pgptr);
 
 #if !defined(NDEBUG)
-		  if (PRM_LOG_TRACE_DEBUG)
+		  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		    {
 		      fprintf (stdout,
 			       "TRACE UNDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"

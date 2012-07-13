@@ -5251,9 +5251,10 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
   else
     {
       /* create */
-      qfile_List_cache.n_hts = PRM_XASL_MAX_PLAN_CACHE_ENTRIES + 10;
-      qfile_List_cache.list_hts = (MHT_TABLE **)
-	calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
+      qfile_List_cache.n_hts =
+	prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) + 10;
+      qfile_List_cache.list_hts =
+	(MHT_TABLE **) calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
       if (qfile_List_cache.list_hts == NULL)
 	{
 	  goto error;
@@ -5263,7 +5264,8 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	{
 	  qfile_List_cache.list_hts[i] =
 	    mht_create ("list file cache (DB_VALUE list)",
-			PRM_LIST_MAX_QUERY_CACHE_ENTRIES,
+			prm_get_integer_value
+			(PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES),
 			qfile_hash_db_value_array,
 			qfile_compare_equal_db_value_array);
 	  if (qfile_List_cache.list_hts[i] == NULL)
@@ -5307,7 +5309,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
     }
 
   qfile_List_cache_entry_pool.n_entries =
-    PRM_LIST_MAX_QUERY_CACHE_ENTRIES + 10;
+    prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) + 10;
   qfile_List_cache_entry_pool.pool =
     (QFILE_POOLED_LIST_CACHE_ENTRY *)
     calloc (qfile_List_cache_entry_pool.n_entries,
@@ -6364,9 +6366,12 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
     }
 
   /* check the number of list cache entries */
-  if ((int) mht_count (ht) >= PRM_LIST_MAX_QUERY_CACHE_ENTRIES
-      || qfile_List_cache.n_entries >= PRM_LIST_MAX_QUERY_CACHE_ENTRIES
-      || qfile_List_cache.n_pages >= PRM_LIST_MAX_QUERY_CACHE_PAGES)
+  if ((int) mht_count (ht) >=
+      prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES)
+      || qfile_List_cache.n_entries >=
+      prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES)
+      || qfile_List_cache.n_pages >=
+      prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES))
     {
 
       qfile_List_cache.full_counter++;	/* counter */

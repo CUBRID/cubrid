@@ -369,7 +369,8 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       /* timeout in milli-seconds in css_net_recv() */
       rc = css_net_recv (conn->fd, buffer, &size,
-			 PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
+			 * 1000);
     }
   while (rc == INTERRUPTED_READ);
 

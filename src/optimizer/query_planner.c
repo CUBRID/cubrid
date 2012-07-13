@@ -897,7 +897,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	  if (QO_SEG_FUNC_INDEX (seg) == true)
 	    {
 	      asc_or_desc = index_entryp->constraints->func_index_info->
-						  asc_desc ? PT_DESC : PT_ASC;
+		asc_desc ? PT_DESC : PT_ASC;
 	    }
 	}
 
@@ -2072,11 +2072,14 @@ qo_iscan_cost (QO_PLAN * planp)
       /* at least one page */
       object_IO = 1.0;
     }
-  else if ((double) PRM_PB_NBUFFERS - index_IO < object_IO)
+  else if ((double) prm_get_integer_value (PRM_ID_PB_NBUFFERS) - index_IO <
+	   object_IO)
     {
       object_IO =
 	objects *
-	(1.0 - (((double) PRM_PB_NBUFFERS - index_IO) / (double) opages));
+	(1.0 -
+	 (((double) prm_get_integer_value (PRM_ID_PB_NBUFFERS) -
+	   index_IO) / (double) opages));
     }
 
   if (sel < 1.0)
@@ -2536,7 +2539,7 @@ qo_sort_cost (QO_PLAN * planp)
 
 	  if (objects > 1.0)
 	    {
-	      if (pages < (double) PRM_SR_NBUFFERS)
+	      if (pages < (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS))
 		{
 		  /* We can sort the result in memory without any
 		     additional io costs. Assume cpu costs are n*log(n) in
@@ -2966,8 +2969,9 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* correlated index equi-join */
       inner_cpu_cost += inner->variable_cpu_cost;
       if (qo_is_seq_scan (outer)
-	  && PRM_MAX_OUTER_CARD_OF_IDXJOIN != 0
-	  && guessed_result_cardinality > PRM_MAX_OUTER_CARD_OF_IDXJOIN)
+	  && prm_get_integer_value (PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN) != 0
+	  && guessed_result_cardinality >
+	  prm_get_integer_value (PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN))
 	{
 	  planp->variable_cpu_cost = QO_INFINITY;
 	  planp->variable_io_cost = QO_INFINITY;
@@ -3298,7 +3302,7 @@ qo_follow_cost (QO_PLAN * planp)
          page. */
       fetch_ios = cardinality;
     }
-  else if (PRM_PB_NBUFFERS >= target_pages)
+  else if (prm_get_integer_value (PRM_ID_PB_NBUFFERS) >= target_pages)
     {
       /* We have more pointers to follow than pages in the target, but
          fewer target pages than buffer pages.  Assume that the page
@@ -3309,7 +3313,9 @@ qo_follow_cost (QO_PLAN * planp)
   else
     {
       fetch_ios = cardinality *
-	(1.0 - ((double) PRM_PB_NBUFFERS) / target_pages);
+	(1.0 -
+	 ((double) prm_get_integer_value (PRM_ID_PB_NBUFFERS)) /
+	 target_pages);
     }
 
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
@@ -9251,7 +9257,8 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	case PT_LIKE_ESCAPE:
 	case PT_LIKE:
-	  selectivity = (double) PRM_LIKE_TERM_SELECTIVITY;
+	  selectivity =
+	    (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	  break;
 	case PT_SETNEQ:
 	case PT_SETEQ:

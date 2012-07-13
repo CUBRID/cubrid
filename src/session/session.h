@@ -49,6 +49,8 @@ extern int session_begin_insert_values (THREAD_ENTRY * thread_p);
 extern int session_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int session_set_row_count (THREAD_ENTRY * thread_p,
 				  const int row_count);
+extern int session_get_session_parameters (THREAD_ENTRY * thread_p,
+					   SESSION_PARAM ** session_params);
 extern int session_create_prepared_statement (THREAD_ENTRY * thread_p,
 					      OID user, char *name,
 					      char *alias_print, char *info,
@@ -59,6 +61,10 @@ extern int session_get_prepared_statement (THREAD_ENTRY * thread_p,
 extern int session_delete_prepared_statement (THREAD_ENTRY * thread_p,
 					      const char *name);
 extern int login_user (THREAD_ENTRY * thread_p, const char *username);
+extern int session_set_session_parameters (THREAD_ENTRY * thread_p,
+					   SESSION_PARAM * session_params);
+extern int session_change_session_parameter (THREAD_ENTRY * thread_p,
+					     int prm_id, const char *value);
 extern int session_set_session_variables (THREAD_ENTRY * thread_p,
 					  DB_VALUE * values, const int count);
 extern int session_get_variable (THREAD_ENTRY * thread_p,

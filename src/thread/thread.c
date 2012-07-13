@@ -298,7 +298,7 @@ thread_initialize_manager (void)
   THREAD_ENTRY *tsd_ptr;
 #endif /* not HPUX */
 
-  assert (PRM_CSS_MAX_CLIENTS >= 10);
+  assert (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) >= 10);
 
   if (thread_Manager.initialized == false)
     {
@@ -340,7 +340,8 @@ thread_initialize_manager (void)
     }
 
   /* calculate the number of thread from the number of clients */
-  thread_Manager.num_workers = PRM_CSS_MAX_CLIENTS * 2;
+  thread_Manager.num_workers =
+    prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) * 2;
   thread_Manager.num_daemons = PREDEFINED_DAEMON_THREAD_NUM;
   thread_Manager.num_total =
     thread_Manager.num_workers + thread_Manager.num_daemons
@@ -428,8 +429,8 @@ thread_start_workers (void)
      Its performance highly depends on the pthread's scope and its related
      kernel parameters. */
   r = pthread_attr_setscope (&thread_attr,
-			     PRM_PTHREAD_SCOPE_PROCESS ?
-			     PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
+			     prm_get_bool_value (PRM_ID_PTHREAD_SCOPE_PROCESS)
+			     ? PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
   r = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
@@ -442,9 +443,12 @@ thread_start_workers (void)
 
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   r = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size != (size_t) PRM_THREAD_STACKSIZE)
+  if (ts_size != (size_t) prm_get_integer_value (PRM_ID_THREAD_STACKSIZE))
     {
-      r = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
+      r =
+	pthread_attr_setstacksize (&thread_attr,
+				   prm_get_integer_value
+				   (PRM_ID_THREAD_STACKSIZE));
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -868,7 +872,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (count++ > PRM_SHUTDOWN_WAIT_TIME_IN_SECS)
+      if (count++ > prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS))
 	{
 #if CUBRID_DEBUG
 	  logtb_dump_trantable (NULL, stderr);
@@ -992,7 +996,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (count++ > PRM_SHUTDOWN_WAIT_TIME_IN_SECS)
+      if (count++ > prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS))
 	{
 #if CUBRID_DEBUG
 	  xlogtb_dump_trantable (NULL, stderr);
@@ -2612,7 +2616,9 @@ thread_checkpoint_thread (void *arg_p)
     {
       er_clear ();
 
-      to.tv_sec = time (NULL) + PRM_LOG_CHECKPOINT_INTERVAL_MINUTES * 60;
+      to.tv_sec =
+	time (NULL) +
+	prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_MINUTES) * 60;
 
       rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
       pthread_cond_timedwait (&thread_Checkpoint_thread.cond,
@@ -2680,23 +2686,26 @@ thread_purge_archive_logs_thread (void *arg_p)
     {
       er_clear ();
 
-      if (PRM_REMOVE_LOG_ARCHIVES_INTERVAL > 0)
+      if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
 	{
 	  to.tv_sec = time (NULL);
 	  if (to.tv_sec >
-	      last_deleted_time + PRM_REMOVE_LOG_ARCHIVES_INTERVAL)
+	      last_deleted_time +
+	      prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL))
 	    {
-	      to.tv_sec += PRM_REMOVE_LOG_ARCHIVES_INTERVAL;
+	      to.tv_sec +=
+		prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
 	    }
 	  else
 	    {
 	      to.tv_sec =
-		last_deleted_time + PRM_REMOVE_LOG_ARCHIVES_INTERVAL;
+		last_deleted_time +
+		prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
 	    }
 	}
 
       rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
-      if (PRM_REMOVE_LOG_ARCHIVES_INTERVAL > 0)
+      if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
 	{
 	  pthread_cond_timedwait (&thread_Purge_archive_logs_thread.cond,
 				  &thread_Purge_archive_logs_thread.lock,
@@ -2713,10 +2722,11 @@ thread_purge_archive_logs_thread (void *arg_p)
 	  break;
 	}
 
-      if (PRM_REMOVE_LOG_ARCHIVES_INTERVAL > 0)
+      if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
 	{
 	  cur_time = time (NULL);
-	  if (cur_time - last_deleted_time < PRM_REMOVE_LOG_ARCHIVES_INTERVAL)
+	  if (cur_time - last_deleted_time <
+	      prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL))
 	    {
 	      /* do not delete logs. wait more time */
 	      continue;
@@ -2811,7 +2821,8 @@ thread_page_flush_thread (void *arg_p)
     {
       er_clear ();
 
-      wakeup_interval = PRM_PAGE_BG_FLUSH_INTERVAL_MSEC;
+      wakeup_interval =
+	prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSEC);
 
       if (wakeup_interval > 0)
 	{
@@ -2855,7 +2866,9 @@ thread_page_flush_thread (void *arg_p)
 	  break;
 	}
 
-      pgbuf_flush_victim_candidate (tsd_ptr, PRM_PB_BUFFER_FLUSH_RATIO);
+      pgbuf_flush_victim_candidate (tsd_ptr,
+				    prm_get_float_value
+				    (PRM_ID_PB_BUFFER_FLUSH_RATIO));
     }
 
   er_clear ();
@@ -3014,8 +3027,9 @@ static int
 thread_get_LFT_min_wait_time_in_msec (void)
 {
   int flush_interval;
-  int gc_time = PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS;
-  int bg_time = PRM_LOG_BG_FLUSH_INTERVAL_MSECS;
+  int gc_time =
+    prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+  int bg_time = prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS);
 
   if (gc_time == 0)
     {
@@ -3173,11 +3187,13 @@ thread_log_flush_thread (void *arg_p)
 	  if (thread_Log_flush_thread.is_log_flush_force
 	      || (LOG_IS_GROUP_COMMIT_ACTIVE ()
 		  && gc_elapsed * 1000 >=
-		  PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS))
+		  prm_get_integer_value
+		  (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS)))
 	    {
 	      ;			/* is normal log flush */
 	    }
-	  else if (PRM_LOG_BG_FLUSH_INTERVAL_MSECS > 0)
+	  else if (prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS)
+		   > 0)
 	    {
 	      is_background_flush = true;
 	    }
@@ -3189,8 +3205,10 @@ thread_log_flush_thread (void *arg_p)
 	    }
 
 #if 0				/* disabled temporarily */
-	  if (PRM_HA_MODE != HA_MODE_OFF
-	      && (repl_elapsed >= (double) PRM_LOG_HEADER_FLUSH_INTERVAL))
+	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+	      && (repl_elapsed >=
+		  (double)
+		  prm_get_integer_value (PRM_ID_LOG_HEADER_FLUSH_INTERVAL)))
 	    {
 	      LOG_CS_ENTER (tsd_ptr);
 	      logpb_flush_header (tsd_ptr);

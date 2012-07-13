@@ -331,7 +331,7 @@ qo_get_optimization_param (void *retval, QO_PARAM param, ...)
   switch (param)
     {
     case QO_PARAM_LEVEL:
-      *(int *) retval = PRM_OPTIMIZATION_LEVEL;
+      *(int *) retval = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
       break;
     case QO_PARAM_COST:
       buf = (char *) retval;
@@ -362,8 +362,8 @@ qo_set_optimization_param (void *retval, QO_PARAM param, ...)
     {
     case QO_PARAM_LEVEL:
       if (retval)
-	*(int *) retval = PRM_OPTIMIZATION_LEVEL;
-      PRM_OPTIMIZATION_LEVEL = va_arg (args, int);
+	*(int *) retval = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+      prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, va_arg (args, int));
       break;
 
     case QO_PARAM_COST:
@@ -5857,7 +5857,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->tmp_bitset = NULL;
   env->bail_out = 0;
   env->planner = NULL;
-  env->dump_enable = PRM_QO_DUMP;
+  env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
   bitset_init (&(env->fake_terms), env);
 
   return env;

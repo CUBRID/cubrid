@@ -405,7 +405,7 @@ er_event (void)
       if (er_hasalready_initiated)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_BROKEN_PIPE, 1,
-		  PRM_EVENT_HANDLER);
+		  prm_get_string_value (PRM_ID_EVENT_HANDLER));
 	}
       if (er_Event_pipe != NULL)
 	{
@@ -452,7 +452,8 @@ er_event_init (void)
 	  er_Event_pipe = NULL;
 	}
 
-      er_Event_pipe = popen (PRM_EVENT_HANDLER, "w");
+      er_Event_pipe =
+	popen (prm_get_string_value (PRM_ID_EVENT_HANDLER), "w");
       if (er_Event_pipe != NULL)
 	{
 	  if (er_hasalready_initiated)
@@ -474,7 +475,7 @@ er_event_init (void)
 	  if (er_hasalready_initiated)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_CONNECT_HANDLER,
-		      1, PRM_EVENT_HANDLER);
+		      1, prm_get_string_value (PRM_ID_EVENT_HANDLER));
 	    }
 	  error = ER_EV_CONNECT_HANDLER;
 	}
@@ -484,7 +485,7 @@ er_event_init (void)
       if (er_hasalready_initiated)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_BROKEN_PIPE, 1,
-		  PRM_EVENT_HANDLER);
+		  prm_get_string_value (PRM_ID_EVENT_HANDLER));
 	}
       if (er_Event_pipe != NULL)
 	{
@@ -538,7 +539,7 @@ er_event_final (void)
       if (er_hasalready_initiated)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_BROKEN_PIPE, 1,
-		  PRM_EVENT_HANDLER);
+		  prm_get_string_value (PRM_ID_EVENT_HANDLER));
 	}
       if (er_Event_pipe != NULL)
 	{
@@ -669,9 +670,9 @@ er_init (const char *msglog_file_name, int exit_ask)
    */
   if (msglog_file_name == NULL)
     {
-      if (PRM_ER_LOG_FILE)
+      if (prm_get_string_value (PRM_ID_ER_LOG_FILE))
 	{
-	  msglog_file_name = PRM_ER_LOG_FILE;
+	  msglog_file_name = prm_get_string_value (PRM_ID_ER_LOG_FILE);
 	}
     }
   if (msglog_file_name)
@@ -698,12 +699,13 @@ er_init (const char *msglog_file_name, int exit_ask)
   /*
    * Install event handler
    */
-  if (PRM_EVENT_HANDLER != NULL && *PRM_EVENT_HANDLER != '\0')
+  if (prm_get_string_value (PRM_ID_EVENT_HANDLER) != NULL
+      && *prm_get_string_value (PRM_ID_EVENT_HANDLER) != '\0')
     {
       if (er_event_init () != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_EVENT_HANDLER],
-			PRM_EVENT_HANDLER);
+			prm_get_string_value (PRM_ID_EVENT_HANDLER));
 	}
     }
 
@@ -751,7 +753,7 @@ er_file_open (const char *path)
   if (fp != NULL)
     {
       fseek (fp, 0, SEEK_END);
-      if (ftell (fp) > PRM_ER_LOG_SIZE)
+      if (ftell (fp) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
 	{
 	  /* not a null device file */
 	  fp = er_file_backup (fp, path);
@@ -825,7 +827,8 @@ er_start (THREAD_ENTRY * th_entry)
 
   if (er_hasalready_initiated == false)
     {
-      (void) er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK);
+      (void) er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE),
+		      prm_get_integer_value (PRM_ID_ER_EXIT_ASK));
       if (er_hasalready_initiated == false)
 	return ER_FAILED;
     }
@@ -861,7 +864,8 @@ er_start (THREAD_ENTRY * th_entry)
 	{
 	  er_isa_null_device = er_file_isa_null_device (er_Msglog_file_name);
 
-	  if (er_isa_null_device || PRM_ER_PRODUCTION_MODE)
+	  if (er_isa_null_device
+	      || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
 	    {
 	      er_Msglog = er_file_open (er_Msglog_file_name);
 	    }
@@ -950,7 +954,8 @@ er_start (void)
 
   if (er_hasalready_initiated == false)
     {
-      (void) er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK);
+      (void) er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE),
+		      prm_get_integer_value (PRM_ID_ER_EXIT_ASK));
     }
 
   /*
@@ -980,7 +985,8 @@ er_start (void)
     {
       er_isa_null_device = er_file_isa_null_device (er_Msglog_file_name);
 
-      if (er_isa_null_device || PRM_ER_PRODUCTION_MODE)
+      if (er_isa_null_device
+	  || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
 	{
 	  er_Msglog = er_file_open (er_Msglog_file_name);
 	}
@@ -1389,9 +1395,9 @@ er_notify_event_on_error (int err_id)
   assert (err_id != NO_ERROR);
 
   err_id = abs (err_id);
-  if (PRM_EVENT_ACTIVATION)
+  if (prm_get_error_list_value (PRM_ID_EVENT_ACTIVATION))
     {
-      if (PRM_EVENT_ACTIVATION[err_id] == true)
+      if (prm_get_error_list_value (PRM_ID_EVENT_ACTIVATION)[err_id] == true)
 	{
 	  er_event ();
 	}
@@ -1414,11 +1420,12 @@ er_call_stack_dump_on_error (int severity, int err_id)
     {
       er_dump_call_stack (er_Msglog);
     }
-  else if (PRM_CALL_STACK_DUMP_ON_ERROR)
+  else if (prm_get_bool_value (PRM_ID_CALL_STACK_DUMP_ON_ERROR))
     {
-      if (PRM_CALL_STACK_DUMP_DEACTIVATION)
+      if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_DEACTIVATION))
 	{
-	  if (PRM_CALL_STACK_DUMP_DEACTIVATION[err_id] == false)
+	  if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_DEACTIVATION)
+	      [err_id] == false)
 	    {
 	      er_dump_call_stack (er_Msglog);
 	    }
@@ -1430,9 +1437,10 @@ er_call_stack_dump_on_error (int severity, int err_id)
     }
   else
     {
-      if (PRM_CALL_STACK_DUMP_ACTIVATION)
+      if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION))
 	{
-	  if (PRM_CALL_STACK_DUMP_ACTIVATION[err_id] == true)
+	  if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+	      [err_id] == true)
 	    {
 	      er_dump_call_stack (er_Msglog);
 	    }
@@ -1574,9 +1582,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   /*
    * Call the logging function if any
    */
-  if (severity <= PRM_ER_LOG_LEVEL
-      && !(PRM_ER_LOG_WARNING == false && severity == ER_WARNING_SEVERITY)
-      && er_Fnlog[severity] != NULL)
+  if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)
+      && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false
+	   && severity == ER_WARNING_SEVERITY) && er_Fnlog[severity] != NULL)
     {
       r = ER_CSECT_ENTER_LOG_FILE ();
       if (r == NO_ERROR)
@@ -1610,7 +1618,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
    * Do we want to stop the system on this error ... for debugging
    * purposes?
    */
-  if (PRM_ER_STOP_ON_ERROR == err_id)
+  if (prm_get_integer_value (PRM_ID_ER_STOP_ON_ERROR) == err_id)
     {
       er_stop_on_error ();
     }
@@ -1714,7 +1722,7 @@ er_log (void)
    */
 
   if (er_Msglog != stderr && er_Msglog != stdout
-      && ftell (er_Msglog) > (int) PRM_ER_LOG_SIZE)
+      && ftell (er_Msglog) > (int) prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
     {
       (void) fflush (er_Msglog);
       (void) fprintf (er_Msglog, "%s", er_cached_msg[ER_LOG_WRAPAROUND]);
@@ -2344,9 +2352,9 @@ er_set_area_error (void *server_area)
     }
 
   /* Call the logging function if any */
-  if (severity <= PRM_ER_LOG_LEVEL
-      && !(PRM_ER_LOG_WARNING == false && severity == ER_WARNING_SEVERITY)
-      && er_Fnlog[severity] != NULL)
+  if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)
+      && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false
+	   && severity == ER_WARNING_SEVERITY) && er_Fnlog[severity] != NULL)
     {
       r = ER_CSECT_ENTER_LOG_FILE ();
       if (r == NO_ERROR)

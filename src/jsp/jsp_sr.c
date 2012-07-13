@@ -385,7 +385,7 @@ jsp_start_server (const char *db_name, const char *path)
   char optionString2[] = "-Xrs";
   CREATE_VM_FUNC create_vm_func = NULL;
 
-  if (PRM_JAVA_STORED_PROCEDURE == false)
+  if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
     {
       return NO_ERROR;
     }

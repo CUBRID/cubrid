@@ -120,7 +120,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    {
 	      goto error;
 	    }
-	  if ((PRM_COMPAT_MODE == COMPAT_MYSQL
+	  if ((prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL
 	       || arithptr->opcode == T_SUBSTRING) && !arithptr->thirdptr)
 	    {
 	      break;
@@ -181,7 +181,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       if (DB_IS_NULL (peek_left))
 	{
-	  if (PRM_ORACLE_STYLE_EMPTY_STRING
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 	      && (arithptr->opcode == T_STRCAT || arithptr->opcode == T_ADD))
 	    {
 	      /* check for result type. */
@@ -299,7 +299,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       if (DB_IS_NULL (peek_left))
 	{
-	  if (PRM_ORACLE_STYLE_EMPTY_STRING)
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	    {
 	      if (arithptr->rightptr != NULL)
 		{
@@ -626,7 +626,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       {
 	bool check_empty_string;
 
-	check_empty_string = (PRM_ORACLE_STYLE_EMPTY_STRING ? true : false);
+	check_empty_string =
+	  (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) ? true :
+	   false);
 
 	/* check for result type. */
 	if (check_empty_string
@@ -1106,7 +1108,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+      else if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 	{
 	  DB_VALUE tmp_len, tmp_arg2, tmp_arg3;
 	  int pos, len;

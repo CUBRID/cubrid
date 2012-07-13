@@ -1111,7 +1111,7 @@ intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars,
   switch (src_codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!PRM_SINGLE_BYTE_COMPARE)
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE))
 	{
 	  int b_count = 0;
 	  while (length_in_chars-- > 0)
@@ -1202,7 +1202,8 @@ intl_prev_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!PRM_SINGLE_BYTE_COMPARE && IS_PSEUDO_KOREAN (*(s - 1)))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
+	  && IS_PSEUDO_KOREAN (*(s - 1)))
 	{
 	  *prev_char_size = 2;
 	  return s - 2;
@@ -1280,7 +1281,8 @@ intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!PRM_SINGLE_BYTE_COMPARE && IS_PSEUDO_KOREAN (*s))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
+	  && IS_PSEUDO_KOREAN (*s))
 	{
 	  *current_char_size = 2;
 	  return s + 2;
@@ -1368,7 +1370,8 @@ intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!PRM_SINGLE_BYTE_COMPARE && IS_PSEUDO_KOREAN (*s1))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
+	  && IS_PSEUDO_KOREAN (*s1))
 	{
 	  *char_size = 2;
 	  return memcmp (s1, s2, 2);
@@ -1420,8 +1423,8 @@ intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
   int r;
   while (size > 0)
     {
-      if (!PRM_SINGLE_BYTE_COMPARE && IS_PSEUDO_KOREAN (*s1) &&
-	  IS_PSEUDO_KOREAN (*s2))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
+	  && IS_PSEUDO_KOREAN (*s1) && IS_PSEUDO_KOREAN (*s2))
 	{
 	  r = memcmp (s1, s2, 2);
 	  if (r == 0)
@@ -1435,8 +1438,9 @@ intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
 	      return r;
 	    }
 	}
-      else if ((PRM_SINGLE_BYTE_COMPARE || !IS_PSEUDO_KOREAN (*s1))
-	       && *s1 == *s2)
+      else
+	if ((prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
+	     || !IS_PSEUDO_KOREAN (*s1)) && *s1 == *s2)
 	{
 	  s1++;
 	  s2++;
@@ -1761,7 +1765,7 @@ intl_lower_string (const void *alphabet, unsigned char *src,
 static int
 intl_is_korean (unsigned char ch)
 {
-  if (PRM_SINGLE_BYTE_COMPARE)
+  if (prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE))
     {
       return 0;
     }

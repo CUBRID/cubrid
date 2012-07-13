@@ -454,7 +454,7 @@ static const int SIZEOF_LK_WFG_EDGE = sizeof (LK_WFG_EDGE);
 static const int SIZEOF_LK_TRAN_LOCK = sizeof (LK_TRAN_LOCK);
 /* TODO : change const */
 #define SIZEOF_LK_ENTRY (offsetof (LK_ENTRY, scanid_bitset)    \
-  + (PRM_LK_MAX_SCANID_BIT / 8))
+  + (prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8))
 
 static const int SIZEOF_LK_RES = sizeof (LK_RES);
 static const int SIZEOF_LK_HASH = sizeof (LK_HASH);
@@ -1101,7 +1101,9 @@ lock_initialize_deadlock_detection (void)
 static int
 lock_initialize_scanid_bitmap (void)
 {
-  size_t nbytes = 1 + (MAX_NTRANS - 1) * PRM_LK_MAX_SCANID_BIT / 8;
+  size_t nbytes =
+    1 + (MAX_NTRANS -
+	 1) * prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8;
   lk_Gl.scanid_bitmap = (unsigned char *) malloc (nbytes);
   if (lk_Gl.scanid_bitmap == NULL)
     {
@@ -1142,13 +1144,16 @@ lock_alloc_scanid_bit (THREAD_ENTRY * thread_p)
   unsigned char *scanid_bit;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  scanid_bit = &lk_Gl.scanid_bitmap[tran_index * PRM_LK_MAX_SCANID_BIT / 8];
+  scanid_bit =
+    &lk_Gl.scanid_bitmap[tran_index *
+			 prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) /
+			 8];
 
   if (csect_enter (thread_p, CSECT_SCANID_BITMAP, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  for (i = 0; i < PRM_LK_MAX_SCANID_BIT; i++)
+  for (i = 0; i < prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT); i++)
     {
       if (!IS_SCANID_BIT_SET (scanid_bit, i))
 	{
@@ -1156,11 +1161,11 @@ lock_alloc_scanid_bit (THREAD_ENTRY * thread_p)
 	  break;
 	}
     }
-  if (i == PRM_LK_MAX_SCANID_BIT)
+  if (i == prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT))
     {
       csect_exit (CSECT_SCANID_BITMAP);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_ENOUGH_SCANID_BIT, 1,
-	      PRM_LK_MAX_SCANID_BIT + 1);
+	      prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) + 1);
       return ER_NOT_ENOUGH_SCANID_BIT;
     }
   csect_exit (CSECT_SCANID_BITMAP);
@@ -1181,7 +1186,10 @@ lock_free_scanid_bit (THREAD_ENTRY * thread_p, int idx)
   unsigned char *scanid_bit;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  scanid_bit = &lk_Gl.scanid_bitmap[tran_index * PRM_LK_MAX_SCANID_BIT / 8];
+  scanid_bit =
+    &lk_Gl.scanid_bitmap[tran_index *
+			 prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) /
+			 8];
 
   if (csect_enter (thread_p, CSECT_SCANID_BITMAP, INF_WAIT) != NO_ERROR)
     {
@@ -1465,7 +1473,8 @@ lock_alloc_entry (void)
 	  fprintf (stderr, "LK_DUMP::lk_alloc_entry() = %p\n", entry_ptr);
 	}
 #endif /* LK_DUMP */
-      memset (&entry_ptr->scanid_bitset, 0, PRM_LK_MAX_SCANID_BIT / 8);
+      memset (&entry_ptr->scanid_bitset, 0,
+	      prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8);
       return entry_ptr;
     }
 
@@ -1501,7 +1510,8 @@ lock_alloc_entry (void)
 	  fprintf (stderr, "LK_DUMP::lk_alloc_entry() = %p\n", entry_ptr);
 	}
 #endif /* LK_DUMP */
-      memset (&entry_ptr->scanid_bitset, 0, PRM_LK_MAX_SCANID_BIT / 8);
+      memset (&entry_ptr->scanid_bitset, 0,
+	      prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8);
       return entry_ptr;
     }
 
@@ -3544,7 +3554,8 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
     }
 
   /* check if the lock escalation is needed. */
-  if (class_entry->ngranules < PRM_LK_ESCALATION_AT)
+  if (class_entry->ngranules <
+      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
     {
       pthread_mutex_unlock (&tran_lock->hold_mutex);
       return LK_GRANTED;
@@ -5407,7 +5418,7 @@ static int
 lock_find_scanid_bit (unsigned char *scanid_bit)
 {
   int i;
-  for (i = 0; i < PRM_LK_MAX_SCANID_BIT; i++)
+  for (i = 0; i < prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT); i++)
     {
       if (IS_SCANID_BIT_SET (scanid_bit, i))
 	{
@@ -7271,7 +7282,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
       return LK_GRANTED;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -7422,7 +7433,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
     }
 
 end:
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -7431,7 +7442,7 @@ end:
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -7559,7 +7570,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
       return LK_GRANTED;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -7710,7 +7721,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
     }
 
 end:
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -7719,7 +7730,7 @@ end:
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_object_on_iscan)",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_object_on_iscan: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -7784,7 +7795,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -8028,7 +8039,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       db_private_free_and_init (thread_p, ins_lockinfo);
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -8037,7 +8048,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_objects_lock_set)",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_objects_lock_set: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -8103,7 +8114,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -8171,7 +8182,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       *current_lock = NULL_LOCK;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -8180,7 +8191,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_scan)",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_scan: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -8246,7 +8257,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       return LK_GRANTED;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -8424,7 +8435,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       db_private_free_and_init (thread_p, cls_lockinfo);
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -8433,7 +8444,8 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2,
-	      "lock object (lock_classes_lock_hint)", PRM_MNT_WAITING_THREAD);
+	      "lock object (lock_classes_lock_hint)",
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_classes_lock_hint: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -9638,7 +9650,7 @@ lock_check_local_deadlock_detection (void)
   DIFF_TIMEVAL (lk_Gl.last_deadlock_run, now, elapsed);
   /* add 0.01 for the processing time by deadlock detection */
   elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000) + 0.01;
-  if (elapsed_sec <= PRM_LK_RUN_DEADLOCK_INTERVAL)
+  if (elapsed_sec <= prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
     {
       return false;
     }
@@ -10583,7 +10595,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				  MSGCAT_SET_LOCK,
 				  MSGCAT_LK_DUMP_LOCK_TABLE),
-	   PRM_LK_ESCALATION_AT, PRM_LK_RUN_DEADLOCK_INTERVAL);
+	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT),
+	   prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL));
 
   /* Don't get block from anything when dumping object lock table. */
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
@@ -10860,13 +10873,15 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  if (LK_COMPOSITE_LOCK_OID_INCREMENT < PRM_LK_ESCALATION_AT)
+	  if (LK_COMPOSITE_LOCK_OID_INCREMENT <
+	      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	    {
 	      lockcomp_class->max_inst_oids = LK_COMPOSITE_LOCK_OID_INCREMENT;
 	    }
 	  else
 	    {
-	      lockcomp_class->max_inst_oids = PRM_LK_ESCALATION_AT;
+	      lockcomp_class->max_inst_oids =
+		prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
 	    }
 	  lockcomp_class->inst_oid_space =
 	    (OID *) db_private_alloc (thread_p,
@@ -10889,17 +10904,19 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
     {
       if (lockcomp_class->num_inst_oids == lockcomp_class->max_inst_oids)
 	{
-	  if (lockcomp_class->max_inst_oids < PRM_LK_ESCALATION_AT)
+	  if (lockcomp_class->max_inst_oids <
+	      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	    {
 	      if ((lockcomp_class->max_inst_oids
-		   + LK_COMPOSITE_LOCK_OID_INCREMENT) < PRM_LK_ESCALATION_AT)
+		   + LK_COMPOSITE_LOCK_OID_INCREMENT) <
+		  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 		{
 		  max_oids = lockcomp_class->max_inst_oids
 		    + LK_COMPOSITE_LOCK_OID_INCREMENT;
 		}
 	      else
 		{
-		  max_oids = PRM_LK_ESCALATION_AT;
+		  max_oids = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
 		}
 	      p =
 		(OID *) db_private_realloc (thread_p,
@@ -10965,7 +10982,8 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
        lockcomp_class != NULL; lockcomp_class = lockcomp_class->next)
     {
       if (lockcomp_class->class_lock_ptr->granted_mode == X_LOCK
-	  || lockcomp_class->num_inst_oids == PRM_LK_ESCALATION_AT)
+	  || lockcomp_class->num_inst_oids ==
+	  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	{
 	  /* hold X_LOCK on the class object */
 	  value =
@@ -12435,7 +12453,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
     }
 
   *granted_mode = NULL_LOCK;
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -12601,7 +12619,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
     }
 
 end:
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -12611,7 +12629,7 @@ end:
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2,
 	      "lock object (lock_object_with_btid_get_granted_mode)",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE,
 		    "lock_object_with_btid_get_granted_mode: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
@@ -12692,7 +12710,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
     }
 
   *prv_total_hold_mode = NULL_LOCK;
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -12844,7 +12862,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
     }
 
 end:
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -12854,7 +12872,7 @@ end:
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2,
 	      "lock object (lock_btid_object_get_prev_total_hold_mode)",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE,
 		    "lock_btid_object_get_prev_total_hold_mode: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);

@@ -1264,7 +1264,7 @@ unicode_string_need_compose (const char *str_in, const int size_in,
 
   *size_out = 0;
 
-  if (!PRM_UNICODE_INPUT_NORMALIZATION || norm == NULL
+  if (!prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION) || norm == NULL
       || size_in == 0 || str_in == NULL)
     {
       return false;
@@ -1317,8 +1317,8 @@ unicode_compose_string (const char *str_in, const int size_in,
   const char *str_cursor;
   const char *str_end;
 
-  assert (PRM_UNICODE_INPUT_NORMALIZATION && norm != NULL
-	  && size_in > 0 && str_in != NULL);
+  assert (prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
+	  && norm != NULL && size_in > 0 && str_in != NULL);
 
   composed_index = 0;
 
@@ -1422,7 +1422,8 @@ unicode_string_need_decompose (char *str_in, const int size_in,
   char *next;
   bool can_decompose;
 
-  if (!PRM_UNICODE_OUTPUT_NORMALIZATION || norm == NULL)
+  if (!prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION)
+      || norm == NULL)
     {
       goto no_decompose_cnt;
     }
@@ -1511,7 +1512,8 @@ unicode_decompose_string (char *str_in, const int size_in,
   char *next;
   char *dest_cursor;
 
-  assert (PRM_UNICODE_OUTPUT_NORMALIZATION && norm != NULL);
+  assert (prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION)
+	  && norm != NULL);
 
   assert (str_in != NULL);
   assert (str_out != NULL);

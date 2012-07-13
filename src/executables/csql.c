@@ -373,7 +373,8 @@ check_incomplete_string (char *line_read)
 	  single_quote_on = !single_quote_on;
 	}
 
-      if (!PRM_ANSI_QUOTES && !single_quote_on && *ptr == '\"')
+      if (!prm_get_bool_value (PRM_ID_ANSI_QUOTES)
+	  && !single_quote_on && *ptr == '\"')
 	{
 	  if (ptr[1] == '\"')	/* escape by "" */
 	    {
@@ -384,7 +385,7 @@ check_incomplete_string (char *line_read)
 	  double_quote_on = !double_quote_on;
 	}
 
-      if (!PRM_NO_BACKSLASH_ESCAPES && *ptr == '\\')
+      if (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && *ptr == '\\')
 	{
 	  ptr++;
 	}
@@ -508,7 +509,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   if (csql_Is_interactive)
     {
       init_readline ();
-      stifle_history (PRM_CSQL_HISTORY_NUM);
+      stifle_history (prm_get_integer_value (PRM_ID_CSQL_HISTORY_NUM));
       using_history ();
       csql_Keyword_list = pt_get_keyword_rec (&csql_Keyword_num);
     }
@@ -676,7 +677,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
 
       if (incomplete_prev_line ||
-	  !CSQL_SESSION_COMMAND_PREFIX (line_read[0]) || 
+	  !CSQL_SESSION_COMMAND_PREFIX (line_read[0]) ||
 	  check_incomplete_string (line_read))
 	{
 	  bool line_continuation = false;
@@ -865,7 +866,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	  fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n",
 		   (csql_arg->auto_commit
-		    && PRM_CSQL_AUTO_COMMIT ? "ON" : "OFF"));
+		    && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) ? "ON" :
+		    "OFF"));
 	  break;
 
 	case S_CMD_CHECKPOINT:
@@ -961,7 +963,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	case S_CMD_SCHEMA:
 	  csql_help_schema ((argument[0] == '\0') ? NULL : argument);
-	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT)
+	  if (csql_arg->auto_commit
+	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	    {
 	      if (db_commit_transaction () < 0)
 		{
@@ -978,7 +981,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	case S_CMD_TRIGGER:
 	  csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
-	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT)
+	  if (csql_arg->auto_commit
+	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	    {
 	      if (db_commit_transaction () < 0)
 		{
@@ -1002,7 +1006,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	case S_CMD_INFO:
 	  csql_help_info ((argument[0] == '\0') ? NULL : argument,
-			  csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT);
+			  csql_arg->auto_commit
+			  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT));
 	  break;
 
 	case S_CMD_DATABASE:
@@ -1656,7 +1661,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	   * Transaction should be aborted if an error occurs during
 	   * compilation on auto commit mode.
 	   */
-	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT)
+	  if (csql_arg->auto_commit
+	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	    {
 	      do_abort_transaction = true;
 	    }
@@ -1721,7 +1727,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       if (db_error < 0)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
-	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT
+	  if (csql_arg->auto_commit
+	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT)
 	      && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	    {
 	      do_abort_transaction = true;
@@ -1837,7 +1844,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 		   elapsed_time.tv_sec, elapsed_time.tv_usec);
 	}
 
-      if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT
+      if (csql_arg->auto_commit
+	  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT)
 	  && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
@@ -1931,7 +1939,7 @@ csql_print_database (void)
     }
   else
     {
-      if (PRM_HA_MODE == HA_MODE_OFF)
+      if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
 	{
 	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name, host_name);
 	}
@@ -2510,7 +2518,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   /* allow environmental setting of the "-s" command line flag
    * to enable automated testing */
-  if (PRM_CSQL_SINGLE_LINE_MODE)
+  if (prm_get_bool_value (PRM_ID_CSQL_SINGLE_LINE_MODE))
     {
       csql_arg->single_line_execution = true;
     }

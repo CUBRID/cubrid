@@ -662,7 +662,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
   csect_exit (CSECT_BOOT_SR_DBPARM);
 
 #if !defined(WINDOWS)
-  if (PRM_DBFILES_PROTECT)
+  if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT))
     {
       fileio_set_permission (vol_fullname);
     }
@@ -989,7 +989,7 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
 
   if (ext_path == NULL)
     {
-      ext_path = PRM_IO_VOLUME_EXT_PATH;
+      ext_path = prm_get_string_value (PRM_ID_IO_VOLUME_EXT_PATH);
       if (ext_path == NULL)
 	{
 	  ext_path = fileio_get_directory_path (ext_path_buf,
@@ -1122,7 +1122,8 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
   VOLID volid;
   DKNPAGES ext_npages;
 
-  ext_npages = (DKNPAGES) (PRM_DB_VOLUME_SIZE / IO_PAGESIZE);
+  ext_npages =
+    (DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE) / IO_PAGESIZE);
 
   if (setpage_type != DISK_NONCONTIGUOUS_SPANVOLS_PAGES
       && ext_npages < min_npages)
@@ -1427,7 +1428,8 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
        * Get the maximum number of temporary pages that can be allocated for
        * all temporary volumes
        */
-      boot_Temp_volumes_max_pages = PRM_BOSR_MAXTMP_PAGES;
+      boot_Temp_volumes_max_pages =
+	prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
       if (boot_Temp_volumes_max_pages < 0)
 	{
 	  boot_Temp_volumes_max_pages = -1;	/* Infinite, until out of disk space */
@@ -1469,7 +1471,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
    */
 
   /* Use the directory where the primary volume is located */
-  temp_path = (char *) PRM_IO_TEMP_VOLUME_PATH;
+  temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
   temp_path = fileio_get_directory_path (temp_path_buf, boot_Db_full_name);
   if (temp_path == NULL)
     {
@@ -1586,18 +1588,18 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 /*
  * boot_get_temp_temp_vol_max_npages
  *   a default temp temp volume grows up to 20G
- *   when PRM_BOSR_MAXTMP_PAGES is not specified.
+ *   when prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) is not specified.
  */
 DKNPAGES
 boot_get_temp_temp_vol_max_npages (void)
 {
-  if (PRM_BOSR_MAXTMP_PAGES < 0)
+  if (prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) < 0)
     {
       return (DKNPAGES) (((20LL * 1024LL * 1024LL * 1024LL) / IO_PAGESIZE));
     }
   else
     {
-      return PRM_BOSR_MAXTMP_PAGES;
+      return prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
     }
 }
 
@@ -1821,7 +1823,8 @@ boot_max_pages_for_new_temp_volume (void)
        * Get the maximum number of temporary pages that can be allocated for
        * all temporary volumes
        */
-      boot_Temp_volumes_max_pages = PRM_BOSR_MAXTMP_PAGES;
+      boot_Temp_volumes_max_pages =
+	prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
       if (boot_Temp_volumes_max_pages < 0)
 	{
 	  boot_Temp_volumes_max_pages = -1;	/* Infinite, until out of disk space */
@@ -2575,13 +2578,16 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 
   if (db_npages <= 0)
     {
-      db_npages = (DKNPAGES) (PRM_DB_VOLUME_SIZE / db_desired_pagesize);
+      db_npages =
+	(DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE) /
+		    db_desired_pagesize);
     }
 
   if (log_npages <= 0)
     {
       log_npages =
-	(DKNPAGES) (PRM_LOG_VOLUME_SIZE / db_desired_log_page_size);
+	(DKNPAGES) (prm_get_size_value (PRM_ID_LOG_VOLUME_SIZE) /
+		    db_desired_log_page_size);
     }
 
   if (log_npages < 10)
@@ -2965,8 +2971,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       return ER_BO_CANT_LOAD_SYSPRM;
     }
 
-  common_ha_mode = PRM_HA_MODE;
-  mnt_server_init (PRM_CSS_MAX_CLIENTS + 1);
+  common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+  mnt_server_init (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1);
 #endif /* SERVER_MODE */
 
   if (db_name == NULL)
@@ -3076,7 +3082,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    */
 
   mnt_server_final ();
-  mnt_server_init (PRM_CSS_MAX_CLIENTS + 1);
+  mnt_server_init (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1);
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {
@@ -3084,12 +3090,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       return ER_BO_CANT_LOAD_SYSPRM;
     }
 
-  if (common_ha_mode != PRM_HA_MODE && PRM_HA_MODE != HA_MODE_OFF)
+  if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE)
+      && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf",
-	      "common", PRM_NAME_HA_MODE, css_ha_mode_string (common_ha_mode),
-	      db_name, css_ha_mode_string (PRM_HA_MODE));
+	      "common", prm_get_name (PRM_ID_HA_MODE),
+	      css_ha_mode_string (common_ha_mode), db_name,
+	      css_ha_mode_string (prm_get_integer_value (PRM_ID_HA_MODE)));
       return ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
     }
 
@@ -3111,7 +3119,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       return ER_FAILED;
     }
-  if (er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK) != NO_ERROR)
+  if (er_init
+      (prm_get_string_value (PRM_ID_ER_LOG_FILE),
+       prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -3428,12 +3438,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   (void) jsp_start_server (db_name, db->pathname);
 
   /* read only mode ? */
-  if (PRM_READ_ONLY_MODE)
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE))
     {
       logtb_disable_update (NULL);
     }
   /* replication? */
-  if (PRM_HA_MODE != HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       logtb_enable_replication (NULL);
     }
@@ -3451,7 +3461,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
 #if defined (SERVER_MODE)
-  if (PRM_ACCESS_IP_CONTROL == true && from_backup == false)
+  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true
+      && from_backup == false)
     {
       error_code = css_set_accessible_ip_info ();
       if (error_code != NO_ERROR)
@@ -3465,8 +3476,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   /* set number of hosts */
   css_set_ha_num_of_hosts (db->num_hosts);
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, PRM_HA_SERVER_STATE, false,
-			      HA_CHANGE_MODE_IMMEDIATELY, true);
+  css_change_ha_server_state (thread_p,
+			      prm_get_integer_value (PRM_ID_HA_SERVER_STATE),
+			      false, HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
   /* initialize partitions cache */
@@ -3565,7 +3577,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
       return NULL_TRAN_INDEX;
     }
 
-  PRM_DBFILES_PROTECT = false;
+  prm_set_bool_value (PRM_ID_DBFILES_PROTECT, false);
 
   /*
    *  We need to do some initialization that normally happens in
@@ -3612,7 +3624,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
       boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-      sysprm_set_force (PRM_NAME_SUPPRESS_FSYNC, "0");
+      sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
@@ -3719,7 +3731,8 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 #if defined (SERVER_MODE)
       server_credential->ha_server_state = css_ha_server_state ();
 #else
-      server_credential->ha_server_state = PRM_HA_SERVER_STATE;
+      server_credential->ha_server_state =
+	prm_get_integer_value (PRM_ID_HA_SERVER_STATE);
 #endif
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED,

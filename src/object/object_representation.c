@@ -3250,6 +3250,122 @@ or_packed_string_length (const char *string, int *strlenp)
   return (total);
 }
 
+/*
+ * or_pack_bool_array - write a bool array to pointer
+ *    return: advanced buffer pointer
+ *    ptr(out): out buffer
+ *    bools(in): bool array
+ *    size(in): size of bool array
+ */
+char *
+or_pack_bool_array (char *ptr, const bool * bools, int size)
+{
+  int bits, pad;
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+  if (bools == NULL)
+    {
+      OR_PUT_INT (ptr, -1);
+      ptr += OR_INT_SIZE;
+    }
+  else
+    {
+      bits = size & 3;
+      if (bits)
+	{
+	  pad = 4 - bits;
+	}
+      else
+	{
+	  pad = 0;
+	}
+      OR_PUT_INT (ptr, size + pad);
+      ptr += OR_INT_SIZE;
+      (void) memcpy (ptr, bools, size);
+      ptr += (size + pad);
+    }
+  return ptr;
+}
+
+/*
+ * or_unpack_bool_array - read a bool array
+ *    return: advanced buffer pointer
+ *    ptr(in): input buffer
+ *    bools(out): bool array
+ */
+char *
+or_unpack_bool_array (char *ptr, bool ** bools)
+{
+  bool *new_;
+  int length;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  length = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  if (length == -1)
+    {
+      *bools = NULL;
+    }
+  else
+    {
+      new_ = db_private_alloc (NULL, length);
+      /* need to handle allocation errors */
+      if (new_ == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  ptr += length;
+	}
+      else
+	{
+	  (void) memcpy (new_, ptr, length);
+	  ptr += length;
+	}
+      *bools = new_;
+    }
+  return (ptr);
+}
+
+/*
+ * or_packed_bool_array_length - Determines the number of bytes required to
+ *				 hold the packed representation of a bool
+ *				 array.
+ *    return: length of packed bool array
+ *    bools(in): bool array
+ *    size(in): the number of bool values in the array
+ *
+ * Note: This includes padding bytes necessary to bring the length up to a
+ * word boundary and also includes a word for the array length which is
+ * stored at the top.
+ */
+int
+or_packed_bool_array_length (const bool * bools, int size)
+{
+  int total, bits, pad;
+
+  /* always have a length */
+  total = OR_INT_SIZE;
+  if (bools != NULL)
+    {
+      bits = size & 3;
+      if (bits)
+	{
+	  pad = 4 - bits;
+	}
+      else
+	{
+	  pad = 0;
+	}
+      total += (size + pad);
+    }
+  return (total);
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_align_length - for a given length return aligned length

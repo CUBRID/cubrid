@@ -59,9 +59,11 @@
  * UNFILL FACTOR during index loading phase.
  */
 #define LOAD_FIXED_EMPTY_FOR_LEAF \
-  (DB_PAGESIZE * PRM_BT_UNFILL_FACTOR + DISK_VPID_SIZE)
+  (DB_PAGESIZE * prm_get_float_value (PRM_ID_BT_UNFILL_FACTOR) \
+   + DISK_VPID_SIZE)
 #define LOAD_FIXED_EMPTY_FOR_NONLEAF \
-  (DB_PAGESIZE * MAX (PRM_BT_UNFILL_FACTOR, 0.1) + DISK_VPID_SIZE)
+  (DB_PAGESIZE * MAX (prm_get_float_value (PRM_ID_BT_UNFILL_FACTOR), 0.1) \
+   + DISK_VPID_SIZE)
 
 /* each page is supposed to have around 30% blank area during merge
    considerations of a delete operation */

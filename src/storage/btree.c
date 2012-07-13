@@ -4654,7 +4654,8 @@ btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_cnt,
     {
       if (s == 0)
 	{
-	  unfill_factor = (float) (PRM_BT_UNFILL_FACTOR + 0.05);
+	  unfill_factor =
+	    (float) (prm_get_float_value (PRM_ID_BT_UNFILL_FACTOR) + 0.05);
 	}
       else if (s == 1)
 	{
@@ -8857,7 +8858,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 	      && btree_leaf_get_num_oids (&rec, offset, BTREE_LEAF_NODE,
 					  oid_size) >= 2))
 	{
-	  if (PRM_UNIQUE_ERROR_KEY_VALUE)
+	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
 	    {
 	      char *keyval = pr_valstring (key);
 
@@ -8871,7 +8872,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 	    }
 	  else
 	    {
-	      if (PRM_HA_MODE != HA_MODE_OFF && op_type == MULTI_ROW_UPDATE)
+	      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+		  && op_type == MULTI_ROW_UPDATE)
 		{
 		  ret = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
@@ -12165,7 +12167,8 @@ key_insertion:
 	{
 	  do_unique_check = true;
 	}
-      else if (PRM_HA_MODE != HA_MODE_OFF && op_type == MULTI_ROW_UPDATE)
+      else if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+	       && op_type == MULTI_ROW_UPDATE)
 	{
 	  do_unique_check = true;
 	}
@@ -13510,7 +13513,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   /* range type */
   bts->key_range.range = key_val_range->range;
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING)
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
     {
       int j, ids_size;
 
@@ -14361,7 +14364,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
 	      assert_release (bts->key_range.num_index_term == 1);
 
-	      if (PRM_ORACLE_STYLE_EMPTY_STRING)
+	      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 		{
 		  if (ep.need_clear)
 		    {		/* need to check */

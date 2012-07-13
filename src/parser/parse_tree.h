@@ -648,7 +648,8 @@ enum pt_custom_print
 						 * NOTE: spec_id must point to
 						 * original table
 						 */
-  PT_SUPPRESS_CHARSET_PRINT = 0x800000
+  PT_SUPPRESS_CHARSET_PRINT = 0x800000,
+  PT_PRINT_DIFFERENT_SESSION_PRMS = 0x1000000	/* print session parameters */
 };
 
 /* all statement node types should be assigned their API statement enumeration */

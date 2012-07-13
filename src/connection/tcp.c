@@ -149,22 +149,24 @@ css_tcp_client_open (const char *host, int port)
 static void
 css_sockopt (SOCKET sd)
 {
-  if (PRM_TCP_RCVBUF_SIZE > 0)
+  if (prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE) > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, &PRM_TCP_RCVBUF_SIZE,
-		  sizeof (PRM_TCP_RCVBUF_SIZE));
+      setsockopt (sd, SOL_SOCKET, SO_RCVBUF,
+		  (int *) prm_get_value (PRM_ID_TCP_RCVBUF_SIZE),
+		  sizeof (int));
     }
 
-  if (PRM_TCP_SNDBUF_SIZE > 0)
+  if (prm_get_integer_value (PRM_ID_TCP_SNDBUF_SIZE) > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, &PRM_TCP_SNDBUF_SIZE,
-		  sizeof (PRM_TCP_SNDBUF_SIZE));
+      setsockopt (sd, SOL_SOCKET, SO_SNDBUF,
+		  (int *) prm_get_value (PRM_ID_TCP_SNDBUF_SIZE),
+		  sizeof (int));
     }
 
-  if (PRM_TCP_NODELAY > 0)
+  if (prm_get_integer_value (PRM_ID_TCP_NODELAY) > 0)
     {
-      setsockopt (sd, IPPROTO_TCP, TCP_NODELAY, &PRM_TCP_NODELAY,
-		  sizeof (PRM_TCP_NODELAY));
+      setsockopt (sd, IPPROTO_TCP, TCP_NODELAY,
+		  (int *) prm_get_value (PRM_ID_TCP_NODELAY), sizeof (int));
     }
 }
 
@@ -352,7 +354,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
       if ((errno == ECONNREFUSED || errno == ETIMEDOUT) && will_retry == true)
 	{
 	  nsecs = (int) difftime (time (NULL), start_contime);
-	  nsecs -= PRM_TCP_CONNECTION_TIMEOUT;
+	  nsecs -= prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT);
 	  if (nsecs >= 0 && num_retries > TCP_MIN_NUM_RETRIES)
 	    {
 	      will_retry = false;

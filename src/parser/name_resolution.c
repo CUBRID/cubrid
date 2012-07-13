@@ -1817,7 +1817,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 #if 0
       /* By default, support oracle_style_outerjoin */
-      if (!PRM_ORACLE_STYLE_OUTERJOIN)
+      if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_OUTERJOIN))
 	{
 	  PT_ERROR (parser, node,
 		    "Oracle outer join conversion not supported");
@@ -3006,7 +3006,7 @@ pt_bind_value_to_hostvar_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 
 	  value = pt_value_to_db (parser, node);
-	  if (value && PRM_HOSTVAR_LATE_BINDING)
+	  if (value && prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
 	    {
 	      /* change PT_NAME to PT_VALUE in order to optimize */
 	      /* return node ptr */

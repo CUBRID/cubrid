@@ -2629,7 +2629,7 @@ ws_init (void)
   /* initialize the garbage collector */
   GC_INIT ();
 
-  ws_Gc_enabled = PRM_GC_ENABLE;
+  ws_Gc_enabled = prm_get_bool_value (PRM_ID_GC_ENABLE);
   if (!ws_Gc_enabled)
     {
       GC_disable ();
@@ -2651,7 +2651,7 @@ ws_init (void)
   classobj_area_init ();	/* schema templates */
 
   /* build the MOP table */
-  ws_Mop_table_size = PRM_WS_HASHTABLE_SIZE;
+  ws_Mop_table_size = prm_get_integer_value (PRM_ID_WS_HASHTABLE_SIZE);
   allocsize = sizeof (WS_MOP_TABLE_ENTRY) * ws_Mop_table_size;
   ws_Mop_table = (WS_MOP_TABLE_ENTRY *) malloc (allocsize);
 
@@ -2711,7 +2711,7 @@ ws_final (void)
 
   tr_final ();
 
-  if (PRM_WS_MEMORY_REPORT)
+  if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))
     {
       /* this is for debugging only */
       fprintf (stdout,
@@ -3765,7 +3765,7 @@ ws_gc (void)
 void
 ws_gc_enable (void)
 {
-  if (!ws_Gc_enabled && PRM_GC_ENABLE)
+  if (!ws_Gc_enabled && prm_get_bool_value (PRM_ID_GC_ENABLE))
     {
       ws_Gc_enabled = true;
       GC_enable ();

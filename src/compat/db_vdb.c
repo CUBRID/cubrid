@@ -726,7 +726,8 @@ db_compile_statement_local (DB_SESSION * session)
      everytime rather than using XASL cache. Also, it can be executed in
      the server without touching the XASL cache by calling
      query_prepare_and_execute(). */
-  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0 && statement->cannot_prepare == 0)
+  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
+      && statement->cannot_prepare == 0)
     {
 
       /* now, prepare the statement by calling do_prepare_statement() */
@@ -1830,7 +1831,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
      query_prepare_and_execute(). */
   do_Trigger_involved = false;
 
-  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0 && statement->cannot_prepare == 0)
+  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
+      && statement->cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);

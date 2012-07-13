@@ -552,8 +552,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     }
 #endif /* CS_MODE */
   boot_User_volid = 0;
-  tran_isolation = (TRAN_ISOLATION) PRM_LOG_ISOLATION_LEVEL;
-  tran_lock_wait_msecs = PRM_LK_TIMEOUT_SECS;
+  tran_isolation =
+    (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
 
   /* this must be done before the init_server because recovery steps
    * may need domains.
@@ -901,7 +902,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif /* !WINDOWS */
 
   /* read only mode? */
-  if (PRM_READ_ONLY_MODE
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE)
       || BOOT_READ_ONLY_CLIENT_TYPE (client_credential->client_type))
     {
       db_disable_modification ();
@@ -982,7 +983,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
 	  client_credential->program_name, client_credential->process_id,
-	  client_credential->db_name, boot_Host_connected, PRM_TCP_PORT_ID);
+	  client_credential->db_name, boot_Host_connected,
+	  prm_get_integer_value (PRM_ID_TCP_PORT_ID));
 
   /* tune some client parameters with the value from the server */
   sysprm_tune_client_parameters ();
@@ -1135,8 +1137,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    * If there is a need to change the isolation level and the lock wait,
    * do it at this moment
    */
-  tran_isolation = (TRAN_ISOLATION) PRM_LOG_ISOLATION_LEVEL;
-  tran_lock_wait_msecs = PRM_LK_TIMEOUT_SECS;
+  tran_isolation =
+    (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
   if (tran_isolation != TRAN_DEFAULT_ISOLATION)
     {
       error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
@@ -1238,7 +1241,7 @@ boot_shutdown_client (bool is_er_final)
        */
       if (tran_is_active_and_has_updated ())
 	{
-	  if (PRM_COMMIT_ON_SHUTDOWN != false)
+	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
 	    {
 	      (void) tran_commit (false);
 	    }

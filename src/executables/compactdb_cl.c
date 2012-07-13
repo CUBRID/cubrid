@@ -1218,7 +1218,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);

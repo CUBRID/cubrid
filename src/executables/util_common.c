@@ -526,10 +526,10 @@ util_make_ha_conf (HA_CONF * ha_conf)
 
   HA_NODE_CONF *nc = NULL;
 
-  ha_port_id = PRM_HA_PORT_ID;
-  ha_node_list = PRM_HA_NODE_LIST;
-  ha_db_list = PRM_HA_DB_LIST;
-  ha_copy_log_base = PRM_HA_COPY_LOG_BASE;
+  ha_port_id = prm_get_integer_value (PRM_ID_HA_PORT_ID);
+  ha_node_list = prm_get_string_value (PRM_ID_HA_NODE_LIST);
+  ha_db_list = prm_get_string_value (PRM_ID_HA_DB_LIST);
+  ha_copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (ha_copy_log_base == NULL || ha_copy_log_base[0] == 0)
     {
       ha_copy_log_base = envvar_get ("DATABASES");
@@ -538,14 +538,14 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	  ha_copy_log_base = ".";
 	}
     }
-  ha_copy_sync_mode = PRM_HA_COPY_SYNC_MODE;
-  ha_apply_max_mem = PRM_HA_APPLY_MAX_MEM_SIZE;
+  ha_copy_sync_mode = prm_get_string_value (PRM_ID_HA_COPY_SYNC_MODE);
+  ha_apply_max_mem = prm_get_integer_value (PRM_ID_HA_APPLY_MAX_MEM_SIZE);
 
   if (ha_db_list == NULL || ha_db_list[0] == 0)
     {
       const char *message =
 	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
-      fprintf (stderr, message, PRM_NAME_HA_DB_LIST, "");
+      fprintf (stderr, message, prm_get_name (PRM_ID_HA_DB_LIST), "");
       return false;
     }
 
@@ -555,11 +555,11 @@ util_make_ha_conf (HA_CONF * ha_conf)
     {
       const char *message =
 	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
-      fprintf (stderr, message, PRM_NAME_HA_NODE_LIST, "");
+      fprintf (stderr, message, prm_get_name (PRM_ID_HA_NODE_LIST), "");
       return false;
     }
 
-  ha_replica_list = PRM_HA_REPLICA_LIST;
+  ha_replica_list = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);
   if (ha_replica_list != NULL && ha_replica_list[0] != 0)
     {
       replica_names = util_split_ha_node (ha_replica_list);
@@ -643,7 +643,8 @@ util_make_ha_conf (HA_CONF * ha_conf)
 		utility_get_generic_message
 		(MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
 
-	      fprintf (stderr, message, PRM_NAME_HA_COPY_SYNC_MODE,
+	      fprintf (stderr, message,
+		       prm_get_name (PRM_ID_HA_COPY_SYNC_MODE),
 		       ha_conf->node_syncs[i]);
 	      return false;
 	    }
@@ -701,7 +702,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 int
 util_get_ha_mode_for_sa_utils (void)
 {
-  return PRM_HA_MODE_FOR_SA_UTILS_ONLY;
+  return prm_get_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY);
 }
 
 #if !defined(WINDOWS)

@@ -1395,7 +1395,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 		 : SORT_INIT_INPUT_PAGE_EST);
 
   /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
-  sort_param.tot_buffers = MIN (PRM_SR_NBUFFERS, input_pages);
+  sort_param.tot_buffers =
+    MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
   sort_param.tot_buffers = MAX (4, sort_param.tot_buffers);
 
   sort_param.internal_memory = (char *) malloc (sort_param.tot_buffers *

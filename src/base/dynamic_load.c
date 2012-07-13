@@ -585,14 +585,14 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
       this_->loaded[i] = NULL;
     }
 
-  if (PRM_DL_FORK)
+  if (prm_get_string_value (PRM_ID_DL_FORK))
     {
-      if (strcmp (PRM_DL_FORK, "fork") == 0)
+      if (strcmp (prm_get_string_value (PRM_ID_DL_FORK), "fork") == 0)
 	{
 	  this_->fork_function_p = &fork;
 	}
 #if defined(HAVE_VFORK)
-      else if (strcmp (PRM_DL_FORK, "vfork") == 0)
+      else if (strcmp (prm_get_string_value (PRM_ID_DL_FORK), "vfork") == 0)
 	{
 	  this_->fork_function_p = &vfork;
 	}

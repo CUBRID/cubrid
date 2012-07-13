@@ -529,7 +529,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -664,7 +664,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
   cs_ptr->owner = thread_p->tid;
   cs_ptr->tran_index = thread_p->tran_index;
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -688,7 +688,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
-		  PRM_MNT_WAITING_THREAD);
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section_as_reader: %6d.%06d"
@@ -746,7 +746,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -869,7 +869,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
       cs_ptr->rwlock++;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -892,7 +892,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
-		  PRM_MNT_WAITING_THREAD);
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE, "csect_enter_critical_section: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"
@@ -949,7 +949,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -1094,7 +1094,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
       cs_ptr->rwlock++;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -1136,7 +1136,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
-		  PRM_MNT_WAITING_THREAD);
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE, "csect_demote_critical_section: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"
@@ -1193,7 +1193,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -1314,7 +1314,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
   cs_ptr->owner = thread_p->tid;
   cs_ptr->tran_index = thread_p->tran_index;
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -1337,7 +1337,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
-		  PRM_MNT_WAITING_THREAD);
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE, "csect_promote_critical_section: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"

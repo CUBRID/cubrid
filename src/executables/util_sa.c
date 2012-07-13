@@ -380,7 +380,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 						   0);
   if (db_volume_str == NULL)
     {
-      db_volume_size = PRM_DB_VOLUME_SIZE;
+      db_volume_size = prm_get_size_value (PRM_ID_DB_VOLUME_SIZE);
     }
   else
     {
@@ -426,7 +426,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 						    0);
   if (log_volume_str == NULL)
     {
-      log_volume_size = PRM_LOG_VOLUME_SIZE;
+      log_volume_size = prm_get_size_value (PRM_ID_LOG_VOLUME_SIZE);
     }
   else
     {
@@ -477,13 +477,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_check_range (PRM_NAME_DB_VOLUME_SIZE, &db_volume_size) !=
-      NO_ERROR)
+  if (sysprm_check_range
+      (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &db_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64];
 
-      if (sysprm_get_range (PRM_NAME_DB_VOLUME_SIZE, &min, &max) != NO_ERROR)
+      if (sysprm_get_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &min, &max)
+	  != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -495,16 +496,17 @@ createdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_BAD_RANGE),
-	       PRM_NAME_DB_VOLUME_SIZE, min_buf, max_buf);
+	       prm_get_name (PRM_ID_DB_VOLUME_SIZE), min_buf, max_buf);
       goto error_exit;
     }
-  if (sysprm_check_range (PRM_NAME_LOG_VOLUME_SIZE, &log_volume_size) !=
-      NO_ERROR)
+  if (sysprm_check_range
+      (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &log_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64];
 
-      if (sysprm_get_range (PRM_NAME_LOG_VOLUME_SIZE, &min, &max) != NO_ERROR)
+      if (sysprm_get_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &min, &max)
+	  != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -516,7 +518,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_BAD_RANGE),
-	       PRM_NAME_LOG_VOLUME_SIZE, min_buf, max_buf);
+	       prm_get_name (PRM_ID_LOG_VOLUME_SIZE), min_buf, max_buf);
       goto error_exit;
     }
 
@@ -545,9 +547,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
-  sysprm_set_force (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, "-1");
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES), "-1");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -712,8 +714,8 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -880,7 +882,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -978,8 +980,8 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1086,7 +1088,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1207,8 +1209,8 @@ copydb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1289,7 +1291,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1384,7 +1386,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);

@@ -113,7 +113,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
       return ER_GENERIC_ERROR;
     }
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -157,11 +157,11 @@ compactdb_start (bool verbose_flag)
       return 1;
     }
 
-  if (PRM_COMPACTDB_PAGE_RECLAIM_ONLY == 1)
+  if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) == 1)
     {
       goto phase2;
     }
-  else if (PRM_COMPACTDB_PAGE_RECLAIM_ONLY == 2)
+  else if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) == 2)
     {
       goto phase3;
     }

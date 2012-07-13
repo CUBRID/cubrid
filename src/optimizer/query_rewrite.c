@@ -3344,10 +3344,10 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 	  has_escape_char = true;
 	}
     }
-  else if (PRM_REQUIRE_LIKE_ESCAPE_CHARACTER)
+  else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
     {
       assert (escape == NULL);
-      assert (!PRM_NO_BACKSLASH_ESCAPES);
+      assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
       has_escape_char = true;
       escape_str = "\\";
     }
@@ -3570,9 +3570,10 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser,
 
   bound->info.expr.arg1 = expr_pattern;
 
-  if (PRM_REQUIRE_LIKE_ESCAPE_CHARACTER && escape == NULL)
+  if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER)
+      && escape == NULL)
     {
-      assert (!PRM_NO_BACKSLASH_ESCAPES);
+      assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
       expr_escape = pt_make_string_value (parser, "\\");
       if (expr_escape == NULL)
 	{
@@ -7132,8 +7133,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       /* auto-parameterization is safe when it is done as the last step
          of rewrite optimization */
-      if (!PRM_HOSTVAR_LATE_BINDING
-	  && PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0 && node->cannot_prepare == 0)
+      if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING)
+	  && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
+	  && node->cannot_prepare == 0)
 	{
 	  call_auto_parameterize = true;
 	}

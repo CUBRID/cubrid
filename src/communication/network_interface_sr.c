@@ -3516,6 +3516,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   char *reply, *area, *ptr;
   SESSION_KEY session_key;
   int row_count = DB_ROW_COUNT_NOT_SET;
+  SESSION_PARAM *session_params = NULL;
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -3537,6 +3538,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &client_lock_wait);
   ptr = or_unpack_int (ptr, &xint);
   ptr = or_unpack_int (ptr, &session_key.id);
+  ptr = sysprm_unpack_session_parameters (ptr, &session_params);
   client_isolation = (TRAN_ISOLATION) xint;
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
@@ -3569,6 +3571,10 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 
   thread_p->conn_entry->session_id = session_key.id;
   xsession_get_row_count (thread_p, &row_count);
+  if (sysprm_session_init_session_parameters (&session_params) != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
 
   area_size = OR_INT_SIZE	/* tran_index */
     + OR_INT_SIZE		/* tran_state */
@@ -3583,7 +3589,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     + OR_FLOAT_SIZE		/* disk_compatibility */
     + OR_INT_SIZE		/* ha_server_state */
     + OR_INT_SIZE		/* session_id */
-    + OR_INT_SIZE;		/* row count */
+    + OR_INT_SIZE		/* row count */
+    + sysprm_packed_session_parameters_length (session_params);
 
   area = db_private_alloc (thread_p, area_size);
   if (area == NULL)
@@ -3612,6 +3619,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
       ptr = or_pack_int (ptr, session_key.id);
       ptr = or_pack_int (ptr, row_count);
+      ptr = sysprm_pack_session_parameters (ptr, session_params);
     }
 
   ptr = or_pack_int (reply, area_size);
@@ -7719,10 +7727,11 @@ void
 sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
 			       char *request, int reqlen)
 {
-  char *data;
-  int rc;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *data, *reply_data;
+  int rc, reply_data_length;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
 
   (void) or_unpack_string_nocopy (request, &data);
 
@@ -7732,9 +7741,24 @@ sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
       return_error_to_client (thread_p, rid);
     }
 
-  (void) or_pack_int (reply, rc);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply,
-			   OR_ALIGNED_BUF_SIZE (a_reply));
+  /* verify all session parameters if different */
+  reply_data_length = sysprm_packed_different_session_parameters_length ();
+  reply_data = (char *) malloc (reply_data_length);
+  if (!reply_data)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (reply_data_length));
+    }
+  ptr = or_pack_int (reply, reply_data_length);
+  ptr = or_pack_int (ptr, rc);
+  (void) sysprm_pack_different_session_parameters (reply_data);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     reply_data, reply_data_length);
+  if (reply_data)
+    {
+      free_and_init (reply_data);
+    }
 }
 
 /*

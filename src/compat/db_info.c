@@ -1920,7 +1920,7 @@ db_constraint_type (const DB_CONSTRAINT * constraint)
 	}
       else if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
-	  if (PRM_COMPAT_PRIMARY_KEY)
+	  if (prm_get_bool_value (PRM_ID_COMPAT_PRIMARY_KEY))
 	    {
 	      type = DB_CONSTRAINT_UNIQUE;
 	    }

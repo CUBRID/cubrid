@@ -659,7 +659,8 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
   rv = pthread_mutex_lock (&fileio_Flushed_page_counter_mutex);
 
   fileio_Flushed_page_count += npage;
-  if (fileio_Flushed_page_count > PRM_PB_SYNC_ON_NFLUSH)
+  if (fileio_Flushed_page_count >
+      prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       need_sync = true;
       fileio_Flushed_page_count = 0;
@@ -717,7 +718,8 @@ fileio_flush_control_initialize (void)
   fc_Stats.num_log_pages = 0;
   fc_Stats.num_pages = 0;
 
-  max_flush_pages_per_sec = PRM_MAX_FLUSH_PAGES_PER_SECOND;
+  max_flush_pages_per_sec =
+    prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND);
 
   fc_Token_bucket = tb;
   return rv;
@@ -872,15 +874,17 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
   mnt_fc_stats (thread_p, fc_Stats.num_pages,
 		fc_Stats.num_log_pages, fc_Stats.num_tokens);
 
-  if (PRM_ADAPTIVE_FLUSH_CONTROL == true)
+  if (prm_get_bool_value (PRM_ID_ADAPTIVE_FLUSH_CONTROL) == true)
     {
       max_flush_pages_per_sec += fileio_flush_control_get_desired_rate (tb);
       max_flush_pages_per_sec = MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
 				     max_flush_pages_per_sec);
     }
-  else if (max_flush_pages_per_sec != PRM_MAX_FLUSH_PAGES_PER_SECOND)
+  else if (max_flush_pages_per_sec !=
+	   prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND))
     {
-      max_flush_pages_per_sec = PRM_MAX_FLUSH_PAGES_PER_SECOND;
+      max_flush_pages_per_sec =
+	prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND);
     }
 
   gen_tokens = (int) ((double) max_flush_pages_per_sec / 1000000.0
@@ -1236,7 +1240,7 @@ fileio_lock (const char *db_full_name_p, const char *vol_label_p,
   int max_num_loops;
   char io_timeval[64], format_string[32];
 
-  if (PRM_IO_LOCKF_ENABLE != true)
+  if (prm_get_bool_value (PRM_ID_IO_LOCKF_ENABLE) != true)
     {
       return FILEIO_LOCKF;
     }
@@ -1902,7 +1906,7 @@ fileio_unlock (const char *vol_label_p, int vol_fd,
 {
   char name_info_lock[PATH_MAX];
 
-  if (PRM_IO_LOCKF_ENABLE == true)
+  if (prm_get_bool_value (PRM_ID_IO_LOCKF_ENABLE) == true)
     {
       if (vol_label_p == NULL)
 	{
@@ -2002,7 +2006,7 @@ fileio_open (const char *vol_label_p, int flags, int mode)
   if (vol_fd > NULL_VOLDES)
     {
       int high_vol_fd;
-      int range = PRM_CSS_MAX_CLIENTS + 10;
+      int range = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 10;
 
       /* move fd to the over max_clients range */
       high_vol_fd = fcntl (vol_fd, F_DUPFD, range);
@@ -2013,7 +2017,7 @@ fileio_open (const char *vol_label_p, int flags, int mode)
 	}
     }
 
-  if (PRM_DBFILES_PROTECT == true && vol_fd > 0)
+  if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT) == true && vol_fd > 0)
     {
       fileio_get_lock (vol_fd, vol_label_p);
     }
@@ -2111,7 +2115,7 @@ void
 fileio_close (int vol_fd)
 {
 #if !defined(WINDOWS)
-  if (PRM_DBFILES_PROTECT == true)
+  if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT) == true)
     {
       fileio_release_lock (vol_fd);
     }
@@ -2716,7 +2720,7 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
     }
 #endif /* !CS_MODE */
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -2735,7 +2739,7 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 	}
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -2745,7 +2749,7 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_MNT_WAITING_THREAD, 2, "file remove",
-	      PRM_MNT_WAITING_THREAD);
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_unformat: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -3011,7 +3015,7 @@ start:
 #endif /* !CS_MODE */
 
 #if !defined(WINDOWS)
-  if (PRM_DBFILES_PROTECT == true && vol_fd > 0)
+  if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT) == true && vol_fd > 0)
     {
       fileio_set_permission (vol_label_p);
     }
@@ -3597,7 +3601,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   const struct aiocb *cblist[1];
 #endif /* USE_AIO */
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -3696,7 +3700,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	}
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -3705,7 +3709,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_MNT_WAITING_THREAD, 2, "file read", PRM_MNT_WAITING_THREAD);
+	      ER_MNT_WAITING_THREAD, 2, "file read",
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_read: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -3753,7 +3758,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   const struct aiocb *cblist[1];
 #endif /* USE_AIO */
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -3843,7 +3848,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	}
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -3852,7 +3857,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_MNT_WAITING_THREAD, 2, "file write", PRM_MNT_WAITING_THREAD);
+	      ER_MNT_WAITING_THREAD, 2, "file write",
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_write: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -3900,7 +3906,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   read_bytes = ((size_t) page_size) * ((size_t) num_pages);
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -4003,7 +4009,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       read_bytes -= nbytes;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -4012,7 +4018,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_MNT_WAITING_THREAD, 2, "file read", PRM_MNT_WAITING_THREAD);
+	      ER_MNT_WAITING_THREAD, 2, "file read",
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_read_pages: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -4048,7 +4055,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   write_bytes = ((size_t) page_size) * ((size_t) num_pages);
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -4150,7 +4157,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       write_bytes -= nbytes;
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -4159,7 +4166,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_MNT_WAITING_THREAD, 2, "file write", PRM_MNT_WAITING_THREAD);
+	      ER_MNT_WAITING_THREAD, 2, "file write",
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_write_pages: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
@@ -4228,12 +4236,12 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #endif /* USE_AIO */
   char *s;
 
-  if (PRM_SUPPRESS_FSYNC > 0)
+  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
     {
 #if defined (SERVER_MODE)
       r = pthread_mutex_lock (&inc_cnt_mutex);
 #endif
-      if (++inc_cnt >= PRM_SUPPRESS_FSYNC)
+      if (++inc_cnt >= prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC))
 	{
 	  inc_cnt = 0;
 	}
@@ -4249,7 +4257,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #endif
     }
 
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
@@ -4260,7 +4268,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #else /* USE_AIO */
   ret = fsync (vol_fd);
 #endif /* USE_AIO */
-  if (0 < PRM_MNT_WAITING_THREAD)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
@@ -4278,7 +4286,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_MNT_WAITING_THREAD, 2, "file sync",
-		  PRM_MNT_WAITING_THREAD);
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	  er_log_debug (ARG_FILE_LINE, "fileio_synchronize: %6d.%06d\n",
 			elapsed_time.tv_sec, elapsed_time.tv_usec);
 	}
@@ -6280,14 +6288,16 @@ fileio_determine_backup_buffer_size (FILEIO_BACKUP_SESSION *
 {
   int vol_size, max_buf_size;
   vol_size = DB_INT32_MAX;	/* 2G */
-  if (PRM_IO_BACKUP_MAX_VOLUME_SIZE > 0)
+  if (prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
     {
-      vol_size = MIN (vol_size, PRM_IO_BACKUP_MAX_VOLUME_SIZE);
+      vol_size =
+	MIN (vol_size,
+	     prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
     }
 
   vol_size -=
     (FILEIO_BACKUP_HEADER_IO_SIZE + FILEIO_BACKUP_FILE_HEADER_PAGE_SIZE);
-  max_buf_size = buf_size * PRM_IO_BACKUP_NBUFFERS;
+  max_buf_size = buf_size * prm_get_integer_value (PRM_ID_IO_BACKUP_NBUFFERS);
   while (max_buf_size > buf_size)
     {
       if (vol_size % max_buf_size < buf_size)
@@ -6349,14 +6359,16 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
       thread_info_p->num_threads = MIN (num_threads, num_cpus * 2);
     }
   thread_info_p->num_threads =
-    MIN (thread_info_p->num_threads, PRM_CSS_MAX_CLIENTS);
+    MIN (thread_info_p->num_threads,
+	 prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 #else /* SERVER_MODE */
   thread_info_p->num_threads = 1;
 #endif /* SERVER_MODE */
 #if defined(CUBRID_DEBUG)
   fprintf (stdout,
 	   "PRM_CSS_MAX_CLIENTS = %d, tp->num_threads = %d\n",
-	   PRM_CSS_MAX_CLIENTS, thread_info_p->num_threads);
+	   prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS),
+	   thread_info_p->num_threads);
 #endif /* CUBRID_DEBUG */
   queue_p->size = 0;
   queue_p->head = NULL;
@@ -6470,21 +6482,24 @@ fileio_initialize_backup (const char *db_full_name_p,
 #endif /* WINDOWS */
   /* User may override the default size by specifying a multiple of the
      natural block size for the device. */
-  session_p->bkup.iosize = buf_size * PRM_IO_BACKUP_NBUFFERS;
+  session_p->bkup.iosize =
+    buf_size * prm_get_integer_value (PRM_ID_IO_BACKUP_NBUFFERS);
 #if 0
   /* currently, disable the following code. DO NOT DELETE ME
      NEED FUTURE OPTIMIZATION */
   fileio_determine_backup_buffer_size (session_p, buf_size);
 #endif
-  if (PRM_IO_BACKUP_MAX_VOLUME_SIZE > 0
+  if (prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
       && (session_p->bkup.iosize >=
-	  MIN (PRM_IO_BACKUP_MAX_VOLUME_SIZE, DB_INT32_MAX)))
+	  MIN (prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE),
+	       DB_INT32_MAX)))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "Backup block buffer size %d must be less "
 		    "than backup volume size %d, resetting buffer size to %d\n",
 		    session_p->bkup.iosize,
-		    PRM_IO_BACKUP_MAX_VOLUME_SIZE, buf_size);
+		    prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE),
+		    buf_size);
       session_p->bkup.iosize = buf_size;
     }
 
@@ -6495,7 +6510,7 @@ fileio_initialize_backup (const char *db_full_name_p,
 	   "NATURAL BUFFER SIZE %d (%d IO buffer blocks)\n",
 	   session_p->bkup.iosize, session_p->bkup.iosize / buf_size);
   fprintf (stdout, "BACKUP_MAX_VOLUME_SIZE = %d\n",
-	   PRM_IO_BACKUP_MAX_VOLUME_SIZE);
+	   prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
 #endif /* CUBRID_DEBUG */
   /*
    * Initialize backup device related information.
@@ -8425,13 +8440,15 @@ fileio_flush_backup (THREAD_ENTRY * thread_p,
   bool is_interactive_need_new = false;
   bool is_force_new_bkvol = false;
 
-  if (PRM_IO_BACKUP_MAX_VOLUME_SIZE > 0
-      && session_p->bkup.count > PRM_IO_BACKUP_MAX_VOLUME_SIZE)
+  if (prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+      && session_p->bkup.count >
+      prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "Backup_flush: Backup aborted because count %d "
 		    "larger than max volume size %d\n",
-		    session_p->bkup.count, PRM_IO_BACKUP_MAX_VOLUME_SIZE);
+		    session_p->bkup.count,
+		    prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
       return ER_FAILED;
     }
 
@@ -8455,10 +8472,11 @@ fileio_flush_backup (THREAD_ENTRY * thread_p,
       is_interactive_need_new = false;
       is_force_new_bkvol = false;
       count = session_p->bkup.count;
-      if (PRM_IO_BACKUP_MAX_VOLUME_SIZE > 0)
+      if (prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
 	{
 	  count = (int) MIN (count,
-			     PRM_IO_BACKUP_MAX_VOLUME_SIZE -
+			     prm_get_integer_value
+			     (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) -
 			     session_p->bkup.voltotalio);
 	}
       buffer_p = session_p->bkup.buffer;
@@ -8528,9 +8546,10 @@ fileio_flush_backup (THREAD_ENTRY * thread_p,
 	    }
 
 	  if (is_interactive_need_new || is_force_new_bkvol
-	      || (PRM_IO_BACKUP_MAX_VOLUME_SIZE > 0
+	      || (prm_get_integer_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
 		  && (session_p->bkup.voltotalio >=
-		      PRM_IO_BACKUP_MAX_VOLUME_SIZE)))
+		      prm_get_integer_value
+		      (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
 	    {
 #if defined(CUBRID_DEBUG)
 	      fprintf (stdout, "open a new backup volume\n");
@@ -8664,9 +8683,10 @@ fileio_read_backup (THREAD_ENTRY * thread_p,
 	{
 	  sleep_nsecs = session_p->sleep_msecs * 1000;
 	}
-      else if (PRM_IO_BACKUP_SLEEP_MSECS > 0)	/* priority 2 */
+      else if (prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) > 0)	/* priority 2 */
 	{
-	  sleep_nsecs = PRM_IO_BACKUP_SLEEP_MSECS * 1000;
+	  sleep_nsecs =
+	    prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) * 1000;
 	}
       else
 	{

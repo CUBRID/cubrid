@@ -2017,12 +2017,15 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 						       UNBOX_AS_VALUE);
 		    arg2 = arg2->info.expr.arg1;
 		  }
-		else if (PRM_REQUIRE_LIKE_ESCAPE_CHARACTER)
+		else
+		  if (prm_get_bool_value
+		      (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
 		  {
 		    PT_NODE *arg1 = node->info.expr.arg1;
 		    PT_NODE *node = pt_make_string_value (parser, "\\");
 
-		    assert (!PRM_NO_BACKSLASH_ESCAPES);
+		    assert (!prm_get_bool_value
+			    (PRM_ID_NO_BACKSLASH_ESCAPES));
 
 		    switch (arg1->type_enum)
 		      {
@@ -3257,7 +3260,7 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
   real_attrs = table_info->class_spec->info.spec.referenced_attrs;
   table_info->class_spec->info.spec.referenced_attrs = NULL;
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING)
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
     {
       nterms = qo_xasl_get_num_terms (index_pred);
       term_exprs = qo_xasl_get_terms (index_pred);
@@ -14320,7 +14323,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
       /* set index scan order */
       xasl->iscan_oid_order = ((orderby_skip) ? false
-			       : PRM_BT_INDEX_SCAN_OID_ORDER);
+			       :
+			       prm_get_bool_value
+			       (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
 
       /* save single tuple info */
       if (select_node->info.query.single_tuple == 1)
@@ -17432,7 +17437,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   {
-    if (PRM_XASL_DEBUG_DUMP)
+    if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
       {
 	if (xasl)
 	  {
@@ -18635,7 +18640,7 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   xasl->qstmt = node->alias_print;
   XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
 
-  if (PRM_XASL_DEBUG_DUMP)
+  if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
     {
       if (xasl->qstmt == NULL)
 	{

@@ -322,9 +322,10 @@ css_init_job_queue (void)
       CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
 #endif /* WINDOWS */
 
-      css_initialize_list (&css_Job_queue[i].job_list, PRM_CSS_MAX_CLIENTS);
+      css_initialize_list (&css_Job_queue[i].job_list,
+			   prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
       css_Job_queue[i].free_list = NULL;
-      for (j = 0; j < PRM_CSS_MAX_CLIENTS; j++)
+      for (j = 0; j < prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS); j++)
 	{
 	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
 	  if (job_entry_p == NULL)
@@ -625,9 +626,12 @@ css_master_thread (void)
 #endif /* WINDOWS */
 
       /* select() sets timeout value to 0 or waited time */
-      r = poll (po, nfds, PRM_TCP_CONNECTION_TIMEOUT * 1000);
-      if (r > 0 && (IS_INVALID_SOCKET (css_Pipe_to_master)
-		    || !(po[0].revents & POLLIN))
+      r =
+	poll (po, nfds,
+	      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+      if (r > 0
+	  && (IS_INVALID_SOCKET (css_Pipe_to_master)
+	      || !(po[0].revents & POLLIN))
 #if defined(WINDOWS)
 	  && (IS_INVALID_SOCKET (css_Server_connection_socket)
 	      || !(po[1].revents & POLLIN))
@@ -661,7 +665,7 @@ css_master_thread (void)
 	      if (run_code == -1)
 		{
 		  css_close_connection_to_master ();
-		  run_code = (PRM_HA_MODE) ? 0 : 1;	/* shutdown message received */
+		  run_code = (prm_get_integer_value (PRM_ID_HA_MODE)) ? 0 : 1;	/* shutdown message received */
 
 		  if (run_code == 0)
 		    {
@@ -846,7 +850,7 @@ css_process_new_client (SOCKET master_fd)
       return;
     }
 
-  if (PRM_ACCESS_IP_CONTROL == true &&
+  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true &&
       css_check_accessibility (new_fd) != NO_ERROR)
     {
       css_initialize_conn (&temp_conn, new_fd);
@@ -872,7 +876,8 @@ css_process_new_client (SOCKET master_fd)
       csect_initialize_critical_section (&temp_conn.csect);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CSS_CLIENTS_EXCEEDED, 1, PRM_CSS_MAX_CLIENTS);
+	      ER_CSS_CLIENTS_EXCEEDED, 1,
+	      prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
 
@@ -905,7 +910,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
   int r;
   int response;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       response = htonl (HA_SERVER_STATE_NA);
     }
@@ -1036,7 +1041,7 @@ css_process_new_connection_request (void)
 
   if (!IS_INVALID_SOCKET (new_fd))
     {
-      if (PRM_ACCESS_IP_CONTROL == true &&
+      if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true &&
 	  css_check_accessibility (new_fd) != NO_ERROR)
 	{
 	  CSS_CONN_ENTRY new_conn;
@@ -1079,7 +1084,8 @@ css_process_new_connection_request (void)
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_CSS_CLIENTS_EXCEEDED, 1, PRM_CSS_MAX_CLIENTS);
+		  ER_CSS_CLIENTS_EXCEEDED, 1,
+		  prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 	  reason = htonl (SERVER_CLIENTS_EXCEEDED);
 	  css_send_data (&new_conn, rid, (char *) &reason,
 			 (int) sizeof (int));
@@ -1248,7 +1254,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
       po[0].fd = fd;
       po[0].events = POLLIN;
-      n = poll (po, 1, PRM_TCP_CONNECTION_TIMEOUT * 1000);
+      n =
+	poll (po, 1,
+	      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 #if 0
       if (n > 0 && !FD_ISSET (fd, &rfds) && !FD_ISSET (fd, &efds))
 	{
@@ -1263,7 +1271,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	   * 0 means it timed out and no fd is changed.
 	   * Check if the peer is alive or not.
 	   */
-	  if (!css_peer_alive (fd, PRM_TCP_CONNECTION_TIMEOUT * 1000))
+	  if (!css_peer_alive
+	      (fd,
+	       prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000))
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "css_connection_handler_thread: "
@@ -1633,7 +1643,7 @@ css_init (char *server_name, int name_length, int port_id)
 	{
 	  /* thread creation error */
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK,
-		  1, PRM_CSS_MAX_CLIENTS);
+		  1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 	}
       return ER_FAILED;
     }
@@ -1652,7 +1662,7 @@ css_init (char *server_name, int name_length, int port_id)
       css_Master_conn = conn;
 
 #if !defined(WINDOWS)
-      if (PRM_HA_MODE)
+      if (prm_get_integer_value (PRM_ID_HA_MODE))
 	{
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
 	  if (status != NO_ERROR)
@@ -2095,7 +2105,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	+ strlen (env_name) + 1 + strlen (pid_string) + 1;
 
       /* in order to prepend '#' */
-      if (PRM_HA_MODE)
+      if (prm_get_integer_value (PRM_ID_HA_MODE))
 	{
 	  (*name_length)++;
 	}
@@ -2111,7 +2121,7 @@ css_pack_server_name (const char *server_name, int *name_length)
       s = packed_name;
       t = server_name;
 
-      if (PRM_HA_MODE)
+      if (prm_get_integer_value (PRM_ID_HA_MODE))
 	{
 	  *s++ = '#';
 	}
@@ -2463,7 +2473,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 		  css_ha_server_state_string (new_state));
 	  ha_Server_state = new_state;
 	  /* sync up the current HA state with the system parameter */
-	  PRM_HA_SERVER_STATE = ha_Server_state;
+	  prm_set_integer_value (PRM_ID_HA_SERVER_STATE, ha_Server_state);
 	  break;
 	}
     }
@@ -3063,27 +3073,30 @@ css_set_accessible_ip_info ()
   int ret_val;
   IP_INFO *tmp_accessible_ip_info;
 
-  if (PRM_ACCESS_IP_CONTROL_FILE == NULL)
+  if (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE) == NULL)
     {
       css_Server_accessible_ip_info = NULL;
       return NO_ERROR;
     }
 
 #if defined (WINDOWS)
-  if (strlen (PRM_ACCESS_IP_CONTROL_FILE) > 2
-      && isalpha (PRM_ACCESS_IP_CONTROL_FILE[0])
-      && PRM_ACCESS_IP_CONTROL_FILE[1] == ':')
+  if (strlen (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)) > 2
+      && isalpha (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[0])
+      && prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[1] == ':')
 #else
-  if (PRM_ACCESS_IP_CONTROL_FILE[0] == PATH_SEPARATOR)
+  if (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[0] ==
+      PATH_SEPARATOR)
 #endif
     {
-      ip_list_file_name = (char *) PRM_ACCESS_IP_CONTROL_FILE;
+      ip_list_file_name =
+	(char *) prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE);
     }
   else
     {
       ip_list_file_name =
 	envvar_confdir_file (ip_file_real_path, PATH_MAX,
-			     PRM_ACCESS_IP_CONTROL_FILE);
+			     prm_get_string_value
+			     (PRM_ID_ACCESS_IP_CONTROL_FILE));
     }
 
   ret_val = css_read_ip_info (&tmp_accessible_ip_info, ip_list_file_name);
@@ -3125,11 +3138,12 @@ xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     }
 
   fprintf (outfp, "access_ip_control=%s\n",
-	   (PRM_ACCESS_IP_CONTROL ? "yes" : "no"));
+	   (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) ? "yes" : "no"));
   fprintf (outfp, "access_ip_control_file=%s\n",
 	   (ip_list_file_name != NULL) ? ip_list_file_name : "NULL");
 
-  if (PRM_ACCESS_IP_CONTROL == false || css_Server_accessible_ip_info == NULL)
+  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == false
+      || css_Server_accessible_ip_info == NULL)
     {
       return;
     }

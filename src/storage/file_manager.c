@@ -1558,7 +1558,7 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	}
       else
 	{
-	  total_pages = PRM_BOSR_MAXTMP_PAGES;
+	  total_pages = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
 	  if (total_pages > 0)
 	    {
 	      total_pages *= (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE);
@@ -3343,7 +3343,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   file_type = fhdr->type;
 
   if ((file_type == FILE_TMP_TMP || file_type == FILE_QUERY_AREA)
-      && fhdr->num_user_pages < PRM_MAX_PAGES_IN_TEMP_FILE_CACHE)
+      && fhdr->num_user_pages <
+      prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE))
     {
       if (0 < fhdr->num_user_pages)
 	{
@@ -13000,16 +13001,18 @@ file_tmpfile_cache_initialize (void)
 
   file_Tempfile_cache.entry = (FILE_TEMPFILE_CACHE_ENTRY *)
     malloc (sizeof (FILE_TEMPFILE_CACHE_ENTRY) *
-	    PRM_MAX_ENTRIES_IN_TEMP_FILE_CACHE);
+	    prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE));
   if (file_Tempfile_cache.entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (FILE_TEMPFILE_CACHE_ENTRY) *
-	      PRM_MAX_ENTRIES_IN_TEMP_FILE_CACHE);
+	      prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  for (i = 0; i < PRM_MAX_ENTRIES_IN_TEMP_FILE_CACHE - 1; i++)
+  for (i = 0;
+       i < prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE) - 1;
+       i++)
     {
       file_Tempfile_cache.entry[i].idx = i;
       file_Tempfile_cache.entry[i].type = FILE_UNKNOWN_TYPE;

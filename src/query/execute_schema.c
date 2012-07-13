@@ -1172,7 +1172,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    else
 	      {
 		if (alter_code == PT_DROP_FK_CLAUSE &&
-		    PRM_COMPAT_MODE == COMPAT_MYSQL)
+		    prm_get_integer_value (PRM_ID_COMPAT_MODE) ==
+		    COMPAT_MYSQL)
 		  {
 		    /* We warn the user that dropping a foreign key behaves
 		       differently in CUBRID (the associated index is also
@@ -1294,7 +1295,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
    * The parameter is true by default.
    */
   if (alter_code == PT_ADD_ATTR_MTHD &&
-      PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT == true)
+      prm_get_bool_value (PRM_ID_ADD_COLUMN_UPDATE_HARD_DEFAULT) == true)
     {
       error =
 	do_update_new_notnull_cols_without_default (parser, alter, vclass);
@@ -1567,7 +1568,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -1853,7 +1854,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2057,7 +2058,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2112,7 +2113,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2199,7 +2200,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2486,7 +2487,7 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2716,8 +2717,9 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 
   ctype = get_reverse_unique_index_type (is_reverse, is_unique);
 
-  if (PRM_COMPAT_MODE == COMPAT_MYSQL && ctype == DB_CONSTRAINT_INDEX
-      && constraint_name != NULL && nnames == 0)
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL
+      && ctype == DB_CONSTRAINT_INDEX && constraint_name != NULL
+      && nnames == 0)
     {
       mysql_index_name = true;
     }
@@ -2875,7 +2877,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2928,7 +2930,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -3052,7 +3054,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -3763,7 +3765,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -7519,7 +7521,7 @@ do_drop_partition (MOP class_, int drop_sub_flag)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -11766,7 +11768,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -12824,7 +12826,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	    {
 	      const char *att_name = *(ci->att_names);
 
-	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == false)
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+		  == false)
 		{
 		  char query[SM_MAX_IDENTIFIER_LENGTH * 4 + 36] = { 0 };
 		  const char *class_name = NULL;
@@ -13705,7 +13708,9 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 			      TP_DOMAIN_COLLATION (att->domain)));
 
 		  if (QSTR_IS_FIXED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
-		      && PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+		      &&
+		      prm_get_bool_value
+		      (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
 		    {
 		      attr_chg_properties->p[P_TYPE] |=
 			ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
@@ -14306,7 +14311,8 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	    }
 	  else
 	    {
-	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+		  == true)
 		{
 		  attr_chg_properties->p[P_TYPE] |=
 		    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
@@ -14382,7 +14388,8 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	    }
 	  else
 	    {
-	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+		  == true)
 		{
 		  attr_chg_properties->p[P_TYPE] |=
 		    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
@@ -14444,7 +14451,8 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	    }
 	  else
 	    {
-	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+		  == true)
 		{
 		  attr_chg_properties->p[P_TYPE] |=
 		    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
@@ -14686,7 +14694,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
 	  *new_attempt = false;
 	  goto not_allowed;
 	}
-      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == false)
+      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == false)
 	{
 	  /*in permissive mode, we may have to convert existent NULL values
 	   *to hard- defaults, so make sure the hard default type exists*/

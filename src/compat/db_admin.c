@@ -1796,7 +1796,7 @@ int
 db_error_init (const char *logfile)
 {
   /* can be called when the database is not started */
-  er_init (logfile, PRM_ER_EXIT_ASK);
+  er_init (logfile, prm_get_integer_value (PRM_ID_ER_EXIT_ASK));
   return (1);
 }
 

@@ -2788,7 +2788,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		    }
 
 		  found_empty_str = false;
-		  if (PRM_ORACLE_STYLE_EMPTY_STRING
+		  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 		      && db_value_is_null (valp))
 		    {
 		      if (valp->need_clear)
@@ -2860,7 +2860,8 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 	    }
 
 	  found_empty_str = false;
-	  if (PRM_ORACLE_STYLE_EMPTY_STRING && db_value_is_null (valp))
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
+	      && db_value_is_null (valp))
 	    {
 	      if (valp->need_clear)
 		{

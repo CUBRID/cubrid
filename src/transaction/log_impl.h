@@ -49,7 +49,7 @@
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 
-#define MAX_NTRANS (PRM_CSS_MAX_CLIENTS + 1)
+#define MAX_NTRANS (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1)
 
 #if defined(SERVER_MODE)
 #define LOG_CS_ENTER(thread_p) \
@@ -130,7 +130,8 @@
 #define LOGAREA_SIZE (LOG_PAGESIZE - SSIZEOF(LOG_HDRPAGE))
 
 /* check if group commit is active */
-#define LOG_IS_GROUP_COMMIT_ACTIVE() (PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS > 0)
+#define LOG_IS_GROUP_COMMIT_ACTIVE() \
+  (prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS) > 0)
 
 #define LOG_RESET_APPEND_LSA(lsa)                \
   do {                                           \

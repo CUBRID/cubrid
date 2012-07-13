@@ -1073,6 +1073,10 @@ extern char *or_unpack_elo (char *ptr, void **elo_ptr);
 extern char *or_pack_ptr (char *ptr, UINTPTR ptrval);
 extern char *or_unpack_ptr (char *ptr, UINTPTR * ptrval);
 
+extern char *or_pack_bool_array (char *ptr, const bool * bools, int size);
+extern char *or_unpack_bool_array (char *ptr, bool ** bools);
+extern int or_packed_bool_array_length (const bool * bools, int size);
+
 /* pack/unpack support functions */
 extern int or_packed_string_length (const char *string, int *strlen);
 #if defined(ENABLE_UNUSED_FUNCTION)

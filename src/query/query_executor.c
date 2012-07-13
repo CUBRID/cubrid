@@ -2635,7 +2635,8 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   *limit_ptr = NO_SORT_LIMIT;
 
   /* If this option is disabled, keep the limit negative (NO_SORT_LIMIT). */
-  if (!PRM_USE_ORDERBY_SORT_LIMIT || !xasl || !xasl->orderby_limit)
+  if (!prm_get_bool_value (PRM_ID_USE_ORDERBY_SORT_LIMIT) || !xasl
+      || !xasl->orderby_limit)
     {
       return NO_ERROR;
     }
@@ -12565,7 +12566,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
   int i;
   POOLED_XASL_CACHE_ENTRY *pent;
 
-  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES <= 0)
+  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <= 0)
     {
       return NO_ERROR;
     }
@@ -12576,7 +12577,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
     }
 
   /* init cache entry info */
-  xasl_ent_cache.max_entries = PRM_XASL_MAX_PLAN_CACHE_ENTRIES;
+  xasl_ent_cache.max_entries =
+    prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES);
   xasl_ent_cache.num = 0;
   xasl_ent_cache.counter.lookup = 0;
   xasl_ent_cache.counter.hit = 0;
@@ -12651,7 +12653,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* init cache clone info */
-  xasl_clo_cache.max_clones = PRM_XASL_MAX_PLAN_CACHE_CLONES;
+  xasl_clo_cache.max_clones =
+    prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_CLONES);
   xasl_clo_cache.num = 0;
   xasl_clo_cache.counter.lookup = 0;
   xasl_clo_cache.counter.hit = 0;
@@ -12686,10 +12689,11 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       free_and_init (xasl_cache_entry_pool.pool);
     }
 
-  xasl_cache_entry_pool.n_entries = PRM_XASL_MAX_PLAN_CACHE_ENTRIES + 10;
-  xasl_cache_entry_pool.pool = (POOLED_XASL_CACHE_ENTRY *)
-    calloc (xasl_cache_entry_pool.n_entries,
-	    sizeof (POOLED_XASL_CACHE_ENTRY));
+  xasl_cache_entry_pool.n_entries =
+    prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) + 10;
+  xasl_cache_entry_pool.pool =
+    (POOLED_XASL_CACHE_ENTRY *) calloc (xasl_cache_entry_pool.n_entries,
+					sizeof (POOLED_XASL_CACHE_ENTRY));
 
   if (xasl_cache_entry_pool.pool != NULL)
     {
@@ -13463,10 +13467,10 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	}
 
       /* check age - timeout */
-      if (ent && PRM_XASL_PLAN_CACHE_TIMEOUT >= 0
+      if (ent && prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT) >= 0
 	  && (difftime (time (NULL),
 			ent->time_created.tv_sec) >
-	      PRM_XASL_PLAN_CACHE_TIMEOUT))
+	      prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT)))
 	{
 	  /* delete the entry which is timed out */
 	  (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
@@ -18920,7 +18924,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
   int i;
   POOLED_XASL_CACHE_ENTRY *pent;
 
-  if (PRM_FILTER_PRED_MAX_CACHE_ENTRIES <= 0)
+  if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) <= 0)
     {
       return NO_ERROR;
     }
@@ -18932,7 +18936,8 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
     }
 
   /* init cache entry info */
-  filter_pred_ent_cache.max_entries = PRM_FILTER_PRED_MAX_CACHE_ENTRIES;
+  filter_pred_ent_cache.max_entries =
+    prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES);
   filter_pred_ent_cache.num = 0;
   filter_pred_ent_cache.counter.lookup = 0;
   filter_pred_ent_cache.counter.hit = 0;
@@ -19009,7 +19014,8 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
     malloc (sizeof (XASL_CACHE_ENTRY *) * filter_pred_ent_cv->v_num);
 
   /* init cache clone info */
-  filter_pred_clo_cache.max_clones = PRM_FILTER_PRED_MAX_CACHE_CLONES;
+  filter_pred_clo_cache.max_clones =
+    prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_CLONES);
   filter_pred_clo_cache.num = 0;
   filter_pred_clo_cache.counter.lookup = 0;
   filter_pred_clo_cache.counter.hit = 0;
@@ -19045,7 +19051,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
     }
 
   filter_pred_cache_entry_pool.n_entries =
-    PRM_FILTER_PRED_MAX_CACHE_ENTRIES + 10;
+    prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) + 10;
   filter_pred_cache_entry_pool.pool =
     (POOLED_XASL_CACHE_ENTRY *) calloc (filter_pred_cache_entry_pool.
 					n_entries,
@@ -19760,10 +19766,10 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	}
 
       /* check age - timeout */
-      if (ent && PRM_XASL_PLAN_CACHE_TIMEOUT >= 0
+      if (ent && prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT) >= 0
 	  && (difftime (time (NULL),
 			ent->time_created.tv_sec) >
-	      PRM_XASL_PLAN_CACHE_TIMEOUT))
+	      prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT)))
 	{
 	  /* delete the entry which is timed out */
 	  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);

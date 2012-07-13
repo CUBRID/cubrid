@@ -561,7 +561,8 @@ hb_cluster_job_init (HB_JOB_ARG * arg)
   assert (error == NO_ERROR);
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
-				PRM_HA_INIT_TIMER_IN_MSECS);
+				prm_get_integer_value
+				(PRM_ID_HA_INIT_TIMER_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -585,7 +586,8 @@ hb_cluster_job_heartbeat (HB_JOB_ARG * arg)
   hb_cluster_request_heartbeat_to_all ();
   pthread_mutex_unlock (&hb_Cluster->lock);
   error = hb_cluster_job_queue (HB_CJOB_HEARTBEAT, NULL,
-				PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS);
+				prm_get_integer_value
+				(PRM_ID_HA_HEARTBEAT_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -708,7 +710,8 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
       else
 	{
 	  error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
-					PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+					prm_get_integer_value
+					(PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
 	  assert (error == NO_ERROR);
 
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
@@ -730,7 +733,8 @@ calc_end:
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
-				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+				prm_get_integer_value
+				(PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -760,8 +764,8 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
-  if (clst_arg == NULL || PRM_HA_PING_HOSTS == NULL
-      || *PRM_HA_PING_HOSTS == '\0')
+  if (clst_arg == NULL || prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL
+      || *prm_get_string_value (PRM_ID_HA_PING_HOSTS) == '\0')
     {
       /* If Ping Host is empty, MASTER->MASTER, SLAVE->MASTER.
        * It may cause split-brain problem.
@@ -773,7 +777,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
     }
   else
     {
-      host_list = strdup (PRM_HA_PING_HOSTS);
+      host_list = strdup (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
       if (host_list == NULL)
 	{
 	  goto ping_check_cancel;
@@ -852,7 +856,8 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
     {
       /* If this node is Slave, do failover */
       error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
-				    PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+				    prm_get_integer_value
+				    (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
       assert (error == NO_ERROR);
     }
 
@@ -886,7 +891,8 @@ ping_check_cancel:
   /* do calc_score job again */
   error =
     hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
-			  PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+			  prm_get_integer_value
+			  (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -937,7 +943,8 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
-				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+				prm_get_integer_value
+				(PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -972,7 +979,8 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
-				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+				prm_get_integer_value
+				(PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -997,13 +1005,14 @@ hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg)
   int ping_result;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
-  if (PRM_HA_PING_HOSTS == NULL || *PRM_HA_PING_HOSTS == '\0')
+  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL
+      || *prm_get_string_value (PRM_ID_HA_PING_HOSTS) == '\0')
     {
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
-  host_list = strdup (PRM_HA_PING_HOSTS);
+  host_list = strdup (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
 
   if (host_list == NULL)
     {
@@ -1066,15 +1075,17 @@ hb_cluster_calc_score (void)
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
       /* If this node does not receive heartbeat message over 
-       * than PRM_HA_MAX_HEARTBEAT_GAP times,
+       * than prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP) times,
        * (or sufficient time has been elapsed from 
        * the last received heartbeat message time),  
        * this node does not know what other node state is. 
        */
-      if (node->heartbeat_gap > PRM_HA_MAX_HEARTBEAT_GAP
+      if (node->heartbeat_gap >
+	  prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
 	  || (!HB_IS_INITIALIZED_TIME (node->last_recv_hbtime)
-	      && HB_GET_ELAPSED_TIME (now, node->last_recv_hbtime)
-	      > PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS))
+	      && HB_GET_ELAPSED_TIME (now,
+				      node->last_recv_hbtime) >
+	      prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS)))
 	{
 	  node->heartbeat_gap = 0;
 	  node->last_recv_hbtime.tv_sec = 0;
@@ -1176,8 +1187,8 @@ hb_cluster_send_heartbeat (bool is_req, char *host_name)
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
   if (hb_sockaddr
-      (host_name, PRM_HA_PORT_ID, (struct sockaddr *) &saddr,
-       &saddr_len) != NO_ERROR)
+      (host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
+       (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "hb_sockaddr failed. \n");
       return;
@@ -1851,7 +1862,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   pthread_mutex_unlock (&hb_Resource->lock);
 
   error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
-				 PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS);
+				 prm_get_integer_value
+				 (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
   if (error != NO_ERROR)
     {
       assert (false);
@@ -1965,7 +1977,8 @@ hb_resource_job_proc_dereg_end:
 #endif
 
   error = hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
-				 PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS);
+				 prm_get_integer_value
+				 (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
   if (error != NO_ERROR)
     {
       assert (false);
@@ -2060,7 +2073,8 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
       else
 	{
 	  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
-					 PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS);
+					 prm_get_integer_value
+					 (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
 	  if (error != NO_ERROR)
 	    {
 	      assert (false);
@@ -2091,7 +2105,8 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
   if (retry)
     {
       error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
-				     PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS);
+				     prm_get_integer_value
+				     (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
       if (error != NO_ERROR)
 	{
 	  assert (false);
@@ -2174,7 +2189,8 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
       error = hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
-				     PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS);
+				     prm_get_integer_value
+				     (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
       if (error != NO_ERROR)
 	{
 	  assert (false);
@@ -2249,7 +2265,8 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 #endif
 
   error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
-				 PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS);
+				 prm_get_integer_value
+				 (PRM_ID_HA_CHANGEMODE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -2541,7 +2558,8 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   proc_arg->pid = proc->pid;
   memcpy ((void *) &proc_arg->args[0], proc->args, sizeof (proc_arg->args));
   proc_arg->retries = 0;
-  proc_arg->max_retries = PRM_HA_MAX_PROCESS_START_CONFIRM;
+  proc_arg->max_retries =
+    prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM);
   gettimeofday (&proc_arg->ftime, NULL);
 
   proc->state = HB_PSTATE_DEAD;
@@ -3096,7 +3114,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   if (nodes == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      PRM_NAME_HA_NODE_LIST);
+	      prm_get_name (PRM_ID_HA_NODE_LIST));
 
       return ER_PRM_BAD_VALUE;
     }
@@ -3127,7 +3145,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   strncpy (hb_Cluster->host_name, host_name,
 	   sizeof (hb_Cluster->host_name) - 1);
   hb_Cluster->host_name[sizeof (hb_Cluster->host_name) - 1] = '\0';
-  if (PRM_HA_MODE == HA_MODE_REPLICA)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
     {
       hb_Cluster->state = HB_NSTATE_REPLICA;
     }
@@ -3149,7 +3167,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       pthread_mutex_unlock (&hb_Cluster->lock);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      PRM_NAME_HA_NODE_LIST);
+	      prm_get_name (PRM_ID_HA_NODE_LIST));
       return ER_PRM_BAD_VALUE;
     }
 
@@ -3170,7 +3188,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
   udp_saddr.sin_family = AF_INET;
   udp_saddr.sin_addr.s_addr = htonl (INADDR_ANY);
-  udp_saddr.sin_port = htons (PRM_HA_PORT_ID);
+  udp_saddr.sin_port = htons (prm_get_integer_value (PRM_ID_HA_PORT_ID));
 
   if (bind
       (hb_Cluster->sfd, (struct sockaddr *) &udp_saddr,
@@ -3252,8 +3270,10 @@ hb_resource_job_initialize ()
   pthread_mutex_unlock (&resource_Jobs->lock);
 
   error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
-				 PRM_HA_INIT_TIMER_IN_MSECS +
-				 PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+				 prm_get_integer_value
+				 (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
+				 prm_get_integer_value
+				 (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
     {
       assert (false);
@@ -3300,7 +3320,8 @@ hb_thread_initialize (void)
      Its performance highly depends on the pthread's scope and it's related
      kernel parameters. */
   rv = pthread_attr_setscope (&thread_attr,
-			      PRM_PTHREAD_SCOPE_PROCESS ?
+			      prm_get_bool_value
+			      (PRM_ID_PTHREAD_SCOPE_PROCESS) ?
 			      PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
@@ -3316,9 +3337,12 @@ hb_thread_initialize (void)
 #if !defined(sun) && !defined(SOLARIS)
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
+  if (ts_size < (size_t) prm_get_integer_value (PRM_ID_THREAD_STACKSIZE))
     {
-      rv = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
+      rv =
+	pthread_attr_setstacksize (&thread_attr,
+				   prm_get_integer_value
+				   (PRM_ID_THREAD_STACKSIZE));
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -3386,12 +3410,15 @@ hb_master_init (void)
   er_log_debug (ARG_FILE_LINE,
 		"heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}"
 		", ha_port_id:%d). \n",
-		(PRM_HA_MODE) ? "yes" : "no", PRM_HA_NODE_LIST,
-		PRM_HA_PORT_ID);
+		(prm_get_integer_value (PRM_ID_HA_MODE)) ? "yes" : "no",
+		prm_get_string_value (PRM_ID_HA_NODE_LIST),
+		prm_get_integer_value (PRM_ID_HA_PORT_ID));
 #endif
 
   sysprm_reload_and_init (NULL, NULL);
-  error = hb_cluster_initialize (PRM_HA_NODE_LIST, PRM_HA_REPLICA_LIST);
+  error =
+    hb_cluster_initialize (prm_get_string_value (PRM_ID_HA_NODE_LIST),
+			   prm_get_string_value (PRM_ID_HA_REPLICA_LIST));
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "hb_cluster_initialize failed. "
@@ -3499,12 +3526,14 @@ hb_resource_cleanup (void)
 #if defined (HB_VERBOSE_DEBUG)
   er_log_debug (ARG_FILE_LINE,
 		"close all local heartbeat connection. (timer:%d*%d).\n",
-		PRM_HA_MAX_PROCESS_DEREG_CONFIRM,
-		PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS);
+		prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM),
+		prm_get_integer_value
+		(PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
 #endif
 
   /* wait until all process shutdown */
-  for (i = 0; i < PRM_HA_MAX_PROCESS_DEREG_CONFIRM; i++)
+  for (i = 0; i < prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
+       i++)
     {
       for (num_active_process = 0, proc = hb_Resource->procs; proc;
 	   proc = proc->next)
@@ -3532,7 +3561,9 @@ hb_resource_cleanup (void)
 	  break;
 	}
 
-      SLEEP_MILISEC (0, PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS);
+      SLEEP_MILISEC (0,
+		     prm_get_integer_value
+		     (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
     }
 
   /* send SIGKILL to all active process */
@@ -3712,10 +3743,10 @@ hb_reload_config (void)
 
 #if defined (HB_VERBOSE_DEBUG)
   er_log_debug (ARG_FILE_LINE, "reload configuration. (nodes:{%s}).\n",
-		PRM_HA_NODE_LIST);
+		prm_get_string_value (PRM_ID_HA_NODE_LIST));
 #endif
 
-  if (PRM_HA_NODE_LIST == NULL)
+  if (prm_get_string_value (PRM_ID_HA_NODE_LIST) == NULL)
     {
       return ER_FAILED;
     }
@@ -3731,8 +3762,12 @@ hb_reload_config (void)
 
   hb_Cluster->nodes = NULL;
   hb_Cluster->num_nodes =
-    hb_cluster_load_group_and_node_list ((char *) PRM_HA_NODE_LIST,
-					 (char *) PRM_HA_REPLICA_LIST);
+    hb_cluster_load_group_and_node_list ((char *)
+					 prm_get_string_value
+					 (PRM_ID_HA_NODE_LIST),
+					 (char *)
+					 prm_get_string_value
+					 (PRM_ID_HA_REPLICA_LIST));
 
   if (hb_Cluster->num_nodes < 1 ||
       (hb_Cluster->master
@@ -3756,7 +3791,7 @@ hb_reload_config (void)
       pthread_mutex_unlock (&hb_Cluster->lock);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      PRM_NAME_HA_NODE_LIST);
+	      prm_get_name (PRM_ID_HA_NODE_LIST));
       return ER_PRM_BAD_VALUE;
     }
 
@@ -4136,7 +4171,8 @@ hb_dereg_process (pid_t pid, char **str)
   proc_arg->pid = proc->pid;
   memcpy ((void *) &proc_arg->args[0], proc->args, sizeof (proc_arg->args));
   proc_arg->retries = 0;
-  proc_arg->max_retries = PRM_HA_MAX_PROCESS_DEREG_CONFIRM;
+  proc_arg->max_retries =
+    prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
   gettimeofday (&proc_arg->ftime, NULL);
 
   proc->state = HB_PSTATE_DEREGISTERED;

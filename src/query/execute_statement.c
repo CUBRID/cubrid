@@ -828,7 +828,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -1668,7 +1668,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -2473,7 +2473,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -5303,7 +5303,7 @@ int
 do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 			 PT_DO_FUNC * do_func)
 {
-  if (PRM_BLOCK_NOWHERE_STATEMENT
+  if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.delete_.search_cond == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -5414,7 +5414,7 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   int err;
 
-  if (PRM_BLOCK_NOWHERE_STATEMENT
+  if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.update.search_cond == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -5515,7 +5515,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -5651,7 +5651,7 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -5858,7 +5858,7 @@ do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -5898,7 +5898,7 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (PRM_BLOCK_DDL_STATEMENT)
+  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
 	      0);
@@ -10478,7 +10478,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
       return error;
     }
 
-  server_preference = PRM_INSERT_MODE;
+  server_preference = prm_get_integer_value (PRM_ID_INSERT_MODE);
 
   if (statement->info.insert.hint & PT_HINT_INSERT_MODE)
     {
@@ -11295,9 +11295,9 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	{
 	  return error;
 	}
-      if (PRM_HOSTVAR_LATE_BINDING &&
-	  ((PRM_XASL_MAX_PLAN_CACHE_ENTRIES <= 0) ||
-	   statement->cannot_prepare))
+      if (prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) &&
+	  ((prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <= 0)
+	   || statement->cannot_prepare))
 	{
 	  server_allowed = 0;
 	}
@@ -13255,7 +13255,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->long_string_skipped = 0;
   parser->print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES
+			   | PT_PRINT_DIFFERENT_SESSION_PRMS));
   qstr = statement->alias_print;
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
@@ -13905,7 +13906,7 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_EXPRESSION:
 	  do_Trigger_involved = true;
 #if 0
-	  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0)
+	  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0)
 	    {
 
 	      /* prepare a statement to execute */
@@ -14187,7 +14188,7 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   int err;
 
-  if (PRM_BLOCK_NOWHERE_STATEMENT
+  if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.merge.search_cond == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -14897,7 +14898,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_NODE *attr, *attrs = statement->info.merge.insert.attr_list;
       PT_NODE *non_nulls_ins = NULL;
 
-      if (PRM_INSERT_MODE & INSERT_SELECT)
+      if (prm_get_integer_value (PRM_ID_INSERT_MODE) & INSERT_SELECT)
 	{
 	  /* server insert cannot handle insert into a shared attribute */
 	  server_insert = true;

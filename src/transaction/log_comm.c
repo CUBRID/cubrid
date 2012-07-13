@@ -501,7 +501,7 @@ log_dump_log_info (const char *logname_info, bool also_stdout,
   fclose (fp);
 
 #if !defined(NDEBUG)
-  if (also_stdout && PRM_LOG_TRACE_DEBUG)
+  if (also_stdout && prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
     {
       va_start (ap, fmt);
       (void) vfprintf (stdout, fmt, ap);

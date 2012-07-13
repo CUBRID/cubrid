@@ -454,19 +454,20 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   er_init (log_file_name, ER_NEVER_EXIT);
 
   if (Index_file[0] != '\0'
-      && PRM_SR_NBUFFERS < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
+      && prm_get_integer_value (PRM_ID_SR_NBUFFERS) <
+      LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
     {
-      sysprm_set_force (PRM_NAME_SR_NBUFFERS,
+      sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS),
 			LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
 
   if (Error_file[0] != '\0')
     {
       /* set flush interval to 1 */
-      sysprm_set_force (PRM_NAME_LOADDB_FLUSH_INTERVAL, "1");
+      sysprm_set_force (prm_get_name (PRM_ID_LOADDB_FLUSH_INTERVAL), "1");
     }
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* login */
   if (User_name != NULL || !dba_mode)

@@ -715,7 +715,7 @@ css_process_kill_master (void)
       hb_cluster_shutdown_and_cleanup ();
     }
 
-  if (PRM_HA_MODE)
+  if (prm_get_integer_value (PRM_ID_HA_MODE))
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
@@ -978,7 +978,7 @@ css_process_ha_node_list_info (CSS_CONN_ENTRY * conn,
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
@@ -1043,7 +1043,7 @@ css_process_ha_process_list_info (CSS_CONN_ENTRY * conn,
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
@@ -1106,7 +1106,7 @@ css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
@@ -1166,7 +1166,7 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
 				   unsigned short request_id, void *buf)
 {
 #if !defined(WINDOWS)
-  if (PRM_HA_MODE != HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       if (hb_is_registered_process (conn, buf))
 	{
@@ -1213,7 +1213,7 @@ css_process_dereg_ha_process (CSS_CONN_ENTRY * conn,
   char *buffer = NULL;
   pid_t pid;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
@@ -1276,7 +1276,7 @@ css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn,
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
@@ -1335,7 +1335,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
@@ -1395,7 +1395,7 @@ css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }

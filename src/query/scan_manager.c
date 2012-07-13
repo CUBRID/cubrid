@@ -752,7 +752,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p,
    * the number of times doing stop-and-resume during btree_range_search.
    * To do it, QFILE_FLAG_USE_KEY_BUFFER is introduced. If the flag is set,
    * the list file allocates PRM_INDEX_SCAN_KEY_BUFFER_PAGES pages memory
-   * for its memory buffer, which is generally larger than PRM_TEMP_MEM_BUFFER_PAGES.
+   * for its memory buffer, which is generally larger than prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES).
    */
   indx_cov->list_id = qfile_open_list (thread_p, indx_cov->type_list, NULL,
 				       query_id, QFILE_FLAG_USE_KEY_BUFFER);
@@ -3156,7 +3156,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->num_vstr = 0;
   isidp->vstr_ids = NULL;
 
-  if (PRM_ORACLE_STYLE_EMPTY_STRING)
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
     {
       isidp->num_vstr = isidp->bt_num_attrs;	/* init to maximum */
       isidp->vstr_ids = (ATTR_ID *) db_private_alloc (thread_p,
@@ -4955,7 +4955,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    }
 		}
 
-	      if (PRM_ORACLE_STYLE_EMPTY_STRING)
+	      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 		{
 		  if (isidp->num_vstr)
 		    {
@@ -6048,7 +6048,8 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
     }
 
   memset ((void *) (multi_range_opt), 0, sizeof (MULTI_RANGE_OPT));
-  use_range_opt = use_range_opt && (max_size <= PRM_MULTI_RANGE_OPT_LIMIT);
+  use_range_opt = use_range_opt
+    && (max_size <= prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT));
   multi_range_opt->use = use_range_opt;
   multi_range_opt->cnt = 0;
 

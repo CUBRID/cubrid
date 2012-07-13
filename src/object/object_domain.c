@@ -9606,7 +9606,7 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
   err_dom = tp_value_cast (src, dest, desired_domain, false);
   if (err_dom != DOMAIN_COMPATIBLE)
     {
-      if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS == true)
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	{
 	  return NO_ERROR;
 	}

@@ -1784,7 +1784,7 @@ lang_get_lang_id_from_flag (const int flag, bool * user_format)
 const char *
 lang_date_format (const INTL_LANG lang_id, const DB_TYPE type)
 {
-  if (PRM_USE_LOCALE_DATE_FORMAT)
+  if (prm_get_bool_value (PRM_ID_USE_LOCALE_DATE_FORMAT))
     {
       if (!lang_Initialized)
 	{
@@ -1868,7 +1868,7 @@ lang_digit_grouping_symbol (const INTL_LANG lang_id)
 
   assert (lld != NULL);
 
-  if (PRM_USE_LOCALE_NUMBER_FORMAT)
+  if (prm_get_bool_value (PRM_ID_USE_LOCALE_NUMBER_FORMAT))
     {
       return lld->number_group_sym;
     }
@@ -1888,7 +1888,7 @@ lang_digit_fractional_symbol (const INTL_LANG lang_id)
 
   assert (lld != NULL);
 
-  if (PRM_USE_LOCALE_NUMBER_FORMAT)
+  if (prm_get_bool_value (PRM_ID_USE_LOCALE_NUMBER_FORMAT))
     {
       return lld->number_decimal_sym;
     }

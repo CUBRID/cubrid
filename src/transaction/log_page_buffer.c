@@ -649,7 +649,7 @@ logpb_expand_pool (int num_new_buffers)
 	}
       else
 	{
-	  num_new_buffers = PRM_LOG_NBUFFERS;
+	  num_new_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
 	  if (num_new_buffers < LOG_MIN_NBUFFERS)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
@@ -756,7 +756,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   if (lzo_init () == LZO_E_OK)
     {				/* lzo library init */
-      if (!PRM_LOG_COMPRESS)
+      if (!prm_get_bool_value (PRM_ID_LOG_COMPRESS))
 	{
 	  log_zip_support = false;
 	}
@@ -2576,8 +2576,8 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   flush_info->num_toflush++;
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (PRM_LOG_BACKGROUND_ARCHIVING && flush_info->num_toflush > 0
-      && BO_IS_SERVER_RESTARTED ())
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
       struct log_buffer *bufptr;
@@ -2794,8 +2794,8 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
   flush_info->num_toflush++;
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (PRM_LOG_BACKGROUND_ARCHIVING && flush_info->num_toflush > 0
-      && BO_IS_SERVER_RESTARTED ())
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
       struct log_buffer *bufptr;
@@ -2933,7 +2933,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
   bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
-  assert (PRM_LOG_BACKGROUND_ARCHIVING);
+  assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
   if (log_Gl.bg_archive_info.vdes == NULL_VOLDES
       || flush_info->num_toflush <= 1)
     {
@@ -4776,8 +4776,8 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   hold_flush_mutex = true;
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (PRM_LOG_BACKGROUND_ARCHIVING && flush_info->num_toflush > 0
-      && BO_IS_SERVER_RESTARTED ())
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
       struct log_buffer *bufptr;
@@ -4929,7 +4929,8 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 
 #if defined(SERVER_MODE)
   /* It changes the status of waiting log writer threads and wakes them up */
-  if (PRM_HA_MODE != HA_MODE_OFF && !writer_info->skip_flush)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+      && !writer_info->skip_flush)
     {
       assert (hold_flush_mutex == false);
       LOG_CS_DEMOTE (thread_p);
@@ -5112,8 +5113,9 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   if (need_sync == true)
     {
       log_Stat.total_sync_count++;
-      if (PRM_SUPPRESS_FSYNC == 0
-	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+      if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
+	  || (log_Stat.total_sync_count %
+	      prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  if (fileio_synchronize (thread_p,
 				  log_Gl.append.vdes,
@@ -5146,8 +5148,9 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	}
 
       log_Stat.total_sync_count++;
-      if (PRM_SUPPRESS_FSYNC == 0
-	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+      if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
+	  || (log_Stat.total_sync_count %
+	      prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  if (fileio_synchronize (thread_p,
 				  log_Gl.append.vdes,
@@ -5160,7 +5163,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
     }
 
   /* dual writing (Background archiving) */
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       logpb_write_toflush_pages_to_archive (thread_p);
     }
@@ -5197,7 +5200,8 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
 #if !defined(NDEBUG)
-  if (PRM_LOG_TRACE_DEBUG && logpb_is_any_dirty () == true)
+  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG)
+      && logpb_is_any_dirty () == true)
     {
       er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer"
 		    " contains dirty pages\n");
@@ -5246,8 +5250,8 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
       flush_info->num_toflush++;
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-      if (PRM_LOG_BACKGROUND_ARCHIVING && flush_info->num_toflush > 0
-	  && BO_IS_SERVER_RESTARTED ())
+      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+	  && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
 	{
 	  BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
 	  struct log_buffer *bufptr;
@@ -5300,7 +5304,8 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   hold_flush_mutex = false;
 
 #if defined(SERVER_MODE)
-  if (PRM_HA_MODE != HA_MODE_OFF && !writer_info->skip_flush)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+      && !writer_info->skip_flush)
     {
       /* It waits until all log writer threads are done */
       rv = pthread_mutex_lock (&writer_info->flush_end_mutex);
@@ -5410,7 +5415,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
   assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (flush_type == LOG_FLUSH_NORMAL);
 
-  if (PRM_LOG_ASYNC_COMMIT && LOG_IS_GROUP_COMMIT_ACTIVE ())
+  if (prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT)
+      && LOG_IS_GROUP_COMMIT_ACTIVE ())
     {
       log_Stat.async_commit_request_count++;
       return;
@@ -5464,7 +5470,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
   rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 
-  if (!PRM_LOG_ASYNC_COMMIT)
+  if (!prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT))
     {
       ++(group_commit_info->waiters);
 #if defined(CUBRID_DEBUG)
@@ -6801,7 +6807,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
 #if !defined(NDEBUG)
-  if (PRM_LOG_TRACE_DEBUG)
+  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
     {
       fprintf (stdout, "\n **log_fetch_from_archive has been called on"
 	       " pageid = %lld ** \n", pageid);
@@ -7323,7 +7329,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
-  if (PRM_LOG_MEDIA_FAILURE_SUPPORT || force_archive)
+  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT) || force_archive)
     {
       /*
        * All pages must be archived... even the ones with unactive log records
@@ -7529,7 +7535,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   fileio_make_log_archive_name (arv_name, log_Archive_path,
 				log_Prefix, log_Gl.hdr.nxarv_num);
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING && bg_arv_info->vdes != NULL_VOLDES)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && bg_arv_info->vdes != NULL_VOLDES)
     {
       vdes = bg_arv_info->vdes;
     }
@@ -7556,7 +7563,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
    * is minimized.
    */
 #if defined(GOORM_BMT)
-  if (PRM_LOG_MEDIA_FAILURE_SUPPORT)
+  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT))
     {
 #endif
 
@@ -7573,7 +7580,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	  goto error;
 	}
 
-      if (PRM_LOG_BACKGROUND_ARCHIVING
+      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
 	  && bg_arv_info->vdes != NULL_VOLDES
 	  && arvhdr->fpageid == bg_arv_info->start_page_id)
 	{
@@ -7583,7 +7590,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	}
       else
 	{
-	  assert (!PRM_LOG_BACKGROUND_ARCHIVING
+	  assert (!prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
 		  || bg_arv_info->vdes == NULL_VOLDES);
 
 	  pageid = arvhdr->fpageid;
@@ -7627,7 +7634,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	}
 
 
-      if (PRM_LOG_BACKGROUND_ARCHIVING && bg_arv_info->vdes != NULL_VOLDES)
+      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+	  && bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  fileio_dismount (thread_p, vdes);
 	  vdes = NULL_VOLDES;
@@ -7678,7 +7686,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   logpb_flush_header (thread_p);
 
 #if 0
-  if (PRM_SUPPRESS_FSYNC != 0)
+  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) != 0)
     {
       fileio_synchronize (thread_p, log_Gl.append.vdes);
     }
@@ -7714,7 +7722,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 				      arvhdr->fpageid, last_pageid);
 
 #if defined(SERVER_MODE)
-  if (PRM_HA_MODE != HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       LOG_PAGEID min_fpageid = logwr_get_min_copied_fpageid ();
       if (min_fpageid != NULL_PAGEID)
@@ -7764,7 +7772,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 #endif /* SERVER_MODE */
 
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       /* rename removed archive log file to reuse it */
       os_rename_file (log_Name_removed_archive, log_Name_bg_archive);
@@ -7812,7 +7820,7 @@ error:
       fileio_unformat (thread_p, arv_name);
     }
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       if (bg_arv_info->vdes != NULL_VOLDES && bg_arv_info->vdes != vdes)
 	{
@@ -7836,7 +7844,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
   int min_copied_arv_num;
 #endif /* SERVER_MODE */
   int num_remove_arv_num;
-  int log_max_archives = PRM_LOG_MAX_ARCHIVES;
+  int log_max_archives = prm_get_integer_value (PRM_ID_LOG_MAX_ARCHIVES);
   char *catmsg;
   int deleted_count = 0;
 
@@ -7847,7 +7855,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 
   LOG_CS_ENTER (thread_p);
 
-  if (!PRM_FORCE_REMOVE_LOG_ARCHIVES)
+  if (!prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
     {
 #if defined(SERVER_MODE)
       min_copied_pageid = logwr_get_min_copied_fpageid ();
@@ -8199,7 +8207,7 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first,
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix,
 				    i);
 #if defined(SERVER_MODE)
-      if (PRM_LOG_BACKGROUND_ARCHIVING
+      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
 	  && boot_Server_status == BOOT_SERVER_UP)
 	{
 	  fileio_unformat_and_rename (thread_p, logarv_name,
@@ -9132,7 +9140,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	    }
 
 	  /* This is OK since we have already flushed the log header page */
-	  if (PRM_LOG_MEDIA_FAILURE_SUPPORT == false)
+	  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT) == false)
 	    {
 	      /* Remove the log archives at this point */
 	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -9781,7 +9789,8 @@ loop:
 	}
 
 #if defined(SERVER_MODE)
-      if (sleep_msecs > 0 || PRM_IO_BACKUP_SLEEP_MSECS > 0)
+      if (sleep_msecs > 0
+	  || prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) > 0)
 	{
 	  int sleep_nsecs;
 
@@ -9789,9 +9798,10 @@ loop:
 	    {
 	      sleep_nsecs = sleep_msecs * 1000;
 	    }
-	  else if (PRM_IO_BACKUP_SLEEP_MSECS > 0)	/* priority 2 */
+	  else if (prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) > 0)	/* priority 2 */
 	    {
-	      sleep_nsecs = PRM_IO_BACKUP_SLEEP_MSECS * 1000;
+	      sleep_nsecs =
+		prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) * 1000;
 	    }
 	  else
 	    {
@@ -11811,7 +11821,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       /* Destroy temporary log archive */
       fileio_unformat (thread_p, log_Name_bg_archive);
@@ -12398,7 +12408,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	}
     }
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       /* Destroy temporary log archive */
       fileio_unformat (thread_p, log_Name_bg_archive);
@@ -13024,7 +13034,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
 
   /* num_toflush can be changed because flush lock is released in loop */
 
-  flush_expected = PRM_LOG_BG_FLUSH_NUM_PAGES;
+  flush_expected = prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_NUM_PAGES);
   if (flush_expected == 0)
     {
       flush_expected = flush_info->max_toflush;
@@ -13084,7 +13094,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
     }
 
   /* dual writing (Background archiving) */
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       logpb_write_toflush_pages_to_archive (thread_p);
     }
@@ -13102,8 +13112,9 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
       log_Stat.last_flush_count_by_LFT = flush_count;
       log_Stat.total_flush_count_by_LFT += flush_count;
 
-      if (PRM_SUPPRESS_FSYNC == 0
-	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+      if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
+	  || (log_Stat.total_sync_count %
+	      prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  if (fileio_synchronize (thread_p,
 				  log_Gl.append.vdes,
@@ -13143,7 +13154,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
-  assert (PRM_LOG_BACKGROUND_ARCHIVING);
+  assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -13276,18 +13287,19 @@ logpb_dump_parameter (FILE * outfp)
   fprintf (outfp, "Log Parameters:\n");
 
   fprintf (outfp, "\treplication_meta_flush_interval (sec) : %d\n",
-	   PRM_LOG_HEADER_FLUSH_INTERVAL);
+	   prm_get_integer_value (PRM_ID_LOG_HEADER_FLUSH_INTERVAL));
 
   fprintf (outfp, "\tgroup_commit_interval_msec : %d\n",
-	   PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+	   prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS));
 
   fprintf (outfp, "\tasync_commit : %s\n",
-	   PRM_LOG_ASYNC_COMMIT ? "on" : "off");
+	   prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT) ? "on" : "off");
 
   fprintf (outfp, "\tbg_flush_interval_msecs : %d\n",
-	   PRM_LOG_BG_FLUSH_INTERVAL_MSECS);
+	   prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS));
 
-  fprintf (outfp, "\tbg_flush_num_pages : %d\n", PRM_LOG_BG_FLUSH_NUM_PAGES);
+  fprintf (outfp, "\tbg_flush_num_pages : %d\n",
+	   prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_NUM_PAGES));
 }
 
 /*

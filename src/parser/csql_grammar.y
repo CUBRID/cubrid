@@ -5679,7 +5679,7 @@ insert_value_clause
 
 			PT_NODE *nls = NULL;
 
-			if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+			if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 			  {
 			    nls = pt_node_list (this_parser, PT_IS_DEFAULT_VALUE, NULL);
 			  }
@@ -15022,12 +15022,13 @@ predicate_expr_sub
 	| pred_lhs like_op expression_
 		{{
 
- 			if (PRM_REQUIRE_LIKE_ESCAPE_CHARACTER && PRM_NO_BACKSLASH_ESCAPES)
+ 			if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER)
+ 			    && prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
  			  {
  			    PT_ERRORmf2 (this_parser, $1, MSGCAT_SET_PARSER_SEMANTIC,
  			                 MSGCAT_SEMANTIC_ESCAPE_CHAR_REQUIRED,
- 			                 PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER,
- 			                 PRM_NAME_NO_BACKSLASH_ESCAPES);
+ 			                 prm_get_name (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER),
+ 			                 prm_get_name (PRM_ID_NO_BACKSLASH_ESCAPES));
  			  }
 			$$ = parser_make_expression ($2, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -21078,7 +21079,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  a2 = parser_new_node (this_parser, PT_VALUE);
 	  if (a2)
 	   {
-	     a2->info.value.data_value.i = PRM_DEFAULT_WEEK_FORMAT;
+	     a2->info.value.data_value.i =
+	      prm_get_integer_value (PRM_ID_DEFAULT_WEEK_FORMAT);
 	     a2->type_enum = PT_TYPE_INTEGER;
 	   }
 	  return parser_make_expression (key->op, a1, a2, NULL);

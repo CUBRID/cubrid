@@ -293,6 +293,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_wait_queue_count = 0;
   conn->free_net_header_list = NULL;
   conn->free_net_header_count = 0;
+  conn->session_params = NULL;
   conn->session_id = DB_EMPTY_SESSION;
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -405,6 +406,11 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 	}
     }
 
+  if (conn->session_params)
+    {
+      sysprm_free_session_parameters (&conn->session_params);
+    }
+
   csect_exit_critical_section (&conn->csect);
 }
 
@@ -419,7 +425,7 @@ css_init_conn_list (void)
   CSS_CONN_ENTRY *conn;
 
   /* max_clients + 1 for conn with master */
-  css_Num_max_conn = PRM_CSS_MAX_CLIENTS + 1;
+  css_Num_max_conn = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
 
   if (css_Conn_array != NULL)
     {
@@ -1191,7 +1197,8 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
 
   /* timeout in milli-second in css_net_send() */
   return (css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
-			PRM_TCP_CONNECTION_TIMEOUT * 1000));
+			prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
+			* 1000));
 }
 
 /*
@@ -1867,7 +1874,8 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	{
 	  /* timeout in milli-second in css_net_recv() */
 	  rc = css_net_recv (conn->fd, buffer, &size,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 	}
       while (rc == INTERRUPTED_READ);
 
@@ -1946,7 +1954,8 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	{
 	  /* timeout in milli-second in css_net_recv() */
 	  rc = css_net_recv (conn->fd, buffer, &size,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
+			     prm_get_integer_value
+			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
 	}
       while (rc == INTERRUPTED_READ);
 
@@ -2503,5 +2512,6 @@ css_send_magic (CSS_CONN_ENTRY * conn)
 
   return (css_net_send
 	  (conn, (const char *) &header,
-	   sizeof (NET_HEADER), PRM_TCP_CONNECTION_TIMEOUT * 1000));
+	   sizeof (NET_HEADER),
+	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
 }

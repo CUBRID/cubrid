@@ -364,7 +364,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
   /* background archive file path */
   fileio_make_log_archive_temp_name (logwr_Gl.bg_archive_name, log_path,
 				     logwr_Gl.db_name);
-  log_nbuffers = PRM_LOG_NBUFFERS + 1;
+  log_nbuffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS) + 1;
 
   if (logwr_Gl.logpg_area == NULL)
     {
@@ -416,7 +416,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
 
   logwr_Gl.ori_nxarv_pageid = NULL_PAGEID;
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
       bg_arv_info = &logwr_Gl.bg_archive_info;
@@ -489,7 +489,7 @@ logwr_finalize (void)
 
   logwr_Gl.ori_nxarv_pageid = NULL_PAGEID;
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       if (logwr_Gl.bg_archive_info.vdes != NULL_VOLDES)
 	{
@@ -540,7 +540,7 @@ logwr_set_hdr_and_flush_info (void)
 	{
 	  logwr_Gl.last_arv_fpageid = logwr_Gl.hdr.nxarv_pageid;
 	  logwr_Gl.last_arv_num = logwr_Gl.hdr.nxarv_num;
-	  if (PRM_LOG_BACKGROUND_ARCHIVING)
+	  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
 	    {
 	      logwr_Gl.bg_archive_info.start_page_id =
 		logwr_Gl.last_arv_fpageid;
@@ -640,7 +640,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
       fpageid = to_flush[0]->hdr.logical_pageid;
 
       /* 1. archive temp write */
-      if (PRM_LOG_BACKGROUND_ARCHIVING)
+      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
 	{
 	  /* check archive temp descriptor */
 	  if (logwr_Gl.bg_archive_info.vdes == NULL_VOLDES)
@@ -819,7 +819,8 @@ logwr_flush_all_append_pages (void)
     }
 
   /* It's for dual write. */
-  if (need_sync == true && PRM_LOG_BACKGROUND_ARCHIVING)
+  if (need_sync == true
+      && prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes,
 			      logwr_Gl.bg_archive_name) == NULL_VOLDES)
@@ -978,7 +979,7 @@ logwr_archive_active_log (void)
   fileio_make_log_archive_name (archive_name, logwr_Gl.log_path,
 				logwr_Gl.db_name, arvhdr->arv_num);
   bg_arv_info = &logwr_Gl.bg_archive_info;
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       if (bg_arv_info->vdes == NULL_VOLDES)
 	{
@@ -1030,7 +1031,7 @@ logwr_archive_active_log (void)
       goto error;
     }
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
       && bg_arv_info->vdes != NULL_VOLDES
       && logwr_Gl.last_arv_fpageid == bg_arv_info->start_page_id)
     {
@@ -1093,7 +1094,8 @@ logwr_archive_active_log (void)
   fileio_dismount (NULL, vdes);
   vdes = NULL_VOLDES;
 
-  if (PRM_LOG_BACKGROUND_ARCHIVING && bg_arv_info->vdes != NULL_VOLDES)
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && bg_arv_info->vdes != NULL_VOLDES)
     {
       bg_arv_info->vdes = NULL_VOLDES;
       if (fileio_rename (NULL_VOLID, logwr_Gl.bg_archive_name, archive_name)
@@ -1200,8 +1202,10 @@ logwr_write_log_pages (void)
       if (logwr_Gl.force_flush == false && !LOGWR_AT_SERVER_ARCHIVING ()
 	  && (logwr_Gl.hdr.eof_lsa.pageid <=
 	      logwr_Gl.toflush[0]->hdr.logical_pageid)
-	  && ((PRM_LOG_BG_FLUSH_INTERVAL_MSECS > 0)
-	      && (diff_msec < PRM_LOG_BG_FLUSH_INTERVAL_MSECS)))
+	  && ((prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS) > 0)
+	      && (diff_msec <
+		  prm_get_integer_value
+		  (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS))))
 	{
 	  return NO_ERROR;
 	}
@@ -1218,8 +1222,9 @@ logwr_write_log_pages (void)
 					    logwr_Gl.active_name,
 					    LOG_DBLOG_ACTIVE_VOLID,
 					    (logwr_Gl.hdr.npages + 1),
-					    PRM_LOG_SWEEP_CLEAN, true, false,
-					    LOG_PAGESIZE, false);
+					    prm_get_bool_value
+					    (PRM_ID_LOG_SWEEP_CLEAN), true,
+					    false, LOG_PAGESIZE, false);
       if (logwr_Gl.append_vdes == NULL_VOLDES)
 	{
 	  /* Unable to create an active log */
@@ -1618,9 +1623,11 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	    }
 	}
       /* Pack the pages which can be in the page area of Log Writer */
-      if ((lpageid - fpageid + 1) > (PRM_LOG_NBUFFERS - 1))
+      if ((lpageid - fpageid + 1) >
+	  (prm_get_integer_value (PRM_ID_LOG_NBUFFERS) - 1))
 	{
-	  lpageid = fpageid + (PRM_LOG_NBUFFERS - 1) - 1;
+	  lpageid =
+	    fpageid + (prm_get_integer_value (PRM_ID_LOG_NBUFFERS) - 1) - 1;
 	}
       if (lpageid == log_Gl.hdr.eof_lsa.pageid)
 	{
@@ -1636,7 +1643,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   num_logpgs = (is_hdr_page_only) ? 1 : (int) ((lpageid - fpageid + 1) + 1);
 
   assert (lpageid >= fpageid);
-  assert (num_logpgs <= PRM_LOG_NBUFFERS);
+  assert (num_logpgs <= prm_get_integer_value (PRM_ID_LOG_NBUFFERS));
 
   p = logpg_area;
 
@@ -1784,12 +1791,15 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
   logpg_used_size = 0;
-  logpg_area = db_private_alloc (thread_p, PRM_LOG_NBUFFERS * LOG_PAGESIZE);
+  logpg_area =
+    db_private_alloc (thread_p,
+		      prm_get_integer_value (PRM_ID_LOG_NBUFFERS) *
+		      LOG_PAGESIZE);
   if (logpg_area == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      PRM_LOG_NBUFFERS * LOG_PAGESIZE);
+	      prm_get_integer_value (PRM_ID_LOG_NBUFFERS) * LOG_PAGESIZE);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1935,14 +1945,14 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	  logwr_write_end (writer_info, entry, status);
 	}
 
-       error_code = xlog_send_log_pages_to_client (thread_p, logpg_area,
+      error_code = xlog_send_log_pages_to_client (thread_p, logpg_area,
 						  logpg_used_size, mode);
       if (error_code != NO_ERROR)
 	{
 	  status = LOGWR_STATUS_ERROR;
 	  goto error;
 	}
-     
+
       /* Get the next request from the client and reset the arguments */
       error_code = xlog_get_page_request_with_reply (thread_p, &next_fpageid,
 						     &next_mode);

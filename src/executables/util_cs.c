@@ -180,7 +180,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -402,8 +402,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -412,7 +412,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     {
       if (volext_size == -1)
 	{
-	  volext_size = PRM_DB_VOLUME_SIZE;
+	  volext_size = prm_get_size_value (PRM_ID_DB_VOLUME_SIZE);
 	}
 
       if (volext_npages == 0)
@@ -664,7 +664,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -871,8 +871,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1024");
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -1965,7 +1965,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
 #if defined (CS_MODE)
   /* should have little copyright herald message ? */
@@ -2179,7 +2179,7 @@ check_server_ha_mode (void)
 {
   char prm_buf[LINE_MAX], *prm_val;
 
-  strcpy (prm_buf, PRM_NAME_HA_MODE);
+  strcpy (prm_buf, prm_get_name (PRM_ID_HA_MODE));
   if (db_get_system_parameters (prm_buf, LINE_MAX - 1) != NO_ERROR)
     {
       return ER_FAILED;
@@ -2291,7 +2291,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CHANGEMODE,
@@ -2469,7 +2469,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (PRM_HA_MODE)
+  if (prm_get_integer_value (PRM_ID_HA_MODE))
     {
       error = hb_process_init (database_name, log_path, true);
       if (error != NO_ERROR)
@@ -2500,10 +2500,11 @@ retry:
       error = ER_FAILED;
       goto error_exit;
     }
-  /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
-  sysprm_set_to_default ("PRM_LOG_BACKGROUND_ARCHIVING", true);
+  /* prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) is always true in CUBRID HA */
+  sysprm_set_to_default
+    ("prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)", true);
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_COPYLOGDB,
@@ -2663,7 +2664,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (PRM_HA_MODE)
+  if (prm_get_integer_value (PRM_ID_HA_MODE))
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, false);
@@ -2695,7 +2696,7 @@ retry:
       goto error_exit;
     }
 
-  if (PRM_HA_MODE == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_APPLYLOGDB,
@@ -2916,7 +2917,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  goto check_applied_info_end;
 	}
 
-      if (PRM_HA_MODE == HA_MODE_OFF)
+      if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_APPLYINFO,

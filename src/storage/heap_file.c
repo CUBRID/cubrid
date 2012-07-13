@@ -905,11 +905,12 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
   else
     {
-      if (heap_Bestspace->num_stats_entries >= PRM_HF_MAX_BESTSPACE_ENTRIES)
+      if (heap_Bestspace->num_stats_entries >=
+	  prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES))
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_HF_MAX_BESTSPACE_ENTRIES, 1,
-		  PRM_HF_MAX_BESTSPACE_ENTRIES);
+		  prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES));
 
 	  mnt_hf_stats_bestspace_maxed (thread_p);
 
@@ -2738,7 +2739,7 @@ heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid,
   freespace =
     spage_get_free_space_without_saving (thread_p, pgptr, &need_update);
 
-  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
       int rc;
 
@@ -3451,7 +3452,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
     {
       best.freespace = -1;	/* init */
 
-      if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	{
 	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
@@ -3553,7 +3554,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 		}
 	      else
 		{
-		  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+		  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES)
+		      > 0)
 		    {
 		      /* rest freespace info */
 		      rc =
@@ -3620,7 +3622,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
       notfound_cnt = INT_MAX;	/* delete all */
     }
 
-  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
       if (notfound_cnt > 0)
 	{
@@ -3744,7 +3746,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  return NULL;
 	}
 
-      if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	{
 	  break;
 	}
@@ -4970,7 +4972,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   heap_hdr->estimates.best[best].freespace =
     spage_max_space_for_new_record (thread_p, new_pgptr);
 
-  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
       int rc;
 
@@ -5239,7 +5241,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       goto error;
     }
 
-  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
       int rc;
 
@@ -5537,7 +5539,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
       OID_SET_NULL (&hfdes.class_oid);
     }
 
-  if (PRM_DONT_REUSE_HEAP_FILE == false)
+  if (prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false)
     {
       /*
        * Try to reuse an already mark deleted heap file
@@ -5602,7 +5604,9 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
   VFID_SET_NULL (&heap_hdr.ovf_vfid);
   VPID_SET_NULL (&heap_hdr.next_vpid);
 
-  heap_hdr.unfill_space = (int) ((float) DB_PAGESIZE * PRM_HF_UNFILL_FACTOR);
+  heap_hdr.unfill_space =
+    (int) ((float) DB_PAGESIZE *
+	   prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
 
   heap_hdr.estimates.num_pages = 1;
   heap_hdr.estimates.num_recs = 0;
@@ -5920,7 +5924,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 	}
 
-      if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	{
 	  int rc;
 
@@ -5963,7 +5967,9 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid,
    * and reset unfill space according to new parameters
    */
   VFID_SET_NULL (&heap_hdr->ovf_vfid);
-  heap_hdr->unfill_space = (int) ((float) DB_PAGESIZE * PRM_HF_UNFILL_FACTOR);
+  heap_hdr->unfill_space =
+    (int) ((float) DB_PAGESIZE *
+	   prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
   heap_hdr->estimates.num_pages = npages;
   heap_hdr->estimates.num_recs = 0;
   heap_hdr->estimates.recs_sumlen = 0.0;
@@ -6120,7 +6126,7 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid)
   ret = file_destroy (thread_p, &hfid->vfid);
 
   /* delete all entries of hfid */
-  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
       int rc;
 
@@ -6186,7 +6192,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
   ret = file_mark_as_deleted (thread_p, &hfid->vfid);
 
   /* delete all entries of hfid */
-  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
       int rc;
 
@@ -8546,7 +8552,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	      heap_hdr.estimates.num_other_high_best++;
 	    }
 
-	  if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+	  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	    {
 	      int rc;
 
@@ -17331,7 +17337,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	    }
 	}
 
-      if (PRM_HF_MAX_BESTSPACE_ENTRIES > 0)
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	{
 	  HEAP_STATS_ENTRY *ent;
 	  void *last;
@@ -17880,9 +17886,9 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
    *                        - slot overhead to store the link chain)
    */
 
-  nobj_page = ((int) (DB_PAGESIZE * (1 - PRM_HF_UNFILL_FACTOR)) -
-	       spage_header_size () - sizeof (HEAP_CHAIN) -
-	       spage_slot_size ());
+  nobj_page =
+    ((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR)))
+     - spage_header_size () - sizeof (HEAP_CHAIN) - spage_slot_size ());
   /*
    * Find the number of objects per page
    */
@@ -17910,9 +17916,10 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
        * Find number of pages for the indirect record references (OIDs) to
        * overflow records
        */
-      nobj_page = ((int) (DB_PAGESIZE * (1 - PRM_HF_UNFILL_FACTOR))
-		   - spage_header_size () - sizeof (HEAP_CHAIN)
-		   - spage_slot_size ());
+      nobj_page =
+	((int)
+	 (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) -
+	 spage_header_size () - sizeof (HEAP_CHAIN) - spage_slot_size ());
       nobj_page = nobj_page / (sizeof (OID) + spage_slot_size ());
       /*
        * Now calculate the number of pages
@@ -20080,7 +20087,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	  /* check string truncation */
 	  if (dest_prec < curr_prec)
 	    {
-	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+		  == true)
 		{
 		  error = ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -20103,7 +20111,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 
       if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dest_dom))
 	  && !TP_IS_CHAR_TYPE (src_type)
-	  && PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == false)
+	  && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+	  == false)
 	{
 	  /* If destination is char/varchar, we need to first cast the value
 	   * to a string with no precision, then to destination type with
@@ -20134,7 +20143,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	  bool set_min_value = false;
 	  bool set_max_value = false;
 
-	  if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+	  if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) ==
+	      true)
 	    {
 	      error = ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

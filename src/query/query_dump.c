@@ -2508,7 +2508,8 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       fprintf (foutput, "-->orderby limit:");
       qdump_print_value (xasl_p->orderby_limit);
       fprintf (foutput, " (optimization %s)",
-	       PRM_USE_ORDERBY_SORT_LIMIT ? "enabled" : "disabled");
+	       prm_get_bool_value (PRM_ID_USE_ORDERBY_SORT_LIMIT) ? "enabled"
+	       : "disabled");
       fprintf (foutput, "\n");
     }
 

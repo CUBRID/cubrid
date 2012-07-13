@@ -211,7 +211,8 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       return;
     }
 
-  if (!BO_IS_SERVER_RESTARTED () || !PRM_AUTO_RESTART_SERVER)
+  if (!BO_IS_SERVER_RESTARTED ()
+      || !prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
     {
       return;
     }
@@ -243,10 +244,11 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 
       unmask_signal (signo);
 
-      if (PRM_ER_LOG_FILE != NULL)
+      if (prm_get_string_value (PRM_ID_ER_LOG_FILE) != NULL)
 	{
-	  snprintf (err_log, PATH_MAX, "%s.%d", PRM_ER_LOG_FILE, ppid);
-	  rename (PRM_ER_LOG_FILE, err_log);
+	  snprintf (err_log, PATH_MAX, "%s.%d",
+		    prm_get_string_value (PRM_ID_ER_LOG_FILE), ppid);
+	  rename (prm_get_string_value (PRM_ID_ER_LOG_FILE), err_log);
 	}
 
       execl (executable_path, executable_path, database_name, NULL);
