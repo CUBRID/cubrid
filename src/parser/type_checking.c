@@ -19608,7 +19608,7 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
 	  || node->info.expr.op == PT_SCHEMA
 	  || node->info.expr.op == PT_VERSION)
 	{
-	  *coerc_level = PT_COLLATION_L3_COERC;
+	  *coerc_level = PT_COLLATION_L4_COERC;
 	  break;
 	}
       /* fall through */
@@ -19616,7 +19616,7 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
     case PT_FUNCTION:
     case PT_METHOD_CALL:
       assert (has_collation);
-      *coerc_level = PT_COLLATION_L4_COERC;
+      *coerc_level = PT_COLLATION_L3_COERC;
       break;
 
     case PT_NAME:
@@ -19708,7 +19708,7 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     case PT_FUNCTION:
     case PT_SELECT:
       *coerc_level =
-	(has_collation) ? PT_COLLATION_L4_COERC : PT_COLLATION_FULLY_COERC;
+	(has_collation) ? PT_COLLATION_L3_COERC : PT_COLLATION_FULLY_COERC;
       break;
 
     case PT_NAME:

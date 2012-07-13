@@ -2951,9 +2951,9 @@ enum pt_coll_coerc_lev
   PT_COLLATION_NOT_COERC = 0,
   PT_COLLATION_L1_COERC,	/* columns */
   PT_COLLATION_L2_COERC,	/* not used */
-  PT_COLLATION_L3_COERC,	/* expressions */
-  PT_COLLATION_L4_COERC,	/* SELECT values */
-  PT_COLLATION_FULLY_COERC	/* constants, HV, special cases (USER()), nodes
+  PT_COLLATION_L3_COERC,	/* SELECT values, expressions */
+  PT_COLLATION_L4_COERC,	/* special operators (USER()) */
+  PT_COLLATION_FULLY_COERC	/* constants, HV, nodes
 				 * with coercible collation */
 };
 
