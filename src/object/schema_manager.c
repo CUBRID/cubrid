@@ -9965,7 +9965,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
       if (function_index)
 	{
 	  fi_domain = tp_domain_new (function_index->type);
-					 
+
 	  fi_domain->precision = function_index->precision;
 	  fi_domain->scale = function_index->scale;
 	  if (function_index->asc_desc)
@@ -10097,9 +10097,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	      int last_key_desc = 0;
 
 	      if (reverse || (asc_desc && asc_desc[n_attrs - 1] == 1)
-		  || (function_index && function_index->asc_desc 
+		  || (function_index && function_index->asc_desc
 		      && (function_index->col_id == function_index->
-							   attr_index_start)))
+			  attr_index_start)))
 		{
 		  last_key_desc = true;
 		}
@@ -12475,7 +12475,12 @@ sm_delete_class_mop (MOP op)
   error = tran_savepoint (UNIQUE_SAVEPOINT_NAME2, false);
   if (error != NO_ERROR)
     {
-      goto end;
+      if (subdel == 1 && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
+	  && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+	}
+      return error;
     }
 
   sm_bump_schema_version ();
@@ -12611,18 +12616,16 @@ sm_delete_class_mop (MOP op)
 
   if (error != NO_ERROR)
     {
-      /* we had problems flushing, this may be due to
-       * an out of space condition, probably
-       * the transaction should be aborted as well
+      /* we had problems flushing, this may be due to an out of space
+       * condition, probably the transaction should be aborted as well
        */
       abort_subclasses (oldsubs);
 
       goto end;
     }
 
-  /* this section is critical, if any errors happen
-   * here, the workspace will be in an inconsistent
-   * state and the transaction will have to be
+  /* this section is critical, if any errors happen here, the workspace
+   * will be in an inconsistent state and the transaction will have to be
    * aborted
    */
 
@@ -12638,48 +12641,36 @@ sm_delete_class_mop (MOP op)
       goto end;
     }
 
-  /* OLD CODE, here we removed the class from
-   * the resident class list, this causes bad
-   * problems for GC since the class will be
-   * GC'd before instances have been decached.
-   * This operation has been moved below with
-   * ws_remove_resident_class(). Not sure if
-   * this is position dependent.
-   * If it doesn't cause any problems remove
-   * this comment.
+  /* OLD CODE, here we removed the class from the resident class list,
+   * this causes bad problems for GC since the class will be GC'd before
+   * instances have been decached. This operation has been moved below
+   * with ws_remove_resident_class(). Not sure if this is position dependent.
+   * If it doesn't cause any problems remove this comment.
    */
   /* ml_remove(&ws_Resident_classes, op); */
 
-  /* free any indexes, unique btids, or other
-   * associated disk structures
-   */
+  /* free any indexes, unique btids, or other associated disk structures */
   error = transfer_disk_structures (op, class_, NULL);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  /* now that the class is gone, physically
-   * delete all the triggers. Note that this
-   * does not just invalidate the triggers,
+  /* now that the class is gone, physically delete all the triggers.
+   * Note that this does not just invalidate the triggers,
    * it deletes them forever.
    */
   remove_class_triggers (op, class_);
 
-  /* This to be maintained as long as the class
-   * is cached in the workspace, dirty or not.
-   * When the deleted class is flushed,
-   * the name is removed.
-   * Assuming this doesn't cause problems,
-   * remove this comment
+  /* This to be maintained as long as the class is cached in the workspace,
+   * dirty or not. When the deleted class is flushed, the name is removed.
+   * Assuming this doesn't cause problems, remove this comment
    */
   /* ws_drop_classname((MOBJ) class); */
 
-  /* inform the locator - this will mark
-   * the class MOP as deleted so all operations
-   * that require the current class object
-   * must be done before calling this
-   * function
+  /* inform the locator - this will mark the class MOP as deleted so all
+   * operations that require the current class object must be done before
+   * calling this function
    */
 
   error = locator_remove_class (op);
@@ -12688,19 +12679,14 @@ sm_delete_class_mop (MOP op)
       goto end;
     }
 
-  /* mark all instance MOPs as deleted,
-   * should the locator be doing this ?
-   */
+  /* mark all instance MOPs as deleted, should the locator be doing this ? */
 
   ws_mark_instances_deleted (op);
 
-  /* make sure this is removed from
-   * the resident class list, this will
-   * also make the class mop subject
-   * to garbage collection.
-   * This function will expect that all of
-   * the instances of the class have been
-   * decached by this point !
+  /* make sure this is removed from the resident class list, this will also
+   * make the class mop subject to garbage collection. This function will
+   * expect that all of the instances of the class have been decached
+   * by this point !
    */
 
   ws_remove_resident_class (op);
@@ -14287,7 +14273,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
       new_constraint->func_index_info->col_id = c->func_index_info->col_id;
       new_constraint->func_index_info->attr_index_start =
 	c->func_index_info->attr_index_start;
-      new_constraint->func_index_info->asc_desc = 
+      new_constraint->func_index_info->asc_desc =
 	c->func_index_info->asc_desc;
     }
   if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
