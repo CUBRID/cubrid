@@ -7031,7 +7031,17 @@ sysprm_unpack_different_session_parameters (char *ptr, int **data_ptr)
   return ptr;
 }
 
-/* * prm_set_session_parameter_value - set a new value for the session parameter *		  in session_params list identified by id * * return: PRM_ERR_NO_ERROR or error_code * session_params (in): list of session parameters * id (in): id for the session parameter that needs changed * value (in): new value * verify_different (in): if true, the new value is compared with the value *		stored on server and the different flag is updated */
+/*
+ * prm_set_session_parameter_value - set a new value for the session parameter
+ *		  in session_params list identified by id
+ *
+ * return: PRM_ERR_NO_ERROR or error_code
+ * session_params (in): list of session parameters
+ * id (in): id for the session parameter that needs changed
+ * value (in): new value
+ * verify_different (in): if true, the new value is compared with the value
+ *		stored on server and the different flag is updated
+ */
 SYSPRM_ERR
 prm_set_session_parameter_value (SESSION_PARAM * session_params,
 				 int id, const char *value,
@@ -7314,8 +7324,16 @@ prm_set_session_parameter_value (SESSION_PARAM * session_params,
 
   return PRM_ERR_NO_ERROR;
 }
-/*
- * prm_compare_prm_value_with_value () - compare a value stored in prm_value *                        field in a session parameter with a void* value * * return: 0 if equal, otherwise != 0 * prm_value (in): * value (in): * val_type (in): datatype for values */
+
+/*
+ * prm_compare_prm_value_with_value () - compare a value stored in prm_value
+ *                        field in a session parameter with a void* value
+ *
+ * return: 0 if equal, otherwise != 0
+ * prm_value (in):
+ * value (in):
+ * val_type (in): datatype for values
+ */
 static int 
 prm_compare_prm_value_with_value (PRM_VALUE prm_value, void *value,
 				  unsigned int val_type)
@@ -7396,9 +7414,15 @@ prm_compare_prm_value_with_value (PRM_VALUE prm_value, void *value,
     }
   return false;
 }
-/*
- * prm_update_prm_different_flag () - update the different flag for the system *			parameter at prm_id in prm_Def array.
- * * return: void * prm_id (in): parameter id * is_different (in): true if different values on client and server, false *		      otherwise
+
+/*
+ * prm_update_prm_different_flag () - update the different flag for the system
+ *			parameter at prm_id in prm_Def array.
+ *
+ * return: void
+ * prm_id (in): parameter id
+ * is_different (in): true if different values on client and server, false
+ *		      otherwise
  */
 void 
 prm_update_prm_different_flag (PARAM_ID prm_id, bool is_different) 
@@ -7413,12 +7437,18 @@ prm_update_prm_different_flag (PARAM_ID prm_id, bool is_different)
       PRM_CLEAR_BIT (PRM_DIFFERENT, prm_Def[prm_id].flag);
     }
 }
-/*
- * sysprm_update_client_session_parameters () - update the session parameters *			stored on client from session parameter list
- * * return: void * session_params (in): session parameter list  */
+
+/*
+ * sysprm_update_client_session_parameters () - update the session parameters
+ *			stored on client from session parameter list
+ *
+ * return: void
+ * session_params (in): session parameter list 
+ */
 void 
 sysprm_update_client_session_parameters (SESSION_PARAM * session_params) 
-{  SESSION_PARAM * sprm;
+{
+  SESSION_PARAM * sprm;
 
   for (sprm = session_params; sprm; sprm = sprm->next)
     {
@@ -7461,8 +7491,13 @@ sysprm_update_client_session_parameters (SESSION_PARAM * session_params)
 	}
     }
 }
-/* * sysprm_print_different_session_parameters () - print all different session *		      parameters like "id=value;id=value;..."
- * * return: printed string */
+
+/*
+ * sysprm_print_different_session_parameters () - print all different session
+ *		      parameters like "id=value;id=value;..."
+ *
+ * return: printed string
+ */
 char *
 sysprm_print_different_session_parameters ()
 {
