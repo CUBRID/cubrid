@@ -4869,6 +4869,8 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	}
     }
 
+  assert (pcol->node_type == PT_NAME);
+
   if (stmt->node_type == PT_CREATE_ENTITY)
     {
       for (attr = stmt->info.create_entity.attr_def_list,
@@ -4888,10 +4890,19 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		  return;
 		}
 	      pcol->type_enum = attr->type_enum;
-	      pcol->data_type =
-		pt_domain_to_data_type (parser,
-					pt_type_enum_to_db_domain
-					(pcol->type_enum));
+	      if (attr->data_type != NULL)
+		{
+		  assert (pcol->data_type == NULL);
+		  pcol->data_type = parser_copy_tree (parser,
+						      attr->data_type);
+		}
+	      else
+		{
+		  pcol->data_type =
+		    pt_domain_to_data_type (parser,
+					    pt_type_enum_to_db_domain
+					    (pcol->type_enum));
+		}
 	      pinfo->info.partition.keycol = parser_copy_tree (parser, pcol);
 	      chkflag = true;
 	      break;
@@ -4921,10 +4932,10 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		{
 		  pcol->type_enum =
 		    (PT_TYPE_ENUM) pt_db_to_type_enum (column->db_type);
+
+		  assert (column->domain != NULL);
 		  pcol->data_type =
-		    pt_domain_to_data_type (parser,
-					    pt_type_enum_to_db_domain
-					    (pcol->type_enum));
+		    pt_domain_to_data_type (parser, column->domain);
 		  pinfo->info.partition.keycol = parser_copy_tree (parser,
 								   pcol);
 		  chkflag = true;
@@ -4953,10 +4964,9 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		{
 		  pcol->type_enum =
 		    (PT_TYPE_ENUM) pt_db_to_type_enum (smatt->type->id);
+		  assert (smatt->domain != NULL);
 		  pcol->data_type =
-		    pt_domain_to_data_type (parser,
-					    pt_type_enum_to_db_domain
-					    (pcol->type_enum));
+		    pt_domain_to_data_type (parser, smatt->domain);
 		  pinfo->info.partition.keycol =
 		    parser_copy_tree (parser, pcol);
 		  chkflag = true;
