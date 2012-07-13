@@ -89,7 +89,7 @@ typedef struct
   UINTPTR spec_id;
 } PT_CHAIN_INFO;
 
-static void pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node);
+static void pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c);
 static PT_NODE *pt_get_attributes (PARSER_CONTEXT * parser,
 				   const DB_OBJECT * c);
@@ -337,25 +337,27 @@ static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
  *   node(in): the node to check
  */
 static void
-pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
+pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  PT_NODE *arg1;
   PT_TYPE_ENUM cast_type, arg_type;
   PT_CAST_VAL cast_is_valid = PT_CAST_VALID;
 
-  assert (node != NULL && node->node_type == PT_EXPR
-	  && node->info.expr.cast_type != NULL);
-  cast_type = node->info.expr.cast_type->type_enum;
-
-  if (node->info.expr.arg1 == NULL)
+  if (node == NULL || node->node_type != PT_EXPR
+      || node->info.expr.op != PT_CAST)
     {
-      /*
-       * In this case, there should be an error occurred before which might
-       * be a root cause of this failure. So we set an error if no error has
-       * been found. One of known scenario falling into here is:
-       *
-       *  select cast(cast(b'1' as int) as int); -- The inner cast was failed.
-       *                                      The outer cast has null on arg1.
-       */
+      /* this should not happen, but don't crash and burn if it does */
+      assert (false);
+      return;
+    }
+
+  /* get argument */
+  arg1 = node->info.expr.arg1;
+  if (arg1 == NULL)
+    {
+      /* a parse error might have occurred lower in the parse tree of arg1;
+         don't register another error unless no error has been set */
+
       if (!pt_has_error (parser))
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -364,7 +366,20 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	}
       return;
     }
-  arg_type = node->info.expr.arg1->type_enum;
+
+  /* CAST (arg_type AS cast_type) */
+  cast_type = node->info.expr.cast_type->type_enum;
+  if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
+    {
+      /* arg1 is a cast, so arg1.type_enum is not yet set; pull type from
+         expression's cast type */
+      arg_type = arg1->info.expr.cast_type->type_enum;
+    }
+  else
+    {
+      /* arg1 is not a cast */
+      arg_type = arg1->type_enum;
+    }
 
   switch (arg_type)
     {
@@ -388,6 +403,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_SEQUENCE:
 	case PT_TYPE_BLOB:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	default:
@@ -412,6 +428,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_SEQUENCE:
 	case PT_TYPE_BLOB:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	default:
@@ -436,6 +453,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_SEQUENCE:
 	case PT_TYPE_BLOB:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_TIMESTAMP:
@@ -463,6 +481,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_SEQUENCE:
 	case PT_TYPE_BLOB:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	default:
@@ -485,6 +504,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_SEQUENCE:
 	case PT_TYPE_BLOB:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	default:
@@ -501,6 +521,9 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
+	  break;
+	case PT_TYPE_OBJECT:
+	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	default:
 	  break;
@@ -524,6 +547,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_CLOB:
@@ -556,6 +580,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_DATETIME:
 	case PT_TYPE_BLOB:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_CHAR:

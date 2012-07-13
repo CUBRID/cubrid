@@ -14073,6 +14073,12 @@ do_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
+  /* initialize variables in case we need to exit with error */
+  for (i = 0; i < count * 2; i++)
+    {
+      DB_MAKE_NULL (&variables[i]);
+    }
+
   for (i = 0, assignment = statement->info.set_variables.assignments;
        assignment; i += 2, assignment = assignment->next)
     {
@@ -14080,6 +14086,14 @@ do_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      &variables[i]);
       pt_evaluate_tree_having_serial (parser, assignment->info.expr.arg2,
 				      &variables[i + 1], 1);
+
+      if (pt_has_error (parser))
+	{
+	  /* if error occurred, don't send junk to server */
+	  pt_report_to_ersys (parser, PT_EXECUTION);
+	  error = er_errid ();
+	  goto cleanup;
+	}
     }
 
   error = csession_set_session_variables (variables, count * 2);

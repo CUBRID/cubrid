@@ -9056,6 +9056,11 @@ pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
   p->info.expr.arg2 = g (parser, p->info.expr.arg2, arg);
   p->info.expr.value = g (parser, p->info.expr.value, arg);
   p->info.expr.arg3 = g (parser, p->info.expr.arg3, arg);
+  if (p->info.expr.cast_type != NULL)
+    {
+      /* walk cast type in case it might contain a name */
+      p->info.expr.cast_type = g (parser, p->info.expr.cast_type, arg);
+    }
   return p;
 }
 

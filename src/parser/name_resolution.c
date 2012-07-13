@@ -2738,8 +2738,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       break;
 
     case PT_DATA_TYPE:
-      /* don't visit leaves */
-      *continue_walk = PT_LIST_WALK;
+      /* don't visit leaves unless this is an object which might contain a 
+         name (i.e. CAST(value AS name) ) */
+      if (node->type_enum != PT_TYPE_OBJECT)
+	{
+	  *continue_walk = PT_LIST_WALK;
+	}
       break;
 
     case PT_NAME:
@@ -3496,7 +3500,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
     {
       char *p_name = NULL;
       if (p->node_type != PT_SPEC)
-        {
+	{
 	  p = p->next;
 	  continue;
 	}
@@ -7453,7 +7457,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
 static int
 pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 			       PT_BIND_NAMES_ARG * bind_arg,
-			       int * is_spec_attr)
+			       int *is_spec_attr)
 {
   SCOPES *scope = NULL;
   PT_NODE *spec = NULL;
