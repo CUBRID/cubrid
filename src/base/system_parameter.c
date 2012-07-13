@@ -6533,6 +6533,7 @@ sysprm_packed_local_session_parameters_length ()
 	      size +=
 		or_packed_bool_array_length (PRM_GET_ERROR_LIST (value),
 					     (-ER_LAST_ERROR + 1));
+	      break;
 	    case PRM_INTEGER_LIST:
 	      {
 		int *integer_list = PRM_GET_INTEGER_LIST (value);
@@ -6669,6 +6670,7 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_params)
 	    or_packed_bool_array_length (PRM_GET_ERROR_LIST
 					 (prm->prm_value.error_list),
 					 (-ER_LAST_ERROR + 1));
+	  break;
 	case PRM_INTEGER_LIST:
 	  {
 	    if (prm->prm_value.integer_list)
