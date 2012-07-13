@@ -231,6 +231,13 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 			{
 			  continue;
 			}
+		      else if (PT_HAS_COLLATION (typ)
+			       && s->info.data_type.collation_id !=
+			       typs->data_type->info.data_type.collation_id)
+			{
+			  continue;
+			}
+
 		      found = true;
 		    }
 		  else if (typ == PT_TYPE_NUMERIC)
