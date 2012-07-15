@@ -425,9 +425,10 @@ hb_process_master_request (void)
     {
       po[0].fd = hb_Conn->fd;
       po[0].events = POLLIN;
-      r =
-	poll (po, 1,
-	      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+      r = poll (po, 1,
+		(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		 1000));
+
       switch (r)
 	{
 	case 0:

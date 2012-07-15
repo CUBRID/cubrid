@@ -1487,10 +1487,9 @@ css_send_magic (CSS_CONN_ENTRY * conn)
   memset ((char *) &header, 0, sizeof (NET_HEADER));
   memcpy ((char *) &header, css_Net_magic, sizeof (css_Net_magic));
 
-  return (css_net_send
-	  (conn, (const char *) &header,
-	   sizeof (NET_HEADER),
-	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
+  return (css_net_send (conn, (const char *) &header, sizeof (NET_HEADER),
+			(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
+			 * 1000)));
 }
 
 /*
@@ -1509,10 +1508,9 @@ css_check_magic (CSS_CONN_ENTRY * conn)
 
   p = (char *) &header;
 
-  if (css_readn
-      (conn->fd, (char *) &templen, sizeof (int),
-       prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000) !=
-      sizeof (int))
+  if (css_readn (conn->fd, (char *) &templen, sizeof (int),
+		 (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		  1000)) != sizeof (int))
     {
       return ERROR_WHEN_READING_SIZE;
     }
@@ -1525,10 +1523,9 @@ css_check_magic (CSS_CONN_ENTRY * conn)
 
   for (i = 0; i < sizeof (css_Net_magic); i++)
     {
-      if (css_readn (conn->fd, (char *) p,
-		     sizeof (char),
-		     prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		     1000) != sizeof (char))
+      if (css_readn (conn->fd, (char *) p, sizeof (char),
+		     (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		      1000)) != sizeof (char))
 	{
 	  return ERROR_ON_READ;
 	}
@@ -1540,10 +1537,9 @@ css_check_magic (CSS_CONN_ENTRY * conn)
     }
 
   left = sizeof (NET_HEADER) - sizeof (css_Net_magic);
-  if (css_readn (conn->fd, (char *) p,
-		 left,
-		 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		 1000) != left)
+  if (css_readn (conn->fd, (char *) p, left,
+		 (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		  1000)) != left)
     {
       return ERROR_ON_READ;
     }

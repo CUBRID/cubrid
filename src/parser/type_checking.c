@@ -13788,8 +13788,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  bool check_empty_string;
 
 	  check_empty_string =
-	    (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? true :
-	    false;
+	    ((prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	     ? true : false);
 	  if (!check_empty_string || op != PT_PLUS
 	      || !PT_IS_STRING_TYPE (rTyp))
 	    {
@@ -14843,8 +14843,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  bool check_empty_string;
 
 	  check_empty_string =
-	    (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? true :
-	    false;
+	    ((prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	     ? true : false);
 
 	  if (!check_empty_string || !PT_IS_STRING_TYPE (rTyp))
 	    {

@@ -477,8 +477,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_check_range
-      (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &db_volume_size) != NO_ERROR)
+  if (sysprm_check_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE),
+			  &db_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64];
@@ -499,8 +499,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	       prm_get_name (PRM_ID_DB_VOLUME_SIZE), min_buf, max_buf);
       goto error_exit;
     }
-  if (sysprm_check_range
-      (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &log_volume_size) != NO_ERROR)
+  if (sysprm_check_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE),
+			  &log_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64];

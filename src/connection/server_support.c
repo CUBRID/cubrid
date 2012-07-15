@@ -626,9 +626,9 @@ css_master_thread (void)
 #endif /* WINDOWS */
 
       /* select() sets timeout value to 0 or waited time */
-      r =
-	poll (po, nfds,
-	      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+      r = poll (po, nfds,
+		(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		 1000));
       if (r > 0
 	  && (IS_INVALID_SOCKET (css_Pipe_to_master)
 	      || !(po[0].revents & POLLIN))
@@ -1254,9 +1254,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
       po[0].fd = fd;
       po[0].events = POLLIN;
-      n =
-	poll (po, 1,
-	      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+      n = poll (po, 1,
+		(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
+		 1000));
 #if 0
       if (n > 0 && !FD_ISSET (fd, &rfds) && !FD_ISSET (fd, &efds))
 	{
@@ -1271,9 +1271,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	   * 0 means it timed out and no fd is changed.
 	   * Check if the peer is alive or not.
 	   */
-	  if (!css_peer_alive
-	      (fd,
-	       prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000))
+	  if (!css_peer_alive (fd,
+			       (prm_get_integer_value
+				(PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000)))
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "css_connection_handler_thread: "

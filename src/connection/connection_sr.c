@@ -2510,8 +2510,7 @@ css_send_magic (CSS_CONN_ENTRY * conn)
   memset ((char *) &header, 0, sizeof (NET_HEADER));
   memcpy ((char *) &header, css_Net_magic, sizeof (css_Net_magic));
 
-  return (css_net_send
-	  (conn, (const char *) &header,
-	   sizeof (NET_HEADER),
-	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
+  return (css_net_send (conn, (const char *) &header, sizeof (NET_HEADER),
+			(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
+			 * 1000)));
 }

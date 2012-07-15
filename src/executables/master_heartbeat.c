@@ -1186,9 +1186,8 @@ hb_cluster_send_heartbeat (bool is_req, char *host_name)
 
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
-  if (hb_sockaddr
-      (host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
-       (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
+  if (hb_sockaddr (host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
+		   (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "hb_sockaddr failed. \n");
       return;
@@ -3190,9 +3189,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   udp_saddr.sin_addr.s_addr = htonl (INADDR_ANY);
   udp_saddr.sin_port = htons (prm_get_integer_value (PRM_ID_HA_PORT_ID));
 
-  if (bind
-      (hb_Cluster->sfd, (struct sockaddr *) &udp_saddr,
-       sizeof (udp_saddr)) < 0)
+  if (bind (hb_Cluster->sfd, (struct sockaddr *) &udp_saddr,
+	    sizeof (udp_saddr)) < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_DATAGRAM_BIND, 0);
@@ -3339,10 +3337,9 @@ hb_thread_initialize (void)
   rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
   if (ts_size < (size_t) prm_get_integer_value (PRM_ID_THREAD_STACKSIZE))
     {
-      rv =
-	pthread_attr_setstacksize (&thread_attr,
-				   prm_get_integer_value
-				   (PRM_ID_THREAD_STACKSIZE));
+      rv = pthread_attr_setstacksize (&thread_attr,
+				      prm_get_integer_value
+				      (PRM_ID_THREAD_STACKSIZE));
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -3416,9 +3413,9 @@ hb_master_init (void)
 #endif
 
   sysprm_reload_and_init (NULL, NULL);
-  error =
-    hb_cluster_initialize (prm_get_string_value (PRM_ID_HA_NODE_LIST),
-			   prm_get_string_value (PRM_ID_HA_REPLICA_LIST));
+  error = hb_cluster_initialize (prm_get_string_value (PRM_ID_HA_NODE_LIST),
+				 prm_get_string_value
+				 (PRM_ID_HA_REPLICA_LIST));
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "hb_cluster_initialize failed. "
