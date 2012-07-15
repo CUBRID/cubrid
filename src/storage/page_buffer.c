@@ -3104,7 +3104,7 @@ pgbuf_initialize_bcb_table (void)
   if (pgbuf_Pool.BCB_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (pgbuf_Pool.num_buffers * PGBUF_BCB_SIZE));
+	      1, alloc_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

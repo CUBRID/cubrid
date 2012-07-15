@@ -7963,8 +7963,6 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
   sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i + 1));
   if (sep == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, i + 1);
       goto error;
     }
   sep[0] = 0;
@@ -8017,9 +8015,6 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 					    xptr->val_list->val_cnt);
 	  if (save_values == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE *) * xptr->val_list->val_cnt);
 	      goto error;
 	    }
 
@@ -8041,8 +8036,6 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
     (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);
   if (result_path == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, len_result_path);
       goto error;
     }
 
@@ -8111,8 +8104,6 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	  if (path_tmp == NULL)
 	    {
 	      pr_clear_value (&cast_value);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, len_tmp);
 	      goto error;
 	    }
 	}
@@ -8137,8 +8128,6 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 				       sizeof (char) * len_result_path);
 	  if (result_path == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, len_result_path);
 	      goto error;
 	    }
 	}

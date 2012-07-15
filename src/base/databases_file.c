@@ -428,7 +428,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 	      str = cfg_next_char (line);
 	      if (*str != '\0' && *str != '#')
 		{
-		  db = (DB_INFO *) malloc (DB_SIZEOF (DB_INFO));
+		  db = (DB_INFO *) malloc (sizeof (DB_INFO));
 		  if (db == NULL)
 		    {
 		      if (databases != NULL)
@@ -436,6 +436,8 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 			  cfg_free_directory (databases);
 			}
 		      *info_p = NULL;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
 		      return ER_OUT_OF_VIRTUAL_MEMORY;
 		    }
 		  db->next = NULL;
@@ -540,7 +542,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	{
 	  if (*str != '#')
 	    {
-	      if ((db = (DB_INFO *) malloc (DB_SIZEOF (DB_INFO))) == NULL)
+	      if ((db = (DB_INFO *) malloc (sizeof (DB_INFO))) == NULL)
 		{
 		  if (databases != NULL)
 		    {
@@ -548,6 +550,9 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		    }
 		  *info_p = NULL;
 		  free_and_init (line);
+
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 
@@ -1418,7 +1423,7 @@ cfg_copy_hosts (const char **host_array, int *num_hosts)
   if (new_array == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (char **));
+	      ((num + 1) * sizeof (char **)));
       free_and_init (buffer);
       return NULL;
     }

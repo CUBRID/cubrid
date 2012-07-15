@@ -6244,12 +6244,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* for recovery purposes */
   recset_data = PTR_ALIGN (recset_data_buf, BTREE_MAX_ALIGN);
-  if (recset_data == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, DB_PAGESIZE);
-      goto exit_on_error;
-    }
+  assert (recset_data != NULL);
 
   left_cnt = spage_number_of_records (Q) - 1;
   right_cnt = spage_number_of_records (R) - 1;
@@ -20581,8 +20576,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       curr_item = db_private_alloc (thread_p, sizeof (RANGE_OPT_ITEM));
       if (curr_item == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (RANGE_OPT_ITEM));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 

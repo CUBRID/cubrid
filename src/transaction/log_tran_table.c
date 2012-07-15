@@ -286,6 +286,8 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
     (LOG_TDES **) realloc (log_Gl.trantable.all_tdes, i);
   if (log_Gl.trantable.all_tdes == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, i);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -2092,6 +2094,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   buffer = (char *) malloc (size);
   if (buffer == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }

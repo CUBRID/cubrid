@@ -9266,7 +9266,6 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p,
 	  if (scan_cache->index_stat_info == NULL)
 	    {
 	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, malloc_size);
 	      if (scan_cache->collect_best != NULL)
 		{
 		  db_private_free_and_init (thread_p,

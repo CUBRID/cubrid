@@ -482,7 +482,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	  if (upper_case_name == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size + 1);
 	    }
 	  else
 	    {
@@ -840,7 +840,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  if (upper_case_name == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size + 1);
 	    }
 	  else
 	    {

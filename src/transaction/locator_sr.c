@@ -597,7 +597,8 @@ start:
 		{
 		  free_and_init (entry);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname));
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  strlen (classname) + 1);
 		  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		  return LC_CLASSNAME_ERROR;
 		}
@@ -891,7 +892,7 @@ start:
 	    {
 	      free_and_init (entry);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname));
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname) + 1);
 	      classname_delete = LC_CLASSNAME_ERROR;
 	      goto error;
 	    }

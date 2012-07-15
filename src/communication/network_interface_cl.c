@@ -826,7 +826,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return found;
@@ -901,7 +901,7 @@ locator_reserve_class_names (const int num_classes, const char **class_names,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return reserved;
@@ -961,7 +961,7 @@ locator_delete_class_name (const char *class_name)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return deleted;
@@ -1027,7 +1027,7 @@ locator_rename_class_name (const char *old_name, const char *new_name,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return renamed;
@@ -1095,7 +1095,7 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return success;
@@ -1141,7 +1141,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
   if (buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (packed_size));
+	      packed_size);
       return ER_FAILED;
     }
 
@@ -1240,7 +1240,7 @@ locator_find_lockhint_class_oids (int num_classes,
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
       return allfind;
     }
 
@@ -2624,7 +2624,7 @@ log_find_lob_locator (const char *locator, char *real_locator)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return state;
@@ -2680,8 +2680,7 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
   else
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, request_size);
     }
   return error_code;
 #else /* CS_MODE */
@@ -2741,8 +2740,7 @@ log_change_state_of_locator (const char *locator, const char *new_locator,
   else
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, request_size);
     }
 
   return error_code;
@@ -2799,8 +2797,7 @@ log_drop_lob_locator (const char *locator)
   else
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, request_size);
     }
   return error_code;
 #else /* CS_MODE */
@@ -3338,7 +3335,7 @@ tran_server_2pc_recovery_prepared (int gtrids[], int size)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (reply_size));
+	      reply_size);
     }
 
   return count;
@@ -3597,7 +3594,7 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return success;
@@ -3657,7 +3654,7 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return tran_state;
@@ -3875,7 +3872,7 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return tran_index;
@@ -3995,11 +3992,13 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
+
   sysprm_update_client_session_parameters (session_params);
   sysprm_free_session_parameters (&session_params);
   db_update_row_count_cache (row_count);
+
   return tran_index;
 #else /* CS_MODE */
   int err_code = NO_ERROR;
@@ -4165,7 +4164,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return success;
@@ -4243,7 +4242,7 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return volid;
@@ -4912,7 +4911,7 @@ cleanup:
       if (local_stmt_info == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, len + 1);
+		  1, info_length);
 	  result = ER_FAILED;
 	  goto error;
 	}
@@ -6319,8 +6318,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
   else
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, request_size);
     }
 
   return error;
@@ -6507,8 +6505,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   else
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, request_size);
     }
 
   return error;
@@ -6718,7 +6715,7 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
       if (request == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (request_size));
+		  1, request_size);
 	  return status;
 	}
 
@@ -6810,7 +6807,7 @@ btree_delete_with_unique_key (BTID * btid, OID * class_oid,
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (request_size));
+	      1, request_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -6994,7 +6991,7 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
   if (!request)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (request_size));
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
       return NULL;
     }
 
@@ -7114,7 +7111,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
       if (senddata == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (senddata_size));
+		  1, senddata_size);
 	  return NULL;
 	}
 
@@ -7245,7 +7242,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
       if (senddata == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (senddata_size));
+		  1, senddata_size);
 	  return NULL;
 	}
     }
@@ -7435,7 +7432,7 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (request_size));
+	      1, request_size);
     }
 
   return status;
@@ -8220,7 +8217,7 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return success;
@@ -8370,7 +8367,7 @@ logtb_get_trans_info (void)
   if (info == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (i));
+	      i);
       goto error;
     }
 
@@ -9118,8 +9115,7 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   else
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, request_size);
     }
 
   return error;
@@ -9366,7 +9362,7 @@ boot_compact_classes (OID ** class_oids, int num_classes,
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -9375,6 +9371,8 @@ boot_compact_classes (OID ** class_oids, int num_classes,
   if (reply == NULL)
     {
       free_and_init (request);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      reply_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -9648,7 +9646,7 @@ es_posix_write_file (const char *path, const void *buf, size_t count,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -9702,7 +9700,7 @@ es_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -9750,8 +9748,7 @@ es_posix_delete_file (const char *path)
   else
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, request_size);
     }
 
   return error;
@@ -9805,8 +9802,7 @@ es_posix_copy_file (const char *src_path, const char *metaname,
   else
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, request_size);
     }
 
   return error;
@@ -9860,8 +9856,7 @@ es_posix_rename_file (const char *src_path, const char *metaname,
   else
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (request_size));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, request_size);
     }
 
   return error;
@@ -9911,7 +9906,7 @@ es_posix_get_file_size (const char *path)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (request_size));
+	      request_size);
     }
 
   return file_size;
@@ -9990,6 +9985,7 @@ boot_get_server_locales (LANG_COLL_COMPAT ** server_collations,
   char *ptr = NULL;
   int reply_size = 0, temp_int, i, dummy;
   char *temp_str;
+  size_t size;
 
   assert (server_collations != NULL);
   assert (server_locales != NULL);
@@ -10027,24 +10023,22 @@ boot_get_server_locales (LANG_COLL_COMPAT ** server_collations,
   ptr = or_unpack_int (reply_data, server_coll_cnt);
   ptr = or_unpack_int (ptr, server_locales_cnt);
 
-  *server_collations =
-    (LANG_COLL_COMPAT *) malloc (*server_coll_cnt
-				 * sizeof (LANG_COLL_COMPAT));
+  size = (*server_coll_cnt * sizeof (LANG_COLL_COMPAT));
+  *server_collations = (LANG_COLL_COMPAT *) malloc (size);
   if (*server_collations == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      reply_size);
+	      size);
       req_error = ER_FAILED;
       goto error;
     }
 
-  *server_locales =
-    (LANG_LOCALE_COMPAT *) malloc (*server_locales_cnt
-				   * sizeof (LANG_LOCALE_COMPAT));
+  size = (*server_locales_cnt * sizeof (LANG_LOCALE_COMPAT));
+  *server_locales = (LANG_LOCALE_COMPAT *) malloc (size);
   if (*server_locales == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      reply_size);
+	      size);
       req_error = ER_FAILED;
       goto error;
     }

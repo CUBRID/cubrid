@@ -534,8 +534,6 @@ insert_trigger_list (TR_TRIGLIST ** list, TR_TRIGGER * trigger)
   new_ = (TR_TRIGLIST *) db_ws_alloc (sizeof (TR_TRIGLIST));
   if (new_ == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (TR_TRIGLIST));
       return er_errid ();
     }
 
@@ -612,8 +610,6 @@ merge_trigger_list (TR_TRIGLIST ** list, TR_TRIGLIST * more, int destructive)
 	  new_ = (TR_TRIGLIST *) db_ws_alloc (sizeof (TR_TRIGLIST));
 	  if (new_ == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TR_TRIGLIST));
 	      return er_errid ();
 	    }
 	  new_->trigger = t2->trigger;
@@ -1549,7 +1545,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
 	  if (text == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
 	      return er_errid ();
 	    }
 	  strcpy (text, EVAL_PREFIX);
@@ -2212,12 +2208,7 @@ tr_make_schema_cache (TR_CACHE_TYPE type, DB_OBJLIST * objects)
   size = sizeof (TR_SCHEMA_CACHE) + (sizeof (TR_TRIGLIST *) * (elements - 1));
 
   cache = (TR_SCHEMA_CACHE *) db_ws_alloc (size);
-  if (cache == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
-    }
-  else
+  if (cache != NULL)
     {
       cache->objects = objects;
       cache->compiled = 0;
@@ -2231,7 +2222,8 @@ tr_make_schema_cache (TR_CACHE_TYPE type, DB_OBJLIST * objects)
       cache->next = tr_Schema_caches;
       tr_Schema_caches = cache;
     }
-  return (cache);
+
+  return cache;
 }
 
 /*

@@ -382,6 +382,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   DB_OTMPL *obj_tmpl = NULL;
   char *serial_name = NULL;
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  size_t name_len;
 
   if (!serial_obj || !class_name || !att_name)
     {
@@ -395,12 +396,13 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   att_name = att_downcase_name;
 
   /* serial_name : <class_name>_ai_<att_name> */
-  serial_name =
-    (char *) malloc (strlen (class_name) + strlen (att_name) +
-		     AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
+  name_len = (strlen (class_name) + strlen (att_name)
+	      + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
+  serial_name = (char *) malloc (name_len);
   if (serial_name == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, name_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -726,7 +728,8 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   p = (char *) malloc (serial_name_size + 1);
   if (p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (serial_name_size + 1));
       return NULL;
     }
 
@@ -865,7 +868,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (p == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (name_size + 1));
       goto end;
     }
   intl_identifier_lower (name, p);
@@ -6633,8 +6636,6 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 					     sizeof (CLIENT_UPDATE_INFO));
   if (assigns == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      assign_cnt * sizeof (CLIENT_UPDATE_INFO));
       error = ER_REGU_NO_SPACE;
       goto error_return;
     }
@@ -6670,8 +6671,6 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 						   (CLIENT_UPDATE_CLASS_INFO));
   if (cls_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
       error = ER_REGU_NO_SPACE;
       goto error_return;
     }
@@ -6686,8 +6685,6 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 				    upd_cls_cnt) * sizeof (DB_VALUE));
   if (dbvals == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (assign_cnt + upd_cls_cnt) * sizeof (DB_VALUE));
       error = ER_REGU_NO_SPACE;
       goto error_return;
     }
@@ -11377,7 +11374,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  if (attr_descs == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ATTDESC *));
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (degree * sizeof (DB_ATTDESC *)));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto cleanup;
 	    }
@@ -14069,7 +14067,7 @@ do_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (variables == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      count * 2 * sizeof (char *));
+	      count * 2 * sizeof (DB_VALUE));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
@@ -14142,7 +14140,7 @@ do_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (values == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      count * sizeof (char *));
+	      count * sizeof (DB_VALUE));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }

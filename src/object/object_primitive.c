@@ -7324,8 +7324,6 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value,
 	  /* need to be able to return errors ! */
 	  db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				TP_FLOATING_PRECISION_VALUE, 0);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
 	  or_abort (buf);
 	  return ER_FAILED;
 	}
@@ -9445,8 +9443,6 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
       str_val = (char *) db_private_alloc (NULL, str_val_size + 1);
       if (str_val == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_val_size + 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       memcpy (str_val, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size);
@@ -10185,8 +10181,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
 		      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 					    TP_FLOATING_PRECISION_VALUE, 0);
 		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 		  or_abort (buf);
 		  return ER_FAILED;
 		}
@@ -10927,8 +10921,6 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				    TP_FLOATING_PRECISION_VALUE, 0);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 
 	      return ER_FAILED;
@@ -11013,8 +11005,6 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				    domain->precision, 0);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 
 	      return ER_FAILED;
@@ -11805,8 +11795,6 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value,
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				    TP_FLOATING_PRECISION_VALUE, 0);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 
 	      return ER_FAILED;
@@ -11885,8 +11873,6 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value,
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				    domain->precision, 0);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 
 	      return ER_FAILED;
@@ -12756,8 +12742,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value,
 		      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 					    TP_FLOATING_PRECISION_VALUE, 0);
 		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 		  or_abort (buf);
 		  return ER_FAILED;
 		}
@@ -13437,8 +13421,6 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value,
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				    TP_FLOATING_PRECISION_VALUE, 0);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 
 	      return ER_FAILED;
@@ -13508,8 +13490,6 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value,
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 				    domain->precision, 0);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 
 	      return ER_FAILED;
@@ -14223,8 +14203,6 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value,
 		      db_value_domain_init (value, TP_DOMAIN_TYPE (domain),
 					    TP_FLOATING_PRECISION_VALUE, 0);
 		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 		  or_abort (buf);
 		  return ER_FAILED;
 		}
@@ -14550,8 +14528,6 @@ mr_setval_enumeration_internal (DB_VALUE * value,
 	  str = db_private_alloc (NULL, str_length + 1);
 	  if (str == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 	      return ER_FAILED;
 	    }
 	  need_clear = true;

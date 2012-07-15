@@ -1649,8 +1649,6 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, decomp_size);
 	  v = NULL;
 	}
     }
@@ -2235,8 +2233,6 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
       composed = db_private_alloc (NULL, composed_size + 1);
       if (composed == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size_in);
 	  return NULL;
 	}
 

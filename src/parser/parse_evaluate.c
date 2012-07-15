@@ -529,7 +529,8 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
   if (oldval == NULL)
     {
       /* create a copy of the label */
-      if (!(key = ws_copy_string ((char *) label)))
+      key = ws_copy_string ((char *) label);
+      if (key == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}

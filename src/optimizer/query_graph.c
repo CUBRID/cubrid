@@ -1101,7 +1101,6 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
   const char *seg_name;
   QO_ENV *env = (QO_ENV *) * (long *) arg;
 
-
   *continue_walk = PT_CONTINUE_WALK;
 
   if (pt_is_function_index_expr (parser, tree, false))
@@ -1160,7 +1159,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 					  ER_OUT_OF_VIRTUAL_MEMORY,
 					  1, strlen (constraints->
 						     func_index_info->
-						     expr_str));
+						     expr_str) + 1);
 				  *continue_walk = PT_STOP_WALK;
 				  return tree;
 				}

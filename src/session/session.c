@@ -919,7 +919,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   if (str == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      length);
+	      length + 1);
       return NULL;
     }
 
@@ -1648,7 +1648,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 
 	  csect_exit (CSECT_SESSION_STATE);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, len);
+		  1, stmt_p->info_length);
 	  return ER_FAILED;
 	}
       memcpy (data, stmt_p->info, stmt_p->info_length);
@@ -1943,9 +1943,9 @@ session_change_session_parameter (THREAD_ENTRY * thread_p, int prm_id,
   if (state_p->session_params != NULL)
     {
       int error;
-      error =
-	prm_set_session_parameter_value (state_p->session_params, prm_id,
-					 value, false);
+
+      error = prm_set_session_parameter_value (state_p->session_params,
+					       prm_id, value, false);
       if (error != PRM_ERR_NO_ERROR)
 	{
 	  csect_exit (CSECT_SESSION_STATE);
@@ -2416,7 +2416,7 @@ qentry_to_sentry (QMGR_QUERY_ENTRY * qentry_p)
   if (sqentry_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (SESSION_STATE));
+	      1, sizeof (SESSION_QUERY_ENTRY));
       return NULL;
     }
   sqentry_p->query_id = qentry_p->query_id;

@@ -3175,7 +3175,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      free_and_init (attnames);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (nnames + 1) * sizeof (const char *));
+		      (strlen ((*attp)->header.name) + 1) * sizeof (char));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_exit;
 	    }
@@ -3231,7 +3231,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      strlen (idx->filter_predicate->pred_string) *
+		      (strlen (idx->filter_predicate->pred_string) + 1) *
 		      sizeof (char));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_exit;
@@ -3290,8 +3290,6 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  if (func_index_info == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sizeof (SM_FUNCTION_INFO));
 	      goto error_exit;
 	    }
 	  func_index_info->type = idx->func_index_info->type;
@@ -3302,7 +3300,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sizeof (SM_FUNCTION_INFO));
+		      (strlen (idx->func_index_info->expr_str) + 1)
+		      * sizeof (char));
 	      goto error_exit;
 	    }
 	  free_funtion_expr_str = true;
@@ -3313,7 +3312,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sizeof (SM_FUNCTION_INFO));
+		      idx->func_index_info->expr_stream_size * sizeof (char));
 	      goto error_exit;
 	    }
 	  memcpy (func_index_info->expr_stream,
@@ -3422,8 +3421,6 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  if (func_index_info == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
-		      1, sizeof (SM_FUNCTION_INFO));
 	      goto error_exit;
 	    }
 	  func_index_info->col_id = statement->info.index.func_pos;
@@ -8990,7 +8987,8 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  if (buf == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      ((allocated + 10) * sizeof (char *)));
 	      error = ER_FAILED;
 	      goto error_return;
 	    }
@@ -9001,7 +8999,8 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       if (names[names_count] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  ((strlen (subclass->header.name) + 1) * sizeof (char)));
 	  error = ER_FAILED;
 	  goto error_return;
 	}
@@ -9163,7 +9162,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
   if (names == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      10 * sizeof (char *));
+	      coalesce_count * sizeof (char *));
       return ER_FAILED;
     }
 
@@ -9731,7 +9730,7 @@ do_promote_partition_by_name (const char *class_name, const char *part_num,
       if (*partition_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, strlen (name));
+		  1, (strlen (name) + 1) * sizeof (char));
 	  return ER_FAILED;
 	}
     }
@@ -13507,8 +13506,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		  if (*c_name == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (new_name));
-
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (strlen (new_name) + 1) * sizeof (char));
 		      return ER_OUT_OF_VIRTUAL_MEMORY;
 		    }
 		}
@@ -15328,7 +15327,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
   q = query = (char *) malloc (query_len + 1);
   if (query == NULL)
     {
-      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, query_len);
+      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, query_len + 1);
       return error;
     }
 
@@ -16378,7 +16377,8 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   query_str = (char *) malloc (query_str_len);
   if (query_str == NULL)
     {
-      /* OUT of VM */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, query_str_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   snprintf (query_str, query_str_len, "SELECT %s FROM [%s]",
@@ -16461,6 +16461,8 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       if (constr->func_index_info->expr_str == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  (expr_str_len + 1) * sizeof (char));
 	  goto error;
 	}
       memcpy (constr->func_index_info->expr_str, expr_str, expr_str_len);
@@ -16575,7 +16577,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
   query_str = (char *) malloc (query_str_len);
   if (query_str == NULL)
     {
-      /* OUT of VM */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, query_str_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s",
@@ -16644,6 +16647,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
       if (new_pred.pred_string == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  (pred_str_len + 1) * sizeof (char));
 	  goto error;
 	}
       memcpy (new_pred.pred_string, pred_str, pred_str_len);

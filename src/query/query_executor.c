@@ -16355,7 +16355,7 @@ qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY * thread_p,
 	  db_private_free_and_init (thread_p, *index_value);
 	  *index_value = (char *) db_private_alloc (thread_p, *index_len);
 
-	  if (!(*index_value))
+	  if ((*index_value) == NULL)
 	    {
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }

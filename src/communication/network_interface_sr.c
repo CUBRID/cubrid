@@ -2096,8 +2096,6 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = (char *) db_private_alloc (NULL, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -2355,8 +2353,6 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -2439,8 +2435,6 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -3595,8 +3589,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   area = db_private_alloc (thread_p, area_size);
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, area_size);
       return_error_to_client (thread_p, rid);
       area_size = 0;
     }
@@ -4118,8 +4110,6 @@ slargeobjmgr_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = (char *) db_private_alloc (thread_p, length);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
       css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
@@ -5103,8 +5093,6 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, area_length);
 	  return_error_to_client (thread_p, rid);
 	  area_length = 0;
 	}
@@ -5248,8 +5236,6 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, area_length);
 	  return_error_to_client (thread_p, rid);
 	  area_length = 0;
 	}
@@ -5479,8 +5465,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 					      sizeof (DB_VALUE) * dbval_cnt);
       if (dbvals == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (DB_VALUE) * dbval_cnt);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;		/* error */
 	}
@@ -5587,8 +5571,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, replydata_size);
 	  replydata_size = 0;
 	  return_error_to_client (thread_p, rid);
 	}
@@ -5695,8 +5677,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 					      sizeof (DB_VALUE) * var_count);
       if (dbvals == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (DB_VALUE) * var_count);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  goto cleanup;
 	}
@@ -5806,8 +5786,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 	  list_data = (char *) db_private_alloc (thread_p, listid_length);
 	  if (list_data == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, listid_length);
 	      listid_length = 0;
 	    }
 	}
@@ -6014,8 +5992,6 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -6099,8 +6075,6 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -6242,8 +6216,6 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
       list_data = (char *) db_private_alloc (thread_p, list_length);
       if (list_data == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, list_length);
 	  success = ER_OUT_OF_VIRTUAL_MEMORY;
 	  list_length = 0;
 	}
@@ -6341,8 +6313,6 @@ sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
       buffer = (char *) db_private_alloc (thread_p, buffer_length);
       if (buffer == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, buffer_length);
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	  buffer_length = 0;
 	}
@@ -6418,8 +6388,6 @@ sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
       buffer = (char *) db_private_alloc (thread_p, buffer_length);
       if (buffer == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, buffer_length);
 	  buffer_length = 0;
 	  errid = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
@@ -6656,8 +6624,6 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
   databuf = (char *) db_private_alloc (thread_p, length);
   if (databuf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
       return ER_FAILED;
     }
 
@@ -7197,8 +7163,6 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (NULL, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -7318,8 +7282,6 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -7427,8 +7389,6 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
   databuf = (char *) db_private_alloc (thread_p, prompt_length);
   if (databuf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, prompt_length);
       return ER_FAILED;
     }
 
@@ -7693,8 +7653,6 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_length);
 	  buffer_length = 0;
 	  success = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
@@ -7747,7 +7705,7 @@ sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   if (!reply_data)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (reply_data_length));
+	      reply_data_length);
     }
   ptr = or_pack_int (reply, reply_data_length);
   ptr = or_pack_int (ptr, rc);
@@ -7836,8 +7794,6 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -8594,8 +8550,6 @@ ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buf = db_private_alloc (thread_p, count);
   if (buf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, count);
       css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else

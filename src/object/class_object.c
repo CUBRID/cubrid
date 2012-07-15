@@ -2816,9 +2816,6 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
     (SM_PREDICATE_INFO *) db_ws_alloc (sizeof (SM_PREDICATE_INFO));
   if (filter_predicate == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (SM_PREDICATE_INFO));
-
       goto error;
     }
   if (val_str_len > 0)
@@ -2826,8 +2823,6 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
       filter_predicate->pred_string = (char *) db_ws_alloc (val_str_len + 1);
       if (filter_predicate->pred_string == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, val_str_len + 1);
 	  goto error;
 	}
       memset (filter_predicate->pred_string, 0, val_str_len + 1);
@@ -2852,10 +2847,7 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
   filter_predicate->pred_stream =
     (char *) db_ws_alloc (buffer_len * sizeof (char));
   if (filter_predicate->pred_stream == NULL)
-
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      buffer_len * sizeof (char));
       goto error;
     }
 
@@ -2886,8 +2878,6 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
 	(int *) db_ws_alloc (sizeof (int) * att_seq_size);
       if (filter_predicate->att_ids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, att_seq_size * sizeof (int));
 	  goto error;
 	}
 
@@ -8018,8 +8008,6 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   fi_info = (SM_FUNCTION_INFO *) db_ws_alloc (sizeof (SM_FUNCTION_INFO));
   if (fi_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (SM_FUNCTION_INFO));
       goto error;
     }
 
@@ -8032,8 +8020,6 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   fi_info->expr_str = (char *) db_ws_alloc (size + 1);
   if (fi_info->expr_str == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size * sizeof (char));
       goto error;
     }
   memset (fi_info->expr_str, 0, size + 1);
@@ -8050,8 +8036,6 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   if (fi_info->expr_stream == NULL)
 
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      fi_info->expr_stream_size * sizeof (char));
       goto error;
     }
   memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);

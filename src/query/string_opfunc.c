@@ -1544,7 +1544,6 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
     db_private_alloc (NULL, (1 + num_byte_count) * sizeof (char));
   if (num_as_bytes == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit;
     }
@@ -3255,8 +3254,6 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
       lower_str = (unsigned char *) db_private_alloc (NULL, lower_size + 1);
       if (!lower_str)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, lower_size + 1);
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       else
@@ -3359,8 +3356,6 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
       upper_str = (unsigned char *) db_private_alloc (NULL, upper_size + 1);
       if (!upper_str)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, upper_size + 1);
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       else
@@ -4434,7 +4429,6 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
 	{
 	  /* out of memory */
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  *result = V_ERROR;
 	  goto cleanup;
 	}
@@ -4459,7 +4453,6 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
 	{
 	  /* out of memory */
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  *result = V_ERROR;
 	  goto cleanup;
 	}
@@ -6018,8 +6011,6 @@ db_bigint_to_binary_string (const DB_VALUE * src_bigint, DB_VALUE * result)
   binary_form = (char *) db_private_alloc (NULL, digits_count + 1);
   if (binary_form == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      digits_count);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_return;
     }
@@ -6267,8 +6258,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	  res_s = (char *) db_private_alloc (NULL, QSTR_DATETIME_LENGTH + 1);
 	  if (res_s == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, QSTR_DATETIME_LENGTH + 1);
 	      error = ER_DATE_CONVERSION;
 	      goto error_return;
 	    }
@@ -6283,8 +6272,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	  res_s = (char *) db_private_alloc (NULL, QSTR_TIME_LENGTH + 1);
 	  if (res_s == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, QSTR_TIME_LENGTH + 1);
 	      error = ER_TIME_CONVERSION;
 	      goto error_return;
 	    }
@@ -16051,8 +16038,6 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value,
       if (cs == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
-		  max_length + 1);
 	  return error_status;
 	}
       if (max_length > 0)
@@ -20483,7 +20468,6 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
   if (!format_s)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
   memset (format_s, 0, sizeof (char) * (len2 + 1));
@@ -23595,8 +23579,6 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val,
   new_buf = db_private_alloc (NULL, val_size + 1);
   if (new_buf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, val_size + 1);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   strncpy (new_buf, val_buf, val_size);

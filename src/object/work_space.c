@@ -2657,6 +2657,8 @@ ws_init (void)
 
   if (ws_Mop_table == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, allocsize);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -2683,10 +2685,7 @@ ws_init (void)
 
   if (Classname_cache == NULL)
     {
-      /* overwrite mht's error ? */
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return (error);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* Can't have any resident classes yet */
@@ -2694,7 +2693,7 @@ ws_init (void)
 
   ws_Set_mops = NULL;
 
-  return (NO_ERROR);
+  return NO_ERROR;
 }
 
 /*

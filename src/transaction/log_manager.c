@@ -1163,6 +1163,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   if (log_Gl.loghdr_pgptr == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, LOG_PAGESIZE);
       logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE,
 			 "log_xinit");
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;

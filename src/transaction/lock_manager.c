@@ -1107,6 +1107,8 @@ lock_initialize_scanid_bitmap (void)
   lk_Gl.scanid_bitmap = (unsigned char *) malloc (nbytes);
   if (lk_Gl.scanid_bitmap == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, nbytes);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -7827,8 +7829,6 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 					  lockset->num_reqobjs);
       if (cls_lockinfo == (LK_LOCKINFO *) NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (SIZEOF_LK_LOCKINFO * lockset->num_reqobjs));
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
       ins_lockinfo =
@@ -7837,8 +7837,6 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 					  lockset->num_reqobjs);
       if (ins_lockinfo == (LK_LOCKINFO *) NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (SIZEOF_LK_LOCKINFO * lockset->num_reqobjs));
 	  db_private_free_and_init (thread_p, cls_lockinfo);
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
@@ -8288,8 +8286,6 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 					  lockhint->num_classes);
       if (cls_lockinfo == (LK_LOCKINFO *) NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (SIZEOF_LK_LOCKINFO * lockhint->num_classes));
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
     }
@@ -10788,8 +10784,8 @@ lock_initialize_composite_lock (THREAD_ENTRY * thread_p,
 #else /* !SERVER_MODE */
   LK_LOCKCOMP *lockcomp;
 
-  if ((comp_lock->lockcomp =
-       db_private_alloc (thread_p, sizeof (LK_LOCKCOMP))) == NULL)
+  comp_lock->lockcomp = db_private_alloc (thread_p, sizeof (LK_LOCKCOMP));
+  if (comp_lock->lockcomp == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -10929,10 +10925,6 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 		}
 	      else
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  sizeof (OID) * (lockcomp_class->max_inst_oids +
-					  LK_COMPOSITE_LOCK_OID_INCREMENT));
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 	    }

@@ -2415,7 +2415,7 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr,
 	    if (logpg_area == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 0);
+			ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
 		error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
 	    css_queue_receive_data_buffer (rc, logpg_area, length);

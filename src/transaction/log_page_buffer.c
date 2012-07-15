@@ -3043,9 +3043,8 @@ prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node,
   node->udata = (char *) malloc (length);
   if (node->udata == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
-
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3077,8 +3076,8 @@ prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node,
   node->rdata = (char *) malloc (length);
   if (node->rdata == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3113,9 +3112,8 @@ prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
   node->udata = (char *) malloc (length);
   if (node->udata == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
-
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3155,9 +3153,8 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
   node->rdata = (char *) malloc (length);
   if (node->rdata == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
-
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3260,7 +3257,6 @@ prior_lsa_gen_undoredo_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3552,7 +3548,6 @@ prior_lsa_gen_undo_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3722,7 +3717,6 @@ prior_lsa_gen_redo_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   redo = (struct log_redo *) node->data_header;
@@ -3782,7 +3776,6 @@ prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   redo = (struct log_redo *) node->data_header;
@@ -3831,7 +3824,6 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   dbout_redo = (struct log_dbout_redo *) node->data_header;
@@ -3870,7 +3862,6 @@ prior_lsa_gen_user_client_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3910,7 +3901,6 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3953,7 +3943,6 @@ prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -4097,7 +4086,6 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4172,7 +4160,6 @@ prior_lsa_gen_redo_record_from_crumbs (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
-
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -4236,7 +4223,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, sizeof (LOG_PRIOR_NODE));
-
       return NULL;
     }
 
@@ -4409,7 +4395,6 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, sizeof (LOG_PRIOR_NODE));
-
       return NULL;
     }
 

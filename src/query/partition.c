@@ -367,7 +367,7 @@ partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo)
   if (entry_p->partitions == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (PARTITION_CACHE_ENTRY));
+	      entry_p->count * sizeof (PARTITION_CACHE_ENTRY));
       pinfo->error_code = ER_FAILED;
       goto error_return;
     }

@@ -894,8 +894,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
 	      break;
 	    }
 
@@ -923,8 +921,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
 	      break;
 	    }
 
@@ -953,8 +949,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
 	      break;
 	    }
 
@@ -982,8 +976,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
 	      break;
 	    }
 
@@ -1011,8 +1003,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
 	      break;
 	    }
 
@@ -1035,8 +1025,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
 	      break;
 	    }
 

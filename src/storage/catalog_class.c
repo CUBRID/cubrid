@@ -1398,8 +1398,6 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  pr_clear_value (&default_expr);
 	  pr_clear_value (&val);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  strlen ("UNIX_TIMESTAMP") + 1);
 	  goto error;
 	}
 
@@ -5523,7 +5521,6 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p,
   if (*db_collations == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, alloc_size);
       goto exit;
     }
 
@@ -5550,7 +5547,6 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p,
 	  if (db_collations == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, alloc_size);
 	      goto exit;
 	    }
 	}

@@ -4979,6 +4979,8 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 	  str_next_key_p = (char *) malloc (key_size);
 	  if (str_next_key_p == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, key_size);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
@@ -5957,9 +5959,9 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 				   PEEK);
 
 	  /* Prepare the redo log record */
-	  if (ehash_allocate_recdes
-	      (&log_recdes_redo, bucket_recdes.length + sizeof (short),
-	       REC_HOME) == NULL)
+	  if (ehash_allocate_recdes (&log_recdes_redo,
+				     bucket_recdes.length + sizeof (short),
+				     REC_HOME) == NULL)
 	    {
 	      /*
 	       * Will not be able to log a compensating log record... continue

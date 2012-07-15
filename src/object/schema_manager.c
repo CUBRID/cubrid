@@ -13559,7 +13559,7 @@ sm_produce_constraint_name (const char *class_name,
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, name_size);
+		  1, name_size + 1);
 	}
     }
 
@@ -14064,9 +14064,8 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
   int i = 0;
   SM_ATTRIBUTE **crt_att_p = NULL;
 
-  new_constraint = (SM_CONSTRAINT_INFO *) calloc (1,
-						  sizeof
-						  (SM_CONSTRAINT_INFO));
+  new_constraint =
+    (SM_CONSTRAINT_INFO *) calloc (1, sizeof (SM_CONSTRAINT_INFO));
   if (new_constraint == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;

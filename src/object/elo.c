@@ -575,9 +575,6 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
       uri = db_private_strdup (NULL, out_uri);
       if (uri == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY,
-		  ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  strlen (out_uri));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -633,9 +630,6 @@ elo_copy_structure (const DB_ELO * elo, DB_ELO * dest)
       locator = db_private_strdup (NULL, elo->locator);
       if (locator == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY,
-		  ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  strlen (elo->locator));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -649,9 +643,6 @@ elo_copy_structure (const DB_ELO * elo, DB_ELO * dest)
 	    {
 	      db_private_free_and_init (NULL, locator);
 	    }
-	  er_set (ER_ERROR_SEVERITY,
-		  ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  strlen (elo->meta_data));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }

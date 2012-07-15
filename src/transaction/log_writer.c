@@ -1791,15 +1791,11 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
   logpg_used_size = 0;
-  logpg_area =
-    db_private_alloc (thread_p,
-		      prm_get_integer_value (PRM_ID_LOG_NBUFFERS) *
-		      LOG_PAGESIZE);
+  logpg_area = db_private_alloc (thread_p,
+				 (prm_get_integer_value (PRM_ID_LOG_NBUFFERS)
+				  * LOG_PAGESIZE));
   if (logpg_area == NULL)
     {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      prm_get_integer_value (PRM_ID_LOG_NBUFFERS) * LOG_PAGESIZE);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

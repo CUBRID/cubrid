@@ -3117,8 +3117,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 	  bstring = db_private_alloc (NULL, dst_length + 1);
 	  if (!bstring)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	      return (DB_VALUE *) NULL;
 	    }
 	  bits_converted =
@@ -3147,8 +3145,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 	  bstring = db_private_alloc (NULL, dst_length + 1);
 	  if (!bstring)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	      return (DB_VALUE *) NULL;
 	    }
 	  bits_converted =

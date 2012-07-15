@@ -653,6 +653,8 @@ la_get_range_of_archive (int arv_log_num, LOG_PAGEID * fpageid,
       hdr_page = (LOG_PAGE *) malloc (la_Info.act_log.db_logpagesize);
       if (hdr_page == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, la_Info.act_log.db_logpagesize);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -878,9 +880,8 @@ log_reopen:
 	(LOG_PAGE *) malloc (la_Info.act_log.db_logpagesize);
       if (la_Info.arv_log.hdr_page == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  la_Info.act_log.db_logpagesize);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, la_Info.act_log.db_logpagesize);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -2894,8 +2895,6 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
   item = la_make_repl_item (log_pgptr, log_type, tranid, lsa);
   if (item == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_ITEM));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3305,9 +3304,9 @@ la_get_zipped_data (char *undo_data, int undo_length, bool is_diff,
       *data = malloc (*length);
       if (*data == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, *length);
 	  *length = 0;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
 	  return NULL;
 	}
     }

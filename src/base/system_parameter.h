@@ -373,7 +373,7 @@ extern int prm_adjust_parameters (void);
 extern char *sysprm_pack_local_session_parameters (char *ptr);
 extern char *sysprm_pack_session_parameters (char *ptr,
 					     SESSION_PARAM * session_params);
-extern int sysprm_packed_local_session_parameters_length ();
+extern int sysprm_packed_local_session_parameters_length (void);
 extern int sysprm_packed_session_parameters_length (SESSION_PARAM *
 						    session_params);
 extern char *sysprm_unpack_session_parameters (char *ptr,
@@ -383,16 +383,17 @@ extern char *sysprm_unpack_session_parameters (char *ptr,
 extern int sysprm_session_init_session_parameters (SESSION_PARAM **
 						   session_params);
 extern char *sysprm_pack_different_session_parameters (char *ptr);
-extern int sysprm_packed_different_session_parameters_length ();
+extern int sysprm_packed_different_session_parameters_length (void);
 #endif
 extern char *sysprm_unpack_different_session_parameters (char *ptr,
 							 int **data_ptr);
-extern void prm_update_prm_different_flag (PARAM_ID prm_id, bool is_different);
+extern void prm_update_prm_different_flag (PARAM_ID prm_id,
+					   bool is_different);
 extern void sysprm_update_client_session_parameters (SESSION_PARAM *
 						     session_params);
 extern SYSPRM_ERR prm_set_session_parameter_value (SESSION_PARAM *
 						   session_params, int id,
 						   const char *value,
 						   bool verify_different);
-extern char *sysprm_print_different_session_parameters ();
+extern char *sysprm_print_different_session_parameters (void);
 #endif /* _SYSTEM_PARAMETER_H_ */

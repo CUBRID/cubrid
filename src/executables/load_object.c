@@ -1568,7 +1568,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	    if (ptr == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 0);
+			ER_OUT_OF_VIRTUAL_MEMORY, 1, max_size);
 		break;		/* FIXME */
 	      }
 	  }

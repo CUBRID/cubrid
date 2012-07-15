@@ -140,7 +140,7 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
 
-  return (found);
+  return found;
 }
 
 
@@ -316,7 +316,7 @@ or_rep_id (RECDES * record)
       rep = OR_GET_REPID (record->data);
     }
 
-  return (rep);
+  return rep;
 }
 
 /*
@@ -390,7 +390,7 @@ or_chn (RECDES * record)
     {
       chn = OR_GET_CHN (record->data);
     }
-  return (chn);
+  return chn;
 }
 
 #if !defined (SERVER_MODE)
@@ -790,7 +790,6 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 
   if (new_ == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       or_abort (buf);
       return NULL;
     }
@@ -1118,7 +1117,6 @@ or_get_varbit (OR_BUF * buf, int *length_ptr)
 
   if (new_ == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       or_abort (buf);
       return NULL;
     }
@@ -1316,7 +1314,7 @@ or_get_short (OR_BUF * buf, int *error)
       buf->ptr += OR_SHORT_SIZE;
     }
   *error = NO_ERROR;
-  return (value);
+  return value;
 }
 
 /*
@@ -1973,7 +1971,7 @@ or_length_string (char *string)
 	  len += 4 - bits;
 	}
     }
-  return (len);
+  return len;
 }
 
 /*
@@ -2041,7 +2039,7 @@ or_length_binary (DB_BINARY * binary)
 	  len += 4 - bits;
 	}
     }
-  return (len);
+  return len;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -2170,7 +2168,7 @@ or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars,
 	}
       ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -2230,7 +2228,7 @@ or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int),
 	}
       buf->ptr += length;
     }
-  return (vars);
+  return vars;
 }
 
 /*
@@ -2639,11 +2637,10 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       ptr = NULL;
     }
 
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -2705,7 +2702,6 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
 
   if (*oids == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       ptr = NULL;
       return ptr;
     }
@@ -2783,7 +2779,7 @@ or_pack_hfid (const char *ptr, const HFID * hfid)
 
   /* kludge, need to have all of these accept and return const args */
   new_ = (char *) ptr + OR_HFID_SIZE;
-  return (new_);
+  return new_;
 }
 
 /*
@@ -2817,9 +2813,8 @@ or_unpack_hfid_array (char *ptr, int n, HFID ** hfids)
 
   if (*hfids == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       ptr = NULL;
-      return (ptr);
+      return ptr;
     }
 
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
@@ -2830,7 +2825,7 @@ or_unpack_hfid_array (char *ptr, int n, HFID ** hfids)
       ptr = ptr + OR_HFID_SIZE;
     }
 
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -2938,7 +2933,7 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
 
   /* kludge, need to have all of these accept and return const args */
   new_ = (char *) ptr + OR_LOG_LSA_ALIGNED_SIZE;
-  return (new_);
+  return new_;
 }
 
 /*
@@ -3045,7 +3040,7 @@ or_pack_string (char *ptr, const char *string)
       (void) memset (ptr, '\0', pad);
       ptr += pad;
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -3087,7 +3082,7 @@ or_pack_string_with_length (char *ptr, const char *string, int length)
       ptr += pad;
     }
 
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -3116,8 +3111,6 @@ or_unpack_string (char *ptr, char **string)
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	  ptr += length;
 	}
       else
@@ -3127,7 +3120,7 @@ or_unpack_string (char *ptr, char **string)
 	}
       *string = new_;
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -3161,7 +3154,7 @@ or_unpack_string_alloc (char *ptr, char **string)
       if (new_ == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (length * sizeof (char)));
 	  ptr += length;
 	}
       else
@@ -3171,7 +3164,7 @@ or_unpack_string_alloc (char *ptr, char **string)
 	}
       *string = new_;
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -3198,7 +3191,7 @@ or_unpack_string_nocopy (char *ptr, char **string)
       *string = ptr;
       ptr += length;
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -3247,7 +3240,7 @@ or_packed_string_length (const char *string, int *strlenp)
 	  *strlenp = 0;
 	}
     }
-  return (total);
+  return total;
 }
 
 /*
@@ -3317,8 +3310,6 @@ or_unpack_bool_array (char *ptr, bool ** bools)
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	  ptr += length;
 	}
       else
@@ -3328,7 +3319,8 @@ or_unpack_bool_array (char *ptr, bool ** bools)
 	}
       *bools = new_;
     }
-  return (ptr);
+
+  return ptr;
 }
 
 /*
@@ -3363,7 +3355,8 @@ or_packed_bool_array_length (const bool * bools, int size)
 	}
       total += (size + pad);
     }
-  return (total);
+
+  return total;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3394,7 +3387,8 @@ or_align_length (int length)
 	}
       total += len + pad;
     }
-  return (total);
+
+  return total;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -6079,7 +6073,7 @@ or_pack_listid (char *ptr, void *listid_ptr)
       ptr = or_pack_domain (ptr, listid->type_list.domp[i], 0, 0);
     }
 
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6107,7 +6101,6 @@ or_unpack_listid (char *ptr, void **listid_ptr)
   listid = (QFILE_LIST_ID *) db_private_alloc (NULL, sizeof (QFILE_LIST_ID));
   if (listid == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       goto error;
     }
   QFILE_CLEAR_LIST_ID (listid);
@@ -6156,8 +6149,6 @@ or_unpack_listid (char *ptr, void **listid_ptr)
 
       if (listid->type_list.domp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	  goto error;
 	}
     }
@@ -6168,7 +6159,7 @@ or_unpack_listid (char *ptr, void **listid_ptr)
     }
 
   *listid_ptr = (void *) listid;
-  return (ptr);
+  return ptr;
 
 error:
   if (listid)
@@ -6200,7 +6191,8 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
   listid = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
   if (listid == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (QFILE_LIST_ID));
       goto error;
     }
   QFILE_CLEAR_LIST_ID (listid);
@@ -6249,8 +6241,8 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 
       if (listid->type_list.domp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (sizeof (TP_DOMAIN *) * count));
 	  goto error;
 	}
     }
@@ -6261,7 +6253,7 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
     }
 
   *listid_ptr = (void *) listid;
-  return (ptr);
+  return ptr;
 
 error:
   if (listid)
@@ -6306,7 +6298,7 @@ or_listid_length (void *listid_ptr)
     }
 
   length += OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
-  return (length);
+  return length;
 }
 
 /*
@@ -6323,7 +6315,7 @@ or_pack_method_sig (char *ptr, void *method_sig_ptr)
 
   if (method_sig == (METHOD_SIG *) 0)
     {
-      return (ptr);
+      return ptr;
     }
 
   ptr = or_pack_method_sig (ptr, method_sig->next);
@@ -6336,7 +6328,7 @@ or_pack_method_sig (char *ptr, void *method_sig_ptr)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6354,14 +6346,13 @@ or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n)
   if (n == 0)
     {
       *(METHOD_SIG **) method_sig_ptr = (METHOD_SIG *) 0;
-      return (ptr);
+      return ptr;
     }
   method_sig = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
 
   if (method_sig == (METHOD_SIG *) 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-      return (NULL);
+      return NULL;
     }
   ptr = or_unpack_method_sig (ptr, (void **) &method_sig->next, n - 1);
   ptr = or_unpack_string (ptr, &method_sig->method_name);
@@ -6374,16 +6365,17 @@ or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n)
 			      (method_sig->no_method_args + 1));
   if (method_sig->method_arg_pos == (int *) 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       db_private_free_and_init (NULL, method_sig);
-      return (NULL);
+      return NULL;
     }
   for (n = 0; n < method_sig->no_method_args + 1; ++n)
     {
       ptr = or_unpack_int (ptr, &method_sig->method_arg_pos[n]);
     }
+
   *(METHOD_SIG **) method_sig_ptr = method_sig;
-  return (ptr);
+
+  return ptr;
 }
 
 /*
@@ -6401,7 +6393,7 @@ or_pack_method_sig_list (char *ptr, void *method_sig_list_ptr)
 
   ptr = or_pack_int (ptr, method_sig_list->no_methods);
   ptr = or_pack_method_sig (ptr, method_sig_list->method_sig);
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6421,14 +6413,13 @@ or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr)
     (METHOD_SIG_LIST *) db_private_alloc (NULL, sizeof (METHOD_SIG_LIST));
   if (method_sig_list == (METHOD_SIG_LIST *) 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-      return (NULL);
+      return NULL;
     }
   ptr = or_unpack_int (ptr, &method_sig_list->no_methods);
   ptr = or_unpack_method_sig (ptr, (void **) &method_sig_list->method_sig,
 			      method_sig_list->no_methods);
   *(METHOD_SIG_LIST **) method_sig_list_ptr = method_sig_list;
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6698,7 +6689,7 @@ or_packed_string_array_length (int count, const char **string_array)
       size += or_packed_string_length (string_array[i]);
     }
 
-  return (size);
+  return size;
 }
 
 /*
@@ -6718,7 +6709,7 @@ or_packed_db_value_array_length (int count, DB_VALUE * val)
     {
       size += or_db_value_size (val++);
     }
-  return (size);
+  return size;
 }
 
 /*
@@ -6748,7 +6739,7 @@ or_pack_int_array (char *buffer, int count, int *int_array)
 	  ptr = or_pack_int (ptr, int_array[i]);
 	}
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6769,7 +6760,7 @@ or_pack_string_array (char *buffer, int count, const char **string_array)
     {
       ptr = or_pack_string (ptr, string_array[i]);
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6799,8 +6790,6 @@ unpack_str_array (char *buffer, char ***string_array, int count)
 						  (sizeof (char *) * count));
       if (*string_array == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	  ptr = NULL;
 	}
       else
@@ -6811,7 +6800,7 @@ unpack_str_array (char *buffer, char ***string_array, int count)
 	    }
 	}
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6851,7 +6840,7 @@ or_pack_db_value_array (char *buffer, int count, DB_VALUE * val)
     {
       ptr = or_pack_db_value (ptr, val++);
     }
-  return (ptr);
+  return ptr;
 }
 
 /*
@@ -6880,8 +6869,6 @@ or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
 	(DB_VALUE *) db_private_alloc (NULL, sizeof (DB_VALUE) * (*count));
       if (*val == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	  ptr = NULL;
 	}
       else
@@ -6894,7 +6881,7 @@ or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
 	}
     }
 
-  return (ptr);
+  return ptr;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 

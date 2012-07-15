@@ -5161,7 +5161,6 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   rve = str_float = db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
   if (str_float == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       DB_MAKE_NULL (result);
       return;
     }
@@ -5239,7 +5238,6 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   rve = str_double = db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
   if (str_double == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       DB_MAKE_NULL (result);
       return;
     }
@@ -8403,9 +8401,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    enum_str = db_private_alloc (NULL, val_str_size + 1);
 		    if (enum_str == NULL)
 		      {
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_OUT_OF_VIRTUAL_MEMORY, 1,
-				val_str_size + 1);
 			status = DOMAIN_ERROR;
 			break;
 		      }
@@ -9709,15 +9704,12 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2, bool * need_free)
       common_type = arg1_type;
       target_domain = tp_domain_copy (arg1, false);
     }
-  else
-    if ((TP_IS_BIT_TYPE (arg1_type) && TP_IS_BIT_TYPE (arg2_type))
-	|| (TP_IS_CHAR_TYPE (arg1_type)
-	    && TP_IS_CHAR_TYPE (arg2_type))
-	|| (TP_IS_DATE_TYPE (arg1_type)
-	    && TP_IS_DATE_TYPE (arg2_type))
-	|| (TP_IS_SET_TYPE (arg1_type)
-	    && TP_IS_SET_TYPE (arg2_type))
-	|| (TP_IS_NUMERIC_TYPE (arg1_type) && TP_IS_NUMERIC_TYPE (arg2_type)))
+  else if ((TP_IS_BIT_TYPE (arg1_type) && TP_IS_BIT_TYPE (arg2_type))
+	   || (TP_IS_CHAR_TYPE (arg1_type) && TP_IS_CHAR_TYPE (arg2_type))
+	   || (TP_IS_DATE_TYPE (arg1_type) && TP_IS_DATE_TYPE (arg2_type))
+	   || (TP_IS_SET_TYPE (arg1_type) && TP_IS_SET_TYPE (arg2_type))
+	   || (TP_IS_NUMERIC_TYPE (arg1_type)
+	       && TP_IS_NUMERIC_TYPE (arg2_type)))
     {
       if (tp_more_general_type (arg1_type, arg2_type) > 0)
 	{

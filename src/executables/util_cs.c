@@ -2500,9 +2500,10 @@ retry:
       error = ER_FAILED;
       goto error_exit;
     }
-  /* prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) is always true in CUBRID HA */
-  sysprm_set_to_default
-    ("prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)", true);
+
+  /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
+  sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING),
+			 true);
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {

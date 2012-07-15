@@ -733,8 +733,6 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p,
     db_private_alloc (thread_p, sizeof (QFILE_TUPLE_VALUE_TYPE_LIST));
   if (indx_cov->type_list == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (QFILE_TUPLE_VALUE_TYPE_LIST));
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
@@ -781,8 +779,6 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p,
 					     sizeof (QFILE_TUPLE_RECORD));
   if (indx_cov->tplrec == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (QFILE_TUPLE_RECORD));
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
@@ -794,8 +790,6 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p,
 					     sizeof (QFILE_LIST_SCAN_ID));
   if (indx_cov->lsid == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (QFILE_LIST_SCAN_ID));
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
@@ -3279,8 +3273,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 						       DBVAL_BUFSIZE);
 	  if (isidp->copy_buf == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, DBVAL_BUFSIZE);
 	      goto exit_on_error;
 	    }
 	  isidp->copy_buf_len = DBVAL_BUFSIZE;
@@ -6064,8 +6056,6 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 	db_private_alloc (thread_p, max_size * sizeof (RANGE_OPT_ITEM *));
       if (multi_range_opt->top_n_items == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, max_size * sizeof (RANGE_OPT_ITEM *));
 	  err = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit_on_error;
 	}

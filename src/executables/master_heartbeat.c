@@ -4066,6 +4066,7 @@ hb_kill_all_heartbeat_process (char **str)
   int rv, count, i;
   pid_t *pids;
   HB_PROC_ENTRY *proc;
+  size_t size;
 
   if (hb_Resource == NULL)
     {
@@ -4081,12 +4082,13 @@ hb_kill_all_heartbeat_process (char **str)
       if (proc->type == HB_PTYPE_APPLYLOGDB ||
 	  proc->type == HB_PTYPE_COPYLOGDB)
 	{
-	  pids = (pid_t *) realloc (pids, sizeof (pid_t) * count + 1);
+	  size = sizeof (pid_t) * (count + 1);
+	  pids = (pid_t *) realloc (pids, size);
 	  if (pids == NULL)
 	    {
 	      pthread_mutex_unlock (&hb_Resource->lock);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ARG));
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return;
 	    }
 	  pids[count] = proc->pid;

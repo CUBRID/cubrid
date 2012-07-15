@@ -408,7 +408,7 @@ sort_spage_compact (PAGE_PTR pgptr)
   if (sortptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SLOT *));
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sphdr->nrecs * sizeof (SLOT *));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
