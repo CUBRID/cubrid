@@ -1202,6 +1202,16 @@ au_find_user (const char *user_name)
     }
   error = er_errid ();
 
+  if (error != NO_ERROR)
+    {
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1,
+		  user_name);
+	}
+      goto exit;
+    }
+
   if (error == NO_ERROR && !user)
     {
       /* proceed with the query version of the function */
@@ -1246,6 +1256,8 @@ au_find_user (const char *user_name)
 	  free_and_init (query);
 	}
     }
+
+exit:
   AU_ENABLE (save);
 
   if (upper_case_name)
@@ -1940,7 +1952,7 @@ au_add_user (const char *name, int *exists)
 	    }
 	  else
 	    {
-	      if (er_errid () != ER_OBJ_OBJECT_NOT_FOUND)
+	      if (er_errid () != ER_AU_INVALID_USER)
 		{
 		  AU_ENABLE (save);
 		  return NULL;
@@ -2879,6 +2891,11 @@ au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
 	       && db_get_string (memval) != NULL)
 	{
 	  member = au_find_user (db_get_string (memval));
+	  if (member == NULL)
+	    {
+	      error = er_errid ();
+	      goto error;
+	    }
 	}
 
       if (member != NULL)
@@ -2905,6 +2922,7 @@ au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
     }
 
+error:
   if (error == NO_ERROR)
     {
       db_make_null (returnval);
@@ -3024,6 +3042,11 @@ au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
 	       && !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
 	{
 	  member = au_find_user (db_get_string (memval));
+	  if (member == NULL)
+	    {
+	      error = er_errid ();
+	      goto error;
+	    }
 	}
 
       if (member != NULL)
@@ -3050,6 +3073,7 @@ au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
     }
 
+error:
   if (error == NO_ERROR)
     {
       db_make_null (returnval);
@@ -3385,7 +3409,7 @@ au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name)
 		}
 	    }
 	}
-      if (user == NULL)
+      else
 	{
 	  error = ER_AU_INVALID_USER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
