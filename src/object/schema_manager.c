@@ -4451,6 +4451,40 @@ sm_is_subclass (MOP classmop, MOP supermop)
   return found;
 }
 
+/*
+ * sm_is_partition () - Verify if a class is a partition of another class
+ * return : > 0 if true, 0 if false, < 0 for error
+ * classmop (in) : partition candidate
+ * supermop (in) : partitioned class
+ */
+int
+sm_is_partition (MOP classmop, MOP supermop)
+{
+  DB_OBJLIST *s;
+  SM_CLASS *class_;
+  int error;
+
+  error = au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (class_->partition_of != NULL && class_->users == NULL)
+    {
+      if (class_->inheritance != NULL && class_->inheritance->op == supermop)
+	{
+	  /* Notice we only verify the first superclass in the list. If class_
+	   * is a partition, it should only have one superclass, we're not
+	   * interested in the rest of the list
+	   */
+	  return 1;
+	}
+    }
+
+  return 0;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_object_size() - Walk through the instance or class and tally up

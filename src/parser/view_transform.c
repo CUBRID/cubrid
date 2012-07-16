@@ -9589,7 +9589,7 @@ mq_fetch_select_for_real_class_update (PARSER_CONTEXT * parser,
     mq_fetch_subqueries_for_update (parser, vclass, fetch_as, what_for);
   PT_NODE *flat;
   DB_OBJECT *class_object = NULL;
-
+  int error = NO_ERROR;
   if (!select_statements)
     {
       return NULL;
@@ -9613,14 +9613,34 @@ mq_fetch_select_for_real_class_update (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  /* if you can't find an exact match, find a sub-class
-	     there could be more than one, but what can you do */
+	  /* class_object might be either a superclass of one of the classes
+	   * in flat_entity_list for queries selecting from a class
+	   * hierarchy:
+	   *  SELECT * FROM ALL t
+	   * or a partition of one of the classes in the list:
+	   *  SELECT * FROM t 
+	   * if t is a partitioned class.
+	   */
 	  for (flat = select_statements->info.query.q.select.from->
 	       info.spec.flat_entity_list; flat; flat = flat->next)
 	    {
 	      if (db_is_superclass (class_object, flat->info.name.db_object))
 		{
 		  return select_statements;
+		}
+	      else
+		{
+		  error =
+		    db_is_partition (class_object, flat->info.name.db_object);
+		  if (error < 0)
+		    {
+		      PT_ERROR (parser, vclass, er_msg ());
+		      return NULL;
+		    }
+		  else if (error > 0)
+		    {
+		      return select_statements;
+		    }
 		}
 	    }
 	}

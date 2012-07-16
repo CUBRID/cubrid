@@ -205,6 +205,7 @@ extern int sm_update_all_statistics (void);
 extern const char *sm_class_name (MOP op);
 
 extern int sm_is_subclass (MOP classmop, MOP supermop);
+extern int sm_is_partition (MOP classmop, MOP supermop);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_object_size (MOP op);
 #endif

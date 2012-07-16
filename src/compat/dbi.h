@@ -394,6 +394,7 @@ extern int db_is_instance (DB_OBJECT * obj);
 extern int db_is_instance_of (DB_OBJECT * obj, DB_OBJECT * classobj);
 extern int db_is_subclass (DB_OBJECT * classobj, DB_OBJECT * supermop);
 extern int db_is_superclass (DB_OBJECT * supermop, DB_OBJECT * classobj);
+extern int db_is_partition (DB_OBJECT * classobj, DB_OBJECT * superobj);
 extern int db_is_system_class (DB_OBJECT * op);
 extern int db_is_deleted (DB_OBJECT * obj);
 

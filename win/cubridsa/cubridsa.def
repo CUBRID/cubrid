@@ -462,6 +462,7 @@ EXPORTS
     db_is_instance
     db_is_instance_of
     db_is_output_marker
+    db_is_partition
     db_is_query_async_executable
     db_is_real_instance
     db_is_subclass

@@ -434,6 +434,26 @@ db_is_superclass (MOP supermop, MOP classmop)
 }
 
 /*
+ * db_is_partition () - This function is used to test if classobj is a
+ *    partition of superobj
+ * return : greater than 0 if true, 0 if false, less than 0 for error
+ * classobj (in) : partition candidate
+ * superobj (in) : partitioned class
+ */
+int
+db_is_partition (DB_OBJECT * classobj, DB_OBJECT * superobj)
+{
+  int retval;
+
+  CHECK_CONNECT_ZERO ();
+  CHECK_1ARG_NULL (classobj);
+
+  retval = (sm_is_partition (classobj, superobj));
+
+  return (retval);
+}
+
+/*
  * db_is_system_class() - This function is a convenience function to determine
  *    if a class is one of the system defined classes or a user defined class.
  * return: true if op is system class
