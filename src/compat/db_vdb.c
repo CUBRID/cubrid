@@ -1551,6 +1551,10 @@ db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values)
 	      if (pt_has_error (session->parser))
 		{
 		  /* This error can occur when using the statement pooling */
+		  pt_report_to_ersys (session->parser, PT_SEMANTIC);
+		  /* forget about any previous compilation errors, if any */
+		  pt_reset_error (session->parser);
+
 		  return ER_PT_SEMANTIC;
 		}
 	    }
@@ -2541,7 +2545,7 @@ static int
 do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
 {
   DB_VALUE_ARRAY values_array;
-  int i = 0;
+  int err = NO_ERROR;
 
   values_array.size = 0;
   values_array.vals = NULL;
@@ -2554,22 +2558,22 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
 
   if (session->parser->host_var_count != values_array.size)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_IT_INCORRECT_HOSTVAR_COUNT, 2, values_array.size,
+      err = ER_IT_INCORRECT_HOSTVAR_COUNT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, values_array.size,
 	      session->parser->host_var_count);
-      db_value_clear_array (&values_array);
-      free_and_init (values_array.vals);
-      values_array.size = 0;
-      return er_errid ();
     }
-
-  db_push_values (session, values_array.size, values_array.vals);
+  else
+    {
+      err = db_push_values (session, values_array.size, values_array.vals);
+    }
 
   db_value_clear_array (&values_array);
   free_and_init (values_array.vals);
   values_array.size = 0;
-  return NO_ERROR;
+
+  return err;
 }
+
 
 /*
  * do_recompile_and_execute_prepared_statement () - compile and execute a 
