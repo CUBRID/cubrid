@@ -1993,7 +1993,7 @@ pt_frob_error (PARSER_CONTEXT * parser,
 	       const PT_NODE * stmt, const char *fmt, ...)
 {
   va_list ap;
-  char *context = NULL;
+  const char *context = NULL;
   char *old_buf = parser->error_buffer;
 
   va_start (ap, fmt);
@@ -2008,7 +2008,15 @@ pt_frob_error (PARSER_CONTEXT * parser,
   if (parser->original_buffer != NULL
       && stmt != NULL && stmt->buffer_pos != -1)
     {
-      context = parser->original_buffer + stmt->buffer_pos;
+      if (strlen (parser->original_buffer) <= stmt->buffer_pos)
+	{
+	  /* node probably copied from another parser context */
+	  context = NULL;
+	}
+      else
+	{
+	  context = parser->original_buffer + stmt->buffer_pos;
+	}
     }
 
   pt_record_error (parser,

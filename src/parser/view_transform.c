@@ -511,6 +511,10 @@ static PT_NODE *mq_bump_order_dep_corr_lvl_post (PARSER_CONTEXT * parser,
 static void mq_bump_order_dep_corr_lvl (PARSER_CONTEXT * parser,
 					PT_NODE * node);
 
+static PT_NODE *mq_reset_references_to_query_string (PARSER_CONTEXT * parser,
+						     PT_NODE * node,
+						     void *arg,
+						     int *continue_walk);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -5486,6 +5490,19 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 
       mq_set_types (parser, local_query, attributes,
 		    class_object, cascaded_check);
+
+      /* Reset references to positions in query_spec_string for each node
+       * in this tree. These nodes will be used in other contexts and these
+       * references are meaningless
+       */
+      local_query =
+	parser_walk_tree (parser, local_query,
+			  mq_reset_references_to_query_string, NULL, NULL,
+			  NULL);
+      if (local_query == NULL)
+	{
+	  return NULL;
+	}
 
       if (statements == NULL)
 	{
@@ -11386,4 +11403,33 @@ mq_bump_order_dep_corr_lvl (PARSER_CONTEXT * parser, PT_NODE * node)
   (void) parser_walk_tree (parser, node, mq_bump_order_dep_corr_lvl_pre,
 			   (void *) &stack, mq_bump_order_dep_corr_lvl_post,
 			   (void *) &stack);
+}
+
+/*
+ * mq_reset_references_to_query_string () - reset references to the position
+ *					    in the original query string
+ *   parser(in): parser context
+ *   node(in): node
+ *   arg(in/out): parent node stack
+ *   continue_walk(in/out): walk type
+ *
+ * NOTE: This function resets the value of line_number, column_number and
+ * buffer_pos for each node. This is called on the parse trees of translated
+ * views. Since these values point to the view query and not to the actual
+ * query that is being executed, they will not hold useful information
+ */
+static PT_NODE *
+mq_reset_references_to_query_string (PARSER_CONTEXT * parser, PT_NODE * node,
+				     void *arg, int *continue_walk)
+{
+  if (node == NULL || parser == NULL)
+    {
+      return node;
+    }
+
+  node->line_number = 0;
+  node->column_number = 0;
+  node->buffer_pos = -1;
+
+  return node;
 }
