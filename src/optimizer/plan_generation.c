@@ -689,27 +689,23 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
  *	routines.
  */
 static XASL_NODE *
-init_list_scan_proc (QO_ENV * env,
-		     XASL_NODE * xasl,
-		     XASL_NODE * listfile,
+init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * listfile,
 		     PT_NODE * namelist, BITSET * predset, int *poslist)
 {
   PT_NODE *access_pred, *if_pred, *after_join_pred, *instnum_pred;
 
   if (xasl)
     {
-      access_pred =
-	make_pred_from_bitset (env, predset, is_normal_access_term);
+      access_pred = make_pred_from_bitset (env, predset, 
+					   is_normal_access_term);
       if_pred = make_pred_from_bitset (env, predset, is_normal_if_term);
-      after_join_pred =
-	make_pred_from_bitset (env, predset, is_after_join_term);
-      instnum_pred =
-	make_pred_from_bitset (env, predset, is_totally_after_join_term);
+      after_join_pred = make_pred_from_bitset (env, predset, 
+					       is_after_join_term);
+      instnum_pred = make_pred_from_bitset (env, predset, 
+					    is_totally_after_join_term);
 
       xasl = ptqo_to_list_scan_proc (QO_ENV_PARSER (env),
-				     xasl,
-				     SCAN_PROC,
-				     listfile,
+				     xasl, SCAN_PROC, listfile,
 				     namelist, access_pred, poslist);
 
       if (env->pt_tree->node_type == PT_SELECT
