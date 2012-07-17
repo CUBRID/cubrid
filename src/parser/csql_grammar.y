@@ -1448,6 +1448,7 @@ typedef struct YYLTYPE
 %token <cptr> CPP_STYLE_HINT
 %token <cptr> C_STYLE_HINT
 %token <cptr> SQL_STYLE_HINT
+%token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
 %token <cptr> UTF8_STRING
 
@@ -18455,6 +18456,25 @@ char_string
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| EUCKR_STRING
+		{{
+
+			PT_NODE *node = NULL;
+
+			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
+							      $1, INTL_CODESET_KSC5601_EUC);
+
+			if (node)
+			  {
+			    pt_set_charset_coll (this_parser, node,
+						 INTL_CODESET_KSC5601_EUC,
+						 LANG_COLL_EUCKR_BINARY, true);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}		
 	| ISO_STRING
 		{{
 

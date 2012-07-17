@@ -1354,7 +1354,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 
 	str = db_get_char (value, &dummy);
 	bytes_size = db_get_string_size (value);
-	if (DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0
+	    && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
@@ -1400,7 +1401,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 
 	str = db_get_char (value, &dummy);
 	bytes_size = db_get_string_size (value);
-	if (DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0
+	    && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size,

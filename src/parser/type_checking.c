@@ -16798,21 +16798,23 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
 		&& DB_IS_NULL (esc_char))
 	      {
+		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
+		  DB_GET_STRING_CODESET (arg1);
+		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
+		  DB_GET_STRING_COLLATION (arg1);
 		/* when compat_mode=mysql, the slash '\\' is an escape character for
 		   LIKE pattern, unless user explicitly specifies otherwise. */
 		esc_char = &slash_char;
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    DB_MAKE_NCHAR (esc_char, 1, slash_str, 1,
-				   DB_GET_STRING_CODESET (arg1),
-				   DB_GET_STRING_COLLATION (arg1));
+		    DB_MAKE_NCHAR (esc_char, 1, slash_str, 1, arg1_cs,
+				   arg1_coll);
 		  }
 		else
 		  {
-		    DB_MAKE_CHAR (esc_char, 1, slash_str, 1,
-				  DB_GET_STRING_CODESET (arg1),
-				  DB_GET_STRING_COLLATION (arg1));
+		    DB_MAKE_CHAR (esc_char, 1, slash_str, 1, arg1_cs,
+				  arg1_coll);
 		  }
 
 		esc_char->need_clear = false;
@@ -17229,19 +17231,26 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_TRIM:
 	case PT_LTRIM:
 	case PT_RTRIM:
-	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-	    {
-	      db_make_varnchar (&dummy, 1, (char *) " ", 1,
-				DB_GET_STRING_CODESET (arg1),
-				DB_GET_STRING_COLLATION (arg1));
-	      type2 = PT_TYPE_VARNCHAR;
-	    }
-	  else
-	    {
-	      db_make_string (&dummy, " ");
-	      type2 = PT_TYPE_VARCHAR;
-	    }
-	  arg2 = &dummy;
+	  {
+	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
+	      DB_GET_STRING_CODESET (arg1);
+	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
+	      DB_GET_STRING_COLLATION (arg1);
+
+	    if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
+	      {
+		db_make_varnchar (&dummy, 1, (char *) " ", 1, arg1_cs,
+				  arg1_coll);
+		type2 = PT_TYPE_VARNCHAR;
+	      }
+	    else
+	      {
+		db_make_varchar (&dummy, 1, (char *) " ", 0, arg1_cs,
+				 arg1_coll);
+		type2 = PT_TYPE_VARCHAR;
+	      }
+	    arg2 = &dummy;
+	  }
 	  break;
 
 	case PT_FROM_UNIXTIME:
@@ -17466,36 +17475,53 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	case PT_REPLACE:
 	case PT_TRANSLATE:
-	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-	    {
-	      db_make_varnchar (&dummy, 1, (char *) "", 0,
-				DB_GET_STRING_CODESET (arg1),
-				DB_GET_STRING_COLLATION (arg1));
-	      type3 = PT_TYPE_VARNCHAR;
-	    }
-	  else
-	    {
-	      db_make_string (&dummy, "");
-	      type3 = PT_TYPE_VARCHAR;
-	    }
-	  arg3 = &dummy;
+	  {
+	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
+	      DB_GET_STRING_CODESET (arg1);
+	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
+	      DB_GET_STRING_COLLATION (arg1);
+	    if (PT_IS_NATIONAL_CHAR_STRING_TYPE (type1))
+	      {
+		db_make_varnchar (&dummy, 1, (char *) "", 0, arg1_cs,
+				  arg1_coll);
+		type3 = PT_TYPE_VARNCHAR;
+	      }
+	    else
+	      {
+		db_make_varchar (&dummy, 1, (char *) "", 0, arg1_cs,
+				 arg1_coll);
+		type3 = PT_TYPE_VARCHAR;
+	      }
+	    arg3 = &dummy;
+	  }
 	  break;
 
 	case PT_LPAD:
 	case PT_RPAD:
-	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-	    {
-	      db_make_varnchar (&dummy, 1, (char *) " ", 1,
-				DB_GET_STRING_CODESET (arg1),
-				DB_GET_STRING_COLLATION (arg1));
-	      type3 = PT_TYPE_VARNCHAR;
-	    }
-	  else
-	    {
-	      db_make_string (&dummy, " ");
-	      type3 = PT_TYPE_VARCHAR;
-	    }
-	  arg3 = &dummy;
+	  {
+	    char pad_str[3] = { '\0' };
+	    int pad_size;
+	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
+	      DB_GET_STRING_CODESET (arg1);
+	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
+	      DB_GET_STRING_COLLATION (arg1);
+
+	    intl_pad_char (arg1_cs, pad_str, &pad_size);
+
+	    if (PT_IS_NATIONAL_CHAR_STRING_TYPE (type1))
+	      {
+		db_make_varnchar (&dummy, 1, pad_str, pad_size, arg1_cs,
+				  arg1_coll);
+		type3 = PT_TYPE_VARNCHAR;
+	      }
+	    else
+	      {
+		db_make_varchar (&dummy, 1, pad_str, pad_size, arg1_cs,
+				 arg1_coll);
+		type3 = PT_TYPE_VARCHAR;
+	      }
+	    arg3 = &dummy;
+	  }
 	  break;
 	case PT_LIKE:
 	  arg3 = NULL;
@@ -20063,6 +20089,16 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 {
   assert (common_coll != NULL);
   assert (common_cs != NULL);
+
+  /* arguments can have only one multibyte charset */
+  if ((arg1_cs == INTL_CODESET_UTF8 || arg2_cs == INTL_CODESET_UTF8
+       || arg3_cs == INTL_CODESET_UTF8)
+      && (arg1_cs == INTL_CODESET_KSC5601_EUC
+	  || arg2_cs == INTL_CODESET_KSC5601_EUC
+	  || arg3_cs == INTL_CODESET_KSC5601_EUC))
+    {
+      goto error;
+    }
 
   if (!op_has_3_args && arg1_coerc_level == arg2_coerc_level)
     {

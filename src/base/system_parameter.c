@@ -457,6 +457,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_UNICODE_OUTPUT_NORMALIZATION "unicode_output_normalization"
 
+#define PRM_NAME_INTL_CHECK_INPUT_STRING "intl_check_input_string"
+
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1104,8 +1106,10 @@ static bool prm_block_nowhere_statement_default = false;
 bool PRM_BLOCK_DDL_STATEMENT = false;
 static bool prm_block_ddl_statement_default = false;
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 bool PRM_SINGLE_BYTE_COMPARE = false;
 static bool prm_single_byte_compare_default = false;
+#endif
 
 int PRM_CSQL_HISTORY_NUM = 50;
 static int prm_csql_history_num_default = 50;
@@ -1230,6 +1234,9 @@ static bool prm_unicode_input_normalization_default = false;
 
 bool PRM_UNICODE_OUTPUT_NORMALIZATION = false;
 static bool prm_unicode_output_normalization_default = false;
+
+bool PRM_INTL_CHECK_INPUT_STRING = false;
+static bool prm_intl_check_input_string_default = false;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2292,6 +2299,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_BLOCK_DDL_STATEMENT,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+#if defined (ENABLE_UNUSED_FUNCTION)
   {PRM_NAME_SINGLE_BYTE_COMPARE,
    (PRM_REQUIRED | PRM_DEFAULT | PRM_FOR_CLIENT |
     PRM_FOR_SERVER | PRM_FORCE_SERVER),
@@ -2300,6 +2308,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SINGLE_BYTE_COMPARE,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+#endif
   {PRM_NAME_CSQL_HISTORY_NUM,
    (PRM_REQUIRED | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_USER_CHANGE),
    PRM_INTEGER,
@@ -2576,7 +2585,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_unicode_output_normalization_default,
    (void *) &PRM_UNICODE_OUTPUT_NORMALIZATION,
    (void *) NULL, (void *) NULL,
-   (char *) NULL}
+   (char *) NULL},
+  {PRM_NAME_INTL_CHECK_INPUT_STRING,
+   (PRM_REQUIRED | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   PRM_BOOLEAN,
+   (void *) &prm_intl_check_input_string_default,
+   (void *) &PRM_INTL_CHECK_INPUT_STRING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -3241,8 +3257,9 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
 #endif
 
-  intl_Mbs_support = PRM_INTL_MBS_SUPPORT;
-  intl_String_validation = intl_Mbs_support;
+  intl_Mbs_support = prm_get_bool_value (PRM_ID_INTL_MBS_SUPPORT);
+  intl_String_validation =
+    prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
 
   return NO_ERROR;
 }

@@ -1520,6 +1520,11 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  else
 	    {
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET :
+		DB_GET_STRING_CODESET (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION :
+		DB_GET_STRING_COLLATION (&opd1);
+
 	      switch (op)
 		{
 		case PT_TRIM:
@@ -1527,14 +1532,14 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		case PT_RTRIM:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd2, 1, (char *) " ", 1,
-					DB_GET_STRING_CODESET (&opd1),
-					DB_GET_STRING_COLLATION (&opd1));
+		      db_make_varnchar (&opd2, 1, (char *) " ", 1, opd1_cs,
+					opd1_coll);
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_string (&opd2, " ");
+		      db_make_varchar (&opd2, 1, (char *) " ", 1, opd1_cs,
+				       opd1_coll);
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1555,6 +1560,11 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  else
 	    {
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET :
+		DB_GET_STRING_CODESET (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION :
+		DB_GET_STRING_COLLATION (&opd1);
+
 	      switch (op)
 		{
 		case PT_TO_NUMBER:
@@ -1568,14 +1578,14 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		case PT_TRANSLATE:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) "", 0,
-					DB_GET_STRING_CODESET (&opd1),
-					DB_GET_STRING_COLLATION (&opd1));
+		      db_make_varnchar (&opd3, 1, (char *) "", 0, opd1_cs,
+					opd1_coll);
 		      type3 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_string (&opd3, "");
+		      db_make_varchar (&opd3, 1, (char *) "", 0, opd1_cs,
+				       opd1_coll);
 		      type3 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1583,14 +1593,14 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		case PT_RPAD:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) " ", 1,
-					DB_GET_STRING_CODESET (&opd1),
-					DB_GET_STRING_COLLATION (&opd1));
+		      db_make_varnchar (&opd3, 1, (char *) " ", 1, opd1_cs,
+					opd1_coll);
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_string (&opd3, " ");
+		      db_make_varchar (&opd3, 1, (char *) " ", 1, opd1_cs,
+				       opd1_coll);
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;

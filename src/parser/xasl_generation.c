@@ -6893,6 +6893,9 @@ pt_make_empty_string (PARSER_CONTEXT * parser, const PT_NODE * node)
   PT_TYPE_ENUM arg1_type;
   PT_NODE *empty_str;
 
+  assert (node->node_type == PT_EXPR);
+  assert (node->info.expr.arg1 != NULL);
+
   empty_str = parser_new_node (parser, PT_VALUE);
   if (empty_str == NULL)
     {
@@ -6915,6 +6918,8 @@ pt_make_empty_string (PARSER_CONTEXT * parser, const PT_NODE * node)
   empty_str->info.value.data_value.str = pt_append_nulstring (parser,
 							      NULL, "");
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, empty_str);
+  empty_str->data_type =
+    parser_copy_tree (parser, node->info.expr.arg1->data_type);
 
   return empty_str;
 }

@@ -53,15 +53,15 @@
 #define LOCALE_KOREAN   "korean"
 #endif
 
-/* TODO : this is the same as function intl_is_korean : the first
- * interval is not necessary or the function call is not correct.
- * In the context where 'IS_PSEUDO_KOREAN' is used, the korean char size is 2
- * instead of 3 in context of 'intl_is_korean' */
+#if defined (ENABLE_UNUSED_FUNCTION)
+/* EUC-KR characters may be used with ISO-88591-1 charset when 
+ * PRM_SINGLE_BYTE_COMPARE is 'no'
+ * EUC-KR have either 3 (when first byte is SS3) or two bytes (use this macro
+ * to check the byte range) */
 #define IS_PSEUDO_KOREAN(ch) \
-        (( ((unsigned char) ch >= (unsigned char) 0xb0)           \
-             && ((unsigned char) ch <= (unsigned char) 0xc8) )    \
-          || ( ((unsigned char) ch >= (unsigned char) 0xa1)       \
-              && ((unsigned char) ch <= (unsigned char) 0xfe) ))
+          ( ((unsigned char) ch >= (unsigned char) 0xa1)       \
+              && ((unsigned char) ch <= (unsigned char) 0xfe) )
+#endif
 
 /* conversion from turkish ISO 8859-9 to UTF-8 */
 #define ISO_8859_9_FIRST_CP 0x11e
@@ -90,8 +90,8 @@ static int intl_count_euc_chars (unsigned char *s, int length_in_bytes);
 static int intl_count_euc_bytes (unsigned char *s, int length_in_chars);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static wchar_t *intl_copy_lowercase (const wchar_t * ws, size_t n);
-#endif /* ENABLE_UNUSED_FUNCTION */
 static int intl_is_korean (unsigned char ch);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* UTF-8 string manipulations */
 static int intl_tolower_utf8 (const ALPHABET_DATA * a,
@@ -752,11 +752,6 @@ intl_tolower_iso8859 (unsigned char *s, int length)
 
   for (end = s + length; s < end; s++, char_count++)
     {
-      if (intl_is_korean (*s))
-	{
-	  s += 2;
-	  continue;
-	}
       if (char_isupper (*s))
 	{
 	  *s = char_tolower (*s);
@@ -787,11 +782,6 @@ intl_toupper_iso8859 (unsigned char *s, int length)
 
   for (end = s + length; s < end; s++, char_count++)
     {
-      if (intl_is_korean (*s))
-	{
-	  s += 2;
-	  continue;
-	}
       if (char_islower (*s))
 	{
 	  *s = char_toupper (*s);
@@ -842,29 +832,29 @@ intl_nextchar_euc (unsigned char *s, int *curr_char_length)
  *                   encoded string.
  *   return: pointer to the previous EUC character in the string s.
  *   s(in): string
+ *   s_start(in) : start of buffer string
  *   prev_char_length(out): length of the previous character
  */
 unsigned char *
-intl_prevchar_euc (unsigned char *s, int *prev_char_length)
+intl_prevchar_euc (unsigned char *s, const unsigned char *s_start,
+		   int *prev_char_length)
 {
   assert (s != NULL);
+  assert (s > s_start);
 
-  s--;
-  if (!IS_8BIT (*s))		/* Detected ASCII character */
+  if (s - 3 >= s_start && *(s - 3) == SS3)
     {
-      *prev_char_length = 1;
-    }
-  else if (*((--s) - 1) == SS3)
-    {				/* Detected Code Set 3 char */
-      s--;
       *prev_char_length = 3;
+      return s - 3;
     }
-  else
-    {				/* Detected 2 byte character (CS1 or CS2) */
+  else if (s - 2 >= s_start && IS_8BIT (*(s - 2)))
+    {
       *prev_char_length = 2;
+      return s - 2;
     }
 
-  return s;
+  *prev_char_length = 1;
+  return --s;
 }
 
 /*
@@ -1088,6 +1078,7 @@ intl_char_size (unsigned char *src, int length_in_chars,
   return *byte_count;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_char_size_pseudo_kor() - returns the number of bytes in a string given
  *				 the start and character length of the string
@@ -1116,7 +1107,12 @@ intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars,
 	  int b_count = 0;
 	  while (length_in_chars-- > 0)
 	    {
-	      if (IS_PSEUDO_KOREAN (*src))
+	      if (*src == SS3)
+		{
+		  b_count += 3;
+		  src += 3;
+		}
+	      else if (IS_PSEUDO_KOREAN (*src))
 		{
 		  b_count += 2;
 		  src += 2;
@@ -1151,43 +1147,49 @@ intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars,
 
   return *byte_count;
 }
+#endif
 
 /*
  * intl_prev_char() - returns pointer to the previous char in string
  *
  *   return : pointer to previous character
  *   s(in) : string
+ *   s_start(in) : start of buffer string
  *   codeset(in) : enumeration of src codeset
  *   prev_char_size(out) : size of previous character
  */
 unsigned char *
-intl_prev_char (unsigned char *s, INTL_CODESET codeset, int *prev_char_size)
+intl_prev_char (unsigned char *s, const unsigned char *s_start,
+		INTL_CODESET codeset, int *prev_char_size)
 {
+  assert (s > s_start);
+
   switch (codeset)
     {
-    case INTL_CODESET_ISO88591:
-      *prev_char_size = 1;
-      return --s;
-
     case INTL_CODESET_KSC5601_EUC:
-      return intl_prevchar_euc (s, prev_char_size);
+      return intl_prevchar_euc (s, s_start, prev_char_size);
 
     case INTL_CODESET_UTF8:
-      return intl_prevchar_utf8 (s, prev_char_size);
+      return intl_prevchar_utf8 (s, s_start, prev_char_size);
 
+    case INTL_CODESET_ISO88591:
+      break;
     default:
       assert (false);
-      *prev_char_size = 0;
-      return s;
     }
+
+  *prev_char_size = 1;
+  return --s;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_prev_char_pseudo_kor() - returns pointer to the previous char in
  *				 string
  *
  *   return : pointer to previous character
  *   s(in) : string
+ *   s_start(in) : start of buffer string
  *   codeset(in) : enumeration of src codeset
  *   prev_char_size(out) : size of previous character
  *
@@ -1196,36 +1198,45 @@ intl_prev_char (unsigned char *s, INTL_CODESET codeset, int *prev_char_size)
  *	 This function is used in context of some specific string functions.
  */
 unsigned char *
-intl_prev_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
-			   int *prev_char_size)
+intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start,
+			   INTL_CODESET codeset, int *prev_char_size)
 {
+  assert (s > s_start);
+
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
       if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
 	  && IS_PSEUDO_KOREAN (*(s - 1)))
 	{
-	  *prev_char_size = 2;
-	  return s - 2;
+	  if (s - 2 >= s_start && *(s - 2) == SS3)
+	    {
+	      *prev_char_size = 3;
+	      return s - 3;
+	    }
+	  else if (s - 1 >= s_start && IS_PSEUDO_KOREAN (*(s - 1)))
+	    {
+	      *prev_char_size = 2;
+	      return s - 2;
+	    }
 	}
-      else
-	{
-	  *prev_char_size = 1;
-	  return --s;
-	}
+
+      break;
 
     case INTL_CODESET_KSC5601_EUC:
-      return intl_prevchar_euc (s, prev_char_size);
+      return intl_prevchar_euc (s, s_start, prev_char_size);
 
     case INTL_CODESET_UTF8:
-      return intl_prevchar_utf8 (s, prev_char_size);
+      return intl_prevchar_utf8 (s, s_start, prev_char_size);
 
     default:
       assert (false);
-      *prev_char_size = 0;
-      return s;
     }
+
+  *prev_char_size = 1;
+  return --s;
 }
+#endif
 
 /*
  * intl_next_char () - returns pointer to the next char in string
@@ -1261,6 +1272,7 @@ intl_next_char (unsigned char *s, INTL_CODESET codeset,
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_next_char_pseudo_kor () - returns pointer to the next char in string
  *
@@ -1284,14 +1296,20 @@ intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
       if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
 	  && IS_PSEUDO_KOREAN (*s))
 	{
-	  *current_char_size = 2;
-	  return s + 2;
+	  if (*s == SS3)
+	    {
+	      *current_char_size = 3;
+	      return s + 3;
+	    }
+	  else if (IS_PSEUDO_KOREAN (*s))
+	    {
+	      *current_char_size = 2;
+	      return s + 2;
+	    }
 	}
-      else
-	{
-	  *current_char_size = 1;
-	  return ++s;
-	}
+
+      *current_char_size = 1;
+      return ++s;
 
     case INTL_CODESET_KSC5601_EUC:
       return intl_nextchar_euc (s, current_char_size);
@@ -1305,6 +1323,7 @@ intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
       return s;
     }
 }
+#endif
 
 /*
  * intl_cmp_char() - compares the first character of two strings
@@ -1330,17 +1349,12 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
       return *s1 - *s2;
 
     case INTL_CODESET_KSC5601_EUC:
-      *char_size = 2;
-      return memcmp (s1, s2, 2);
+      (void) intl_nextchar_euc ((unsigned char *) s1, char_size);
+      return memcmp (s1, s2, *char_size);
 
     case INTL_CODESET_UTF8:
-      {
-	int len;
-
-	len = intl_Len_utf8_char[*s1];
-	*char_size = len;
-	return memcmp (s1, s2, len);
-      }
+      *char_size = intl_Len_utf8_char[*s1];
+      return memcmp (s1, s2, *char_size);
 
     default:
       assert (false);
@@ -1351,13 +1365,14 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
   return 0;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_cmp_char_pseudo_kor() - compares the first character of two strings
  *   return: zero if character are equal, non-zero otherwise
  *   s1(in):
  *   s2(in):
  *   codeset:
- *   char_size(in): size of char in bytes of the first character in s1
+ *   char_size(out): size of char in bytes of the first character in s1
  *
  *  Note: same as intl_cmp_char, except that with ISO-8859-1 codeset, some
  *	  bytes are handled as Korean characters.
@@ -1373,29 +1388,27 @@ intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
       if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
 	  && IS_PSEUDO_KOREAN (*s1))
 	{
-	  *char_size = 2;
-	  return memcmp (s1, s2, 2);
-	}
-      else
-	{
-	  *char_size = 1;
-	  return *s1 - *s2;
+	  if (*s1 == SS3)
+	    {
+	      *char_size = 3;
+	      return memcmp (s1, s2, 3);
+	    }
+	  else if (IS_PSEUDO_KOREAN (*s1))
+	    {
+	      *char_size = 2;
+	      return memcmp (s1, s2, 2);
+	    }
 	}
       *char_size = 1;
       return *s1 - *s2;
 
     case INTL_CODESET_KSC5601_EUC:
-      *char_size = 2;
-      return memcmp (s1, s2, 2);
+      (void) intl_nextchar_euc ((unsigned char *) s1, char_size);
+      return memcmp (s1, s2, *char_size);
 
     case INTL_CODESET_UTF8:
-      {
-	int len;
-
-	len = intl_Len_utf8_char[*s1];
-	*char_size = len;
-	return memcmp (s1, s2, len);
-      }
+      *char_size = intl_Len_utf8_char[*s1];
+      return memcmp (s1, s2, *char_size);
 
     default:
       assert (false);
@@ -1406,7 +1419,6 @@ intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
   return 0;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_kor_cmp() - compares first characters of two strings
  *   return: required size
@@ -1483,7 +1495,6 @@ intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char,
       break;
 
     case INTL_CODESET_KSC5601_EUC:
-      /* TODO : intl_pad_size return 1, but pad char has 2 bytes */
       pad_char[0] = pad_char[1] = '\241';
       *pad_size = 2;
       break;
@@ -1521,8 +1532,10 @@ intl_pad_size (INTL_CODESET codeset)
 
   switch (codeset)
     {
-    case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
+      size = 2;
+      break;
+    case INTL_CODESET_ISO88591:
     case INTL_CODESET_UTF8:
     default:
       size = 1;
@@ -1756,6 +1769,7 @@ intl_lower_string (const void *alphabet, unsigned char *src,
   return char_count;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_is_korean() - test for a korean character
  *   return: non-zero if ch is a korean character,
@@ -1772,7 +1786,6 @@ intl_is_korean (unsigned char ch)
   return (ch >= 0xb0 && ch <= 0xc8) || (ch >= 0xa1 && ch <= 0xfe);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_language() - Returns the language for the given category of the
  *                   current locale
@@ -1852,26 +1865,14 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      {
-	d = dst + length_in_chars - 1;
-	end = src + length_in_chars;
-	for (; s < end; s++, d--, char_count++)
-	  {
-	    if (intl_is_korean (*s))
-	      {
-		*(d - 2) = *s;
-		*(d - 1) = *(s + 1);
-		*d = *(s + 2);
-		s += 2;
-		d -= 2;
-		continue;
-	      }
-	    else
-	      {
-		*d = *s;
-	      }
-	  }
-      }
+      d = dst + length_in_chars - 1;
+      end = src + length_in_chars;
+      for (; s < end; char_count++)
+	{
+	  *d = *s;
+	  s++;
+	  d--;
+	}
       break;
 
     case INTL_CODESET_KSC5601_EUC:
@@ -1934,20 +1935,27 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
 /*
  * intl_is_max_bound_chr () -
  *
- * return: check if chr points to a ISO char / UTF-8 codepoint representing 
- *	   the upper bound codepoint in the selected codeset, for LIKE
- *         index optimization. 
+ * return: check if chr points to a char representing the upper bound
+ *	   codepoint in the selected codeset, for LIKE index optimization. 
  *
  * codeset(in) : the codeset to consider
- * chr(in) : upper bound, as UTF-8 bytes
+ * chr(in) : upper bound, as bytes
  */
 bool
 intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 {
   if (codeset == INTL_CODESET_UTF8)
     {
-      if ((*chr == 0xF4) && (*(chr + 1) == 0x8F) &&
-	  (*(chr + 2) == 0xBF) && (*(chr + 3) == 0xBF))
+      if ((*chr == 0xf4) && (*(chr + 1) == 0x8f) &&
+	  (*(chr + 2) == 0xbf) && (*(chr + 3) == 0xbf))
+	{
+	  return true;
+	}
+      return false;
+    }
+  else if (codeset == INTL_CODESET_KSC5601_EUC)
+    {
+      if (((*chr == 0xff) && (*(chr + 1) == 0xff)))
 	{
 	  return true;
 	}
@@ -2006,17 +2014,17 @@ intl_set_min_bound_chr (INTL_CODESET codeset, char *chr)
 }
 
 /*
- * intl_set_max_bound_chr () - sets chr to a UTF-8 byte array representing 
+ * intl_set_max_bound_chr () - sets chr to a byte array representing 
  *			       the up-most bound codepoint in the selected 
  *			       codeset, for LIKE index optimization. 
  *
  * return: the number of bytes added to chr
  *
  * codeset(in) : the codeset to consider
- * chr(in) : char pointer where to place the bound, as UTF-8 bytes
+ * chr(in) : char pointer where to place the bound
  *
- * Note: 'chr' buffer should be able to store at least one more char e.g. 
- *	 1 or 4 more bytes (UTF-8), depending on the codeset.
+ * Note: 'chr' buffer should be able to store at least one more char:
+ *	 4 bytes (UTF-8), 2 bytes (EUC-KR), 1 byte (ISO-8859-1).
  *	    
  */
 int
@@ -2024,15 +2032,21 @@ intl_set_max_bound_chr (INTL_CODESET codeset, char *chr)
 {
   if (codeset == INTL_CODESET_UTF8)
     {
-      *chr = 0xF4;
-      *(chr + 1) = 0x8F;
-      *(chr + 2) = 0xBF;
-      *(chr + 3) = 0xBF;
+      *chr = 0xf4;
+      *(chr + 1) = 0x8f;
+      *(chr + 2) = 0xbf;
+      *(chr + 3) = 0xbf;
       return 4;
+    }
+  else if (codeset == INTL_CODESET_KSC5601_EUC)
+    {
+      *chr = 0xff;
+      *(chr + 1) = 0xff;
+      return 2;
     }
 
   assert (codeset == INTL_CODESET_ISO88591);
-  *chr = (char) 255;
+  *chr = (char) 0xff;
 
   return 1;
 }
@@ -2081,12 +2095,25 @@ intl_nextchar_utf8 (unsigned char *s, int *curr_char_length)
  *                   UTF-8 encoded string.
  *   return: pointer to the previous character
  *   s(in): string
+ *   s_start(in) : start of buffer string
  *   prev_char_length(out): length of the previous character
  */
 unsigned char *
-intl_prevchar_utf8 (unsigned char *s, int *prev_char_length)
+intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start,
+		    int *prev_char_length)
 {
-  INTL_GET_PREVCHAR_UTF8 (s, *prev_char_length);
+  int l = 0;
+
+  do
+    {
+      l++;
+    }
+  while (l < 6 && s - l >= s_start && (*(s - l) & 0xc0) == 0x80);
+
+  l = (*(s - l) & 0xc0) == 0x80 ? 1 : l;
+  s -= l;
+  *prev_char_length = l;
+
   return s;
 }
 
@@ -2924,12 +2951,6 @@ intl_identifier_lower (const char *src, char *dst)
 	for (d = (unsigned char *) dst;
 	     d < (unsigned char *) dst + length_in_bytes; d++)
 	  {
-	    if (IS_PSEUDO_KOREAN (*d))
-	      {
-		/* safe : skip only current byte since "korean" encoding in QA
-		 * scenarios is not consistent : either 2 or 3 bytes */
-		continue;
-	      }
 	    if (char_isupper (*d))
 	      {
 		*d = char_tolower (*d);
@@ -3066,12 +3087,6 @@ intl_identifier_upper (const char *src, char *dst)
 	for (d = (unsigned char *) dst;
 	     d < (unsigned char *) dst + length_in_bytes; d++)
 	  {
-	    if (IS_PSEUDO_KOREAN (*d))
-	      {
-		/* safe : skip only current byte since "korean" encoding in QA
-		 * scenarios is not consistent : either 2 or 3 bytes */
-		continue;
-	      }
 	    if (char_islower (*d))
 	      {
 		*d = char_toupper (*d);
@@ -3217,39 +3232,39 @@ intl_strncat (unsigned char *dest, const unsigned char *src, int len)
  *   return: size of character
  *   dest(in/out): destination buffer
  *   char_p(in): pointer to character
+ *   codeset(in): codeset of character
  *
  *  Note : It is assumed that 'dest' buffer can fit the character.
  *
  */
 int
-intl_put_char (unsigned char *dest, const unsigned char *char_p)
+intl_put_char (unsigned char *dest, const unsigned char *char_p,
+	       const INTL_CODESET codeset)
 {
+  int char_len;
+
   assert (char_p != NULL);
 
-  switch (lang_charset ())
+  switch (codeset)
     {
     case INTL_CODESET_UTF8:
-      {
-	int char_len;
-
-	if (*char_p < 0x80)
-	  {
-	    *dest = *char_p;
-	    return 1;
-	  }
-	else
-	  {
-	    char_len = intl_Len_utf8_char[*char_p];
-	    memcpy (dest, char_p, char_len);
-	    return char_len;
-	  }
-      }
+      if (*char_p < 0x80)
+	{
+	  *dest = *char_p;
+	  return 1;
+	}
+      else
+	{
+	  char_len = intl_Len_utf8_char[*char_p];
+	  memcpy (dest, char_p, char_len);
+	  return char_len;
+	}
       break;
 
     case INTL_CODESET_KSC5601_EUC:
-      *dest++ = *char_p++;
-      *dest = *char_p;
-      return 2;
+      (void) intl_nextchar_euc ((unsigned char *) char_p, &char_len);
+      memcpy (dest, char_p, char_len);
+      return char_len;
 
     case INTL_CODESET_ISO88591:
     default:
@@ -3774,6 +3789,84 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
   return 0;
 }
 
+/*
+ * intl_check_euckr - Checks if a string contains valid EUC-KR sequences
+ *			    
+ *
+ *   return: 0 if valid,
+ *	     1 if contains and invalid byte in one char
+ *	     2 if last char is truncated (missing bytes)
+ *   buf(in): buffer
+ *   size(out): size of buffer (negative values accepted, in this case buffer
+ *		is assumed to be NUL terminated)
+ *   pos(out): pointer to begining of invalid character
+ *
+ *  Valid ranges:
+ *    - 1 byte : 00 - 8E ; 90 - A0
+ *    - 2 bytes: A1 - FE , 00 - FF
+ *    - 3 bytes: 8F	 , 00 - FF , 00 - FF
+ */
+static bool
+intl_check_euckr (const unsigned char *buf, int size, char **pos)
+{
+  const unsigned char *p = buf;
+  const unsigned char *p_end = NULL;
+  const unsigned char *curr_char = NULL;
+
+  if (pos != NULL)
+    {
+      *pos = NULL;
+    }
+
+  if (size < 0)
+    {
+      size = strlen ((char *) buf);
+    }
+
+  p_end = buf + size;
+
+  while (p < p_end)
+    {
+      curr_char = p;
+
+      if (*p < SS3 || (*p > SS3 && *p < 0xa1))
+	{
+	  p++;
+	  continue;
+	}
+
+      /* SS3 byte value starts a 3 bytes character */
+      if (*p == SS3)
+	{
+	  p++;
+	  p++;
+	  p++;
+	  if (p > p_end)
+	    {
+	      UTF8_RETURN_CHAR_TRUNCATED (curr_char, pos);
+	    }
+	  continue;
+	}
+
+      /* check 2 bytes sequences */
+      if (UTF8_BYTE_IN_RANGE (*p, 0xa1, 0xfe))
+	{
+	  p++;
+	  p++;
+	  if (p > p_end)
+	    {
+	      UTF8_RETURN_CHAR_TRUNCATED (curr_char, pos);
+	    }
+	  continue;
+	}
+
+      assert (*p == 0xff);
+      p++;
+    }
+
+  return 0;
+}
+
 #if !defined (SERVER_MODE)
 /*
  * intl_check_string - Checks if a string contains valid sequences in current
@@ -3794,10 +3887,19 @@ intl_check_string (const char *buf, int size, char **pos,
     {
       return 0;
     }
-  if (codeset == INTL_CODESET_UTF8)
+
+  switch (codeset)
     {
+    case INTL_CODESET_UTF8:
       return intl_check_utf8 ((const unsigned char *) buf, size, pos);
+
+    case INTL_CODESET_KSC5601_EUC:
+      return intl_check_euckr ((const unsigned char *) buf, size, pos);
+
+    default:
+      break;
     }
+
   return 0;
 }
 

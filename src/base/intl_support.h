@@ -66,36 +66,35 @@
 #define INTL_NEXTCHAR_UTF8(c) \
   (unsigned char*)((c) + intl_Len_utf8_char[*(unsigned char*)(c)])
 
-/* previous UTF-8 char */
-#define INTL_PREVCHAR_UTF8(c) \
-  (*((unsigned char*)(c)-1) & 0xc0) != 0x80 ? (unsigned char*)(c)-1 : \
-    (*((unsigned char*)(c)-2) & 0xc0) != 0x80 ? (unsigned char*)(c)-2 : \
-      (*((unsigned char*)(c)-3) & 0xc0) != 0x80 ? (unsigned char*)(c)-3 : \
-	(*((unsigned char*)(c)-4) & 0xc0) != 0x80 ? (unsigned char*)(c)-4 : \
-	  (*((unsigned char*)(c)-5) & 0xc0) != 0x80 ? (unsigned char*)(c)-5 : \
-	    (*((unsigned char*)(c)-6) & 0xc0) != 0x80 ? (unsigned char*)(c)-6 : \
-	      (unsigned char*)(c)-1
-
 /* next UTF-8 char and its length */
 #define INTL_GET_NEXTCHAR_UTF8(c,l) { \
     l = intl_Len_utf8_char[*(unsigned char*)(c)]; \
     c += (l); \
   }
 
-/* previous UTF-8 char and its length */
-#define INTL_GET_PREVCHAR_UTF8(c,l) { \
-    l = 0; \
-    do { \
-      (l)++; \
-    } while ((*((unsigned char*)(c)-l) & 0xc0) == 0x80 && (l) < 6); \
-    l = (*((unsigned char*)(c)-l) & 0xc0) == 0x80 ? 1 : (l); \
-    c -= (l); \
-  }
-
 /* !!! Do not use this for BIT type !!! see STR_SIZE macro */
 #define INTL_CODESET_MULT(codeset)                                         \
     (((codeset) == INTL_CODESET_UTF8) ? INTL_UTF8_MAX_CHAR_SIZE :	   \
-     ((codeset) == INTL_CODESET_KSC5601_EUC) ? 2 : 1)
+     ((codeset) == INTL_CODESET_KSC5601_EUC) ? 3 : 1)
+
+/* Checks if string having charset 'cs_from' can be safely reinterpreted as 
+ * having charset 'cs_to'.
+ * All strings can be reinterpreted as ISO-8859-1 charset.
+ * Other combinations are not compatible, since 8 bit values are starter for
+ * mutibyte characters.
+ */
+#define INTL_CAN_STEAL_CS(cs_from,cs_to)  \
+    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_ISO88591)
+
+/* Checks if string having charset 'cs_from' can be coerced (transformed) as 
+ * having charset 'cs_to'.
+ * All strings can be transformed to ISO-8859-1 charset (reinterpreted).
+ * Another allowed tranformation is from ISO to UTF-8
+ * Transformation from EUC-KR to UTF-8 is not implemented.
+ */
+#define INTL_CAN_COERCE_CS(cs_from,cs_to)  \
+    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_ISO88591		  \
+     || ((cs_to) == INTL_CODESET_UTF8 && (cs_from) == INTL_CODESET_ISO88591))
 
 extern bool intl_Mbs_support;
 extern bool intl_String_validation;
@@ -158,10 +157,12 @@ extern "C"
   extern unsigned char *intl_nextchar_euc (unsigned char *s,
 					   int *curr_length);
   extern unsigned char *intl_prevchar_euc (unsigned char *s,
+					   const unsigned char *s_start,
 					   int *prev_length);
   extern unsigned char *intl_nextchar_utf8 (unsigned char *s,
 					    int *curr_length);
   extern unsigned char *intl_prevchar_utf8 (unsigned char *s,
+					    const unsigned char *s_start,
 					    int *prev_length);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -179,26 +180,37 @@ extern "C"
 			      INTL_CODESET src_codeset, int *char_count);
   extern int intl_char_size (unsigned char *src, int length_in_chars,
 			     INTL_CODESET src_codeset, int *byte_count);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_char_size_pseudo_kor (unsigned char *src,
 					int length_in_chars,
 					INTL_CODESET src_codeset,
 					int *byte_count);
+#endif
   extern unsigned char *intl_prev_char (unsigned char *s,
+					const unsigned char *s_start,
 					INTL_CODESET codeset,
 					int *prev_char_size);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern unsigned char *intl_prev_char_pseudo_kor (unsigned char *s,
+						   const unsigned char
+						   *s_start,
 						   INTL_CODESET codeset,
 						   int *prev_char_size);
+#endif
   extern unsigned char *intl_next_char (unsigned char *s,
 					INTL_CODESET codeset,
 					int *current_char_size);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern unsigned char *intl_next_char_pseudo_kor (unsigned char *s,
 						   INTL_CODESET codeset,
 						   int *current_char_size);
+#endif
   extern int intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
 			    INTL_CODESET codeset, int *char_size);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
 				       INTL_CODESET codeset, int *char_size);
+#endif
   extern void intl_pad_char (const INTL_CODESET codeset,
 			     unsigned char *pad_char, int *pad_size);
   extern int intl_pad_size (INTL_CODESET codeset);
@@ -247,7 +259,8 @@ extern "C"
   extern int intl_strncat (unsigned char *dest, const unsigned char *src,
 			   int len);
 #endif
-  extern int intl_put_char (unsigned char *dest, const unsigned char *char_p);
+  extern int intl_put_char (unsigned char *dest, const unsigned char *char_p,
+			    const INTL_CODESET codeset);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_mbs_lower (const char *mbs1, char *mbs2);
   extern int intl_mbs_nlower (char *dest, const char *src, const int max_len);

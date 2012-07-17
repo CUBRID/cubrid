@@ -4325,8 +4325,8 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
 	  return 0;
 	}
 
-      if (DB_GET_STRING_CODESET (val) == INTL_CODESET_ISO88591
-	  && TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_UTF8)
+      if (!INTL_CAN_STEAL_CS (DB_GET_STRING_CODESET (val),
+			      TP_DOMAIN_CODESET (desired_domain)))
 	{
 	  return 0;
 	}

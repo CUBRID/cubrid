@@ -364,7 +364,7 @@ static LANG_COLLATION coll_iso88591_ko_cs = {
    LANG_COLL_NO_CONTR,
    "1e453eefb8103415d4a3edfc623c251f"},
   lang_fastcmp_ko,
-  lang_next_alpha_char_ko,
+  lang_next_alpha_char_iso88591,
   lang_split_point_iso,
   NULL
 };
@@ -1138,11 +1138,6 @@ const ALPHABET_DATA *
 lang_user_alphabet_w_coll (const int collation_id)
 {
   LANG_COLLATION *lang_coll;
-
-  if (LANG_IS_COERCIBLE_COLL (collation_id))
-    {
-      return &(lang_locale ()->alphabet);
-    }
 
   lang_coll = lang_get_collation (collation_id);
 
@@ -3134,6 +3129,8 @@ lang_strcmp_check_trail_spaces (const unsigned char *str1, const int size1,
  *
  *  Note :  It is assumed that the input buffer (cur_char) contains at least
  *	    one UTF-8 character.
+ *	    The calling function should take into account cases when 'next'
+ *	    character is encoded on greater byte size.
  */
 static int
 lang_next_coll_char_utf8 (const LANG_COLLATION * lang_coll,
@@ -3704,7 +3701,7 @@ lang_next_alpha_char_iso88591 (const LANG_COLLATION * lang_coll,
   assert (len_next != NULL);
   assert (size > 0);
 
-  *next_seq = *seq + 1;
+  *next_seq = (*seq == 0xff) ? 0xff : (*seq + 1);
   *len_next = 1;
   return 1;
 }
@@ -3743,7 +3740,8 @@ lang_next_coll_byte (const LANG_COLLATION * lang_coll,
     }
   else
     {
-      cp_next_alpha_char = cp_alpha_char + 1;
+      cp_next_alpha_char =
+	(cp_alpha_char == 0xff) ? 0xff : (cp_alpha_char + 1);
     }
 
   assert (cp_next_alpha_char <= 0xff);
@@ -4152,7 +4150,6 @@ lang_initloc_ko_iso (LANG_LOCALE_DATA * ld)
 {
   assert (ld != NULL);
 
-  /* TODO: update this if EUC-KR is fully supported as standalone charset */
   coll_iso88591_ko_cs.default_lang = ld;
 
   ld->is_initialized = true;
@@ -4167,8 +4164,6 @@ static void
 lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld)
 {
   assert (ld != NULL);
-
-  /* TODO: update this if EUC-KR is fully supported as standalone charset */
 
   coll_utf8_ko_cs.default_lang = ld;
 
@@ -4186,7 +4181,6 @@ lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
 {
   assert (ld != NULL);
 
-  /* TODO: update this if EUC-KR is fully supported as standalone charset */
   coll_euckr_bin.default_lang = ld;
 
   ld->is_initialized = true;
@@ -4295,15 +4289,29 @@ lang_next_alpha_char_ko (const LANG_COLLATION * lang_coll,
 			 const unsigned char *seq, const int size,
 			 unsigned char *next_seq, int *len_next)
 {
-  /* TODO: update this if EUC-KR is fully supported as standalone charset */
+  int char_size;
   assert (seq != NULL);
   assert (next_seq != NULL);
   assert (len_next != NULL);
   assert (size > 0);
 
-  *next_seq = *seq + 1;
+  (void) intl_char_size ((unsigned char *) seq, 1, INTL_CODESET_KSC5601_EUC,
+			 &char_size);
+  memcpy (next_seq, seq, char_size);
+
+  assert (char_size <= 3);
+  /* increment last byte of current character without carry and without
+   * mixing ASCII range with korean range;
+   * this works for EUC-KR characters encoding which don't have terminal 
+   * byte = FF */
+  if ((char_size == 1 && *next_seq < 0x7f)
+      || (char_size > 1 && next_seq[char_size - 1] < 0xff))
+    {
+      next_seq[char_size - 1]++;
+    }
+
   *len_next = 1;
-  return 1;
+  return char_size;
 }
 
 
@@ -4387,11 +4395,11 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
   LANG_NAME_KOREAN,
   INTL_LANG_KOREAN,
   INTL_CODESET_KSC5601_EUC,
-  /* alphabet : same as Korean ISO */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  /* identifiers alphabet : same as Korean ISO */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  &coll_iso88591_ko_cs,		/* collation : same as Korean ISO */
+  /* alphabet */
+  {ALPHABET_TAILORED, INTL_CODESET_KSC5601_EUC, 0, 0, NULL, 0, NULL, false},
+  /* identifiers alphabet */
+  {ALPHABET_TAILORED, INTL_CODESET_KSC5601_EUC, 0, 0, NULL, 0, NULL, false},
+  &coll_euckr_bin,		/* collation */
   NULL,				/* console text conversion */
   false,
   NULL,				/* time, date, date-time, timestamp format */

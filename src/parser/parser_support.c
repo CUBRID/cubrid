@@ -9768,6 +9768,10 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
 	{
 	  *charset = INTL_CODESET_UTF8;
 	}
+      else if (strcasecmp (cs_name, "euckr") == 0)
+	{
+	  *charset = INTL_CODESET_KSC5601_EUC;
+	}
       else if (strcasecmp (cs_name, "iso88591") == 0)
 	{
 	  *charset = INTL_CODESET_ISO88591;
