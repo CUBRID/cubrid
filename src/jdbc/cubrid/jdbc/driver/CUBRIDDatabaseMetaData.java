@@ -823,7 +823,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1009,7 +1009,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1220,7 +1220,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1280,7 +1280,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1482,7 +1482,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1565,7 +1565,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1855,7 +1855,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -2160,7 +2160,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
 			default:
 				throw con.createCUBRIDException(error);
 			}
