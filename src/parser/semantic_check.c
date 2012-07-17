@@ -4165,6 +4165,12 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  sup_nam = sup->info.name.original;
 	  super = pt_find_class (parser, sup);
+	  if (super == NULL)
+	    {
+	      PT_ERRORmf (parser, alter, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, sup_nam);
+	      break;
+	    }
 	  if (do_is_partitioned_classobj (&ss_partition, super, NULL, NULL)
 	      != NO_ERROR)
 	    {
@@ -4191,74 +4197,63 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 #endif /* ENABLE_UNUSED_FUNCTION */
 	    }
-
-	  if (!super
-	      || do_is_partitioned_subclass (&ss_partition, sup_nam, NULL))
+	  sup->info.name.db_object = super;
+	  pt_check_user_owns_class (parser, sup);
+	  if (code == PT_DROP_SUPCLASS)
 	    {
-	      PT_ERRORmf (parser, sup,
-			  MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_NOT_DEFINED_IN_DB, sup_nam);
-	    }
-	  else
-	    {
-	      sup->info.name.db_object = super;
-	      pt_check_user_owns_class (parser, sup);
-	      if (code == PT_DROP_SUPCLASS)
+	      if (!db_is_superclass (super, db))
 		{
-		  if (!db_is_superclass (super, db))
-		    {
-		      PT_ERRORmf2 (parser, sup,
-				   MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_NOT_SUPERCLASS_OF,
-				   sup_nam, cls_nam);
-		    }
+		  PT_ERRORmf2 (parser, sup,
+			       MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_NOT_SUPERCLASS_OF,
+			       sup_nam, cls_nam);
 		}
-	      else		/* PT_ADD_SUPCLASS */
+	    }
+	  else			/* PT_ADD_SUPCLASS */
+	    {
+	      switch (type)
 		{
-		  switch (type)
+		case PT_CLASS:
+		  if (!db_is_class (super))
 		    {
-		    case PT_CLASS:
-		      if (!db_is_class (super))
-			{
-			  PT_ERRORmf2 (parser, sup,
-				       MSGCAT_SET_PARSER_SEMANTIC,
-				       MSGCAT_SEMANTIC_NONCLASS_PARENT,
-				       cls_nam, sup_nam);
-			}
-		      break;
-		    case PT_VCLASS:
-		      if (!db_is_vclass (super))
-			{
-			  PT_ERRORmf2 (parser, sup,
-				       MSGCAT_SET_PARSER_SEMANTIC,
-				       MSGCAT_SEMANTIC_NONVCLASS_PARENT,
-				       cls_nam, sup_nam);
-			}
-		      break;
-		    default:
-		      break;
+		      PT_ERRORmf2 (parser, sup,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_NONCLASS_PARENT,
+				   cls_nam, sup_nam);
 		    }
+		  break;
+		case PT_VCLASS:
+		  if (!db_is_vclass (super))
+		    {
+		      PT_ERRORmf2 (parser, sup,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_NONVCLASS_PARENT,
+				   cls_nam, sup_nam);
+		    }
+		  break;
+		default:
+		  break;
+		}
 
-		  if (db_is_superclass (super, db))
-		    {
-		      PT_ERRORmf2 (parser, sup,
-				   MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_ALREADY_SUPERCLASS,
-				   sup_nam, cls_nam);
-		    }
-		  if (db == super)
-		    {
-		      PT_ERRORmf (parser, sup,
-				  MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_SUPERCLASS_CYCLE, sup_nam);
-		    }
-		  if (db_is_subclass (super, db))
-		    {
-		      PT_ERRORmf2 (parser, sup,
-				   MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_ALREADY_SUBCLASS,
-				   sup_nam, cls_nam);
-		    }
+	      if (db_is_superclass (super, db))
+		{
+		  PT_ERRORmf2 (parser, sup,
+			       MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_ALREADY_SUPERCLASS,
+			       sup_nam, cls_nam);
+		}
+	      if (db == super)
+		{
+		  PT_ERRORmf (parser, sup,
+			      MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_SUPERCLASS_CYCLE, sup_nam);
+		}
+	      if (db_is_subclass (super, db))
+		{
+		  PT_ERRORmf2 (parser, sup,
+			       MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_ALREADY_SUBCLASS,
+			       sup_nam, cls_nam);
 		}
 	    }
 	}
@@ -7371,8 +7366,9 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  if (partition_status == PARTITION_CLASS)
 	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION);
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME,
+			  MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION,
+			  parent->info.name.original);
 	      break;
 	    }
 	  pt_check_user_owns_class (parser, parent);
