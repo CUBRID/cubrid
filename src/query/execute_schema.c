@@ -13435,7 +13435,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		  save_constr = true;
 		}
 	      /* non-unique index */
-	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX)
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX ||
+		       sm_cls_constr->type == SM_CONSTRAINT_REVERSE_INDEX)
 		{
 		  assert (nb_att_in_constr >= 1);
 		  attr_chg_properties->p[P_CONSTR_NON_UNI] |=
@@ -15581,7 +15582,8 @@ do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list)
 	      goto error_exit;
 	    }
 	}
-      else if (constr->constraint_type == DB_CONSTRAINT_INDEX)
+      else if (constr->constraint_type == DB_CONSTRAINT_INDEX
+	       || constr->constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
 	{
 	  error = sm_drop_index (class_mop, constr->name);
 	  if (error != NO_ERROR)
@@ -15628,7 +15630,8 @@ do_recreate_att_constraints (MOP class_mop,
 	      goto error_exit;
 	    }
 	}
-      else if (constr->constraint_type == DB_CONSTRAINT_INDEX)
+      else if (constr->constraint_type == DB_CONSTRAINT_INDEX
+	       || constr->constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
 	{
 	  error =
 	    sm_add_index (class_mop, constr->constraint_type, constr->name,
