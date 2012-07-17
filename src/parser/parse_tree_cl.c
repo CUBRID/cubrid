@@ -8240,6 +8240,13 @@ pt_print_dot (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r2);
     }
 
+  if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
+    {
+      b = pt_append_nulstring (parser, b, " as [");
+      b = pt_append_nulstring (parser, b, p->alias_print);
+      b = pt_append_nulstring (parser, b, "]");
+    }
+
   return b;
 }
 
