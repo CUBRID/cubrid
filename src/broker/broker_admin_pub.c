@@ -252,8 +252,10 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   for (i = 0; i < br_num; i++)
     {
 #if !defined(WINDOWS)
-      /*prevent the broker from hanging due to an excessively long path */
-      if (strlen (path) + strlen (br_info[i].name) +
+      /*prevent the broker from hanging due to an excessively long path
+       * socket path length = sock_path[broker_name].[as_index]
+       */
+      if (strlen (path) + strlen (br_info[i].name) + 1 +
 	  NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
@@ -2575,7 +2577,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 #endif /* !WINDOWS */
 
   get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-  snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname,
+  snprintf (port_name, sizeof (port_name) - 1, "%s%s.%d", dirname,
 	    br_info->name, as_index + 1);
 #if !defined(WINDOWS)
   unlink (port_name);

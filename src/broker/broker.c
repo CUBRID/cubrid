@@ -1720,9 +1720,9 @@ retry:
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
-  sprintf (sock_addr.sun_path, "%s/%s.%d",
-	   get_cubrid_file (FID_SOCK_DIR, buf, PATH_MAX), br_name,
-	   as_index + 1);
+  snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path), "%s%s.%d",
+	    get_cubrid_file (FID_SOCK_DIR, buf, PATH_MAX), br_name,
+	    as_index + 1);
   sock_addr_len =
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif

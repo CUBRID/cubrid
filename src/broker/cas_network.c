@@ -129,8 +129,7 @@ net_init_env (void)
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
-  snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path) - 1, "%s",
-	    port_name);
+  snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path), "%s", port_name);
   sock_addr_len =
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif /* WINDOWS */
