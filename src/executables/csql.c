@@ -80,6 +80,7 @@ enum
 /* size of input buffer */
 #define LINE_BUFFER_SIZE         (4000)
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(GNU_Readline)
 #if !defined(WINDOWS)
 /* current max keyword is 16 + nul char + 3 for expansion */
@@ -88,6 +89,7 @@ static int csql_Keyword_num;
 static KEYWORD_RECORD *csql_Keyword_list;
 #endif /* !WINDOWS */
 #endif /* !GNU_Readline */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int (*csql_text_utf8_to_console) (const char *, const int, char **,
 				  int *) = NULL;
@@ -163,12 +165,15 @@ static bool csql_Is_time_on = false;
 
 static jmp_buf csql_Jmp_buf;
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(GNU_Readline) && !defined(WINDOWS)
 static char *csql_keyword_generator (const char *text, int state);
 static char **csql_cmd_completion_handler (const char *text, int start,
 					   int end);
 static void init_readline ();
 #endif /* ! GNU_Readline && ! WINDOWS */
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 static void csql_pipe_handler (int sig_no);
 static void display_buffer (void);
 static void csql_execute_rcfile (CSQL_ARGUMENT * csql_arg);
@@ -192,6 +197,7 @@ static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
 static bool check_incomplete_string (char *line_read);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(GNU_Readline)
 #if !defined(WINDOWS)
 /*
@@ -275,6 +281,7 @@ init_readline ()
 }
 #endif /* !WINDOWS */
 #endif /* !GNU_Readline */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * csql_display_msg() - displays the given msg to output device
@@ -508,10 +515,14 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
     {
+#if defined (ENABLE_UNUSED_FUNCTION)
       init_readline ();
+#endif /* ENABLE_UNUSED_FUNCTION */
       stifle_history (prm_get_integer_value (PRM_ID_CSQL_HISTORY_NUM));
       using_history ();
+#if defined (ENABLE_UNUSED_FUNCTION)
       csql_Keyword_list = pt_get_keyword_rec (&csql_Keyword_num);
+#endif /* ENABLE_UNUSED_FUNCTION */
     }
 #endif /* !WINDOWS */
 #endif /* !GNU_Readline */
