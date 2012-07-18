@@ -1037,7 +1037,6 @@ add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
     {
       parser = QO_ENV_PARSER (env);
 
-      pt_set_numbering_node_etc (parser, pred, &xasl->instnum_val, NULL);
       flag = 0;
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
       if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)

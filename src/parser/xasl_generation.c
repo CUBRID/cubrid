@@ -861,8 +861,6 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     }
   pt_to_pred_terms (parser, if_part, 0, &connect_by->after_connect_by_pred);
 
-  pt_set_numbering_node_etc (parser, instnum_part, &select_xasl->instnum_val,
-			     NULL);
   flag = 0;
   select_xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part,
 							&flag);
@@ -6531,12 +6529,19 @@ pt_set_numbering_node_etc_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->etc = *info->ordbynum_valp;
 	}
     }
+  else if (node->node_type != PT_FUNCTION)
+    {
+      /* don't continue if it's not an expression or function */
+      *continue_walk = PT_STOP_WALK;
+    }
 
   return node;
 }
 
 /*
- * pt_set_numbering_node_etc () -
+ * pt_set_numbering_node_etc () - set etc values of parse tree nodes INST_NUM
+ *                                and ORDERBY_NUM to pointers of corresponding
+ *                                reguvars from XASL node
  *   return:
  *   parser(in):
  *   node_list(in):
@@ -6570,7 +6575,7 @@ pt_set_numbering_node_etc (PARSER_CONTEXT * parser, PT_NODE * node_list,
 
 	      (void) parser_walk_tree (parser, node,
 				       pt_set_numbering_node_etc_pre, &info,
-				       NULL, NULL);
+				       pt_continue_walk, NULL);
 
 	      node->next = save_next;
 	    }
@@ -13553,11 +13558,6 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
       /* and pick up any uncorrelated terms */
       pt_to_pred_terms (parser, if_part, 0, &xasl->if_pred);
 
-      /* set 'etc' field of PT_NODEs which belong to inst_num() expression
-         in order to use at pt_make_regu_numbering() */
-      pt_set_numbering_node_etc (parser, instnum_part,
-				 &xasl->instnum_val, NULL);
-
       flag = 0;
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser,
 						     instnum_part, &flag);
@@ -13729,10 +13729,6 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
       pt_to_pred_terms (parser, if_part, table2->info.spec.id,
 			&xasl->if_pred);
 
-      /* set 'etc' field of PT_NODEs which belong to inst_num() expression
-         in order to use at pt_make_regu_numbering() */
-      pt_set_numbering_node_etc (parser, instnum_part,
-				 &xasl->instnum_val, NULL);
       flag = 0;
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser,
 						     instnum_part, &flag);
@@ -13809,6 +13805,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   buildlist = &xasl->proc.buildlist;
   xasl->next = NULL;
+
+  /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
+  pt_set_numbering_node_etc (parser, select_node->info.query.q.select.list,
+			     &xasl->instnum_val, &xasl->ordbynum_val);
+  pt_set_numbering_node_etc (parser, select_node->info.query.q.select.where,
+			     &xasl->instnum_val, &xasl->ordbynum_val);
+  pt_set_numbering_node_etc (parser, select_node->info.query.orderby_for,
+			     &xasl->instnum_val, &xasl->ordbynum_val);
 
   /* assume parse tree correct, and PT_DISTINCT only other possibility */
   if (select_node->info.query.all_distinct == PT_ALL)
@@ -13930,13 +13934,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       pt_set_qprior_node_etc (parser, select_node->info.query.q.select.list,
 			      xasl);
 
-      /* set 'etc' field of PT_NODEs which belong to inst_num() and
-         orderby_num() expression in order to use at
-         pt_make_regu_numbering() */
-      pt_set_numbering_node_etc (parser,
-				 select_node->info.query.q.select.list,
-				 &xasl->instnum_val, &xasl->ordbynum_val);
-
       aggregate = pt_to_aggregate (parser, select_node,
 				   xasl->outptr_list,
 				   buildlist->g_val_list,
@@ -14009,13 +14006,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 					   list, xasl);
       pt_set_qprior_node_etc (parser, select_node->info.query.q.select.list,
 			      xasl);
-
-      /* set 'etc' field of PT_NODEs which belong to inst_num() and
-         orderby_num() expression in order to use at
-         pt_make_regu_numbering() */
-      pt_set_numbering_node_etc (parser,
-				 select_node->info.query.q.select.list,
-				 &xasl->instnum_val, &xasl->ordbynum_val);
 
       if (!pt_has_analytic (parser, select_node))
 	{
@@ -14202,12 +14192,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  pt_set_qprior_node_etc (parser, select_node->info.query.orderby_for,
 				  xasl);
 
-	  /* set 'etc' field of PT_NODEs which belong to inst_num() and
-	     orderby_num() expression in order to use at
-	     pt_make_regu_numbering() */
-	  pt_set_numbering_node_etc (parser,
-				     select_node->info.query.orderby_for,
-				     NULL, &xasl->ordbynum_val);
 	  ordbynum_flag = 0;
 	  xasl->ordbynum_pred =
 	    pt_to_pred_expr_with_arg (parser,
@@ -14417,6 +14401,14 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   buildvalue = &xasl->proc.buildvalue;
   xasl->next = NULL;
 
+  /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
+  pt_set_numbering_node_etc (parser, select_node->info.query.q.select.list,
+			     &xasl->instnum_val, &xasl->ordbynum_val);
+  pt_set_numbering_node_etc (parser, select_node->info.query.q.select.where,
+			     &xasl->instnum_val, &xasl->ordbynum_val);
+  pt_set_numbering_node_etc (parser, select_node->info.query.orderby_for,
+			     &xasl->instnum_val, &xasl->ordbynum_val);
+
   /* assume parse tree correct, and PT_DISTINCT only other possibility */
   xasl->option = ((select_node->info.query.all_distinct == PT_ALL)
 		  ? Q_ALL : Q_DISTINCT);
@@ -14447,13 +14439,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				       select.having, xasl);
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having,
 			  xasl);
-
-  /* set 'etc' field of PT_NODEs which belong to inst_num() and
-     orderby_num() expression in order to use at
-     pt_make_regu_numbering() */
-  pt_set_numbering_node_etc (parser,
-			     select_node->info.query.q.select.list,
-			     &xasl->instnum_val, &xasl->ordbynum_val);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL,
 			       NULL, NULL, &buildvalue->grbynum_val);

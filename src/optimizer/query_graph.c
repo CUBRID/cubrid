@@ -6228,7 +6228,8 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp,
 	  bitset_add (termsp, t);
 	}
 
-      if (bitset_subset (segsp, &(QO_TERM_SEGS (qo_termp))))
+      if (bitset_subset (segsp, &(QO_TERM_SEGS (qo_termp)))
+	  && !bitset_is_empty (&(QO_TERM_SEGS (qo_termp))))
 	{
 	  bitset_add (just_segments_termsp, t);
 	}
@@ -7528,7 +7529,8 @@ qo_discover_partitions (QO_ENV * env)
 	  QO_TERM *edge = QO_ENV_TERM (env, e);
 
 	  if (bitset_subset
-	      (&(QO_PARTITION_NODES (part)), &(QO_TERM_NODES (edge))))
+	      (&(QO_PARTITION_NODES (part)), &(QO_TERM_NODES (edge)))
+	      && !bitset_is_empty (&(QO_TERM_NODES (edge))))
 	    {
 	      bitset_add (&(QO_PARTITION_EDGES (part)), e);
 	    }
