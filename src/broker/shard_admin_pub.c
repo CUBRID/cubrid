@@ -590,6 +590,7 @@ shard_as_activate (int as_shm_id,
   as_info_p->clt_ip_addr[0] = '\0';
 #endif
   as_info_p->cur_sql_log_mode = shm_as_p->sql_log_mode;
+  as_info_p->cur_slow_log_mode = shm_as_p->slow_log_mode;
 
 #if defined(WINDOWS)
   as_info_p->pdh_pid = 0;

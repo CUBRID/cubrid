@@ -150,6 +150,7 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
   shm_as_p->appl_server_hard_limit = br_info_p->appl_server_hard_limit;
   shm_as_p->session_timeout = br_info_p->session_timeout;
   shm_as_p->sql_log2 = br_info_p->sql_log2;
+  shm_as_p->slow_log_mode = br_info_p->slow_log_mode;
 #if defined(WINDOWS)
   shm_as_p->as_port = br_info_p->appl_server_port;
 #endif /* WINDOWS */
