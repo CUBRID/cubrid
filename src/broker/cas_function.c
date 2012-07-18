@@ -817,7 +817,7 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
       int lock_timeout;
 
       ux_get_tran_setting (&lock_timeout, NULL);
-      cas_log_write (0, true, "get_db_parameter lock_timeout %d",
+      cas_log_write (0, true, "get_db_parameter lock_timeout %d ms",
 		     lock_timeout);
 
       net_buf_cp_int (net_buf, 0, NULL);
@@ -900,7 +900,7 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv,
 
       ux_set_lock_timeout (lock_timeout);
 
-      cas_log_write (0, true, "set_db_parameter lock_timeout %d",
+      cas_log_write (0, true, "set_db_parameter lock_timeout %d ms",
 		     lock_timeout);
 
       net_buf_cp_int (net_buf, 0, NULL);
@@ -2514,7 +2514,7 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 	  else
 	    {
 	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			     "set query timeout to %d milliseconds (from %s)",
+			     "set query timeout to %d ms (from %s)",
 			     (query_timeout + broker_timeout_in_millis),
 			     (query_timeout > 0 ? "app" : "broker"));
 	    }
@@ -2523,14 +2523,14 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 	{
 	  tran_set_query_timeout (broker_timeout_in_millis);
 	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			 "set query timeout to %d milliseconds (from broker)",
+			 "set query timeout to %d ms (from broker)",
 			 broker_timeout_in_millis);
 	}
       else
 	{
 	  tran_set_query_timeout (query_timeout);
 	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			 "set query timeout to %d milliseconds (from app)",
+			 "set query timeout to %d ms (from app)",
 			 query_timeout);
 	}
     }
