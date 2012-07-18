@@ -5190,20 +5190,35 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			}
 		      else
 			{
+			  const char *value_text = NULL;
 			  for (val = parts->info.parts.values;
 			       val && val->node_type == PT_VALUE;
 			       val = val->next)
 			    {
-			      if (val->type_enum == PT_TYPE_NULL)	/* LIST-NULL */
-				continue;
+			      if (val->type_enum == PT_TYPE_NULL)
+				{
+				  /* LIST-NULL */
+				  continue;
+				}
+			      /* preserve original text of the value for
+			       * replication reasons. The coercion below will
+			       * either be successful or fail but it should
+			       * not alter the way in which the original
+			       * statement is printed
+			       */
+			      value_text = val->info.value.text;
+			      val->info.value.text = NULL;
 			      if (pt_coerce_value (parser, val, val,
 						   expr_type->type_enum,
 						   expr_type->data_type) !=
 				  NO_ERROR)
 				{
+				  /* restore value text */
+				  val->info.value.text = value_text;
 				  chkflag = true;
 				  break;
 				}
+			      val->info.value.text = value_text;
 			    }
 
 			  if (chkflag)
