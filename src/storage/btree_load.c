@@ -1809,8 +1809,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 				 load_args->btid->key_type, 0, 1, NULL);
 	  if (c == DB_UNK)
 	    {
-	      /* impossible case */
-	      assert (false);
 	      goto error;
 	    }
 

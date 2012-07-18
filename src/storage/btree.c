@@ -2279,8 +2279,12 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       c = btree_compare_key (key, &temp_key, btid->key_type,
 			     1, 1, &start_col);
-
       btree_clear_key_value (&clear_key, &temp_key);
+
+      if (c == DB_UNK)
+	{
+	  return ER_FAILED;
+	}
 
       if (c == 0)
 	{
@@ -2413,8 +2417,13 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       c = btree_compare_key (key, &temp_key, btid->key_type,
 			     1, 1, &start_col);
-
       btree_clear_key_value (&clear_key, &temp_key);
+
+      if (c == DB_UNK)
+	{
+	  *slot_id = NULL_SLOTID;
+	  return false;
+	}
 
       if (c == 0)
 	{
@@ -3873,7 +3882,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
       /* compare the keys for the order */
       c = btree_compare_key (&key1, &key2, btid->key_type, 1, 1, NULL);
 
-      if (c >= 0)
+      if (c >= 0 || c == DB_UNK)
 	{
 	  er_log_debug (ARG_FILE_LINE, "btree_check_page_key:"
 			"--- key order test failed for page"
@@ -4021,8 +4030,10 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	    {
 	      if (i <= key_cnt)
 		{
-		  if (btree_compare_key (&INFO2.max_key, &curr_key,
-					 btid->key_type, 1, 1, NULL) > 0)
+		  int c = btree_compare_key (&INFO2.max_key, &curr_key,
+					     btid->key_type, 1, 1, NULL);
+
+		  if (c > 0 || c == DB_UNK)
 		    {
 		      er_log_debug (ARG_FILE_LINE, "btree_verify_subtree: "
 				    "key order test among nodes failed...\n");
@@ -7626,6 +7637,13 @@ start_point:
 
 	  c = btree_compare_key (key, &mid_key, btid_int.key_type,
 				 1, 1, NULL);
+
+	  if (c == DB_UNK)
+	    {
+	      /* error should have been set */
+	      goto error;
+	    }
+
 	  if (c <= 0)
 	    {
 	      /* choose left child */
@@ -10253,7 +10271,12 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* find the child page to be followed */
 
   c = btree_compare_key (key, mid_key, btid->key_type, 1, 1, NULL);
-  if (c <= 0)
+
+  if (c == DB_UNK)
+    {
+      goto exit_on_error;
+    }
+  else if (c <= 0)
     {
       page_vpid = *Q_vpid;
     }
@@ -10635,7 +10658,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* find the child page to be followed */
 
   c = btree_compare_key (key, mid_key, btid->key_type, 1, 1, NULL);
-  if (c <= 0)
+
+  if (c == DB_UNK)
+    {
+      goto exit_on_error;
+    }
+  else if (c <= 0)
     {
       page_vpid = *Q_page_vpid;
     }
@@ -14279,6 +14307,12 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     {
       c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key,
 			     bts->btid_int.key_type, 1, 1, NULL);
+      if (c == DB_UNK)
+	{
+	  /* error should have been set */
+	  goto exit_on_error;
+	}
+
       /* when using descending index the comparison should be changed again */
       if (bts->use_desc_index)
 	{
@@ -17650,7 +17684,11 @@ start_locking:
 	      btid_int = &bts->btid_int;
 	      c = btree_compare_key (range->upper_key, &prev_key,
 				     btid_int->key_type, 1, 1, NULL);
-	      assert_release (c != DB_UNK);
+	      if (c == DB_UNK)
+		{
+		  /* error should have been set */
+		  goto error;
+		}
 
 	      /* EQUALITY test only - doesn't care the reverse index */
 	      if (c != 0)
@@ -20322,6 +20360,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
   DB_TYPE dom_type;
   int dummy_size1, dummy_size2, dummy_diff_column;
   bool dom_is_desc = false, dummy_next_dom_is_desc;
+  bool comparable = true;
 
   assert (key1 != NULL && key2 != NULL && key_domain != NULL);
 
@@ -20393,7 +20432,14 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 	}
       else
 	{
-	  c = tp_value_compare (key1, key2, do_coercion, total_order);
+	  c =
+	    tp_value_compare_with_error (key1, key2, do_coercion, total_order,
+					 &comparable);
+
+	  if (!comparable)
+	    {
+	      return DB_UNK;
+	    }
 	}
 
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));

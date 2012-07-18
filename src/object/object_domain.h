@@ -478,6 +478,11 @@ extern int tp_value_compare (const DB_VALUE * value1,
 			     const DB_VALUE * value2,
 			     int allow_coercion, int total_order);
 
+extern int tp_value_compare_with_error (const DB_VALUE * value1,
+					const DB_VALUE * value2,
+					int allow_coercion, int total_order,
+					bool * can_compare);
+
 extern int tp_set_compare (const DB_VALUE * value1,
 			   const DB_VALUE * value2,
 			   int allow_coercion, int total_order);

@@ -9780,13 +9780,6 @@ pt_to_single_key (PARSER_CONTEXT * parser,
 	  rhs = rhs->info.expr.arg1;
 	}
 
-      /* make sure the key value(RHS) can actually be compared against the
-         index attribute(LHS) */
-      if (pt_coerce_value (parser, rhs, rhs, lhs->type_enum, lhs->data_type))
-	{
-	  goto error;
-	}
-
       regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
       if (regu_var == NULL)
 	{
@@ -9798,14 +9791,6 @@ pt_to_single_key (PARSER_CONTEXT * parser,
 	  tmp = rhs;
 	  rhs = lhs;
 	  lhs = tmp;
-
-	  /* make sure the key value(RHS) can actually be compared against the
-	     index attribute(LHS) */
-	  if (pt_coerce_value
-	      (parser, rhs, rhs, lhs->type_enum, lhs->data_type))
-	    {
-	      goto error;
-	    }
 
 	  /* try on RHS */
 	  regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
@@ -9909,14 +9894,6 @@ pt_to_range_key (PARSER_CONTEXT * parser,
 	{
 	  /* PT_EQ, PT_LT, PT_LE, PT_GT, or PT_GE */
 
-	  /* make sure the key value(RHS) can actually be compared against the
-	     index attribute(LHS) */
-	  if (pt_coerce_value (parser, rhs, rhs,
-			       lhs->type_enum, lhs->data_type))
-	    {
-	      goto error;
-	    }
-
 	  regu_var1 = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
 	  if (regu_var1 == NULL)
 	    {
@@ -9928,14 +9905,6 @@ pt_to_range_key (PARSER_CONTEXT * parser,
 	      tmp = rhs;
 	      rhs = lhs;
 	      lhs = tmp;
-
-	      /* make sure the key value(RHS) can actually be compared against the
-	         index attribute(LHS) */
-	      if (pt_coerce_value (parser, rhs, rhs,
-				   lhs->type_enum, lhs->data_type))
-		{
-		  goto error;
-		}
 
 	      /* try on RHS */
 	      regu_var1 = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
@@ -9984,16 +9953,6 @@ pt_to_range_key (PARSER_CONTEXT * parser,
 	     expression */
 	  llim = rhs->info.expr.arg1;
 	  ulim = rhs->info.expr.arg2;
-
-	  /* make sure the key values(both limits) can actually be compared
-	     against the index attribute(LHS) */
-	  if (pt_coerce_value (parser, llim, llim,
-			       lhs->type_enum, lhs->data_type)
-	      || pt_coerce_value (parser, ulim, ulim,
-				  lhs->type_enum, lhs->data_type))
-	    {
-	      goto error;
-	    }
 
 	  regu_var1 = pt_to_regu_variable (parser, llim, UNBOX_AS_VALUE);
 	  regu_var2 = pt_to_regu_variable (parser, ulim, UNBOX_AS_VALUE);
@@ -10234,14 +10193,6 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	{
 	  /* PT_EQ */
 
-	  /* make sure the key value(RHS) can actually be compared against the
-	     index attribute(LHS) */
-	  if (pt_coerce_value (parser, rhs, rhs,
-			       lhs->type_enum, lhs->data_type))
-	    {
-	      goto error;
-	    }
-
 	  regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
 	  if (regu_var == NULL)
 	    {
@@ -10253,14 +10204,6 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	      tmp = rhs;
 	      rhs = lhs;
 	      lhs = tmp;
-
-	      /* make sure the key value(RHS) can actually be compared against the
-	         index attribute(LHS) */
-	      if (pt_coerce_value (parser, rhs, rhs,
-				   lhs->type_enum, lhs->data_type))
-		{
-		  goto error;
-		}
 
 	      /* try on RHS */
 	      regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
@@ -10298,14 +10241,6 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	      for (j = 0, elem = rhs->info.function.arg_list;
 		   j < n_elem && elem; j++, elem = elem->next)
 		{
-
-		  /* make sure the key value(RHS) can actually be compared
-		     against the index attribute(LHS) */
-		  if (pt_coerce_value (parser, elem, elem,
-				       lhs->type_enum, lhs->data_type))
-		    {
-		      goto error;
-		    }
 
 		  regu_var_list[j] = pt_to_regu_variable (parser, elem,
 							  UNBOX_AS_VALUE);
@@ -10345,15 +10280,6 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 		      goto error;
 		    }
 		  pr_clear_value (&db_value);
-
-		  /* make sure the key value(RHS) can actually be compared
-		     against the index attribute(LHS) */
-		  if (pt_coerce_value (parser, elem, elem,
-				       lhs->type_enum, lhs->data_type))
-		    {
-		      parser_free_tree (parser, elem);
-		      goto error;
-		    }
 
 		  regu_var_list[j] = pt_to_regu_variable (parser, elem,
 							  UNBOX_AS_VALUE);
@@ -10533,14 +10459,6 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 
 	  /* PT_EQ */
 
-	  /* make sure the key value(RHS) can actually be compared against the
-	     index attribute(LHS) */
-	  if (pt_coerce_value (parser, rhs, rhs,
-			       lhs->type_enum, lhs->data_type))
-	    {
-	      goto error;
-	    }
-
 	  regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
 	  if (regu_var == NULL)
 	    {
@@ -10552,14 +10470,6 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 	      tmp = rhs;
 	      rhs = lhs;
 	      lhs = tmp;
-
-	      /* make sure the key value(RHS) can actually be compared against the
-	         index attribute(LHS) */
-	      if (pt_coerce_value (parser, rhs, rhs,
-				   lhs->type_enum, lhs->data_type))
-		{
-		  goto error;
-		}
 
 	      /* try on RHS */
 	      regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
@@ -10629,14 +10539,6 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 
 	      if (llim)
 		{
-		  /* make sure the key value can actually be compared against
-		     the index attributes */
-		  if (pt_coerce_value (parser, llim, llim,
-				       lhs->type_enum, lhs->data_type))
-		    {
-		      goto error;
-		    }
-
 		  regu_var_list1[j] = pt_to_regu_variable (parser, llim,
 							   UNBOX_AS_VALUE);
 		  if (regu_var_list1[j] == NULL ||
@@ -10656,14 +10558,6 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 
 	      if (ulim)
 		{
-		  /* make sure the key value can actually be compared against
-		     the index attributes */
-		  if (pt_coerce_value (parser, ulim, ulim,
-				       lhs->type_enum, lhs->data_type))
-		    {
-		      goto error;
-		    }
-
 		  regu_var_list2[j] = pt_to_regu_variable (parser, ulim,
 							   UNBOX_AS_VALUE);
 		  if (regu_var_list2[j] == NULL ||

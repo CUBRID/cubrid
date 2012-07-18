@@ -5707,8 +5707,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED ||
-		OR_CHECK_SHORT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK
+		|| OR_CHECK_SHORT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -5810,8 +5810,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED ||
-		OR_CHECK_INT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK
+		|| OR_CHECK_INT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -5908,8 +5908,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED ||
-		OR_CHECK_BIGINT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK
+		|| OR_CHECK_BIGINT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -5959,8 +5959,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    if (data_stat == DATA_STATUS_TRUNCATED ||
-		OR_CHECK_FLOAT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK
+		|| OR_CHECK_FLOAT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6009,7 +6009,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED)
+	    if (data_stat != DATA_STATUS_OK)
 	      {
 		err = ER_FAILED;
 		break;
@@ -6097,7 +6097,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED)
+	    if (data_stat == DATA_STATUS_TRUNCATED
+		|| data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		err = ER_FAILED;
 		break;
@@ -8768,12 +8769,29 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 }
 
 /*
- * tp_value_compare - compares two values
+ * tp_value_compare - calls tp_value_compare_with_error, but does not log error
  *    return: zero if equal, <0 if less, >0 if greater
  *    value1(in): first value
  *    value2(in): second value
  *    do_coercion(in): coercion flag
  *    total_order(in): total order flag
+ */
+int
+tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
+		  int allow_coercion, int total_order)
+{
+  return tp_value_compare_with_error (value1, value2, allow_coercion,
+				      total_order, NULL);
+}
+
+/*
+ * tp_value_compare_with_error - compares two values
+ *    return: zero if equal, <0 if less, >0 if greater
+ *    value1(in): first value
+ *    value2(in): second value
+ *    do_coercion(in): coercion flag
+ *    total_order(in): total order flag
+ *    can_compare(out): set if values are comparable
  * Note:
  *    There is some implicit conversion going on here, not sure if this
  *    is a good idea because it gives the impression that these have
@@ -8783,10 +8801,15 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
  *    DB_EQ, it will not return DB_UNK.  For the purposes of the total
  *    ordering, two NULL values are DB_EQ and if only one value is NULL, that
  *    value is less than the non-null value.
+ *
+ *    If "can_compare" is not null, in the event of incomparable values an
+ *    error will be logged and the boolean that is pointed by "can_compare"
+ *    will be set to false.
  */
 int
-tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
-		  int do_coercion, int total_order)
+tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
+			     int do_coercion, int total_order,
+			     bool * can_compare)
 {
   DB_VALUE temp1, temp2;
   int status, coercion;
@@ -8797,6 +8820,11 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 
   status = DB_UNK;
   coercion = 0;
+
+  if (can_compare != NULL)
+    {
+      *can_compare = true;
+    }
 
   if (DB_IS_NULL (value1))
     {
@@ -9007,6 +9035,16 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	  else
 	    {
 	      status = DB_LT;
+	    }
+
+	  /* set incompatibility flag */
+	  if (can_compare != NULL)
+	    {
+	      *can_compare = false;
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_TP_INCOMPATIBLE_DOMAINS, 2, pr_type_name (vtype1),
+		      pr_type_name (vtype2));
 	    }
 	}
       else

@@ -7360,6 +7360,7 @@ pr_midxkey_compare_element (char *mem1, char *mem2,
   int c;
   DB_VALUE val1, val2;
   OR_BUF buf_val1, buf_val2;
+  bool comparable = true;
 
   if (dom1->is_desc != dom2->is_desc)
     {
@@ -7382,7 +7383,13 @@ pr_midxkey_compare_element (char *mem1, char *mem2,
       return DB_UNK;
     }
 
-  c = tp_value_compare (&val1, &val2, do_coercion, total_order);
+  c =
+    tp_value_compare_with_error (&val1, &val2, do_coercion, total_order,
+				 &comparable);
+  if (!comparable)
+    {
+      return DB_UNK;
+    }
 
   return c;
 }

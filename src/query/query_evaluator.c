@@ -184,6 +184,7 @@ static DB_LOGICAL
 eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
 {
   int result;
+  bool comparable = true;
 
   /*
    * we get here for either an ordinal comparison or a set comparison.
@@ -203,12 +204,19 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
       break;
     case R_EQ_TORDER:
       /* do total order comparison */
-      result = tp_value_compare (dbval1, dbval2, 1, 1);
+      result =
+	tp_value_compare_with_error (dbval1, dbval2, 1, 1, &comparable);
       break;
     default:
       /* do ordinal comparison, but NULL's still yield UNKNOWN */
-      result = tp_value_compare (dbval1, dbval2, 1, 0);
+      result =
+	tp_value_compare_with_error (dbval1, dbval2, 1, 0, &comparable);
       break;
+    }
+
+  if (!comparable)
+    {
+      return V_ERROR;
     }
 
   if (result == DB_UNK && rel_operator != R_NULLSAFE_EQ)
@@ -302,6 +310,10 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
       if (t_res == V_TRUE)
 	{
 	  return V_TRUE;
+	}
+      else if (t_res == V_ERROR)
+	{
+	  return V_ERROR;
 	}
       else if (t_res == V_UNKNOWN)
 	{
@@ -425,8 +437,13 @@ eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 	}
 
       res = eval_value_rel_cmp (item, &elem_val, rel_operator);
-
       pr_clear_value (&elem_val);
+
+      if (res == V_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
       if (res == V_TRUE)
 	{
 	  num++;
@@ -626,6 +643,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item,
   SCAN_CODE qp_scan;
   PR_TYPE *pr_type;
   OR_BUF buf;
+  DB_LOGICAL rc;
   int length;
   int card;
   char *ptr;
@@ -667,20 +685,31 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item,
 				  list_id->type_list.domp[0], -1, true, NULL,
 				  0);
 
-      if (eval_value_rel_cmp (item, &list_val, R_LT) == V_TRUE)
+      rc = eval_value_rel_cmp (item, &list_val, R_LT);
+      if (rc == V_ERROR)
+	{
+	  pr_clear_value (&list_val);
+	  return ER_FAILED;
+	}
+      else if (rc == V_TRUE)
 	{
 	  pr_clear_value (&list_val);
 	  continue;
 	}
 
-      if (eval_value_rel_cmp (item, &list_val, R_EQ) == V_TRUE)
+      rc = eval_value_rel_cmp (item, &list_val, R_EQ);
+      pr_clear_value (&list_val);
+
+      if (rc == V_ERROR)
 	{
-	  pr_clear_value (&list_val);
+	  return ER_FAILED;
+	}
+      else if (rc == V_TRUE)
+	{
 	  card++;
 	}
       else
 	{
-	  pr_clear_value (&list_val);
 	  break;
 	}
     }
@@ -710,6 +739,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1,
 {
   int i, k, card, card1, card2;
   DB_LOGICAL res;
+  DB_LOGICAL rc;
   DB_VALUE elem_val, elem_val2;
   int found;
 
@@ -749,7 +779,14 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1,
 	      continue;
 	    }
 
-	  if (eval_value_rel_cmp (&elem_val, &elem_val2, R_EQ) == V_TRUE)
+	  rc = eval_value_rel_cmp (&elem_val, &elem_val2, R_EQ);
+	  if (rc == V_ERROR)
+	    {
+	      pr_clear_value (&elem_val);
+	      pr_clear_value (&elem_val2);
+	      return V_ERROR;
+	    }
+	  else if (rc == V_TRUE)
 	    {
 	      found = true;
 	    }
@@ -816,7 +853,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 				 QFILE_LIST_ID * list_id, DB_SET * set)
 {
   int card1, card2;
-  DB_LOGICAL res;
+  DB_LOGICAL res, rc;
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
@@ -891,7 +928,16 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 				      list_id->type_list.domp[0], -1, true,
 				      NULL, 0);
 
-	  if (eval_value_rel_cmp (&list_val, &list_val2, R_EQ) != V_TRUE)
+	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ);
+	  if (rc == V_ERROR)
+	    {
+	      pr_clear_value (&list_val);
+	      pr_clear_value (&list_val2);
+	      qfile_close_scan (thread_p, &s_id);
+	      db_private_free_and_init (thread_p, p_tplrec.tpl);
+	      return V_ERROR;
+	    }
+	  else if (rc != V_TRUE)
 	    {
 	      card2 = eval_item_card_set (&list_val2, set, R_EQ);
 	      if (card2 == ER_FAILED)
@@ -1010,7 +1056,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 				 QFILE_LIST_ID * list_id2)
 {
   int card1, card2;
-  DB_LOGICAL res;
+  DB_LOGICAL res, rc;
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
@@ -1084,7 +1130,17 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 				      list_id1->type_list.domp[0], -1, true,
 				      NULL, 0);
 
-	  if (eval_value_rel_cmp (&list_val, &list_val2, R_EQ) != V_TRUE)
+	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ);
+
+	  if (rc == V_ERROR)
+	    {
+	      pr_clear_value (&list_val);
+	      pr_clear_value (&list_val2);
+	      qfile_close_scan (thread_p, &s_id);
+	      db_private_free_and_init (thread_p, p_tplrec.tpl);
+	      return V_ERROR;
+	    }
+	  else if (rc != V_TRUE)
 	    {
 	      card2 =
 		eval_item_card_sort_list (thread_p, &list_val2, list_id2);

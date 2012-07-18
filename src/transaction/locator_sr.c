@@ -7531,7 +7531,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	    {
 	      c =
 		btree_compare_key (old_key, new_key, key_domain, 0, 1, NULL);
-	      assert (c != DB_UNK);
+
+	      if (c == DB_UNK)
+		{
+		  error_code = er_errid ();
+		  goto error;
+		}
 
 	      if (c != DB_EQ)
 		{
