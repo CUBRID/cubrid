@@ -735,7 +735,7 @@ $ LOADDB
 667 Cannot match class '%1$s' with corresponding C++ class.
 668 Internal error: Unknown domain type '%1$d'.
 669 Server refused client connection: max clients, (%1$d), exceeded.
-670 Operation would have caused one or more unique constraint violations. INDEX %1$s(B+tree: %2$d|%3$d|%4$d) ON CLASS %5$s(CLASS_OID: %6$d|%7$d|%8$d). key: %9$s(OID: %10$d|%11$d|%12$d).
+670 Operation would have caused one or more unique constraint violations. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 671 A network read/write error occurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
 672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
 673 Your connection to the server has been closed since the server is going down immediately.

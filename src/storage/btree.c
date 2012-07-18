@@ -74,6 +74,8 @@
 #define BTREE_NODE_MAX_SPLIT_SIZE(page_ptr) \
   (db_page_size() - spage_header_size() - spage_get_space_for_record((page_ptr), HEADER))
 
+#define OID_MSG_BUF_SIZE 64
+
 /*
  * Page header information related defines
  */
@@ -20159,6 +20161,9 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
   char *keyval = NULL;
   char *class_name = NULL;
   char *index_name = NULL;
+  char btid_msg_buf[OID_MSG_BUF_SIZE];
+  char class_oid_msg_buf[OID_MSG_BUF_SIZE];
+  char oid_msg_buf[OID_MSG_BUF_SIZE];
 
   if (key)
     {
@@ -20176,18 +20181,31 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 	}
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNIQUE_FAILED, 12,
+  if (index_name && btid)
+    {
+      snprintf (btid_msg_buf, OID_MSG_BUF_SIZE, "(B+tree: %d|%d|%d)",
+		btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+    }
+
+  if (class_name && class_oid)
+    {
+      snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)",
+		class_oid->volid, class_oid->pageid, class_oid->slotid);
+    }
+
+  if (keyval && obj_oid)
+    {
+      snprintf (oid_msg_buf, OID_MSG_BUF_SIZE, "(OID: %d|%d|%d)",
+		obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNIQUE_FAILED, 6,
 	  (index_name) ? index_name : "*UNKNOWN-INDEX*",
-	  (btid) ? btid->vfid.volid : -1,
-	  (btid) ? btid->vfid.fileid : -1,
-	  (btid) ? btid->root_pageid : -1,
+	  (index_name && btid) ? btid_msg_buf : "",
 	  (class_name) ? class_name : "*UNKNOWN-CLASS*",
-	  (class_oid) ? class_oid->volid : -1,
-	  (class_oid) ? class_oid->pageid : -1,
-	  (class_oid) ? class_oid->slotid : -1,
+	  (class_name && class_oid) ? class_oid_msg_buf : "",
 	  (keyval) ? keyval : "*UNKNOWN-KEY*",
-	  (obj_oid) ? obj_oid->volid : -1,
-	  (obj_oid) ? obj_oid->pageid : -1, (obj_oid) ? obj_oid->slotid : -1);
+	  (keyval && obj_oid) ? oid_msg_buf : "");
 
   if (keyval)
     {
