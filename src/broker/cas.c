@@ -411,10 +411,6 @@ main (int argc, char *argv[])
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  cas_log_open (broker_name, shm_as_index);
-  cas_slow_log_open (broker_name, shm_as_index);
-  cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
-
   as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
   as_info->cur_keep_con = KEEP_CON_OFF;
@@ -433,6 +429,13 @@ conn_retry:
   while (as_info->uts_status == UTS_STATUS_RESTART);
 
   net_timeout_set (-1);
+
+  cas_log_open (broker_name, shm_as_index);
+  cas_slow_log_open (broker_name, shm_as_index);
+  cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  cas_error_log_open (broker_name, shm_as_index);
+#endif
 
   /* TODO: SHARD support only 8.4.0 above */
   req_info.client_version = CAS_MAKE_VER (8, 4, 0);
@@ -524,9 +527,6 @@ conn_proxy_retry:
 
   as_info->cur_sql_log2 = shm_appl->sql_log2;
   sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, false);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  cas_error_log_open (broker_name, shm_as_index);
-#endif
   setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 	      sizeof (one));
 
@@ -652,6 +652,7 @@ conn_proxy_retry:
 	cas_log_write2 (sql_log2_get_filename ());
 	cas_log_write_and_end (0, false, "STATE idle");
 	cas_log_close (true);
+	cas_slow_log_close ();
 	sql_log2_end (true);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_close (true);
