@@ -1687,7 +1687,7 @@ db_string_instr (const DB_VALUE * src_string,
 		  search_from += from_byte_offset;
 
 		  intl_char_count ((unsigned char *) search_from,
-				   strlen (search_from), codeset,
+				   src_size - from_byte_offset, codeset,
 				   &src_str_len);
 
 		  /* forward search */
@@ -4855,6 +4855,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	      tarstack[++stackp] = tar_ptr;
 	      if (inescape)
 		{
+		  assert (expr_ptr > expr);
 		  expr_ptr = intl_prev_char (expr_ptr, expr, codeset, &dummy);
 		}
 	      exprstack[stackp] = expr_ptr;
@@ -8967,9 +8968,8 @@ qstr_position (const char *sub_string,
 	      ptr = intl_next_char ((unsigned char *) ptr,
 				    codeset, &char_size);
 	    }
-	  else
+	  else if (ptr > src_string_bound)
 	    {			/* backward search */
-	      assert (ptr > src_string_bound);
 	      ptr = intl_prev_char ((unsigned char *) ptr, src_string_bound,
 				    codeset, &char_size);
 	    }
