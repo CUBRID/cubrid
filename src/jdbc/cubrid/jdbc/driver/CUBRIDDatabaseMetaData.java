@@ -1081,9 +1081,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			} else if (type == UUType.U_TYPE_INT) {
 				value[4] = new Short((short) java.sql.Types.INTEGER);
 				value[5] = "INTEGER";
-			} else if (type == UUType.U_TYPE_DECIMAL) {
-				value[4] = new Short((short) java.sql.Types.DECIMAL);
-				value[5] = "DECIMAL";
+			} else if (type == UUType.U_TYPE_NUMERIC) {
+				value[4] = new Short((short) java.sql.Types.NUMERIC);
+				value[5] = "NUMERIC";
 			} else if (type == UUType.U_TYPE_FLOAT) {
 				value[4] = new Short((short) java.sql.Types.REAL);
 				value[5] = "FLOAT";
