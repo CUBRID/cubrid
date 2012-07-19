@@ -55,8 +55,8 @@ namespace dbgw
     const DBGWQueryMapper *getQueryMapper() const;
 
   private:
-    void validateResult(const DBGWLogger &logger, DBGWResultSharedPtr lhs,
-        DBGWResultSharedPtr rhs);
+    void validateResult(const DBGWLogger &logger, DBGWResultSharedPtr pReturnResult,
+        DBGWResultSharedPtr pInternalResult);
     void checkClientIsValid();
 
   private:

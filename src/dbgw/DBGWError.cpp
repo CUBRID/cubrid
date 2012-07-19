@@ -377,7 +377,7 @@ namespace dbgw
 
   ValidateFailException::ValidateFailException() throw() :
     DBGWException(DBGWErrorCode::RESULT_VALIDATE_FAIL,
-        "The result type is different.")
+        "The result type of lhs is different from that of rhs.")
   {
   }
 
@@ -394,7 +394,7 @@ namespace dbgw
     DBGWException(
         DBGWErrorCode::RESULT_VALIDATE_FAIL,
         (boost::format(
-            "The affected row count is different each other. %d != %d")
+            "The affected row count / select row count of lhs is different from that of rhs. %d != %d")
             % lhs % rhs).str())
   {
   }
@@ -405,7 +405,7 @@ namespace dbgw
     DBGWException(
         DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL,
         (boost::format(
-            "The %s's type is different each other. %s (%s) != %s (%s)")
+            "The %s's type of lhs is different from that of rhs. %s (%s) != %s (%s)")
             % szName % lhs % szLhsType % rhs % szRhsType).str())
   {
   }
@@ -415,7 +415,7 @@ namespace dbgw
     DBGWException(
         DBGWErrorCode::RESULT_VALIDATE_FAIL,
         (boost::format(
-            "The %s's value is different each other. %s != NULL")
+            "The %s's value of lhs is different from that of rhs. %s != NULL")
             % szName % lhs).str())
   {
   }
@@ -424,7 +424,7 @@ namespace dbgw
       const string &lhs, const string &rhs) throw() :
     DBGWException(
         DBGWErrorCode::RESULT_VALIDATE_VALUE_FAIL,
-        (boost::format("The %s's value is different each other. %s != %s")
+        (boost::format("The %s's value of lhs is different from that of rhs. %s != %s")
             % szName % lhs % rhs).str())
   {
   }

@@ -425,77 +425,108 @@ namespace dbgw
   }
 
   void DBGWClient::validateResult(const DBGWLogger &logger,
-      DBGWResultSharedPtr lhs, DBGWResultSharedPtr rhs)
+      DBGWResultSharedPtr pReturnResult, DBGWResultSharedPtr pInternalResult)
   {
-    if (lhs == NULL || rhs == NULL)
+    if (pReturnResult == NULL || pInternalResult == NULL)
       {
         return;
       }
 
-    if (lhs->isNeedFetch() != rhs->isNeedFetch())
+    try
       {
-        ValidateFailException e;
-        DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
-        throw e;
-      }
-
-    if (!lhs->isNeedFetch())
-      {
-        if (lhs->getAffectedRow() != rhs->getAffectedRow())
+        if (pReturnResult->isNeedFetch() != pInternalResult->isNeedFetch())
           {
-            ValidateFailException e(lhs->getAffectedRow(),
-                rhs->getAffectedRow());
+            ValidateFailException e;
             DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
             throw e;
           }
-      }
-    else
-      {
-        const DBGWValue *pLhs;
-        const DBGWValue *pRhs;
-        while (lhs->next() && rhs->next())
+
+        if (!pReturnResult->isNeedFetch())
           {
-            const MetaDataList *pMetaList = lhs->getMetaDataList();
-            MetaDataList::const_iterator cit = pMetaList->begin();
-            for (size_t i = 0; i < lhs->size(); i++, cit++)
+            if (pReturnResult->getAffectedRow()
+                != pInternalResult->getAffectedRow())
               {
-                pLhs = lhs->getValue(i);
-                pRhs = rhs->getValue(i);
+                ValidateFailException e(pReturnResult->getAffectedRow(),
+                    pInternalResult->getAffectedRow());
+                DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
+                throw e;
+              }
+          }
+        else
+          {
+            if (pReturnResult->getRowCount()
+                != pInternalResult->getRowCount())
+              {
+                ValidateFailException e(pReturnResult->getRowCount(),
+                    pInternalResult->getRowCount());
+                DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
+                throw e;
+              }
 
-                if (pRhs == NULL)
+            const DBGWValue *pReturnValue;
+            const DBGWValue *pInternalvalue;
+            while (pReturnResult->next() && pInternalResult->next())
+              {
+                const MetaDataList *pMetaList =
+                    pReturnResult->getMetaDataList();
+                MetaDataList::const_iterator cit = pMetaList->begin();
+                for (size_t i = 0; i < pReturnResult->size(); i++, cit++)
                   {
-                    ValidateValueFailException
-                    e(cit->name.c_str(), pLhs->toString());
-                    DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
-                        c_str());
-                    throw e;
-                  }
+                    pReturnValue = pReturnResult->getValue(i);
+                    pInternalvalue = pInternalResult->getValue(i);
 
-                if (*pLhs != *pRhs)
-                  {
-                    ValidateValueFailException e(cit->name.c_str(),
-                        pLhs->toString(), pRhs->toString());
-                    DBGW_LOG_WARN(logger.getLogMessage(e.what()).
-                        c_str());
-                    throw e;
-                  }
+                    if (pInternalvalue == NULL)
+                      {
+                        ValidateValueFailException e(cit->name.c_str(),
+                            pReturnValue->toString());
+                        DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
+                        throw e;
+                      }
 
-                if (pLhs->getType() != pRhs->getType())
-                  {
-                    ValidateTypeFailException e(cit->name.c_str(),
-                        pLhs->toString(),
-                        getDBGWValueTypeString(pLhs->getType()),
-                        pRhs->toString(),
-                        getDBGWValueTypeString(pRhs->getType()));
-                    DBGW_LOG_ERROR(logger.getLogMessage(e.what()).
-                        c_str());
-                    throw e;
+                    if (*pReturnValue != *pInternalvalue)
+                      {
+                        ValidateValueFailException e(cit->name.c_str(),
+                            pReturnValue->toString(), pInternalvalue->toString());
+                        DBGW_LOG_WARN(logger.getLogMessage(e.what()).c_str());
+                        throw e;
+                      }
+
+                    if (pReturnValue->getType() != pInternalvalue->getType())
+                      {
+                        ValidateTypeFailException e(cit->name.c_str(),
+                            pReturnValue->toString(),
+                            getDBGWValueTypeString(pReturnValue->getType()),
+                            pInternalvalue->toString(),
+                            getDBGWValueTypeString(pInternalvalue->getType()));
+                        DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
+                        throw e;
+                      }
                   }
+              }
+
+            pReturnResult->first();
+          }
+      }
+    catch (DBGWException &e)
+      {
+        /**
+         * if select query is executed,
+         * we have to fetch all data or send end tran rollback.
+         */
+        if (pInternalResult->isNeedFetch())
+          {
+            while (pInternalResult->next())
+              {
               }
           }
 
-        lhs->first();
-        rhs->first();
+        if (pReturnResult->isNeedFetch())
+          {
+            pReturnResult->first();
+          }
+
+        setLastException(e);
+        throw;
       }
   }
 
