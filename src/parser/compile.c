@@ -145,8 +145,6 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
   if (spec->info.spec.derived_table
       && spec->info.spec.flat_entity_list && spec->info.spec.as_attr_list)
     {
-      PT_NODE *oid_attr;
-
       /* this spec should have come from a vclass that was rewritten as a
          derived table; pull ROWOID/CLASSOID from as_attr_list
          NOTE: see mq_rewrite_derived_table_for_update () */
@@ -157,17 +155,8 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 
 	case CLASSOID_NAME:
 	case HIDDEN_CLASSOID_NAME:
-	  node =
-	    parser_copy_tree (parser, spec->info.spec.as_attr_list->next);
-
-	  if (node && how == HIDDEN_CLASSOID_NAME)
-	    {
-	      assert (node->node_type == PT_NAME);
-
-	      /* we are sure this is a PT_NAME */
-	      node->info.name.hidden_column = 1;
-	    }
-	  return node;
+	  node = parser_copy_tree (parser, spec->info.spec.as_attr_list);
+	  break;
 
 	default:
 	  /* should not be here */
@@ -184,38 +173,44 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
        * or the class is not a proxy and there is no view
        * or the view is updatable
        */
-      oid = pt_name (parser, "");
-      if (oid)
+      if (node != NULL)
 	{
-	  oid->info.name.resolved = range->info.name.original;
-	  oid->info.name.meta_class = PT_OID_ATTR;
-	  oid->info.name.spec_id = spec->info.spec.id;
-	  oid->type_enum = PT_TYPE_OBJECT;
-	  oid->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	  oid = node;
 	}
       else
 	{
-	  return NULL;
-	}
-      if (oid->data_type)
-	{
-	  oid->data_type->type_enum = PT_TYPE_OBJECT;
-	  oid->data_type->info.data_type.entity =
-	    parser_copy_tree_list (parser, flat);
-	}
-      else
-	{
-	  return NULL;
-	}
+	  oid = pt_name (parser, "");
+	  if (oid)
+	    {
+	      oid->info.name.resolved = range->info.name.original;
+	      oid->info.name.meta_class = PT_OID_ATTR;
+	      oid->info.name.spec_id = spec->info.spec.id;
+	      oid->type_enum = PT_TYPE_OBJECT;
+	      oid->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	  if (oid->data_type)
+	    {
+	      oid->data_type->type_enum = PT_TYPE_OBJECT;
+	      oid->data_type->info.data_type.entity =
+		parser_copy_tree_list (parser, flat);
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
 
-      if (flat)
-	{
-	  oid->data_type->info.data_type.virt_object =
-	    flat->info.name.virt_object;
-	  oid->data_type->info.data_type.virt_type_enum =
-	    flat->info.name.virt_type_enum;
+	  if (flat)
+	    {
+	      oid->data_type->info.data_type.virt_object =
+		flat->info.name.virt_object;
+	      oid->data_type->info.data_type.virt_type_enum =
+		flat->info.name.virt_type_enum;
+	    }
 	}
-
       if (how == CLASSOID_NAME || how == HIDDEN_CLASSOID_NAME)
 	{
 	  PT_NODE *func, *tmp;

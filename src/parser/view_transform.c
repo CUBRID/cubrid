@@ -1598,9 +1598,9 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
- * mq_rewrite_derived_table_for_update () - adds CLASSOID and ROWOID to select
- *                                          list of query so they can be later
- *                                          pulled when building the SELECT
+ * mq_rewrite_derived_table_for_update () - adds ROWOID to select list of
+ *					    query so it can be later pulled
+ *					    when building the SELECT
  *                                          statement for UPDATEs and DELETEs
  *   returns: rewritten subquery or NULL on error
  *   parser(in): parser context
@@ -1612,7 +1612,7 @@ static PT_NODE *
 mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE *derived_table, *as_attr, *col, *inner_spec;
-  char *spec_name = NULL;
+  const char *spec_name = NULL;
 
   if (spec == NULL)
     {
@@ -1651,58 +1651,9 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
       spec_name = spec->info.spec.range_var->info.name.original;
     }
 
-  /* add classoid and rowoid to select list of derived table and as_attr_list
-   * of spec; these will be pulled later on when building the select statement
+  /* add rowoid to select list of derived table and as_attr_list
+   * of spec; it will be pulled later on when building the select statement
    * for OID retrieval */
-
-  /* add classoid (this is a vclass, server_op is false) */
-  derived_table = pt_add_row_classoid_name (parser, derived_table, false);
-  if (derived_table == NULL)
-    {
-      if (!pt_has_error (parser))
-	{
-	  PT_INTERNAL_ERROR (parser, "failed to add spec classoid");
-	}
-
-      return NULL;
-    }
-
-  col = derived_table->info.query.q.select.list;
-  switch (col->node_type)
-    {
-      /* col must not be hidden within derived table */
-    case PT_FUNCTION:
-      col->info.function.hidden_column = 0;
-      break;
-
-    case PT_NAME:
-      col->info.name.hidden_column = 0;
-      break;
-
-    default:
-      assert (false);
-      break;
-    }
-
-  if (col->data_type && col->data_type->info.data_type.virt_object)
-    {
-      /* no longer comes from a vobj */
-      col->data_type->info.data_type.virt_object = NULL;
-      col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
-    }
-
-  as_attr = pt_name (parser, "classoid_");
-  as_attr->info.name.original =
-    pt_append_string (parser, as_attr->info.name.original, spec_name);
-  as_attr->info.name.spec_id = spec->info.spec.id;
-  as_attr->info.name.meta_class = PT_OID_ATTR;
-  as_attr->type_enum = col->type_enum;
-  as_attr->data_type = parser_copy_tree (parser, col->data_type);
-
-  as_attr->next = spec->info.spec.as_attr_list;
-  spec->info.spec.as_attr_list = as_attr;
-
-  /* add row oid */
   derived_table = pt_add_row_oid_name (parser, derived_table);
   if (derived_table == NULL)
     {
@@ -8910,7 +8861,9 @@ mq_set_virt_object (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       && node->info.name.spec_id == spec->info.spec.id
       && (dt = node->data_type)
       && node->type_enum == PT_TYPE_OBJECT
-      && (cls = dt->info.data_type.entity))
+      && (cls = dt->info.data_type.entity)
+      /* To distinguish between "V" and "class V" (V is a view) */
+      && cls->info.name.meta_class != PT_META_CLASS)
     {
       if (db_is_vclass (cls->info.name.db_object))
 	{
@@ -8969,7 +8922,9 @@ mq_fix_derived (PARSER_CONTEXT * parser, PT_NODE * select_statement,
 	  cls = dt->info.data_type.entity;
 	  while (cls)
 	    {
-	      if (db_is_vclass (cls->info.name.db_object))
+	      /* To distinguish between "V" and "class V" (V is a view) */
+	      if (cls->info.name.meta_class != PT_META_CLASS
+		  && db_is_vclass (cls->info.name.db_object))
 		{
 		  dt->info.data_type.virt_object = cls->info.name.db_object;
 		  had_virtual = 1;
