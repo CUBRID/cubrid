@@ -7355,6 +7355,7 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
   new_att->line_number = arg->line_number;
   new_att->column_number = arg->column_number;
   new_att->alias_print = arg->alias_print;
+  new_att->is_hidden_column = arg->is_hidden_column;
   arg->alias_print = NULL;
 
 
@@ -7453,6 +7454,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
   new_att->line_number = arg->line_number;
   new_att->column_number = arg->column_number;
   new_att->alias_print = arg->alias_print;
+  new_att->is_hidden_column = arg->is_hidden_column;
   arg->alias_print = NULL;
 
   new_att->type_enum = new_type;
@@ -10813,7 +10815,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	  break;
 	}
 
-      /* Basic collation inference, add specific code in 
+      /* Basic collation inference, add specific code in
        * 'pt_check_expr_collation' */
       if (PT_HAS_COLLATION (common_type))
 	{
@@ -19516,7 +19518,7 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 }
 
 /*
- * pt_is_op_w_collation () - check if is required to check collation or 
+ * pt_is_op_w_collation () - check if is required to check collation or
  *			     codeset of this operator
  *
  *   return:
@@ -20806,7 +20808,7 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      /* const op const does not need special handling */
 	      return expr;
 	    }
-	  /* switch arg1 with arg2 so that we have non cost operand on the 
+	  /* switch arg1 with arg2 so that we have non cost operand on the
 	   * left side
 	   */
 	  node = expr->info.expr.arg1;

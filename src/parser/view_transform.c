@@ -1710,7 +1710,7 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
  *    to local db expressions
  *   parser(in): parser context
  *   statement(in): statement into which class will be expanded
- *   query_order_by(in): the order by of query of class 
+ *   query_order_by(in): the order by of query of class
  *   class(in): class name of class that will be expanded
  *
  *   Note:
@@ -7850,10 +7850,11 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	}
 
-      if (!col && !subquery->info.query.q.select.connect_by)
+      if (!col)
 	{
 	  parser_free_tree (parser, subquery->info.query.order_by);
 	  subquery->info.query.order_by = NULL;
+	  subquery->info.query.order_siblings = 0;
 
 	  for (col = pt_get_select_list (parser, subquery);
 	       col && col->next; col = next)
@@ -9590,7 +9591,7 @@ mq_fetch_select_for_real_class_update (PARSER_CONTEXT * parser,
 	   * hierarchy:
 	   *  SELECT * FROM ALL t
 	   * or a partition of one of the classes in the list:
-	   *  SELECT * FROM t 
+	   *  SELECT * FROM t
 	   * if t is a partitioned class.
 	   */
 	  for (flat = select_statements->info.query.q.select.from->
