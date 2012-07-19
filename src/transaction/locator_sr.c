@@ -7265,7 +7265,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   HEAP_CACHE_ATTRINFO *old_attrinfo = NULL;
   int new_num_found, old_num_found;
   BTID new_btid, old_btid;
-  BTID *tmp_btid;
   int pk_btid_index = -1;
   DB_VALUE *new_key = NULL, *old_key = NULL;
   DB_VALUE *repl_old_key = NULL;
@@ -7369,19 +7368,14 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
   for (i = 0; i < num_btids; i++)
     {
-      if (pk_btid_index == -1 && db_Enable_replications > 0
-	  && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p))
-	{
-	  tmp_btid = heap_indexinfo_get_btid (i, new_attrinfo);
-	  if (tmp_btid != NULL
-	      && repl_class_is_replicated (class_oid)
-	      && BTREE_IS_PRIMARY_KEY (xbtree_get_unique (thread_p,
-							  tmp_btid)))
-	    {
-	      pk_btid_index = i;
-	    }
-	}
       index = &(new_attrinfo->last_classrepr->indexes[i]);
+      if (pk_btid_index == -1 && db_Enable_replications > 0
+	  && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
+	  && repl_class_is_replicated (class_oid)
+	  && index->type == BTREE_PRIMARY_KEY)
+	{
+	  pk_btid_index = i;
+	}
 
       /* check for specified update attributes */
       if (att_id)
