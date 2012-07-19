@@ -41,6 +41,7 @@
 #define LANG_NAME_TURKISH	"tr_TR"
 #define LANG_CHARSET_UTF8       "utf8"
 #define LANG_CHARSET_EUCKR      "euckr"
+#define LANG_CHARSET_ISO88591   "iso88591"
 #define LANG_NAME_DEFAULT 	LANG_NAME_ENGLISH
 
 #define LANG_MAX_COLLATIONS  32

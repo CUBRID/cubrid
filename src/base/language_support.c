@@ -109,7 +109,7 @@ static int lang_count_collations = 0;
 static UNICODE_NORMALIZATION *generic_unicode_norm = NULL;
 
 static void set_current_locale (bool is_full_init);
-static void set_lang_from_env (void);
+static int set_lang_from_env (void);
 static void set_default_lang (void);
 static void lang_unload_libraries (void);
 static void destroy_user_locales (void);
@@ -432,7 +432,10 @@ lang_init (void)
       return lang_Initialized;
     }
 
-  set_lang_from_env ();
+  if (set_lang_from_env () != NO_ERROR)
+    {
+      return false;
+    }
 
   /* built-in collations : order of registration should match colation ID */
   for (i = 0; i < (int) (sizeof (built_in_collations)
@@ -481,10 +484,13 @@ lang_init_full (void)
       return lang_Fully_Initialized;
     }
 
-  assert (lang_Initialized == true);
-
   /* re-get variables from environment */
-  set_lang_from_env ();
+  if (set_lang_from_env () != NO_ERROR)
+    {
+      return false;
+    }
+
+  assert (lang_Initialized == true);
 
   /* load & register user locales (no matter the default DB codeset) */
   if (init_user_locales () != NO_ERROR)
@@ -640,10 +646,12 @@ set_current_locale (bool is_full_init)
  *	    lang_Loc_charset : charset id : ISO-8859-1 or UTF-8 
  *	    lang_Loc_bytes_per_char : maximum number of bytes per character
  */
-static void
+static int
 set_lang_from_env (void)
 {
-  const char *env, *s;
+  const char *env, *charset;
+  char err_msg[ERR_MSG_SIZE];
+
   /*
    * Determine the locale by examining environment variables.
    * First we check our internal variable CUBRID_LANG to allow CUBRID
@@ -652,6 +660,7 @@ set_lang_from_env (void)
    * recognized settings used to select message catalogs in
    * $CUBRID/admin/msg.
    */
+
   env = envvar_get ("LANG");
   if (env != NULL)
     {
@@ -676,24 +685,28 @@ set_lang_from_env (void)
   envvar_trim_char (lang_Loc_name, (int) '\"');
 
   /* allow environment to override the character set settings */
-  s = strchr (lang_Loc_name, '.');
-  if (s != NULL)
+  charset = strchr (lang_Loc_name, '.');
+  if (charset != NULL)
     {
-      strncpy (lang_Lang_name, lang_Loc_name, s - lang_Loc_name);
-      lang_Lang_name[s - lang_Loc_name] = '\0';
+      strncpy (lang_Lang_name, lang_Loc_name, charset - lang_Loc_name);
+      lang_Lang_name[charset - lang_Loc_name] = '\0';
 
-      s++;
-      if (strcasecmp (s, LANG_CHARSET_EUCKR) == 0)
+      charset++;
+      if (strcasecmp (charset, LANG_CHARSET_EUCKR) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_KSC5601_EUC;
 	}
-      else if (strcasecmp (s, LANG_CHARSET_UTF8) == 0)
+      else if (strcasecmp (charset, LANG_CHARSET_UTF8) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_UTF8;
 	}
-      else
+      else if (strcasecmp (charset, LANG_CHARSET_ISO88591) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_ISO88591;
+	}
+      else
+	{
+	  goto error;
 	}
 
       /* for UTF-8 charset we allow any user defined lang name */
@@ -703,7 +716,7 @@ set_lang_from_env (void)
 						     &lang_Loc_id);
 	  if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
 	    {
-	      lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
+	      goto error;
 	    }
 	}
     }
@@ -711,9 +724,23 @@ set_lang_from_env (void)
     {
       /* no charset provided in $CUBRID_LANG */
       (void) lang_get_builtin_lang_id_from_name (lang_Loc_name, &lang_Loc_id);
+      lang_Loc_charset = INTL_CODESET_ISO88591;
       strcpy (lang_Lang_name, lang_Loc_name);
-      lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
+      if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
+	{
+	  charset = LANG_CHARSET_ISO88591;
+	  goto error;
+	}
     }
+
+  return NO_ERROR;
+
+error:
+  sprintf (err_msg, "codeset %s for language %s is not supported", charset,
+	   lang_Lang_name);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
+
+  return ER_LOC_INIT;
 }
 
 /*
