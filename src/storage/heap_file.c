@@ -889,7 +889,7 @@ heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args)
 }
 
 /*
- * heap_stats_add_bestspace () - 
+ * heap_stats_add_bestspace () -
  */
 static HEAP_STATS_ENTRY *
 heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
@@ -10156,6 +10156,16 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
  *                  COPY when the object is copied
  *   chn(in):
  *
+ *   Note :
+ *   If the type of record is REC_UNKNOWN(MARK_DELETED or DELETED_WILL_REUSE),
+ *   this function returns S_DOESNT_EXIST and set warning.
+ *   In this case, The caller should verify this.
+ *   For example, In function scan_next_scan...
+ *   If the current isolation level is uncommit_read and
+ *   heap_get returns S_DOESNT_EXIST,
+ *   then scan_next_scan ignores current record and continue.
+ *   But if the isolation level is higher than uncommit_read,
+ *   scan_next_scan returns an error.
  */
 static SCAN_CODE
 heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
@@ -10348,16 +10358,18 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  return S_ERROR;
 	}
 
-#if defined(CUBRID_DEBUG)
-      if (spage_get_record_type (pgptr, forward_oid.slotid) != REC_NEWHOME)
+      type = spage_get_record_type (pgptr, forward_oid.slotid);
+      if (type == REC_UNKNOWN)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE,
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
 		  3, forward_oid.volid, forward_oid.pageid,
 		  forward_oid.slotid);
 	  pgbuf_unfix_and_init (thread_p, pgptr);
-	  return S_ERROR;
+	  return S_DOESNT_EXIST;
 	}
-#endif
+
+      assert_release (type == REC_NEWHOME);
+
       if (ispeeking == COPY && recdes->data == NULL)
 	{
 	  /* It is guaranteed that scan_cache is not NULL. */
@@ -14325,7 +14337,7 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid,
  * This OID is stored in the class properties sequence
  *
  * If the class is not a partition or is not a partitioned class,
- * partition_info will be returned as a NULL OID 
+ * partition_info will be returned as a NULL OID
  */
 static int
 heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid,
@@ -14460,7 +14472,7 @@ cleanup:
 
 /*
  * heap_read_or_partition () - read OR_PARTITION information for a class
- * return : 
+ * return :
  * thread_p (in)    :
  * attr_info (in)   : attribute cache
  * scan_cache (in)  : scan cache
