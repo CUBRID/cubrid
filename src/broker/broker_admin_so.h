@@ -42,6 +42,12 @@
 #define FLAG_READ_ONLY 1
 #define FLAG_SLAVE_ONLY 2
 
+#if defined(CUBRID_SHARD)
+#if !defined(MAX_HA_DBNAME_LENGTH)
+#define MAX_HA_DBNAME_LENGTH		128
+#endif /* !MAX_HA_DBNAME_LENGTH */
+#endif /* CUBRID_SHARD */
+
 typedef enum t_as_status T_AS_STATUS;
 enum t_as_status
 {
@@ -84,7 +90,11 @@ struct t_as_info
   char request_file[64];
 #endif				/* !CUBRID_SHARD */
   char log_msg[64];
+#if defined(CUBRID_SHARD)
+  char database_name[MAX_HA_DBNAME_LENGTH];
+#else				/* CUBRID_SHARD */
   char database_name[32];
+#endif				/* !CUBRID_SHARD */
   char database_host[MAXHOSTNAMELEN + 1];
   time_t last_connect_time;
   INT64 num_requests_received;

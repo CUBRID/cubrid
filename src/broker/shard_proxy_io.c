@@ -3316,6 +3316,10 @@ set_waiter:
     }
 
   shard_io_p = &(proxy_Shard_io.ent[curr_shard_id]);
+  if (shard_io_p->cur_num_cas <= 0)
+    {
+      return NULL;
+    }
 
   error = proxy_client_add_waiter_by_shard (shard_io_p, ctx_cid, ctx_uid);
   if (error)

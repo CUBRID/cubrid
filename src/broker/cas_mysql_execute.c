@@ -230,7 +230,11 @@ static MYSQL *_db_conn;
 static char mysql_connected_info[DBINFO_MAX_LENGTH] = "";
 static int mysql_connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
+#if defined(CUBRID_SHARD)
+static char database_name[MAX_HA_DBNAME_LENGTH] = "";
+#else /* CUBRID_SHARD */
 static char database_name[SRV_CON_DBNAME_SIZE] = "";
+#endif /* !CUBRID_SHARD */
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static int multi_byte_character_max_length = 3;
@@ -280,7 +284,11 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 		     "ux_database_connect: cas_mysql_connect_db(%s, %s) at %s",
 		     db_user, db_alias, host_connected);
       /* as_info->database_name is alias name */
+#if defined(CUBRID_SHARD)
+      strncpy (as_info->database_name, db_alias, MAX_HA_DBNAME_LENGTH - 1);
+#else /* CUBRID_SHARD */
       strncpy (as_info->database_name, db_alias, SRV_CON_DBNAME_SIZE - 1);
+#endif /* !CUBRID_SHARD */
       /* as_info->database_host is real_db_name:connected_host_addr:connected_port */
       strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
       as_info->last_connect_time = time (NULL);

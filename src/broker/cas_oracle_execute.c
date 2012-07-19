@@ -289,7 +289,11 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
       strcpy (ORA_NAME, db_alias);
       strcpy (ORA_USER, db_user);
       strcpy (ORA_PASS, db_passwd);
+#if defined(CUBRID_SHARD)
+      strncpy (as_info->database_name, db_alias, MAX_HA_DBNAME_LENGTH - 1);
+#else /* CUBRID_SHARD */
       strncpy (as_info->database_name, db_alias, SRV_CON_DBNAME_SIZE - 1);
+#endif /* !CUBRID_SHARD */
       c4o_copy_host_to_as_info (tns);
       as_info->last_connect_time = time (NULL);
     }

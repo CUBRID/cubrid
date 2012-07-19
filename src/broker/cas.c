@@ -339,7 +339,7 @@ main (int argc, char *argv[])
   char read_buf[1024];
   int err_code;
   char *t, *db_sessionid;
-  char db_name[SRV_CON_DBNAME_SIZE];
+  char db_name[MAX_HA_DBNAME_LENGTH];
   char db_user[SRV_CON_DBUSER_SIZE];
   char db_passwd[SRV_CON_DBPASSWD_SIZE];
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -445,9 +445,9 @@ conn_retry:
   gettimeofday (&cas_start_time, NULL);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (db_name, SRV_CON_DBNAME_SIZE, "%s", shard_info_p->db_name);
+  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s", shard_info_p->db_name);
 #else
-  snprintf (db_name, SRV_CON_DBNAME_SIZE, "%s@%s",
+  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s@%s",
 	    shard_info_p->db_name, shard_info_p->db_conn_info);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   strncpy (db_user, shard_info_p->db_user, SRV_CON_DBUSER_SIZE - 1);

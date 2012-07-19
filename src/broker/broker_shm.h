@@ -169,6 +169,12 @@
   snprintf(BUF, BROKER_NAME_LEN, "%s_acl_sem", BROKER_NAME)
 #endif
 
+#if defined(CUBRID_SHARD)
+#if !defined(MAX_HA_DBNAME_LENGTH)
+#define MAX_HA_DBNAME_LENGTH 		128
+#endif /* !MAX_HA_DBNAME_LENGTH */
+#endif /* CUBRID_SHARD */
+
 typedef enum t_con_status T_CON_STATUS;
 enum t_con_status
 {
@@ -266,7 +272,11 @@ struct t_appl_server_info
   INT64 num_error_queries;
   INT64 num_interrupts;
   char auto_commit_mode;
+#if defined(CUBRID_SHARD)
+  char database_name[MAX_HA_DBNAME_LENGTH];
+#else				/* CUBRID_SHARD */
   char database_name[32];
+#endif				/* !CUBRID_SHARD */
   char database_host[MAXHOSTNAMELEN + 1];
   char cci_default_autocommit;
   time_t last_connect_time;

@@ -384,7 +384,11 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
 };
 
+#if defined(CURBID_SAHRD)
+static char database_name[MAX_HA_DBNAME_LENGTH] = "";
+#else /* CUBRID_SHARD */
 static char database_name[SRV_CON_DBNAME_SIZE] = "";
+#endif /* !CUBRID_SHARD */
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
@@ -421,7 +425,11 @@ ux_check_connection (void)
 	    }
 	  else
 	    {
+#if defined(CUBRID_SHARD)
+	      char dbname[MAX_HA_DBNAME_LENGTH];
+#else /* CUBRID_SHARD */
 	      char dbname[SRV_CON_DBNAME_SIZE];
+#endif /* !CUBRID_SHARD */
 	      char dbuser[SRV_CON_DBUSER_SIZE];
 	      char dbpasswd[SRV_CON_DBPASSWD_SIZE];
 
@@ -514,7 +522,11 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
 		     db_user, db_name, host_connected);
+#if defined(CUBRID_SHARD)
+      strncpy (as_info->database_name, db_name, MAX_HA_DBNAME_LENGTH - 1);
+#else /* CUBRID_SHARD */
       strncpy (as_info->database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
+#endif /* !CUBRID_SHARD */
       strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
       as_info->last_connect_time = time (NULL);
 
