@@ -818,7 +818,7 @@ _[eE][uU][cC][kK][rR][']	{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, "");
 				}
 
-_[iI][sS][oO][']		{
+_[iI][sS][oO]88591[']		{
 					BEGIN (QUOTED_ISO_STRING);
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, "");
 				}

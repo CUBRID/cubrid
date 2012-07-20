@@ -3941,7 +3941,7 @@ intl_charset_print_name (const INTL_CODESET codeset)
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      return "_iso";
+      return "_iso88591";
     case INTL_CODESET_UTF8:
       return "_utf8";
     default:
