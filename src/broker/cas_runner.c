@@ -50,16 +50,21 @@
 #include "cas_cci.h"
 #include "broker_log_util.h"
 
-#define PRINT_CCI_ERROR(ERRCODE, CCI_ERROR)	\
+#define PRINT_CCI_ERROR(ERRCODE, CCI_ERROR, result_fp)	\
 	do {					\
 	  T_CCI_ERROR *cci_error_p = CCI_ERROR;	\
 	  if ((ERRCODE) == CCI_ER_DBMS && cci_error_p != NULL) {	\
 	    if (!ignore_error(cci_error_p->err_code)) {			\
 	      cas_error_flag = 1;			\
-	      if (cubrid_manager_run)			\
+	      if (cubrid_manager_run) {			\
 	        fprintf(cas_error_fp, "server error : (%d) %s\n", cci_error_p->err_code, cci_error_p->err_msg);	\
-	      else					\
+	      } 					\
+	      else {					\
+	        if (result_fp) {			\
+	          fprintf(result_fp, "%s: server error : %d %s\n", exec_script_file, cci_error_p->err_code, cci_error_p->err_msg);	\
+	        }					\
 	        fprintf(cas_error_fp, "%s: server error : %d %s\n", exec_script_file, cci_error_p->err_code, cci_error_p->err_msg);	\
+	      }						\
 	    }						\
 	  }					\
 	  else if ((ERRCODE) < 0) {		\
@@ -69,9 +74,13 @@
 	      cci_get_error_msg(ERRCODE, NULL, msgbuf, sizeof(msgbuf));	\
 	      fprintf(cas_error_fp, "%s\n", msgbuf);	\
 	    }					\
-	    else				\
+	    else {				\
 	      cci_get_error_msg(ERRCODE, NULL, msgbuf, sizeof(msgbuf));	\
+	      if (result_fp) {			\
+	        fprintf(result_fp, "%s: cci_error : %d %s\n", exec_script_file, (ERRCODE), msgbuf);	\
+	      }					\
 	      fprintf(cas_error_fp, "%s: cci_error : %d %s\n", exec_script_file, (ERRCODE), msgbuf);	\
+	    }					\
 	  }					\
 	} while (0)
 
@@ -144,10 +153,10 @@ static void cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 static THREAD_FUNC thr_main (void *arg);
 static int process_execute (char *msg, int *req_h, int num_bind,
 			    T_BIND_INFO * bind_info, FILE * result_fp,
-			    double *sum_exec_time);
+			    double *sum_execute_time);
 static int process_bind (char *msg, int *num_bind_p, T_BIND_INFO * bind_info);
-static int process_endtran (int con_h, int *req_h);
-static int process_close_req (char *linebuf, int *req_h);
+static int process_endtran (int con_h, int *req_h, FILE * result_fp);
+static int process_close_req (char *linebuf, int *req_h, FILE * result_fp);
 static void print_result (int cci_res, int req_id, FILE * fp);
 static double diff_time (struct timeval *begin, struct timeval *end);
 static void free_node (T_NODE_INFO * node);
@@ -640,8 +649,9 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
   int con_h;
   T_CCI_ERROR cci_error;
   int num_bind = 0;
-  double exec_time = 0;
   double prepare_time = 0;
+  double sum_execute_time = 0;
+  double sum_prepare_time = 0;
   char *linebuf = NULL;
   T_BIND_INFO *bind_info = NULL;
   int *req_h = NULL;
@@ -676,7 +686,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
   con_h = cci_connect (cas_ip, cas_port, dbname, dbuser, dbpasswd);
   if (con_h < 0)
     {
-      PRINT_CCI_ERROR (con_h, NULL);
+      PRINT_CCI_ERROR (con_h, NULL, result_fp);
       goto end_cas_runner;
     }
 #ifdef DUP_RUN
@@ -755,13 +765,20 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	  req_h[req_id] =
 	    cci_prepare (con_h, sql_stmt, prepare_flag, &cci_error);
 	  gettimeofday (&end, NULL);
-	  prepare_time += diff_time (&begin, &end);
+	  prepare_time = diff_time (&begin, &end);
+	  sum_prepare_time += prepare_time;
+
+	  if (result_fp)
+	    {
+	      fprintf (result_fp, "cci_prepare elapsed time : %.3f \n",
+		       prepare_time);
+	    }
 
 	  if (req_h[req_id] < 0)
 	    {
 	      fprintf (cas_error_fp, "prepare error\n%s\nrequest id %d\n",
 		       linebuf, req_id);
-	      PRINT_CCI_ERROR (req_h[req_id], &cci_error);
+	      PRINT_CCI_ERROR (req_h[req_id], &cci_error, result_fp);
 	    }
 #ifdef DUP_RUN
 	  dup_req_h[req_id] =
@@ -782,7 +799,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	  int res;
 	  res =
 	    process_execute (linebuf, req_h, num_bind, bind_info, result_fp,
-			     &exec_time);
+			     &sum_execute_time);
 #ifdef DUP_RUN
 	  process_execute (linebuf, dup_req_h, num_bind, bind_info, result_fp,
 			   NULL);
@@ -794,18 +811,18 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	}
       else if (linebuf[0] == 'C')
 	{
-	  if (process_close_req (linebuf, req_h) < 0)
+	  if (process_close_req (linebuf, req_h, result_fp) < 0)
 	    goto end_cas_runner;
 #ifdef DUP_RUN
-	  process_close_req (linebuf, dup_req_h);
+	  process_close_req (linebuf, dup_req_h, result_fp);
 #endif
 	}
       else if (linebuf[0] == 'T')
 	{
-	  if (process_endtran (con_h, req_h) < 0)
+	  if (process_endtran (con_h, req_h, result_fp) < 0)
 	    goto end_cas_runner;
 #ifdef DUP_RUN
-	  if (process_endtran (dup_con_h, dup_req_h) < 0)
+	  if (process_endtran (dup_con_h, dup_req_h, result_fp) < 0)
 	    {
 	      fprintf (stderr, "DUP_RUN end_transaction error\n");
 	    }
@@ -833,9 +850,9 @@ end_cas_runner:
   FREE_MEM (sql_stmt);
 
   if (ret_exec_time)
-    *ret_exec_time = exec_time;
+    *ret_exec_time = sum_execute_time;
   if (ret_prepare_time)
-    *ret_prepare_time = prepare_time;
+    *ret_prepare_time = sum_prepare_time;
 }
 
 static int
@@ -1022,12 +1039,12 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info)
 static int
 process_execute (char *linebuf, int *req_h, int num_bind,
 		 T_BIND_INFO * bind_info, FILE * result_fp,
-		 double *sum_exec_time)
+		 double *sum_execute_time)
 {
   int req_id, exec_flag;
   T_CCI_ERROR cci_error;
   struct timeval begin, end;
-  double exec_time = 0;
+  double elapsed_time = 0;
 
   if (sscanf (linebuf + 2, "%d %d", &req_id, &exec_flag) < 2)
     {
@@ -1081,7 +1098,7 @@ process_execute (char *linebuf, int *req_h, int num_bind,
 		      fprintf (cas_error_fp,
 			       "bind error\n%s\nrequest id %d bind %d\n",
 			       linebuf, req_id, i);
-		      PRINT_CCI_ERROR (res, NULL);
+		      PRINT_CCI_ERROR (res, NULL, result_fp);
 		    }
 		}
 	    }
@@ -1093,31 +1110,37 @@ process_execute (char *linebuf, int *req_h, int num_bind,
       gettimeofday (&begin, NULL);
       res = cci_execute (req_h[req_id], exec_flag, 0, &cci_error);
       gettimeofday (&end, NULL);
-      exec_time = diff_time (&begin, &end);
+      elapsed_time = diff_time (&begin, &end);
       if (!batch_mode && !cubrid_manager_run)
 	{
-	  fprintf (stdout, "exec_time : %.3f \n", exec_time);
+	  fprintf (stdout, "exec_time : %.3f \n", elapsed_time);
+	}
+
+      if (result_fp)
+	{
+	  fprintf (result_fp, "cci_execute elapsed_time : %.3f \n",
+		   elapsed_time);
 	}
 
       if (res < 0)
 	{
 	  fprintf (cas_error_fp, "execute error\n%s\nrequest id %d\n",
 		   linebuf, req_id);
-	  PRINT_CCI_ERROR (res, &cci_error);
+	  PRINT_CCI_ERROR (res, &cci_error, result_fp);
 	}
       else
 	{
 	  print_result (res, req_h[req_id], result_fp);
 	}
     }
-  if (sum_exec_time)
-    *sum_exec_time += exec_time;
+  if (sum_execute_time)
+    *sum_execute_time += elapsed_time;
 
   return 0;
 }
 
 static int
-process_close_req (char *linebuf, int *req_h)
+process_close_req (char *linebuf, int *req_h, FILE * result_fp)
 {
   int req_id, res;
 
@@ -1126,7 +1149,7 @@ process_close_req (char *linebuf, int *req_h)
     {
       fprintf (cas_error_fp, "close error\n%s\nrequest id %d\n",
 	       linebuf, req_id);
-      PRINT_CCI_ERROR (CCI_ER_REQ_HANDLE, NULL);
+      PRINT_CCI_ERROR (CCI_ER_REQ_HANDLE, NULL, result_fp);
       return 0;
     }
   if (req_h[req_id] > 0)
@@ -1136,7 +1159,7 @@ process_close_req (char *linebuf, int *req_h)
 	{
 	  fprintf (cas_error_fp, "close error\n%s\nrequest id %d\n",
 		   linebuf, req_id);
-	  PRINT_CCI_ERROR (res, NULL);
+	  PRINT_CCI_ERROR (res, NULL, result_fp);
 	}
     }
   req_h[req_id] = 0;
@@ -1144,20 +1167,33 @@ process_close_req (char *linebuf, int *req_h)
 }
 
 static int
-process_endtran (int con_h, int *req_h)
+process_endtran (int con_h, int *req_h, FILE * result_fp)
 {
   int res, i;
   T_CCI_ERROR cci_error;
 
+  struct timeval begin, end;
+  double commit_time;
+
   if (!autocommit_mode)
     {
+      gettimeofday (&begin, NULL);
       res = cci_end_tran (con_h, CCI_TRAN_ROLLBACK, &cci_error);
+      gettimeofday (&end, NULL);
+      commit_time = diff_time (&begin, &end);
+
+      if (result_fp)
+	{
+	  fprintf (result_fp, "cci_end_tran elapsed_time : %.3f \n",
+		   commit_time);
+	}
+
       if (res < 0)
 	{
 	  fprintf (cas_error_fp, "end tran error\nconnection handle id %d\n",
 		   con_h);
 	}
-      PRINT_CCI_ERROR (res, &cci_error);
+      PRINT_CCI_ERROR (res, &cci_error, result_fp);
     }
 
   for (i = 0; i < SERVER_HANDLE_ALLOC_SIZE; i++)
@@ -1169,7 +1205,7 @@ process_endtran (int con_h, int *req_h)
 }
 
 static void
-print_result (int cci_res, int req_id, FILE * fp)
+print_result (int cci_res, int req_id, FILE * result_fp)
 {
   int column_count;
   int res;
@@ -1181,17 +1217,17 @@ print_result (int cci_res, int req_id, FILE * fp)
   T_CCI_CUBRID_STMT cmd_type;
   char *plan;
 
-  if (fp == NULL)
+  if (result_fp == NULL)
     return;
 
-  fprintf (fp, "cci_execute:%d\n", cci_res);
+  fprintf (result_fp, "cci_execute:%d\n", cci_res);
 
   if (dump_query_plan)
     {
       if (cci_get_query_plan (req_id, &plan) >= 0)
 	{
-	  fprintf (fp, "---------- query plan --------------\n");
-	  fprintf (fp, "%s\n", (plan ? plan : ""));
+	  fprintf (result_fp, "---------- query plan --------------\n");
+	  fprintf (result_fp, "%s\n", (plan ? plan : ""));
 	  cci_query_info_free (plan);
 	}
     }
@@ -1212,11 +1248,11 @@ print_result (int cci_res, int req_id, FILE * fp)
   if (res < 0)
     {
       fprintf (cas_error_fp, "cursor error\nrequest id %d\n", req_id);
-      PRINT_CCI_ERROR (res, &cci_error);
+      PRINT_CCI_ERROR (res, &cci_error, result_fp);
       return;
     }
 
-  fprintf (fp, "---------- query result --------------\n");
+  fprintf (result_fp, "---------- query result --------------\n");
 
   while (1)
     {
@@ -1224,7 +1260,7 @@ print_result (int cci_res, int req_id, FILE * fp)
       if (res < 0)
 	{
 	  fprintf (cas_error_fp, "fetch error\nrequest id %d\n", req_id);
-	  PRINT_CCI_ERROR (res, &cci_error);
+	  PRINT_CCI_ERROR (res, &cci_error, result_fp);
 	  break;
 	}
       for (i = 0; i < column_count; i++)
@@ -1234,15 +1270,15 @@ print_result (int cci_res, int req_id, FILE * fp)
 	    {
 	      fprintf (cas_error_fp, "get data error\nrequest id %d\n",
 		       req_id);
-	      PRINT_CCI_ERROR (res, NULL);
+	      PRINT_CCI_ERROR (res, NULL, result_fp);
 	      break;
 	    }
 	  if (ind < 0 || buffer == NULL)
-	    fprintf (fp, "<NULL>|");
+	    fprintf (result_fp, "<NULL>|");
 	  else
-	    fprintf (fp, "%s|", buffer);
+	    fprintf (result_fp, "%s|", buffer);
 	}
-      fprintf (fp, "\n");
+      fprintf (result_fp, "\n");
       num_tuple++;
 
       if (cmd_type == CUBRID_STMT_CALL_SP)
@@ -1257,13 +1293,13 @@ print_result (int cci_res, int req_id, FILE * fp)
 	  if (res < 0)
 	    {
 	      fprintf (cas_error_fp, "cursor error\nrequest id %d\n", req_id);
-	      PRINT_CCI_ERROR (res, NULL);
+	      PRINT_CCI_ERROR (res, NULL, result_fp);
 	      break;
 	    }
 	}
     }
 
-  fprintf (fp, "-- %d rows ----------------------------\n", num_tuple);
+  fprintf (result_fp, "-- %d rows ----------------------------\n", num_tuple);
 }
 
 static double
@@ -1272,7 +1308,7 @@ diff_time (struct timeval *begin, struct timeval *end)
   double sec, usec;
 
   sec = (end->tv_sec - begin->tv_sec);
-  usec = (end->tv_usec - begin->tv_usec) / 1000000;
+  usec = (double) (end->tv_usec - begin->tv_usec) / 1000000;
   return (sec + usec);
 }
 
