@@ -208,12 +208,13 @@ static int pt_find_partition_column_count_func (PT_NODE * func,
 static int pt_find_partition_column_count (PT_NODE * expr,
 					   PT_NODE ** name_node);
 static int pt_value_links_add (PARSER_CONTEXT * parser, PT_NODE * val,
-			       PT_VALUE_LINKS * ptl);
+			       PT_NODE * parts, PT_VALUE_LINKS * ptl);
 
 static int pt_check_partition_value_coercible (PT_TYPE_ENUM to,
 					       PT_TYPE_ENUM from);
 static int pt_check_partition_values (PARSER_CONTEXT * parser,
-				      PT_TYPE_ENUM * chktype,
+				      PT_TYPE_ENUM desired_type,
+				      PT_NODE * data_type,
 				      PT_VALUE_LINKS * ptl, PT_NODE * parts);
 static void pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt,
 				 MOP dbobj);
@@ -4654,19 +4655,22 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
  * pt_value_links_add () -
  *   return:
  *   parser(in):
+ *   parts(in):
  *   val(in):
  *   ptl(in):
  */
 static int
-pt_value_links_add (PARSER_CONTEXT * parser,
-		    PT_NODE * val, PT_VALUE_LINKS * ptl)
+pt_value_links_add (PARSER_CONTEXT * parser, PT_NODE * parts, PT_NODE * val,
+		    PT_VALUE_LINKS * ptl)
 {
   PT_VALUE_LINKS *vblk, *blks;
 
   vblk = (PT_VALUE_LINKS *) malloc (sizeof (PT_VALUE_LINKS));
   if (vblk == NULL)
     {
-      goto out_of_mem;
+      PT_ERRORm (parser, val, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
     }
 
   vblk->vallink = val;
@@ -4676,118 +4680,115 @@ pt_value_links_add (PARSER_CONTEXT * parser,
       ptl->next = vblk;
       return 0;
     }
-  else
-    {				/* check & add */
-      for (blks = ptl->next; blks; blks = blks->next)
+
+  for (blks = ptl->next; blks; blks = blks->next)
+    {
+      if (val == NULL)
 	{
-	  if (val == NULL)
+	  if (blks->vallink == NULL)
 	    {
-	      if (blks->vallink == NULL)
-		{		/* MAXVALUE or NULL duplicate */
-		  free_and_init (vblk);
-		  return 1;
-		}
+	      /* MAXVALUE or NULL duplicate */
+	      goto duplicate_error;
 	    }
-	  else if (blks->vallink != NULL)
+	}
+      else if (blks->vallink != NULL)
+	{
+	  if (db_value_compare (pt_value_to_db (parser, val),
+				pt_value_to_db (parser,
+						blks->vallink)) == DB_EQ)
 	    {
-	      if (db_value_compare (pt_value_to_db (parser, val),
-				    pt_value_to_db (parser,
-						    blks->vallink)) == DB_EQ)
-		{
-		  free_and_init (vblk);
-		  return 1;
-		}
+	      goto duplicate_error;
 	    }
 	}
     }
 
   ptl->next = vblk;
-  return 0;
 
-out_of_mem:
-  return -2;
+  return NO_ERROR;
+
+duplicate_error:
+  if (vblk != NULL)
+    {
+      free_and_init (vblk);
+    }
+  PT_ERRORmf (parser, val, MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_DUPLICATE_PARTITION_DEF,
+	      parts->info.parts.name->info.name.original);
+  return ER_FAILED;
 }
 
 /*
- * pt_check_partition_value_coercible () -
- *   return:
- *   from(in):
- *   to(in):
+ * pt_check_partition_values () - perform semantic check on partition
+ *				  range/list specification
+ *   return: error code or NO_ERROR
+ *   parser(in)	      : parser context
+ *   desired_type(in) : desired type for partition values
+ *   data_type(in)    : data type for desired_type
+ *   ptl(in)	      : values context
+ *   parts (in)	      : node specifying one partition
  */
-
 static int
-pt_check_partition_value_coercible (PT_TYPE_ENUM to, PT_TYPE_ENUM from)
+pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type,
+			   PT_NODE * data_type, PT_VALUE_LINKS * ptl,
+			   PT_NODE * parts)
 {
-  if (from == PT_TYPE_NULL)
-    {
-      return 1;
-    }
-
-  if (PT_IS_DISCRETE_NUMBER_TYPE (to) && PT_IS_DISCRETE_NUMBER_TYPE (from))
-    {
-      return 1;
-    }
-
-  return to == from;
-}
-
-
-
-/*
- * pt_check_partition_values () -
- *   return:
- *   parser(in):
- *   chktype(in):
- *   ptl(in):
- *   parts(in):
- */
-
-static int
-pt_check_partition_values (PARSER_CONTEXT *
-			   parser,
-			   PT_TYPE_ENUM *
-			   chktype, PT_VALUE_LINKS * ptl, PT_NODE * parts)
-{
-  int addret;
-  PT_NODE *val;
+  int error = NO_ERROR;
+  PT_NODE *val = NULL;
+  const char *value_text = NULL;
 
   if (parts->info.parts.values == NULL)
-    {				/* RANGE-MAXVALUE */
-      return pt_value_links_add (parser, NULL, ptl);
-    }
-  else
     {
-      for (val = parts->info.parts.values;
-	   val && val->node_type == PT_VALUE; val = val->next)
-	{			/* LIST-NULL */
-	  addret = pt_value_links_add (parser,
-				       ((val->type_enum ==
-					 PT_TYPE_NULL) ? NULL : val), ptl);
-	  if (addret)
-	    {
-	      return addret;
-	    }
-
-	  if (*chktype == PT_TYPE_NONE && val->type_enum != PT_TYPE_NULL)
-	    {
-	      *chktype = val->type_enum;
-	    }
-	  else
-	    {
-	      if (!pt_check_partition_value_coercible (*chktype,
-						       val->type_enum))
-		{
-		  return -1;
-		}
-	    }
-	}
-
-      if (val && val->node_type != PT_VALUE)
-	{
-	  return -1;
-	}
-      return 0;
+      /* MAXVALUE specification */
+      return pt_value_links_add (parser, parts, NULL, ptl);
     }
+
+  for (val = parts->info.parts.values; val != NULL; val = val->next)
+    {
+      if (val->node_type != PT_VALUE)
+	{
+	  /* Only values are allowed in partition LIST or RANGE
+	   * specification.
+	   */
+	  assert_release (val->node_type != PT_VALUE);
+	  PT_ERROR (parser, val, er_msg ());
+	  error = ER_FAILED;
+	  break;
+	}
+
+      if (val->type_enum != PT_TYPE_NULL && val->type_enum != desired_type)
+	{
+	  /* Coerce this value to the desired type. We have to preserve the
+	   * original text of the value for replication reasons. The coercion
+	   * below will either be successful or fail, but it should
+	   * not alter the way in which the original statement is printed
+	   */
+	  value_text = val->info.value.text;
+	  val->info.value.text = NULL;
+	  error = pt_coerce_value (parser, val, val, desired_type, data_type);
+	  val->info.value.text = value_text;
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+
+      /* add this value to the values list */
+      if (val->type_enum == PT_TYPE_NULL)
+	{
+	  error = pt_value_links_add (parser, parts, NULL, ptl);
+	}
+      else
+	{
+	  error = pt_value_links_add (parser, parts, val, ptl);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  return error;
 }
 
 
@@ -4810,9 +4811,8 @@ pt_check_partition_values (PARSER_CONTEXT *
 static void
 pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 {
-  PT_NODE *pinfo, *pcol, *attr, *pattr, *parts, *val;
+  PT_NODE *pinfo, *pcol, *attr, *pattr, *parts;
   int name_count, valchk, parts_cnt;
-  PT_TYPE_ENUM contype = PT_TYPE_NONE;
   PT_VALUE_LINKS vlinks = { NULL, NULL };
   PT_VALUE_LINKS *pvl, *delpvl;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
@@ -5117,29 +5117,11 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		}
 	    }
 
-	  valchk = pt_check_partition_values (parser,
-					      &contype, &vlinks, parts);
-	  if (valchk == -1)
+	  valchk =
+	    pt_check_partition_values (parser, expr_type->type_enum,
+				       expr_type->data_type, &vlinks, parts);
+	  if (valchk != NO_ERROR)
 	    {
-	      PT_ERRORmf (parser, stmt,
-			  MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH,
-			  parts->info.parts.name->info.name.original);
-	      goto pvl_free_end;
-	    }
-	  else if (valchk > 0)
-	    {
-	      PT_ERRORmf (parser, stmt,
-			  MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_DUPLICATE_PARTITION_DEF,
-			  parts->info.parts.name->info.name.original);
-	      goto pvl_free_end;
-	    }
-	  else if (valchk < -1)
-	    {
-	      PT_ERRORm (parser, stmt,
-			 MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      goto pvl_free_end;
 	    }
 
@@ -5170,76 +5152,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  PT_ERRORm (parser, stmt,
 		     MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_PARTITION_DEFINITION);
-	}
-      else
-	{
-	  if (expr_type)
-	    {
-	      if (expr_type->type_enum == contype)
-		{
-		  chkflag = false;
-		}
-	      else
-		{		/* constant coercing */
-		  chkflag = false;
-		  for (parts = pinfo->info.partition.parts;
-		       parts && parts->node_type == PT_PARTS;
-		       parts = parts->next)
-		    {
-		      if (parts->info.parts.values == NULL)
-			{	/* RANGE-MAXVALUE */
-			  continue;
-			}
-		      else
-			{
-			  const char *value_text = NULL;
-			  for (val = parts->info.parts.values;
-			       val && val->node_type == PT_VALUE;
-			       val = val->next)
-			    {
-			      if (val->type_enum == PT_TYPE_NULL)
-				{
-				  /* LIST-NULL */
-				  continue;
-				}
-			      /* preserve original text of the value for
-			       * replication reasons. The coercion below will
-			       * either be successful or fail but it should
-			       * not alter the way in which the original
-			       * statement is printed
-			       */
-			      value_text = val->info.value.text;
-			      val->info.value.text = NULL;
-			      if (pt_coerce_value (parser, val, val,
-						   expr_type->type_enum,
-						   expr_type->data_type) !=
-				  NO_ERROR)
-				{
-				  /* restore value text */
-				  val->info.value.text = value_text;
-				  chkflag = true;
-				  break;
-				}
-			      val->info.value.text = value_text;
-			    }
-
-			  if (chkflag)
-			    {
-			      break;
-			    }
-			}
-		    }
-		}
-
-	      if (chkflag)
-		{
-		  PT_ERRORmf (parser, stmt,
-			      MSGCAT_SET_PARSER_SEMANTIC,
-			      MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH,
-			      pinfo->info.partition.parts->info.parts.name->
-			      info.name.original);
-		}
-	    }
 	}
     }
 
