@@ -401,6 +401,10 @@ extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);
 extern int db_value_to_enumeration_value (const DB_VALUE * src,
 					  DB_VALUE * result,
 					  const TP_DOMAIN * enum_domain);
+extern int db_inet_aton (DB_VALUE * result_numbered_ip,
+			 const DB_VALUE * string);
+extern int db_inet_ntoa (DB_VALUE * result_ip_string,
+			 const DB_VALUE * number);
 
 extern void qstr_trim_trailing (const unsigned char *trim_charset_ptr,
 				int trim_charset_size,

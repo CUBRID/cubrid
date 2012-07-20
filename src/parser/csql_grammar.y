@@ -214,7 +214,9 @@ static FUNCTION_MAP functions[] = {
   {"week", PT_WEEKF},
   {"hex", PT_HEX},
   {"ascii", PT_ASCII},
-  {"conv", PT_CONV}
+  {"conv", PT_CONV},
+  {"inet_aton", PT_INET_ATON},
+  {"inet_ntoa", PT_INET_NTOA}
 };
 
 
@@ -20936,6 +20938,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CURRENT_VALUE:
     case PT_HEX:
     case PT_ASCII:
+    case PT_INET_ATON:
+    case PT_INET_NTOA:
       if (c != 1)
         {
 	  return NULL;

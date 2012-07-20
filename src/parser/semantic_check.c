@@ -4546,6 +4546,8 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_CLOB_LENGTH:
     case PT_CLOB_TO_CHAR:
     case PT_TYPEOF:
+    case PT_INET_ATON:
+    case PT_INET_NTOA:
       break;
 
       /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not.
@@ -13632,6 +13634,8 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_HEX:
 	case PT_ASCII:
 	case PT_CONV:
+	case PT_INET_ATON:
+	case PT_INET_NTOA:
 	  /* valid expression, nothing to do */
 	  break;
 	case PT_NOT:

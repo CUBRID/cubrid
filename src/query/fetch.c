@@ -470,6 +470,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DRANDOM:
     case T_TYPEOF:
     case T_EXEC_STATS:
+    case T_INET_ATON:
+    case T_INET_NTOA:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
@@ -3221,6 +3223,28 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_TO_ENUMERATION_VALUE:
       if (db_value_to_enumeration_value (peek_right, arithptr->value,
 					 arithptr->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_INET_ATON:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_inet_aton (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_INET_NTOA:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_inet_ntoa (arithptr->value, peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}

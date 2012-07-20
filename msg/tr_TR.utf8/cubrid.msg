@@ -1155,13 +1155,15 @@ $ LOADDB
 1087 Locale initialization: %s.
 1088 Locale generation: %s.
 1089 Cannot prepare statement of type '%s' with host variables.
-1090 Backup active log '%s' started.
-1091 Backup active log '%s' finished.
-1092 User name is too long.
-1093 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
-1094 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
-1095 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1096 Last Error
+1090 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
+1091 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
+1092 Backup active log '%s' started.
+1093 Backup active log '%s' finished.
+1094 User name is too long.
+1095 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
+1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
+1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
+1098 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

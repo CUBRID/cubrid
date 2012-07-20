@@ -3448,6 +3448,10 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "exec_stats";
     case PT_TO_ENUMERATION_VALUE:
       return "to_enumeration_value";
+    case PT_INET_ATON:
+      return "inet_aton ";
+    case PT_INET_NTOA:
+      return "inet_ntoa ";
     default:
       return "unknown opcode";
     }
@@ -11140,6 +11144,18 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_INET_ATON:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " inet_aton(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_INET_NTOA:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " inet_ntoa(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
     }
 
   for (t = p->or_next; t; t = t->or_next)
@@ -16188,6 +16204,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
+	case PT_INET_ATON:
+	case PT_INET_NTOA:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
 	default:
 	  return false;
 	}
@@ -16633,6 +16652,8 @@ pt_is_allowed_as_function_index (const PT_OP_TYPE op)
     case PT_TO_TIME:
     case PT_TO_NUMBER:
     case PT_TRIM:
+    case PT_INET_ATON:
+    case PT_INET_NTOA:
       return true;
     default:
       return false;

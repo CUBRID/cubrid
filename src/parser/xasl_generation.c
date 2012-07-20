@@ -7352,7 +7352,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_TIMETOSEC
 		       || node->info.expr.op == PT_SECTOTIME
 		       || node->info.expr.op == PT_EVALUATE_VARIABLE
-		       || node->info.expr.op == PT_TO_ENUMERATION_VALUE)
+		       || node->info.expr.op == PT_TO_ENUMERATION_VALUE
+		       || node->info.expr.op == PT_INET_ATON
+		       || node->info.expr.op == PT_INET_NTOA)
 		{
 		  r1 = NULL;
 
@@ -8931,6 +8933,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu =
 		    pt_make_regu_arith (NULL, r2, NULL,
 					T_TO_ENUMERATION_VALUE, domain);
+		  break;
+
+		case PT_INET_ATON:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_INET_ATON, domain);
+		  break;
+
+		case PT_INET_NTOA:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_INET_NTOA, domain);
 		  break;
 
 		default:
@@ -20401,6 +20413,8 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_DATEDIFF:
 	case T_TIMEDIFF:
 	case T_SUBDATE:
+	case T_INET_ATON:
+	case T_INET_NTOA:
 	  break;
 	default:
 	  return true;

@@ -24464,3 +24464,222 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result,
 
   return NO_ERROR;
 }
+
+
+/*
+ * db_inet_aton () - convert a string formatted IPv4 address
+ *                    to a number formatted IPv4 address
+ * Arguments:
+ *  string (in)                 : source ip string
+ *  result_numbered_ip (in/out) : result number
+ *
+ * Returns: int
+ *	error code or NO_ERROR
+ *
+ * Errors:
+ *      ER_OBJ_INVALID_ARGUMENTS
+ *      ER_QSTR_INVALID_DATA_TYPE
+ *      ER_OPFUNC_INET_NTOA_ARG
+ *      ER_OUT_OF_VIRTUAL_MEMORY
+ *
+ * Note: the ip "226.000.000.037" is 226.0.0.31, not 226.0.0.37
+ *       support "0x3d.037.12.25" format
+ */
+int
+db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
+{
+  int error_code = NO_ERROR;
+  DB_BIGINT numbered_ip = (DB_BIGINT) 0;
+  char *ip_string = NULL;
+  char *local_ipstring = NULL;
+  char *local_ipslice = NULL;
+  char *local_pivot = NULL;
+  long int slice = 0;
+  const int ipsegmax = 256;
+  DB_BIGINT ipbase;
+  int slice_count = 0;
+  int cnt;
+  char *temp_tok;
+
+  if (string == NULL || result_numbered_ip == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
+    }
+
+  if (DB_IS_NULL (string))
+    {
+      DB_MAKE_NULL (result_numbered_ip);
+      return NO_ERROR;
+    }
+
+  if (!is_char_string (string))
+    {
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
+
+  /* there is no need to check DB_GET_STRING_LENGTH 
+     or DB_GET_STRING_SIZE or cnt, we control ip format by ourselves */
+  ip_string = DB_GET_CHAR (string, &cnt);
+  local_ipstring = (char *) db_private_alloc (NULL, cnt + 1);
+  if (local_ipstring == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  memcpy (local_ipstring, ip_string, cnt);
+  local_ipstring[cnt] = '\0';
+
+  ipbase = (DB_BIGINT) ipsegmax *ipsegmax * ipsegmax;
+  for (temp_tok = local_ipstring;; temp_tok = NULL)
+    {
+      /* use ". \t" to be more tolerable of input format. */
+      local_ipslice = strtok_r (temp_tok, ". \t", &local_pivot);
+      if (local_ipslice == NULL)
+	{
+	  break;
+	}
+      slice = strtol (local_ipslice, NULL, 0);
+      if (errno == ERANGE || errno == EINVAL || slice < 0
+	  || slice >= ipsegmax)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
+		  1, DB_GET_CHAR (string, &cnt));
+	  error_code = ER_OPFUNC_INET_ATON_ARG;
+	  goto error;
+	}
+      numbered_ip += slice * ipbase;
+      ipbase /= ipsegmax;
+      slice_count++;
+    }
+  if (numbered_ip < 0
+      || numbered_ip > (DB_BIGINT) ipsegmax * ipsegmax * ipsegmax * ipsegmax
+      || slice_count != 4)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
+	      1, DB_GET_CHAR (string, &cnt));
+      error_code = ER_OPFUNC_INET_ATON_ARG;
+      goto error;
+    }
+
+  db_private_free (NULL, local_ipstring);
+  DB_MAKE_BIGINT (result_numbered_ip, numbered_ip);
+  return NO_ERROR;
+
+error:
+  if (local_ipstring != NULL)
+    {
+      db_private_free (NULL, local_ipstring);
+    }
+  DB_MAKE_NULL (result_numbered_ip);
+
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+  return error_code;
+}
+
+/*
+ * db_inet_ntoa () - convert a number formatted IPv4 address
+ *                    to a string formatted IPv4 address
+ * Arguments:
+ *  number (in)               : source numbered ip
+ *  result_ip_string (in/out) : result ip string
+ *
+ * Returns: int
+ *	error code or NO_ERROR
+ *
+ * Errors:
+ *      ER_QSTR_INVALID_DATA_TYPE
+ *      ER_OBJ_INVALID_ARGUMENTS
+ *      ER_OPFUNC_INET_NTOA_ARG
+ * 
+ * Note:
+ */
+int
+db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
+{
+  int error_code = NO_ERROR;
+  DB_TYPE number_type = DB_TYPE_UNKNOWN;
+  DB_BIGINT ip_number = 0;
+  char ip_string[16] = { '\0' };
+  char ip_seg_string[4] = { '\0' };
+  const int ip_string_cnt = 16;
+  const int ip_seg_string_cnt = 4;
+  const DB_BIGINT ipmax = (DB_BIGINT) 256 * 256 * 256 * 256;
+  const unsigned int ipv4_mask[] = { 0xFF000000, 0xFF0000, 0xFF00, 0xFF };
+  const unsigned int ipfactor[] = { 256 * 256 * 256, 256 * 256, 256, 1 };
+  unsigned int slice;
+  int i;
+  int ret_string_len;
+  char *res_p_str;
+
+  if (number == NULL || result_ip_string == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
+    }
+
+  if (DB_IS_NULL (number))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_NTOA_ARG,
+	      1, (long long int) ip_number);
+      error_code = ER_OPFUNC_INET_NTOA_ARG;
+      goto error;
+    }
+
+  number_type = DB_VALUE_DOMAIN_TYPE (number);
+  if (number_type != DB_TYPE_BIGINT)
+    {
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
+
+  ip_number = DB_GET_BIGINT (number);
+  if (ip_number > ipmax || ip_number < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_NTOA_ARG,
+	      1, (long long int) ip_number);
+      error_code = ER_OPFUNC_INET_NTOA_ARG;
+      goto error;
+    }
+
+  for (i = 0; i < 4; i++)
+    {
+      slice = (ip_number & ipv4_mask[i]) / ipfactor[i];
+      snprintf (ip_seg_string, ip_seg_string_cnt, "%u", slice);
+      /* safe to use strcat rather than strncat */
+      strcat (ip_string, ip_seg_string);
+      if (i != 3)
+	{
+	  strcat (ip_string, ".");
+	}
+    }
+
+  /* return string */
+  ret_string_len = strlen (ip_string);
+  res_p_str = db_private_alloc (NULL, ret_string_len + 1);
+  if (res_p_str == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  memcpy (res_p_str, ip_string, ret_string_len + 1);
+  DB_MAKE_STRING (result_ip_string, res_p_str);
+  result_ip_string->need_clear = true;
+
+  return NO_ERROR;
+
+error:
+  DB_MAKE_NULL (result_ip_string);
+
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+  return error_code;
+}

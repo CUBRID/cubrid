@@ -3722,6 +3722,42 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_INET_ATON:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_INET_NTOA:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_BIGINT;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -7651,6 +7687,8 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_ASCII:
     case PT_CONV:
     case PT_TO_ENUMERATION_VALUE:
+    case PT_INET_ATON:
+    case PT_INET_NTOA:
       return true;
 
     default:
@@ -12456,7 +12494,7 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 /*
  * pt_evaluate_db_value_expr () - apply op to db_value opds & place it in result
- *   return: 1 iff evaluation succeeded, 0 otherwise
+ *   return: 1 if evaluation succeeded, 0 otherwise
  *   parser(in): handle to the parser context
  *   expr(in): the expression to be applied
  *   op(in): a PT_OP_TYPE (the desired operation)
@@ -17000,6 +17038,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	      }
 	  }
       }
+      break;
+
+    case PT_INET_ATON:
+      error = db_inet_aton (result, arg1);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+
+    case PT_INET_NTOA:
+      error = db_inet_ntoa (result, arg1);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
 
     default:
       break;

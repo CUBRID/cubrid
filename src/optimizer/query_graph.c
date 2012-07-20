@@ -3401,6 +3401,8 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
     case PT_BIN:
+    case PT_INET_ATON:
+    case PT_INET_NTOA:
       return RANK_EXPR_LIGHT;
 
       /* Group 2 -- medium */
@@ -3804,7 +3806,7 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 
 /*
  * pt_is_pseudo_const () -
- *   return: true iff the expression can serve as a pseudo-constant
+ *   return: true if the expression can serve as a pseudo-constant
  *	     during predicate evaluation.  Used primarily to help
  *	     determine whether a predicate can be implemented
  *	     with an index scan
@@ -4115,6 +4117,9 @@ pt_is_pseudo_const (PT_NODE * expr)
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.
 					 expr.arg2)) ? true : false;
+	case PT_INET_ATON:
+	case PT_INET_NTOA:
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	default:
 	  return false;
 	}

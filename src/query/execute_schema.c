@@ -5532,6 +5532,8 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_LIKE_UPPER_BOUND:
 	case PT_FROM_UNIXTIME:
 	case PT_FUNCTION_HOLDER:
+	case PT_INET_ATON:
+	case PT_INET_NTOA:
 	  return node;
 
 	case PT_CAST:

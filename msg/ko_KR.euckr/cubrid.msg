@@ -1154,13 +1154,15 @@ $ LOADDB
 1087 Locale initialization: %s.
 1088 Locale generation: %s.
 1089 Cannot prepare statement of type '%s' with host variables.
-1090 Backup active log '%s' started.
-1091 Backup active log '%s' finished.
-1092 User name is too long.
-1093 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
-1094 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
-1095 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1096 마지막 에러
+1090 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
+1091 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
+1092 Backup active log '%s' started.
+1093 Backup active log '%s' finished.
+1094 User name is too long.
+1095 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
+1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
+1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
+1098 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

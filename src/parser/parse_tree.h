@@ -1251,6 +1251,9 @@ typedef enum
   PT_RLIKE, PT_NOT_RLIKE, PT_RLIKE_BINARY, PT_NOT_RLIKE_BINARY,
   PT_TO_ENUMERATION_VALUE,
 
+  /* inet */
+  PT_INET_ATON, PT_INET_NTOA,
+
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;

@@ -344,6 +344,8 @@ typedef enum
   T_HEX,
   T_ASCII,
   T_CONV,
+  T_INET_ATON,
+  T_INET_NTOA,
   T_TO_ENUMERATION_VALUE
 } OPERATOR_TYPE;		/* arithmetic operator types */
 

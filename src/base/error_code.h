@@ -1359,16 +1359,19 @@
 #define ER_LOC_GEN				    -1088
 #define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1089
 
-#define ER_LOG_BACKUP_CS_ENTER 			    -1090
-#define ER_LOG_BACKUP_CS_EXIT			    -1091
+#define ER_OPFUNC_INET_ATON_ARG			    -1090
+#define ER_OPFUNC_INET_NTOA_ARG			    -1091
 
-#define ER_USER_NAME_TOO_LONG			    -1092
+#define ER_LOG_BACKUP_CS_ENTER 			    -1092
+#define ER_LOG_BACKUP_CS_EXIT			    -1093
 
-#define ER_HF_MAX_BESTSPACE_ENTRIES		    -1093
-#define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1094
-#define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1095
+#define ER_USER_NAME_TOO_LONG			    -1094
 
-#define ER_LAST_ERROR                               -1096
+#define ER_HF_MAX_BESTSPACE_ENTRIES		    -1095
+#define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
+#define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
+
+#define ER_LAST_ERROR                               -1098
 
 /*
  * CAUTION!
