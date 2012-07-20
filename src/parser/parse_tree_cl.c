@@ -5168,9 +5168,23 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r2);
       break;
     case PT_RESET_QUERY:
+      /* alias print should be enable for "alter view ..."
+       * e.g.
+       * When PT_PRINT_ALIAS disabled
+       *        "alter view w as select sqrt(2) as root;"
+       *        is printed as
+       *        "alter view w as select sqrt(2)"
+       *        which should be
+       *        "alter view w as select sqrt(2) as root"
+       */
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_PRINT_ALIAS;
+
       r1 = pt_print_bytes (parser, p->info.alter.alter_clause.query.query);
       q = pt_append_nulstring (parser, q, " as ");
       q = pt_append_varchar (parser, q, r1);
+
+      parser->custom_print = save_custom;
       break;
     case PT_ADD_ATTR_MTHD:
       q = pt_append_nulstring (parser, q, " add ");
