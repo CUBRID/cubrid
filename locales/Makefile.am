@@ -17,6 +17,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
+EXTRA_DIST = make_locale_Win32.bat make_locale_x64.bat loclib_win_x64 loclib_win_Win32
+
 SUBDIRS = data loclib
 
 dist_bin_SCRIPTS = make_locale.sh
