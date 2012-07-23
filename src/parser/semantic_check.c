@@ -8928,20 +8928,43 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (entity->info.spec.id != node->info.merge.into->info.spec.id)
 	    {
 	      PT_ERRORm (parser, t_node, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_MERGE_INVALID_ASSIGNMENT);
+			 MSGCAT_SEMANTIC_MERGE_CANT_AFFECT_SOURCE_TABLE);
 	      break;
 	    }
 	}
-
-      if (node->info.merge.insert.value_clauses
-	  && node->info.merge.insert.value_clauses->next)
+      if (pt_has_error (parser))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY, 0);
-	  if (!pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, node, db_error_string (3));
-	    }
 	  break;
+	}
+
+      if (node->info.merge.insert.value_clauses)
+	{
+	  if (node->info.merge.insert.value_clauses->next)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY,
+		      0);
+	      if (!pt_has_error (parser))
+		{
+		  PT_ERRORc (parser, node, db_error_string (3));
+		}
+	      break;
+	    }
+	  /* check insert attributes list */
+	  for (entity = node->info.merge.insert.attr_list; entity;
+	       entity = entity->next)
+	    {
+	      if (entity->info.name.spec_id
+		  != node->info.merge.into->info.spec.id)
+		{
+		  PT_ERRORm (parser, entity, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_MERGE_CANT_AFFECT_SOURCE_TABLE);
+		  break;
+		}
+	    }
+	  if (pt_has_error (parser))
+	    {
+	      break;
+	    }
 	}
 
       node = pt_semantic_type (parser, node, info);

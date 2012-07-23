@@ -1548,7 +1548,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
 237 Duplicate values in enum type.
 238 Cannot MERGE into a derived table.
-239 Invalid MERGE update assignment.
+239 Cannot affect the source table in a MERGE statement.
 240 MERGE with class hierarchies is not allowed.
 241 User name is too long.
 242 Constant expression cannot be used as function index.
