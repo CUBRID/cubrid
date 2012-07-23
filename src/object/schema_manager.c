@@ -4460,7 +4460,6 @@ sm_is_subclass (MOP classmop, MOP supermop)
 int
 sm_is_partition (MOP classmop, MOP supermop)
 {
-  DB_OBJLIST *s;
   SM_CLASS *class_;
   int error;
 
@@ -9994,26 +9993,15 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
   if (error == NO_ERROR)
     {
       TP_DOMAIN *domain = NULL;
-      TP_DOMAIN *fi_domain = NULL;
 
       if (function_index)
 	{
-	  fi_domain = tp_domain_new (function_index->type);
-
-	  fi_domain->precision = function_index->precision;
-	  fi_domain->scale = function_index->scale;
-	  if (function_index->asc_desc)
-	    {
-	      fi_domain->is_desc = 1;
-	    }
-	  fi_domain = tp_domain_cache (fi_domain);
-
 	  if (function_index->attr_index_start == 0)
 	    {
 	      /* if this is a single column function index, the key domain
 	       * is actually the domain of the function result
 	       */
-	      domain = fi_domain;
+	      domain = function_index->fi_domain;
 	    }
 	  else
 	    {
@@ -10022,7 +10010,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 					    attrs, asc_desc,
 					    attrs_prefix_length,
 					    function_index->col_id,
-					    fi_domain);
+					    function_index->fi_domain);
 	    }
 	}
       else
@@ -10131,7 +10119,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	      int last_key_desc = 0;
 
 	      if (reverse || (asc_desc && asc_desc[n_attrs - 1] == 1)
-		  || (function_index && function_index->asc_desc
+		  || (function_index && function_index->fi_domain->is_desc
 		      && (function_index->col_id == function_index->
 			  attr_index_start)))
 		{
@@ -14011,14 +13999,7 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
       free_and_init (info->name);
       if (info->func_index_info)
 	{
-	  if (info->func_index_info->expr_str)
-	    {
-	      free_and_init (info->func_index_info->expr_str);
-	    }
-	  if (info->func_index_info->expr_stream)
-	    {
-	      free_and_init (info->func_index_info->expr_stream);
-	    }
+	  sm_free_function_index_info (info->func_index_info);
 	  free_and_init (info->func_index_info);
 	}
       free_and_init (info->asc_desc);
@@ -14272,10 +14253,8 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	  goto error_exit;
 	}
 
-      new_constraint->func_index_info->type = c->func_index_info->type;
-      new_constraint->func_index_info->precision =
-	c->func_index_info->precision;
-      new_constraint->func_index_info->scale = c->func_index_info->scale;
+      new_constraint->func_index_info->fi_domain =
+	tp_domain_copy (c->func_index_info->fi_domain, true);
 
       new_constraint->func_index_info->expr_str =
 	(char *) calloc (len + 1, sizeof (char));
@@ -14306,8 +14285,6 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
       new_constraint->func_index_info->col_id = c->func_index_info->col_id;
       new_constraint->func_index_info->attr_index_start =
 	c->func_index_info->attr_index_start;
-      new_constraint->func_index_info->asc_desc =
-	c->func_index_info->asc_desc;
     }
   if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
     {
@@ -14988,4 +14965,29 @@ cleanup:
   pr_clear_value (&newval);
 
   return error;
+}
+
+/*
+ * sm_free_function_index_info () - 
+ */
+void
+sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info)
+{
+  assert (func_index_info != NULL);
+
+  if (func_index_info->expr_str != NULL)
+    {
+      free_and_init (func_index_info->expr_str);
+    }
+
+  if (func_index_info->expr_stream != NULL)
+    {
+      free_and_init (func_index_info->expr_stream);
+    }
+
+  if (func_index_info->fi_domain != NULL)
+    {
+      tp_domain_free (func_index_info->fi_domain);
+      func_index_info->fi_domain = NULL;
+    }
 }

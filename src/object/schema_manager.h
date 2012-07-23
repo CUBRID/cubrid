@@ -329,5 +329,6 @@ extern int sc_set_current_schema (MOP user);
 /* Obtain (pointer to) current schema name.                            */
 
 extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
+extern void sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info);
 
 #endif /* _SCHEMA_MANAGER_H_ */

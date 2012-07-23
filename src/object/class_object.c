@@ -7869,14 +7869,15 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
 check_filter_function:
   if (func_index_info && existing_con->func_index_info)
     {
-      if (!intl_identifier_casecmp (func_index_info->expr_str,
-				    existing_con->func_index_info->expr_str)
+      /* expr_str are printed tree, identifiers are already lower case */
+      if (!strcmp (func_index_info->expr_str,
+		   existing_con->func_index_info->expr_str)
 	  && (func_index_info->attr_index_start ==
 	      existing_con->func_index_info->attr_index_start)
 	  && (func_index_info->col_id ==
 	      existing_con->func_index_info->col_id)
-	  && (func_index_info->asc_desc ==
-	      existing_con->func_index_info->asc_desc))
+	  && (func_index_info->fi_domain->is_desc ==
+	      existing_con->func_index_info->fi_domain->is_desc))
 	{
 	  return ret;
 	}
@@ -7997,7 +7998,7 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
 {
   SM_FUNCTION_INFO *fi_info;
   DB_VALUE val;
-  char *buffer;
+  char *buffer, *ptr;
   int size;
 
   if (func_seq == NULL)
@@ -8059,28 +8060,10 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
     {
       goto error;
     }
-  fi_info->type = DB_GET_INT (&val);
-  pr_clear_value (&val);
+  buffer = DB_GET_STRING (&val);
+  ptr = buffer;
+  ptr = or_unpack_domain (ptr, &(fi_info->fi_domain), NULL);
 
-  if (set_get_element (func_seq, 5, &val))
-    {
-      goto error;
-    }
-  fi_info->precision = DB_GET_INT (&val);
-  pr_clear_value (&val);
-
-  if (set_get_element (func_seq, 6, &val))
-    {
-      goto error;
-    }
-  fi_info->scale = DB_GET_INT (&val);
-  pr_clear_value (&val);
-
-  if (set_get_element (func_seq, 7, &val))
-    {
-      goto error;
-    }
-  fi_info->asc_desc = DB_GET_INT (&val);
   pr_clear_value (&val);
 
   return fi_info;
@@ -8104,13 +8087,26 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
 {
   DB_SEQ *fi_seq;
   DB_VALUE val;
+  int fi_domain_size;
+  char *fi_domain_buf = NULL, *ptr = NULL;
 
   if (func_index_info == NULL)
     {
       return NULL;
     }
 
-  fi_seq = set_create_sequence (8);
+  fi_domain_size = or_packed_domain_size (func_index_info->fi_domain, 0);
+  fi_domain_buf = malloc (fi_domain_size);
+  if (fi_domain_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      fi_domain_size);
+      return NULL;
+    }
+  ptr = fi_domain_buf;
+  ptr = or_pack_domain (ptr, func_index_info->fi_domain, 0, 0);
+
+  fi_seq = set_create_sequence (5);
 
   db_make_string (&val, func_index_info->expr_str);
   set_put_element (fi_seq, 0, &val);
@@ -8127,17 +8123,11 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
   db_make_int (&val, func_index_info->attr_index_start);
   set_put_element (fi_seq, 3, &val);
 
-  db_make_int (&val, func_index_info->type);
+  db_make_char (&val, fi_domain_size, fi_domain_buf, fi_domain_size,
+		LANG_SYS_CODESET, LANG_SYS_COLLATION);
   set_put_element (fi_seq, 4, &val);
 
-  db_make_int (&val, func_index_info->precision);
-  set_put_element (fi_seq, 5, &val);
-
-  db_make_int (&val, func_index_info->scale);
-  set_put_element (fi_seq, 6, &val);
-
-  db_make_int (&val, func_index_info->asc_desc);
-  set_put_element (fi_seq, 7, &val);
+  free_and_init (fi_domain_buf);
 
   return fi_seq;
 }
@@ -8152,6 +8142,7 @@ classobj_free_function_index_ref (SM_FUNCTION_INFO * func_index_info)
 {
   ws_free_string (func_index_info->expr_str);
   ws_free_string (func_index_info->expr_stream);
+  tp_domain_free (func_index_info->fi_domain);
   func_index_info->expr_str = NULL;
   func_index_info->expr_stream = NULL;
 }

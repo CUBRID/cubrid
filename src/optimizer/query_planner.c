@@ -897,7 +897,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	  if (QO_SEG_FUNC_INDEX (seg) == true)
 	    {
 	      asc_or_desc = index_entryp->constraints->func_index_info->
-		asc_desc ? PT_DESC : PT_ASC;
+		fi_domain->is_desc ? PT_DESC : PT_ASC;
 	    }
 	}
 

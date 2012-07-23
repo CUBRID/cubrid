@@ -2828,10 +2828,7 @@ end:
   /* free function index info */
   if (func_index_info)
     {
-      if (func_index_info->expr_stream)
-	{
-	  free_and_init (func_index_info->expr_stream);
-	}
+      sm_free_function_index_info (func_index_info);
       db_ws_free (func_index_info);
       func_index_info = NULL;
     }
@@ -3292,9 +3289,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_exit;
 	    }
-	  func_index_info->type = idx->func_index_info->type;
-	  func_index_info->precision = idx->func_index_info->precision;
-	  func_index_info->scale = idx->func_index_info->scale;
+	  func_index_info->fi_domain =
+	    tp_domain_copy (idx->func_index_info->fi_domain, true);
 	  func_index_info->expr_str = strdup (idx->func_index_info->expr_str);
 	  if (func_index_info->expr_str == NULL)
 	    {
@@ -3323,7 +3319,6 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  func_index_info->col_id = idx->func_index_info->col_id;
 	  func_index_info->attr_index_start =
 	    idx->func_index_info->attr_index_start;
-	  func_index_info->asc_desc = idx->func_index_info->asc_desc;
 	}
     }
   else
@@ -3518,15 +3513,9 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 end:
   if (func_index_info)
     {
-      if (free_funtion_expr_str)
-	{
-	  free_and_init (func_index_info->expr_str);
-	}
-      if (func_index_info->expr_stream)
-	{
-	  free_and_init (func_index_info->expr_stream);
-	}
+      sm_free_function_index_info (func_index_info);
       db_ws_free (func_index_info);
+      func_index_info = NULL;
     }
 
   if (pred_index_info.pred_stream != NULL)
@@ -4408,9 +4397,12 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
       set_add_element (dbc, &expr);
 
       /* Notice that we're not calling pr_clear_value on expr here because
-       * memory allocated for expr_stream will be deallocated later.
+       * memory allocated for expr_stream is deallocated by
+       * 'sm_free_function_index_info'
        */
+      sm_free_function_index_info (part_expr);
       db_ws_free (part_expr);
+      part_expr = NULL;
     }
   else
     {
@@ -16269,6 +16261,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
   SM_FUNCTION_INFO *func_index_info;
   FUNC_PRED *func_pred;
   PT_NODE *expr = NULL;
+  char *expr_str = NULL;
 
   if (node->node_type == PT_SORT_SPEC)
     {
@@ -16286,23 +16279,36 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
     {
       return NULL;
     }
-  func_index_info->type = pt_type_enum_to_db (expr->type_enum);
+  memset (func_index_info, 0, sizeof (SM_FUNCTION_INFO));
+
   if (expr->data_type)
     {
-      func_index_info->precision = expr->data_type->info.data_type.precision;
-      func_index_info->scale = expr->data_type->info.data_type.dec_precision;
+      func_index_info->fi_domain =
+	pt_data_type_to_db_domain (parser, expr->data_type, NULL);
     }
   else
     {
-      func_index_info->precision = TP_FLOATING_PRECISION_VALUE;
-      func_index_info->scale = 0;
+      func_index_info->fi_domain =
+	pt_type_enum_to_db_domain (expr->type_enum);
     }
+
+  assert (func_index_info->fi_domain != NULL);
+
   if (node->node_type == PT_SORT_SPEC)
     {
-      func_index_info->asc_desc = (node->info.sort_spec.asc_or_desc == PT_ASC
-				   ? 0 : 1);
+      func_index_info->fi_domain->is_desc =
+	(node->info.sort_spec.asc_or_desc == PT_ASC ? 0 : 1);
     }
-  func_index_info->expr_str = parser_print_tree_with_quotes (parser, expr);
+  expr_str = parser_print_tree_with_quotes (parser, expr);
+  assert (expr_str != NULL);
+  func_index_info->expr_str = strdup (expr_str);
+  if (func_index_info->expr_str == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      strlen (expr_str));
+      goto error_exit;
+    }
+
   func_index_info->expr_stream = NULL;
   func_index_info->expr_stream_size = -1;
 
@@ -16317,11 +16323,19 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
 	}
       else
 	{
-	  return NULL;
+	  goto error_exit;
 	}
     }
 
   return func_index_info;
+
+error_exit:
+  if (func_index_info != NULL)
+    {
+      sm_free_function_index_info (func_index_info);
+      db_ws_free (func_index_info);
+    }
+  return NULL;
 }
 
 /*
@@ -16344,13 +16358,15 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   PT_NODE **stmt;
   PT_NODE *expr;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
-  FUNC_PRED *func_pred;
-  int error;
+  SM_FUNCTION_INFO *fi_info_ws = NULL;
+  int error = NO_ERROR;
   const char *class_name = NULL;
   char *query_str = NULL;
   int query_str_len = 0;
   char *expr_str = NULL;
   int expr_str_len = 0;
+  int saved_func_index_pos = -1, saved_attr_index_start = -1;
+  bool free_packing_buff = false;
 
   if (alter && alter->node_type == PT_ALTER)
     {
@@ -16448,71 +16464,50 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
-  if (constr->func_index_info->expr_str)
-    {
-      free_and_init (constr->func_index_info->expr_str);
-    }
-  if (constr->func_index_info->expr_stream)
-    {
-      free_and_init (constr->func_index_info->expr_stream);
-    }
-
-  expr_str = parser_print_tree_with_quotes (parser, expr);
-  if (expr_str)
-    {
-      expr_str_len = strlen (expr_str);
-      constr->func_index_info->expr_str = (char *) calloc (expr_str_len + 1,
-							   sizeof (char));
-      if (constr->func_index_info->expr_str == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  (expr_str_len + 1) * sizeof (char));
-	  goto error;
-	}
-      memcpy (constr->func_index_info->expr_str, expr_str, expr_str_len);
-    }
-  else
-    {
-      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
-      error = ER_FAILED;
-      goto error;
-    }
+  /* free previous function index info */
+  saved_func_index_pos = constr->func_index_info->col_id;
+  saved_attr_index_start = constr->func_index_info->attr_index_start;
+  sm_free_function_index_info (constr->func_index_info);
+  free_and_init (constr->func_index_info);
 
   pt_enter_packing_buf ();
-  func_pred = pt_to_func_pred (parser, (*stmt)->info.query.q.select.from,
-			       expr);
-  if (func_pred)
+  free_packing_buff = true;
+  fi_info_ws =
+    pt_node_to_function_index (parser, (*stmt)->info.query.q.select.from,
+			       expr, DO_INDEX_CREATE);
+  if (fi_info_ws == NULL)
     {
-      error = xts_map_func_pred_to_stream (func_pred,
-					   &constr->func_index_info->
-					   expr_stream,
-					   &constr->func_index_info->
-					   expr_stream_size);
-      if (error != NO_ERROR)
-	{
-	  pt_exit_packing_buf ();
-	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME,
-		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-	  goto error;
-	}
-    }
-  else
-    {
-      pt_exit_packing_buf ();
-      error = er_errid ();
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (SM_FUNCTION_INFO));
       goto error;
     }
-  pt_exit_packing_buf ();
 
-  if (query_str)
+  /* original function index uses WS storage, switch to normal heap storage */
+  constr->func_index_info =
+    (SM_FUNCTION_INFO *) malloc (sizeof (SM_FUNCTION_INFO));
+  if (fi_info_ws == NULL)
     {
-      free_and_init (query_str);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (SM_FUNCTION_INFO));
+      db_ws_free (fi_info_ws);
+      goto error;
     }
-  return NO_ERROR;
+
+  memcpy (constr->func_index_info, fi_info_ws, sizeof (SM_FUNCTION_INFO));
+  db_ws_free (fi_info_ws);
+
+  /* restore original values */
+  constr->func_index_info->col_id = saved_func_index_pos;
+  constr->func_index_info->attr_index_start = saved_attr_index_start;
 
 error:
+  if (free_packing_buff)
+    {
+      pt_exit_packing_buf ();
+    }
+
   if (query_str)
     {
       free_and_init (query_str);

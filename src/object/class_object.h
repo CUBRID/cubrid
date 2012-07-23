@@ -632,15 +632,12 @@ typedef struct sm_function_info SM_FUNCTION_INFO;
 
 struct sm_function_info
 {
-  DB_TYPE type;			/* the domain of the function's result */
-  int precision;
-  int scale;
+  TP_DOMAIN *fi_domain;		/* the domain of the function's result */
   char *expr_str;
   char *expr_stream;
   int expr_stream_size;
   int col_id;
   int attr_index_start;
-  int asc_desc;
 };
 
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;

@@ -1052,7 +1052,7 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	  buffer =
 	    pt_append_nulstring (parser, buffer,
 				 constraint_p->func_index_info->expr_str);
-	  if (constraint_p->func_index_info->asc_desc)
+	  if (constraint_p->func_index_info->fi_domain->is_desc)
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, " DESC");
 	    }
