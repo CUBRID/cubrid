@@ -14565,7 +14565,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 
 error:
 
-  attr_value = attr_info->values;;
+  attr_value = attr_info->values;
   for (i = 0; i < attr_info->num_values; i++)
     {
       attr_value->state = HEAP_UNINIT_ATTRVALUE;

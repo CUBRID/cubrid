@@ -1120,7 +1120,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   int r, i, error = NO_ERROR;
 
   entry_p->index = -1;
-  entry_p->tid = ((pthread_t) 0);;
+  entry_p->tid = ((pthread_t) 0);
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
   entry_p->rid = 0;

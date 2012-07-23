@@ -860,7 +860,7 @@ get_time_from_ora_date (char *ora_date, ub1 * hour, ub1 * min, ub1 * sec)
 {
   *hour = ora_date[4] - 1;
   *min = ora_date[5] - 1;
-  *sec = ora_date[6] - 1;;
+  *sec = ora_date[6] - 1;
 }
 
 static void
@@ -879,7 +879,7 @@ set_time_to_ora_date (char *ora_date, ub1 hour, ub1 min, ub1 sec)
 {
   ora_date[4] = hour + 1;
   ora_date[5] = min + 1;
-  ora_date[6] = sec + 1;;
+  ora_date[6] = sec + 1;
 }
 
 static int

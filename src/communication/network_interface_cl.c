@@ -6473,7 +6473,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 	  ptr = or_pack_int (ptr, expr_stream_size);
 	  ptr = or_pack_int (ptr, func_col_id);
 	  ptr = or_pack_int (ptr, func_attr_index_start);
-	  stream = expr_stream;;
+	  stream = expr_stream;
 	  stream_size = expr_stream_size;
 	}
       else

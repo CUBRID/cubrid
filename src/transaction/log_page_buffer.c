@@ -8206,7 +8206,7 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first,
       fileio_unformat (thread_p, logarv_name);
 #endif
       append_log_info = true;
-      deleted_count++;;
+      deleted_count++;
     }
 
   if (append_log_info)

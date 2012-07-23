@@ -693,7 +693,7 @@ proxy_handler_process_client_conn_error (T_PROXY_EVENT * event_p)
   error = fn_proxy_client_conn_error (ctx_p);
   if (error)
     {
-      ;;
+      ;
     }
 
 end:
