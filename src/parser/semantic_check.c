@@ -741,7 +741,17 @@ pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c)
     }
   else if (c->node_type == PT_NAME)
     {
-      cname = pt_name (parser, c->info.name.original);
+      if (c->type_enum == PT_TYPE_OBJECT
+	  && c->info.name.meta_class == PT_OID_ATTR
+	  && (c->info.name.original == NULL
+	      || strlen (c->info.name.original) == 0))
+	{
+	  cname = pt_name (parser, c->info.name.resolved);
+	}
+      else
+	{
+	  cname = pt_name (parser, c->info.name.original);
+	}
     }
   else
     {
