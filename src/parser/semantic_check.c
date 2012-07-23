@@ -5416,11 +5416,12 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_NODE *names, *parts, *val;
   PT_ALTER_CODE cmd;
   SM_CLASS *smclass, *subcls;
+  SM_ATTRIBUTE *keyattr = NULL;
   DB_OBJLIST *objs;
   int au_save, i, setsize;
   bool au_disable_flag = false;
   int orig_cnt = 0, name_cnt = 0, parts_cnt = 0, chkflag = 0;
-  DB_VALUE ptype, pname, pattr, *psize;
+  DB_VALUE ptype, pname, pattr, attname, *psize;
   char *class_name, *part_name;
   DB_VALUE minele, maxele, *minval = NULL, *maxval = NULL;
   DB_VALUE *parts_val, *partmin = NULL, *partmax = NULL;
@@ -5535,11 +5536,50 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   AU_DISABLE (au_save);
   au_disable_flag = true;
   db_make_null (&ptype);
+  db_make_null (&pattr);
+  db_make_null (&attname);
   if (db_get (smclass->partition_of, PARTITION_ATT_PTYPE, &ptype))
     {
       PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
       goto check_end;		/* get partition type */
+    }
+
+  if (DB_GET_INT (&ptype) != PT_PARTITION_HASH)
+    {
+      /* get partition attribute type */
+      if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr)
+	  != NO_ERROR)
+	{
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
+	  goto check_end;	/* get partition type */
+	}
+      if (set_get_element (DB_GET_SEQ (&pattr), 0, &attname) != NO_ERROR)
+	{
+	  PT_ERROR (parser, stmt, er_msg ());
+	  goto check_end;
+	}
+      if (DB_IS_NULL (&attname) || DB_GET_STRING (&attname) == NULL)
+	{
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
+	  goto check_end;	/* get partition type */
+	}
+      keyattr =
+	classobj_find_attribute (smclass, DB_GET_STRING (&attname), 0);
+      if (keyattr == NULL)
+	{
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
+	  goto check_end;	/* get partition type */
+	}
+
+      const_type = pt_db_to_type_enum (db_domain_type (keyattr->domain));
+      pr_clear_value (&pattr);
+      pr_clear_value (&attname);
+      db_make_null (&pattr);
+      db_make_null (&attname);
     }
 
   chkflag = 0;
@@ -5629,20 +5669,6 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		{
 		  partition_range_min_max (&maxval, &maxele, RANGE_MAX);
 		}
-
-	      if (const_type == PT_TYPE_NONE)
-		{
-		  if (!DB_IS_NULL (&minele))
-		    {
-		      const_type = (PT_TYPE_ENUM)
-			pt_db_to_type_enum (db_value_type (&minele));
-		    }
-		  else
-		    {
-		      const_type = (PT_TYPE_ENUM)
-			pt_db_to_type_enum (db_value_type (&maxele));
-		    }
-		}
 	    }
 
 	  for (names = name_list, chkflag = 0; names; names = names->next)
@@ -5685,17 +5711,6 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			      goto out_of_mem;
 			    }
 
-			  if (const_type == PT_TYPE_NONE)
-			    {
-			      if (!DB_IS_NULL (&minele))
-				{
-				  const_type =
-				    (PT_TYPE_ENUM)
-				    pt_db_to_type_enum (db_value_type
-							(&minele));
-				}
-			    }
-
 			  if (inlist_head == NULL)
 			    {
 			      inlist_head = inlist_tail;
@@ -5721,15 +5736,6 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 		      if (db_value_list_add (&outlist_tail, &minele))
 			goto out_of_mem_fail;
-
-		      if (const_type == PT_TYPE_NONE)
-			{
-			  if (!DB_IS_NULL (&minele))
-			    {
-			      const_type = (PT_TYPE_ENUM)
-				pt_db_to_type_enum (db_value_type (&minele));
-			    }
-			}
 
 		      if (outlist_head == NULL)
 			{
@@ -6109,6 +6115,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 check_end:
   pr_clear_value (&ptype);
+  pr_clear_value (&pname);
+  pr_clear_value (&attname);
   if (maxval)
     {
       pr_clear_value (maxval);
