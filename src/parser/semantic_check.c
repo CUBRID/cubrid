@@ -8886,6 +8886,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
 
     case PT_MERGE:
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+
       if (top_node->cannot_prepare == 1)
 	{
 	  node->cannot_prepare = 1;
