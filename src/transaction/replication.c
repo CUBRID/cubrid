@@ -113,6 +113,7 @@ repl_data_delete_log_dump (FILE * fp, int length, void *data)
    */
   repl_data_insert_log_dump (fp, length, data);
 }
+
 #endif
 
 /*
@@ -139,31 +140,6 @@ repl_schema_log_dump (FILE * fp, int length, void *data)
   fprintf (fp, "      class_name: %s\n", class_name);
   fprintf (fp, "      DDL: %s\n", ddl);
   fflush (fp);
-}
-
-/*
- * repl_class_is_replicated - check the target class is set for replication
- *
- * return: true if replicated class, false otherwise
- *
- *   class_oid(in): OID of the target class
- *
- * NOTE:The class attribute "is_replicated" of the target class shows that
- *     this class should be replicated or not.
- *
- *     The class can be replicated when it has a primary key.
- *
- *     if databases is set for replication AND the target class is set for
- *     replication, then the replication log would be append when the
- *     transaction commits.
- */
-bool
-repl_class_is_replicated (const OID * class_oid)
-{
-  if (OID_ISNULL (class_oid))
-    return false;
-  else				/* We have to check is_replicated attr. of _db_class */
-    return true;
 }
 
 /*

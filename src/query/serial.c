@@ -860,6 +860,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
   int sp_success;
   LOG_LSA lsa;
 
+  assert_release (serial_class_oidp != NULL
+		  && !OID_ISNULL (serial_class_oidp));
+
   /* need to start topop for replication
    * Replication will recognize and realize a special type of update for serial
    * by this top operation log record.
@@ -915,9 +918,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
     }
 
   /* make replication log for the special type of update for serial */
-  if (db_Enable_replications > 0
-      && repl_class_is_replicated (serial_class_oidp)
-      && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_log_insert (thread_p, serial_class_oidp, serial_oidp,
 		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,

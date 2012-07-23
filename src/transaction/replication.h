@@ -73,7 +73,6 @@ extern void repl_data_udpate_log_dump (FILE * fp, int length, void *data);
 extern void repl_data_delete_log_dump (FILE * fp, int length, void *data);
 #endif
 extern void repl_schema_log_dump (FILE * fp, int length, void *data);
-extern bool repl_class_is_replicated (const OID * class_oid);
 extern void repl_log_send (void);
 extern int repl_add_update_lsa (THREAD_ENTRY * thread_p,
 				const OID * inst_oid);

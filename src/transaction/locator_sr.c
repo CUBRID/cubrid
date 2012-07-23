@@ -5514,9 +5514,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        * We have to set UPDATE LSA number to the log info.
        * The target log info was already created when the locator_update_index
        */
-      if (db_Enable_replications > 0
-	  && repl_class_is_replicated (class_oid)
-	  && !LOG_CHECK_LOG_APPLIER (thread_p))
+      if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  repl_add_update_lsa (thread_p, oid);
 	}
@@ -6745,6 +6743,8 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
   PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
   DB_LOGICAL ev_res;
 
+  assert_release (class_oid != NULL && !OID_ISNULL (class_oid));
+
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   /*
@@ -6885,7 +6885,6 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
        */
       if (db_Enable_replications > 0 && need_replication
 	  && index->type == BTREE_PRIMARY_KEY
-	  && repl_class_is_replicated (class_oid)
 	  && key_ins_del != NULL && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  error_code = repl_log_insert (thread_p, class_oid, inst_oid,
@@ -7290,6 +7289,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   bool same_key = true;
   int c = DB_UNK;
 
+  assert_release (class_oid != NULL && !OID_ISNULL (class_oid));
+
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
@@ -7371,7 +7372,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
       index = &(new_attrinfo->last_classrepr->indexes[i]);
       if (pk_btid_index == -1 && db_Enable_replications > 0
 	  && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
-	  && repl_class_is_replicated (class_oid)
 	  && index->type == BTREE_PRIMARY_KEY)
 	{
 	  pk_btid_index = i;
