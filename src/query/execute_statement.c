@@ -12201,7 +12201,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   AU_ENABLE (save);
 
-
   /* restore the obt_Last_insert_id_generated flag after insert. */
   if (!is_trigger_involved && obt_Last_insert_id_generated)
     {
@@ -12211,7 +12210,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) csession_reset_cur_insert_id ();
 	}
     }
-
 
   /* if error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction.
