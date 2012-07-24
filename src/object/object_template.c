@@ -2532,12 +2532,38 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      /* lock the object first, then evaluate the triggers */
 	      if (!(error = access_object (template_ptr, &object, &mobj)))
 		{
-		  pin = ws_pin (object, 1);
 		  if ((error = tr_before_object (trstate, object, temp)))
 		    {
 		      trstate = NULL;
 		    }
 		}
+
+	      /* in some cases, the object has been decached in before 
+	       * trigger. we need fetch it again.
+	       */
+	      if (error == NO_ERROR && object->decached)
+		{
+		  error =
+		    au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE);
+		  if (error != NO_ERROR)
+		    {
+		      if (WS_ISMARK_DELETED (object))
+			{
+			  if (trstate != NULL)
+			    {
+			      tr_abort (trstate);
+			      free_temp_object (temp);
+			    }
+			  return NO_ERROR;
+			}
+		      else
+			{
+			  return error;
+			}
+		    }
+		}
+	      /* set pin after before trigger */
+	      pin = ws_pin (object, 1);
 	    }
 	}
     }

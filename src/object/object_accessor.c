@@ -2141,6 +2141,19 @@ obj_delete (MOP op)
 	{
 	  goto error_exit;
 	}
+
+      /* in some cases, the object has been decached in before 
+       * trigger. we need fetch it again.
+       */
+      if (base_op->decached)
+	{
+	  error =
+	    au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
     }
   else
     {
@@ -2153,6 +2166,18 @@ obj_delete (MOP op)
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
+	}
+
+      /* in some cases, the object has been decached in before 
+       * trigger. we need fetch it again.
+       */
+      if (op->decached)
+	{
+	  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, AU_DELETE);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	}
     }
 
