@@ -6871,6 +6871,10 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 
       for (idx = upd_cls_cnt - 1; idx >= 0; idx--)
 	{
+	  if (!(cls_info[idx].spec->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE))
+	    {
+	      continue;
+	    }
 	  error =
 	    sm_flush_for_multi_update (cls_info[idx].spec->info.spec.
 				       flat_entity_list->info.name.db_object);
@@ -7260,6 +7264,7 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 							     name.original))
 	    {
 	      *has_unique = 1;
+	      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
 	    }
 	  if (*has_unique == 0 &&
 	      sm_att_in_unique_filter_constraint_predicate (class_obj,
@@ -7267,6 +7272,7 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 							    original))
 	    {
 	      *has_unique = 1;
+	      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
 	    }
 	  if (sm_att_constrained (class_obj, att->info.name.original,
 				  SM_ATTFLAG_NON_NULL))

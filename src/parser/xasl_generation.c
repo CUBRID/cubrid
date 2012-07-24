@@ -16773,6 +16773,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       class_obj = cl_name_node->info.name.db_object;
       upd_cls->needs_pruning = sm_is_partitioned_class (class_obj);
 
+      upd_cls->has_uniques = (p->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
+
       /* iterate through subclasses */
       cl = 0;
       cl_name_node = p->info.spec.flat_entity_list;
@@ -16816,21 +16818,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  assign->att_idx = a;
 		  upd_cls->att_id[cl * upd_cls->no_attrs + a] =
 		    sm_att_id (class_obj, att_name_node->info.name.original);
-		  if (!upd_cls->has_uniques)
-		    {
-		      /* check if current attribute has a unique
-		       * constraint */
-		      upd_cls->has_uniques =
-			sm_att_unique_constrained (class_obj,
-						   att_name_node->
-						   info.name.original);
-		      if (upd_cls->has_uniques == 0)
-			{
-			  upd_cls->has_uniques =
-			    sm_att_in_unique_filter_constraint_predicate
-			    (class_obj, att_name_node->info.name.original);
-			}
-		    }
 
 		  if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
 		    {
@@ -21003,6 +20990,8 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   upd_cls = &update->classes[0];
 
+  upd_cls->has_uniques = (from->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
+
   /* count subclasses of update class */
   no_subclasses = 0;
   cl_name_node = from->info.spec.flat_entity_list;
@@ -21114,15 +21103,6 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      assign->att_idx = a;
 	      upd_cls->att_id[cl * upd_cls->no_attrs + a] =
 		sm_att_id (class_obj, att_name_node->info.name.original);
-	      if (!upd_cls->has_uniques)
-		{
-		  /* check if current attribute has a unique
-		   * constraint */
-		  upd_cls->has_uniques =
-		    sm_att_unique_constrained (class_obj,
-					       att_name_node->
-					       info.name.original);
-		}
 
 	      if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
 		{
