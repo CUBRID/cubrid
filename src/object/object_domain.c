@@ -7672,9 +7672,18 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    temp.need_clear = true;
 		    if (db_bit_string_coerce (&temp, target, &data_stat) !=
 			NO_ERROR)
-		      status = DOMAIN_INCOMPATIBLE;
+		      {
+			status = DOMAIN_INCOMPATIBLE;
+		      }
+		    else if (data_stat == DATA_STATUS_TRUNCATED
+			     && coercion_mode == TP_IMPLICIT_COERCION)
+		      {
+			status = DOMAIN_OVERFLOW;
+		      }
 		    else
-		      status = DOMAIN_COMPATIBLE;
+		      {
+			status = DOMAIN_COMPATIBLE;
+		      }
 		    pr_clear_value (&temp);
 		  }
 	      }

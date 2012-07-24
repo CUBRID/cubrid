@@ -10087,8 +10087,6 @@ static PT_NODE *
 pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 			  PT_NODE * rhs)
 {
-  int rc;
-
   assert (parser != NULL && lhs != NULL &&
 	  rhs != NULL && lhs->node_type == PT_NAME);
 
@@ -10128,30 +10126,6 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	  return rhs;
 	}
 
-      if (rhs->type_enum == lhs->type_enum
-	  && PT_IS_BIT_STRING_TYPE (lhs->type_enum))
-	{
-	  assert_release (!PT_IS_BIT_STRING_TYPE (lhs->type_enum)
-			  || lhs->data_type != NULL);
-	  /* only set scale and precision */
-	  rc = pt_coerce_value (parser, rhs, rhs, lhs->type_enum,
-				lhs->data_type);
-	  if (rc == ER_IT_DATA_OVERFLOW)
-	    {
-	      PT_ERRORmf (parser, rhs, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_DATA_OVERFLOW_ON,
-			  pt_show_type_enum (lhs->type_enum));
-	      return NULL;
-	    }
-	  else if (rc != NO_ERROR)
-	    {
-	      PT_ERRORmf (parser, rhs, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_INCOMP_TYPE_ON_ATTR,
-			  lhs->info.name.original);
-	      return NULL;
-	    }
-	  return rhs;
-	}
       if (rhs->type_enum != PT_TYPE_NULL)
 	{
 	  if (rhs->type_enum == PT_TYPE_MAYBE)
