@@ -337,7 +337,7 @@ static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 
 static int make_number_to_char (const INTL_LANG lang, char *num_string,
 				char *format_str, int *length,
-				char **result_str);
+				DB_CURRENCY currency, char **result_str);
 static int make_scientific_notation (char *src_string, int cipher);
 static int roundoff (const INTL_LANG lang, char *src_string, int flag,
 		     int *cipher, char *format);
@@ -7051,7 +7051,9 @@ is_number (const DB_VALUE * n)
 	  (domain_type == DB_TYPE_INTEGER) ||
 	  (domain_type == DB_TYPE_SMALLINT) ||
 	  (domain_type == DB_TYPE_BIGINT) ||
-	  (domain_type == DB_TYPE_DOUBLE) || (domain_type == DB_TYPE_FLOAT));
+	  (domain_type == DB_TYPE_DOUBLE) ||
+	  (domain_type == DB_TYPE_FLOAT) ||
+	  (domain_type == DB_TYPE_MONETARY));
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -15601,6 +15603,7 @@ number_to_char (const DB_VALUE * src_value,
     (domain != NULL) ? TP_DOMAIN_CODESET (domain) : LANG_COERCIBLE_CODESET;
   const int collation_id =
     (domain != NULL) ? TP_DOMAIN_COLLATION (domain) : LANG_COERCIBLE_COLL;
+  DB_CURRENCY currency = lang_currency ();
 
   assert (src_value != (DB_VALUE *) NULL);
   assert (result_str != (DB_VALUE *) NULL);
@@ -15692,6 +15695,21 @@ number_to_char (const DB_VALUE * src_value,
 
     case DB_TYPE_DOUBLE:
       sprintf (tmp_str, "%.15e", DB_GET_DOUBLE (src_value));
+      if (date_lang_id != INTL_LANG_ENGLISH)
+	{
+	  convert_locale_number (tmp_str, strlen (tmp_str), INTL_LANG_ENGLISH,
+				 lang_id ());
+	}
+      if (scientific_to_decimal_string (date_lang_id, tmp_str, &cs) !=
+	  NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
+
+    case DB_TYPE_MONETARY:
+      currency = (DB_GET_MONETARY (src_value))->type;
+      sprintf (tmp_str, "%.15e", (DB_GET_MONETARY (src_value))->amount);
       if (date_lang_id != INTL_LANG_ENGLISH)
 	{
 	  convert_locale_number (tmp_str, strlen (tmp_str), INTL_LANG_ENGLISH,
@@ -15822,7 +15840,8 @@ number_to_char (const DB_VALUE * src_value,
 	    {
 	    case N_FORMAT:
 	      if (make_number_to_char (date_lang_id, cs, format_str_ptr,
-				       &token_length, &res_ptr) != NO_ERROR)
+				       &token_length, currency,
+				       &res_ptr) != NO_ERROR)
 		{
 		  error_status = ER_QSTR_INVALID_FORMAT;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -16126,7 +16145,8 @@ lob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
  */
 static int
 make_number_to_char (const INTL_LANG lang, char *num_string,
-		     char *format_str, int *length, char **result_str)
+		     char *format_str, int *length, DB_CURRENCY currency,
+		     char **result_str)
 {
   int flag_sign = 1;
   int leadingzero = false;
@@ -16187,8 +16207,7 @@ make_number_to_char (const INTL_LANG lang, char *num_string,
   /*              Check currency          */
   if (char_tolower (*format_str) == 'c')
     {
-      DB_CURRENCY symbol_num = lang_currency ();
-      const char *money_symbol = intl_get_money_symbol (symbol_num);
+      const char *money_symbol = intl_get_money_symbol (currency);
 
       strcpy (res_str, money_symbol);
       res_str += strlen (money_symbol);
