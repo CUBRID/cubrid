@@ -104,7 +104,7 @@ xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
 }
 
 /*
- *  xsession_set_last_insert_id () - set the value of last insert id
+ *  xsession_set_cur_insert_id () - set the value of current insert id
  *
  *  return	  : error code
  *  thread_p (in) : worker thread
@@ -113,14 +113,14 @@ xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
  *
  */
 int
-xsession_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
-			     bool force)
+xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
+			    bool force)
 {
   int err = NO_ERROR;
 
   assert (value != NULL);
 
-  err = session_set_last_insert_id (thread_p, value, force);
+  err = session_set_cur_insert_id (thread_p, value, force);
 
   return err;
 }
@@ -131,20 +131,37 @@ xsession_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
  *  return	  : error code
  *  thread_p (in) : worker thread
  *  value (out)	  : the value of last insert id
- *
+ *  update_last_insert_id(in): whether update the last insert id
  */
 int
-xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
+xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value,
+			     bool update_last_insert_id)
 {
   int err = NO_ERROR;
 
   assert (value != NULL);
 
-  err = session_get_last_insert_id (thread_p, value);
+  err = session_get_last_insert_id (thread_p, value, update_last_insert_id);
   if (err != NO_ERROR)
     {
       DB_MAKE_NULL (value);
     }
+  return err;
+}
+
+/*
+ *  xsession_reset_cur_insert_id () - reset current insert id as NULL
+ *
+ *  return	  : error code
+ *  thread_p (in) : worker thread
+ */
+int
+xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
+{
+  int err = NO_ERROR;
+
+  err = session_reset_cur_insert_id (thread_p);
+
   return err;
 }
 

@@ -9306,6 +9306,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   savepoint_used = 1;
 
+  if (insert->is_first_value)
+    {
+      (void) session_begin_insert_values (thread_p);
+    }
+
   COPY_OID (&class_oid, &insert->class_oid);
   HFID_COPY (&class_hfid, &insert->class_hfid);
   if (insert->has_uniques && (insert->do_replace || xasl->dptr_list != NULL))
@@ -9416,11 +9421,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       scan_cache_op_type =
 	(operation ==
 	 LC_FLUSH_INSERT) ? SINGLE_ROW_INSERT : SINGLE_ROW_INSERT_PRUNING;
-    }
-
-  if (insert->is_first_value)
-    {
-      (void) session_begin_insert_values (thread_p);
     }
 
   if (specp)
@@ -9880,6 +9880,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   return NO_ERROR;
 
 exit_on_error:
+  (void) session_reset_cur_insert_id (thread_p);
   for (k = 0; k < no_default_expr; k++)
     {
       pr_clear_value (insert->vals[k]);

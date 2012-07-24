@@ -4734,14 +4734,17 @@ csession_get_row_count (int *rows)
  * csession_get_last_insert_id - get the value of the last update serial
  * return   : error code or NO_ERROR
  * value (out) : the value of the last insert id
+ * update_last_insert_id(in): whether update the last insert id
  */
 int
-csession_get_last_insert_id (DB_VALUE * value)
+csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id)
 {
 #if defined (CS_MODE)
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
   char *ptr = NULL;
   char *data_reply = NULL;
   int data_size = 0;
@@ -4750,10 +4753,13 @@ csession_get_last_insert_id (DB_VALUE * value)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  request = OR_ALIGNED_BUF_START (a_request);
+  ptr = or_pack_int (request, update_last_insert_id);
+
   req_error = net_client_request2 (NET_SERVER_SES_GET_LAST_INSERT_ID,
-				   NULL, 0, reply,
-				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				   &data_reply, &data_size);
+				   request, OR_ALIGNED_BUF_SIZE (a_request),
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &data_reply, &data_size);
   if (req_error != NO_ERROR)
     {
       DB_MAKE_NULL (value);
@@ -4784,7 +4790,45 @@ cleanup:
   int result = NO_ERROR;
   ENTER_SERVER ();
 
-  result = xsession_get_last_insert_id (NULL, value);
+  result = xsession_get_last_insert_id (NULL, value, update_last_insert_id);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_reset_cur_insert_id - reset cur insert id as NULL
+ * return   : error code or NO_ERROR
+ */
+int
+csession_reset_cur_insert_id (void)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_SES_RESET_CUR_INSERT_ID,
+				  NULL, 0, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  or_unpack_int (reply, &req_error);
+
+  return req_error;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  result = xsession_reset_cur_insert_id (NULL);
 
   EXIT_SERVER ();
 

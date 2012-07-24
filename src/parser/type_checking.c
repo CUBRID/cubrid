@@ -52,6 +52,7 @@
 #include "schema_manager.h"
 #include "system_parameter.h"
 #include "network_interface_cl.h"
+#include "object_template.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -16252,7 +16253,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       }
 
     case PT_LAST_INSERT_ID:
-      if (csession_get_last_insert_id (&tmp_val) != NO_ERROR)
+      if (csession_get_last_insert_id (&tmp_val,
+				       !obt_Last_insert_id_generated)
+	  != NO_ERROR)
 	{
 	  return 0;
 	}

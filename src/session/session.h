@@ -42,9 +42,11 @@ extern int session_remove_expired_sessions (struct timeval *timeout);
 extern int session_get_session_id (THREAD_ENTRY * thread_p,
 				   SESSION_KEY * key);
 extern int session_get_last_insert_id (THREAD_ENTRY * thread_p,
-				       DB_VALUE * value);
-extern int session_set_last_insert_id (THREAD_ENTRY * thread_p,
-				       const DB_VALUE * value, bool force);
+				       DB_VALUE * value,
+				       bool update_last_insert_id);
+extern int session_set_cur_insert_id (THREAD_ENTRY * thread_p,
+				      const DB_VALUE * value, bool force);
+extern int session_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 extern int session_begin_insert_values (THREAD_ENTRY * thread_p);
 extern int session_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int session_set_row_count (THREAD_ENTRY * thread_p,

@@ -450,6 +450,9 @@ extern int ssession_get_row_count (THREAD_ENTRY * thread_p,
 extern void ssession_get_last_insert_id (THREAD_ENTRY * thread_p,
 					 unsigned int rid, char *request,
 					 int reqlen);
+extern void ssession_reset_cur_insert_id (THREAD_ENTRY * thread_p,
+					  unsigned int rid, char *request,
+					  int reqlen);
 extern void ssession_create_prepared_statement (THREAD_ENTRY * thread_p,
 						unsigned int rid,
 						char *request, int reqlen);

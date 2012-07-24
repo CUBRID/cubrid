@@ -1143,6 +1143,11 @@ net_server_init (void)
   net_Requests[NET_SERVER_SES_GET_LAST_INSERT_ID].processing_function =
     ssession_get_last_insert_id;
 
+  net_Requests[NET_SERVER_SES_RESET_CUR_INSERT_ID].name =
+    "NET_SERVER_SES_RESET_CUR_INSERT_ID";
+  net_Requests[NET_SERVER_SES_RESET_CUR_INSERT_ID].processing_function =
+    ssession_reset_cur_insert_id;
+
   net_Requests[NET_SERVER_SES_CREATE_PREPARED_STATEMENT].name =
     "NET_SERVER_SES_CREATE_PREPARED_STATEMENT";
   net_Requests[NET_SERVER_SES_CREATE_PREPARED_STATEMENT].processing_function =

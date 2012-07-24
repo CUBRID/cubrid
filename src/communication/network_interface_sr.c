@@ -8926,8 +8926,13 @@ ssession_get_last_insert_id (THREAD_ENTRY * thread_p, unsigned int rid,
   char *data_reply = NULL;
   int data_size = 0;
   char *ptr = NULL;
+  int update_last_insert_id;
 
-  err = xsession_get_last_insert_id (thread_p, &lid);
+  (void) or_unpack_int (request, &update_last_insert_id);
+
+  err =
+    xsession_get_last_insert_id (thread_p, &lid,
+				 (bool) update_last_insert_id);
   if (err != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -8960,6 +8965,34 @@ end:
     {
       db_private_free (thread_p, data_reply);
     }
+}
+
+/*
+ * ssession_reset_cur_insert_id  - reset the current insert id as NULL
+ * return: error code or NO_ERROR
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ * NOTE:
+ */
+void
+ssession_reset_cur_insert_id (THREAD_ENTRY * thread_p, unsigned int rid,
+			      char *request, int reqlen)
+{
+  int err = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+
+  err = xsession_reset_cur_insert_id (thread_p);
+  if (err != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, err);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*

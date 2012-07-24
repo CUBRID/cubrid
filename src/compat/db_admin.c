@@ -730,7 +730,7 @@ int
 db_get_last_insert_id (DB_VALUE * value)
 {
   CHECK_CONNECT_ERROR ();
-  return csession_get_last_insert_id (value);
+  return csession_get_last_insert_id (value, true);
 }
 
 

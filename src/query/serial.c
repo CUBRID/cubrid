@@ -383,10 +383,10 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (ret == NO_ERROR && is_auto_increment == GENERATE_AUTO_INCREMENT)
     {
-      /* we update last insert id for this session here */
-      /* Note that we ignore an error during updating last insert id. */
-      (void) xsession_set_last_insert_id (thread_p, result_num,
-					  force_set_last_insert_id);
+      /* we update current insert id for this session here */
+      /* Note that we ignore an error during updating current insert id. */
+      (void) xsession_set_cur_insert_id (thread_p, result_num,
+					 force_set_last_insert_id);
     }
 
   return ret;

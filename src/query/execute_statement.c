@@ -12097,6 +12097,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool is_multiple_tuples_insert = false;
   bool need_savepoint = false;
   int has_trigger = 0;
+  bool is_trigger_involved = false;
 
   if (!statement
       || statement->node_type != PT_INSERT
@@ -12232,7 +12233,15 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  obt_begin_insert_values ();
+  /* the do_Trigger_involved will be set as true when execute trigger
+   * statement. it will not be set back. we need to keep its value
+   * to update last insert id.
+   */
+  is_trigger_involved = do_Trigger_involved;
+  if (!do_Trigger_involved)
+    {
+      obt_begin_insert_values ();
+    }
 
   for (row_count_total = 0; crt_list != NULL; crt_list = crt_list->next)
     {
@@ -12313,6 +12322,18 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   AU_ENABLE (save);
+
+
+  /* restore the obt_Last_insert_id_generated flag after insert. */
+  if (!is_trigger_involved && obt_Last_insert_id_generated)
+    {
+      obt_Last_insert_id_generated = false;
+      if (error != NO_ERROR)
+	{
+	  (void) csession_reset_cur_insert_id ();
+	}
+    }
+
 
   /* if error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction.

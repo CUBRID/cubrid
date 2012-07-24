@@ -441,10 +441,12 @@ extern int xsession_end_session (THREAD_ENTRY * thread,
 
 extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
 extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
-extern int xsession_set_last_insert_id (THREAD_ENTRY * thread_p,
-					const DB_VALUE * value, bool force);
+extern int xsession_set_cur_insert_id (THREAD_ENTRY * thread_p,
+				       const DB_VALUE * value, bool force);
 extern int xsession_get_last_insert_id (THREAD_ENTRY * thread_p,
-					DB_VALUE * value);
+					DB_VALUE * value,
+					bool update_last_insert_id);
+extern int xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 
 extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p,
 					       OID user, char *name,

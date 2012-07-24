@@ -3022,13 +3022,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_LAST_INSERT_ID:
-      {
-	if (session_get_last_insert_id (thread_p, arithptr->value)
-	    != NO_ERROR)
-	  {
-	    goto error;
-	  }
-      }
+      if (session_get_last_insert_id (thread_p, arithptr->value, true) !=
+	  NO_ERROR)
+	{
+	  goto error;
+	}
       break;
 
     case T_EVALUATE_VARIABLE:

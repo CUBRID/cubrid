@@ -103,6 +103,7 @@ typedef struct session_state
 {
   SESSION_ID session_id;
   bool is_last_insert_id_generated;
+  DB_VALUE cur_insert_id;
   DB_VALUE last_insert_id;
   int row_count;
   SESSION_VARIABLE *session_variables;
@@ -334,6 +335,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
     }
 
   session_p->session_id = DB_EMPTY_SESSION;
+  DB_MAKE_NULL (&session_p->cur_insert_id);
   DB_MAKE_NULL (&session_p->last_insert_id);
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
@@ -493,6 +495,7 @@ session_free_session (const void *key, void *data, void *args)
 		"session_free_session closed %d queries for %d\n", cnt,
 		session->session_id);
 
+  pr_clear_value (&session->cur_insert_id);
   pr_clear_value (&session->last_insert_id);
   free_and_init (session);
 
@@ -1080,9 +1083,11 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_KEY * key)
  *   return  : NO_ERROR or error code
  *   thread_p (in)  : thread that identifies the session
  *   value (out)    : pointer into which to store the last insert id value
+ *   update_last_insert_id(in): whether update the last insert id
  */
 int
-session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
+session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value,
+			    bool update_last_insert_id)
 {
   SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
@@ -1112,6 +1117,11 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
       return ER_FAILED;
     }
 
+  if (update_last_insert_id && !DB_IS_NULL (&state_p->cur_insert_id))
+    {
+      pr_clone_value (&state_p->cur_insert_id, &state_p->last_insert_id);
+      pr_clear_value (&state_p->cur_insert_id);
+    }
   pr_clone_value (&state_p->last_insert_id, value);
 
   csect_exit (CSECT_SESSION_STATE);
@@ -1120,8 +1130,8 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
 }
 
 /*
- * session_set_last_insert_id  () - set the value of the last inserted id
- *				    in the session associated with a thread
+ * session_set_cur_insert_id  () - set the value of the current inserted id
+ *				in the session associated with a thread
  *   return  : NO_ERROR or error code
  *   thread_p (in) : thread that identifies the session
  *   value (in)	   : the value of the last inserted id
@@ -1132,8 +1142,8 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
  * performs a coercion here if needed.
  */
 int
-session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
-			    bool force)
+session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
+			   bool force)
 {
   SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
@@ -1179,25 +1189,80 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
       return NO_ERROR;
     }
 
+  if (!DB_IS_NULL (&state_p->cur_insert_id))
+    {
+      pr_clone_value (&state_p->cur_insert_id, &state_p->last_insert_id);
+      pr_clear_value (&state_p->cur_insert_id);
+    }
+
   if (!need_coercion)
     {
-      pr_clone_value ((DB_VALUE *) value, &state_p->last_insert_id);
+      pr_clone_value ((DB_VALUE *) value, &state_p->cur_insert_id);
     }
   else
     {
       TP_DOMAIN *num = tp_domain_resolve_default (DB_TYPE_NUMERIC);
       num->precision = DB_MAX_NUMERIC_PRECISION;
       num->scale = 0;
-      if (tp_value_cast (value, &state_p->last_insert_id, num, false)
+      if (tp_value_cast (value, &state_p->cur_insert_id, num, false)
 	  != DOMAIN_COMPATIBLE)
 	{
-	  DB_MAKE_NULL (&state_p->last_insert_id);
+	  pr_clear_value (&state_p->cur_insert_id);
 	  csect_exit (CSECT_SESSION_STATE);
 	  return ER_FAILED;
 	}
     }
 
   state_p->is_last_insert_id_generated = true;
+  csect_exit (CSECT_SESSION_STATE);
+
+  return NO_ERROR;
+}
+
+/*
+ * session_reset_cur_insert_id () - reset the current insert_id as NULL
+ *                                  when the insert fail.
+ *   return  : NO_ERROR or error code
+ *   thread_p (in) : thread that identifies the session
+ */
+int
+session_reset_cur_insert_id (THREAD_ENTRY * thread_p)
+{
+  SESSION_KEY key;
+  SESSION_STATE *state_p = NULL;
+
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (!sessions_is_states_table_initialized ())
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+
+  if (state_p->is_last_insert_id_generated == false)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return NO_ERROR;
+    }
+
+  pr_clear_value (&state_p->cur_insert_id);
+  state_p->is_last_insert_id_generated = false;
+
   csect_exit (CSECT_SESSION_STATE);
 
   return NO_ERROR;
