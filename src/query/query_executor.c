@@ -18344,6 +18344,8 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 				 QFILE_TUPLE_RECORD * tplrec)
 {
+  REGU_VARIABLE_LIST regu_list = NULL;
+
   analytic_state->state = NO_ERROR;
 
   analytic_state->input_scan = NULL;
@@ -18398,6 +18400,43 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
     }
   analytic_state->current_key.area_size = DB_PAGESIZE;
   analytic_state->output_tplrec = tplrec;
+
+  /* resolve variable domains in reguvar lists */
+  for (regu_list = a_regu_list_ex; regu_list; regu_list = regu_list->next)
+    {
+      /* if it's position, resolve domain */
+      if (regu_list->value.type == TYPE_POSITION
+	  && TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) ==
+	  DB_TYPE_VARIABLE)
+	{
+	  int pos = regu_list->value.value.pos_descr.pos_no;
+	  if (pos <= type_list->type_cnt)
+	    {
+	      regu_list->value.value.pos_descr.dom = type_list->domp[pos];
+	      regu_list->value.domain = type_list->domp[pos];
+	    }
+	}
+    }
+
+  if (a_regu_list != a_regu_list_ex)
+    {
+      /* for the last analytic evaluation, a_regu_list != a_regu_list_ex */
+      for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
+	{
+	  /* if it's position, resolve domain */
+	  if (regu_list->value.type == TYPE_POSITION
+	      && TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) ==
+	      DB_TYPE_VARIABLE)
+	    {
+	      int pos = regu_list->value.value.pos_descr.pos_no;
+	      if (pos <= type_list->type_cnt)
+		{
+		  regu_list->value.value.pos_descr.dom = type_list->domp[pos];
+		  regu_list->value.domain = type_list->domp[pos];
+		}
+	    }
+	}
+    }
 
   return analytic_state;
 }
@@ -18617,6 +18656,7 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
 			    ANALYTIC_STATE * analytic_state,
 			    const RECDES * key, bool reinit)
 {
+  ANALYTIC_TYPE *func_p;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   int error;
 
@@ -18658,12 +18698,23 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
    */
   if (reinit)
     {
+      /* starting a new group */
       error =
 	qdata_initialize_analytic_func (thread_p, analytic_state->a_func_list,
 					xasl_state->query_id);
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  else
+    {
+      for (func_p = analytic_state->a_func_list; func_p;
+	   func_p = func_p->next)
+	{
+	  /* starting a new partition; reinstate acumulator */
+	  qdata_copy_db_value (func_p->value, &func_p->part_value);
+	  pr_clear_value (&func_p->part_value);
 	}
     }
 

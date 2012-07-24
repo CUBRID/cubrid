@@ -9191,6 +9191,8 @@ qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,
       DB_MAKE_INT (func_p->value, 0);
     }
 
+  DB_MAKE_NULL (&func_p->part_value);
+
   /* create temporary list file to handle distincts */
   if (func_p->option == Q_DISTINCT)
     {
@@ -9770,6 +9772,12 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	  qfile_close_scan (thread_p, &scan_id);
 	  func_p->curr_cnt = list_id_p->tuple_cnt;
 	}
+    }
+
+  if (keep_list_file)
+    {
+      /* this is the end of a partition; save accumulator */
+      qdata_copy_db_value (&func_p->part_value, func_p->value);
     }
 
   /* compute averages */

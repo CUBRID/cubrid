@@ -316,6 +316,15 @@ static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser,
 				      PT_NODE * node, void *arg,
 				      int *continue_walk);
+static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser,
+					   PT_NODE * sort_spec,
+					   PT_NODE * select_list);
+static bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser,
+				       PT_NODE * expr1, PT_NODE * expr2);
+static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser,
+					    PT_NODE * spec,
+					    PT_NODE * spec_list,
+					    PT_NODE * select_list);
 static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser,
 					    PT_NODE * node, void *arg,
 					    int *continue_walk);
@@ -345,7 +354,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_CAST_VAL cast_is_valid = PT_CAST_VALID;
 
   if (node == NULL || node->node_type != PT_EXPR
-      || node->info.expr.op != PT_CAST)
+      || node->info.expr.op != PT_CAST || node->info.expr.cast_type == NULL)
     {
       /* this should not happen, but don't crash and burn if it does */
       assert (false);
@@ -363,7 +372,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "(null)",
-		       pt_show_type_enum (cast_type));
+		       pt_show_type_enum (node->info.expr.cast_type->
+					  type_enum));
 	}
       return;
     }
@@ -12916,6 +12926,161 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 }
 
 /*
+ * pt_resolve_sort_spec_expr - resolves a sort spec expression
+ *  returns: parser node or NULL on error
+ *  sort_spec(in): PT_SORT_SPEC node whose expression must be resolved
+ *  select_list(in): statement's select list for PT_VALUE lookup
+ */
+static PT_NODE *
+pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec,
+			   PT_NODE * select_list)
+{
+  PT_NODE *expr, *resolved;
+
+  if (parser == NULL || sort_spec == NULL)
+    {
+      /* nothing to do */
+      return NULL;
+    }
+
+  if (sort_spec->node_type != PT_SORT_SPEC)
+    {
+      PT_INTERNAL_ERROR (parser, "expecting a sort spec");
+      return NULL;
+    }
+
+  expr = sort_spec->info.sort_spec.expr;
+  if (expr == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "null sort expression");
+      return NULL;
+    }
+
+  if (expr->node_type != PT_VALUE)
+    {
+      return expr;
+    }
+
+  /* we have a PT_VALUE sort expression; look it up in select list */
+  if (expr->type_enum == PT_TYPE_INTEGER)
+    {
+      int index = expr->info.value.data_value.i;
+      resolved = pt_get_node_from_list (select_list, index - 1);
+
+      if (resolved != NULL)
+	{
+	  return resolved;
+	}
+      else
+	{
+	  PT_ERRORmf (parser, sort_spec, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR, index);
+	  return NULL;
+	}
+    }
+  else
+    {
+      PT_ERRORm (parser, sort_spec, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+      return NULL;
+    }
+}
+
+/*
+ * pt_compare_sort_spec_expr - compare two sort expressions
+ *  returns: true if expressions are the same, false otherwise
+ *  expr1(in): first expression
+ *  expr2(in): second expression
+ */
+static bool
+pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1,
+			   PT_NODE * expr2)
+{
+  if (parser == NULL || expr1 == NULL || expr2 == NULL)
+    {
+      return false;
+    }
+
+  if ((expr1->node_type == PT_NAME || expr1->node_type == PT_DOT_)
+      && (expr2->node_type == PT_NAME || expr2->node_type == PT_DOT_))
+    {
+      /* we have comparable names */
+      if (pt_check_path_eq (parser, expr1, expr2) == 0)
+	{
+	  /* name match */
+	  return true;
+	}
+    }
+  else
+    {
+      /* brute method, compare printed trees */
+      char *str_expr = parser_print_tree (parser, expr1);
+      char *str_spec_expr = parser_print_tree (parser, expr2);
+
+      if (pt_str_compare (str_expr, str_spec_expr, CASE_INSENSITIVE) == 0)
+	{
+	  /* match */
+	  return true;
+	}
+    }
+
+  /* no match */
+  return false;
+}
+
+/*
+ * pt_find_matching_sort_spec - find a matching sort spec in a spec list
+ *  return: match or NULL
+ *  parser(in): parser context
+ *  spec(in): sort spec to look for
+ *  spec_list(in): sort spec list to look into
+ *  select_list(in): statement's select list, for PT_VALUE lookup
+ */
+static PT_NODE *
+pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
+			    PT_NODE * spec_list, PT_NODE * select_list)
+{
+  PT_NODE *spec_expr, *expr;
+
+  if (parser == NULL || spec == NULL || spec_list == NULL)
+    {
+      /* nothing to do here */
+      return NULL;
+    }
+
+  /* fetch sort expression */
+  spec_expr = pt_resolve_sort_spec_expr (parser, spec, select_list);
+  if (spec_expr == NULL)
+    {
+      return NULL;
+    }
+
+  /* iterate list and check for match */
+  while (spec_list)
+    {
+      /* fetch sort expression */
+      expr = pt_resolve_sort_spec_expr (parser, spec_list, select_list);
+      if (expr == NULL)
+	{
+	  return NULL;
+	}
+
+      /* compare */
+      if (pt_compare_sort_spec_expr (parser, expr, spec_expr))
+	{
+	  /* found match */
+	  return spec_list;
+	}
+
+      /* advance */
+      spec_list = spec_list->next;
+    }
+
+  /* nothing was found */
+  return NULL;
+}
+
+/*
  * pt_check_analytic_function () -
  *   return:
  *   parser(in):
@@ -12929,10 +13094,8 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 			    void *arg, int *continue_walk)
 {
   PT_NODE *arg_list, *partition_by, *order_by, *select_list;
-  PT_NODE *r, *col, *temp, *order, *query;
+  PT_NODE *order, *query;
   PT_NODE *link = NULL, *order_list = NULL, *match = NULL;
-  char *r_str = NULL;
-  int n, select_list_len;
 
   if (func->node_type != PT_FUNCTION
       || !func->info.function.analytic.is_analytic)
@@ -12966,7 +13129,27 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
   order_by = func->info.function.analytic.order_by;
   select_list = query->info.query.q.select.list;
 
-  /* link partition and order lists */
+  /* order_by sort direction has priority over partition_by direction */
+  if (order_by != NULL && partition_by != NULL)
+    {
+      PT_NODE *part, *match;
+
+      /* iterate partition_by nodes */
+      for (part = partition_by; part; part = part->next)
+	{
+	  /* find matching sort spec in order_by list and copy direction */
+	  match =
+	    pt_find_matching_sort_spec (parser, part, order_by, select_list);
+
+	  if (match != NULL)
+	    {
+	      part->info.sort_spec.asc_or_desc =
+		match->info.sort_spec.asc_or_desc;
+	    }
+	}
+    }
+
+  /* link partition and order lists together */
   for (link = partition_by; link && link->next; link = link->next)
     {
       ;
@@ -12981,124 +13164,73 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
       order_list = order_by;
     }
 
-  select_list_len =
-    pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS);
-
+  /* replace names/exprs with positions in select list where possible; this
+   * also re-processes PT_VALUE sort expressions so we can identify and reduce
+   * cases like:
+   *    SELECT a, b, a, AVG(b) OVER (PARTITION BY A ORDER BY 1 asc, 3 asc)
+   */
   for (order = order_list; order; order = order->next)
     {
-      /* get the EXPR */
-      r = order->info.sort_spec.expr;
-      if (r == NULL)
-	{			/* impossible case */
-	  continue;
-	}
+      PT_NODE *expr, *col, *temp;
+      int index;
 
-      if (r->node_type == PT_VALUE)
+      /* resolve sort spec */
+      expr = pt_resolve_sort_spec_expr (parser, order, select_list);
+      if (expr == NULL)
 	{
-	  if (r->type_enum == PT_TYPE_INTEGER)
-	    {
-	      n = r->info.value.data_value.i;
-	      /* check size of the integer */
-	      if (n > select_list_len || n < 1)
-		{
-		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
-			      MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR, n);
-		  goto error_exit;
-		}
-	    }
-	  else
-	    {
-	      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
-	      goto error_exit;
-	    }
-	}
-
-      /* Try to match with something in the select list. */
-      n = 1;			/* a counter for position in select_list */
-      if (r->node_type != PT_NAME && r->node_type != PT_DOT_)
-	{
-	  r_str = parser_print_tree (parser, r);
-	}
-
-      for (col = select_list; col; col = col->next)
-	{
-	  /* if match, break; */
-	  if (r->node_type == col->node_type)
-	    {
-	      if (r->node_type == PT_NAME || r->node_type == PT_DOT_)
-		{
-		  if (pt_check_path_eq (parser, r, col) == 0)
-		    {
-		      break;	/* match */
-		    }
-		}
-	      else
-		{
-		  if (pt_str_compare (r_str, parser_print_tree (parser, col),
-				      CASE_INSENSITIVE) == 0)
-		    {
-		      break;	/* match */
-		    }
-		}
-	    }
-	  n++;
-	}
-
-      /* if end of list, no match create a hidden column node
-       * and append to select_list */
-      if (col == NULL)
-	{
-	  col = parser_copy_tree (parser, r);
-	  if (col == NULL)
-	    {
-	      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      goto error_exit;	/* give up */
-	    }
-	  else
-	    {
-	      /* mark as a hidden column */
-	      col->is_hidden_column = 1;
-	      parser_append_node (col, select_list);
-	    }
-	}
-
-      /* we got a match=n, Create a value node and replace expr with it */
-      temp = parser_new_node (parser, PT_VALUE);
-      if (temp == NULL)
-	{
-	  PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	  goto error_exit;
 	}
-      else
+
+      /* try to match with something in the select list */
+      for (col = select_list, index = 1; col; col = col->next, index++)
 	{
-	  temp->type_enum = PT_TYPE_INTEGER;
-	  temp->info.value.data_value.i = n;
-	  pt_value_to_db (parser, temp);
-	  parser_free_tree (parser, r);
-	  order->info.sort_spec.expr = temp;
+	  if (pt_compare_sort_spec_expr (parser, expr, col))
+	    {
+	      /* found a match in select list */
+	      break;
+	    }
 	}
 
-      /* set order by position num */
-      order->info.sort_spec.pos_descr.pos_no = n;
+      /* if we have a match in the select list, we can replace it on the spot;
+         otherwise, wait for XASL generation */
+      if (col != NULL)
+	{
+	  /* create a value node and replace expr with it */
+	  temp = parser_new_node (parser, PT_VALUE);
+	  if (temp == NULL)
+	    {
+	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      temp->type_enum = PT_TYPE_INTEGER;
+	      temp->info.value.data_value.i = index;
+	      (void) pt_value_to_db (parser, temp);
+	      parser_free_tree (parser, order->info.sort_spec.expr);
+	      order->info.sort_spec.expr = temp;
+	    }
 
-      if (col->type_enum != PT_TYPE_NONE && col->type_enum != PT_TYPE_MAYBE)
-	{			/* is resolved */
-	  order->info.sort_spec.pos_descr.dom =
-	    pt_xasl_node_to_domain (parser, col);
+	  /* set position descriptor and resolve domain */
+	  order->info.sort_spec.pos_descr.pos_no = index;
+	  if (col->type_enum != PT_TYPE_NONE
+	      && col->type_enum != PT_TYPE_MAYBE)
+	    {			/* is resolved */
+	      order->info.sort_spec.pos_descr.dom =
+		pt_xasl_node_to_domain (parser, col);
+	    }
 	}
     }
 
-  /* now check for duplicate entries.
-   *  - If they match on ascending/descending, remove the second.
-   *  - If they do not, generate an error. */
+  /* check for duplicate entries */
   for (order = order_list; order; order = order->next)
     {
-      while ((match = pt_find_order_value_in_list (parser,
-						   order->info.sort_spec.expr,
-						   order->next)))
+      PT_NODE *temp;
+
+      while ((match =
+	      pt_find_matching_sort_spec (parser, order, order->next,
+					  select_list)))
 	{
 	  if (order->info.sort_spec.asc_or_desc !=
 	      match->info.sort_spec.asc_or_desc)

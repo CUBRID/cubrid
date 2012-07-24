@@ -2811,6 +2811,29 @@ pt_length_of_select_list (PT_NODE * list, int hidden_col)
 }
 
 /*
+ * pt_get_node_from_list - get node from list, based on index
+ *  return: the node at position specified by index or NULL
+ *  list(in): node list
+ *  index(in): index of requested node
+ */
+PT_NODE *
+pt_get_node_from_list (PT_NODE * list, int index)
+{
+  if (list == NULL || index < 0)
+    {
+      return NULL;
+    }
+
+  while (list && index > 0)
+    {
+      list = list->next;
+      index--;
+    }
+
+  return list;
+}
+
+/*
  * pt_show_misc_type() - English name of the node type (for debugging)
  *   return:
  *   c(in):

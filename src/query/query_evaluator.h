@@ -396,6 +396,7 @@ struct analytic_list_node
   TP_DOMAIN *domain;		/* domain of the result */
   DB_VALUE *value;		/* value of the aggregate */
   DB_VALUE *value2;		/* for STTDEV and VARIANCE */
+  DB_VALUE part_value;		/* partition temporary accumulator */
   DB_VALUE *default_value;	/* default value of the aggregate */
   int curr_cnt;			/* current number of items */
   FUNC_TYPE function;		/* analytic function type */

@@ -13933,7 +13933,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
 	  (void) parser_walk_tree (parser, select_list,
 				   pt_set_analytic_node_etc,
-				   NULL, pt_continue_walk, NULL);
+				   (void *) select_list, pt_continue_walk,
+				   NULL);
 
 	  analytic_info.val_list = pt_make_val_list (select_list);
 	  if (analytic_info.val_list == NULL)
@@ -20034,17 +20035,22 @@ exit_on_error:
 
 /*
  * pt_set_analytic_node_etc () - allocate value for result and set etc
- *   return:
- *   parser(in):
- *   tree(in):
- *   arg(in/out):
- *   continue_walk(in/out):
+ *   return: node
+ *   parser(in): parser context
+ *   tree(in): analytic node
+ *   arg(in/out): select list
+ *   continue_walk(in/out): walk type
+ *
+ * NOTE: this function alters the select list!
  */
 static PT_NODE *
 pt_set_analytic_node_etc (PARSER_CONTEXT * parser, PT_NODE * tree,
 			  void *arg, int *continue_walk)
 {
+  PT_NODE *select_list = (PT_NODE *) arg;
+  PT_NODE *node;
   DB_VALUE *value;
+  bool visited_part = false;
 
   if (!tree->node_type == PT_FUNCTION
       || !tree->info.function.analytic.is_analytic)
@@ -20062,8 +20068,85 @@ pt_set_analytic_node_etc (PARSER_CONTEXT * parser, PT_NODE * tree,
       return tree;
     }
   regu_dbval_type_init (value, DB_TYPE_NULL);
-
   tree->etc = (void *) value;
+
+  /* walk order list and resolve nodes that were not found in select list */
+  node = tree->info.function.analytic.partition_by;
+  if (node == NULL)
+    {
+      node = tree->info.function.analytic.order_by;
+      visited_part = true;
+    }
+
+  while (node)
+    {
+      PT_NODE *val = NULL, *expr = NULL;
+      int pos = 1;		/* select node indexing starts from 1 */
+
+      if (node->node_type != PT_SORT_SPEC)
+	{
+	  PT_INTERNAL_ERROR (parser, "invalid sort spec");
+	  return tree;
+	}
+
+      /* pull sort expression */
+      expr = node->info.sort_spec.expr;
+      if (expr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "null sort expression");
+	  return tree;
+	}
+
+      if (expr->node_type != PT_VALUE)
+	{
+	  /* we have an actual expression; move it in the select list and put
+	     a position value here */
+	  while (select_list != NULL && select_list->next != NULL)
+	    {
+	      select_list = select_list->next;
+	      pos++;
+	    }
+	  select_list->next = expr;
+	  expr->is_hidden_column = 1;
+
+	  /* unlink from sort spec */
+	  node->info.sort_spec.expr = NULL;
+
+	  /* create new value node */
+	  val = parser_new_node (parser, PT_VALUE);
+	  if (val == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return tree;
+	    }
+
+	  val->type_enum = PT_TYPE_INTEGER;
+	  val->info.value.data_value.i = pos + 1;
+	  (void) pt_value_to_db (parser, val);
+
+	  /* set value node and position descriptor */
+	  node->info.sort_spec.expr = val;
+	  node->info.sort_spec.pos_descr.pos_no = pos + 1;
+
+	  /* resolve domain */
+	  if (expr->type_enum != PT_TYPE_NONE
+	      && expr->type_enum != PT_TYPE_MAYBE)
+	    {
+	      node->info.sort_spec.pos_descr.dom =
+		pt_xasl_node_to_domain (parser, expr);
+	    }
+	}
+
+      /* advance */
+      node = node->next;
+      if (node == NULL && !visited_part)
+	{
+	  node = tree->info.function.analytic.order_by;
+	  visited_part = true;
+	}
+    }
+
   return tree;
 }
 

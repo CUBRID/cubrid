@@ -196,6 +196,7 @@ extern "C"
 				       PT_NODE * spec, VIEW_HANDLING how);
   extern int pt_length_of_list (const PT_NODE * list);
   extern int pt_length_of_select_list (PT_NODE * list, int hidden_col);
+  extern PT_NODE *pt_get_node_from_list (PT_NODE * list, int index);
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser,
 				      PT_NODE * query);
