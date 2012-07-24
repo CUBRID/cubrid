@@ -1730,7 +1730,6 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return FN_KEEP_CONN;
     }
   ux_cursor_close (srv_handle);
-  hm_srv_handle_free (srv_h_id);
 
 #ifndef LIBCAS_FOR_JSP
   if (!hm_has_holdable_results ()
