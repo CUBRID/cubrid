@@ -741,10 +741,13 @@ receiver_thr_f (void *arg)
   int job_count;
   int read_len;
   int one = 1;
-  int timeout;
   char cas_req_header[SRV_CON_CLIENT_INFO_SIZE];
   char cas_client_type;
   char driver_version;
+#if defined(LINUX)
+  int timeout;
+#endif /* LINUX */
+
   job_queue_size = shm_appl->job_queue_size;
   job_queue = shm_appl->job_queue;
   job_count = 1;

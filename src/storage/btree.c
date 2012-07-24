@@ -12809,7 +12809,6 @@ btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int slot_id,
 		  RECDES * rec, int is_peeking)
 {
 #if !defined(NDEBUG)
-  int num_records, key_cnt;
   char *header_ptr;
 
   if (btree_get_header_ptr (page_p, &header_ptr) == NULL)
@@ -12842,7 +12841,7 @@ btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int slot_id,
   return NO_ERROR;
 
 error:
-  return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+  return ((er_errid () == NO_ERROR) ? ER_FAILED : er_errid ());
 }
 
 /*
@@ -18322,7 +18321,7 @@ int
 btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
 			   DB_VALUE * key, int find_min_key)
 {
-  VPID vpid, root_vpid;
+  VPID root_vpid;
   PAGE_PTR root_page_ptr = NULL;
   int offset;
   bool clear_key = false;

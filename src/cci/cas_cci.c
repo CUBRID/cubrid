@@ -414,7 +414,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   int error;
   unsigned i;
 
-  char buf[LINE_MAX];
   char *property = NULL;
   char *end = NULL;
   char *host, *dbname;
@@ -1679,7 +1678,6 @@ cci_escape_string (int con_h_id, char *to, const char *from,
 		   unsigned long length, T_CCI_ERROR * err_buf)
 {
   T_CON_HANDLE *con_handle;
-  int ansi_quote;
   int retval = 0;
   unsigned long i;
   char *target_ptr = to;

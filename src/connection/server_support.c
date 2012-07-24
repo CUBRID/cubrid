@@ -1681,7 +1681,9 @@ css_init (char *server_name, int name_length, int port_id)
   /*
    * start to shutdown server
    */
+#if !defined(WINDOWS)
 shutdown:
+#endif
 
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);

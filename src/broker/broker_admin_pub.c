@@ -210,7 +210,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 		 bool acl_flag, char *acl_file)
 {
   T_SHM_BROKER *shm_br;
-  int shm_size, i, j;
+  int shm_size, i;
   int res = 0;
 #if defined(WINDOWS)
   unsigned char ip_addr[4];
@@ -223,11 +223,14 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p;
+  int j;
 #endif /* CUBRID_SHARD */
 
 #if defined(WINDOWS)
   if (admin_get_host_ip (ip_addr) < 0)
-    return -1;
+    {
+      return -1;
+    }
 #endif /* WINDOWS */
 
   if (br_num <= 0)

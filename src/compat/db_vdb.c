@@ -521,9 +521,6 @@ db_compile_statement_local (DB_SESSION * session)
   DB_QUERY_TYPE *qtype;
   int cmd_type;
   int err;
-
-  DB_VALUE *hv;
-  int i;
   SERVER_INFO server_info;
   static long seed = 0;
 

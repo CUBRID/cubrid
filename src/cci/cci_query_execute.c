@@ -710,7 +710,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
-      char *msg = result_msg + (result_msg_size - remain_msg_size);
+      msg = result_msg + (result_msg_size - remain_msg_size);
       err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
       if (err_code < 0)
 	{

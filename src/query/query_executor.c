@@ -18791,7 +18791,6 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
   QFILE_LIST_SCAN_ID lsid;
   QFILE_TUPLE_RECORD tplrec;
   QFILE_TUPLE_RECORD output_tplrec;
-  QFILE_LIST_ID *list_id;
   SCAN_CODE sc;
   ANALYTIC_TYPE *func_p = analytic_state->a_func_list;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
@@ -20551,6 +20550,7 @@ qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
      Note that mht_put2() allows mutiple data with the same key,
      so we have to use mht_get2() */
   last = NULL;
+
   do
     {
       /* look up the hash table with the key */
@@ -20589,6 +20589,7 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
   int i, j, error = NO_ERROR;
   UPDDEL_CLASS_INFO *class_info = NULL;
   bool found = false;
+
   for (aptr = aptr_list; aptr != NULL; aptr = aptr->scan_ptr)
     {
       for (specp = aptr->spec_list; specp; specp = specp->next)
@@ -20597,9 +20598,11 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 	    {
 	      class_oid = &specp->s.cls_node.cls_oid;
 	      found = false;
+
 	      for (i = 0; i < count && !found; i++)
 		{
 		  class_info = &classes[i];
+
 		  for (j = 0; j < class_info->no_subclasses; j++)
 		    {
 		      if (OID_EQ (&class_info->class_oid[j], class_oid))
@@ -20615,6 +20618,7 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 				}
 			      return error;
 			    }
+
 			  found = true;
 			  break;
 			}
@@ -20640,7 +20644,9 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
 			 UPDDEL_CLASS_INFO * classes_info, int count)
 {
   UPDDEL_CLASS_INFO_INTERNAL *class_ = NULL, *local_classes = NULL;
+  size_t size;
   int i = 0, error = NO_ERROR;
+
   if (classes == NULL)
     {
       assert (false);
@@ -20649,8 +20655,8 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
 
   assert (*classes == NULL);
 
-  local_classes =
-    db_private_alloc (thread_p, count * sizeof (UPDDEL_CLASS_INFO_INTERNAL));
+  size = count * sizeof (UPDDEL_CLASS_INFO_INTERNAL);
+  local_classes = db_private_alloc (thread_p, size);
   if (local_classes == NULL)
     {
       return ER_FAILED;
@@ -20667,6 +20673,7 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
       class_->subclass_idx = -1;
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
+
       if (classes_info[i].needs_pruning)
 	{
 	  /* set partition information here */
@@ -20687,11 +20694,14 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
 	  class_->partitions = NULL;
 	  class_->parts_count = 0;
 	}
+
       class_->no_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
       class_->crt_del_lob_info = NULL;
     }
+
   *classes = local_classes;
+
   return NO_ERROR;
 }
 
@@ -20711,8 +20721,10 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 				  OID * current_oid)
 {
   int i = 0;
+
   class_info->class_oid = NULL;
   class_info->class_hfid = NULL;
+
   if (class_info->needs_pruning)
     {
       /* test root class */
@@ -20726,6 +20738,7 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 	  class_info->lob_attr_ids = NULL;
 	  return NO_ERROR;
 	}
+
       /* look through the class partitions for the current_oid */
       for (i = 0; i < class_info->parts_count; i++)
 	{
@@ -20766,10 +20779,12 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 	    }
 	}
     }
+
   if (class_info->class_hfid == NULL)
     {
       return ER_FAILED;
     }
+
   return NO_ERROR;
 }
 
@@ -20788,7 +20803,8 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   LOG_LSA lsa;
 
   /* start a topop */
-  if ((error = xtran_server_start_topop (thread_p, &lsa)) != NO_ERROR)
+  error = xtran_server_start_topop (thread_p, &lsa);
+  if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -20812,6 +20828,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       error = qexec_execute_insert (thread_p, xasl->proc.merge.insert_xasl,
 				    xasl_state);
     }
+
   /* check error */
   if (error != NO_ERROR)
     {
@@ -20819,11 +20836,14 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* setup list file for result count */
-  if ((error = qexec_setup_list_id (xasl)) != NO_ERROR)
+  error = qexec_setup_list_id (xasl);
+  if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
+
   xasl->list_id->tuple_cnt = 0;
+
   /* set result count */
   if (xasl->proc.merge.update_xasl)
     {
@@ -20832,6 +20852,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* monitor */
       mnt_qm_updates (thread_p);
     }
+
   if (xasl->proc.merge.delete_xasl)
     {
       xasl->list_id->tuple_cnt +=
@@ -20839,6 +20860,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* monitor */
       mnt_qm_deletes (thread_p);
     }
+
   if (xasl->proc.merge.insert_xasl)
     {
       xasl->list_id->tuple_cnt +=

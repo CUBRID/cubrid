@@ -309,7 +309,9 @@ broker_config_read_internal (const char *conf_file,
   float tmp_float;
   int lineno = 0;
   int errcode = 0;
+#if defined(CUBRID_SHARD)
   char library_name[PATH_MAX];
+#endif
 
   ini = ini_parser_load (conf_file);
   if (ini == NULL)

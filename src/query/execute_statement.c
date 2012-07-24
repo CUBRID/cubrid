@@ -4132,11 +4132,11 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_LOCK_TIMEOUT:
 	  if (lock_timeout_in_msecs > 0)
 	    {
-	      db_make_float (ins_val, lock_timeout_in_msecs / 1000);
+	      db_make_float (ins_val, (float) lock_timeout_in_msecs / 1000.0);
 	    }
 	  else
 	    {
-	      db_make_float (ins_val, lock_timeout_in_msecs);
+	      db_make_float (ins_val, (float) lock_timeout_in_msecs);
 	    }
 	  break;
 
@@ -4220,7 +4220,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  wait_secs *= 1000;
 		}
-	      (void) tran_reset_wait_times (wait_secs);
+	      (void) tran_reset_wait_times ((int) wait_secs);
 	    }
 	  break;
 	default:
