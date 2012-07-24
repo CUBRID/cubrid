@@ -117,6 +117,150 @@
 #define PT_NODE_SR_NO_CACHE(node)		\
 	((node)->info.serial.no_cache)
 
+
+#define MAX_SERIAL_INVARIANT	8
+
+typedef struct serial_invariant SERIAL_INVARIANT;
+
+/* an invariant which serial must hold */
+struct serial_invariant
+{
+  DB_VALUE val1;
+  DB_VALUE val2;
+  PT_OP_TYPE cmp_op;
+  int val1_msgid;		/* the proper message id for val1.
+				   0 means val1 should not be
+				   responsible for the invariant
+				   voilation */
+  int val2_msgid;		/* the proper message id for val2.
+				   0 means val2 should not be
+				   responsible for the invariant
+				   voilation */
+  int error_type;		/* ER_QPROC_SERIAL_RANGE_OVERFLOW
+				   or ER_INVALID_SERIAL_VALUE */
+};
+
+/*
+ * initialize_serial_invariant() - initialize a serial invariant
+ *   return: None
+ *   invariant(out):
+ *   val1(in):
+ *   val2(in):
+ *   cmp_op(in):
+ *   val1_msgid(in):
+ *   val2_msgid(in):
+ *   error_type(in):
+ *
+ * Note:
+ */
+static void
+initialize_serial_invariant (SERIAL_INVARIANT * invariant,
+			     DB_VALUE val1, DB_VALUE val2, PT_OP_TYPE cmp_op,
+			     int val1_msgid, int val2_msgid, int error_type)
+{
+  invariant->val1 = val1;
+  invariant->val2 = val2;
+  invariant->cmp_op = cmp_op;
+  invariant->val1_msgid = val1_msgid;
+  invariant->val2_msgid = val2_msgid;
+  invariant->error_type = error_type;
+}
+
+/*
+ * check_serial_invariants() - check whether invariants have been violated
+ *   return: Error code
+ *   invariants(in):
+ *   num_invariants(in):
+ *   ret_msg_id(out):
+ *
+ * Note:
+ */
+
+static int
+check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants,
+			 int *ret_msg_id)
+{
+  int i, c;
+  int error;
+  DB_VALUE cmp_result;
+
+  for (i = 0; i < num_invariants; i++)
+    {
+
+      error =
+	numeric_db_value_compare (&invariants[i].val1, &invariants[i].val2,
+				  &cmp_result);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      c = DB_GET_INT (&cmp_result);
+      switch (invariants[i].cmp_op)
+	{
+	case PT_GT:
+	  if (c > 0)
+	    {
+	      /* same as expected */
+	      continue;
+	    }
+	  break;
+	case PT_GE:
+	  if (c >= 0)
+	    {
+	      continue;
+	    }
+	  break;
+	case PT_LT:
+	  if (c < 0)
+	    {
+	      continue;
+	    }
+	  break;
+	case PT_LE:
+	  if (c <= 0)
+	    {
+	      continue;
+	    }
+	  break;
+	case PT_EQ:
+	  if (c == 0)
+	    {
+	      continue;
+	    }
+	  break;
+	case PT_NE:
+	  if (c != 0)
+	    {
+	      continue;
+	    }
+	  break;
+	default:
+	  /* impossible to get here! */
+	  assert (0);
+	  break;
+	}
+
+      /* get here means invariant violated! */
+      if (invariants[i].val1_msgid != 0)
+	{
+	  *ret_msg_id = invariants[i].val1_msgid;
+	  return invariants[i].error_type;
+	}
+
+      if (invariants[i].val2_msgid != 0)
+	{
+	  *ret_msg_id = invariants[i].val2_msgid;
+	  return invariants[i].error_type;
+	}
+
+      /* impossible to get here! */
+      assert (0);
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * do_evaluate_default_expr() - evaluates the default expressions, if any, for
  *				the attributes of a given class
@@ -814,9 +958,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   DB_VALUE zero, e37, under_e36;
   DB_VALUE start_val, inc_val, max_val, min_val, cached_num_val;
-  DB_VALUE cmp_result, cmp_result2;
+  DB_VALUE cmp_result;
   DB_VALUE result_val;
   DB_VALUE tmp_val, tmp_val2;
+  DB_VALUE abs_inc_val, range_val;
+
+  int min_val_msgid = 0;
+  int max_val_msgid = 0;
+  int start_val_msgid = 0;
+  int inc_val_msgid = 0;
+  int ret_msg_id = 0;
+  SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
+  int ninvars = 0;
+
 
   unsigned char num[DB_NUMERIC_BUF_SIZE];
 
@@ -846,6 +1000,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&inc_val);
   db_make_null (&max_val);
   db_make_null (&min_val);
+  db_make_null (&abs_inc_val);
+  db_make_null (&range_val);
 
   /*
    * find db_serial_class
@@ -930,6 +1086,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO, 0);
 	  goto end;
 	}
+      inc_val_msgid = MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID;
     }
   else
     {
@@ -961,11 +1118,26 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
       pval = NULL;
+      start_val_msgid = MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID;
     }
 
   db_value_domain_init (&min_val,
 			DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
-  /* min_val */
+  /*
+   * min_val comes from several sources, it can be one of them:
+   * 1. user input
+   * 2. start_val
+   * 3. 1
+   * 4. -e36
+   * min_val_msgid is the proper message id. it's for error message generation
+   * when min_val violates some invariants.
+   * if min_val is 1 or -e36, min_val_msgid is set to 0 (default value) because
+   *  constants can't be the reason which violate invariants.
+   * if min_val is from user input, min_val_msgid is set to
+   * MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID.
+   * if min_val is from start_val, min_val_msgid is set to
+   * MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID.
+   */
   if (min_val_node != NULL)
     {
       pval = pt_value_to_db (parser, min_val_node);
@@ -981,6 +1153,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
       pval = NULL;
+      min_val_msgid = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
     }
   else
     {
@@ -989,6 +1162,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (start_val_node != NULL)
 	    {
 	      db_value_clone (&start_val, &min_val);
+	      min_val_msgid = MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID;
 	    }
 	  else
 	    {
@@ -1028,6 +1202,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
       pval = NULL;
+      max_val_msgid = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
     }
   else
     {
@@ -1042,6 +1217,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      /* max_val = start_val */
 	      db_value_clone (&start_val, &max_val);
+	      max_val_msgid = MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID;
 	    }
 	  else
 	    {
@@ -1065,11 +1241,13 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* start_val = min_val; */
 	  db_value_clone (&min_val, &start_val);
+	  start_val_msgid = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
 	}
       else
 	{
 	  /* start_val = max_val; */
 	  db_value_clone (&max_val, &start_val);
+	  start_val_msgid = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
 	}
     }
 
@@ -1083,176 +1261,82 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    *    |--^--^--^--o--^--^--^--^---|
    *                   <--> inc_val
    */
-  if (inc_val_flag > 0)
-    {
-      error = numeric_db_value_compare (&max_val, &e37, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
 
-      /* max_val > 1.0e37 */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
-	  goto end;
-	}
+  /*
+   * the following invariants must hold:
+   * min_val >= under_e36
+   * max_val <= e37
+   * min_val < max_val
+   * min_val <= start_val
+   * max_val >= start_val
+   * inc_val != zero
+   * abs(inc_val) <= (max_val - min_val)
+   */
 
-      error = numeric_db_value_compare (&min_val, &under_e36, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /*
+   * invariant for min_val >= under_e36.
+   * if min_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID,
+   * that means the value of min_val is from start_val, if the invariant
+   * is voilated, start_val invalid error message should be displayed
+   * instead of min_val underflow. the val2_msgid is 0 because under_e36
+   * cannot be the reason which voilates the invariant.
+   */
+  initialize_serial_invariant (&invariants[ninvars++], min_val, under_e36,
+			       PT_GE,
+			       (min_val_msgid ==
+				MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID) ?
+			       MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID :
+			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0,
+			       ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
-      /* min_val < -1.0e36 */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
-	  goto end;
-	}
+  /*
+   * invariant for max_val <= e37. Like the above invariant, if
+   * max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 
+   * start_val invalid error message should be displayed if the invariant
+   * is voilated.
+   */
+  initialize_serial_invariant (&invariants[ninvars++], max_val, e37, PT_LE,
+			       (max_val_msgid ==
+				MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID) ?
+			       MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID :
+			       MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0,
+			       ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
-      error = numeric_db_value_compare (&max_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for min_val < max_val. */
+  initialize_serial_invariant (&invariants[ninvars++], min_val, max_val,
+			       PT_LT, min_val_msgid, max_val_msgid,
+			       ER_INVALID_SERIAL_VALUE);
 
-      /* max_val < start_val */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	  goto end;
-	}
+  /* invariant for min_val <= start_val */
+  initialize_serial_invariant (&invariants[ninvars++], min_val, start_val,
+			       PT_LE, min_val_msgid, start_val_msgid,
+			       ER_INVALID_SERIAL_VALUE);
 
-      error = numeric_db_value_compare (&min_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for max_val >= start_val */
+  initialize_serial_invariant (&invariants[ninvars++], max_val, start_val,
+			       PT_GE, max_val_msgid, start_val_msgid,
+			       ER_INVALID_SERIAL_VALUE);
 
-      error = numeric_db_value_compare (&min_val, &max_val, &cmp_result2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for inc_val != zero */
+  initialize_serial_invariant (&invariants[ninvars++], inc_val, zero, PT_NE,
+			       MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO, 0,
+			       ER_INVALID_SERIAL_VALUE);
 
-      /* min_val > start_val || min_val >= max_val */
-      if (DB_GET_INT (&cmp_result) > 0 || DB_GET_INT (&cmp_result2) >= 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	  goto end;
-	}
+  /*
+   * invariant for abs(inc_val) <= (max_val - min_val).
+   * if this invariant is voilated, inc_val, min_val or max_val should be
+   * responsible for it. If max_val_msgid == 0, which means max_val is 
+   * initialized from a constant, not inputted by user,  in this case, we don't
+   * expect max_val should be responsible for the violation.
+   */
+  numeric_db_value_sub (&max_val, &min_val, &range_val);
+  db_abs_dbval (&abs_inc_val, &inc_val);
+  initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val,
+			       PT_LE, inc_val_msgid,
+			       (max_val_msgid ==
+				0) ? min_val_msgid : max_val_msgid,
+			       ER_INVALID_SERIAL_VALUE);
 
-      numeric_db_value_sub (&max_val, &min_val, &value);
-      error = numeric_db_value_compare (&value, &inc_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      pr_clear_value (&value);
-      /* (max_val-min_val) < inc_val */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
-	  goto end;
-	}
-    }
-  else
-    {
-      error = numeric_db_value_compare (&max_val, &e37, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* max_val > 1.0e37 */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
-	  goto end;
-	}
-
-      error = numeric_db_value_compare (&min_val, &under_e36, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* min_val < -1.0e36 */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
-	  goto end;
-	}
-
-      error = numeric_db_value_compare (&min_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* min_val > start_val */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	  goto end;
-	}
-
-      error = numeric_db_value_compare (&max_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      error = numeric_db_value_compare (&max_val, &min_val, &cmp_result2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* max_val < start_val || max_val <= min_val */
-      if (DB_GET_INT (&cmp_result) < 0 || DB_GET_INT (&cmp_result2) <= 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	  goto end;
-	}
-
-      numeric_db_value_sub (&min_val, &max_val, &value);
-      error = numeric_db_value_compare (&value, &inc_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      pr_clear_value (&value);
-      /* (min_val-max_val) > inc_val */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
-	  goto end;
-	}
-    }
 
   /* cached num */
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
@@ -1289,37 +1373,34 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       numeric_coerce_int_to_num (cached_num, num);
       DB_MAKE_NUMERIC (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
-      error = numeric_db_value_compare (&cached_num_val, &result_val,
-					&cmp_result);
-      if (error != NO_ERROR)
-	{
-	  pr_clear_value (&result_val);
-	  goto end;
-	}
 
-      /* cached_num > ABS(CEIL((max_val - min_val) / inc_val)) */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  char num_string[DB_MAX_NUMERIC_PRECISION * 4];
-
-	  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (&result_val),
-					 num_string);
-	  pr_clear_value (&result_val);
-
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE,
-		      num_string);
-	  goto end;
-	}
-
-      pr_clear_value (&result_val);
+      /*
+       * must holds: cached_num_val <= result_val
+       * invariant for cached_num_val <= ABS(CEIL((max_val - min_val) / inc_val))
+       */
+      initialize_serial_invariant (&invariants[ninvars++], cached_num_val,
+				   result_val, PT_LE,
+				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE,
+				   0, ER_INVALID_SERIAL_VALUE);
     }
   else
     {
       cached_num = 0;
     }
 
+  assert (ninvars <= MAX_SERIAL_INVARIANT);
+  error = check_serial_invariants (invariants, ninvars, &ret_msg_id);
+
+  if (error != NO_ERROR)
+    {
+      if (error == ER_QPROC_SERIAL_RANGE_OVERFLOW
+	  || error == ER_INVALID_SERIAL_VALUE)
+	{
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      ret_msg_id, 0);
+	}
+      goto end;
+    }
   /* now create serial object which is insert into db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
@@ -1343,6 +1424,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   pr_clear_value (&inc_val);
   pr_clear_value (&max_val);
   pr_clear_value (&min_val);
+  pr_clear_value (&result_val);
 
   free_and_init (p);
 
@@ -1357,6 +1439,7 @@ end:
   pr_clear_value (&inc_val);
   pr_clear_value (&max_val);
   pr_clear_value (&min_val);
+  pr_clear_value (&result_val);
 
   if (au_disable_flag == true)
     AU_ENABLE (save);
@@ -1653,11 +1736,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE old_inc_val, old_max_val, old_min_val, old_cached_num;
   DB_VALUE current_val, start_val, cached_num_val;
   DB_VALUE new_inc_val, new_max_val, new_min_val;
-  DB_VALUE cmp_result, cmp_result2;
+  DB_VALUE cmp_result;
   DB_VALUE result_val;
   DB_VALUE class_name_val;
   DB_VALUE tmp_val, tmp_val2;
+  DB_VALUE abs_inc_val, range_val;
   int cached_num;
+  int ret_msg_id = 0;
 
   unsigned char num[DB_NUMERIC_BUF_SIZE];
 
@@ -1668,6 +1753,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int found = 0, r = 0, save;
   bool au_disable_flag = false;
+
+  SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
+  int ninvars = 0;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1691,6 +1779,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&current_val);
   db_make_null (&start_val);
   db_make_null (&class_name_val);
+  db_make_null (&abs_inc_val);
+  db_make_null (&range_val);
+
 
   /*
    * find db_serial_class
@@ -1973,279 +2064,67 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
   /*
-     fprintf (stderr,
-     "inc_val_change(%d), min_val_change(%d), max_val_change(%d), cyclic_change(%d)\n",
-     inc_val_change, min_val_change, max_val_change, cyclic_change);
-   */
-  /*
    * check values
    * min_val    start_val     max_val
    *    |--^--^--^--o--^--^--^--^---|
    *                   <--> inc_val
    */
-  if (new_inc_val_flag > 0)
-    {
-      error = numeric_db_value_compare (&new_max_val, &e37, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
 
-      /*  new_max_val > 1.0e37 */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
-	  goto end;
-	}
-      error =
-	numeric_db_value_compare (&new_min_val, &under_e36, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for min_val >= under_e36. */
+  initialize_serial_invariant (&invariants[ninvars++], new_min_val, under_e36,
+			       PT_GE,
+			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0,
+			       ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
-      /* new_min_val < -1.0e36 */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
-	  goto end;
-	}
+  /* invariant for max_val <= e37. */
+  initialize_serial_invariant (&invariants[ninvars++], new_max_val, e37,
+			       PT_LE, MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW,
+			       0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
-      error =
-	numeric_db_value_compare (&new_min_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for min_val < max_val. */
+  initialize_serial_invariant (&invariants[ninvars++], new_min_val,
+			       new_max_val, PT_LT,
+			       (min_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID : 0,
+			       (max_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID : 0,
+			       ER_INVALID_SERIAL_VALUE);
 
-      error =
-	numeric_db_value_compare (&new_min_val, &new_max_val, &cmp_result2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for min_val <= start_val */
+  initialize_serial_invariant (&invariants[ninvars++], new_min_val, start_val,
+			       PT_LE,
+			       (min_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID : 0,
+			       (cur_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID : 0,
+			       ER_INVALID_SERIAL_VALUE);
 
-      /* new_min_val > current_val || new_min_val >= new_max_val */
-      if (DB_GET_INT (&cmp_result) > 0 || DB_GET_INT (&cmp_result2) >= 0)
-	{
-	  if (min_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else if (cur_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	      goto end;
-	    }
-	}
+  /* invariant for max_val >= start_val */
+  initialize_serial_invariant (&invariants[ninvars++], new_max_val, start_val,
+			       PT_GE,
+			       (max_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID : 0,
+			       (cur_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID : 0,
+			       ER_INVALID_SERIAL_VALUE);
 
-      error =
-	numeric_db_value_compare (&new_max_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+  /* invariant for inc_val != zero */
+  initialize_serial_invariant (&invariants[ninvars++], new_inc_val, zero,
+			       PT_NE, MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO, 0,
+			       ER_INVALID_SERIAL_VALUE);
 
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  if (cur_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	      goto end;
-	    }
-	}
+  /* invariant for abs(inc_val) <= (max_val - min_val). */
+  numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
+  db_abs_dbval (&abs_inc_val, &new_inc_val);
+  initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val,
+			       PT_LE,
+			       (inc_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID : 0,
+			       (max_val_change) ?
+			       MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID :
+			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID,
+			       ER_INVALID_SERIAL_VALUE);
 
-      numeric_db_value_sub (&new_max_val, &new_min_val, &value);
-      error = numeric_db_value_compare (&value, &new_inc_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      pr_clear_value (&value);
-      /* (new_max_val-new_min_val) < new_inc_val */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  if (inc_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else if (max_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	      goto end;
-	    }
-	}
-    }
-  else
-    {
-      error = numeric_db_value_compare (&new_max_val, &e37, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* new_max_val > 1.0e37 */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
-	  goto end;
-	}
-
-      error =
-	numeric_db_value_compare (&new_min_val, &under_e36, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* new_min_val < -1.0e36 */
-      if (DB_GET_INT (&cmp_result) < 0)
-	{
-	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
-	  goto end;
-	}
-
-      error =
-	numeric_db_value_compare (&new_max_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      error =
-	numeric_db_value_compare (&new_max_val, &new_min_val, &cmp_result2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* new_max_val < current_val || new_max_val <= new_min_val */
-      if (DB_GET_INT (&cmp_result) < 0 || DB_GET_INT (&cmp_result2) <= 0)
-	{
-	  if (max_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else if (cur_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	      goto end;
-	    }
-	}
-
-      error =
-	numeric_db_value_compare (&new_min_val, &start_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  if (cur_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	      goto end;
-	    }
-	}
-
-      numeric_db_value_sub (&new_min_val, &new_max_val, &value);
-      error = numeric_db_value_compare (&value, &new_inc_val, &cmp_result);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      pr_clear_value (&value);
-      /* (new_min_val-new_max_val) > new_inc_val */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  if (inc_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else if (min_val_change)
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
-	      goto end;
-	    }
-	  else
-	    {
-	      error = ER_INVALID_SERIAL_VALUE;
-	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
-	      goto end;
-	    }
-	}
-    }
 
   /* cached num */
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
@@ -2282,31 +2161,15 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       numeric_coerce_int_to_num (cached_num, num);
       DB_MAKE_NUMERIC (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
-      error = numeric_db_value_compare (&cached_num_val, &result_val,
-					&cmp_result);
-      if (error != NO_ERROR)
-	{
-	  pr_clear_value (&result_val);
-	  goto end;
-	}
 
-      /* cached_num > ABS(CEIL((max_val - min_val) / inc_val))  */
-      if (DB_GET_INT (&cmp_result) > 0)
-	{
-	  char num_string[DB_MAX_NUMERIC_PRECISION * 4];
-
-	  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (&result_val),
-					 num_string);
-	  pr_clear_value (&result_val);
-
-	  error = ER_INVALID_SERIAL_VALUE;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE,
-		      num_string);
-	  goto end;
-	}
-
-      pr_clear_value (&result_val);
+      /*
+       * must holds: cached_num_val <= result_val
+       * invariant for cached_num_val <= ABS(CEIL((max_val - min_val) / inc_val))
+       */
+      initialize_serial_invariant (&invariants[ninvars++], cached_num_val,
+				   result_val, PT_LE,
+				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE,
+				   0, ER_INVALID_SERIAL_VALUE);
     }
   else
     {
@@ -2321,6 +2184,19 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  assert (ninvars <= MAX_SERIAL_INVARIANT);
+  error = check_serial_invariants (invariants, ninvars, &ret_msg_id);
+
+  if (error != NO_ERROR)
+    {
+      if (error == ER_QPROC_SERIAL_RANGE_OVERFLOW
+	  || error == ER_INVALID_SERIAL_VALUE)
+	{
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      ret_msg_id, 0);
+	}
+      goto end;
+    }
   /* now update serial object in db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
@@ -2430,6 +2306,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   pr_clear_value (&new_inc_val);
   pr_clear_value (&new_max_val);
   pr_clear_value (&new_min_val);
+  pr_clear_value (&result_val);
 
   return NO_ERROR;
 
@@ -2448,6 +2325,7 @@ end:
   pr_clear_value (&new_inc_val);
   pr_clear_value (&new_max_val);
   pr_clear_value (&new_min_val);
+  pr_clear_value (&result_val);
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
