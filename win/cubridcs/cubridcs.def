@@ -403,7 +403,7 @@ EXPORTS
     ml_ext_add
     ml_size
     sm_class_name
-    tr_map_trigge
+    tr_map_trigger
 ;
 ; utility functions
 ;
