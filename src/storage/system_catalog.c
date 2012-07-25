@@ -128,15 +128,17 @@ static int rv;
 #define CATALOG_BT_STATS_PAGES_OFF       16
 #define CATALOG_BT_STATS_HEIGHT_OFF      20
 #define CATALOG_BT_STATS_KEYS_OFF        24
-#define CATALOG_BT_STATS_RESERVED_1_OFF  28
-#define CATALOG_BT_STATS_RESERVED_2_OFF  32
-#define CATALOG_BT_STATS_RESERVED_3_OFF  36
+#define CATALOG_BT_STATS_FUNC_INDEX_OFF	 28
+#define CATALOG_BT_STATS_VAR_SIZE_OFF    32
+#define CATALOG_BT_STATS_RESERVED_1_OFF  36
 #define CATALOG_BT_STATS_PKEYS_OFF       40
 #define CATALOG_BT_STATS_RESERVED_OFF    (CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * BTREE_STATS_PKEYS_NUM))	/* 72 */
 #define CATALOG_BT_STATS_SIZE            (CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * BTREE_STATS_RESERVED_NUM))	/* 80 */
 
 #define CATALOG_GET_BT_STATS_BTID(var, ptr) \
     OR_GET_BTID((ptr) + CATALOG_BT_STATS_BTID_OFF, var)
+#define CATALOG_GET_BT_STATS_VAR_SIZE(ptr) \
+    OR_GET_INT((ptr) + CATALOG_BT_STATS_VAR_SIZE_OFF)
 
 #define CATALOG_CLS_INFO_HFID_OFF           0
 #define CATALOG_CLS_INFO_TOT_PAGES_OFF     12
@@ -393,6 +395,7 @@ static void catalog_put_repr_item_to_record (char *rec_p,
 static int catalog_assign_attribute (THREAD_ENTRY * thread_p,
 				     DISK_ATTR * disk_attr_p,
 				     CATALOG_RECORD * catalog_record_p);
+static int catalog_btree_statistics_get_size (BTREE_STATS * bt_stats_p);
 
 static void
 catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p)
@@ -458,15 +461,16 @@ static void
 catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
 {
   int i;
+  char *buf;
+  OR_BUF orbuf;
 
   stat_p->leafs = OR_GET_INT (rec_p + CATALOG_BT_STATS_LEAFS_OFF);
   stat_p->pages = OR_GET_INT (rec_p + CATALOG_BT_STATS_PAGES_OFF);
   stat_p->height = OR_GET_INT (rec_p + CATALOG_BT_STATS_HEIGHT_OFF);
   stat_p->keys = OR_GET_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF);
+  stat_p->has_function = OR_GET_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF);
 #if 0				/* reserved for future use */
   stat_p->reserved_1 = OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_1_OFF);
-  stat_p->reserved_2 = OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_2_OFF);
-  stat_p->reserved_3 = OR_GET_INT (rec_p + CATALOG_BT_STATS_RESERVED_3_OFF);
 #endif
   for (i = 0; i < MIN (stat_p->key_size, BTREE_STATS_PKEYS_NUM); i++)
     {
@@ -481,6 +485,17 @@ catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
 		    (OR_INT_SIZE * i));
     }
 #endif
+
+  if (stat_p->has_function > 0)
+    {
+      buf = rec_p + CATALOG_BT_STATS_SIZE;
+
+      or_init (&orbuf, buf, 0);
+
+      or_get_value (&orbuf, &stat_p->min_value, NULL, -1, true);
+
+      or_get_value (&orbuf, &stat_p->max_value, NULL, -1, true);
+    }
 }
 
 static void
@@ -505,16 +520,27 @@ static void
 catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
 {
   int i;
+  OR_BUF buf;
+  int min_val_size = 0;
+  int max_val_size = 0;
 
   OR_PUT_BTID (rec_p + CATALOG_BT_STATS_BTID_OFF, &stat_p->btid);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_LEAFS_OFF, stat_p->leafs);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_PAGES_OFF, stat_p->pages);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_HEIGHT_OFF, stat_p->height);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF, stat_p->keys);
+  OR_PUT_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF, stat_p->has_function);
+  if (stat_p->has_function > 0)
+    {
+      min_val_size = OR_VALUE_ALIGNED_SIZE (&stat_p->min_value);
+      max_val_size = OR_VALUE_ALIGNED_SIZE (&stat_p->max_value);
+    }
+
+  OR_PUT_INT (rec_p + CATALOG_BT_STATS_VAR_SIZE_OFF,
+	      max_val_size + min_val_size);
+
 #if 1				/* reserved for future use */
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_1_OFF, 0);
-  OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_2_OFF, 0);
-  OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_3_OFF, 0);
 #endif
 
   for (i = 0; i < MIN (stat_p->key_size, BTREE_STATS_PKEYS_NUM); i++)
@@ -529,6 +555,16 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
 		  0);
     }
 #endif
+
+  if (stat_p->has_function > 0)
+    {
+      or_init (&buf, rec_p + CATALOG_BT_STATS_SIZE,
+	       min_val_size + max_val_size);
+
+      or_put_value (&buf, &stat_p->min_value, 0, 1, 1);
+
+      or_put_value (&buf, &stat_p->max_value, 0, 1, 1);
+    }
 }
 
 static void
@@ -1303,16 +1339,17 @@ catalog_store_btree_statistics (THREAD_ENTRY * thread_p,
 				CATALOG_RECORD * catalog_record_p,
 				PGSLOTID * remembered_slot_id_p)
 {
+  int bt_stats_size = catalog_btree_statistics_get_size (btree_stats_p);
   if (catalog_write_unwritten_portion (thread_p, catalog_record_p,
-				       remembered_slot_id_p,
-				       CATALOG_BT_STATS_SIZE) != NO_ERROR)
+				       remembered_slot_id_p, bt_stats_size)
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
 
   catalog_put_btree_statistics (catalog_record_p->recdes.data +
 				catalog_record_p->offset, btree_stats_p);
-  catalog_record_p->offset += CATALOG_BT_STATS_SIZE;
+  catalog_record_p->offset += bt_stats_size;
 
   return NO_ERROR;
 }
@@ -1536,6 +1573,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
   RECDES record;
   BTREE_ROOT_HEADER root_header;
   int i;
+  int bt_stats_var_size = 0;
 
   if (catalog_read_unread_portion (thread_p, catalog_record_p,
 				   CATALOG_BT_STATS_SIZE) != NO_ERROR)
@@ -1545,6 +1583,18 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
 
   btree_stats_p->key_size = 0;
   btree_stats_p->pkeys = NULL;
+
+  bt_stats_var_size =
+    CATALOG_GET_BT_STATS_VAR_SIZE (catalog_record_p->recdes.data +
+				   catalog_record_p->offset);
+  catalog_record_p->offset += CATALOG_BT_STATS_SIZE;
+
+  if (catalog_read_unread_portion (thread_p, catalog_record_p,
+				   bt_stats_var_size) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  catalog_record_p->offset -= CATALOG_BT_STATS_SIZE;
 
   CATALOG_GET_BT_STATS_BTID (&btree_stats_p->btid,
 			     catalog_record_p->recdes.data +
@@ -1610,6 +1660,7 @@ exit_on_end:
 				catalog_record_p->recdes.data +
 				catalog_record_p->offset);
   catalog_record_p->offset += CATALOG_BT_STATS_SIZE;
+  catalog_record_p->offset += bt_stats_var_size;
 
   return NO_ERROR;
 }
@@ -2738,14 +2789,18 @@ catalog_reclaim_space (THREAD_ENTRY * thread_p)
 static int
 catalog_sum_disk_attribute_size (DISK_ATTR * attrs_p, int count)
 {
-  int i, size = 0;
+  int i, j, size = 0;
   DISK_ATTR *disk_attrp;
 
   for (i = 0, disk_attrp = attrs_p; i < count; i++, disk_attrp++)
     {
       size += CATALOG_DISK_ATTR_SIZE;
       size += disk_attrp->val_length + (MAX_ALIGNMENT * 2);
-      size += CATALOG_BT_STATS_SIZE * disk_attrp->n_btstats;
+      for (j = 0; j < disk_attrp->n_btstats; j++)
+	{
+	  size +=
+	    catalog_btree_statistics_get_size (&disk_attrp->bt_stats[j]);
+	}
     }
 
   return size;
@@ -5124,4 +5179,21 @@ catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
   (void) file_dealloc_page (thread_p, &catalog_Id.vfid, vpid_p);
 
   return NO_ERROR;
+}
+
+/*
+ * catalog_btree_statistics_get_size () - the size of the BTREE_STATS structure
+ *   return: int
+ *   bt_stats_p: BTREE statistics
+ */
+static int
+catalog_btree_statistics_get_size (BTREE_STATS * bt_stats_p)
+{
+  if (bt_stats_p->has_function > 0)
+    {
+      return OR_VALUE_ALIGNED_SIZE (&bt_stats_p->min_value) +
+	OR_VALUE_ALIGNED_SIZE (&bt_stats_p->max_value) +
+	CATALOG_BT_STATS_SIZE;
+    }
+  return CATALOG_BT_STATS_SIZE;
 }

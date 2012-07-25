@@ -6489,7 +6489,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 
 	  if (heap_get_indexinfo_of_btid (thread_p, &res_ptr->class_oid,
 					  &res_ptr->btid, NULL, NULL, NULL,
-					  NULL, &btname) == NO_ERROR)
+					  NULL, &btname, NULL) == NO_ERROR)
 	    {
 	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					      MSGCAT_SET_LOCK,

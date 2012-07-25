@@ -47,10 +47,11 @@ struct btree_stats
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
   int keys;			/* number of keys */
+  int has_function;		/* is a function index */
+  DB_VALUE min_value;		/* min value stored in B+tree */
+  DB_VALUE max_value;		/* max value stored in B+tree */
 #if 0				/* reserved for future use */
   int reserved_1;
-  int reserved_2;
-  int reserved_3;
 #endif
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int key_size;			/* number of key columns */

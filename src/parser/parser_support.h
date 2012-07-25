@@ -144,6 +144,8 @@ typedef struct indx_info
   int orderby_skip;		/* order by skip information */
   int groupby_skip;		/* group by skip information */
   int use_iss;			/* flag set if using index skip scan */
+  int func_idx_col_id;		/* function expression column position, if
+				 * the index is a function index */
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be
 				   created on the broker */
 } INDX_INFO;			/* index information structure */

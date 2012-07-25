@@ -3681,7 +3681,7 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 }
 
 static char *
-xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE *merge_info)
+xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info)
 {
   int offset;
 
@@ -4107,6 +4107,8 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
   ptr = or_pack_int (ptr, indx_info->groupby_skip);
 
   ptr = or_pack_int (ptr, indx_info->use_iss);
+
+  ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
   if (indx_info->use_iss)
     {
@@ -5813,6 +5815,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
   size += OR_INT_SIZE;		/* groupby_skip */
 
   size += OR_INT_SIZE;		/* use_iss boolean (int) */
+
+  size += OR_INT_SIZE;		/* func_idx_col_id (int) */
 
   size += OR_INT_SIZE;		/* iss_range's range */
 

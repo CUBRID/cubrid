@@ -3496,6 +3496,9 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
   int offset;
   int i;
   int ret = NO_ERROR;
+  int prev_i_index;
+  char *prev_i_ptr;
+  DB_VALUE elem;
 
   assert_release (stat_info != NULL);
   assert_release (!BTID_IS_NULL (&stat_info->btid));
@@ -3580,6 +3583,12 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
       env->stat_info->pkeys[i] = 0;	/* clear old stats */
     }
 
+  if (env->stat_info->has_function > 0)
+    {
+      DB_MAKE_NULL (&env->stat_info->min_value);
+      DB_MAKE_NULL (&env->stat_info->max_value);
+    }
+
   ret = btree_find_lower_bound_leaf (thread_p, BTS, stat_info);
   if (ret != NO_ERROR)
     {
@@ -3599,41 +3608,97 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 	{
 	  ;			/* do not request pkeys info; go ahead */
 	}
-      else if (env->pkeys_val_num == 1)
-	{
-	  /* single column index */
-	  env->stat_info->pkeys[0]++;
-	}
       else
 	{
-	  /* multi column index */
-	  if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
-	      S_SUCCESS)
+	  if (env->pkeys_val_num == 1)
 	    {
-	      goto exit_on_error;
+	      /* single column index */
+	      env->stat_info->pkeys[0]++;
 	    }
 
-	  /* read key-value */
-	  (void) btree_read_record (thread_p, &BTS->btid_int, &rec,
-				    &key_value, (void *) &leaf_pnt,
-				    BTREE_LEAF_NODE, &clear_key, &offset,
-				    PEEK_KEY_VALUE);
-	  if (DB_IS_NULL (&key_value))
+	  if (env->pkeys_val_num > 1 || env->stat_info->has_function > 0)
 	    {
-	      goto exit_on_error;
-	    }
+	      /* multi column index */
+	      if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
+		  S_SUCCESS)
+		{
+		  goto exit_on_error;
+		}
 
-	  /* get pkeys info */
-	  ret = btree_get_midxkey_stats (thread_p, &key_value, env);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	      /* read key-value */
+	      (void) btree_read_record (thread_p, &BTS->btid_int, &rec,
+					&key_value, (void *) &leaf_pnt,
+					BTREE_LEAF_NODE, &clear_key, &offset,
+					PEEK_KEY_VALUE);
+	      if (DB_IS_NULL (&key_value))
+		{
+		  goto exit_on_error;
+		}
 
-	  if (clear_key)
-	    {
-	      pr_clear_value (&key_value);
-	      clear_key = false;
+	      if (env->stat_info->has_function > 0)
+		{
+		  /* we need to obtain the values even if we are dealing
+		   * with a single-column index */
+		  if (env->pkeys_val_num > 1)
+		    {
+		      /* multi-column index */
+		      prev_i_index = 0;
+		      prev_i_ptr = NULL;
+		      ret =
+			pr_midxkey_get_element_nocopy (&key_value.data.
+						       midxkey, 0, &elem,
+						       &prev_i_index,
+						       &prev_i_ptr);
+		      if (ret != NO_ERROR)
+			{
+			  assert_release (false);
+			  goto exit_on_error;
+			}
+		    }
+		  else
+		    {
+		      /* single-column index - no need to extract from
+		       * midxkey */
+		      pr_clone_value (&key_value, &elem);
+		    }
+
+		  if (BTS->use_desc_index)
+		    {
+		      if (DB_IS_NULL (&(env->stat_info->max_value)))
+			{
+			  pr_clone_value (&elem,
+					  &(env->stat_info->max_value));
+			}
+		      pr_clone_value (&elem, &(env->stat_info->min_value));
+		    }
+		  else
+		    {
+		      if (DB_IS_NULL (&(env->stat_info->min_value)))
+			{
+			  pr_clone_value (&elem,
+					  &(env->stat_info->min_value));
+			}
+		      pr_clone_value (&elem, &(env->stat_info->max_value));
+		    }
+
+		  pr_clear_value (&elem);
+		}
+
+	      if (env->pkeys_val_num > 1)
+		{
+		  /* get pkeys info */
+		  ret = btree_get_midxkey_stats (thread_p, &key_value, env);
+		  if (ret != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+
+		  if (clear_key)
+		    {
+		      pr_clear_value (&key_value);
+		      clear_key = false;
+		    }
+		}
 	    }
 	}
 
@@ -4321,7 +4386,7 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   /* get the index name of the index key */
   if (heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid),
 				  btid, NULL, NULL, NULL,
-				  NULL, &btname) != NO_ERROR)
+				  NULL, &btname, NULL) != NO_ERROR)
     {
       goto exit_on_end;
     }
@@ -14485,7 +14550,8 @@ int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 			      DB_VALUE * curr_key,
 			      int *btree_att_ids, int btree_num_att,
-			      HEAP_CACHE_ATTRINFO * attr_info)
+			      HEAP_CACHE_ATTRINFO * attr_info,
+			      int func_index_col_id)
 {
   int i, j, error = NO_ERROR;
   HEAP_ATTRVALUE *attr_value;
@@ -14547,6 +14613,16 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 	      goto error;
 	    }
 
+	  if (func_index_col_id != -1)
+	    {
+	      /* consider that in the midxkey resides the function result,
+	       * which must be skipped if we are interested in attributes
+	       */
+	      if (j >= func_index_col_id)
+		{
+		  j++;
+		}
+	    }
 	  if (pr_midxkey_get_element_nocopy (DB_GET_MIDXKEY (curr_key), j,
 					     &(attr_value->dbvalue),
 					     NULL, NULL) != NO_ERROR)
@@ -14599,7 +14675,8 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key),
 					filter->btree_attr_ids,
 					filter->btree_num_attrs,
-					iscan_id->rest_attrs.attr_cache);
+					iscan_id->rest_attrs.attr_cache,
+					iscan_id->indx_cov.func_index_col_id);
   if (error != NO_ERROR)
     {
       return error;
@@ -20212,7 +20289,7 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
       if (heap_get_indexinfo_of_btid (thread_p,
 				      class_oid, btid,
 				      NULL, NULL, NULL, NULL,
-				      &index_name) != NO_ERROR)
+				      &index_name, NULL) != NO_ERROR)
 	{
 	  index_name = NULL;
 	}

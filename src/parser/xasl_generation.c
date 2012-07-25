@@ -270,6 +270,10 @@ static PT_NODE *pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
 static int pt_fix_first_term_expr_for_iss (PARSER_CONTEXT * parser,
 					   QO_INDEX_ENTRY * index_entryp,
 					   PT_NODE ** term_exprs);
+static int pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser,
+						 QO_INDEX_ENTRY *
+						 index_entryp,
+						 PT_NODE ** term_exprs);
 static int pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain);
 static int pt_init_pred_expr_context (PARSER_CONTEXT * parser,
 				      PT_NODE * predicate, PT_NODE * spec,
@@ -11115,8 +11119,8 @@ exit_on_error:
 
 
 /*
- * fix_first_term_expr_for_iss () - allocates needed first term for the index
- *                                  skip scan optimization (ISS)
+ * pt_fix_first_term_expr_for_iss () - allocates needed first term for the
+ *                                  index skip scan optimization (ISS)
  *   return:
  *   parser(in):
  *   index_entryp(in):
@@ -11159,6 +11163,17 @@ pt_fix_first_term_expr_for_iss (PARSER_CONTEXT * parser,
     {
       assert (index_entryp->nsegs > 1 && index_entryp->seg_idxs[1] != -1);
       goto exit_error;
+    }
+
+  if (index_entryp->constraints->func_index_info &&
+      index_entryp->constraints->func_index_info->col_id == 0)
+    {
+      if (pt_fix_first_term_func_index_for_iss (parser, index_entryp,
+						term_exprs) != NO_ERROR)
+	{
+	  goto exit_error;
+	}
+      return NO_ERROR;
     }
 
   arg =
@@ -11222,6 +11237,113 @@ exit_error:
 }
 
 /*
+ * pt_fix_first_term_func_index_for_iss () - allocates needed first term for
+ *				the index skip scan optimization (ISS) when a
+ *                              function index is used
+ *   return:
+ *   parser(in):
+ *   index_entryp(in):
+ *   term_exprs(in):
+ */
+static int
+pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser,
+				      QO_INDEX_ENTRY * index_entryp,
+				      PT_NODE ** term_exprs)
+{
+  int error = NO_ERROR;
+  int query_str_len = 0;
+  char *query_str = NULL;
+  SM_FUNCTION_INFO *func_index = NULL;
+  PT_NODE **stmt = NULL;
+  PT_NODE *expr = NULL;
+  PT_NODE *val = NULL;
+  PT_NODE *new_term = NULL;
+  DB_VALUE temp_null;
+  PT_NODE *spec = NULL;
+  QO_SEGMENT *seg = NULL;
+  QO_NODE *head = NULL;
+  char *class_name = NULL;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+
+  assert (index_entryp->constraints->func_index_info);
+  func_index = index_entryp->constraints->func_index_info;
+
+  seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
+  head = QO_SEG_HEAD (seg);
+  spec = head->entity_spec;
+  class_name = spec->info.spec.range_var->info.name.original;
+
+  query_str_len = strlen (func_index->expr_str) +
+    strlen (class_name) + 7 /* strlen("SELECT ") */  +
+    6 /* strlen(" FROM ") */  +
+    2 /* [] */  +
+    1 /* terminating null */ ;
+  query_str = (char *) malloc (query_str_len);
+  if (query_str == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  snprintf (query_str, query_str_len, "SELECT %s FROM [%s]",
+	    func_index->expr_str, class_name);
+  stmt = parser_parse_string (parser, query_str);
+  if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  *stmt = pt_resolve_names (parser, *stmt, &sc_info);
+  if (*stmt != NULL && !pt_has_error (parser))
+    {
+      *stmt = pt_semantic_type (parser, *stmt, &sc_info);
+    }
+  else
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+  expr = (*stmt)->info.query.q.select.list;
+
+  db_make_null (&temp_null);
+  val = pt_dbval_to_value (parser, &temp_null);
+  if (val == NULL)
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  new_term = pt_expression_2 (parser, PT_EQ, expr, val);
+  if (expr == NULL)
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  term_exprs[0] = new_term;
+
+  return NO_ERROR;
+
+error:
+  if (query_str)
+    {
+      free_and_init (query_str);
+    }
+  if (expr)
+    {
+      parser_free_tree (parser, expr);
+    }
+  if (val)
+    {
+      parser_free_tree (parser, val);
+    }
+  if (new_term)
+    {
+      parser_free_tree (parser, new_term);
+    }
+  return error;
+}
+
+/*
  * pt_to_index_info () - Create an INDX_INFO structure for communication
  * 	to a class access spec for eventual incorporation into an index scan
  *   return:
@@ -11248,6 +11370,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   int rc;
   int i;
   bool is_prefix_index;
+  SM_FUNCTION_INFO *fi_info = NULL;
 
   assert (parser != NULL
 	  && qo_index_infop->ni_entry != NULL
@@ -11277,6 +11400,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
       pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
     }
 
+  fi_info = index_entryp->constraints->func_index_info;
   if (nterms > 0)
     {
       int start_column = index_entryp->is_iss_candidate ? 1 : 0;
@@ -11364,8 +11488,22 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->groupby_desc = 0;
 
   indx_infop->use_iss = index_entryp->is_iss_candidate;
-  rc = pt_create_iss_range (indx_infop,
-			    index_entryp->constraints->attributes[0]->domain);
+  indx_infop->func_idx_col_id = fi_info ? fi_info->col_id : -1;
+  if (index_entryp->constraints->func_index_info)
+    {
+      SM_FUNCTION_INFO *fi = index_entryp->constraints->func_index_info;
+      rc = pt_create_iss_range (indx_infop,
+				tp_domain_resolve (fi->fi_domain->type->id,
+						   class_,
+						   fi->fi_domain->precision,
+						   fi->fi_domain->scale,
+						   NULL));
+    }
+  else
+    {
+      rc = pt_create_iss_range (indx_infop, index_entryp->constraints->
+				attributes[0]->domain);
+    }
   if (rc != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser,

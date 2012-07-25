@@ -90,6 +90,8 @@ struct indx_cov
   REGU_VARIABLE_LIST regu_val_list;	/* regulator variable list */
   QUERY_ID query_id;		/* query id */
   int max_tuples;		/* maximum tuples stored in list_id */
+  int func_index_col_id;	/* position of the function expression in the
+				 * index, if it is a function index */
 };
 
 /* multiple range optimization used on range search index scan:

@@ -16689,7 +16689,8 @@ int
 heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
 			    BTID * btid, BTREE_TYPE * type, int *num_attrs,
 			    ATTR_ID ** attr_ids,
-			    int **attrs_prefix_length, char **btnamepp)
+			    int **attrs_prefix_length, char **btnamepp,
+			    int *func_index_col_id)
 {
   OR_CLASSREP *classrepp;
   OR_INDEX *indexp;
@@ -16716,6 +16717,11 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
   if (attrs_prefix_length)
     {
       *attrs_prefix_length = NULL;
+    }
+
+  if (func_index_col_id)
+    {
+      *func_index_col_id = -1;
     }
 
   /* get the class representation so that we can access the indexes */
@@ -16789,6 +16795,11 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
 	      (*attrs_prefix_length)[i] = -1;
 	    }
 	}
+    }
+
+  if (func_index_col_id && indexp->func_index_info)
+    {
+      *func_index_col_id = indexp->func_index_info->col_id;
     }
 
   /* free the class representation */

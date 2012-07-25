@@ -250,6 +250,9 @@ stats_client_unpack_statistics (char *buf_p)
 	  btree_stats_p->height = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
 
+	  btree_stats_p->has_function = OR_GET_INT (buf_p);
+	  buf_p += OR_INT_SIZE;
+
 	  btree_stats_p->keys = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
 
@@ -277,6 +280,13 @@ stats_client_unpack_statistics (char *buf_p)
 	    {
 	      btree_stats_p->pkeys[k] = OR_GET_INT (buf_p);
 	      buf_p += OR_INT_SIZE;
+	    }
+
+	  if (btree_stats_p->has_function > 0)
+	    {
+	      buf_p = or_unpack_db_value (buf_p, &btree_stats_p->min_value);
+
+	      buf_p = or_unpack_db_value (buf_p, &btree_stats_p->max_value);
 	    }
 	}
     }

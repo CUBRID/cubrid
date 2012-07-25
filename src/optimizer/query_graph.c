@@ -59,6 +59,7 @@
 #include "parser.h"
 #include "locator_cl.h"
 #include "object_domain.h"
+#include "network_interface_cl.h"
 
 /* figure out how many bytes a QO_USING_INDEX struct with n entries requires */
 #define SIZEOF_USING_INDEX(n) \
@@ -165,7 +166,8 @@ static QO_PLAN *qo_optimize_helper (QO_ENV * env);
 static QO_NODE *qo_add_node (PT_NODE * entity, QO_ENV * env);
 
 static QO_SEGMENT *qo_insert_segment (QO_NODE * head, QO_NODE * tail,
-				      PT_NODE * node, QO_ENV * env);
+				      PT_NODE * node, QO_ENV * env,
+				      const char *expr_str);
 
 static QO_SEGMENT *qo_join_segment (QO_NODE * head, QO_NODE * tail,
 				    PT_NODE * name, QO_ENV * env);
@@ -304,6 +306,9 @@ static void qo_free_node_index_info (QO_ENV * env,
 				     QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
+static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env,
+						  QO_SEGMENT * seg,
+						  const char *expr_str);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
 static QO_CLASS_INFO *qo_get_class_info (QO_ENV * env, QO_NODE * node);
 static QO_SEGMENT *qo_eqclass_wrt (QO_EQCLASS *, BITSET *);
@@ -1148,7 +1153,8 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 			    }
 			  if (i == env->nsegs)
 			    {
-			      seg = qo_insert_segment (node, NULL, tree, env);
+			      seg = qo_insert_segment (node, NULL, tree, env,
+						       expr_str);
 			      QO_SEG_FUNC_INDEX (seg) = true;
 			      QO_SEG_NAME (seg) = strdup (constraints->
 							  func_index_info->
@@ -1252,7 +1258,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
       attr->info.name.meta_class = PT_OID_ATTR;
 
       /* create oid segment for the entity */
-      seg = qo_insert_segment (node, NULL, attr, env);
+      seg = qo_insert_segment (node, NULL, attr, env, NULL);
       QO_SEG_SET_VALUED (seg) = false;	/* oid segments aren't set valued */
       QO_SEG_CLASS_ATTR (seg) = false;	/* oid segments aren't class attrs */
       QO_SEG_SHARED_ATTR (seg) = false;	/* oid segments aren't shared attrs */
@@ -1263,7 +1269,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
    */
   for (name = attr_list; name != NULL; name = name->next)
     {
-      seg = qo_insert_segment (node, NULL, name, env);
+      seg = qo_insert_segment (node, NULL, name, env, NULL);
 
       if ((name->type_enum == PT_TYPE_SET) ||
 	  (name->type_enum == PT_TYPE_MULTISET) ||
@@ -1598,10 +1604,12 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
  *   tail(in): tail of the segment
  *   node(in): pt_node that gave rise to this segment
  *   env(in): optimizer environment
+ *   expr_str(in): function index expression (if needed - NULL for a normal or 
+ *		      filter index
  */
 static QO_SEGMENT *
 qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
-		   QO_ENV * env)
+		   QO_ENV * env, const char *expr_str)
 {
   QO_SEGMENT *seg = NULL;
 
@@ -1641,7 +1649,15 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
 	   * need to know anything else about this attr since it can not
 	   * be used as an index or in any other interesting way.
 	   */
-	  QO_SEG_INFO (seg) = qo_get_attr_info (env, seg);
+	  if (node->node_type == PT_NAME)
+	    {
+	      QO_SEG_INFO (seg) = qo_get_attr_info (env, seg);
+	    }
+	  else
+	    {
+	      QO_SEG_INFO (seg) = qo_get_attr_info_func_index (env, seg,
+							       expr_str);
+	    }
 	}
     }
 
@@ -5080,6 +5096,169 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 }
 
 /*
+ * qo_get_attr_info_func_index () - Find the statistics information about
+ *			        the function index that underlies this segment
+ *   return: QO_ATTR_INFO *
+ *   env(in): The current optimizer environment
+ *   seg(in): A (pointer to) a join graph segment
+ *   expr_str(in): 
+ */
+static QO_ATTR_INFO *
+qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
+			     const char *expr_str)
+{
+  QO_NODE *nodep;
+  QO_CLASS_INFO_ENTRY *class_info_entryp;
+  SM_CLASS_CONSTRAINT *consp;
+  QO_ATTR_INFO *attr_infop = NULL;
+  QO_ATTR_CUM_STATS *cum_statsp;
+  BTREE_STATS *bstatsp = NULL;
+  ATTR_STATS *attr_statsp = NULL;
+  int n, i, j;
+  int attr_id;
+
+  nodep = QO_SEG_HEAD (seg);
+
+  if (QO_NODE_INFO (nodep) == NULL ||
+      !(QO_NODE_INFO (nodep)->info[0].normal_class))
+    {
+      /* if there's no class information or the class is not normal class */
+      return NULL;
+    }
+
+  /* number of class information entries */
+  n = QO_NODE_INFO_N (nodep);
+  QO_ASSERT (env, n > 0);
+
+  /* pointer to QO_CLASS_INFO_ENTRY[] array of the node */
+  class_info_entryp = &QO_NODE_INFO (nodep)->info[0];
+
+  /* allocate QO_ATTR_INFO within the current optimizer environment */
+  attr_infop = (QO_ATTR_INFO *) malloc (sizeof (QO_ATTR_INFO));
+  if (attr_infop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QO_ATTR_INFO));
+      return NULL;
+    }
+
+  cum_statsp = &attr_infop->cum_stats;
+  cum_statsp->type = pt_type_enum_to_db (QO_SEG_PT_NODE (seg)->type_enum);
+  cum_statsp->valid_limits = false;
+  OR_PUT_INT (&cum_statsp->min_value, 0);
+  OR_PUT_INT (&cum_statsp->max_value, 0);
+  cum_statsp->is_indexed = true;
+  cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
+  cum_statsp->keys = 0;
+  cum_statsp->key_type = NULL;
+  cum_statsp->key_size = 0;
+  cum_statsp->pkeys = NULL;
+
+  /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
+  for (i = 0; i < n; class_info_entryp++, i++)
+    {
+      for (consp = class_info_entryp->smclass->constraints; consp;
+	   consp = consp->next)
+	{
+	  if (consp->func_index_info && consp->func_index_info->col_id == 0
+	      && !intl_identifier_casecmp (expr_str,
+					   consp->func_index_info->expr_str))
+	    {
+	      attr_id = consp->attributes[0]->id;
+	      attr_statsp =
+		QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+	      for (j = 0; j < QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
+		   j++, attr_statsp++)
+		{
+		  if (attr_statsp->id == attr_id)
+		    {
+		      break;
+		    }
+		}
+
+	      attr_statsp =
+		&QO_GET_CLASS_STATS (class_info_entryp)->attr_stats[j];
+	      bstatsp = attr_statsp->bt_stats;
+	      for (j = 0; j < attr_statsp->n_btstats; j++, bstatsp++)
+		{
+		  if (BTID_IS_EQUAL (&bstatsp->btid, &consp->index_btid) &&
+		      bstatsp->has_function == 1)
+		    {
+		      break;
+		    }
+		}
+
+	      if (cum_statsp->valid_limits == false)
+		{
+		  /* first time */
+		  cum_statsp->valid_limits = true;
+
+		  if (DB_NUMERIC_TYPE (cum_statsp->type))
+		    {
+		      /* assign values, bitwise-copy of DB_DATA structure */
+		      cum_statsp->min_value = bstatsp->min_value.data;
+		      cum_statsp->max_value = bstatsp->max_value.data;
+		    }
+		}
+	      else
+		{
+		  if (DB_NUMERIC_TYPE (cum_statsp->type))
+		    {
+		      if (qo_data_compare (&bstatsp->min_value.data,
+					   &cum_statsp->min_value,
+					   cum_statsp->type) < 0)
+			{
+			  cum_statsp->min_value = bstatsp->min_value.data;
+			}
+		      if (qo_data_compare (&bstatsp->max_value.data,
+					   &cum_statsp->max_value,
+					   cum_statsp->type) > 0)
+			{
+			  cum_statsp->max_value = bstatsp->max_value.data;
+			}
+		    }
+		}
+
+	      cum_statsp->leafs += bstatsp->leafs;
+	      cum_statsp->pages += bstatsp->pages;
+	      cum_statsp->height = MAX (cum_statsp->height, bstatsp->height);
+
+	      if (cum_statsp->key_size == 0 ||	/* the first found */
+		  cum_statsp->keys < bstatsp->keys)
+		{
+		  cum_statsp->keys = bstatsp->keys;
+		  cum_statsp->key_type = bstatsp->key_type;
+		  cum_statsp->key_size = bstatsp->key_size;
+		  /* alloc pkeys[] within the current optimizer environment */
+		  if (cum_statsp->pkeys)
+		    {
+		      free_and_init (cum_statsp->pkeys);
+		    }
+		  cum_statsp->pkeys = (int *)
+		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
+							 key_size));
+		  if (cum_statsp->pkeys == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
+							   key_size));
+		      qo_free_attr_info (env, attr_infop);
+		      return NULL;
+		    }
+		  for (i = 0; i < cum_statsp->key_size; i++)
+		    {
+		      cum_statsp->pkeys[i] = bstatsp->pkeys[i];
+		    }
+		}
+	    }
+	}
+    }
+
+  return attr_infop;
+}
+
+/*
  * qo_get_attr_info () - Find the ATTR_STATS information about each actual
  *			 attribute that underlies this segment
  *   return: QO_ATTR_INFO *
@@ -5099,6 +5278,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_attrs;
   const char *name;
   int n, i, j;
+  int n_func_indexes;
   SM_CLASS_CONSTRAINT *consp;
 
   /* actual attribute name of the given segment */
@@ -5229,7 +5409,17 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    }
 	}
 
-      if (attr_statsp->n_btstats <= 0 || !attr_statsp->bt_stats)
+      n_func_indexes = 0;
+      for (j = 0; j < attr_statsp->n_btstats; j++)
+	{
+	  if (attr_statsp->bt_stats[j].has_function == 1)
+	    {
+	      n_func_indexes++;
+	    }
+	}
+
+      if (attr_statsp->n_btstats - n_func_indexes <= 0
+	  || !attr_statsp->bt_stats)
 	{
 	  /* the attribute does not have any index */
 	  cum_statsp->is_indexed = false;
@@ -5443,7 +5633,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	     array of QO_INDEX_ENTRY structure was built by
 	     'qo_find_index_seg_and_term()' function to keep the order of
 	     index key attributes. So, 'seg_idx[0]' is the right segment
-	     denoting the attribute that contains the index statisitcs that
+	     denoting the attribute that contains the index statistics that
 	     we want to get. If seg_idx[0] is null (-1), then the name of the
 	     first attribute is taken from index_entryp->statistics_attribute_name
 	   */
@@ -5484,85 +5674,126 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  /* pointer to QO_CLASS_INFO_ENTRY[] array of the node */
 	  class_info_entryp = &QO_NODE_INFO (seg_node)->info[j];
 
-	  attr_id = sm_att_id (class_info_entryp->mop, name);
-
-	  /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
-	  attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
-
-	  /* search the attribute from the class information */
-	  n_attrs = QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
-	  for (k = 0; k < n_attrs; k++, attr_statsp++)
+	  if (!index_entryp->is_func_index)
 	    {
-	      if (attr_statsp->id == attr_id)
+	      attr_id = sm_att_id (class_info_entryp->mop, name);
+
+	      /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
+	      attr_statsp =
+		QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+
+	      /* search the attribute from the class information */
+	      n_attrs = QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
+	      for (k = 0; k < n_attrs; k++, attr_statsp++)
 		{
-		  break;
+		  if (attr_statsp->id == attr_id)
+		    {
+		      break;
+		    }
 		}
-	    }
 
-	  index_entryp->key_type = NULL;
-	  if (k >= n_attrs)	/* not found */
-	    {
-	      attr_statsp = NULL;
-	      continue;
-	    }
-
-	  if (cum_statsp->valid_limits == false)
-	    {
-	      /* first time */
-	      cum_statsp->type = attr_statsp->type;
-	      cum_statsp->valid_limits = true;
-	      /* if the attribute is numeric type so its min/max values are
-	         meaningful, keep the min/max existing values */
-	      if (DB_NUMERIC_TYPE (attr_statsp->type))
+	      index_entryp->key_type = NULL;
+	      if (k >= n_attrs)	/* not found */
 		{
-		  /* assign values, bitwise-copy of DB_DATA structure */
-		  cum_statsp->min_value = attr_statsp->min_value;
-		  cum_statsp->max_value = attr_statsp->max_value;
+		  attr_statsp = NULL;
+		  continue;
+		}
+
+	      if (cum_statsp->valid_limits == false)
+		{
+		  /* first time */
+		  cum_statsp->type = attr_statsp->type;
+		  cum_statsp->valid_limits = true;
+		  /* if the attribute is numeric type so its min/max values are
+		     meaningful, keep the min/max existing values */
+		  if (DB_NUMERIC_TYPE (attr_statsp->type))
+		    {
+		      /* assign values, bitwise-copy of DB_DATA structure */
+		      cum_statsp->min_value = attr_statsp->min_value;
+		      cum_statsp->max_value = attr_statsp->max_value;
+		    }
+		}
+	      else
+		{
+		  /* if the attribute is numeric type so its min/max values are
+		     meaningful, keep the min/max existing values */
+		  if (DB_NUMERIC_TYPE (attr_statsp->type))
+		    {
+		      /* compare with previous values */
+		      if (qo_data_compare (&attr_statsp->min_value,
+					   &cum_statsp->min_value,
+					   cum_statsp->type) < 0)
+			{
+			  cum_statsp->min_value = attr_statsp->min_value;
+			}
+		      if (qo_data_compare (&attr_statsp->max_value,
+					   &cum_statsp->max_value,
+					   cum_statsp->type) > 0)
+			{
+			  cum_statsp->max_value = attr_statsp->max_value;
+			}
+		      /* 'qo_data_compare()' is a simplified function that works
+		         with DB_DATA instead of DB_VALUE. However, this way
+		         would be enough to get minimum/maximum existing value,
+		         because the values are meaningful only when their types
+		         are numeric and we are considering compatible indexes
+		         under class hierarchy. */
+		    }
+		}
+
+	      /* find the index that we are interesting within BTREE_STATS[] array */
+	      for (k = 0, bt_statsp = attr_statsp->bt_stats;
+		   k < attr_statsp->n_btstats; k++, bt_statsp++)
+		{
+		  if (BTID_IS_EQUAL (&bt_statsp->btid,
+				     &(index_entryp->constraints->
+				       index_btid)))
+		    {
+		      index_entryp->key_type =
+			attr_statsp->bt_stats[k].key_type;
+		      break;
+		    }
+		}		/* for (k = 0, ...) */
+	      if (k == attr_statsp->n_btstats)
+		{
+		  /* cannot find index in this attribute. what happens? */
+		  continue;
 		}
 	    }
 	  else
 	    {
-	      /* if the attribute is numeric type so its min/max values are
-	         meaningful, keep the min/max existing values */
-	      if (DB_NUMERIC_TYPE (attr_statsp->type))
-		{
-		  /* compare with previous values */
-		  if (qo_data_compare (&attr_statsp->min_value,
-				       &cum_statsp->min_value,
-				       cum_statsp->type) < 0)
-		    {
-		      cum_statsp->min_value = attr_statsp->min_value;
-		    }
-		  if (qo_data_compare (&attr_statsp->max_value,
-				       &cum_statsp->max_value,
-				       cum_statsp->type) > 0)
-		    {
-		      cum_statsp->max_value = attr_statsp->max_value;
-		    }
-		  /* 'qo_data_compare()' is a simplified function that works
-		     with DB_DATA instead of DB_VALUE. However, this way
-		     would be enough to get minimum/maximum existing value,
-		     because the values are meaningful only when their types
-		     are numeric and we are considering compatible indexes
-		     under class hierarchy. */
-		}
-	    }
+	      /* function index with the function expression as the first 
+	       * attribute
+	       */
+	      SM_FUNCTION_INFO *fi_info = NULL;
+	      fi_info = index_entryp->constraints->func_index_info;
 
-	  /* find the index that we are interesting within BTREE_STATS[] array */
-	  for (k = 0, bt_statsp = attr_statsp->bt_stats;
-	       k < attr_statsp->n_btstats; k++, bt_statsp++)
-	    {
-	      if (BTID_IS_EQUAL (&bt_statsp->btid,
-				 &(index_entryp->constraints->index_btid)))
+	      attr_id = index_entryp->constraints->attributes[0]->id;
+	      attr_statsp =
+		QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+	      for (j = 0; j < QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
+		   j++, attr_statsp++)
 		{
-		  index_entryp->key_type = attr_statsp->bt_stats[k].key_type;
-		  break;
+		  if (attr_statsp->id == attr_id)
+		    {
+		      break;
+		    }
 		}
-	    }			/* for (k = 0, ...) */
-	  if (k == attr_statsp->n_btstats)
-	    {
-	      /* cannot find index in this attribute. what happens? */
-	      continue;
+
+	      attr_statsp =
+		&QO_GET_CLASS_STATS (class_info_entryp)->attr_stats[j];
+	      bt_statsp = attr_statsp->bt_stats;
+	      for (j = 0; j < attr_statsp->n_btstats; j++, bt_statsp++)
+		{
+		  if (BTID_IS_EQUAL (&bt_statsp->btid,
+				     &index_entryp->constraints->index_btid)
+		      && bt_statsp->has_function == 1)
+		    {
+		      break;
+		    }
+		}
+
+	      index_entryp->key_type = bt_statsp->key_type;
 	    }
 
 	  if (QO_NODE_ENTITY_SPEC (node)->info.spec.only_all == PT_ALL)
@@ -6613,12 +6844,6 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
       return false;
     }
 
-  /* if the index is a function index, we do not use the covering feature */
-  if (index_entry->constraints->func_index_info)
-    {
-      return false;
-    }
-
   for (i = 0; i < index_entry->nsegs; i++)
     {
       seg_idx = (index_entry->seg_idxs[i]);
@@ -6697,6 +6922,12 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 	{
 	  if (index_entry->seg_idxs[j] == QO_SEG_IDX (seg))
 	    {
+	      /* if the segment created in respect to the function index info
+	       * is covered, we do not use index covering */
+	      if (QO_SEG_FUNC_INDEX (seg))
+		{
+		  return false;
+		}
 	      found = true;
 	      break;
 	    }
@@ -7169,11 +7400,19 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		qo_is_iss_index (env, nodep, index_entryp);
 
 	      index_entryp->statistics_attribute_name = NULL;
+	      index_entryp->is_func_index = false;
+
 	      if (index_entryp->col_num > 0)
 		{
 		  const char *temp_name = NULL;
 
-		  if (consp->attributes && consp->attributes[0])
+		  if (consp->func_index_info
+		      && consp->func_index_info->col_id == 0)
+		    {
+		      index_entryp->is_func_index = true;
+		    }
+		  if (!index_entryp->is_func_index &&
+		      consp->attributes && consp->attributes[0])
 		    {
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)

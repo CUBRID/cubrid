@@ -4094,7 +4094,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	  error_code = heap_get_indexinfo_of_btid (thread_p, &fkref->self_oid,
 						   &fkref->self_btid, NULL,
 						   &num_attrs, &attr_ids,
-						   &keys_prefix_length, NULL);
+						   &keys_prefix_length, NULL,
+						   NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -4658,7 +4659,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	  error_code = heap_get_indexinfo_of_btid (thread_p, &fkref->self_oid,
 						   &fkref->self_btid, NULL,
 						   &num_attrs, &attr_ids,
-						   &keys_prefix_length, NULL);
+						   &keys_prefix_length, NULL,
+						   NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -9190,7 +9192,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 
       if (heap_get_indexinfo_of_btid
 	  (thread_p, class_oid, btid, NULL, NULL, NULL, NULL,
-	   &btname) != NO_ERROR)
+	   &btname, NULL) != NO_ERROR)
 	{
 	  free_and_init (attrids);
 	  free_and_init (attrs_prefix_length);

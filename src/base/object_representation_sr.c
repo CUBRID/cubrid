@@ -174,12 +174,14 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
   DISK_REPR *rep = NULL;
   OR_CLASSREP *or_rep = NULL;
+  OR_INDEX *or_idx = NULL;
 
   VPID root_vpid;
   PAGE_PTR root;
   RECDES rec;
   BTREE_ROOT_HEADER root_header;
   BTID_INT btid_int;
+  DB_TYPE db_type;
 
   or_rep = or_get_classrep (record, NULL_REPRID);
   if (or_rep == NULL)
@@ -292,6 +294,20 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->pages = 0;
 	      bt_statsp->height = 0;
 	      bt_statsp->keys = 0;
+	      bt_statsp->has_function = 0;
+	      for (k = 0; k < or_rep->n_indexes; k++)
+		{
+		  or_idx = &or_rep->indexes[k];
+		  if (or_idx &&
+		      BTID_IS_EQUAL (&or_idx->btid, &bt_statsp->btid) &&
+		      or_idx->func_index_info &&
+		      or_idx->func_index_info->col_id == 0)
+		    {
+		      bt_statsp->has_function = 1;
+		      break;
+		    }
+		}
+
 #if 0				/* reserved for future use */
 	      bt_statsp->reserved_1 = 0;
 	      bt_statsp->reserved_2 = 0;
@@ -371,6 +387,24 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		{
 		  bt_statsp->pkeys[k] = 0;
 		}
+
+	      db_type = (TP_DOMAIN_TYPE (bt_statsp->key_type) ==
+			 DB_TYPE_OBJECT ? DB_TYPE_OID :
+			 TP_DOMAIN_TYPE (bt_statsp->key_type));
+	      db_value_domain_min (&bt_statsp->min_value,
+				   TP_DOMAIN_TYPE (bt_statsp->key_type),
+				   bt_statsp->key_type->precision,
+				   bt_statsp->key_type->scale,
+				   bt_statsp->key_type->codeset,
+				   bt_statsp->key_type->collation_id,
+				   &bt_statsp->key_type->enumeration);
+	      db_value_domain_min (&bt_statsp->max_value,
+				   TP_DOMAIN_TYPE (bt_statsp->key_type),
+				   bt_statsp->key_type->precision,
+				   bt_statsp->key_type->scale,
+				   bt_statsp->key_type->codeset,
+				   bt_statsp->key_type->collation_id,
+				   &bt_statsp->key_type->enumeration);
 	    }
 	}
       else
@@ -2175,10 +2209,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
   id.root_pageid = (PAGEID) pageid;
   id.vfid.fileid = (FILEID) fileid;
 
-  /* 
-   * skip function index information, since it will be installed later,
-   * using or_install_btids_class ()
-   */
   i = 1;
   if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
     {

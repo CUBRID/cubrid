@@ -160,6 +160,14 @@ struct qo_index_entry
 
   /* key limits */
   PT_NODE *key_limit;
+
+  /*
+   * if the first indexed attribute is actually a function expression,
+   * statistics will be retrieved from the B-tree , rather that attribute
+   * stats. This flag is true only if the function expression is the first key
+   * in the index.
+   */
+  bool is_func_index;
 };
 
 #define QO_ENTRY_MULTI_COL(entry)       ((entry)->col_num > 1 ? true : false)

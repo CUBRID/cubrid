@@ -161,7 +161,9 @@ static int scan_init_indx_coverage (THREAD_ENTRY * thread_p,
 				    OUTPTR_LIST * output_val_list,
 				    REGU_VARIABLE_LIST regu_val_list,
 				    VAL_DESCR * vd, QUERY_ID query_id,
-				    int max_key_len, INDX_COV * indx_cov);
+				    int max_key_len,
+				    int func_index_col_id,
+				    INDX_COV * indx_cov);
 static OID *scan_alloc_oid_buf (void);
 static OID *scan_alloc_iscan_oid_buf_list (void);
 static void scan_free_iscan_oid_buf_list (OID * oid_buf_p);
@@ -683,6 +685,7 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred,
   filter_info_p->btree_attr_ids = btree_attr_ids;
   filter_info_p->num_vstr_ptr = num_vstr_ptr;
   filter_info_p->vstr_ids = vstr_ids;
+  filter_info_p->func_idx_col_id = -1;
 }
 
 /*
@@ -704,7 +707,8 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p,
 			 REGU_VARIABLE_LIST regu_val_list,
 			 VAL_DESCR * vd,
 			 QUERY_ID query_id,
-			 int max_key_len, INDX_COV * indx_cov)
+			 int max_key_len, int func_index_col_id,
+			 INDX_COV * indx_cov)
 {
   int err = NO_ERROR;
   int num_membuf_pages = 0;
@@ -726,9 +730,11 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p,
       indx_cov->tplrec = NULL;
       indx_cov->lsid = NULL;
       indx_cov->max_tuples = 0;
+      indx_cov->func_index_col_id = -1;
       return NO_ERROR;
     }
 
+  indx_cov->func_index_col_id = func_index_col_id;
   indx_cov->type_list = (QFILE_TUPLE_VALUE_TYPE_LIST *)
     db_private_alloc (thread_p, sizeof (QFILE_TUPLE_VALUE_TYPE_LIST));
   if (indx_cov->type_list == NULL)
@@ -2317,6 +2323,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 			 iscan_id->bt_attr_ids, &iscan_id->num_vstr,
 			 iscan_id->vstr_ids);
   iscan_id->oid_list.oid_cnt = 0;
+  key_filter.func_idx_col_id = iscan_id->indx_info->func_idx_col_id;
 
   if (iscan_id->multi_range_opt.use && iscan_id->multi_range_opt.cnt > 0)
     {
@@ -3079,6 +3086,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTREE_ROOT_HEADER root_header;
   BTREE_SCAN *BTS;
   int coverage_enabled;
+  int func_index_col_id;
 
   /* scan type is INDEX SCAN */
   scan_id->type = S_INDX_SCAN;
@@ -3147,8 +3155,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (heap_get_indexinfo_of_btid (thread_p, cls_oid,
 				  &indx_info->indx_id.i.btid, &isidp->bt_type,
 				  &isidp->bt_num_attrs, &isidp->bt_attr_ids,
-				  &isidp->bt_attrs_prefix_length,
-				  NULL) != NO_ERROR)
+				  &isidp->bt_attrs_prefix_length, NULL,
+				  &func_index_col_id) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3297,6 +3305,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list,
 			       regu_val_list, vd, query_id,
 			       root_header.node.max_key_len,
+			       func_index_col_id,
 			       &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
@@ -4858,7 +4867,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 							 &isidp->cls_oid,
 							 btid, NULL, NULL,
 							 NULL, NULL,
-							 &indx_name_p);
+							 &indx_name_p, NULL);
 		      class_name_p =
 			heap_get_class_name (thread_p, &isidp->cls_oid);
 		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
@@ -4886,7 +4895,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 							 &isidp->cls_oid,
 							 btid, NULL, NULL,
 							 NULL, NULL,
-							 &indx_name_p);
+							 &indx_name_p, NULL);
 		      class_name_p =
 			heap_get_class_name (thread_p, &isidp->cls_oid);
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -6116,7 +6125,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id,
   error = btree_attrinfo_read_dbvalues (thread_p, key,
 					iscan_id->bt_attr_ids,
 					iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache);
+					iscan_id->rest_attrs.attr_cache, -1);
   if (error != NO_ERROR)
     {
       return error;

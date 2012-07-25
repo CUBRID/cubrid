@@ -2835,6 +2835,12 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		      return V_ERROR;
 		    }
 
+		  if (filterp->func_idx_col_id != -1 &&
+		      j > filterp->func_idx_col_id)
+		    {
+		      j = j + 1;
+		    }
+
 		  /* get j-th element value from the midxkey */
 		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp,
 						     &prev_j_index,

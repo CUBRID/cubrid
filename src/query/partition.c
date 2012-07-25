@@ -1076,7 +1076,8 @@ partition_list_to_spec_list (PRUNING_CONTEXT * pinfo, PARTITION_NODE * list)
       error =
 	heap_get_indexinfo_of_btid (pinfo->thread_p,
 				    master_oid, master_btid,
-				    NULL, NULL, NULL, NULL, &btree_name);
+				    NULL, NULL, NULL, NULL, &btree_name,
+				    NULL);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -2798,7 +2799,7 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo)
   part_attr_id = pinfo->partition_pred->func_regu->value.attr_descr.id;
 
   error = heap_get_indexinfo_of_btid (pinfo->thread_p, class_oid, btid, NULL,
-				      &key_count, &keys, NULL, NULL);
+				      &key_count, &keys, NULL, NULL, NULL);
   if (error != NO_ERROR)
     {
       return error;

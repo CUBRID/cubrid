@@ -7764,7 +7764,8 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
   start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
-  if (index_entryp->constraints->func_index_info)
+  if (index_entryp->constraints->func_index_info
+      && index_entryp->cover_segments == false)
     {
       no_kf_terms = true;
     }
@@ -10552,6 +10553,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
   BITSET range_terms;
   BITSET kf_terms;
   int start_column = 0;
+  bool clear_kf_terms = false;
 
   bitset_init (&range_terms, infop->env);
   bitset_init (&kf_terms, infop->env);
@@ -10565,6 +10567,12 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
       intl_identifier_casecmp (nodep->class_name, index_entryp->class_->name))
     {
       goto end;
+    }
+
+  if (index_entryp->constraints->func_index_info
+      && index_entryp->cover_segments == false)
+    {
+      clear_kf_terms = true;
     }
 
   if (QO_ENTRY_MULTI_COL (index_entryp))
@@ -10649,7 +10657,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 			   &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
-	  if (index_entryp->constraints->func_index_info == NULL)
+	  if (clear_kf_terms == false)
 	    {
 	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	      bitset_difference (&kf_terms, &range_terms);
@@ -10675,7 +10683,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 			   &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
-	  if (index_entryp->constraints->func_index_info == NULL)
+	  if (clear_kf_terms == false)
 	    {
 	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	      bitset_difference (&kf_terms, &range_terms);
@@ -10712,7 +10720,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	       t != -1; t = bitset_next_member (&iter))
 	    {
 	      bitset_add (&range_terms, t);
-	      if (index_entryp->constraints->func_index_info == NULL)
+	      if (clear_kf_terms == false)
 		{
 		  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 		  bitset_difference (&kf_terms, &range_terms);
@@ -10743,7 +10751,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	       t != -1; t = bitset_next_member (&iter))
 	    {
 	      bitset_add (&range_terms, t);
-	      if (index_entryp->constraints->func_index_info == NULL)
+	      if (clear_kf_terms == false)
 		{
 		  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 		  bitset_difference (&kf_terms, &range_terms);

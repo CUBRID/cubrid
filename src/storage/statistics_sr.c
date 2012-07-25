@@ -385,6 +385,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   BTREE_STATS *btree_stats_p;
   int estimated_npages, estimated_nobjs, dummy_avg_length;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
+  int tot_bt_min_max_size;
   char *buf_p, *start_p;
 
   *length_p = -1;
@@ -418,7 +419,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
 
-  tot_n_btstats = tot_key_info_size = 0;
+  tot_n_btstats = tot_key_info_size = tot_bt_min_max_size = 0;
   for (i = 0; i < n_attrs; i++)
     {
       if (i < disk_repr_p->n_fixed)
@@ -437,6 +438,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  tot_key_info_size +=
 	    (or_packed_domain_size (btree_stats_p->key_type, 0) +
 	     (OR_INT_SIZE * btree_stats_p->key_size));
+	  if (btree_stats_p->has_function > 0)
+	    {
+	      tot_bt_min_max_size +=
+		OR_VALUE_ALIGNED_SIZE (&btree_stats_p->min_value) +
+		OR_VALUE_ALIGNED_SIZE (&btree_stats_p->max_value);
+	    }
 	}
     }
 
@@ -456,9 +463,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	    + OR_INT_SIZE	/* pages of BTREE_STATS */
 	    + OR_INT_SIZE	/* height of BTREE_STATS */
 	    + OR_INT_SIZE	/* keys of BTREE_STATS */
+	    + OR_INT_SIZE	/* does the BTREE_STATS correspond to a
+				 * function index */
 	   ) * tot_n_btstats);	/* total number of indexes */
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
+  size += tot_bt_min_max_size;	/* min, max value of BTREE_STATS */
 
   start_p = buf_p = (char *) malloc (size);
   if (buf_p == NULL)
@@ -642,6 +652,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  OR_PUT_INT (buf_p, btree_stats_p->height);
 	  buf_p += OR_INT_SIZE;
 
+	  OR_PUT_INT (buf_p, btree_stats_p->has_function);
+	  buf_p += OR_INT_SIZE;
+
 	  /* If the estimated objects from heap manager is greater than the
 	     estimate when the statistics were gathered, assume that the
 	     difference is in distinct keys. */
@@ -669,6 +682,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	    {
 	      OR_PUT_INT (buf_p, btree_stats_p->pkeys[k]);
 	      buf_p += OR_INT_SIZE;
+	    }
+
+	  if (btree_stats_p->has_function > 0)
+	    {
+	      buf_p = or_pack_db_value (buf_p, &btree_stats_p->min_value);
+
+	      buf_p = or_pack_db_value (buf_p, &btree_stats_p->max_value);
 	    }
 	}
     }

@@ -432,7 +432,8 @@ extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					 DB_VALUE * curr_key,
 					 int *btree_att_ids,
 					 int btree_num_att,
-					 HEAP_CACHE_ATTRINFO * attr_info);
+					 HEAP_CACHE_ATTRINFO * attr_info,
+					 int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize,
 			     TP_DOMAIN * btree_domainp, int key_minmax);
 extern int btree_set_unique_violation_error (THREAD_ENTRY * thread_p,

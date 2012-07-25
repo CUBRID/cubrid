@@ -569,6 +569,8 @@ struct filter_info
   int *num_vstr_ptr;		/* number pointer of variable string attrs */
   ATTR_ID *vstr_ids;		/* attribute id array of variable string */
   int btree_num_attrs;		/* number of attributes of the index key */
+  int func_idx_col_id;		/* function expression column position, if
+				 * this is a function index */
 };
 
 /* pseudocolumns offsets in tuple (from end) */

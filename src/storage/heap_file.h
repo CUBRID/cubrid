@@ -450,7 +450,8 @@ extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p,
 				       BTREE_TYPE * type, int *num_attrs,
 				       ATTR_ID ** attr_ids,
 				       int **attrs_prefix_length,
-				       char **btnamepp);
+				       char **btnamepp,
+				       int *func_index_col_id);
 extern int heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid,
 				   const OID * obj_oid, RECDES * obj,
 				   int *max_oid_cnt, OID ** oid_list);

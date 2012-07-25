@@ -3575,8 +3575,8 @@ error:
 }
 
 static char *
-stx_build_merge_proc (THREAD_ENTRY *thread_p, char *ptr,
-		      MERGE_PROC_NODE *merge_info)
+stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr,
+		      MERGE_PROC_NODE * merge_info)
 {
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info =
@@ -4277,6 +4277,8 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, (int *) &(indx_info->groupby_skip));
 
   ptr = or_unpack_int (ptr, (int *) &(indx_info->use_iss));
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->func_idx_col_id));
 
   if (indx_info->use_iss)
     {
