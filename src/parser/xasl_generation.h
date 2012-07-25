@@ -191,6 +191,8 @@ extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node,
 			 XASL_NODE * xasl, UINTPTR id);
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree,
 				  void *arg, int *continue_walk);
+extern bool pt_has_modified_class (PARSER_CONTEXT * parser,
+				   PT_NODE * statement);
 extern int pt_is_single_tuple (PARSER_CONTEXT * parser,
 			       PT_NODE * select_node);
 extern void pt_to_pos_descr (PARSER_CONTEXT * parser,

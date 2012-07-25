@@ -284,6 +284,10 @@ static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser,
 					   PT_NODE * statement,
 					   PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
+static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser,
+					      PT_NODE * tree, void *arg,
+					      int *continue_walk);
+
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
@@ -3430,6 +3434,79 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 			}
 		    }
 		}
+	    }
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_has_modified_class -
+ *   return:
+ *
+ *   parser(in):
+ *   statement(in/out):
+ */
+bool
+pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool found = false;
+
+  parser_walk_tree (parser, statement, pt_has_modified_class_helper,
+		    &found, NULL, NULL);
+
+  return found;
+}
+
+/*
+ * pt_has_modified_class_helper -
+ *   return:
+ *
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
+			      void *arg, int *continue_walk)
+{
+  bool *already_found = (bool *) arg;
+  PT_NODE *class_;
+  MOP clsmop = NULL;
+
+  if (*already_found)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_SPEC)
+    {
+      for (class_ = node->info.spec.flat_entity_list;
+	   class_; class_ = class_->next)
+	{
+	  clsmop = class_->info.name.db_object;
+	  if (clsmop == NULL || !db_is_class (clsmop))
+	    {
+	      continue;
+	    }
+
+	  if (class_->info.name.db_object_chn == NULL_CHN)
+	    {
+	      class_->info.name.db_object_chn
+		= locator_get_cache_coherency_number (clsmop);
+	    }
+	  else if (class_->info.name.db_object_chn
+		   != locator_get_cache_coherency_number (clsmop))
+	    {
+	      *already_found = true;
+
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
 	    }
 	}
     }

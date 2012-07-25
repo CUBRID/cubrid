@@ -12436,6 +12436,7 @@ pt_init_name (PT_NODE * p)
   p->info.name.partition_of = NULL;
   p->info.name.indx_key_limit = NULL;
   p->info.name.hidden_column = 0;
+  p->info.name.db_object_chn = NULL_CHN;
   return p;
 }
 

@@ -1832,8 +1832,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
      query_prepare_and_execute(). */
   do_Trigger_involved = false;
 
-  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-      && statement->cannot_prepare == 0)
+  pt_null_etc (statement);
+  if (statement->xasl_id == NULL
+      && pt_has_modified_class (parser, statement) == true)
+    {
+      err = ER_QPROC_INVALID_XASLNODE;
+    }
+  else if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
+	   && statement->cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
@@ -2573,7 +2579,7 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
 
 
 /*
- * do_recompile_and_execute_prepared_statement () - compile and execute a 
+ * do_recompile_and_execute_prepared_statement () - compile and execute a
  *						    prepared statement
  * return : error code or NO_ERROR
  * session (in)   : client session context

@@ -643,7 +643,7 @@ enum pt_custom_print
   PT_SUPPRESS_ORDERING = 0x100000,
   PT_PRINT_QUOTES = 0x200000,
   PT_FORCE_ORIGINAL_TABLE_NAME = 0x400000,	/* this is for PT_NAME nodes.
-						 * prints original table name 
+						 * prints original table name
 						 * instead of printing resolved
 						 * NOTE: spec_id must point to
 						 * original table
@@ -1651,9 +1651,9 @@ struct pt_index_info
   PT_NODE *index_name;		/* PT_NAME */
   PT_NODE *prefix_length;	/* PT_NAME */
   PT_NODE *where;		/* PT_EXPR */
-  PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a 
+  PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a
 				 * function index */
-  int func_pos;			/* the position of the expression in the 
+  int func_pos;			/* the position of the expression in the
 				 * function index's column list */
   int func_no_args;		/* number of arguments in the function index
 				 * expression */
@@ -1706,7 +1706,7 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/*  PT_VALUE (list)   */
   PT_MISC_TYPE shared;		/*  will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* if it is a pseudocolumn, 
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* if it is a pseudocolumn,
 					 * do not evaluate expr */
 };
 
@@ -1839,7 +1839,7 @@ struct pt_spec_info
   bool natural;			/* -- does not support natural join */
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization :
 				 * used only by SHOW statements currently */
-  PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or 
+  PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or
 				 * UPDATE operations */
 };
 
@@ -2069,6 +2069,7 @@ struct pt_name_info
   const char *original;		/* the string of the original name */
   const char *resolved;		/* the string of the resolved name */
   DB_OBJECT *db_object;		/* the object, if this is a class or instance */
+  int db_object_chn;
   DB_OBJECT *virt_object;	/* the top level view this this class is
 				 * being viewed through. */
   DB_OBJECT *partition_of;	/* _db_partition object */
@@ -2096,7 +2097,7 @@ struct pt_name_info
 					   that maps to an OID is generated
 					   internally for statement processing
 					   and execution */
-#define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID 
+#define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID
 					   restrictions for this name */
 
   short flag;
