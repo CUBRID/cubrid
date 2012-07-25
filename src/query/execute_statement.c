@@ -10876,7 +10876,7 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
     }
 
   retval = do_select (parser, select);
-  if (retval < NO_ERROR)
+  if (retval < NO_ERROR || select->etc == NULL)
     {
       goto error_cleanup;
     }
@@ -11448,13 +11448,26 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	{
 	  goto cleanup;
 	}
-      if (error > 0)
+      else if (error > 0)
 	{
 	  /* a successful update, go to finish */
 	  row_count += error;
 	  dbt_abort_object (*otemplate);
 	  *otemplate = NULL;
 	  error = NO_ERROR;
+	}
+      else
+	{			/* error == 0 */
+	  int level;
+	  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+	  if (level & 0x02)
+	    {
+	      /* do not execute, go to finish */
+	      row_count = 0;
+	      dbt_abort_object (*otemplate);
+	      *otemplate = NULL;
+	      error = NO_ERROR;
+	    }
 	}
     }
   if ((*otemplate) != NULL && statement->info.insert.do_replace)
@@ -11552,7 +11565,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     case PT_INTERSECTION:
       /* execute the subquery */
       error = do_select (parser, qry);
-      if (error < NO_ERROR)
+      if (error < NO_ERROR || qry->etc == NULL)
 	{
 	  return error;
 	}
