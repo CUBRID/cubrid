@@ -6512,6 +6512,7 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
   unsigned int save_custom;
+  PT_MISC_TYPE view_check_option;
 
   r1 = pt_print_bytes (parser, p->info.create_entity.entity_name);
   q = pt_append_nulstring (parser, q, "create ");
@@ -6686,6 +6687,17 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " as ");
       q = pt_append_varchar (parser, q, r1);
     }
+
+  view_check_option = p->info.create_entity.with_check_option;
+  if (view_check_option == PT_LOCAL)
+    {
+      q = pt_append_nulstring (parser, q, " with local check option");
+    }
+  else if (view_check_option == PT_CASCADED)
+    {
+      q = pt_append_nulstring (parser, q, " with cascaded check option");
+    }
+
   /* this is out of date */
   if (p->info.create_entity.update)
     {
