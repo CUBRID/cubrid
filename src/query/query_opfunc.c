@@ -9274,7 +9274,11 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   if (DB_IS_NULL (&dbval) && func_p->function != PT_ROW_NUMBER
       && func_p->function != PT_RANK && func_p->function != PT_DENSE_RANK)
     {
-      func_p->curr_cnt++;
+      if (func_p->function == PT_COUNT || func_p->function == PT_COUNT_STAR)
+	{
+	  func_p->curr_cnt++;
+	}
+
       goto exit;
     }
 
