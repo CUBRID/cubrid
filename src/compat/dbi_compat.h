@@ -2430,6 +2430,22 @@ typedef DB_CHAR DB_BIT;
 
 typedef int DB_RESULTSET;
 
+/* Structure for an ENUMERATION element */
+typedef struct db_enum_element DB_ENUM_ELEMENT;
+struct db_enum_element
+{
+  unsigned short short_val;	/* element index */
+  DB_CHAR str_val;		/* element string */
+};
+
+/* Structure for an ENUMERATION */
+typedef struct db_enumeration DB_ENUMERATION;
+struct db_enumeration
+{
+  unsigned short count;		/* count of enumeration elements */
+  DB_ENUM_ELEMENT *elements;	/* array of enumeration elements */
+};
+
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
