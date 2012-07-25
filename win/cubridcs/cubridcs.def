@@ -399,6 +399,11 @@ EXPORTS
     util_size_string_to_byte
     au_get_public_user_name
     au_login
+    ml_ext_free
+    ml_ext_add
+    ml_size
+    sm_class_name
+    tr_map_trigge
 ;
 ; utility functions
 ;
