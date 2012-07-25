@@ -350,14 +350,28 @@ static void
 pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg1;
-  PT_TYPE_ENUM cast_type, arg_type;
+  PT_TYPE_ENUM cast_type = PT_TYPE_NONE, arg_type;
   PT_CAST_VAL cast_is_valid = PT_CAST_VALID;
 
   if (node == NULL || node->node_type != PT_EXPR
-      || node->info.expr.op != PT_CAST || node->info.expr.cast_type == NULL)
+      || node->info.expr.op != PT_CAST)
     {
       /* this should not happen, but don't crash and burn if it does */
       assert (false);
+      return;
+    }
+
+  /* get cast type */
+  if (node->info.expr.cast_type != NULL)
+    {
+      cast_type = node->info.expr.cast_type->type_enum;
+    }
+  else
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "null cast type");
+	}
       return;
     }
 
@@ -372,14 +386,12 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "(null)",
-		       pt_show_type_enum (node->info.expr.cast_type->
-					  type_enum));
+		       pt_show_type_enum (cast_type));
 	}
       return;
     }
 
   /* CAST (arg_type AS cast_type) */
-  cast_type = node->info.expr.cast_type->type_enum;
   if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
     {
       /* arg1 is a cast, so arg1.type_enum is not yet set; pull type from
