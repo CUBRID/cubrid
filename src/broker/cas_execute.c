@@ -62,6 +62,7 @@
 #include "unicode_support.h"
 #include "transaction_cl.h"
 #include "authenticate.h"
+#include "trigger_manager.h"
 
 #include "dbi.h"
 
@@ -268,7 +269,7 @@ static int sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag,
 			   T_SRV_HANDLE * srv_handle);
 static void sch_constraint (T_NET_BUF * net_buf, char *class_name,
 			    void **result);
-static void sch_trigger (T_NET_BUF * net_buf, char *trigger_name,
+static void sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag,
 			 void **result);
 static int sch_class_priv (T_NET_BUF * net_buf, char *class_name,
 			   char pat_flag, T_SRV_HANDLE * srv_handle);
@@ -3474,7 +3475,7 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag,
       sch_constraint (net_buf, arg1, &(srv_handle->session));
       break;
     case CCI_SCH_TRIGGER:
-      sch_trigger (net_buf, arg1, &(srv_handle->session));
+      sch_trigger (net_buf, arg1, flag, &(srv_handle->session));
       break;
     case CCI_SCH_CLASS_PRIVILEGE:
       err_code = sch_class_priv (net_buf, arg1, flag, srv_handle);
@@ -7019,22 +7020,89 @@ sch_constraint (T_NET_BUF * net_buf, char *class_name, void **result)
 }
 
 static void
-sch_trigger (T_NET_BUF * net_buf, char *trigger_name, void **result)
+sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 {
-  DB_OBJLIST *all_trigger, *tmp_t;
-  int num_trig;
+  DB_OBJLIST *all_trigger = NULL, *tmp_trigger = NULL, *tmp_t;
+  int num_trig = 0;
+  MOP tmp_obj;
+  DB_OBJECT *obj_trigger_target = NULL;
+  const char *name_trigger_target = NULL;
+  TR_TRIGGER *trigger = NULL;
+  int error = NO_ERROR;
 
-  if (db_find_all_triggers (&all_trigger) < 0)
+  if (!class_name && !flag)
     {
-      all_trigger = NULL;
+      goto end;
     }
 
-  num_trig = 0;
-  for (tmp_t = all_trigger; tmp_t; tmp_t = tmp_t->next)
+  if (db_find_all_triggers (&tmp_trigger) < 0)
     {
-      num_trig++;
+      goto end;
     }
 
+  if (class_name == NULL)
+    {
+      all_trigger = tmp_trigger;
+      num_trig = ml_size (all_trigger);
+    }
+  else
+    {
+      for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
+	{
+	  tmp_obj = tmp_t->op;
+	  assert (tmp_obj != NULL);
+
+	  trigger = tr_map_trigger (tmp_obj, 1);
+	  if (trigger == NULL)
+	    {
+	      error = er_errid ();
+	      break;
+	    }
+
+	  obj_trigger_target = trigger->class_mop;
+	  assert (obj_trigger_target != NULL);
+
+	  name_trigger_target = (char *) sm_class_name (obj_trigger_target);
+	  if (name_trigger_target == NULL)
+	    {
+	      error = er_errid ();
+	      break;
+	    }
+
+	  if (flag & CCI_CLASS_NAME_PATTERN_MATCH)
+	    {
+	      if (str_like (name_trigger_target, class_name, '\\') == 1)
+		{
+		  num_trig++;
+		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
+		  break;
+		}
+	    }
+	  else
+	    {
+	      if (strcmp (class_name, name_trigger_target) == 0)
+		{
+		  num_trig++;
+		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
+		  break;
+		}
+	    }
+	}
+
+      if (tmp_trigger)
+	{
+	  ml_ext_free (tmp_trigger);
+	}
+
+      if (error != NO_ERROR && all_trigger)
+	{
+	  ml_ext_free (all_trigger);
+	  all_trigger = NULL;
+	  num_trig = 0;
+	}
+    }
+
+end:
   net_buf_cp_int (net_buf, num_trig, NULL);
   schema_trigger_meta (net_buf);
 
