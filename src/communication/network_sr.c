@@ -1634,7 +1634,8 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (NULL, true, server_name, false, NULL) != NO_ERROR)
+  if (boot_restart_server (NULL, true, server_name, false, false,
+			   NULL) != NO_ERROR)
     {
       error = er_errid ();
     }

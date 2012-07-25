@@ -2915,6 +2915,7 @@ exit_on_error:
  *                      is printed at the end of the restart process.
  *   db_name(in): Database Name
  *   from_backup(in): Execute the restart from a backup..
+ *   for_copydb(in): Execute the restart for copy db purpose ..
  *   r_args(in): restart argument structure contains various options
  *
  * Note: The CUBRID server is restarted. Recovery process, no
@@ -2923,7 +2924,7 @@ exit_on_error:
  */
 int
 boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
-		     const char *db_name, bool from_backup,
+		     const char *db_name, bool from_backup, bool for_copydb,
 		     BO_RESTART_ARG * r_args)
 {
   char log_path[PATH_MAX];
@@ -3407,32 +3408,33 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #endif
 
   /* check server collations with database collations */
-  {
-    LANG_COLL_COMPAT *db_collations = NULL;
-    int db_coll_cnt;
+  if (!for_copydb)
+    {
+      LANG_COLL_COMPAT *db_collations = NULL;
+      int db_coll_cnt;
 
-    error_code = catcls_get_db_collation (thread_p, &db_collations,
-					  &db_coll_cnt);
-    if (error_code != NO_ERROR)
-      {
-	if (db_collations != NULL)
-	  {
-	    db_private_free (thread_p, db_collations);
-	  }
-	goto error;
-      }
+      error_code = catcls_get_db_collation (thread_p, &db_collations,
+					    &db_coll_cnt);
+      if (error_code != NO_ERROR)
+	{
+	  if (db_collations != NULL)
+	    {
+	      db_private_free (thread_p, db_collations);
+	    }
+	  goto error;
+	}
 
-    if (db_collations != NULL)
-      {
-	error_code = lang_check_coll_compat (db_collations, db_coll_cnt,
-					     "server", "database");
-	db_private_free (thread_p, db_collations);
-	if (error_code != NO_ERROR)
-	  {
-	    goto error;
-	  }
-      }
-  }
+      if (db_collations != NULL)
+	{
+	  error_code = lang_check_coll_compat (db_collations, db_coll_cnt,
+					       "server", "database");
+	  db_private_free (thread_p, db_collations);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+    }
 
   /* if starting jvm fail, it would be ignored. */
   (void) jsp_start_server (db_name, db->pathname);
@@ -3593,8 +3595,8 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 
   tp_init ();
 
-  if (boot_restart_server (thread_p, print_restart, db_name, true, r_args) !=
-      NO_ERROR)
+  if (boot_restart_server (thread_p, print_restart, db_name, true, false,
+			   r_args) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
@@ -3685,7 +3687,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
       && boot_restart_server (thread_p, false, client_credential->db_name,
-			      false, NULL) != NO_ERROR)
+			      false, false, NULL) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
@@ -4538,7 +4540,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 	    }
 
 	  error_code = boot_restart_server (thread_p, false, from_dbname,
-					    false, NULL);
+					    false, true, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
