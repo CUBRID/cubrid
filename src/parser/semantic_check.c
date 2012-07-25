@@ -5092,6 +5092,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       PT_ERRORm (parser, stmt,
 		 MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_INVALID_PARTITION_DEFINITION);
+      return;
     }
 
   if (pinfo->info.partition.type == PT_PARTITION_HASH)
@@ -7444,7 +7445,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 			  MSGCAT_SEMANTIC_VARIABLE_NOT_ALLOWED, 0);
 	    }
 	}
-      if (node->info.create_entity.partition_info)
+      if (!pt_has_error (parser) && node->info.create_entity.partition_info)
 	{
 	  pt_check_partitions (parser, node, NULL);
 	}

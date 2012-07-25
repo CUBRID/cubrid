@@ -336,17 +336,6 @@ static SM_FUNCTION_INFO *pt_node_to_function_index (PARSER_CONTEXT *
 						    PT_NODE * spec,
 						    PT_NODE * sort_spec,
 						    DO_INDEX do_index);
-static int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
-					  SM_CONSTRAINT_INFO * constr,
-					  PT_NODE * alter,
-					  const char *src_cls_name,
-					  const char *new_cls_name);
-static int do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
-					    SM_CONSTRAINT_INFO * constr,
-					    PT_NODE * alter,
-					    const char *src_cls_name,
-					    const char *new_cls_name);
-
 
 static int do_create_partition_constraints (PARSER_CONTEXT * parser,
 					    PT_NODE * alter,
@@ -3605,9 +3594,9 @@ static PT_NODE *replace_name_with_value (PARSER_CONTEXT * parser,
 static PT_NODE *replace_names_alter_chg_attr (PARSER_CONTEXT * parser,
 					      PT_NODE * node, void *void_arg,
 					      int *continue_walk);
-static PT_NODE *replace_names_copy_indexes (PARSER_CONTEXT * parser,
-					    PT_NODE * node, void *void_arg,
-					    int *continue_walk);
+static PT_NODE *pt_replace_names_index_expr (PARSER_CONTEXT * parser,
+					     PT_NODE * node, void *void_arg,
+					     int *continue_walk);
 static PT_NODE *adjust_name_with_type (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *void_arg,
 				       int *continue_walk);
@@ -8455,6 +8444,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
   DB_OBJLIST *objs = NULL;
   PT_ALTER_CODE alter_op;
   PT_NODE *parts;
+  SM_FUNCTION_INFO *new_func_index_info = NULL;
 
   alter_op = alter->info.alter.code;
   attp = constraint->attributes;
@@ -8552,12 +8542,36 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 		      ER_PARTITION_WORK_FAILED, 0);
 	      goto cleanup;
 	    }
+
+	  if (constraint->func_index_info)
+	    {
+	      error = sm_save_function_index_info (&new_func_index_info,
+						   constraint->
+						   func_index_info);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      error =
+		do_recreate_func_index_constr (NULL, NULL,
+					       new_func_index_info,
+					       NULL, root_class->header.name,
+					       subclass->header.name);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else
+	    {
+	      new_func_index_info = NULL;
+	    }
+
 	  error =
 	    sm_add_index (subclass_op, db_constraint_type (constraint),
 			  constraint->name, (const char **) namep, asc_desc,
 			  constraint->attrs_prefix_length,
-			  constraint->filter_predicate,
-			  constraint->func_index_info);
+			  constraint->filter_predicate, new_func_index_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -8582,12 +8596,35 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	      continue;
 	    }
 
+	  if (constraint->func_index_info)
+	    {
+	      error = sm_save_function_index_info (&new_func_index_info,
+						   constraint->
+						   func_index_info);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      error =
+		do_recreate_func_index_constr (NULL, NULL,
+					       new_func_index_info, NULL,
+					       root_class->header.name,
+					       subclass->header.name);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else
+	    {
+	      new_func_index_info = NULL;
+	    }
+
 	  error =
 	    sm_add_index (objs->op, db_constraint_type (constraint),
 			  constraint->name, (const char **) namep, asc_desc,
 			  constraint->attrs_prefix_length,
-			  constraint->filter_predicate,
-			  constraint->func_index_info);
+			  constraint->filter_predicate, new_func_index_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -8603,6 +8640,11 @@ cleanup:
   if (asc_desc != NULL)
     {
       free_and_init (asc_desc);
+    }
+  if (new_func_index_info)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
     }
   return error;
 }
@@ -12095,7 +12137,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 		  /* recompile function index expression */
 		  error =
 		    do_recreate_func_index_constr ((PARSER_CONTEXT *) parser,
-						   saved, NULL,
+						   saved, NULL, NULL,
 						   old_class_name,
 						   class_->header.name);
 		  if (error != NO_ERROR)
@@ -12108,7 +12150,8 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 		  /* recompile filter index expression */
 		  error =
 		    do_recreate_filter_index_constr ((PARSER_CONTEXT *)
-						     parser, saved,
+						     parser,
+						     saved->filter_predicate,
 						     NULL, old_class_name,
 						     class_->header.name);
 		  if (error != NO_ERROR)
@@ -12247,7 +12290,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 		{
 		  error =
 		    do_recreate_func_index_constr (parser, index_save_info,
-						   NULL,
+						   NULL, NULL,
 						   src_class->header.name,
 						   sm_class_name (classmop));
 		}
@@ -12255,7 +12298,8 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 		{
 		  /* filter index predicate available */
 		  error =
-		    do_recreate_filter_index_constr (parser, index_save_info,
+		    do_recreate_filter_index_constr (parser, index_save_info->
+						     filter_predicate,
 						     NULL,
 						     src_class->header.name,
 						     sm_class_name
@@ -12635,7 +12679,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	      if (saved_constr->func_index_info)
 		{
 		  error =
-		    do_recreate_func_index_constr (parser, saved_constr,
+		    do_recreate_func_index_constr (parser,
+						   saved_constr, NULL,
 						   alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
@@ -12645,7 +12690,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	      if (saved_constr->filter_predicate)
 		{
 		  error = do_recreate_filter_index_constr (parser,
-							   saved_constr,
+							   saved_constr->
+							   filter_predicate,
 							   alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
@@ -16295,6 +16341,7 @@ error_exit:
  * do_recreate_func_index_constr () - rebuilds the function index expression
  *   parser(in): parser context
  *   constr(in): constraint info, must be a function index
+ *   func_index_info(in): function index info
  *   alter (in): information regarding changes made by an ALTER statement
  *   src_cls_name (in): current table name holding the constraint
  *   new_cls_name (in): new table name holding the constraint
@@ -16302,9 +16349,11 @@ error_exit:
  *   return: NO_ERROR or error code
  *
  */
-static int
+int
 do_recreate_func_index_constr (PARSER_CONTEXT * parser,
-			       SM_CONSTRAINT_INFO * constr, PT_NODE * alter,
+			       SM_CONSTRAINT_INFO * constr,
+			       SM_FUNCTION_INFO * func_index_info,
+			       PT_NODE * alter,
 			       const char *src_cls_name,
 			       const char *new_cls_name)
 {
@@ -16320,7 +16369,28 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   int expr_str_len = 0;
   int saved_func_index_pos = -1, saved_attr_index_start = -1;
   bool free_packing_buff = false;
+  bool free_parser = false;
+  SM_FUNCTION_INFO *fi_info = NULL;
 
+  if (constr)
+    {
+      fi_info = constr->func_index_info;
+    }
+  else
+    {
+      fi_info = func_index_info;
+    }
+
+  if (parser == NULL)
+    {
+      parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  error = ER_FAILED;
+	  goto error;
+	}
+      free_parser = true;
+    }
   if (alter && alter->node_type == PT_ALTER)
     {
       /* rebuilding the index due to ALTER CHANGE statement */
@@ -16343,7 +16413,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
-  query_str_len = strlen (constr->func_index_info->expr_str) +
+  query_str_len = strlen (fi_info->expr_str) +
     strlen (class_name) + 7 /* strlen("SELECT ") */  +
     6 /* strlen(" FROM ") */  +
     2 /* [] */  +
@@ -16356,7 +16426,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   snprintf (query_str, query_str_len, "SELECT %s FROM [%s]",
-	    constr->func_index_info->expr_str, class_name);
+	    fi_info->expr_str, class_name);
   stmt = parser_parse_string (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
@@ -16388,7 +16458,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 	  parser_free_tree (parser, old_name);
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
-      (void) parser_walk_tree (parser, expr, replace_names_copy_indexes,
+      (void) parser_walk_tree (parser, expr, pt_replace_names_index_expr,
 			       new_cls_name, NULL, NULL);
     }
 
@@ -16417,11 +16487,18 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
-  /* free previous function index info */
-  saved_func_index_pos = constr->func_index_info->col_id;
-  saved_attr_index_start = constr->func_index_info->attr_index_start;
-  sm_free_function_index_info (constr->func_index_info);
-  free_and_init (constr->func_index_info);
+  if (constr)
+    {
+      /* free previous function index info */
+      saved_func_index_pos = fi_info->col_id;
+      saved_attr_index_start = fi_info->attr_index_start;
+      sm_free_function_index_info (fi_info);
+      free_and_init (fi_info);
+    }
+  else
+    {
+      sm_free_function_index_info (fi_info);
+    }
 
   pt_enter_packing_buf ();
   free_packing_buff = true;
@@ -16436,24 +16513,30 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
-  /* original function index uses WS storage, switch to normal heap storage */
-  constr->func_index_info =
-    (SM_FUNCTION_INFO *) malloc (sizeof (SM_FUNCTION_INFO));
-  if (fi_info_ws == NULL)
+  if (constr)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-	      sizeof (SM_FUNCTION_INFO));
-      db_ws_free (fi_info_ws);
-      goto error;
+      /* original function index uses WS storage, switch to normal heap storage */
+      fi_info = (SM_FUNCTION_INFO *) malloc (sizeof (SM_FUNCTION_INFO));
+      if (fi_info == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  sizeof (SM_FUNCTION_INFO));
+	  db_ws_free (fi_info_ws);
+	  goto error;
+	}
     }
 
-  memcpy (constr->func_index_info, fi_info_ws, sizeof (SM_FUNCTION_INFO));
+  memcpy (fi_info, fi_info_ws, sizeof (SM_FUNCTION_INFO));
   db_ws_free (fi_info_ws);
 
-  /* restore original values */
-  constr->func_index_info->col_id = saved_func_index_pos;
-  constr->func_index_info->attr_index_start = saved_attr_index_start;
+  if (constr)
+    {
+      /* restore original values */
+      fi_info->col_id = saved_func_index_pos;
+      fi_info->attr_index_start = saved_attr_index_start;
+      constr->func_index_info = fi_info;
+    }
 
 error:
   if (free_packing_buff)
@@ -16461,6 +16544,10 @@ error:
       pt_exit_packing_buf ();
     }
 
+  if (free_parser)
+    {
+      parser_free_parser (parser);
+    }
   if (query_str)
     {
       free_and_init (query_str);
@@ -16471,7 +16558,7 @@ error:
 /*
  * do_recreate_filter_index_constr () - rebuilds the filter index expression
  *   parser(in): parser context
- *   constr(in): constraint info, must be a filter index
+ *   filter_index_info(in): filter index information
  *   alter (in): information regarding changes made by an ALTER statement
  *   src_cls_name (in): current table name holding the constraint
  *   new_cls_name (in): new table name holding the constraint
@@ -16479,9 +16566,10 @@ error:
  *   return: NO_ERROR or error code
  *
  */
-static int
+int
 do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
-				 SM_CONSTRAINT_INFO * constr, PT_NODE * alter,
+				 SM_PREDICATE_INFO * filter_index_info,
+				 PT_NODE * alter,
 				 const char *src_cls_name,
 				 const char *new_cls_name)
 {
@@ -16498,7 +16586,18 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
   int pred_str_len = 0;
   bool free_packing_buff = false;
   SM_PREDICATE_INFO new_pred = { NULL, NULL, 0, NULL, 0 };
+  bool free_parser = false;
 
+  if (parser == NULL)
+    {
+      parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  error = ER_FAILED;
+	  goto error;
+	}
+      free_parser = true;
+    }
   if (alter && alter->node_type == PT_ALTER)
     {
       /* rebuilding the index due to ALTER CHANGE statement */
@@ -16521,7 +16620,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
-  query_str_len = strlen (constr->filter_predicate->pred_string) +
+  query_str_len = strlen (filter_index_info->pred_string) +
     strlen (class_name) + 9 /* strlen("SELECT * ") */  +
     6 /* strlen(" FROM ") */  +
     2 /* [] */  +
@@ -16535,7 +16634,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s",
-	    class_name, constr->filter_predicate->pred_string);
+	    class_name, filter_index_info->pred_string);
   stmt = parser_parse_string (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
@@ -16569,7 +16668,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
       (void) parser_walk_tree (parser, where_predicate,
-			       replace_names_copy_indexes, new_cls_name,
+			       pt_replace_names_index_expr, new_cls_name,
 			       NULL, NULL);
     }
 
@@ -16664,25 +16763,29 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     }
   new_pred.num_attrs = filter_predicate->num_attrs_pred;
 
-  if (constr->filter_predicate->pred_string)
+  if (filter_index_info->pred_string)
     {
-      free_and_init (constr->filter_predicate->pred_string);
+      free_and_init (filter_index_info->pred_string);
     }
-  if (constr->filter_predicate->pred_stream)
+  if (filter_index_info->pred_stream)
     {
-      free_and_init (constr->filter_predicate->pred_stream);
+      free_and_init (filter_index_info->pred_stream);
     }
-  if (constr->filter_predicate->att_ids)
+  if (filter_index_info->att_ids)
     {
-      free_and_init (constr->filter_predicate->att_ids);
+      free_and_init (filter_index_info->att_ids);
     }
 
-  constr->filter_predicate->pred_string = new_pred.pred_string;
-  constr->filter_predicate->pred_stream = new_pred.pred_stream;
-  constr->filter_predicate->pred_stream_size = new_pred.pred_stream_size;
-  constr->filter_predicate->att_ids = new_pred.att_ids;
-  constr->filter_predicate->num_attrs = new_pred.num_attrs;
+  filter_index_info->pred_string = new_pred.pred_string;
+  filter_index_info->pred_stream = new_pred.pred_stream;
+  filter_index_info->pred_stream_size = new_pred.pred_stream_size;
+  filter_index_info->att_ids = new_pred.att_ids;
+  filter_index_info->num_attrs = new_pred.num_attrs;
 
+  if (free_parser)
+    {
+      parser_free_parser (parser);
+    }
   if (query_str)
     {
       free_and_init (query_str);
@@ -16692,6 +16795,10 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
   return NO_ERROR;
 
 error:
+  if (free_parser)
+    {
+      parser_free_parser (parser);
+    }
   if (query_str)
     {
       free_and_init (query_str);
@@ -16780,9 +16887,12 @@ replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
- * replace_names_copy_indexes() - Replaces the table name in a given
+ * pt_replace_names_index_expr () - Replaces the table name in a given
  *				  expression, based on the name required
- *				  when copying index on CREATE TABLE ... LIKE
+ *				  when copying a function/filter index on
+ *				  CREATE TABLE ... LIKE or when adding an
+ *			function/filter index to partitions of a class.
+ *
  *   return: PT_NODE pointer
  *   parser(in): Parser context
  *   node(in):
@@ -16792,8 +16902,8 @@ replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node,
  * Note:
  */
 static PT_NODE *
-replace_names_copy_indexes (PARSER_CONTEXT * parser, PT_NODE * node,
-			    void *void_arg, int *continue_walk)
+pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
+			     void *void_arg, int *continue_walk)
 {
   const char *new_name = (char *) void_arg;
 

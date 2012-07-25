@@ -29,6 +29,7 @@
 
 #include "dbi.h"
 #include "query_executor.h"
+#include "schema_manager.h"
 
 #define UNIQUE_PARTITION_SAVEPOINT_GRANT "pARTITIONgRANT"
 #define UNIQUE_PARTITION_SAVEPOINT_REVOKE "pARTITIONrEVOKE"
@@ -152,5 +153,17 @@ extern int do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
 extern int do_check_rows_for_null (MOP class_mop, const char *att_name,
 				   bool * has_nulls);
 
+extern int do_recreate_func_index_constr (PARSER_CONTEXT * parser,
+					  SM_CONSTRAINT_INFO * constr,
+					  SM_FUNCTION_INFO * func_index_info,
+					  PT_NODE * alter,
+					  const char *src_cls_name,
+					  const char *new_cls_name);
+extern int do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
+					    SM_PREDICATE_INFO *
+					    filter_index_info,
+					    PT_NODE * alter,
+					    const char *src_cls_name,
+					    const char *new_cls_name);
 
 #endif /* _EXECUTE_SCHEMA_H_ */

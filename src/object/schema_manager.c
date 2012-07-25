@@ -12839,6 +12839,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
   SM_CONSTRAINT_TYPE constraint_type;
   int reverse_index;
   char *out_shared_cons_name = NULL;
+  SM_FUNCTION_INFO *new_func_index_info = NULL;
+  SM_PREDICATE_INFO *new_filter_index_info = NULL;
 
   assert (db_constraint_type == DB_CONSTRAINT_INDEX
 	  || db_constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
@@ -12899,6 +12901,24 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	}
 
       savepoint_index = 1;
+      if (function_index)
+	{
+	  error = sm_save_function_index_info (&new_func_index_info,
+					       function_index);
+	  if (error != NO_ERROR)
+	    {
+	      goto fail_end;
+	    }
+	}
+      if (filter_index)
+	{
+	  error = sm_save_filter_index_info (&new_filter_index_info,
+					     filter_index);
+	  if (error != NO_ERROR)
+	    {
+	      goto fail_end;
+	    }
+	}
       for (i = 0; error == NO_ERROR && sub_partitions[i]; i++)
 	{
 	  if (sm_exist_index (sub_partitions[i], constraint_name, NULL) ==
@@ -12918,10 +12938,60 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	      break;
 	    }
 
+	  if (function_index)
+	    {
+	      /* make sure the expression is compiled using the appropriate
+	       * name, the partition name */
+	      error =
+		do_recreate_func_index_constr (NULL, NULL,
+					       new_func_index_info, NULL,
+					       sm_class_name (classop),
+					       sm_class_name (sub_partitions
+							      [i]));
+	      if (error != NO_ERROR)
+		{
+		  goto fail_end;
+		}
+	    }
+	  else
+	    {
+	      new_func_index_info = NULL;
+	    }
+
+	  if (filter_index)
+	    {
+	      /* make sure the expression is compiled using the appropriate
+	       * name, the partition name */
+	      error =
+		do_recreate_filter_index_constr (NULL, new_filter_index_info,
+						 NULL,
+						 sm_class_name (classop),
+						 sm_class_name (sub_partitions
+								[i]));
+	      if (error != NO_ERROR)
+		{
+		  goto fail_end;
+		}
+	    }
+	  else
+	    {
+	      new_filter_index_info = NULL;
+	    }
+
 	  error = sm_add_index (sub_partitions[i], db_constraint_type,
 				constraint_name, attnames, asc_desc, NULL,
-				filter_index, function_index);
+				new_filter_index_info, new_func_index_info);
+	}
 
+      if (new_func_index_info)
+	{
+	  sm_free_function_index_info (new_func_index_info);
+	  free_and_init (new_func_index_info);
+	}
+      if (new_filter_index_info)
+	{
+	  sm_free_filter_index_info (new_filter_index_info);
+	  free_and_init (new_filter_index_info);
 	}
 
       if (error != NO_ERROR)
@@ -13119,6 +13189,16 @@ fail_end:
     {
       free_and_init (out_shared_cons_name);
     }
+  if (new_func_index_info)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
+    }
+  if (new_filter_index_info)
+    {
+      sm_free_filter_index_info (new_filter_index_info);
+      free_and_init (new_filter_index_info);
+    }
 
   return error;
 
@@ -13130,6 +13210,16 @@ general_error:
   if (out_shared_cons_name)
     {
       free_and_init (out_shared_cons_name);
+    }
+  if (new_func_index_info)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
+    }
+  if (new_filter_index_info)
+    {
+      sm_free_filter_index_info (new_filter_index_info);
+      free_and_init (new_filter_index_info);
     }
 
   return error;
@@ -13147,6 +13237,16 @@ severe_error:
   if (out_shared_cons_name)
     {
       free_and_init (out_shared_cons_name);
+    }
+  if (new_func_index_info)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
+    }
+  if (new_filter_index_info)
+    {
+      sm_free_filter_index_info (new_filter_index_info);
+      free_and_init (new_filter_index_info);
     }
 
   error = er_errid ();
@@ -13997,27 +14097,18 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 	}
 
       free_and_init (info->name);
+      free_and_init (info->asc_desc);
+      free_and_init (info->prefix_length);
+
       if (info->func_index_info)
 	{
 	  sm_free_function_index_info (info->func_index_info);
 	  free_and_init (info->func_index_info);
 	}
-      free_and_init (info->asc_desc);
-      free_and_init (info->prefix_length);
+
       if (info->filter_predicate)
 	{
-	  if (info->filter_predicate->pred_string)
-	    {
-	      free_and_init (info->filter_predicate->pred_string);
-	    }
-	  if (info->filter_predicate->pred_stream)
-	    {
-	      free_and_init (info->filter_predicate->pred_stream);
-	    }
-	  if (info->filter_predicate->att_ids)
-	    {
-	      free_and_init (info->filter_predicate->att_ids);
-	    }
+	  sm_free_filter_index_info (info->filter_predicate);
 	  free_and_init (info->filter_predicate);
 	}
       free_and_init (info->ref_cls_name);
@@ -14169,69 +14260,13 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 
   if (c->filter_predicate != NULL)
     {
-      int len = strlen (c->filter_predicate->pred_string);
-      new_constraint->filter_predicate =
-	(SM_PREDICATE_INFO *) calloc (1, sizeof (SM_PREDICATE_INFO));
-      if (new_constraint->filter_predicate == NULL)
+      error_code =
+	sm_save_filter_index_info (&new_constraint->filter_predicate,
+				   c->filter_predicate);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  sizeof (SM_PREDICATE_INFO));
 	  goto error_exit;
 	}
-      new_constraint->filter_predicate->pred_string =
-	(char *) calloc (len + 1, sizeof (char));
-      if (new_constraint->filter_predicate->pred_string == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  (len + 1) * sizeof (char));
-	  goto error_exit;
-	}
-      memcpy (new_constraint->filter_predicate->pred_string,
-	      c->filter_predicate->pred_string, len);
-
-      new_constraint->filter_predicate->pred_stream =
-	(char *) calloc (c->filter_predicate->pred_stream_size,
-			 sizeof (char));
-      if (new_constraint->filter_predicate->pred_stream == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  c->filter_predicate->pred_stream_size * sizeof (char));
-	  goto error_exit;
-	}
-      memcpy (new_constraint->filter_predicate->pred_stream,
-	      c->filter_predicate->pred_stream,
-	      c->filter_predicate->pred_stream_size);
-
-      new_constraint->filter_predicate->pred_stream_size =
-	c->filter_predicate->pred_stream_size;
-
-      if (c->filter_predicate->num_attrs == 0)
-	{
-	  new_constraint->filter_predicate->att_ids = NULL;
-	}
-      else
-	{
-	  new_constraint->filter_predicate->att_ids =
-	    (int *) calloc (c->filter_predicate->num_attrs, sizeof (int));
-	  if (new_constraint->filter_predicate->att_ids == NULL)
-	    {
-	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		      c->filter_predicate->num_attrs * sizeof (int));
-	      goto error_exit;
-	    }
-	  for (i = 0; i < c->filter_predicate->num_attrs; i++)
-	    {
-	      new_constraint->filter_predicate->att_ids[i] =
-		c->filter_predicate->att_ids[i];
-	    }
-	}
-
-      new_constraint->filter_predicate->num_attrs =
-	c->filter_predicate->num_attrs;
     }
   else
     {
@@ -14240,52 +14275,19 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 
   if (c->func_index_info != NULL)
     {
-      int i = 0;
-      int len = strlen (c->func_index_info->expr_str);
-
-      new_constraint->func_index_info =
-	(SM_FUNCTION_INFO *) calloc (1, sizeof (SM_FUNCTION_INFO));
-      if (new_constraint->func_index_info == NULL)
+      error_code =
+	sm_save_function_index_info (&new_constraint->func_index_info,
+				     c->func_index_info);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  sizeof (SM_FUNCTION_INFO));
 	  goto error_exit;
 	}
-
-      new_constraint->func_index_info->fi_domain =
-	tp_domain_copy (c->func_index_info->fi_domain, true);
-
-      new_constraint->func_index_info->expr_str =
-	(char *) calloc (len + 1, sizeof (char));
-      if (new_constraint->func_index_info->expr_str == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  (len + 1) * sizeof (char));
-	  goto error_exit;
-	}
-
-      memcpy (new_constraint->func_index_info->expr_str,
-	      c->func_index_info->expr_str, len);
-      new_constraint->func_index_info->expr_stream =
-	(char *) calloc (c->func_index_info->expr_stream_size, sizeof (char));
-      if (new_constraint->func_index_info->expr_stream == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  c->func_index_info->expr_stream_size * sizeof (char));
-	  goto error_exit;
-	}
-      memcpy (new_constraint->func_index_info->expr_stream,
-	      c->func_index_info->expr_stream,
-	      c->func_index_info->expr_stream_size);
-      new_constraint->func_index_info->expr_stream_size =
-	c->func_index_info->expr_stream_size;
-      new_constraint->func_index_info->col_id = c->func_index_info->col_id;
-      new_constraint->func_index_info->attr_index_start =
-	c->func_index_info->attr_index_start;
     }
+  else
+    {
+      new_constraint->func_index_info = NULL;
+    }
+
   if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
     {
       MOP ref_clsop = NULL;
@@ -14386,6 +14388,174 @@ error_exit:
   if (new_constraint != NULL)
     {
       sm_free_constraint_info (&new_constraint);
+    }
+  return error_code;
+}
+
+/*
+ * sm_save_function_index_info() - Saves the information necessary to recreate
+ *			       a function index constraint
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   save_info(in/out): The information saved
+ *   func_index_info(in): The function index information to be saved
+ */
+int
+sm_save_function_index_info (SM_FUNCTION_INFO ** save_info,
+			     SM_FUNCTION_INFO * func_index_info)
+{
+  int error_code = NO_ERROR;
+  SM_FUNCTION_INFO *new_func_index_info = NULL;
+
+  if (func_index_info != NULL)
+    {
+      int i = 0;
+      int len = strlen (func_index_info->expr_str);
+
+      new_func_index_info =
+	(SM_FUNCTION_INFO *) calloc (1, sizeof (SM_FUNCTION_INFO));
+      if (new_func_index_info == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  sizeof (SM_FUNCTION_INFO));
+	  goto error_exit;
+	}
+
+      new_func_index_info->fi_domain =
+	tp_domain_copy (func_index_info->fi_domain, true);
+      if (new_func_index_info->fi_domain == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto error_exit;
+	}
+
+      new_func_index_info->expr_str =
+	(char *) calloc (len + 1, sizeof (char));
+      if (new_func_index_info->expr_str == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  (len + 1) * sizeof (char));
+	  goto error_exit;
+	}
+
+      memcpy (new_func_index_info->expr_str, func_index_info->expr_str, len);
+      new_func_index_info->expr_stream =
+	(char *) calloc (func_index_info->expr_stream_size, sizeof (char));
+      if (new_func_index_info->expr_stream == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  func_index_info->expr_stream_size * sizeof (char));
+	  goto error_exit;
+	}
+      memcpy (new_func_index_info->expr_stream,
+	      func_index_info->expr_stream,
+	      func_index_info->expr_stream_size);
+      new_func_index_info->expr_stream_size =
+	func_index_info->expr_stream_size;
+      new_func_index_info->col_id = func_index_info->col_id;
+      new_func_index_info->attr_index_start =
+	func_index_info->attr_index_start;
+    }
+
+  *save_info = new_func_index_info;
+  return error_code;
+
+error_exit:
+  if (new_func_index_info != NULL)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
+    }
+  return error_code;
+}
+
+/*
+ * sm_save_filter_index_info() - Saves the information necessary to recreate a
+ *			       filter index constraint
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   save_info(in/out): The information saved
+ *   filter_index_info(in): The filter index information to be saved
+ */
+int
+sm_save_filter_index_info (SM_PREDICATE_INFO ** save_info,
+			   SM_PREDICATE_INFO * filter_index_info)
+{
+  int error_code = NO_ERROR;
+  SM_PREDICATE_INFO *new_filter_index_info = NULL;
+  int i, len;
+
+  len = strlen (filter_index_info->pred_string);
+  new_filter_index_info =
+    (SM_PREDICATE_INFO *) calloc (1, sizeof (SM_PREDICATE_INFO));
+  if (new_filter_index_info == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      sizeof (SM_PREDICATE_INFO));
+      goto error_exit;
+    }
+
+  new_filter_index_info->pred_string =
+    (char *) calloc (len + 1, sizeof (char));
+  if (new_filter_index_info->pred_string == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      (len + 1) * sizeof (char));
+      goto error_exit;
+    }
+  memcpy (new_filter_index_info->pred_string,
+	  filter_index_info->pred_string, len);
+
+  new_filter_index_info->pred_stream =
+    (char *) calloc (filter_index_info->pred_stream_size, sizeof (char));
+  if (new_filter_index_info->pred_stream == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      new_filter_index_info->pred_stream_size * sizeof (char));
+      goto error_exit;
+    }
+  memcpy (new_filter_index_info->pred_stream,
+	  filter_index_info->pred_stream,
+	  filter_index_info->pred_stream_size);
+
+  new_filter_index_info->pred_stream_size =
+    filter_index_info->pred_stream_size;
+
+  if (filter_index_info->num_attrs == 0)
+    {
+      new_filter_index_info->att_ids = NULL;
+    }
+  else
+    {
+      new_filter_index_info->att_ids =
+	(int *) calloc (filter_index_info->num_attrs, sizeof (int));
+      if (new_filter_index_info->att_ids == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  filter_index_info->num_attrs * sizeof (int));
+	  goto error_exit;
+	}
+      for (i = 0; i < filter_index_info->num_attrs; i++)
+	{
+	  new_filter_index_info->att_ids[i] = filter_index_info->att_ids[i];
+	}
+
+      new_filter_index_info->num_attrs = filter_index_info->num_attrs;
+    }
+
+  *save_info = new_filter_index_info;
+  return error_code;
+
+error_exit:
+  if (new_filter_index_info != NULL)
+    {
+      sm_free_filter_index_info (new_filter_index_info);
+      free_and_init (new_filter_index_info);
     }
   return error_code;
 }
@@ -14989,5 +15159,27 @@ sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info)
     {
       tp_domain_free (func_index_info->fi_domain);
       func_index_info->fi_domain = NULL;
+    }
+}
+
+/*
+ * sm_free_filter_index_info () - 
+ */
+void
+sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
+{
+  assert (filter_index_info != NULL);
+
+  if (filter_index_info->pred_string)
+    {
+      free_and_init (filter_index_info->pred_string);
+    }
+  if (filter_index_info->pred_stream)
+    {
+      free_and_init (filter_index_info->pred_stream);
+    }
+  if (filter_index_info->att_ids)
+    {
+      free_and_init (filter_index_info->att_ids);
     }
 }

@@ -166,6 +166,10 @@ extern int sm_truncate_class (MOP class_mop);
 
 extern int sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 				    const SM_CLASS_CONSTRAINT * const c);
+extern int sm_save_function_index_info (SM_FUNCTION_INFO ** save_info,
+					SM_FUNCTION_INFO * func_index_info);
+extern int sm_save_filter_index_info (SM_PREDICATE_INFO ** save_info,
+				      SM_PREDICATE_INFO * filter_index_info);
 extern void sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info);
 
 
@@ -330,5 +334,6 @@ extern int sc_set_current_schema (MOP user);
 
 extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
 extern void sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info);
+extern void sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info);
 
 #endif /* _SCHEMA_MANAGER_H_ */
