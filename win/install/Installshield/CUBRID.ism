@@ -290,6 +290,8 @@
 		<row><td>cubrid.conf.large</td><td>CUBRID</td><td>cubrid.conf.large</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.large</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.conf.small</td><td>CUBRID</td><td>cubrid.conf.small</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.small</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.conf_dist</td><td>CUBRID</td><td>cubrid.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_locales.all.txt</td><td>CUBRID</td><td>cubrid_locales.all.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.all.txt</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_locales.txt</td><td>CUBRID</td><td>cubrid_locales.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.txt</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.exe</td><td>CUBRID</td><td>cubrid.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_broker.conf_dist</td><td>CUBRID</td><td>cubrid_broker.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_broker.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid_broker.exe</td><td>CUBRID</td><td>cubrid_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_broker.exe</td><td>1</td><td>NewSubFolder5</td></row>
