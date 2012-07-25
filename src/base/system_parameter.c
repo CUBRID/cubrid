@@ -64,6 +64,7 @@
 #include "connection_defs.h"
 #if defined (SERVER_MODE)
 #include "server_support.h"
+#include "boot_sr.h"
 #endif /* SERVER_MODE */
 #if defined (LINUX)
 #include "stack_dump.h"
@@ -3763,36 +3764,7 @@ prm_change (const char *data, bool check)
 	{
 	  return PRM_ERR_NOT_FOR_SERVER;
 	}
-      if (PRM_IS_FOR_SESSION (prm->flag))
-	{
-	  THREAD_ENTRY *thread_p;
-	  CSS_CONN_ENTRY *conn;
-	  int id = prm_get_id (prm);
-
-	  thread_p = thread_get_thread_entry_info ();
-	  if (thread_p)
-	    {
-	      conn = thread_p->conn_entry;
-	      if (conn && conn->session_params)
-		{
-		  err = prm_set_session_parameter_value (conn->session_params,
-							 id, value, true);
-		  if (err != PRM_ERR_NO_ERROR)
-		    {
-		      return err;
-		    }
-		}
-	      if (session_change_session_parameter (thread_p, id, value) !=
-		  NO_ERROR)
-		{
-		  return PRM_ERR_BAD_VALUE;
-		}
-	    }
-	}
-      else
-	{
-	  err = prm_set (prm, value, true);
-	}
+      err = prm_set (prm, value, true);
 #endif /* SERVER_MODE */
     }
   while (err == PRM_ERR_NO_ERROR && p);
@@ -4386,7 +4358,7 @@ sysprm_obtain_parameters (char *data, int len)
 	{
 	  return PRM_ERR_NOT_FOR_SERVER;
 	}
-      if (PRM_IS_FOR_SESSION (prm->flag))
+      if (PRM_IS_FOR_SESSION (prm->flag) && BO_IS_SERVER_RESTARTED ())
 	{
 	  THREAD_ENTRY *thread_p;
 	  CSS_CONN_ENTRY *conn;
@@ -4445,31 +4417,33 @@ sysprm_obtain_session_parameters (void)
   int i;
   SESSION_PARAM *session_params = NULL;
 #if defined (SERVER_MODE)
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int error;
-
-  if (thread_p)
+  if (BO_IS_SERVER_RESTARTED ())
     {
-      CSS_CONN_ENTRY *conn_p = thread_p->conn_entry;
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+      int error;
 
-      if (conn_p && conn_p->session_params)
+      if (thread_p)
 	{
-	  return sysprm_duplicate_session_parameters (conn_p->session_params);
-	}
+	  CSS_CONN_ENTRY *conn_p = thread_p->conn_entry;
 
-      error = session_get_session_parameters (thread_p, &session_params);
-      if (error != NO_ERROR)
-	{
-	  sysprm_free_session_parameters (&session_params);
-	  return NULL;
-	}
-
-      if (session_params)
-	{
-	  return session_params;
+	  if (conn_p && conn_p->session_params)
+	    {
+	      return sysprm_duplicate_session_parameters (conn_p->
+							  session_params);
+	    }
+	  error = session_get_session_parameters (thread_p, &session_params);
+	  if (error != NO_ERROR)
+	    {
+	      sysprm_free_session_parameters (&session_params);
+	      return NULL;
+	    }
+	  if (session_params)
+	    {
+	      return session_params;
+	    }
 	}
     }
-#endif
+#endif /* SERVER_MODE */
 
   for (i = 0; i < NUM_PRM; i++)
     {
@@ -4728,6 +4702,38 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
 {
   char *end;
   int warning_status = NO_ERROR;
+#if defined (SERVER_MODE)
+  int id, error;
+  THREAD_ENTRY *thread_p;
+  CSS_CONN_ENTRY *conn_p;
+  if (PRM_IS_FOR_SESSION (prm->flag) && BO_IS_SERVER_RESTARTED ())
+    {
+      id = prm_get_id (prm);
+      thread_p = thread_get_thread_entry_info ();
+      if (thread_p)
+	{
+	  conn_p = thread_p->conn_entry;
+	  if (conn_p && conn_p->session_params)
+	    {
+	      error = prm_set_session_parameter_value (conn_p->session_params,
+						       id, value, true);
+	      if (error != PRM_ERR_NO_ERROR)
+		{
+		  return error;
+		}
+	      if (session_change_session_parameter (thread_p, id, value)
+		  != NO_ERROR)
+		{
+		  return PRM_ERR_BAD_VALUE;
+		}
+	      return PRM_ERR_NO_ERROR;
+	    }
+	}
+    }
+  /* if prm is not for session or if session_params have not been initialized
+   * just set the system parameter stored on server
+   */
+#endif /* SERVER_MODE */
 
   if (prm == NULL)
     {
@@ -5102,6 +5108,33 @@ prm_set_force (SYSPRM_PARAM * prm, const char *value)
 static int
 prm_set_default (SYSPRM_PARAM * prm)
 {
+#if defined (SERVER_MODE)
+  if (PRM_IS_FOR_SESSION (prm->flag) && BO_IS_SERVER_RESTARTED ())
+    {
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+      if (thread_p)
+	{
+	  CSS_CONN_ENTRY *conn_p = thread_p->conn_entry;
+	  if (conn_p && conn_p->session_params)
+	    {
+	      int id = prm_get_id (prm);
+	      int error =
+		prm_set_session_parameter_default (conn_p->session_params, id,
+						   true);
+	      if (error != PRM_ERR_NO_ERROR)
+		{
+		  return error;
+		}
+	      if (session_set_session_parameter_default (thread_p, id)
+		  != NO_ERROR)
+		{
+		  return PRM_ERR_BAD_VALUE;
+		}
+	      return PRM_ERR_NO_ERROR;
+	    }
+	}
+    }
+#endif /* SERVER_MODE */
   if (prm == NULL)
     {
       return ER_FAILED;
@@ -5190,6 +5223,128 @@ prm_set_default (SYSPRM_PARAM * prm)
   /* Indicate that the default value was used */
   PRM_SET_BIT (PRM_DEFAULT_USED, prm->flag);
   return NO_ERROR;
+}
+
+/*
+ * prm_set_session_parameter_default - set session parameter value to default
+ * 
+ * return: PRM_ERR_NO_ERROR or SYSPRM_ERR error code
+ * session_params(in): list of session parameters
+ * prm_id(in): parameter id
+ * verify_different(in): if true will update the different flag
+ */
+SYSPRM_ERR
+prm_set_session_parameter_default (SESSION_PARAM * session_params, int prm_id,
+				   bool verify_different)
+{
+  SESSION_PARAM *sprm;
+  SYSPRM_PARAM *prm = &prm_Def[prm_id];
+
+  sprm = prm_get_session_prm_from_list (session_params, prm_id);
+  if (sprm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  switch (sprm->datatype)
+    {
+    case PRM_INTEGER:
+    case PRM_KEYWORD:
+      sprm->prm_value.i = PRM_GET_INT (prm->default_value);
+      break;
+    case PRM_FLOAT:
+      sprm->prm_value.f = PRM_GET_FLOAT (prm->default_value);
+      break;
+    case PRM_BOOLEAN:
+      sprm->prm_value.b = PRM_GET_BOOL (prm->default_value);
+      break;
+    case PRM_SIZE:
+      sprm->prm_value.size = PRM_GET_SIZE (prm->default_value);
+      break;
+    case PRM_STRING:
+      {
+	char *str;
+	int alloc_size;
+	if (sprm->prm_value.str)
+	  {
+	    free_and_init (sprm->prm_value.str);
+	  }
+	str = PRM_GET_STRING (prm->default_value);
+	if (str != NULL)
+	  {
+	    alloc_size = strlen (str) + 1;
+	    sprm->prm_value.str = (char *) malloc (alloc_size);
+	    if (sprm->prm_value.str == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		return PRM_ERR_NO_MEM_FOR_PRM;
+	      }
+	    memcpy (sprm->prm_value.str, str, alloc_size);
+	  }
+	break;
+      }
+    case PRM_ERROR_LIST:
+      {
+	bool *error_list;
+	int alloc_size;
+	if (sprm->prm_value.error_list)
+	  {
+	    free_and_init (sprm->prm_value.error_list);
+	  }
+	error_list = PRM_GET_ERROR_LIST (prm->default_value);
+	if (error_list != NULL)
+	  {
+	    alloc_size = (-ER_LAST_ERROR + 1) * sizeof (bool);
+	    sprm->prm_value.error_list = (bool *) malloc (alloc_size);
+	    if (sprm->prm_value.error_list == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		return PRM_ERR_NO_MEM_FOR_PRM;
+	      }
+	    memcpy (sprm->prm_value.error_list, error_list, alloc_size);
+	  }
+	break;
+      }
+    case PRM_INTEGER_LIST:
+      {
+	bool *integer_list;
+	int alloc_size;
+	if (sprm->prm_value.integer_list)
+	  {
+	    free_and_init (sprm->prm_value.integer_list);
+	  }
+	integer_list = PRM_GET_ERROR_LIST (prm->default_value);
+	if (integer_list != NULL)
+	  {
+	    alloc_size = (integer_list[0] + 1) * sizeof (int);
+	    sprm->prm_value.integer_list = (int *) malloc (alloc_size);
+	    if (sprm->prm_value.integer_list == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		return PRM_ERR_NO_MEM_FOR_PRM;
+	      }
+	    memcpy (sprm->prm_value.integer_list, integer_list, alloc_size);
+	  }
+	break;
+      }
+    }
+  if (verify_different)
+    {
+      if (prm_compare_prm_value_with_value (sprm->prm_value, prm->value,
+					    sprm->datatype) != 0)
+	{
+	  PRM_SET_BIT (PRM_DIFFERENT, sprm->flag);
+	}
+      else
+	{
+	  PRM_CLEAR_BIT (PRM_DIFFERENT, sprm->flag);
+	}
+    }
+
+  return PRM_ERR_NO_ERROR;
 }
 
 /*
@@ -6067,7 +6222,7 @@ prm_get_value (PARAM_ID prm_id)
 
   assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
 
-  if (PRM_IS_FOR_SESSION (prm_Def[prm_id].flag))
+  if (PRM_IS_FOR_SESSION (prm_Def[prm_id].flag) && BO_IS_SERVER_RESTARTED ())
     {
       thread_p = thread_get_thread_entry_info ();
       if (thread_p)

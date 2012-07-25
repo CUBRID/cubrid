@@ -2028,6 +2028,65 @@ session_change_session_parameter (THREAD_ENTRY * thread_p, int prm_id,
 }
 
 /*
+ * session_set_session_parameter_default () - changes the value for a given
+ *					      session parameter to default
+ * return: NO_ERROR or error_code
+ * thread_p(in) : worker thread
+ * prm_id(in)   : id of session parameter
+ */
+int
+session_set_session_parameter_default (THREAD_ENTRY * thread_p, int prm_id)
+{
+  SESSION_KEY key;
+  SESSION_STATE *state_p = NULL;
+
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (!sessions_is_states_table_initialized ())
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+      return ER_FAILED;
+    }
+
+  if (state_p->session_params != NULL)
+    {
+      int error;
+
+      error = prm_set_session_parameter_default (state_p->session_params,
+						 prm_id, false);
+      if (error != PRM_ERR_NO_ERROR)
+	{
+	  csect_exit (CSECT_SESSION_STATE);
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+  csect_exit (CSECT_SESSION_STATE);
+
+  return NO_ERROR;
+}
+
+/*
  * session_define_variable () - define a session variable
  * return : int
  * thread_p (in) : worker thread

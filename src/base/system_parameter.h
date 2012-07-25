@@ -399,4 +399,8 @@ extern SYSPRM_ERR prm_set_session_parameter_value (SESSION_PARAM *
 						   const char *value,
 						   bool verify_different);
 extern char *sysprm_print_different_session_parameters (void);
+extern SYSPRM_ERR prm_set_session_parameter_default (SESSION_PARAM *
+						     session_params,
+						     int prm_id,
+						     bool verify_different);
 #endif /* _SYSTEM_PARAMETER_H_ */
