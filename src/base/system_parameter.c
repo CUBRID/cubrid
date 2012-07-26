@@ -4852,7 +4852,9 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
 				 DIM
 				 (pgbuf_debug_page_validation_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
+	       || intl_mbs_casecmp (prm->name,
+				    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
 	{
 	  keyvalp = prm_keyword (-1, value, ha_mode_words,
 				 DIM (ha_mode_words));
