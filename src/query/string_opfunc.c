@@ -712,6 +712,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
       int char_count;
       int num_bits = -1;
       int collation_id;
+      int char_size;
 
       string1 = (unsigned char *) DB_GET_STRING (db_string1);
       size1 = (int) DB_GET_STRING_SIZE (db_string1);
@@ -776,7 +777,21 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 
       if (!key_domain->is_desc)
 	{			/* normal index */
-	  if (result_size == size1 || result_size == size2 - 1)
+	  bool string2_has_one_more_char = false;
+
+	  if (result_size < size1)
+	    {
+	      /* check if in string2 there is one more character after common
+	         part */
+	      (void) intl_next_char (string2 + result_size, codeset,
+				     &char_size);
+	      if (result_size + char_size == size2)
+		{
+		  string2_has_one_more_char = true;
+		}
+	    }
+
+	  if (result_size == size1 || string2_has_one_more_char)
 	    {
 	      key = string1;
 	      result_size = size1;
@@ -793,8 +808,10 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	      if (result_type == DB_TYPE_VARCHAR
 		  || result_type == DB_TYPE_VARNCHAR)
 		{
-		  intl_char_size (string2, char_count + 1, codeset,
-				  &result_size);
+		  /* common part plus one more character */
+		  (void) intl_next_char (string2 + result_size, codeset,
+					 &char_size);
+		  result_size += char_size;
 		}
 	      else
 		{
@@ -832,8 +849,9 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	      if (result_type == DB_TYPE_VARCHAR
 		  || result_type == DB_TYPE_VARNCHAR)
 		{
-		  intl_char_size (string1, char_count + 1, codeset,
-				  &result_size);
+		  /* common part plus one more character */
+		  intl_next_char (string1 + result_size, codeset, &char_size);
+		  result_size += char_size;
 		}
 	      else
 		{
@@ -873,6 +891,34 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	  error_status = er_errid ();
 	}
     }
+
+#if !defined(NDEBUG)
+  if (error_status == NO_ERROR)
+    {
+      int err_status2 = NO_ERROR;
+      int c1 = 1, c2 = -1;
+
+      err_status2 = db_string_compare (db_string1, db_result, &tmp_result);
+      if (err_status2 == NO_ERROR)
+	{
+	  c1 = DB_GET_INTEGER (&tmp_result);
+	}
+      err_status2 = db_string_compare (db_result, db_string2, &tmp_result);
+      if (err_status2 == NO_ERROR)
+	{
+	  c2 = DB_GET_INTEGER (&tmp_result);
+	}
+
+      if (!key_domain->is_desc)
+	{
+	  assert (c1 <= 0 && c2 < 0);
+	}
+      else
+	{
+	  assert (c1 >= 0 && c2 > 0);
+	}
+    }
+#endif
 
   return (error_status);
 }
