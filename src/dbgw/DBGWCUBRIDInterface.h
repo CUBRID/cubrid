@@ -38,10 +38,10 @@ namespace dbgw
       virtual ~ CUBRIDException() throw();
 
     public:
-      virtual bool isConnectionError() const;
+      bool isConnectionError() const;
 
     protected:
-      virtual void doCreateErrorMessage();
+      void doCreateErrorMessage();
 
     private:
       bool m_bCCIError;
@@ -89,8 +89,8 @@ namespace dbgw
       bool close();
 
     protected:
-      virtual void bind();
-      virtual DBGWResultSharedPtr doExecute();
+      void bind();
+      DBGWResultSharedPtr doExecute();
 
     private:
       DBGWCUBRIDPreparedStatement(const DBGWBoundQuerySharedPtr p_query,

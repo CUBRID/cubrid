@@ -34,7 +34,7 @@ namespace dbgw
   {
     m_sqlKey += m_sql;
 
-    m_sql += "/* SQL : ";
+    m_sql += " /* SQL : ";
     m_sql += m_query.getSqlName();
     m_sql += " */";
   }

@@ -641,6 +641,7 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
+    clear();
   }
 
   void DBGWValueSet::set(size_t nIndex, DBGWValueSharedPtr pValue)

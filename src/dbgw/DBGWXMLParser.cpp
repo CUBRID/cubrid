@@ -508,8 +508,8 @@ namespace dbgw
 
   DBGWConnectorParser::DBGWConnectorParser(const string &fileName,
       DBGWConnectorSharedPtr pConnector) :
-    DBGWParser(fileName), m_pConnector(pConnector), m_pDBnfoMap(NULL),
-    m_nPoolSize(POOL_DEFAULT_POOL_SIZE)
+    DBGWParser(fileName), m_pConnector(pConnector),
+    m_nPoolSize(POOL_DEFAULT_POOL_SIZE), bExistDbInfo(false)
   {
   }
 
@@ -571,10 +571,8 @@ namespace dbgw
           }
 
         m_pGroup = DBGWGroupSharedPtr();
-        if (m_pDBnfoMap != NULL)
-          {
-            delete m_pDBnfoMap;
-          }
+        m_dbInfoMap.clear();
+        bExistDbInfo = false;
       }
     else if (!strcasecmp(szName, XML_NODE_HOST))
       {
@@ -638,12 +636,13 @@ namespace dbgw
         return;
       }
 
-    m_pDBnfoMap = new DBGWDBInfoHashMap();
-    (*m_pDBnfoMap)[XML_NODE_DBINFO_PROP_DBNAME] = properties.get(
+    bExistDbInfo = true;
+    m_dbInfoMap.clear();
+    m_dbInfoMap[XML_NODE_DBINFO_PROP_DBNAME] = properties.get(
         XML_NODE_DBINFO_PROP_DBNAME, true);
-    (*m_pDBnfoMap)[XML_NODE_DBINFO_PROP_DBUSER] = properties.get(
+    m_dbInfoMap[XML_NODE_DBINFO_PROP_DBUSER] = properties.get(
         XML_NODE_DBINFO_PROP_DBUSER, true);
-    (*m_pDBnfoMap)[XML_NODE_DBINFO_PROP_DBPASSWD] = properties.get(
+    m_dbInfoMap[XML_NODE_DBINFO_PROP_DBPASSWD] = properties.get(
         XML_NODE_DBINFO_PROP_DBPASSWD, true);
   }
 
@@ -654,7 +653,7 @@ namespace dbgw
         return;
       }
 
-    if (m_pDBnfoMap == NULL)
+    if (bExistDbInfo == false)
       {
         NotExistNodeInXmlException e(XML_NODE_DBINFO, getFileName().c_str());
         DBGW_LOG_ERROR(e.what());
@@ -665,7 +664,7 @@ namespace dbgw
         new DBGWHost(properties.get(XML_NODE_HOST_PROP_ADDRESS, true),
             properties.getInt(XML_NODE_HOST_PROP_PORT, true),
             properties.getInt(XML_NODE_HOST_PROP_WEIGHT, true),
-            *m_pDBnfoMap));
+            m_dbInfoMap));
     m_pGroup->addHost(m_pHost);
   }
 

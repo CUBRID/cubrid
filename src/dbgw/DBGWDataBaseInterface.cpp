@@ -510,6 +510,7 @@ namespace dbgw
     {
       clearException();
 
+      bool bExistMoreData = false;
       try
         {
           if (!isNeedFetch())
@@ -519,10 +520,7 @@ namespace dbgw
               throw e;
             }
 
-          if (!doNext())
-            {
-              throw getLastException();
-            }
+          bExistMoreData = doNext();
 
           if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
             {
@@ -533,14 +531,14 @@ namespace dbgw
                 }
               DBGW_LOG_INFO(m_logger.getLogMessage(resultLogBuf.getLog().c_str()).c_str());
             }
-
-          return true;
         }
       catch (DBGWException &e)
         {
           setLastException(e);
-          return false;
+          bExistMoreData = false;
         }
+
+      return bExistMoreData;
     }
 
     const MetaDataList *DBGWResult::getMetaDataList() const

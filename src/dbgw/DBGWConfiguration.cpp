@@ -98,8 +98,6 @@ namespace dbgw
 
   DBGWExecuter::~DBGWExecuter()
   {
-    clearException();
-
     try
       {
         destroy();
@@ -194,58 +192,9 @@ namespace dbgw
       }
   }
 
-  void DBGWExecuter::close()
+  DBGWExecuterPool &DBGWExecuter::getExecuterPool()
   {
-    if (m_bClosed)
-      {
-        return;
-      }
-
-    m_bClosed = true;
-    m_preparedStatmentMap.clear();
-
-    if (m_bInTran)
-      {
-        if (m_pConnection->rollback() == false)
-          {
-            m_bInvalid = true;
-            m_pConnection->close();
-          }
-      }
-    m_executerPool.returnExecuter(this);
-  }
-
-  void DBGWExecuter::destroy()
-  {
-    if (m_bDestroyed)
-      {
-        return;
-      }
-
-    m_bClosed = true;
-    m_bDestroyed = true;
-
-    DBGWInterfaceException exception;
-    for (DBGWPreparedStatementHashMap::iterator it =
-        m_preparedStatmentMap.begin(); it != m_preparedStatmentMap.end(); it++)
-      {
-        if (it->second->close() == false)
-          {
-            exception = getLastException();
-          }
-      }
-
-    m_preparedStatmentMap.clear();
-
-    if (m_pConnection->close() == false)
-      {
-        exception = getLastException();
-      }
-
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-      {
-        throw exception;
-      }
+    return m_executerPool;
   }
 
   const char *DBGWExecuter::getGroupName() const
@@ -262,6 +211,8 @@ namespace dbgw
   {
     m_bClosed = false;
     m_bDestroyed = false;
+    m_bInTran = false;
+    m_bInvalid = false;
     m_bAutocommit = bAutocommit;
 
     if (m_pConnection->setAutocommit(bAutocommit) == false)
@@ -270,6 +221,48 @@ namespace dbgw
       }
 
     if (m_pConnection->setIsolation(isolation) == false)
+      {
+        throw getLastException();
+      }
+  }
+
+  void DBGWExecuter::close()
+  {
+    if (m_bClosed)
+      {
+        return;
+      }
+
+    m_bClosed = true;
+    m_preparedStatmentMap.clear();
+
+    if (m_bInTran)
+      {
+        if (m_pConnection->rollback() == false)
+          {
+            m_bInvalid = true;
+            if (m_pConnection->close() == false)
+              {
+                throw getLastException();
+              }
+          }
+      }
+  }
+
+  void DBGWExecuter::destroy()
+  {
+    if (m_bDestroyed)
+      {
+        return;
+      }
+
+    DBGW_LOG_DEBUG("executer is destroyed.");
+
+    m_bDestroyed = true;
+
+    close();
+
+    if (m_pConnection->close() == false)
       {
         throw getLastException();
       }
@@ -287,8 +280,6 @@ namespace dbgw
 
   DBGWExecuterPool::~DBGWExecuterPool()
   {
-    clearException();
-
     try
       {
         close();
@@ -301,10 +292,11 @@ namespace dbgw
 
   void DBGWExecuterPool::init(size_t nCount)
   {
-    DBGWExecuter *pExecuter = NULL;
+    DBGWExecuterSharedPtr pExecuter;
     for (size_t i = 0; i < nCount; i++)
       {
-        pExecuter = new DBGWExecuter(*this, m_group.getConnection());
+        pExecuter = DBGWExecuterSharedPtr(
+            new DBGWExecuter(*this, m_group.getConnection()));
 
         m_poolMutex.lock();
         m_executerList.push_back(pExecuter);
@@ -313,9 +305,9 @@ namespace dbgw
       }
   }
 
-  DBGWExecuter *DBGWExecuterPool::getExecuter()
+  DBGWExecuterSharedPtr DBGWExecuterPool::getExecuter()
   {
-    DBGWExecuter *pExecuter = NULL;
+    DBGWExecuterSharedPtr pExecuter;
     do
       {
         try
@@ -335,18 +327,15 @@ namespace dbgw
           }
         catch (DBGWException &e)
           {
-            if (pExecuter != NULL)
-              {
-                delete pExecuter;
-                pExecuter = NULL;
-              }
+            pExecuter = DBGWExecuterSharedPtr();
           }
       }
     while (pExecuter == NULL);
 
     if (pExecuter == NULL)
       {
-        pExecuter = new DBGWExecuter(*this, m_group.getConnection());
+        pExecuter = DBGWExecuterSharedPtr(
+            new DBGWExecuter(*this, m_group.getConnection()));
         if (pExecuter != NULL)
           {
             pExecuter->init(m_bAutocommit, m_isolation);
@@ -356,21 +345,20 @@ namespace dbgw
     return pExecuter;
   }
 
-  void DBGWExecuterPool::returnExecuter(DBGWExecuter *pExecuter)
+  void DBGWExecuterPool::returnExecuter(DBGWExecuterSharedPtr pExecuter)
   {
     if (pExecuter == NULL)
       {
         return;
       }
 
+    pExecuter->close();
     if (pExecuter->isInvalid())
       {
-        delete pExecuter;
         return;
       }
 
     MutexLock lock(&m_poolMutex);
-
     m_executerList.push_back(pExecuter);
   }
 
@@ -384,33 +372,7 @@ namespace dbgw
     m_bClosed = true;
 
     MutexLock lock(&m_poolMutex);
-
-    DBGWExecuter *pExecuter = NULL;
-    DBGWInterfaceException exception;
-    while (!m_executerList.empty())
-      {
-        pExecuter = m_executerList.front();
-        m_executerList.pop_front();
-
-        if (pExecuter != NULL)
-          {
-            try
-              {
-                pExecuter->destroy();
-              }
-            catch (DBGWException &e)
-              {
-                exception = e;
-              }
-
-            delete pExecuter;
-          }
-      }
-
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
-      {
-        throw exception;
-      }
+    m_executerList.clear();
   }
 
   void DBGWExecuterPool::setDefaultAutocommit(bool bAutocommit)
@@ -498,7 +460,7 @@ namespace dbgw
     m_executerPool.init(nCount);
   }
 
-  DBGWExecuter *DBGWGroup::getExecuter()
+  DBGWExecuterSharedPtr DBGWGroup::getExecuter()
   {
     return m_executerPool.getExecuter();
   }
@@ -655,7 +617,6 @@ namespace dbgw
       {
         if (it->second->getRefCount() <= 0)
           {
-            int i = it->first;
             m_resourceMap.erase(it++);
           }
         else
@@ -669,7 +630,8 @@ namespace dbgw
   {
     MutexLock lock(&m_mutex);
 
-    if (m_pResource != NULL && m_nVersion > INVALID_VERSION)
+    if (m_pResource != NULL && m_nVersion > INVALID_VERSION
+        && m_pResource->getRefCount() > 0)
       {
         m_resourceMap[m_nVersion] = m_pResource;
       }
@@ -964,6 +926,36 @@ namespace dbgw
     NotExistNamespaceException e(szNamespace);
     DBGW_LOG_ERROR(e.what());
     throw e;
+  }
+
+  void DBGWConnector::returnExecuterList(DBGWExecuterList &executerList)
+  {
+    DBGWInterfaceException exception;
+    for (DBGWExecuterList::iterator it = executerList.begin(); it
+        != executerList.end(); it++)
+      {
+        if (*it == NULL)
+          {
+            continue;
+          }
+
+        try
+          {
+            DBGWExecuterPool &pool = (*it)->getExecuterPool();
+            pool.returnExecuter(*it);
+          }
+        catch (DBGWException &e)
+          {
+            exception = e;
+          }
+      }
+
+    executerList.clear();
+
+    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+      {
+        throw exception;
+      }
   }
 
   DBGWConfiguration::DBGWConfiguration()

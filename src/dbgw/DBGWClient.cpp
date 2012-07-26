@@ -370,22 +370,20 @@ namespace dbgw
   {
     clearException();
 
-    if (m_bClosed)
+    try
       {
-        return true;
-      }
-
-    m_bClosed = true;
-
-    for (DBGWExecuterList::iterator it = m_executerList.begin(); it
-        != m_executerList.end(); it++)
-      {
-        if (*it == NULL)
+        if (m_bClosed)
           {
-            continue;
+            return true;
           }
 
-        (*it)->close();
+        m_bClosed = true;
+
+        m_pConnector->returnExecuterList(m_executerList);
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
       }
 
     try
@@ -525,7 +523,6 @@ namespace dbgw
             pReturnResult->first();
           }
 
-        setLastException(e);
         throw;
       }
   }

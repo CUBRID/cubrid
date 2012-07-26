@@ -128,9 +128,10 @@ namespace dbgw
     DBGWConnectorSharedPtr m_pConnector;
     DBGWServiceSharedPtr m_pService;
     DBGWGroupSharedPtr m_pGroup;
-    DBGWDBInfoHashMap *m_pDBnfoMap;
+    DBGWDBInfoHashMap m_dbInfoMap;
     DBGWHostSharedPtr m_pHost;
     size_t m_nPoolSize;
+    bool bExistDbInfo;
   };
 
   static const int MAX_QUERY_LEN = 4096;

@@ -73,8 +73,7 @@ namespace dbgw
     void setAutocommit(bool bAutocommit);
     void commit();
     void rollback();
-    void close();
-    void destroy();
+    DBGWExecuterPool &getExecuterPool();
 
   public:
     const char *getGroupName() const;
@@ -84,6 +83,8 @@ namespace dbgw
     DBGWExecuter(DBGWExecuterPool &executerPool,
         DBGWConnectionSharedPtr pConnection);
     void init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation);
+    void close();
+    void destroy();
     bool isInvalid() const;
 
   private:
@@ -100,7 +101,9 @@ namespace dbgw
     friend class DBGWExecuterPool;
   };
 
-  typedef list<DBGWExecuter *> DBGWExecuterList;
+  typedef shared_ptr<DBGWExecuter> DBGWExecuterSharedPtr;
+
+  typedef list<DBGWExecuterSharedPtr> DBGWExecuterList;
 
   class DBGWExecuterPool
   {
@@ -109,8 +112,8 @@ namespace dbgw
     virtual ~DBGWExecuterPool();
 
     void init(size_t nCount);
-    DBGWExecuter *getExecuter();
-    void returnExecuter(DBGWExecuter *pExecuter);
+    DBGWExecuterSharedPtr getExecuter();
+    void returnExecuter(DBGWExecuterSharedPtr pExecuter);
     void close();
     void setDefaultAutocommit(bool bAutocommit);
     void setDefaultTransactionIsolation(DBGW_TRAN_ISOLATION isolation);
@@ -138,7 +141,7 @@ namespace dbgw
     void addHost(DBGWHostSharedPtr pHost);
     DBGWConnectionSharedPtr getConnection();
     void initPool(size_t nCount);
-    DBGWExecuter *getExecuter();
+    DBGWExecuterSharedPtr getExecuter();
 
   public:
     const string &getFileName() const;
@@ -219,6 +222,7 @@ namespace dbgw
     void addService(DBGWServiceSharedPtr pService);
     void setForceValidateResult(const char *szNamespace);
     DBGWExecuterList getExecuterList(const char *szNamespace);
+    void returnExecuterList(DBGWExecuterList &executerList);
 
   public:
     bool isValidateResult(const char *szNamespace, DBGWQueryType::Enum type) const;
@@ -279,10 +283,12 @@ namespace dbgw
     void putResource(DBGWResourceSharedPtr pResource);
     DBGWResource *getNewResource();
     DBGWResource *getResource(int nVersion);
-    DBGWResource *getResourceWithUnlock(int nVersion);
 
   public:
     size_t size() const;
+
+  private:
+    DBGWResource *getResourceWithUnlock(int nVersion);
 
   private:
     Mutex m_mutex;

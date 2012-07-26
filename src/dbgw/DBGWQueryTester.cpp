@@ -378,7 +378,7 @@ int main(int argc, const char *argv[])
       return 1;
     }
 
-  DBGWConfiguration configuration;
+  DBGWConfiguration configuration(argv[2]);
   if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
     {
       cerr << getLastException().what() << endl;
@@ -390,11 +390,6 @@ int main(int argc, const char *argv[])
       DBGWScenario scenario;
       DBGWScenarioParser parser(argv[1], scenario);
       DBGWParser::parse(&parser);
-
-      if (configuration.loadConnector(argv[2]) == false)
-        {
-          throw getLastException();
-        }
 
       for (int i = 3; i < argc; i++)
         {
