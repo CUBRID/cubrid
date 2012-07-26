@@ -46,7 +46,6 @@
 
 /* Field position : starting from 0 */
 #define UNICODE_FILE_GENERAL_CAT_POS		2
-#define UNICODE_FILE_CANONICAL_COMBINING_CLASS	3
 #define UNICODE_FILE_CHAR_DECOMPOSITION_MAPPING	5
 #define UNICODE_FILE_UPPER_CASE_MAP		12
 #define UNICODE_FILE_LOWER_CASE_MAP		13
@@ -93,7 +92,6 @@ typedef struct
   uint32 lower_cp[INTL_CASING_EXPANSION_MULTIPLIER];
   uint32 upper_cp[INTL_CASING_EXPANSION_MULTIPLIER];
 
-  int canonical_comb_class_id;
   char unicode_mapping_cp_count;
 
   uint32 unicode_mapping[UNICODE_DECOMP_MAP_CP_COUNT];
@@ -475,6 +473,8 @@ load_unicode_data (const LOCALE_DATA * ld)
 
       s = str;
       uc = &(unicode_data[cp]);
+      uc->lower_cp[0] = cp;
+      uc->upper_cp[0] = cp;
 
       /* next field */
       s = strchr (s, ';');
@@ -555,25 +555,6 @@ load_unicode_data (const LOCALE_DATA * ld)
 	      unicode_data_lower_mult =
 		(cp_count > unicode_data_lower_mult) ? cp_count :
 		unicode_data_lower_mult;
-	    }
-	  else if (i == UNICODE_FILE_CANONICAL_COMBINING_CLASS)
-	    {
-	      bool is_valid_comb_class = false;
-
-	      assert (str_p != NULL && strlen (str_p) > 0);
-
-	      uc->canonical_comb_class_id = strtol (str_p, &end, 10);
-
-	      if (end - str_p < strlen (str_p))
-		{
-		  snprintf (err_msg, sizeof (err_msg) - 1, "Line %d"
-			    " of file %s contains an invalid canonical "
-			    "combining class id (%s).", line_count,
-			    ld->unicode_data_file, str_p);
-		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
-		  status = ER_LOC_GEN;
-		  goto error;
-		}
 	    }
 	  else if (i == UNICODE_FILE_CHAR_DECOMPOSITION_MAPPING)
 	    {
