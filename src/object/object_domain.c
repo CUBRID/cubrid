@@ -9068,7 +9068,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 	      /* TODO : change this when adding new types with collation */
 	      if (TP_TYPE_HAS_COLLATION (vtype1)
 		  && (DB_GET_STRING_CODESET (v1)
-		      != DB_GET_STRING_CODESET (v1)))
+		      != DB_GET_STRING_CODESET (v2)))
 		{
 		  int common_coll;
 		  INTL_CODESET codeset;

@@ -5453,7 +5453,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   DB_VALUE_PLIST *outlist_head = NULL, *outlist_tail = NULL;
   DB_VALUE_PLIST *inlist_head = NULL, *inlist_tail = NULL;
   DB_VALUE_PLIST *min_list, *max_list;
-  PT_TYPE_ENUM const_type = PT_TYPE_NONE;
+  PT_NODE *column_dt = NULL;
 
   assert (parser != NULL);
 
@@ -5598,7 +5598,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  goto check_end;	/* get partition type */
 	}
 
-      const_type = pt_db_to_type_enum (db_domain_type (keyattr->domain));
+      column_dt = pt_domain_to_data_type (parser, keyattr->domain);
       pr_clear_value (&pattr);
       pr_clear_value (&attname);
       db_make_null (&pattr);
@@ -5857,12 +5857,18 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  if (ptype.data.i == PT_PARTITION_RANGE)
 	    {
-	      if (parts->info.parts.values
-		  && parts->info.parts.values->type_enum != const_type)
+	      val = parts->info.parts.values;
+	      if (val != NULL && (val->type_enum != column_dt->type_enum
+				  || (val->data_type != NULL
+				      && val->data_type->info.data_type.
+				      collation_id !=
+				      column_dt->data_type->info.data_type.
+				      collation_id)))
 		{
 		  if (pt_coerce_value (parser, parts->info.parts.values,
-				       parts->info.parts.values, const_type,
-				       NULL) != NO_ERROR)
+				       parts->info.parts.values,
+				       column_dt->type_enum,
+				       column_dt) != NO_ERROR)
 		    {
 		      PT_ERRORmf (parser, stmt,
 				  MSGCAT_SET_PARSER_SEMANTIC,
@@ -5911,10 +5917,14 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		   val && val->node_type == PT_VALUE; val = val->next)
 		{
 
-		  if (val->type_enum != const_type)
+		  if (val->type_enum != column_dt->type_enum ||
+		      (val->data_type != NULL &&
+		       val->data_type->info.data_type.collation_id !=
+		       column_dt->data_type->info.data_type.collation_id))
 		    {		/* LIST-NULL */
 		      if (pt_coerce_value (parser, val, val,
-					   const_type, NULL) != NO_ERROR)
+					   column_dt->type_enum,
+					   column_dt) != NO_ERROR)
 			{
 			  PT_ERRORmf (parser, stmt,
 				      MSGCAT_SET_PARSER_SEMANTIC,
@@ -6137,6 +6147,11 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     }
 
 check_end:
+  if (column_dt != NULL)
+    {
+      parser_free_tree (parser, column_dt);
+      column_dt = NULL;
+    }
   pr_clear_value (&ptype);
   pr_clear_value (&pname);
   pr_clear_value (&attname);
