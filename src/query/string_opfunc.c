@@ -18694,9 +18694,9 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	date_s = DB_GET_STRING (date);
 
 	/* try to figure out the string format */
-	if (db_date_parse_datetime_parts
-	    (date_s, str_len, &db_datetime, &has_explicit_time, NULL, NULL,
-	     NULL))
+	if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime, 
+					  &has_explicit_time, NULL, NULL, 
+					  NULL))
 	  {
 	    is_dt = ER_TIMESTAMP_CONVERSION;
 	    is_timest = ER_TIMESTAMP_CONVERSION;

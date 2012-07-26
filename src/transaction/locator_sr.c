@@ -9128,8 +9128,8 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
   char *btname = NULL;
   int *attrs_prefix_length = NULL;
 
-  if (heap_attrinfo_start_with_index
-      (thread_p, class_oid, peek, &attr_info, &idx_info) < 0)
+  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, 
+				      &idx_info) < 0)
     {
       return DISK_ERROR;
     }
@@ -9181,8 +9181,9 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  break;
 	}
 
-      if (heap_indexinfo_get_attrs_prefix_length
-	  (i, &attr_info, attrs_prefix_length, n_attrs) != NO_ERROR)
+      if (heap_indexinfo_get_attrs_prefix_length (i, &attr_info, 
+						  attrs_prefix_length, 
+						  n_attrs) != NO_ERROR)
 	{
 	  free_and_init (attrids);
 	  free_and_init (attrs_prefix_length);
@@ -9190,9 +9191,8 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  break;
 	}
 
-      if (heap_get_indexinfo_of_btid
-	  (thread_p, class_oid, btid, NULL, NULL, NULL, NULL,
-	   &btname, NULL) != NO_ERROR)
+      if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL, 
+				      NULL, NULL, &btname, NULL) != NO_ERROR)
 	{
 	  free_and_init (attrids);
 	  free_and_init (attrs_prefix_length);
@@ -9202,16 +9202,15 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 
       if (btree_is_unique (thread_p, btid))
 	{
-	  rv =
-	    locator_check_unique_btree_entries (thread_p, btid, peek, attrids,
-						btname, repair);
+	  rv = locator_check_unique_btree_entries (thread_p, btid, peek, 
+						   attrids, btname, repair);
 	}
       else
 	{
-	  rv =
-	    locator_check_btree_entries (thread_p, btid, class_hfid,
-					 class_oid, n_attrs, attrids,
-					 attrs_prefix_length, btname, repair);
+	  rv = locator_check_btree_entries (thread_p, btid, class_hfid, 
+					    class_oid, n_attrs, attrids, 
+					    attrs_prefix_length, btname, 
+					    repair);
 	}
       if (rv != DISK_VALID)
 	{
@@ -9269,8 +9268,8 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 }
 
 /*
- * locator_check_all_entries_of_all_btrees () - Check consistency of all entries of all
- *                                       btrees
+ * locator_check_all_entries_of_all_btrees () - Check consistency of all 
+ *						entries of all btrees
  *
  * return: valid
  *
