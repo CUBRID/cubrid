@@ -1571,6 +1571,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  async_flag = FALSE;
 	}
 
+      db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
+
       if (clt_cache_time)
 	db_set_client_cache_time (session, stmt_id, clt_cache_time);
 
