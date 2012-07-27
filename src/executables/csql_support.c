@@ -806,6 +806,8 @@ nonscr_display_error (char *buffer, int buf_length)
   char *msg;
   const char *errmsg;
   int len_errmsg;
+  char *con_buf_ptr = NULL;
+  int con_buf_size = 0;
 
   strncpy (buffer, "\n", remaining);
   remaining -= strlen ("\n");
@@ -817,6 +819,17 @@ nonscr_display_error (char *buffer, int buf_length)
 
   errmsg = csql_errmsg (csql_Error_code);
   len_errmsg = strlen (errmsg);
+
+  if (csql_text_utf8_to_console != NULL &&
+      (*csql_text_utf8_to_console) (errmsg, len_errmsg,
+				    &con_buf_ptr, &con_buf_size) == NO_ERROR)
+    {
+      if (con_buf_ptr != NULL)
+	{
+	  errmsg = con_buf_ptr;
+	  len_errmsg = con_buf_size;
+	}
+    }
 
   if (len_errmsg > (remaining - 3) /* "\n\n" + NULL */ )
     {
@@ -835,6 +848,11 @@ nonscr_display_error (char *buffer, int buf_length)
     {
       strncat (buffer, errmsg, remaining);
       remaining -= len_errmsg;
+    }
+
+  if (con_buf_ptr != NULL)
+    {
+      free_and_init (con_buf_ptr);
     }
 
   strncat (buffer, "\n\n", remaining);
