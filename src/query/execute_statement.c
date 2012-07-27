@@ -9129,7 +9129,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;		/* stop while loop if error */
 	}
       /* sm_class_has_triggers() checked if the class has active triggers */
-      statement->info.delete_.has_trigger = (bool) has_trigger;
+      statement->info.delete_.has_trigger = has_trigger;
 
       /* determine whether it can be server-side or OID list deletion */
       server_delete = (!has_trigger && !has_virt_obj);

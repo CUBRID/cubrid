@@ -541,6 +541,7 @@ struct xasl_node
   DB_VALUE *instnum_val;	/* inst_num() value result */
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi-
 				 * tuted for ordbynum_val; */
+  REGU_VARIABLE *limit_row_count;	/* the record count from a limit clause */
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 

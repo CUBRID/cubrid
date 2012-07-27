@@ -13891,7 +13891,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   int groupby_ok = 1;
   AGGREGATE_TYPE *aggregate = NULL;
   SYMBOL_INFO *symbols;
-  PT_NODE *from;
+  PT_NODE *from, *limit;
   UNBOX unbox;
   PT_NODE *having_part, *grbynum_part;
   int grbynum_flag, ordbynum_flag;
@@ -13926,6 +13926,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   buildlist = &xasl->proc.buildlist;
   xasl->next = NULL;
+
+  limit = select_node->info.query.limit;
+  if (limit)
+    {
+      if (limit->next)
+	{
+	  limit = limit->next;
+	}
+      xasl->limit_row_count =
+	pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+    }
+  else
+    {
+      xasl->limit_row_count = NULL;
+    }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
   pt_set_numbering_node_etc (parser, select_node->info.query.q.select.list,
@@ -14809,6 +14824,19 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  break;
 	default:
 	  break;
+	}
+
+      if (node->info.query.limit)
+	{
+	  PT_NODE *limit;
+
+	  limit = node->info.query.limit;
+	  if (limit->next)
+	    {
+	      limit = limit->next;
+	    }
+	  xasl->limit_row_count = pt_to_regu_variable (parser, limit,
+						       UNBOX_AS_VALUE);
 	}
     }				/* end xasl */
   else
@@ -16717,6 +16745,18 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       xasl->qstmt = statement->alias_print;
     }
 
+  if (statement->info.delete_.limit)
+    {
+      PT_NODE *limit = statement->info.delete_.limit;
+
+      if (limit->next)
+	{
+	  limit = limit->next;
+	}
+      xasl->limit_row_count =
+	pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+    }
+
   return xasl;
 
 error_return:
@@ -17232,6 +17272,18 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   xasl->qstmt = statement->alias_print;
+
+  if (statement->info.update.limit)
+    {
+      PT_NODE *limit = statement->info.update.limit;
+
+      if (limit->next)
+	{
+	  limit = limit->next;
+	}
+      xasl->limit_row_count =
+	pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+    }
 
 cleanup:
   if (aptr_statement != NULL)

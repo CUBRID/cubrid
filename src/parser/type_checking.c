@@ -6613,7 +6613,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       /* rewrite limit clause as numbering expression and add it
        * to the corresponding predicate
        */
-      if (node->info.query.limit != NULL)
+      if (node->info.query.limit && node->info.query.rewrite_limit)
 	{
 	  PT_NODE *limit, *t_node;
 	  PT_NODE **expr_pred;
@@ -6632,10 +6632,9 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (node->info.query.order_by != NULL)
 	    {
 	      expr_pred = &node->info.query.orderby_for;
-	      limit =
-		pt_limit_to_numbering_expr (parser,
-					    node->info.query.limit,
-					    PT_ORDERBY_NUM, false);
+	      limit = pt_limit_to_numbering_expr (parser,
+						  node->info.query.limit,
+						  PT_ORDERBY_NUM, false);
 	      if (limit != NULL)
 		{
 		  t_node = *expr_pred;
@@ -6652,8 +6651,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		      t_node->next = limit;
 		    }
 
-		  parser_free_tree (parser, node->info.query.limit);
-		  node->info.query.limit = NULL;
+		  node->info.query.rewrite_limit = 0;
 		}
 	      else
 		{
@@ -6668,7 +6666,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       /* rewrite limit clause as numbering expression and add it
        * to the corresponding predicate
        */
-      if (node->info.query.limit)
+      if (node->info.query.limit && node->info.query.rewrite_limit)
 	{
 	  PT_NODE *limit, *t_node;
 	  PT_NODE **expr_pred;
@@ -6676,25 +6674,23 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (node->info.query.order_by)
 	    {
 	      expr_pred = &node->info.query.orderby_for;
-	      limit =
-		pt_limit_to_numbering_expr (parser,
-					    node->info.query.limit,
-					    PT_ORDERBY_NUM, false);
+	      limit = pt_limit_to_numbering_expr (parser,
+						  node->info.query.limit,
+						  PT_ORDERBY_NUM, false);
 	    }
 	  else if (node->info.query.q.select.group_by)
 	    {
 	      expr_pred = &node->info.query.q.select.having;
-	      limit =
-		pt_limit_to_numbering_expr (parser,
-					    node->info.query.limit, 0, true);
+	      limit = pt_limit_to_numbering_expr (parser,
+						  node->info.query.limit, 0,
+						  true);
 	    }
 	  else
 	    {
 	      expr_pred = &node->info.query.q.select.where;
-	      limit =
-		pt_limit_to_numbering_expr (parser,
-					    node->info.query.limit,
-					    PT_INST_NUM, false);
+	      limit = pt_limit_to_numbering_expr (parser,
+						  node->info.query.limit,
+						  PT_INST_NUM, false);
 	    }
 
 	  if (limit)
@@ -6713,8 +6709,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		  t_node->next = limit;
 		}
 
-	      parser_free_tree (parser, node->info.query.limit);
-	      node->info.query.limit = NULL;
+	      node->info.query.rewrite_limit = 0;
 	    }
 	  else
 	    {
@@ -6728,7 +6723,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       /* rewrite limit clause as numbering expression and add it
        * to search condition
        */
-      if (node->info.delete_.limit)
+      if (node->info.delete_.limit && node->info.delete_.rewrite_limit)
 	{
 	  PT_NODE *t_node = node->info.delete_.search_cond;
 	  PT_NODE *limit =
@@ -6749,8 +6744,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		  t_node->next = limit;
 		}
 
-	      parser_free_tree (parser, node->info.delete_.limit);
-	      node->info.delete_.limit = NULL;
+	      node->info.delete_.rewrite_limit = 0;
 	    }
 	  else
 	    {
@@ -6764,7 +6758,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
       /* rewrite limit clause as numbering expression and add it
        * to search condition
        */
-      if (node->info.update.limit)
+      if (node->info.update.limit && node->info.update.rewrite_limit)
 	{
 	  PT_NODE **expr_pred = NULL;
 	  PT_NODE *t_node = NULL, *limit = NULL;
@@ -6772,10 +6766,9 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (node->info.update.order_by)
 	    {
 	      expr_pred = &(node->info.update.orderby_for);
-	      limit =
-		pt_limit_to_numbering_expr (parser,
-					    node->info.update.limit,
-					    PT_ORDERBY_NUM, false);
+	      limit = pt_limit_to_numbering_expr (parser,
+						  node->info.update.limit,
+						  PT_ORDERBY_NUM, false);
 	    }
 	  else
 	    {
@@ -6787,8 +6780,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (limit)
 	    {
 	      *expr_pred = parser_append_node (limit, *expr_pred);
-	      parser_free_tree (parser, node->info.update.limit);
-	      node->info.update.limit = NULL;
+	      node->info.update.rewrite_limit = 0;
 	    }
 	  else
 	    {

@@ -1975,6 +1975,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  pg_cnt += qexec_clear_regu_var (xasl, xasl->orderby_limit, final);
 	}
 
+      if (xasl->limit_row_count)
+	{
+	  pg_cnt += qexec_clear_regu_var (xasl, xasl->limit_row_count, final);
+	}
+
       if (xasl->level_val)
 	{
 	  pr_clear_value (xasl->level_val);
@@ -11362,6 +11367,21 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /*
    * Pre_processing
    */
+
+  if (xasl->limit_row_count)
+    {
+      DB_LOGICAL l;
+
+      l = eval_limit_count_is_0 (thread_p, xasl->limit_row_count,
+				 &xasl_state->vd);
+      if (l == V_TRUE)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"This statement has no record by 'limit 0' clause.\n");
+	  return NO_ERROR;
+	}
+      assert (l == V_FALSE);
+    }
 
   switch (xasl->type)
     {

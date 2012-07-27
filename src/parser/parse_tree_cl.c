@@ -13656,7 +13656,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  if (p->info.query.limit)
+  if (p->info.query.limit && p->info.query.rewrite_limit)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");

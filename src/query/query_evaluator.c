@@ -1680,6 +1680,22 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp,
  * Main Predicate Evaluation Routines
  */
 
+DB_LOGICAL
+eval_limit_count_is_0 (THREAD_ENTRY * thread_p, REGU_VARIABLE * rv,
+		       VAL_DESCR * vd)
+{
+  DB_VALUE *limit_row_count_valp, zero_val;
+
+  if (fetch_peek_dbval
+      (thread_p, rv, vd, NULL, NULL, NULL, &limit_row_count_valp) != NO_ERROR)
+    {
+      return V_UNKNOWN;
+    }
+
+  db_make_int (&zero_val, 0);
+  return eval_value_rel_cmp (limit_row_count_valp, &zero_val, R_EQ);
+}
+
 /*
  * eval_pred () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)

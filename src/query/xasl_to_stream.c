@@ -2652,6 +2652,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->ordbynum_flag);
 
+  offset = xts_save_regu_variable (xasl->limit_row_count);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_val_list (xasl->single_tuple);
   if (offset == ER_FAILED)
     {
@@ -4975,6 +4982,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     PTR_SIZE +			/* instnum_val */
     PTR_SIZE +			/* save_instnum_val */
     OR_INT_SIZE +		/* instnum_flag */
+    PTR_SIZE +			/* limit_row_count */
     PTR_SIZE +			/* fptr_list */
     PTR_SIZE +			/* scan_ptr */
     PTR_SIZE +			/* connect_by_ptr */

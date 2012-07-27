@@ -581,6 +581,8 @@ struct filter_info
 #define	PCOL_PARENTPOS_TUPLE_OFFSET	5
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
+extern DB_LOGICAL eval_limit_count_is_0 (THREAD_ENTRY * thread_p,
+					 REGU_VARIABLE * rv, VAL_DESCR * vd);
 extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
 			     VAL_DESCR * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,

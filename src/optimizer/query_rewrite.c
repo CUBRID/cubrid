@@ -6627,16 +6627,13 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
        *   SELECT * FROM ((SELECT ...) UNION (SELECT ...)) T
        *     WHERE INST_NUM() <= 10
        */
-      if (node->info.query.limit != NULL)
+      if (node->info.query.limit && node->info.query.rewrite_limit)
 	{
-	  limit =
-	    pt_limit_to_numbering_expr (parser,
-					node->info.query.limit,
-					PT_INST_NUM, false);
+	  limit = pt_limit_to_numbering_expr (parser, node->info.query.limit,
+					      PT_INST_NUM, false);
 	  if (limit != NULL)
 	    {
-	      parser_free_tree (parser, node->info.query.limit);
-	      node->info.query.limit = NULL;
+	      node->info.query.rewrite_limit = 0;
 
 	      derived = qo_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)

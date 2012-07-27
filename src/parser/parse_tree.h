@@ -1764,8 +1764,9 @@ struct pt_delete_info
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_HINT_ENUM hint;		/* hint flag */
-  bool has_trigger;		/* whether it has triggers */
-  bool server_delete;		/* whether it can be server-side deletion */
+  unsigned has_trigger:1;	/* whether it has triggers */
+  unsigned server_delete:1;	/* whether it can be server-side deletion */
+  unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
 };
 
 /* DOT_INFO*/
@@ -2240,6 +2241,7 @@ struct pt_query_info
   unsigned do_cache:1;		/* do cache the query result */
   unsigned do_not_cache:1;	/* do not cache the query result */
   unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
+  unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
@@ -2333,10 +2335,11 @@ struct pt_update_info
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
   PT_HINT_ENUM hint;		/* hint flag */
-  bool has_trigger;		/* whether it has triggers */
-  bool has_unique;		/* whether there's unique constraint */
-  bool server_update;		/* whether it can be server-side update */
-  bool do_class_attrs;		/* whether it is on class attributes */
+  unsigned has_trigger:1;	/* whether it has triggers */
+  unsigned has_unique:1;	/* whether there's unique constraint */
+  unsigned server_update:1;	/* whether it can be server-side update */
+  unsigned do_class_attrs:1;	/* whether it is on class attributes */
+  unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
 };
 
 /* UPDATE STATISTICS INFO */

@@ -6092,6 +6092,7 @@ update_stmt
 
 			/* set LIMIT node */
 			node->info.update.limit = $9;
+			node->info.update.rewrite_limit = 1;
 			
 			if (node->info.update.spec->next)
 			{
@@ -6558,6 +6559,7 @@ delete_stmt
 			       parser_make_link (del->info.delete_.using_index, $6) : $6);
 
 			    del->info.delete_.limit = $7;
+			    del->info.delete_.rewrite_limit = 1;
 
 			    /* In a multi-table case the LIMIT clauses is not allowed. */
    			    if (del->info.delete_.spec->next)
@@ -12187,6 +12189,7 @@ limit_options
 			if (node)
 			  {
 			    node->info.query.limit = $1;
+			    node->info.query.rewrite_limit = 1;
 			    $$ = node;
 			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -12205,6 +12208,7 @@ limit_options
 				limit1->next = limit2;
 			      }
 			    node->info.query.limit = limit1;
+			    node->info.query.rewrite_limit = 1;
 			    $$ = node;
 			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -12223,6 +12227,7 @@ limit_options
 				limit1->next = limit2;
 			      }
 			    node->info.query.limit = limit1;
+			    node->info.query.rewrite_limit = 1;
 			    $$ = node;
 			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
