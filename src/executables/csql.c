@@ -1196,7 +1196,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		  if (i > 0)
 		    {
 		      HIST_ENTRY *hist;
-		      hist = history_get ((history_base - 1) + i - 1);
+		      hist = history_get (history_base + i - 1);
 		      if (hist != NULL)
 			{
 			  if (csql_edit_contents_append (hist->line, true) !=
