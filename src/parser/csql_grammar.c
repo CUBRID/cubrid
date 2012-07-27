@@ -26723,7 +26723,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
-			if (node)
+			if (node && node->node_type == PT_NAME)
 			  node->info.name.meta_class = PT_META_CLASS;
 			((*yyvalp).node) = node;
 
@@ -26735,7 +26735,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
-			if (node && node->node_type != PT_EXPR)
+			if (node && node->node_type == PT_NAME)
 			  node->info.name.meta_class = PT_NORMAL;
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)

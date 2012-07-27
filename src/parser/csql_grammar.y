@@ -15856,7 +15856,7 @@ path_header
 		{{
 
 			PT_NODE *node = $2;
-			if (node)
+			if (node && node->node_type == PT_NAME)
 			  node->info.name.meta_class = PT_META_CLASS;
 			$$ = node;
 
@@ -15865,7 +15865,7 @@ path_header
 		{{
 
 			PT_NODE *node = $1;
-			if (node && node->node_type != PT_EXPR)
+			if (node && node->node_type == PT_NAME)
 			  node->info.name.meta_class = PT_NORMAL;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
