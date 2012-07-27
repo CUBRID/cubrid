@@ -12734,6 +12734,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
   QFILE_SORTED_LIST_ID *srlist_id;
   QPROC_DB_VALUE_LIST value_list = NULL;
   int i;
+  bool skip_hidden;
 
   outlist = regu_outlist_alloc ();
   if (outlist == NULL)
@@ -12754,6 +12755,9 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
       if (node)
 	{
 
+	  /* reset flag for new node */
+	  skip_hidden = false;
+
 	  /* save and cut-off node link */
 	  save_next = node->next;
 	  node->next = NULL;
@@ -12762,6 +12766,10 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	  col = node;
 	  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 	    {
+	      /* hidden columns from subquery should not get referenced in
+	         select list */
+	      skip_hidden = true;
+
 	      xasl = (XASL_NODE *) node->info.query.xasl;
 	      if (xasl == NULL)
 		{
@@ -12790,6 +12798,13 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	  /* make outlist */
 	  for (i = 0; col; col = col->next, i++)
 	    {
+	      if (skip_hidden && col->is_hidden_column && i > 0)
+		{
+		  /* we don't need this node; also, we assume the first column
+		     of the subquery is NOT hidden */
+		  continue;
+		}
+
 	      *regulist = regu_varlist_alloc ();
 	      if (*regulist == NULL)
 		{

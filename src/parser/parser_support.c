@@ -1040,7 +1040,7 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       *has_analytic = true;
     }
 
-  if (*has_analytic)
+  if (*has_analytic || PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
       *continue_walk = PT_STOP_WALK;
     }
