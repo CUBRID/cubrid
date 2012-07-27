@@ -191,18 +191,46 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
   DB_FETCH_MODE class_purpose;
+  bool error_saved = false;
+  bool find_class_attribute = false;
 
   class_ = NULL;
   att = NULL;
 
-  /*
-   * NOTE : temporary fix
-   */
-  er_clear ();
+  if (!op->is_temp)
+    {
+      if (er_errid () != NO_ERROR)
+	{
+	  er_stack_push ();
+	  error_saved = true;
+	}
 
-  class_purpose = ((for_write) ? DB_FETCH_WRITE : DB_FETCH_READ);
+      class_purpose = ((for_write) ? DB_FETCH_WRITE : DB_FETCH_READ);
 
-  if (!op->is_temp && locator_is_class (op, class_purpose))
+      find_class_attribute = locator_is_class (op, class_purpose);
+
+      error = er_errid ();
+      if (error_saved)
+	{
+	  if (error == NO_ERROR)
+	    {
+	      er_stack_pop ();
+	    }
+	  else
+	    {
+	      /* Current error(occured in locator_is_class) is returned,
+	       * and the previous error is cleared from the stack */
+	      er_stack_clear ();
+	    }
+	}
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (find_class_attribute)
     {
       /* looking for class attribute */
       if (for_write)
@@ -220,15 +248,6 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
     }
   else
     {
-      /*
-       * NOTE : temporary fix
-       * locator_is_class() should return the error code
-       */
-      if ((error = er_errid ()) != NO_ERROR)
-	{
-	  return error;
-	}
-
       error = au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT);
       if (error == NO_ERROR)
 	{
@@ -2142,7 +2161,7 @@ obj_delete (MOP op)
 	  goto error_exit;
 	}
 
-      /* in some cases, the object has been decached in before 
+      /* in some cases, the object has been decached in before
        * trigger. we need fetch it again.
        */
       if (base_op->decached)
@@ -2168,7 +2187,7 @@ obj_delete (MOP op)
 	  goto error_exit;
 	}
 
-      /* in some cases, the object has been decached in before 
+      /* in some cases, the object has been decached in before
        * trigger. we need fetch it again.
        */
       if (op->decached)
