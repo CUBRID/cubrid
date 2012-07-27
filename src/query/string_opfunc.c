@@ -18725,6 +18725,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	if (is_dt && is_d && is_t && is_timest)
 	  {
 	    error_status = ER_OBJ_INVALID_ARGUMENTS;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	    goto error;
 	  }
 
@@ -18733,6 +18734,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	if (is_t == 0)
 	  {
 	    error_status = ER_OBJ_INVALID_ARGUMENTS;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	    goto error;
 	  }
 
@@ -18766,6 +18768,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
 
@@ -18816,6 +18819,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}
 
@@ -18887,6 +18891,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}
 
@@ -18963,6 +18968,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}
 
