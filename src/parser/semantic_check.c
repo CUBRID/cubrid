@@ -13740,15 +13740,37 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	    PT_NODE *arg1 = NULL;
 	    int i = 0, j = 0;
 
-	    if ((node->info.expr.op == PT_IS_NULL && info->has_not == true)
-		|| (node->info.expr.op == PT_IS_NOT_NULL
-		    && info->has_not == false))
+	    if (node->info.expr.op == PT_IS_NULL)
+	      {
+		if (info->has_not == true)
+		  {
+		    /* not expression is null case */
+		    break;
+		  }
+	      }
+	    else if (info->has_not == false)
+	      {
+		/* expression is not null case */
+		break;
+	      }
+
+	    arg1 = node->info.expr.arg1;
+	    if (arg1 == NULL || info->atts == NULL)
 	      {
 		break;
 	      }
-	    arg1 = node->info.expr.arg1;
-	    if (arg1 == NULL || arg1->node_type != PT_NAME ||
-		arg1->info.name.original == NULL || info->atts == NULL)
+
+	    if (arg1->node_type != PT_NAME)
+	      {
+		/* do not allow expression is null
+		   do not allow not expression is not null */
+		info->is_valid_expr = false;
+
+		break;
+	      }
+
+	    /* arg1 is PT_NAME node */
+	    if (arg1->info.name.original == NULL)
 	      {
 		break;
 	      }
