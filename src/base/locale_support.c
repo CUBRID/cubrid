@@ -5622,7 +5622,7 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
   assert (ad != NULL);
   assert (lower_bound <= upper_bound);
 
-  printf ("Alphabet type : ");
+  printf ("Alphabet type: ");
   if (ad->a_type == ALPHABET_UNICODE)
     {
       printf ("Unicode\n");
@@ -5754,13 +5754,14 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
     }
 
   printf ("\n");
-  printf ("** Collation : %s | id : %d **\n", coll->coll_name, coll->coll_id);
-  printf ("Max codepoints : %d\n", coll->w_count);
+  printf ("* Collation: %s | id: %d | checksum: %s *\n", coll->coll_name,
+	  coll->coll_id, coll->checksum);
+  printf ("Max codepoints: %d\n", coll->w_count);
   printf ("Level: %d\n", coll->uca_opt.sett_strength);
-  printf ("Expansions : %s\n", coll->uca_opt.sett_expansions ? "yes" : "no");
+  printf ("Expansions: %s\n", coll->uca_opt.sett_expansions ? "yes" : "no");
   if (coll->uca_opt.sett_expansions)
     {
-      printf ("Expansion CE num : %d\n", coll->uca_exp_num);
+      printf ("Expansion CE num: %d\n", coll->uca_exp_num);
     }
   printf ("Contractions: %d\n", coll->count_contr);
   if (coll->count_contr > 0)
@@ -5952,14 +5953,15 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
 
   lld = (LANG_LOCALE_DATA *) data;
 
-  printf ("Locale data for: %s\nLibrary file :%s\n",
-	  lf->locale_name, lf->lib_file);
   printf ("*************************************************\n");
+  printf ("Locale data for: %s\nLibrary file: %s\n",
+	  lf->locale_name, lf->lib_file);
   printf ("Locale string: %s\n", lld->lang_name);
+  printf ("Locale checksum: %s\n", lld->checksum);
 
   if ((dl_settings & DUMPLOCALE_IS_CALENDAR) != 0)
     {
-      printf ("\n");
+      printf ("\n * Calendar *\n");
       printf ("Date format: %s\n", lld->date_format);
       printf ("Time format: %s\n", lld->time_format);
       printf ("Datetime format: %s\n", lld->datetime_format);
@@ -6040,10 +6042,10 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
   /* Display numbering information. */
   if ((dl_settings & DUMPLOCALE_IS_NUMBERING) != 0)
     {
-      printf ("\n");
+      printf ("\n * Numbers *\n");
       printf ("Decimal separator: <%c>\n", lld->number_decimal_sym);
       printf ("Separator for digit grouping: <%c>\n", lld->number_group_sym);
-      printf ("Default currency ISO code: %s",
+      printf ("Default currency ISO code: %s\n",
 	      intl_get_money_ISO_symbol (lld->default_currency_code));
     }
 
@@ -6079,8 +6081,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       alphabet_settings = 0;
       alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER);
       alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_UPPER);
-      printf ("\n");
-      printf ("* Alphabet data *\n");
+      printf ("\n * Alphabet data *\n");
       dump_locale_alphabet (&(lld->alphabet), alphabet_settings, lower_bound,
 			    upper_bound);
     }
@@ -6146,7 +6147,7 @@ locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
       goto exit;
     }
 
-  printf ("* %d collations found *\n", count_coll_to_load);
+  printf ("\n\n* Collations: %d collations found *\n", count_coll_to_load);
 
   for (i = 0; i < count_coll_to_load; i++)
     {
@@ -6788,13 +6789,11 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
 
   if (!norm->is_enabled)
     {
-      printf ("\n*Normalization is disabled*\n\n");
+      printf ("\nNormalization is disabled\n\n");
       goto exit;
     }
 
-  printf ("\n *Normalization data*\n");
-
-  printf (" Sorted list of unicode mappings: \n");
+  printf ("Sorted list of unicode mappings: \n");
   for (i = 0; i < norm->unicode_mappings_count; i++)
     {
       printf ("%d.\t ", i + 1);
@@ -6803,7 +6802,7 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
       printf ("\n");
     }
 
-  printf (" Unicode composition mappings \n");
+  printf ("\n Unicode composition mappings \n");
   for (i = 0; i < MAX_UNICODE_CHARS; i++)
     {
       int j, comp_start, comp_end;
@@ -6831,7 +6830,7 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
       printf ("\n");
     }
 
-  printf (" Unicode decomposition mappings\n");
+  printf ("\n Unicode decomposition mappings\n");
   for (i = 0; i < MAX_UNICODE_CHARS; i++)
     {
       int decomp_idx = norm->list_full_decomp[i];
