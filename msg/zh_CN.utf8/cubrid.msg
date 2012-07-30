@@ -844,7 +844,7 @@ $ LOADDB
 776 Cannot fetch serial object.
 777 Cannot update serial object.
 778 Cannot create a symbolic link "%s" to the file "%s".
-779 Date exceeds limit. Date MUST be in 1 and 9999 .
+779 Result exceeds limit: year of Date MUST be in 1 and 9999.
 780 Internal system failure: unable to get system time.
 781 Format string is too long. It must be less than 16K.
 782 Empty string not allowed here.

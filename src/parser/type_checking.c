@@ -15654,7 +15654,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       error = db_last_day (arg1, result);
       if (error < 0)
 	{
-	  PT_ERRORc (parser, o1, er_msg ());
+	  PT_ERRORc (parser, expr, er_msg ());
 	  return 0;
 	}
       else
