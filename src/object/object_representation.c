@@ -6579,7 +6579,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
   DB_VALUE value;
-  char *enum_str = NULL;
+  char *enum_str = NULL, *value_str;
   int str_size = 0;
 
   DB_MAKE_NULL (&value);
@@ -6640,7 +6640,15 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_return;
 	}
-      memcpy (enum_str, db_get_string (&value), str_size);
+      value_str = db_get_string (&value);
+      if (value_str)
+	{
+	  memcpy (enum_str, value_str, str_size);
+	}
+      else
+	{
+	  assert_release (str_size == 0);
+	}
       enum_str[str_size] = 0;
 
       DB_SET_ENUM_ELEM_STRING (db_enum, enum_str);

@@ -3918,7 +3918,10 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 				 DIM
 				 (pgbuf_debug_page_validation_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
+	       || intl_mbs_casecmp (prm->name,
+				    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
+
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
 				 NULL, ha_mode_words, DIM (ha_mode_words));
@@ -4127,7 +4130,9 @@ prm_print_session_prm (const SESSION_PARAM * sprm, char *buf, size_t len,
 				 DIM
 				 (pgbuf_debug_page_validation_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
+	       || intl_mbs_casecmp (prm->name,
+				    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
 	{
 	  keyvalp = prm_keyword (sprm->prm_value.i, NULL, ha_mode_words,
 				 DIM (ha_mode_words));
@@ -6200,7 +6205,7 @@ cleanup:
 const char *
 prm_get_name (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
 
   return prm_Def[prm_id].name;
 }
@@ -6222,7 +6227,7 @@ prm_get_value (PARAM_ID prm_id)
   THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn_entry;
 
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
 
   if (PRM_IS_FOR_SESSION (prm_Def[prm_id].flag) && BO_IS_SERVER_RESTARTED ())
     {
@@ -6245,7 +6250,7 @@ prm_get_value (PARAM_ID prm_id)
 
   return prm_Def[prm_id].value;
 #else /* SERVER_MODE */
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
 
   return prm_Def[prm_id].value;
 #endif /* SERVER_MODE */
@@ -6262,7 +6267,7 @@ prm_get_value (PARAM_ID prm_id)
 int
 prm_get_integer_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (&prm_Def[prm_id])
 	  || PRM_IS_KEYWORD (&prm_Def[prm_id]));
 
@@ -6278,7 +6283,7 @@ prm_get_integer_value (PARAM_ID prm_id)
 bool
 prm_get_bool_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
 
   return PRM_GET_BOOL (prm_get_value (prm_id));
@@ -6293,7 +6298,7 @@ prm_get_bool_value (PARAM_ID prm_id)
 float
 prm_get_float_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
 
   return PRM_GET_FLOAT (prm_get_value (prm_id));
@@ -6308,7 +6313,7 @@ prm_get_float_value (PARAM_ID prm_id)
 char *
 prm_get_string_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (&prm_Def[prm_id]));
 
   return PRM_GET_STRING (prm_get_value (prm_id));
@@ -6324,7 +6329,7 @@ prm_get_string_value (PARAM_ID prm_id)
 int *
 prm_get_integer_list_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
 
   return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
@@ -6340,7 +6345,7 @@ prm_get_integer_list_value (PARAM_ID prm_id)
 bool *
 prm_get_error_list_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_ERROR_LIST (&prm_Def[prm_id]));
 
   return PRM_GET_ERROR_LIST (prm_get_value (prm_id));
@@ -6355,7 +6360,7 @@ prm_get_error_list_value (PARAM_ID prm_id)
 UINT64
 prm_get_size_value (PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_SIZE (&prm_Def[prm_id]));
 
   return PRM_GET_SIZE (prm_get_value (prm_id));
@@ -6371,7 +6376,7 @@ prm_get_size_value (PARAM_ID prm_id)
 void
 prm_set_value (PARAM_ID prm_id, void *value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
 
   prm_Def[prm_id].value = value;
 }
@@ -6388,7 +6393,7 @@ prm_set_value (PARAM_ID prm_id, void *value)
 void
 prm_set_integer_value (PARAM_ID prm_id, int value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (&prm_Def[prm_id])
 	  || PRM_IS_KEYWORD (&prm_Def[prm_id]));
 
@@ -6405,7 +6410,7 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
 void
 prm_set_bool_value (PARAM_ID prm_id, bool value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
 
   PRM_GET_BOOL (prm_Def[prm_id].value) = value;
@@ -6421,7 +6426,7 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
 void
 prm_set_float_value (PARAM_ID prm_id, float value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
 
   PRM_GET_FLOAT (prm_Def[prm_id].value) = value;
@@ -6437,7 +6442,7 @@ prm_set_float_value (PARAM_ID prm_id, float value)
 void
 prm_set_string_value (PARAM_ID prm_id, char *value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (&prm_Def[prm_id]));
 
   PRM_GET_STRING (prm_Def[prm_id].value) = value;
@@ -6454,7 +6459,7 @@ prm_set_string_value (PARAM_ID prm_id, char *value)
 void
 prm_set_error_list_value (PARAM_ID prm_id, bool * value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_ERROR_LIST (&prm_Def[prm_id]));
 
   PRM_GET_ERROR_LIST (prm_Def[prm_id].value) = value;
@@ -6471,7 +6476,7 @@ prm_set_error_list_value (PARAM_ID prm_id, bool * value)
 void
 prm_set_integer_list_value (PARAM_ID prm_id, int *value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
 
   PRM_GET_INTEGER_LIST (prm_Def[prm_id].value) = value;
@@ -6487,7 +6492,7 @@ prm_set_integer_list_value (PARAM_ID prm_id, int *value)
 void
 prm_set_size_value (PARAM_ID prm_id, UINT64 value)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_SIZE (&prm_Def[prm_id]));
 
   PRM_GET_SIZE (prm_Def[prm_id].value) = value;
@@ -6684,7 +6689,7 @@ static SESSION_PARAM *
 prm_get_session_prm_from_list (SESSION_PARAM * session_params,
 			       PARAM_ID prm_id)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
 
   if (session_params->prm_id == prm_id)
     {
@@ -6857,6 +6862,9 @@ sysprm_packed_local_session_parameters_length (void)
 
 	    case PRM_SIZE:
 	      size += OR_INT64_SIZE;
+	      break;
+
+	    case PRM_NO_TYPE:
 	      break;
 	    }
 	}
@@ -7643,7 +7651,10 @@ prm_set_session_parameter_value (SESSION_PARAM * session_params,
 				   DIM
 				   (pgbuf_debug_page_validation_level_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
+		 || intl_mbs_casecmp (prm->name,
+				      PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) ==
+		 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, ha_mode_words,
 				   DIM (ha_mode_words));
@@ -7830,7 +7841,7 @@ prm_compare_prm_value_with_value (PRM_VALUE prm_value, void *value,
 void
 prm_update_prm_different_flag (PARAM_ID prm_id, bool is_different)
 {
-  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+  assert (prm_id <= PRM_LAST_ID);
 
   if (is_different)
     {

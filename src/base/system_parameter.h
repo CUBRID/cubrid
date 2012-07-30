@@ -315,7 +315,7 @@ union prm_value
 typedef struct session_param SESSION_PARAM;
 struct session_param
 {
-  int prm_id;
+  PARAM_ID prm_id;
   unsigned int flag;
   int datatype;
   PRM_VALUE prm_value;
