@@ -47,9 +47,13 @@ main (int argc, char *argv[])
   char *br_name;
   char *conf_name;
   char *conf_value;
-  int as_number = -1;
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
+#if defined(CUBRID_SHARD)
+  int proxy_number = -1;
+#else
+  int as_number = -1;
+#endif
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
@@ -63,8 +67,13 @@ main (int argc, char *argv[])
 
   if (argc < 4)
     {
-      printf ("%s <br-name> [<cas-number>] <conf-name> <conf-value>\n",
+#if defined(CUBRID_SHARD)
+      printf ("%s <shard-name> [<proxy-number>] <conf-name> <conf-value>\n",
 	      argv[0]);
+#else /* CUBRID_SHARD */
+      printf ("%s <broker-name> [<cas-number>] <conf-name> <conf-value>\n",
+	      argv[0]);
+#endif /* !CUBRID_SHARD */
       exit (0);
     }
 
@@ -83,6 +92,16 @@ main (int argc, char *argv[])
     {
       char *p = NULL;
 
+#if defined(CUBRID_SHARD)
+      proxy_number = (int) strtol (argv[2], &p, 10);
+      if ((errno == ERANGE) ||
+	  (errno != 0 && proxy_number == 0) ||
+	  (p && *p != '\0') || (proxy_number < 0))
+	{
+	  printf ("Invalid proxy number\n");
+	  exit (0);
+	}
+#else /* CUBRID_SHARD */
       as_number = (int) strtol (argv[2], &p, 10);
       if ((errno == ERANGE) ||
 	  (errno != 0 && as_number == 0) ||
@@ -91,6 +110,7 @@ main (int argc, char *argv[])
 	  printf ("Invalid cas number\n");
 	  exit (0);
 	}
+#endif /* !CUBRID_SHARD */
 
       conf_name = argv[3];
       conf_value = argv[4];
@@ -102,9 +122,15 @@ main (int argc, char *argv[])
     }
 
   admin_err_msg[0] = '\0';
+#if defined(CUBRID_SHARD)
+  if (admin_shard_conf_change (master_shm_id,
+			       br_name, conf_name, conf_value,
+			       proxy_number) < 0)
+#else /* CUBRID_SHARD */
   if (admin_broker_conf_change (master_shm_id,
 				br_name, conf_name, conf_value,
 				as_number) < 0)
+#endif /* !CUBRID_SHARD */
     {
       printf ("%s\n", admin_err_msg);
       exit (0);

@@ -54,8 +54,13 @@ int admin_reset_cmd (int, const char *);
 int admin_info_cmd (int);
 int admin_get_broker_status (int, const char *);
 int admin_broker_job_first_cmd (int, const char *, int);
+#if defined(CUBRID_SHARD)
+int admin_shard_conf_change (int, const char *, const char *, const char *,
+			     int);
+#else /* CUBRID_SHARD */
 int admin_broker_conf_change (int, const char *, const char *, const char *,
 			      int);
+#endif /* !CUBRID_SHARD */
 int admin_del_cas_log (int master_shmid, const char *broker, int asid);
 int admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name);
 int admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name);

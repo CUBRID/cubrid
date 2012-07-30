@@ -97,7 +97,43 @@
 #define ACCESS_FILE_DELIMITER ":"
 #define IP_FILE_DELIMITER ","
 
-#if !defined(CUBRID_SHARD)
+#if defined(CUBRID_SHARD)
+#define	ALL_PROXY	-1
+#define	ALL_SHARD	-1
+#define	ALL_AS		-1
+
+static int shard_shm_set_param_proxy (T_SHM_PROXY * proxy_p,
+				      const char *param_name,
+				      const char *param_value, int proxy_id);
+static int shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
+					       const char *param_name,
+					       const char *param_value);
+static int shard_shm_set_param_shard (T_PROXY_INFO * proxy_info_p,
+				      const char *param_name,
+				      const char *param_value, int shard_id);
+static int shard_shm_set_param_shard_internal (T_SHARD_INFO * shard_info_p,
+					       const char *param_name,
+					       const char *param_value);
+static int shard_shm_set_param_shard_in_proxy (T_SHM_PROXY * proxy_p,
+					       const char *param_name,
+					       const char *param_value,
+					       int proxy_id, int shard_id);
+static int shard_shm_set_param_as (T_SHARD_INFO * shard_info_p,
+				   const char *param_name,
+				   const char *param_value, int as_number);
+static int shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
+					    const char *param_name,
+					    const char *param_value);
+static int shard_shm_set_param_as_in_shard (T_PROXY_INFO * proxy_info_p,
+					    const char *param_name,
+					    const char *param_value,
+					    int shard_id, int as_number);
+static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p,
+					    const char *param_name,
+					    const char *param_value,
+					    int proxy_id, int shard_id,
+					    int as_number);
+#else /* CUBRID_SHARD */
 static int br_activate (T_BROKER_INFO *, int, T_SHM_BROKER *);
 static int br_inactivate (T_BROKER_INFO *);
 static void as_activate (T_APPL_SERVER_INFO *, int, T_BROKER_INFO *, char **,
@@ -1432,6 +1468,565 @@ admin_broker_job_first_cmd (int master_shm_id, const char *broker_name,
   return ret_value;
 }
 
+#if defined(CUBRID_SHARD)
+int
+admin_shard_conf_change (int master_shm_id, const char *sh_name,
+			 const char *conf_name, const char *conf_value,
+			 int proxy_number)
+{
+  T_SHM_BROKER *shm_br = NULL;
+  T_SHM_APPL_SERVER *shm_as_p = NULL;
+  T_BROKER_INFO *br_info_p = NULL;
+  T_SHM_PROXY *proxy_p = NULL;
+  T_PROXY_INFO *proxy_info_p = NULL;
+  T_SHARD_USER *user_p = NULL;
+  char *shm_as_cp = NULL;
+  char *shm_metadata_cp = NULL;
+  int i, br_index;
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  if (shm_br == NULL)
+    {
+      sprintf (admin_err_msg, "Shard is not started.");
+      goto set_shard_conf_error;
+    }
+
+  br_index = -1;
+  for (i = 0; i < shm_br->num_broker; i++)
+    {
+      if (strcasecmp (sh_name, shm_br->br_info[i].name) == 0)
+	{
+	  br_index = i;
+	  break;
+	}
+    }
+  if (br_index < 0)
+    {
+      sprintf (admin_err_msg, "Cannot find Shard [%s]", sh_name);
+      goto set_shard_conf_error;
+    }
+
+  if (shm_br->br_info[br_index].service_flag == OFF)
+    {
+      sprintf (admin_err_msg, "Shard [%s] is not running.", sh_name);
+      goto set_shard_conf_error;
+    }
+
+  br_info_p = &(shm_br->br_info[br_index]);
+  shm_as_cp =
+    (char *) uw_shm_open (br_info_p->appl_server_shm_id, SHM_APPL_SERVER,
+			  SHM_MODE_ADMIN);
+  if (shm_as_cp == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      goto set_shard_conf_error;
+    }
+
+  shm_as_p = shard_shm_get_appl_server (shm_as_cp);
+  if (shm_as_p == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      goto set_shard_conf_error;
+    }
+
+  proxy_p = shard_shm_get_proxy (shm_as_cp);
+  if (proxy_p == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      goto set_shard_conf_error;
+    }
+
+  if (strcasecmp (conf_name, "SQL_LOG") == 0)
+    {
+      char sql_log_mode;
+
+      sql_log_mode = conf_get_value_sql_log_mode (conf_value);
+      if (sql_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+
+      if (proxy_number <= 0)
+	{
+	  br_info_p->sql_log_mode = sql_log_mode;
+	  shm_as_p->sql_log_mode = sql_log_mode;
+
+	  if (shard_shm_set_param_as_in_proxy (proxy_p, conf_name, conf_value,
+					       ALL_PROXY, ALL_SHARD,
+					       ALL_AS) < 0)
+	    {
+	      goto set_shard_conf_error;
+	    }
+	}
+      else
+	{
+	  if (proxy_number > proxy_p->max_num_proxy)
+	    {
+	      sprintf (admin_err_msg, "Invalid proxy number : %d",
+		       proxy_number);
+	      goto set_shard_conf_error;
+	    }
+
+	  if (shard_shm_set_param_as_in_proxy (proxy_p, conf_name, conf_value,
+					       proxy_number - 1, ALL_SHARD,
+					       ALL_AS) < 0)
+	    {
+	      goto set_shard_conf_error;
+	    }
+	}
+    }
+  else if (strcasecmp (conf_name, "SLOW_LOG") == 0)
+    {
+      char slow_log_mode;
+
+      slow_log_mode = conf_get_value_table_on_off (conf_value);
+      if (slow_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+
+      if (proxy_number <= 0)
+	{
+	  br_info_p->slow_log_mode = slow_log_mode;
+	  shm_as_p->slow_log_mode = slow_log_mode;
+
+	  if (shard_shm_set_param_as_in_proxy (proxy_p, conf_name, conf_value,
+					       ALL_PROXY, ALL_SHARD,
+					       ALL_AS) < 0)
+	    {
+	      goto set_shard_conf_error;
+	    }
+	}
+      else
+	{
+	  if (proxy_number > proxy_p->max_num_proxy)
+	    {
+	      sprintf (admin_err_msg, "Invalid proxy number : %d",
+		       proxy_number);
+	      goto set_shard_conf_error;
+	    }
+
+	  if (shard_shm_set_param_as_in_proxy (proxy_p, conf_name, conf_value,
+					       proxy_number - 1, ALL_SHARD,
+					       ALL_AS) < 0)
+	    {
+	      goto set_shard_conf_error;
+	    }
+	}
+    }
+  else if (strcasecmp (conf_name, "ACCESS_MODE") == 0)
+    {
+      char access_mode = conf_get_value_access_mode (conf_value);
+
+      if (access_mode == -1)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      if (br_info_p->access_mode == access_mode)
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->access_mode = access_mode;
+      shm_as_p->access_mode = access_mode;
+
+      if (shard_shm_set_param_as_in_proxy (proxy_p, conf_name, conf_value,
+					   ALL_PROXY, ALL_SHARD, ALL_AS) < 0)
+	{
+	  goto set_shard_conf_error;
+	}
+    }
+  else if (strcasecmp (conf_name, "SQL_LOG_MAX_SIZE") == 0)
+    {
+      int sql_log_max_size;
+
+      sql_log_max_size = atoi (conf_value);
+      if (sql_log_max_size <= 0)
+	{
+	  sql_log_max_size = DEFAULT_SQL_LOG_MAX_SIZE;
+	}
+      if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
+	{
+	  sql_log_max_size = MAX_SQL_LOG_MAX_SIZE;
+	}
+      br_info_p->sql_log_max_size = sql_log_max_size;
+      shm_as_p->sql_log_max_size = sql_log_max_size;
+    }
+  else if (strcasecmp (conf_name, "LONG_QUERY_TIME") == 0)
+    {
+      float long_query_time;
+
+      long_query_time = (float) strtod (conf_value, NULL);
+      if (long_query_time <= 0)
+	{
+	  long_query_time = (float) DEFAULT_LONG_QUERY_TIME;
+	}
+      br_info_p->long_query_time = (int) (long_query_time * 1000.0);
+      shm_as_p->long_query_time = (int) (long_query_time * 1000.0);
+    }
+  else if (strcasecmp (conf_name, "LONG_TRANSACTION_TIME") == 0)
+    {
+      float long_transaction_time;
+
+      long_transaction_time = (float) strtod (conf_value, NULL);
+      if (long_transaction_time <= 0)
+	{
+	  long_transaction_time = (float) DEFAULT_LONG_TRANSACTION_TIME;
+	}
+      br_info_p->long_transaction_time =
+	(int) (long_transaction_time * 1000.0);
+      shm_as_p->long_transaction_time =
+	(int) (long_transaction_time * 1000.0);
+    }
+  else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE") == 0)
+    {
+      int max_size;
+
+      max_size = atoi (conf_value);
+      max_size *= ONE_K;
+      br_info_p->appl_server_max_size = max_size;
+      shm_as_p->appl_server_max_size = max_size;
+    }
+  else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT") == 0)
+    {
+      int hard_limit;
+
+      hard_limit = atoi (conf_value);
+      hard_limit *= ONE_K;
+      br_info_p->appl_server_hard_limit = hard_limit;
+      shm_as_p->appl_server_hard_limit = hard_limit;
+    }
+  else if (strcasecmp (conf_name, "LOG_BACKUP") == 0)
+    {
+      int log_backup;
+
+      log_backup = conf_get_value_table_on_off (conf_value);
+      if (log_backup < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->log_backup = log_backup;
+    }
+  else if (strcasecmp (conf_name, "TIME_TO_KILL") == 0)
+    {
+      int time_to_kill;
+
+      time_to_kill = atoi (conf_value);
+      if (time_to_kill <= 0)
+	{
+	  time_to_kill = DEFAULT_TIME_TO_KILL;
+	}
+      br_info_p->time_to_kill = time_to_kill;
+    }
+  else if (strcasecmp (conf_name, "ACCESS_LOG") == 0)
+    {
+      int access_log_flag;
+
+      access_log_flag = conf_get_value_table_on_off (conf_value);
+      if (access_log_flag < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->access_log = access_log_flag;
+      shm_as_p->access_log = access_log_flag;
+    }
+  else if (strcasecmp (conf_name, "KEEP_CONNECTION") == 0)
+    {
+      int keep_con;
+
+      keep_con = conf_get_value_keep_con (conf_value);
+      if (keep_con < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->keep_connection = keep_con;
+      shm_as_p->keep_connection = keep_con;
+    }
+  else if (strcasecmp (conf_name, "CACHE_USER_INFO") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->cache_user_info = val;
+      shm_as_p->cache_user_info = val;
+    }
+  else if (strcasecmp (conf_name, "SQL_LOG2") == 0)
+    {
+      int val;
+
+      val = atoi (conf_value);
+      if (val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->sql_log2 = val;
+      shm_as_p->sql_log2 = val;
+    }
+  else if (strcasecmp (conf_name, "STATEMENT_POOLING") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->statement_pooling = val;
+      shm_as_p->statement_pooling = val;
+    }
+  else if (strcasecmp (conf_name, "JDBC_CACHE") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->jdbc_cache = val;
+      shm_as_p->jdbc_cache = val;
+    }
+  else if (strcasecmp (conf_name, "JDBC_CACHE_ONLY_HINT") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->jdbc_cache_only_hint = val;
+      shm_as_p->jdbc_cache_only_hint = val;
+    }
+  else if (strcasecmp (conf_name, "JDBC_CACHE_LIFE_TIME") == 0)
+    {
+      int val;
+
+      val = atoi (conf_value);
+      br_info_p->jdbc_cache_life_time = val;
+      shm_as_p->jdbc_cache_life_time = val;
+    }
+  else if (strcasecmp (conf_name, "CCI_PCONNECT") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->cci_pconnect = val;
+      shm_as_p->cci_pconnect = val;
+    }
+  else if (strcasecmp (conf_name, "SELECT_AUTO_COMMIT") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->select_auto_commit = val;
+      shm_as_p->select_auto_commit = val;
+    }
+  else if (strcasecmp (conf_name, "MAX_QUERY_TIMEOUT") == 0)
+    {
+      int val;
+
+      val = atoi (conf_value);
+      if (val < 0 || val > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      br_info_p->query_timeout = val;
+      shm_as_p->query_timeout = val;
+    }
+  else if (strcasecmp (conf_name, "SHARD_DB_NAME") == 0)
+    {
+      shm_metadata_cp =
+	(char *) uw_shm_open (br_info_p->metadata_shm_id,
+			      SHM_BROKER, SHM_MODE_ADMIN);
+      if (shm_metadata_cp == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  goto set_shard_conf_error;
+	}
+      user_p = shard_metadata_get_shard_user_from_shm (shm_metadata_cp);
+      if (user_p == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  uw_shm_detach (shm_metadata_cp);
+	  goto set_shard_conf_error;
+	}
+      strncpy (br_info_p->shard_db_name, conf_value,
+	       sizeof (br_info_p->shard_db_name) - 1);
+      strncpy (user_p->db_name, conf_value, sizeof (user_p->db_name) - 1);
+    }
+  else if (strcasecmp (conf_name, "SHARD_DB_USER") == 0)
+    {
+      shm_metadata_cp =
+	(char *) uw_shm_open (br_info_p->metadata_shm_id,
+			      SHM_BROKER, SHM_MODE_ADMIN);
+      if (shm_metadata_cp == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  goto set_shard_conf_error;
+	}
+      user_p = shard_metadata_get_shard_user_from_shm (shm_metadata_cp);
+      if (user_p == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  uw_shm_detach (shm_metadata_cp);
+	  goto set_shard_conf_error;
+	}
+      strncpy (br_info_p->shard_db_user, conf_value,
+	       sizeof (br_info_p->shard_db_user) - 1);
+      strncpy (user_p->db_user, conf_value, sizeof (user_p->db_user) - 1);
+
+      if (shard_shm_set_param_shard_in_proxy (proxy_p, conf_name, conf_value,
+					      ALL_PROXY, ALL_SHARD) < 0)
+	{
+	  goto set_shard_conf_error;
+	}
+    }
+  else if (strcasecmp (conf_name, "SHARD_DB_PASSWORD") == 0)
+    {
+      shm_metadata_cp =
+	(char *) uw_shm_open (br_info_p->metadata_shm_id,
+			      SHM_BROKER, SHM_MODE_ADMIN);
+      if (shm_metadata_cp == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  goto set_shard_conf_error;
+	}
+      user_p = shard_metadata_get_shard_user_from_shm (shm_metadata_cp);
+      if (user_p == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  uw_shm_detach (shm_metadata_cp);
+	  goto set_shard_conf_error;
+	}
+      strncpy (br_info_p->shard_db_password, conf_value,
+	       sizeof (br_info_p->shard_db_password) - 1);
+      strncpy (user_p->db_password, conf_value,
+	       sizeof (user_p->db_password) - 1);
+
+      if (shard_shm_set_param_shard_in_proxy (proxy_p, conf_name, conf_value,
+					      ALL_PROXY, ALL_SHARD) < 0)
+	{
+	  goto set_shard_conf_error;
+	}
+    }
+  else if (strcasecmp (conf_name, "PROXY_LOG") == 0)
+    {
+      char proxy_log_mode;
+
+      proxy_log_mode = conf_get_value_proxy_log_mode (conf_value);
+      if (proxy_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+
+      if (proxy_number <= 0)
+	{
+	  br_info_p->proxy_log_mode = proxy_log_mode;
+
+	  if (shard_shm_set_param_proxy (proxy_p, conf_name, conf_value,
+					 ALL_PROXY) < 0)
+	    {
+	      goto set_shard_conf_error;
+	    }
+	}
+      else
+	{
+	  if (proxy_number > proxy_p->max_num_proxy)
+	    {
+	      sprintf (admin_err_msg, "Invalid proxy number : %d",
+		       proxy_number);
+	      goto set_shard_conf_error;
+	    }
+
+	  if (shard_shm_set_param_proxy (proxy_p, conf_name, conf_value,
+					 proxy_number - 1) < 0)
+	    {
+	      goto set_shard_conf_error;
+	    }
+	}
+    }
+  else if (strcasecmp (conf_name, "PROXY_LOG_MAX_SIZE") == 0)
+    {
+      int proxy_log_max_size;
+
+      proxy_log_max_size = atoi (conf_value);
+      if (proxy_log_max_size <= 0)
+	{
+	  proxy_log_max_size = DEFAULT_PROXY_LOG_MAX_SIZE;
+	}
+      if (proxy_log_max_size > MAX_PROXY_LOG_MAX_SIZE)
+	{
+	  proxy_log_max_size = MAX_PROXY_LOG_MAX_SIZE;
+	}
+      br_info_p->proxy_log_max_size = proxy_log_max_size;
+      shm_as_p->proxy_log_max_size = proxy_log_max_size;
+    }
+  else
+    {
+      sprintf (admin_err_msg, "unknown keyword %s", conf_name);
+      goto set_shard_conf_error;
+    }
+
+  if (shm_as_cp)
+    {
+      uw_shm_detach (shm_as_cp);
+    }
+  if (shm_br)
+    {
+      uw_shm_detach (shm_br);
+    }
+  return 0;
+
+set_shard_conf_error:
+  if (shm_as_cp)
+    {
+      uw_shm_detach (shm_as_cp);
+    }
+  if (shm_br)
+    {
+      uw_shm_detach (shm_br);
+    }
+  return -1;
+}
+#else /* CUBRID_SHARD */
 int
 admin_broker_conf_change (int master_shm_id, const char *br_name,
 			  const char *conf_name, const char *conf_value,
@@ -1792,17 +2387,27 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     }
 
   if (shm_appl)
-    uw_shm_detach (shm_appl);
-  uw_shm_detach (shm_br);
+    {
+      uw_shm_detach (shm_appl);
+    }
+  if (shm_br)
+    {
+      uw_shm_detach (shm_br);
+    }
   return 0;
 
 set_broker_conf_error:
   if (shm_appl)
-    uw_shm_detach (shm_appl);
+    {
+      uw_shm_detach (shm_appl);
+    }
   if (shm_br)
-    uw_shm_detach (shm_br);
+    {
+      uw_shm_detach (shm_br);
+    }
   return -1;
 }
+#endif /* !CUBRID_SHARD */
 
 int
 admin_del_cas_log (int master_shmid, const char *broker, int asid)
@@ -3141,3 +3746,323 @@ get_cubrid_version ()
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !WINDOWS */
+
+#if defined(CUBRID_SHARD)
+int
+shard_shm_set_param_proxy (T_SHM_PROXY * proxy_p, const char *param_name,
+			   const char *param_value, int proxy_id)
+{
+  T_PROXY_INFO *proxy_info_p = NULL;
+
+  if (proxy_id < 0)
+    {
+      for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+	   proxy_info_p;
+	   proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+	{
+	  if (shard_shm_set_param_proxy_internal (proxy_info_p, param_name,
+						  param_value) < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      proxy_info_p = shard_shm_find_proxy_info (proxy_p, proxy_id);
+
+      if (proxy_info_p == NULL)
+	{
+	  sprintf (admin_err_msg, "Cannot find proxy info\n");
+	  return -1;
+	}
+
+      if (shard_shm_set_param_proxy_internal (proxy_info_p, param_name,
+					      param_value) < 0)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
+				    const char *param_name,
+				    const char *param_value)
+{
+  if (strcasecmp (param_name, "PROXY_LOG") == 0)
+    {
+      char proxy_log_mode;
+
+      proxy_log_mode = conf_get_value_proxy_log_mode (param_value);
+
+      if (proxy_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", param_value);
+	  return -1;
+	}
+
+      proxy_info_p->cur_proxy_log_mode = param_value;
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_shard (T_PROXY_INFO * proxy_info_p,
+			   const char *param_name, const char *param_value,
+			   int shard_id)
+{
+  T_SHARD_INFO *shard_info_p = NULL;
+
+  if (shard_id < 0)
+    {
+      for (shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+	   shard_info_p;
+	   shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+	{
+	  if (shard_shm_set_param_shard_internal (shard_info_p, param_name,
+						  param_value) < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_id);
+
+      if (shard_info_p == NULL)
+	{
+	  sprintf (admin_err_msg, "Cannot find shard info\n");
+	  return -1;
+	}
+
+      if (shard_shm_set_param_shard_internal (shard_info_p, param_name,
+					      param_value) < 0)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_shard_internal (T_SHARD_INFO * shard_info_p,
+				    const char *param_name,
+				    const char *param_value)
+{
+  if (strcasecmp (param_name, "SHARD_DB_USER") == 0)
+    {
+      strncpy (shard_info_p->db_user, param_value,
+	       sizeof (shard_info_p->db_user) - 1);
+    }
+  else if (strcasecmp (param_name, "SHARD_DB_PASSWORD") == 0)
+    {
+      strncpy (shard_info_p->db_password, param_value,
+	       sizeof (shard_info_p->db_password) - 1);
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_shard_in_proxy (T_SHM_PROXY * proxy_p,
+				    const char *param_name,
+				    const char *param_value, int proxy_id,
+				    int shard_id)
+{
+  T_PROXY_INFO *proxy_info_p = NULL;
+
+  if (proxy_id < 0)
+    {
+      for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+	   proxy_info_p;
+	   proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+	{
+	  if (shard_shm_set_param_shard
+	      (proxy_info_p, param_name, param_value, shard_id) < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      proxy_info_p = shard_shm_find_proxy_info (proxy_p, proxy_id);
+
+      if (proxy_info_p == NULL)
+	{
+	  sprintf (admin_err_msg, "Cannot find proxy info\n");
+	  return -1;
+	}
+
+      if (shard_shm_set_param_shard (proxy_info_p, param_name, param_value,
+				     shard_id) < 0)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_as (T_SHARD_INFO * shard_info_p, const char *param_name,
+			const char *param_value, int as_number)
+{
+  int i;
+  T_APPL_SERVER_INFO *as_info = NULL;
+
+  if (as_number < 0)
+    {
+      for (i = 0; i < shard_info_p->num_appl_server; i++)
+	{
+	  if (shard_shm_set_param_as_internal (&shard_info_p->as_info[i],
+					       param_name, param_value) < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      if (shard_shm_set_param_as_internal (&shard_info_p->as_info[as_number],
+					   param_name, param_value) < 0)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
+				 const char *param_name,
+				 const char *param_value)
+{
+  if (strcasecmp (param_name, "SQL_LOG") == 0)
+    {
+      char sql_log_mode;
+
+      sql_log_mode = conf_get_value_sql_log_mode (param_value);
+
+      if (sql_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", param_value);
+	  return -1;
+	}
+
+      as_info->cur_sql_log_mode = param_value;
+    }
+  else if (strcasecmp (param_name, "SLOW_LOG") == 0)
+    {
+      char slow_log_mode;
+
+      slow_log_mode = conf_get_value_table_on_off (param_value);
+
+      if (slow_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", param_value);
+	  return -1;
+	}
+
+      as_info->cur_slow_log_mode = param_value;
+    }
+  else if (strcasecmp (param_name, "ACCESS_MODE") == 0)
+    {
+      as_info->reset_flag = TRUE;
+    }
+
+  return 0;
+}
+
+
+int
+shard_shm_set_param_as_in_shard (T_PROXY_INFO * proxy_info_p,
+				 const char *param_name,
+				 const char *param_value, int shard_id,
+				 int as_number)
+{
+  T_SHARD_INFO *shard_info_p = NULL;
+
+  if (shard_id < 0)
+    {
+      for (shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+	   shard_info_p;
+	   shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+	{
+	  if (shard_shm_set_param_as (shard_info_p, param_name, param_value,
+				      as_number) < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_id);
+
+      if (shard_info_p == NULL)
+	{
+	  sprintf (admin_err_msg, "Cannot find shard info\n");
+	  return -1;
+	}
+
+      if (shard_shm_set_param_as (shard_info_p, param_name, param_value,
+				  as_number) < 0)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+
+int
+shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p,
+				 const char *param_name,
+				 const char *param_value, int proxy_id,
+				 int shard_id, int as_number)
+{
+  T_PROXY_INFO *proxy_info_p = NULL;
+
+  if (proxy_id < 0)
+    {
+      for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+	   proxy_info_p;
+	   proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+	{
+	  if (shard_shm_set_param_as_in_shard (proxy_info_p, param_name,
+					       param_value, shard_id,
+					       as_number) < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      proxy_info_p = shard_shm_find_proxy_info (proxy_p, proxy_id);
+
+      if (proxy_info_p == NULL)
+	{
+	  sprintf (admin_err_msg, "Cannot find proxy info\n");
+	  return -1;
+	}
+
+      if (shard_shm_set_param_as_in_shard (proxy_info_p, param_name,
+					   param_value, shard_id,
+					   as_number) < 0)
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+#endif /* CUBRID_SHARD */

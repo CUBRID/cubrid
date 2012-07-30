@@ -1167,6 +1167,27 @@ shard_metadata_get_shard_user (T_SHM_SHARD_USER * shm_user_p)
   return shard_user_p;
 }
 
+T_SHARD_USER *
+shard_metadata_get_shard_user_from_shm (char *shm_metadata_cp)
+{
+  T_SHM_SHARD_USER *shm_user_p = NULL;
+  T_SHARD_USER *shard_user_p = NULL;
+
+  assert (shm_metadata_cp);
+
+  shm_user_p = shard_metadata_get_user (shm_metadata_cp);
+
+  if (shm_user_p == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  shard_user_p = &(shm_user_p->shard_user[0]);
+  return shard_user_p;
+}
+
+
 int
 load_shard_key_function (const char *library_name, const char *function_name)
 {

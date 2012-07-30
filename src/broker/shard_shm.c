@@ -595,6 +595,27 @@ shard_shm_get_next_proxy_info (T_PROXY_INFO * curr_proxy_info_p)
   return proxy_info_p;
 }
 
+T_PROXY_INFO *
+shard_shm_find_proxy_info (T_SHM_PROXY * proxy_p, int proxy_id)
+{
+  T_PROXY_INFO *proxy_info_p = NULL;
+
+  assert (proxy_p);
+  assert (proxy_id >= 0);
+
+  for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+       proxy_info_p;
+       proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+    {
+      if (proxy_info_p->proxy_id == proxy_id)
+	{
+	  return proxy_info_p;
+	}
+    }
+
+  return proxy_info_p;
+}
+
 T_SHARD_INFO *
 shard_shm_get_first_shard_info (T_PROXY_INFO * proxy_info_p)
 {
@@ -628,7 +649,6 @@ shard_shm_get_next_shard_info (T_SHARD_INFO * curr_shard_p)
 T_SHARD_INFO *
 shard_shm_find_shard_info (T_PROXY_INFO * proxy_info_p, int shard_id)
 {
-  int shard_info_size = 0;
   T_SHARD_INFO *shard_info_p = NULL;
 
   assert (proxy_info_p);

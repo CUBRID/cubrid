@@ -123,6 +123,8 @@ extern
 						      unsigned int hash_res);
 extern T_SHARD_USER *shard_metadata_get_shard_user (T_SHM_SHARD_USER *
 						    shm_user_p);
+extern T_SHARD_USER *shard_metadata_get_shard_user_from_shm (char
+							     *shm_metadata_cp);
 
 extern int load_shard_key_function (const char *library_name,
 				    const char *function_name);

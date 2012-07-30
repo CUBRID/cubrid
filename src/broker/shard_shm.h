@@ -39,6 +39,8 @@ extern T_PROXY_INFO *shard_shm_get_first_proxy_info (T_SHM_PROXY *
 						     shm_proxy_p);
 extern T_PROXY_INFO *shard_shm_get_next_proxy_info (T_PROXY_INFO *
 						    curr_proxy_p);
+extern T_PROXY_INFO *shard_shm_find_proxy_info (T_SHM_PROXY * proxy_p,
+						int proxy_id);
 extern T_PROXY_INFO *shard_shm_get_proxy_info (char *shm_as_cp, int proxy_id);
 extern T_SHARD_INFO *shard_shm_get_first_shard_info (T_PROXY_INFO *
 						     proxy_info_p);
