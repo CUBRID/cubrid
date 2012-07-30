@@ -2699,7 +2699,9 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 	  if (where_predicate)
 	    {
 	      PARSER_VARCHAR *filter_expr = NULL;
-	      /*free at parser_free_parser */
+	      /* free at parser_free_parser */
+	      /* make sure paren_type is 0 so parenthesis are not printed */
+	      where_predicate->info.expr.paren_type = 0;
 	      filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser,
 					    (PT_NODE *) where_predicate);
 	      if (filter_expr)
@@ -3300,7 +3302,9 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
 	  PARSER_VARCHAR *filter_expr = NULL;
 
-	  /*free at parser_free_parser */
+	  /* free at parser_free_parser */
+	  /* make sure paren_type is 0 so parenthesis are not printed */
+	  where_predicate->info.expr.paren_type = 0;
 	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser,
 					(PT_NODE *) where_predicate);
 	  if (filter_expr)
@@ -16689,6 +16693,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
+  /* make sure paren_type is 0 so parenthesis are not printed */
+  where_predicate->info.expr.paren_type = 0;
   filter_expr = pt_print_bytes (parser, where_predicate);
   if (filter_expr)
     {
