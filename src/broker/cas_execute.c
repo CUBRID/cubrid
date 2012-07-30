@@ -4039,6 +4039,12 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	short hh, mm, ss;
 	net_arg_get_time (&hh, &mm, &ss, net_value);
 	err_code = db_make_time (&db_val, hh, mm, ss);
+	if ((int) db_val.data.time < 0)
+	  {
+	    err_code = ER_TIME_CONVERSION;
+	    return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR,
+					    "Conversion error in time format");
+	  }
       }
       break;
     case CCI_U_TYPE_TIMESTAMP:
