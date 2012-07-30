@@ -14713,16 +14713,6 @@ sm_truncate_class (MOP class_mop)
       return error;
     }
 
-  /*
-   * DO NOT WRITE REPLICATION LOG DURING TRUNCATION.
-   *
-   * Actually we do not want to write replication logs for deleting records
-   * on sm_truncate_using_delete function. Because 'truncate' schema will
-   * be transferred to the slave DB server after success of truncation.
-   */
-  db_set_suppress_repl_on_transaction (true);
-
-
   /* We need to flush everything so that the server logs the inserts that
    * happened before the truncate. We need this in order to make sure that
    * a rollback takes us into a consistent state. If we can prove that
@@ -14967,9 +14957,6 @@ sm_truncate_class (MOP class_mop)
       sm_free_constraint_info (&index_save_info);
     }
 
-  /* Do not suppress writing replication log any more. */
-  db_set_suppress_repl_on_transaction (false);
-
   return NO_ERROR;
 
 error_exit:
@@ -14993,9 +14980,6 @@ error_exit:
     {
       sm_free_constraint_info (&index_save_info);
     }
-
-  /* Do not suppress writing replication log any more. */
-  db_set_suppress_repl_on_transaction (false);
 
   return error;
 }

@@ -140,6 +140,14 @@ struct serial_invariant
 				   or ER_INVALID_SERIAL_VALUE */
 };
 
+static void initialize_serial_invariant (SERIAL_INVARIANT * invariant,
+					 DB_VALUE val1, DB_VALUE val2,
+					 PT_OP_TYPE cmp_op, int val1_msgid,
+					 int val2_msgid, int error_type);
+static int check_serial_invariants (SERIAL_INVARIANT * invariants,
+				    int num_invariants, int *ret_msg_id);
+static bool is_schema_repl_log_statment (const PT_NODE * node);
+
 /*
  * initialize_serial_invariant() - initialize a serial invariant
  *   return: None
@@ -259,6 +267,34 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * is_schema_repl_log_statment()
+ *   return: true if it's a schema replications log statement
+ *           otherwise false
+ *   node(in):
+ */
+static bool
+is_schema_repl_log_statment (const PT_NODE * node)
+{
+  /* All DDLs will be replicated via schema replication */
+  if (pt_is_ddl_statement (node))
+    {
+      return true;
+    }
+
+  /* some DMLs will also be replicated via schema replication instead of data replication */
+  switch (node->node_type)
+    {
+    case PT_DROP_VARIABLE:
+    case PT_TRUNCATE:
+      return true;
+    default:
+      break;
+    }
+
+  return false;
 }
 
 /*
@@ -2483,6 +2519,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       old_disable_update_stats = sm_Disable_updating_statistics;
 
+      /* disable data replication log for schema replication log types */
+      if (is_schema_repl_log_statment (statement))
+	{
+	  db_set_suppress_repl_on_transaction (true);
+	}
+
       switch (statement->node_type)
 	{
 	case PT_ALTER:
@@ -2723,13 +2765,17 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 	}
 
+      /* enable data replication log */
+      if (is_schema_repl_log_statment (statement))
+	{
+	  db_set_suppress_repl_on_transaction (false);
+	}
+
       /* restore execution flag */
       parser->exec_mode = old_exec_mode;
 
-      /* schema replication of create_select was already done at do_create_entity () */
-      if (error == NO_ERROR &&
-	  (statement->node_type != PT_CREATE_ENTITY
-	   || statement->info.create_entity.create_select == NULL))
+      /* write schema replication log */
+      if (error == NO_ERROR)
 	{
 	  error = do_replicate_schema (parser, statement);
 	}
@@ -2846,6 +2892,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
      process them; for any other node, return an error */
 
   old_disable_update_stats = sm_Disable_updating_statistics;
+
+  /* disable data replication log for schema replication log types */
+  if (is_schema_repl_log_statment (statement))
+    {
+      db_set_suppress_repl_on_transaction (true);
+    }
 
   switch (statement->node_type)
     {
@@ -3050,13 +3102,17 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+  /* enable data replication log */
+  if (is_schema_repl_log_statment (statement))
+    {
+      db_set_suppress_repl_on_transaction (false);
+    }
+
   /* restore execution flag */
   parser->exec_mode = old_exec_mode;
 
-  /* schema replication of create_select was already done at do_create_entity () */
-  if (err == NO_ERROR &&
-      (statement->node_type != PT_CREATE_ENTITY
-       || statement->info.create_entity.create_select == NULL))
+  /* write schema replication log */
+  if (err == NO_ERROR)
     {
       err = do_replicate_schema (parser, statement);
     }
@@ -13680,8 +13736,6 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_schema.statement_type = CUBRID_STMT_DROP_INDEX;
       break;
 
-#if 0
-      /* serial replication is not schema replication but data replication */
     case PT_CREATE_SERIAL:
       repl_schema.statement_type = CUBRID_STMT_CREATE_SERIAL;
       break;
@@ -13693,7 +13747,6 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SERIAL:
       repl_schema.statement_type = CUBRID_STMT_DROP_SERIAL;
       break;
-#endif
 
     case PT_DROP_VARIABLE:
       repl_schema.statement_type = CUBRID_STMT_DROP_LABEL;

@@ -619,9 +619,7 @@ extern "C"
 						  const char *table_alias,
 						  const DB_AUTH auth_bypass);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
   extern int pt_is_ddl_statement (const PT_NODE * node);
-#endif
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
 

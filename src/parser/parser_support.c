@@ -1077,7 +1077,6 @@ pt_is_aggregate_node_post (PARSER_CONTEXT * parser, PT_NODE * tree,
   return tree;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_is_ddl_statement () - test PT_NODE statement types,
  * 			    without exposing internals
@@ -1092,12 +1091,14 @@ pt_is_ddl_statement (const PT_NODE * node)
       switch (node->node_type)
 	{
 	case PT_ALTER:
+	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
 	case PT_CREATE_ENTITY:
 	case PT_CREATE_INDEX:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_SERIAL:
 	case PT_DROP:
+	case PT_DROP_INDEX:
 	case PT_DROP_TRIGGER:
 	case PT_DROP_SERIAL:
 	case PT_RENAME:
@@ -1120,7 +1121,6 @@ pt_is_ddl_statement (const PT_NODE * node)
     }
   return false;
 }
-#endif
 
 /*
  * pt_is_method_call () -

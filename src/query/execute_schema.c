@@ -329,7 +329,6 @@ static int save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
 					      const pt_constr);
 
 static int do_run_update_query_for_class (char *query, MOP class_mop,
-					  bool suppress_replication,
 					  int *row_count);
 static SM_FUNCTION_INFO *pt_node_to_function_index (PARSER_CONTEXT *
 						    parser,
@@ -1573,35 +1572,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	     on the safe side. */
 	  crt_clause->next = NULL;
 
-	  /*
-	   * DO NOT WRITE REPLICATION LOG DURING PARTITION RELATED WORKS
-	   */
-	  if (alter_code == PT_APPLY_PARTITION
-	      || alter_code == PT_REMOVE_PARTITION
-	      || alter_code == PT_ADD_PARTITION
-	      || alter_code == PT_ADD_HASHPARTITION
-	      || alter_code == PT_COALESCE_PARTITION
-	      || alter_code == PT_REORG_PARTITION
-	      || alter_code == PT_ANALYZE_PARTITION
-	      || alter_code == PT_PROMOTE_PARTITION)
-	    {
-	      db_set_suppress_repl_on_transaction (true);
-	    }
-
 	  error_code = do_alter_one_clause_with_template (parser, crt_clause);
-
-	  /* Do not suppress writing replication log. */
-	  if (alter_code == PT_APPLY_PARTITION
-	      || alter_code == PT_REMOVE_PARTITION
-	      || alter_code == PT_ADD_PARTITION
-	      || alter_code == PT_ADD_HASHPARTITION
-	      || alter_code == PT_COALESCE_PARTITION
-	      || alter_code == PT_REORG_PARTITION
-	      || alter_code == PT_ANALYZE_PARTITION
-	      || alter_code == PT_PROMOTE_PARTITION)
-	    {
-	      db_set_suppress_repl_on_transaction (false);
-	    }
 
 	  crt_clause->next = save_next;
 	}
@@ -10198,23 +10169,11 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     {
       if (attribute->info.attr_def.auto_increment)
 	{
-	  if (db_Enable_replications <= 0)
-	    {
-	      error = do_create_auto_increment_serial (parser,
-						       &auto_increment_obj,
-						       ctemplate->name,
-						       attribute);
-	    }
-	  else
-	    {
-	      /* HA mode, applylogdb
-	       * the serial obj has been inserted when applying the last log item
-	       * So, just get the serial obj here
-	       */
-	      error = do_find_auto_increment_serial (&auto_increment_obj,
-						     ctemplate->name,
-						     attr_name);
-	    }
+	  error = do_create_auto_increment_serial (parser,
+						   &auto_increment_obj,
+						   ctemplate->name,
+						   attribute);
+
 	  if (error == NO_ERROR)
 	    {
 	      if (smt_find_attribute (ctemplate, attr_name, 0, &att)
@@ -11990,24 +11949,15 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (create_select)
     {
-      if (db_Enable_replications <= 0)
+      error = execute_create_select_query (parser, class_name,
+					   create_select,
+					   node->info.
+					   create_entity.
+					   create_select_action,
+					   query_columns, node);
+      if (error != NO_ERROR)
 	{
-	  error = do_replicate_schema (parser, node);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-
-	  error = execute_create_select_query (parser, class_name,
-					       create_select,
-					       node->info.
-					       create_entity.
-					       create_select_action,
-					       query_columns, node);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  goto error_exit;
 	}
 
       db_free_query_format (query_columns);
@@ -12589,15 +12539,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
     }
   tran_saved = true;
 
-  /*
-   * The replication server will also receive a schema modification
-   * statement and it will perform the update itself, if necessary.
-   * We need to disable writing to the replication log because otherwise
-   * the replication server would have also received the logs for the
-   * update operations, duplicating the update.
-   */
-  db_set_suppress_repl_on_transaction (true);
-
   error = do_change_att_schema_only (parser, ctemplate,
 				     alter->info.alter.alter_clause.attr_mthd.
 				     attr_def_list,
@@ -12848,7 +12789,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 			    "UPDATE [%s] SET [%s]=%s WHERE [%s] IS NULL",
 			    class_name, att_name, hard_default, att_name);
 		  error = do_run_update_query_for_class (query, class_mop,
-							 false,
 							 &update_rows_count);
 		  if (error != NO_ERROR)
 		    {
@@ -12913,9 +12853,6 @@ exit:
     {
       free_and_init (usr_oid_array);
     }
-
-  /* restore writing to replication logs */
-  db_set_suppress_repl_on_transaction (false);
 
   return error;
 }
@@ -15366,7 +15303,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
 
   /* Now just RUN thew query */
 
-  error = do_run_update_query_for_class (query, class_mop, true, &row_count);
+  error = do_run_update_query_for_class (query, class_mop, &row_count);
 
 
 end:
@@ -16154,8 +16091,7 @@ end:
  *
  */
 static int
-do_run_update_query_for_class (char *query, MOP class_mop,
-			       bool suppress_replication, int *row_count)
+do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
 {
   int error = NO_ERROR;
   DB_SESSION *session = NULL;
@@ -16188,18 +16124,6 @@ do_run_update_query_for_class (char *query, MOP class_mop,
     {
       error = er_errid ();
       goto end;
-    }
-
-  /*
-   * The replication server will also receive a schema modification
-   * statement and it will perform the update itself, if necessary.
-   * We need to disable writing to the replication log because otherwise
-   * the replication server would have also received the logs for the
-   * update operations, duplicating the update.
-   */
-  if (suppress_replication == true)
-    {
-      db_set_suppress_repl_on_transaction (true);
     }
 
   /*
@@ -16239,10 +16163,6 @@ end:
     }
 
   tr_set_execution_state (save_tr_state);
-  if (suppress_replication == true)
-    {
-      db_set_suppress_repl_on_transaction (false);
-    }
 
   return error;
 }
