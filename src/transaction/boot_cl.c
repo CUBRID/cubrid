@@ -895,6 +895,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   client_credential->process_id = getpid ();
 
+  /* disable triggers when a client is a log applier */
+  if (client_credential->client_type == DB_CLIENT_TYPE_LOG_APPLIER)
+    {
+      tr_set_execution_state (false);
+    }
+
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
    * loader fails, methods will fail when they are invoked
