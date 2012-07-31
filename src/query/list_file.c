@@ -6805,7 +6805,8 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 
   for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
     {
-      if (reg_var_p->value.hidden_column)
+      if (REGU_VARIABLE_IS_FLAGED
+	  (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  continue;
 	}

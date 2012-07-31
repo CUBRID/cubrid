@@ -2133,6 +2133,7 @@ parser_init_node (PT_NODE * node)
       node->do_not_fold = 0;
       node->is_cnf_start = 0;
       node->is_click_counter = 0;
+      node->skip_sort = 0;
       node->buffer_pos = -1;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));

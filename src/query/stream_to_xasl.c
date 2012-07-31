@@ -4903,7 +4903,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
   ptr = or_unpack_int (ptr, (int *) &regu_var->type);
-  ptr = or_unpack_int (ptr, &regu_var->hidden_column);
+  ptr = or_unpack_int (ptr, &regu_var->flags);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

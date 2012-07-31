@@ -2806,6 +2806,7 @@ struct parser_node
   unsigned do_not_fold:1;	/* disables constant folding on the node */
   unsigned is_cnf_start:1;
   unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
+  unsigned skip_sort:1;		/* skip this node on DISTINCT sorting */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 

@@ -2732,9 +2732,26 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int limit;
 
 
-  outptr_list = (xasl->type == BUILDLIST_PROC
-		 && xasl->proc.buildlist.groupby_list) ? xasl->proc.
-    buildlist.g_outptr_list : xasl->outptr_list;
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      /* choose appropriate list */
+      if (xasl->proc.buildlist.groupby_list != NULL)
+	{
+	  outptr_list = xasl->proc.buildlist.g_outptr_list;
+	}
+      else if (xasl->proc.buildlist.a_func_list != NULL)
+	{
+	  outptr_list = xasl->proc.buildlist.a_outptr_list;
+	}
+      else
+	{
+	  outptr_list = xasl->outptr_list;
+	}
+    }
+  else
+    {
+      outptr_list = xasl->outptr_list;
+    }
 
   /* late binding : resolve sort list */
   if (outptr_list != NULL)
@@ -2754,9 +2771,27 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
       else
 	{
+	  REGU_VARIABLE_LIST regu_list;
+	  int sort_key_cnt = 0;
+
+	  /* count sort keys */
+	  regu_list = outptr_list->valptrp;
+	  while (regu_list != NULL)
+	    {
+	      if (!REGU_VARIABLE_IS_FLAGED
+		  (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN)
+		  && !REGU_VARIABLE_IS_FLAGED (&regu_list->value,
+					       REGU_VARIABLE_SKIP_SORT))
+		{
+		  sort_key_cnt++;
+		}
+
+	      regu_list = regu_list->next;
+	    }
+
 	  /* allocate space for  sort list */
-	  orderby_list =
-	    qfile_allocate_sort_list (list_id->type_list.type_cnt);
+	  assert (sort_key_cnt > 0);
+	  orderby_list = qfile_allocate_sort_list (sort_key_cnt);
 	  if (orderby_list == NULL)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -2764,10 +2799,27 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  /* form an order_by list including all list file positions */
 	  orderby_alloc = true;
-	  for (k = 0, order_ptr = orderby_list;
-	       k < list_id->type_list.type_cnt;
-	       k++, order_ptr = order_ptr->next)
+	  order_ptr = orderby_list;
+	  regu_list = outptr_list->valptrp;
+	  for (k = 0; order_ptr != NULL && regu_list != NULL;
+	       k++, regu_list = regu_list->next)
 	    {
+	      if (REGU_VARIABLE_IS_FLAGED
+		  (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN))
+		{
+		  /* this is not in the list file, k should be the same in the
+		     next iteration */
+		  k--;
+		  continue;
+		}
+	      else
+		if (REGU_VARIABLE_IS_FLAGED
+		    (&regu_list->value, REGU_VARIABLE_SKIP_SORT))
+		{
+		  /* don't sort by this column */
+		  continue;
+		}
+
 	      /* sort with descending order if we have the use_desc hint and
 	       * no order by
 	       */
@@ -2781,8 +2833,24 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  order_ptr->s_order = S_ASC;
 		}
-	      order_ptr->pos_descr.dom = list_id->type_list.domp[k];
-	      order_ptr->pos_descr.pos_no = k;
+
+	      if (k < list_id->type_list.type_cnt)
+		{
+		  /* set domain */
+		  order_ptr->pos_descr.dom = list_id->type_list.domp[k];
+		  order_ptr->pos_descr.pos_no = k;
+		}
+	      else
+		{
+		  /* domain out of bounds */
+		  qfile_free_sort_list (orderby_list);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN,
+			  0);
+		  goto exit_on_error;
+		}
+
+	      /* written a sort key, advance to next */
+	      order_ptr = order_ptr->next;
 	    }			/* for */
 
 	  /* put the original order_by specifications, if any,
@@ -17984,7 +18052,8 @@ query_multi_range_opt_check_set_sort_col (XASL_NODE * xasl)
   for (regu_list = xasl->outptr_list->valptrp;
        regu_list != NULL; regu_list = regu_list->next)
     {
-      if (regu_list->value.hidden_column)
+      if (REGU_VARIABLE_IS_FLAGED
+	  (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  continue;
 	}

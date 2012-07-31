@@ -4420,7 +4420,7 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 
   ptr = or_pack_int (ptr, regu_var->type);
 
-  ptr = or_pack_int (ptr, regu_var->hidden_column);
+  ptr = or_pack_int (ptr, regu_var->flags);
 
   offset = xts_save_db_value (regu_var->vfetch_to);
   if (offset == ER_FAILED)
@@ -6012,7 +6012,7 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
   /* we prepend the domain before we pack the regu_variable */
   size += or_packed_domain_size (regu_var->domain, 0);
   size += OR_INT_SIZE;		/* type */
-  size += OR_INT_SIZE;		/* hidden_column */
+  size += OR_INT_SIZE;		/* flags */
   size += PTR_SIZE;		/* vfetch_to */
   size += PTR_SIZE;		/* REGU_VARIABLE_XASL */
 

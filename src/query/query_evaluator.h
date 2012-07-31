@@ -125,7 +125,20 @@ typedef struct regu_variable_node REGU_VARIABLE;
 struct regu_variable_node
 {
   REGU_DATATYPE type;
-  int hidden_column;		/* whether the value gets to the list file */
+
+  /* regu variable flags */
+#define REGU_VARIABLE_HIDDEN_COLUMN       0x01	/* does not go to list file */
+#define REGU_VARIABLE_SKIP_SORT           0x02	/* no sort key is generated for
+						   DISTINCT processing */
+#define REGU_VARIABLE_FIELD_COMPARE       0x04	/* for FIELD function, marks the
+						   bottom of regu tree */
+#define REGU_VARIABLE_FIELD_NESTED        0x08	/* for FIELD function, reguvar
+						   is child in T_FIELD tree */
+  int flags;			/* flags */
+#define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
+#define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)
+#define REGU_VARIABLE_CLEAR_FLAG(e, f)   (e)->flags &= (short) ~(f)
+
   TP_DOMAIN *domain;		/* domain of the value in this regu variable */
   DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
   struct xasl_node *xasl;	/* query xasl pointer */

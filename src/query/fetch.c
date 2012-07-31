@@ -2583,7 +2583,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  db_make_int (arithptr->value, 0);
 	  break;
 	}
-      if (arithptr->thirdptr->hidden_column == 1)
+      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FIELD_COMPARE))
 	{
 	  if (tp_value_compare (peek_third, peek_left, 1, 0) == DB_EQ)
 	    {
@@ -2595,7 +2595,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else
 	    {
-	      db_make_int (arithptr->value, 0);
+	      if (REGU_VARIABLE_IS_FLAGED
+		  (regu_var, REGU_VARIABLE_FIELD_NESTED))
+		{
+		  /* we have a T_FIELD parent, return level */
+		  db_make_int (arithptr->value, -3);
+		}
+	      else
+		{
+		  /* no parent and no match */
+		  db_make_int (arithptr->value, 0);
+		}
 	    }
 	}
       else
@@ -2609,12 +2619,22 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    {
 	      if (tp_value_compare (peek_third, peek_right, 1, 0) == DB_EQ)
 		{
-		  db_make_int (arithptr->value,
-			       arithptr->thirdptr->hidden_column);
+		  /* match */
+		  db_make_int (arithptr->value, -i);
 		}
 	      else
 		{
-		  db_make_int (arithptr->value, 0);
+		  if (REGU_VARIABLE_IS_FLAGED
+		      (regu_var, REGU_VARIABLE_FIELD_NESTED))
+		    {
+		      /* we have a T_FIELD parent, return level */
+		      db_make_int (arithptr->value, i - 1);
+		    }
+		  else
+		    {
+		      /* no parent and no match */
+		      db_make_int (arithptr->value, 0);
+		    }
 		}
 	    }
 	}

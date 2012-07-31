@@ -587,7 +587,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
   reg_var_p = valptr_list_p->valptrp;
   for (k = 0; k < valptr_list_p->valptr_cnt; k++, reg_var_p = reg_var_p->next)
     {
-      if (!reg_var_p->value.hidden_column)
+      if (!REGU_VARIABLE_IS_FLAGED
+	  (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  dbval_p =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p,
@@ -688,7 +689,8 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
   reg_var_p = valptr_list_p->valptrp;
   for (i = 0; i < valptr_list_p->valptr_cnt; i++)
     {
-      if (!reg_var_p->value.hidden_column)
+      if (!REGU_VARIABLE_IS_FLAGED
+	  (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p,
@@ -7041,7 +7043,8 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p,
 
   for (i = 0; i < valptr_list_p->valptr_cnt; i++)
     {
-      if (!reg_var_p->value.hidden_column)
+      if (!REGU_VARIABLE_IS_FLAGED
+	  (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  count++;
 	}
@@ -7066,7 +7069,8 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p,
   reg_var_p = valptr_list_p->valptrp;
   for (i = 0; i < type_list_p->type_cnt;)
     {
-      if (!reg_var_p->value.hidden_column)
+      if (!REGU_VARIABLE_IS_FLAGED
+	  (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  type_list_p->domp[i++] = reg_var_p->value.domain;
 	}

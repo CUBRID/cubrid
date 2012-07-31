@@ -1180,7 +1180,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
     }
 
-  if (value_p->hidden_column)
+  if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
     }
@@ -1355,7 +1355,7 @@ qdump_print_function_value (REGU_VARIABLE * regu_var_p)
       return true;
     }
 
-  if (regu_var_p->hidden_column)
+  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
     }

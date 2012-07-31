@@ -6327,7 +6327,7 @@ pt_make_vid (PARSER_CONTEXT * parser, const PT_NODE * data_type,
   regu->value.funcp->operand->next->next->value = *regu3;
   regu->value.funcp->operand->next->next->next = NULL;
 
-  regu->hidden_column = regu3->hidden_column;
+  regu->flags = regu3->flags;
 
   regu_dbval_type_init (regu->value.funcp->value, DB_TYPE_VOBJ);
 
@@ -6369,7 +6369,10 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code,
     {
       regu->value.funcp->operand = arg_list;
       regu->value.funcp->ftype = (FUNC_TYPE) function_code;
-      regu->hidden_column = node->info.function.hidden_column;
+      if (node->info.function.hidden_column)
+	{
+	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
+	}
 
       regu_dbval_type_init (regu->value.funcp->value, result_type);
     }
@@ -7813,13 +7816,17 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_FIELD:
-		  i = 0;
-		  if (node->info.expr.arg3 && node->info.expr.arg3->next)
-		    {
-		      i = node->info.expr.arg3->next->info.value.data_value.i;
-		    }
-		  r3->hidden_column = i;
+		  REGU_VARIABLE_SET_FLAG (r1, REGU_VARIABLE_FIELD_NESTED);
 		  regu = pt_make_regu_arith (r1, r2, r3, T_FIELD, domain);
+
+		  if (node->info.expr.arg3 && node->info.expr.arg3->next
+		      && node->info.expr.arg3->next->info.value.data_value.
+		      i == 1)
+		    {
+		      /* bottom level T_FIELD */
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_FIELD_COMPARE);
+		    }
 		  break;
 
 		case PT_LEFT:
@@ -9098,9 +9105,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_attribute_to_regu (parser, node);
 		}
 
-	      if (regu)
+	      if (regu && node->info.name.hidden_column)
 		{
-		  regu->hidden_column = node->info.name.hidden_column;
+		  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
 		}
 
 	      break;
@@ -9134,6 +9141,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	    default:
 	      /* force error */
 	      regu = NULL;
+	    }
+
+	  if (node != NULL && regu != NULL && node->skip_sort)
+	    {
+	      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_SKIP_SORT);
 	    }
 
 	  node->next = save_next;
@@ -9791,7 +9803,7 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
   key1->type = TYPE_FUNC;
   key1->domain = tp_domain_resolve_default (DB_TYPE_MIDXKEY);
   key1->xasl = NULL;
-  key1->hidden_column = 0;
+  key1->flags = 0;
 
   key1->value.funcp = regu_func_alloc ();
   if (key1->value.funcp == NULL)
@@ -9814,7 +9826,7 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
   v1->type = TYPE_DBVAL;
 
   v1->domain = domain;
-  v1->hidden_column = 0;
+  v1->flags = 0;
   DB_MAKE_NULL (&v1->value.dbval);
 
   v1->vfetch_to = NULL;
@@ -20377,6 +20389,7 @@ pt_set_analytic_node_etc (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 	  select_list->next = expr;
 	  expr->is_hidden_column = 1;
+	  expr->skip_sort = 1;
 
 	  /* unlink from sort spec */
 	  node->info.sort_spec.expr = NULL;
