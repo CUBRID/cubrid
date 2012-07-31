@@ -767,6 +767,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   int result_code;
   int execute_res_count;
   char *result_msg = NULL;
+  char *msg;
   char *result_msg_org;
   int result_msg_size;
   T_CCI_QUERY_RESULT *qr = NULL;
@@ -960,6 +961,17 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   hm_req_handle_fetch_buf_free (req_handle);
   req_handle->cursor_pos = 0;
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+    {
+      msg = result_msg + (result_msg_size - remain_msg_size);
+      err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
+      if (err_code < 0)
+	{
+	  FREE_MEM (result_msg);
+	  return err_code;
+	}
+    }
 
   /* If fetch_flag is 1, executing query and fetching data
      is processed together.
