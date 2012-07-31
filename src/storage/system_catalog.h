@@ -161,5 +161,12 @@ extern int catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
 						    LOG_RCV * recv);
-
+extern int catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
+				    DISK_REPR * rep, BTID * btid,
+				    const int key_pos, int *cardinality);
+extern int catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
+					    const char *class_name,
+					    const char *index_name,
+					    const int key_pos,
+					    int *cardinality);
 #endif /* _SYSTEM_CATALOG_H_ */

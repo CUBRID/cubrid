@@ -755,6 +755,7 @@
 /* attribute */
 #define ORC_ATT_ID_OFFSET		0
 #define ORC_ATT_TYPE_OFFSET		4
+#define ORC_ATT_DEF_ORDER_OFFSET	12
 #define ORC_ATT_CLASS_OFFSET		16
 #define ORC_ATT_FLAG_OFFSET             24
 #define ORC_ATT_INDEX_OFFSET		28

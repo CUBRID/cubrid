@@ -92,8 +92,17 @@ struct method_sig_list
 typedef enum
 {
   SEQUENTIAL,			/* sequential scan access */
-  INDEX				/* indexed access */
+  INDEX,			/* indexed access */
+  SCHEMA			/* shema access */
 } ACCESS_METHOD;
+
+typedef enum
+{
+  NO_SCHEMA,
+  INDEX_SCHEMA,
+  COLUMNS_SCHEMA,
+  FULL_COLUMNS_SCHEMA
+} ACCESS_SCHEMA_TYPE;
 
 typedef enum
 {

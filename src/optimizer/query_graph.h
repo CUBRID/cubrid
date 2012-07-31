@@ -871,6 +871,13 @@ struct qo_env
    * overriden with the environment variable CUBRID_QO_DUMP_LEVEL.
    */
   bool dump_enable;
+
+  /*
+   * Controls whether the plan is dumped.  There are situations like 
+   * "SHOW COLUMNS" when the plan should not be dumped, even if QO_PARAM_LEVEL
+   * parameter was set to dump a readable version of the plan 
+   */
+  bool plan_dump_enabled;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])

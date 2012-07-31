@@ -440,6 +440,8 @@ static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser,
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser,
 					PT_NODE * select_node,
 					QO_PLAN * qo_plan);
+static XASL_NODE *pt_to_buildschema_proc (PARSER_CONTEXT * parser,
+					  PT_NODE * select_node);
 static XASL_NODE *pt_to_buildvalue_proc (PARSER_CONTEXT * parser,
 					 PT_NODE * select_node,
 					 QO_PLAN * qo_plan);
@@ -449,6 +451,8 @@ static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node,
 				     PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser,
 				 PT_NODE * select_node);
+static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser,
+				  PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser,
 					     PT_NODE * node,
 					     PT_NODE * query_list);
@@ -584,7 +588,9 @@ static ACCESS_SPEC_TYPE *pt_make_class_access_spec (PARSER_CONTEXT * parser,
 						    HEAP_CACHE_ATTRINFO *
 						    cache_pred,
 						    HEAP_CACHE_ATTRINFO *
-						    cache_rest);
+						    cache_rest,
+						    ACCESS_SCHEMA_TYPE
+						    schema_index);
 
 static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl,
 						   ACCESS_METHOD access,
@@ -4893,6 +4899,7 @@ pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list, ATTR_ID * attr_array,
  *   cache_key(in):
  *   cache_pred(in):
  *   cache_rest(in):
+ *   schema_type(in):
  */
 static ACCESS_SPEC_TYPE *
 pt_make_class_access_spec (PARSER_CONTEXT * parser,
@@ -4911,7 +4918,8 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
 			   REGU_VARIABLE_LIST regu_val_list,
 			   HEAP_CACHE_ATTRINFO * cache_key,
 			   HEAP_CACHE_ATTRINFO * cache_pred,
-			   HEAP_CACHE_ATTRINFO * cache_rest)
+			   HEAP_CACHE_ATTRINFO * cache_rest,
+			   ACCESS_SCHEMA_TYPE schema_type)
 {
   ACCESS_SPEC_TYPE *spec;
   HFID *hfid;
@@ -4986,6 +4994,7 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
       pt_fill_in_attrid_array (attr_list_rest,
 			       spec->s.cls_node.attrids_rest, &attrnum);
       spec->s.cls_node.cache_rest = cache_rest;
+      spec->s.cls_node.schema_type = schema_type;
     }
 
   return spec;
@@ -11758,7 +11767,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 						  regu_attributes_rest,
 						  output_val_list,
 						  regu_val_list, NULL,
-						  cache_pred, cache_rest);
+						  cache_pred, cache_rest,
+						  NO_SCHEMA);
 	    }
 	  else
 	    {
@@ -11885,7 +11895,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 						  output_val_list,
 						  regu_val_list,
 						  cache_key, cache_pred,
-						  cache_rest);
+						  cache_rest, NO_SCHEMA);
 
 	      if (ipl_where_part)
 		{
@@ -13900,6 +13910,138 @@ exit_on_error:
   return NULL;
 }
 
+/*
+ * pt_to_buildschema_proc () - Translate a schema PT_SELECT node to
+ *                           a XASL buildschema proc
+ *   return:
+ *   parser(in):
+ *   select_node(in): the query node 
+ */
+static XASL_NODE *
+pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  XASL_NODE *xasl = NULL;
+  SYMBOL_INFO *symbols = NULL;
+  UNBOX unbox;
+  PT_NODE *flat = NULL, *from = NULL;
+  ACCESS_SCHEMA_TYPE acces_schema_type;
+
+  symbols = parser->symbols;
+  if (symbols == NULL)
+    {
+      return NULL;
+    }
+
+  if (select_node == NULL || select_node->node_type != PT_SELECT)
+    {
+      return NULL;
+    }
+
+  from = select_node->info.query.q.select.from;
+  if (from == NULL)
+    {
+      return NULL;
+    }
+
+  flat = from->info.spec.flat_entity_list;
+  if (flat == NULL)
+    {
+      return NULL;
+    }
+
+  xasl = regu_xasl_node_alloc (BUILD_SCHEMA_PROC);
+  if (xasl == NULL)
+    {
+      PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  xasl->next = NULL;
+  xasl->option = Q_ALL;
+  unbox = UNBOX_AS_VALUE;
+
+  xasl->flag = 0;
+  xasl->after_iscan_list = NULL;
+
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IDX_SCHEMA))
+    {
+      xasl->orderby_list = pt_to_orderby (parser,
+					  select_node->info.query.order_by,
+					  select_node);
+      if (xasl->orderby_list == NULL)
+	{
+	  goto error_exit;
+	}
+      xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
+    }
+
+  xasl->ordbynum_pred = NULL;
+  xasl->ordbynum_val = NULL;
+  xasl->orderby_limit = NULL;
+  xasl->orderby_limit = NULL;
+
+  xasl->single_tuple = NULL;
+  xasl->is_single_tuple = 0;
+  xasl->outptr_list = pt_to_outlist (parser,
+				     select_node->info.query.q.select.list,
+				     &xasl->selected_upd_list, unbox);
+
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA))
+    {
+      acces_schema_type = COLUMNS_SCHEMA;
+    }
+  else if (PT_SELECT_INFO_IS_FLAGED (select_node,
+				     PT_SELECT_FULL_INFO_COLS_SCHEMA))
+    {
+      acces_schema_type = FULL_COLUMNS_SCHEMA;
+    }
+  else
+    {
+      acces_schema_type = INDEX_SCHEMA;
+    }
+
+  xasl->spec_list =
+    pt_make_class_access_spec (parser, flat, flat->info.name.db_object,
+			       TARGET_CLASS, SCHEMA,
+			       from->info.spec.lock_hint,
+			       NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+			       NULL, NULL, NULL, NULL, acces_schema_type);
+
+  if (xasl->spec_list == NULL)
+    {
+      goto error_exit;
+    }
+
+  xasl->merge_spec = NULL;
+  xasl->val_list = NULL;
+  xasl->merge_val_list = NULL;
+  xasl->aptr_list = NULL;
+  xasl->bptr_list = NULL;
+  xasl->dptr_list = NULL;
+  xasl->after_join_pred = NULL;
+  xasl->if_pred = NULL;
+  xasl->instnum_pred = NULL;
+  xasl->instnum_val = NULL;
+  xasl->save_instnum_val = NULL;
+  xasl->fptr_list = NULL;
+  xasl->scan_ptr = NULL;
+  xasl->connect_by_ptr = NULL;
+  xasl->level_val = NULL;
+  xasl->level_regu = NULL;
+  xasl->isleaf_val = NULL;
+  xasl->isleaf_regu = NULL;
+  xasl->iscycle_val = NULL;
+  xasl->iscycle_regu = NULL;
+  xasl->curr_spec = NULL;
+  xasl->instnum_flag = 0;
+
+  return xasl;
+
+error_exit:
+
+  return NULL;
+}
 
 /*
  * pt_to_buildlist_proc () - Translate a PT_SELECT node to
@@ -14895,6 +15037,60 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node,
   return xasl;
 }
 
+/*
+ * pt_plan_schema () - Translate a schema PT_SELECT node to
+ *                           a XASL buildschema proc
+ *   return: XASL_NODE, NULL indicates error
+ *   parser(in): context
+ *   select_node(in): of PT_SELECT type
+ */
+static XASL_NODE *
+pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  XASL_NODE *xasl = NULL;
+  int level;
+
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
+      || PT_SELECT_INFO_IS_FLAGED (select_node,
+				   PT_SELECT_FULL_INFO_COLS_SCHEMA))
+    {
+      xasl = pt_to_buildschema_proc (parser, select_node);
+      if (xasl == NULL)
+	{
+	  return NULL;
+	}
+    }
+  else if PT_SELECT_INFO_IS_FLAGED
+    (select_node, PT_SELECT_INFO_IDX_SCHEMA)
+    {
+      xasl = pt_to_buildschema_proc (parser, select_node);
+      if (xasl == NULL)
+	{
+	  return NULL;
+	}
+
+      qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+      if (level & 0x200)
+	{
+	  unsigned int save_custom;
+
+	  if (query_Plan_dump_fp == NULL)
+	    {
+	      query_Plan_dump_fp = stdout;
+	    }
+
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_CONVERT_RANGE;
+	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n", "",
+		   parser_print_tree (parser, select_node));
+
+	  parser->custom_print = save_custom;
+	}
+    }
+
+  return xasl;
+}
+
 
 /*
  * pt_plan_query () -
@@ -14971,12 +15167,18 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && plan)
     {
-      if (query_Plan_dump_fp == NULL)
+      if (!PT_SELECT_INFO_IS_FLAGED (select_node,
+				     PT_SELECT_INFO_COLS_SCHEMA) &&
+	  !PT_SELECT_INFO_IS_FLAGED (select_node,
+				     PT_SELECT_FULL_INFO_COLS_SCHEMA))
 	{
-	  query_Plan_dump_fp = stdout;
+	  if (query_Plan_dump_fp == NULL)
+	    {
+	      query_Plan_dump_fp = stdout;
+	    }
+	  fputs ("\nQuery plan:\n", query_Plan_dump_fp);
+	  qo_plan_dump (plan, query_Plan_dump_fp);
 	}
-      fputs ("\nQuery plan:\n", query_Plan_dump_fp);
-      qo_plan_dump (plan, query_Plan_dump_fp);
     }
 
   if (level & 0x200)
@@ -15068,7 +15270,19 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 	      query_Plan_dump_fp = stdout;
 	    }
 
-	  xasl = pt_plan_query (parser, node);
+	  if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IDX_SCHEMA)
+	      || ((PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_COLS_SCHEMA)
+		   || PT_SELECT_INFO_IS_FLAGED
+		   (node, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+		  && node->info.query.q.select.from->info.spec.
+		  derived_table_type != PT_IS_SUBQUERY))
+	    {
+	      xasl = pt_plan_schema (parser, node);
+	    }
+	  else
+	    {
+	      xasl = pt_plan_query (parser, node);
+	    }
 	  node->info.query.xasl = xasl;
 
 	  if (query_Plan_dump_fp != NULL && query_Plan_dump_fp != stdout)

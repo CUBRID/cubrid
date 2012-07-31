@@ -2215,6 +2215,9 @@ struct pt_select_info
 #define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
 #define PT_SELECT_INFO_MULTI_UPATE_AGG	32	/* is query for multi-table update
 						 * using aggregate */
+#define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
+#define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
+#define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))

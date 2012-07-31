@@ -211,6 +211,7 @@ struct cls_spec_node
   ATTR_ID *attrids_rest;	/* array of attr ids other than pred */
   HEAP_CACHE_ATTRINFO *cache_rest;	/* cache for the non-pred attrs */
   int num_attrs_rest;		/* number of atts other than pred */
+  ACCESS_SCHEMA_TYPE schema_type;	/* schema type */
 };
 
 typedef struct list_spec_node LIST_SPEC_TYPE;
@@ -483,7 +484,8 @@ typedef enum
   INSERT_PROC,
   CONNECTBY_PROC,
   DO_PROC,
-  MERGE_PROC
+  MERGE_PROC,
+  BUILD_SCHEMA_PROC
 } PROC_TYPE;
 
 typedef enum

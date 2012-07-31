@@ -2917,6 +2917,9 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       ptr = xts_process_merge_proc (ptr, &xasl->proc.merge);
       break;
 
+    case BUILD_SCHEMA_PROC:
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -4298,6 +4301,8 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, cls_spec->schema_type);
+
   return ptr;
 }
 
@@ -5110,6 +5115,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     case DO_PROC:
       break;
 
+    case BUILD_SCHEMA_PROC:
+      break;
+
     case MERGE_PROC:
       size += xts_sizeof_merge_proc (&xasl->proc.merge);
       break;
@@ -5907,7 +5915,8 @@ xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * cls_spec)
     PTR_SIZE +			/* cache_pred */
     OR_INT_SIZE +		/* num_attrs_rest */
     PTR_SIZE +			/* attrids_rest */
-    PTR_SIZE;			/* cache_rest */
+    PTR_SIZE +			/* cache_rest */
+    OR_INT_SIZE;		/* schema_type */
 
   return size;
 }

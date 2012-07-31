@@ -156,10 +156,10 @@ static PT_NODE *pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser,
 						    const char
 						    *identifier_str,
 						    int depth);
-static void pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser,
-					 PT_NODE * select,
-					 const char *identifier_str,
-					 const char *col_alias);
+static int pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser,
+					PT_NODE * select,
+					const char *identifier_str,
+					const char *col_alias);
 static void pt_add_string_col_to_sel_list (PARSER_CONTEXT * parser,
 					   PT_NODE * select,
 					   const char *identifier_str,
@@ -6320,13 +6320,13 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser,
  *				   column and adds it to the end of the select
  *				   list of a SELECT node
  *
- *   return: void
+ *   return: error code
  *   parser(in): Parser context
  *   select(in): SELECT node
  *   identifier_str(in): string identifying the column (may contain dots)
  *   col_alias(in): alias of the new select item
  */
-static void
+static int
 pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser, PT_NODE * select,
 			     const char *identifier_str,
 			     const char *col_alias)
@@ -6337,15 +6337,15 @@ pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser, PT_NODE * select,
   assert (identifier_str != NULL);
 
   sel_item = pt_make_dotted_identifier (parser, identifier_str);
-
   if (sel_item == NULL)
     {
-      return;
+      return ER_FAILED;
     }
   sel_item->alias_print = pt_append_string (parser, NULL, col_alias);
 
   select->info.query.q.select.list =
     parser_append_node (sel_item, select->info.query.q.select.list);
+  return NO_ERROR;
 }
 
 /*
@@ -6672,6 +6672,102 @@ pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser,
   from_item->info.spec.join_type = PT_JOIN_NONE;
 
   return outer_node;
+}
+
+/*
+ * pt_make_outer_select_for_show_columns() - builds a SELECT node and wrap the
+ *				      inner supplied SELECT node
+ *		'SELECT * FROM (<inner_select>) <select_alias>'
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *   inner_select(in): PT_SELECT node
+ *   select_alias(in): alias for the 'FROM specs'
+ *   query_names(in): query column names
+ *   query_aliases(in): query column aliasses
+ *   names_length(in): the length of query_names array
+ *   is_show_full(in): non zero if show full columns
+ *   outer_node(out): the result query
+ */
+static int
+pt_make_outer_select_for_show_columns (PARSER_CONTEXT * parser,
+				       PT_NODE * inner_select,
+				       const char *select_alias,
+				       const char **query_names,
+				       const char **query_aliases,
+				       int names_length,
+				       int is_show_full,
+				       PT_NODE ** outer_node)
+{
+  /* SELECT * from ( SELECT .... ) <select_alias>;  */
+  PT_NODE *val_node = NULL;
+  PT_NODE *alias_subquery = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *val_list = NULL;
+  PT_NODE *query = NULL;
+  int i, error = NO_ERROR;
+
+  assert (inner_select != NULL);
+  assert (inner_select->node_type == PT_SELECT);
+  assert (outer_node != NULL);
+
+  *outer_node = NULL;
+
+  query = parser_new_node (parser, PT_SELECT);
+  if (query == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (is_show_full)
+    {
+      PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_FULL_INFO_COLS_SCHEMA);
+    }
+  else
+    {
+      PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_COLS_SCHEMA);
+    }
+
+  for (i = 0; i < names_length; i++)
+    {
+      error =
+	pt_add_name_col_to_sel_list (parser, query, query_names[i],
+				     query_aliases ? query_aliases[i] : NULL);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  /* add to FROM an empty entity, the entity will be populated later */
+  from_item = pt_add_table_name_to_from_list (parser,
+					      query, NULL, NULL,
+					      DB_AUTH_NONE);
+
+  if (from_item == NULL)
+    {
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  inner_select->info.query.is_subquery = PT_IS_SUBQUERY;
+  alias_subquery = pt_name (parser, select_alias);
+  from_item->info.spec.derived_table = inner_select;
+  from_item->info.spec.meta_class = 0;
+  from_item->info.spec.range_var = alias_subquery;
+  from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
+  from_item->info.spec.join_type = PT_JOIN_NONE;
+
+  *outer_node = query;
+  return NO_ERROR;
+
+error_exit:
+
+  if (query)
+    {
+      parser_free_tree (parser, query);
+    }
+  return error;
 }
 
 /*
@@ -7930,45 +8026,32 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_make_query_show_columns() - builds the query used for SHOW TABLES
+ * pt_make_query_show_columns() - builds the query for SHOW COLUMNS
  *
- *  SELECT * FROM (
- *  SELECT A.attr_name AS Field,
- *  <Type_field_query> AS Type,
- *  {<collation_field> AS Collation}
- *  IF (A.is_nullable = 1 OR
- *	(SELECT COUNT(*) FROM <tbl_name> LIMIT 1) = -1,
- *     'YES','NO') AS Null ,
- *  <Key_field_query> AS Key,
- *  A.default_value AS Default ,
- *  IF( (SELECT count(*)
- *       FROM db_serial S
- *	 WHERE S.att_name = A.attr_name AND
- *	       S.class_name =  C.class_name ) >= 1 ,
- *     'auto_increment', '' ) AS Extra
- *  FROM  db_class CC, _db_class  C , _db_domain D ,
- *	  _db_data_type T , {_db_collation CL ,} _db_attribute A
- *  LEFT JOIN
- *     (SELECT AA.attr_name ATTR,
- *	       GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',')
- *		    Composed_types
- *	FROM _db_attribute AA, _db_domain DD , _db_data_type TT
- *	WHERE AA.class_of.class_name = <tbl_name> AND
- *	      DD.data_type = TT.type_id AND
- *	      DD.object_of IN AA.domains
- *	GROUP BY AA.attr_name) Types_t
- *  ON Types_t.ATTR = A.attr_name
- *  WHERE  A.class_of = C  AND
- *  A.data_type = T.type_id  AND
- *  D.object_of = A AND
- *  C.class_name = <tbl_name> AND
- *  C.class_name = CC.class_name
- *  { AND D.collation_id = CL.coll_id }
- *  ORDER BY A.attr_type DESC, A.def_order) show_columns
- *
- *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   return: newly built node (PT_NODE), NULL if construnction fails
  *   parser(in): Parser context
- *   original_cls_id(in): node containing the class identifier (PT_NAME)
+ *   original_cls_id(in): node (PT_NAME) containing name of class
+ *
+ *   SELECT Field	AS Field,
+ *	    Type	AS Type
+ *	    [Collation  AS Collation]
+ *	    Null	AS Null
+ *	    Key		AS Key
+ *	    Default	AS Default
+ *	    Extra	AS Extra
+ *   FROM
+ *   (SELECT   0 AS Attr_Type,
+ *	       0 AS Def_Order
+ *	      "" AS Field,
+ *	       0 AS Type,
+ *	      ["" AS Collation]
+ *	      "" AS Null,
+ *	       0 AS Key,
+ *	      "" AS Default,
+ *	      "" AS Extra,
+ *     FROM <table> ORDER BY 3, 5)
+ *   [LIKE 'pattern' | WHERE expr];
+ *
  *   like_where_syntax(in): indicator of presence for LIKE or WHERE clauses in
  *			   SHOW statement. Values : 0 = none of LIKE or WHERE,
  *			   1 = contains LIKE, 2 = contains WHERE
@@ -7978,7 +8061,9 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  * Note : Order is defined by: attr_type (shared attributes first, then
  *	  class attributes, then normal attributes), order of definition in
  *	  table
- *	  { } -> optional fields controlled by 'is_show_full' argument
+ *	  [ ] -> optional fields controlled by 'is_show_full' argument
+ * Note : At execution, all empty fields from inner query will be replaced by
+ *	  values that will be read from class schema
  */
 PT_NODE *
 pt_make_query_show_columns (PARSER_CONTEXT * parser,
@@ -7986,12 +8071,41 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
 			    int like_where_syntax,
 			    PT_NODE * like_or_where_expr, int is_show_full)
 {
-  PT_NODE *node = NULL;
-  PT_NODE *sub_query = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *sel_item = NULL;
+  PT_NODE *order_by_item = NULL;
+  PT_NODE *sub_query = NULL;
+  PT_NODE *outer_query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
 			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  PT_NODE *value = NULL, *value_list = NULL;
+  DB_VALUE db_valuep[9];
+  const char **psubquery_aliases = NULL, **pquery_names = NULL,
+    **pquery_aliases = NULL;
+  int subquery_list_size = is_show_full ? 9 : 8;
+  int query_list_size = subquery_list_size - 2;
+
+  char *subquery_aliases[] =
+    { "Attr_Type", "Def_Order", "Field", "Type", "Null", "Key", "Default",
+    "Extra"
+  };
+  char *subquery_full_aliases[] =
+    { "Attr_Type", "Def_Order", "Field", "Type", "Collation", "Null",
+    "Key", "Default", "Extra"
+  };
+
+  const char *query_names[] =
+    { "Field", "Type", "Null", "Key", "Default", "Extra" };
+
+  const char *query_aliases[] =
+    { "Field", "Type", "Null", "Key", "Default", "Extra" };
+
+  const char *query_full_names[] =
+    { "Field", "Type", "Collation", "Null", "Key", "Default", "Extra" };
+
+  const char *query_full_aliases[] =
+    { "Field", "Type", "Collation", "Null", "Key", "Default", "Extra" };
+
+  int i = 0;
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
@@ -8002,205 +8116,79 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
       return NULL;
     }
 
+  if (is_show_full)
+    {
+      PT_SELECT_INFO_SET_FLAG (sub_query, PT_SELECT_FULL_INFO_COLS_SCHEMA);
+    }
+  else
+    {
+      PT_SELECT_INFO_SET_FLAG (sub_query, PT_SELECT_INFO_COLS_SCHEMA);
+    }
+
   intl_identifier_lower (original_cls_id->info.name.original,
 			 lower_table_name);
 
-  /* ------ SELECT list    ------- */
-  /* Field */
-  pt_add_name_col_to_sel_list (parser, sub_query, "A.attr_name", "Field");
-
-  /* Type */
-  sel_item = pt_make_field_type_expr_node (parser);
-  sub_query->info.query.q.select.list =
-    parser_append_node (sel_item, sub_query->info.query.q.select.list);
-
-  if (is_show_full)
+  db_make_int (db_valuep + 0, 0);
+  db_make_int (db_valuep + 1, 0);
+  for (i = 2; i < subquery_list_size; i++)
     {
-      sel_item = pt_make_collation_expr_node (parser);
-      sub_query->info.query.q.select.list =
-	parser_append_node (sel_item, sub_query->info.query.q.select.list);
+      db_make_varchar (db_valuep + i, DB_DEFAULT_PRECISION, "", 0,
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
     }
 
-  /* create
-   * IF (is_nullable = 1 OR
-   *      (SELECT 1 FROM <table_name> WHERE false)=-1,'YES','NO') AS Null
-   */
-  {
-    PT_NODE *cond1 = NULL;
-    PT_NODE *cond2 = NULL;
-    PT_NODE *dummy_val = NULL;
-    PT_NODE *if_node = NULL;
-    PT_NODE *dummy_check_table_query = NULL;
+  psubquery_aliases = is_show_full ? subquery_full_aliases : subquery_aliases;
+  pquery_names = is_show_full ? query_full_names : query_names;
+  pquery_aliases = is_show_full ? query_full_aliases : query_aliases;
 
-    cond1 = pt_make_pred_name_int_val (parser, PT_EQ, "is_nullable", 1);
-
-    /* create the dummy query, and a condition that is never reached with OR */
-    /* the dummy query from table is required to print an error when table
-     * doens't exist, instead of 'no results' */
-    dummy_check_table_query =
-      pt_make_dummy_query_check_table (parser, lower_table_name);
-    dummy_val = pt_make_integer_value (parser, -1);
-    cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
-				    NULL);
-    cond1 = parser_make_expression (PT_OR, cond1, cond2, NULL);
-
-    if_node = pt_make_if_with_strings (parser, cond1, "YES", "NO", "Null");
-    sub_query->info.query.q.select.list =
-      parser_append_node (if_node, sub_query->info.query.q.select.list);
-  }
-  /* Key */
-  sel_item = pt_make_field_key_type_expr_node (parser);
-  sub_query->info.query.q.select.list =
-    parser_append_node (sel_item, sub_query->info.query.q.select.list);
-
-  /* A.default_value AS Default : */
-  pt_add_name_col_to_sel_list (parser, sub_query,
-			       "A.default_value", "Default");
-
-  /* Extra */
-  sel_item = pt_make_field_extra_expr_node (parser);
-  sub_query->info.query.q.select.list =
-    parser_append_node (sel_item, sub_query->info.query.q.select.list);
-
-
-  /* ------ SELECT ... FROM   ------- */
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "db_class", "CC",
-					      DB_AUTH_SELECT);
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_class", "C",
-					      DB_AUTH_SELECT);
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_domain", "D",
-					      DB_AUTH_SELECT);
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_data_type", "T",
-					      DB_AUTH_SELECT);
-
-  if (is_show_full)
+  for (i = 0; i < subquery_list_size; i++)
     {
-      from_item = pt_add_table_name_to_from_list (parser, sub_query,
-						  "_db_collation", "CL",
-						  DB_AUTH_SELECT);
+      value = pt_dbval_to_value (parser, db_valuep + i);
+      if (value == NULL)
+	{
+	  goto error;
+	}
+      value->alias_print =
+	pt_append_string (parser, NULL, psubquery_aliases[i]);
+      value_list = parser_append_node (value, value_list);
     }
 
-  /* _db_attribute MUST be added last before types subsquery in order
-   * to corrrectly resolve the JOIN condition */
+  sub_query->info.query.q.select.list = value_list;
+  value_list = NULL;
+
   from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_attribute", "A",
-					      DB_AUTH_SELECT);
-
-  {
-    PT_NODE *types_subsquery = NULL;
-    PT_NODE *join_cond = NULL;
-
-    /* make types subquery using class name in order to optimize the query */
-    types_subsquery =
-      pt_make_collection_type_subquery_node (parser, lower_table_name);
-
-    /* JOIN condition :  ON Types_t.attr_name = A.attr_name */
-    join_cond =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "Types_t.ATTR",
-				     "A.attr_name");
-
-    from_item =
-      pt_add_table_name_to_from_list (parser, sub_query, NULL, NULL,
-				      DB_AUTH_NONE);
-    if (from_item == NULL)
-      {
-	return NULL;
-      }
-    from_item->info.spec.derived_table = types_subsquery;
-    from_item->info.spec.meta_class = 0;
-    from_item->info.spec.range_var = pt_name (parser, "Types_t");
-    from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
-    from_item->info.spec.join_type = PT_JOIN_LEFT_OUTER;
-    from_item->info.spec.on_cond = join_cond;
-  }
-
-  /* ------ SELECT ... WHERE   ------- */
-  {
-    PT_NODE *where_item1 = NULL;
-    PT_NODE *where_item2 = NULL;
-    /* A.class_of=C */
-    where_item1 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of", "C");
-    /* A.data_type=T.type_id */
-    where_item2 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "A.data_type",
-				     "T.type_id");
-
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    /* D.object_of=A */
-    where_item2 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "D.object_of", "A");
-
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    /* C.class_name = class_identifier.original_name */
-    where_item2 =
-      pt_make_pred_name_string_val (parser, PT_EQ, "C.class_name",
-				    lower_table_name);
-
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    where_item2 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "C.class_name",
-				     "CC.class_name");
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    if (is_show_full)
-      {
-	where_item2 =
-	  pt_make_pred_with_identifiers (parser, PT_EQ, "D.collation_id",
-					 "CL.coll_id");
-
-	/* item1 = item2 AND item2 */
-	where_item1 =
-	  parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-      }
-
-    /* where list should be empty */
-    assert (sub_query->info.query.q.select.where == NULL);
-    sub_query->info.query.q.select.where =
-      parser_append_node (where_item1, sub_query->info.query.q.select.where);
-  }
-
-  /* ORDER BY A.attr_type DESC, A.def_order  (type of attribute,
-   * order defined in table) */
-  {
-    PT_NODE *order_by_item = NULL;
-
-    assert (sub_query->info.query.order_by == NULL);
-
-    order_by_item =
-      pt_make_sort_spec_with_identifier (parser, "A.attr_type", PT_DESC);
-    sub_query->info.query.order_by =
-      parser_append_node (order_by_item, sub_query->info.query.order_by);
-
-    order_by_item =
-      pt_make_sort_spec_with_identifier (parser, "A.def_order", PT_ASC);
-    sub_query->info.query.order_by =
-      parser_append_node (order_by_item, sub_query->info.query.order_by);
-  }
-
-  /*  --- done with subquery, create primary query -- :
-   * SELECT * from ( SELECT .... ) show_columns;  */
-  node =
-    pt_make_outer_select_for_show_stmt (parser, sub_query, "show_columns");
-  if (node == NULL)
+					      lower_table_name,
+					      NULL, DB_AUTH_SELECT);
+  if (from_item == NULL)
     {
-      return NULL;
+      goto error;
     }
+
+  if (pt_make_outer_select_for_show_columns (parser, sub_query,
+					     NULL, pquery_names,
+					     pquery_aliases, query_list_size,
+					     is_show_full, &outer_query)
+      != NO_ERROR)
+    {
+      goto error;
+    }
+
+  order_by_item =
+    pt_make_sort_spec_with_identifier (parser, "Attr_Type", PT_DESC);
+  if (order_by_item == NULL)
+    {
+      goto error;
+    }
+  outer_query->info.query.order_by =
+    parser_append_node (order_by_item, outer_query->info.query.order_by);
+
+  order_by_item =
+    pt_make_sort_spec_with_identifier (parser, "Def_Order", PT_ASC);
+  if (order_by_item == NULL)
+    {
+      goto error;
+    }
+  outer_query->info.query.order_by =
+    parser_append_node (order_by_item, outer_query->info.query.order_by);
 
   /* no ORDER BY to outer SELECT */
   /* add LIKE or WHERE from SHOW , if present */
@@ -8221,15 +8209,33 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
 	  where_item = like_or_where_expr;
 	}
 
-      node->info.query.q.select.where =
-	parser_append_node (where_item, node->info.query.q.select.where);
+      outer_query->info.query.q.select.where =
+	parser_append_node (where_item,
+			    outer_query->info.query.q.select.where);
     }
   else
     {
       assert (like_where_syntax == 0);
     }
 
-  return node;
+  return outer_query;
+
+error:
+  if (outer_query)
+    {
+      parser_free_tree (parser, outer_query);
+    }
+  else if (sub_query)
+    {
+      parser_free_tree (parser, sub_query);
+    }
+
+  if (value_list)
+    {
+      parser_free_tree (parser, value_list);
+    }
+
+  return NULL;
 }
 
 /*
@@ -9149,288 +9155,123 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
  *   parser(in): Parser context
  *   original_cls_id(in): node (PT_NAME) containing name of class
  *
- *
- *    SELECT * FROM
- *   (SELECT I.class_of.class_name  AS Table,
- *	     IF(I.is_unique = 1,'0','1') AS Non_unique,
- *	     I.index_name AS Key_name,
- *	     (IK.key_order + 1) AS Seq_in_index,
- *	     IK.key_attr_name AS Column_name,
- *	     IF (IK.asc_desc = 1, 'D', 'A') AS Collation,
- *	     INDEX_CARDINALITY (I.class_of.class_name,
- *				  I.index_name,
- *				  IK.key_order) AS Cardinality,
- *	     IF (IK.key_prefix_length > -1 OR
- *		      ((SELECT COUNT(*) FROM <table_name> LIMIT 1) = -1),
- *		 IK.key_prefix_length,
- *		 NULL ) AS Sub_part,
+ *   SELECT  "" AS Table,
+ *	     0 AS Non_unique,
+ *	     "" AS Key_name,
+ *	     0 AS Seq_in_index,
+ *	     "" AS Column_name,
+ *	     "" AS Collation,
+ *	     0 AS Cardinality,
+ *	     0 AS Sub_part,
  *	     NULL AS Packed,
- *	     IF (A.is_nullable = 1, 'YES', 'NO') AS [Null],
+ *	     "" AS [Null],
  *	     'BTREE' AS Index_type
- *    FROM _db_index I,_db_index_key IK,_db_attribute A
- *    WHERE IK.index_of = I AND
- *	    A.attr_name = IK.key_attr_name AND
- *	    A.class_of = I.class_of AND
- *	    I.class_of.class_name=<table_name>) show_index
- *    ORDER BY 3, 5;
+ *    FROM <table> ORDER BY 3, 5;
  *
+ *  Note: At execution, all empty fields will be replaced by values
+ *	  that will be read from class schema
  */
 PT_NODE *
 pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 {
-  PT_NODE *node = NULL;
-  PT_NODE *sub_query = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *sel_item = NULL;
+  PT_NODE *order_by_item = NULL;
+  PT_NODE *query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
 			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  PT_NODE *value = NULL, *value_list = NULL;
+  DB_VALUE db_valuep[11];
+  char *aliases[] = {
+    "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
+    "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type"
+  };
+  int i = 0;
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
 
-  sub_query = parser_new_node (parser, PT_SELECT);
-  if (sub_query == NULL)
+  query = parser_new_node (parser, PT_SELECT);
+  if (query == NULL)
     {
       return NULL;
     }
 
+  PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_IDX_SCHEMA);
   intl_identifier_lower (original_cls_id->info.name.original,
 			 lower_table_name);
-  /* ------ SELECT list    ------- */
-  /* I.class_of.class_name  AS Table */
-  pt_add_name_col_to_sel_list (parser, sub_query, "I.class_of.class_name",
-			       "Table");
 
-  /* IF(I.is_unique = 1, 0, 1) AS Non_unique */
-  {
-    PT_NODE *cond = NULL;
-    PT_NODE *if_node = NULL;
-    PT_NODE *expr_zero = NULL;
-    PT_NODE *expr_one = NULL;
+  db_make_varchar (db_valuep + 0, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_int (db_valuep + 1, 0);
+  db_make_varchar (db_valuep + 2, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_int (db_valuep + 3, 0);
+  db_make_varchar (db_valuep + 4, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 5, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_int (db_valuep + 6, 0);
+  db_make_int (db_valuep + 7, 0);
+  db_make_null (db_valuep + 8);
+  db_make_varchar (db_valuep + 9, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 10, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-    cond = pt_make_pred_name_int_val (parser, PT_EQ, "I.is_unique", 1);
-    expr_zero = pt_make_integer_value (parser, 0);
-    expr_one = pt_make_integer_value (parser, 1);
-
-    if_node =
-      pt_make_if_with_expressions (parser, cond, expr_zero, expr_one,
-				   "Non_unique");
-    sub_query->info.query.q.select.list =
-      parser_append_node (if_node, sub_query->info.query.q.select.list);
-  }
-
-  /* I.index_name AS Key_name */
-  pt_add_name_col_to_sel_list (parser, sub_query, "I.index_name", "Key_name");
-
-  /* (IK.key_order + 1) AS Seq_in_index */
-  {
-    PT_NODE *col_key_order = NULL;
-    PT_NODE *value_one = NULL;
-    PT_NODE *seq_in_index = NULL;
-
-    col_key_order = pt_make_dotted_identifier (parser, "IK.key_order");
-    value_one = pt_make_integer_value (parser, 1);
-
-    seq_in_index =
-      parser_make_expression (PT_PLUS, col_key_order, value_one, NULL);
-    seq_in_index->alias_print =
-      pt_append_string (parser, NULL, "Seq_in_index");
-
-    sub_query->info.query.q.select.list =
-      parser_append_node (seq_in_index, sub_query->info.query.q.select.list);
-  }
-  /* IK.key_attr_name AS Column_name */
-  pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name",
-			       "Column_name");
-
-  /* IF (IK.asc_desc = 1, 'D', 'A') AS Collation
-   * A = ASC ; D = DESC*/
-  {
-    PT_NODE *cond = NULL;
-    PT_NODE *if_node = NULL;
-    PT_NODE *string_asc = NULL;
-    PT_NODE *string_desc = NULL;
-
-    cond = pt_make_pred_name_int_val (parser, PT_EQ, "IK.asc_desc", 1);
-
-    string_asc = pt_make_string_value (parser, "A");
-    string_desc = pt_make_string_value (parser, "D");
-
-    if_node =
-      pt_make_if_with_expressions (parser, cond, string_desc, string_asc,
-				   "Collation");
-    sub_query->info.query.q.select.list =
-      parser_append_node (if_node, sub_query->info.query.q.select.list);
-  }
-
-  /* Cardinality : a function (PT_EXPR) to get the
-   * cardinality of the index :
-   * INDEX_CARDINALITY(I.class_of.class_name, I.index_name, IK.key_order)*/
-  {
-    PT_NODE *cls_name =
-      pt_make_dotted_identifier (parser, "I.class_of.class_name");
-    PT_NODE *idx_name = pt_make_dotted_identifier (parser, "I.index_name");
-    PT_NODE *key_order = pt_make_dotted_identifier (parser, "IK.key_order");
-
-    PT_NODE *card_expr =
-      parser_make_expression (PT_INDEX_CARDINALITY, cls_name, idx_name,
-			      key_order);
-
-    card_expr->alias_print = pt_append_string (parser, NULL, "Cardinality");
-    sub_query->info.query.q.select.list =
-      parser_append_node (card_expr, sub_query->info.query.q.select.list);
-  }
-
-  /* IF ( (IK.key_prefix_length > -1) OR
-   *        ((SELECT COUNT(*) FROM <table_name> LIMIT 1) = -1),
-   *       IK.key_prefix_length,
-   *       NULL) AS Sub_part
-   *
-   * The dummy query is included to force an error when the SHOW INDEX table
-   * argument doesn't exist. The condition (query result = -1) is always false,
-   * so it doesn't affect the intended condition (on prefix length)*/
-  {
-    PT_NODE *cond = NULL;
-    PT_NODE *cond2 = NULL;
-    PT_NODE *if_node = NULL;
-    PT_NODE *null_expr = NULL;
-    PT_NODE *key_pref_len_id = NULL;
-    PT_NODE *dummy_check_table_query = NULL;
-    PT_NODE *dummy_val = NULL;
-
-    dummy_check_table_query =
-      pt_make_dummy_query_check_table (parser, lower_table_name);
-    dummy_val = pt_make_integer_value (parser, -1);
-    cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
-				    NULL);
-
-    cond =
-      pt_make_pred_name_int_val (parser, PT_GT, "IK.key_prefix_length", -1);
-
-    cond = parser_make_expression (PT_OR, cond, cond2, NULL);
-
-    null_expr = parser_new_node (parser, PT_VALUE);
-    if (null_expr)
-      {
-	null_expr->type_enum = PT_TYPE_NULL;
-      }
-    key_pref_len_id =
-      pt_make_dotted_identifier (parser, "IK.key_prefix_length");
-
-    if_node =
-      pt_make_if_with_expressions (parser, cond, key_pref_len_id, null_expr,
-				   "Sub_part");
-    sub_query->info.query.q.select.list =
-      parser_append_node (if_node, sub_query->info.query.q.select.list);
-  }
-
-  /* Packed : always displays 'NULL' */
-  {
-    PT_NODE *null_expr = parser_new_node (parser, PT_VALUE);
-    if (null_expr)
-      {
-	null_expr->type_enum = PT_TYPE_NULL;
-      }
-    null_expr->alias_print = pt_append_string (parser, NULL, "Packed");
-    sub_query->info.query.q.select.list =
-      parser_append_node (null_expr, sub_query->info.query.q.select.list);
-  }
-
-  /* IF (A.is_nullable = 1, 'YES', 'NO') AS Null */
-  {
-    PT_NODE *cond = NULL;
-    PT_NODE *if_node = NULL;
-
-    cond = pt_make_pred_name_int_val (parser, PT_EQ, "A.is_nullable", 1);
-    if_node = pt_make_if_with_strings (parser, cond, "YES", "NO", "Null");
-    sub_query->info.query.q.select.list =
-      parser_append_node (if_node, sub_query->info.query.q.select.list);
-  }
-
-  /* 'BTREE' AS Index_type */
-  {
-    PT_NODE *dummy = pt_make_string_value (parser, "BTREE");
-
-    dummy->alias_print = pt_append_string (parser, NULL, "Index_type");
-    sub_query->info.query.q.select.list =
-      parser_append_node (dummy, sub_query->info.query.q.select.list);
-  }
-
-  /* ------ SELECT ... FROM   ------- */
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_index", "I",
-					      DB_AUTH_SELECT);
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_index_key", "IK",
-					      DB_AUTH_SELECT);
-  from_item = pt_add_table_name_to_from_list (parser, sub_query,
-					      "_db_attribute", "A",
-					      DB_AUTH_SELECT);
-
-  /* ------ SELECT ... WHERE   ------- */
-  {
-    PT_NODE *where_item1 = NULL;
-    PT_NODE *where_item2 = NULL;
-    /* IK.index_of=I */
-    where_item1 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "IK.index_of", "I");
-    /* A.attr_name = IK.key_attr_name */
-    where_item2 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "A.attr_name",
-				     "IK.key_attr_name");
-
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    /* A.class_of = I.class_of */
-    where_item2 =
-      pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of",
-				     "I.class_of");
-
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    /* I.class_of.class_name= <class_name> */
-    where_item2 =
-      pt_make_pred_name_string_val (parser, PT_EQ, "I.class_of.class_name",
-				    lower_table_name);
-
-    /* item1 = item2 AND item2 */
-    where_item1 =
-      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
-
-    /* where list should be empty */
-    assert (sub_query->info.query.q.select.where == NULL);
-    sub_query->info.query.q.select.where =
-      parser_append_node (where_item1, sub_query->info.query.q.select.where);
-  }
-
-  /*  --- done with subquery, create primary query -- :
-   * SELECT * from ( SELECT .... ) show_index;  */
-  node = pt_make_outer_select_for_show_stmt (parser, sub_query, "show_index");
-  if (node == NULL)
+  for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {
-      return NULL;
+      value = pt_dbval_to_value (parser, db_valuep + i);
+      if (value == NULL)
+	{
+	  goto error;
+	}
+      value->alias_print = pt_append_string (parser, NULL, aliases[i]);
+      value_list = parser_append_node (value, value_list);
     }
 
-  {
-    PT_NODE *order_by_item = NULL;
+  query->info.query.q.select.list = value_list;
+  value_list = NULL;
 
-    assert (node->info.query.order_by == NULL);
+  from_item = pt_add_table_name_to_from_list (parser, query,
+					      lower_table_name, NULL,
+					      DB_AUTH_SELECT);
+  if (from_item == NULL)
+    {
+      goto error;
+    }
 
-    /* By Key_name */
-    order_by_item = pt_make_sort_spec_with_number (parser, 3, PT_ASC);
-    node->info.query.order_by =
-      parser_append_node (order_by_item, node->info.query.order_by);
+  /* By Key_name */
+  order_by_item = pt_make_sort_spec_with_number (parser, 3, PT_ASC);
+  if (order_by_item == NULL)
+    {
+      goto error;
+    }
+  query->info.query.order_by =
+    parser_append_node (order_by_item, query->info.query.order_by);
 
-    /* By Column_name */
-    order_by_item = pt_make_sort_spec_with_number (parser, 5, PT_ASC);
-    node->info.query.order_by =
-      parser_append_node (order_by_item, node->info.query.order_by);
-  }
-  return node;
+  /* By Column_name */
+  order_by_item = pt_make_sort_spec_with_number (parser, 5, PT_ASC);
+  if (order_by_item == NULL)
+    {
+      goto error;
+    }
+  query->info.query.order_by =
+    parser_append_node (order_by_item, query->info.query.order_by);
+
+  return query;
+
+error:
+  if (query)
+    {
+      parser_free_tree (parser, query);
+    }
+
+  if (value_list)
+    {
+      parser_free_tree (parser, value_list);
+    }
+
+  return NULL;
 }
 
 /*

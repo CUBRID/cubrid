@@ -58,11 +58,13 @@ struct or_attribute
 
   int id;			/* unique id */
   DB_TYPE type;			/* basic type */
+  int def_order;		/* order of attributes in class */
   int location;			/* fixed offset or variable table index */
   int position;			/* storage position (list index) */
   OID classoid;			/* source class object id */
 
   OR_DEFAULT_VALUE default_value;	/* default value */
+  OR_DEFAULT_VALUE current_default_value;	/* default value */
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
   int n_btids;			/* Number of ID's in the btids array */
@@ -75,6 +77,7 @@ struct or_attribute
   OID serial_obj;		/* db_serial's instance */
   unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
+  unsigned is_notnull:1;	/* non-zero if has not null constraint */
 };
 
 typedef enum
@@ -126,6 +129,7 @@ struct or_index
 {
   OR_INDEX *next;
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
+  int *asc_desc;		/* array of ascending / descending */
   int *attrs_prefix_length;	/* prefix length */
   char *btname;			/* index( or constraint) name */
   OR_PREDICATE *filter_predicate;	/* CREATE INDEX idx ON tbl(col, ...) WHERE filter_predicate */

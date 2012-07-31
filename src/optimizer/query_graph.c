@@ -671,7 +671,8 @@ qo_optimize_helper (QO_ENV * env)
    * info.
    */
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-  if (PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level))
+  if (PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level) &&
+      env->plan_dump_enabled)
     {
       qo_env_dump (env, query_Plan_dump_fp);
     }
@@ -6094,6 +6095,16 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
   bitset_init (&(env->fake_terms), env);
+  assert (query->node_type == PT_SELECT);
+  if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
+      || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+    {
+      env->plan_dump_enabled = false;
+    }
+  else
+    {
+      env->plan_dump_enabled = true;
+    }
 
   return env;
 }

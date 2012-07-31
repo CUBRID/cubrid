@@ -1007,5 +1007,6 @@ extern int db_put_cs_and_collation (DB_VALUE * value, const int codeset,
 				    const int collation_id);
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
+extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 #endif /* _DBTYPE_H_ */

@@ -7195,12 +7195,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       qo_do_auto_parameterize (parser, node->info.update.orderby_for);
     }
 
-  if (node->node_type == PT_SELECT
-      && node->info.query.is_subquery == PT_IS_SUBQUERY)
+  if (node->node_type == PT_SELECT)
     {
-      if (node->info.query.single_tuple == 1)
+      if (node->info.query.is_subquery == PT_IS_SUBQUERY)
 	{
-	  node = qo_rewrite_hidden_col_as_derived (parser, node, NULL);
+	  if (node->info.query.single_tuple == 1)
+	    {
+	      node = qo_rewrite_hidden_col_as_derived (parser, node, NULL);
+	    }
 	}
     }
 

@@ -357,11 +357,6 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 		      VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
 
-extern int catcls_get_cardinality (THREAD_ENTRY * thread_p,
-				   const char *class_name,
-				   const char *index_name,
-				   const int key_pos, int *cardinality);
-
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *,
 				   int, DB_VALUE **) =
 {
@@ -9150,8 +9145,8 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name,
 
   key_pos = DB_GET_INT (db_key_position);
 
-  error = catcls_get_cardinality (thread_p, class_name, index_name, key_pos,
-				  &cardinality);
+  error = catalog_get_cardinality_by_name (thread_p, class_name, index_name,
+					   key_pos, &cardinality);
   if (error == NO_ERROR)
     {
       if (cardinality < 0)

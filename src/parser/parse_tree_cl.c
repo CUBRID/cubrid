@@ -13266,6 +13266,47 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
 
+  if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IDX_SCHEMA))
+    {
+      q = pt_append_nulstring (parser, q, "show index from  ");
+      r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
+      q = pt_append_varchar (parser, q, r1);
+      return q;
+    }
+
+  if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_COLS_SCHEMA)
+      || PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+    {
+      PT_NODE *from = p->info.query.q.select.from;
+      if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	{
+	  char s[1000];
+	  PT_NODE *subq = from->info.spec.derived_table;
+	  sprintf (s, "show %s columns from ",
+		   PT_SELECT_INFO_IS_FLAGED
+		   (p, PT_SELECT_INFO_COLS_SCHEMA) ? "" : "full");
+	  q = pt_append_nulstring (parser, q, s);
+
+	  r1 = pt_print_bytes_spec_list (parser,
+					 subq->info.query.q.select.from);
+	  q = pt_append_varchar (parser, q, r1);
+
+	  where_list = p->info.query.q.select.where;
+	  if (where_list)
+	    {
+	      r1 = pt_print_and_list (parser, where_list);
+	      q = pt_append_nulstring (parser, q, " where ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "");
+	}
+
+      return q;
+    }
+
   if (p->info.query.is_subquery == PT_IS_SUBQUERY
       || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY
 	  && p->info.query.order_by)

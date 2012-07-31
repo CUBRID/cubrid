@@ -5118,6 +5118,228 @@ catalog_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   return NO_ERROR;
 }
 
+
+/*
+ * catalog_get_cardinality () - gets the cardinality of an index using
+ *			      class OID, class DISK_REPR, index BTID
+ *			      and partial key count
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)  : thread context
+ *   class_oid(in): class OID
+ *   disk_repr_p(in): class DISK_REPR
+ *   btid(in): index BTID
+ *   key_pos(in)   : partial key (i-th column from index definition)
+ *   cardinality(out): number of distinct values
+ *
+ */
+int
+catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
+			 DISK_REPR * rep, BTID * btid, const int key_pos,
+			 int *cardinality)
+{
+  int idx_cnt;
+  int att_cnt;
+  int error = NO_ERROR;
+  BTREE_STATS *p_stat_info = NULL;
+  BTREE_STATS *curr_stat_info = NULL;
+  DISK_ATTR *disk_attr_p = NULL;
+  BTID curr_bitd;
+  bool is_btree_found;
+  DISK_REPR *disk_repr_p = NULL;
+  bool free_disk_rep = false;
+
+  assert (class_oid != NULL && btid != NULL && cardinality != NULL);
+  *cardinality = -1;
+
+  if (rep != NULL)
+    {
+      disk_repr_p = rep;
+    }
+  else
+    {
+      int repr_id;
+      /* get last representation id, if is not already known */
+      error = catalog_get_last_representation_id (thread_p, class_oid,
+						  &repr_id);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      /* get disk representation :
+       * the disk representation contains a some pre-filled BTREE statistics,
+       * but no partial keys info yet */
+      disk_repr_p = catalog_get_representation (thread_p, class_oid, repr_id);
+      if (disk_repr_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  error = ER_UNEXPECTED;
+	  goto exit;
+	}
+      free_disk_rep = true;
+    }
+
+  /* There should be only one OR_ATTRIBUTE element that contains the index;
+   * this is the element corresponding to the attribute which is the first key
+   * in the index */
+  p_stat_info = NULL;
+  is_btree_found = false;
+  /* first, search in the fixed attributes : */
+  for (att_cnt = 0, disk_attr_p = disk_repr_p->fixed;
+       att_cnt < disk_repr_p->n_fixed; att_cnt++, disk_attr_p++)
+    {
+      /* search for BTID in each BTREE_STATS element from current attribute */
+      for (idx_cnt = 0, curr_stat_info = disk_attr_p->bt_stats;
+	   idx_cnt < disk_attr_p->n_btstats; idx_cnt++, curr_stat_info++)
+	{
+	  curr_bitd = curr_stat_info->btid;
+	  if (BTID_IS_EQUAL (&curr_bitd, btid))
+	    {
+	      p_stat_info = curr_stat_info;
+	      is_btree_found = true;
+	      break;
+	    }
+	}
+      if (is_btree_found)
+	{
+	  break;
+	}
+    }
+
+  if (!is_btree_found)
+    {
+      assert_release (p_stat_info == NULL);
+      /* not found, repeat the search for variable attributes */
+      for (att_cnt = 0, disk_attr_p = disk_repr_p->variable;
+	   att_cnt < disk_repr_p->n_variable; att_cnt++, disk_attr_p++)
+	{
+	  /* search for BTID in each BTREE_STATS element from
+	     current attribute */
+	  for (idx_cnt = 0, curr_stat_info = disk_attr_p->bt_stats;
+	       idx_cnt < disk_attr_p->n_btstats; idx_cnt++, curr_stat_info++)
+	    {
+	      curr_bitd = curr_stat_info->btid;
+	      if (BTID_IS_EQUAL (&curr_bitd, btid))
+		{
+		  p_stat_info = curr_stat_info;
+		  is_btree_found = true;
+		  break;
+		}
+	    }
+	  if (is_btree_found)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  if (!is_btree_found)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+      error = ER_UNEXPECTED;
+      goto exit_cleanup;
+    }
+
+  assert_release (p_stat_info != NULL);
+  assert_release (BTID_IS_EQUAL (&(p_stat_info->btid), btid));
+  assert_release (p_stat_info->key_size > 0);
+
+  /* since btree_get_stats is too slow, use the old statistics.
+     the user must previously execute 'update statistics on class_name',
+     in order to get updated statistics. */
+
+  if (key_pos >= p_stat_info->key_size || key_pos < 0)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
+	      1, "index_cardinality()");
+      goto exit_cleanup;
+    }
+
+  *cardinality = p_stat_info->pkeys[key_pos];
+
+exit_cleanup:
+  if (free_disk_rep)
+    {
+      catalog_free_representation (disk_repr_p);
+    }
+exit:
+  return error;
+
+}
+
+/*
+ * catalog_get_cardinality_by_name () - gets the cardinality of an index using
+ *				      its name and partial key count
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)  : thread context
+ *   class_name(in): name of class
+ *   index_name(in): name of index
+ *   key_pos(in)   : partial key (i-th column from index definition)
+ *   cardinality(out): number of distinct values
+ *
+ */
+int
+catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
+				 const char *class_name,
+				 const char *index_name, const int key_pos,
+				 int *cardinality)
+{
+  int error = NO_ERROR;
+  BTID found_btid;
+  BTID curr_bitd;
+  OID class_oid;
+  char cls_lower[DB_MAX_IDENTIFIER_LENGTH *
+		 INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER] = { 0 };
+  LC_FIND_CLASSNAME status;
+
+  BTID_SET_NULL (&found_btid);
+  BTID_SET_NULL (&curr_bitd);
+
+  assert (class_name != NULL);
+  assert (index_name != NULL);
+  assert (cardinality != NULL);
+
+  *cardinality = -1;
+
+  /* get class OID from class name */
+  intl_identifier_lower (class_name, cls_lower);
+
+  status = xlocator_find_class_oid (thread_p, cls_lower, &class_oid,
+				    NULL_LOCK);
+  if (status == LC_CLASSNAME_ERROR)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_LC_UNKNOWN_CLASSNAME, 1, cls_lower);
+      return ER_FAILED;
+    }
+
+  if (status == LC_CLASSNAME_DELETED || OID_ISNULL (&class_oid))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME,
+	      1, class_name);
+      goto exit;
+    }
+
+  error =
+    heap_get_btid_from_index_name (thread_p, &class_oid, index_name,
+				   &found_btid);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (BTID_IS_NULL (&found_btid))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND, 0);
+      goto exit;
+    }
+
+  return catalog_get_cardinality (thread_p, &class_oid, NULL, &found_btid,
+				  key_pos, cardinality);
+
+exit:
+  return error;
+}
+
 /*
  * catalog_rv_delete_undo () - Undo the deletion of a record.
  *   return: int

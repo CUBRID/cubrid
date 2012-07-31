@@ -2319,6 +2319,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     case DO_PROC:
       break;
 
+    case BUILD_SCHEMA_PROC:
+      break;
+
     case MERGE_PROC:
       ptr = stx_build_merge_proc (thread_p, ptr, &xasl->proc.merge);
       break;
@@ -4614,6 +4617,8 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, (int *) &cls_spec->schema_type);
 
   return ptr;
 

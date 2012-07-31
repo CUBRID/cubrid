@@ -2623,7 +2623,12 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  for (entity = class_spec->info.spec.flat_entity_list;
 	       entity != NULL; entity = entity->next)
 	    {
-	      if (!mq_translatable_class (parser, entity))
+	      if ((!mq_translatable_class (parser, entity)) ||
+		  (PT_IS_SELECT (tree) &&
+		   (PT_SELECT_INFO_IS_FLAGED (tree,
+					      PT_SELECT_INFO_COLS_SCHEMA)
+		    || PT_SELECT_INFO_IS_FLAGED
+		    (tree, PT_SELECT_FULL_INFO_COLS_SCHEMA))))
 		{
 		  /* no translation for above cases */
 		  my_class = parser_copy_tree (parser, entity);
@@ -3471,7 +3476,12 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
 
   copy_cnt = -1;
 
-  if (PT_IS_SELECT (new_query) && pt_has_analytic (parser, new_query))
+  if (PT_IS_SELECT (new_query) &&
+      (pt_has_analytic (parser, new_query)
+       || PT_SELECT_INFO_IS_FLAGED (new_query,
+				    PT_SELECT_INFO_COLS_SCHEMA)
+       || PT_SELECT_INFO_IS_FLAGED (new_query,
+				    PT_SELECT_FULL_INFO_COLS_SCHEMA)))
     {
       /* don't copy push terms if target query has analytic functions */
       return push_cnt;

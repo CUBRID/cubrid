@@ -20337,6 +20337,93 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
   return NO_ERROR;
 }
 
+/*
+ * btree_get_asc_desc - get asc/desc for column index from BTREE
+ *					  
+ *   return:  error code
+ *   thread_p(in): THREAD_ENTRY 
+ *   btid(in): BTID
+ *   col_idx(in): column index
+ *   asc_desc(out): asc/desc for column index
+ */
+int
+btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx,
+		    int *asc_desc)
+{
+  DISK_ISVALID valid = DISK_ERROR;
+  VPID r_vpid;			/* root page identifier */
+  PAGE_PTR r_pgptr = NULL;	/* root page pointer */
+  BTID_INT btid_int;
+  RECDES rec;
+  BTREE_ROOT_HEADER root_header;
+  TP_DOMAIN *domain;
+  int k, ret = NO_ERROR;
+
+  if (btid == NULL || asc_desc == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  ret = NO_ERROR;
+  *asc_desc = 0;
+
+  r_vpid.pageid = btid->root_pageid;
+  r_vpid.volid = btid->vfid.volid;
+
+  r_pgptr = pgbuf_fix (thread_p, &r_vpid, OLD_PAGE,
+		       PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (r_pgptr == NULL
+      || (spage_get_record (r_pgptr, HEADER, &rec, PEEK) != S_SUCCESS))
+    {
+      goto exit_on_error;
+    }
+
+  btree_read_root_header (&rec, &root_header);
+
+  btid_int.sys_btid = btid;
+
+  ret = btree_glean_root_header_info (thread_p, &root_header, &btid_int);
+  if (ret != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  if (root_header.key_type->setdomain)
+    {
+      domain = root_header.key_type->setdomain;
+      for (k = 1; k <= col_idx; k++)
+	{
+	  domain = domain->next;
+	  if (domain == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+    }
+  else
+    {
+      domain = root_header.key_type;
+      if (col_idx != 0)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  *asc_desc = domain->is_desc;
+  pgbuf_unfix_and_init (thread_p, r_pgptr);
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (r_pgptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, r_pgptr);
+    }
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+
+}
+
 static void
 btree_set_unknown_key_error (THREAD_ENTRY * thread_p,
 			     BTID_INT * btid, DB_VALUE * key,
