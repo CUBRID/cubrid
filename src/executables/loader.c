@@ -629,7 +629,8 @@ static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
 static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
-static void ldr_act_add_class_all_attrs (LDR_CONTEXT * context);
+static void ldr_act_add_class_all_attrs (LDR_CONTEXT * context,
+					 const char *class_name);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
@@ -6152,6 +6153,16 @@ ldr_process_constants (LDR_CONSTANT * cons)
 {
   LDR_CONSTANT *c, *save;
 
+  if (cons != NULL && ldr_Current_context->num_attrs == 0)
+    {
+      ldr_Current_context->valid = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+      CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+      ldr_abort ();
+      return;
+    }
+
   for (c = cons; c; c = save)
     {
       save = c->next;
@@ -6334,17 +6345,41 @@ void
 ldr_init_class_spec (const char *class_name)
 {
   ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
-  ldr_act_add_class_all_attrs (ldr_Current_context);
+  ldr_act_add_class_all_attrs (ldr_Current_context, class_name);
 }
 
 static void
-ldr_act_add_class_all_attrs (LDR_CONTEXT * context)
+ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
 {
   int err = NO_ERROR;
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
+  DB_OBJECT *class_mop;
 
-  err = au_fetch_class (context->cls, &class_, AU_FETCH_READ, AU_SELECT);
+  RETURN_IF_NOT_VALID (context);
+
+  if (context->validation_only)
+    {
+      assert (context->cls == NULL);
+
+      class_mop = ldr_find_class (class_name);
+      if (class_mop == NULL)
+	{
+	  display_error_line (0);
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_LOADDB,
+					   LOADDB_MSG_UNKNOWN_CLASS),
+		   class_name);
+	  err = er_filter_errid (false);
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      class_mop = context->cls;
+    }
+
+  err = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
   if (err != NO_ERROR)
     {
       goto error_exit;

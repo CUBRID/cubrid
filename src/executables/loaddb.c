@@ -776,6 +776,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
 							MSGCAT_UTIL_SET_LOADDB,
 							LOADDB_MSG_CHECKING));
+#if !defined (LDR_OLD_LOADDB)
+	  if (Table_name[0] != '\0')
+	    {
+	      ldr_init_class_spec (Table_name);
+	    }
+#endif
 	  do_loader_parse (object_file);
 #if defined(LDR_OLD_LOADDB)
 	  ldr_stats (&errors, &objects, &defaults);

@@ -631,7 +631,7 @@ $ LOADDB
 563 Reference to internal class %1$s converted to NULL.
 564 Violated the UNIQUE constraint for attribute %1$s of %2$s.
 565 Constructor method %1$s is not defined on class %2$s.
-566 Unused error code.
+566 No class specified or no attribute in class.
 567 Too many constructor method arguments supplied. Expected %1$d.
 568 Missing constructor method parameters. Expected %1$d, found %2$d.
 569 Missing attribute values.  Expected %1$d, found %2$d.
