@@ -4740,12 +4740,9 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_ALTER_INDEX:
     case CUBRID_STMT_DROP_INDEX:
 
-      /* serial replication is not schema replication but data replication
-       *
-       * case CUBRID_STMT_CREATE_SERIAL:
-       * case CUBRID_STMT_ALTER_SERIAL:
-       * case CUBRID_STMT_DROP_SERIAL:
-       */
+    case CUBRID_STMT_CREATE_SERIAL:
+    case CUBRID_STMT_ALTER_SERIAL:
+    case CUBRID_STMT_DROP_SERIAL:
 
     case CUBRID_STMT_DROP_DATABASE:
     case CUBRID_STMT_DROP_LABEL:
