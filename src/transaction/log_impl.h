@@ -1376,7 +1376,6 @@ struct log_prior_lsa_info
 
   /* flush list */
   LOG_PRIOR_NODE *prior_flush_list_header;
-  LOG_PRIOR_NODE *prior_flush_list_tail;
 
   pthread_mutex_t prior_lsa_mutex;
 };

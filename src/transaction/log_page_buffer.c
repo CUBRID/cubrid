@@ -1094,8 +1094,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 
 		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
-		      logpb_flush_all_append_pages (thread_p,
-						    LOG_FLUSH_DIRECT, NULL);
+		      logpb_flush_all_append_pages_helper (thread_p);
 
 		      csect_enter_critical_section (thread_p,
 						    &log_Pb.lpb_cs, INF_WAIT);
@@ -4599,16 +4598,8 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /* append prior_flush_list */
-  if (log_Gl.prior_info.prior_flush_list_header == NULL)
-    {
-      log_Gl.prior_info.prior_flush_list_header = list;
-      log_Gl.prior_info.prior_flush_list_tail = list;
-    }
-  else
-    {
-      log_Gl.prior_info.prior_flush_list_tail->next = list;
-      log_Gl.prior_info.prior_flush_list_tail = list;
-    }
+  assert (log_Gl.prior_info.prior_flush_list_header == NULL);
+  log_Gl.prior_info.prior_flush_list_header = list;
 
   /* append log buffer */
   while (log_Gl.prior_info.prior_flush_list_header != NULL)
@@ -4633,8 +4624,6 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
 
       free_and_init (node);
     }
-
-  log_Gl.prior_info.prior_flush_list_tail = NULL;
 
   return NO_ERROR;
 }
