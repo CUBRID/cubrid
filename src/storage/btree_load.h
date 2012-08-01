@@ -102,6 +102,7 @@
  */
 #define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 4))
 #define BTREE_MAX_SEPARATOR_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
+#define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 4))
 
 /* B+tree node types */
 #define BTREE_LEAF_NODE 	((short)0)

@@ -8697,7 +8697,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   char *recset_data = NULL;
   int oid_size;
   bool dummy;
-  int max_free;
+  int max_free, oid_length_in_rec;
   int key_len, offset;
   char *keyvalp;		/* for recovery purposes */
   int keyval_len, recset_length;	/* for recovery purposes */
@@ -9015,8 +9015,14 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 		}
 	    }
 
-	  if (max_free > oid_size + DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT))
-	    {			/* enough space in page */
+	  oid_length_in_rec = oid_size + rec.length - offset;
+
+	  assert_release (max_free >
+			  (oid_size + DB_ALIGN (DISK_VPID_SIZE,
+						INT_ALIGNMENT)));
+	  if (max_free > oid_size + DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT)
+	      && oid_length_in_rec < BTREE_MAX_OIDLEN_INPAGE)
+	    {
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
 		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
@@ -11606,7 +11612,6 @@ start_point:
 		  && !btree_search_leaf_page (thread_p, &btid_int, Q, key,
 					      &q_slot_id))))
 	{
-
 	  /* start system top operation */
 	  log_start_system_op (thread_p);
 	  top_op_active = 1;
@@ -20339,9 +20344,9 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 
 /*
  * btree_get_asc_desc - get asc/desc for column index from BTREE
- *					  
+ *
  *   return:  error code
- *   thread_p(in): THREAD_ENTRY 
+ *   thread_p(in): THREAD_ENTRY
  *   btid(in): BTID
  *   col_idx(in): column index
  *   asc_desc(out): asc/desc for column index
