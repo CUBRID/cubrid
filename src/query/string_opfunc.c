@@ -4355,25 +4355,11 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
       goto cleanup;
     }
 
-  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
-    {
-      src_char_string_p = DB_PULL_CHAR (src_string, &src_length);
-    }
-  else
-    {
-      src_char_string_p = DB_PULL_STRING (src_string);
-      src_length = DB_GET_STRING_SIZE (src_string);
-    }
+  src_char_string_p = DB_PULL_STRING (src_string);
+  src_length = DB_GET_STRING_SIZE (src_string);
 
-  if (pattern_type == DB_TYPE_CHAR || pattern_type == DB_TYPE_NCHAR)
-    {
-      pattern_char_string_p = DB_PULL_CHAR (pattern, &pattern_length);
-    }
-  else
-    {
-      pattern_char_string_p = DB_PULL_STRING (pattern);
-      pattern_length = DB_GET_STRING_SIZE (pattern);
-    }
+  pattern_char_string_p = DB_PULL_STRING (pattern);
+  pattern_length = DB_GET_STRING_SIZE (pattern);
 
   /* initialize regex library memory allocator */
   cub_regset_malloc ((CUB_REG_MALLOC) db_private_alloc);
@@ -18694,8 +18680,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	date_s = DB_GET_STRING (date);
 
 	/* try to figure out the string format */
-	if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime, 
-					  &has_explicit_time, NULL, NULL, 
+	if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime,
+					  &has_explicit_time, NULL, NULL,
 					  NULL))
 	  {
 	    is_dt = ER_TIMESTAMP_CONVERSION;

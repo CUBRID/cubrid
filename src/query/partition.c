@@ -2606,7 +2606,8 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
     }
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
-  expr_stream = DB_PULL_CHAR (&val, &stream_len);
+  expr_stream = DB_PULL_STRING (&val);
+  stream_len = DB_GET_STRING_SIZE (&val);
 
   /* unpack partition expression */
   error =
