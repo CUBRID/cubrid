@@ -1560,6 +1560,50 @@ db_get_user_name (void)
 }
 
 /*
+ * db_get_user_and_host_name() - This returns the name of the user that is
+ *    currently logged in and the host name. Format for return value is
+ *    user_name@host_name
+ *
+ * return : user and host name
+ */
+char *
+db_get_user_and_host_name (void)
+{
+  char *user = NULL;
+  char *username = NULL;
+  char hostname[MAXHOSTNAMELEN];
+  int len;
+
+  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
+    {
+      return NULL;
+    }
+
+  username = db_get_user_name ();
+  if (!username)
+    {
+      return NULL;
+    }
+
+  len = strlen (hostname) + strlen (username) + 2;
+  user = (char *) db_private_alloc (NULL, len);
+  if (!user)
+    {
+      db_string_free (username);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, len);
+      return 0;
+    }
+
+  strcpy (user, username);
+  strcat (user, "@");
+  strcat (user, hostname);
+  db_string_free (username);
+
+  return user;
+}
+
+/*
  * db_get_user() - This returns the user object of the current user. If no user
  *    has been logged in, it returns NULL. No error is set if NULL is returned,
  *    it simply means that there is no active user.

@@ -345,11 +345,15 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 					 &att->default_value.value);
 	      break;
 	    case DB_DEFAULT_USER:
+	      error = db_make_string (&att->default_value.value,
+				      db_get_user_and_host_name ());
+	      att->default_value.value.need_clear = true;
+	      break;
 	    case DB_DEFAULT_CURR_USER:
 	      error = DB_MAKE_STRING (&att->default_value.value,
 				      db_get_user_name ());
+	      att->default_value.value.need_clear = true;
 	      break;
-
 	    default:
 	      break;
 	    }

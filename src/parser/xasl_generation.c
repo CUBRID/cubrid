@@ -8582,38 +8582,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  {
 		    char *user = NULL;
 		    PT_NODE *current_user_val = NULL;
-		    char *username = NULL;
-		    char hostname[MAXHOSTNAMELEN];
 
-		    if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-		      {
-			PT_INTERNAL_ERROR (parser, "get host name");
-			return NULL;
-		      }
-
-		    username = au_user_name ();
-		    if (username == NULL)
-		      {
-			PT_INTERNAL_ERROR (parser, "get user name");
-			return NULL;
-		      }
-
-		    user =
-		      (char *) db_private_alloc (NULL,
-						 strlen (hostname) +
-						 strlen (username) + 1 + 1);
-		    if (user == NULL)
-		      {
-			db_string_free (username);
-			PT_INTERNAL_ERROR (parser, "insufficient memory");
-			return NULL;
-		      }
-
-		    strcpy (user, username);
-		    strcat (user, "@");
-		    strcat (user, hostname);
-		    db_string_free (username);
-
+		    user = db_get_user_and_host_name ();
 		    current_user_val = parser_new_node (parser, PT_VALUE);
 		    if (current_user_val == NULL)
 		      {

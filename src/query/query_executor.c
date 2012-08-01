@@ -9455,11 +9455,39 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  error = db_unix_timestamp (insert->vals[k], insert->vals[k]);
 	  break;
 	case DB_DEFAULT_USER:
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	    LOG_TDES *tdes = NULL;
+	    char *temp = NULL;
+
+	    tdes = LOG_FIND_TDES (tran_index);
+	    if (tdes)
+	      {
+		int len =
+		  strlen (tdes->client.db_user) +
+		  strlen (tdes->client.host_name) + 2;
+		temp = db_private_alloc (thread_p, len);
+		if (!temp)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
+		  }
+		else
+		  {
+		    strcpy (temp, tdes->client.db_user);
+		    strcat (temp, "@");
+		    strcat (temp, tdes->client.host_name);
+		  }
+	      }
+	    DB_MAKE_STRING (insert->vals[k], temp);
+	    insert->vals[k]->need_clear = true;
+	  }
+	  break;
 	case DB_DEFAULT_CURR_USER:
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	    LOG_TDES *tdes = NULL;
-	    char *temp;
+	    char *temp = NULL;
 
 	    tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes != NULL)

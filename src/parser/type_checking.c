@@ -16177,35 +16177,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_USER:
       {
 	char *user = NULL;
-	char *username = NULL;
-	char hostname[MAXHOSTNAMELEN];
 
-	if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-	  {
-	    return 0;
-	  }
-
-	username = db_get_user_name ();
-	if (!username)
-	  {
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-
-	user = (char *) db_private_alloc (NULL, strlen (hostname) +
-					  strlen (username) + 1 + 1);
-	if (!user)
-	  {
-	    db_string_free (username);
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-
-	strcpy (user, username);
-	strcat (user, "@");
-	strcat (user, hostname);
-	db_string_free (username);
-
+	user = db_get_user_and_host_name ();
 	db_make_null (result);
 
 	error = db_make_string (&tmp_val, user);

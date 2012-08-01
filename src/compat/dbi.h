@@ -128,6 +128,7 @@ extern void db_get_tran_settings (int *lock_wait,
 extern DB_OBJECT *db_get_user (void);
 extern DB_OBJECT *db_get_owner (DB_OBJECT * classobj);
 extern char *db_get_user_name (void);
+extern char *db_get_user_and_host_name (void);
 extern DB_OBJECT *db_find_user (const char *name);
 extern DB_OBJECT *db_add_user (const char *name, int *exists);
 extern int db_drop_user (DB_OBJECT * user);
