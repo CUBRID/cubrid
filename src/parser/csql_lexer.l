@@ -111,6 +111,7 @@ extern int yycolumn_end;
 [aA][sS]								{ begin_token(yytext);   return AS; }
 [aA][sS][cC]								{ begin_token(yytext);   return ASC; }
 [aA][sS][sS][eE][rR][tT][iI][oO][nN]					{ begin_token(yytext);   return ASSERTION; }
+[aA][sS][yY][nN][cC]							{ begin_token(yytext);   return ASYNC; }
 [aA][tT]								{ begin_token(yytext);   return AT; }
 [aA][tT][tT][aA][cC][hH]						{ begin_token(yytext);   return ATTACH; }
 [aA][tT][tT][rR][iI][bB][uU][tT][eE]					{ begin_token(yytext);   return ATTRIBUTE; }

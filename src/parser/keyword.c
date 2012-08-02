@@ -57,6 +57,7 @@ static KEYWORD_RECORD keywords[] = {
   {AS, "AS", 0},
   {ASC, "ASC", 0},
   {ASSERTION, "ASSERTION", 0},
+  {ASYNC, "ASYNC", 0},
   {AT, "AT", 0},
   {ATTACH, "ATTACH", 0},
   {ATTRIBUTE, "ATTRIBUTE", 0},

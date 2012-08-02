@@ -960,6 +960,7 @@ typedef struct YYLTYPE
 %token AS
 %token ASC
 %token ASSERTION
+%token ASYNC
 %token AT
 %token ATTACH
 %token ATTRIBUTE
@@ -9238,6 +9239,15 @@ isolation_level_spec
 			container_4 ctn;
 			SET_CONTAINER_4 (ctn, $1, FROM_NUMBER (PT_NO_ISOLATION_LEVEL),
 					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (0));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| ASYNC WORKSPACE
+		{{
+
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, FROM_NUMBER (PT_NO_ISOLATION_LEVEL),
+					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (1));
 			$$ = ctn;
 
 		DBG_PRINT}}
