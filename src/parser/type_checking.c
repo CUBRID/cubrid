@@ -20184,6 +20184,15 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       /* check arg3 */
       if (op_has_3_args)
 	{
+	  if (LANG_IS_COERCIBLE_COLL (arg2_coll))
+	    {
+	      arg2_coerc_level = PT_COLLATION_FULLY_COERC;
+	    }
+	  if (LANG_IS_COERCIBLE_COLL (arg3_coll))
+	    {
+	      arg3_coerc_level = PT_COLLATION_FULLY_COERC;
+	    }
+
 	  if (arg2_coerc_level > arg3_coerc_level)
 	    {
 	      /* coerce arg2 collation */
@@ -20231,6 +20240,15 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       /* check arg3 */
       if (op_has_3_args && arg3_coll != *common_coll)
 	{
+	  if (LANG_IS_COERCIBLE_COLL (arg1_coll))
+	    {
+	      arg1_coerc_level = PT_COLLATION_FULLY_COERC;
+	    }
+	  if (LANG_IS_COERCIBLE_COLL (arg3_coll))
+	    {
+	      arg3_coerc_level = PT_COLLATION_FULLY_COERC;
+	    }
+
 	  if (arg1_coerc_level > arg3_coerc_level)
 	    {
 	      /* coerce arg1 collation */
@@ -20310,7 +20328,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
     }
 
   op_has_3_args =
-    (op == PT_CONCAT_WS || op == PT_REPLACE || op == PT_TRANSLATE);
+    (op == PT_CONCAT_WS || op == PT_REPLACE || op == PT_TRANSLATE
+     || op == PT_BETWEEN || op == PT_NOT_BETWEEN);
   reverse_arg2_arg3 = (op == PT_RPAD || op == PT_LPAD);
 
   /* step 1 : get info */
