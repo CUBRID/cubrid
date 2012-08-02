@@ -146,8 +146,11 @@ enum
   P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
   P_S_CONSTR_UNI,		/* constraint UNIQUE only on one single column : the checked attribute */
   P_M_CONSTR_UNI,		/* constraint UNIQUE on more columns, including checked attribute */
-  P_CONSTR_NON_UNI,		/* has an non-unique index defined on it, should apply only
+  P_CONSTR_NON_UNI,		/* has a non-unique index defined on it, should apply only
 				 * for existing schema (as you cannot add a non-index with
+				 * ALTER CHANGE)*/
+  P_PREFIX_INDEX,		/* has a prefix index defined on it, should apply only
+				 * for existing schema (as you cannot add a prefix index with
 				 * ALTER CHANGE)*/
   P_TYPE,			/* type (domain) change */
   P_IS_PARTITION_COL,		/* class has partitions */
@@ -13300,6 +13303,9 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	ATT_CHG_PROPERTY_PRESENT_OLD;
     }
 
+  /* prefix index */
+  attr_chg_properties->p[P_PREFIX_INDEX] = 0;
+
   /* constraint : NOT NULL */
   attr_chg_properties->p[P_NOT_NULL] = 0;
   if (att->flags & SM_ATTFLAG_NON_NULL)
@@ -13376,6 +13382,12 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		  attr_chg_properties->p[P_CONSTR_NON_UNI] |=
 		    ATT_CHG_PROPERTY_PRESENT_OLD;
 		  save_constr = true;
+
+		  if (sm_cls_constr->attrs_prefix_length != NULL)
+		    {
+		      attr_chg_properties->p[P_PREFIX_INDEX] |=
+			ATT_CHG_PROPERTY_PRESENT_OLD;
+		    }
 		}
 	      /* UNIQUE */
 	      else if (sm_cls_constr->type == SM_CONSTRAINT_UNIQUE ||
@@ -14529,6 +14541,21 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	    {
 	      /* change of collation allowed : requires index recreation */
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
+	    }
+
+	  if (is_att_prop_set (attr_chg_properties->p[P_PREFIX_INDEX],
+			       ATT_CHG_PROPERTY_PRESENT_OLD))
+	    {
+	      /* check collation if expansions */
+	      LANG_COLLATION *lc = lang_get_collation (req_coll_id);
+
+	      assert (lc != NULL);
+
+	      if (!(lc->options.allow_prefix_index))
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NOT_SUPPORTED;
+		}
 	    }
 	}
       else
