@@ -51,6 +51,7 @@ static char *get_execute_type (char *msg_p, int *prepare_flag,
 			       int *execute_flag);
 
 static char add_query_info = 0;
+static char add_query_id = 0;
 static char *infilename = NULL;
 
 int
@@ -90,6 +91,7 @@ log_converter (FILE * infp, FILE * outfp)
   char in_execute = 0;
   int exec_h_id = 0;
   int bind_len = 0;
+  int query_id = 0;
 
   linebuf_tstr = t_string_make (1000);
   if (linebuf_tstr == NULL)
@@ -147,7 +149,14 @@ log_converter (FILE * infp, FILE * outfp)
 
 		  fprintf (outfp, "Q ");
 		  if (add_query_info == 1 && prepare_flag != 0x40)
-		    fprintf (outfp, "/* %s */ ", infilename);
+		    {
+		      fprintf (outfp, "/* %s */ ", infilename);
+		    }
+		  if (add_query_id == 1)
+		    {
+		      fprintf (outfp, "/* QUERY_ID %d */ ", query_id++);
+		    }
+
 		  fprintf (outfp, "%s%c", msg_p, CAS_RUN_NEW_LINE_CHAR);
 		  query_flag = 1;
 		}
@@ -434,12 +443,15 @@ get_args (int argc, char *argv[])
 {
   int c;
 
-  while ((c = getopt (argc, argv, "q")) != EOF)
+  while ((c = getopt (argc, argv, "iq")) != EOF)
     {
       switch (c)
 	{
 	case 'q':
 	  add_query_info = 1;
+	  break;
+	case 'i':
+	  add_query_id = 1;
 	  break;
 	default:
 	  goto usage;
