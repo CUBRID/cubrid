@@ -2699,6 +2699,7 @@ is_allowed_as_prepared_statement_with_hv (PT_NODE * node)
     case PT_INSERT:
     case PT_UPDATE:
     case PT_DELETE:
+    case PT_MERGE:
 
     case PT_DO:
     case PT_METHOD_CALL:
