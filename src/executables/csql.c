@@ -195,7 +195,7 @@ static void csql_exit_session (int error);
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 				    const void *stream, int line_no);
 
-static bool check_incomplete_string (char *line_read);
+static bool csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(GNU_Readline)
@@ -360,16 +360,15 @@ display_buffer (void)
 
 
 static bool
-check_incomplete_string (char *line_read)
+check_incomplete_string (char *line_read,
+			 bool * single_quote_on, bool * double_quote_on)
 {
   char *ptr;
   int line_length = strlen (line_read);
-  bool single_quote_on = false;
-  bool double_quote_on = false;
 
   for (ptr = line_read; ptr < line_read + line_length; ptr++)
     {
-      if (!double_quote_on && *ptr == '\'')
+      if (*double_quote_on == false && *ptr == '\'')
 	{
 	  if (ptr[1] == '\'')	/* escape by '' */
 	    {
@@ -377,11 +376,11 @@ check_incomplete_string (char *line_read)
 	      continue;
 	    }
 
-	  single_quote_on = !single_quote_on;
+	  *single_quote_on = !(*single_quote_on);
 	}
 
-      if (!prm_get_bool_value (PRM_ID_ANSI_QUOTES)
-	  && !single_quote_on && *ptr == '\"')
+      if (prm_get_bool_value (PRM_ID_ANSI_QUOTES) == false
+	  && *single_quote_on == false && *ptr == '\"')
 	{
 	  if (ptr[1] == '\"')	/* escape by "" */
 	    {
@@ -389,16 +388,18 @@ check_incomplete_string (char *line_read)
 	      continue;
 	    }
 
-	  double_quote_on = !double_quote_on;
+	  *double_quote_on = !(*double_quote_on);
 	}
 
-      if (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && *ptr == '\\')
+      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
+	  && *ptr == '\\')
 	{
 	  ptr++;
 	}
+      bool flag_append_new_line;
     }
 
-  return (single_quote_on || double_quote_on);
+  return *single_quote_on || *double_quote_on;
 }
 
 /*
@@ -428,29 +429,27 @@ check_incomplete_string (char *line_read)
 static void
 start_csql (CSQL_ARGUMENT * csql_arg)
 {
-  unsigned char line_buf[LINE_BUFFER_SIZE];
-  unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
-  char *line_read = NULL;
 #if defined(GNU_Readline)
   char *t;
 #else /* !GNU_Readline */
 #if !defined(WINDOWS)
-  HIST_ENTRY *hist_entry;
   int i;
 #endif /* !WINDOWS */
 #endif /* GNU_Readline */
+  unsigned char line_buf[LINE_BUFFER_SIZE];
+  unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
+  char *line_read = NULL;
   int line_length;
-  char *ptr;			/* loop pointer */
-  int cmd_no;			/* session command number */
-  char *sess_cmd;		/* session command pointer */
-  char *argument;		/* argument str */
-  DB_HELP_COMMAND csql_cmd_no;	/* CSQL cmd no for syntax help */
-  char *line_read_alloced = NULL;
-  bool flag_append_new_line;
-  bool flag_end_of_file = false;
-  bool incomplete_prev_line = false;
   int line_no;
+  char *ptr;			/* loop pointer */
+  char *line_read_alloced = NULL;
   bool is_first_read_line = true;
+  bool flag_read_whole_line;
+
+  /* for check_incomplete_string() */
+  bool single_quote_on = false;
+  bool double_quote_on = false;
+  bool flag_in_string_block = false;
 
   if (csql_arg->column_output && csql_arg->line_output)
     {
@@ -535,106 +534,55 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  fputs ("!", csql_Output_fp);
 	}
 
-      if (line_read_alloced)
-	{
-	  free (line_read_alloced);
-	  line_read_alloced = NULL;
-	}
-      flag_append_new_line = false;
+      flag_read_whole_line = false;
 
       memset (line_buf, 0, LINE_BUFFER_SIZE);
       memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
-#if defined(GNU_Readline)
+
       if (csql_Is_interactive)
 	{
+#if !defined(GNU_Readline) && defined(WINDOWS)
+	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
+	  line_read =
+	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
+#else
 	  if ((line_read = readline (csql_Prompt)) != NULL)
 	    {
+#if defined(GNU_Readline)
 	      for (t = line_read; isspace (*t); t++)
 		;
 	      if (*t != '\0')
-		add_history (line_read);
-	      line_read_alloced = line_read;
-	      flag_append_new_line = true;
-	    }
-	}
-      else
-	{
-	  line_read =
-	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
-	}
-      if (line_read == NULL)
-	{
-	  if (errno == EINTR && !feof (csql_Input_fp))
-	    {
-	      fprintf (csql_Output_fp, "\n");
-	      continue;
-	    }
-
-	  if (line_read_alloced)
-	    {
-	      free (line_read_alloced);
-	      line_read_alloced = NULL;
-	    }
-	  csql_edit_contents_finalize ();
-	  csql_exit_session (0);
-	  break;
-	}
-      else
-	{
-	  if (feof (csql_Input_fp))
-	    {
-	      flag_end_of_file = true;
-	    }
-	}
-#else /* !GNU_Readline */
-#if !defined(WINDOWS)
-      if (csql_Is_interactive)
-	{
-	  if ((line_read = readline (csql_Prompt)) != NULL)
-	    {
-	      line_read_alloced = line_read;
-	      flag_append_new_line = true;
-	    }
-	}
-      else
-	{
-	  line_read =
-	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
-	}
-#else /* WINDOWS */
-      if (csql_Is_interactive)
-	{
-	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
-	}
-
-      line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
-#endif /* !WINDOWS */
-      fflush (csql_Output_fp);
-
-      if (line_read == NULL)
-	{
-	  if (errno == EINTR && !feof (csql_Input_fp))
-	    {
-	      fprintf (csql_Output_fp, "\n");
-	      continue;
-	    }
-
-	  if (line_read_alloced)
-	    {
-	      free (line_read_alloced);
-	      line_read_alloced = NULL;
-	    }
-	  csql_edit_contents_finalize ();
-	  csql_exit_session (0);
-	}
-      else
-	{
-	  if (feof (csql_Input_fp))
-	    {
-	      flag_end_of_file = true;
-	    }
-	}
+		{
+		  add_history (line_read);
+		}
 #endif /* GNU_Readline */
+	      if (line_read_alloced != NULL)
+		{
+		  free (line_read_alloced);
+		  line_read_alloced = NULL;
+		}
+
+	      line_read_alloced = line_read;
+
+	      /* readline assure whole line user typed is located in
+	       * returned buffer
+	       * (but it doesn't contain '\n' in it)
+	       */
+	      flag_read_whole_line = true;
+	    }
+#endif /* !GNU_Readline && WINDOWS */
+	}
+      else
+	{
+	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n'
+	   * character in it.
+	   * So, flag_read_whole_line will be remained as false.
+	   */
+	  line_read =
+	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
+	}
+
+      fflush (csql_Output_fp);
 
       line_length = strlen (line_read);
 
@@ -674,8 +622,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  if (*ptr == '\n')
 	    {
-	      flag_append_new_line = true;
+	      flag_read_whole_line = true;
 	    }
+
 	  if (*ptr == '\n' || *ptr == '\r')
 	    {
 	      *ptr = '\0';
@@ -687,35 +636,56 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	}
 
-      if (incomplete_prev_line ||
-	  !CSQL_SESSION_COMMAND_PREFIX (line_read[0]) ||
-	  check_incomplete_string (line_read))
-	{
-	  bool line_continuation = false;
 
-	  if (flag_append_new_line || flag_end_of_file)
+      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) &&
+	  flag_in_string_block == false)
+	{
+	  if (csql_do_session_cmd (line_read, csql_arg) == false)
 	    {
-	      incomplete_prev_line = false;
+	      goto error_continue;
 	    }
-	  else
-	    {
-	      line_continuation = true;
-	      incomplete_prev_line = true;
-	    }
-	  if (csql_arg->single_line_execution
-	      && (line_length == 0
-		  || (line_length > 0 && !csql_is_statement_end (line_read)))
-	      && !flag_end_of_file)
-	    {
-	      line_continuation = true;
-	    }
-	  if (csql_edit_contents_append (line_read, flag_append_new_line) !=
+
+	  continue;
+	}
+      else
+	{
+	  bool flag_csql_execute = false;
+
+	  /* trace string block at each line
+	   * because we don't want to execute session commands in string block
+	   */
+	  flag_in_string_block = check_incomplete_string (line_read,
+							  &single_quote_on,
+							  &double_quote_on);
+
+	  if (csql_edit_contents_append (line_read, flag_read_whole_line) !=
 	      CSQL_SUCCESS)
 	    {
 	      goto error_continue;
 	    }
-	  if ((csql_arg->single_line_execution && !line_continuation)
-	      || flag_end_of_file)
+
+	  if (feof (csql_Input_fp))
+	    {
+	      /* if eof is reached, execute all */
+	      flag_csql_execute = true;
+	    }
+	  else if (csql_arg->single_line_execution
+		   /* flag_read_whole_line == false means that
+		    * fgets couldn't read whole line (exceeds buffer size)
+		    * so we should concat next line before execute it.
+		    */
+		   && flag_read_whole_line == true
+		   && csql_is_statement_end (line_read))
+	    {
+	      /* if eof is not reached,
+	       * execute it only on single line execution mode with
+	       * complete statement
+	       */
+
+	      flag_csql_execute = true;
+	    }
+
+	  if (flag_csql_execute)
 	    {
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
@@ -725,530 +695,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		  line_no = 0;
 		}
 	    }
-	  continue;
-	}
-
-      /* Now, we found that this input line is started with the session
-       * command prefix.
-       */
-
-      /* get session command and argument */
-      ptr = line_read;
-      if (csql_Is_echo_on)
-	{
-	  fprintf (csql_Output_fp, "%s\n", line_read);
-	}
-
-      /* 'ptr' points to the prefix char. */
-      for (ptr++; *ptr != '\0' && iswspace ((wint_t) * ptr); ptr++)
-	{
-	  ;
-	}
-      sess_cmd = (char *) ptr;
-      for (; *ptr != '\0' && !iswspace ((wint_t) * ptr); ptr++)
-	{
-	  ;
-	}
-      if (iswspace ((wint_t) * ptr))
-	{
-	  *ptr++ = '\0';	/* put null-termination */
-	}
-      for (; *ptr != '\0' && iswspace ((wint_t) * ptr); ptr++)
-	{
-	  ;
-	}
-      argument = (char *) ptr;
-
-      /* Now, `sess_cmd' points to null-terminated session command name and
-       * `argument' points to remaining argument (it may be '\0' if not given).
-       */
-
-      if (*sess_cmd == '\0' && csql_arg->single_line_execution == false)
-	{
-	  continue;
-	}
-
-      cmd_no = csql_get_session_cmd_no (sess_cmd);
-      if (cmd_no == -1)
-	{
-	  goto error_continue;
-	}
-
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
-      if (csql_Is_interactive)
-	{
-	  add_history (line_read);
-	}
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
-
-      switch ((SESSION_CMD) cmd_no)
-	{
-	  /* File stuffs */
-
-	case S_CMD_READ:	/* read a file */
-	  csql_read_file (argument);
-	  break;
-
-	case S_CMD_WRITE:	/* write to a file */
-	case S_CMD_APPEND:	/* append to a file */
-	  csql_write_file (argument, cmd_no == S_CMD_APPEND);
-	  break;
-
-	case S_CMD_PRINT:
-	  csql_print_buffer ();
-	  break;
-
-	case S_CMD_SHELL:	/* invoke shell */
-	  csql_invoke_system (csql_Shell_cmd);
-	  csql_fputs ("\n", csql_Tty_fp);
-	  break;
-
-	case S_CMD_CD:
-	  csql_change_working_directory (argument);
-	  break;
-
-	case S_CMD_EXIT:	/* exit */
-	  csql_edit_contents_finalize ();
-	  csql_exit_session (0);
-	  break;
-
-	  /* Edit stuffs */
-
-	case S_CMD_CLEAR:	/* clear editor buffer */
-	  csql_edit_contents_clear ();
-	  break;
-
-	case S_CMD_EDIT:	/* invoke system editor */
-	  if (csql_invoke_system_editor () != CSQL_SUCCESS)
-	    {
-	      goto error_continue;
-	    }
-	  break;
-
-	case S_CMD_LIST:	/* display buffer */
-	  display_buffer ();
-	  break;
-
-	  /* Command stuffs */
-	case S_CMD_RUN:
-	  csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
-	  break;
-
-	case S_CMD_XRUN:
-	  csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
-	  csql_edit_contents_clear ();
-	  break;
-
-	case S_CMD_COMMIT:
-	  if (db_commit_transaction () < 0)
-	    {
-	      csql_display_csql_err (0, 0);
-	      csql_check_server_down ();
-	    }
-	  else
-	    {
-	      csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
-	    }
-	  break;
-
-	case S_CMD_ROLLBACK:
-	  if (db_abort_transaction () < 0)
-	    {
-	      csql_display_csql_err (0, 0);
-	      csql_check_server_down ();
-	    }
-	  else
-	    {
-	      csql_display_msg (csql_get_message (CSQL_STAT_ROLLBACKED_TEXT));
-	    }
-	  break;
-
-	case S_CMD_AUTOCOMMIT:
-	  if (!strcasecmp (argument, "on"))
-	    {
-	      csql_arg->auto_commit = true;
-	    }
-	  else if (!strcasecmp (argument, "off"))
-	    {
-	      csql_arg->auto_commit = false;
-	    }
-
-	  fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n",
-		   (csql_arg->auto_commit
-		    && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) ? "ON" :
-		    "OFF"));
-	  break;
-
-	case S_CMD_CHECKPOINT:
-	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
-	    {
-	      db_checkpoint ();
-	      if (db_error_code () != NO_ERROR)
-		{
-		  csql_display_csql_err (0, 0);
-		}
-	      else
-		{
-		  csql_display_msg (csql_get_message
-				    (CSQL_STAT_CHECKPOINT_TEXT));
-		}
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "Checkpointing is only allowed for"
-		       " the csql started with --sysadm\n");
-	    }
-	  break;
-
-	case S_CMD_KILLTRAN:
-	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
-	    {
-	      csql_killtran ((argument[0] == '\0') ? NULL : argument);
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "Killing transaction is only allowed"
-		       " for the csql started with --sysadm\n");
-	    }
-	  break;
-
-	case S_CMD_RESTART:
-	  if (csql_Database_connected)
-	    {
-	      csql_Database_connected = false;
-	      db_end_session ();
-	      db_shutdown ();
-	    }
-	  er_init ("./csql.err", ER_NEVER_EXIT);
-	  if (db_restart_ex (UTIL_CSQL_NAME, csql_arg->db_name,
-			     csql_arg->user_name, csql_arg->passwd,
-			     NULL, db_get_client_type ()) != NO_ERROR)
-	    {
-	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      csql_display_csql_err (0, 0);
-	      csql_check_server_down ();
-	    }
-	  else
-	    {
-	      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
-		{
-		  au_disable ();
-		}
-	      csql_Database_connected = true;
-	      csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
-	    }
-	  break;
-
-	  /* Environment stuffs */
-	case S_CMD_SHELL_CMD:
-	case S_CMD_EDIT_CMD:
-	case S_CMD_PRINT_CMD:
-	case S_CMD_PAGER_CMD:
-	  if (*argument == '\0')
-	    {
-	      fprintf (csql_Output_fp, "\n\t%s\n\n",
-		       (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
-		       (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
-		       (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
-		       csql_Pager_cmd);
-	    }
-	  else
-	    {
-	      strncpy ((cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
-		       (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
-		       (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
-		       csql_Pager_cmd, argument, PATH_MAX - 1);
-	    }
-	  break;
-
-	case S_CMD_NOPAGER_CMD:
-	  csql_Pager_cmd[0] = '\0';
-	  break;
-
-	  /* Help stuffs */
-	case S_CMD_HELP:
-	  csql_help_menu ();
-	  break;
-
-	case S_CMD_SCHEMA:
-	  csql_help_schema ((argument[0] == '\0') ? NULL : argument);
-	  if (csql_arg->auto_commit
-	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
-	    {
-	      if (db_commit_transaction () < 0)
-		{
-		  csql_display_csql_err (0, 0);
-		  csql_check_server_down ();
-		}
-	      else
-		{
-		  csql_display_msg (csql_get_message
-				    (CSQL_STAT_COMMITTED_TEXT));
-		}
-	    }
-	  break;
-
-	case S_CMD_TRIGGER:
-	  csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
-	  if (csql_arg->auto_commit
-	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
-	    {
-	      if (db_commit_transaction () < 0)
-		{
-		  csql_display_csql_err (0, 0);
-		  csql_check_server_down ();
-		}
-	      else
-		{
-		  csql_display_msg (csql_get_message
-				    (CSQL_STAT_COMMITTED_TEXT));
-		}
-	    }
-	  break;
-
-	case S_CMD_SYNTAX:
-	  if (csql_get_help_cmd_no ((argument[0] == '\0') ? NULL : argument,
-				    &csql_cmd_no) == CSQL_FAILURE)
-	    goto error_continue;
-	  csql_help_syntax (csql_cmd_no);
-	  break;
-
-	case S_CMD_INFO:
-	  csql_help_info ((argument[0] == '\0') ? NULL : argument,
-			  csql_arg->auto_commit
-			  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT));
-	  break;
-
-	case S_CMD_DATABASE:
-	  csql_print_database ();
-	  break;
-
-	case S_CMD_SET_PARAM:
-	  csql_set_sys_param (argument);
-	  break;
-
-	case S_CMD_GET_PARAM:
-	  csql_get_sys_param (argument);
-	  break;
-
-	case S_CMD_PLAN_DUMP:
-	  csql_set_plan_dump ((argument[0] == '\0') ? NULL : argument);
-	  break;
-
-	case S_CMD_ECHO:
-	  if (!strcasecmp (argument, "on"))
-	    {
-	      csql_Is_echo_on = true;
-	    }
-	  else if (!strcasecmp (argument, "off"))
-	    {
-	      csql_Is_echo_on = false;
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "ECHO IS %s\n",
-		       (csql_Is_echo_on ? "ON" : "OFF"));
-	    }
-	  break;
-
-	case S_CMD_DATE:
-	  {
-	    time_t tloc = time (NULL);
-	    struct tm tmloc;
-	    char str[80];
-	    utility_localtime (&tloc, &tmloc);
-	    strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
-	    fprintf (csql_Output_fp, "\n\t%s\n", str);
-	  }
-	  break;
-
-	case S_CMD_TIME:
-	  if (!strcasecmp (argument, "on"))
-	    {
-	      csql_Is_time_on = true;
-	    }
-	  else if (!strcasecmp (argument, "off"))
-	    {
-	      csql_Is_time_on = false;
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "TIME IS %s\n",
-		       (csql_Is_time_on ? "ON" : "OFF"));
-	    }
-	  break;
-
-	case S_CMD_HISTO:
-	  if (histo_is_supported ())
-	    {
-	      if (!strcasecmp (argument, "on"))
-		{
-		  if (histo_start (false) == NO_ERROR)
-		    {
-		      csql_Is_histo_on = HISTO_ON;
-		    }
-		  else
-		    {
-		      if (er_errid () == ER_AU_DBA_ONLY)
-			{
-			  fprintf (csql_Output_fp,
-				   "Histogram is allowed only for DBA\n");
-			}
-		      else
-			{
-			  fprintf (csql_Output_fp,
-				   "Error on .hist command\n");
-			}
-		    }
-		}
-	      else if (!strcasecmp (argument, "off"))
-		{
-		  (void) histo_stop ();
-		  csql_Is_histo_on = HISTO_OFF;
-		}
-	      else
-		{
-		  fprintf (csql_Output_fp, ".hist IS %s\n",
-			   (csql_Is_histo_on == HISTO_OFF ? "OFF" : "ON"));
-		}
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp,
-		       "Histogram is possible when the csql started with "
-		       "`communication_histogram=yes'\n");
-	    }
-	  break;
-
-	case S_CMD_CLR_HISTO:
-	  if (histo_is_supported ())
-	    {
-	      if (csql_Is_histo_on == HISTO_ON)
-		{
-		  histo_clear ();
-		}
-	      else
-		{
-		  fprintf (csql_Output_fp, ".hist IS currently OFF\n");
-		}
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the csql started "
-		       "with `communication_histogram=yes'\n");
-	    }
-	  break;
-
-	case S_CMD_DUMP_HISTO:
-	  if (histo_is_supported ())
-	    {
-	      if (csql_Is_histo_on == HISTO_ON)
-		{
-		  histo_print (csql_Output_fp);
-		  fprintf (csql_Output_fp, "\n");
-		}
-	      else
-		{
-		  fprintf (csql_Output_fp, ".hist IS currently OFF\n");
-		}
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the csql started "
-		       "with `communication_histogram=yes'\n");
-	    }
-	  break;
-
-	case S_CMD_DUMP_CLR_HISTO:
-	  if (histo_is_supported ())
-	    {
-	      if (csql_Is_histo_on == HISTO_ON)
-		{
-		  histo_print (csql_Output_fp);
-		  histo_clear ();
-		  fprintf (csql_Output_fp, "\n");
-		}
-	      else
-		{
-		  fprintf (csql_Output_fp, ".hist IS currently OFF\n");
-		}
-	    }
-	  else
-	    {
-	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the csql started "
-		       "with `communication_histogram=yes'\n");
-	    }
-	  break;
-
-	case S_CMD_HISTORY_READ:
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
-	  if (csql_Is_interactive)
-	    {
-	      if (argument[0] != '\0')
-		{
-		  i = atoi (argument);
-		  if (i > 0)
-		    {
-		      HIST_ENTRY *hist;
-		      hist = history_get (history_base + i - 1);
-		      if (hist != NULL)
-			{
-			  if (csql_edit_contents_append (hist->line, true) !=
-			      CSQL_SUCCESS)
-			    {
-			      goto error_continue;
-			    }
-			}
-		      else
-			{
-			  fprintf (csql_Error_fp,
-				   "ERROR: Invalid history number(%s).\n",
-				   argument);
-			}
-		    }
-		  else
-		    {
-		      fprintf (csql_Error_fp,
-			       "ERROR: Invalid history number\n");
-		    }
-		}
-	      else
-		{
-		  fprintf (csql_Error_fp,
-			   "ERROR: HISTORYRead {history_number}\n");
-		}
-	    }
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
-	  break;
-
-	case S_CMD_HISTORY_LIST:
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
-	  if (csql_Is_interactive)
-	    {
-	      /* rewind history */
-	      while (next_history ())
-		{
-		  ;
-		}
-
-	      for (i = 0, hist_entry = current_history (); hist_entry;
-		   hist_entry = previous_history (), i++)
-		{
-		  fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
-		  fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
-		}
-	    }
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
-	  break;
 	}
 
       continue;
@@ -1268,12 +714,543 @@ fatal_error:
 	  histo_stop ();
 	}
     }
+
   db_end_session ();
   db_shutdown ();
   csql_Database_connected = false;
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
   csql_exit (EXIT_FAILURE);
 }
+
+
+static bool
+csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
+{
+  int i;
+  char *ptr;
+  char *sess_cmd;		/* session command pointer */
+  char *argument;		/* argument str */
+  int cmd_no;			/* session command number */
+  DB_HELP_COMMAND csql_cmd_no;	/* CSQL cmd no for syntax help */
+  HIST_ENTRY *hist_entry;
+
+  /* get session command and argument */
+  ptr = line_read;
+  if (csql_Is_echo_on)
+    {
+      fprintf (csql_Output_fp, "%s\n", line_read);
+    }
+
+  /* 'ptr' points to the prefix char. */
+  for (ptr++; *ptr != '\0' && iswspace ((wint_t) * ptr); ptr++)
+    {
+      ;
+    }
+  sess_cmd = (char *) ptr;
+  for (; *ptr != '\0' && !iswspace ((wint_t) * ptr); ptr++)
+    {
+      ;
+    }
+  if (iswspace ((wint_t) * ptr))
+    {
+      *ptr++ = '\0';		/* put null-termination */
+    }
+  for (; *ptr != '\0' && iswspace ((wint_t) * ptr); ptr++)
+    {
+      ;
+    }
+  argument = (char *) ptr;
+
+  /* Now, `sess_cmd' points to null-terminated session command name and
+   * `argument' points to remaining argument (it may be '\0' if not given).
+   */
+
+  if (*sess_cmd == '\0' && csql_arg->single_line_execution == false)
+    {
+      return true;
+    }
+
+  cmd_no = csql_get_session_cmd_no (sess_cmd);
+  if (cmd_no == -1)
+    {
+      return false;
+    }
+
+#if !defined(GNU_Readline)
+#if !defined(WINDOWS)
+  if (csql_Is_interactive)
+    {
+      add_history (line_read);
+    }
+#endif /* !WINDOWS */
+#endif /* !GNU_Readline */
+
+  switch ((SESSION_CMD) cmd_no)
+    {
+      /* File stuffs */
+
+    case S_CMD_READ:		/* read a file */
+      csql_read_file (argument);
+      break;
+
+    case S_CMD_WRITE:		/* write to a file */
+    case S_CMD_APPEND:		/* append to a file */
+      csql_write_file (argument, cmd_no == S_CMD_APPEND);
+      break;
+
+    case S_CMD_PRINT:
+      csql_print_buffer ();
+      break;
+
+    case S_CMD_SHELL:		/* invoke shell */
+      csql_invoke_system (csql_Shell_cmd);
+      csql_fputs ("\n", csql_Tty_fp);
+      break;
+
+    case S_CMD_CD:
+      csql_change_working_directory (argument);
+      break;
+
+    case S_CMD_EXIT:		/* exit */
+      csql_edit_contents_finalize ();
+      csql_exit_session (0);
+      break;
+
+      /* Edit stuffs */
+
+    case S_CMD_CLEAR:		/* clear editor buffer */
+      csql_edit_contents_clear ();
+      break;
+
+    case S_CMD_EDIT:		/* invoke system editor */
+      if (csql_invoke_system_editor () != CSQL_SUCCESS)
+	{
+	  return false;
+	}
+      break;
+
+    case S_CMD_LIST:		/* display buffer */
+      display_buffer ();
+      break;
+
+      /* Command stuffs */
+    case S_CMD_RUN:
+      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
+      break;
+
+    case S_CMD_XRUN:
+      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
+      csql_edit_contents_clear ();
+      break;
+
+    case S_CMD_COMMIT:
+      if (db_commit_transaction () < 0)
+	{
+	  csql_display_csql_err (0, 0);
+	  csql_check_server_down ();
+	}
+      else
+	{
+	  csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
+	}
+      break;
+
+    case S_CMD_ROLLBACK:
+      if (db_abort_transaction () < 0)
+	{
+	  csql_display_csql_err (0, 0);
+	  csql_check_server_down ();
+	}
+      else
+	{
+	  csql_display_msg (csql_get_message (CSQL_STAT_ROLLBACKED_TEXT));
+	}
+      break;
+
+    case S_CMD_AUTOCOMMIT:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->auto_commit = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->auto_commit = false;
+	}
+
+      fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n",
+	       (csql_arg->auto_commit
+		&& prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) ? "ON" :
+		"OFF"));
+      break;
+
+    case S_CMD_CHECKPOINT:
+      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+	{
+	  db_checkpoint ();
+	  if (db_error_code () != NO_ERROR)
+	    {
+	      csql_display_csql_err (0, 0);
+	    }
+	  else
+	    {
+	      csql_display_msg (csql_get_message (CSQL_STAT_CHECKPOINT_TEXT));
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Checkpointing is only allowed for"
+		   " the csql started with --sysadm\n");
+	}
+      break;
+
+    case S_CMD_KILLTRAN:
+      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+	{
+	  csql_killtran ((argument[0] == '\0') ? NULL : argument);
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Killing transaction is only allowed"
+		   " for the csql started with --sysadm\n");
+	}
+      break;
+
+    case S_CMD_RESTART:
+      if (csql_Database_connected)
+	{
+	  csql_Database_connected = false;
+	  db_end_session ();
+	  db_shutdown ();
+	}
+      er_init ("./csql.err", ER_NEVER_EXIT);
+      if (db_restart_ex (UTIL_CSQL_NAME, csql_arg->db_name,
+			 csql_arg->user_name, csql_arg->passwd,
+			 NULL, db_get_client_type ()) != NO_ERROR)
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  csql_display_csql_err (0, 0);
+	  csql_check_server_down ();
+	}
+      else
+	{
+	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+	    {
+	      au_disable ();
+	    }
+	  csql_Database_connected = true;
+	  csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+	}
+      break;
+
+      /* Environment stuffs */
+    case S_CMD_SHELL_CMD:
+    case S_CMD_EDIT_CMD:
+    case S_CMD_PRINT_CMD:
+    case S_CMD_PAGER_CMD:
+      if (*argument == '\0')
+	{
+	  fprintf (csql_Output_fp, "\n\t%s\n\n",
+		   (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
+		   (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
+		   (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
+		   csql_Pager_cmd);
+	}
+      else
+	{
+	  strncpy ((cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
+		   (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
+		   (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
+		   csql_Pager_cmd, argument, PATH_MAX - 1);
+	}
+      break;
+
+    case S_CMD_NOPAGER_CMD:
+      csql_Pager_cmd[0] = '\0';
+      break;
+
+      /* Help stuffs */
+    case S_CMD_HELP:
+      csql_help_menu ();
+      break;
+
+    case S_CMD_SCHEMA:
+      csql_help_schema ((argument[0] == '\0') ? NULL : argument);
+      if (csql_arg->auto_commit
+	  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+	{
+	  if (db_commit_transaction () < 0)
+	    {
+	      csql_display_csql_err (0, 0);
+	      csql_check_server_down ();
+	    }
+	  else
+	    {
+	      csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
+	    }
+	}
+      break;
+
+    case S_CMD_TRIGGER:
+      csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
+      if (csql_arg->auto_commit
+	  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+	{
+	  if (db_commit_transaction () < 0)
+	    {
+	      csql_display_csql_err (0, 0);
+	      csql_check_server_down ();
+	    }
+	  else
+	    {
+	      csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
+	    }
+	}
+      break;
+
+    case S_CMD_SYNTAX:
+      if (csql_get_help_cmd_no ((argument[0] == '\0') ? NULL : argument,
+				&csql_cmd_no) == CSQL_FAILURE)
+	return false;
+      csql_help_syntax (csql_cmd_no);
+      break;
+
+    case S_CMD_INFO:
+      csql_help_info ((argument[0] == '\0') ? NULL : argument,
+		      csql_arg->auto_commit
+		      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT));
+      break;
+
+    case S_CMD_DATABASE:
+      csql_print_database ();
+      break;
+
+    case S_CMD_SET_PARAM:
+      csql_set_sys_param (argument);
+      break;
+
+    case S_CMD_GET_PARAM:
+      csql_get_sys_param (argument);
+      break;
+
+    case S_CMD_PLAN_DUMP:
+      csql_set_plan_dump ((argument[0] == '\0') ? NULL : argument);
+      break;
+
+    case S_CMD_ECHO:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_Is_echo_on = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_Is_echo_on = false;
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "ECHO IS %s\n",
+		   (csql_Is_echo_on ? "ON" : "OFF"));
+	}
+      break;
+
+    case S_CMD_DATE:
+      {
+	time_t tloc = time (NULL);
+	struct tm tmloc;
+	char str[80];
+	utility_localtime (&tloc, &tmloc);
+	strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
+	fprintf (csql_Output_fp, "\n\t%s\n", str);
+      }
+      break;
+
+    case S_CMD_TIME:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_Is_time_on = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_Is_time_on = false;
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "TIME IS %s\n",
+		   (csql_Is_time_on ? "ON" : "OFF"));
+	}
+      break;
+
+    case S_CMD_HISTO:
+      if (histo_is_supported ())
+	{
+	  if (!strcasecmp (argument, "on"))
+	    {
+	      if (histo_start (false) == NO_ERROR)
+		{
+		  csql_Is_histo_on = HISTO_ON;
+		}
+	      else
+		{
+		  if (er_errid () == ER_AU_DBA_ONLY)
+		    {
+		      fprintf (csql_Output_fp,
+			       "Histogram is allowed only for DBA\n");
+		    }
+		  else
+		    {
+		      fprintf (csql_Output_fp, "Error on .hist command\n");
+		    }
+		}
+	    }
+	  else if (!strcasecmp (argument, "off"))
+	    {
+	      (void) histo_stop ();
+	      csql_Is_histo_on = HISTO_OFF;
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, ".hist IS %s\n",
+		       (csql_Is_histo_on == HISTO_OFF ? "OFF" : "ON"));
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp,
+		   "Histogram is possible when the csql started with "
+		   "`communication_histogram=yes'\n");
+	}
+      break;
+
+    case S_CMD_CLR_HISTO:
+      if (histo_is_supported ())
+	{
+	  if (csql_Is_histo_on == HISTO_ON)
+	    {
+	      histo_clear ();
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, ".hist IS currently OFF\n");
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Histogram on execution statistics "
+		   "is only allowed for the csql started "
+		   "with `communication_histogram=yes'\n");
+	}
+      break;
+
+    case S_CMD_DUMP_HISTO:
+      if (histo_is_supported ())
+	{
+	  if (csql_Is_histo_on == HISTO_ON)
+	    {
+	      histo_print (csql_Output_fp);
+	      fprintf (csql_Output_fp, "\n");
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, ".hist IS currently OFF\n");
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Histogram on execution statistics "
+		   "is only allowed for the csql started "
+		   "with `communication_histogram=yes'\n");
+	}
+      break;
+
+    case S_CMD_DUMP_CLR_HISTO:
+      if (histo_is_supported ())
+	{
+	  if (csql_Is_histo_on == HISTO_ON)
+	    {
+	      histo_print (csql_Output_fp);
+	      histo_clear ();
+	      fprintf (csql_Output_fp, "\n");
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, ".hist IS currently OFF\n");
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Histogram on execution statistics "
+		   "is only allowed for the csql started "
+		   "with `communication_histogram=yes'\n");
+	}
+      break;
+
+    case S_CMD_HISTORY_READ:
+#if !defined(GNU_Readline)
+#if !defined(WINDOWS)
+      if (csql_Is_interactive)
+	{
+	  if (argument[0] != '\0')
+	    {
+	      i = atoi (argument);
+	      if (i > 0)
+		{
+		  HIST_ENTRY *hist;
+		  hist = history_get (history_base + i - 1);
+		  if (hist != NULL)
+		    {
+		      if (csql_edit_contents_append (hist->line, true) !=
+			  CSQL_SUCCESS)
+			{
+			  return false;
+			}
+		    }
+		  else
+		    {
+		      fprintf (csql_Error_fp,
+			       "ERROR: Invalid history number(%s).\n",
+			       argument);
+		    }
+		}
+	      else
+		{
+		  fprintf (csql_Error_fp, "ERROR: Invalid history number\n");
+		}
+	    }
+	  else
+	    {
+	      fprintf (csql_Error_fp,
+		       "ERROR: HISTORYRead {history_number}\n");
+	    }
+	}
+#endif /* !WINDOWS */
+#endif /* !GNU_Readline */
+      break;
+
+    case S_CMD_HISTORY_LIST:
+#if !defined(GNU_Readline)
+#if !defined(WINDOWS)
+      if (csql_Is_interactive)
+	{
+	  /* rewind history */
+	  while (next_history ())
+	    {
+	      ;
+	    }
+
+	  for (i = 0, hist_entry = current_history (); hist_entry;
+	       hist_entry = previous_history (), i++)
+	    {
+	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
+	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
+	    }
+	}
+#endif /* !WINDOWS */
+#endif /* !GNU_Readline */
+      break;
+    }
+
+  return true;
+}
+
 
 /*
  * csql_read_file() - read a file into command editor
@@ -1961,7 +1938,7 @@ csql_print_database (void)
 		   ha_state);
 	}
 
-      db_ws_free (db_name);
+      db_ws_free ((char *) db_name);
     }
 }
 
