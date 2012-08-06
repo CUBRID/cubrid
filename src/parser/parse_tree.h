@@ -2399,6 +2399,7 @@ struct pt_merge_info
     PT_NODE *value_clauses;	/* PT_NODE_LIST(list) */
     PT_NODE *search_cond;	/* PT_EXPR */
   } insert;
+  PT_NODE *check_where;		/* check option */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
   bool has_unique;		/* whether there's an unique constraint */

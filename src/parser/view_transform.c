@@ -1895,6 +1895,10 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	  statement_spec = tmp_result->info.insert.spec;
 	  break;
 
+	case PT_MERGE:
+	  statement_spec = tmp_result->info.merge.into;
+	  break;
+
 	default:
 	  /* should not get here */
 	  assert (false);
@@ -4378,20 +4382,27 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   PT_NODE *from, *flat;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  DB_AUTH auth = DB_AUTH_NONE;
 
   /* flag spec for update/delete */
   from = merge_statement->info.merge.into;
   if (merge_statement->info.merge.update.assignment)
     {
+      auth |= DB_AUTH_UPDATE;
       (void) pt_mark_spec_list_for_update (parser, merge_statement);
       if (merge_statement->info.merge.update.has_delete)
 	{
 	  from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
+	  auth |= DB_AUTH_DELETE;
 	}
     }
+  if (merge_statement->info.merge.insert.value_clauses)
+    {
+      auth |= DB_AUTH_INSERT;
+    }
 
-  /* no need to actually translate, this will be performed later on
-   * the generated insert/update/delete subqueries */
+  merge_statement =
+    mq_translate_tree (parser, merge_statement, from, NULL, auth);
 
   /* check statement */
   if (merge_statement)
@@ -4399,6 +4410,7 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
       (void) mq_check_merge (parser, merge_statement);
     }
 
+  from = merge_statement->info.merge.into;
   from->next = merge_statement->info.merge.using;
   while (from)
     {
@@ -8256,7 +8268,39 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
       break;
 
     case PT_MERGE:
-      /* This is performed for the generated insert and update queries */
+      specptr = &statement->info.merge.into;
+      /* Add to statement expressions to check if 'with check option'
+       * specified */
+      check_where_part = NULL;
+      spec = statement->info.merge.into;
+      if (spec != NULL && spec->info.spec.id != class_->info.name.spec_id)
+	{
+	  break;
+	}
+      if (spec != NULL)
+	{
+	  /* Verify if a check_option node already exists for current spec. If
+	   * so then append condition to existing */
+	  PT_NODE *cw = statement->info.merge.check_where;
+	  while (cw != NULL
+		 && cw->info.check_option.spec_id != spec->info.spec.id)
+	    {
+	      cw = cw->next;
+	    }
+	  if (cw == NULL)
+	    {
+	      cw = parser_new_node (parser, PT_CHECK_OPTION);
+	      if (cw == NULL)
+		{
+		  goto exit_on_error;
+		}
+	      cw->info.check_option.spec_id =
+		corresponding_spec->info.spec.id;
+	      statement->info.merge.check_where =
+		parser_append_node (cw, statement->info.merge.check_where);
+	    }
+	  check_where_part = &cw->info.check_option.expr;
+	}
       break;
 
 #if 0				/* this is impossible case */

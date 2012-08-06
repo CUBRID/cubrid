@@ -6553,8 +6553,8 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
     ? statement->info.merge.into : statement->info.update.spec;
   class_spec = statement->node_type == PT_MERGE ? NULL
     : statement->info.update.class_specs;
-  check_where = statement->node_type == PT_MERGE ? NULL
-    : statement->info.update.check_where;
+  check_where = statement->node_type == PT_MERGE
+    ? statement->info.merge.check_where : statement->info.update.check_where;
 
   pt_init_assignments_helper (parser, &ea, assignments);
   while (pt_get_next_assignment (&ea))
@@ -6814,8 +6814,8 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       goto done;
     }
 
-  check_where = statement->node_type == PT_MERGE ? NULL
-    : statement->info.update.check_where;
+  check_where = statement->node_type == PT_MERGE
+    ? statement->info.merge.check_where : statement->info.update.check_where;
   has_unique = statement->node_type == PT_MERGE
     ? statement->info.merge.has_unique : statement->info.update.has_unique;
 
@@ -11798,13 +11798,26 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		      /* apply the object template */
 		      obj = dbt_finish_object (otemplate);
 
-		      if (obj && error >= NO_ERROR
-			  && statement->node_type == PT_INSERT)
+		      if (obj && error >= NO_ERROR)
 			{
-			  error =
-			    mq_evaluate_check_option (parser,
-						      statement->info.insert.
-						      where, obj, class_);
+			  if (statement->node_type == PT_INSERT)
+			    {
+			      error =
+				mq_evaluate_check_option (parser,
+							  statement->
+							  info.insert.where,
+							  obj, class_);
+			    }
+			  else if (statement->node_type == PT_MERGE
+				   && statement->info.merge.check_where)
+			    {
+			      error =
+				mq_evaluate_check_option (parser,
+							  statement->info.
+							  merge.check_where->
+							  info.check_option.
+							  expr, obj, class_);
+			    }
 			}
 
 		      if (obj == NULL || error < NO_ERROR)
@@ -14800,7 +14813,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  has_virt = db_is_vclass (class_obj);
+  has_virt = db_is_vclass (class_obj)
+	     || ((flat) ? (flat->info.name.virt_object != NULL) : false);
 
   AU_RESTORE (au_save);
 

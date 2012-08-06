@@ -15816,6 +15816,7 @@ pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
     g (parser, p->info.merge.update.search_cond, arg);
   p->info.merge.update.del_search_cond =
     g (parser, p->info.merge.update.del_search_cond, arg);
+  p->info.merge.check_where = g (parser, p->info.merge.check_where, arg);
   p->info.merge.waitsecs_hint = g (parser, p->info.merge.waitsecs_hint, arg);
 
   return p;
@@ -15840,6 +15841,7 @@ pt_init_merge (PT_NODE * p)
   p->info.merge.update.del_search_cond = NULL;
   p->info.merge.update.do_class_attrs = false;
   p->info.merge.update.has_delete = false;
+  p->info.merge.check_where = NULL;
   p->info.merge.waitsecs_hint = NULL;
   p->info.merge.hint = PT_HINT_NONE;
   p->info.merge.server_op = false;
