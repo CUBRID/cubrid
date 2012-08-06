@@ -198,8 +198,7 @@ static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 static bool csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) && !defined(WINDOWS)
 /*
  * for readline keyword completion
  */
@@ -279,8 +278,7 @@ init_readline ()
 {
   rl_attempted_completion_function = csql_cmd_completion_handler;
 }
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
@@ -396,7 +394,6 @@ check_incomplete_string (char *line_read,
 	{
 	  ptr++;
 	}
-      bool flag_append_new_line;
     }
 
   return *single_quote_on || *double_quote_on;
@@ -510,8 +507,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	   csql_get_message (CSQL_INITIAL_HELP_MSG));
   csql_fputs (csql_Scratch_text, csql_Tty_fp);
 
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) && !defined(WINDOWS)
   if (csql_Is_interactive)
     {
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -523,8 +519,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       csql_Keyword_list = pt_get_keyword_rec (&csql_Keyword_num);
 #endif /* ENABLE_UNUSED_FUNCTION */
     }
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
 
   for (line_no = 1;; line_no++)
     {
@@ -732,7 +727,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   char *argument;		/* argument str */
   int cmd_no;			/* session command number */
   DB_HELP_COMMAND csql_cmd_no;	/* CSQL cmd no for syntax help */
+#if !defined(GNU_Readline) && !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
+#endif /* !GNU_Readline && !WINDOWS */
 
   /* get session command and argument */
   ptr = line_read;
@@ -776,14 +773,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       return false;
     }
 
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) && !defined(WINDOWS)
   if (csql_Is_interactive)
     {
       add_history (line_read);
     }
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
 
   switch ((SESSION_CMD) cmd_no)
     {
@@ -1184,8 +1179,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_HISTORY_READ:
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) && !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
 	  if (argument[0] != '\0')
@@ -1221,13 +1215,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		       "ERROR: HISTORYRead {history_number}\n");
 	    }
 	}
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
       break;
 
     case S_CMD_HISTORY_LIST:
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) && !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
 	  /* rewind history */
@@ -1243,8 +1235,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
 	    }
 	}
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
       break;
     }
 
@@ -1600,27 +1591,23 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
   if (db_get_errors (session))
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) && !defined(WINDOWS)
       if ((stmts != NULL) && (csql_Is_interactive))
 	{
 	  add_history (stmts);
 	}
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
       goto error;
     }
   else
     {
       total = db_statement_count (session);
-#if !defined(GNU_Readline)
-#if !defined(WINDOWS)
+#if !defined(GNU_Readline) &&  !defined(WINDOWS)
       if ((total >= 1) && (stmts != NULL) && (csql_Is_interactive))
 	{
 	  add_history (stmts);
 	}
-#endif /* !WINDOWS */
-#endif /* !GNU_Readline */
+#endif /* !GNU_Readline && !WINDOWS */
 
       /* It is assumed we must always enter the for loop below */
       total = MAX (total, 1);
