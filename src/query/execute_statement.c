@@ -14379,7 +14379,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = update_check_for_fk_cache_attr (parser, statement);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge update");
 	  goto exit;
 	}
 
@@ -14393,7 +14392,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge update");
 	  goto exit;
 	}
       if (!statement->info.merge.has_unique)
@@ -14425,7 +14423,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 				     &links);
 	  if (err != NO_ERROR)
 	    {
-	      PT_INTERNAL_ERROR (parser, "merge update");
 	      goto exit;
 	    }
 
@@ -14441,9 +14438,13 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
 	  if (upd_select_stmt == NULL)
 	    {
-	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		  err = er_errid ();
+		}
 	      goto exit;
 	    }
 	}
@@ -14457,9 +14458,13 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  del_select_stmt = mq_translate (parser, del_select_stmt);
 	  if (del_select_stmt == NULL)
 	    {
-	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		  err = er_errid ();
+		}
 	      goto exit;
 	    }
 	}
@@ -14474,7 +14479,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 					    flat->info.name.db_object);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge insert");
 	  goto exit;
 	}
 
@@ -14486,7 +14490,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge insert");
 	  goto exit;
 	}
       if (!statement->info.merge.has_unique)
@@ -14498,7 +14501,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = check_missing_non_null_attrs (parser, spec, attrs, false);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge insert");
 	  goto exit;
 	}
     }
@@ -14820,14 +14822,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err != NO_ERROR)
     {
-      PT_INTERNAL_ERROR (parser, "merge triggers check");
       goto cleanup;
     }
 
   err = do_evaluate_default_expr (parser, flat);
   if (err != NO_ERROR)
     {
-      PT_INTERNAL_ERROR (parser, "merge default check");
       goto cleanup;
     }
 
@@ -14837,7 +14837,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = update_check_for_fk_cache_attr (parser, statement);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge update");
 	  goto cleanup;
 	}
 
@@ -14846,7 +14845,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  statement);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge update");
 	  goto cleanup;
 	}
       if (!statement->info.merge.has_unique)
@@ -14909,7 +14907,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 					    flat->info.name.db_object);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge insert");
 	  goto cleanup;
 	}
 
@@ -14925,7 +14922,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge insert");
 	  goto cleanup;
 	}
       if (!statement->info.merge.has_unique)
@@ -14937,7 +14933,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = check_missing_non_null_attrs (parser, spec, attrs, false);
       if (err != NO_ERROR)
 	{
-	  PT_INTERNAL_ERROR (parser, "merge insert");
 	  goto cleanup;
 	}
     }
@@ -15100,7 +15095,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 				     &links);
 	  if (err != NO_ERROR)
 	    {
-	      PT_INTERNAL_ERROR (parser, "merge update");
 	      goto cleanup;
 	    }
 
@@ -15132,9 +15126,14 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		  err = er_errid ();
+		}
+	      goto cleanup;
 	    }
 	}
 
