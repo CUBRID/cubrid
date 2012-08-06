@@ -82,7 +82,10 @@
   OCIAttrGet (stmt, OCI_HTYPE_STMT, &pos, 0, OCI_ATTR_CURRENT_POSITION, ORA_ERR)
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args);
-static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
+static int prepare_column_list_info_set (T_SRV_HANDLE * srv_handle,
+					 T_NET_BUF * net_buf);
+static int set_metadata_info (T_SRV_HANDLE * srv_handle);
+static int send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 static int db_value_clear (DB_VALUE * value);
 static void db_make_null (DB_VALUE * value);
 static int cas_oracle_write_to_lob (OCILobLocator * locp, char *buf,
@@ -438,23 +441,19 @@ convert_data_type_oracle_to_cas (OCIParam * col)
 }
 
 static int
-set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+set_metadata_info (T_SRV_HANDLE * srv_handle)
 {
   int count, i, ret;
   char type;
   sb1 scale, ptype, null;
   sb2 prec;
-  ub4 attr_size, attr_schm_size;
+  ub4 attr_size;
   ub4 char_semantics;
-  ub4 len;
-  text *attr_name, *attr_schm_name, tmp[ORA_BUFSIZ];
   OCIParam *col;
   void **data;
   DB_VALUE *columns;
 
   ORA_PARAM_COUNT (srv_handle->session, count);
-  net_buf_cp_byte (net_buf, 0);	/* updatable_flag */
-  net_buf_cp_int (net_buf, count, NULL);
 
   columns = (DB_VALUE *) calloc (count, sizeof (DB_VALUE));
   if (columns == NULL)
@@ -485,9 +484,6 @@ set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &prec, 0, OCI_ATTR_PRECISION,
 			ORA_ERR);
       GOTO_ORA_ERROR (ret, oracle_error);
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &attr_name, &attr_size,
-			OCI_ATTR_NAME, ORA_ERR);
-      GOTO_ORA_ERROR (ret, oracle_error);
       ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].db_type, 0,
 			OCI_ATTR_DATA_TYPE, ORA_ERR);
       GOTO_ORA_ERROR (ret, oracle_error);
@@ -506,37 +502,6 @@ set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 			    OCI_ATTR_DATA_SIZE, ORA_ERR);
 	  GOTO_ORA_ERROR (ret, oracle_error);
 	}
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &attr_schm_name,
-			&attr_schm_size, OCI_ATTR_SCHEMA_NAME, ORA_ERR);
-      GOTO_ORA_ERROR (ret, oracle_error);
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &null, 0, OCI_ATTR_IS_NULL,
-			ORA_ERR);
-      GOTO_ORA_ERROR (ret, oracle_error);
-
-      type = convert_data_type_oracle_to_cas (col);
-      strncpy ((char *) tmp, (char *) attr_name, attr_size);
-      tmp[attr_size] = 0;
-
-      net_buf_column_info_set (net_buf, type, scale, prec, (char *) tmp);
-      /* fprintf (stdout, "SN: %d, %s\n", size, tmp); */
-
-      net_buf_cp_int (net_buf, 0, NULL);
-      net_buf_cp_str (net_buf, "", 0);	/* attr_name */
-      net_buf_cp_int (net_buf, attr_schm_size, NULL);
-      net_buf_cp_str (net_buf, attr_schm_size == 0 ?	/* table name */
-		      "" : (char *) attr_schm_name, attr_schm_size);
-      net_buf_cp_byte (net_buf, null == 0);	/* is_non_null */
-      /* 3.0 protocol */
-      /* default value */
-      net_buf_cp_int (net_buf, 1, NULL);
-      net_buf_cp_byte (net_buf, '\0');
-      net_buf_cp_byte (net_buf, '\0');	/* auto increment */
-      net_buf_cp_byte (net_buf, '\0');	/* unique_key */
-      net_buf_cp_byte (net_buf, '\0');	/* primary_key */
-      net_buf_cp_byte (net_buf, '\0');	/* reverse_index */
-      net_buf_cp_byte (net_buf, '\0');	/* reverse_unique */
-      net_buf_cp_byte (net_buf, '\0');	/* foreign_key */
-      net_buf_cp_byte (net_buf, '\0');	/* shared */
 
       /* make column data */
       switch (columns[i].db_type)
@@ -550,7 +515,7 @@ set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	      break;
 	    }
 	case SQLT_FLT:
-	  /* 
+	  /*
 	   * If the precision is nonzero and scale is -127, then
 	   * it is a FLOAT.
 	   */
@@ -741,8 +706,6 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   OCIStmt *stmt;
   int srv_h_id;
   int err_code;
-  int num_markers = 0;
-  T_PREPARE_CALL_INFO *prepare_call_info;
   ub4 size;
 
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
@@ -793,7 +756,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       break;
     }
 
-  err_code = ORA_BIND_COUNT (stmt, num_markers);
+  err_code = ORA_BIND_COUNT (stmt, srv_handle->num_markers);
   GOTO_ORA_ERROR (err_code, prepare_error);
 
   srv_handle->is_prepared = TRUE;
@@ -803,29 +766,23 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   net_buf_cp_int (net_buf, -1, NULL);	/* result_cache_lifetime */
   convert_stmt_type_oracle_to_cubrid (srv_handle);
   net_buf_cp_byte (net_buf, srv_handle->stmt_type);
-  net_buf_cp_int (net_buf, num_markers, NULL);
-  prepare_call_info = make_prepare_call_info (num_markers);
-  if (prepare_call_info == NULL)
+  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+  srv_handle->prepare_call_info =
+    make_prepare_call_info (srv_handle->num_markers);
+  if (srv_handle->prepare_call_info == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
       goto prepare_error_internal;
     }
 
   srv_handle->session = (void *) stmt;
-  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+
+  err_code = prepare_column_list_info_set (srv_handle, net_buf);
+  if (err_code != CAS_NO_ERROR)
     {
-      err_code = set_metadata_info (srv_handle, net_buf);
-      if (err_code != CAS_NO_ERROR)
-	{
-	  goto prepare_error_internal;
-	}
+      goto prepare_error_internal;
     }
-  else
-    {
-      net_buf_cp_byte (net_buf, 1);	/* updatable flag */
-      net_buf_cp_int (net_buf, 0, NULL);
-    }
-  srv_handle->prepare_call_info = prepare_call_info;
+
   return srv_h_id;
 
 prepare_error:
@@ -1322,6 +1279,19 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   srv_handle->max_row = max_row;
   srv_handle->max_col_size = max_col_size;
   srv_handle->tuple_count = row_count;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (req_info->client_version, PROTOCOL_V2))
+    {
+      net_buf_cp_int (net_buf, 0, NULL);	/* result_cache_lifetime */
+      net_buf_cp_byte (net_buf, srv_handle->stmt_type);
+      net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+      ret = send_prepare_info (srv_handle, net_buf);
+      if (ret != CAS_NO_ERROR)
+	{
+	  goto execute_error;
+	}
+    }
 
   return ret;
 
@@ -2457,4 +2427,100 @@ ux_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
       FREE_MEM (call_info->param_mode);
       FREE_MEM (call_info);
     }
+}
+
+static int
+prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+{
+  int err_code = CAS_NO_ERROR;
+
+  err_code = send_prepare_info (srv_handle, net_buf);
+  if (err_code != CAS_NO_ERROR)
+    {
+      return err_code;
+    }
+
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+    {
+      err_code = set_metadata_info (srv_handle);
+    }
+
+  return err_code;
+}
+
+static int
+send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+{
+  int count, i, ret;
+  char type;
+  sb1 scale, ptype, null;
+  sb2 prec;
+  ub4 attr_size, attr_schm_size;
+  text *attr_name, *attr_schm_name, tmp[ORA_BUFSIZ];
+  OCIParam *col;
+
+  if (srv_handle->stmt_type != CUBRID_STMT_SELECT)
+    {
+      net_buf_cp_byte (net_buf, 1);	/* updatable flag */
+      net_buf_cp_int (net_buf, 0, NULL);
+      return CAS_NO_ERROR;
+    }
+
+  ORA_PARAM_COUNT (srv_handle->session, count);
+  net_buf_cp_byte (net_buf, 0);	/* updatable_flag */
+  net_buf_cp_int (net_buf, count, NULL);
+
+  /* TODO: error check all OCI call */
+  for (i = 0; i < count; i++)
+    {
+      ret = OCIParamGet (srv_handle->session, OCI_HTYPE_STMT, ORA_ERR,
+			 (void **) &col, i + 1);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &scale, 0, OCI_ATTR_SCALE,
+			ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &prec, 0, OCI_ATTR_PRECISION,
+			ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &attr_name, &attr_size,
+			OCI_ATTR_NAME, ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &attr_schm_name,
+			&attr_schm_size, OCI_ATTR_SCHEMA_NAME, ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &null, 0, OCI_ATTR_IS_NULL,
+			ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+
+      type = convert_data_type_oracle_to_cas (col);
+      strncpy ((char *) tmp, (char *) attr_name, attr_size);
+      tmp[attr_size] = 0;
+
+      net_buf_column_info_set (net_buf, type, scale, prec, (char *) tmp);
+      /* fprintf (stdout, "SN: %d, %s\n", size, tmp); */
+
+      net_buf_cp_int (net_buf, 0, NULL);
+      net_buf_cp_str (net_buf, "", 0);	/* attr_name */
+      net_buf_cp_int (net_buf, attr_schm_size, NULL);
+      net_buf_cp_str (net_buf, attr_schm_size == 0 ?	/* table name */
+		      "" : (char *) attr_schm_name, attr_schm_size);
+      net_buf_cp_byte (net_buf, null == 0);	/* is_non_null */
+      /* 3.0 protocol */
+      /* default value */
+      net_buf_cp_int (net_buf, 1, NULL);
+      net_buf_cp_byte (net_buf, '\0');
+      net_buf_cp_byte (net_buf, '\0');	/* auto increment */
+      net_buf_cp_byte (net_buf, '\0');	/* unique_key */
+      net_buf_cp_byte (net_buf, '\0');	/* primary_key */
+      net_buf_cp_byte (net_buf, '\0');	/* reverse_index */
+      net_buf_cp_byte (net_buf, '\0');	/* reverse_unique */
+      net_buf_cp_byte (net_buf, '\0');	/* foreign_key */
+      net_buf_cp_byte (net_buf, '\0');	/* shared */
+    }
+
+  return CAS_NO_ERROR;
+
+oracle_error:
+  cas_oracle_get_errno ();
+  return ret;
 }

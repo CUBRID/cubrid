@@ -137,9 +137,9 @@ static int get_attr_name_from_argv (int argc, void **argv,
 				    char ***ret_attr_name);
 #endif /* 0 */
 static int prepare_column_list_info_set (T_SRV_HANDLE * srv_handle,
-					 int stmt_type, MYSQL_RES * result,
-					 T_NET_BUF * net_buf,
-					 T_BROKER_VERSION client_version);
+					 T_NET_BUF * net_buf);
+static int send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
+static int set_metadata_info (T_SRV_HANDLE * srv_handle);
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     short scale, int prec,
 				     const char *col_name,
@@ -148,8 +148,7 @@ static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     char primary_key, char reverse_index,
 				     char reverse_unique, char foreign_key,
 				     char shared, const char *attr_name,
-				     const char *class_name, char nullable,
-				     T_BROKER_VERSION client_version);
+				     const char *class_name, char nullable);
 
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
 			 T_REQ_INFO *);
@@ -360,15 +359,11 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   MYSQL_STMT *stmt = NULL;
   int srv_h_id;
   int err_code;
-  int num_markers;
   char stmt_type;
   char updatable_flag;
-  MYSQL_RES *result = NULL;
-  T_BROKER_VERSION client_version = req_info->client_version;
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
-  T_PREPARE_CALL_INFO *prepare_call_info;
 
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
   if (srv_h_id < 0)
@@ -399,7 +394,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
 
-  num_markers = cas_mysql_param_count (stmt);
+  srv_handle->num_markers = cas_mysql_param_count (stmt);
   stmt_type = get_stmt_type (sql_stmt);
   srv_handle->stmt_type = stmt_type;
   srv_handle->is_prepared = TRUE;
@@ -413,33 +408,22 @@ prepare_result_set:
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   net_buf_cp_byte (net_buf, stmt_type);
-  net_buf_cp_int (net_buf, num_markers, NULL);
+  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
 
-  prepare_call_info = make_prepare_call_info (num_markers);
-  if (prepare_call_info == NULL)
+  srv_handle->prepare_call_info =
+    make_prepare_call_info (srv_handle->num_markers);
+  if (srv_handle->prepare_call_info == NULL)
     {
       goto prepare_error;
     }
 
-  if (stmt_type == CUBRID_STMT_SELECT)
-    {
-      err_code = cas_mysql_stmt_result_metadata (stmt, &result);
-      if (err_code < 0)
-	{
-	  goto prepare_error;
-	}
-    }
   srv_handle->session = (void *) stmt;
-  srv_handle->prepare_call_info = prepare_call_info;
 
-  err_code =
-    prepare_column_list_info_set (srv_handle, stmt_type, result, net_buf,
-				  client_version);
+  err_code = prepare_column_list_info_set (srv_handle, net_buf);
   if (err_code < 0)
     {
       goto prepare_error;
     }
-  cas_mysql_free_result (result);
 
   return srv_h_id;
 
@@ -638,6 +622,20 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   num_tuple = execute_info_set (srv_handle, net_buf, client_version, flag);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
   srv_handle->tuple_count = num_tuple;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (req_info->client_version, PROTOCOL_V2))
+    {
+      net_buf_cp_int (net_buf, 0, NULL);	/* result_cache_lifetime */
+      net_buf_cp_byte (net_buf, srv_handle->stmt_type);
+      net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+      err_code = send_prepare_info (srv_handle, net_buf);
+      if (err_code != CAS_NO_ERROR)
+	{
+	  goto execute_all_error;
+	}
+    }
+
   return num_tuple;
 
 execute_all_error:
@@ -885,7 +883,7 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
 			 char primary_key, char reverse_index,
 			 char reverse_unique, char foreign_key, char shared,
 			 const char *attr_name, const char *class_name,
-			 char is_non_null, T_BROKER_VERSION client_version)
+			 char is_non_null)
 {
   const char *attr_name_p, *class_name_p;
   int attr_name_len, class_name_len;
@@ -1798,181 +1796,251 @@ get_stmt_type (char *stmt)
 }
 
 static int
-prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
-			      MYSQL_RES * result, T_NET_BUF * net_buf,
-			      T_BROKER_VERSION client_version)
+prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
-  int err_code;
-  int asize, size, scale, precision;
-  int type;
-  int num_cols = 0;
-  int updatable_flag = 0;
-  int i;
-  MYSQL_FIELD *col;
-  DB_VALUE *columns = NULL;
-  T_QUERY_RESULT *q_result = NULL;
-  MYSQL_BIND *defines;
-  MYSQL_STMT *stmt;
-  char *data;
+  int err_code = CAS_NO_ERROR;
 
-  if (stmt_type == CUBRID_STMT_SELECT)
+  err_code = send_prepare_info (srv_handle, net_buf);
+  if (err_code != CAS_NO_ERROR)
     {
-      net_buf_cp_byte (net_buf, updatable_flag);
-
-      num_cols = cas_mysql_num_fields (result);
-      net_buf_cp_int (net_buf, num_cols, NULL);
-
-      asize = sizeof (T_QUERY_RESULT);
-      q_result = (T_QUERY_RESULT *) MALLOC (asize);
-      if (q_result == NULL)
-	{
-	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	}
-      memset ((char *) q_result, 0x00, asize);
-
-      srv_handle->q_result = q_result;
-      srv_handle->q_result->columns = NULL;
-      srv_handle->q_result->column_count = num_cols;
-      if (num_cols > 0)
-	{
-	  asize = sizeof (DB_VALUE) * (num_cols);
-	  columns = (DB_VALUE *) MALLOC (asize);
-	  if (columns == NULL)
-	    {
-	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				     CAS_ERROR_INDICATOR);
-	    }
-	  memset ((char *) columns, 0x00, asize);
-	  srv_handle->q_result->columns = columns;
-
-	  asize = sizeof (MYSQL_BIND) * (num_cols);
-	  defines = (MYSQL_BIND *) MALLOC (asize);
-	  if (defines == NULL)
-	    {
-	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				     CAS_ERROR_INDICATOR);
-	    }
-	  memset ((char *) defines, 0x00, asize);
-	  srv_handle->q_result->defines = defines;
-
-	  for (i = 0; i < num_cols; i++)
-	    {
-	      col = cas_mysql_fetch_field (result);
-	      char set_type, cas_type;
-	      cas_type = ux_db_type_to_cas_type (col->type);
-	      size = col->length;
-	      type = col->type;
-	      scale = col->decimals;
-	      precision = col->length;
-	      columns[i].need_clear = false;
-	      switch (type)
-		{		/* set type specific value */
-		  /*
-		     case MYSQL_TYPE_DATETIME:
-		     case MYSQL_TYPE_TIMESTAMP:
-		     case MYSQL_TYPE_DATE:
-		     case MYSQL_TYPE_TIME:
-		     size += 24;
-		     break;
-		   */
-		case MYSQL_TYPE_STRING:
-		case MYSQL_TYPE_VAR_STRING:
-		  precision /= multi_byte_character_max_length;
-		  size += 1;
-		  break;
-		case MYSQL_TYPE_BLOB:
-		case MYSQL_TYPE_LONG_BLOB:
-		  if (col->length > MAX_CAS_BLOB_SIZE)	/* length is unsigned long type */
-		    {
-		      size = MAX_CAS_BLOB_SIZE;
-		    }
-		  break;
-		case MYSQL_TYPE_DECIMAL:
-		case MYSQL_TYPE_NEWDECIMAL:
-		  if (scale > 0)
-		    precision -= 1;
-		  precision -= 1;
-		  type = MYSQL_TYPE_STRING;
-		  break;
-		}
-
-	      /* set defines value */
-	      defines[i].buffer_type = type;
-	      switch (type)	/* set buffer pointer */
-		{
-		case MYSQL_TYPE_NULL:
-		  break;
-		case MYSQL_TYPE_BLOB:
-		case MYSQL_TYPE_STRING:
-		case MYSQL_TYPE_VARCHAR:
-		case MYSQL_TYPE_VAR_STRING:
-		  data = (char *) MALLOC (size);
-		  if (data == NULL)
-		    {
-		      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-					     CAS_ERROR_INDICATOR);
-		    }
-		  columns[i].data.p = data;
-		  columns[i].need_clear = true;
-
-		  defines[i].buffer = (void *) columns[i].data.p;
-		  defines[i].buffer_length = size;
-		  break;
-		case MYSQL_TYPE_SHORT:
-		case MYSQL_TYPE_TINY:
-		  defines[i].buffer = (void *) &(columns[i].data.sh);
-		  defines[i].buffer_length = sizeof (short);
-		  break;
-		case MYSQL_TYPE_LONG:
-		  defines[i].buffer = (void *) &(columns[i].data.i);
-		  defines[i].buffer_length = sizeof (int);
-		  break;
-		case MYSQL_TYPE_LONGLONG:
-		  defines[i].buffer = (void *) &(columns[i].data.bi);
-		  defines[i].buffer_length = sizeof (int64_t);
-		  break;
-		case MYSQL_TYPE_FLOAT:
-		  defines[i].buffer = (void *) &(columns[i].data.f);
-		  defines[i].buffer_length = sizeof (float);
-		  break;
-		case MYSQL_TYPE_DOUBLE:
-		  defines[i].buffer = (void *) &(columns[i].data.d);
-		  defines[i].buffer_length = sizeof (double);
-		  break;
-		case MYSQL_TYPE_DATE:
-		case MYSQL_TYPE_TIME:
-		case MYSQL_TYPE_TIMESTAMP:
-		case MYSQL_TYPE_DATETIME:
-		  defines[i].buffer = (void *) &(columns[i].data.t);
-		  defines[i].buffer_length = sizeof (MYSQL_TIME);
-		  break;
-		default:
-		  return ERROR_INFO_SET (CAS_ER_UNKNOWN_U_TYPE,
-					 CAS_ERROR_INDICATOR);
-		}
-	      defines[i].is_null = &(columns[i].is_null);
-	      defines[i].length = &(columns[i].size);
-	      defines[i].is_unsigned = col->flags & UNSIGNED_FLAG;
-	      defines[i].error = NULL;
-
-	      prepare_column_info_set (net_buf, (char) cas_type,
-				       scale, precision,
-				       col->name, (const char *) col->def, 0,
-				       0, 0, 0, 0, 0, 0, col->name,
-				       col->org_table,
-				       IS_NOT_NULL (col->flags),
-				       client_version);
-	    }
-	}
-
+      return err_code;
     }
-  else
+
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
-      net_buf_cp_byte (net_buf, updatable_flag);
+      err_code = set_metadata_info (srv_handle);
+    }
+
+  return err_code;
+}
+
+
+static int
+send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+{
+  int err_code = CAS_NO_ERROR;
+
+  net_buf_cp_byte (net_buf, 0);	/* updatable_flag */
+  if (srv_handle->stmt_type != CUBRID_STMT_SELECT)
+    {
       net_buf_cp_int (net_buf, 0, NULL);
+      return CAS_NO_ERROR;
     }
 
-  return 0;
+  MYSQL_STMT *stmt = (MYSQL_STMT *) srv_handle->session;
+
+  MYSQL_RES *result = NULL;
+  err_code = cas_mysql_stmt_result_metadata (stmt, &result);
+  if (err_code < 0)
+    {
+      err_code = cas_mysql_get_stmt_errno (stmt);
+      goto error;
+    }
+
+  int num_cols = cas_mysql_num_fields (result);
+  net_buf_cp_int (net_buf, num_cols, NULL);
+
+  DB_VALUE *columns = NULL;
+  MYSQL_BIND *defines = NULL;
+  if (num_cols > 0)
+    {
+      MYSQL_FIELD *col;
+      int i, type, size, scale, precision;
+      for (i = 0; i < num_cols; i++)
+	{
+	  col = cas_mysql_fetch_field (result);
+	  char set_type, cas_type;
+	  cas_type = ux_db_type_to_cas_type (col->type);
+	  size = col->length;
+	  type = col->type;
+	  scale = col->decimals;
+	  precision = col->length;
+
+	  prepare_column_info_set (net_buf, (char) cas_type,
+				   scale, precision,
+				   col->name, (const char *) col->def, 0,
+				   0, 0, 0, 0, 0, 0, col->name,
+				   col->org_table, IS_NOT_NULL (col->flags));
+	}
+    }
+
+error:
+  if (result != NULL)
+    {
+      cas_mysql_free_result (result);
+    }
+  return err_code;
+}
+
+static int
+set_metadata_info (T_SRV_HANDLE * srv_handle)
+{
+  int err_code = CAS_NO_ERROR;
+
+  MYSQL_STMT *stmt = (MYSQL_STMT *) srv_handle->session;
+
+  MYSQL_RES *result = NULL;
+  err_code = cas_mysql_stmt_result_metadata (stmt, &result);
+  if (err_code < 0)
+    {
+      err_code = cas_mysql_get_stmt_errno (stmt);
+      goto error;
+    }
+
+  int asize = sizeof (T_QUERY_RESULT);
+  T_QUERY_RESULT *q_result = (T_QUERY_RESULT *) MALLOC (asize);
+  if (q_result == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto error;
+    }
+  memset ((char *) q_result, 0x00, asize);
+
+  int num_cols = cas_mysql_num_fields (result);
+
+  srv_handle->q_result = q_result;
+  srv_handle->q_result->columns = NULL;
+  srv_handle->q_result->column_count = num_cols;
+
+  DB_VALUE *columns = NULL;
+  MYSQL_BIND *defines = NULL;
+  if (num_cols > 0)
+    {
+      asize = sizeof (DB_VALUE) * (num_cols);
+      columns = (DB_VALUE *) MALLOC (asize);
+      if (columns == NULL)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+				     CAS_ERROR_INDICATOR);
+	  goto error;
+	}
+      memset ((char *) columns, 0x00, asize);
+      srv_handle->q_result->columns = columns;
+
+      asize = sizeof (MYSQL_BIND) * (num_cols);
+      defines = (MYSQL_BIND *) MALLOC (asize);
+      if (defines == NULL)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+				     CAS_ERROR_INDICATOR);
+	  goto error;
+	}
+      memset ((char *) defines, 0x00, asize);
+      srv_handle->q_result->defines = defines;
+
+      char *data;
+      MYSQL_FIELD *col;
+      int i, type, size, scale, precision;
+      for (i = 0; i < num_cols; i++)
+	{
+	  col = cas_mysql_fetch_field (result);
+	  char set_type, cas_type;
+	  cas_type = ux_db_type_to_cas_type (col->type);
+	  size = col->length;
+	  type = col->type;
+	  scale = col->decimals;
+	  precision = col->length;
+	  columns[i].need_clear = false;
+	  switch (type)
+	    {			/* set type specific value */
+	      /*
+	         case MYSQL_TYPE_DATETIME:
+	         case MYSQL_TYPE_TIMESTAMP:
+	         case MYSQL_TYPE_DATE:
+	         case MYSQL_TYPE_TIME:
+	         size += 24;
+	         break;
+	       */
+	    case MYSQL_TYPE_STRING:
+	    case MYSQL_TYPE_VAR_STRING:
+	      precision /= multi_byte_character_max_length;
+	      size += 1;
+	      break;
+	    case MYSQL_TYPE_BLOB:
+	    case MYSQL_TYPE_LONG_BLOB:
+	      if (col->length > MAX_CAS_BLOB_SIZE)	/* length is unsigned long type */
+		{
+		  size = MAX_CAS_BLOB_SIZE;
+		}
+	      break;
+	    case MYSQL_TYPE_DECIMAL:
+	    case MYSQL_TYPE_NEWDECIMAL:
+	      if (scale > 0)
+		precision -= 1;
+	      precision -= 1;
+	      type = MYSQL_TYPE_STRING;
+	      break;
+	    }
+
+	  /* set defines value */
+	  defines[i].buffer_type = type;
+	  switch (type)		/* set buffer pointer */
+	    {
+	    case MYSQL_TYPE_NULL:
+	      break;
+	    case MYSQL_TYPE_BLOB:
+	    case MYSQL_TYPE_STRING:
+	    case MYSQL_TYPE_VARCHAR:
+	    case MYSQL_TYPE_VAR_STRING:
+	      data = (char *) MALLOC (size);
+	      if (data == NULL)
+		{
+		  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+					     CAS_ERROR_INDICATOR);
+		  goto error;
+		}
+	      columns[i].data.p = data;
+	      columns[i].need_clear = true;
+
+	      defines[i].buffer = (void *) columns[i].data.p;
+	      defines[i].buffer_length = size;
+	      break;
+	    case MYSQL_TYPE_SHORT:
+	    case MYSQL_TYPE_TINY:
+	      defines[i].buffer = (void *) &(columns[i].data.sh);
+	      defines[i].buffer_length = sizeof (short);
+	      break;
+	    case MYSQL_TYPE_LONG:
+	      defines[i].buffer = (void *) &(columns[i].data.i);
+	      defines[i].buffer_length = sizeof (int);
+	      break;
+	    case MYSQL_TYPE_LONGLONG:
+	      defines[i].buffer = (void *) &(columns[i].data.bi);
+	      defines[i].buffer_length = sizeof (int64_t);
+	      break;
+	    case MYSQL_TYPE_FLOAT:
+	      defines[i].buffer = (void *) &(columns[i].data.f);
+	      defines[i].buffer_length = sizeof (float);
+	      break;
+	    case MYSQL_TYPE_DOUBLE:
+	      defines[i].buffer = (void *) &(columns[i].data.d);
+	      defines[i].buffer_length = sizeof (double);
+	      break;
+	    case MYSQL_TYPE_DATE:
+	    case MYSQL_TYPE_TIME:
+	    case MYSQL_TYPE_TIMESTAMP:
+	    case MYSQL_TYPE_DATETIME:
+	      defines[i].buffer = (void *) &(columns[i].data.t);
+	      defines[i].buffer_length = sizeof (MYSQL_TIME);
+	      break;
+	    default:
+	      err_code = ERROR_INFO_SET (CAS_ER_UNKNOWN_U_TYPE,
+					 CAS_ERROR_INDICATOR);
+	      goto error;
+	    }
+	  defines[i].is_null = &(columns[i].is_null);
+	  defines[i].length = &(columns[i].size);
+	  defines[i].is_unsigned = col->flags & UNSIGNED_FLAG;
+	  defines[i].error = NULL;
+	}
+    }
+
+error:
+  if (result != NULL)
+    {
+      cas_mysql_free_result (result);
+    }
+  return err_code;
 }
 
 static int
