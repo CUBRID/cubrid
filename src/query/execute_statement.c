@@ -14336,7 +14336,7 @@ int
 do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *not_nulls, *lhs, *spec = NULL;
+  PT_NODE *not_nulls = NULL, *lhs, *spec = NULL;
   int has_unique;
   const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
@@ -14389,6 +14389,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (not_nulls)
 	{
 	  parser_free_tree (parser, not_nulls);
+	  not_nulls = NULL;
 	}
       if (err != NO_ERROR)
 	{
@@ -14487,6 +14488,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (not_nulls)
 	{
 	  parser_free_tree (parser, not_nulls);
+	  not_nulls = NULL;
 	}
       if (err != NO_ERROR)
 	{
@@ -14743,7 +14745,7 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *not_nulls = NULL, *lhs, *flat, *spec;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
   bool server_insert, server_update, server_op;
 
@@ -14841,7 +14843,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* check if the target class has UNIQUE constraint */
-      err = update_check_for_constraints (parser, &has_unique, &not_nulls,
+      err = update_check_for_constraints (parser, &has_unique, &non_nulls_upd,
 					  statement);
       if (err != NO_ERROR)
 	{
@@ -14880,7 +14882,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_NODE *value_clauses = statement->info.merge.insert.value_clauses;
       PT_NODE *attr, *attrs = statement->info.merge.insert.attr_list;
-      PT_NODE *non_nulls_ins = NULL;
 
       if (prm_get_integer_value (PRM_ID_INSERT_MODE) & INSERT_SELECT)
 	{
@@ -14912,14 +14913,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       err = check_for_cons (parser, &has_unique, &non_nulls_ins, attrs,
 			    flat->info.name.db_object);
-      if (not_nulls)
-	{
-	  not_nulls = parser_append_node (non_nulls_ins, not_nulls);
-	}
-      else
-	{
-	  not_nulls = non_nulls_ins;
-	}
       if (err != NO_ERROR)
 	{
 	  goto cleanup;
@@ -15003,8 +14996,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_SAVE_AND_DISABLE (au_save);
 
 	  /* generate MERGE XASL */
-	  xasl = pt_to_merge_xasl (parser, statement, &not_nulls,
-				   default_expr_attrs);
+	  xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd,
+				   &non_nulls_ins, default_expr_attrs);
 
 	  AU_RESTORE (au_save);
 
@@ -15141,10 +15134,15 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 cleanup:
-  if (not_nulls)
+  if (non_nulls_upd)
     {
-      parser_free_tree (parser, not_nulls);
-      not_nulls = NULL;
+      parser_free_tree (parser, non_nulls_upd);
+      non_nulls_upd = NULL;
+    }
+  if (non_nulls_ins)
+    {
+      parser_free_tree (parser, non_nulls_ins);
+      non_nulls_ins = NULL;
     }
   return err;
 }

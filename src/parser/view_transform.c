@@ -4417,12 +4417,9 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   if (merge_statement)
     {
       (void) mq_check_merge (parser, merge_statement);
-    }
 
-  flat = merge_statement->info.merge.into->info.spec.flat_entity_list;
-  if (flat)
-    {
-      if (db_is_class (flat->info.name.db_object))
+      flat = merge_statement->info.merge.into->info.spec.flat_entity_list;
+      if (flat)
 	{
 	  sc_info.top_node = merge_statement;
 	  sc_info.donot_fold = false;

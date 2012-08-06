@@ -21203,12 +21203,14 @@ error_exit:
  *   return:
  *   parser(in):
  *   statement(in):
- *   non_null_attrs(in):
+ *   non_null_upd_attrs(in):
+ *   non_null_ins_attrs(in):
  *   default_expr_attrs(in):
  */
 XASL_NODE *
 pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
-		  PT_NODE ** non_null_attrs, PT_NODE * default_expr_attrs)
+		  PT_NODE ** non_null_upd_attrs, PT_NODE ** non_null_ins_attrs,
+		  PT_NODE * default_expr_attrs)
 {
   XASL_NODE *xasl, *xptr;
   XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;
@@ -21231,7 +21233,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       /* generate XASL for UPDATE part */
       update_xasl =
-	pt_to_merge_update_xasl (parser, statement, non_null_attrs);
+	pt_to_merge_update_xasl (parser, statement, non_null_upd_attrs);
       if (update_xasl == NULL)
 	{
 	  if (pt_has_error (parser))
@@ -21259,7 +21261,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       /* generate XASL for INSERT part */
       insert_xasl =
-	pt_to_merge_insert_xasl (parser, statement, *non_null_attrs,
+	pt_to_merge_insert_xasl (parser, statement, *non_null_ins_attrs,
 				 default_expr_attrs);
       if (insert_xasl == NULL)
 	{

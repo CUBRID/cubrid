@@ -237,7 +237,8 @@ extern PT_NODE *pt_to_merge_insert_query (PARSER_CONTEXT * parser,
 					  PT_MERGE_INFO * info);
 extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
-				    PT_NODE ** non_null_attrs,
+				    PT_NODE ** non_null_upd_attrs,
+				    PT_NODE ** non_null_ins_attrs,
 				    PT_NODE * default_expr_attrs);
 
 #endif /* _XASL_GENERATION_H_ */
