@@ -8273,11 +8273,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
        * specified */
       check_where_part = NULL;
       spec = statement->info.merge.into;
-      if (spec != NULL && spec->info.spec.id != class_->info.name.spec_id)
-	{
-	  break;
-	}
-      if (spec != NULL)
+      if (spec != NULL && spec->info.spec.id == class_->info.name.spec_id)
 	{
 	  /* Verify if a check_option node already exists for current spec. If
 	   * so then append condition to existing */
@@ -8300,6 +8296,109 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		parser_append_node (cw, statement->info.merge.check_where);
 	    }
 	  check_where_part = &cw->info.check_option.expr;
+	}
+
+      /* check insert part attributes */
+      crt_list = statement->info.merge.insert.value_clauses;
+      if (crt_list == NULL)
+	{
+	  break;
+	}
+      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE
+	  || crt_list->info.node_list.list_type == PT_IS_VALUE)
+	{
+	  for (; crt_list != NULL; crt_list = crt_list->next)
+	    {
+	      /* Inserting the default values in the original class will
+	         "insert" the default view values in the view. We don't need
+	         to do anything. */
+	      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+		{
+		  continue;
+		}
+	      assert (crt_list->info.node_list.list_type == PT_IS_VALUE);
+
+	      /* We need to invert expressions now. */
+	      if (attr_names == NULL)
+		{
+		  /* We'll also build a list of attribute names. */
+		  build_att_names_list = true;
+		}
+	      else
+		{
+		  /* The list of attribute names has already been built. */
+		  build_att_names_list = false;
+		}
+
+	      attr = statement->info.merge.insert.attr_list;
+	      value = &crt_list->info.node_list.list;
+	      while (*value)
+		{
+		  if (attr == NULL)
+		    {
+		      /* System error, should have been caught in the semantic
+		         pass */
+		      PT_ERRORm (parser, (*value), MSGCAT_SET_PARSER_RUNTIME,
+				 MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS);
+		      break;
+		    }
+
+		  attr_next = attr->next;
+		  attr->next = NULL;
+		  value_next = (*value)->next;
+		  (*value)->next = NULL;
+
+		  (*value) = mq_translate_value (parser, *value);
+		  result = pt_invert (parser, attr, *value);
+
+		  if (result == NULL)
+		    {
+		      /* error not invertable/updatable */
+		      PT_ERRORmf (parser, attr, MSGCAT_SET_PARSER_RUNTIME,
+				  MSGCAT_RUNTIME_VASG_TGT_UNINVERTBL,
+				  pt_short_print (parser, attr));
+		      break;
+		    }
+
+		  if (build_att_names_list)
+		    {
+		      if (attr_names_crt == NULL)
+			{
+			  /* This is the first attribute in the name list. */
+			  attr_names_crt = attr_names = result->next;
+			}
+		      else
+			{
+			  attr_names_crt->next = result->next;
+			  attr_names_crt = attr_names_crt->next;
+			}
+		      result->next = NULL;
+		    }
+		  else
+		    {
+		      parser_free_tree (parser, result->next);
+		      result->next = NULL;
+		    }
+
+		  attr->next = attr_next;
+		  attr = attr->next;
+
+		  (*value) = result;	/* the right hand side */
+		  (*value)->next = value_next;
+		  value = &(*value)->next;
+		}
+	    }
+
+	  if (attr_names != NULL)
+	    {
+	      parser_free_tree (parser, statement->info.merge.insert.attr_list);
+	      statement->info.merge.insert.attr_list = attr_names;
+	      attr_names = NULL;
+	    }
+	}
+      else
+	{
+	  assert (false);
 	}
       break;
 
