@@ -15833,7 +15833,6 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
       constraint->type_enum = PT_TYPE_LOGICAL;
       constraint->info.expr.op = PT_IS_NOT_NULL;
       constraint->info.expr.arg1 = node;
-      constraint->next = pt_pred;
 
       if (mq_is_outer_join_spec (parser, spec_list))
 	{
@@ -15873,7 +15872,6 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	{
 	  conj = constraint;
 	}
-
       /* add spec to table info */
       ti = pt_make_table_info (parser, spec_list);
       if (ti)
@@ -15882,6 +15880,7 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	  parser->symbols->table_info = ti;
 	}
 
+      conj->next = pt_pred;
       pt_pred = conj;
       node = next;		/* go to the next node */
     }
