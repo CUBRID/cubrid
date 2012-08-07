@@ -522,6 +522,8 @@ static PT_NODE *mq_no_search_cond_merge_updates_pre (PARSER_CONTEXT * parser,
 						     PT_NODE * node,
 						     void * arg,
 						     int * continue_walk);
+static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser,
+					 PT_NODE * stmt);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -6085,6 +6087,10 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node)
 	{
 	  node = mq_optimize (parser, node);
+	  if (node->node_type == PT_MERGE)
+	    {
+	      mq_auto_param_merge_clauses (parser, node);
+	    }
 	  /* repeat for constant folding */
 	  if (node)
 	    {
@@ -11602,4 +11608,50 @@ mq_no_search_cond_merge_updates_pre (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   return node;
+}
+
+/*
+ * mq_auto_param_merge_clauses () - auto-parameterize update assignments
+ *                                  and insert values clause
+ *   return:
+ *   parser(in):
+ *   stmt(in):
+ */
+static void
+mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  PT_NODE *values_list, *first, *prev, *p, *save_next;
+  int i;
+
+  /* auto-parameterize update assignments */
+  qo_do_auto_parameterize (parser, stmt->info.merge.update.assignment);
+
+  /* auto-parameterize insert values clause */
+  if (stmt->info.merge.insert.value_clauses)
+    {
+      p = values_list =
+	stmt->info.merge.insert.value_clauses->info.node_list.list;
+      first = prev = NULL;
+      for (i = 0; p != NULL; i++)
+	{
+	  save_next = p->next;
+	  p->next = NULL;
+	  if (pt_is_const_not_hostvar (p) && !PT_IS_NULL_NODE (p))
+	    {
+	      p = pt_rewrite_to_auto_param (parser, p);
+	    }
+	  if (i == 0)
+	    {
+	      first = p;
+	    }
+	  else
+	    {
+	      prev->next = p;
+	    }
+	  p->next = save_next;
+	  prev = p;
+	  p = p->next;
+	}
+      stmt->info.merge.insert.value_clauses->info.node_list.list = first;
+    }
 }

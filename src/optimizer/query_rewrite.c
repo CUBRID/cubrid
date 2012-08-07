@@ -6341,6 +6341,7 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	    case PT_LT:
 	    case PT_LE:
 	    case PT_LIKE:
+	    case PT_ASSIGN:
 	      if (pt_is_const_not_hostvar (dnf_node->info.expr.arg2)
 		  && !PT_IS_NULL_NODE (dnf_node->info.expr.arg2))
 		{

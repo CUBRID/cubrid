@@ -14880,7 +14880,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* check insert part */
   if (statement->info.merge.insert.value_clauses)
     {
-      PT_NODE *value_clauses = statement->info.merge.insert.value_clauses;
       PT_NODE *attr, *attrs = statement->info.merge.insert.attr_list;
 
       if (prm_get_integer_value (PRM_ID_INSERT_MODE) & INSERT_SELECT)
