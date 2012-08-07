@@ -2381,7 +2381,7 @@ boot_define_index (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "function", "varchar(255)", NULL);
+  error_code = smt_add_attribute (def, "have_function", "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2470,6 +2470,12 @@ boot_define_index_key (MOP class_mop)
 
   error_code = smt_set_attribute_default (def, "key_prefix_length", 0,
 					  &prefix_default, DB_DEFAULT_NONE);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "func", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4275,7 +4281,7 @@ boot_define_view_index (void)
     {"is_primary_key", "varchar(3)"},
     {"is_foreign_key", "varchar(3)"},
     {"filter_expression", "varchar(255)"},
-    {"function", "varchar(255)"}
+    {"have_function", "varchar(3)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4306,7 +4312,7 @@ boot_define_view_index (void)
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " [i].[filter_expression],"
-	   " [i].[function]"
+	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END"
 	   " FROM [%s] [i]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {[i].[class_of].[owner].[name]} SUBSETEQ ("
@@ -4360,7 +4366,8 @@ boot_define_view_index_key (void)
     {"key_attr_name", "varchar(255)"},
     {"key_order", "integer"},
     {"asc_desc", "varchar(4)"},
-    {"key_prefix_length", "integer"}
+    {"key_prefix_length", "integer"},
+    {"func", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4391,6 +4398,7 @@ boot_define_view_index_key (void)
 	   " WHEN 1 THEN 'DESC'"
 	   " ELSE 'UNKN' END"
 	   ", [k].[key_prefix_length]"
+	   ", [k].[func]"
 	   " FROM [%s] [k]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("

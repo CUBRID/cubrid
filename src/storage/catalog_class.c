@@ -2101,22 +2101,25 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 				  int is_primary_key, int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, prefix_val, val, avalue;
-  DB_SEQ *key_seq_p = NULL, *prefix_seq, *pred_seq = NULL;
+  DB_VALUE keys, svalue, val, avalue;
+  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
   OR_VALUE *subset_p;
   int e, i, j, k;
+  int has_function_index = 0;
   int error = NO_ERROR;
 
   db_value_put_null (&keys);
-  db_value_put_null (&prefix_val);
+  db_value_put_null (&svalue);
   db_value_put_null (&val);
   db_value_put_null (&avalue);
   seq_size = set_size (seq_p);
   for (i = 0, j = 0; i < seq_size; i += 2, j++)
     {
+      has_function_index = 0;
+      prefix_seq = NULL;
       error = catcls_expand_or_value_by_def (&values[j], &ct_Index);
       if (error != NO_ERROR)
 	{
@@ -2160,101 +2163,45 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
       key_size = set_size (key_seq_p);
       att_cnt = (key_size - 1) / 2;
 
-      /* key_count */
-      db_make_int (&attrs[3].value, att_cnt);
-
-      subset_p = catcls_allocate_or_value (att_cnt);
-      if (subset_p == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      attrs[4].sub.value = subset_p;
-      attrs[4].sub.count = att_cnt;
-
-      /* key_attrs */
-      e = 1;
-      for (k = 0; k < att_cnt; k++)	/* for each [attrID, asc_desc]+ */
-	{
-	  error = catcls_expand_or_value_by_def (&subset_p[k], &ct_Indexkey);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  key_attrs = subset_p[k].sub.value;
-
-	  /* key_attr_id */
-	  attr_val_p = &key_attrs[1].value;
-	  error = set_get_element (key_seq_p, e++, attr_val_p);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  /* key_order */
-	  db_make_int (&key_attrs[2].value, k);
-
-	  /* asc_desc */
-	  attr_val_p = &key_attrs[3].value;
-	  error = set_get_element (key_seq_p, e++, attr_val_p);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  /* prefix_length */
-	  db_make_int (&key_attrs[4].value, -1);
-	}
-
-      if (!is_primary_key && !is_foreign_key && ct_Index.n_atts > 8)
+      if (!is_primary_key && !is_foreign_key)
 	{
 	  /* prefix_length or filter index */
-	  error = set_get_element (key_seq_p, key_size - 1, &prefix_val);
+	  error = set_get_element (key_seq_p, key_size - 1, &svalue);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  if (DB_VALUE_TYPE (&prefix_val) != DB_TYPE_SEQUENCE)
+	  if (DB_VALUE_TYPE (&svalue) != DB_TYPE_SEQUENCE)
 	    {
-	      pr_clear_value (&prefix_val);
 	      error = ER_SM_INVALID_PROPERTY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      goto error;
 	    }
 
-	  prefix_seq = DB_GET_SEQUENCE (&prefix_val);
-	  error = set_get_element (prefix_seq, 0, &val);
+	  seq = DB_GET_SEQUENCE (&svalue);
+	  error = set_get_element (seq, 0, &val);
 	  if (error != NO_ERROR)
 	    {
-	      pr_clear_value (&prefix_val);
 	      goto error;
 	    }
 
 	  if (DB_VALUE_TYPE (&val) == DB_TYPE_INTEGER)
 	    {
-	      assert (set_size (prefix_seq) == att_cnt);
-	      for (k = 0; k < att_cnt; k++)
-		{
-		  key_attrs = subset_p[k].sub.value;
-		  attr_val_p = &key_attrs[4].value;
-
-		  error = set_get_element (prefix_seq, k, attr_val_p);
-		  if (error != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
+	      /* have prefix length */
+	      prefix_seq = seq;
 	    }
 	  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
 	    {
-	      DB_SET *seq = DB_GET_SEQUENCE (&prefix_val);
 	      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
 	      int seq_size = set_size (seq);
 	      int flag = 0, l = 0;
+	      DB_VALUE temp;
+	      int col_id, att_index_start;
+	      char *buffer, *ptr;
+	      TP_DOMAIN *fi_domain = NULL;
 
+	      /* have filter or function index */
 	      while (true)
 		{
 		  error = set_get_element (child_seq, 0, &avalue);
@@ -2267,6 +2214,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 		      DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
 		    {
 		      error = ER_SM_INVALID_PROPERTY;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		      goto error;
 		    }
 
@@ -2293,6 +2241,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 		  if (DB_VALUE_TYPE (&avalue) != DB_TYPE_SEQUENCE)
 		    {
 		      error = ER_SM_INVALID_PROPERTY;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		      goto error;
 		    }
 
@@ -2309,13 +2258,117 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 		      break;
 
 		    case 0x02:
+		      has_function_index = 1;
 		      pred_seq = DB_GET_SEQUENCE (&avalue);
-		      attr_val_p = &attrs[9].value;
-		      error = set_get_element (pred_seq, 0, attr_val_p);
+
+		      error = set_get_element_nocopy (pred_seq, 2, &temp);
 		      if (error != NO_ERROR)
 			{
 			  goto error;
 			}
+		      col_id = db_get_int (&temp);
+
+		      error = set_get_element_nocopy (pred_seq, 3, &temp);
+		      if (error != NO_ERROR)
+			{
+			  goto error;
+			}
+		      att_index_start = db_get_int (&temp);
+		      assert (col_id <= att_index_start);
+
+		      att_cnt = att_index_start + 1;
+
+		      /* key_count */
+		      db_make_int (&attrs[3].value, att_cnt);
+
+		      subset_p = catcls_allocate_or_value (att_cnt);
+		      if (subset_p == NULL)
+			{
+			  error = ER_OUT_OF_VIRTUAL_MEMORY;
+			  goto error;
+			}
+
+		      attrs[4].sub.value = subset_p;
+		      attrs[4].sub.count = att_cnt;
+
+		      /* key_attrs */
+		      e = 1;
+		      for (k = 0; k < att_cnt; k++)	/* for each [attrID, asc_desc]+ */
+			{
+			  error =
+			    catcls_expand_or_value_by_def (&subset_p[k],
+							   &ct_Indexkey);
+			  if (error != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  key_attrs = subset_p[k].sub.value;
+
+			  if (k != col_id)
+			    {
+			      /* key_attr_id */
+			      attr_val_p = &key_attrs[1].value;
+			      error = set_get_element (key_seq_p, e++,
+						       attr_val_p);
+			      if (error != NO_ERROR)
+				{
+				  goto error;
+				}
+
+			      /* key_order */
+			      db_make_int (&key_attrs[2].value, k);
+
+			      /* asc_desc */
+			      attr_val_p = &key_attrs[3].value;
+			      error = set_get_element (key_seq_p, e++,
+						       attr_val_p);
+			      if (error != NO_ERROR)
+				{
+				  goto error;
+				}
+
+			      /* function name */
+			      db_make_null (&key_attrs[5].value);
+			    }
+			  else
+			    {
+			      /* key_attr_id */
+			      db_make_null (&key_attrs[1].value);
+
+			      /* key_order */
+			      db_make_int (&key_attrs[2].value, k);
+
+			      /* asc_desc */
+			      error = set_get_element_nocopy (pred_seq, 4,
+							      &temp);
+			      if (error != NO_ERROR)
+				{
+				  goto error;
+				}
+
+			      buffer = DB_GET_STRING (&temp);
+			      ptr = buffer;
+			      ptr = or_unpack_domain (ptr, &fi_domain, NULL);
+
+			      db_make_int (&key_attrs[3].value,
+					   fi_domain->is_desc);
+			      tp_domain_free (fi_domain);
+
+			      /* function name */
+			      attr_val_p = &key_attrs[5].value;
+			      error = set_get_element (pred_seq, 0,
+						       attr_val_p);
+			      if (error != NO_ERROR)
+				{
+				  goto error;
+				}
+			    }
+
+			  /* prefix_length */
+			  db_make_int (&key_attrs[4].value, -1);
+			}
+
 		      break;
 
 		    default:
@@ -2341,7 +2394,6 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 		    }
 
 		  child_seq = DB_GET_SEQUENCE (&val);
-
 		}
 	    }
 	  else
@@ -2350,9 +2402,80 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      goto error;
 	    }
-	  pr_clear_value (&prefix_val);
 	  pr_clear_value (&val);
 	}
+
+      /* key_count */
+      if (has_function_index == 0)
+	{
+	  db_make_int (&attrs[3].value, att_cnt);
+
+	  subset_p = catcls_allocate_or_value (att_cnt);
+	  if (subset_p == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+
+	  attrs[4].sub.value = subset_p;
+	  attrs[4].sub.count = att_cnt;
+
+	  /* key_attrs */
+	  e = 1;
+	  for (k = 0; k < att_cnt; k++)	/* for each [attrID, asc_desc]+ */
+	    {
+	      error = catcls_expand_or_value_by_def (&subset_p[k],
+						     &ct_Indexkey);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      key_attrs = subset_p[k].sub.value;
+
+	      /* key_attr_id */
+	      attr_val_p = &key_attrs[1].value;
+	      error = set_get_element (key_seq_p, e++, attr_val_p);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      /* key_order */
+	      db_make_int (&key_attrs[2].value, k);
+
+	      /* asc_desc */
+	      attr_val_p = &key_attrs[3].value;
+	      error = set_get_element (key_seq_p, e++, attr_val_p);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      /* prefix_length */
+	      db_make_int (&key_attrs[4].value, -1);
+
+	      /* function name */
+	      db_make_null (&key_attrs[5].value);
+	    }
+	}
+
+      if (prefix_seq)
+	{
+	  for (k = 0; k < att_cnt; k++)
+	    {
+	      key_attrs = subset_p[k].sub.value;
+	      attr_val_p = &key_attrs[4].value;
+
+	      error = set_get_element (prefix_seq, k, attr_val_p);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	}
+
+      pr_clear_value (&svalue);
       pr_clear_value (&keys);
 
       /* is_reverse */
@@ -2363,6 +2486,9 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 
       /* is_foreign_key */
       db_make_int (&attrs[7].value, is_foreign_key);
+
+      /* have_function */
+      db_make_int (&attrs[9].value, has_function_index);
     }
 
   return NO_ERROR;
@@ -2370,7 +2496,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 error:
 
   pr_clear_value (&keys);
-  pr_clear_value (&prefix_val);
+  pr_clear_value (&svalue);
   pr_clear_value (&val);
   pr_clear_value (&avalue);
   return error;
@@ -4314,13 +4440,6 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  attr_name_p = or_get_attrname (&class_record, i);
 	  if (attr_name_p == NULL)
 	    {
-	      if (strcmp (class_name_p, CT_INDEX_NAME) == 0
-		  && (i == 8 || i == 9))
-		{		/*backward compatibility */
-		  ct_Index.n_atts = 8;
-		  continue;
-		}
-
 	      (void) heap_scancache_end (thread_p, &scan);
 	      return ER_FAILED;
 	    }

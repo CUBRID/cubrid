@@ -380,7 +380,7 @@ static CT_ATTR ct_index_atts[] = {
   {"is_primary_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"function", NULL_ATTRID, DB_TYPE_VARCHAR}
+  {"have_function", NULL_ATTRID, DB_TYPE_INTEGER}
 };
 
 static CT_ATTR ct_indexkey_atts[] = {
@@ -388,7 +388,8 @@ static CT_ATTR ct_indexkey_atts[] = {
   {"key_attr_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"key_order", NULL_ATTRID, DB_TYPE_INTEGER},
   {"asc_desc", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"key_prefix_length", NULL_ATTRID, DB_TYPE_INTEGER}
+  {"key_prefix_length", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"func", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 #define NULL_OID_INITIALIZER    {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}

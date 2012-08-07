@@ -7996,7 +7996,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 static SM_FUNCTION_INFO *
 classobj_make_function_index_info (DB_SEQ * func_seq)
 {
-  SM_FUNCTION_INFO *fi_info;
+  SM_FUNCTION_INFO *fi_info = NULL;
   DB_VALUE val;
   char *buffer, *ptr;
   int size;
@@ -8009,11 +8009,15 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   fi_info = (SM_FUNCTION_INFO *) db_ws_alloc (sizeof (SM_FUNCTION_INFO));
   if (fi_info == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (SM_FUNCTION_INFO));
       goto error;
     }
+  memset (fi_info, 0, sizeof (SM_FUNCTION_INFO));
 
-  if (set_get_element (func_seq, 0, &val))
+  if (set_get_element_nocopy (func_seq, 0, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   buffer = DB_GET_STRING (&val);
@@ -8021,50 +8025,49 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   fi_info->expr_str = (char *) db_ws_alloc (size + 1);
   if (fi_info->expr_str == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size + 1));
       goto error;
     }
   memset (fi_info->expr_str, 0, size + 1);
   memcpy (fi_info->expr_str, buffer, size);
-  pr_clear_value (&val);
 
-  if (set_get_element (func_seq, 1, &val))
+  if (set_get_element_nocopy (func_seq, 1, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   buffer = DB_GET_STRING (&val);
   fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
   fi_info->expr_stream = (char *) db_ws_alloc (fi_info->expr_stream_size);
   if (fi_info->expr_stream == NULL)
-
     {
       goto error;
     }
   memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);
-  pr_clear_value (&val);
 
-  if (set_get_element (func_seq, 2, &val))
+  if (set_get_element_nocopy (func_seq, 2, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   fi_info->col_id = DB_GET_INT (&val);
-  pr_clear_value (&val);
 
-  if (set_get_element (func_seq, 3, &val))
+  if (set_get_element_nocopy (func_seq, 3, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   fi_info->attr_index_start = DB_GET_INT (&val);
-  pr_clear_value (&val);
 
-  if (set_get_element (func_seq, 4, &val))
+  if (set_get_element_nocopy (func_seq, 4, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   buffer = DB_GET_STRING (&val);
   ptr = buffer;
   ptr = or_unpack_domain (ptr, &(fi_info->fi_domain), NULL);
-
-  pr_clear_value (&val);
 
   return fi_info;
 
@@ -8072,8 +8075,17 @@ error:
 
   if (fi_info)
     {
+      if (fi_info->expr_str)
+	{
+	  db_ws_free (fi_info->expr_str);
+	}
+      if (fi_info->expr_stream)
+	{
+	  db_ws_free (fi_info->expr_stream);
+	}
       db_ws_free (fi_info);
     }
+
   return NULL;
 }
 

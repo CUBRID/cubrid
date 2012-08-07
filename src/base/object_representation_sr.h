@@ -116,6 +116,7 @@ struct or_predicate
 typedef struct or_function_index OR_FUNCTION_INDEX;
 struct or_function_index
 {
+  char *expr_string;
   char *expr_stream;
   int expr_stream_size;
   int col_id;			/* the position at which the function is placed */

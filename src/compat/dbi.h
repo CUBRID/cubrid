@@ -983,5 +983,4 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
-extern int db_add_filter_and_function_index_to_catalog_classes (int *added);
 #endif /* _DBI_H_ */

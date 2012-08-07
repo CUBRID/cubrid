@@ -3633,7 +3633,14 @@ or_free_classrep (OR_CLASSREP * rep)
 		}
 	      if (index->func_index_info)
 		{
-		  free_and_init (index->func_index_info->expr_stream);
+		  if (index->func_index_info->expr_string)
+		    {
+		      free_and_init (index->func_index_info->expr_string);
+		    }
+		  if (index->func_index_info->expr_stream)
+		    {
+		      free_and_init (index->func_index_info->expr_stream);
+		    }
 		  free_and_init (index->func_index_info);
 		}
 	    }
@@ -3776,14 +3783,56 @@ or_get_attrname (RECDES * record, int attrid)
 static void
 or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
 {
-  OR_FUNCTION_INDEX *fi_info;
-  DB_VALUE val;
+  OR_FUNCTION_INDEX *fi_info = NULL;
+  DB_VALUE val, val1;
   char *buffer;
 
+  index->func_index_info = NULL;
   if (fi_seq == NULL)
     {
       return;
     }
+
+  if (set_get_element_nocopy (fi_seq, 0, &val1) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  switch (DB_VALUE_TYPE (&val1))
+    {
+    case DB_TYPE_NULL:
+      return;
+
+    case DB_TYPE_STRING:
+      /*continue */
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      return;
+    }
+
+  if (set_get_element_nocopy (fi_seq, 1, &val) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      goto error;
+    }
+
+  switch (DB_VALUE_TYPE (&val))
+    {
+    case DB_TYPE_NULL:
+      return;
+
+    case DB_TYPE_CHAR:
+      /*continue */
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      return;
+    }
+
 
   fi_info = (OR_FUNCTION_INDEX *) malloc (sizeof (OR_FUNCTION_INDEX));
   if (fi_info == NULL)
@@ -3793,10 +3842,14 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       goto error;
     }
 
-  if (set_get_element (fi_seq, 1, &val))
+  fi_info->expr_string = strdup (DB_PULL_STRING (&val1));
+  if (fi_info->expr_string == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      strlen (DB_PULL_STRING (&val1)) * sizeof (char));
       goto error;
     }
+
   buffer = DB_GET_STRING (&val);
   fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
   fi_info->expr_stream = (char *) malloc (fi_info->expr_stream_size);
@@ -3807,30 +3860,39 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       goto error;
     }
   memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);
-  pr_clear_value (&val);
 
-  if (set_get_element (fi_seq, 2, &val))
+  if (set_get_element_nocopy (fi_seq, 2, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   fi_info->col_id = DB_GET_INT (&val);
-  pr_clear_value (&val);
 
-  if (set_get_element (fi_seq, 3, &val))
+  if (set_get_element_nocopy (fi_seq, 3, &val) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
   fi_info->attr_index_start = DB_GET_INT (&val);
-  pr_clear_value (&val);
 
   index->func_index_info = fi_info;
   return;
 
 error:
-
   if (fi_info)
     {
+      if (fi_info->expr_string)
+	{
+	  free_and_init (fi_info->expr_string);
+	}
+
+      if (fi_info->expr_stream)
+	{
+	  free_and_init (fi_info->expr_stream);
+	}
+
       free_and_init (fi_info);
     }
+
   return;
 }

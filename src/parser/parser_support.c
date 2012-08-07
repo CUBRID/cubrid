@@ -9166,6 +9166,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
  *	     NULL AS Packed,
  *	     "" AS [Null],
  *	     'BTREE' AS Index_type
+ *	     "" AS Func,
  *    FROM <table> ORDER BY 3, 5;
  *
  *  Note: At execution, all empty fields will be replaced by values
@@ -9180,10 +9181,11 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
 			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[11];
+  DB_VALUE db_valuep[12];
   char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
-    "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type"
+    "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
+    "Func"
   };
   int i = 0;
 
@@ -9216,6 +9218,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   db_make_varchar (db_valuep + 9, DB_DEFAULT_PRECISION, "", 0,
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_varchar (db_valuep + 10, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 11, DB_DEFAULT_PRECISION, "", 0,
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)

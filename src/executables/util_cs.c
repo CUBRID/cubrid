@@ -686,31 +686,6 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	    }
 	}
 
-#if defined (SA_MODE)
-      if (repair == true)
-	{
-	  int added = 0;
-	  int ret_val =
-	    db_add_filter_and_function_index_to_catalog_classes (&added);
-
-	  if (ret_val == NO_ERROR)
-	    {
-	      if (added)
-		{
-		  ret_val = tran_commit (false);
-		  if (ret_val != NO_ERROR)
-		    {
-		      goto error_exit;
-		    }
-		}
-	    }
-	  else
-	    {
-	      goto error_exit;
-	    }
-	}
-#endif
-
       if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
 	  || boot_check_db_consistency (flag, oids, num_tables) != NO_ERROR)
 	{

@@ -20913,6 +20913,9 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OID *class_oid = NULL;
   int i, j, k;
   int error = NO_ERROR;
+  int function_index_pos = -1;
+  int index_position = 0;
+  int num_idx_att = 0;
 
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state)
       != NO_ERROR)
@@ -20975,7 +20978,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       attr_ids[i] = attrepr->id;
     }
 
-
+  assert (xasl->outptr_list->valptr_cnt == 12);
   out_values = (DB_VALUE **) malloc (xasl->outptr_list->valptr_cnt *
 				     sizeof (DB_VALUE *));
   if (out_values == NULL)
@@ -20990,57 +20993,72 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   class_name = or_class_name (&class_record);
+  /* class name */
   db_make_string (out_values[0], class_name);
+  /* packed */
+  db_make_null (out_values[8]);
+  /* index type */
   db_make_string (out_values[10], "BTREE");
 
   for (i = 0; i < rep->n_indexes; i++)
     {
       index = rep->indexes + i;
+      /* Non_unique */
       non_unique = btree_is_unique_type (index->type) ? 0 : 1;
       db_make_int (out_values[1], non_unique);
 
-      for (j = 0; j < index->n_atts; j++)
+      /* Key_name */
+      db_make_string (out_values[2], index->btname);
+
+      /* Func */
+      db_make_null (out_values[11]);
+
+      if (index->func_index_info == NULL)
+	{
+	  function_index_pos = -1;
+	  num_idx_att = index->n_atts;
+	}
+      else
+	{
+	  function_index_pos = index->func_index_info->col_id;
+	  /* do not count function attributes
+	     function attributes are positioned after index attributes
+	     at the end of index->atts array */
+	  num_idx_att = index->func_index_info->attr_index_start;
+	}
+
+      index_position = 0;
+      /* index attributes */
+      for (j = 0; j < num_idx_att; j++)
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
 	  assert (att_id >= 0);
 
-	  db_make_string (out_values[2], index->btname);
-	  db_make_int (out_values[3], j + 1);
-
-	  if (index->func_index_info == NULL ||
-	      index->func_index_info->col_id != j)
+	  if (index_position == function_index_pos)
 	    {
-	      if (index->asc_desc[j])
-		{
-		  db_make_string (out_values[5], "D");
-		}
-	      else
-		{
-		  db_make_string (out_values[5], "A");
-		}
+	      /* function position in index founded,
+	         compute attribute position in index */
+	      index_position++;
+	    }
+
+	  /* Seq_in_index */
+	  db_make_int (out_values[3], index_position + 1);
+
+	  /* Collation */
+	  if (index->asc_desc[j])
+	    {
+	      db_make_string (out_values[5], "D");
 	    }
 	  else
 	    {
-	      if (btree_get_asc_desc (thread_p, &index->btid, j,
-				      &function_asc_desc) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      if (function_asc_desc)
-		{
-		  db_make_string (out_values[5], "D");
-		}
-	      else
-		{
-		  db_make_string (out_values[5], "A");
-		}
+	      db_make_string (out_values[5], "A");
 	    }
 
+	  /* Cardinality */
 	  if (catalog_get_cardinality (thread_p, class_oid, disk_repr_p,
-				       &index->btid, j, &cardinality)
-	      != NO_ERROR)
+				       &index->btid, index_position,
+				       &cardinality) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -21054,6 +21072,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      db_make_int (out_values[6], cardinality);
 	    }
 
+	  /* Sub_part */
 	  if (index->attrs_prefix_length &&
 	      index->attrs_prefix_length[j] > -1)
 	    {
@@ -21064,6 +21083,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      db_make_null (out_values[7]);
 	    }
 
+	  /* [Null] */
 	  if (index_att->is_notnull)
 	    {
 	      db_make_string (out_values[9], "NO");
@@ -21073,6 +21093,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      db_make_string (out_values[9], "YES");
 	    }
 
+	  /* Column_name */
 	  for (k = 0; k < rep->n_attributes; k++)
 	    {
 	      if (att_id == attr_ids[k])
@@ -21083,7 +21104,64 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  break;
 		}
 	    }
+
+	  index_position++;
 	}
+
+      /* function index */
+      if (function_index_pos >= 0)
+	{
+	  /* Func */
+	  db_make_string (out_values[11],
+			  index->func_index_info->expr_string);
+
+	  /* Collation */
+	  if (btree_get_asc_desc (thread_p, &index->btid, function_index_pos,
+				  &function_asc_desc) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (function_asc_desc)
+	    {
+	      db_make_string (out_values[5], "D");
+	    }
+	  else
+	    {
+	      db_make_string (out_values[5], "A");
+	    }
+
+	  /* Seq_in_index */
+	  db_make_int (out_values[3], function_index_pos + 1);
+
+	  /* Cardinality */
+	  if (catalog_get_cardinality (thread_p, class_oid, disk_repr_p,
+				       &index->btid, function_index_pos,
+				       &cardinality) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (cardinality < 0)
+	    {
+	      db_make_null (out_values[6]);
+	    }
+	  else
+	    {
+	      db_make_int (out_values[6], cardinality);
+	    }
+
+	  /* Sub_part */
+	  db_make_null (out_values[7]);
+
+	  /* [Null] */
+	  db_make_string (out_values[9], "YES");
+
+	  /* Column_name */
+	  db_make_null (out_values[4]);
+	  qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
+	}
+
     }
 
   free_and_init (out_values);
