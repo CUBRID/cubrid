@@ -6987,14 +6987,12 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_params)
 
 	case PRM_STRING:
 	  size +=
-	    or_packed_string_length (PRM_GET_STRING (prm->prm_value.str),
-				     NULL);
+	    or_packed_string_length (prm->prm_value.str, NULL);
 	  break;
 
 	case PRM_ERROR_LIST:
 	  size +=
-	    or_packed_bool_array_length (PRM_GET_ERROR_LIST
-					 (prm->prm_value.error_list),
+	    or_packed_bool_array_length (prm->prm_value.error_list,
 					 (-ER_LAST_ERROR + 1));
 	  break;
 
@@ -7864,6 +7862,7 @@ void
 sysprm_update_client_session_parameters (SESSION_PARAM * session_params)
 {
   SESSION_PARAM *sprm;
+  int size;
 
   for (sprm = session_params; sprm; sprm = sprm->next)
     {
@@ -7884,16 +7883,67 @@ sysprm_update_client_session_parameters (SESSION_PARAM * session_params)
 	  break;
 
 	case PRM_STRING:
-	  prm_set_string_value (sprm->prm_id, sprm->prm_value.str);
+	  if (PRM_GET_STRING (prm_Def[sprm->prm_id].value))
+	    {
+	      free_and_init (PRM_GET_STRING (prm_Def[sprm->prm_id].value));
+	    }
+	  if (sprm->prm_value.str)
+	    {
+	      char * str;
+	      size = strlen (sprm->prm_value.str) + 1;
+	      str = (char *) malloc (size);
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		  return;
+		}
+	      memcpy (str, sprm->prm_value.str, size);
+	      prm_set_string_value (sprm->prm_id, str);
+	    }
 	  break;
-
 	case PRM_ERROR_LIST:
-	  prm_set_error_list_value (sprm->prm_id, sprm->prm_value.error_list);
+	  if (PRM_GET_ERROR_LIST (prm_Def[sprm->prm_id].value))
+	    {
+	      free_and_init (PRM_GET_ERROR_LIST
+			     (prm_Def[sprm->prm_id].value));
+	    }
+	  if (sprm->prm_value.error_list)
+	    {
+	      bool *error_list;
+	      size = (-ER_LAST_ERROR + 1) * sizeof (bool);
+	      error_list = (bool *) malloc (size);
+	      if (error_list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		  return;
+		}
+	      memcpy (error_list, sprm->prm_value.error_list, size);
+	      prm_set_error_list_value (sprm->prm_id, error_list);
+	    }
 	  break;
 
 	case PRM_INTEGER_LIST:
-	  prm_set_integer_list_value (sprm->prm_id,
-				      sprm->prm_value.integer_list);
+	  if (PRM_GET_INTEGER_LIST (prm_Def[sprm->prm_id].value))
+	    {
+	      free_and_init (PRM_GET_INTEGER_LIST
+			     (prm_Def[sprm->prm_id].value));
+	    }
+	  if (sprm->prm_value.integer_list)
+	    {
+	      int *integer_list;
+	      size = (sprm->prm_value.integer_list[0] + 1) * sizeof (int);
+	      integer_list = (int *) malloc (size);
+	      if (integer_list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		  return;
+		}
+	      memcpy (integer_list, sprm->prm_value.integer_list, size);
+	      prm_set_integer_list_value (sprm->prm_id, integer_list);
+	    }
 	  break;
 
 	case PRM_SIZE:
