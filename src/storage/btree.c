@@ -19533,37 +19533,14 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 void
 btree_rv_keyval_dump (FILE * fp, int length, void *data)
 {
-  BTID_INT btid;
-  BTID sys_btid;
-  DB_VALUE key;
-  OID cls_oid;
+  BTID btid;
   OID oid;
 
-  /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
-  btid.sys_btid = &sys_btid;
+  data = or_unpack_btid (data, &btid);
+  fprintf (fp, " BTID = { { %d , %d }, %d} \n ",
+	   btid.vfid.volid, btid.vfid.fileid, btid.root_pageid);
 
-  /* extract the stored btid, key, oid data */
-  btree_rv_read_keyval_info_nocopy (NULL, (char *) data, length,
-				    &btid, &cls_oid, &oid, &key);
-  fprintf (fp, " BTID = { { %d , %d }, %d, %s } \n ",
-	   btid.sys_btid->vfid.volid, btid.sys_btid->vfid.fileid,
-	   btid.sys_btid->root_pageid,
-	   pr_type_name (TP_DOMAIN_TYPE (btid.key_type)));
-
-  fprintf (fp, " KEY = ");
-  btree_dump_key (fp, &key);
-  fprintf (fp, "\n");
-
-  if (BTREE_IS_UNIQUE (&btid))
-    {				/* unique index */
-      fprintf (fp, " Class OID = { %d, %d, %d }, ",
-	       cls_oid.volid, cls_oid.pageid, cls_oid.slotid);
-    }
-  else
-    {				/* non-unique index */
-      fprintf (fp, " Class OID = None, ");
-    }
-
+  or_unpack_oid (data, &oid);
   fprintf (fp, " OID = { %d, %d, %d } \n", oid.volid, oid.pageid, oid.slotid);
 }
 
