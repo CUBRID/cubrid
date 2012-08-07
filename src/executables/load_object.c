@@ -1891,6 +1891,7 @@ init_load_err_filter (void)
       filter_ignore_errors[ifrom] = true;
     }
   filter_ignore_errors[-ER_BO_NOTIFY_AUTO_VOLEXT] = true;
+  filter_ignore_errors[-ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED] = true;
   filter_ignore_init = true;
 }
 
