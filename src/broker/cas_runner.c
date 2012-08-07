@@ -187,6 +187,7 @@ static int qa_test_flag = 0;
 static int num_replica = 1;
 static int dump_query_plan = 0;
 static int autocommit_mode = 0;
+static int statdump_mode = 0;
 
 static double *run_time_exec;
 static FILE *cas_error_fp;
@@ -491,10 +492,13 @@ get_args (int argc, char *argv[])
 {
   int c;
 
-  while ((c = getopt (argc, argv, "aQbqI:P:d:u:p:t:r:o:e:f:n:h:R:")) != EOF)
+  while ((c = getopt (argc, argv, "saQbqI:P:d:u:p:t:r:o:e:f:n:h:R:")) != EOF)
     {
       switch (c)
 	{
+	case 's':
+	  statdump_mode = 1;
+	  break;
 	case 'a':
 	  autocommit_mode = 1;
 	  break;
@@ -653,8 +657,13 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
   double sum_execute_time = 0;
   double sum_prepare_time = 0;
   char *linebuf = NULL;
+  char *data = NULL;
   T_BIND_INFO *bind_info = NULL;
   int *req_h = NULL;
+  int req_stat_h = -1;
+  int error;
+  int ind;
+  int i;
   T_STRING *linebuf_tstr = NULL;
 #ifdef DUP_RUN
   int dup_con_h;
@@ -712,6 +721,42 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	  goto end_cas_runner;
 	}
 #endif
+    }
+
+  if (statdump_mode)
+    {
+      req_stat_h =
+	cci_prepare (con_h, "set @collect_exec_stats = 1", 0, &cci_error);
+      if (req_stat_h < 0)
+	{
+	  fprintf (stderr, "cci_prepare error\n");
+	}
+      else
+	{
+	  int res;
+	  error = cci_execute (req_stat_h, 0, 0, &cci_error);
+
+	  res = cci_close_req_handle (req_stat_h);
+	  if (res < 0)
+	    {
+	      fprintf (stderr, "cci_close_req_error\n");
+	      req_stat_h = -1;
+	    }
+
+	  if (error < 0)
+	    {
+	      fprintf (stderr, "cci_execute error\n");
+	    }
+	  else
+	    {
+	      req_stat_h =
+		cci_prepare (con_h, "show exec statistics", 0, &cci_error);
+	      if (req_stat_h < 0)
+		{
+		  fprintf (stderr, "cci_prepare error\n");
+		}
+	    }
+	}
     }
 
   while (1)
@@ -827,6 +872,70 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	      fprintf (stderr, "DUP_RUN end_transaction error\n");
 	    }
 #endif
+	  if (statdump_mode && req_stat_h > 0)
+	    {
+	      error = cci_execute (req_stat_h, 0, 0, &cci_error);
+	      if (error < 0)
+		{
+		  fprintf (cas_error_fp,
+			   "execute error\nshow exec statistics\nrequest id %d\n",
+			   req_stat_h);
+		  continue;
+		}
+	      fprintf (result_fp, "SHOW EXEC STATISTICS\n");
+
+	      while (1)
+		{
+		  error =
+		    cci_cursor (req_stat_h, 1, CCI_CURSOR_CURRENT,
+				&cci_error);
+
+		  if (error == CCI_ER_NO_MORE_DATA)
+		    {
+		      break;
+		    }
+
+		  if (error < 0)
+		    {
+		      fprintf (cas_error_fp, "cursor error\nrequest id %d\n",
+			       req_stat_h);
+		      PRINT_CCI_ERROR (error, &cci_error, result_fp);
+		      break;
+		    }
+
+		  error = cci_fetch (req_stat_h, &cci_error);
+		  if (error < 0)
+		    {
+		      fprintf (cas_error_fp, "fetch error\nrequest id %d\n",
+			       req_stat_h);
+		      PRINT_CCI_ERROR (error, &cci_error, result_fp);
+		      break;
+		    }
+		  for (i = 1; i <= 2; i++)
+		    {
+		      error =
+			cci_get_data (req_stat_h, i, CCI_A_TYPE_STR, &data,
+				      &ind);
+		      if (error < 0)
+			{
+			  fprintf (cas_error_fp,
+				   "get data error\nrequest id %d\n",
+				   req_stat_h);
+			  PRINT_CCI_ERROR (error, NULL, result_fp);
+			  break;
+			}
+		      if (ind < 0 || data == NULL)
+			{
+			  fprintf (result_fp, "<NULL>\t|");
+			}
+		      else
+			{
+			  fprintf (result_fp, "%s\t|", data);
+			}
+		    }
+		  fprintf (result_fp, "\n");
+		}
+	    }
 	}
       else
 	{
@@ -834,12 +943,23 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	}
     }
 
-  cci_disconnect (con_h, &cci_error);
+end_cas_runner:
+  if (req_stat_h > 0)
+    {
+      cci_close_req_handle (req_stat_h);
+    }
+
+  if (con_h > 0)
+    {
+      cci_disconnect (con_h, &cci_error);
+    }
 #ifdef DUP_RUN
-  cci_disconnect (dup_con_h, &cci_error);
+  if (dup_con_h > 0)
+    {
+      cci_disconnect (dup_con_h, &cci_error);
+    }
 #endif
 
-end_cas_runner:
   FREE_MEM (req_h);
   FREE_MEM (bind_info);
   if (linebuf_tstr)
