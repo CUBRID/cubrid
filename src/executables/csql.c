@@ -579,6 +579,24 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       fflush (csql_Output_fp);
 
+      if (line_read == NULL)
+	{
+	  if (errno == EINTR && !feof (csql_Input_fp))
+	    {
+	      fprintf (csql_Output_fp, "\n");
+	      continue;
+	    }
+
+	  /* Normal end condtion (with -i option) */
+	  if (line_read_alloced != NULL)
+	    {
+	      free (line_read_alloced);
+	      line_read_alloced = NULL;
+	    }
+	  csql_edit_contents_finalize ();
+	  csql_exit_session (0);
+	}
+
       line_length = strlen (line_read);
 
       if (csql_Is_interactive)
