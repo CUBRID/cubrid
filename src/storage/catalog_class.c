@@ -2101,7 +2101,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 				  int is_primary_key, int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, svalue, val, avalue;
+  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL;
   DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
@@ -2195,7 +2195,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 	    {
 	      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
 	      int seq_size = set_size (seq);
-	      int flag = 0, l = 0;
+	      int flag, l = 0;
 	      DB_VALUE temp;
 	      int col_id, att_index_start;
 	      char *buffer, *ptr;
@@ -2204,6 +2204,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 	      /* have filter or function index */
 	      while (true)
 		{
+		  flag = 0;
 		  error = set_get_element (child_seq, 0, &avalue);
 		  if (error != NO_ERROR)
 		    {
@@ -2223,11 +2224,15 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 		    {
 		      flag = 0x01;
 		    }
-
-		  if (!intl_identifier_casecmp (DB_GET_STRING (&avalue),
-						SM_FUNCTION_INDEX_ID))
+		  else if (!intl_identifier_casecmp (DB_GET_STRING (&avalue),
+						     SM_FUNCTION_INDEX_ID))
 		    {
 		      flag = 0x02;
+		    }
+		  else if (!intl_identifier_casecmp
+			   (DB_GET_STRING (&avalue), SM_PREFIX_INDEX_ID))
+		    {
+		      flag = 0x03;
 		    }
 
 		  pr_clear_value (&avalue);
@@ -2371,6 +2376,11 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 
 		      break;
 
+		    case 0x03:
+		      pvalue = db_value_copy (&avalue);
+		      prefix_seq = DB_GET_SEQUENCE (pvalue);
+		      break;
+
 		    default:
 		      break;
 		    }
@@ -2477,6 +2487,11 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 
       pr_clear_value (&svalue);
       pr_clear_value (&keys);
+      if (pvalue)
+	{
+	  db_value_free (pvalue);
+	  pvalue = NULL;
+	}
 
       /* is_reverse */
       db_make_int (&attrs[5].value, is_reverse);
@@ -2499,6 +2514,10 @@ error:
   pr_clear_value (&svalue);
   pr_clear_value (&val);
   pr_clear_value (&avalue);
+  if (pvalue)
+    {
+      db_value_free (pvalue);
+    }
   return error;
 }
 

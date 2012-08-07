@@ -971,7 +971,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
       char buf[128], *pbuf;
       DB_VALUE value;
       int e;
-      DB_SEQ *fk_seq, *pred_seq;
+      DB_SEQ *fk_seq = NULL, *prefix_seq = NULL, *pred_seq = NULL;
       int num_attrs = 0;
 
       e = 0;			/* init */
@@ -1065,7 +1065,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 	  if (filter_index_info == NULL && func_index_info == NULL)
 	    {
 	      /*prefix length */
-	      DB_SEQ *prefix_seq =
+	      prefix_seq =
 		classobj_make_index_attr_prefix_seq (num_attrs, NULL);
 	      if (prefix_seq != NULL)
 		{
@@ -1081,7 +1081,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 	  else
 	    {
 	      DB_SEQ *seq = set_create_sequence (0);
-	      DB_SEQ *seq_child = set_create_sequence (0);
+	      DB_SEQ *seq_child = NULL;
 	      int i = 0;
 
 	      if (seq == NULL)
@@ -1091,49 +1091,97 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 
 	      if (filter_index_info)
 		{
-		  pred_seq =
-		    classobj_make_index_filter_pred_seq (filter_index_info);
-		  if (pred_seq == NULL)
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
 		    {
 		      ok = ER_FAILED;
 		    }
 		  else
 		    {
-		      db_make_string (&value, SM_FILTER_INDEX_ID);
-		      set_put_element (seq_child, 0, &value);
+		      pred_seq =
+			classobj_make_index_filter_pred_seq
+			(filter_index_info);
+		      if (pred_seq == NULL)
+			{
+			  ok = ER_FAILED;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_FILTER_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
 
-		      db_make_sequence (&value, pred_seq);
-		      set_put_element (seq_child, 1, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, pred_seq);
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
 
-		      db_make_sequence (&value, seq_child);
-		      set_put_element (seq, i++, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, seq_child);
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
+		    }
+
+		  /* filter index with prefix length allowed */
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
+		    {
+		      ok = ER_FAILED;
+		    }
+		  else
+		    {
+		      prefix_seq =
+			classobj_make_index_attr_prefix_seq (num_attrs, NULL);
+		      if (prefix_seq == NULL)
+			{
+			  ok = ER_FAILED;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_PREFIX_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
+
+			  db_make_sequence (&value, prefix_seq);
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
+
+			  db_make_sequence (&value, seq_child);
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
 		    }
 		}
 
 	      if (func_index_info)
 		{
-		  pred_seq =
-		    classobj_make_function_index_info_seq (func_index_info);
-		  if (pred_seq == NULL)
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
 		    {
 		      ok = ER_FAILED;
 		    }
 		  else
 		    {
-		      db_make_string (&value, SM_FUNCTION_INDEX_ID);
-		      set_put_element (seq_child, 0, &value);
+		      pred_seq =
+			classobj_make_function_index_info_seq
+			(func_index_info);
+		      if (pred_seq == NULL)
+			{
+			  ok = ER_FAILED;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_FUNCTION_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
 
-		      db_make_sequence (&value, pred_seq);
-		      set_put_element (seq_child, 1, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, pred_seq);
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
 
-		      db_make_sequence (&value, seq_child);
-		      set_put_element (seq, i++, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, seq_child);
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
 		    }
 		}
+
 	      db_make_sequence (&value, seq);
 	      set_put_element (constraint, e++, &value);
 	      pr_clear_value (&value);
@@ -1248,7 +1296,7 @@ classobj_put_index_id (DB_SEQ ** properties,
       char buf[128], *pbuf;
       DB_VALUE value;
       int e;
-      DB_SEQ *fk_seq, *prefix_seq, *pred_seq;
+      DB_SEQ *fk_seq = NULL, *prefix_seq = NULL, *pred_seq = NULL;
       int num_attrs = 0;
 
       e = 0;			/* init */
@@ -1371,7 +1419,7 @@ classobj_put_index_id (DB_SEQ ** properties,
 	  else
 	    {
 	      DB_SEQ *seq = set_create_sequence (0);
-	      DB_SEQ *seq_child = set_create_sequence (0);
+	      DB_SEQ *seq_child = NULL;
 	      int i = 0;
 
 	      if (seq == NULL)
@@ -1381,47 +1429,95 @@ classobj_put_index_id (DB_SEQ ** properties,
 
 	      if (filter_index_info)
 		{
-		  pred_seq =
-		    classobj_make_index_filter_pred_seq (filter_index_info);
-		  if (pred_seq == NULL)
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
 		    {
 		      ok = ER_FAILED;
 		    }
 		  else
 		    {
-		      db_make_string (&value, SM_FILTER_INDEX_ID);
-		      set_put_element (seq_child, 0, &value);
+		      pred_seq =
+			classobj_make_index_filter_pred_seq
+			(filter_index_info);
+		      if (pred_seq == NULL)
+			{
+			  ok = ER_FAILED;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_FILTER_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
 
-		      db_make_sequence (&value, pred_seq);
-		      set_put_element (seq_child, 1, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, pred_seq);
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
 
-		      db_make_sequence (&value, seq_child);
-		      set_put_element (seq, i++, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, seq_child);
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
+		    }
+
+		  /* filter index with prefix length allowed */
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
+		    {
+		      ok = ER_FAILED;
+		    }
+		  else
+		    {
+		      prefix_seq =
+			classobj_make_index_attr_prefix_seq
+			(num_attrs, attrs_prefix_length);
+		      if (prefix_seq == NULL)
+			{
+			  ok = ER_FAILED;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_PREFIX_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
+
+			  db_make_sequence (&value, prefix_seq);
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
+
+			  db_make_sequence (&value, seq_child);
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
 		    }
 		}
 
 	      if (func_index_info)
 		{
-		  pred_seq =
-		    classobj_make_function_index_info_seq (func_index_info);
-		  if (pred_seq == NULL)
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
 		    {
 		      ok = ER_FAILED;
 		    }
 		  else
 		    {
-		      db_make_string (&value, SM_FUNCTION_INDEX_ID);
-		      set_put_element (seq_child, 0, &value);
+		      pred_seq =
+			classobj_make_function_index_info_seq
+			(func_index_info);
+		      if (pred_seq == NULL)
+			{
+			  ok = ER_FAILED;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_FUNCTION_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
 
-		      db_make_sequence (&value, pred_seq);
-		      set_put_element (seq_child, 1, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, pred_seq);
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
 
-		      db_make_sequence (&value, seq_child);
-		      set_put_element (seq, i++, &value);
-		      pr_clear_value (&value);
+			  db_make_sequence (&value, seq_child);
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
 		    }
 		}
 
@@ -3219,11 +3315,12 @@ classobj_make_class_constraints (DB_SET * class_props,
 			  DB_SET *seq = DB_GET_SEQUENCE (&bvalue);
 			  DB_SET *child_seq = DB_GET_SEQUENCE (&fvalue);
 			  int seq_size = set_size (seq);
-			  int flag = 0;
+			  int flag;
 
 			  j = 0;
 			  while (true)
 			    {
+			      flag = 0;
 			      if (set_get_element (child_seq, 0, &avalue) !=
 				  NO_ERROR)
 				{
@@ -3241,10 +3338,15 @@ classobj_make_class_constraints (DB_SET * class_props,
 				{
 				  flag = 0x01;
 				}
-			      if (strcmp (DB_PULL_STRING (&avalue),
-					  SM_FUNCTION_INDEX_ID) == 0)
+			      else if (strcmp (DB_PULL_STRING (&avalue),
+					       SM_FUNCTION_INDEX_ID) == 0)
 				{
 				  flag = 0x02;
+				}
+			      else if (strcmp (DB_PULL_STRING (&avalue),
+					       SM_PREFIX_INDEX_ID) == 0)
+				{
+				  flag = 0x03;
 				}
 
 			      pr_clear_value (&avalue);
@@ -3274,6 +3376,12 @@ classobj_make_class_constraints (DB_SET * class_props,
 				    (DB_GET_SEQUENCE (&avalue));
 				  break;
 
+				case 0x03:
+				  new_->attrs_prefix_length =
+				    classobj_make_index_prefix_info
+				    (DB_GET_SEQUENCE (&avalue), att_cnt);
+				  break;
+
 				default:
 				  break;
 				}
@@ -3301,16 +3409,20 @@ classobj_make_class_constraints (DB_SET * class_props,
 			      child_seq = DB_GET_SEQUENCE (&fvalue);
 			    }
 
-			  new_->attrs_prefix_length = (int *) db_ws_alloc
-			    (sizeof (int) * att_cnt);
-			  if (new_->attrs_prefix_length == NULL)
+			  if (new_->func_index_info)
 			    {
-			      goto structure_error;
-			    }
-
-			  for (j = 0; j < att_cnt; j++)
-			    {
-			      new_->attrs_prefix_length[j] = -1;
+			      /* function index and prefix length not
+			         allowed, yet */
+			      new_->attrs_prefix_length =
+				(int *) db_ws_alloc (sizeof (int) * att_cnt);
+			      if (new_->attrs_prefix_length == NULL)
+				{
+				  goto structure_error;
+				}
+			      for (j = 0; j < att_cnt; j++)
+				{
+				  new_->attrs_prefix_length[j] = -1;
+				}
 			    }
 			}
 		      else

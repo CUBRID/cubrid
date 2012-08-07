@@ -2013,7 +2013,6 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 	    {
 	      DB_SEQ *seq = DB_GET_SEQUENCE (&att_val);
 	      DB_VALUE val;
-	      int flag = 0;
 
 	      if (set_get_element_nocopy (seq, 0, &val) == NO_ERROR)
 		{
@@ -2026,14 +2025,14 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 		  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
 		    {
 		      DB_VALUE avalue;
-		      DB_SET *seq = DB_GET_SEQUENCE (&att_val);
 		      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
 		      int seq_size = set_size (seq);
-		      int flag = 0;
+		      int flag;
 
 		      j = 0;
 		      while (true)
 			{
+			  flag = 0;
 			  if (set_get_element_nocopy (child_seq, 0, &avalue)
 			      != NO_ERROR)
 			    {
@@ -2051,11 +2050,17 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 			    {
 			      flag = 0x01;
 			    }
-			  if (strcmp (DB_PULL_STRING (&avalue),
-				      SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (DB_PULL_STRING (&avalue),
+					   SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      flag = 0x02;
 			    }
+			  else if (strcmp (DB_PULL_STRING (&avalue),
+					   SM_PREFIX_INDEX_ID) == 0)
+			    {
+			      flag = 0x03;
+			    }
+
 			  if (set_get_element_nocopy (child_seq, 1, &avalue)
 			      != NO_ERROR)
 			    {
@@ -2070,14 +2075,22 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 			  switch (flag)
 			    {
 			    case 0x01:
-
 			      or_install_btids_filter_pred (DB_GET_SEQUENCE
 							    (&avalue), index);
 			      break;
+
 			    case 0x02:
 			      or_install_btids_function_info (DB_GET_SEQUENCE
 							      (&avalue),
 							      index);
+			      break;
+
+			    case 0x03:
+			      or_install_btids_prefix_length (DB_GET_SEQUENCE
+							      (&avalue),
+							      index, att_cnt);
+			      break;
+
 			    default:
 			      break;
 			    }
@@ -2103,20 +2116,24 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 			  child_seq = DB_GET_SEQUENCE (&val);
 			}
 
-		      index->attrs_prefix_length =
-			(int *) malloc (sizeof (int) * att_cnt);
-		      if (index->attrs_prefix_length == NULL)
+		      if (index->func_index_info)
 			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-				  sizeof (int) * att_cnt);
-			  return;
+			  /* function index and prefix length not
+			     allowed, yet */
+			  index->attrs_prefix_length =
+			    (int *) malloc (sizeof (int) * att_cnt);
+			  if (index->attrs_prefix_length == NULL)
+			    {
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				      sizeof (int) * att_cnt);
+			      return;
+			    }
+			  for (i = 0; i < att_cnt; i++)
+			    {
+			      index->attrs_prefix_length[i] = -1;
+			    }
 			}
-		      for (i = 0; i < att_cnt; i++)
-			{
-			  index->attrs_prefix_length[i] = -1;
-			}
-
 		    }
 		  else
 		    {

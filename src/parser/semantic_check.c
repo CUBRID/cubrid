@@ -7530,7 +7530,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *name, *prefix_length, *col, *col_expr;
   DB_OBJECT *db_obj;
-  int cons_count;
+
   int is_partition = NOT_PARTITION_CLASS;
   /* check that there trying to create an index on a class */
   name = node->info.index.indexed_class->info.spec.entity_name;
@@ -7604,7 +7604,6 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       /* make sure we don't mix up index types */
-      cons_count = 0;
 
       pt_check_function_index_expr (parser, node);
       if (pt_has_error (parser))
@@ -7612,22 +7611,13 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
 
-      if (node->info.index.prefix_length)
-	{
-	  cons_count++;
-	}
-      if (node->info.index.where)
-	{
-	  cons_count++;
-	}
       if (node->info.index.function_expr)
 	{
-	  cons_count++;
-	}
-      if (cons_count > 1)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_CREATE_INDEX);
+	  if (node->info.index.prefix_length || node->info.index.where)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_CREATE_INDEX);
+	    }
 	  return;
 	}
 
