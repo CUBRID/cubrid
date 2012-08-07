@@ -2441,9 +2441,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   parser->is_in_and_list = true;
 
-  /* to avoid any operator precedence issues, just wrap in parens */
-  q = pt_append_nulstring (parser, q, "(");
-
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
       r1 = pt_print_bytes (parser, n);
@@ -2465,7 +2462,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 	}
     }
 
-  q = pt_append_nulstring (parser, q, ")");
   parser->is_in_and_list = false;
 
   return q;
