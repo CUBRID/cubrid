@@ -1955,9 +1955,7 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (RV_fun[rcvindex].undofun == NULL || RV_fun[rcvindex].redofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -2102,9 +2100,7 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].undofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -2237,9 +2233,7 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
   if (RV_fun[rcvindex].redofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -2365,9 +2359,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
   if (RV_fun[rcvindex].undofun == NULL || RV_fun[rcvindex].redofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -2480,9 +2472,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].undofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -2612,9 +2602,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
   if (RV_fun[rcvindex].redofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -2927,9 +2915,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].redofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -3017,9 +3003,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
   if (RV_fun[rcvindex].redofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      error_code = ER_LOG_NULL_RECOVERY_FUNCTION;
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -9415,10 +9399,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].undofun == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rollback_record");
+      assert (false);
       return;
     }
 #endif /* CUBRID_DEBUG */

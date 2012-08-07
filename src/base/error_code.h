@@ -769,7 +769,7 @@
 #define ER_LOG_NONAME_SAVEPOINT                     -641
 #define ER_LOG_NOTACTIVE_TOPOPS                     -642
 #define ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT       -643
-#define ER_LOG_NULL_RECOVERY_FUNCTION               -644
+#define ER_LOG_FATAL_ERROR                          -644
 #define ER_LOG_BADSTATE_FOR_CLIENT_UNDO_OR_POSTPONE -645
 #define ER_LOG_MISSING_COMPENSATING_RECORD          -646
 #define ER_LOG_BKUP_DOESNOT_CORRESPOND              -647

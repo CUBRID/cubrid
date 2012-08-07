@@ -709,7 +709,7 @@ $ LOADDB
 641 세이브포인트 이름이 주어져야 합니다. 
 642 시스템 에러: there is not an active top system operation for current transaction.
 643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
-644 시스템 에러: Log manager does not known either undo/redo function for rcvindex = %1$d
+644 LOG FATAL ERROR: %1$s
 645 시스템 에러: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 시스템 에러: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
 647 백업 "%1$s"은(는) 주어진 데이터베이스에 속하지 않습니다. 
@@ -1566,7 +1566,6 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 254 Invalid index column definition: %s
 255 '%s' is not allowed in a filter expression for index.
 256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
-257 Cannot MERGE UPDATE column %s referenced in ON clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

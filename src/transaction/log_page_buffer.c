@@ -12543,6 +12543,12 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
 			    const int lineno, const char *fmt, va_list ap)
 {
   const char *msglog;
+  char msg[ERR_MSG_SIZE];
+
+  /* call er_set() to print call stack to the log */
+  vsnprintf (msg, ERR_MSG_SIZE, fmt, ap);
+  er_set (ER_FATAL_ERROR_SEVERITY, file_name, lineno, ER_LOG_FATAL_ERROR, 1,
+	  msg);
 
   /*
    * Flush any unfixed, dirty pages before the system exits. This is done

@@ -709,7 +709,7 @@ $ LOADDB
 641 A name must be given for a savepoint.
 642 System Error: there is not an active top system operation for current transaction.
 643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
-644 SYSTEM ERROR: Log manager does not known either undo/redo function for rcvindex = %1$d
+644 LOG FATAL ERROR: %1$s
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
 647 Backup "%1$s" does not belong to the given database.
@@ -1566,7 +1566,6 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 254 Invalid index column definition: %s
 255 '%s' is not allowed in a filter expression for index.
 256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
-257 Cannot MERGE UPDATE column %s referenced in ON clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
