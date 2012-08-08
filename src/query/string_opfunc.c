@@ -8893,7 +8893,8 @@ qstr_coerce (const unsigned char *src,
 	  else
 	    {
 	      assert (copy_size == 0);
-	      *dest = (unsigned char *) src;
+	      assert (alloc_size > 0);
+	      **dest = '\0';
 	    }
 	}
       else
