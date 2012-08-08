@@ -852,6 +852,10 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   /* make after_connect_by_pred */
 
   from = select_node->info.query.q.select.from;
+  pt_set_numbering_node_etc (parser,
+			     select_node->info.query.q.select.after_cb_filter,
+			     &select_xasl->instnum_val,
+			     &select_xasl->ordbynum_val);
   where =
     parser_copy_tree_list (parser,
 			   select_node->info.query.q.select.after_cb_filter);
@@ -11012,6 +11016,12 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
   if (xasl->ordbynum_pred)
     {
       /* can't optimize */
+      return NO_ERROR;
+    }
+
+  /* halt if there is connect by */
+  if (xasl->connect_by_ptr)
+    {
       return NO_ERROR;
     }
 
