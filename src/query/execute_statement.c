@@ -1010,10 +1010,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int ret_msg_id = 0;
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
-
-
   unsigned char num[DB_NUMERIC_BUF_SIZE];
-
   int inc_val_flag = 0, cyclic;
   int cached_num;
   DB_DATA_STATUS data_stat;
@@ -1457,37 +1454,22 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  pr_clear_value (&zero);
-  pr_clear_value (&e37);
-  pr_clear_value (&under_e36);
-  pr_clear_value (&start_val);
-  pr_clear_value (&inc_val);
-  pr_clear_value (&max_val);
-  pr_clear_value (&min_val);
-  pr_clear_value (&result_val);
 
   free_and_init (p);
 
   return NO_ERROR;
 
 end:
-  pr_clear_value (&value);
-  pr_clear_value (&zero);
-  pr_clear_value (&e37);
-  pr_clear_value (&under_e36);
-  pr_clear_value (&start_val);
-  pr_clear_value (&inc_val);
-  pr_clear_value (&max_val);
-  pr_clear_value (&min_val);
-  pr_clear_value (&result_val);
-
   if (au_disable_flag == true)
-    AU_ENABLE (save);
+    {
+      AU_ENABLE (save);
+    }
 
   if (p)
     {
       free_and_init (p);
     }
+
   return error;
 }
 
@@ -2335,41 +2317,16 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   (void) serial_decache ((OID *) (&serial_obj_id));
 
-  pr_clear_value (&zero);
-  pr_clear_value (&e37);
-  pr_clear_value (&under_e36);
-  pr_clear_value (&start_val);
-  pr_clear_value (&current_val);
-  pr_clear_value (&old_inc_val);
-  pr_clear_value (&old_max_val);
-  pr_clear_value (&old_min_val);
-  pr_clear_value (&new_inc_val);
-  pr_clear_value (&new_max_val);
-  pr_clear_value (&new_min_val);
-  pr_clear_value (&result_val);
-
   return NO_ERROR;
 
 end:
   (void) serial_decache ((OID *) (&serial_obj_id));
 
-  pr_clear_value (&value);
-  pr_clear_value (&zero);
-  pr_clear_value (&e37);
-  pr_clear_value (&under_e36);
-  pr_clear_value (&start_val);
-  pr_clear_value (&current_val);
-  pr_clear_value (&old_inc_val);
-  pr_clear_value (&old_max_val);
-  pr_clear_value (&old_min_val);
-  pr_clear_value (&new_inc_val);
-  pr_clear_value (&new_max_val);
-  pr_clear_value (&new_min_val);
-  pr_clear_value (&result_val);
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
     }
+
   return error;
 }
 
@@ -14817,8 +14774,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  has_virt = db_is_vclass (class_obj)
-	     || ((flat) ? (flat->info.name.virt_object != NULL) : false);
+  has_virt = (db_is_vclass (class_obj) || ((flat))
+	      ? (flat->info.name.virt_object != NULL) : false);
 
   AU_RESTORE (au_save);
 
@@ -14854,10 +14811,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  statement->info.merge.has_unique = (bool) has_unique;
 	}
 
-      server_update = !has_trigger && !has_virt
-	&& !update_check_having_meta_attr (parser,
-					   statement->info.merge.
-					   update.assignment);
+      server_update = (!has_trigger && !has_virt
+		       && !update_check_having_meta_attr (parser,
+							  statement->info.
+							  merge.update.
+							  assignment));
 
       lhs = statement->info.merge.update.assignment->info.expr.arg1;
       if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
