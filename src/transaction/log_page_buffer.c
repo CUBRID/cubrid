@@ -2574,19 +2574,6 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   flush_info->toflush[flush_info->num_toflush] = log_Gl.append.log_pgptr;
   flush_info->num_toflush++;
 
-#if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-      && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
-    {
-      BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
-      struct log_buffer *bufptr;
-      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
-
-      assert (bg_arv_info->current_page_id < 0
-	      || bg_arv_info->current_page_id >= bufptr->pageid);
-    }
-#endif
-
   if (flush_info->num_toflush >= flush_info->max_toflush)
     {
       /*
@@ -2792,19 +2779,6 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
   flush_info->toflush[flush_info->num_toflush] = log_Gl.append.log_pgptr;
   flush_info->num_toflush++;
 
-#if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-      && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
-    {
-      BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
-      struct log_buffer *bufptr;
-      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
-
-      assert (bg_arv_info->current_page_id < 0
-	      || bg_arv_info->current_page_id >= bufptr->pageid);
-    }
-#endif
-
   need_flush = false;
   if (flush_info->num_toflush >= flush_info->max_toflush)
     {
@@ -2920,17 +2894,14 @@ static void
 logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 {
   int i;
-  LOG_PAGEID pageid;
+  LOG_PAGEID pageid, prev_lsa_pageid;
   LOG_PHY_PAGEID phy_pageid;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
-  LOG_PAGE *last_page = NULL;
   struct log_buffer *bufptr;
-  int num_toflush;
 
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
-  bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
   if (log_Gl.bg_archive_info.vdes == NULL_VOLDES
@@ -2939,86 +2910,50 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
       return;
     }
 
-  assert (bg_arv_info->current_page_id >= bufptr->pageid);
-
-  /*
-   * defense for above unknown assert case
-   * in this case, fetch unwritten log pages and write them to archiving
-   * voume manually
-   */
-  if (bg_arv_info->current_page_id < bufptr->pageid)
+  pageid = bg_arv_info->current_page_id;
+  prev_lsa_pageid = log_Gl.append.prev_lsa.pageid;
+  i = 0;
+  while (pageid < prev_lsa_pageid && i < flush_info->num_toflush)
     {
-      log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-
-      for (pageid = bg_arv_info->current_page_id;
-	   pageid <= bufptr->pageid; pageid++)
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[i]);
+      if (pageid > bufptr->pageid)
 	{
+	  assert_release (pageid <= bufptr->pageid);
+	  fileio_dismount (thread_p, bg_arv_info->vdes);
+	  bg_arv_info->vdes = NULL_VOLDES;
+	  return;
+	}
+      else if (pageid < bufptr->pageid)
+	{
+	  /* to flush all omitted pages by the previous archiving */
+	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 	  if (logpb_fetch_page (thread_p, pageid, log_pgptr) == NULL)
 	    {
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
 	      bg_arv_info->vdes = NULL_VOLDES;
-	      break;
+	      return;
 	    }
-
-	  /* calculate real physical page index in archiving volume */
-	  phy_pageid =
-	    (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
-
-	  if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr,
-			    phy_pageid, LOG_PAGESIZE) == NULL)
-	    {
-	      fileio_dismount (thread_p, bg_arv_info->vdes);
-	      bg_arv_info->vdes = NULL_VOLDES;
-	      break;
-	    }
-	}
-
-      bg_arv_info->current_page_id = bufptr->pageid;
-    }
-
-  /*
-   * main dual writing logic
-   * write flushed pages to temp archiving volume
-   */
-  if (bg_arv_info->vdes != NULL_VOLDES)
-    {
-      last_page = flush_info->toflush[flush_info->num_toflush - 1];
-      if (log_Gl.hdr.append_lsa.pageid > last_page->hdr.logical_pageid)
-	{
-	  num_toflush = flush_info->num_toflush;
 	}
       else
 	{
-	  /* do not flush the last page which will be modified & flushed again */
-	  num_toflush = flush_info->num_toflush - 1;
+	  log_pgptr = flush_info->toflush[i];
+	  i++;
 	}
 
-      for (i = 0; i < num_toflush; i++)
+      phy_pageid = pageid - bg_arv_info->start_page_id + 1;
+      assert_release (phy_pageid > 0);
+      if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr,
+			phy_pageid, LOG_PAGESIZE) == NULL)
 	{
-	  bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[i]);
-
-	  /* calculate real physical page index in archiving volume */
-	  phy_pageid =
-	    (LOG_PHY_PAGEID) (bufptr->pageid - bg_arv_info->start_page_id +
-			      1);
-
-	  if (phy_pageid > 0 &&
-	      (fileio_write (thread_p, bg_arv_info->vdes,
-			     flush_info->toflush[i], phy_pageid,
-			     LOG_PAGESIZE) == NULL))
-	    {
-	      fileio_dismount (thread_p, bg_arv_info->vdes);
-	      bg_arv_info->vdes = NULL_VOLDES;
-	      break;
-	    }
+	  fileio_dismount (thread_p, bg_arv_info->vdes);
+	  bg_arv_info->vdes = NULL_VOLDES;
+	  return;
 	}
 
-      /*
-       * set current_page_id as position of the last page in toflush queue.
-       * (which will be written at next time)
-       */
-      bg_arv_info->current_page_id = last_page->hdr.logical_pageid;
+      pageid++;
+      bg_arv_info->current_page_id = pageid;
     }
+
 }
 
 /*
@@ -4749,19 +4684,6 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
 
-#if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-      && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
-    {
-      BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
-      struct log_buffer *bufptr;
-      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
-
-      assert (bg_arv_info->current_page_id < 0
-	      || bg_arv_info->current_page_id >= bufptr->pageid);
-    }
-#endif
-
   if (flush_info->num_toflush < 1)
     {
       need_flush = false;
@@ -5222,20 +5144,6 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
       /* Add the append page */
       flush_info->toflush[flush_info->num_toflush] = log_Gl.append.log_pgptr;
       flush_info->num_toflush++;
-
-#if !defined(NDEBUG) && defined(SERVER_MODE)
-      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-	  && flush_info->num_toflush > 0 && BO_IS_SERVER_RESTARTED ())
-	{
-	  BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
-	  struct log_buffer *bufptr;
-	  bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
-
-	  assert (bg_arv_info->current_page_id < 0
-		  || bg_arv_info->current_page_id >= bufptr->pageid);
-	}
-#endif
-
     }
 
   log_Stat.flushall_append_pages_call_count++;
@@ -7314,7 +7222,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
        *
        */
       arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
-      last_pageid = log_Gl.append.prev_lsa.pageid;
+      last_pageid = log_Gl.append.prev_lsa.pageid - 1;
 
 #if 0
       /*
@@ -7341,13 +7249,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	    }
 	}
 #endif
-
-      if (log_Gl.hdr.append_lsa.pageid == log_Gl.append.prev_lsa.pageid)
-	{
-	  /* Avoid archiving an incomplete page (may lead to a an
-	   * incomplete restore) */
-	  last_pageid--;
-	}
 
       if (last_pageid < arvhdr->fpageid)
 	{
@@ -7484,12 +7385,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	}
       else if (last_pageid > log_Gl.append.prev_lsa.pageid - 1)
 	{
-	  last_pageid = log_Gl.append.prev_lsa.pageid;
-	  if (log_Gl.hdr.append_lsa.pageid == log_Gl.append.prev_lsa.pageid)
-	    {
-	      /* Avoid archiving an incomplete page */
-	      last_pageid--;
-	    }
+	  last_pageid = log_Gl.append.prev_lsa.pageid - 1;
 	}
 
       if (last_pageid < arvhdr->fpageid)
@@ -7574,7 +7470,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       /* Now start dumping the current active pages to archive */
-      for (; pageid < last_pageid;
+      for (; pageid <= last_pageid;
 	   pageid += num_pages, ar_phy_pageid += num_pages)
 	{
 	  num_pages = MIN (LOGPB_IO_NPAGES, (int) (last_pageid - pageid));
@@ -7594,19 +7490,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      goto error;
 	    }
 	}
-      /* last page */
-      if (logpb_fetch_page (thread_p, last_pageid, log_pgptr) == NULL)
-	{
-	  goto error;
-	}
-      if (fileio_write (thread_p, vdes, (char *) log_pgptr, ar_phy_pageid,
-			LOG_PAGESIZE) == NULL)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
-		  pageid, ar_phy_pageid, arv_name);
-	  goto error;
-	}
-
 
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
 	  && bg_arv_info->vdes != NULL_VOLDES)
