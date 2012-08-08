@@ -21100,6 +21100,7 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   statement->info.query.upd_del_class_cnt = 1;
   statement->info.query.q.select.from = save_spec;
   statement->info.query.composite_locking = composite_locking;
+  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_MERGE_QUERY);
 
   return statement;
 }
@@ -21204,6 +21205,7 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
     {
       subq->info.query.q.select.where = expr;
     }
+  PT_SELECT_INFO_SET_FLAG (subq, PT_SELECT_INFO_IS_MERGE_QUERY);
 
   return subq;
 

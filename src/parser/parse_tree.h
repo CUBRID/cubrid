@@ -2230,6 +2230,7 @@ struct pt_select_info
 #define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
 #define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
 #define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
+#define PT_SELECT_INFO_IS_MERGE_QUERY	512	/* is a query of a merge stmt */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))

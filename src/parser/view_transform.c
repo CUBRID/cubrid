@@ -3613,7 +3613,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement,
       && statement->info.query.q.select.connect_by == NULL
       && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
       && (derived_table = spec->info.spec.derived_table)
-      && PT_IS_QUERY (derived_table))
+      && PT_IS_QUERY (derived_table)
+      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       info.type = FIND_ID_INLINE_VIEW;	/* inline view */
       /* init input section */
