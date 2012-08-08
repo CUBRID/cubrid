@@ -37,6 +37,7 @@
 #include "message_catalog.h"
 #include "authenticate.h"
 
+#define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
 #define PT_ERROR( parser, node, msg ) \
     pt_frob_error( parser, node, msg )
@@ -579,7 +580,14 @@
           break;                                                \
         save_custom = (p)->custom_print;                        \
         (p)->custom_print |= (c);                               \
-        (n)->alias_print = parser_print_tree ((p), (n));        \
+	if (((p)->custom_print & PT_SHORT_PRINT) != 0)		\
+	  {							\
+	    (n)->alias_print = pt_short_print ((p), (n));	\
+	  }							\
+	else							\
+	  {							\
+	    (n)->alias_print = parser_print_tree ((p), (n));    \
+	  }							\
         (p)->custom_print = save_custom;                        \
     } while (0)
 
@@ -649,7 +657,11 @@ enum pt_custom_print
 						 * original table
 						 */
   PT_SUPPRESS_CHARSET_PRINT = 0x800000,
-  PT_PRINT_DIFFERENT_SESSION_PRMS = 0x1000000	/* print session parameters */
+  PT_PRINT_DIFFERENT_SESSION_PRMS = 0x1000000,	/* print session parameters */
+  PT_SHORT_PRINT = 0x2000000	/* PT_NODE_PRINT_TO_ALIAS
+				 * calls pt_short_print
+				 * instead pt_print_tree
+				 */
 };
 
 /* all statement node types should be assigned their API statement enumeration */

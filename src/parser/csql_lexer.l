@@ -1150,6 +1150,8 @@ csql_yyerror (const char *s)
   int end_statement = 0;
   int free_msg = 0;
   int token_len = csql_yyget_leng () + 1;
+  int next_ptr_len = 0;
+  char *buffer = NULL;
   
   /* make a copy of the token value before the buffer flush */
   if (CSQL_MAXNAME < csql_yyget_leng () + 1)
@@ -1170,10 +1172,19 @@ csql_yyerror (const char *s)
 					   MSGCAT_SET_PARSER_SYNTAX,
 					   MSGCAT_SYNTAX_CONTEXT_SAVED_CHAR);
 
-  if (strlen (next_ptr) == 0)
+  next_ptr_len = strlen (next_ptr);
+  if (next_ptr_len == 0)
     {
       end_statement = 1;
       next_ptr = end_of_stmt_str;
+    }
+  if (next_ptr_len > MAX_PRINT_ERROR_CONTEXT_LENGTH)
+    {
+      buffer = (char *) csql_yyalloc (MAX_PRINT_ERROR_CONTEXT_LENGTH + 1);
+      memcpy (buffer, next_ptr, MAX_PRINT_ERROR_CONTEXT_LENGTH - 3);
+      strcpy (buffer + MAX_PRINT_ERROR_CONTEXT_LENGTH - 3, "...");
+      next_ptr = buffer;
+      next_ptr_len = strlen (next_ptr);
     }
 
   YY_FLUSH_BUFFER;
@@ -1233,10 +1244,11 @@ csql_yyerror (const char *s)
 	{
 	  msg = (char *) csql_yyalloc (fixed_len + strlen(s) 
 				       + strlen (token_val) 
-				       + strlen (next_ptr) + 2);
+				       + next_ptr_len + 2);
 	  if (msg == NULL)
 	    {
 	      YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+	      goto end;
 	    }
 	  free_msg = 1;
 	  if (end_statement == 0)
@@ -1273,10 +1285,11 @@ csql_yyerror (const char *s)
 	    {
 	      next_ptr = end_of_stmt_str;
 	      msg = (char *) csql_yyalloc (strlen (before_token)
-					   + strlen (next_ptr) + 2);
+					   + next_ptr_len + 2);
 	      if (msg == NULL)
 		{
 		  YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
+		  goto end;
 		}
 	      sprintf (msg, "%s %s", before_token, next_ptr);
 	      free_msg = 1;
@@ -1290,20 +1303,29 @@ csql_yyerror (const char *s)
       dummy = parser_new_node (this_parser, PT_EXPR);
       if (dummy == NULL)
 	{
-	  return;
+	  if (free_msg && msg != NULL)
+	    {
+	      csql_yyfree (msg);
+	    }
+	  goto end;
 	}
       PT_ERRORf (this_parser, dummy, "%s", msg);
       parser_free_tree (this_parser, dummy);
-      if (free_msg)
+      if (free_msg && msg != NULL)
 	{
 	  csql_yyfree (msg);
 	}
    }
 
-   if (token_val)
-     {
-       csql_yyfree (token_val);
-     }
+end:
+  if (token_val != NULL)
+    {
+      csql_yyfree (token_val);
+    }
+  if (buffer)
+    {
+      csql_yyfree (buffer);
+    }
 }
 
 int

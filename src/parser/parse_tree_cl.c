@@ -1873,6 +1873,8 @@ void
 pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 		 int col_no, const char *msg, const char *context)
 {
+  char *context_copy;
+  char buf[MAX_PRINT_ERROR_CONTEXT_LENGTH + 1];
   PT_NODE *node = parser_new_node (parser, PT_ZZ_ERROR_MSG);
   if (node == NULL)
     {
@@ -1896,11 +1898,25 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
          actual context - do not count format parameter "%s", of size 2 */
       int before_context_len = strlen (before_context_str) - 2;
       int context_len = strlen (context);
+      int msg_len = strlen (msg);
       int end_of_statement = 0;
       int str_len = 0;
       char *s = NULL;
 
-      if ((context_len == 0) || ((context_len == 1) && (*context <= 32)))
+      if (context_len > MAX_PRINT_ERROR_CONTEXT_LENGTH)
+	{
+	  context_len = MAX_PRINT_ERROR_CONTEXT_LENGTH;
+	  memset (buf, 0, MAX_PRINT_ERROR_CONTEXT_LENGTH + 1);
+	  memcpy (buf, context, MAX_PRINT_ERROR_CONTEXT_LENGTH - 3);
+	  strcpy (buf + MAX_PRINT_ERROR_CONTEXT_LENGTH - 3, "...");
+	  context_copy = buf;
+	}
+      else
+	{
+	  context_copy = context;
+	}
+
+      if ((context_len == 0) || ((context_len == 1) && (*context_copy <= 32)))
 	{
 	  end_of_statement = 1;
 	  /* size of constant string "before END OF STATEMENT\n" */
@@ -1918,7 +1934,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	}
       if (end_of_statement == 0)
 	{
-	  sprintf (s, before_context_str, context);
+	  sprintf (s, before_context_str, context_copy);
 	  if (s[str_len - 3] == '\n')
 	    {
 	      s[str_len - 3] = ' ';

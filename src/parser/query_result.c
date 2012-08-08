@@ -352,7 +352,8 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
   error_node = parser->error_msgs;
   if (statement)
     {
-      PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
+      PT_NODE_PRINT_TO_ALIAS (parser, statement,
+			      PT_CONVERT_RANGE | PT_SHORT_PRINT);
       stmt_string = (char *) statement->alias_print;
     }
   if (!stmt_string)
