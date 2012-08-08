@@ -14486,7 +14486,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	      /* move orderby_num() to inst_num() */
 	      if (xasl->ordbynum_val)
 		{
-		  xasl->instnum_pred = xasl->ordbynum_pred;
+		  if (xasl->instnum_pred)
+		    {
+		      PRED_EXPR *pred =
+			pt_make_pred_expr_pred (xasl->instnum_pred,
+						xasl->ordbynum_pred, B_AND);
+		      if (!pred)
+			{
+			  goto exit_on_error;
+			}
+		      xasl->instnum_pred = pred;
+		    }
+		  else
+		    {
+		      xasl->instnum_pred = xasl->ordbynum_pred;
+		    }		  
 
 		  /* When we set instnum_val to point to the DBVALUE
 		   * referenced by ordbynum_val, we lose track the DBVALUE
