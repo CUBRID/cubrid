@@ -1206,7 +1206,7 @@ au_find_user (const char *user_name)
     {
       if (error == ER_OBJ_OBJECT_NOT_FOUND)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1,
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1,
 		  user_name);
 	}
       goto exit;
