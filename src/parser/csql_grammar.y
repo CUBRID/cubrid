@@ -11429,7 +11429,7 @@ connectby_clause
 	:	{
 			parser_save_and_set_prc (1);
 			parser_save_and_set_serc (0);
-			parser_save_and_set_pseudoc (0);
+			parser_save_and_set_pseudoc (1);
 			parser_save_and_set_sqc (0);
 		}
 	  CONNECT BY opt_nocycle search_condition

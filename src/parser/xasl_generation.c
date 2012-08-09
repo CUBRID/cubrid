@@ -794,6 +794,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       goto exit_on_error;
     }
 
+  pt_set_level_node_etc (parser, select_node->info.query.q.select.connect_by,
+			 &xasl->level_val);
+
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (select_node->info.query.q.select.single_table_opt
       && select_node->info.query.q.select.from
@@ -21235,8 +21238,8 @@ error_exit:
  */
 XASL_NODE *
 pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
-		  PT_NODE ** non_null_upd_attrs, PT_NODE ** non_null_ins_attrs,
-		  PT_NODE * default_expr_attrs)
+		  PT_NODE ** non_null_upd_attrs,
+		  PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs)
 {
   XASL_NODE *xasl, *xptr;
   XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;

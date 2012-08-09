@@ -1535,6 +1535,49 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node,
   return node;
 }
 
+/*
+ * pt_expr_disallow_op_pre () - looks if the expression op is in the list
+ *				  given as argument and throws an error if
+ *				  found
+ *
+ * return: node
+ * parser(in):
+ * node(in):
+ * arg(in): integer list with forbidden operators. arg[0] keeps the number of
+ *	    operators
+ * continue_wals (in/out):
+ */
+PT_NODE *
+pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+			   int *continue_walk)
+{
+  int *op_list = (int *) arg;
+  int i;
+
+  if (!PT_IS_EXPR_NODE (node))
+    {
+      return node;
+    }
+
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
+  assert (op_list != NULL);
+
+  for (i = 1; i <= op_list[0]; i++)
+    {
+      if (op_list[i] == node->info.expr.op)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+		      pt_show_binopcode (node->info.expr.op));
+	}
+    }
+  return node;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_arg1_part () - returns arg1 for union, intersection or difference

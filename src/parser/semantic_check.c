@@ -8723,6 +8723,19 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	}
 
+      if (node->info.query.q.select.connect_by)
+	{
+	  int disallow_ops[] = {
+	    2,			/* number of operators */
+	    PT_CONNECT_BY_ISCYCLE,
+	    PT_CONNECT_BY_ISLEAF,
+	  };
+	  (void) parser_walk_tree (parser,
+				   node->info.query.q.select.connect_by,
+				   pt_expr_disallow_op_pre, disallow_ops,
+				   NULL, NULL);
+	}
+
       node = pt_semantic_type (parser, node, info);
       break;
 

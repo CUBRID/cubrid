@@ -643,6 +643,9 @@ extern "C"
   extern PT_NODE *pt_check_orderbynum_post (PARSER_CONTEXT * parser,
 					    PT_NODE * node, void *arg,
 					    int *continue_walk);
+  extern PT_NODE *pt_expr_disallow_op_pre (PARSER_CONTEXT * parser,
+					     PT_NODE * node, void *arg,
+					     int *continue_walk);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_assignments_part (const PT_NODE * update_statement);
