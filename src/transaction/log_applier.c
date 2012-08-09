@@ -4706,32 +4706,6 @@ la_apply_schema_log (LA_ITEM * item)
   switch (item->item_type)
     {
     case CUBRID_STMT_CREATE_CLASS:
-      if (item->db_user != NULL && strlen (item->db_user) > 1)
-	{
-	  user = au_find_user (item->db_user);
-	  if (user == NULL)
-	    {
-	      if (er_errid () == ER_NET_CANT_CONNECT_SERVER
-		  || er_errid () == ER_OBJ_NO_CONNECT)
-		{
-		  error = ER_NET_CANT_CONNECT_SERVER;
-		}
-	      else
-		{
-		  error = er_errid ();
-		}
-	      break;
-	    }
-
-	  /* change owner */
-	  save_user = Au_user;
-	  error = AU_SET_USER (user);
-	  if (error != NO_ERROR)
-	    {
-	      save_user = NULL;
-	      /* go on with original user */
-	    }
-	}
     case CUBRID_STMT_ALTER_CLASS:
     case CUBRID_STMT_RENAME_CLASS:
     case CUBRID_STMT_DROP_CLASS:
@@ -4766,6 +4740,36 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_DROP_TRIGGER:
     case CUBRID_STMT_REMOVE_TRIGGER:
     case CUBRID_STMT_SET_TRIGGER:
+      if ((item->item_type == CUBRID_STMT_CREATE_CLASS
+	   || item->item_type == CUBRID_STMT_CREATE_SERIAL
+	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE
+	   || item->item_type == CUBRID_STMT_CREATE_TRIGGER)
+	  && (item->db_user != NULL && item->db_user[0] != '\0'))
+	{
+	  user = au_find_user (item->db_user);
+	  if (user == NULL)
+	    {
+	      if (er_errid () == ER_NET_CANT_CONNECT_SERVER
+		  || er_errid () == ER_OBJ_NO_CONNECT)
+		{
+		  error = ER_NET_CANT_CONNECT_SERVER;
+		}
+	      else
+		{
+		  error = er_errid ();
+		}
+	      break;
+	    }
+
+	  /* change owner */
+	  save_user = Au_user;
+	  error = AU_SET_USER (user);
+	  if (error != NO_ERROR)
+	    {
+	      save_user = NULL;
+	      /* go on with original user */
+	    }
+	}
 
       ddl = db_get_string (&item->key);
       if (la_update_query_execute (ddl, false) != NO_ERROR)
