@@ -18431,6 +18431,7 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 
   if (original_type == PT_TYPE_NUMERIC
       && desired_type == PT_TYPE_NUMERIC
+      && src->data_type != NULL
       && (src->data_type->info.data_type.precision ==
 	  data_type->info.data_type.precision)
       && (src->data_type->info.data_type.dec_precision ==
