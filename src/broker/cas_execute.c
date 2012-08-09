@@ -63,6 +63,7 @@
 #include "transaction_cl.h"
 #include "authenticate.h"
 #include "trigger_manager.h"
+#include "system_parameter.h"
 
 #include "dbi.h"
 
