@@ -2074,21 +2074,8 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
   css_set_net_header (&header, ERROR_TYPE, 0, rid,
 		      buffer_size, conn->transaction_id, conn->db_error);
 
-  /* timeout in milli-seconds in css_net_send() */
-  rc = css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
-		     prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		     1000);
-  if (rc == NO_ERRORS)
-    {
-      /* timeout in milli-seconds in css_net_send() */
-      return (css_net_send (conn, buffer, buffer_size,
-			    prm_get_integer_value
-			    (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
-    }
-  else
-    {
-      return (rc);
-    }
+  return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER),
+			 buffer, buffer_size));
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

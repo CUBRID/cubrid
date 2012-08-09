@@ -758,6 +758,7 @@ csql_help_info (const char *command, int aucommit_flag)
   char *dup = NULL, *tok;
   FILE *p_stream;		/* pipe stream to pager */
 #if !defined(WINDOWS)
+  void (*csql_intr_save) (int sig);
   void (*csql_pipe_save) (int sig);
 #endif /* ! WINDOWS */
 
@@ -782,37 +783,42 @@ csql_help_info (const char *command, int aucommit_flag)
        !strcasecmp (tok, "plan") || !strcasecmp (tok, "qcache") ||
        !strcasecmp (tok, "trantable")))
     {
-#if !defined(WINDOWS)
-      csql_pipe_save = signal (SIGPIPE, &csql_pipe_handler);
-#endif /* ! WINDOWS */
-      if (setjmp (csql_Jmp_buf) == 0)
-	{
-	  int result = NO_ERROR;
+      int result;
 
-	  p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
-	  help_print_info (command, p_stream);
-	  if (aucommit_flag)
+#if !defined(WINDOWS)
+      csql_intr_save = signal (SIGINT, SIG_IGN);
+      csql_pipe_save = signal (SIGPIPE, SIG_IGN);
+#else
+      SetConsoleCtrlHandler (NULL, true);	/* ignore Ctrl + c */
+#endif /* ! WINDOWS */
+      result = NO_ERROR;
+
+      p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
+      help_print_info (command, p_stream);
+      if (aucommit_flag)
+	{
+	  result = db_commit_transaction ();
+	}
+      csql_pclose (p_stream, csql_Output_fp);
+      if (aucommit_flag)
+	{
+	  if (result != NO_ERROR)
 	    {
-	      result = db_commit_transaction ();
+	      csql_display_csql_err (0, 0);
+	      csql_check_server_down ();
 	    }
-	  csql_pclose (p_stream, csql_Output_fp);
-	  if (aucommit_flag)
+	  else
 	    {
-	      if (result != NO_ERROR)
-		{
-		  csql_display_csql_err (0, 0);
-		  csql_check_server_down ();
-		}
-	      else
-		{
-		  csql_display_msg (msgcat_message (MSGCAT_CATALOG_CSQL,
-						    MSGCAT_CSQL_SET_CSQL,
-						    CSQL_STAT_COMMITTED_TEXT));
-		}
+	      csql_display_msg (msgcat_message (MSGCAT_CATALOG_CSQL,
+						MSGCAT_CSQL_SET_CSQL,
+						CSQL_STAT_COMMITTED_TEXT));
 	    }
 	}
 #if !defined(WINDOWS)
+      signal (SIGINT, csql_intr_save);
       signal (SIGPIPE, csql_pipe_save);
+#else
+      SetConsoleCtrlHandler (NULL, false);
 #endif /* ! WINDOWS */
     }
   else
