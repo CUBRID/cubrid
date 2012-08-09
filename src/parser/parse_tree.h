@@ -658,10 +658,11 @@ enum pt_custom_print
 						 */
   PT_SUPPRESS_CHARSET_PRINT = 0x800000,
   PT_PRINT_DIFFERENT_SESSION_PRMS = 0x1000000,	/* print session parameters */
-  PT_SHORT_PRINT = 0x2000000	/* PT_NODE_PRINT_TO_ALIAS
+  PT_SHORT_PRINT = 0x2000000,	/* PT_NODE_PRINT_TO_ALIAS
 				 * calls pt_short_print
 				 * instead pt_print_tree
 				 */
+ PT_SUPPRESS_FULL_RANGE_TERM = 0x4000000       /* This is for query in create ... as ... */
 };
 
 /* all statement node types should be assigned their API statement enumeration */

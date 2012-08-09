@@ -2449,6 +2449,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   const PT_NODE *n;
+  bool is_first = true;
 
   if (!p)
     {
@@ -2459,6 +2460,22 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
+      if (n->node_type == PT_EXPR
+	  && PT_EXPR_INFO_IS_FLAGED (n, PT_EXPR_INFO_FULL_RANGE)
+	  && (parser->custom_print & PT_SUPPRESS_FULL_RANGE_TERM))
+	{
+	  continue;
+	}
+
+      if (is_first)
+	{
+	  is_first = false;
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " and ");
+	}
+
       r1 = pt_print_bytes (parser, n);
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
@@ -2470,11 +2487,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       else
 	{
 	  q = pt_append_varchar (parser, q, r1);
-	}
-
-      if (n->next)
-	{
-	  q = pt_append_nulstring (parser, q, " and ");
 	}
     }
 
@@ -10978,6 +10990,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_RANGE:
+      if (PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_FULL_RANGE)
+	  && (parser->custom_print & PT_SUPPRESS_FULL_RANGE_TERM))
+	{
+	  /* do not print FULL_RANGE from "order by"
+	   * when create ... as select ... order by ...
+	   */
+	  break;
+	}
+
       if (parser->custom_print & PT_CONVERT_RANGE)
 	{
 	  r4 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -13556,8 +13577,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   if (where_list)
     {
       r1 = pt_print_and_list (parser, where_list);
-      q = pt_append_nulstring (parser, q, " where ");
-      q = pt_append_varchar (parser, q, r1);
+      if (r1 != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " where ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
     }
 
   if (p->info.query.q.select.after_cb_filter)

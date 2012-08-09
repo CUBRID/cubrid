@@ -13667,11 +13667,15 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO_SCHEMA repl_schema;
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_schema_name = "-";
+  unsigned int save_custom;
 
   if (db_Enable_replications > 0)
     {
       return NO_ERROR;
     }
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_SUPPRESS_FULL_RANGE_TERM;
 
   switch (statement->node_type)
     {
@@ -13784,7 +13788,8 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_UPDATE_STATS:	/* UPDATE STATISTICS statements are not replicated intentionally. */
     default:
-      return NO_ERROR;
+      error = NO_ERROR;
+      goto end;
     }
 
   repl_info.repl_info_type = REPL_INFO_TYPE_SCHEMA;
@@ -13801,6 +13806,9 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
   repl_info.info = (char *) &repl_schema;
 
   error = locator_flush_replication_info (&repl_info);
+
+end:
+  parser->custom_print = save_custom;
 
   return error;
 }
@@ -14774,8 +14782,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  has_virt = (db_is_vclass (class_obj) || ((flat))
-	      ? (flat->info.name.virt_object != NULL) : false);
+  has_virt = db_is_vclass (class_obj)
+    || ((flat) ? (flat->info.name.virt_object != NULL) : false);
 
   AU_RESTORE (au_save);
 
