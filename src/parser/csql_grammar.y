@@ -16941,42 +16941,46 @@ signed_literal_
 		{{
 
 			PT_NODE *node = $2;
-			if (node->type_enum == PT_TYPE_BIGINT)
-			  {
-			    node->info.value.data_value.bigint
-			      = -node->info.value.data_value.bigint;
-			  }
-			else if (node->type_enum == PT_TYPE_NUMERIC)
-			  {
-			    const char *min_big_int = "9223372036854775808";
-			    if (node->info.value.data_value.str->length == 19
-				&& (strcmp (node->info.value.data_value.str->bytes,
-					    min_big_int) == 0))
-			      {
-				node->info.value.data_value.bigint = DB_BIGINT_MIN;
-				node->type_enum = PT_TYPE_BIGINT;
-			      }
-			    else
-			      {
-				/*add minus:*/
-				char *minus_sign;
-				PARSER_VARCHAR *buf = 0;
-				minus_sign = pt_append_string (this_parser, NULL, "-");
-				buf = pt_append_nulstring (this_parser, buf,
-							   minus_sign);
-				buf = pt_append_nulstring (this_parser, buf,
-							   node->info.value.
-							   data_value.str->
-							   bytes);
-				node->info.value.data_value.str = buf;
-				PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
-							     node);
-			      }
-			  }
-			else
-			  {
-			    node->info.value.data_value.i = -node->info.value.data_value.i;
-			  }
+			if (node != NULL)
+			{
+			  if (node->type_enum == PT_TYPE_BIGINT)
+			    {
+			      node->info.value.data_value.bigint
+			        = -node->info.value.data_value.bigint;
+			    }
+			  else if (node->type_enum == PT_TYPE_NUMERIC)
+			    {
+			      const char *min_big_int = "9223372036854775808";
+			      if (node->info.value.data_value.str->length == 19
+				  && (strcmp (node->info.value.data_value.str->bytes,
+				  	      min_big_int) == 0))
+			        {
+				  node->info.value.data_value.bigint = DB_BIGINT_MIN;
+				  node->type_enum = PT_TYPE_BIGINT;
+			        }
+			      else
+			        {
+				  /*add minus:*/
+				  char *minus_sign;
+				  PARSER_VARCHAR *buf = 0;
+				  minus_sign = pt_append_string (this_parser, NULL, "-");
+				  buf = pt_append_nulstring (this_parser, buf,
+							     minus_sign);
+				  buf = pt_append_nulstring (this_parser, buf,
+							     node->info.value.
+							     data_value.str->
+							     bytes);
+				  node->info.value.data_value.str = buf;
+			        }
+			    }
+			  else
+			    {
+			      node->info.value.data_value.i = -node->info.value.data_value.i;
+			    }
+
+			  node->info.value.text = NULL;
+			  PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			}
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -16988,30 +16992,35 @@ signed_literal_
 						/* not allowed partition type */
 						/* this will cause semantic error */
 			PT_NODE *node = $2;
-			if (node->type_enum == PT_TYPE_FLOAT)
-			  {
-			    node->info.value.data_value.f = -node->info.value.data_value.f;
-			  }
-			else if (node->type_enum == PT_TYPE_DOUBLE)
-			  {
-			    node->info.value.data_value.d = -node->info.value.data_value.d;
-			  }
-			else
-			  {
-			    char *minus_sign;
-			    PARSER_VARCHAR *buf = 0;
+			if (node != NULL)
+			{
+			  if (node->type_enum == PT_TYPE_FLOAT)
+			    {
+			      node->info.value.data_value.f = -node->info.value.data_value.f;
+			    }
+			  else if (node->type_enum == PT_TYPE_DOUBLE)
+			    {
+			      node->info.value.data_value.d = -node->info.value.data_value.d;
+			  }  
+			  else
+			    {
+			      char *minus_sign;
+			      PARSER_VARCHAR *buf = 0;
 
-			    assert (node->type_enum == PT_TYPE_NUMERIC);
-			    minus_sign = pt_append_string (this_parser, NULL, "-");
-			    /*add minus:*/
-			    buf = pt_append_nulstring (this_parser, buf,
+			      assert (node->type_enum == PT_TYPE_NUMERIC);
+			      minus_sign = pt_append_string (this_parser, NULL, "-");
+			      /*add minus:*/
+			      buf = pt_append_nulstring (this_parser, buf,
 						       minus_sign);
-			    buf = pt_append_nulstring (this_parser, buf,
-						       node->info.value.
-						       data_value.str->bytes);
-			    node->info.value.data_value.str = buf;
-			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
-			  }
+			      buf = pt_append_nulstring (this_parser, buf,
+						         node->info.value.
+						         data_value.str->bytes);
+			      node->info.value.data_value.str = buf;
+			    }
+
+			  node->info.value.text = NULL;
+			  PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			}
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -17025,9 +17034,14 @@ signed_literal_
 
 			PT_NODE *node = $2;
 
-			assert (node->type_enum == PT_TYPE_MONETARY);
-			node->info.value.data_value.money.amount =
-			  - node->info.value.data_value.money.amount;
+			if (node != NULL)
+			{
+			  assert (node->type_enum == PT_TYPE_MONETARY);
+			  node->info.value.data_value.money.amount =
+			    - node->info.value.data_value.money.amount;
+			  node->info.value.text = NULL;
+			  PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			}
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
