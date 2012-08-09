@@ -1371,6 +1371,14 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
       logwr_Gl.action &= LOGWR_ACTION_DELAYED_WRITE;
     }
 
+#if !defined(WINDOWS)
+  if (hb_Proc_shutdown == true)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+	      "Disconnected with the cub_master and will shut itself down",
+	      "");
+    }
+#endif /* ! WINDOWS */
 
   /* SIGNAL caught and shutdown */
   if (logwr_need_shutdown)

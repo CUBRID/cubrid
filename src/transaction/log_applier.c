@@ -6968,6 +6968,14 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
   la_shutdown ();
 
+#if !defined(WINDOWS)
+  if (hb_Proc_shutdown == true)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+	      "Disconnected with the cub_master and will shut itself down",
+	      "");
+    }
+#endif /* ! WINDOWS */
   if (la_applier_shutdown_by_signal == true)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STOPPED_BY_SIGNAL,

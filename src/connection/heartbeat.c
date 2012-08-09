@@ -256,10 +256,6 @@ hb_thread_master_reader (void *arg)
 {
   int error;
 
-  er_log_debug (ARG_FILE_LINE,
-		"hb_thread_master_reader started. (TID:%u). \n",
-		pthread_self ());
-
   error = hb_process_master_request ();
   if (error != NO_ERROR)
     {
@@ -268,9 +264,6 @@ hb_thread_master_reader (void *arg)
       /* wait 1 sec */
       sleep (1);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-	      "Disconnected with the cub_master and will shut itself down",
-	      "");
 
       /* is it ok? */
       kill (getpid (), SIGTERM);
