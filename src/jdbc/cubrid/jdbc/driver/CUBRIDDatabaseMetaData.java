@@ -1001,8 +1001,13 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		UStatement us = null;
 		synchronized (u_con) {
+			int flag = 0;
+			if (tableNamePattern == null || containsWildcard(tableNamePattern))
+				flag |= 1;
+			if (columnNamePattern == null || containsWildcard(columnNamePattern))
+				flag |= 2;
 			us = u_con.getSchemaInfo(USchType.SCH_ATTRIBUTE, tableNamePattern,
-					columnNamePattern, (byte) 3);
+					columnNamePattern, (byte) flag);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -2223,6 +2228,10 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		if (u_con.getAutoCommit() == true) {
 			u_con.endTransaction(true);
 		}
+	}
+
+	private boolean containsWildcard(String s) {
+	  return (s != null && (s.indexOf ('%') >= 0 || s.indexOf ('_') >= 0));
 	}
 
 	/* JDK 1.6 */

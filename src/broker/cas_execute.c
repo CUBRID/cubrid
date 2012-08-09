@@ -330,6 +330,9 @@ static T_FK_INFO_RESULT *add_fk_info_result (T_FK_INFO_RESULT * fk_res,
 					     const char *fk_name,
 					     const char *pk_name,
 					     int sort_by);
+
+static char *get_backslash_escape_string (void);
+
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
   CCI_U_TYPE_FLOAT,		/* 2 */
@@ -6742,8 +6745,9 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
 	  if (class_name)
 	    {
 	      STRING_APPEND (sql_p, avail_size,
-			     "WHERE class_name LIKE '%s' ESCAPE '\\' AND %s",
-			     class_name, where_vclass);
+			     "WHERE class_name LIKE '%s' ESCAPE '%s' AND %s",
+			     class_name, get_backslash_escape_string (),
+			     where_vclass);
 	    }
 	  else
 	    {
@@ -6755,8 +6759,8 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
 	  if (class_name)
 	    {
 	      STRING_APPEND (sql_p, avail_size,
-			     "WHERE class_name LIKE '%s' ESCAPE '\\' ",
-			     class_name);
+			     "WHERE class_name LIKE '%s' ESCAPE '%s' ",
+			     class_name, get_backslash_escape_string ());
 	    }
 	}
     }
@@ -6818,8 +6822,8 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name,
       if (class_name)
 	{
 	  STRING_APPEND (sql_p, avail_size,
-			 " AND class_name LIKE '%s' ESCAPE '\\' ",
-			 class_name);
+			 " AND class_name LIKE '%s' ESCAPE '%s' ",
+			 class_name, get_backslash_escape_string ());
 	}
     }
   else
@@ -6837,7 +6841,8 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name,
       if (attr_name)
 	{
 	  STRING_APPEND (sql_p, avail_size,
-			 " AND attr_name LIKE '%s' ESCAPE '\\' ", attr_name);
+			 " AND attr_name LIKE '%s' ESCAPE '%s' ",
+			 attr_name, get_backslash_escape_string ());
 	}
     }
   else
@@ -7473,8 +7478,8 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name,
       if (class_name)
 	{
 	  STRING_APPEND (sql_p, avail_size,
-			 "WHERE class_name LIKE '%s' ESCAPE '\\' ",
-			 class_name);
+			 "WHERE class_name LIKE '%s' ESCAPE '%s' ",
+			 class_name, get_backslash_escape_string ());
 	}
     }
   else
@@ -9086,4 +9091,21 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
     }
 
   strcat (*out, "}");
+}
+
+/*
+ * get_backslash_escape_string() - This function returns proper backslash escape
+ * string according to the value of 'no_backslash_escapes' confiuration.
+ */
+static char *
+get_backslash_escape_string (void)
+{
+  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
+    {
+      return "\\";
+    }
+  else
+    {
+      return "\\\\";
+    }
 }
