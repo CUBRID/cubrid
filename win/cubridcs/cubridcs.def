@@ -375,6 +375,7 @@ EXPORTS
     numeric_db_value_print
     os_set_signal_handler
     prm_get_master_port_id
+    prm_get_bool_value
     rel_copy_version_string
     rel_build_number
     rel_release_string
