@@ -7669,6 +7669,13 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, "alter serial ");
   q = pt_append_varchar (parser, q, r1);
 
+  if (p->info.serial.start_val != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.serial.start_val);
+      q = pt_append_nulstring (parser, q, " start with ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   if (p->info.serial.increment_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.increment_val);
