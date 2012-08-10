@@ -2462,6 +2462,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
   bool old_disable_update_stats;
+  bool need_schema_replication = false;
 
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
@@ -2480,9 +2481,21 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       old_disable_update_stats = sm_Disable_updating_statistics;
 
-      /* disable data replication log for schema replication log types */
-      if (is_schema_repl_log_statment (statement))
+      /* disable data replication log for schema replication log types in HA mode */
+      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+	  && is_schema_repl_log_statment (statement))
 	{
+	  need_schema_replication = true;
+
+	  /* since we are going to suppress writing replication logs,
+	   * we need to flush all dirty objects to server not to lose them.
+	   */
+	  error = locator_all_flush ();
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
 	  db_set_suppress_repl_on_transaction (true);
 	}
 
@@ -2727,8 +2740,17 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* enable data replication log */
-      if (is_schema_repl_log_statment (statement))
+      if (need_schema_replication)
 	{
+	  /* before enable data replication log,
+	   * we have to flush all dirty objects to server not to write
+	   * redundant data replication logs for DDLs
+	   */
+	  if (error == NO_ERROR)
+	    {
+	      error = locator_all_flush ();
+	    }
+
 	  db_set_suppress_repl_on_transaction (false);
 	}
 
@@ -2736,13 +2758,13 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->exec_mode = old_exec_mode;
 
       /* write schema replication log */
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && need_schema_replication)
 	{
 	  error = do_replicate_schema (parser, statement);
 	}
     }
 
-
+end:
   /* There may be parse tree fragments that were collected during the
    * execution of the statement that should be freed now.
    */
@@ -2839,6 +2861,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
   bool old_disable_update_stats;
+  bool need_schema_replication = false;
 
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
@@ -2854,9 +2877,21 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   old_disable_update_stats = sm_Disable_updating_statistics;
 
-  /* disable data replication log for schema replication log types */
-  if (is_schema_repl_log_statment (statement))
+  /* disable data replication log for schema replication log types in HA mode */
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+      && is_schema_repl_log_statment (statement))
     {
+      need_schema_replication = true;
+
+      /* since we are going to suppress writing replication logs,
+       * we need to flush all dirty objects to server not to lose them
+       */
+      err = locator_all_flush ();
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
+
       db_set_suppress_repl_on_transaction (true);
     }
 
@@ -3064,8 +3099,16 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* enable data replication log */
-  if (is_schema_repl_log_statment (statement))
+  if (need_schema_replication)
     {
+      /* before enable data replication log
+       * we have to flush all dirty objects to server not to write
+       * redundant data replication logs for DDLs */
+      if (err == NO_ERROR)
+	{
+	  err = locator_all_flush ();
+	}
+
       db_set_suppress_repl_on_transaction (false);
     }
 
@@ -3073,11 +3116,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->exec_mode = old_exec_mode;
 
   /* write schema replication log */
-  if (err == NO_ERROR)
+  if (err == NO_ERROR && need_schema_replication)
     {
       err = do_replicate_schema (parser, statement);
     }
 
+end:
   /* There may be parse tree fragments that were collected during the
      execution of the statement that should be freed now. */
   pt_free_orphans (parser);
