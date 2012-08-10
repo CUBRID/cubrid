@@ -520,8 +520,8 @@ static void mq_no_search_cond_merge_updates (PARSER_CONTEXT * parser,
 					     PT_NODE * stmt);
 static PT_NODE *mq_no_search_cond_merge_updates_pre (PARSER_CONTEXT * parser,
 						     PT_NODE * node,
-						     void * arg,
-						     int * continue_walk);
+						     void *arg,
+						     int *continue_walk);
 static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser,
 					 PT_NODE * stmt);
 
@@ -901,7 +901,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *arg2;
   PT_NODE *temparg2;
   int i = 0;
-  int line_no, col_no;
+  int line_no, col_no, is_hidden_column;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -934,6 +934,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	  line_no = node->line_number;
 	  col_no = node->column_number;
+	  is_hidden_column = node->is_hidden_column;
 	  if (!temp)
 	    {
 	      /* This was not found. add it */
@@ -953,6 +954,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->data_type = data_type;
 	  node->line_number = line_no;
 	  node->column_number = col_no;
+	  node->is_hidden_column = is_hidden_column;
 
 	  mq_insert_symbol (parser, &new_from->info.spec.as_attr_list, node);
 	}
@@ -999,6 +1001,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	  line_no = node->line_number;
 	  col_no = node->column_number;
+	  is_hidden_column = node->is_hidden_column;
 	  if (!temp)
 	    {
 	      derived_select->info.query.q.select.list =
@@ -1018,6 +1021,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->data_type = data_type;
 	  node->line_number = line_no;
 	  node->column_number = col_no;
+	  node->is_hidden_column = is_hidden_column;
 
 	  mq_insert_symbol (parser, &new_from->info.spec.as_attr_list, node);
 
@@ -1107,6 +1111,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 				derived_select->info.query.q.select.list);
 	  line_no = node->line_number;
 	  col_no = node->column_number;
+	  is_hidden_column = node->is_hidden_column;
 	  node = pt_name (parser, mq_generate_name (parser, "a", &i));
 	  node->info.name.meta_class = PT_NORMAL;
 	  node->info.name.spec_id = new_from->info.spec.id;
@@ -1115,6 +1120,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->data_type = data_type;
 	  node->line_number = line_no;
 	  node->column_number = col_no;
+	  node->is_hidden_column = is_hidden_column;
 
 	  mq_insert_symbol (parser, &new_from->info.spec.as_attr_list, node);
 
@@ -8397,7 +8403,8 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  if (attr_names != NULL)
 	    {
-	      parser_free_tree (parser, statement->info.merge.insert.attr_list);
+	      parser_free_tree (parser,
+				statement->info.merge.insert.attr_list);
 	      statement->info.merge.insert.attr_list = attr_names;
 	      attr_names = NULL;
 	    }
@@ -11591,9 +11598,9 @@ mq_no_search_cond_merge_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
  */
 static PT_NODE *
 mq_no_search_cond_merge_updates_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-				     void * arg, int * continue_walk)
+				     void *arg, int *continue_walk)
 {
-  PT_NODE * name = (PT_NODE *) arg;
+  PT_NODE *name = (PT_NODE *) arg;
 
   if (node->node_type == PT_NAME)
     {
