@@ -446,9 +446,6 @@ static XASL_CACHE_ENT_INFO filter_pred_ent_cache = {
    NULL /*v */ }		/*cv_info */
 };
 
-static XASL_CACHE_ENT_CV_INFO *xasl_ent_cv = &xasl_ent_cache.cv_info;
-static XASL_CACHE_ENT_CV_INFO *filter_pred_ent_cv =
-  &filter_pred_ent_cache.cv_info;
 #if defined (ENABLE_UNUSED_FUNCTION)
 /* XASL clone cache and related information */
 static XASL_CACHE_CLO_INFO xasl_clo_cache = {
@@ -12785,6 +12782,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 {
   int i;
   POOLED_XASL_CACHE_ENTRY *pent;
+  XASL_CACHE_ENT_CV_INFO *xasl_ent_cv;
 
   if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <= 0)
     {
@@ -12851,6 +12849,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
     }
 
   /* information of candidates to be removed from XASL cache */
+  xasl_ent_cv = &xasl_ent_cache.cv_info;
   xasl_ent_cv->include_in_use = true;
 
 #define ENT_C_RATIO 0.05f	/* candidate ratio such as 5% */
@@ -12983,9 +12982,9 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       xasl_ent_cache.oid_ht = NULL;
     }
 
-  free_and_init (xasl_ent_cv->c_time);
-  free_and_init (xasl_ent_cv->c_ref);
-  free_and_init (xasl_ent_cv->victim);
+  free_and_init (xasl_ent_cache.cv_info.c_time);
+  free_and_init (xasl_ent_cache.cv_info.c_ref);
+  free_and_init (xasl_ent_cache.cv_info.victim);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* free all cache clone and XASL tree */
@@ -13882,6 +13881,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			     const int *repr_ids, int dbval_cnt)
 {
   XASL_CACHE_ENTRY *ent, **p, **q, **r;
+  XASL_CACHE_ENT_CV_INFO *xasl_ent_cv;
   const OID *o;
   int len, i, j, k;
 #if defined(SERVER_MODE)
@@ -13961,6 +13961,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
          candidates. */
 
       xasl_ent_cache.counter.full++;	/* counter */
+      xasl_ent_cv = &xasl_ent_cache.cv_info;
 
       /* STEP 1: examine hash entries to selet candidates */
       xasl_ent_cv->c_idx = 0;
@@ -13969,13 +13970,15 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       xasl_ent_cv->c_selcnt = xasl_ent_cv->c_num * 2;
       xasl_ent_cv->include_in_use = false;
       (void) mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
-			     qexec_select_xasl_cache_ent, xasl_ent_cv);
+			     qexec_select_xasl_cache_ent,
+			     (void *) xasl_ent_cv);
       if (xasl_ent_cv->c_idx < xasl_ent_cv->c_num)
 	{
 	  /* insufficient candidates; try once more */
 	  xasl_ent_cv->include_in_use = true;
 	  (void) mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
-				 qexec_select_xasl_cache_ent, xasl_ent_cv);
+				 qexec_select_xasl_cache_ent,
+				 (void *) xasl_ent_cv);
 	}
 
       /* STEP 2: find victims who appears in both groups */
@@ -19196,6 +19199,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
 {
   int i;
   POOLED_XASL_CACHE_ENTRY *pent;
+  XASL_CACHE_ENT_CV_INFO *filter_pred_ent_cv;
 
   if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) <= 0)
     {
@@ -19264,6 +19268,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
     }
 
   /* information of candidates to be removed from XASL cache */
+  filter_pred_ent_cv = &filter_pred_ent_cache.cv_info;
   filter_pred_ent_cv->include_in_use = true;
 
 #define ENT_C_RATIO 0.05f	/* candidate ratio such as 5% */
@@ -19399,9 +19404,9 @@ qexec_finalize_filter_pred_cache (THREAD_ENTRY * thread_p)
       filter_pred_ent_cache.oid_ht = NULL;
     }
 
-  free_and_init (filter_pred_ent_cv->c_time);
-  free_and_init (filter_pred_ent_cv->c_ref);
-  free_and_init (filter_pred_ent_cv->victim);
+  free_and_init (filter_pred_ent_cache.cv_info.c_time);
+  free_and_init (filter_pred_ent_cache.cv_info.c_ref);
+  free_and_init (filter_pred_ent_cache.cv_info.victim);
 
   /* free all cache clone and XASL tree */
   if (filter_pred_clo_cache.head)
@@ -20128,6 +20133,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 				    const int *repr_ids, int dbval_cnt)
 {
   XASL_CACHE_ENTRY *ent, **p, **q, **r;
+  XASL_CACHE_ENT_CV_INFO *filter_pred_ent_cv;
   const OID *o;
   int len, i, j, k;
 #if defined(SERVER_MODE)
@@ -20210,6 +20216,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
          candidates. */
 
       filter_pred_ent_cache.counter.full++;	/* counter */
+      filter_pred_ent_cv = &filter_pred_ent_cache.cv_info;
 
       /* STEP 1: examine hash entries to selet candidates */
       filter_pred_ent_cv->c_idx = 0;
