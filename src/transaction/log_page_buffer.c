@@ -7473,7 +7473,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       for (; pageid <= last_pageid;
 	   pageid += num_pages, ar_phy_pageid += num_pages)
 	{
-	  num_pages = MIN (LOGPB_IO_NPAGES, (int) (last_pageid - pageid));
+	  num_pages = MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
 	  num_pages = logpb_read_page_from_active_log (thread_p, pageid,
 						       num_pages, log_pgptr);
 	  if (num_pages <= 0)
