@@ -218,6 +218,14 @@ static void print_result (const char *util_name, int status,
 static bool is_terminated_process (const int pid);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
+static bool is_server_running (const char *type, const char *server_name,
+			       int pid);
+static bool is_broker_running (void);
+static bool is_manager_running (unsigned int sleep_time);
+#if defined(WINDOWS)
+static bool is_windows_service_running (unsigned int sleep_time);
+static bool are_all_services_running (unsigned int sleep_time);
+#endif
 
 static char *
 make_exec_abspath (char *buf, int buf_len, char *cmd)
@@ -798,6 +806,75 @@ is_windows_service_running (unsigned int sleep_time)
 
   return true;
 }
+
+/*
+ * are_all_services_running - are all of services running
+ *
+ * return:
+ *
+ *      sleep_time(in):
+ *
+ * NOTE:
+ */
+static bool
+are_all_services_running (unsigned int sleep_time)
+{
+  int master_port;
+
+  /* check whether CUBRIDService is running */
+  if (!is_windows_service_running (sleep_time))
+    {
+      return false;
+    }
+
+  master_port = prm_get_master_port_id ();
+  /* check whether cub_master is running */
+  if (!css_does_master_exist (master_port))
+    {
+      return false;
+    }
+
+  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
+    {
+      char buf[4096] = { '\0' };
+      char *list, *token, *save;
+      const char *delim = " ,:";
+
+      strncpy (buf, us_Property_map[SERVER_START_LIST].property_value,
+	       sizeof (buf) - 1);
+      for (list = buf;; list = NULL)
+	{
+	  token = strtok_r (list, delim, &save);
+	  if (token == NULL)
+	    {
+	      break;
+	    }
+	  /* check whether cub_server is running */
+	  if (!is_server_running (CHECK_SERVER, token, 0))
+	    {
+	      return false;
+	    }
+	}
+    }
+
+  /* check whether cub_broker is running */
+  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0
+      && !is_broker_running ())
+    {
+      return false;
+    }
+
+  /* check whether cub_manager is running */
+  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0
+      && !is_manager_running (0))
+    {
+      return false;
+    }
+
+  /* do not check heartbeat in windows */
+
+  return true;
+}
 #endif
 
 /*
@@ -821,7 +898,7 @@ process_service (int command_type, bool process_window_service)
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  if (!is_windows_service_running (0))
+	  if (!are_all_services_running (0))
 	    {
 	      const char *args[] =
 		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
@@ -831,7 +908,7 @@ process_service (int command_type, bool process_window_service)
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			    false, NULL);
 	      status =
-		is_windows_service_running (0) ? NO_ERROR : ER_GENERIC_ERROR;
+		are_all_services_running (0) ? NO_ERROR : ER_GENERIC_ERROR;
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
 	    }
 	  else
