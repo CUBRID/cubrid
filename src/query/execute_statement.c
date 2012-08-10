@@ -13696,6 +13696,15 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_DROP:
+      /* No replication log will be written 
+       * when there's no applicable table for "drop if exists" 
+       */
+      if (statement->info.drop.if_exists
+	  && statement->info.drop.spec_list == NULL)
+	{
+	  error = NO_ERROR;
+	  goto end;
+	}
       repl_schema.statement_type = CUBRID_STMT_DROP_CLASS;
       break;
 
