@@ -209,8 +209,9 @@ static int cas_mysql_find_db (const char *alias, char *dbname, char *host,
 static const char *cas_mysql_get_connected_host_info (void);
 static int cas_mysql_connect_db (char *alias, char *user, char *passwd);
 static void cas_mysql_disconnect_db (void);
-static int cas_mysql_stmt_init (MYSQL_STMT ** stmt);
-static int cas_mysql_prepare (MYSQL_STMT * stmt, char *query, int qsize);
+static int cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt,
+			      int flag, char auto_commit_mode,
+			      unsigned int query_seq_num);
 static int cas_mysql_param_count (MYSQL_STMT * stmt);
 static void cas_mysql_bind_param_clear (MYSQL_BIND * param);
 static int cas_mysql_stmt_result_metadata (MYSQL_STMT * stmt,
@@ -354,60 +355,28 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 	    T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
 {
-  int stmt_id;
   T_SRV_HANDLE *srv_handle = NULL;
-  MYSQL_STMT *stmt = NULL;
+  int err_code = CAS_NO_ERROR;
   int srv_h_id;
-  int err_code;
-  char stmt_type;
-  char updatable_flag;
-  int is_first_out = 0;
-  char *tmp;
-  int result_cache_lifetime;
 
-  srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
+  srv_h_id = cas_mysql_prepare (&srv_handle, sql_stmt, flag,
+				auto_commit_mode, query_seq_num);
   if (srv_h_id < 0)
     {
       err_code = srv_h_id;
       goto prepare_error;
     }
-  srv_handle->schema_type = -1;
-  cas_mysql_autocommit (auto_commit_mode);
-  srv_handle->auto_commit_mode = auto_commit_mode;
 
-  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
-  if (srv_handle->sql_stmt == NULL)
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (req_info->client_version, PROTOCOL_V2) == false
+      && srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      goto prepare_error;
+      srv_handle->send_metadata_before_execute = TRUE;
     }
-
-  err_code = cas_mysql_stmt_init (&stmt);
-  if (err_code < 0)
-    {
-      goto prepare_error;
-    }
-
-  err_code = cas_mysql_prepare (stmt, sql_stmt, strlen (sql_stmt));
-  if (err_code < 0)
-    {
-      goto prepare_error;
-    }
-
-  srv_handle->num_markers = cas_mysql_param_count (stmt);
-  stmt_type = get_stmt_type (sql_stmt);
-  srv_handle->stmt_type = stmt_type;
-  srv_handle->is_prepared = TRUE;
-
-prepare_result_set:
-  srv_handle->prepare_flag = flag;
 
   net_buf_cp_int (net_buf, srv_h_id, NULL);
-
-  result_cache_lifetime = -1;
-  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
-
-  net_buf_cp_byte (net_buf, stmt_type);
+  net_buf_cp_int (net_buf, -1, NULL);	/* result_cache_lifetime */
+  net_buf_cp_byte (net_buf, srv_handle->stmt_type);
   net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
 
   srv_handle->prepare_call_info =
@@ -416,8 +385,6 @@ prepare_result_set:
     {
       goto prepare_error;
     }
-
-  srv_handle->session = (void *) stmt;
 
   err_code = prepare_column_list_info_set (srv_handle, net_buf);
   if (err_code < 0)
@@ -434,12 +401,14 @@ prepare_error:
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
+
   errors_in_transaction++;
 
   if (srv_handle)
     {
       hm_srv_handle_free (srv_h_id);
     }
+
   return err_code;
 }
 
@@ -575,6 +544,18 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       goto execute_all_error;
     }
 
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT &&
+      srv_handle->send_metadata_before_execute == FALSE)
+    {
+      srv_handle->send_metadata_before_execute = TRUE;
+
+      err_code = set_metadata_info (srv_handle);
+      if (err_code != CAS_NO_ERROR)
+	{
+	  goto execute_all_error;
+	}
+    }
+
   if ((is_all == TRUE) && (is_first_stmt == TRUE))
     {
       net_buf_cp_int (net_buf, 0, &num_tuple_msg_offset);	/* number of resultset */
@@ -645,6 +626,7 @@ execute_all_error:
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
+
   errors_in_transaction++;
 
   if (db_vals)
@@ -654,6 +636,7 @@ execute_all_error:
 	  db_value_clear (db_vals[i]);
 	}
     }
+
   return err_code;
 }
 
@@ -1806,9 +1789,14 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       return err_code;
     }
 
-  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT &&
+      srv_handle->send_metadata_before_execute)
     {
       err_code = set_metadata_info (srv_handle);
+      if (err_code != CAS_NO_ERROR)
+	{
+	  return err_code;
+	}
     }
 
   return err_code;
@@ -1819,17 +1807,24 @@ static int
 send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
   int err_code = CAS_NO_ERROR;
+  MYSQL_STMT *stmt = NULL;
+  MYSQL_RES *result = NULL;
+  int num_cols = 0;
+  DB_VALUE *columns = NULL;
+  MYSQL_BIND *defines = NULL;
+  MYSQL_FIELD *col;
+  int i, type, size, scale, precision;
 
   net_buf_cp_byte (net_buf, 0);	/* updatable_flag */
+
   if (srv_handle->stmt_type != CUBRID_STMT_SELECT)
     {
       net_buf_cp_int (net_buf, 0, NULL);
       return CAS_NO_ERROR;
     }
 
-  MYSQL_STMT *stmt = (MYSQL_STMT *) srv_handle->session;
+  stmt = (MYSQL_STMT *) srv_handle->session;
 
-  MYSQL_RES *result = NULL;
   err_code = cas_mysql_stmt_result_metadata (stmt, &result);
   if (err_code < 0)
     {
@@ -1837,15 +1832,11 @@ send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       goto error;
     }
 
-  int num_cols = cas_mysql_num_fields (result);
+  num_cols = cas_mysql_num_fields (result);
   net_buf_cp_int (net_buf, num_cols, NULL);
 
-  DB_VALUE *columns = NULL;
-  MYSQL_BIND *defines = NULL;
   if (num_cols > 0)
     {
-      MYSQL_FIELD *col;
-      int i, type, size, scale, precision;
       for (i = 0; i < num_cols; i++)
 	{
 	  col = cas_mysql_fetch_field (result);
@@ -1864,11 +1855,14 @@ send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	}
     }
 
+  return err_code;
+
 error:
   if (result != NULL)
     {
       cas_mysql_free_result (result);
     }
+
   return err_code;
 }
 
@@ -1876,19 +1870,29 @@ static int
 set_metadata_info (T_SRV_HANDLE * srv_handle)
 {
   int err_code = CAS_NO_ERROR;
-
-  MYSQL_STMT *stmt = (MYSQL_STMT *) srv_handle->session;
-
+  MYSQL_STMT *stmt = NULL;
   MYSQL_RES *result = NULL;
+  int asize;
+  T_QUERY_RESULT *q_result;
+  int num_cols = 0;
+  DB_VALUE *columns = NULL;
+  MYSQL_BIND *defines = NULL;
+  char *data;
+  MYSQL_FIELD *col;
+  int i, type, size, scale, precision;
+  char set_type, cas_type;
+
+  stmt = (MYSQL_STMT *) srv_handle->session;
+
   err_code = cas_mysql_stmt_result_metadata (stmt, &result);
-  if (err_code < 0)
+  if (err_code != CAS_NO_ERROR)
     {
       err_code = cas_mysql_get_stmt_errno (stmt);
       goto error;
     }
 
-  int asize = sizeof (T_QUERY_RESULT);
-  T_QUERY_RESULT *q_result = (T_QUERY_RESULT *) MALLOC (asize);
+  asize = sizeof (T_QUERY_RESULT);
+  q_result = (T_QUERY_RESULT *) MALLOC (asize);
   if (q_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1896,14 +1900,12 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
     }
   memset ((char *) q_result, 0x00, asize);
 
-  int num_cols = cas_mysql_num_fields (result);
+  num_cols = cas_mysql_num_fields (result);
 
   srv_handle->q_result = q_result;
   srv_handle->q_result->columns = NULL;
   srv_handle->q_result->column_count = num_cols;
 
-  DB_VALUE *columns = NULL;
-  MYSQL_BIND *defines = NULL;
   if (num_cols > 0)
     {
       asize = sizeof (DB_VALUE) * (num_cols);
@@ -1928,13 +1930,9 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
       memset ((char *) defines, 0x00, asize);
       srv_handle->q_result->defines = defines;
 
-      char *data;
-      MYSQL_FIELD *col;
-      int i, type, size, scale, precision;
       for (i = 0; i < num_cols; i++)
 	{
 	  col = cas_mysql_fetch_field (result);
-	  char set_type, cas_type;
 	  cas_type = ux_db_type_to_cas_type (col->type);
 	  size = col->length;
 	  type = col->type;
@@ -2034,12 +2032,14 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	  defines[i].error = NULL;
 	}
     }
+  return err_code;
 
 error:
   if (result != NULL)
     {
       cas_mysql_free_result (result);
     }
+
   return err_code;
 }
 
@@ -2401,40 +2401,79 @@ cas_mysql_disconnect_db (void)
 }
 
 static int
-cas_mysql_stmt_init (MYSQL_STMT ** stmt)
+cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
+		   char auto_commit_mode, unsigned int query_seq_num)
 {
-  MYSQL_STMT *tstmt;
+  int err_code = CAS_NO_ERROR;
+  int srv_h_id;
+  MYSQL_STMT *stmt = NULL;
+
+  if (sql_stmt == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  srv_h_id = hm_new_srv_handle (new_handle, query_seq_num);
+  if (srv_h_id < 0)
+    {
+      err_code = srv_h_id;
+      goto prepare_error;
+    }
+
+  (*new_handle)->schema_type = -1;
+  (*new_handle)->prepare_flag = flag;
+  (*new_handle)->auto_commit_mode = auto_commit_mode;
+
+  cas_mysql_autocommit (auto_commit_mode);
+
+  ALLOC_COPY ((*new_handle)->sql_stmt, sql_stmt);
+  if ((*new_handle)->sql_stmt == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
 
   if (_db_conn == NULL)
     {
-      *stmt = NULL;
-      return cas_mysql_get_errno ();
+      goto prepare_error;
     }
 
-  tstmt = mysql_stmt_init (_db_conn);
-  if (!tstmt)
-    {
-      *stmt = NULL;
-      return cas_mysql_get_errno ();
-    }
-  *stmt = tstmt;
-  return 0;
-}
-
-static int
-cas_mysql_prepare (MYSQL_STMT * stmt, char *query, int qsize)
-{
+  stmt = mysql_stmt_init (_db_conn);
   if (stmt == NULL)
     {
-      return cas_mysql_get_stmt_errno (stmt);
+      goto prepare_error;
     }
 
-  if (mysql_stmt_prepare (stmt, query, qsize))
+  err_code = mysql_stmt_prepare (stmt, sql_stmt, strlen (sql_stmt));
+  if (err_code != 0)
     {
-      return cas_mysql_get_stmt_errno (stmt);
+      goto prepare_error;
     }
 
-  return 0;
+  (*new_handle)->num_markers = cas_mysql_param_count (stmt);
+  (*new_handle)->stmt_type = get_stmt_type (sql_stmt);
+
+  (*new_handle)->session = (void *) stmt;
+  (*new_handle)->is_prepared = TRUE;
+
+  return srv_h_id;
+
+prepare_error:
+  err_code = cas_mysql_get_stmt_errno (stmt);
+
+prepare_error_internal:
+  if (stmt)
+    {
+      mysql_stmt_close (stmt);
+    }
+
+  if (*new_handle)
+    {
+      hm_srv_handle_free (srv_h_id);
+    }
+
+  return err_code;
 }
 
 /* Errors : None */

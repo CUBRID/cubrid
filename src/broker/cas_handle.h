@@ -159,6 +159,7 @@ struct t_srv_handle
   int stmt_type;
   int tuple_count;
   bool is_no_data;
+  bool send_metadata_before_execute;
 #else				/* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   void *cur_result;		/* query : &(q_result[cur_result])
 				   schema info : &(session[cursor_pos]) */
