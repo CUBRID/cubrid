@@ -53,5 +53,7 @@ extern int partition_get_partitions (THREAD_ENTRY * thread_p,
 				     const OID * root_oid,
 				     OR_PARTITION ** partitions,
 				     int *parts_count);
-
+extern void partition_free_partitions (THREAD_ENTRY * thread_p,
+				       OR_PARTITION * partitions,
+				       int parts_count);
 #endif /* _PARTITION_SR_H_ */

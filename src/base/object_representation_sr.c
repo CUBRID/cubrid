@@ -1408,7 +1408,7 @@ or_get_default_value (OR_ATTRIBUTE * attr, char *ptr, int length)
  *   return: zero to indicate error
  *   attr(in): disk attribute structure
  *   ptr(in): pointer to beginning of value
- *   length(in): length of value on disk 
+ *   length(in): length of value on disk
  */
 static int
 or_get_current_default_value (OR_ATTRIBUTE * attr, char *ptr, int length)
@@ -1758,7 +1758,7 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index,
  * or_install_btids_filter_pred () - Load index filter predicate information
  *   return: error code
  *   pred_seq(in): sequence which contains the filter predicate
- *   index(in): index info structure 
+ *   index(in): index info structure
  */
 static int
 or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
@@ -3422,7 +3422,7 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
  * This OID is stored in the class properties sequence
  *
  * If the class is not a partition or is not a partitioned class,
- * partition_info will be returned as a NULL OID 
+ * partition_info will be returned as a NULL OID
  */
 int
 or_class_get_partition_info (RECDES * record, OID * partition_info)
@@ -3465,6 +3465,7 @@ or_class_get_partition_info (RECDES * record, OID * partition_info)
 	{
 	  /* internal storage error */
 	  assert (false);
+	  set_free (setref);
 	  return ER_FAILED;
 	}
 
@@ -3473,6 +3474,7 @@ or_class_get_partition_info (RECDES * record, OID * partition_info)
 	{
 	  /* internal storage error */
 	  assert (false);
+          set_free (setref);
 	  return ER_FAILED;
 	}
 
@@ -3485,17 +3487,20 @@ or_class_get_partition_info (RECDES * record, OID * partition_info)
 	{
 	  /* internal storage error */
 	  assert (false);
+          set_free (setref);
 	  return ER_FAILED;
 	}
       COPY_OID (partition_info, DB_GET_OID (&value));
       if (OID_ISNULL (partition_info))
 	{
 	  /* if it exists in the schema then it shouldn't be NULL */
+          set_free (setref);
 	  return ER_FAILED;
 	}
       break;
     }
 
+  set_free (setref);
   return NO_ERROR;
 }
 
@@ -3790,8 +3795,8 @@ or_get_attrname (RECDES * record, int attrid)
 }
 
 /*
- * or_install_btids_function_info () - Install (add) function index 
- *				      information to the index structure 
+ * or_install_btids_function_info () - Install (add) function index
+ *				      information to the index structure
  *				      of the class representation
  *   return: void
  *   index(in): index structure

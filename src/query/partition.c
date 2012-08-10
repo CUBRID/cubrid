@@ -790,7 +790,7 @@ error_exit:
 
 /*
  * partition_merge_lists () - perform reunion on two lists
- * return : 
+ * return :
  * thread_p (in)  :
  * left (in)	  :
  * right (in)	  :
@@ -876,7 +876,7 @@ partition_merge_lists (THREAD_ENTRY * thread_p, PARTITION_NODE * left,
 
 /*
  * partition_intersect_lists () - perform intersection on two lists
- * return : 
+ * return :
  * thread_p (in)  :
  * left (in)	  :
  * right (in)	  :
@@ -1149,7 +1149,7 @@ cleanup:
 
 /*
  * partition_do_regu_variables_match () - check if two regu variables match
- * return : 
+ * return :
  * pinfo (in) :
  * left (in)  :
  * right (in) :
@@ -1448,7 +1448,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
     case PO_EQ:
       if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (val_p))
 	{
-	  /* We have a problem here because type checking might not have 
+	  /* We have a problem here because type checking might not have
 	   * coerced val to the type of the column. If this is the case, we
 	   * have to do it here
 	   */
@@ -1676,7 +1676,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	  break;
 
 	case PO_GT:
-	  /* Filter is part_expr > value. All partitions for which 
+	  /* Filter is part_expr > value. All partitions for which
 	     value < max qualify */
 	  if (rmax == DB_LT)
 	    {
@@ -1840,7 +1840,7 @@ partition_prune (PRUNING_CONTEXT * pinfo, const PARTITION_NODE * partitions,
  * pinfo (in)	    : pruning context
  * regu (in)	    : regu variable
  * value_p (in/out) : holder for the value of regu
- * is_value (in/out): true if the conversion was successful 
+ * is_value (in/out): true if the conversion was successful
  */
 static int
 partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo,
@@ -2393,7 +2393,7 @@ partition_match_index (PRUNING_CONTEXT * pinfo, PARTITION_NODE * partitions,
       return NULL;
     }
 
-  /* We do not care which range_type this index scan is supposed to 
+  /* We do not care which range_type this index scan is supposed to
    * perform. Each key range produces a list of partitions and we will
    * merge those lists to get the full list of partitions that contains
    * information for our search
@@ -2494,15 +2494,15 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
       if (error != NO_ERROR)
 	{
 	  /* cleanup and return error */
-	  db_private_free (thread_p, pinfo->partitions);
+	  partition_free_partitions (thread_p, pinfo->partitions,
+				     pinfo->count);
 	  return error;
 	}
       return NO_ERROR;
     }
 
-  error =
-    heap_get_class_partitions (pinfo->thread_p, class_oid, &pinfo->partitions,
-			       &pinfo->count);
+  error = heap_get_class_partitions (pinfo->thread_p, class_oid,
+				     &pinfo->partitions, &pinfo->count);
   if (error != NO_ERROR)
     {
       return error;
@@ -2518,7 +2518,7 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
   if (error != NO_ERROR)
     {
       /* cleanup and return error */
-      db_private_free (thread_p, pinfo->partitions);
+      partition_free_partitions (thread_p, pinfo->partitions, pinfo->count);
       return error;
     }
 
@@ -2579,7 +2579,7 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
 
 /*
  * partition_load_partition_predicate () - load partition predicate
- * return : 
+ * return :
  * pinfo (in)	: pruning context
  * master (in)	: master partition information
  */
@@ -3164,7 +3164,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
     {
       /* Update representation id of the record to that of the pruned
        * partition. For any other operation than pruning, the new
-       * representation id should be obtained by constructing a new 
+       * representation id should be obtained by constructing a new
        * HEAP_ATTRIBUTE_INFO structure for the new class, copying values
        * from this record to that structure and then transforming it to disk.
        * Since we're working with partitioned tables, we can guarantee that,
@@ -3387,4 +3387,28 @@ partition_get_partitions (THREAD_ENTRY * thread_p, const OID * root_oid,
     heap_get_class_partitions (thread_p, root_oid, partitions, parts_count);
 
   return error;
+}
+
+/*
+ * partition_free_partitions () - free memory for partitions
+ * return : void
+ * thread_p (in)      : thread entry
+ * partitions (in/out): partitions
+ * parts_count(in/out): partitions count
+ */
+void
+partition_free_partitions (THREAD_ENTRY * thread_p,
+			   OR_PARTITION * partitions, int parts_count)
+{
+  int i;
+
+  for (i = 0; i < parts_count; i++)
+    {
+      if (partitions[i].values != NULL)
+	{
+	  db_seq_free (partitions[i].values);
+	}
+    }
+
+  db_private_free (thread_p, partitions);
 }

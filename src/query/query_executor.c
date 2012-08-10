@@ -8067,6 +8067,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (classes_info != NULL)
     {
+      if (classes_info->partitions != NULL)
+	{
+	  partition_free_partitions (thread_p, classes_info->partitions,
+				     classes_info->parts_count);
+	}
+
       db_private_free (thread_p, classes_info);
     }
 
@@ -8155,6 +8161,12 @@ exit_on_error:
 
   if (classes_info != NULL)
     {
+      if (classes_info->partitions != NULL)
+	{
+	  partition_free_partitions (thread_p, classes_info->partitions,
+				     classes_info->parts_count);
+	}
+
       db_private_free (thread_p, classes_info);
     }
 
@@ -8670,6 +8682,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (classes_info != NULL)
     {
+      if (classes_info->partitions != NULL)
+	{
+	  partition_free_partitions (thread_p, classes_info->partitions,
+				     classes_info->parts_count);
+	}
+
       db_private_free (thread_p, classes_info);
     }
 
@@ -8720,6 +8738,12 @@ exit_on_error:
 
   if (classes_info != NULL)
     {
+      if (classes_info->partitions != NULL)
+	{
+	  partition_free_partitions (thread_p, classes_info->partitions,
+				     classes_info->parts_count);
+	}
+
       db_private_free (thread_p, classes_info);
     }
 
@@ -21408,6 +21432,9 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       enum_elements = domain->enumeration.elements;
       enum_elements_count = domain->enumeration.count;
       break;
+
+    default:
+      break;
     }
 
   name = qexec_schema_get_type_name_from_id (id);
@@ -21962,8 +21989,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      switch (_setjmp (buf.env))
 		{
 		case 0:
-		  /* Do not copy the string--just use the pointer. 
-		   * The pr_ routines for strings and sets have different 
+		  /* Do not copy the string--just use the pointer.
+		   * The pr_ routines for strings and sets have different
 		   * semantics for length. A negative length value for strings
 		   * means "don't copy thestring, just use the pointer".
 		   */
