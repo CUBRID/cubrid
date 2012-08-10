@@ -2526,7 +2526,7 @@ cas_oracle_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
   if (srv_h_id < 0)
     {
       err_code = srv_h_id;
-      goto prepare_error;
+      goto prepare_error_internal;
     }
 
   (*new_handle)->schema_type = -1;

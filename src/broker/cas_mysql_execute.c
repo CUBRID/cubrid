@@ -2411,14 +2411,14 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
   if (sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      goto prepare_error;
+      goto prepare_error_internal;
     }
 
   srv_h_id = hm_new_srv_handle (new_handle, query_seq_num);
   if (srv_h_id < 0)
     {
       err_code = srv_h_id;
-      goto prepare_error;
+      goto prepare_error_internal;
     }
 
   (*new_handle)->schema_type = -1;
