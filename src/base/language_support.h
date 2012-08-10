@@ -89,9 +89,8 @@
 #define LANG_COLL_UTF8_EN_CS	4
 #define LANG_COLL_UTF8_EN_CI	5
 #define LANG_COLL_UTF8_TR_CS	6
-#define LANG_COLL_ISO_KO_CS	7
-#define LANG_COLL_UTF8_KO_CS	8
-#define LANG_COLL_EUCKR_BINARY	9
+#define LANG_COLL_UTF8_KO_CS	7
+#define LANG_COLL_EUCKR_BINARY	8
 /*
  * message for fundamental error that occur before any messages catalogs
  * can be accessed or opened.

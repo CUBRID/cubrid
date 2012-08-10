@@ -75,15 +75,23 @@ struct lang_defaults
   const INTL_CODESET codeset;
 };
 
+/* Order of language/charset pair is important: first encoutered charset is
+ * the default for a language */
 LANG_DEFAULTS builtin_langs[] = {
   /* English - ISO-8859-1 - default lang and charset */
   {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_ISO88591},
   /* English - UTF-8 */
   {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_UTF8},
+  /* Korean - UTF-8 */
+  {LANG_NAME_KOREAN, INTL_LANG_KOREAN, INTL_CODESET_UTF8},
   /* Korean - EUC-KR */
   {LANG_NAME_KOREAN, INTL_LANG_KOREAN, INTL_CODESET_KSC5601_EUC},
+  /* Korean - ISO-8859-1 : contains romanized names for months, days */
+  {LANG_NAME_KOREAN, INTL_LANG_KOREAN, INTL_CODESET_ISO88591},
   /* Turkish - UTF-8 */
-  {LANG_NAME_TURKISH, INTL_LANG_TURKISH, INTL_CODESET_UTF8}
+  {LANG_NAME_TURKISH, INTL_LANG_TURKISH, INTL_CODESET_UTF8},
+  /* Turkish - ISO-8859-1 : contains romanized names for months, days */
+  {LANG_NAME_TURKISH, INTL_LANG_TURKISH, INTL_CODESET_ISO88591}
 };
 
 static void **loclib_handle = NULL;
@@ -354,21 +362,6 @@ static LANG_COLLATION coll_utf8_tr_cs = {
   lang_init_coll_utf8_tr_cs
 };
 
-static LANG_COLLATION coll_iso88591_ko_cs = {
-  INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
-  /* collation data */
-  {LANG_COLL_ISO_KO_CS, "iso88591_ko_cs",
-   LANG_COLL_GENERIC_SORT_OPT,
-   NULL, NULL, 0,
-   LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR,
-   "1e453eefb8103415d4a3edfc623c251f"},
-  lang_fastcmp_ko,
-  lang_next_alpha_char_iso88591,
-  lang_split_point_iso,
-  NULL
-};
-
 static LANG_COLLATION coll_utf8_ko_cs = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
   /* collation data - same as en_US.utf8 */
@@ -408,7 +401,6 @@ static LANG_COLLATION *built_in_collations[] = {
   &coll_utf8_en_cs,
   &coll_utf8_en_ci,
   &coll_utf8_tr_cs,
-  &coll_iso88591_ko_cs,
   &coll_utf8_ko_cs,
   &coll_euckr_bin,
 };
@@ -724,11 +716,11 @@ set_lang_from_env (void)
     {
       /* no charset provided in $CUBRID_LANG */
       (void) lang_get_builtin_lang_id_from_name (lang_Loc_name, &lang_Loc_id);
-      lang_Loc_charset = INTL_CODESET_ISO88591;
+      lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
       strcpy (lang_Lang_name, lang_Loc_name);
       if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
 	{
-	  charset = LANG_CHARSET_ISO88591;
+	  set_default_lang ();
 	  goto error;
 	}
     }
@@ -754,8 +746,8 @@ set_default_lang (void)
   lang_Loc_id = INTL_LANG_ENGLISH;
   strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
   strncpy (lang_Lang_name, LANG_NAME_DEFAULT, sizeof (lang_Lang_name));
-  lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
   lang_Loc_data = &lc_English_iso88591;
+  lang_Loc_charset = lang_Loc_data->codeset;
   lang_Loc_currency = lang_Loc_data->default_currency_code;
 }
 
@@ -1841,7 +1833,7 @@ static INTL_CODESET
 lang_get_default_codeset (const INTL_LANG intl_id)
 {
   unsigned int i;
-  INTL_CODESET codeset = INTL_CODESET_UTF8;
+  INTL_CODESET codeset = INTL_CODESET_NONE;
 
   for (i = 0; i < sizeof (builtin_langs) / sizeof (LANG_DEFAULTS); i++)
     {
@@ -4177,8 +4169,6 @@ lang_initloc_ko_iso (LANG_LOCALE_DATA * ld)
 {
   assert (ld != NULL);
 
-  coll_iso88591_ko_cs.default_lang = ld;
-
   ld->is_initialized = true;
 }
 
@@ -4351,7 +4341,7 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
   /* identifiers alphabet : same as English ISO */
   {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  &coll_iso88591_ko_cs,		/* collation : same as English ISO */
+  &coll_iso88591_en_cs,		/* collation : same as English ISO */
   NULL,				/* console text conversion */
   false,
   NULL,				/* time, date, date-time, timestamp format */
