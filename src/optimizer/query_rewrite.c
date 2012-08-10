@@ -7146,54 +7146,57 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
     {
       qo_do_auto_parameterize (parser, *wherep);
     }
-  if (*havingp && (call_auto_parameterize ||
-		   (*havingp)->force_auto_parameterize))
+
+  if (*havingp && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, *havingp);
     }
-  if (*startwithp && (call_auto_parameterize ||
-		      (*startwithp)->force_auto_parameterize))
+
+  if (*startwithp && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, *startwithp);
     }
-  if (*connectbyp && (call_auto_parameterize ||
-		      (*connectbyp)->force_auto_parameterize))
+
+  if (*connectbyp && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, *connectbyp);
     }
-  if (*aftercbfilterp && (call_auto_parameterize ||
-			  (*aftercbfilterp)->force_auto_parameterize))
+
+  if (*aftercbfilterp && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, *aftercbfilterp);
     }
+
   if (*merge_upd_wherep && (call_auto_parameterize ||
 			    (*merge_upd_wherep)->force_auto_parameterize))
     {
       qo_do_auto_parameterize (parser, *merge_upd_wherep);
     }
-  if (*merge_ins_wherep && (call_auto_parameterize ||
-			    (*merge_ins_wherep)->force_auto_parameterize))
+
+  if (*merge_ins_wherep && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, *merge_ins_wherep);
     }
-  if (*merge_del_wherep && (call_auto_parameterize ||
-			    (*merge_del_wherep)->force_auto_parameterize))
+
+  if (*merge_del_wherep && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, *merge_del_wherep);
     }
 
-  if (node->node_type == PT_SELECT && node->info.query.orderby_for &&
-      (call_auto_parameterize ||
-       node->info.query.orderby_for->force_auto_parameterize))
+  if (node->node_type == PT_SELECT && call_auto_parameterize
+      && node->info.query.orderby_for)
     {
       qo_do_auto_parameterize (parser, node->info.query.orderby_for);
     }
 
-  if (node->node_type == PT_UPDATE && node->info.update.orderby_for &&
-      (call_auto_parameterize ||
-       node->info.update.orderby_for->force_auto_parameterize))
+  if (node->node_type == PT_UPDATE && call_auto_parameterize)
     {
-      qo_do_auto_parameterize (parser, node->info.update.orderby_for);
+      qo_do_auto_parameterize (parser, node->info.update.assignment);
+
+      if (node->info.update.orderby_for)
+	{
+	  qo_do_auto_parameterize (parser, node->info.update.orderby_for);
+	}
     }
 
   if (node->node_type == PT_SELECT)
