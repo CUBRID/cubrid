@@ -419,7 +419,7 @@ void cci_log_finalize(void)
   logManager.clear();
 }
 
-void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
+void cci_log_writef(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -438,6 +438,21 @@ void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
       va_end(vl);
 
       l->log(level, buf);
+    }
+}
+
+void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *log)
+{
+  _Logger *l = (_Logger *) logger;
+
+  if (l == NULL)
+    {
+      return;
+    }
+
+  if (l->isLoggerWritable(level))
+    {
+      l->log(level, (char *) log);
     }
 }
 

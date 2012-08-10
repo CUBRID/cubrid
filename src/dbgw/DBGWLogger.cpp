@@ -122,7 +122,7 @@ namespace dbgw
     g_logMutex.unlock();
   }
 
-  void DBGWLogger::write(const char *szFile, int nLine, CCI_LOG_LEVEL level,
+  void DBGWLogger::writeLogF(const char *szFile, int nLine, CCI_LOG_LEVEL level,
       const char *szFormat, ...)
   {
     if (m_logger != NULL)
@@ -141,7 +141,24 @@ namespace dbgw
         vsnprintf(szLogFormat, LOG_BUFFER_SIZE, prefixBuf, vl);
         va_end(vl);
 
-        cci_log_write(level, m_logger, szLogFormat);
+        cci_log_writef(level, m_logger, szLogFormat);
+      }
+  }
+
+  void DBGWLogger::writeLog(const char *szFile, int nLine, CCI_LOG_LEVEL level,
+      const char *szLog)
+  {
+    if (m_logger != NULL)
+      {
+        const char *szBase = strrchr(szFile, '/');
+        szBase = szBase ? (szBase + 1) : szFile;
+        char fileLineBuf[32];
+        snprintf(fileLineBuf, 32, "%s:%d", szBase, nLine);
+
+        char logBuf[LOG_BUFFER_SIZE];
+        snprintf(logBuf, LOG_BUFFER_SIZE, " %-31s %s", fileLineBuf, szLog);
+
+        cci_log_write(level, m_logger, logBuf);
       }
   }
 

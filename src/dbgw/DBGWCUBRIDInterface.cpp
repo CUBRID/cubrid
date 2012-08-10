@@ -268,7 +268,7 @@ namespace dbgw
               DBGW_LOG_ERROR(m_logger.getLogMessage(replace.c_str()).c_str());
               throw e;
             }
-          DBGW_LOG_INFO("%s (CONN_ID:%d)",
+          DBGW_LOGF_INFO("%s (CONN_ID:%d)",
               m_logger.getLogMessage("connection open.").c_str(), m_hCCIConnection);
 
           return true;
@@ -305,7 +305,7 @@ namespace dbgw
                   throw e;
                 }
 
-              DBGW_LOG_INFO("%s (CONN_ID:%d)",
+              DBGW_LOGF_INFO("%s (CONN_ID:%d)",
                   m_logger.getLogMessage("connection close.").c_str(),
                   m_hCCIConnection);
               m_hCCIConnection = -1;
@@ -518,7 +518,7 @@ namespace dbgw
                   throw e;
                 }
 
-              DBGW_LOG_INFO("%s (REQ_ID:%d)",
+              DBGW_LOGF_INFO("%s (REQ_ID:%d)",
                   m_logger.getLogMessage("close statement.").c_str(), m_hCCIRequest);
               m_hCCIRequest = -1;
             }
@@ -547,7 +547,7 @@ namespace dbgw
           DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
-      DBGW_LOG_INFO("%s (REQ_ID:%d)",
+      DBGW_LOGF_INFO("%s (REQ_ID:%d)",
           m_logger.getLogMessage("prepare statement.").c_str(), m_hCCIRequest);
     }
 

@@ -493,8 +493,8 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
       cci_gettimeofday (&te, NULL);
       elapsed = (te.tv_sec - ts.tv_sec) * 1000;
       elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
-      CCI_LOG_DEBUG (con_handle->logger, "[NET][W][H][S:%d][E:%d][T:%d]",
-		     MSG_HEADER_SIZE, err, elapsed);
+      CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][H][S:%d][E:%d][T:%d]",
+		      MSG_HEADER_SIZE, err, elapsed);
     }
   if (err < 0)
     {
@@ -513,8 +513,8 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
       cci_gettimeofday (&te, NULL);
       elapsed = (te.tv_sec - ts.tv_sec) * 1000;
       elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
-      CCI_LOG_DEBUG (con_handle->logger, "[NET][W][B][S:%d][E:%d][T:%d]",
-		     size, err, elapsed);
+      CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][B][S:%d][E:%d][T:%d]",
+		      size, err, elapsed);
     }
   if (err < 0)
     {
@@ -568,8 +568,8 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       cci_gettimeofday (&te, NULL);
       elapsed = (te.tv_sec - ts.tv_sec) * 1000;
       elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
-      CCI_LOG_DEBUG (con_handle->logger, "[NET][R][H][S:%d][E:%d][T:%d]",
-		     MSG_HEADER_SIZE, result_code, elapsed);
+      CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][H][S:%d][E:%d][T:%d]",
+		      MSG_HEADER_SIZE, result_code, elapsed);
     }
   if (result_code < 0)
     {
@@ -627,9 +627,9 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  cci_gettimeofday (&te, NULL);
 	  elapsed = (te.tv_sec - ts.tv_sec) * 1000;
 	  elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
-	  CCI_LOG_DEBUG (con_handle->logger, "[NET][R][B][S:%d][E:%d][T:%d]",
-			 *(recv_msg_header.msg_body_size_ptr), result_code,
-			 elapsed);
+	  CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][B][S:%d][E:%d][T:%d]",
+			  *(recv_msg_header.msg_body_size_ptr), result_code,
+			  elapsed);
 	}
       if (result_code < 0)
 	{

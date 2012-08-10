@@ -383,7 +383,7 @@ namespace dbgw
     if (fp == NULL)
       {
         CreateFailParserExeception e(pParser->getFileName().c_str());
-        DBGW_LOG_ERROR("%s (%d)", e.what(), errno);
+        DBGW_LOGF_INFO("%s (%d)", e.what(), errno);
         throw e;
       }
 

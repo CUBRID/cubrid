@@ -76,13 +76,13 @@ extern "C"
 #define API_SLOG(con) \
   do { \
     if ((con)->log_trace_api) \
-      CCI_LOG_DEBUG ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
+      CCI_LOGF_DEBUG ((con)->logger, "[%04d][API][S][%s]", (con)->id, __func__); \
   } while (false)
 
 #define API_ELOG(con, err) \
   do { \
     if ((con)->log_trace_api) \
-      CCI_LOG_DEBUG ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
+      CCI_LOGF_DEBUG ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
   } while (false)
 
 #define strlen(s1)  ((int) strlen(s1))

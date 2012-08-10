@@ -103,6 +103,7 @@ EXPORTS
 	cci_log_get
 	cci_log_finalize
 	cci_log_write
+	cci_log_writef
 	cci_log_remove
 	cci_log_set_level
 	cci_log_is_writable

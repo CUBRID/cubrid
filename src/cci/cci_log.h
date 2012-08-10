@@ -46,31 +46,59 @@ typedef enum
   CCI_LOG_LEVEL_DEBUG
 } CCI_LOG_LEVEL;
 
-#define CCI_LOG_ERROR(logger, ...) \
+#define CCI_LOG_ERROR(logger, log) \
   do { \
     if (cci_log_is_writable(logger, CCI_LOG_LEVEL_ERROR)) { \
-      cci_log_write(CCI_LOG_LEVEL_ERROR, logger, __VA_ARGS__); \
+      cci_log_write(CCI_LOG_LEVEL_ERROR, logger, log); \
     } \
   } while (false)
 
-#define CCI_LOG_WARN(logger, ...) \
+#define CCI_LOGF_ERROR(logger, ...) \
+  do { \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_ERROR)) { \
+      cci_log_writef(CCI_LOG_LEVEL_ERROR, logger, __VA_ARGS__); \
+    } \
+  } while (false)
+
+#define CCI_LOG_WARN(logger, log) \
   do { \
     if (cci_log_is_writable(logger, CCI_LOG_LEVEL_WARN)) { \
-      cci_log_write(CCI_LOG_LEVEL_WARN, logger, __VA_ARGS__); \
+      cci_log_write(CCI_LOG_LEVEL_WARN, logger, log); \
     } \
   } while (false)
 
-#define CCI_LOG_INFO(logger, ...) \
+#define CCI_LOGF_WARN(logger, ...) \
+  do { \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_WARN)) { \
+      cci_log_writef(CCI_LOG_LEVEL_WARN, logger, __VA_ARGS__); \
+    } \
+  } while (false)
+
+#define CCI_LOG_INFO(logger, log) \
   do { \
     if (cci_log_is_writable(logger, CCI_LOG_LEVEL_INFO)) { \
-      cci_log_write(CCI_LOG_LEVEL_INFO, logger, __VA_ARGS__); \
+      cci_log_write(CCI_LOG_LEVEL_INFO, logger, log); \
     } \
   } while (false)
 
-#define CCI_LOG_DEBUG(logger, ...) \
+#define CCI_LOGF_INFO(logger, ...) \
+  do { \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_INFO)) { \
+      cci_log_writef(CCI_LOG_LEVEL_INFO, logger, __VA_ARGS__); \
+    } \
+  } while (false)
+
+#define CCI_LOG_DEBUG(logger, log) \
   do { \
     if (cci_log_is_writable(logger, CCI_LOG_LEVEL_DEBUG)) { \
-      cci_log_write(CCI_LOG_LEVEL_DEBUG, logger, __VA_ARGS__); \
+      cci_log_write(CCI_LOG_LEVEL_DEBUG, logger, log); \
+    } \
+  } while (false)
+
+#define CCI_LOGF_DEBUG(logger, ...) \
+  do { \
+    if (cci_log_is_writable(logger, CCI_LOG_LEVEL_DEBUG)) { \
+      cci_log_writef(CCI_LOG_LEVEL_DEBUG, logger, __VA_ARGS__); \
     } \
   } while (false)
 
@@ -81,8 +109,10 @@ extern "C"
 
   extern Logger cci_log_get(const char *path);
   extern void cci_log_finalize(void);
-  extern void cci_log_write(CCI_LOG_LEVEL level, Logger logger,
+  extern void cci_log_writef(CCI_LOG_LEVEL level, Logger logger,
       const char *format, ...);
+  extern void cci_log_write(CCI_LOG_LEVEL level, Logger logger,
+      const char *log);
   extern void cci_log_remove(const char *path);
   extern void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level);
   extern bool cci_log_is_writable(Logger logger, CCI_LOG_LEVEL level);
