@@ -406,6 +406,10 @@
 					RelativePath="..\..\src\broker\cas_xa.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_acl.c"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter
