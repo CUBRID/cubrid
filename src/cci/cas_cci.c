@@ -4629,8 +4629,17 @@ fetch_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 	}
     }
 
-  err_code = qe_fetch (req_handle, con_handle, flag, result_set_index,
-		       err_buf);
+  if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0
+      && (flag & CCI_FETCH_SENSITIVE) != 0)
+    {
+      err_code = CAS_ER_HOLDABLE_NOT_ALLOWED;
+    }
+
+  if (err_code >= 0)
+    {
+      err_code = qe_fetch (req_handle, con_handle, flag, result_set_index,
+			   err_buf);
+    }
 
   con_handle->ref_count = 0;
 
