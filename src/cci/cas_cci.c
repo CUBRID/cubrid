@@ -2451,6 +2451,11 @@ cci_set_holdability (int con_h_id, int holdable)
   T_CON_HANDLE *con_handle;
   int err_code = 0;
 
+  if (holdable < 0 || holdable > 1)
+    {
+      return CCI_ER_INVALID_HOLDABILITY;
+    }
+
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_set_con_handle_holdable %d", holdable));
@@ -4308,6 +4313,9 @@ cci_get_err_msg_internal (int err_code)
 
     case CCI_ER_INVALID_LOB_READ_POS:
       return "Invalid lob read position";
+
+    case CCI_ER_INVALID_HOLDABILITY:
+      return "Invalid holdability mode. The only accepted values are 0 or 1";
 
     case CAS_ER_INTERNAL:
       return "Not used";
