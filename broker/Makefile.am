@@ -85,7 +85,8 @@ broker_changer_SOURCES = \
 	$(BROKER_DIR)/broker_config.c \
 	$(BROKER_DIR)/broker_util.c \
 	$(BROKER_DIR)/broker_max_heap.c \
-	$(BROKER_DIR)/broker_filename.c
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/broker_acl.c
 broker_changer_LDADD = $(BROKER_CAS_LIBS)
 
 cubrid_broker_SOURCES = \
@@ -97,7 +98,8 @@ cubrid_broker_SOURCES = \
 	$(BROKER_DIR)/broker_admin_pub.c \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/broker_max_heap.c \
-	$(BROKER_DIR)/broker_filename.c
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/broker_acl.c
 cubrid_broker_LDADD = $(BROKER_CAS_LIBS)
 
 cub_cas_SOURCES = \
@@ -118,7 +120,8 @@ cub_cas_SOURCES = \
 	$(BROKER_DIR)/cas_sql_log2.c \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/broker_error.c \
-	$(BROKER_DIR)/cas_error.c
+	$(BROKER_DIR)/cas_error.c \
+	$(BROKER_DIR)/broker_acl.c
 cub_cas_CPPFLAGS = $(AM_CPPFLAGS) -DCAS_CUBRID
 cub_cas_LDADD = $(BROKER_CAS_LIBS) -lrt
 
@@ -158,7 +161,8 @@ libbrokeradmin_la_SOURCES = \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/broker_process_info.c \
-	$(BROKER_DIR)/broker_filename.c
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/broker_acl.c
 libbrokeradmin_la_CPPFLAGS = $(AM_CPPFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
 libbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@
 libbrokeradmin_la_LIBADD = @CS_LIB@

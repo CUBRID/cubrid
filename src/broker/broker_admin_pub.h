@@ -62,8 +62,8 @@ int admin_broker_conf_change (int, const char *, const char *, const char *,
 			      int);
 #endif /* !CUBRID_SHARD */
 int admin_del_cas_log (int master_shmid, const char *broker, int asid);
-int admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name);
-int admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name);
+int admin_acl_status_cmd (int master_shm_id, const char *broker_name);
+int admin_acl_reload_cmd (int master_shm_id, const char *broker_name);
 
 
 void admin_init_env (void);

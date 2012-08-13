@@ -74,6 +74,7 @@
 #include "broker_env_def.h"
 #include "broker_process_size.h"
 #include "cas_sql_log2.h"
+#include "broker_acl.h"
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -115,10 +116,6 @@ static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 				       T_REQ_INFO * req_info);
 #endif /* CUBRID_SHARD */
 
-static int check_access_right (char *dbname, char *dbuser,
-			       unsigned char *address);
-
-static int check_ip (IP_INFO * ip_info, unsigned char *address);
 #else /* !LIBCAS_FOR_JSP */
 extern int libcas_main (SOCKET jsp_sock_fd);
 extern void *libcas_get_db_result_set (int h_id);
@@ -148,10 +145,6 @@ int tran_timeout = 0;
 int query_timeout = 0;
 INT64 query_cancel_time;
 char query_cancel_flag;
-
-ACCESS_INFO cas_access_info[ACL_MAX_ITEM_COUNT];
-int num_cas_access_info;
-int acl_chn = 0;
 
 bool autocommit_deferred = false;
 #endif /* !LIBCAS_FOR_JSP */
@@ -1002,28 +995,8 @@ main (int argc, char *argv[])
 
 	    if (shm_appl->access_control)
 	      {
-		if (acl_chn != shm_appl->acl_chn)
-		  {
-#if defined (WINDOWS)
-		    char acl_sem_name[BROKER_NAME_LEN];
-
-		    MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
-		    uw_sem_wait (acl_sem_name);
-#else
-		    uw_sem_wait (&shm_appl->acl_sem);
-#endif
-		    memcpy (cas_access_info, shm_appl->access_info,
-			    sizeof (cas_access_info));
-		    num_cas_access_info = shm_appl->num_access_info;
-		    acl_chn = shm_appl->acl_chn;
-#if defined (WINDOWS)
-		    uw_sem_post (acl_sem_name);
-#else
-		    uw_sem_post (&shm_appl->acl_sem);
-#endif
-		  }
-
-		if (check_access_right (db_name, db_user, ip_addr) < 0)
+		if (access_control_check_right
+		    (shm_appl, db_name, db_user, ip_addr) < 0)
 		  {
 		    char err_msg[1024];
 
@@ -2197,82 +2170,6 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
   return EXCEPTION_EXECUTE_HANDLER;
 }
 #endif /* WINDOWS */
-
-static int
-check_access_right (char *dbname, char *dbuser, unsigned char *address)
-{
-  int i;
-  char *address_ptr;
-  int ret_val = -1;
-
-  if (address[0] == 127 && address[1] == 0 &&
-      address[2] == 0 && address[3] == 1)
-    {
-      return 0;
-    }
-
-  address_ptr = strchr (dbname, '@');
-  if (address_ptr != NULL)
-    {
-      *address_ptr = '\0';
-    }
-
-  for (i = 0; i < num_cas_access_info; i++)
-    {
-      if ((strcmp (cas_access_info[i].dbname, "*") == 0
-	   || strncasecmp (cas_access_info[i].dbname, dbname,
-			   ACL_MAX_DBNAME_LENGTH) == 0)
-	  && (strcmp (cas_access_info[i].dbuser, "*") == 0
-	      || strncasecmp (cas_access_info[i].dbuser, dbuser,
-			      ACL_MAX_DBUSER_LENGTH) == 0))
-	{
-	  if (check_ip (&cas_access_info[i].ip_info, address) == 0)
-	    {
-	      ret_val = 0;
-	      break;
-	    }
-	}
-    }
-
-  if (address_ptr != NULL)
-    {
-      *address_ptr = '@';
-    }
-
-  return ret_val;
-}
-
-static int
-check_ip (IP_INFO * ip_info, unsigned char *address)
-{
-  int i;
-
-  assert (ip_info && address);
-
-  if (address[0] == 127 && address[1] == 0 &&
-      address[2] == 0 && address[3] == 1)
-    {
-      return 0;
-    }
-
-  for (i = 0; i < ip_info->num_list; i++)
-    {
-      int address_index = i * IP_BYTE_COUNT;
-
-      if (ip_info->address_list[address_index] == 0)
-	{
-	  return 0;
-	}
-      else if (memcmp ((void *) &ip_info->address_list[address_index + 1],
-		       (void *) address,
-		       ip_info->address_list[address_index]) == 0)
-	{
-	  return 0;
-	}
-    }
-
-  return -1;
-}
 #endif /* !LIBCAS_FOR_JSP */
 
 #if defined(CUBRID_SHARD)

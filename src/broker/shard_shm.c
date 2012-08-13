@@ -83,52 +83,6 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
   strcpy (shm_as_p->err_log_dir, br_info_p->err_log_dir);
   strcpy (shm_as_p->broker_name, br_info_p->name);
 
-  /* SHARD TODO : not impmented yet - acl */
-#if 0
-  shm_appl->access_control = shm_br->access_control;
-  shm_appl->acl_chn = 0;
-
-  if (shm_br->access_control && shm_br->access_control_file[0] != '\0')
-    {
-      char *access_file_name;
-#if defined (WINDOWS)
-      char sem_name[BROKER_NAME_LEN];
-
-      MAKE_ACL_SEM_NAME (sem_name, br_info_p->name);
-
-      if (uw_sem_init (sem_name) < 0)
-	{
-	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
-		   br_info_p->name);
-	  uw_shm_detach (shm_appl);
-	  uw_shm_destroy (br_info_p->appl_server_shm_id);
-	  return -1;
-	}
-#else
-      if (uw_sem_init (&shm_appl->acl_sem) < 0)
-	{
-	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
-		   br_info_p->name);
-	  uw_shm_detach (shm_appl);
-	  uw_shm_destroy (br_info_p->appl_server_shm_id);
-	  return -1;
-	}
-#endif
-      if (shm_br->access_control_file[0] != '\0')
-	{
-	  set_cubrid_file (FID_ACCESS_CONTROL_FILE,
-			   shm_br->access_control_file);
-	  access_file_name = get_cubrid_file_ptr (FID_ACCESS_CONTROL_FILE);
-	  if (read_from_access_control_file (shm_appl, access_file_name) != 0)
-	    {
-	      uw_shm_detach (shm_appl);
-	      uw_shm_destroy (br_info_p->appl_server_shm_id);
-	      return -1;
-	    }
-	}
-    }
-#endif
-
 #if defined(WINDOWS)
   shm_appl->use_pdh_flag = FALSE;
   br_info_p->pdh_workset = 0;
@@ -811,15 +765,6 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
       fprintf (fp, BLANK_9 "%-30s = %-30s \n", "LAST_ACCESS_TIME",
 	       last_access_time);
     }
-  /* SHARD TODO : not implemented yet, acl */
-#if 0
-  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "CLT_APPL_NAME",
-	   as_info_p->clt_appl_name);
-  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "CLT_REQ_PATH_INFO",
-	   as_info_p->clt_req_path_info);
-  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "CLT_IP_ADDR",
-	   as_info_p->clt_ip_addr);
-#endif
   fprintf (fp, BLANK_9 "%-30s = %-30s \n", "COOKIE_STR",
 	   as_info_p->cookie_str);
   fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_REQUESTS_RECEIVED",

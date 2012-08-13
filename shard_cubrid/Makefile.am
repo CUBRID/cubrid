@@ -101,7 +101,8 @@ shard_broker_changer_SOURCES = \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_admin_pub.c \
-	$(BROKER_DIR)/shard_shm.c
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/broker_acl.c
 shard_broker_changer_LDADD = $(SHARD_BROKER_CAS_LIBS)
 
 shard_admin_SOURCES = \
@@ -116,7 +117,8 @@ shard_admin_SOURCES = \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_admin_pub.c \
-	$(BROKER_DIR)/shard_shm.c
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/broker_acl.c
 shard_admin_LDADD = $(SHARD_BROKER_CAS_LIBS)
 
 shard_cas_SOURCES = \
@@ -140,7 +142,8 @@ shard_cas_SOURCES = \
 	$(BROKER_DIR)/cas_error.c \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_admin_pub.c \
-	$(BROKER_DIR)/shard_shm.c
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/broker_acl.c
 shard_cas_CPPFLAGS = $(AM_CPPFLAGS) -DCAS_CUBRID
 shard_cas_LDADD = $(SHARD_BROKER_CAS_LIBS) -lrt
 
@@ -163,7 +166,8 @@ shard_proxy_SOURCES = \
 	$(BROKER_DIR)/shard_parser.c \
 	$(BROKER_DIR)/shard_key_func.c \
 	$(BROKER_DIR)/shard_proxy_log.c \
-	$(BROKER_DIR)/cas_util.c 
+	$(BROKER_DIR)/cas_util.c \
+	$(BROKER_DIR)/broker_acl.c
 shard_proxy_LDADD = $(SHARD_BROKER_CAS_LIBS)
 
 shard_broker_log_converter_SOURCES = \
@@ -204,7 +208,8 @@ libshardbrokeradmin_la_SOURCES = \
 	$(BROKER_DIR)/broker_process_info.c \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/shard_metadata.c \
-	$(BROKER_DIR)/shard_shm.c
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/broker_acl.c
 libshardbrokeradmin_la_CPPFLAGS = $(AM_CPPFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
 libshardbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@
 libshardbrokeradmin_la_LIBADD = @CS_LIB@

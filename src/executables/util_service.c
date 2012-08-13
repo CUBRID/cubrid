@@ -178,7 +178,8 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
   {ON, COMMAND_TYPE_ON, MASK_BROKER | MASK_SHARD},
   {OFF, COMMAND_TYPE_OFF, MASK_BROKER | MASK_SHARD},
-  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
+  {ACCESS_CONTROL, COMMAND_TYPE_ACL,
+   MASK_SERVER | MASK_BROKER | MASK_SHARD},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_SHARD},
   {-1, "", MASK_ALL}
 };
@@ -1817,7 +1818,7 @@ process_shard (int command_type, int argc, const char **argv,
 	  }
 	else
 	  {
-	    util_service_usage (BROKER);
+	    util_service_usage (SHARD);
 	    return ER_GENERIC_ERROR;
 	  }
 	status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);

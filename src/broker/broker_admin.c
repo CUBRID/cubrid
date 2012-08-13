@@ -363,7 +363,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "info");
 	}
     }
-#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "acl") == 0)
     {
       char *br_name = NULL;
@@ -382,11 +381,11 @@ main (int argc, char **argv)
 
       if (strcasecmp (argv[2], "reload") == 0)
 	{
-	  err_code = admin_broker_acl_reload_cmd (master_shm_id, br_name);
+	  err_code = admin_acl_reload_cmd (master_shm_id, br_name);
 	}
       else if (strcasecmp (argv[2], "status") == 0)
 	{
-	  err_code = admin_broker_acl_status_cmd (master_shm_id, br_name);
+	  err_code = admin_acl_status_cmd (master_shm_id, br_name);
 	}
       else
 	{
@@ -399,7 +398,6 @@ main (int argc, char **argv)
 	  return -1;
 	}
     }
-#endif /* !CUBRID_SHARD */
   else
     {
       goto usage;
@@ -410,7 +408,7 @@ main (int argc, char **argv)
 usage:
 #if defined(CUBRID_SHARD)
   printf ("%s (start | stop | restart | on | off"
-	  " | reset | info)\n", argv[0]);
+	  " | reset | info | acl)\n", argv[0]);
 #else
   printf ("%s (start | stop | add | drop | restart"
 	  " | on | off | suspend | resume | reset | job_first | info | acl)\n",

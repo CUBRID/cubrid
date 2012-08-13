@@ -63,6 +63,7 @@
 #include "broker_filename.h"
 #include "broker_error.h"
 #include "cas_sql_log2.h"
+#include "broker_acl.h"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbdef.h"
@@ -93,9 +94,6 @@
 
 #define MEMBER_SIZE(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
 #define NUM_OF_DIGITS(NUMBER) (int)log10(NUMBER) + 1
-
-#define ACCESS_FILE_DELIMITER ":"
-#define IP_FILE_DELIMITER ","
 
 #if defined(CUBRID_SHARD)
 #define	ALL_PROXY	-1
@@ -144,10 +142,7 @@ static const char *get_appl_server_name (int appl_server_type, char **env,
 					 int env_num);
 #endif /* !CUBRID_SHARD */
 static int broker_create_dir (const char *new_dir);
-static int read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl,
-					  char *filename);
-static int read_ip_info (IP_INFO * ip_info, char *filename);
-static void access_control_file_repath (char *path);
+
 #if !defined(WINDOWS)
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
@@ -374,6 +369,16 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 	    }
 
 	  if (shm_as_p == NULL || proxy_p == NULL)
+	    {
+	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+	      uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
+
+	      res = -1;
+	      break;
+	    }
+
+	  if (access_control_set_shm (shm_as_p, &shm_br->br_info[i],
+				      shm_br, admin_err_msg) < 0)
 	    {
 	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
 	      uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
@@ -921,6 +926,16 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 		}
 
 	      if (shm_as_p == NULL || proxy_p == NULL)
+		{
+		  uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+		  uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
+
+		  res = -1;
+		  break;
+		}
+
+	      if (access_control_set_shm (shm_as_p, &shm_br->br_info[i],
+					  shm_br, admin_err_msg) < 0)
 		{
 		  uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
 		  uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
@@ -2504,7 +2519,7 @@ admin_init_env ()
 }
 
 int
-admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name)
+admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 {
   int i, j, k, m;
   int br_index;
@@ -2660,7 +2675,7 @@ admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name)
 }
 
 int
-admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name)
+admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 {
   int i;
   int br_index;
@@ -2728,7 +2743,8 @@ admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
-	  if (read_from_access_control_file (shm_appl, access_file_name) != 0)
+	  if (access_control_read_config_file (shm_appl, access_file_name,
+					       admin_err_msg) != 0)
 	    {
 	      uw_shm_detach (shm_appl);
 	      uw_shm_detach (shm_br);
@@ -2751,7 +2767,8 @@ admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	  return -1;
 	}
 
-      if (read_from_access_control_file (shm_appl, access_file_name) != 0)
+      if (access_control_read_config_file (shm_appl, access_file_name,
+					   admin_err_msg) != 0)
 	{
 	  uw_shm_detach (shm_appl);
 	  uw_shm_detach (shm_br);
@@ -2831,48 +2848,14 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   strcpy (shm_appl->slow_log_dir, br_info->slow_log_dir);
   strcpy (shm_appl->err_log_dir, br_info->err_log_dir);
   strcpy (shm_appl->broker_name, br_info->name);
-  shm_appl->access_control = shm_br->access_control;
-  shm_appl->acl_chn = 0;
 
-  if (shm_br->access_control && shm_br->access_control_file[0] != '\0')
+  if (access_control_set_shm (shm_appl, br_info, shm_br, admin_err_msg) < 0)
     {
-      char *access_file_name;
-#if defined (WINDOWS)
-      char sem_name[BROKER_NAME_LEN];
-
-      MAKE_ACL_SEM_NAME (sem_name, br_info->name);
-
-      if (uw_sem_init (sem_name) < 0)
-	{
-	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
-		   br_info->name);
-	  uw_shm_detach (shm_appl);
-	  uw_shm_destroy (br_info->appl_server_shm_id);
-	  return -1;
-	}
-#else
-      if (uw_sem_init (&shm_appl->acl_sem) < 0)
-	{
-	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
-		   br_info->name);
-	  uw_shm_detach (shm_appl);
-	  uw_shm_destroy (br_info->appl_server_shm_id);
-	  return -1;
-	}
-#endif
-      if (shm_br->access_control_file[0] != '\0')
-	{
-	  set_cubrid_file (FID_ACCESS_CONTROL_FILE,
-			   shm_br->access_control_file);
-	  access_file_name = get_cubrid_file_ptr (FID_ACCESS_CONTROL_FILE);
-	  if (read_from_access_control_file (shm_appl, access_file_name) != 0)
-	    {
-	      uw_shm_detach (shm_appl);
-	      uw_shm_destroy (br_info->appl_server_shm_id);
-	      return -1;
-	    }
-	}
+      uw_shm_detach (shm_appl);
+      uw_shm_destroy (br_info->appl_server_shm_id);
+      return -1;
     }
+
 #if defined(WINDOWS)
   shm_appl->use_pdh_flag = FALSE;
   br_info->pdh_workset = 0;
@@ -3382,324 +3365,6 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
 }
 #endif /* !CUBRID_SHARD */
 
-static ACCESS_INFO *
-find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser)
-{
-  int i;
-
-  for (i = 0; i < size; i++)
-    {
-      if (strcmp (ai[i].dbname, dbname) == 0
-	  && strcmp (ai[i].dbuser, dbuser) == 0)
-	{
-	  return &ai[i];
-	}
-    }
-
-  return NULL;
-}
-
-static int
-read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
-{
-  char buf[1024], path_buf[256], *files, *token, *save;
-  FILE *fd_access_list;
-  int num_access_list = 0, line = 0;
-  ACCESS_INFO new_access_info[ACL_MAX_ITEM_COUNT];
-  ACCESS_INFO *access_info;
-  bool is_current_broker_section;
-#if defined(WINDOWS)
-  char acl_sem_name[BROKER_NAME_LEN];
-#endif
-
-  fd_access_list = fopen (filename, "r");
-
-  if (fd_access_list == NULL)
-    {
-      sprintf (admin_err_msg,
-	       "%s: error while loading access control file(%s)",
-	       shm_appl->broker_name, filename);
-      return -1;
-    }
-
-  is_current_broker_section = false;
-
-  memset (new_access_info, '\0', sizeof (new_access_info));
-
-  while (fgets (buf, 1024, fd_access_list))
-    {
-      char *dbname, *dbuser, *ip_file, *p;
-
-      line++;
-      p = strchr (buf, '#');
-      if (p != NULL)
-	{
-	  *p = '\0';
-	}
-
-      trim (buf);
-
-      if (buf[0] == '\0')
-	{
-	  continue;
-	}
-
-      if (is_current_broker_section == false &&
-	  strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
-	{
-	  buf[strlen (buf) - 1] = '\0';
-	  if (strcasecmp (shm_appl->broker_name, buf + 2) == 0)
-	    {
-	      is_current_broker_section = true;
-	      continue;
-	    }
-	}
-      if (is_current_broker_section == false)
-	{
-	  continue;
-	}
-
-      if (strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
-	{
-	  buf[strlen (buf) - 1] = '\0';
-	  if (strcasecmp (shm_appl->broker_name, buf + 2) != 0)
-	    {
-	      break;
-	    }
-	}
-
-      if (num_access_list >= ACL_MAX_ITEM_COUNT)
-	{
-	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s)"
-		   " - max item count(%d) exceeded.",
-		   shm_appl->broker_name, filename, ACL_MAX_ITEM_COUNT);
-	  goto error;
-	}
-
-      dbname = strtok (buf, ACCESS_FILE_DELIMITER);
-      if (dbname == NULL || strlen (dbname) > (ACL_MAX_DBNAME_LENGTH - 1))
-	{
-	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s:%d)"
-		   " - Database name is empty or too long.",
-		   shm_appl->broker_name, filename, line);
-	  goto error;
-	}
-
-      dbuser = strtok (NULL, ACCESS_FILE_DELIMITER);
-      if (dbuser == NULL || strlen (dbuser) > (ACL_MAX_DBUSER_LENGTH - 1))
-	{
-	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s:%d)"
-		   " - Database user is empty or too long.",
-		   shm_appl->broker_name, filename, line);
-	  goto error;
-	}
-
-      ip_file = strtok (NULL, ACCESS_FILE_DELIMITER);
-      if (ip_file == NULL)
-	{
-	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s:%d)"
-		   " - IP list file paths are empty.",
-		   shm_appl->broker_name, filename, line);
-	  goto error;
-	}
-
-      access_info = find_access_info (new_access_info, num_access_list,
-				      dbname, dbuser);
-      if (access_info == NULL)
-	{
-	  access_info = &new_access_info[num_access_list];
-	  strncpy (access_info->dbname, dbname, ACL_MAX_DBNAME_LENGTH);
-	  strncpy (access_info->dbuser, dbuser, ACL_MAX_DBUSER_LENGTH);
-	  num_access_list++;
-	}
-
-      if (access_info->ip_files[0] != '\0')
-	{
-	  strncat (access_info->ip_files, ",", LINE_MAX);
-	}
-      strncat (access_info->ip_files, ip_file, LINE_MAX);
-      for (files = ip_file;; files = NULL)
-	{
-	  token = strtok_r (files, IP_FILE_DELIMITER, &save);
-	  if (token == NULL)
-	    {
-	      break;
-	    }
-
-	  if (strlen (token) > 255)
-	    {
-	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
-			"%s: error while loading access control file(%s)"
-			" - a IP file path(%s) is too long",
-			shm_appl->broker_name, filename, token);
-	      goto error;
-	    }
-
-	  strncpy (path_buf, token, 256);
-	  access_control_file_repath (path_buf);
-	  if (read_ip_info (&(access_info->ip_info), path_buf) < 0)
-	    {
-	      goto error;
-	    }
-	}
-    }
-
-  fclose (fd_access_list);
-
-#if defined (WINDOWS)
-  MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
-  uw_sem_wait (acl_sem_name);
-#else
-  uw_sem_wait (&shm_appl->acl_sem);
-#endif
-
-  memcpy (shm_appl->access_info, new_access_info, sizeof (new_access_info));
-  shm_appl->num_access_info = num_access_list;
-  shm_appl->acl_chn++;
-
-#if defined(WINDOWS)
-  uw_sem_post (acl_sem_name);
-#else
-  uw_sem_post (&shm_appl->acl_sem);
-#endif
-
-  return 0;
-
-error:
-  fclose (fd_access_list);
-
-  return -1;
-}
-
-static void
-access_control_file_repath (char *path)
-{
-  char tmp_str[PATH_MAX];
-
-  trim (path);
-
-  if (IS_ABS_PATH (path))
-    {
-      return;
-    }
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  envvar_confdir_file (tmp_str, PATH_MAX, path);
-  strcpy (path, tmp_str);
-#endif
-
-  return;
-}
-
-static int
-read_ip_info (IP_INFO * ip_info, char *filename)
-{
-  char buf[LINE_MAX];
-  FILE *fd_ip_list;
-  unsigned char i, ln = 0;
-
-  fd_ip_list = fopen (filename, "r");
-
-  if (fd_ip_list == NULL)
-    {
-      sprintf (admin_err_msg, "Could not open ip info file(%s)", filename);
-      return -1;
-    }
-
-  buf[LINE_MAX - 2] = 0;
-  while (fgets (buf, LINE_MAX, fd_ip_list))
-    {
-      char *token, *p;
-      int address_index;
-
-      ln++;
-      if (buf[LINE_MAX - 2] != 0 && buf[LINE_MAX - 2] != '\n')
-	{
-	  sprintf (admin_err_msg, "Error while loading ip info file(%s)"
-		   " - %d line is too long", filename, ln);
-	  goto error;
-	}
-
-      p = strchr (buf, '#');
-      if (p != NULL)
-	{
-	  *p = '\0';
-	}
-
-      trim (buf);
-      if (buf[0] == '\0')
-	{
-	  continue;
-	}
-
-      if (ip_info->num_list >= ACL_MAX_IP_COUNT)
-	{
-	  sprintf (admin_err_msg,
-		   "Error while loading ip info file(%s)"
-		   " - max ip count(%d) exceeded.",
-		   filename, ACL_MAX_IP_COUNT);
-	  goto error;
-	}
-
-      token = strtok (buf, ".");
-
-      address_index = ip_info->num_list * IP_BYTE_COUNT;
-      for (i = 0; i < 4; i++)
-	{
-	  if (token == NULL)
-	    {
-	      sprintf (admin_err_msg,
-		       "Error while loading ip info file(%s)", filename);
-	      goto error;
-	    }
-
-	  if (strcmp (token, "*") == 0)
-	    {
-	      break;
-	    }
-	  else
-	    {
-	      long adr;
-	      char *p = NULL;
-
-	      adr = strtol (token, &p, 10);
-	      if ((errno == ERANGE) ||
-		  (errno != 0 && adr == 0) ||
-		  (p && *p != '\0') || (adr > 255 || adr < 0))
-		{
-		  sprintf (admin_err_msg,
-			   "Error while loading ip info file(%s)", filename);
-		  goto error;
-		}
-
-	      ip_info->address_list[address_index + 1 + i] =
-		(unsigned char) adr;
-	    }
-
-	  token = strtok (NULL, ".");
-	  if (i == 3 && token != NULL)
-	    {
-	      sprintf (admin_err_msg,
-		       "Error while loading ip info file(%s)", filename);
-	      goto error;
-	    }
-	}
-      ip_info->address_list[address_index] = i;
-      ip_info->num_list++;
-    }
-
-  fclose (fd_ip_list);
-  return 0;
-
-error:
-  fclose (fd_ip_list);
-  return -1;
-}
-
 #if !defined(WINDOWS)
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
@@ -3748,7 +3413,7 @@ get_cubrid_version ()
 #endif /* !WINDOWS */
 
 #if defined(CUBRID_SHARD)
-int
+static int
 shard_shm_set_param_proxy (T_SHM_PROXY * proxy_p, const char *param_name,
 			   const char *param_value, int proxy_id)
 {
@@ -3787,7 +3452,7 @@ shard_shm_set_param_proxy (T_SHM_PROXY * proxy_p, const char *param_name,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
 				    const char *param_name,
 				    const char *param_value)
@@ -3810,7 +3475,7 @@ shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_shard (T_PROXY_INFO * proxy_info_p,
 			   const char *param_name, const char *param_value,
 			   int shard_id)
@@ -3850,7 +3515,7 @@ shard_shm_set_param_shard (T_PROXY_INFO * proxy_info_p,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_shard_internal (T_SHARD_INFO * shard_info_p,
 				    const char *param_name,
 				    const char *param_value)
@@ -3869,7 +3534,7 @@ shard_shm_set_param_shard_internal (T_SHARD_INFO * shard_info_p,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_shard_in_proxy (T_SHM_PROXY * proxy_p,
 				    const char *param_name,
 				    const char *param_value, int proxy_id,
@@ -3910,7 +3575,7 @@ shard_shm_set_param_shard_in_proxy (T_SHM_PROXY * proxy_p,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_as (T_SHARD_INFO * shard_info_p, const char *param_name,
 			const char *param_value, int as_number)
 {
@@ -3940,7 +3605,7 @@ shard_shm_set_param_as (T_SHARD_INFO * shard_info_p, const char *param_name,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
 				 const char *param_name,
 				 const char *param_value)
@@ -3982,7 +3647,7 @@ shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
 }
 
 
-int
+static int
 shard_shm_set_param_as_in_shard (T_PROXY_INFO * proxy_info_p,
 				 const char *param_name,
 				 const char *param_value, int shard_id,
@@ -4023,7 +3688,7 @@ shard_shm_set_param_as_in_shard (T_PROXY_INFO * proxy_info_p,
   return 0;
 }
 
-int
+static int
 shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p,
 				 const char *param_name,
 				 const char *param_value, int proxy_id,

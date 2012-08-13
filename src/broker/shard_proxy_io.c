@@ -34,6 +34,7 @@
 #include "cas_protocol.h"
 #include "cas_error.h"
 #include "shard_shm.h"
+#include "broker_acl.h"
 
 #define PROC_TYPE_CLIENT        0
 #define PROC_TYPE_CAS           1
@@ -138,7 +139,6 @@ int maxfd = 0;
 T_SOCKET_IO_GLOBAL proxy_Socket_io;
 T_CLIENT_IO_GLOBAL proxy_Client_io;
 T_SHARD_IO_GLOBAL proxy_Shard_io;
-
 
 /* SHARD ONLY SUPPORT ver.8.1.6 ~ */
 int cas_info_size = CAS_INFO_SIZE;
@@ -1232,6 +1232,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   T_IO_BUFFER *read_buffer;
   T_SHARD_USER *user_p;
   T_PROXY_EVENT *event_p;
+  unsigned char *ip_addr;
 
   ENTER_FUNC ();
 
@@ -1290,7 +1291,29 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	}
     }
 
-  /* SHARD TODO : check acl */
+  ip_addr = (unsigned char *) (&sock_io_p->ip_addr);
+
+  /* check acl */
+  if (shm_as_p->access_control)
+    {
+      if (access_control_check_right (shm_as_p, db_name, db_user, ip_addr) <
+	  0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
+		     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
+		     db_name, db_user, db_passwd);
+	  proxy_socket_io_read_error (sock_io_p);
+
+	  if (shm_as_p->access_log == ON)
+	    {
+	      proxy_access_log (&client_start_time,
+				sock_io_p->ip_addr, db_name, db_user, false);
+	    }
+
+	  EXIT_FUNC ();
+	  return -1;
+	}
+    }
 
   /* send dbinfo_ok to the client */
   event_p = proxy_event_new_with_rsp (PROXY_EVENT_IO_WRITE,

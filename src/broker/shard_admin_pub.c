@@ -259,8 +259,9 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
   time_t cur_time = time (NULL);
   struct tm ct;
   char cmd_buf[BUFSIZ];
-
 #if defined(WINDOWS)
+  char sem_name[BROKER_NAME_LEN];
+
   if (localtime_r (&cur_time, &ct) < 0)
     {
       return -1;
@@ -322,15 +323,11 @@ end:
   br_info_p->num_busy_count = 0;
   br_info_p->service_flag = OFF;
 
-  /* SHARD TODO : not implemented yet - acl */
-#if 0
-  /* "broker/broker_admin_pub.c" 2885 lines */
 #if defined (WINDOWS)
-  MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
-  uw_sem_destroy (acl_sem_name);
+  MAKE_ACL_SEM_NAME (sem_name, br_info_p->name);
+  uw_sem_destroy (sem_name);
 #else
-  uw_sem_destroy (&shm_appl->acl_sem);
-#endif
+  uw_sem_destroy (&shm_as_p->acl_sem);
 #endif
 
   if (shm_as_cp)
@@ -583,12 +580,6 @@ shard_as_activate (int as_shm_id,
   as_info_p->session_id = 0;
   as_info_p->uts_status = UTS_STATUS_START;
   as_info_p->reset_flag = FALSE;
-  /* SHARD TODO : not implemented yet - acl */
-#if 0
-  as_info_p->clt_appl_name[0] = '\0';
-  as_info_p->clt_req_path_info[0] = '\0';
-  as_info_p->clt_ip_addr[0] = '\0';
-#endif
   as_info_p->cur_sql_log_mode = shm_as_p->sql_log_mode;
   as_info_p->cur_slow_log_mode = shm_as_p->slow_log_mode;
 
