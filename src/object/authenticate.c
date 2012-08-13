@@ -6249,6 +6249,12 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
        */
       if (name != NULL)
 	{
+	  if (strlen (name) >= DB_MAX_USER_LENGTH)
+	    {
+	      error = ER_USER_NAME_TOO_LONG;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
+	    }
 	  strcpy (Au_user_name, name);
 	}
 
