@@ -198,10 +198,14 @@ static char *xts_process_set_spec_type (char *ptr,
 static char *xts_process_method_spec_type (char *ptr,
 					   const METHOD_SPEC_TYPE *
 					   method_spec);
+static char *xts_process_rlist_spec_type (char *ptr,
+					  const SET_SPEC_TYPE * set_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
 static char *xts_process_val_list (char *ptr, const VAL_LIST * val_list);
 static char *xts_process_regu_variable (char *ptr,
 					const REGU_VARIABLE * regu_var);
+static char *xts_pack_regu_variable_value (char *ptr,
+					   const REGU_VARIABLE * regu_var);
 static char *xts_process_attr_descr (char *ptr,
 				     const ATTR_DESCR * attr_descr);
 static char *xts_process_pos_descr (char *ptr,
@@ -225,6 +229,9 @@ static char *xts_process_method_sig_list (char *ptr,
 static char *xts_process_connectby_proc (char *ptr,
 					 const CONNECTBY_PROC_NODE *
 					 connectby_proc);
+static char *xts_process_regu_value_list (char *ptr,
+					  const REGU_VALUE_LIST *
+					  regu_value_list);
 
 static int xts_sizeof_xasl_node (const XASL_NODE * ptr);
 static int xts_sizeof_filter_pred_node (const PRED_EXPR_WITH_CONTEXT * ptr);
@@ -262,6 +269,7 @@ static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
 static int xts_sizeof_list_id (const QFILE_LIST_ID * ptr);
 static int xts_sizeof_val_list (const VAL_LIST * ptr);
 static int xts_sizeof_regu_variable (const REGU_VARIABLE * ptr);
+static int xts_get_regu_variable_value_size (const REGU_VARIABLE * ptr);
 static int xts_sizeof_attr_descr (const ATTR_DESCR * ptr);
 static int xts_sizeof_pos_descr (const QFILE_TUPLE_VALUE_POSITION * ptr);
 static int xts_sizeof_db_value (const DB_VALUE * ptr);
@@ -273,6 +281,8 @@ static int xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * ptr);
 static int xts_sizeof_sort_list (const SORT_LIST * ptr);
 static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
+static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST *
+				       regu_value_list);
 
 static int xts_mark_ptr_visited (const void *ptr, int offset);
 static int xts_get_offset_visited_ptr (const void *ptr);
@@ -4048,6 +4058,12 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 					&ACCESS_SPEC_LIST_SPEC (access_spec));
       break;
 
+    case TARGET_REGUVAL_LIST:
+      ptr =
+	xts_process_rlist_spec_type (ptr,
+				     &ACCESS_SPEC_LIST_SPEC (access_spec));
+      break;
+
     case TARGET_SET:
       ptr = xts_process_set_spec_type (ptr,
 				       &ACCESS_SPEC_SET_SPEC (access_spec));
@@ -4336,6 +4352,15 @@ xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec)
 }
 
 static char *
+xts_process_rlist_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
+{
+  /* here, currently empty implementation,
+   * actually, it can do some extra info save.
+   */
+  return ptr;
+}
+
+static char *
 xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
 {
   int offset;
@@ -4441,11 +4466,30 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = xts_pack_regu_variable_value (ptr, regu_var);
+
+  return ptr;
+}
+
+static char *
+xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
+{
+  int offset;
+
+  assert (ptr != NULL && regu_var != NULL);
+
   switch (regu_var->type)
     {
+    case TYPE_REGUVAL_LIST:
+      ptr = xts_process_regu_value_list (ptr, regu_var->value.reguval_list);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
+      break;
     case TYPE_DBVAL:
       ptr = xts_process_db_value (ptr, &regu_var->value.dbval);
-      if (offset == ER_FAILED)
+      if (ptr == NULL)
 	{
 	  return NULL;
 	}
@@ -4946,6 +4990,45 @@ xts_process_connectby_proc (char *ptr,
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, (int) connectby_proc->single_table_opt);
+
+  return ptr;
+}
+
+/*
+ * xts_process_regu_value_list () -
+ *   return:
+ *   ptr(in)                    :
+ *   regu_value_list(int)        :
+ */
+static char *
+xts_process_regu_value_list (char *ptr,
+			     const REGU_VALUE_LIST * regu_value_list)
+{
+  REGU_VALUE_ITEM *regu_value_item;
+  int offset;
+  REGU_DATATYPE type;
+
+  assert (regu_value_list);
+
+  ptr = or_pack_int (ptr, regu_value_list->count);
+  for (regu_value_item = regu_value_list->regu_list; regu_value_item;
+       regu_value_item = regu_value_item->next)
+    {
+      type = regu_value_item->value->type;
+      if (type != TYPE_DBVAL && type != TYPE_INARITH
+	  && type != TYPE_POS_VALUE)
+	{
+	  xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, type);
+
+      ptr = xts_pack_regu_variable_value (ptr, regu_value_item->value);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
+    }
 
   return ptr;
 }
@@ -5755,6 +5838,10 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       size += tmp_size;
       break;
 
+    case TARGET_REGUVAL_LIST:
+      /* currently do nothing */
+      break;
+
     case TARGET_SET:
       tmp_size =
 	xts_sizeof_set_spec_type (&ACCESS_SPEC_SET_SPEC (access_spec));
@@ -6025,71 +6112,80 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
   size += PTR_SIZE;		/* vfetch_to */
   size += PTR_SIZE;		/* REGU_VARIABLE_XASL */
 
+  tmp_size = xts_get_regu_variable_value_size (regu_var);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
+
+  return size;
+}
+
+/*
+ * xts_get_regu_variable_value_size () -
+ *   return:
+ *   regu_var(in)    :
+ */
+static int
+xts_get_regu_variable_value_size (const REGU_VARIABLE * regu_var)
+{
+  int size = ER_FAILED;
+
+  assert (regu_var);
+
   switch (regu_var->type)
     {
+    case TYPE_REGUVAL_LIST:
+      size = xts_sizeof_regu_value_list (regu_var->value.reguval_list);
+      break;
+
     case TYPE_DBVAL:
-      tmp_size =
-	OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) (&regu_var->value.dbval));
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
+      size = OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) (&regu_var->value.dbval));
       break;
 
     case TYPE_CONSTANT:
     case TYPE_ORDERBY_NUM:
-      size += PTR_SIZE;		/* dbvalptr */
+      size = PTR_SIZE;		/* dbvalptr */
       break;
 
     case TYPE_INARITH:
     case TYPE_OUTARITH:
-      size += PTR_SIZE;		/* arithptr */
+      size = PTR_SIZE;		/* arithptr */
       break;
 
     case TYPE_AGGREGATE:
-      size += PTR_SIZE;		/* aggptr */
+      size = PTR_SIZE;		/* aggptr */
       break;
 
     case TYPE_FUNC:
-      size += PTR_SIZE;		/* funcp */
+      size = PTR_SIZE;		/* funcp */
       break;
 
     case TYPE_ATTR_ID:
     case TYPE_SHARED_ATTR_ID:
     case TYPE_CLASS_ATTR_ID:
-      tmp_size = xts_sizeof_attr_descr (&regu_var->value.attr_descr);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
+      size = xts_sizeof_attr_descr (&regu_var->value.attr_descr);
       break;
 
     case TYPE_LIST_ID:
-      size += PTR_SIZE;		/* srlist_id */
+      size = PTR_SIZE;		/* srlist_id */
       break;
 
     case TYPE_POSITION:
-      tmp_size = xts_sizeof_pos_descr (&regu_var->value.pos_descr);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
+      size = xts_sizeof_pos_descr (&regu_var->value.pos_descr);
       break;
 
     case TYPE_POS_VALUE:
-      size += OR_INT_SIZE;	/* val_pos */
+      size = OR_INT_SIZE;	/* val_pos */
       break;
 
     case TYPE_OID:
     case TYPE_CLASSOID:
+      size = 0;
       break;
-
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
-      return ER_FAILED;
     }
 
   return size;
@@ -6326,6 +6422,38 @@ xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * connectby)
     PTR_SIZE +			/* after_cb_regu_list_pred */
     PTR_SIZE +			/* after_cb_regu_list_rest */
     OR_INT_SIZE;		/* single_table_opt */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_regu_value_list () -
+ *   return:
+ *   regu_value_list(in)    :
+ */
+static int
+xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list)
+{
+  int size, tmp_size;
+  REGU_VALUE_ITEM *regu_value_item;
+
+  assert (regu_value_list);
+
+  size = tmp_size = 0;
+
+  size += OR_INT_SIZE;
+  for (regu_value_item = regu_value_list->regu_list; regu_value_item;
+       regu_value_item = regu_value_item->next)
+    {
+      tmp_size = xts_get_regu_variable_value_size (regu_value_item->value);
+
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+
+      size += OR_INT_SIZE + tmp_size;	/* OR_INT_SIZE for type */
+    }
 
   return size;
 }

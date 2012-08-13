@@ -169,6 +169,9 @@ static int setof_mop_to_setof_vobj (PARSER_CONTEXT * parser, DB_SET * seq,
 				    DB_VALUE * new_val);
 static REGU_VARIABLE *pt_make_regu_hostvar (PARSER_CONTEXT * parser,
 					    const PT_NODE * node);
+static REGU_VARIABLE *pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser,
+						    const PT_NODE * node,
+						    UNBOX unbox);
 static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser,
 					     DB_VALUE * db_value,
 					     const DB_TYPE db_type,
@@ -5993,6 +5996,67 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
   return regu;
 }
 
+/*
+ * pt_make_regu_reguvalues_list () - takes a pt_node of host variable and make
+ *                                   a regu_variable of value list reference
+ *   return: A NULL return indicates an error occurred
+ *   parser(in):
+ *   node(in):
+ */
+static REGU_VARIABLE *
+pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node,
+			      UNBOX unbox)
+{
+  REGU_VARIABLE *regu = NULL;
+  REGU_VALUE_LIST *regu_list = NULL;
+  REGU_VALUE_ITEM *list_node = NULL;
+  PT_NODE *temp = NULL;
+
+  assert (node);
+
+  regu = regu_var_alloc ();
+  if (regu)
+    {
+      regu->type = TYPE_REGUVAL_LIST;
+
+      regu_list = regu_regu_value_list_alloc ();
+      if (regu_list == NULL)
+	{
+	  return NULL;
+	}
+      regu->value.reguval_list = regu_list;
+
+      for (temp = node->info.node_list.list; temp; temp = temp->next_row)
+	{
+	  list_node = regu_regu_value_item_alloc ();
+	  if (list_node == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  if (regu_list->current_value == NULL)
+	    {
+	      regu_list->regu_list = list_node;
+	    }
+	  else
+	    {
+	      regu_list->current_value->next = list_node;
+	    }
+
+	  regu_list->current_value = list_node;
+	  list_node->value = pt_to_regu_variable (parser, temp, unbox);
+	  if (list_node->value == NULL)
+	    {
+	      return NULL;
+	    }
+	  regu_list->count += 1;
+	}
+      regu_list->current_value = regu_list->regu_list;
+      regu->domain = regu_list->regu_list->value->domain;
+    }
+
+  return regu;
+}
 
 /*
  * pt_make_regu_constant () - takes a db_value and db_type and makes
@@ -9035,6 +9099,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      regu = pt_make_regu_hostvar (parser, node);
 	      break;
 
+	    case PT_NODE_LIST:
+	      regu = pt_make_regu_reguvalues_list (parser, node, unbox);
+	      break;
+
 	    case PT_VALUE:
 	      value = pt_value_to_db (parser, node);
 	      if (value)
@@ -11693,10 +11761,20 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	  if (index_pred == NULL)
 	    {
 	      TARGET_TYPE scan_type;
-	      if (spec->info.spec.meta_class == PT_META_CLASS)
-		scan_type = TARGET_CLASS_ATTR;
+
+	      /* for VALUES query, a new scan type is set */
+	      if (PT_IS_VALUE_QUERY (spec))
+		{
+		  scan_type = TARGET_REGUVAL_LIST;
+		}
+	      else if (spec->info.spec.meta_class == PT_META_CLASS)
+		{
+		  scan_type = TARGET_CLASS_ATTR;
+		}
 	      else
-		scan_type = TARGET_CLASS;
+		{
+		  scan_type = TARGET_CLASS;
+		}
 
 	      if (!pt_split_attrs (parser, table_info, where_part,
 				   &pred_attrs, &rest_attrs,
@@ -12740,6 +12818,9 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
   QPROC_DB_VALUE_LIST value_list = NULL;
   int i;
   bool skip_hidden;
+  PT_NODE *new_node_list = NULL;
+  int list_len = 0;
+  PT_NODE *cur;
 
   outlist = regu_outlist_alloc ();
   if (outlist == NULL)
@@ -12750,6 +12831,69 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
     }
 
   regulist = &outlist->valptrp;
+
+  /* link next_row for PT_VALUE,PT_NAME,PT_EXPR... in PT_NODE_LIST */
+  if (node_list && node_list->node_type == PT_NODE_LIST)
+    {
+      node = node_list->info.node_list.list;
+      while (node)
+	{
+	  ++list_len;
+	  node = node->next;
+	}
+
+      /* new list head_nodes */
+      new_node_list =
+	(PT_NODE *) pt_alloc_packing_buf (list_len * sizeof (PT_NODE));
+      if (new_node_list == NULL)
+	{
+	  PT_ERRORm (parser, node_list, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto exit_on_error;
+	}
+
+      for (i = 0, node = node_list->info.node_list.list; i < list_len && node;
+	   ++i, node = node->next)
+	{
+	  new_node_list[i].node_type = PT_NODE_LIST;	/* type must be set before init */
+	  parser_init_node (&new_node_list[i]);
+	  new_node_list[i].info.node_list.list = node;
+	  PT_SET_VALUE_QUERY (&new_node_list[i]);
+
+	  if (i == list_len - 1)
+	    {
+	      new_node_list[i].next = NULL;
+	    }
+	  else
+	    {
+	      new_node_list[i].next = &new_node_list[i + 1];
+	    }
+	}
+
+      /*  link next_row pointer */
+      for (node = node_list; node && node->next; node = node->next)
+	{
+	  /* column count of rows are checked in semantic_check.c */
+	  for (cur = node->info.node_list.list, node_next =
+	       node->next->info.node_list.list; cur && node_next;
+	       cur = cur->next, node_next = node_next->next)
+	    {
+	      cur->next_row = node_next;
+	    }
+	}
+
+      assert (node);
+
+      /* Now node points to the last row of node_list
+       * set the last row's next_row pointer to NULL
+       */
+      for (cur = node->info.node_list.list; cur != NULL; cur = cur->next)
+	{
+	  cur->next_row = NULL;
+	}
+
+      node_list = new_node_list;
+    }
 
   for (node = node_list, node_next = node ? node->next : NULL;
        node != NULL; node = node_next, node_next = node ? node->next : NULL)
@@ -14513,7 +14657,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		  else
 		    {
 		      xasl->instnum_pred = xasl->ordbynum_pred;
-		    }		  
+		    }
 
 		  /* When we set instnum_val to point to the DBVALUE
 		   * referenced by ordbynum_val, we lose track the DBVALUE

@@ -147,6 +147,8 @@ static void regu_srlistid_init (QFILE_SORTED_LIST_ID * ptr);
 static void regu_domain_init (SM_DOMAIN * ptr);
 static void regu_cache_attrinfo_init (HEAP_CACHE_ATTRINFO * ptr);
 static void regu_selupd_list_init (SELUPD_LIST * ptr);
+static void regu_regu_value_list_init (REGU_VALUE_LIST * ptr);
+static void regu_regu_value_item_init (REGU_VALUE_ITEM * ptr);
 static PT_NODE *pt_create_param_for_value (PARSER_CONTEXT * parser,
 					   PT_NODE * value,
 					   int host_var_index);
@@ -1549,7 +1551,7 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node,
  */
 PT_NODE *
 pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-			   int *continue_walk)
+			 int *continue_walk)
 {
   int *op_list = (int *) arg;
   int i;
@@ -5380,6 +5382,83 @@ regu_selupd_list_init (SELUPD_LIST * ptr)
   ptr->class_hfid.hpgid = NULL_PAGEID;
   ptr->select_list_size = 0;
   ptr->select_list = NULL;
+}
+
+/*
+ * regu_regu_value_list_alloc () -
+ *   return:
+ */
+REGU_VALUE_LIST *
+regu_regu_value_list_alloc (void)
+{
+  REGU_VALUE_LIST *regu_value_list = NULL;
+
+  regu_value_list =
+    (REGU_VALUE_LIST *) pt_alloc_packing_buf (sizeof (REGU_VALUE_LIST));
+
+  if (regu_value_list == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+    }
+  else
+    {
+      regu_regu_value_list_init (regu_value_list);
+    }
+
+  return regu_value_list;
+}
+
+/*
+ * regu_regu_value_list_init () -
+ *   return:
+ *   ptr(in)    :
+ */
+static void
+regu_regu_value_list_init (REGU_VALUE_LIST * regu_value_list)
+{
+  assert (regu_value_list != NULL);
+
+  regu_value_list->count = 0;
+  regu_value_list->current_value = NULL;
+  regu_value_list->regu_list = NULL;
+}
+
+/*
+ * regu_regu_value_item_alloc () -
+ *   return:
+ */
+REGU_VALUE_ITEM *
+regu_regu_value_item_alloc (void)
+{
+  REGU_VALUE_ITEM *regu_value_item = NULL;
+
+  regu_value_item =
+    (REGU_VALUE_ITEM *) pt_alloc_packing_buf (sizeof (REGU_VALUE_ITEM));
+
+  if (regu_value_item == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+    }
+  else
+    {
+      regu_regu_value_item_init (regu_value_item);
+    }
+
+  return regu_value_item;
+}
+
+/*
+ * regu_regu_value_item_init () -
+ *   return:
+ *   ptr(in)    :
+ */
+static void
+regu_regu_value_item_init (REGU_VALUE_ITEM * regu_value_item)
+{
+  assert (regu_value_item != NULL);
+
+  regu_value_item->next = NULL;
+  regu_value_item->value = NULL;
 }
 
 /*

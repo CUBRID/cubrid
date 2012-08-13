@@ -415,6 +415,13 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
       list = query->info.query.q.select.list;
       if (!list)
 	return NULL;
+
+      /* return the first row of PT_NODE_LIST */
+      if (list->node_type == PT_NODE_LIST)
+	{
+	  return list->info.node_list.list;
+	}
+
       if (list->node_type == PT_VALUE && list->type_enum == PT_TYPE_STAR)
 	return NULL;
 

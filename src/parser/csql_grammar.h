@@ -547,7 +547,7 @@ enum yytokentype
 
 
 /* Copy the first part of user declarations.  */
-#line 28 "../../src/parser/csql_grammar.y"
+#line 28 "../src/parser/csql_grammar.y"
 
 #define YYMAXDEPTH	1000000
 
@@ -1067,7 +1067,7 @@ typedef struct YYLTYPE
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 552 "../../src/parser/csql_grammar.y"
+#line 552 "../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1078,8 +1078,8 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2604 of glr.c.  */
-#line 1082 "../../src/parser/csql_grammar.h"
+/* Line 2616 of glr.c.  */
+#line 1082 "../src/parser/csql_grammar.h"
 YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

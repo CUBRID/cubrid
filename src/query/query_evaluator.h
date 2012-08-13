@@ -118,8 +118,11 @@ typedef enum
 				   use current object identifier value */
   TYPE_CLASSOID,		/* does not have corresponding field
 				   use current class identifier value */
-  TYPE_FUNC			/* use funcp */
+  TYPE_FUNC,			/* use funcp */
+  TYPE_REGUVAL_LIST		/* use reguval_list */
 } REGU_DATATYPE;
+
+typedef struct regu_value_list REGU_VALUE_LIST;
 
 typedef struct regu_variable_node REGU_VARIABLE;
 struct regu_variable_node
@@ -154,7 +157,22 @@ struct regu_variable_node
     QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
     int val_pos;		/* host variable references */
     struct function_node *funcp;	/* function */
+    REGU_VALUE_LIST *reguval_list;	/* for "values" query */
   } value;
+};
+
+typedef struct regu_value_item REGU_VALUE_ITEM;
+struct regu_value_item
+{
+  REGU_VARIABLE *value;		/* REGU_VARIABLE */
+  REGU_VALUE_ITEM *next;	/* next item */
+};
+
+struct regu_value_list
+{
+  REGU_VALUE_ITEM *regu_list;	/* list head */
+  REGU_VALUE_ITEM *current_value;	/* current used item */
+  int count;
 };
 
 #define REGU_VARIABLE_XASL(r)      ((r)->xasl)

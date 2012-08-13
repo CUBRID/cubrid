@@ -486,6 +486,12 @@
 #define PT_IS_SORT_SPEC_NODE(n) \
         ( (n) ? ((n)->node_type == PT_SORT_SPEC) : false )
 
+#define PT_IS_VALUE_QUERY(n) \
+          ((n)->is_value_query == 1)
+
+#define PT_SET_VALUE_QUERY(n) \
+          ((n)->is_value_query = 1)
+
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
           (PT_IS_EXPR_NODE (n) ? (n)->info.expr.is_order_dependent \
@@ -662,7 +668,7 @@ enum pt_custom_print
 				 * calls pt_short_print
 				 * instead pt_print_tree
 				 */
- PT_SUPPRESS_FULL_RANGE_TERM = 0x4000000       /* This is for query in create ... as ... */
+  PT_SUPPRESS_FULL_RANGE_TERM = 0x4000000	/* This is for query in create ... as ... */
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2796,6 +2802,7 @@ struct parser_node
 				   originating this */
   PT_NODE *next;		/* forward link for NULL terminated list */
   PT_NODE *or_next;		/* forward link for DNF list */
+  PT_NODE *next_row;		/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST */
   void *etc;			/* application specific info hook */
   UINTPTR spec_ident;		/* entity spec equivalence class */
   TP_DOMAIN *expected_domain;	/* expected domain for input marker */
@@ -2825,6 +2832,8 @@ struct parser_node
   unsigned is_cnf_start:1;
   unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
   unsigned skip_sort:1;		/* skip this node on DISTINCT sorting */
+  unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST
+				 * for PT_SELECT that "values" generated */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 

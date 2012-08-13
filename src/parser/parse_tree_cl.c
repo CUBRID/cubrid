@@ -2151,6 +2151,8 @@ parser_init_node (PT_NODE * node)
       node->is_click_counter = 0;
       node->skip_sort = 0;
       node->buffer_pos = -1;
+      node->next_row = NULL;
+      node->is_value_query = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -13305,6 +13307,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *temp, *where_list;
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
+  bool is_first_list;
 
   if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IDX_SCHEMA))
     {
@@ -13361,396 +13364,436 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "(");
     }
 
-  q = pt_append_nulstring (parser, q, "select ");
-
-  if (p->info.query.q.select.hint != PT_HINT_NONE
-      || (p->info.query.hint != PT_HINT_NONE
-	  && p->info.query.hint != PT_HINT_REEXECUTE))
+  temp = p->info.query.q.select.list;
+  if (temp && temp->node_type == PT_NODE_LIST)	/* values(...),... */
     {
-      q = pt_append_nulstring (parser, q, "/*+ ");
-      if (p->info.query.hint & PT_HINT_QUERY_CACHE)
-	{
-	  /* query cache */
-	  q = pt_append_nulstring (parser, q, "QUERY_CACHE");
-	  if (p->info.query.qcache_hint)
-	    {
-	      r1 = pt_print_bytes (parser, p->info.query.qcache_hint);
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ") ");
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " ");
-	    }
-	}
-      if (p->info.query.q.select.hint & PT_HINT_ORDERED)
-	{
-	  /* force join left-to-right */
-	  q = pt_append_nulstring (parser, q, "ORDERED");
-	  if (p->info.query.q.select.ordered)
-	    {
-	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.ordered);
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ") ");
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " ");
-	    }
-	}
+      q = pt_append_nulstring (parser, q, "values ");
 
-#if 0
-      if (p->info.query.q.select.hint & PT_HINT_W)
+      is_first_list = true;
+      for (temp = temp; temp; temp = temp->next)
 	{
-	  /* -- not used */
-	  q = pt_append_nulstring (parser, q, "W ");
-	}
-      if (p->info.query.q.select.hint & PT_HINT_X)
-	{
-	  /* -- not used */
-	  q = pt_append_nulstring (parser, q, "X ");
-	}
-      if (p->info.query.q.select.hint & PT_HINT_Y)
-	{
-	  /* -- not used */
-	  q = pt_append_nulstring (parser, q, "Y ");
-	}
-#endif /* 0 */
+	  if (!is_first_list)
+	    {
+	      q = pt_append_nulstring (parser, q, ",(");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, "(");
+	      is_first_list = false;
+	    }
 
-      if (p->info.query.q.select.hint & PT_HINT_USE_NL)
-	{
-	  /* force nl-join */
-	  q = pt_append_nulstring (parser, q, "USE_NL");
-	  if (p->info.query.q.select.use_nl)
-	    {
-	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.use_nl);
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ") ");
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " ");
-	    }
-	}
-      if (p->info.query.q.select.hint & PT_HINT_USE_IDX)
-	{
-	  /* force idx-join */
-	  q = pt_append_nulstring (parser, q, "USE_IDX");
-	  if (p->info.query.q.select.use_idx)
-	    {
-	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.use_idx);
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ") ");
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " ");
-	    }
-	}
-      if (p->info.query.q.select.hint & PT_HINT_USE_MERGE)
-	{
-	  /* force merge-join */
-	  q = pt_append_nulstring (parser, q, "USE_MERGE");
-	  if (p->info.query.q.select.use_merge)
-	    {
-	      r1 = pt_print_bytes_l (parser,
-				     p->info.query.q.select.use_merge);
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ") ");
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " ");
-	    }
-	}
-
-#if 0
-      if (p->info.query.q.select.hint & PT_HINT_USE_HASH)
-	{
-	  /* -- not used */
-	  q = pt_append_nulstring (parser, q, "USE_HASH ");
-	}
-#endif /* 0 */
-      if (p->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
-	  && p->info.query.q.select.waitsecs_hint)
-	{
-	  /* lock timeout */
-	  q = pt_append_nulstring (parser, q, "LOCK_TIMEOUT(");
-	  r1 = pt_print_bytes (parser, p->info.query.q.select.waitsecs_hint);
+	  r1 = pt_print_bytes_l (parser, temp->info.node_list.list);
 	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ") ");
+
+	  q = pt_append_nulstring (parser, q, ")");
 	}
-
-      if (p->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
-	{
-	  q = pt_append_nulstring (parser, q, "USE_DESC_IDX ");
-	}
-
-      if (p->info.query.q.select.hint & PT_HINT_NO_COVERING_IDX)
-	{
-	  q = pt_append_nulstring (parser, q, "NO_COVERING_IDX ");
-	}
-
-      if (p->info.query.q.select.hint & PT_HINT_NO_IDX_DESC)
-	{
-	  q = pt_append_nulstring (parser, q, "NO_DESC_IDX ");
-	}
-
-      q = pt_append_nulstring (parser, q, "*/ ");
-    }
-
-  if (p->info.query.all_distinct == PT_ALL)
-    {
-      /* left out "all", its the default. */
-    }
-  else if (p->info.query.all_distinct == PT_DISTINCT)
-    {
-      q = pt_append_nulstring (parser, q, "distinct ");
-    }
-
-  if (!(parser->custom_print & PT_SUPPRESS_SELECT_LIST) ||
-      p->info.query.is_subquery == PT_IS_SUBQUERY)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
-      q = pt_append_varchar (parser, q, r1);
     }
   else
     {
-      temp = p->info.query.q.select.list;
-      while (temp)
+      q = pt_append_nulstring (parser, q, "select ");
+
+      if (p->info.query.q.select.hint != PT_HINT_NONE
+	  || (p->info.query.hint != PT_HINT_NONE
+	      && p->info.query.hint != PT_HINT_REEXECUTE))
 	{
-	  q = pt_append_nulstring (parser, q, "NA");
-	  if (temp->next)
+	  q = pt_append_nulstring (parser, q, "/*+ ");
+	  if (p->info.query.hint & PT_HINT_QUERY_CACHE)
 	    {
-	      q = pt_append_nulstring (parser, q, ",");
-	    }
-	  temp = temp->next;
-	}
-    }
-
-  if (parser->custom_print & PT_PRINT_ALIAS)
-    {
-      parser->custom_print ^= PT_PRINT_ALIAS;
-      toggle_print_alias = true;
-    }
-
-  if (!(parser->custom_print & PT_SUPPRESS_INTO))
-    {
-      if (p->info.query.into_list)
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.into_list);
-	  q = pt_append_nulstring (parser, q, " into ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-    }
-
-  if (p->info.query.q.select.from)
-    {
-      r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
-      q = pt_append_nulstring (parser, q, " from ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-
-  if (p->info.query.q.select.single_table_opt && p->info.query.q.select.from
-      && !p->info.query.q.select.from->next)
-    {
-      int level;
-      qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-      if (OPTIMIZATION_ENABLED (level))
-	{
-	  assert (p->info.query.q.select.start_with == NULL);
-	  p->info.query.q.select.start_with = p->info.query.q.select.where;
-	  p->info.query.q.select.where = NULL;
-	}
-    }
-
-  if (p->info.query.q.select.after_cb_filter)
-    {
-      /* We need to print out the filter too. There's no special syntax for it,
-         the filter is part of the where clause. */
-      where_list = parser_append_node (p->info.query.q.select.after_cb_filter,
-				       p->info.query.q.select.where);
-    }
-  else
-    {
-      where_list = p->info.query.q.select.where;
-    }
-
-  if (where_list)
-    {
-      r1 = pt_print_and_list (parser, where_list);
-      if (r1 != NULL)
-	{
-	  q = pt_append_nulstring (parser, q, " where ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-    }
-
-  if (p->info.query.q.select.after_cb_filter)
-    {
-      if (p->info.query.q.select.where)
-	{
-	  /* We appended the filtering expression to the join expression and we
-	     need to cut that link. */
-	  assert (where_list == p->info.query.q.select.where);
-	  while (where_list->next != p->info.query.q.select.after_cb_filter)
-	    {
-	      where_list = where_list->next;
-	    }
-	  where_list->next = NULL;
-	}
-      else
-	{
-	  assert (where_list == p->info.query.q.select.after_cb_filter);
-	}
-    }
-
-  if (p->info.query.q.select.start_with)
-    {
-      r1 = pt_print_and_list (parser, p->info.query.q.select.start_with);
-      q = pt_append_nulstring (parser, q, " start with ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-
-  if (p->info.query.q.select.single_table_opt && p->info.query.q.select.from
-      && !p->info.query.q.select.from->next)
-    {
-      int level;
-      qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-      if (OPTIMIZATION_ENABLED (level))
-	{
-	  assert (p->info.query.q.select.where == NULL);
-	  p->info.query.q.select.where = p->info.query.q.select.start_with;
-	  p->info.query.q.select.start_with = NULL;
-	}
-    }
-
-  if (p->info.query.q.select.connect_by)
-    {
-      r1 = pt_print_and_list (parser, p->info.query.q.select.connect_by);
-      if (p->info.query.q.select.has_nocycle)
-	{
-	  q = pt_append_nulstring (parser, q, " connect by nocycle ");
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, " connect by ");
-	}
-      q = pt_append_varchar (parser, q, r1);
-    }
-
-  if (p->info.query.q.select.group_by)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.q.select.group_by);
-      q = pt_append_nulstring (parser, q, " group by ");
-      q = pt_append_varchar (parser, q, r1);
-      if (p->info.query.q.select.group_by->with_rollup)
-	{
-	  q = pt_append_nulstring (parser, q, " with rollup");
-	}
-    }
-
-  if (p->info.query.q.select.having)
-    {
-      r1 = pt_print_and_list (parser, p->info.query.q.select.having);
-      q = pt_append_nulstring (parser, q, " having ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-
-  if (p->info.query.q.select.using_index)
-    {
-      if (p->info.query.q.select.using_index->info.name.original == NULL)
-	{
-	  if (p->info.query.q.select.using_index->info.name.resolved == NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, " using index none");
-	    }
-	  else
-	    {
-	      if (p->info.query.q.select.using_index->etc == (void *) -3)
+	      /* query cache */
+	      q = pt_append_nulstring (parser, q, "QUERY_CACHE");
+	      if (p->info.query.qcache_hint)
 		{
-		  r1 = pt_print_bytes_l (parser,
-					 p->info.query.q.select.using_index);
-		  q = pt_append_nulstring (parser, q, " using index ");
+		  r1 = pt_print_bytes (parser, p->info.query.qcache_hint);
+		  q = pt_append_nulstring (parser, q, "(");
 		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
 		}
 	      else
 		{
-		  r1 = pt_print_bytes_l (parser,
-					 p->info.query.q.select.using_index->
-					 next);
-		  q =
-		    pt_append_nulstring (parser, q,
-					 " using index all except ");
-		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, " ");
 		}
 	    }
+	  if (p->info.query.q.select.hint & PT_HINT_ORDERED)
+	    {
+	      /* force join left-to-right */
+	      q = pt_append_nulstring (parser, q, "ORDERED");
+	      if (p->info.query.q.select.ordered)
+		{
+		  r1 =
+		    pt_print_bytes_l (parser, p->info.query.q.select.ordered);
+		  q = pt_append_nulstring (parser, q, "(");
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " ");
+		}
+	    }
+
+#if 0
+	  if (p->info.query.q.select.hint & PT_HINT_W)
+	    {
+	      /* -- not used */
+	      q = pt_append_nulstring (parser, q, "W ");
+	    }
+	  if (p->info.query.q.select.hint & PT_HINT_X)
+	    {
+	      /* -- not used */
+	      q = pt_append_nulstring (parser, q, "X ");
+	    }
+	  if (p->info.query.q.select.hint & PT_HINT_Y)
+	    {
+	      /* -- not used */
+	      q = pt_append_nulstring (parser, q, "Y ");
+	    }
+#endif /* 0 */
+
+	  if (p->info.query.q.select.hint & PT_HINT_USE_NL)
+	    {
+	      /* force nl-join */
+	      q = pt_append_nulstring (parser, q, "USE_NL");
+	      if (p->info.query.q.select.use_nl)
+		{
+		  r1 =
+		    pt_print_bytes_l (parser, p->info.query.q.select.use_nl);
+		  q = pt_append_nulstring (parser, q, "(");
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " ");
+		}
+	    }
+	  if (p->info.query.q.select.hint & PT_HINT_USE_IDX)
+	    {
+	      /* force idx-join */
+	      q = pt_append_nulstring (parser, q, "USE_IDX");
+	      if (p->info.query.q.select.use_idx)
+		{
+		  r1 =
+		    pt_print_bytes_l (parser, p->info.query.q.select.use_idx);
+		  q = pt_append_nulstring (parser, q, "(");
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " ");
+		}
+	    }
+	  if (p->info.query.q.select.hint & PT_HINT_USE_MERGE)
+	    {
+	      /* force merge-join */
+	      q = pt_append_nulstring (parser, q, "USE_MERGE");
+	      if (p->info.query.q.select.use_merge)
+		{
+		  r1 = pt_print_bytes_l (parser,
+					 p->info.query.q.select.use_merge);
+		  q = pt_append_nulstring (parser, q, "(");
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " ");
+		}
+	    }
+
+#if 0
+	  if (p->info.query.q.select.hint & PT_HINT_USE_HASH)
+	    {
+	      /* -- not used */
+	      q = pt_append_nulstring (parser, q, "USE_HASH ");
+	    }
+#endif /* 0 */
+	  if (p->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
+	      && p->info.query.q.select.waitsecs_hint)
+	    {
+	      /* lock timeout */
+	      q = pt_append_nulstring (parser, q, "LOCK_TIMEOUT(");
+	      r1 =
+		pt_print_bytes (parser, p->info.query.q.select.waitsecs_hint);
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
+	    {
+	      q = pt_append_nulstring (parser, q, "USE_DESC_IDX ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_COVERING_IDX)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_COVERING_IDX ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_IDX_DESC)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_DESC_IDX ");
+	    }
+
+	  q = pt_append_nulstring (parser, q, "*/ ");
 	}
-      else
+
+      if (p->info.query.all_distinct == PT_ALL)
 	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index);
-	  q = pt_append_nulstring (parser, q, " using index ");
+	  /* left out "all", its the default. */
+	}
+      else if (p->info.query.all_distinct == PT_DISTINCT)
+	{
+	  q = pt_append_nulstring (parser, q, "distinct ");
+	}
+
+      if (!(parser->custom_print & PT_SUPPRESS_SELECT_LIST) ||
+	  p->info.query.is_subquery == PT_IS_SUBQUERY)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
 	  q = pt_append_varchar (parser, q, r1);
 	}
-    }
-
-  if (p->info.query.q.select.with_increment)
-    {
-      temp = p->info.query.q.select.with_increment;
-      q = pt_append_nulstring (parser, q,
-			       ((temp->node_type == PT_EXPR
-				 && temp->info.expr.op == PT_DECR)
-				? "with decrement for "
-				: "with increment for "));
-      q = pt_append_varchar (parser, q,
-			     pt_print_bytes_l (parser,
-					       p->info.query.q.
-					       select.with_increment));
-    }
-
-  if (p->info.query.order_by)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-      if (p->info.query.order_siblings)
+      else
 	{
-	  q = pt_append_nulstring (parser, q, " order siblings by ");
+	  temp = p->info.query.q.select.list;
+	  while (temp)
+	    {
+	      q = pt_append_nulstring (parser, q, "NA");
+	      if (temp->next)
+		{
+		  q = pt_append_nulstring (parser, q, ",");
+		}
+	      temp = temp->next;
+	    }
+	}
+
+      if (parser->custom_print & PT_PRINT_ALIAS)
+	{
+	  parser->custom_print ^= PT_PRINT_ALIAS;
+	  toggle_print_alias = true;
+	}
+
+      if (!(parser->custom_print & PT_SUPPRESS_INTO))
+	{
+	  if (p->info.query.into_list)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.query.into_list);
+	      q = pt_append_nulstring (parser, q, " into ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	}
+
+      if (p->info.query.q.select.from)
+	{
+	  r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
+	  q = pt_append_nulstring (parser, q, " from ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.query.q.select.single_table_opt
+	  && p->info.query.q.select.from
+	  && !p->info.query.q.select.from->next)
+	{
+	  int level;
+	  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+	  if (OPTIMIZATION_ENABLED (level))
+	    {
+	      assert (p->info.query.q.select.start_with == NULL);
+	      p->info.query.q.select.start_with =
+		p->info.query.q.select.where;
+	      p->info.query.q.select.where = NULL;
+	    }
+	}
+
+      if (p->info.query.q.select.after_cb_filter)
+	{
+	  /* We need to print out the filter too. There's no special syntax for it,
+	     the filter is part of the where clause. */
+	  where_list =
+	    parser_append_node (p->info.query.q.select.after_cb_filter,
+				p->info.query.q.select.where);
 	}
       else
 	{
-	  q = pt_append_nulstring (parser, q, " order by ");
+	  where_list = p->info.query.q.select.where;
 	}
-      q = pt_append_varchar (parser, q, r1);
-    }
 
-  if (p->info.query.orderby_for)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      q = pt_append_nulstring (parser, q, " for ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+      if (where_list)
+	{
+	  r1 = pt_print_and_list (parser, where_list);
+	  if (r1 != NULL)
+	    {
+	      q = pt_append_nulstring (parser, q, " where ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	}
 
-  if (p->info.query.for_update)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      q = pt_append_nulstring (parser, q, " for update of ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+      if (p->info.query.q.select.after_cb_filter)
+	{
+	  if (p->info.query.q.select.where)
+	    {
+	      /* We appended the filtering expression to the join expression and we
+	         need to cut that link. */
+	      assert (where_list == p->info.query.q.select.where);
+	      while (where_list->next !=
+		     p->info.query.q.select.after_cb_filter)
+		{
+		  where_list = where_list->next;
+		}
+	      where_list->next = NULL;
+	    }
+	  else
+	    {
+	      assert (where_list == p->info.query.q.select.after_cb_filter);
+	    }
+	}
 
-  if (p->info.query.limit && p->info.query.rewrite_limit)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.limit);
-      q = pt_append_nulstring (parser, q, " limit ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+      if (p->info.query.q.select.start_with)
+	{
+	  r1 = pt_print_and_list (parser, p->info.query.q.select.start_with);
+	  q = pt_append_nulstring (parser, q, " start with ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
 
-  if (toggle_print_alias == true)
-    {
-      parser->custom_print ^= PT_PRINT_ALIAS;
+      if (p->info.query.q.select.single_table_opt
+	  && p->info.query.q.select.from
+	  && !p->info.query.q.select.from->next)
+	{
+	  int level;
+	  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+	  if (OPTIMIZATION_ENABLED (level))
+	    {
+	      assert (p->info.query.q.select.where == NULL);
+	      p->info.query.q.select.where =
+		p->info.query.q.select.start_with;
+	      p->info.query.q.select.start_with = NULL;
+	    }
+	}
+
+      if (p->info.query.q.select.connect_by)
+	{
+	  r1 = pt_print_and_list (parser, p->info.query.q.select.connect_by);
+	  if (p->info.query.q.select.has_nocycle)
+	    {
+	      q = pt_append_nulstring (parser, q, " connect by nocycle ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " connect by ");
+	    }
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.query.q.select.group_by)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.group_by);
+	  q = pt_append_nulstring (parser, q, " group by ");
+	  q = pt_append_varchar (parser, q, r1);
+	  if (p->info.query.q.select.group_by->with_rollup)
+	    {
+	      q = pt_append_nulstring (parser, q, " with rollup");
+	    }
+	}
+
+      if (p->info.query.q.select.having)
+	{
+	  r1 = pt_print_and_list (parser, p->info.query.q.select.having);
+	  q = pt_append_nulstring (parser, q, " having ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.query.q.select.using_index)
+	{
+	  if (p->info.query.q.select.using_index->info.name.original == NULL)
+	    {
+	      if (p->info.query.q.select.using_index->info.name.resolved ==
+		  NULL)
+		{
+		  q = pt_append_nulstring (parser, q, " using index none");
+		}
+	      else
+		{
+		  if (p->info.query.q.select.using_index->etc == (void *) -3)
+		    {
+		      r1 = pt_print_bytes_l (parser,
+					     p->info.query.q.select.
+					     using_index);
+		      q = pt_append_nulstring (parser, q, " using index ");
+		      q = pt_append_varchar (parser, q, r1);
+		    }
+		  else
+		    {
+		      r1 = pt_print_bytes_l (parser,
+					     p->info.query.q.select.
+					     using_index->next);
+		      q =
+			pt_append_nulstring (parser, q,
+					     " using index all except ");
+		      q = pt_append_varchar (parser, q, r1);
+		    }
+		}
+	    }
+	  else
+	    {
+	      r1 =
+		pt_print_bytes_l (parser, p->info.query.q.select.using_index);
+	      q = pt_append_nulstring (parser, q, " using index ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	}
+
+      if (p->info.query.q.select.with_increment)
+	{
+	  temp = p->info.query.q.select.with_increment;
+	  q = pt_append_nulstring (parser, q,
+				   ((temp->node_type == PT_EXPR
+				     && temp->info.expr.op == PT_DECR)
+				    ? "with decrement for "
+				    : "with increment for "));
+	  q = pt_append_varchar (parser, q,
+				 pt_print_bytes_l (parser,
+						   p->info.query.q.
+						   select.with_increment));
+	}
+
+      if (p->info.query.order_by)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.order_by);
+	  if (p->info.query.order_siblings)
+	    {
+	      q = pt_append_nulstring (parser, q, " order siblings by ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " order by ");
+	    }
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.query.orderby_for)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
+	  q = pt_append_nulstring (parser, q, " for ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.query.for_update)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.for_update);
+	  q = pt_append_nulstring (parser, q, " for update of ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.query.limit)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.limit);
+	  q = pt_append_nulstring (parser, q, " limit ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (toggle_print_alias == true)
+	{
+	  parser->custom_print ^= PT_PRINT_ALIAS;
+	}
     }
 
   if (set_paren)

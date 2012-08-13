@@ -1426,7 +1426,9 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		      ;		/* step to next */
 		    }
 
-		  if (attr && col && qo_is_reduceable_const (col))
+		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
+		  if (attr && col && !PT_IS_VALUE_QUERY (col)
+		      && qo_is_reduceable_const (col))
 		    {
 		      /* add additional equailty-term; is reduced */
 		      *wherep =

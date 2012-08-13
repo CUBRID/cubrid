@@ -6855,6 +6855,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *spec = NULL;
   SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
   bool arg1_is_false = false;
+  PT_NODE *list;
 
   switch (node->node_type)
     {
@@ -6936,8 +6937,26 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_SELECT:
       if (node->info.query.q.select.list)
 	{
-	  node->type_enum = node->info.query.q.select.list->type_enum;
-	  dt = node->info.query.q.select.list->data_type;
+	  /* for value query, compatibility check for rows */
+	  if (PT_IS_VALUE_QUERY (node))
+	    {
+	      if (pt_check_type_compatibility_of_values_query (parser, node)
+		  == NULL)
+		{
+		  break;
+		}
+	      list = node->info.query.q.select.list->info.node_list.list;
+	      assert (list != NULL);
+
+	      node->type_enum = list->type_enum;
+	      dt = list->data_type;
+	    }
+	  else
+	    {
+	      node->type_enum = node->info.query.q.select.list->type_enum;
+	      dt = node->info.query.q.select.list->data_type;
+	    }
+
 	  if (dt)
 	    {
 	      if (node->data_type)
@@ -7057,9 +7076,21 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
       else
 	{
 	  /* check that signatures are compatible */
-	  if (!pt_check_union_compatibility (parser, node))
+	  if ((arg1 && PT_IS_VALUE_QUERY (arg1))
+	      || (arg2 && PT_IS_VALUE_QUERY (arg2)))
 	    {
-	      break;
+	      if (pt_check_union_type_compatibility_of_values_query
+		  (parser, node) == NULL)
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	      if (!pt_check_union_compatibility (parser, node))
+		{
+		  break;
+		}
 	    }
 
 	  node->type_enum = node->info.query.q.union_.arg1->type_enum;
@@ -17897,6 +17928,7 @@ end:
       result->column_number = column;
       result->alias_print = alias_print;
       result->is_hidden_column = is_hidden_column;
+      result->is_value_query = expr->is_value_query;
 
       if (result != expr)
 	{

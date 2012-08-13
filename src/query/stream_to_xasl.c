@@ -127,7 +127,8 @@ static void stx_set_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY *
-						       thread_p, char **ptr);
+						       thread_p, char **ptr,
+						       void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p,
 						   char *ptr);
 static FUNCTION_TYPE *stx_restore_function_type (THREAD_ENTRY * thread_p,
@@ -237,7 +238,7 @@ static char *stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *tmp,
 static char *stx_build_rlike_eval_term (THREAD_ENTRY * thread_p, char *tmp,
 					RLIKE_EVAL_TERM * ptr);
 static char *stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *tmp,
-					 ACCESS_SPEC_TYPE * ptr);
+					 ACCESS_SPEC_TYPE * ptr, void *arg);
 static char *stx_build_indx_info (THREAD_ENTRY * thread_p, char *tmp,
 				  INDX_INFO * ptr);
 static char *stx_build_indx_id (THREAD_ENTRY * thread_p, char *tmp,
@@ -248,6 +249,9 @@ static char *stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *tmp,
 				      CLS_SPEC_TYPE * ptr);
 static char *stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *tmp,
 				       LIST_SPEC_TYPE * ptr);
+static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr,
+					REGUVAL_LIST_SPEC_TYPE * spec,
+					OUTPTR_LIST * outptr_list);
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp,
 				      SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp,
@@ -258,6 +262,8 @@ static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp,
 				      QPROC_DB_VALUE_LIST ptr);
 static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp,
 				      REGU_VARIABLE * ptr);
+static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p,
+					     char *tmp, REGU_VARIABLE * ptr);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp,
 				   ATTR_DESCR * ptr);
 static char *stx_build_pos_descr (char *tmp,
@@ -279,6 +285,14 @@ static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp,
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp,
 				       CONNECTBY_PROC_NODE * ptr);
 
+static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY *
+							    thread_p);
+static REGU_VALUE_ITEM *stx_regu_value_item_alloc_and_init (THREAD_ENTRY *
+							    thread_p);
+static char *stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
+					REGU_VALUE_LIST * regu_value_list);
+static void stx_init_regu_variable (REGU_VARIABLE * regu);
+
 static int stx_mark_struct_visited (THREAD_ENTRY * thread_p, const void *ptr,
 				    void *str);
 static void *stx_get_struct_visited_ptr (THREAD_ENTRY * thread_p,
@@ -288,6 +302,7 @@ static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
 static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p,
 				      char *xasl_stream,
 				      int xasl_stream_size);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_unpack_char (char *tmp, char *ptr);
 static char *stx_unpack_long (char *tmp, long *ptr);
@@ -1715,7 +1730,7 @@ error:
  * The array size is restored first, then the array.
  */
 static ACCESS_SPEC_TYPE *
-stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr)
+stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg)
 {
   ACCESS_SPEC_TYPE *access_spec_type = NULL;
   int total, i;
@@ -1735,7 +1750,8 @@ stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr)
   for (i = 0; i < total; i++)
     {
       *ptr =
-	stx_build_access_spec_type (thread_p, *ptr, &access_spec_type[i]);
+	stx_build_access_spec_type (thread_p, *ptr, &access_spec_type[i],
+				    arg);
       if (*ptr == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -1760,6 +1776,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   int offset;
   int tmp;
+  REGUVAL_LIST_SPEC_TYPE *rlist_spec_type = NULL;
 
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
@@ -1940,9 +1957,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
-  xasl->spec_list = stx_restore_access_spec_type (thread_p, &ptr);
+  xasl->spec_list =
+    stx_restore_access_spec_type (thread_p, &ptr, (void *) xasl->outptr_list);
 
-  xasl->merge_spec = stx_restore_access_spec_type (thread_p, &ptr);
+  xasl->merge_spec = stx_restore_access_spec_type (thread_p, &ptr, NULL);
   if (ptr == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
@@ -2255,7 +2273,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
-  xasl->curr_spec = stx_restore_access_spec_type (thread_p, &ptr);
+  xasl->curr_spec = stx_restore_access_spec_type (thread_p, &ptr, NULL);
 
   ptr = or_unpack_int (ptr, &xasl->next_scan_on);
 
@@ -2980,7 +2998,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   merge_list_info->outer_spec_list =
-    stx_restore_access_spec_type (thread_p, &ptr);
+    stx_restore_access_spec_type (thread_p, &ptr, NULL);
   if (ptr == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
@@ -3020,7 +3038,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   merge_list_info->inner_spec_list =
-    stx_restore_access_spec_type (thread_p, &ptr);
+    stx_restore_access_spec_type (thread_p, &ptr, NULL);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4127,9 +4145,11 @@ error:
 
 static char *
 stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
-			    ACCESS_SPEC_TYPE * access_spec)
+			    ACCESS_SPEC_TYPE * access_spec, void *arg)
 {
   int offset;
+  OUTPTR_LIST *outptr_list = NULL;
+
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -4198,6 +4218,14 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
     case TARGET_LIST:
       ptr = stx_build_list_spec_type (thread_p, ptr,
 				      &ACCESS_SPEC_LIST_SPEC (access_spec));
+      break;
+
+    case TARGET_REGUVAL_LIST:
+      /* only for the customized type, arg is valid for the transition of customized outptr info */
+      outptr_list = (OUTPTR_LIST *) arg;
+      ptr = stx_build_rlist_spec_type (thread_p, ptr,
+				       &ACCESS_SPEC_RLIST_SPEC (access_spec),
+				       outptr_list);
       break;
 
     case TARGET_SET:
@@ -4691,6 +4719,23 @@ error:
 }
 
 static char *
+stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr,
+			   REGUVAL_LIST_SPEC_TYPE * spec,
+			   OUTPTR_LIST * outptr_list)
+{
+  assert (ptr != NULL && spec != NULL);
+
+  if (outptr_list == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
+  spec->valptr_list = outptr_list;
+
+  return ptr;
+}
+
+static char *
 stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			 SET_SPEC_TYPE * set_spec)
 {
@@ -4903,6 +4948,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 			 REGU_VARIABLE * regu_var)
 {
   int offset;
+
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -4942,8 +4988,45 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+static char *
+stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr,
+				REGU_VARIABLE * regu_var)
+{
+  REGU_VALUE_LIST *regu_list;
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
+
+  assert (ptr != NULL && regu_var != NULL);
+
   switch (regu_var->type)
     {
+    case TYPE_REGUVAL_LIST:
+      regu_list = stx_regu_value_list_alloc_and_init (thread_p);
+
+      if (regu_list == NULL)
+	{
+	  goto error;
+	}
+
+      ptr = stx_build_regu_value_list (thread_p, ptr, regu_list);
+      if (ptr == NULL)
+	{
+	  goto error;
+	}
+
+      regu_var->value.reguval_list = regu_list;
+      break;
+
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
       break;
@@ -5824,6 +5907,164 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
+}
+
+/* stx_regu_value_list_alloc_and_init () -
+ *   return:
+ *   thread_p(in)
+ */
+static REGU_VALUE_LIST *
+stx_regu_value_list_alloc_and_init (THREAD_ENTRY * thread_p)
+{
+  REGU_VALUE_LIST *regu_value_list = NULL;
+
+  regu_value_list =
+    (REGU_VALUE_LIST *) stx_alloc_struct (thread_p, sizeof (REGU_VALUE_LIST));
+
+  if (regu_value_list == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+    }
+  else
+    {
+      regu_value_list->count = 0;
+      regu_value_list->current_value = NULL;
+      regu_value_list->regu_list = NULL;
+    }
+
+  return regu_value_list;
+}
+
+/* stx_regu_value_item_alloc_and_init () -
+ *   return:
+ *   thread_p(in)
+ */
+static REGU_VALUE_ITEM *
+stx_regu_value_item_alloc_and_init (THREAD_ENTRY * thread_p)
+{
+  REGU_VALUE_ITEM *regu_value_item = NULL;
+
+  regu_value_item =
+    (REGU_VALUE_ITEM *) stx_alloc_struct (thread_p, sizeof (REGU_VALUE_ITEM));
+
+  if (regu_value_item == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+    }
+  else
+    {
+      regu_value_item->next = NULL;
+      regu_value_item->value = NULL;
+    }
+
+  return regu_value_item;
+}
+
+/* stx_build_regu_value_list () -
+ *   return:
+ *   thread_p(in)
+ *   tmp(in)    :
+ *   ptr(in)    : pointer to REGU_VALUE_LIST
+ */
+static char *
+stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
+			   REGU_VALUE_LIST * regu_value_list)
+{
+  int i, count, offset;
+  REGU_VALUE_ITEM *list_node;
+  REGU_VARIABLE *regu;
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
+
+  assert (ptr != NULL && regu_value_list != NULL);
+
+  ptr = or_unpack_int (ptr, &count);
+  if (count <= 0)
+    {
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      goto error;
+    }
+
+  for (i = 0; i < count; ++i)
+    {
+      list_node = stx_regu_value_item_alloc_and_init (thread_p);
+      if (list_node == NULL)
+	{
+	  goto error;
+	}
+
+      regu = (REGU_VARIABLE *) stx_get_struct_visited_ptr (thread_p, ptr);
+      if (regu == NULL)
+	{
+	  regu =
+	    (REGU_VARIABLE *) stx_alloc_struct (thread_p,
+						sizeof (REGU_VARIABLE));
+	  if (regu == NULL)
+	    {
+	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	      goto error;
+	    }
+
+	  if (stx_mark_struct_visited (thread_p, ptr, regu) == ER_FAILED)
+	    {
+	      goto error;
+	    }
+	}
+
+      /* Now, we got a REGU_VARIABLE successfully */
+      stx_init_regu_variable (regu);
+      list_node->value = regu;
+
+      if (regu_value_list->current_value == NULL)
+	{
+	  regu_value_list->regu_list = list_node;
+	}
+      else
+	{
+	  regu_value_list->current_value->next = list_node;
+	}
+
+      regu_value_list->current_value = list_node;
+
+      ptr = or_unpack_int (ptr, &regu->type);
+
+      if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH
+	  && regu->type != TYPE_POS_VALUE)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+	  goto error;
+	}
+      ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu);
+      if (ptr == NULL)
+	{
+	  goto error;
+	}
+
+      regu_value_list->count += 1;
+    }
+  regu_value_list->current_value = regu_value_list->regu_list;
+
+  return ptr;
+
+error:
+  return NULL;
+}
+
+/*
+ * init_regu_variable () -
+ *   return:
+ *   regu(in):    :
+ */
+static void
+stx_init_regu_variable (REGU_VARIABLE * regu)
+{
+  assert (regu);
+
+  regu->type = TYPE_POS_VALUE;
+  regu->value.val_pos = 0;
+  regu->vfetch_to = NULL;
+  regu->domain = NULL;
+  REGU_VARIABLE_XASL (regu) = NULL;
 }
 
 /*

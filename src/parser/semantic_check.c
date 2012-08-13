@@ -146,9 +146,36 @@ static PT_NODE *pt_append_statements_on_change_default
 static PT_NODE *pt_append_statements_on_drop_attributes
   (PARSER_CONTEXT * parser, PT_NODE * statement_list,
    const char *class_name_list);
+static PT_NODE *pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser,
+						    PT_NODE * node,
+						    SEMAN_COMPATIBLE_INFO *
+						    cinfo, int num_cinfo);
+static PT_NODE *pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser,
+						   PT_NODE * att,
+						   PT_NODE * next_att,
+						   SEMAN_COMPATIBLE_INFO *
+						   cinfo,
+						   bool * new_cast_added);
+static SEMAN_COMPATIBLE_INFO
+  * pt_get_values_query_compatible_info (PARSER_CONTEXT * parser,
+					 PT_NODE * node, bool * need_cast);
+static SEMAN_COMPATIBLE_INFO *pt_get_compatible_info (PARSER_CONTEXT * parser,
+						      PT_NODE * node,
+						      PT_NODE * select_list1,
+						      PT_NODE * select_list2,
+						      bool * need_cast);
 static int pt_cast_select_list_to_arg_list (PARSER_CONTEXT * parser,
 					    PT_NODE * query,
 					    PT_NODE * arg_list);
+static bool pt_combine_compatible_info (PARSER_CONTEXT * parser,
+					SEMAN_COMPATIBLE_INFO * cinfo1,
+					SEMAN_COMPATIBLE_INFO * cinfo2,
+					PT_NODE * att1, PT_NODE * att2,
+					int index);
+static bool pt_update_compatible_info (PARSER_CONTEXT * parser,
+				       SEMAN_COMPATIBLE_INFO * cinfo,
+				       PT_TYPE_ENUM common_type,
+				       int p1, int s1, int p2, int s2);
 
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 static PT_NODE *pt_make_parameter (PARSER_CONTEXT * parser, const char *name,
@@ -339,6 +366,647 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser,
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
 					PT_NODE * atts, PT_NODE * node,
 					MOP db_obj);
+
+/* pt_combine_compatible_info () - combine two cinfo into cinfo1
+ *   return: true if compatible, else false
+ *   cinfo1(in);
+ *   cinfo2(in):
+ *   att1(in):
+ *   att2(in):
+ *   index(in): for update the idx of cinfo1
+ */
+static bool
+pt_combine_compatible_info (PARSER_CONTEXT * parser,
+			    SEMAN_COMPATIBLE_INFO * cinfo1,
+			    SEMAN_COMPATIBLE_INFO * cinfo2, PT_NODE * att1,
+			    PT_NODE * att2, int index)
+{
+  PT_TYPE_ENUM common_type;
+  bool is_compatible = false;
+
+  assert (parser != NULL && cinfo1 != NULL && cinfo2 != NULL);
+  assert (att1 != NULL && att2 != NULL);
+
+  /* init cinfo before combine */
+  if (cinfo1->idx == -1 && cinfo2->idx == -1)
+    {
+      return true;
+    }
+
+  if (cinfo1->idx == -1)
+    {
+      cinfo1->idx = index;
+      cinfo1->type_enum = att1->type_enum;
+      pt_get_prec_scale (att1, &cinfo1->prec, &cinfo1->scale);
+    }
+
+  if (cinfo2->idx == -1)
+    {
+      cinfo2->idx = index;
+      cinfo2->type_enum = att2->type_enum;
+      pt_get_prec_scale (att2, &cinfo2->prec, &cinfo2->scale);
+    }
+
+  common_type = pt_common_type (cinfo1->type_enum, cinfo2->type_enum);
+  is_compatible =
+    pt_update_compatible_info (parser, cinfo1, common_type,
+			       cinfo1->prec, cinfo1->scale, cinfo2->prec,
+			       cinfo2->scale);
+
+  return is_compatible;
+}
+
+/* pt_update_compatible_info () - update cinfo after get common type for cast
+ *   return: true if compatible, else false
+ *   cinfo(in);
+ *   common_type(in):
+ *   int p1, s1, p2, s2: prec1,scale1,prec2 and scale2
+ */
+static bool
+pt_update_compatible_info (PARSER_CONTEXT * parser,
+			   SEMAN_COMPATIBLE_INFO * cinfo,
+			   PT_TYPE_ENUM common_type,
+			   int p1, int s1, int p2, int s2)
+{
+  bool is_compatible = false;
+
+  assert (parser != NULL && cinfo != NULL);
+
+  switch (common_type)
+    {
+    case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
+    case PT_TYPE_NCHAR:
+    case PT_TYPE_VARNCHAR:
+    case PT_TYPE_BIT:
+    case PT_TYPE_VARBIT:
+      is_compatible = true;
+
+      if (common_type == PT_TYPE_CHAR || common_type == PT_TYPE_VARCHAR)
+	{
+	  cinfo->type_enum = PT_TYPE_VARCHAR;
+	}
+      else if (common_type == PT_TYPE_NCHAR
+	       || common_type == PT_TYPE_VARNCHAR)
+	{
+	  cinfo->type_enum = PT_TYPE_VARNCHAR;
+	}
+      else
+	{
+	  cinfo->type_enum = PT_TYPE_VARBIT;
+	}
+
+      if (p1 == DB_DEFAULT_PRECISION || p2 == DB_DEFAULT_PRECISION)
+	{
+	  cinfo->prec = DB_DEFAULT_PRECISION;
+	}
+      else
+	{
+	  cinfo->prec = MAX (p1, p2);
+	  if (cinfo->prec == 0)
+	    {
+	      cinfo->prec = DB_DEFAULT_PRECISION;
+	    }
+	}
+      break;
+
+    case PT_TYPE_NUMERIC:
+      is_compatible = true;
+
+      cinfo->type_enum = common_type;
+
+      cinfo->scale = MAX (s1, s2);
+      cinfo->prec = MAX ((p1 - s1), (p2 - s2)) + cinfo->scale;
+
+      if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
+	{			/* overflow */
+	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
+	  if (cinfo->scale < 0)
+	    {
+	      cinfo->scale = 0;
+	    }
+	  cinfo->prec = DB_MAX_NUMERIC_PRECISION;
+	}
+      break;
+
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
+      /* NEVER try to fix set types */
+      is_compatible = true;
+      break;
+    case PT_TYPE_NONE:
+      is_compatible = false;
+      break;
+
+    default:
+      is_compatible = true;
+      cinfo->type_enum = common_type;
+      break;
+    }
+
+  return is_compatible;
+}
+
+/* pt_values_query_to_compatible_cast () - cast select list with cinfo
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   cinfo(in):
+ */
+static PT_NODE *
+pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
+				    SEMAN_COMPATIBLE_INFO * cinfo,
+				    int num_cinfo)
+{
+  PT_NODE *node_list, *result = node;
+  PT_UNION_COMPATIBLE compatible;
+  bool need_cast = false;
+  bool is_object_type;
+  int i;
+  PT_NODE *attrs, *att;
+  PT_NODE *prev_att, *next_att, *new_att = NULL, *new_dt = NULL;
+  bool new_cast_added;
+  bool need_to_cast;
+  PT_NODE_LIST_INFO *cur_node_list_info, *node_list_info1, *node_list_info2;
+  bool is_select_data_type_set = false;
+  PT_EXPR_INFO *temp_expr;
+  PT_DATA_TYPE_INFO *temp_data_type;
+
+  assert (parser != NULL && node != NULL && cinfo != NULL);
+  assert (node->node_type == PT_SELECT && PT_IS_VALUE_QUERY (node));
+
+  node_list = node->info.query.q.select.list;
+  assert (node_list);
+
+  for (; node_list; node_list = node_list->next)
+    {
+      cur_node_list_info = &node_list->info.node_list;
+      attrs = cur_node_list_info->list;
+
+      prev_att = NULL;
+      for (att = attrs, i = 0; i < num_cinfo && att != NULL;
+	   ++i, att = next_att)
+	{
+	  new_cast_added = false;
+	  next_att = att->next;
+	  need_to_cast = false;
+	  if (cinfo[i].idx == i)
+	    {
+	      if (!pt_is_compatible_without_cast (parser, cinfo[i].type_enum,
+						  cinfo[i].prec,
+						  cinfo[i].scale, att))
+		{
+		  need_to_cast = true;
+		  if ((PT_IS_STRING_TYPE (att->type_enum)
+		       || att->type_enum == PT_TYPE_NUMERIC)
+		      && att->data_type == NULL)
+		    {
+		      result = NULL;
+		      goto end;
+		    }
+		}
+	    }
+
+	  if (need_to_cast)
+	    {
+	      new_att =
+		pt_make_cast_with_compatible_info (parser, att, next_att,
+						   cinfo + i,
+						   &new_cast_added);
+	      if (new_att == NULL)
+		{
+		  goto out_of_mem;
+		}
+
+	      if (new_cast_added)
+		{
+		  att = new_att;
+		}
+
+	      if (prev_att == NULL)
+		{
+		  cur_node_list_info->list = att;
+		  if (is_select_data_type_set == false)
+		    {
+		      node->type_enum = att->type_enum;
+		      if (node->data_type)
+			{
+			  parser_free_tree (parser, node->data_type);
+			}
+		      node->data_type =
+			parser_copy_tree_list (parser, att->data_type);
+		      is_select_data_type_set = true;
+		    }
+		}
+	      else
+		{
+		  prev_att->next = att;
+		}
+	    }
+	  prev_att = att;
+	}
+    }
+
+end:
+  return result;
+
+out_of_mem:
+  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+  return NULL;
+}
+
+/*
+ * pt_get_compatible_info () -
+ *   return:  return a pointer of SEMAN_COMPATIBLE_INFO array or null on error
+ *   parser(in): parser context
+ *   node(in): values query node or union
+ *   select_list1(in):
+ *   select_list2(in):
+ *   need_cast(in/out):
+ *   current_row(in):  for value query error info
+ *   note: the return pointer must be freed by free_and_init
+ */
+static SEMAN_COMPATIBLE_INFO *
+pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
+			PT_NODE * select_list1, PT_NODE * select_list2,
+			bool * need_cast)
+{
+  PT_NODE *att1, *att2, *p, *q;
+  PT_UNION_COMPATIBLE compatible;
+  SEMAN_COMPATIBLE_INFO *cinfo = NULL, *result = NULL;
+  bool is_object_type, is_value_query;
+  int i, k;
+  int cnt1, cnt2;
+  bool need_cast_tmp = false;
+  bool has_nested_union_node = false;
+
+  assert (parser != NULL && node != NULL && select_list1 != NULL
+	  && select_list2 != NULL && need_cast != NULL);
+
+  is_value_query = node->is_value_query;
+  *need_cast = false;
+
+  p = select_list1;
+  q = select_list2;
+
+  if (p->node_type == PT_NODE_LIST)
+    {
+      assert (q->node_type == PT_NODE_LIST);
+
+      select_list1 = p->info.node_list.list;
+      select_list2 = q->info.node_list.list;
+    }
+
+  cnt1 = pt_length_of_select_list (select_list1, EXCLUDE_HIDDEN_COLUMNS);
+  cnt2 = pt_length_of_select_list (select_list2, EXCLUDE_HIDDEN_COLUMNS);
+
+  if (cnt1 != cnt2)
+    {
+      if (select_list1->node_type == PT_NODE_LIST)
+	{
+	  PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_ARITY_OF_VALUES_CLAUSE_MISMATCH,
+		       cnt1, pt_short_print (parser, p),
+		       cnt2, pt_short_print (parser, q));
+	}
+      else
+	{
+	  PT_ERRORmf2 (parser, select_list1, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_ARITY_MISMATCH, cnt1, cnt2);
+	}
+      goto end;
+    }
+
+  if (!is_value_query)
+    {
+      has_nested_union_node = false;	/* init */
+
+      if ((node->node_type == PT_UNION
+	   || node->node_type == PT_INTERSECTION
+	   || node->node_type == PT_DIFFERENCE)
+	  && ((node->info.query.q.union_.arg1)->node_type != PT_SELECT
+	      || (node->info.query.q.union_.arg2)->node_type != PT_SELECT))
+	{
+	  has_nested_union_node = true;
+	}
+    }
+
+  /* compare the columns */
+  for (i = 0, att1 = select_list1, att2 = select_list2; i < cnt1;
+       ++i, att1 = att1->next, att2 = att2->next)
+    {
+      compatible =
+	pt_union_compatible (parser, att1, att2, false, &is_object_type,
+			     has_nested_union_node);
+      if (compatible == PT_UNION_INCOMP)
+	{
+	  /* alloc compatible info array */
+	  if (cinfo == NULL)
+	    {
+	      cinfo =
+		(SEMAN_COMPATIBLE_INFO *) malloc (cnt1 *
+						  sizeof
+						  (SEMAN_COMPATIBLE_INFO));
+	      if (cinfo == NULL)
+		{
+		  goto out_of_mem;
+		}
+
+	      for (k = 0; k < cnt1; ++k)
+		{
+		  cinfo[k].idx = -1;
+		  cinfo[k].type_enum = PT_TYPE_NONE;
+		  cinfo[k].prec = DB_DEFAULT_PRECISION;
+		  cinfo[k].scale = DB_DEFAULT_SCALE;
+		}
+	    }
+
+	  if (pt_get_common_type_for_union (parser, att1, att2,
+					    &cinfo[i], i,
+					    &need_cast_tmp) == NULL)
+	    {
+	      goto end;
+	    }
+	  *need_cast |= need_cast_tmp;
+	}
+      else if (compatible == PT_UNION_INCOMP_CANNOT_FIX
+	       || compatible == PT_UNION_ERROR)
+	{
+	  if (is_object_type != true)
+	    {
+	      PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, att1),
+			   pt_short_print (parser, att2));
+	      goto end;
+	    }
+	}
+    }
+
+  result = cinfo;
+
+end:
+  if (result != cinfo && cinfo != NULL)
+    {
+      free_and_init (cinfo);
+    }
+  return result;
+
+out_of_mem:
+  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+  return NULL;
+}
+
+/*
+ * pt_make_cast_with_compatible_info () -
+ *   return:  return a pointer to PT_EXPR node (cast)
+ *   parser(in): parser context
+ *   att(in): current attribute
+ *   next_att(in): next attribute
+ *   cinfo(in): compatible info
+ *   new_cast_added(out): true if a new PT_EXPR node for cast if allocated, else false
+ */
+static PT_NODE *
+pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser,
+				   PT_NODE * att, PT_NODE * next_att,
+				   SEMAN_COMPATIBLE_INFO * cinfo,
+				   bool * new_cast_added)
+{
+  PT_EXPR_INFO *temp_expr;
+  PT_DATA_TYPE_INFO *temp_data_type;
+  PT_NODE *new_att = NULL, *new_dt = NULL;
+
+  assert (parser != NULL && att != NULL && cinfo != NULL
+	  && new_cast_added != NULL);
+
+  *new_cast_added = false;
+  if (att->node_type == PT_EXPR && att->info.expr.op == PT_CAST
+      && att->etc != NULL)
+    {
+      /* system added cast operator */
+      temp_expr = &att->info.expr;
+      temp_expr->cast_type->type_enum = cinfo->type_enum;
+
+      temp_data_type = &temp_expr->cast_type->info.data_type;
+      temp_data_type->precision = cinfo->prec;
+      temp_data_type->dec_precision = cinfo->scale;
+
+      att->type_enum = att->info.expr.cast_type->type_enum;
+      att->data_type->type_enum = cinfo->type_enum;
+      temp_data_type = &att->data_type->info.data_type;
+      temp_data_type->precision = cinfo->prec;
+      temp_data_type->dec_precision = cinfo->scale;
+
+      new_att = temp_expr;
+    }
+  else
+    {
+      /* create new cast node */
+      att->next = NULL;
+
+      new_att = parser_new_node (parser, PT_EXPR);
+      new_dt = parser_new_node (parser, PT_DATA_TYPE);
+      if (new_att == NULL || new_dt == NULL)
+	{
+	  if (new_att)
+	    {
+	      parser_free_tree (parser, new_att);
+	      new_att = NULL;
+	    }
+	  if (new_dt)
+	    {
+	      parser_free_tree (parser, new_dt);
+	      new_dt = NULL;
+	    }
+
+	  goto out_of_mem;
+	}
+
+      /* move alias */
+      new_att->line_number = att->line_number;
+      new_att->column_number = att->column_number;
+      if (att->alias_print == NULL && att->node_type == PT_NAME)
+	{
+	  new_att->alias_print = att->info.name.original;
+	}
+      else
+	{
+	  new_att->alias_print = att->alias_print;
+	}
+      att->alias_print = NULL;
+
+      new_dt->type_enum = cinfo->type_enum;
+      temp_data_type = &new_dt->info.data_type;
+      temp_data_type->precision = cinfo->prec;
+      temp_data_type->dec_precision = cinfo->scale;
+
+      new_att->type_enum = new_dt->type_enum;
+      temp_expr = &new_att->info.expr;
+      temp_expr->op = PT_CAST;
+      temp_expr->cast_type = new_dt;
+      temp_expr->arg1 = att;
+      new_att->next = next_att;
+      new_att->etc = cinfo;	/* to make this as system added */
+      new_att->is_value_query = att->is_value_query;
+
+      new_att->data_type = parser_copy_tree_list (parser, new_dt);
+      PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_SHOULD_FOLD);
+
+      *new_cast_added = true;
+    }
+
+  return new_att;
+
+out_of_mem:
+  /* the error msg will be set in the caller */
+  return NULL;
+}
+
+/*
+ * pt_get_values_query_compatible_info () -
+ *   return:  return a pointer of SEMAN_COMPATIBLE_INFO array or null on error
+ *   parser(in): parser context
+ *   node(in): values query node
+ *   need_cast(in/out):
+ *
+ *   note: the return pointer must be freed by free_and_init
+ */
+static SEMAN_COMPATIBLE_INFO *
+pt_get_values_query_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
+				     bool * need_cast)
+{
+  PT_NODE *attrs1, *attrs2, *att1, *att2, *node_list, *next_node_list;
+  SEMAN_COMPATIBLE_INFO *cinfo = NULL, *cinfo_cur = NULL, *result = NULL;
+  int i, count;
+  bool is_compatible, need_cast_cond = false;
+
+  assert (parser);
+
+  *need_cast = false;
+
+  if (node == NULL || node->node_type != PT_SELECT
+      || !PT_IS_VALUE_QUERY (node))
+    {
+      return NULL;
+    }
+
+  node_list = node->info.query.q.select.list;
+  if (node_list == NULL)
+    {
+      return NULL;
+    }
+  attrs1 = node_list->info.node_list.list;
+
+  next_node_list = node_list->next;
+  /* only one row */
+  if (next_node_list == NULL)
+    {
+      return NULL;
+    }
+  attrs2 = next_node_list->info.node_list.list;
+
+  count = pt_length_of_select_list (attrs1, EXCLUDE_HIDDEN_COLUMNS);
+
+  /* get compatible_info for cast */
+  while (next_node_list != NULL)
+    {
+      cinfo_cur = pt_get_compatible_info (parser, node, node_list,
+					  next_node_list, &need_cast_cond);
+      if (cinfo_cur == NULL && need_cast_cond)
+	{
+	  goto end;
+	}
+
+      if (cinfo == NULL)
+	{
+	  cinfo = cinfo_cur;
+	  *need_cast = need_cast_cond;
+	  cinfo_cur = NULL;	/* do not free */
+	}
+      else
+	{
+	  /* compare cinfo[i].type_enum and cinfo_cur[i].type_enum
+	   * and save the compatible type_enum in cinfo[i]
+	   */
+	  if (need_cast_cond)
+	    {
+	      is_compatible = true;
+	      for (i = 0, att1 = attrs1, att2 = attrs2; i < count;
+		   ++i, att1 = att1->next, att2 = att2->next)
+		{
+		  if (cinfo_cur[i].idx == -1)
+		    {
+		      continue;
+		    }
+
+		  if (cinfo[i].idx == -1)
+		    {
+		      cinfo[i] = cinfo_cur[i];
+		      *need_cast = true;
+		      continue;
+		    }
+
+		  /* if equal, skip the following steps */
+		  if (cinfo[i].type_enum == cinfo_cur[i].type_enum
+		      && cinfo[i].prec == cinfo_cur[i].prec
+		      && cinfo[i].scale == cinfo_cur[i].scale)
+		    {
+		      assert (cinfo[i].idx == cinfo_cur[i].idx);
+		      continue;
+		    }
+
+		  /* combine the two cinfos */
+		  is_compatible =
+		    pt_combine_compatible_info (parser, cinfo + i,
+						cinfo_cur + i, att1, att2, i);
+		  if (!is_compatible)
+		    {
+		      break;
+		    }
+
+		  *need_cast = true;
+		}
+
+	      if (!is_compatible)
+		{
+		  PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			       pt_short_print (parser, att1),
+			       pt_short_print (parser, att2));
+		  goto end;
+		}
+	    }
+	}
+
+      attrs1 = attrs2;
+      node_list = next_node_list;
+      next_node_list = next_node_list->next;
+      if (next_node_list != NULL)
+	{
+	  attrs2 = next_node_list->info.node_list.list;
+	}
+
+      /* free cinfo_cur */
+      free_and_init (cinfo_cur);
+    }
+
+  /* assign cinfo to return value */
+  result = cinfo;
+
+end:
+  if (cinfo_cur != NULL)
+    {
+      free_and_init (cinfo_cur);
+    }
+  if (result != cinfo && cinfo != NULL)
+    {
+      free_and_init (cinfo);
+    }
+  return result;
+}
 
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
@@ -1836,129 +2504,90 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (pt_is_select (node))
     {
-      attrs = pt_get_select_list (parser, node);
-      if (attrs == NULL)
+      if (PT_IS_VALUE_QUERY (node))
 	{
-	  return NULL;
+	  node =
+	    pt_values_query_to_compatible_cast (parser, node, cinfo,
+						num_cinfo);
 	}
-
-      prev_att = NULL;
-      for (att = attrs, i = 0; i < num_cinfo && att; att = next_att, i++)
+      else
 	{
-	  new_cast_added = false;
-
-	  next_att = att->next;	/* save next link */
-
-	  need_to_cast = false;
-	  /* find incompatible attr */
-	  if (cinfo[i].idx == i)
+	  attrs = pt_get_select_list (parser, node);
+	  if (attrs == NULL)
 	    {
-	      if (!pt_is_compatible_without_cast (parser,
-						  cinfo[i].type_enum,
-						  cinfo[i].prec,
-						  cinfo[i].scale, att))
-		{
-		  need_to_cast = true;
+	      return NULL;
+	    }
 
-		  /* assertion check */
-		  if (need_to_cast)
+	  prev_att = NULL;
+	  for (att = attrs, i = 0; i < num_cinfo && att; att = next_att, i++)
+	    {
+	      new_cast_added = false;
+
+	      next_att = att->next;	/* save next link */
+
+	      need_to_cast = false;
+	      /* find incompatible attr */
+	      if (cinfo[i].idx == i)
+		{
+		  if (!pt_is_compatible_without_cast (parser,
+						      cinfo[i].type_enum,
+						      cinfo[i].prec,
+						      cinfo[i].scale, att))
 		    {
-		      if (PT_IS_STRING_TYPE (att->type_enum)
-			  || att->type_enum == PT_TYPE_NUMERIC)
+		      need_to_cast = true;
+
+		      /* assertion check */
+		      if (need_to_cast)
 			{
-			  if (att->data_type == NULL)
+			  if (PT_IS_STRING_TYPE (att->type_enum)
+			      || att->type_enum == PT_TYPE_NUMERIC)
 			    {
-			      assert_release (att->data_type != NULL);
-			      return NULL;
+			      if (att->data_type == NULL)
+				{
+				  assert_release (att->data_type != NULL);
+				  return NULL;
+				}
 			    }
 			}
 		    }
 		}
-	    }
 
-	  if (need_to_cast)
-	    {
-	      if (att->node_type == PT_EXPR && att->info.expr.op == PT_CAST
-		  && att->etc != NULL)
-		{		/* system added cast operator */
-		  att->info.expr.cast_type->type_enum = cinfo[i].type_enum;
-		  att->info.expr.cast_type->info.data_type.precision =
-		    cinfo[i].prec;
-		  att->info.expr.cast_type->info.data_type.dec_precision =
-		    cinfo[i].scale;
-		  att->type_enum = att->info.expr.cast_type->type_enum;
-
-		  att->data_type->type_enum = cinfo[i].type_enum;
-		  att->data_type->info.data_type.precision = cinfo[i].prec;
-		  att->data_type->info.data_type.dec_precision =
-		    cinfo[i].scale;
-		}
-	      else
+	      if (need_to_cast)
 		{
-		  /* create new cast node */
-
-		  att->next = NULL;
-
-		  if (!(new_att = parser_new_node (parser, PT_EXPR))
-		      || !(new_dt = parser_new_node (parser, PT_DATA_TYPE)))
+		  new_att =
+		    pt_make_cast_with_compatible_info (parser, att, next_att,
+						       cinfo + i,
+						       &new_cast_added);
+		  if (new_att == NULL)
 		    {
 		      goto out_of_mem;
 		    }
 
-		  /* move alias */
-		  new_att->line_number = att->line_number;
-		  new_att->column_number = att->column_number;
-		  if ((!att->alias_print) && att->node_type == PT_NAME)
+		  if (new_cast_added)
 		    {
-		      new_att->alias_print = att->info.name.original;
-		      att->alias_print = NULL;
+		      att = new_att;
+		    }
+
+		  if (prev_att == NULL)
+		    {
+		      node->info.query.q.select.list = att;
+		      node->type_enum = att->type_enum;
+		      if (node->data_type)
+			{
+			  parser_free_tree (parser, node->data_type);
+			}
+		      node->data_type = parser_copy_tree_list (parser,
+							       att->
+							       data_type);
 		    }
 		  else
 		    {
-		      new_att->alias_print = att->alias_print;
-		      att->alias_print = NULL;
+		      prev_att->next = att;
 		    }
-
-		  new_dt->type_enum = cinfo[i].type_enum;
-		  new_dt->info.data_type.precision = cinfo[i].prec;
-		  new_dt->info.data_type.dec_precision = cinfo[i].scale;
-
-		  new_att->type_enum = new_dt->type_enum;
-		  new_att->info.expr.op = PT_CAST;
-		  new_att->info.expr.cast_type = new_dt;
-		  new_att->info.expr.arg1 = att;
-		  new_att->next = next_att;
-		  new_att->etc = &cinfo[i];	/* to mark this as system added */
-
-		  new_att->data_type = parser_copy_tree_list (parser, new_dt);
-		  PT_EXPR_INFO_SET_FLAG (new_att,
-					 PT_EXPR_INFO_CAST_SHOULD_FOLD);
-		  new_cast_added = true;
 		}
 
-	      if (new_cast_added)
-		{
-		  att = new_att;
-		}
-
-	      if (prev_att == NULL)
-		{
-		  node->info.query.q.select.list = att;
-		  node->type_enum = att->type_enum;
-		  if (node->data_type)
-		    {
-		      parser_free_tree (parser, node->data_type);
-		    }
-		  node->data_type = parser_copy_tree_list (parser,
-							   att->data_type);
-		}
-	      else
-		{
-		  prev_att->next = att;
-		}
+	      prev_att = att;
 	    }
-
-	  prev_att = att;
 	}
     }
   else
@@ -2060,81 +2689,19 @@ pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE * att1,
       /* save attr idx and compatible type */
       cinfo->idx = idx;
 
-      switch (common_type)
+      pt_get_prec_scale (att1, &p1, &s1);
+      pt_get_prec_scale (att2, &p2, &s2);
+
+      is_compatible =
+	pt_update_compatible_info (parser, cinfo, common_type,
+				   p1, s1, p2, s2);
+
+      if (is_compatible)
 	{
-	case PT_TYPE_CHAR:
-	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
-	case PT_TYPE_BIT:
-	case PT_TYPE_VARBIT:
-	  if (common_type == PT_TYPE_CHAR || common_type == PT_TYPE_VARCHAR)
-	    {
-	      cinfo->type_enum = PT_TYPE_VARCHAR;
-	    }
-	  else if (common_type == PT_TYPE_NCHAR
-		   || common_type == PT_TYPE_VARNCHAR)
-	    {
-	      cinfo->type_enum = PT_TYPE_VARNCHAR;
-	    }
-	  else
-	    {
-	      cinfo->type_enum = PT_TYPE_VARBIT;
-	    }
-
-	  pt_get_prec_scale (att1, &p1, &s1);
-	  pt_get_prec_scale (att2, &p2, &s2);
-
-	  if (p1 == DB_DEFAULT_PRECISION || p2 == DB_DEFAULT_PRECISION)
-	    {
-	      cinfo->prec = DB_DEFAULT_PRECISION;
-	    }
-	  else
-	    {
-	      cinfo->prec = MAX (p1, p2);
-	      if (cinfo->prec == 0)
-		{
-		  cinfo->prec = DB_DEFAULT_PRECISION;
-		}
-	    }
-	  break;
-
-	case PT_TYPE_NUMERIC:
-	  cinfo->type_enum = common_type;
-
-	  pt_get_prec_scale (att1, &p1, &s1);
-	  pt_get_prec_scale (att2, &p2, &s2);
-
-	  cinfo->scale = MAX (s1, s2);
-	  cinfo->prec = MAX ((p1 - s1), (p2 - s2)) + cinfo->scale;
-
-	  if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
-	    {			/* overflow */
-	      cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
-	      if (cinfo->scale < 0)
-		{
-		  cinfo->scale = 0;
-		}
-	      cinfo->prec = DB_MAX_NUMERIC_PRECISION;
-	    }
-	  break;
-
-	case PT_TYPE_SET:
-	case PT_TYPE_MULTISET:
-	case PT_TYPE_SEQUENCE:
-	  /* NEVER try to fix set types */
-	  goto end;
-
-	default:
-	  cinfo->type_enum = common_type;
-	  break;
+	  *need_cast = true;
 	}
-
-      is_compatible = true;
-      *need_cast = true;
     }
 
-end:
   if (is_compatible != true)
     {
       PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
@@ -2165,11 +2732,8 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *attrs1, *attrs2, *att1, *att2, *result = node;
   int cnt1, cnt2, i;
-  PT_UNION_COMPATIBLE c;
   SEMAN_COMPATIBLE_INFO *cinfo = NULL;
   bool need_cast;
-  bool is_object_type;
-  bool has_nested_union_node;
 
   assert (parser != NULL);
 
@@ -2195,65 +2759,12 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-  need_cast = false;
-
-  has_nested_union_node =
-    ((node->info.query.q.union_.arg1)->node_type != PT_SELECT ||
-     (node->info.query.q.union_.arg2)->node_type != PT_SELECT);
-
-  for (i = 0, att1 = attrs1, att2 = attrs2;
-       i < cnt1; i++, att1 = att1->next, att2 = att2->next)
+  /* get compatible info */
+  cinfo = pt_get_compatible_info (parser, node, attrs1, attrs2, &need_cast);
+  if (cinfo == NULL && need_cast)
     {
-      /* there's no vclass attribute defs context,
-       * so do strict union compatibility checks. */
-
-      c = pt_union_compatible (parser, att1, att2, false,
-			       &is_object_type, has_nested_union_node);
-      if (c == PT_UNION_INCOMP)
-	{
-	  /* though we guess union is not compatible,
-	   * in some cases, we can cast the type to compatible one.
-	   */
-	  if (cinfo == NULL)
-	    {
-	      int k;
-
-	      /* allocate compatible type info list */
-	      cinfo = (SEMAN_COMPATIBLE_INFO *)
-		malloc (cnt1 * sizeof (SEMAN_COMPATIBLE_INFO));
-	      if (cinfo == NULL)
-		{
-		  goto out_of_mem;
-		}
-
-	      for (k = 0; k < cnt1; k++)
-		{
-		  cinfo[k].idx = -1;
-		  cinfo[k].type_enum = PT_TYPE_NONE;
-		  cinfo[k].prec = DB_DEFAULT_PRECISION;
-		  cinfo[k].scale = DB_DEFAULT_SCALE;
-		}
-	    }
-
-	  if (pt_get_common_type_for_union (parser, att1, att2, &cinfo[i],
-					    i, &need_cast) == NULL)
-	    {
-	      result = NULL;
-	    }
-	}
-      else if (c == PT_UNION_INCOMP_CANNOT_FIX || c == PT_UNION_ERROR)
-	{
-	  result = NULL;
-	  /* skip set error when object type */
-	  if (is_object_type != true)
-	    {
-	      PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
-			   MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
-			   pt_short_print (parser, att1),
-			   pt_short_print (parser, att2));
-	    }
-	}
-    }				/* for */
+      result = NULL;
+    }
 
   /* convert attrs type to compatible type */
   if (result && need_cast == true)
@@ -2274,11 +2785,303 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return result;
+}
 
-out_of_mem:
-  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-  return NULL;
+/*
+ * pt_check_type_compatibility_of_values_query () - check rows for
+ *                                          values query compatibility
+ *   return:  node on success, NULL otherwise.
+ *   parser(in): the parser context used to derive qry1 and qry2
+ *   node(in): a query node
+ *
+ * Note :
+ *   the definition of values query compatible is: same number of
+ *   attributes from rows.
+ *   every two rows' compatible attributes are considered union-compatible.
+ */
+PT_NODE *
+pt_check_type_compatibility_of_values_query (PARSER_CONTEXT * parser,
+					     PT_NODE * node)
+{
+  PT_NODE *node_list, *result = node;
+  SEMAN_COMPATIBLE_INFO *cinfo = NULL;
+  bool need_cast = false;
+  PT_NODE *attrs;
+  int count;
+
+  assert (parser);
+
+  if (node == NULL || node->node_type != PT_SELECT
+      || !PT_IS_VALUE_QUERY (node))
+    {
+      return NULL;
+    }
+
+  node_list = node->info.query.q.select.list;
+  if (node_list == NULL)
+    {
+      return NULL;
+    }
+  attrs = node_list->info.node_list.list;
+
+  node_list = node_list->next;
+  /* only one row */
+  if (node_list == NULL)
+    {
+      return result;
+    }
+
+  count = pt_length_of_select_list (attrs, EXCLUDE_HIDDEN_COLUMNS);
+
+  /* get compatible_info for cast */
+  cinfo = pt_get_values_query_compatible_info (parser, node, &need_cast);
+
+  if (cinfo == NULL && need_cast)
+    {
+      result = NULL;
+      goto end;
+    }
+
+  /* convert attrs type to compatible type */
+  if (need_cast && cinfo != NULL)
+    {
+      result =
+	pt_values_query_to_compatible_cast (parser, node, cinfo, count);
+    }
+
+end:
+  if (cinfo)
+    {
+      free_and_init (cinfo);
+    }
+
+  return result;
+}
+
+/*
+ * pt_check_union_values_query_compatibility () - check compatibility
+ *                                                when union values query
+ *   return:  node on success, NULL otherwise.
+ *   parser(in): the parser context used to derive qry1 and qry2
+ *   node(in): a query node
+ *
+ * Note :
+ *   please see pt_check_union_compatibility
+ *   and pt_check_type_compatibility_of_values_query
+ */
+PT_NODE *
+pt_check_union_type_compatibility_of_values_query (PARSER_CONTEXT * parser,
+						   PT_NODE * node)
+{
+  PT_NODE *attrs1, *attrs2, *att1, *att2, *result = node;
+  int cnt1, cnt2, i;
+  PT_UNION_COMPATIBLE c;
+  SEMAN_COMPATIBLE_INFO *cinfo = NULL;
+  SEMAN_COMPATIBLE_INFO *cinfo_arg1 = NULL;
+  SEMAN_COMPATIBLE_INFO *cinfo_arg2 = NULL;
+  SEMAN_COMPATIBLE_INFO *cinfo_arg3 = NULL;
+  bool need_cast, need_cast_tmp = false;
+  bool is_object_type;
+  PT_NODE *arg1, *arg2, *tmp;
+  bool is_compatible;
+
+  assert (parser != NULL);
+
+  if (!node || !(node->node_type == PT_UNION
+		 || node->node_type == PT_INTERSECTION
+		 || node->node_type == PT_DIFFERENCE)
+      || !(arg1 = node->info.query.q.union_.arg1)
+      || !(arg2 = node->info.query.q.union_.arg2)
+      || !(attrs1 = pt_get_select_list (parser, arg1))
+      || !(attrs2 = pt_get_select_list (parser, arg2)))
+    {
+      return NULL;
+    }
+
+  cnt1 = pt_length_of_select_list (attrs1, EXCLUDE_HIDDEN_COLUMNS);
+  cnt2 = pt_length_of_select_list (attrs2, EXCLUDE_HIDDEN_COLUMNS);
+  if (cnt1 != cnt2)
+    {
+      PT_ERRORmf2 (parser, attrs1, MSGCAT_SET_PARSER_SEMANTIC,
+		   MSGCAT_SEMANTIC_ARITY_MISMATCH, cnt1, cnt2);
+      return NULL;
+    }
+
+  if (PT_IS_VALUE_QUERY (arg1) && PT_IS_VALUE_QUERY (arg2))	/* two values query */
+    {
+      need_cast = false;
+      cinfo_arg1 =
+	pt_get_values_query_compatible_info (parser, arg1, &need_cast);
+      if (cinfo_arg1 == NULL && need_cast)
+	{
+	  result = NULL;
+	  goto end;
+	}
+
+      need_cast = false;
+      cinfo_arg2 =
+	pt_get_values_query_compatible_info (parser, arg2, &need_cast);
+      if (cinfo_arg2 == NULL && need_cast)
+	{
+	  result = NULL;
+	  goto end;
+	}
+
+      /* compare cinfo_arg1 and cinfo_arg2
+       * save the compatible cinfo in cinfo_arg1
+       */
+      if (cinfo_arg1 != NULL && cinfo_arg2 != NULL)
+	{
+	  is_compatible = true;
+
+	  for (i = 0, att1 = attrs1, att2 = attrs2; i < cnt1;
+	       ++i, att1 = att1->next, att2 = att2->next)
+	    {
+	      is_compatible =
+		pt_combine_compatible_info (parser, cinfo_arg1 + i,
+					    cinfo_arg2 + i, att1, att2, i);
+	      if (!is_compatible)
+		{
+		  result = NULL;
+		  goto end;
+		}
+	    }
+	}
+      else if (cinfo_arg2 != NULL)
+	{
+	  cinfo_arg1 = cinfo_arg2;
+	  cinfo_arg2 = NULL;
+	}
+
+      /* compare the select list */
+      cinfo_arg3 = pt_get_compatible_info (parser, node,
+					   attrs1, attrs2, &need_cast);
+      if (cinfo_arg3 == NULL && need_cast)
+	{
+	  result = NULL;
+	  goto end;
+	}
+
+      if (need_cast)
+	{
+	  if (cinfo_arg1 != NULL)
+	    {
+	      is_compatible = true;
+	      for (i = 0, att1 = attrs1, att2 = attrs2; i < cnt1;
+		   ++i, att1 = att1->next, att2 = att2->next)
+		{
+		  is_compatible =
+		    pt_combine_compatible_info (parser, cinfo_arg1 + i,
+						cinfo_arg3 + i, att1, att2,
+						i);
+		  if (!is_compatible)
+		    {
+		      result = NULL;
+		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      cinfo_arg1 = cinfo_arg3;
+	      cinfo_arg3 = NULL;
+	    }
+	}
+
+      cinfo = cinfo_arg1;
+    }
+  else if (PT_IS_VALUE_QUERY (arg1) || PT_IS_VALUE_QUERY (arg2))	/* one values query, one select */
+    {
+      /* make arg1->is_value_query==1 */
+      if (PT_IS_VALUE_QUERY (arg2))
+	{
+	  tmp = arg1;
+	  arg1 = arg2;
+	  arg2 = tmp;
+	}
+
+      /* arg1 is the values query */
+      need_cast = false;
+      cinfo_arg1 =
+	pt_get_values_query_compatible_info (parser, arg1, &need_cast);
+      if (cinfo_arg1 == NULL && need_cast)
+	{
+	  result = NULL;
+	  goto end;
+	}
+
+      /* get the cinfo of select */
+      attrs1 = pt_get_select_list (parser, arg1);
+      attrs2 = pt_get_select_list (parser, arg2);
+      cinfo_arg2 = pt_get_compatible_info (parser, node,
+					   attrs1, attrs2, &need_cast);
+      if (cinfo_arg2 == NULL && need_cast)
+	{
+	  result = NULL;
+	  goto end;
+	}
+
+      if (need_cast)
+	{
+	  /* compare cinfo_arg1 and cinfo_arg2
+	   * save the compatible cinfo in cinfo_arg1
+	   */
+	  if (cinfo_arg1 != NULL)
+	    {
+	      is_compatible = true;
+	      for (i = 0, att1 = attrs1, att2 = attrs2; i < cnt1;
+		   ++i, att1 = att1->next, att2 = att2->next)
+		{
+		  is_compatible =
+		    pt_combine_compatible_info (parser, cinfo_arg1 + i,
+						cinfo_arg2 + i, att1, att2,
+						i);
+		  if (!is_compatible)
+		    {
+		      result = NULL;
+		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      cinfo_arg1 = cinfo_arg2;
+	      cinfo_arg2 = NULL;
+	    }
+	  cinfo = cinfo_arg1;
+	}
+    }
+  else
+    {
+      /* should not be here */
+      assert (false);
+    }
+
+  /* make the cast */
+  if (cinfo != NULL)
+    {
+      if (pt_to_compatible_cast (parser, arg1, cinfo, cnt1) == NULL
+	  || pt_to_compatible_cast (parser, arg2, cinfo, cnt1) == NULL)
+	{
+	  result = NULL;
+	}
+    }
+
+end:
+  if (cinfo_arg1)
+    {
+      free_and_init (cinfo_arg1);
+    }
+  if (cinfo_arg2)
+    {
+      free_and_init (cinfo_arg2);
+    }
+  if (cinfo_arg3)
+    {
+      free_and_init (cinfo_arg3);
+    }
+
+  return result;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
@@ -11771,6 +12574,7 @@ pt_cast_select_list_to_arg_list (PARSER_CONTEXT * parser, PT_NODE * query,
 {
   int i = 0;
   PT_NODE *new_node = NULL;
+  PT_NODE *node_list;
 
   switch (query->node_type)
     {
@@ -11779,32 +12583,67 @@ pt_cast_select_list_to_arg_list (PARSER_CONTEXT * parser, PT_NODE * query,
 	PT_NODE *arg = NULL;
 	PT_NODE *val = NULL;
 	PT_NODE *prev = NULL;
-	for (arg = arg_list, val = query->info.query.q.select.list;
-	     val != NULL && arg != NULL;
-	     prev = val, val = val->next, arg = arg->next)
+
+	if (PT_IS_VALUE_QUERY (query))	/* values sub-query */
 	  {
-	    PT_NODE *new_node;
-
-	    new_node = pt_assignment_compatible (parser, arg, val);
-	    if (new_node == NULL)
+	    for (node_list = query->info.query.q.select.list; node_list;
+		 node_list = node_list->next)
 	      {
-		return ER_FAILED;
-	      }
+		for (arg = arg_list, val = node_list->info.node_list.list;
+		     val != NULL && arg != NULL;
+		     prev = val, val = val->next, arg = arg->next)
+		  {
+		    new_node = pt_assignment_compatible (parser, arg, val);
+		    if (new_node == NULL)
+		      {
+			return ER_FAILED;
+		      }
 
-	    if (new_node != val)
+		    if (new_node != val)
+		      {
+			val = new_node;
+			/* first node in the list */
+			if (prev == NULL)
+			  {
+			    node_list->info.node_list.list = val;
+			  }
+			else
+			  {
+			    prev->next = val;
+			  }
+		      }
+		  }
+	      }
+	  }
+	else			/* select sub-query */
+	  {
+	    for (arg = arg_list, val = query->info.query.q.select.list;
+		 val != NULL && arg != NULL;
+		 prev = val, val = val->next, arg = arg->next)
 	      {
-		val = new_node;
-		/* first node in the list */
-		if (prev == NULL)
-		  {
-		    query->info.query.q.select.list = val;
-		  }
-		else
-		  {
-		    prev->next = val;
-		  }
-	      }
+		PT_NODE *new_node;
 
+		new_node = pt_assignment_compatible (parser, arg, val);
+		if (new_node == NULL)
+		  {
+		    return ER_FAILED;
+		  }
+
+		if (new_node != val)
+		  {
+		    val = new_node;
+		    /* first node in the list */
+		    if (prev == NULL)
+		      {
+			query->info.query.q.select.list = val;
+		      }
+		    else
+		      {
+			prev->next = val;
+		      }
+		  }
+
+	      }
 	  }
 
 	break;

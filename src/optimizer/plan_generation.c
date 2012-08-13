@@ -696,12 +696,12 @@ init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * listfile,
 
   if (xasl)
     {
-      access_pred = make_pred_from_bitset (env, predset, 
+      access_pred = make_pred_from_bitset (env, predset,
 					   is_normal_access_term);
       if_pred = make_pred_from_bitset (env, predset, is_normal_if_term);
-      after_join_pred = make_pred_from_bitset (env, predset, 
+      after_join_pred = make_pred_from_bitset (env, predset,
 					       is_after_join_term);
-      instnum_pred = make_pred_from_bitset (env, predset, 
+      instnum_pred = make_pred_from_bitset (env, predset,
 					    is_totally_after_join_term);
 
       xasl = ptqo_to_list_scan_proc (QO_ENV_PARSER (env),
@@ -764,6 +764,12 @@ add_access_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   parser = QO_ENV_PARSER (env);
 
   class_spec = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node);
+
+  /* set the type for XASL generation */
+  if (PT_IS_VALUE_QUERY (env->pt_tree))
+    {
+      PT_SET_VALUE_QUERY (class_spec);
+    }
 
   info = qo_get_xasl_index_info (env, plan);
   make_pred_from_plan (env, plan, &key_pred, &access_pred, info);

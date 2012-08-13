@@ -60,6 +60,9 @@
 #define ACCESS_SPEC_LIST_SPEC(ptr) \
         ((ptr)->s.list_node)
 
+#define ACCESS_SPEC_RLIST_SPEC(ptr) \
+        ((ptr)->s.reguval_list_node)
+
 #define ACCESS_SPEC_LIST_REGU_LIST(ptr) \
         ((ptr)->s.list_node.list_regu_list)
 
@@ -68,6 +71,9 @@
 
 #define ACCESS_SPEC_LIST_ID(ptr) \
         (ACCESS_SPEC_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_RLIST_VALPTR_LIST(ptr) \
+        ((ptr)->s.reguval_list_node.valptr_list)
 
 #define ACCESS_SPEC_SET_SPEC(ptr) \
         ((ptr)->s.set_node)
@@ -189,7 +195,8 @@ typedef enum
   TARGET_CLASS_ATTR,
   TARGET_LIST,
   TARGET_SET,
-  TARGET_METHOD
+  TARGET_METHOD,
+  TARGET_REGUVAL_LIST
 } TARGET_TYPE;
 
 typedef struct cls_spec_node CLS_SPEC_TYPE;
@@ -241,6 +248,12 @@ struct method_spec_node
   METHOD_SIG_LIST *method_sig_list;	/* method signature list           */
 };
 
+typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
+struct reguval_list_spec_node
+{
+  VALPTR_LIST *valptr_list;	/* point to xasl.outptr_list */
+};
+
 typedef union hybrid_node HYBRID_NODE;
 union hybrid_node
 {
@@ -248,6 +261,7 @@ union hybrid_node
   LIST_SPEC_TYPE list_node;	/* list specification */
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
+  REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
 };				/* class/list access specification */
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;

@@ -562,6 +562,8 @@ static int qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var,
 				 int final);
 static int qexec_clear_regu_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
 				  int final);
+static int qexec_clear_regu_value_list (XASL_NODE * xasl_p,
+					REGU_VALUE_LIST * list, int final);
 static void qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list);
 static int qexec_clear_pred (XASL_NODE * xasl_p, PRED_EXPR * pr, int final);
 static int qexec_clear_access_spec_list (XASL_NODE * xasl_p,
@@ -1487,6 +1489,11 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       pg_cnt +=
 	qexec_clear_regu_list (xasl_p, regu_var->value.funcp->operand, final);
       break;
+    case TYPE_REGUVAL_LIST:
+      pg_cnt +=
+	qexec_clear_regu_value_list (xasl_p,
+				     regu_var->value.reguval_list, final);
+      break;
     case TYPE_DBVAL:
       /* FIXME::
        * Though regu_var->value.dbval should be freed,
@@ -1527,6 +1534,30 @@ qexec_clear_regu_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list, int final)
   for (p = list; p; p = p->next)
     {
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->value, final);
+    }
+
+  return pg_cnt;
+}
+
+/*
+ * qexec_clear_regu_value_list () - clear the db_values in the regu value list
+ *   return:
+ *   xasl_p(in) :
+ *   list(in)   :
+ *   final(in)  :
+ */
+static int
+qexec_clear_regu_value_list (XASL_NODE * xasl_p, REGU_VALUE_LIST * list,
+			     int final)
+{
+  REGU_VALUE_ITEM *list_node;
+  int pg_cnt = 0;
+
+  assert (list != NULL);
+
+  for (list_node = list->regu_list; list_node; list_node = list_node->next)
+    {
+      pg_cnt += qexec_clear_regu_var (xasl_p, list_node->value, final);
     }
 
   return pg_cnt;
@@ -5953,6 +5984,21 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 	}
       break;
 
+    case TARGET_REGUVAL_LIST:
+      /* open a regu value list scan */
+      if (scan_open_values_scan (thread_p, s_id,
+				 grouped,
+				 curr_spec->single_fetch,
+				 curr_spec->s_dbval,
+				 val_list,
+				 vd,
+				 ACCESS_SPEC_RLIST_VALPTR_LIST (curr_spec)) !=
+	  NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      break;
+
     case TARGET_SET:
       /* open a set based derived table scan */
       if (scan_open_set_scan (thread_p, s_id,
@@ -6033,6 +6079,9 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  break;
 	case TARGET_LIST:
 	  mnt_qm_lscans (thread_p);
+	  break;
+	case TARGET_REGUVAL_LIST:
+	  /* currently do nothing */
 	  break;
 	case TARGET_SET:
 	  mnt_qm_setscans (thread_p);

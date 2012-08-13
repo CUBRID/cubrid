@@ -47,7 +47,8 @@ typedef enum
   S_INDX_SCAN,
   S_LIST_SCAN,
   S_SET_SCAN,
-  S_METHOD_SCAN
+  S_METHOD_SCAN,
+  S_VALUES_SCAN			/* regu_values_list scan */
 } SCAN_TYPE;
 
 typedef struct heap_scan_id HEAP_SCAN_ID;
@@ -198,6 +199,13 @@ struct llist_scan_id
   QFILE_TUPLE_RECORD *tplrecp;	/* tuple record pointer; output param */
 };
 
+typedef struct regu_values_scan_id REGU_VALUES_SCAN_ID;
+struct regu_values_scan_id
+{
+  REGU_VARIABLE_LIST regu_list;	/* the head of list */
+  int value_cnt;
+};
+
 typedef struct set_scan_id SET_SCAN_ID;
 struct set_scan_id
 {
@@ -264,6 +272,7 @@ struct scan_id_struct
     INDX_SCAN_ID isid;		/* Indexed Heap File Scan Identifier */
     SET_SCAN_ID ssid;		/* Set Scan Identifier */
     VA_SCAN_ID vaid;		/* Value Array Identifier */
+    REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
   } s;
 };				/* Scan Identifier */
 
@@ -352,6 +361,14 @@ extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				REGU_VARIABLE_LIST regu_list_pred,
 				PRED_EXPR * pr,
 				REGU_VARIABLE_LIST regu_list_rest);
+extern int scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+				  /* fields of SCAN_ID */
+				  int grouped,
+				  QPROC_SINGLE_FETCH single_fetch,
+				  DB_VALUE * join_dbval,
+				  VAL_LIST * val_list, VAL_DESCR * vd,
+				  /* fields of REGU_VALUES_SCAN_ID */
+				  VALPTR_LIST * valptr_list);
 extern int scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       /* fields of SCAN_ID */
 			       int grouped,

@@ -3445,6 +3445,45 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+ * scan_open_values_scan () -
+ *   return: NO_ERROR
+ *   scan_id(out): Scan identifier
+ *   grouped(in):
+ *   single_fetch(in):
+ *   join_dbval(in):
+ *   val_list(in):
+ *   vd(in):
+ *   valptr_list(in):
+ */
+int
+scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+		       /* fields of SCAN_ID */
+		       int grouped,
+		       QPROC_SINGLE_FETCH single_fetch,
+		       DB_VALUE * join_dbval,
+		       VAL_LIST * val_list, VAL_DESCR * vd,
+		       /* fields of REGU_VALUES_SCAN_ID */
+		       VALPTR_LIST * valptr_list)
+{
+  REGU_VALUES_SCAN_ID *rvsidp;
+
+  assert (valptr_list != NULL);
+
+  scan_id->type = S_VALUES_SCAN;
+
+  /* initialize SCAN_ID structure */
+  /* readonly_scan = true, fixed = true */
+  scan_init_scan_id (scan_id, true, S_SELECT, true, grouped, single_fetch,
+		     join_dbval, val_list, vd);
+
+  rvsidp = &scan_id->s.rvsid;
+  rvsidp->regu_list = valptr_list->valptrp;
+  rvsidp->value_cnt = valptr_list->valptr_cnt;
+
+  return NO_ERROR;
+}
+
+/*
  * scan_open_set_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
@@ -3544,6 +3583,9 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   INDX_SCAN_ID *isidp;
   LLIST_SCAN_ID *llsidp;
   SET_SCAN_ID *ssidp;
+  REGU_VALUES_SCAN_ID *rvsidp;
+  REGU_VALUE_LIST *regu_value_list;
+  REGU_VARIABLE_LIST list_node;
 
 
   switch (scan_id->type)
@@ -3701,6 +3743,26 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  goto exit_on_error;
 	}
       qfile_start_scan_fix (thread_p, &llsidp->lsid);
+      break;
+
+    case S_VALUES_SCAN:
+      rvsidp = &scan_id->s.rvsid;
+      if (rvsidp->regu_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
+		  0);
+	  goto exit_on_error;
+	}
+
+      for (list_node = rvsidp->regu_list; list_node;
+	   list_node = list_node->next)
+	{
+	  regu_value_list = list_node->value.value.reguval_list;
+	  assert (regu_value_list != NULL
+		  && regu_value_list->regu_list != NULL);
+
+	  regu_value_list->current_value = regu_value_list->regu_list;
+	}
       break;
 
     case S_SET_SCAN:
@@ -3972,6 +4034,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_LIST_SCAN:
     case S_SET_SCAN:
     case S_METHOD_SCAN:
+    case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
 
     default:
@@ -3993,9 +4056,11 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCAN_ID *hsidp;
   INDX_SCAN_ID *isidp;
   LLIST_SCAN_ID *llsidp;
+  REGU_VALUES_SCAN_ID *rvsidp;
   SET_SCAN_ID *ssidp;
   KEY_VAL_RANGE *key_vals;
   int i;
+  REGU_VARIABLE_LIST list_node;
 
   if (scan_id == NULL)
     {
@@ -4076,6 +4141,10 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       llsidp = &scan_id->s.llsid;
       qfile_end_scan_fix (thread_p, &llsidp->lsid);
       qfile_close_scan (thread_p, &llsidp->lsid);
+      break;
+
+    case S_VALUES_SCAN:
+      rvsidp = &scan_id->s.rvsid;
       break;
 
     case S_SET_SCAN:
@@ -4331,6 +4400,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCAN_ID *hsidp;
   INDX_SCAN_ID *isidp;
   LLIST_SCAN_ID *llsidp;
+  REGU_VALUES_SCAN_ID *rvsidp;
   SET_SCAN_ID *ssidp;
   VA_SCAN_ID *vaidp;
   FILTER_INFO data_filter;
@@ -4343,6 +4413,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   QPROC_DB_VALUE_LIST src_valp;
   QPROC_DB_VALUE_LIST dest_valp;
   TRAN_ISOLATION isolation;
+  REGU_VARIABLE_LIST list_node;
+  REGU_VALUE_LIST *regu_value_list;
+  int i;
 
   switch (scan_id->type)
     {
@@ -5200,6 +5273,59 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       return qp_scan;
+
+    case S_VALUES_SCAN:
+      rvsidp = &scan_id->s.rvsid;
+      if (scan_id->position == S_BEFORE)
+	{
+	  scan_id->position = S_ON;
+	}
+      else if (scan_id->position == S_ON)
+	{
+	  for (i = 0, list_node = rvsidp->regu_list; list_node;
+	       ++i, list_node = list_node->next)
+	    {
+	      regu_value_list = list_node->value.value.reguval_list;
+	      if (regu_value_list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QPROC_INVALID_CRSPOS, 0);
+		  return S_ERROR;
+		}
+
+	      assert (regu_value_list->current_value != NULL);
+
+	      regu_value_list->current_value =
+		regu_value_list->current_value->next;
+
+	      if (regu_value_list->current_value == NULL)
+		{
+		  scan_id->position = S_AFTER;
+
+		  if (i == 0)
+		    {
+		      return S_END;
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_QPROC_INVALID_CRSPOS, 0);
+		      return S_ERROR;
+		    }
+		}
+	    }
+	}
+      else if (scan_id->position == S_AFTER)
+	{
+	  return S_END;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS,
+		  0);
+	  return S_ERROR;
+	}
+      return S_SUCCESS;
 
     case S_SET_SCAN:
 

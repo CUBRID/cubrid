@@ -3319,6 +3319,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
   OR_BUF buf;
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
+  REGU_VARIABLE *head_regu = NULL, *regu = NULL;
+  int error = NO_ERROR;
+  REGU_VALUE_LIST *reguval_list = NULL;
+  DB_TYPE head_type, cur_type;
 
   switch (regu_var->type)
     {
@@ -3417,6 +3421,29 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       *peek_dbval = &regu_var->value.dbval;
       break;
 
+    case TYPE_REGUVAL_LIST:
+      reguval_list = regu_var->value.reguval_list;
+      assert (reguval_list != NULL && reguval_list->current_value != NULL);
+
+      regu = reguval_list->current_value->value;
+      assert (regu != NULL);
+
+      if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH
+	  && regu->type != TYPE_POS_VALUE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
+		  0);
+	  goto error;
+	}
+
+      error = fetch_peek_dbval (thread_p, regu, vd,
+				class_oid, obj_oid, tpl, peek_dbval);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case TYPE_INARITH:		/* compute and fetch arithmetic expr. value */
     case TYPE_OUTARITH:
       return fetch_peek_arith (thread_p, regu_var, vd, obj_oid, tpl,
@@ -3441,10 +3468,44 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       goto error;
     }
 
-  if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval) &&
-      TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE)
+  if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval))
     {
-      regu_var->domain = tp_domain_resolve_value (*peek_dbval, NULL);
+      if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE)
+	{
+	  regu_var->domain = tp_domain_resolve_value (*peek_dbval, NULL);
+	}
+
+      /* for REGUVAL_LIST
+       * compare type with the corresponding column of first row
+       * if not compatible, raise an error
+       * This is the same behavior as "union"
+       */
+      if (regu_var->type == TYPE_REGUVAL_LIST)
+	{
+	  head_regu = reguval_list->regu_list->value;
+	  regu = reguval_list->current_value->value;
+
+	  if (regu->domain == NULL
+	      || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	    {
+	      regu->domain = tp_domain_resolve_value (*peek_dbval, NULL);
+	    }
+	  head_type = TP_DOMAIN_TYPE (head_regu->domain);
+	  cur_type = TP_DOMAIN_TYPE (regu->domain);
+
+	  /* compare the type */
+	  if (head_type != DB_TYPE_NULL
+	      && cur_type != DB_TYPE_NULL
+	      && head_regu->domain != regu->domain
+	      && (head_type != cur_type
+		  || !pr_is_string_type (head_type)
+		  || !pr_is_variable_type (head_type)))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QPROC_INCOMPATIBLE_TYPES, 0);
+	      goto error;
+	    }
+	}
     }
 
   return NO_ERROR;
