@@ -14392,7 +14392,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_IS_NOT_IN:
 	case PT_IS:
 	case PT_IS_NOT:
-	case PT_EXISTS:
 	case PT_EQ_SOME:
 	case PT_NE_SOME:
 	case PT_GE_SOME:
@@ -14412,14 +14411,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_LT:
 	case PT_LE:
 	case PT_NULLSAFE_EQ:
-	case PT_GT_INF:
-	case PT_LT_INF:
-	case PT_SETEQ:
-	case PT_SETNEQ:
-	case PT_SUPERSETEQ:
-	case PT_SUPERSET:
-	case PT_SUBSET:
-	case PT_SUBSETEQ:
 	case PT_PLUS:
 	case PT_MINUS:
 	case PT_TIMES:
@@ -14489,8 +14480,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_GREATEST:
 	case PT_STRCAT:
 	case PT_DECODE:
-	case PT_INCR:
-	case PT_DECR:
 	case PT_LOG:
 	case PT_EXP:
 	case PT_SQRT:
@@ -14519,6 +14508,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_LOG2:
 	case PT_LOG10:
 	case PT_TIME_FORMAT:
+	case PT_TIMESTAMP:
 	case PT_FROM_UNIXTIME:
 	case PT_ADDDATE:
 	case PT_DATE_ADD:
@@ -14566,8 +14556,11 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_NOT_RLIKE:
 	case PT_NOT_RLIKE_BINARY:
 	case PT_HEX:
+	case PT_ADDTIME:
 	case PT_ASCII:
 	case PT_CONV:
+	case PT_BIN:
+	case PT_FINDINSET:
 	case PT_INET_ATON:
 	case PT_INET_NTOA:
 	  /* valid expression, nothing to do */
