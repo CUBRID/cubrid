@@ -2052,6 +2052,7 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
 {
   char const *p = str, *q = str, *r = str;
   int y = 0, mo = 0, d = 0, h = 0, m = 0, s = 0, msec = 0;
+  int ndigits = 0;
 
   /* skip leading whitespace */
   while (p < strend && char_isspace (*p))
@@ -2175,44 +2176,47 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
 		    }
 		}
 	      break;
+	    case 7:
+	      /*          YY-MM-DD H */
+	      y = DECODE (p[0]) * 10 + DECODE (p[1]);
+	      mo = DECODE (p[2]) * 10 + DECODE (p[3]);
+	      d = DECODE (p[4]) * 10 + DECODE (p[5]);
+	      h = DECODE (p[6]);
+	      p += 7;
+	      break;
 	    default:
 	      /* should not be reached */
 	    case 8:
 	      /*         DD HH:MM:SS */
-	    case 7:
-	      /*          D HH:MM:SS */
 	      return NULL;
 	    }
 	}
 
       /* year, month, day, hour, minute, seconds have been read */
-      if (q - r > 6)
+      ndigits = q - r;
+      if (ndigits > 6)
 	{
 	  /* a date precedes the time in the input string */
 
 	  DB_DATE cdate;
 	  int year, month, day;
 
-	  if (q - r > 10)
+	  /* year is also specified in the date */
+	  if ((ndigits == 12) || (ndigits == 7))
 	    {
-	      /* year is also specified in the date */
-	      if (q - r == 12)
+	      /* 2-digits year specified, fill in the century */
+	      if (y < 70)
 		{
-		  /* 2-digits year specified, fill in the century */
-		  if (y < 70)
-		    {
-		      y += 2000;
-		    }
-		  else
-		    {
-		      y += 1900;
-		    }
+		  y += 2000;
+		}
+	      else
+		{
+		  y += 1900;
 		}
 	    }
-	  else
+	  else if (ndigits <= 10)
 	    {
-	      /* No year specified with the date, fill in the current year
-	       * */
+	      /* No year specified with the date, fill in the current year */
 	      y = get_current_year ();
 	    }
 
@@ -2373,6 +2377,7 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
       mo = DECODE (p[2]) * 10 + DECODE (p[3]);
       d = DECODE (p[4]) * 10 + DECODE (p[5]);
       h = DECODE (p[6]);
+      p += 7;
       break;
     case 8:
       /* YYYY MM DD */

@@ -118,6 +118,7 @@ typedef enum
   DT_PM,
   DT_P_M,
   DT_HH,
+  DT_H,
   DT_HH12,
   DT_HH24,
   DT_MI,
@@ -14131,6 +14132,34 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	      cs += token_size;
 	      break;
 
+	    case DT_H:
+	      if (time_count != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  goto exit;
+		}
+	      else
+		{
+		  time_count++;
+		}
+
+	      k = parse_digits (cs, &hour, 1);
+	      if (k <= 0)
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  goto exit;
+		}
+	      cs += k;
+	      if (hour < 1 || hour > 12)
+		{
+		  error_status = ER_TIME_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  goto exit;
+		}
+	      break;
+
 	    case DT_HH:
 	    case DT_HH12:
 	      if (time_count != 0)
@@ -17813,6 +17842,12 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_HH;
+	}
+      else if (strncasecmp (sp, "h", 1) == 0)
+	{
+	  *format_length += 1;
+	  *next_pos = sp + *format_length;
+	  return DT_H;
 	}
       else
 	{
