@@ -1371,7 +1371,9 @@
 #define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
 #define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
 
-#define ER_LAST_ERROR                               -1098
+#define ER_LANG_CODESET_NOT_AVAILABLE		    -1098
+
+#define ER_LAST_ERROR                               -1099
 
 /*
  * CAUTION!

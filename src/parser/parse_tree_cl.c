@@ -9611,7 +9611,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TO_CHAR:
       {
 	int flags;
-	bool is_user_format;
+	bool has_user_format = false;
+	bool has_user_lang = false;
 	INTL_LANG lang_id;
 
 	if (p->info.expr.op == PT_TO_DATE)
@@ -9643,8 +9644,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	q = pt_append_varchar (parser, q, r1);
 
 	flags = p->info.expr.arg3->info.value.data_value.i;
-	lang_id = lang_get_lang_id_from_flag (flags, &is_user_format);
-	if (is_user_format)
+	lang_id = lang_get_lang_id_from_flag (flags, &has_user_format,
+					      &has_user_lang);
+	if (has_user_format)
 	  {
 	    const char *lang_name = lang_get_lang_name_from_id (lang_id);
 
@@ -9652,7 +9654,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	    q = pt_append_varchar (parser, q, r1);
 
-	    if (lang_name)
+	    if (lang_name != NULL && has_user_lang)
 	      {
 		q = pt_append_nulstring (parser, q, ", '");
 		q = pt_append_nulstring (parser, q, lang_name);
@@ -15172,7 +15174,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (prt_cs != INTL_CODESET_NONE)
 	    {
 	      q = pt_append_nulstring (parser, q,
-				       intl_charset_print_name (prt_cs));
+				       lang_charset_introducer (prt_cs));
 	    }
 
 	  q = pt_append_nulstring (parser, q, p->info.value.text);
@@ -15204,7 +15206,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	if (prt_cs != INTL_CODESET_NONE)
 	  {
 	    tmp = pt_append_nulstring (parser, tmp,
-				       intl_charset_print_name (prt_cs));
+				       lang_charset_introducer (prt_cs));
 	  }
 
 	if (r1)
@@ -15267,7 +15269,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (prt_cs != INTL_CODESET_NONE)
 	    {
 	      q = pt_append_nulstring (parser, q,
-				       intl_charset_print_name (prt_cs));
+				       lang_charset_introducer (prt_cs));
 	    }
 	  q = pt_append_nulstring (parser, q, p->info.value.text);
 
@@ -15293,7 +15295,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       if (prt_cs != INTL_CODESET_NONE)
 	{
 	  q = pt_append_nulstring (parser, q,
-				   intl_charset_print_name (prt_cs));
+				   lang_charset_introducer (prt_cs));
 	}
       if (r1)
 	{

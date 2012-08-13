@@ -453,6 +453,7 @@ static bool parser_get_is_reverse (void);
 
 static void parser_initialize_parser_context (void);
 static PT_NODE *parser_make_date_lang (int arg_cnt, PT_NODE * arg3);
+static PT_NODE *parser_make_number_lang (const int argc);
 static void parser_remove_dummy_select (PT_NODE ** node);
 static int parser_count_list (PT_NODE * list);
 
@@ -13856,7 +13857,7 @@ reserved_func
 		{ pop_msg(); }
 		{{
 
-			$$ = parser_make_expression (PT_STR_TO_DATE, $4, $6, NULL);
+			$$ = parser_make_expression (PT_STR_TO_DATE, $4, $6, parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -13869,7 +13870,7 @@ reserved_func
 			if (node)
 			  node->type_enum = PT_TYPE_NULL;
 
-			$$ = parser_make_expression (PT_STR_TO_DATE, $4, node, NULL);
+			$$ = parser_make_expression (PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -20706,7 +20707,6 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 {
   if (arg3 && arg_cnt == 3)
     {
-
       char *lang_str;
       PT_NODE *date_lang = parser_new_node (this_parser, PT_VALUE);
 
@@ -20723,7 +20723,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	    {
 	      int flag = 0;
 	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
-	      if (lang_set_flag_from_lang (lang_str, 1, &flag))
+	      if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
 		{
 		  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
 		}
@@ -20739,21 +20739,13 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       PT_NODE *date_lang = parser_new_node (this_parser, PT_VALUE);
       if (date_lang)
 	{
-	  char env_str[LANG_MAX_LANGNAME];
 	  const char *lang_str;
 	  int flag = 0;
 
 	  date_lang->type_enum = PT_TYPE_INTEGER;
-	  lang_str = envvar_get ("DATE_LANG");
-	  if (lang_str != NULL)
-	    {
-	      strncpy (env_str, lang_str, sizeof (env_str) - 1);
-	      env_str[sizeof (env_str) - 1] = '\0';
-	      envvar_trim_char (env_str, '\"');
-	      lang_str = env_str;
-	    }
-
-	  lang_set_flag_from_lang (lang_str, (arg_cnt == 1) ? 0 : 1, &flag);
+	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	  
+	  lang_set_flag_from_lang (lang_str, (arg_cnt == 1) ? 0 : 1, 0, &flag);
 
 	  date_lang->info.value.data_value.i = (long) flag;
 	}
@@ -20762,7 +20754,26 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
     }
 }
 
+static PT_NODE *
+parser_make_number_lang (const int argc)
+{
+  PT_NODE *number_lang = parser_new_node (this_parser, PT_VALUE);
 
+  if (number_lang)
+    {
+      const char *lang_str;
+      int flag = 0;
+
+      number_lang->type_enum = PT_TYPE_INTEGER;
+      lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
+
+      lang_set_flag_from_lang (lang_str, (argc >= 2) ? 1 : 0, (argc == 3) ? 1 : 0, &flag);
+
+      number_lang->info.value.data_value.i = (long) flag;
+    }
+
+  return number_lang;
+}
 
 PT_NODE **
 parser_main (PARSER_CONTEXT * parser)
@@ -21081,13 +21092,20 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	}
 
       /* arg 2 */
+    case PT_DATE_FORMAT:
+    case PT_TIME_FORMAT:
+    case PT_FORMAT:    
+      if (c != 2)
+	return NULL;
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+      return parser_make_expression (key->op, a1, a2, parser_make_date_lang (2, NULL));
+
     case PT_LOG:
     case PT_MONTHS_BETWEEN:
     case PT_NVL:
     case PT_POWER:
-    case PT_TIME_FORMAT:
-    case PT_FORMAT:
-    case PT_DATE_FORMAT:
     case PT_ATAN2:
     case PT_DATEDIFF:
     case PT_TIMEDIFF:
@@ -21274,7 +21292,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (a1)
 	a2 = a1->next;
       a1->next = NULL;
-      return parser_make_expression (key->op, a1, a2, a3);
+      return parser_make_expression (key->op, a1, a2, parser_make_number_lang (c));
 
       /* arg 2 or 3 */
     case PT_LPAD:

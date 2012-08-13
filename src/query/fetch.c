@@ -134,6 +134,15 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_STR_TO_DATE:
+    case T_DATE_FORMAT:
+    case T_TIME_FORMAT:
+    case T_FORMAT:
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+			    vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	{
+	  goto error;
+	}
     case T_ADD:
     case T_SUB:
     case T_MUL:
@@ -154,7 +163,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_NULLIF:
     case T_INCR:
     case T_DECR:
-    case T_TIME_FORMAT:
     case T_BIT_AND:
     case T_BIT_OR:
     case T_BIT_XOR:
@@ -162,15 +170,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_BITSHIFT_RIGHT:
     case T_INTDIV:
     case T_INTMOD:
-    case T_FORMAT:
     case T_STRCMP:
     case T_ATAN2:
     case T_ADDDATE:
     case T_SUBDATE:
     case T_DATEDIFF:
     case T_TIMEDIFF:
-    case T_DATE_FORMAT:
-    case T_STR_TO_DATE:
     case T_CURRENT_VALUE:
     case T_CHR:
       /* fetch lhs and rhs value */
@@ -1446,8 +1451,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_time_format (peek_left, peek_right, arithptr->value,
-			       arithptr->domain) != NO_ERROR)
+      else if (db_time_format (peek_left, peek_right, peek_third,
+			       arithptr->value, arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1783,7 +1788,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_format (peek_left, peek_right, arithptr->value,
+      else if (db_format (peek_left, peek_right, peek_third, arithptr->value,
 			  arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
@@ -1795,7 +1800,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_date_format (peek_left, peek_right,
+      else if (db_date_format (peek_left, peek_right, peek_third,
 			       arithptr->value, arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
@@ -1804,11 +1809,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_STR_TO_DATE:
-      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right)
+	  || DB_IS_NULL (peek_third))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_str_to_date (peek_left, peek_right,
+      else if (db_str_to_date (peek_left, peek_right, peek_third,
 			       arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
@@ -2126,21 +2132,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (peek_third && DB_GET_INT (peek_third) == 1)
-	{
-	  peek_right->domain.general_info.type = DB_TYPE_NULL;
-	  if (db_to_number (peek_left, 0, arithptr->value) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  regu_var->domain->precision =
-	    arithptr->value->domain.numeric_info.precision;
-	  regu_var->domain->scale =
-	    arithptr->value->domain.numeric_info.scale;
-	}
       else
 	{
-	  if (db_to_number (peek_left, peek_right,
+	  if (db_to_number (peek_left, peek_right, peek_third,
 			    arithptr->value) != NO_ERROR)
 	    {
 	      goto error;

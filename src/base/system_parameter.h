@@ -266,8 +266,8 @@ enum param_id
   PRM_ID_SERVICE_SERVER_LIST,
   PRM_ID_SESSION_STATE_TIMEOUT,
   PRM_ID_MULTI_RANGE_OPT_LIMIT,
-  PRM_ID_USE_LOCALE_NUMBER_FORMAT,
-  PRM_ID_USE_LOCALE_DATE_FORMAT,
+  PRM_ID_INTL_NUMBER_LANG,
+  PRM_ID_INTL_DATE_LANG,
   /* All the compound parameters *must* be at the end of the array so that the
      changes they cause are not overridden by other parameters (for example in
      sysprm_load_and_init the parameters are set to their default in the order

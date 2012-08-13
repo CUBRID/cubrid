@@ -450,9 +450,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_VOLUME_SIZE "log_volume_size"
 
-#define PRM_NAME_USE_LOCALE_NUMBER_FORMAT "use_locale_number_format"
+#define PRM_NAME_INTL_NUMBER_LANG "intl_number_lang"
 
-#define PRM_NAME_USE_LOCALE_DATE_FORMAT "use_locale_date_format"
+#define PRM_NAME_INTL_DATE_LANG "intl_date_lang"
 
 #define PRM_NAME_UNICODE_INPUT_NORMALIZATION "unicode_input_normalization"
 
@@ -1224,11 +1224,11 @@ static UINT64 prm_log_volume_size_default = 536870912ULL;	/* 512M */
 static UINT64 prm_log_volume_size_lower = 20971520ULL;	/* 20M */
 static UINT64 prm_log_volume_size_upper = 4294967296ULL;	/* 4G */
 
-bool PRM_USE_LOCALE_NUMBER_FORMAT = true;
-static bool prm_use_locale_number_format_default = true;
+char *PRM_INTL_NUMBER_LANG = NULL;
+static char *prm_intl_number_lang_default = NULL;
 
-bool PRM_USE_LOCALE_DATE_FORMAT = true;
-static bool prm_use_locale_date_format_default = true;
+char *PRM_INTL_DATE_LANG = NULL;
+static char *prm_intl_date_lang_default = NULL;
 
 bool PRM_UNICODE_INPUT_NORMALIZATION = false;
 static bool prm_unicode_input_normalization_default = false;
@@ -2529,20 +2529,20 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_multi_range_opt_limit_upper,
    (void *) &prm_multi_range_opt_limit_lower,
    (char *) NULL},
-  {PRM_NAME_USE_LOCALE_NUMBER_FORMAT,
-   (PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE |
-    PRM_FOR_SESSION),
-   PRM_BOOLEAN,
-   (void *) &prm_use_locale_number_format_default,
-   (void *) &PRM_USE_LOCALE_NUMBER_FORMAT,
+  {PRM_NAME_INTL_NUMBER_LANG,
+   (PRM_DEFAULT | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION |
+    PRM_CLEAR_CACHE | PRM_TEST_CHANGE),
+   PRM_STRING,
+   (void *) &prm_intl_number_lang_default,
+   (void *) &PRM_INTL_NUMBER_LANG,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
-  {PRM_NAME_USE_LOCALE_DATE_FORMAT,
-   (PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE |
-    PRM_FOR_SESSION),
-   PRM_BOOLEAN,
-   (void *) &prm_use_locale_date_format_default,
-   (void *) &PRM_USE_LOCALE_DATE_FORMAT,
+  {PRM_NAME_INTL_DATE_LANG,
+   (PRM_DEFAULT | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION |
+    PRM_CLEAR_CACHE | PRM_TEST_CHANGE),
+   PRM_STRING,
+   (void *) &prm_intl_date_lang_default,
+   (void *) &PRM_INTL_DATE_LANG,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   /* All the compound parameters *must* be at the end of the array so that the
@@ -2909,6 +2909,9 @@ static SESSION_PARAM *sysprm_obtain_session_parameters (void);
 static int prm_get_id (const SYSPRM_PARAM * prm);
 static int prm_compare_prm_value_with_value (PRM_VALUE prm_value, void *value,
 					     unsigned int val_type);
+#if !defined SERVER_MODE
+static void prm_init_intl_param (void);
+#endif
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_PRM_FILES_LOADED	10
@@ -3259,8 +3262,9 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 #endif
 
   intl_Mbs_support = prm_get_bool_value (PRM_ID_INTL_MBS_SUPPORT);
-  intl_String_validation =
-    prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
+#if !defined (SERVER_MODE)
+  prm_init_intl_param ();
+#endif
 
   return NO_ERROR;
 }
@@ -4804,6 +4808,16 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
     {
       char *val, **valp;
 
+      if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0
+	  || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
+	{
+	  INTL_LANG dummy;
+
+	  if (lang_get_lang_id_from_name (value, &dummy) != 0)
+	    {
+	      return PRM_ERR_BAD_VALUE;
+	    }
+	}
       if (PRM_IS_ALLOCATED (prm->flag))
 	{
 	  char *str = PRM_GET_STRING (prm->value);
@@ -6986,8 +7000,7 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_params)
 	  break;
 
 	case PRM_STRING:
-	  size +=
-	    or_packed_string_length (prm->prm_value.str, NULL);
+	  size += or_packed_string_length (prm->prm_value.str, NULL);
 	  break;
 
 	case PRM_ERROR_LIST:
@@ -7889,7 +7902,7 @@ sysprm_update_client_session_parameters (SESSION_PARAM * session_params)
 	    }
 	  if (sprm->prm_value.str)
 	    {
-	      char * str;
+	      char *str;
 	      size = strlen (sprm->prm_value.str) + 1;
 	      str = (char *) malloc (size);
 	      if (str == NULL)
@@ -8012,3 +8025,43 @@ sysprm_print_different_session_parameters (void)
 
   return q;
 }
+
+#if !defined (SERVER_MODE)
+/*
+ * prm_init_intl_param () -
+ *
+ * return: printed string
+ */
+static void
+prm_init_intl_param (void)
+{
+  SYSPRM_PARAM *prm_date_lang;
+  SYSPRM_PARAM *prm_number_lang;
+
+  prm_date_lang = prm_find (PRM_NAME_INTL_DATE_LANG, NULL);
+  prm_number_lang = prm_find (PRM_NAME_INTL_NUMBER_LANG, NULL);
+
+  if (prm_date_lang != NULL)
+    {
+      if (PRM_GET_STRING (prm_date_lang->value))
+	{
+	  free_and_init (PRM_GET_STRING (prm_date_lang->value));
+	}
+      PRM_CLEAR_BIT (PRM_ALLOCATED, prm_date_lang->flag);
+      prm_set (prm_date_lang, lang_get_Lang_name (), true);
+    }
+
+  if (prm_number_lang != NULL)
+    {
+      if (PRM_GET_STRING (prm_number_lang->value))
+	{
+	  free_and_init (PRM_GET_STRING (prm_number_lang->value));
+	}
+      PRM_CLEAR_BIT (PRM_ALLOCATED, prm_number_lang->flag);
+      prm_set (prm_number_lang, lang_get_Lang_name (), true);
+    }
+
+  intl_String_validation =
+    prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
+}
+#endif

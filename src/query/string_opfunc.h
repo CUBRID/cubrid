@@ -254,10 +254,12 @@ extern int db_add_months (const DB_VALUE * src_date,
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);
 extern int db_str_to_date (const DB_VALUE * src_date,
 			   const DB_VALUE * src_format,
-			   DB_VALUE * result_date, TP_DOMAIN * domain);
+			   const DB_VALUE * date_lang, DB_VALUE * result_date,
+			   TP_DOMAIN * domain);
 extern int db_time_format (const DB_VALUE * src_time,
 			   const DB_VALUE * src_format,
-			   DB_VALUE * result_time, const TP_DOMAIN * domain);
+			   const DB_VALUE * date_lang, DB_VALUE * result_time,
+			   const TP_DOMAIN * domain);
 extern int db_timestamp (const DB_VALUE * src_datetime1,
 			 const DB_VALUE * src_time2,
 			 DB_VALUE * result_datetime);
@@ -291,11 +293,13 @@ extern int db_to_datetime (const DB_VALUE * src_str,
 			   const DB_VALUE * date_lang,
 			   DB_VALUE * result_datetime);
 extern int db_to_number (const DB_VALUE * src_str,
-			 const DB_VALUE * format_str, DB_VALUE * result_num);
+			 const DB_VALUE * format_str,
+			 const DB_VALUE * number_lang, DB_VALUE * result_num);
 extern int db_string_reverse (const DB_VALUE * src_str,
 			      DB_VALUE * result_str);
 extern int db_format (const DB_VALUE * number_text, const DB_VALUE * decimals,
-		      DB_VALUE * result, const TP_DOMAIN * domain);
+		      const DB_VALUE * number_lang, DB_VALUE * result,
+		      const TP_DOMAIN * domain);
 /* datetime functions */
 extern int db_date_add_interval_days (DB_VALUE * result,
 				      const DB_VALUE * date,
@@ -310,7 +314,8 @@ extern int db_date_sub_interval_expr (DB_VALUE * result,
 				      const DB_VALUE * date,
 				      const DB_VALUE * expr, const int unit);
 extern int db_date_format (const DB_VALUE * date_value,
-			   const DB_VALUE * format, DB_VALUE * result,
+			   const DB_VALUE * format,
+			   const DB_VALUE * date_lang, DB_VALUE * result,
 			   const TP_DOMAIN * domain);
 extern int db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value,
 			  const TP_DOMAIN * domain);

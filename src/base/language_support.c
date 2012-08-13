@@ -116,6 +116,23 @@ static int lang_count_collations = 0;
 /* normalization data */
 static UNICODE_NORMALIZATION *generic_unicode_norm = NULL;
 
+static const DB_CHARSET lang_Db_charsets[] = {
+  {"ascii", "US English charset - ASCII encoding", " ", "",
+   INTL_CODESET_ASCII, 1},
+  {"raw-bits", "Uninterpreted bits - Raw encoding", "", "",
+   INTL_CODESET_RAW_BITS, 1},
+  {"raw-bytes", "Uninterpreted bytes - Raw encoding", "", "",
+   INTL_CODESET_RAW_BYTES, 1},
+  {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", " ", "_iso88591",
+   INTL_CODESET_ISO88591, 1},
+  {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "\241\241", "_euckr",
+   INTL_CODESET_KSC5601_EUC, 2},
+  {"utf-8", "UNICODE charset - UTF-8 encoding", " ", "_utf8",
+   INTL_CODESET_UTF8, 1},
+  {"", "", "", "", INTL_CODESET_NONE, 0}
+};
+
+
 static void set_current_locale (bool is_full_init);
 static int set_lang_from_env (void);
 static void set_default_lang (void);
@@ -132,8 +149,6 @@ static int register_collation (LANG_COLLATION * coll);
 
 static bool lang_is_codeset_allowed (const INTL_LANG intl_id,
 				     const INTL_CODESET codeset);
-static int lang_get_lang_id_from_name (const char *lang_name,
-				       INTL_LANG * lang);
 static int lang_get_builtin_lang_id_from_name (const char *lang_name,
 					       INTL_LANG * lang_id);
 static INTL_CODESET lang_get_default_codeset (const INTL_LANG intl_id);
@@ -1538,9 +1553,14 @@ lang_locale (void)
 
 /*
  * lang_get_specific_locale - returns language locale of a specific language
+ *			      and codeset
+ *
  *  return: language locale data
- *  lang(in): 
- *  codeset(in): 
+ *  lang(in):
+ *  codeset(in):
+ *
+ *  Note : if codeset is INTL_CODESET_NONE, returns the first locale it
+ *	   founds with requested language id, not matter the codeset.
  */
 const LANG_LOCALE_DATA *
 lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
@@ -1558,14 +1578,15 @@ lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
       for (curr_lang_locale = first_lang_locale; curr_lang_locale != NULL;
 	   curr_lang_locale = curr_lang_locale->next_lld)
 	{
-	  if (curr_lang_locale->codeset == codeset)
+	  if (curr_lang_locale->codeset == codeset
+	      || codeset == INTL_CODESET_NONE)
 	    {
 	      return curr_lang_locale;
 	    }
 	}
     }
 
-  return lang_Loc_data;
+  return NULL;
 }
 
 
@@ -1635,7 +1656,7 @@ lang_get_builtin_lang_id_from_name (const char *lang_name,
  *
  *  Note : INTL_LANG_ENGLISH is returned if name is not a valid language name
  */
-static int
+int
 lang_get_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id)
 {
   int i;
@@ -1683,7 +1704,8 @@ lang_get_lang_name_from_id (const INTL_LANG lang_id)
  *
  *   return: 0 if language string OK and flag was set, non-zero otherwise
  *   lang_str(in): language string identier
- *   user_format(in): true if user has given a format, false if default format
+ *   has_user_format(in): true if user has given a format, false otherwise
+ *   has_user_lang(in): true if user has given a language, false otherwise
  *   flag(out): bit flag : bit 0 is the user flag, bits 1 - 31 are for
  *		language identification
  *		Bit 0 : if set, the language was given by user
@@ -1693,7 +1715,8 @@ lang_get_lang_name_from_id (const INTL_LANG lang_id)
  *	   If lang_str cannot be solved, the language is assumed English.
  */
 int
-lang_set_flag_from_lang (const char *lang_str, bool user_format, int *flag)
+lang_set_flag_from_lang (const char *lang_str, bool has_user_format,
+			 bool has_user_lang, int *flag)
 {
   INTL_LANG lang = INTL_LANG_ENGLISH;
   int status = 0;
@@ -1703,7 +1726,8 @@ lang_set_flag_from_lang (const char *lang_str, bool user_format, int *flag)
       status = lang_get_lang_id_from_name (lang_str, &lang);
     }
 
-  if (lang_set_flag_from_lang_id (lang, user_format, flag) == 0)
+  if (lang_set_flag_from_lang_id (lang, has_user_format, has_user_lang,
+				  flag) == 0)
     {
       return status;
     }
@@ -1718,38 +1742,37 @@ lang_set_flag_from_lang (const char *lang_str, bool user_format, int *flag)
  *
  *   return: 0 if language string OK and flag was set, non-zero otherwise
  *   lang(in): language identier
- *   user_format(in): true if user has given a format, false if default format
- *   flag(out): bit flag : bit 0 is the user flag, bits 1 - 31 are for
+ *   has_user_format(in): true if user has given a format, false otherwise
+ *   has_user_lang(in): true if user has given a language, false otherwise
+ *   flag(out): bit flag : bits 0 and 1 are user flags, bits 2 - 31 are for
  *		language identification
- *		Bit 0 : if set, the language was given by user
- *		Bit 1 - 31 : INTL_LANG
+ *		Bit 0 : if set, the format was given by user
+*		Bit 1 : if set, the language was given by user
+ *		Bit 2 - 31 : INTL_LANG
  *		Consider change this flag to store the language as value
  *		instead of as bit map
  *
  *  Note : function is used in context of some date-string functions.
  */
 int
-lang_set_flag_from_lang_id (const INTL_LANG lang, bool user_format, int *flag)
+lang_set_flag_from_lang_id (const INTL_LANG lang, bool has_user_format,
+			    bool has_user_lang, int *flag)
 {
   int lang_val = (int) lang;
 
-  if (user_format)
-    {
-      *flag = 0;
-    }
-  else
-    {
-      *flag = 0x1;
-    }
+  *flag = 0;
+
+  *flag |= (has_user_format) ? 1 : 0;
+  *flag |= (has_user_lang) ? 2 : 0;
 
   if (lang_val >= lang_count_locales)
     {
       lang_val = (int) INTL_LANG_ENGLISH;
-      *flag |= lang_val << 1;
+      *flag |= lang_val << 2;
       return 1;
     }
 
-  *flag |= lang_val << 1;
+  *flag |= lang_val << 2;
 
   return 0;
 }
@@ -1759,26 +1782,21 @@ lang_set_flag_from_lang_id (const INTL_LANG lang, bool user_format, int *flag)
  *
  *   return: id of language, current language is returned when flag value is
  *	     invalid
- *   flag(in): bit flag : bit 0 is the user flag, bits 1 - 31 are for
+ *   flag(in): bit flag : bit 0 and 1 are user flags, bits 2 - 31 are for
  *	       language identification
  *
  *  Note : function is used in context of some date-string functions.
  */
 INTL_LANG
-lang_get_lang_id_from_flag (const int flag, bool * user_format)
+lang_get_lang_id_from_flag (const int flag, bool * has_user_format,
+			    bool * has_user_lang)
 {
-  int lang_val = (int) flag;
+  int lang_val;
 
-  if (flag & 0x1)
-    {
-      *user_format = false;
-    }
-  else
-    {
-      *user_format = true;
-    }
+  *has_user_format = ((flag & 0x1) == 0x1) ? true : false;
+  *has_user_lang = ((flag & 0x2) == 0x2) ? true : false;
 
-  lang_val = flag >> 1;
+  lang_val = flag >> 2;
 
   if (lang_val >= 0 && lang_val < lang_count_locales)
     {
@@ -1793,31 +1811,36 @@ lang_get_lang_id_from_flag (const int flag, bool * user_format)
  *		      language or NULL if a the default format is not
  *		      available
  *   lang_id (in):
+ *   codeset (in):
  *   type (in): DB type for format
  */
 const char *
-lang_date_format (const INTL_LANG lang_id, const DB_TYPE type)
+lang_date_format (const INTL_LANG lang_id, const INTL_CODESET codeset,
+		  const DB_TYPE type)
 {
-  if (prm_get_bool_value (PRM_ID_USE_LOCALE_DATE_FORMAT))
-    {
-      if (!lang_Initialized)
-	{
-	  lang_init ();
-	}
+  const LANG_LOCALE_DATA *lld;
 
-      switch (type)
-	{
-	case DB_TYPE_TIME:
-	  return lang_locale ()->time_format;
-	case DB_TYPE_DATE:
-	  return lang_locale ()->date_format;
-	case DB_TYPE_DATETIME:
-	  return lang_locale ()->datetime_format;
-	case DB_TYPE_TIMESTAMP:
-	  return lang_locale ()->timestamp_format;
-	default:
-	  break;
-	}
+  assert (lang_Fully_Initialized);
+
+  lld = lang_get_specific_locale (lang_id, codeset);
+
+  if (lld == NULL)
+    {
+      return NULL;
+    }
+
+  switch (type)
+    {
+    case DB_TYPE_TIME:
+      return lld->time_format;
+    case DB_TYPE_DATE:
+      return lld->date_format;
+    case DB_TYPE_DATETIME:
+      return lld->datetime_format;
+    case DB_TYPE_TIMESTAMP:
+      return lld->timestamp_format;
+    default:
+      break;
     }
 
   return NULL;
@@ -1878,15 +1901,11 @@ char
 lang_digit_grouping_symbol (const INTL_LANG lang_id)
 {
   const LANG_LOCALE_DATA *lld =
-    lang_get_specific_locale (lang_id, lang_Loc_charset);
+    lang_get_specific_locale (lang_id, INTL_CODESET_NONE);
 
   assert (lld != NULL);
 
-  if (prm_get_bool_value (PRM_ID_USE_LOCALE_NUMBER_FORMAT))
-    {
-      return lld->number_group_sym;
-    }
-  return ',';
+  return lld->number_group_sym;
 }
 
 /*
@@ -1898,16 +1917,11 @@ char
 lang_digit_fractional_symbol (const INTL_LANG lang_id)
 {
   const LANG_LOCALE_DATA *lld =
-    lang_get_specific_locale (lang_id, lang_Loc_charset);
+    lang_get_specific_locale (lang_id, INTL_CODESET_NONE);
 
   assert (lld != NULL);
 
-  if (prm_get_bool_value (PRM_ID_USE_LOCALE_NUMBER_FORMAT))
-    {
-      return lld->number_decimal_sym;
-    }
-
-  return '.';
+  return lld->number_decimal_sym;
 }
 
 /*
@@ -1920,26 +1934,34 @@ lang_get_txt_conv (void)
   return console_conv;
 }
 
+/*
+ * lang_charset_name() - returns charset name
+ *
+ *   return:
+ *   codeset(in):
+ */
+const char *
+lang_charset_name (const INTL_CODESET codeset)
+{
+  int i;
+
+  assert (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_UTF8);
+
+  for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
+    {
+      if (codeset == lang_Db_charsets[i].charset_id)
+	{
+	  return lang_Db_charsets[i].charset_name;
+	}
+    }
+
+  return NULL;
+}
+
 #if !defined (SERVER_MODE)
 static DB_CHARSET lang_Server_charset;
 static INTL_LANG lang_Server_lang_id;
 static char lang_Server_lang_name[LANG_MAX_LANGNAME + 1];
-
-static const DB_CHARSET lang_Db_charsets[] = {
-  {"ascii", "US English charset - ASCII encoding", " ", INTL_CODESET_ASCII, 0,
-   1},
-  {"raw-bits", "Uninterpreted bits - Raw encoding", "", INTL_CODESET_RAW_BITS,
-   0, 1},
-  {"raw-bytes", "Uninterpreted bytes - Raw encoding", "",
-   INTL_CODESET_RAW_BYTES, 0, 1},
-  {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", " ",
-   INTL_CODESET_ISO88591, 0, 1},
-  {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "\241\241",
-   INTL_CODESET_KSC5601_EUC, 0, 2},
-  {"utf-8", "UNICODE charset - UTF-8 encoding", " ",
-   INTL_CODESET_UTF8, 0, 1},
-  {"", "", "", INTL_CODESET_NONE, 0, 0}
-};
 
 static int lang_Server_charset_Initialized = 0;
 
@@ -2325,6 +2347,29 @@ lang_get_parser_use_client_charset (void)
   return lang_Parser_use_client_charset;
 }
 
+/*
+ * lang_charset_introducer() - returns introducer text to print for a charset
+ *
+ *   return: charset introducer or NULL if not found
+ *   codeset(in):
+ */
+const char *
+lang_charset_introducer (const INTL_CODESET codeset)
+{
+  int i;
+
+  assert (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_UTF8);
+
+  for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
+    {
+      if (codeset == lang_Db_charsets[i].charset_id)
+	{
+	  return lang_Db_charsets[i].introducer;
+	}
+    }
+
+  return NULL;
+}
 #endif /* !SERVER_MODE */
 
 
@@ -4358,8 +4403,8 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   NULL,
   NULL,
   NULL,
-  ',',
   '.',
+  ',',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
   "8710ffb79b191c2158d4c498e8bc7dea",
@@ -4433,8 +4478,8 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
   NULL,
   NULL,
   NULL,
-  ',',
   '.',
+  ',',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
   "c46ff948b4147323edfba0c51f96fe47",

@@ -105,18 +105,16 @@
 				  (x) != INTL_CODESET_ISO88591)
 
 
-#if !defined (SERVER_MODE)
 typedef struct db_charset DB_CHARSET;
 struct db_charset
 {
   const char *charset_name;
   const char *charset_desc;
   const char *space_char;
+  const char *introducer;
   INTL_CODESET charset_id;
-  int default_collation;
   int space_size;
 };
-#endif /* !SERVER_MODE */
 
 /* collation optimizations */
 typedef struct coll_opt COLL_OPT;
@@ -266,14 +264,20 @@ extern "C"
     (const INTL_LANG lang, const INTL_CODESET codeset);
   extern const LANG_LOCALE_DATA *lang_get_first_locale_for_lang
     (const INTL_LANG lang);
+  extern int lang_get_lang_id_from_name (const char *lang_name,
+					 INTL_LANG * lang_id);
   extern const char *lang_get_lang_name_from_id (const INTL_LANG lang_id);
-  extern int lang_set_flag_from_lang (const char *lang_str, bool user_format,
-				      int *flag);
+  extern int lang_set_flag_from_lang (const char *lang_str,
+				      bool has_user_format,
+				      bool has_user_lang, int *flag);
   extern int lang_set_flag_from_lang_id (const INTL_LANG lang,
-					 bool user_format, int *flag);
+					 bool has_user_format,
+					 bool has_user_lang, int *flag);
   extern INTL_LANG lang_get_lang_id_from_flag (const int flag,
-					       bool * user_format);
+					       bool * has_user_format,
+					       bool * has_user_lang);
   extern const char *lang_date_format (const INTL_LANG lang_id,
+				       const INTL_CODESET codeset,
 				       const DB_TYPE type);
   extern char lang_digit_grouping_symbol (const INTL_LANG lang_id);
   extern char lang_digit_fractional_symbol (const INTL_LANG lang_id);
@@ -286,6 +290,7 @@ extern "C"
   extern const ALPHABET_DATA *lang_user_alphabet_w_coll
     (const int collation_id);
   extern TEXT_CONVERSION *lang_get_txt_conv (void);
+  extern const char *lang_charset_name (const INTL_CODESET codeset);
 
   extern int lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
 					       const unsigned char *str1,
@@ -313,6 +318,7 @@ extern "C"
   extern int lang_get_client_collation (void);
   extern void lang_set_parser_use_client_charset (bool use);
   extern bool lang_get_parser_use_client_charset (void);
+  extern const char *lang_charset_introducer (const INTL_CODESET codeset);
 #endif				/* !SERVER_MODE */
 
   extern int lang_load_library (const char *lib_file, void **handle);

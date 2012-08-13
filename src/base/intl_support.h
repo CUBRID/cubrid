@@ -97,7 +97,9 @@
      || ((cs_to) == INTL_CODESET_UTF8 && (cs_from) == INTL_CODESET_ISO88591))
 
 extern bool intl_Mbs_support;
+#if !defined (SERVER_MODE)
 extern bool intl_String_validation;
+#endif
 
 /* language identifier : we support built-in languages and user defined
  * languages (through locale definition);
@@ -242,9 +244,11 @@ extern "C"
 				     unsigned char *str1, unsigned char *str2,
 				     const int size_str1, const int size_str2,
 				     bool identifier_mode);
-  extern int intl_case_match_tok (const INTL_LANG lang_id, unsigned char *tok,
-				  unsigned char *src, const int size_tok,
-				  const int size_src, int *matched_size_src);
+  extern int intl_case_match_tok (const INTL_LANG lang_id,
+				  const INTL_CODESET codeset,
+				  unsigned char *tok, unsigned char *src,
+				  const int size_tok, const int size_src,
+				  int *matched_size_src);
   extern int intl_identifier_casecmp (const char *str1, const char *str2);
   extern int intl_identifier_ncasecmp (const char *str1, const char *str2,
 				       const int len);
@@ -284,7 +288,6 @@ extern "C"
   extern int intl_check_string (const char *buf, int size, char **pos,
 				const INTL_CODESET codeset);
   extern bool intl_is_bom_magic (const char *buf, const int size);
-  extern const char *intl_charset_print_name (const INTL_CODESET codeset);
 #endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint,
 			      unsigned char *utf8_seq);

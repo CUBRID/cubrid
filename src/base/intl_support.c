@@ -2446,8 +2446,11 @@ intl_strcasecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
       unsigned int cp1, cp2;
       const LANG_LOCALE_DATA *loc =
 	lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
-      const ALPHABET_DATA *alphabet =
-	identifier_mode ? &(loc->ident_alphabet) : &(loc->alphabet);
+      const ALPHABET_DATA *alphabet;
+
+      assert (loc != NULL);
+
+      alphabet = identifier_mode ? &(loc->ident_alphabet) : &(loc->alphabet);
 
       str1_end = str1 + size_str1;
       str2_end = str2 + size_str2;
@@ -2489,6 +2492,8 @@ intl_strcasecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
 /*
  * intl_is_case_match() - performs case insensitive matching
  *   return:  0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
+ *   lang_id(in):
+ *   codeset(in):
  *   tok(in): token to check
  *   src(in): string to check for token
  *   size_tok(in): size in bytes of token
@@ -2499,9 +2504,10 @@ intl_strcasecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
  *	   it takes into account case expansion (length in chars may differ).
  */
 int
-intl_case_match_tok (const INTL_LANG lang_id, unsigned char *tok,
-		     unsigned char *src, const int size_tok,
-		     const int size_src, int *matched_size_src)
+intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
+		     unsigned char *tok, unsigned char *src,
+		     const int size_tok, const int size_src,
+		     int *matched_size_src)
 {
   assert (tok != NULL);
   assert (src != NULL);
@@ -2513,14 +2519,18 @@ intl_case_match_tok (const INTL_LANG lang_id, unsigned char *tok,
 
   *matched_size_src = 0;
 
-  if (lang_charset () == INTL_CODESET_UTF8)
+  if (codeset == INTL_CODESET_UTF8)
     {
       unsigned char *tok_end, *src_end;
       unsigned char *dummy;
       unsigned int cp1, cp2;
       const LANG_LOCALE_DATA *loc =
 	lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
-      const ALPHABET_DATA *alphabet = &(loc->alphabet);
+      const ALPHABET_DATA *alphabet;
+
+      assert (loc != NULL);
+
+      alphabet = &(loc->alphabet);
 
       tok_end = tok + size_tok;
       src_end = src + size_src;
@@ -3927,28 +3937,6 @@ intl_is_bom_magic (const char *buf, const int size)
     }
 
   return false;
-}
-
-/*
- * intl_charset_print_name() - returns parser text to print for a charset
- *
- *   return: charset text or NULL if codeset is invalid
- *   codeset(in):
- */
-const char *
-intl_charset_print_name (const INTL_CODESET codeset)
-{
-  switch (codeset)
-    {
-    case INTL_CODESET_ISO88591:
-      return "_iso88591";
-    case INTL_CODESET_UTF8:
-      return "_utf8";
-    default:
-      break;
-    }
-
-  return NULL;
 }
 #endif /* SERVER_MODE */
 

@@ -1163,7 +1163,8 @@ $ LOADDB
 1095 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
 1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
 1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1098 마지막 에러
+1098 Locales for language '%s' are not available with charset '%s'.
+1099 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

@@ -1543,11 +1543,6 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
-		case PT_TO_NUMBER:
-		  db_make_null (&opd2);
-		  opd2_set_null = true;
-		  /*opd2 = NULL; */
-		  break;
 		default:
 		  db_make_null (&opd2);
 		  break;
@@ -1567,13 +1562,6 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	      switch (op)
 		{
-		case PT_TO_NUMBER:
-		  if (tree->info.expr.arg2 == NULL)
-		    db_make_int (&opd3, 1);
-		  else
-		    db_make_int (&opd3, 0);
-		  type3 = PT_TYPE_INTEGER;
-		  break;
 		case PT_REPLACE:
 		case PT_TRANSLATE:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)

@@ -1163,7 +1163,8 @@ $ LOADDB
 1095 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
 1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
 1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1098 Last Error
+1098 Locales for language '%s' are not available with charset '%s'.
+1099 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

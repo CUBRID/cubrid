@@ -1463,6 +1463,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
@@ -1474,6 +1477,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
@@ -2181,6 +2187,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
@@ -2192,6 +2201,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
@@ -2388,6 +2400,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
 
       /* return type */
       sig.return_type.is_generic = false;
@@ -2721,6 +2736,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_DISCRETE_NUMBER;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
 
       /* return type */
       sig.return_type.is_generic = false;
@@ -8156,8 +8174,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_TO_CHAR:
-      if (arg1_type == PT_TYPE_CHAR || arg1_type == PT_TYPE_VARCHAR
-	  || arg1_type == PT_TYPE_NCHAR || arg1_type == PT_TYPE_VARNCHAR)
+      if (PT_IS_CHAR_STRING_TYPE (arg1_type))
 	{
 	  arg1->line_number = node->line_number;
 	  arg1->column_number = node->column_number;
@@ -8177,6 +8194,29 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  parser_free_node (parser, node);
 	  return arg1;
 	}
+      else if (PT_IS_NUMERIC_TYPE (arg1_type))
+	{
+	  bool has_user_format = false;
+	  bool has_user_lang = false;
+	  const char *lang_str;
+
+	  assert (arg3 != NULL && arg3->node_type == PT_VALUE
+		  && arg3_type == PT_TYPE_INTEGER);
+	  /* change locale from date_lang (set by grammar) to number_lang */
+	  (void) lang_get_lang_id_from_flag (arg3->info.value.data_value.i,
+					     &has_user_format,
+					     &has_user_lang);
+	  if (!has_user_lang)
+	    {
+	      lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
+	      (void) lang_set_flag_from_lang (lang_str, has_user_format,
+					      has_user_lang,
+					      &arg3->info.value.data_value.i);
+	      arg3->info.value.db_value_is_initialized = 0;
+	      pt_value_to_db (parser, arg3);
+	    }
+	}
+
       break;
 
     default:
@@ -9012,6 +9052,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_STR_TO_DATE:
       {
 	int type = 0;
+
+	assert (arg3_type == PT_TYPE_INTEGER);
+
 	if (arg2_type == PT_TYPE_NULL)
 	  {
 	    node->type_enum = PT_TYPE_NULL;
@@ -15706,7 +15749,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_STR_TO_DATE:
-      error = db_str_to_date (arg1, arg2, result, NULL);
+      error = db_str_to_date (arg1, arg2, arg3, result, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -15718,7 +15761,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_TIME_FORMAT:
-      error = db_time_format (arg1, arg2, result, NULL);
+      error = db_time_format (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -15999,7 +16042,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_FORMAT:
-      error = db_format (arg1, arg2, result, NULL);
+      error = db_format (arg1, arg2, arg3, result, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16011,7 +16054,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_DATE_FORMAT:
-      error = db_date_format (arg1, arg2, result, NULL);
+      error = db_date_format (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16266,7 +16309,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       return 1;
 
     case PT_TO_CHAR:
-      error = db_to_char (arg1, arg2, arg3, result, NULL);
+      error = db_to_char (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16434,7 +16477,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_TO_NUMBER:
-      error = db_to_number (arg1, arg2, result);
+      error = db_to_number (arg1, arg2, arg3, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17326,10 +17369,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  arg2 = NULL;
 	  break;
 
-	case PT_TO_NUMBER:
-	  arg2 = NULL;
-	  break;
-
 	case PT_INCR:
 	case PT_DECR:
 	  {
@@ -17518,19 +17557,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       switch (op)
 	{
-	case PT_TO_NUMBER:
-	  if (expr->info.expr.arg2 == 0)
-	    {
-	      db_make_int (&dummy, 1);
-	    }
-	  else
-	    {
-	      db_make_int (&dummy, 0);
-	    }
-	  arg3 = &dummy;
-	  type3 = PT_TYPE_INTEGER;
-	  break;
-
 	case PT_REPLACE:
 	case PT_TRANSLATE:
 	  {

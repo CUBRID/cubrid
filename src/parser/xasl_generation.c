@@ -7189,7 +7189,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
   DB_VALUE *value, *val = NULL;
   TP_DOMAIN *domain;
   PT_NODE *data_type = NULL;
-  PT_NODE *param_empty = NULL;
   PT_NODE *save_node = NULL, *save_next = NULL;
   REGU_VARIABLE *r1 = NULL, *r2 = NULL, *r3 = NULL;
   PT_NODE *empty_str = NULL;
@@ -7420,6 +7419,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      /* If ATAN has only one arg, treat it as an unary op */
 		      r2 = r1;
 		      r1 = NULL;
+		    }
+
+		  if (node->info.expr.op == PT_DATE_FORMAT
+		      || node->info.expr.op == PT_STR_TO_DATE
+		      || node->info.expr.op == PT_TIME_FORMAT
+		      || node->info.expr.op == PT_FORMAT)
+		    {
+		      r3 = pt_to_regu_variable (parser,
+						node->info.expr.arg3, unbox);
 		    }
 		}
 	      else if (node->info.expr.op == PT_DEFAULTF)
@@ -7922,7 +7930,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_TIME_FORMAT:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_TIME_FORMAT,
+		  regu = pt_make_regu_arith (r1, r2, r3, T_TIME_FORMAT,
 					     domain);
 		  break;
 
@@ -8292,16 +8300,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_FORMAT:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_FORMAT, domain);
+		  regu = pt_make_regu_arith (r1, r2, r3, T_FORMAT, domain);
 		  break;
 
 		case PT_DATE_FORMAT:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_DATE_FORMAT,
+		  regu = pt_make_regu_arith (r1, r2, r3, T_DATE_FORMAT,
 					     domain);
 		  break;
 
 		case PT_STR_TO_DATE:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_STR_TO_DATE,
+		  regu = pt_make_regu_arith (r1, r2, r3, T_STR_TO_DATE,
 					     domain);
 		  break;
 
@@ -8758,16 +8766,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  {
 		    int precision, scale;
 
-		    param_empty = parser_new_node (parser, PT_VALUE);
-		    if (param_empty == NULL)
-		      {
-			PT_INTERNAL_ERROR (parser, "allocate new node");
-			return NULL;
-		      }
-		    param_empty->type_enum = PT_TYPE_INTEGER;
-		    param_empty->info.value.data_value.i =
-		      node->info.expr.arg2 ? 0 : 1;
-
 		    /* If 2nd argument of to_number() exists, modify domain. */
 		    pt_to_regu_resolve_domain (&precision, &scale,
 					       node->info.expr.arg2);
@@ -8783,13 +8781,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					       &domain->scale,
 					       node->info.expr.arg2);
 
-		    r3 = pt_to_regu_variable (parser, param_empty, unbox);
+		    r3 = pt_to_regu_variable (parser, node->info.expr.arg3,
+					      unbox);
 
 		    /* Note that use the new domain */
 		    regu =
 		      pt_make_regu_arith (r1, r2, r3, T_TO_NUMBER, domain);
 		    parser_free_tree (parser, data_type);
-		    parser_free_tree (parser, param_empty);
 
 		    break;
 		  }
