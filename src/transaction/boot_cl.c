@@ -194,6 +194,7 @@ static int boot_define_view_trigger (void);
 static int boot_define_view_partition (void);
 static int boot_define_view_stored_procedure (void);
 static int boot_define_view_stored_procedure_arguments (void);
+static int boot_define_view_db_collation (void);
 static int catcls_class_install (void);
 static int catcls_vclass_install (void);
 static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
@@ -4840,6 +4841,99 @@ boot_define_view_stored_procedure_arguments (void)
 }
 
 /*
+ * boot_define_view_db_collation :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ */
+static int
+boot_define_view_db_collation (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {"coll_id", "integer"},
+    {"coll_name", "varchar(255)"},
+    {"charset_name", "varchar(255)"},
+    {"is_builtin", "varchar(3)"},
+    {"has_expansions", "varchar(3)"},
+    {"contractions", "integer"}
+  };
+
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+  class_mop = db_create_vclass (CTV_DB_COLLATION_NAME);
+  if (class_mop == NULL)
+    {
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name,
+				     columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  sprintf (stmt,
+	   "SELECT [c].[coll_id], [c].[coll_name],"
+	   " CASE [c].[charset_id]"
+	   "  WHEN %d THEN 'ISO8859-1'"
+	   "  WHEN %d THEN 'UTF-8'"
+	   "  WHEN %d THEN 'KSC-EUC'"
+	   "  WHEN %d THEN 'ASCII'"
+	   "  WHEN %d THEN 'RAW-BITS'"
+	   "  WHEN %d THEN 'RAW-BYTES'"
+	   "  WHEN %d THEN 'NONE'"
+	   "  ELSE 'OTHER'"
+	   " END,"
+	   " CASE [c].[built_in]"
+	   "  WHEN 0 THEN 'NO'"
+	   "  WHEN 1 THEN 'YES'"
+	   "  ELSE 'ERROR'"
+	   " END,"
+	   " CASE [c].[expansions]"
+	   "  WHEN 0 THEN 'NO'"
+	   "  WHEN 1 THEN 'YES'"
+	   "  ELSE 'ERROR'"
+	   " END,"
+	   " [c].[contractions]"
+	   " FROM [%s] [c]"
+	   " ORDER BY [c].[coll_id]",
+	   INTL_CODESET_ISO88591,
+	   INTL_CODESET_UTF8,
+	   INTL_CODESET_KSC5601_EUC,
+	   INTL_CODESET_ASCII,
+	   INTL_CODESET_RAW_BITS,
+	   INTL_CODESET_RAW_BYTES, INTL_CODESET_NONE, CT_COLLATION_NAME);
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * catcls_vclass_install :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -4864,7 +4958,8 @@ catcls_vclass_install (void)
     {"CTV_PARTITION_NAME", boot_define_view_partition},
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
     {"CTV_STORED_PROC_ARGS_NAME",
-     boot_define_view_stored_procedure_arguments}
+     boot_define_view_stored_procedure_arguments},
+    {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation}
   };
 
   int save;
