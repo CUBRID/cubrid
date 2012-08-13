@@ -387,7 +387,7 @@ namespace dbgw
         throw e;
       }
 
-    DBGWInterfaceException exception;
+    DBGWException exception;
     char buffer[XML_FILE_BUFFER_SIZE];
     enum XML_Status status = XML_STATUS_OK;
     enum XML_Error errCode;

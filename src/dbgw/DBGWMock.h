@@ -51,16 +51,18 @@ namespace dbgw
 
   extern DBGW_FAULT_TYPE dbgw_mock_get_fault();
   extern const char *dbgw_mock_get_group();
+  extern int dbgw_mock_get_int_return();
 
   extern void dbgw_mock_clear_fault();
-  extern void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group = NULL);
+  extern void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group = NULL,
+      int int_return = CCI_ER_COMMUNICATION);
 
 #ifdef BUILD_MOCK
 #define DBGW_FAULT_PARTIAL_CONNECT_FAIL(GROUP) \
   do { \
       if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_CONNECT_FAIL) { \
           if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_connect_with_url", -4); \
+              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_connect_with_url", dbgw_mock_get_int_return()); \
           } else { \
               cci_mock_clear_fault(); \
           } \
@@ -71,7 +73,7 @@ namespace dbgw
   do { \
       if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_PREPARE_FAIL) { \
           if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_prepare", -4); \
+              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_prepare", dbgw_mock_get_int_return()); \
           } else { \
               cci_mock_clear_fault(); \
           } \
@@ -82,7 +84,7 @@ namespace dbgw
   do { \
       if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_EXECUTE_FAIL) { \
           if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_execute", -4); \
+              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_execute", dbgw_mock_get_int_return()); \
           } else { \
               cci_mock_clear_fault(); \
           } \

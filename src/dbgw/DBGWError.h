@@ -74,13 +74,20 @@ namespace dbgw
 
   }
 
-  class DBGWException: public exception
+  struct DBGWExceptionContext
+  {
+    int nErrorCode;
+    int nInterfaceErrorCode;
+    string errorMessage;
+    string what;
+    bool bConnectionError;
+  };
+
+  class DBGWException : public exception
   {
   public:
     DBGWException() throw();
-    DBGWException(int nErrorCode) throw();
-    DBGWException(int nErrorCode, const string &errorMessage) throw();
-    DBGWException(const DBGWException &exception) throw();
+    DBGWException(const DBGWExceptionContext &context) throw();
     DBGWException(const std::exception &exception) throw();
     virtual ~ DBGWException() throw();
 
@@ -88,165 +95,154 @@ namespace dbgw
     int getErrorCode() const;
     const char *getErrorMessage() const;
     const char *what() const throw();
+    int getInterfaceErrorCode() const;
+    bool isConnectionError() const;
 
   protected:
-    void createErrorMessage();
-    virtual void doCreateErrorMessage();
+    void setConnectionError(bool bConnectionError);
 
-  protected:
-    int m_nErrorCode;
-    int m_nInterfaceErrorCode;
-    string m_errorMessage;
-    string m_what;
+  private:
+    DBGWExceptionContext m_context;
   };
 
-  class DBGWInterfaceException: public DBGWException
+  class DBGWExceptionFactory
   {
   public:
-    DBGWInterfaceException() throw();
-    DBGWInterfaceException(const string &errorMessage) throw();
-    DBGWInterfaceException(int nInterfaceErrorCode) throw();
-    DBGWInterfaceException(int nInterfaceErrorCode,
-        const string &errorMessage) throw();
-    DBGWInterfaceException(const DBGWException &exception) throw();
-    DBGWInterfaceException(const DBGWInterfaceException &exception) throw();
-    DBGWInterfaceException(const std::exception &exception) throw();
+    static DBGWException create(int nErrorCode, const string &errorMessage);
+    static DBGWException create(int nErrorCode, int nInterfaceErrorCode,
+        const string &errorMessage);
 
-  public:
-    int getInterfaceErrorCode() const;
-    virtual bool isConnectionError() const;
-
-  protected:
-    int m_nInterfaceErrorCode;
+  private:
+    virtual ~DBGWExceptionFactory();
   };
 
-  extern void setLastException(const DBGWInterfaceException &exception);
+  extern void setLastException(const DBGWException &exception);
   extern void clearException();
-  extern DBGWInterfaceException getLastException();
+  extern DBGWException getLastException();
   extern int getLastErrorCode();
   extern int getLastInterfaceErrorCode();
   extern const char *getLastErrorMessage();
   extern const char *getFormattedErrorMessage();
 
-  class NotExistNamespaceException: public DBGWException
+  class NotExistNamespaceException : public DBGWException
   {
   public:
     NotExistNamespaceException(const char *szNamespace) throw();
   };
 
-  class NotExistQueryInXmlException: public DBGWException
+  class NotExistQueryInXmlException : public DBGWException
   {
   public:
     NotExistQueryInXmlException(const char *szSqlName) throw();
   };
 
-  class NotExistAddedHostException: public DBGWException
+  class NotExistAddedHostException : public DBGWException
   {
   public:
     NotExistAddedHostException() throw();
   };
 
-  class FetchHostFailException: public DBGWException
+  class FetchHostFailException : public DBGWException
   {
   public:
     FetchHostFailException() throw();
   };
 
-  class NotYetLoadedException: public DBGWException
+  class NotYetLoadedException : public DBGWException
   {
   public:
     NotYetLoadedException() throw();
   };
 
-  class NotExistVersionException: public DBGWException
+  class NotExistVersionException : public DBGWException
   {
   public:
     NotExistVersionException(int nVersion) throw();
   };
 
-  class NotExistConnException: public DBGWException
+  class NotExistConnException : public DBGWException
   {
   public:
     NotExistConnException(const char *szGroupName) throw();
   };
 
-  class InvalidSqlException: public DBGWException
+  class InvalidSqlException : public DBGWException
   {
   public:
     InvalidSqlException(const char *szFileName, const char *szSqlName) throw();
   };
 
-  class NotExistParamException: public DBGWException
+  class NotExistParamException : public DBGWException
   {
   public:
     NotExistParamException(int nIndex) throw();
     NotExistParamException(string name) throw();
   };
 
-  class ExecuteBeforePrepareException: public DBGWException
+  class ExecuteBeforePrepareException : public DBGWException
   {
   public:
     ExecuteBeforePrepareException() throw();
   };
 
-  class NotExistSetException: public DBGWException
+  class NotExistSetException : public DBGWException
   {
   public:
     NotExistSetException(const char *szKey) throw();
     NotExistSetException(size_t nIndex) throw();
   };
 
-  class MismatchValueTypeException: public DBGWException
+  class MismatchValueTypeException : public DBGWException
   {
   public:
     MismatchValueTypeException(int orgType, int convType) throw();
   };
 
-  class InvalidValueTypeException: public DBGWException
+  class InvalidValueTypeException : public DBGWException
   {
   public:
     InvalidValueTypeException(int type) throw();
     InvalidValueTypeException(const char *szType) throw();
   };
 
-  class InvalidValueFormatException: public DBGWException
+  class InvalidValueFormatException : public DBGWException
   {
   public:
     InvalidValueFormatException(const char *szType, const char *szFormat) throw();
   };
 
-  class MultisetIgnoreResultFlagFalseException: public DBGWException
+  class MultisetIgnoreResultFlagFalseException : public DBGWException
   {
   public:
     MultisetIgnoreResultFlagFalseException(const char *szSqlName) throw();
   };
 
-  class InvalidClientException: public DBGWException
+  class InvalidClientException : public DBGWException
   {
   public:
     InvalidClientException() throw();
   };
 
-  class NotAllowedNextException: public DBGWException
+  class NotAllowedNextException : public DBGWException
   {
   public:
     NotAllowedNextException() throw();
   };
 
-  class NotAllowedGetMetadataException: public DBGWException
+  class NotAllowedGetMetadataException : public DBGWException
   {
   public:
     NotAllowedGetMetadataException() throw();
   };
 
-  class NotAllowedOperationException: public DBGWException
+  class NotAllowedOperationException : public DBGWException
   {
   public:
     NotAllowedOperationException(const char *szOperation,
         const char *szQueryType) throw();
   };
 
-  class ValidateFailException: public DBGWException
+  class ValidateFailException : public DBGWException
   {
   public:
     ValidateFailException() throw();
@@ -254,14 +250,14 @@ namespace dbgw
     ValidateFailException(int lhs, int rhs) throw();
   };
 
-  class ValidateTypeFailException: public DBGWException
+  class ValidateTypeFailException : public DBGWException
   {
   public:
     ValidateTypeFailException(const char *szName, const string &lhs,
         const char *szLhsType, const string &rhs, const char *szRhsType) throw();
   };
 
-  class ValidateValueFailException: public DBGWException
+  class ValidateValueFailException : public DBGWException
   {
   public:
     ValidateValueFailException(const char *szName, const string &lhs) throw();
@@ -269,68 +265,68 @@ namespace dbgw
         const string &rhs) throw();
   };
 
-  class CreateFailParserExeception: public DBGWException
+  class CreateFailParserExeception : public DBGWException
   {
   public:
     CreateFailParserExeception(const char *szFileName) throw();
   };
 
-  class DuplicateNamespaceExeception: public DBGWException
+  class DuplicateNamespaceExeception : public DBGWException
   {
   public:
     DuplicateNamespaceExeception(const string &nameSpace,
         const string &fileNameNew, const string &fileNameOld) throw();
   };
 
-  class DuplicateSqlNameException: public DBGWException
+  class DuplicateSqlNameException : public DBGWException
   {
   public:
     DuplicateSqlNameException(const char *szSqlName, const char *szFileNameNew,
         const char *szFileNameOld) throw();
   };
 
-  class DuplicateGroupNameException: public DBGWException
+  class DuplicateGroupNameException : public DBGWException
   {
   public:
     DuplicateGroupNameException(const string &groupName,
         const string &fileNameNew, const string &fileNameOld) throw();
   };
 
-  class NotExistNodeInXmlException: public DBGWException
+  class NotExistNodeInXmlException : public DBGWException
   {
   public:
     NotExistNodeInXmlException(const char *szNodeName,
         const char *szXmlFile) throw();
   };
 
-  class NotExistPropertyException: public DBGWException
+  class NotExistPropertyException : public DBGWException
   {
   public:
     NotExistPropertyException(const char *szNodeName,
         const char *szPropName) throw();
   };
 
-  class InvalidPropertyValueException: public DBGWException
+  class InvalidPropertyValueException : public DBGWException
   {
   public:
     InvalidPropertyValueException(const char *szValue,
         const char *szCorrectValueSet) throw();
   };
 
-  class InvalidXMLSyntaxException: public DBGWException
+  class InvalidXMLSyntaxException : public DBGWException
   {
   public:
     InvalidXMLSyntaxException(const char *szXmlErrorMessage,
         const char *szFileName, int nLine, int nCol) throw();
   };
 
-  class MutexInitFailException: public DBGWException
+  class MutexInitFailException : public DBGWException
   {
   public:
     MutexInitFailException() throw();
   };
 
-  class MemoryAllocationFail: public DBGWException
+  class MemoryAllocationFail : public DBGWException
   {
   public:
     MemoryAllocationFail(int nSize) throw();

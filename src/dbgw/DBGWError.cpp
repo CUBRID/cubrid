@@ -30,6 +30,7 @@ namespace dbgw
   __thread int g_nInterfaceErrorCode;
   __thread char g_szErrorMessage[MAX_ERROR_MESSAGE_SIZE];
   __thread char g_szFormattedErrorMessage[MAX_ERROR_MESSAGE_SIZE];
+  __thread bool g_bConnectionError;
 
   static void setErrorMessage(char *szTarget, const char *szErrorMessage)
   {
@@ -49,12 +50,13 @@ namespace dbgw
       }
   }
 
-  void setLastException(const DBGWInterfaceException &exception)
+  void setLastException(const DBGWException &exception)
   {
     g_nErrorCode = exception.getErrorCode();
     g_nInterfaceErrorCode = exception.getInterfaceErrorCode();
     setErrorMessage(g_szErrorMessage, exception.getErrorMessage());
     setErrorMessage(g_szFormattedErrorMessage, exception.what());
+    g_bConnectionError = exception.isConnectionError();
   }
 
   void clearException()
@@ -63,18 +65,17 @@ namespace dbgw
     g_nInterfaceErrorCode = DBGWErrorCode::NO_ERROR;
     strcpy(g_szErrorMessage, "");
     strcpy(g_szFormattedErrorMessage, "");
+    g_bConnectionError = false;
   }
 
-  DBGWInterfaceException getLastException()
+  DBGWException getLastException()
   {
-    if (g_nInterfaceErrorCode != DBGWErrorCode::NO_ERROR)
-      {
-        return DBGWInterfaceException(g_nInterfaceErrorCode, g_szErrorMessage);
-      }
-    else
-      {
-        return DBGWException(g_nErrorCode, g_szErrorMessage);
-      }
+    DBGWExceptionContext context =
+    {
+      g_nErrorCode, g_nInterfaceErrorCode, g_szErrorMessage,
+      g_szFormattedErrorMessage, g_bConnectionError
+    };
+    return DBGWException(context);
   }
 
   int getLastErrorCode()
@@ -97,34 +98,28 @@ namespace dbgw
     return g_szFormattedErrorMessage;
   }
 
-  DBGWException::DBGWException() throw() :
-    m_nErrorCode(DBGWErrorCode::NO_ERROR)
+  DBGWException::DBGWException() throw()
   {
+    m_context.nErrorCode = DBGWErrorCode::NO_ERROR;
+    m_context.nInterfaceErrorCode = DBGWErrorCode::NO_ERROR;
+    m_context.errorMessage = "";
+    m_context.what = "";
+    m_context.bConnectionError = false;
   }
 
-  DBGWException::DBGWException(int nErrorCode) throw() :
-    m_nErrorCode(nErrorCode)
-  {
-    createErrorMessage();
-  }
-
-  DBGWException::DBGWException(int nErrorCode, const string &errorMessage) throw() :
-    m_nErrorCode(nErrorCode), m_errorMessage(errorMessage)
-  {
-    createErrorMessage();
-  }
-
-  DBGWException::DBGWException(const DBGWException &exception) throw() :
-    std::exception(exception), m_nErrorCode(exception.m_nErrorCode),
-    m_errorMessage(exception.m_errorMessage), m_what(exception.m_what)
+  DBGWException::DBGWException(const DBGWExceptionContext &context) throw() :
+    m_context(context)
   {
   }
 
   DBGWException::DBGWException(const std::exception &exception) throw() :
-    std::exception(exception),
-    m_nErrorCode(DBGWErrorCode::EXTERNAL_STANDARD_ERROR),
-    m_errorMessage(exception.what()), m_what(exception.what())
+    std::exception(exception)
   {
+    m_context.nErrorCode = DBGWErrorCode::EXTERNAL_STANDARD_ERROR;
+    m_context.nInterfaceErrorCode = DBGWErrorCode::NO_ERROR;
+    m_context.errorMessage = exception.what();
+    m_context.what = exception.what();
+    m_context.bConnectionError = false;
   }
 
   DBGWException::~DBGWException() throw()
@@ -133,269 +128,265 @@ namespace dbgw
 
   int DBGWException::getErrorCode() const
   {
-    return m_nErrorCode;
+    return m_context.nErrorCode;
   }
 
   const char *DBGWException::getErrorMessage() const
   {
-    return m_errorMessage.c_str();
+    return m_context.errorMessage.c_str();
   }
 
   const char *DBGWException::what() const throw()
   {
-    return m_what.c_str();
+    return m_context.what.c_str();
   }
 
-  void DBGWException::createErrorMessage()
+  int DBGWException::getInterfaceErrorCode() const
   {
-    doCreateErrorMessage();
+    return m_context.nInterfaceErrorCode;
   }
 
-  void DBGWException::doCreateErrorMessage()
+  bool DBGWException::isConnectionError() const
   {
+    return m_context.bConnectionError;
+  }
+
+  void DBGWException::setConnectionError(bool bConnectionError)
+  {
+    m_context.bConnectionError = bConnectionError;
+  }
+
+  DBGWException DBGWExceptionFactory::create(int nErrorCode,
+      const string &errorMessage)
+  {
+    DBGWExceptionContext context =
+    { nErrorCode, DBGWErrorCode::NO_ERROR, errorMessage, "", false };
+
     stringstream buffer;
-    buffer << "[" << m_nErrorCode << "] " << m_errorMessage;
-    m_what = buffer.str();
+    buffer << "[" << context.nErrorCode << "]";
+    buffer << " " << context.errorMessage;
+    context.what = buffer.str();
+
+    return DBGWException(context);
   }
 
-  DBGWInterfaceException::DBGWInterfaceException() throw() :
-    DBGWException(), m_nInterfaceErrorCode(DBGWErrorCode::NO_ERROR)
+  DBGWException DBGWExceptionFactory::create(int nErrorCode,
+      int nInterfaceErrorCode, const string &errorMessage)
   {
+    DBGWExceptionContext context =
+    { nErrorCode, nInterfaceErrorCode, errorMessage, "", false };
+
+    stringstream buffer;
+    buffer << "[" << context.nErrorCode << "]";
+    buffer << "[" << context.nInterfaceErrorCode << "]";
+    buffer << " " << context.errorMessage;
+    context.what = buffer.str();
+
+    return DBGWException(context);
   }
 
-  DBGWInterfaceException::DBGWInterfaceException(const string &errorMessage) throw() :
-    DBGWException(DBGWErrorCode::INTERFACE_ERROR, errorMessage),
-    m_nInterfaceErrorCode(DBGWErrorCode::NO_ERROR)
-  {
-  }
-
-  DBGWInterfaceException::DBGWInterfaceException(int nInterfaceErrorCode) throw() :
-    DBGWException(DBGWErrorCode::INTERFACE_ERROR),
-    m_nInterfaceErrorCode(nInterfaceErrorCode)
-  {
-  }
-
-  DBGWInterfaceException::DBGWInterfaceException(int nInterfaceErrorCode,
-      const string &errorMessage) throw() :
-    DBGWException(DBGWErrorCode::INTERFACE_ERROR, errorMessage),
-    m_nInterfaceErrorCode(nInterfaceErrorCode)
-  {
-  }
-
-  DBGWInterfaceException::DBGWInterfaceException(const DBGWException &exception) throw() :
-    DBGWException(exception), m_nInterfaceErrorCode(DBGWErrorCode::NO_ERROR)
-  {
-  }
-
-  DBGWInterfaceException::DBGWInterfaceException(
-      const DBGWInterfaceException &exception) throw() :
-    DBGWException(exception),
-    m_nInterfaceErrorCode(exception.m_nInterfaceErrorCode)
-  {
-  }
-
-  DBGWInterfaceException::DBGWInterfaceException(
-      const std::exception &exception) throw() :
-    DBGWException(exception), m_nInterfaceErrorCode(DBGWErrorCode::NO_ERROR)
-  {
-  }
-
-  int DBGWInterfaceException::getInterfaceErrorCode() const
-  {
-    return m_nInterfaceErrorCode;
-  }
-
-  bool DBGWInterfaceException::isConnectionError() const
-  {
-    return true;
-  }
-
-  NotExistNamespaceException::NotExistNamespaceException(const char *szNamespace) throw() :
+  NotExistNamespaceException::NotExistNamespaceException(
+      const char *szNamespace) throw() :
     DBGWException(
-        DBGWErrorCode::CONF_NOT_EXIST_NAMESPACE,
-        (boost::format("The %s namespace is not exist.")
-            % szNamespace).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_NOT_EXIST_NAMESPACE,
+            (boost::format("The %s namespace is not exist.") % szNamespace).str()))
   {
   }
 
-  NotExistQueryInXmlException::NotExistQueryInXmlException(const char *szSqlName) throw() :
+  NotExistQueryInXmlException::NotExistQueryInXmlException(
+      const char *szSqlName) throw() :
     DBGWException(
-        DBGWErrorCode::CONF_NOT_EXIST_QUERY_IN_XML,
-        (boost::format("The %s query is not exist in xml.")
-            % szSqlName).str())
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::CONF_NOT_EXIST_QUERY_IN_XML,
+            (boost::format("The %s query is not exist in xml.") % szSqlName).str()))
   {
   }
 
   NotExistAddedHostException::NotExistAddedHostException() throw() :
-    DBGWException(DBGWErrorCode::CONF_NOT_EXIST_ADDED_HOST,
-        "There is no added host.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_NOT_EXIST_ADDED_HOST,
+            "There is no added host."))
   {
   }
 
   FetchHostFailException::FetchHostFailException() throw() :
-    DBGWException(DBGWErrorCode::CONF_FETCH_HOST_FAIL, "Fetch host fail.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_FETCH_HOST_FAIL,
+            "Fetch host fail."))
   {
   }
 
   NotYetLoadedException::NotYetLoadedException() throw() :
-    DBGWException(DBGWErrorCode::CONF_NOT_YET_LOADED,
-        "Configuration is not yet loaded.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_NOT_YET_LOADED,
+            "Configuration is not yet loaded."))
   {
   }
 
   NotExistVersionException::NotExistVersionException(int nVersion) throw() :
     DBGWException(
-        DBGWErrorCode::CONF_NOT_EXIST_VERSION,
-        (boost::format(
-            "The configuration of version %d is not exist.")
-            % nVersion).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_NOT_EXIST_VERSION,
+            (boost::format("The configuration of version %d is not exist.")
+                % nVersion).str()))
   {
 
   }
 
   NotExistConnException::NotExistConnException(const char *szGroupName) throw() :
     DBGWException(
-        DBGWErrorCode::SQL_NOT_EXIST_CONN,
-        (boost::format("The %s connection group is not exist.")
-            % szGroupName).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::SQL_NOT_EXIST_CONN,
+            (boost::format("The %s connection group is not exist.")
+                % szGroupName).str()))
   {
   }
 
   InvalidSqlException::InvalidSqlException(const char *szFileName,
       const char *szSqlName) throw() :
     DBGWException(
-        DBGWErrorCode::SQL_INVALID_SQL,
-        (boost::format("Cannot parse sql %s in %s.") % szSqlName
-            % szFileName).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::SQL_INVALID_SQL,
+            (boost::format("Cannot parse sql %s in %s.") % szSqlName
+                % szFileName).str()))
   {
   }
 
   NotExistParamException::NotExistParamException(int nIndex) throw() :
     DBGWException(
-        DBGWErrorCode::SQL_NOT_EXIST_PARAM,
-        (boost::format(
-            "The bind parameter (index : %d) is not exist.")
-            % nIndex).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::SQL_NOT_EXIST_PARAM,
+            (boost::format("The bind parameter (index : %d) is not exist.")
+                % nIndex).str()))
   {
   }
 
   NotExistParamException::NotExistParamException(string name) throw() :
     DBGWException(
-        DBGWErrorCode::SQL_NOT_EXIST_PARAM,
-        (boost::format("The bind parameter (key : %s) is not exist.")
-            % name).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::SQL_NOT_EXIST_PARAM,
+            (boost::format("The bind parameter (key : %s) is not exist.")
+                % name).str()))
   {
   }
 
   ExecuteBeforePrepareException::ExecuteBeforePrepareException() throw() :
-    DBGWException(DBGWErrorCode::SQL_EXECUTE_BEFORE_PREPARE,
-        "The query is executed before prepare.")
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::SQL_EXECUTE_BEFORE_PREPARE,
+            "The query is executed before prepare."))
   {
   }
 
   NotExistSetException::NotExistSetException(const char *szKey) throw() :
-    DBGWException(DBGWErrorCode::VALUE_NOT_EXIST_SET,
-        (boost::format("The %s key is not exist in set.") % szKey).str())
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_NOT_EXIST_SET,
+            (boost::format("The %s key is not exist in set.") % szKey).str()))
   {
   }
 
   NotExistSetException::NotExistSetException(size_t nIndex) throw() :
     DBGWException(
-        DBGWErrorCode::VALUE_NOT_EXIST_SET,
-        (boost::format(
-            "The value of position %d is not exist in set.")
-            % nIndex).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_NOT_EXIST_SET,
+            (boost::format("The value of position %d is not exist in set.")
+                % nIndex).str()))
   {
   }
 
   MismatchValueTypeException::MismatchValueTypeException(int orgType,
       int convType) throw() :
     DBGWException(
-        DBGWErrorCode::VALUE_MISMATCH_VALUE_TYPE,
-        (boost::format("Cannot cast %s to %s.")
-            % getDBGWValueTypeString(orgType)
-            % getDBGWValueTypeString(convType)).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_MISMATCH_VALUE_TYPE,
+            (boost::format("Cannot cast %s to %s.")
+                % getDBGWValueTypeString(orgType)
+                % getDBGWValueTypeString(convType)).str()))
   {
   }
 
   InvalidValueTypeException::InvalidValueTypeException(int type) throw() :
-    DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-        (boost::format("The value type %d is invalid.") % type).str())
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
+            (boost::format("The value type %d is invalid.") % type).str()))
   {
   }
 
-  InvalidValueTypeException::InvalidValueTypeException(const char *szType) throw() :
-    DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-        (boost::format("The value type %s is invalid.") % szType).str())
+  InvalidValueTypeException::InvalidValueTypeException(
+      const char *szType) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
+            (boost::format("The value type %s is invalid.") % szType).str()))
   {
   }
 
   InvalidValueFormatException::InvalidValueFormatException(const char *szType,
       const char *szFormat) throw() :
-    DBGWException(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-        (boost::format("The %s is not valid %s type.") % szFormat % szType).str())
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
+            (boost::format("The %s is not valid %s type.") % szFormat % szType).str()))
   {
   }
 
   MultisetIgnoreResultFlagFalseException::MultisetIgnoreResultFlagFalseException(
       const char *szSqlName) throw() :
     DBGWException(
-        DBGWErrorCode::CLIENT_MULTISET_IGNORE_FLAG_FALSE,
-        (boost::format(
-            "The 'ignore_result' flag should be set false only once in %s.")
-            % szSqlName).str())
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::CLIENT_MULTISET_IGNORE_FLAG_FALSE,
+            (boost::format(
+                "The 'ignore_result' flag should be set false only once in %s.")
+                % szSqlName).str()))
   {
   }
 
   InvalidClientException::InvalidClientException() throw() :
-    DBGWException(DBGWErrorCode::CLIENT_INVALID_CLIENT,
-        "The client is invalid.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CLIENT_INVALID_CLIENT,
+            "The client is invalid."))
   {
   }
 
   NotAllowedNextException::NotAllowedNextException() throw() :
-    DBGWException(DBGWErrorCode::RESULT_NOT_ALLOWED_NEXT,
-        "The next() operation is allowed only select query.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::RESULT_NOT_ALLOWED_NEXT,
+            "The next() operation is allowed only select query."))
   {
   }
 
   NotAllowedGetMetadataException::NotAllowedGetMetadataException() throw() :
-    DBGWException(DBGWErrorCode::RESULT_NOT_ALLOWED_GET_METADATA,
-        "Only Select query is able to make metadata list.")
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::RESULT_NOT_ALLOWED_GET_METADATA,
+            "Only Select query is able to make metadata list."))
   {
   }
 
   NotAllowedOperationException::NotAllowedOperationException(
       const char *szOperation, const char *szQueryType) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_NOT_ALLOWED_OPERATION,
-        (boost::format(
-            "The %s operation is only allowed for query type %s.")
-            % szOperation % szQueryType).str())
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::RESULT_NOT_ALLOWED_OPERATION,
+            (boost::format(
+                "The %s operation is only allowed for query type %s.")
+                % szOperation % szQueryType).str()))
   {
   }
 
   ValidateFailException::ValidateFailException() throw() :
-    DBGWException(DBGWErrorCode::RESULT_VALIDATE_FAIL,
-        "The result type of lhs is different from that of rhs.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::RESULT_VALIDATE_FAIL,
+            "The result type of lhs is different from that of rhs."))
   {
   }
 
-  ValidateFailException::ValidateFailException(const DBGWException &exception) throw() :
+  ValidateFailException::ValidateFailException(
+      const DBGWException &exception) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_VALIDATE_FAIL,
-        (boost::format(
-            "Some of group is failed to execute query. %s")
-            % exception.what()).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::RESULT_VALIDATE_FAIL,
+            (boost::format("Some of group is failed to execute query. %s")
+                % exception.what()).str()))
   {
   }
 
   ValidateFailException::ValidateFailException(int lhs, int rhs) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_VALIDATE_FAIL,
-        (boost::format(
-            "The affected row count / select row count of lhs is different from that of rhs. %d != %d")
-            % lhs % rhs).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::RESULT_VALIDATE_FAIL,
+            (boost::format(
+                "The affected row count / select row count of lhs is different from that of rhs. %d != %d")
+                % lhs % rhs).str()))
   {
   }
 
@@ -403,37 +394,39 @@ namespace dbgw
       const string &lhs, const char *szLhsType, const string &rhs,
       const char *szRhsType) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL,
-        (boost::format(
-            "The %s's type of lhs is different from that of rhs. %s (%s) != %s (%s)")
-            % szName % lhs % szLhsType % rhs % szRhsType).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL,
+            (boost::format(
+                "The %s's type of lhs is different from that of rhs. %s (%s) != %s (%s)")
+                % szName % lhs % szLhsType % rhs % szRhsType).str()))
   {
   }
 
   ValidateValueFailException::ValidateValueFailException(const char *szName,
       const string &lhs) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_VALIDATE_FAIL,
-        (boost::format(
-            "The %s's value of lhs is different from that of rhs. %s != NULL")
-            % szName % lhs).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::RESULT_VALIDATE_FAIL,
+            (boost::format(
+                "The %s's value of lhs is different from that of rhs. %s != NULL")
+                % szName % lhs).str()))
   {
   }
 
   ValidateValueFailException::ValidateValueFailException(const char *szName,
       const string &lhs, const string &rhs) throw() :
     DBGWException(
-        DBGWErrorCode::RESULT_VALIDATE_VALUE_FAIL,
-        (boost::format("The %s's value of lhs is different from that of rhs. %s != %s")
-            % szName % lhs % rhs).str())
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::RESULT_VALIDATE_VALUE_FAIL,
+            (boost::format(
+                "The %s's value of lhs is different from that of rhs. %s != %s")
+                % szName % lhs % rhs).str()))
   {
   }
 
-  CreateFailParserExeception::CreateFailParserExeception(const char *szFileName) throw() :
+  CreateFailParserExeception::CreateFailParserExeception(
+      const char *szFileName) throw() :
     DBGWException(
-        DBGWErrorCode::XML_FAIL_CREATE_PARSER,
-        (boost::format("Cannot create xml parser from %s.")
-            % szFileName).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_FAIL_CREATE_PARSER,
+            (boost::format("Cannot create xml parser from %s.") % szFileName).str()))
   {
   }
 
@@ -441,19 +434,18 @@ namespace dbgw
       const string &nameSpace, const string &fileNameNew,
       const string &fileNameOld) throw() :
     DBGWException(
-        DBGWErrorCode::XML_DUPLICATE_NAMESPACE,
-        (boost::format(
-            "The namspace %s in %s is already exist in %s.")
-            % nameSpace % fileNameNew % fileNameOld).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_DUPLICATE_NAMESPACE,
+            (boost::format("The namspace %s in %s is already exist in %s.")
+                % nameSpace % fileNameNew % fileNameOld).str()))
   {
   }
 
   DuplicateSqlNameException::DuplicateSqlNameException(const char *szSqlName,
       const char *szFileNameNew, const char *szFileNameOld) throw() :
     DBGWException(
-        DBGWErrorCode::XML_DUPLICATE_SQLNAME,
-        (boost::format("The %s in %s is already exist in %s.")
-            % szSqlName % szFileNameNew % szFileNameOld).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_DUPLICATE_SQLNAME,
+            (boost::format("The %s in %s is already exist in %s.") % szSqlName
+                % szFileNameNew % szFileNameOld).str()))
   {
   }
 
@@ -461,56 +453,62 @@ namespace dbgw
       const string &groupName, const string &fileNameNew,
       const string &fileNameOld) throw() :
     DBGWException(
-        DBGWErrorCode::XML_DUPLICATE_GROUPNAME,
-        (boost::format("The %s in %s is already exist in %s.")
-            % groupName % fileNameNew % fileNameOld).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_DUPLICATE_GROUPNAME,
+            (boost::format("The %s in %s is already exist in %s.") % groupName
+                % fileNameNew % fileNameOld).str()))
   {
   }
 
   NotExistNodeInXmlException::NotExistNodeInXmlException(const char *szNodeName,
       const char *szXmlFile) throw() :
     DBGWException(
-        DBGWErrorCode::XML_NOT_EXIST_NODE,
-        (boost::format("The %s node is not exist in %s.")
-            % szNodeName % szXmlFile).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_NOT_EXIST_NODE,
+            (boost::format("The %s node is not exist in %s.") % szNodeName
+                % szXmlFile).str()))
   {
   }
 
   NotExistPropertyException::NotExistPropertyException(const char *szNodeName,
       const char *szPropName) throw() :
     DBGWException(
-        DBGWErrorCode::XML_NOT_EXIST_PROPERTY,
-        (boost::format("Cannot find %s property of %s node.")
-            % szPropName % szNodeName).str())
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_NOT_EXIST_PROPERTY,
+            (boost::format("Cannot find %s property of %s node.") % szPropName
+                % szNodeName).str()))
   {
   }
 
   InvalidPropertyValueException::InvalidPropertyValueException(
       const char *szValue, const char *szCorrectValueSet) throw() :
     DBGWException(
-        DBGWErrorCode::XML_INVALID_PROPERTY_VALUE,
-        (boost::format("The value of property %s have to be [%s].")
-            % szValue % szCorrectValueSet).str())
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::XML_INVALID_PROPERTY_VALUE,
+            (boost::format("The value of property %s have to be [%s].")
+                % szValue % szCorrectValueSet).str()))
   {
   }
 
   InvalidXMLSyntaxException::InvalidXMLSyntaxException(
-      const char *szXmlErrorMessage, const char *szFileName, int nLine, int nCol) throw() :
-    DBGWException(DBGWErrorCode::XML_INVALID_SYNTAX,
-        (boost::format("%s in %s, line %d, column %d") % szXmlErrorMessage
-            % szFileName % nLine % nCol).str())
+      const char *szXmlErrorMessage, const char *szFileName, int nLine,
+      int nCol) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_INVALID_SYNTAX,
+            (boost::format("%s in %s, line %d, column %d") % szXmlErrorMessage
+                % szFileName % nLine % nCol).str()))
   {
   }
 
   MutexInitFailException::MutexInitFailException() throw() :
-    DBGWException(DBGWErrorCode::EXTERNAL_MUTEX_INIT_FAIL,
-        "Failed to init mutex object.")
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::EXTERNAL_MUTEX_INIT_FAIL,
+            "Failed to init mutex object."))
   {
   }
 
   MemoryAllocationFail::MemoryAllocationFail(int nSize) throw() :
-    DBGWException(DBGWErrorCode::EXTERNAL_MEMORY_ALLOC_FAIL,
-        (boost::format("Failed to allocate memory size (%d).") % nSize).str())
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::EXTERNAL_MEMORY_ALLOC_FAIL,
+            (boost::format("Failed to allocate memory size (%d).") % nSize).str()))
   {
   }
 

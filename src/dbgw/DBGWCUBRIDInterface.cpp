@@ -85,79 +85,83 @@ namespace dbgw
         }
     }
 
-    CUBRIDException::CUBRIDException(const string &errorMessage) throw() :
-      DBGWInterfaceException(DBGWErrorCode::NO_ERROR, errorMessage),
-      m_bCCIError(false), m_pError(NULL)
+    CUBRIDException::CUBRIDException(const DBGWExceptionContext &context) throw() :
+      DBGWException(context)
     {
-      createErrorMessage();
-    }
-
-    CUBRIDException::CUBRIDException(int nInterfaceErrorCode, const string &replace) throw() :
-      DBGWInterfaceException(nInterfaceErrorCode), m_bCCIError(true),
-      m_replace(replace), m_pError(NULL)
-    {
-      createErrorMessage();
-    }
-
-    CUBRIDException::CUBRIDException(int nInterfaceErrorCode, T_CCI_ERROR &error,
-        const string &replace) throw() :
-      DBGWInterfaceException(nInterfaceErrorCode), m_bCCIError(true),
-      m_replace(replace), m_pError(&error)
-    {
-      createErrorMessage();
-    }
-
-    void CUBRIDException::doCreateErrorMessage()
-    {
-      stringstream buffer;
-      buffer << "[" << m_nErrorCode << "]";
-
-      if (m_bCCIError)
+      switch (getInterfaceErrorCode())
         {
-          if (m_pError != NULL && m_pError->err_code != DBGWErrorCode::NO_ERROR)
-            {
-              m_nInterfaceErrorCode = m_pError->err_code;
-              m_errorMessage = m_pError->err_msg;
-            }
-
-          if (m_errorMessage == "")
-            {
-              char szBuffer[100];
-              if (cci_get_err_msg(m_nInterfaceErrorCode, szBuffer, 100) == 0)
-                {
-                  m_errorMessage = szBuffer;
-                }
-              else
-                {
-                  m_errorMessage = m_replace;
-                }
-            }
+        case CCI_ER_CON_HANDLE:
+        case CCI_ER_COMMUNICATION:
+          setConnectionError(true);
+          break;
+        default:
+          setConnectionError(false);
+          break;
         }
-
-      buffer << "[" << m_nInterfaceErrorCode << "]";
-      buffer << " " << m_errorMessage;
-      m_what = buffer.str();
     }
 
     CUBRIDException::~CUBRIDException() throw()
     {
     }
 
-    bool CUBRIDException::isConnectionError() const
+    CUBRIDException CUBRIDExceptionFactory::create(const string &errorMessage)
     {
-      if (m_nInterfaceErrorCode == CCI_ER_NO_ERROR)
+      DBGWExceptionContext context =
+      {
+        DBGWErrorCode::INTERFACE_ERROR, DBGWErrorCode::NO_ERROR,
+        errorMessage, "", false
+      };
+
+      return CUBRIDException(context);
+    }
+
+    CUBRIDException CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
+        const string &errorMessage)
+    {
+      T_CCI_ERROR cciError =
+      {
+        DBGWErrorCode::NO_ERROR, ""
+      };
+
+      return CUBRIDExceptionFactory::create(nInterfaceErrorCode, cciError,
+          errorMessage);
+    }
+
+    CUBRIDException CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
+        T_CCI_ERROR &cciError, const string &errorMessage)
+    {
+      DBGWExceptionContext context =
+      {
+        DBGWErrorCode::INTERFACE_ERROR, nInterfaceErrorCode,
+        errorMessage, "", false
+      };
+
+      stringstream buffer;
+      buffer << "[" << context.nErrorCode << "]";
+
+      if (cciError.err_code != DBGWErrorCode::NO_ERROR)
         {
-          return false;
+          context.nInterfaceErrorCode = cciError.err_code;
+          context.errorMessage = cciError.err_msg;
         }
 
-      switch (m_nInterfaceErrorCode)
+      if (context.errorMessage == "")
         {
-        case CCI_ER_CON_HANDLE:
-        case CCI_ER_COMMUNICATION:
-          return true;
-        default:
-          return false;
+          char szBuffer[100];
+          if (cci_get_err_msg(context.nInterfaceErrorCode, szBuffer, 100) == 0)
+            {
+              context.errorMessage = szBuffer;
+            }
+          else
+            {
+              context.errorMessage = errorMessage;
+            }
         }
+
+      buffer << "[" << context.nInterfaceErrorCode << "]";
+      buffer << " " << context.errorMessage;
+      context.what = buffer.str();
+      return CUBRIDException(context);
     }
 
     DBGWCUBRIDConnection::DBGWCUBRIDConnection(const string &groupName,
@@ -208,7 +212,7 @@ namespace dbgw
           DBGWDBInfoHashMap::const_iterator cit = dbInfoMap.find("dbname");
           if (cit == dbInfoMap.end())
             {
-              CUBRIDException e(
+              CUBRIDException e = CUBRIDExceptionFactory::create(
                   "Not exist required property in dataabse info map.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
@@ -217,7 +221,7 @@ namespace dbgw
           cit = dbInfoMap.find("dbuser");
           if (cit == dbInfoMap.end())
             {
-              CUBRIDException e(
+              CUBRIDException e = CUBRIDExceptionFactory::create(
                   "Not exist required property in dataabse info map.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
@@ -226,7 +230,7 @@ namespace dbgw
           cit = dbInfoMap.find("dbpasswd");
           if (cit == dbInfoMap.end())
             {
-              CUBRIDException e(
+              CUBRIDException e = CUBRIDExceptionFactory::create(
                   "Not exist required property in dataabse info map.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
@@ -260,7 +264,8 @@ namespace dbgw
               const_cast<char *>(dbInfoMap["dbpasswd"].c_str()));
           if (m_hCCIConnection < 0)
             {
-              CUBRIDException e(m_hCCIConnection, "Failed to connect database.");
+              CUBRIDException e = CUBRIDExceptionFactory::create(
+                  m_hCCIConnection, "Failed to connect database.");
               string replace(e.what());
               replace += "(";
               replace += connectionUrl.str();
@@ -299,8 +304,8 @@ namespace dbgw
               int nResult = cci_disconnect(m_hCCIConnection, &cciError);
               if (nResult < 0)
                 {
-                  CUBRIDException e(nResult, cciError,
-                      "Failed to close connection.");
+                  CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                      cciError, "Failed to close connection.");
                   DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
                   throw e;
                 }
@@ -327,9 +332,9 @@ namespace dbgw
 
       try
         {
-          DBGWPreparedStatementSharedPtr pResult(
+          DBGWPreparedStatementSharedPtr pStatement(
               new DBGWCUBRIDPreparedStatement(p_query, m_hCCIConnection));
-          return pResult;
+          return pStatement;
         }
       catch (DBGWException &e)
         {
@@ -357,7 +362,8 @@ namespace dbgw
 
           if (nResult < 0)
             {
-              CUBRIDException e(nResult, "Failed to set autocommit.");
+              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                  "Failed to set autocommit.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -405,8 +411,8 @@ namespace dbgw
               CCI_PARAM_ISOLATION_LEVEL, (void *) &nIsolation, &cciError);
           if (nResult < 0)
             {
-              CUBRIDException e(nResult, cciError,
-                  "Failed to set isolation level");
+              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to set isolation level");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -431,7 +437,8 @@ namespace dbgw
               cci_end_tran(m_hCCIConnection, CCI_TRAN_COMMIT, &cciError);
           if (nResult < 0)
             {
-              CUBRIDException e(nResult, cciError, "Failed to commit database.");
+              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to commit database.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -456,8 +463,8 @@ namespace dbgw
               &cciError);
           if (nResult < 0)
             {
-              CUBRIDException
-              e(nResult, cciError, "Failed to rollback database.");
+              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to rollback database.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -513,7 +520,8 @@ namespace dbgw
               int nResult = cci_close_req_handle(m_hCCIRequest);
               if (nResult < 0)
                 {
-                  CUBRIDException e(nResult, "Failed to close statement.");
+                  CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                      "Failed to close statement.");
                   DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
                   throw e;
                 }
@@ -542,8 +550,8 @@ namespace dbgw
           const_cast<char *>(p_query->getSQL()), 0, &cciError);
       if (m_hCCIRequest < 0)
         {
-          CUBRIDException e(m_hCCIRequest, cciError,
-              "Failed to prepare statement.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(m_hCCIRequest,
+              cciError, "Failed to prepare statement.");
           DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
@@ -578,7 +586,7 @@ namespace dbgw
               nResult = doBindChar(i + 1, pValue);
               break;
             default:
-              CUBRIDException e(
+              CUBRIDException e = CUBRIDExceptionFactory::create(
                   "Failed to bind parameter. invalid parameter type.");
               DBGW_LOG_ERROR(e.what());
               throw e;
@@ -586,7 +594,8 @@ namespace dbgw
 
           if (nResult < 0)
             {
-              CUBRIDException e(nResult, "Failed to bind parameter.");
+              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                  "Failed to bind parameter.");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -685,7 +694,8 @@ namespace dbgw
       int nResult = cci_execute(m_hCCIRequest, 0, 0, &cciError);
       if (nResult < 0)
         {
-          CUBRIDException e(nResult, cciError, "Failed to execute statement.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
+              "Failed to execute statement.");
           DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
@@ -767,7 +777,8 @@ namespace dbgw
           nResult = cci_fetch(m_hCCIRequest, &cciError);
           if (nResult != CCI_ER_NO_ERROR)
             {
-              CUBRIDException e(nResult, cciError, "Failed to fetch data.");
+              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to fetch data.");
               DBGW_LOG_ERROR(e.what());
               throw e;
             }
@@ -784,7 +795,8 @@ namespace dbgw
         }
       else
         {
-          CUBRIDException e(nResult, cciError, "Failed to move cursor.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
+              "Failed to move cursor.");
           DBGW_LOG_ERROR(e.what());
           throw e;
         }
@@ -798,7 +810,8 @@ namespace dbgw
           &cciCmdType, &nColNum);
       if (pCCIColInfo == NULL)
         {
-          CUBRIDException e("Cannot get the cci col info.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(
+              "Cannot get the cci col info.");
           DBGW_LOG_ERROR(e.what());
           throw e;
         }
@@ -823,7 +836,8 @@ namespace dbgw
           (void *) &nValue, &nIndicator);
       if (nResult != CCI_ER_NO_ERROR)
         {
-          CUBRIDException e(nResult, "Failed to get data.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to get data.");
           DBGW_LOG_ERROR(e.what());
           throw e;
         }
@@ -841,7 +855,8 @@ namespace dbgw
           (void *) &lValue, &nIndicator);
       if (nResult != CCI_ER_NO_ERROR)
         {
-          CUBRIDException e(nResult, "Failed to get data.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to get data.");
           DBGW_LOG_ERROR(e.what());
           throw e;
         }
@@ -860,7 +875,8 @@ namespace dbgw
           (void *) &szValue, &nIndicator);
       if (nResult != CCI_ER_NO_ERROR)
         {
-          CUBRIDException e(nResult, "Failed to get data.");
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to get data.");
           DBGW_LOG_ERROR(e.what());
           throw e;
         }

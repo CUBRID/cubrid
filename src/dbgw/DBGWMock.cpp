@@ -135,7 +135,6 @@ namespace dbgw
     return nResult;
   }
 
-
   __thread DBGW_FAULT_TYPE g_dbgw_fault_type = DBGW_FAULT_TYPE_NONE;
   __thread char *g_dbgw_fault_group = NULL;
   __thread int g_dbgw_fault_int_return = 0;
@@ -150,6 +149,11 @@ namespace dbgw
     return g_dbgw_fault_group;
   }
 
+  int dbgw_mock_get_int_return()
+  {
+    return g_dbgw_fault_int_return;
+  }
+
   void dbgw_mock_clear_fault()
   {
     cci_mock_clear_fault();
@@ -162,13 +166,15 @@ namespace dbgw
       }
 
     g_dbgw_fault_group = NULL;
+    g_dbgw_fault_int_return = 0;
   }
 
-  void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group)
+  void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group, int int_return)
   {
     cci_mock_clear_fault();
 
     g_dbgw_fault_type = type;
+    g_dbgw_fault_int_return = int_return;
 
     if (g_dbgw_fault_group != NULL)
       {

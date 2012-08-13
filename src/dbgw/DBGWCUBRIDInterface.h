@@ -28,25 +28,23 @@ namespace dbgw
     int convertValueTypeToCCIAType(DBGWValueType type);
     DBGWValueType convertCCIUTypeToValueType(int utype);
 
-    class CUBRIDException: public DBGWInterfaceException
+    class CUBRIDException : public DBGWException
     {
     public:
-      CUBRIDException(const string &errorMessage) throw();
-      CUBRIDException(int nInterfaceErrorCode, const string &replace) throw();
-      CUBRIDException(int nInterfaceErrorCode, T_CCI_ERROR &error,
-          const string &replace) throw();
+      CUBRIDException(const DBGWExceptionContext &context) throw();
       virtual ~ CUBRIDException() throw();
+    };
 
+    class CUBRIDExceptionFactory
+    {
     public:
-      bool isConnectionError() const;
-
-    protected:
-      void doCreateErrorMessage();
-
+      static CUBRIDException create(const string &errorMessage);
+      static CUBRIDException create(int nInterfaceErrorCode,
+          const string &errorMessage);
+      static CUBRIDException create(int nInterfaceErrorCode,
+          T_CCI_ERROR &cciError, const string &errorMessage);
     private:
-      bool m_bCCIError;
-      string m_replace;
-      T_CCI_ERROR *m_pError;
+      virtual ~CUBRIDExceptionFactory();
     };
 
     /**

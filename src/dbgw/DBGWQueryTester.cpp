@@ -90,7 +90,7 @@ namespace dbgw
 
     if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
       {
-        DBGWInterfaceException e = getLastException();
+        DBGWException e = getLastException();
         if (e.getErrorCode() == DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL)
           {
             fprintf(stderr, "[WARN] %s is failed to execute. %s\n",
@@ -368,7 +368,7 @@ using namespace dbgw;
 
 const static int PROG_MIN_ARG_COUNT = 4;
 const static char *PROG_USAGE =
-    "dbgw_query_tester [scenario xml path] [connector xml path] [querymap xml path] ...";
+    "dbgw_query_tester [scenario xml path] [configuration xml path] [querymap xml path] ...";
 
 int main(int argc, const char *argv[])
 {

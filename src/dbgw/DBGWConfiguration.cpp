@@ -154,7 +154,7 @@ namespace dbgw
 
         return pResult;
       }
-    catch (DBGWInterfaceException &e)
+    catch (DBGWException &e)
       {
         if (e.isConnectionError())
           {
@@ -930,7 +930,7 @@ namespace dbgw
 
   void DBGWConnector::returnExecuterList(DBGWExecuterList &executerList)
   {
-    DBGWInterfaceException exception;
+    DBGWException exception;
     for (DBGWExecuterList::iterator it = executerList.begin(); it
         != executerList.end(); it++)
       {

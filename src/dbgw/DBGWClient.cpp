@@ -126,7 +126,7 @@ namespace dbgw
       {
         checkClientIsValid();
 
-        DBGWInterfaceException exception;
+        DBGWException exception;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
             != m_executerList.end(); it++)
           {
@@ -165,7 +165,7 @@ namespace dbgw
       {
         checkClientIsValid();
 
-        DBGWInterfaceException exception;
+        DBGWException exception;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
             != m_executerList.end(); it++)
           {
@@ -204,7 +204,7 @@ namespace dbgw
       {
         checkClientIsValid();
 
-        DBGWInterfaceException exception;
+        DBGWException exception;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
             != m_executerList.end(); it++)
           {
@@ -246,7 +246,7 @@ namespace dbgw
 
         bool bValidateResult = false;
         bool bMakeResult = false;
-        DBGWInterfaceException validateFailException;
+        DBGWException validateFailException;
         DBGWResultSharedPtr pReturnResult, pInternalResult;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
             != m_executerList.end(); it++)
