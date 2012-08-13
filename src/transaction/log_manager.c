@@ -256,6 +256,8 @@ static void log_client_append_done_actions (THREAD_ENTRY * thread_p,
 					    LOG_TDES * tdes,
 					    LOG_RECTYPE rectype,
 					    LOG_LSA * next_lsa);
+static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log,
+                                              char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
 static void log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 			   LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -7374,12 +7376,17 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_LARGER_LOGREC_TYPE:
 		      /* fall through default */
 		    default:
-#if defined(CUBRID_DEBUG)
-		      log_client_find_system_error (log_rec->type, type);
-#endif /* CUBRID_DEBUG */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
-		      break;
+		      {
+			char msg[LINE_MAX];
+
+			er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
+			log_dump_record_header_to_string (log_rec, msg,
+							  LINE_MAX);
+			logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+					   msg);
+			break;
+		      }
 		    }
 		}
 	      /*
@@ -9645,6 +9652,29 @@ log_undo_rec_restartable (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 }
 
 /*
+ * log_dump_record_header_to_string - dump log record header to string
+ *
+ * return: nothing
+ *
+ *   log(in): log record header pointer
+ *   buf(out): char buffer pointer
+ *   len(in): max size of the buffer
+ *
+ */
+static void
+log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf,
+				  size_t len)
+{
+  const char *fmt =
+    "TYPE[%d], TRID[%d], PREV[%lld,%d], BACK[%lld,%d], FORW[%lld,%d]";
+
+  snprintf (buf, len, fmt, log->type, log->trid,
+	    log->prev_tranlsa.pageid, log->prev_tranlsa.offset,
+	    log->back_lsa.pageid, log->back_lsa.offset,
+	    log->forw_lsa.pageid, log->forw_lsa.offset);
+}
+
+/*
  * log_rollback - Rollback a transaction
  *
  * return: nothing
@@ -9918,14 +9948,15 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
 	    default:
-#if defined(CUBRID_DEBUG)
-	      er_log_debug (ARG_FILE_LINE, "log_rollback: SYSTEM ERROR.. Bad"
-			    " log_rec type = %d (%s) during rollback\n",
-			    log_rec->type, log_to_string (log_rec->type));
-#endif /* CUBRID_DEBUG */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
-		      1, log_lsa.pageid);
-	      break;
+	      {
+		char msg[LINE_MAX];
+
+		er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
+		log_dump_record_header_to_string (log_rec, msg, LINE_MAX);
+		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, msg);
+		break;
+	      }
 	    }			/* switch */
 
 	  /* Just in case, it was changed or the previous address has changed */
