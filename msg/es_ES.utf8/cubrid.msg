@@ -1562,13 +1562,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 249 Context requires collection with elements having identical codesets and collations.
 250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
 251 Initial value is invalid.
-252 Prefix index is not supported.
+252 Multi-column prefix index is not allowed.
 253 '%s' function cannot be used for function based index.
 254 Invalid index column definition: %s
 255 '%s' is not allowed in a filter expression for index.
 256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
 257 Cannot MERGE UPDATE column %s referenced in ON clause.
 258 The number of columns, %d, in ( %s ) do not match\nthe number of columns, %d, in ( %s ).
+259 Prefixes of columns not allowed in function index expression.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

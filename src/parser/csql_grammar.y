@@ -456,6 +456,7 @@ static PT_NODE *parser_make_date_lang (int arg_cnt, PT_NODE * arg3);
 static PT_NODE *parser_make_number_lang (const int argc);
 static void parser_remove_dummy_select (PT_NODE ** node);
 static int parser_count_list (PT_NODE * list);
+static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
@@ -2290,6 +2291,7 @@ create_stmt
 			if (node && ocs)
 			  {
 			    PT_NODE *col, *temp;
+			    int arg_count = 0, prefix_col_count = 0;
 
 			    ocs->info.spec.entity_name = $10;
 			    ocs->info.spec.only_all = PT_ONLY;
@@ -2329,42 +2331,56 @@ create_stmt
 			              }
 			          }
 			      }
-			    if ((parser_count_list (col) == 1)
-				&& (col->info.sort_spec.expr->node_type == PT_FUNCTION))
+			      
+			    prefix_col_count =
+				parser_count_prefix_columns (col, &arg_count);
+			    
+			    if (prefix_col_count > 1 ||
+				(prefix_col_count == 1 && arg_count > 1))
 			      {
-				PT_NODE *expr = col->info.sort_spec.expr;
-				PT_NODE *arg_list = expr->info.function.arg_list;
-				if ((arg_list != NULL) 
-				    && (arg_list->next == NULL)
-				    && (arg_list->node_type == PT_VALUE))
+				PT_ERRORm (this_parser, node,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_MULTICOL_PREFIX_INDX_NOT_ALLOWED);
+			      }
+			    else
+			      {
+				if (arg_count == 1 && (prefix_col_count == 1
+				    || col->info.sort_spec.expr->node_type == PT_FUNCTION))
 				  {
-				    if (node->info.index.reverse
-					|| node->info.index.unique)
+				    PT_NODE *expr = col->info.sort_spec.expr;
+				    PT_NODE *arg_list = expr->info.function.arg_list;
+				    if ((arg_list != NULL) 
+					&& (arg_list->next == NULL)
+					&& (arg_list->node_type == PT_VALUE))
 				      {
-					PT_ERRORm (this_parser, node, 
-						   MSGCAT_SET_PARSER_SYNTAX,
-						   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					if (node->info.index.reverse
+					    || node->info.index.unique)
+					  {
+					    PT_ERRORm (this_parser, node, 
+						       MSGCAT_SET_PARSER_SYNTAX,
+						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					  }
+					else
+					  {	
+					    PT_NODE *p = parser_new_node (this_parser, 
+									  PT_NAME);
+					    if (p)
+					      {
+						p->info.name.original =
+						     expr->info.function.generic_name;
+					      }
+					    node->info.index.prefix_length =
+							 expr->info.function.arg_list;
+					    col->info.sort_spec.expr = p;
+					  }
 				      }
 				    else
-				      {	
-					PT_NODE *p = parser_new_node (this_parser, 
-								      PT_NAME);
-					if (p)
-					  {
-					    p->info.name.original = 
-						 expr->info.function.generic_name;
-					  }
-					node->info.index.prefix_length = 
-						     expr->info.function.arg_list;
-					col->info.sort_spec.expr = p;
+				      {
+					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
+						    MSGCAT_SET_PARSER_SEMANTIC,
+						    MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+						    pt_show_function (col->info.sort_spec.expr->info.function.function_type));
 				      }
-				  }
-				else
-				  {
-				    PT_ERRORmf (this_parser, col->info.sort_spec.expr, 
-						MSGCAT_SET_PARSER_SEMANTIC,
-						MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
-						pt_show_function (col->info.sort_spec.expr->info.function.function_type));
 				  }
 			      }
 			     node->info.index.where = $12;
@@ -8468,7 +8484,7 @@ attr_index_def
 	  index_column_name_list
 	  opt_where_clause
 		{{
-
+			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser, 
 							PT_CREATE_INDEX);
 			PT_NODE* col = $3;
@@ -8482,29 +8498,42 @@ attr_index_def
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
     		    
-			if (parser_count_list (col) == 1 
-			    && (col->info.sort_spec.expr->node_type == PT_FUNCTION))
+			prefix_col_count =
+				parser_count_prefix_columns (col, &arg_count);
+			    
+			if (prefix_col_count > 1 ||
+			    (prefix_col_count == 1 && arg_count > 1))
 			  {
-			    PT_NODE *expr = col->info.sort_spec.expr;
-			    PT_NODE *arg_list = expr->info.function.arg_list;
-			    if ((arg_list != NULL)
-				&& (arg_list->next == NULL)
-				&& (arg_list->node_type == PT_VALUE))
+			    PT_ERRORm (this_parser, node,
+				       MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_MULTICOL_PREFIX_INDX_NOT_ALLOWED);
+			  }
+			else
+			  {
+			    if (arg_count == 1 && (prefix_col_count == 1
+			        || col->info.sort_spec.expr->node_type == PT_FUNCTION))
 			      {
-				PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-				if (p)
+				PT_NODE *expr = col->info.sort_spec.expr;
+				PT_NODE *arg_list = expr->info.function.arg_list;
+				if ((arg_list != NULL)
+				    && (arg_list->next == NULL)
+				    && (arg_list->node_type == PT_VALUE))
 				  {
-				    p->info.name.original = expr->info.function.generic_name;
+				    PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+				    if (p)
+				      {
+					p->info.name.original = expr->info.function.generic_name;
+				      }
+				    node->info.index.prefix_length =
+				    expr->info.function.arg_list;
+				    col->info.sort_spec.expr = p;
 				  }
-				node->info.index.prefix_length =
-				  expr->info.function.arg_list;
-				col->info.sort_spec.expr = p;
-			      }
-			    else
-			      {
-				PT_ERRORm (this_parser, node,
-					   MSGCAT_SET_PARSER_SYNTAX,
-					   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				else
+				  {
+				    PT_ERRORm (this_parser, node,
+					       MSGCAT_SET_PARSER_SYNTAX,
+					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				  }
 			      }
 			  }
 			node->info.index.column_names = col;
@@ -20638,6 +20667,39 @@ parser_count_list (PT_NODE * list)
     {
       p = p->next;
       i++;
+    }
+
+  return i;
+}
+
+static int
+parser_count_prefix_columns (PT_NODE * list, int * arg_count)
+{
+  int i = 0;
+  PT_NODE *p = list;
+  
+  *arg_count = 0;
+  
+  while (p)
+    {
+      if (p->node_type == PT_SORT_SPEC)
+	{
+	  if (p->info.sort_spec.expr->node_type == PT_FUNCTION)
+	    {
+	      PT_NODE *expr = p->info.sort_spec.expr;
+	      PT_NODE *arg_list = expr->info.function.arg_list;
+	      if ((arg_list != NULL) && (arg_list->next == NULL)
+		  && (arg_list->node_type == PT_VALUE))
+		{
+		  /* it might be a prefixed column */
+		  i++;
+		}
+	    }
+	}
+
+      /* count all arguments */
+      *arg_count = (*arg_count) + 1;
+      p = p->next;
     }
 
   return i;

@@ -2868,7 +2868,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 			{
 			  PT_ERRORm (parser, node,
 				     MSGCAT_SET_PARSER_SEMANTIC,
-				     MSGCAT_SEMANTIC_PREFIX_INDEX_NOT_SUPPORTED);
+				     MSGCAT_SEMANTIC_PREFIX_IN_FUNC_INDX_NOT_ALLOWED);
 			}
 		      else if (parser_function_code != PT_EMPTY)
 			{

@@ -978,6 +978,7 @@ static PT_NODE *parser_make_date_lang (int arg_cnt, PT_NODE * arg3);
 static PT_NODE *parser_make_number_lang (const int argc);
 static void parser_remove_dummy_select (PT_NODE ** node);
 static int parser_count_list (PT_NODE * list);
+static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
@@ -1067,7 +1068,7 @@ typedef struct YYLTYPE
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 553 "../../src/parser/csql_grammar.y"
+#line 554 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1079,7 +1080,7 @@ typedef union YYSTYPE
   container_10 c10;
 }
 /* Line 2604 of glr.c.  */
-#line 1083 "../../src/parser/csql_grammar.h"
+#line 1084 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
