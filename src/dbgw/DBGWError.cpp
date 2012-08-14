@@ -229,7 +229,12 @@ namespace dbgw
             (boost::format("The configuration of version %d is not exist.")
                 % nVersion).str()))
   {
+  }
 
+  NotExistConfFileException::NotExistConfFileException(const char *szPath) throw() :
+    DBGWException(DBGWErrorCode::CONF_NOT_EXIST_VERSION,
+        (boost::format("No such file or directory. (%s)") % szPath).str())
+  {
   }
 
   NotExistConnException::NotExistConnException(const char *szGroupName) throw() :

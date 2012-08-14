@@ -35,6 +35,7 @@ namespace dbgw
       CONF_FETCH_HOST_FAIL                      = -22103,
       CONF_NOT_YET_LOADED                       = -22104,
       CONF_NOT_EXIST_VERSION                    = -22105,
+      CONF_NOT_EXIST_FILE                       = -22106,
 
       SQL_NOT_EXIST_CONN                        = -22200,
       SQL_INVALID_SQL                           = -22201,
@@ -158,6 +159,12 @@ namespace dbgw
   {
   public:
     NotExistVersionException(int nVersion) throw();
+  };
+
+  class NotExistConfFileException : public DBGWException
+  {
+  public:
+    NotExistConfFileException(const char *szPath) throw();
   };
 
   class NotExistConnException : public DBGWException

@@ -322,23 +322,19 @@ namespace dbgw
 
     bool loadConnector(const char *szXmlPath = NULL);
     bool loadQueryMapper(const char *szXmlPath = NULL, bool bAppend = false);
+    void closeVersion(const DBGWConfigurationVersion &stVersion);
+    DBGWConfigurationVersion getVersion();
+    DBGWConnector *getConnector(const DBGWConfigurationVersion &stVersion);
+    DBGWQueryMapper *getQueryMapper(const DBGWConfigurationVersion &stVersion);
 
   public:
     int getConnectorSize() const;
     int getQueryMapperSize() const;
 
   private:
-    void closeVersion(const DBGWConfigurationVersion &stVersion);
-    DBGWConfigurationVersion getVersion();
-    DBGWConnector *getConnector(const DBGWConfigurationVersion &stVersion);
-    DBGWQueryMapper *getQueryMapper(const DBGWConfigurationVersion &stVersion);
-
-  private:
     string m_confFileName;
     DBGWVersionedResource m_connResource;
     DBGWVersionedResource m_queryResource;
-
-    friend class DBGWClient;
   };
 
   typedef shared_ptr<DBGWConfiguration> DBGWConfigurationSharedPtr;

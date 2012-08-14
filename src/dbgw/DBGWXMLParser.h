@@ -52,6 +52,9 @@ namespace dbgw
     DBGWValueType getValueType(const char *szName);
     CCI_LOG_LEVEL getLogLevel(const char *szName);
 
+  public:
+    const char *getNodeName() const;
+
   private:
     int propertyToInt(const char *szProperty);
     bool propertyToBoolean(const char *szProperty);
@@ -87,6 +90,7 @@ namespace dbgw
     bool isCdataSection() const;
 
   private:
+    static void doParse(DBGWParser *pParser, const char *szFileName);
     static void onElementStart(void *pParam, const XML_Char *szName,
         const XML_Char *szAttr[]);
     static void onElementEnd(void *pParam, const XML_Char *szName);

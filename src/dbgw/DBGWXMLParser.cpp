@@ -28,6 +28,7 @@
 #include "DBGWQuery.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWConfiguration.h"
+#include "DBGWPorting.h"
 #include "DBGWXMLParser.h"
 
 namespace dbgw
@@ -89,6 +90,7 @@ namespace dbgw
 
   static const char *XML_NODE_INCLUDE = "include";
   static const char *XML_NODE_INCLUDE_PROP_FILE = "file";
+  static const char *XML_NODE_INCLUDE_PROP_PATH = "path";
 
   static const int POOL_DEFAULT_POOL_SIZE = 10;
 
@@ -308,6 +310,11 @@ namespace dbgw
     throw e;
   }
 
+  const char *DBGWExpatXMLProperties::getNodeName() const
+  {
+    return m_nodeName.c_str();
+  }
+
   int DBGWExpatXMLProperties::propertyToInt(const char *szProperty)
   {
     try
@@ -371,7 +378,45 @@ namespace dbgw
 
   void DBGWParser::parse(DBGWParser *pParser)
   {
-    DBGWExpatXMLParser parser(pParser->m_fileName);
+    const char *szPath = pParser->m_fileName.c_str();
+    DBGWStringList fileNameList;
+    system::DirectorySharedPtr pDir = system::DirectoryFactory::create(szPath);
+    if (pDir->isDirectory())
+      {
+        pDir->getFileFullPathList(fileNameList);
+      }
+    else
+      {
+        fileNameList.push_back(szPath);
+      }
+
+    for (DBGWStringList::iterator it = fileNameList.begin();
+        it != fileNameList.end(); ++it)
+      {
+        if (system::getFileExtension(*it) != "xml")
+          {
+            continue;
+          }
+
+        doParse(pParser, it->c_str());
+      }
+  }
+
+  void DBGWParser::doOnElementContent(const XML_Char *szData, int nLength)
+  {
+  }
+
+  void DBGWParser::doOnCdataStart()
+  {
+  }
+
+  void DBGWParser::doOnCdataEnd()
+  {
+  }
+
+  void DBGWParser::doParse(DBGWParser *pParser, const char *szFileName)
+  {
+    DBGWExpatXMLParser parser(szFileName);
 
     XML_SetUserData(parser.get(), pParser);
     XML_SetElementHandler(parser.get(), onElementStart, onElementEnd);
@@ -379,10 +424,10 @@ namespace dbgw
     XML_SetCharacterDataHandler(parser.get(), onElementContent);
     XML_SetUnknownEncodingHandler(parser.get(), onUnknownEncoding, NULL);
 
-    FILE *fp = fopen(pParser->getFileName().c_str(), "r");
+    FILE *fp = fopen(szFileName, "r");
     if (fp == NULL)
       {
-        CreateFailParserExeception e(pParser->getFileName().c_str());
+        CreateFailParserExeception e(szFileName);
         DBGW_LOGF_INFO("%s (%d)", e.what(), errno);
         throw e;
       }
@@ -412,7 +457,7 @@ namespace dbgw
       {
         errCode = XML_GetErrorCode(parser.get());
         InvalidXMLSyntaxException e(XML_ErrorString(errCode),
-            pParser->m_fileName.c_str(), XML_GetCurrentLineNumber(parser.get()),
+            szFileName, XML_GetCurrentLineNumber(parser.get()),
             XML_GetCurrentColumnNumber(parser.get()));
         DBGW_LOG_ERROR(e.what());
         throw e;
@@ -422,18 +467,6 @@ namespace dbgw
       {
         throw exception;
       }
-  }
-
-  void DBGWParser::doOnElementContent(const XML_Char *szData, int nLength)
-  {
-  }
-
-  void DBGWParser::doOnCdataStart()
-  {
-  }
-
-  void DBGWParser::doOnCdataEnd()
-  {
   }
 
   void DBGWParser::onElementStart(void *pParam, const XML_Char *szName,
@@ -922,13 +955,51 @@ namespace dbgw
 
   void DBGWConfigurationParser::parseInclude(DBGWExpatXMLProperties &properties)
   {
+    if (getParentElementName() != XML_NODE_CONNECTOR
+        && getParentElementName() != XML_NODE_QUERYMAP)
+      {
+        return;
+      }
+
+    const char *szFile = properties.getCString(XML_NODE_INCLUDE_PROP_FILE, false);
+    const char *szPath = properties.getCString(XML_NODE_INCLUDE_PROP_PATH, false);
+    string fileName;
+    if (szFile != NULL)
+      {
+        system::DirectorySharedPtr pDir = system::DirectoryFactory::create(
+            szFile);
+        if (pDir->isDirectory())
+          {
+            InvalidPropertyValueException e(szFile, "file name");
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+        fileName = szFile;
+      }
+    else if (szPath != NULL)
+      {
+        system::DirectorySharedPtr pDir = system::DirectoryFactory::create(
+            szPath);
+        if (!pDir->isDirectory())
+          {
+            InvalidPropertyValueException e(szPath, "file path");
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+        fileName = szPath;
+      }
+    else
+      {
+        NotExistPropertyException e(properties.getNodeName(), "file or path");
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
     if (getParentElementName() == XML_NODE_CONNECTOR)
       {
         if (m_pConnector != NULL)
           {
-            DBGWConnectorParser parser(
-                properties.get(XML_NODE_INCLUDE_PROP_FILE, true),
-                m_pConnector);
+            DBGWConnectorParser parser(fileName, m_pConnector);
             DBGWParser::parse(&parser);
           }
       }
@@ -936,9 +1007,7 @@ namespace dbgw
       {
         if (m_pQueryMapper != NULL)
           {
-            DBGWQueryMapParser parser(
-                properties.get(XML_NODE_INCLUDE_PROP_FILE, true),
-                m_pQueryMapper);
+            DBGWQueryMapParser parser(fileName, m_pQueryMapper);
             DBGWParser::parse(&parser);
           }
       }
