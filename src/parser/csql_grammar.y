@@ -13724,7 +13724,9 @@ reserved_func
 			PT_NODE *node = parser_make_expression (PT_SYS_CONNECT_BY_PATH, $4, $6, NULL);
 			PT_NODE *char_string_node = $6;
 
-			if (char_string_node)
+			if (char_string_node != NULL
+			    && char_string_node->data_type != NULL
+			    && char_string_node->data_type->info.data_type.units != LANG_SYS_CODESET)
   			  {
   			    assert (char_string_node->node_type == PT_VALUE);
   			    assert (PT_HAS_COLLATION (char_string_node->type_enum));
@@ -17184,7 +17186,9 @@ literal_w_o_param
 			PT_NODE *node = $1;
 			PT_NODE *coll_node = $2;
 
-			if (node)
+			if (node != NULL
+			    && node->data_type != NULL
+			    && node->data_type->info.data_type.units != LANG_SYS_CODESET)
   			  {
   			    node->info.value.print_charset = true;
 			  }
@@ -18487,7 +18491,9 @@ string_literal_or_input_hv
 			PT_NODE *node = $1;
 			PT_NODE *coll_node = $2;
 
-			if (node)
+			if (node != NULL
+			    && node->data_type != NULL
+			    && node->data_type->info.data_type.units != LANG_SYS_CODESET)
   			  {
   			    assert (node->node_type == PT_VALUE);
   			    assert (PT_HAS_COLLATION (node->type_enum));
@@ -22110,8 +22116,8 @@ pt_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *node,
   assert (PT_HAS_COLLATION (node->type_enum));
   assert (node->data_type == NULL);
 
-  if (!force && codeset_id == LANG_COERCIBLE_CODESET
-      && collation_id == LANG_COERCIBLE_COLL)
+  if (!force && codeset_id == LANG_SYS_CODESET
+      && collation_id == LANG_SYS_COLLATION)
     {
       /* not necessary to add a new node, by default constants get the
        * coercible (system) charset and collation */
@@ -22137,16 +22143,30 @@ pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
   LANG_COLLATION *lang_coll;
 
   assert (node != NULL);
-  
+  assert (node->node_type == PT_VALUE);
+
   if (coll_node == NULL)
     {
-      return;
-    }
-  assert (node->node_type == PT_VALUE);
-  assert (coll_node->node_type == PT_VALUE);
+      int client_collation = lang_get_client_collation ();
 
-  assert (coll_node->info.value.data_value.str != NULL);
-  lang_coll = lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
+      if (client_collation == LANG_SYS_COLLATION)
+	{
+	  /* no need for collation info */
+	  return;
+	}
+      else
+	{
+	  lang_coll = lang_get_collation (client_collation);
+	  assert (lang_coll != NULL);
+	}
+    }
+  else
+    {
+      assert (coll_node->node_type == PT_VALUE);
+
+      assert (coll_node->info.value.data_value.str != NULL);
+      lang_coll = lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
+    }
 
   if (lang_coll != NULL)
     {
@@ -22162,6 +22182,13 @@ pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
     	  else
     	    {
     	      node->data_type->info.data_type.collation_id = lang_coll->coll.coll_id;
+
+    	      if (LANG_GET_BINARY_COLLATION (node->data_type->info.data_type.units)
+    		  == lang_coll->coll.coll_id)
+    		{
+    		  /* do not print collation */
+    		  return;
+    		}
     	    }
   	}
       else
