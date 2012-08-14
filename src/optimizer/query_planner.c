@@ -1821,10 +1821,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
 	}
-      else
-	{
-	  bitset_add (&(plan->plan_un.scan.kf_terms), t);
-	}
     }				/* for (t = ... ) */
 
   /* exclude key filter terms from sargs terms */
@@ -10467,10 +10463,6 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
 	}
-      else
-	{
-	  bitset_add (&(plan->plan_un.scan.kf_terms), t);
-	}
     }				/* for (t = ... ) */
 
   /* exclude key filter terms from sargs terms */
@@ -11789,10 +11781,6 @@ qo_index_scan_group_by_new (QO_INFO * info, QO_NODE * node,
 	    {
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
-	}
-      else
-	{
-	  bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	}
     }				/* for (t = ... ) */
 

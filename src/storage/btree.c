@@ -14667,7 +14667,10 @@ static int
 btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		     FILTER_INFO * filter, OID * oid, INDX_SCAN_ID * iscan_id)
 {
+  HEAP_CACHE_ATTRINFO *attr_info;
+  REGU_VARIABLE_LIST regu_list;
   int error;
+
   if (bts == NULL || iscan_id == NULL
       || iscan_id->indx_cov.list_id == NULL
       || iscan_id->indx_cov.val_descr == NULL
@@ -14677,17 +14680,38 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       return ER_FAILED;
     }
 
+  if (iscan_id->rest_attrs.num_attrs > 0)
+    {
+      /* normal index scan or join index scan */
+      attr_info = iscan_id->rest_attrs.attr_cache;
+      regu_list = iscan_id->rest_regu_list;
+    }
+  else if (iscan_id->pred_attrs.num_attrs > 0)
+    {
+      /* rest_attrs.num_attrs == 0 if index scan term is
+       * join index scan with always-true condition.
+       * example: SELECT ... FROM X inner join Y on 1 = 1;
+       */
+      attr_info = iscan_id->pred_attrs.attr_cache;
+      regu_list = iscan_id->scan_pred.regu_list;
+    }
+  else
+    {
+      assert_release (false);
+      attr_info = NULL;
+      regu_list = NULL;
+    }
+
   error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key),
 					filter->btree_attr_ids,
-					filter->btree_num_attrs,
-					iscan_id->rest_attrs.attr_cache,
+					filter->btree_num_attrs, attr_info,
 					iscan_id->indx_cov.func_index_col_id);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  error = fetch_val_list (thread_p, iscan_id->rest_regu_list,
+  error = fetch_val_list (thread_p, regu_list,
 			  iscan_id->indx_cov.val_descr, NULL, oid, NULL,
 			  PEEK);
   if (error != NO_ERROR)
