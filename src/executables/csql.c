@@ -741,6 +741,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 {
   int i;
   char *ptr;
+  char *sess_end = NULL;	/* end pos of session command */
+  char sess_end_char;		/* orginal char in end pos of session command */
   char *sess_cmd;		/* session command pointer */
   char *argument;		/* argument str */
   int cmd_no;			/* session command number */
@@ -757,20 +759,22 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     }
 
   /* 'ptr' points to the prefix char. */
-  for (ptr++; *ptr != '\0' && iswspace ((wint_t) * ptr); ptr++)
+  for (ptr++; *ptr != '\0' && iswspace ((wint_t) (*ptr)); ptr++)
     {
       ;
     }
   sess_cmd = (char *) ptr;
-  for (; *ptr != '\0' && !iswspace ((wint_t) * ptr); ptr++)
+  for (; *ptr != '\0' && !iswspace ((wint_t) (*ptr)); ptr++)
     {
       ;
     }
-  if (iswspace ((wint_t) * ptr))
+  if (iswspace ((wint_t) (*ptr)))
     {
+      sess_end = ptr;
+      sess_end_char = *ptr;
       *ptr++ = '\0';		/* put null-termination */
     }
-  for (; *ptr != '\0' && iswspace ((wint_t) * ptr); ptr++)
+  for (; *ptr != '\0' && iswspace ((wint_t) (*ptr)); ptr++)
     {
       ;
     }
@@ -789,6 +793,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   if (cmd_no == -1)
     {
       return false;
+    }
+
+  /* restore line_read string */
+  if (sess_end != NULL)
+    {
+      *sess_end = sess_end_char;
     }
 
 #if !defined(GNU_Readline) && !defined(WINDOWS)
