@@ -4148,7 +4148,7 @@ regu_analytic_init (ANALYTIC_TYPE * ptr)
   ptr->next = NULL;
   ptr->value = NULL;
   ptr->value2 = NULL;
-  ptr->default_value = NULL;
+  ptr->outptr_idx = 0;
   ptr->curr_cnt = 0;
   ptr->partition_cnt = 0;
   ptr->function = (FUNC_TYPE) 0;

@@ -499,6 +499,14 @@
             : (PT_IS_QUERY(n) ? (n)->info.query.is_order_dependent : false))) \
           : false)
 
+#define PT_IS_ANALYTIC_NODE(n) \
+        ( (n) && (n)->node_type == PT_FUNCTION && \
+          (n)->info.function.analytic.is_analytic )
+
+#define PT_IS_POINTER_REF_NODE(n) \
+        ( (n) && (n)->node_type == PT_POINTER && \
+          (n)->info.pointer.type == PT_POINTER_REF )
+
 #define PT_SET_ORDER_DEPENDENT_FLAG(n, f) \
         do { \
           if ((n)) \
@@ -607,11 +615,13 @@
 	(n)->info.value.text = parser_print_tree ((p), (n));	\
     } while (0)
 
-#define CAST_POINTER_TO_NODE(p)                          \
-    do {                                                 \
-        while ((p) && (p)->node_type == PT_POINTER) {    \
-            (p) = (p)->info.pointer.node;                \
-        }                                                \
+#define CAST_POINTER_TO_NODE(p)                             \
+    do {                                                    \
+        while ((p) && (p)->node_type == PT_POINTER &&       \
+               (p)->info.pointer.type == PT_POINTER_NORMAL) \
+        {                                                   \
+            (p) = (p)->info.pointer.node;                   \
+        }                                                   \
     } while (0)
 
 #define PT_EMPTY	INT_MAX
@@ -2589,10 +2599,20 @@ struct pt_constraint_info
   } un;
 };
 
+/* POINTER node types */
+typedef enum pt_pointer_type PT_POINTER_TYPE;
+enum pt_pointer_type
+{
+  PT_POINTER_NORMAL = 0,	/* normal pointer, gets resolved to node */
+  PT_POINTER_REF = 1		/* reference pointer - node gets walked by
+				   pt_walk_tree */
+};
+
 /* Info for the POINTER node */
 struct pt_pointer_info
 {
   PT_NODE *node;		/* original node pointer */
+  PT_POINTER_TYPE type;		/* pointer type (normal pointer/reference) */
   double sel;			/* selectivity factor of the predicate */
   int rank;			/* rank factor for the same selectivity */
 };
@@ -2831,7 +2851,6 @@ struct parser_node
   unsigned do_not_fold:1;	/* disables constant folding on the node */
   unsigned is_cnf_start:1;
   unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
-  unsigned skip_sort:1;		/* skip this node on DISTINCT sorting */
   unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST
 				 * for PT_SELECT that "values" generated */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */

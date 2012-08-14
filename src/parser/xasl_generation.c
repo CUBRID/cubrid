@@ -139,11 +139,26 @@ static PT_NODE *pt_filter_pseudo_specs (PARSER_CONTEXT * parser,
 					PT_NODE * spec);
 static PT_NODE *pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 				      void *arg, int *continue_walk);
-static PT_NODE *pt_set_analytic_node_etc (PARSER_CONTEXT * parser,
-					  PT_NODE * tree, void *arg,
-					  int *continue_walk);
 static PT_NODE *pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
-				     void *arg, int *continue_walk);
+				     ANALYTIC_INFO * analytic_info);
+static PT_NODE *pt_to_analytic_final_node (PARSER_CONTEXT * parser,
+					   PT_NODE * tree,
+					   PT_NODE ** ex_list);
+static PT_NODE *pt_expand_analytic_node (PARSER_CONTEXT * parser,
+					 PT_NODE * node,
+					 PT_NODE * select_list);
+static PT_NODE *pt_set_analytic_node_etc (PARSER_CONTEXT * parser,
+					  PT_NODE * node);
+static void pt_adjust_analytic_sort_specs (PARSER_CONTEXT * parser,
+					   PT_NODE * node, int idx,
+					   int adjust);
+static PT_NODE *pt_resolve_analytic_references (PARSER_CONTEXT * parser,
+						PT_NODE * node,
+						PT_NODE * select_list,
+						VAL_LIST * vallist);
+static PT_NODE *pt_substitute_analytic_references (PARSER_CONTEXT * parser,
+						   PT_NODE * node,
+						   PT_NODE ** ex_list);
 static SYMBOL_INFO *pt_push_fetch_spec_info (PARSER_CONTEXT * parser,
 					     SYMBOL_INFO * symbols,
 					     PT_NODE * fetch_spec);
@@ -156,7 +171,7 @@ static int pt_cnt_attrs (const REGU_VARIABLE_LIST attr_list);
 static void pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list,
 				     ATTR_ID * attr_array, int *next_pos);
 static SORT_LIST *pt_to_sort_list (PARSER_CONTEXT * parser,
-				   PT_NODE * node_list, PT_NODE * root,
+				   PT_NODE * node_list, PT_NODE * col_list,
 				   SORT_LIST_MODE sort_mode);
 
 static int *pt_to_method_arglist (PARSER_CONTEXT * parser, PT_NODE * target,
@@ -423,10 +438,6 @@ static OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser,
 				   PT_NODE * node_list,
 				   SELUPD_LIST ** selupd_list_ptr,
 				   UNBOX unbox);
-static OUTPTR_LIST *pt_to_analytic_outlist_ex (PARSER_CONTEXT * parser,
-					       PT_NODE * select_list,
-					       ANALYTIC_INFO * analytic_info,
-					       UNBOX unbox);
 static void pt_to_fetch_proc_list_recurse (PARSER_CONTEXT * parser,
 					   PT_NODE * spec, XASL_NODE * root);
 static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec,
@@ -2169,6 +2180,43 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (is_logical)
 	    {
 	      node->type_enum = PT_TYPE_LOGICAL;
+	    }
+	}
+      else if (PT_IS_POINTER_REF_NODE (node))
+	{
+	  /* reference pointer node */
+	  PT_NODE *zero, *real_node;
+
+	  real_node = node->info.pointer.node;
+	  CAST_POINTER_TO_NODE (real_node);
+
+	  if (real_node != NULL && real_node->type_enum == PT_TYPE_LOGICAL)
+	    {
+	      zero = parser_new_node (parser, PT_VALUE);
+
+	      if (zero != NULL)
+		{
+		  zero->type_enum = PT_TYPE_INTEGER;
+		  zero->info.value.data_value.i = 0;
+
+		  data_type = DB_TYPE_INTEGER;
+
+		  regu_var1 =
+		    pt_to_regu_variable (parser, zero, UNBOX_AS_VALUE);
+		  regu_var2 =
+		    pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
+
+		  pred = pt_make_pred_term_comp (regu_var1, regu_var2,
+						 R_NE, data_type);
+		}
+	      else
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		}
+	    }
+	  else
+	    {
+	      PT_INTERNAL_ERROR (parser, "pred expr must be logical");
 	    }
 	}
       else
@@ -5296,22 +5344,21 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
  *   return:
  *   parser(in):
  *   node_list(in):
- *   root(in):
+ *   col_list(in):
  *   sort_mode(in):
  */
 static SORT_LIST *
 pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
-		 PT_NODE * root, SORT_LIST_MODE sort_mode)
+		 PT_NODE * col_list, SORT_LIST_MODE sort_mode)
 {
   SORT_LIST *sort_list, *sort, *lastsort;
-  PT_NODE *node, *expr, *col, *col_list;
+  PT_NODE *node, *expr, *col;
   int i, k;
   int adjust_for_hidden_col_from = -1;
   DB_TYPE dom_type;
 
   sort_list = sort = lastsort = NULL;
   i = 0;			/* SORT_LIST pos_no start from 0 */
-  col_list = pt_get_select_list (parser, root);
 
   /* check if a hidden column is in the select list; if it is the case, store
      the position in 'adjust_for_hidden_col_from' - index starting from 1
@@ -5525,7 +5572,9 @@ static SORT_LIST *
 pt_to_after_iscan (PARSER_CONTEXT * parser, PT_NODE * iscan_list,
 		   PT_NODE * root)
 {
-  return pt_to_sort_list (parser, iscan_list, root, SORT_LIST_AFTER_ISCAN);
+  return pt_to_sort_list (parser, iscan_list,
+			  pt_get_select_list (parser, root),
+			  SORT_LIST_AFTER_ISCAN);
 }
 
 
@@ -5540,7 +5589,9 @@ pt_to_after_iscan (PARSER_CONTEXT * parser, PT_NODE * iscan_list,
 static SORT_LIST *
 pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root)
 {
-  return pt_to_sort_list (parser, order_list, root, SORT_LIST_ORDERBY);
+  return pt_to_sort_list (parser, order_list,
+			  pt_get_select_list (parser, root),
+			  SORT_LIST_ORDERBY);
 }
 
 
@@ -5555,7 +5606,9 @@ pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root)
 static SORT_LIST *
 pt_to_groupby (PARSER_CONTEXT * parser, PT_NODE * group_list, PT_NODE * root)
 {
-  return pt_to_sort_list (parser, group_list, root, SORT_LIST_GROUPBY);
+  return pt_to_sort_list (parser, group_list,
+			  pt_get_select_list (parser, root),
+			  SORT_LIST_GROUPBY);
 }
 
 
@@ -5571,7 +5624,9 @@ static SORT_LIST *
 pt_to_after_groupby (PARSER_CONTEXT * parser, PT_NODE * group_list,
 		     PT_NODE * root)
 {
-  return pt_to_sort_list (parser, group_list, root, SORT_LIST_AFTER_GROUPBY);
+  return pt_to_sort_list (parser, group_list,
+			  pt_get_select_list (parser, root),
+			  SORT_LIST_AFTER_GROUPBY);
 }
 
 
@@ -7203,6 +7258,38 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	{
 	  regu = pt_make_regu_constant (parser, val, DB_TYPE_VARCHAR, NULL);
 	}
+    }
+  else if (PT_IS_POINTER_REF_NODE (node))
+    {
+      PT_NODE *real_node = node->info.pointer.node;
+
+      CAST_POINTER_TO_NODE (real_node);
+
+      /* fetch domain from real node data type */
+      domain = NULL;
+      if (real_node != NULL && real_node->data_type != NULL)
+	{
+	  domain =
+	    pt_data_type_to_db_domain (parser, real_node->data_type, NULL);
+
+	  if (domain != NULL)
+	    {
+	      /* cache domain */
+	      domain = tp_domain_cache (domain);
+	    }
+	}
+
+      /* resolve to value domain if no domain was present */
+      if (domain == NULL)
+	{
+	  domain = tp_domain_resolve_value ((DB_VALUE *) node->etc, NULL);
+	}
+
+      /* set up regu var */
+      regu = regu_var_alloc ();
+      regu->type = TYPE_CONSTANT;
+      regu->domain = domain;
+      regu->value.dbvalptr = (DB_VALUE *) node->etc;
     }
   else
     {
@@ -9195,11 +9282,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      regu = NULL;
 	    }
 
-	  if (node != NULL && regu != NULL && node->skip_sort)
-	    {
-	      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_SKIP_SORT);
-	    }
-
 	  node->next = save_next;
 	}
 
@@ -9409,10 +9491,17 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser,
 
 	  (*tail)->value.value.pos_descr.dom = domain;
 
-	  if (attr_offsets && value_list)
+	  if (value_list)
 	    {
-	      (*tail)->value.vfetch_to =
-		pt_index_value (value_list, attr_offsets[i]);
+	      if (attr_offsets)
+		{
+		  (*tail)->value.vfetch_to =
+		    pt_index_value (value_list, attr_offsets[i]);
+		}
+	      else
+		{
+		  (*tail)->value.vfetch_to = pt_index_value (value_list, i);
+		}
 	    }
 
 	  tail = &(*tail)->next;
@@ -14445,77 +14534,267 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	}
       else
 	{
+	  /*
+	   * HERE BE DRAGONS - the select list will be altered a lot in the
+	   * following code block; make sure you understand what's happening
+	   * before making ... adjustments
+	   */
+
 	  ANALYTIC_INFO analytic_info;
-	  int *attr_offsets;
-	  PT_NODE *select_list;
+	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
+	  int idx;
 
-	  /* set analytic functions */
-	  analytic_info.head_list = NULL;
-	  analytic_info.arg_list = NULL;
-	  analytic_info.select_node = select_node;
-	  select_list = select_node->info.query.q.select.list;
+	  /* break up expressions with analytic functions */
+	  select_list_ex = NULL;
+	  select_list_final = NULL;
 
-	  (void) parser_walk_tree (parser, select_list,
-				   pt_set_analytic_node_etc,
-				   (void *) select_list, pt_continue_walk,
-				   NULL);
+	  node = select_node->info.query.q.select.list;
+	  select_node->info.query.q.select.list = NULL;
 
-	  analytic_info.val_list = pt_make_val_list (select_list);
-	  if (analytic_info.val_list == NULL)
+	  while (node != NULL)
 	    {
-	      PT_ERRORm (parser, select_list, MSGCAT_SET_PARSER_SEMANTIC,
+	      PT_NODE *final, *to_ex_list = NULL, *save_next;
+	      int sort_adjust;
+
+	      /* save next and unlink node */
+	      save_next = node->next;
+	      node->next = NULL;
+
+	      /* get final select list node */
+	      final = pt_to_analytic_final_node (parser, node, &to_ex_list);
+	      if (final == NULL)
+		{
+		  /* error was set somewhere - clean up */
+		  parser_free_tree (parser, node);
+		  parser_free_tree (parser, save_next);
+		  parser_free_tree (parser, to_ex_list);
+
+		  goto analytic_exit_on_error;
+		}
+
+	      /* append nodes to list */
+	      select_list_ex =
+		parser_append_node (to_ex_list, select_list_ex);
+	      select_list_final =
+		parser_append_node (final, select_list_final);
+
+	      /* modify sort spec adjustment counter to account for new nodes */
+	      sort_adjust = -1;	/* subtracted 1 for original node */
+	      for (; to_ex_list != NULL; to_ex_list = to_ex_list->next)
+		{
+		  /* add one for each node that goes in extended list */
+		  sort_adjust += 1;
+		}
+
+	      /* keep adjustment in final node's etc */
+	      final->etc = (void *) sort_adjust;
+
+	      /* advance */
+	      node = save_next;
+	    }
+
+	  /* adjust sort specs of analytics in select_list_ex */
+	  for (node = select_list_final, idx = 0; node; node = node->next)
+	    {
+	      PT_NODE *list;
+	      int sort_adjust = (int) node->etc;
+
+	      /* walk list and adjust */
+	      for (list = select_list_ex; list; list = list->next)
+		{
+		  pt_adjust_analytic_sort_specs (parser, list, idx,
+						 sort_adjust);
+		}
+
+	      /* increment and adjust index too */
+	      idx += sort_adjust + 1;
+
+	      /* reset etc (it will have a different meaning further on) */
+	      node->etc = NULL;
+	    }
+
+	  /* we now have all analytics as top-level nodes in select_list_ex;
+	     allocate DB_VALUEs for them and push sort cols and parameters in
+	     select_list_ex */
+	  for (node = select_list_ex; node; node = node->next)
+	    {
+	      if (PT_IS_ANALYTIC_NODE (node))
+		{
+		  /* allocate a DB_VALUE in node's etc */
+		  if (pt_set_analytic_node_etc (parser, node) == NULL)
+		    {
+		      goto analytic_exit_on_error;
+		    }
+
+		  /* expand node; the select list will be modified, but that is
+		     acceptable; query sort specs must not be modified as they
+		     reference positions in the final outptr list */
+		  if (pt_expand_analytic_node (parser, node, select_list_ex)
+		      == NULL)
+		    {
+		      goto analytic_exit_on_error;
+		    }
+		}
+	    }
+
+	  /* generate buffer value list */
+	  buildlist->a_val_list = pt_make_val_list (select_list_ex);
+	  if (buildlist->a_val_list == NULL)
+	    {
+	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      goto exit_on_error;
+	      goto analytic_exit_on_error;
 	    }
 
-	  attr_offsets = pt_make_identity_offsets (select_list);
+	  /* resolve regu pointers in final outlist to vallist */
+	  for (node = select_list_final; node; node = node->next)
+	    {
+	      if (pt_resolve_analytic_references
+		  (parser, node, select_list_ex,
+		   buildlist->a_val_list) == NULL)
+		{
+		  goto analytic_exit_on_error;
+		}
+	    }
 
-	  analytic_info.regu_list =
-	    pt_to_position_regu_variable_list (parser, select_list,
-					       analytic_info.val_list,
-					       attr_offsets);
+	  /* generate analytic nodes */
+	  analytic_info.head_list = NULL;
+	  analytic_info.select_node = select_node;
+	  analytic_info.select_list = select_list_ex;
+	  analytic_info.val_list = buildlist->a_val_list;
+
+	  for (node = select_list_ex, idx = 0; node; node = node->next, idx++)
+	    {
+	      if (PT_IS_ANALYTIC_NODE (node))
+		{
+		  /* process analytic node */
+		  if (pt_to_analytic_node (parser, node, &analytic_info) ==
+		      NULL)
+		    {
+		      goto analytic_exit_on_error;
+		    }
+
+		  /* new analytic node is at head of list; register function's
+		     index in val_list/outptr_list_ex */
+		  analytic_info.head_list->outptr_idx = idx;
+		}
+	    }
+
+	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
-	    pt_to_position_regu_variable_list (parser, select_list,
-					       analytic_info.val_list,
-					       attr_offsets);
-	  free_and_init (attr_offsets);
+	    pt_to_position_regu_variable_list (parser, select_list_ex,
+					       buildlist->a_val_list, NULL);
 
-	  analytic_info.out_list =
-	    pt_to_outlist (parser, select_list, NULL, unbox);
-	  if (analytic_info.out_list == NULL)
+	  if (buildlist->a_regu_list == NULL)
 	    {
-	      goto exit_on_error;
+	      goto analytic_exit_on_error;
 	    }
 
-	  (void) parser_walk_tree (parser, select_list, pt_to_analytic_node,
-				   &analytic_info, pt_continue_walk, NULL);
+	  /* generate intermediate output list (identity writing) */
+	  buildlist->a_outptr_list_interm =
+	    pt_make_outlist_from_vallist (parser, buildlist->a_val_list);
 
-	  buildlist->a_func_list = analytic_info.head_list;
-	  buildlist->a_regu_list_ex = analytic_info.regu_list;
-	  buildlist->a_val_list = analytic_info.val_list;
+	  if (buildlist->a_outptr_list_interm == NULL)
+	    {
+	      goto analytic_exit_on_error;
+	    }
 
-	  symbols->current_listfile = select_list;
-	  symbols->listfile_value_list = analytic_info.val_list;
-	  buildlist->a_outptr_list = pt_to_outlist (parser, select_list, NULL,
-						    unbox);
-	  symbols->current_listfile = NULL;
-	  symbols->listfile_value_list = NULL;
-
-	  /* make the extended output pointer list for intermediary list file
-	   * to handle multiple analytic functions - thus multiple sorts */
+	  /* generate initial outlist (for data fetching) */
 	  buildlist->a_outptr_list_ex =
-	    pt_to_analytic_outlist_ex (parser, select_list, &analytic_info,
-				       unbox);
-	  if (analytic_info.arg_list)
+	    pt_to_outlist (parser, select_list_ex, NULL, unbox);
+
+	  if (buildlist->a_regu_list == NULL)
 	    {
-	      parser_free_tree (parser, analytic_info.arg_list);
-	    }
-	  if (!buildlist->a_outptr_list_ex)
-	    {
-	      goto exit_on_error;
+	      goto analytic_exit_on_error;
 	    }
 
-	  xasl->outptr_list = analytic_info.out_list;
+	  /* generate final outlist */
+	  buildlist->a_outptr_list =
+	    pt_to_outlist (parser, select_list_final, NULL, unbox);
+
+	  if (buildlist->a_outptr_list == NULL)
+	    {
+	      goto analytic_exit_on_error;
+	    }
+
+	  /* substitute references of analytic arguments */
+	  for (node = select_list_ex; node; node = node->next)
+	    {
+	      if (PT_IS_ANALYTIC_NODE (node) &&
+		  node->info.function.arg_list != NULL)
+		{
+		  node->info.function.arg_list =
+		    pt_substitute_analytic_references (parser,
+						       node->info.function.
+						       arg_list,
+						       &select_list_ex);
+
+		  if (node->info.function.arg_list == NULL)
+		    {
+		      goto analytic_exit_on_error;
+		    }
+		}
+	    }
+
+	  /* substitute references in final select list and register it as
+	     query's select list; this is done mostly for printing purposes */
+	  node = select_list_final;
+	  select_list_final = NULL;
+	  while (node != NULL)
+	    {
+	      PT_NODE *save_next = node->next, *resolved;
+	      node->next = NULL;
+
+	      resolved =
+		pt_substitute_analytic_references (parser, node,
+						   &select_list_ex);
+	      if (resolved == NULL)
+		{
+		  /* error has been set */
+		  parser_free_tree (parser, save_next);
+		  parser_free_tree (parser, node);
+
+		  goto analytic_exit_on_error;
+		}
+
+	      /* append to select list */
+	      select_node->info.query.q.select.list =
+		parser_append_node (resolved,
+				    select_node->info.query.q.select.list);
+
+	      /* advance */
+	      node = save_next;
+	    }
+
+	  /* whatever we're left with in select_list_ex are sort columns of
+	     analytic functions, which we can dispose of now as they no longer
+	     serve a purpose */
+	  parser_free_tree (parser, select_list_ex);
+	  select_list_ex = NULL;
+
+	  /* register analytic functions */
+	  buildlist->a_func_list = analytic_info.head_list;
+
+	  /* register initial outlist */
+	  xasl->outptr_list = buildlist->a_outptr_list_ex;
+
+	  /* all done */
+	  goto analytic_exit;
+
+	analytic_exit_on_error:
+	  /* cleanup and goto error */
+	  if (select_list_ex != NULL)
+	    {
+	      parser_free_tree (parser, select_list_ex);
+	    }
+	  if (select_list_final != NULL)
+	    {
+	      parser_free_tree (parser, select_list_final);
+	    }
+	  goto exit_on_error;
+
+	analytic_exit:
+	  ;			/* finalized correctly */
 	}
 
       /* check if this select statement has click counter */
@@ -14736,7 +15015,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  buildlist->a_outptr_list = NULL;
 	  buildlist->a_outptr_list_ex = NULL;
 	  buildlist->a_regu_list = NULL;
-	  buildlist->a_regu_list_ex = NULL;
 	  buildlist->a_val_list = NULL;
 	}
       else
@@ -16720,7 +16998,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 
       if (composite_locking == PT_COMPOSITE_LOCKING_UPDATE
 	  && statement->info.query.upd_del_class_cnt == 1
-	  && statement->info.query.q.select.from->next != NULL)
+	  && statement->info.query.q.select.from->next != NULL
+	  && !pt_has_analytic (parser, statement))
 	{
 
 	  /* In case of an update of a single table joined with other tables
@@ -20483,35 +20762,34 @@ pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_to_analytic_node () - build analytic nodes
- *   return:
- *   parser(in):
- *   tree(in):
- *   arg(in/out):
- *   continue_walk(in/out):
+ * pt_to_analytic_node () - build analytic node
+ *   return: NULL if error, input tree otherwise
+ *   parser(in): parser context
+ *   tree(in): input analytic node
+ *   analytic_info(in/out): analytic info structure (will be altered)
  */
 static PT_NODE *
 pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
-		     void *arg, int *continue_walk)
+		     ANALYTIC_INFO * analytic_info)
 {
-  ANALYTIC_INFO *analytic_info = (ANALYTIC_INFO *) arg;
   ANALYTIC_TYPE *analytic;
   PT_FUNCTION_INFO *func_info;
-  REGU_VARIABLE *regu_arg;
-  REGU_VARIABLE_LIST regu_list, out_list, regu_temp;
-  VAL_LIST *value_list;
-  QPROC_DB_VALUE_LIST value_temp;
-  PT_NODE *link = NULL, *order_list = NULL, *arg_next = NULL;
-  int *attr_offsets;
+  PT_NODE *list = NULL, *order_list = NULL, *link = NULL;
 
-  if (tree->node_type != PT_FUNCTION
-      || !tree->info.function.analytic.is_analytic)
+  if (parser == NULL || analytic_info == NULL)
     {
-      goto exit_on_error;
+      /* should not get here */
+      assert (false);
+      return tree;
     }
 
-  func_info = &tree->info.function;
+  if (tree == NULL || !PT_IS_ANALYTIC_NODE (tree))
+    {
+      /* nothing to do */
+      return tree;
+    }
 
+  /* allocate analytic structure */
   analytic = regu_analytic_alloc ();
   if (!analytic)
     {
@@ -20521,33 +20799,59 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 				MSGCAT_SEMANTIC_OUT_OF_MEMORY));
       goto exit_on_error;
     }
+
+  /* link structure to analytic list */
   analytic->next = analytic_info->head_list;
   analytic_info->head_list = analytic;
 
-  /* link partition and order lists */
+  /* retrieve function info */
+  func_info = &tree->info.function;
+
+  /* fill in analytic info */
+  analytic->function = func_info->function_type;
+  analytic->option =
+    (func_info->all_or_distinct == PT_ALL) ? Q_ALL : Q_DISTINCT;
+  analytic->domain = pt_xasl_node_to_domain (parser, tree);
+  analytic->value = (DB_VALUE *) tree->etc;
+
+  /* set value types */
+  if (!regu_dbval_type_init (analytic->value, pt_node_to_db_type (tree)) ||
+      !regu_dbval_type_init (analytic->value2, pt_node_to_db_type (tree)))
+    {
+      PT_INTERNAL_ERROR (parser, "value type init failed");
+      goto exit_on_error;
+    }
+
+  /* count partitions */
   analytic->partition_cnt = 0;
-  for (link = func_info->analytic.partition_by; link && link->next;
-       link = link->next)
+  for (list = func_info->analytic.partition_by; list; list = list->next)
     {
       analytic->partition_cnt++;
+      link = list;		/* save last node in partitions list */
     }
-  if (link)
+
+  /* link PARTITION BY and ORDER BY sort spec lists (no differentiation is
+     needed from now on) */
+  if (link != NULL)
     {
+      /* we have PARTITION BY clause */
       order_list = func_info->analytic.partition_by;
       link->next = func_info->analytic.order_by;
-      analytic->partition_cnt++;
     }
   else
     {
+      /* no PARTITION BY, only ORDER BY */
       order_list = func_info->analytic.order_by;
     }
 
-  if (order_list)
+  /* generate sort list */
+  if (order_list != NULL)
     {
       analytic->sort_list =
-	pt_to_sort_list (parser, order_list, analytic_info->select_node,
+	pt_to_sort_list (parser, order_list, analytic_info->select_list,
 			 SORT_LIST_ORDERBY);
-      if (!analytic->sort_list)
+
+      if (analytic->sort_list == NULL)
 	{
 	  PT_ERROR (parser, tree,
 		    msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -20561,311 +20865,725 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       analytic->sort_list = NULL;
     }
 
-  analytic->function = func_info->function_type;
-  analytic->option =
-    (func_info->all_or_distinct == PT_ALL) ? Q_ALL : Q_DISTINCT;
-  analytic->domain = pt_xasl_node_to_domain (parser, tree);
-  analytic->value = (DB_VALUE *) tree->etc;
-  regu_dbval_type_init (analytic->value, pt_node_to_db_type (tree));
-  regu_dbval_type_init (analytic->value2, pt_node_to_db_type (tree));
-
-  if (!func_info->arg_list)
+  /* process operand (argument) */
+  if (func_info->arg_list == NULL)
     {
+      /* no argument (e.g. ROW_NUMBER function) */
       analytic->opr_dbtype = DB_TYPE_NULL;
       analytic->operand.type = TYPE_DBVAL;
       analytic->operand.domain = &tp_Null_domain;
       DB_MAKE_NULL (&analytic->operand.value.dbval);
-      goto exit_on_error;
+
+      goto unlink_and_exit;
     }
-
-  analytic->opr_dbtype = pt_node_to_db_type (func_info->arg_list);
-
-  regu_arg =
-    pt_to_regu_variable (parser, func_info->arg_list, UNBOX_AS_VALUE);
-  if (!regu_arg)
+  else if (PT_IS_POINTER_REF_NODE (func_info->arg_list))
     {
-      PT_ERROR (parser, tree,
-		msgcat_message (MSGCAT_CATALOG_CUBRID,
-				MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_UNDEFINED_ARGUMENT));
-      goto exit_on_error;
-    }
+      /* fetch operand type */
+      analytic->opr_dbtype = pt_node_to_db_type (func_info->arg_list);
 
-  if (!analytic_info->arg_list)
-    {
-      analytic_info->arg_list = pt_point_l (parser, func_info->arg_list);
+      /* resolve operand dbval_ptr */
+      if (pt_resolve_analytic_references
+	  (parser, func_info->arg_list, analytic_info->select_list,
+	   analytic_info->val_list) == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      /* populate reguvar */
+      analytic->operand.type = TYPE_CONSTANT;
+      analytic->operand.domain =
+	pt_xasl_node_to_domain (parser,
+				func_info->arg_list->info.pointer.node);
+      analytic->operand.value.dbvalptr =
+	(DB_VALUE *) func_info->arg_list->etc;
+
+      goto unlink_and_exit;
     }
   else
     {
-      arg_next = analytic_info->arg_list;
-      while (arg_next->next)
-	{
-	  arg_next = arg_next->next;
-	}
-      arg_next->next = pt_point_l (parser, func_info->arg_list);
-    }
-
-  attr_offsets = pt_make_identity_offsets (func_info->arg_list);
-  value_list = pt_make_val_list (func_info->arg_list);
-  regu_list =
-    pt_to_position_regu_variable_list (parser, func_info->arg_list,
-				       value_list, attr_offsets);
-  free_and_init (attr_offsets);
-
-  out_list = regu_varlist_alloc ();
-  if (!value_list || !regu_list || !out_list)
-    {
-      PT_ERROR (parser, tree,
-		msgcat_message (MSGCAT_CATALOG_CUBRID,
-				MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+      /* arg should be a reference pointer that was previously set by
+         pt_expand_analytic_node () */
+      PT_INTERNAL_ERROR (parser, "unprocessed analytic argument");
       goto exit_on_error;
     }
 
-  analytic->operand.type = TYPE_CONSTANT;
-  analytic->operand.domain =
-    pt_xasl_node_to_domain (parser, func_info->arg_list);
-  analytic->operand.value.dbvalptr = value_list->valp->val;
-
-  regu_list->value.value.pos_descr.pos_no = analytic_info->val_list->val_cnt;
-
-  /* append value holder to value_list */
-  analytic_info->val_list->val_cnt++;
-  value_temp = analytic_info->val_list->valp;
-  while (value_temp->next)
-    {
-      value_temp = value_temp->next;
-    }
-  value_temp->next = value_list->valp;
-
-  /* append out_list to info->out_list */
-  analytic_info->out_list->valptr_cnt++;
-  out_list->next = NULL;
-  out_list->value = *regu_arg;
-  regu_temp = analytic_info->out_list->valptrp;
-  while (regu_temp->next)
-    {
-      regu_temp = regu_temp->next;
-    }
-  regu_temp->next = out_list;
-
-  /* append regu to info->regu_list */
-  regu_temp = analytic_info->regu_list;
-  while (regu_temp->next)
-    {
-      regu_temp = regu_temp->next;
-    }
-  regu_temp->next = regu_list;
-
 exit_on_error:
-  /* un-link partition and order lists */
-  if (link)
+  /* error, return null */
+  tree = NULL;
+
+unlink_and_exit:
+  /* unlink PARTITION BY and ORDER BY lists if necessary */
+  if (link != NULL)
     {
       link->next = NULL;
+      link = NULL;
     }
+
   return tree;
 }
 
 /*
- * pt_set_analytic_node_etc () - allocate value for result and set etc
- *   return: node
+ * pt_to_analytic_final_node () - retrieves the node that will go in the last
+ *                                outptr_list of analytic processing
+ *   returns: final node, NULL on error
  *   parser(in): parser context
  *   tree(in): analytic node
- *   arg(in/out): select list
- *   continue_walk(in/out): walk type
+ *   ex_list(out): pointer to a PT_NODE list
  *
- * NOTE: this function alters the select list!
+ * NOTE: This function has the following behavior:
+ *
+ *   1. When it receives an analytic function node, it  will put it in ex_list
+ *   and will return a reference PT_POINTER to the node. 
+ *
+ *   2. When it receives an expression containing analytic functions, it will
+ *   put all analytic nodes AND subexpressions that DO NOT contain analytic
+ *   nodes into the "ex_list". The function will return a PT_EXPR tree of
+ *   reference PT_POINTERs.
+ *
+ * The returned node should be used in the "final" outptr_list of analytics
+ * processing.
  */
 static PT_NODE *
-pt_set_analytic_node_etc (PARSER_CONTEXT * parser, PT_NODE * tree,
-			  void *arg, int *continue_walk)
+pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
+			   PT_NODE ** ex_list)
 {
-  PT_NODE *select_list = (PT_NODE *) arg;
-  PT_NODE *node;
-  DB_VALUE *value;
-  bool visited_part = false;
+  PT_NODE *ptr;
 
-  if (!tree->node_type == PT_FUNCTION
-      || !tree->info.function.analytic.is_analytic)
+  if (parser == NULL || ex_list == NULL)
     {
+      /* should not get here */
+      assert (false);
       return tree;
     }
 
-  value = regu_dbval_alloc ();
-  if (!value)
+  if (tree == NULL)
     {
+      /* nothing to do */
+      return NULL;
+    }
+
+  if (PT_IS_ANALYTIC_NODE (tree))
+    {
+      /* analytics go to ex_list, ref pointer is returned */
+      goto exit_return_ptr;
+    }
+
+  if (PT_IS_EXPR_NODE (tree) && pt_has_analytic (parser, tree))
+    {
+      PT_NODE *ret = NULL;
+
+      /* expression tree with analytic children; walk arguments */
+      if (tree->info.expr.arg1 != NULL)
+	{
+	  ret =
+	    pt_to_analytic_final_node (parser, tree->info.expr.arg1, ex_list);
+	  if (ret != NULL)
+	    {
+	      tree->info.expr.arg1 = ret;
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+
+      if (tree->info.expr.arg2 != NULL)
+	{
+	  ret =
+	    pt_to_analytic_final_node (parser, tree->info.expr.arg2, ex_list);
+	  if (ret != NULL)
+	    {
+	      tree->info.expr.arg2 = ret;
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+
+      if (tree->info.expr.arg3 != NULL)
+	{
+	  ret =
+	    pt_to_analytic_final_node (parser, tree->info.expr.arg3, ex_list);
+	  if (ret != NULL)
+	    {
+	      tree->info.expr.arg3 = ret;
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+
+      /* we're left with final part of expression */
+      return tree;
+    }
+
+  if (PT_IS_FUNCTION (tree) && pt_has_analytic (parser, tree))
+    {
+      PT_NODE *ret = NULL, *arg, *save_next;
+
+      /* function with analytic arguments */
+      arg = tree->info.function.arg_list;
+      tree->info.function.arg_list = NULL;
+
+      while (arg != NULL)
+	{
+	  save_next = arg->next;
+	  arg->next = NULL;
+
+	  /* get final node */
+	  ret = pt_to_analytic_final_node (parser, arg, ex_list);
+	  if (ret == NULL)
+	    {
+	      /* error was set */
+	      parser_free_tree (parser, arg);
+	      parser_free_tree (parser, save_next);
+
+	      return NULL;
+	    }
+
+	  tree->info.function.arg_list =
+	    parser_append_node (ret, tree->info.function.arg_list);
+
+	  /* advance */
+	  arg = save_next;
+	}
+
+      /* we're left with function with PT_POINTER arguments */
+      return tree;
+    }
+
+exit_return_ptr:
+
+  /* analytic functions, subexpressions without analytic functions and other
+     nodes go to the ex_list */
+  ptr = pt_point_ref (parser, tree);
+  if (ptr == NULL)
+    {
+      /* allocation failed */
       PT_ERROR (parser, tree,
 		msgcat_message (MSGCAT_CATALOG_CUBRID,
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-      return tree;
+      return NULL;
     }
-  regu_dbval_type_init (value, DB_TYPE_NULL);
-  tree->etc = (void *) value;
+
+  *ex_list = parser_append_node (tree, *ex_list);
+
+  return ptr;
+}
+
+/*
+ * pt_expand_analytic_node () - allocate value for result and set etc
+ *   returns: NULL on error, original node otherwise
+ *   parser(in): parser context
+ *   node(in): analytic node
+ *   select_list(in/out): select list to work on
+ *
+ * NOTE: this function alters the select list!
+ */
+static PT_NODE *
+pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
+			 PT_NODE * select_list)
+{
+  PT_NODE *spec, *arg, *ptr;
+  bool visited_part = false;
+
+  if (parser == NULL)
+    {
+      /* should not get here */
+      assert (false);
+      return NULL;
+    }
+
+  if (node == NULL || !PT_IS_ANALYTIC_NODE (node))
+    {
+      /* nothing to do */
+      return node;
+    }
+
+  if (select_list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "null select list for analytic expansion");
+      return NULL;
+    }
+
+  /* add argument to select list */
+  arg = node->info.function.arg_list;
+  node->info.function.arg_list = NULL;
+
+  if (arg != NULL)
+    {
+      if (arg->next != NULL)
+	{
+	  /* more than one argument; not allowed */
+	  parser_free_tree (parser, arg);
+
+	  PT_INTERNAL_ERROR (parser, "multiple args for analytic function");
+	  return NULL;
+	}
+
+      /* add a pointer to the node to argument list */
+      ptr = pt_point_ref (parser, arg);
+      if (ptr == NULL)
+	{
+	  /* allocation failed */
+	  parser_free_tree (parser, arg);
+
+	  PT_ERROR (parser, node,
+		    msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	  return NULL;
+	}
+
+      node->info.function.arg_list = ptr;
+
+      /* add node to select list (select list is considered to be not null) */
+      (void) parser_append_node (arg, select_list);
+    }
 
   /* walk order list and resolve nodes that were not found in select list */
-  node = tree->info.function.analytic.partition_by;
-  if (node == NULL)
+  spec = node->info.function.analytic.partition_by;
+  if (spec == NULL)
     {
-      node = tree->info.function.analytic.order_by;
+      spec = node->info.function.analytic.order_by;
       visited_part = true;
     }
 
-  while (node)
+  while (spec)
     {
-      PT_NODE *val = NULL, *expr = NULL;
-      int pos = 1;		/* select node indexing starts from 1 */
+      PT_NODE *val = NULL, *expr = NULL, *list = select_list;
+      int pos = 1;		/* sort spec indexing starts from 1 */
 
-      if (node->node_type != PT_SORT_SPEC)
+      if (spec->node_type != PT_SORT_SPEC)
 	{
 	  PT_INTERNAL_ERROR (parser, "invalid sort spec");
-	  return tree;
+	  return NULL;
 	}
 
       /* pull sort expression */
-      expr = node->info.sort_spec.expr;
+      expr = spec->info.sort_spec.expr;
       if (expr == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "null sort expression");
-	  return tree;
+	  return NULL;
 	}
 
       if (expr->node_type != PT_VALUE)
 	{
 	  /* we have an actual expression; move it in the select list and put
 	     a position value here */
-	  while (select_list != NULL && select_list->next != NULL)
+	  while (list != NULL && list->next != NULL)
 	    {
-	      select_list = select_list->next;
+	      list = list->next;
 	      pos++;
 	    }
-	  select_list->next = expr;
+	  list->next = expr;
 	  expr->is_hidden_column = 1;
-	  expr->skip_sort = 1;
 
 	  /* unlink from sort spec */
-	  node->info.sort_spec.expr = NULL;
+	  spec->info.sort_spec.expr = NULL;
 
-	  /* create new value node */
+	  /* create new value spec */
 	  val = parser_new_node (parser, PT_VALUE);
 	  if (val == NULL)
 	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return tree;
+	      return NULL;
 	    }
 
 	  val->type_enum = PT_TYPE_INTEGER;
 	  val->info.value.data_value.i = pos + 1;
 	  (void) pt_value_to_db (parser, val);
 
-	  /* set value node and position descriptor */
-	  node->info.sort_spec.expr = val;
-	  node->info.sort_spec.pos_descr.pos_no = pos + 1;
+	  /* set value spec and position descriptor */
+	  spec->info.sort_spec.expr = val;
+	  spec->info.sort_spec.pos_descr.pos_no = pos + 1;
 
 	  /* resolve domain */
 	  if (expr->type_enum != PT_TYPE_NONE
 	      && expr->type_enum != PT_TYPE_MAYBE)
 	    {
-	      node->info.sort_spec.pos_descr.dom =
+	      spec->info.sort_spec.pos_descr.dom =
 		pt_xasl_node_to_domain (parser, expr);
 	    }
 	}
 
       /* advance */
-      node = node->next;
-      if (node == NULL && !visited_part)
+      spec = spec->next;
+      if (spec == NULL && !visited_part)
 	{
-	  node = tree->info.function.analytic.order_by;
+	  spec = node->info.function.analytic.order_by;
 	  visited_part = true;
 	}
     }
 
-  return tree;
+  /* all ok */
+  return node;
 }
 
 /*
- * pt_to_analytic_outlist_ex () - make extended output pointer list for
- *                                analytic functions sort iterations
- *   return:
- *   parser(in):
- *   select_list(in):
- *   analytic_info(in):
- *   unbox(in):
- *
- *   Note: The output pointer list corresponds to select list and has also
- *         analytic functions arguments.
- *         This function also sets default value for analytic functions as
- *         the value calculated in a corresponding (previous) iteration.
+ * pt_set_analytic_node_etc () - allocate value for result and set etc
+ *   returns: NULL on error, input node otherwise
+ *   parser(in): parser context
+ *   node(in): analytic input node
  */
-static OUTPTR_LIST *
-pt_to_analytic_outlist_ex (PARSER_CONTEXT * parser, PT_NODE * select_list,
-			   ANALYTIC_INFO * analytic_info, UNBOX unbox)
+static PT_NODE *
+pt_set_analytic_node_etc (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  SYMBOL_INFO *symbols;
-  PT_NODE *select_list_ex, *tail;
-  OUTPTR_LIST *outptr_list;
-  REGU_VARIABLE_LIST regu_list;
-  ANALYTIC_TYPE *func;
-  QPROC_DB_VALUE_LIST val_list;
-  int i, j;
+  DB_VALUE *value;
 
-  symbols = parser->symbols;
-  if (!symbols)
+  if (parser == NULL)
     {
+      /* should not get here */
+      assert (false);
+      return node;
+    }
+
+  if (node == NULL || !PT_IS_ANALYTIC_NODE (node))
+    {
+      /* nothing to do */
+      return node;
+    }
+
+  /* allocate DB_VALUE and store it in etc */
+  value = regu_dbval_alloc ();
+  if (value == NULL)
+    {
+      PT_ERROR (parser, node,
+		msgcat_message (MSGCAT_CATALOG_CUBRID,
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_OUT_OF_MEMORY));
       return NULL;
     }
 
-  /* make extended node list */
-  select_list_ex = pt_point_l (parser, select_list);
-  tail = select_list_ex;
-  while (tail->next)
+  regu_dbval_type_init (value, DB_TYPE_NULL);
+  node->etc = (void *) value;
+
+  /* all ok */
+  return node;
+}
+
+/*
+ * pt_adjust_analytic_sort_specs () - adjust analytic sort spec indices
+ *   parser(in): parser context
+ *   node(in): analytic node
+ *   idx(in): index of analytic node in list
+ *   adjust(in): amount to adjust for
+ */
+static void
+pt_adjust_analytic_sort_specs (PARSER_CONTEXT * parser, PT_NODE * node,
+			       int idx, int adjust)
+{
+  PT_NODE *spec;
+
+  if (parser == NULL)
     {
-      tail = tail->next;
+      /* should not get here */
+      assert (false);
+      return;
     }
 
-  tail->next = analytic_info->arg_list;
-
-  /* make extended output pointer list */
-  symbols->current_listfile = select_list_ex;
-  symbols->listfile_value_list = analytic_info->val_list;
-  outptr_list = pt_to_outlist (parser, select_list_ex, NULL, unbox);
-  symbols->current_listfile = NULL;
-  symbols->listfile_value_list = NULL;
-
-  parser_free_tree (parser, select_list_ex);
-  analytic_info->arg_list = NULL;
-
-  if (!outptr_list)
+  if (node == NULL || !PT_IS_ANALYTIC_NODE (node))
     {
-      return NULL;
+      /* nothing to do */
+      return;
     }
 
-  /* set analytic functions default value */
-  regu_list = outptr_list->valptrp;
-  for (i = 0; i < outptr_list->valptr_cnt; i++, regu_list = regu_list->next)
+  /* walk sort specs and adjust */
+  for (spec = node->info.function.analytic.order_by; spec; spec = spec->next)
     {
-      if (regu_list->value.type == TYPE_CONSTANT)
+      if (!PT_IS_SORT_SPEC_NODE (spec)
+	  || !PT_IS_VALUE_NODE (spec->info.sort_spec.expr))
 	{
-	  func = analytic_info->head_list;
-	  while (func)
+	  /* nothing to process */
+	  continue;
+	}
+
+      if (spec->info.sort_spec.pos_descr.pos_no > idx)
+	{
+	  /* should be adjusted */
+	  spec->info.sort_spec.pos_descr.pos_no += adjust;
+	  spec->info.sort_spec.expr->info.value.data_value.i += adjust;
+	  spec->info.sort_spec.expr->info.value.db_value.data.i += adjust;
+	}
+    }
+
+  for (spec = node->info.function.analytic.partition_by; spec;
+       spec = spec->next)
+    {
+      if (!PT_IS_SORT_SPEC_NODE (spec)
+	  || !PT_IS_VALUE_NODE (spec->info.sort_spec.expr))
+	{
+	  /* nothing to process */
+	  continue;
+	}
+
+      if (spec->info.sort_spec.pos_descr.pos_no > idx)
+	{
+	  /* should be adjusted */
+	  spec->info.sort_spec.pos_descr.pos_no += adjust;
+	  spec->info.sort_spec.expr->info.value.data_value.i += adjust;
+	  spec->info.sort_spec.expr->info.value.db_value.data.i += adjust;
+	}
+    }
+}
+
+/*
+ * pt_resolve_analytic_references () - resolve reference pointers to DB_VALUE
+ *                                     pointers of vallist
+ *   returns: NULL on error, original node otherwise
+ *   parser(in): parser context
+ *   node(in): node tree to resolve
+ *   select_list(in): select list to resolve to
+ *   vallist(in): value list
+ *
+ * NOTE: this function will look up in the select list any reference pointers
+ * and will set the pointer's "etc" to the corresponding DB_VALUE in the
+ * vallist.
+ */
+static PT_NODE *
+pt_resolve_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node,
+				PT_NODE * select_list, VAL_LIST * vallist)
+{
+  if (parser == NULL)
+    {
+      /* should not get here */
+      assert (false);
+      return node;
+    }
+
+  if (node == NULL)
+    {
+      /* nothing to do */
+      return node;
+    }
+
+  if (PT_IS_POINTER_REF_NODE (node))
+    {
+      PT_NODE *real_node = node->info.pointer.node;
+      PT_NODE *list = select_list;
+      QPROC_DB_VALUE_LIST db_list = vallist->valp;
+
+      /* get real node pointer */
+      CAST_POINTER_TO_NODE (real_node);
+
+      /* look it up in select list */
+      for (; list && db_list; list = list->next, db_list = db_list->next)
+	{
+	  if (list == real_node)
 	    {
-	      if (func->value == regu_list->value.value.dbvalptr)
-		{
-		  val_list = analytic_info->val_list->valp;
-		  for (j = 0; j < i && val_list; j++)
-		    {
-		      val_list = val_list->next;
-		    }
-		  func->default_value = val_list->val;
-		  break;
-		}
-	      func = func->next;
+	      /* found */
+	      node->etc = (void *) db_list->val;
+	      return node;
+	    }
+	}
+
+      if (list == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "pointed node not found in select list");
+	  return NULL;
+	}
+      else
+	{
+	  PT_INTERNAL_ERROR (parser, "invalid size of vallist");
+	  return NULL;
+	}
+    }
+  else if (PT_IS_EXPR_NODE (node))
+    {
+      /* resolve expression arguments */
+      if (node->info.expr.arg1
+	  && pt_resolve_analytic_references (parser, node->info.expr.arg1,
+					     select_list, vallist) == NULL)
+	{
+	  return NULL;
+	}
+
+      if (node->info.expr.arg2
+	  && pt_resolve_analytic_references (parser, node->info.expr.arg2,
+					     select_list, vallist) == NULL)
+	{
+	  return NULL;
+	}
+
+      if (node->info.expr.arg3
+	  && pt_resolve_analytic_references (parser, node->info.expr.arg3,
+					     select_list, vallist) == NULL)
+	{
+	  return NULL;
+	}
+    }
+  else if (PT_IS_FUNCTION (node))
+    {
+      PT_NODE *arg;
+
+      /* resolve function arguments */
+      for (arg = node->info.function.arg_list; arg; arg = arg->next)
+	{
+	  if (pt_resolve_analytic_references
+	      (parser, arg, select_list, vallist) == NULL)
+	    {
+	      return NULL;
 	    }
 	}
     }
 
-  return outptr_list;
+  /* all ok */
+  return node;
+}
+
+/*
+ * pt_substitute_analytic_references () - substitute reference pointers to normal
+ *                                        nodes
+ *  return: processed node
+ *   parser(in): parser context
+ *   node(in): node tree to resolve
+ */
+static PT_NODE *
+pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node,
+				   PT_NODE ** ex_list)
+{
+  if (parser == NULL)
+    {
+      /* should not get here */
+      assert (false);
+      return node;
+    }
+
+  if (node == NULL)
+    {
+      /* nothing to do */
+      return node;
+    }
+
+  if (PT_IS_POINTER_REF_NODE (node))
+    {
+      PT_NODE *real_node = node->info.pointer.node;
+      PT_NODE *list, *prev = NULL;
+
+      /* unlink from extended list */
+      for (list = *ex_list; list; list = list->next)
+	{
+	  if (list == real_node)
+	    {
+	      if (prev != NULL)
+		{
+		  prev->next = real_node->next;
+		}
+	      else
+		{
+		  /* first node in list */
+		  *ex_list = real_node->next;
+		}
+
+	      break;
+	    }
+
+	  /* keep previous */
+	  prev = list;
+	}
+
+      /* unlink real node */
+      real_node->next = NULL;
+
+      /* dispose of this node */
+      node->info.pointer.node = NULL;
+      parser_free_node (parser, node);
+
+      /* return real node */
+      return real_node;
+    }
+  else if (PT_IS_EXPR_NODE (node))
+    {
+      PT_NODE *ret;
+
+      /* walk expression arguments */
+      if (node->info.expr.arg1)
+	{
+	  ret =
+	    pt_substitute_analytic_references (parser, node->info.expr.arg1,
+					       ex_list);
+	  if (ret != NULL)
+	    {
+	      node->info.expr.arg1 = ret;
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+
+      if (node->info.expr.arg2)
+	{
+	  ret =
+	    pt_substitute_analytic_references (parser, node->info.expr.arg2,
+					       ex_list);
+	  if (ret != NULL)
+	    {
+	      node->info.expr.arg2 = ret;
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+
+      if (node->info.expr.arg3)
+	{
+	  ret =
+	    pt_substitute_analytic_references (parser, node->info.expr.arg3,
+					       ex_list);
+	  if (ret != NULL)
+	    {
+	      node->info.expr.arg3 = ret;
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+
+      return node;
+    }
+  else if (PT_IS_FUNCTION (node))
+    {
+      PT_NODE *arg, *ret, *save_next;
+
+      /* walk function arguments */
+      arg = node->info.function.arg_list;
+      node->info.function.arg_list = NULL;
+
+      while (arg != NULL)
+	{
+	  save_next = arg->next;
+
+	  ret = pt_substitute_analytic_references (parser, arg, ex_list);
+	  if (ret == NULL)
+	    {
+	      /* error has been set */
+	      parser_free_tree (parser, arg);
+	      parser_free_tree (parser, save_next);
+
+	      return NULL;
+	    }
+
+	  node->info.function.arg_list =
+	    parser_append_node (ret, node->info.function.arg_list);
+
+	  arg = save_next;
+	}
+
+      return node;
+    }
+  else
+    {
+      PT_INTERNAL_ERROR (parser, "invalid node type");
+      return NULL;
+    }
 }
 
 /*

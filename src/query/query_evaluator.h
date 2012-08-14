@@ -131,11 +131,9 @@ struct regu_variable_node
 
   /* regu variable flags */
 #define REGU_VARIABLE_HIDDEN_COLUMN       0x01	/* does not go to list file */
-#define REGU_VARIABLE_SKIP_SORT           0x02	/* no sort key is generated for
-						   DISTINCT processing */
-#define REGU_VARIABLE_FIELD_COMPARE       0x04	/* for FIELD function, marks the
+#define REGU_VARIABLE_FIELD_COMPARE       0x02	/* for FIELD function, marks the
 						   bottom of regu tree */
-#define REGU_VARIABLE_FIELD_NESTED        0x08	/* for FIELD function, reguvar
+#define REGU_VARIABLE_FIELD_NESTED        0x04	/* for FIELD function, reguvar
 						   is child in T_FIELD tree */
   int flags;			/* flags */
 #define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
@@ -428,7 +426,7 @@ struct analytic_list_node
   DB_VALUE *value;		/* value of the aggregate */
   DB_VALUE *value2;		/* for STTDEV and VARIANCE */
   DB_VALUE part_value;		/* partition temporary accumulator */
-  DB_VALUE *default_value;	/* default value of the aggregate */
+  int outptr_idx;		/* index of reguvar in list */
   int curr_cnt;			/* current number of items */
   FUNC_TYPE function;		/* analytic function type */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */

@@ -210,9 +210,8 @@ struct analytic_state
 
   ANALYTIC_TYPE *a_func_list;
   REGU_VARIABLE_LIST a_regu_list;
-  REGU_VARIABLE_LIST a_regu_list_ex;
-  VAL_LIST *a_val_list;
   OUTPTR_LIST *a_outptr_list;
+  OUTPTR_LIST *a_outptr_list_interm;
   XASL_STATE *xasl_state;
 
   RECDES current_key;
@@ -644,11 +643,11 @@ static ANALYTIC_STATE *qexec_initialize_analytic_state (ANALYTIC_STATE *
 							a_func_list,
 							REGU_VARIABLE_LIST
 							a_regu_list,
-							REGU_VARIABLE_LIST
-							a_regu_list_ex,
 							VAL_LIST * a_val_list,
 							OUTPTR_LIST *
 							a_outptr_list,
+							OUTPTR_LIST *
+							a_outptr_list_interm,
 							XASL_STATE *
 							xasl_state,
 							QFILE_TUPLE_VALUE_TYPE_LIST
@@ -2809,27 +2808,9 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
       else
 	{
-	  REGU_VARIABLE_LIST regu_list;
-	  int sort_key_cnt = 0;
-
-	  /* count sort keys */
-	  regu_list = outptr_list->valptrp;
-	  while (regu_list != NULL)
-	    {
-	      if (!REGU_VARIABLE_IS_FLAGED
-		  (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN)
-		  && !REGU_VARIABLE_IS_FLAGED (&regu_list->value,
-					       REGU_VARIABLE_SKIP_SORT))
-		{
-		  sort_key_cnt++;
-		}
-
-	      regu_list = regu_list->next;
-	    }
-
 	  /* allocate space for  sort list */
-	  assert (sort_key_cnt > 0);
-	  orderby_list = qfile_allocate_sort_list (sort_key_cnt);
+	  orderby_list =
+	    qfile_allocate_sort_list (list_id->type_list.type_cnt);
 	  if (orderby_list == NULL)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -2837,27 +2818,10 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  /* form an order_by list including all list file positions */
 	  orderby_alloc = true;
-	  order_ptr = orderby_list;
-	  regu_list = outptr_list->valptrp;
-	  for (k = 0; order_ptr != NULL && regu_list != NULL;
-	       k++, regu_list = regu_list->next)
+	  for (k = 0, order_ptr = orderby_list;
+	       k < list_id->type_list.type_cnt;
+	       k++, order_ptr = order_ptr->next)
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED
-		  (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN))
-		{
-		  /* this is not in the list file, k should be the same in the
-		     next iteration */
-		  k--;
-		  continue;
-		}
-	      else
-		if (REGU_VARIABLE_IS_FLAGED
-		    (&regu_list->value, REGU_VARIABLE_SKIP_SORT))
-		{
-		  /* don't sort by this column */
-		  continue;
-		}
-
 	      /* sort with descending order if we have the use_desc hint and
 	       * no order by
 	       */
@@ -2871,24 +2835,8 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  order_ptr->s_order = S_ASC;
 		}
-
-	      if (k < list_id->type_list.type_cnt)
-		{
-		  /* set domain */
-		  order_ptr->pos_descr.dom = list_id->type_list.domp[k];
-		  order_ptr->pos_descr.pos_no = k;
-		}
-	      else
-		{
-		  /* domain out of bounds */
-		  qfile_free_sort_list (orderby_list);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN,
-			  0);
-		  goto exit_on_error;
-		}
-
-	      /* written a sort key, advance to next */
-	      order_ptr = order_ptr->next;
+	      order_ptr->pos_descr.dom = list_id->type_list.domp[k];
+	      order_ptr->pos_descr.pos_no = k;
 	    }			/* for */
 
 	  /* put the original order_by specifications, if any,
@@ -18386,45 +18334,53 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   ANALYTIC_STATE analytic_state;
   QFILE_LIST_SCAN_ID input_scan_id;
   OUTPTR_LIST *a_outptr_list;
-  REGU_VARIABLE_LIST regu_list, a_regu_list;
-  ANALYTIC_TYPE *save_next, *func;
-  int ls_flag = 0;
+  REGU_VARIABLE_LIST a_regu_list, function_regu;
+  ANALYTIC_TYPE *save_next;
+  DB_VALUE *old_dbval_ptr;
+  int ls_flag = 0, idx;
 
-  save_next = analytic_func_p->next;
-  a_outptr_list = (save_next != NULL)
-    ? buildlist->a_outptr_list_ex : buildlist->a_outptr_list;
-  a_regu_list = (save_next != NULL)
-    ? buildlist->a_regu_list_ex : buildlist->a_regu_list;
-
-  /* set default value pointers in output pointer list for analytic functions
-   * that are not evaluated in this iteration */
-  for (regu_list = a_outptr_list->valptrp; regu_list;
-       regu_list = regu_list->next)
-    {
-      func = buildlist->a_func_list;
-      if (regu_list->value.type != TYPE_CONSTANT)
-	{
-	  continue;
-	}
-      while (func)
-	{
-	  if (func != analytic_func_p
-	      && func->value == regu_list->value.value.dbvalptr)
-	    {
-	      regu_list->value.value.dbvalptr = func->default_value;
-	    }
-	  func = func->next;
-	}
-    }
   /* cut off link to next analytic function */
+  save_next = analytic_func_p->next;
   analytic_func_p->next = NULL;
+
+  /* fetch regulist and outlist */
+  a_regu_list = buildlist->a_regu_list;
+  a_outptr_list =
+    (save_next !=
+     NULL ? buildlist->a_outptr_list_interm : buildlist->a_outptr_list);
+
+  /* find analytic's reguvar */
+  idx = analytic_func_p->outptr_idx;
+  function_regu = buildlist->a_regu_list;
+
+  while (idx > 0 && function_regu != NULL)
+    {
+      function_regu = function_regu->next;
+      idx--;
+    }
+
+  if (function_regu == NULL)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  /* set analytic value pointer to vallist value */
+  old_dbval_ptr = analytic_func_p->value;
+  analytic_func_p->value = function_regu->value.vfetch_to;
+
+  if (analytic_func_p->function != PT_ROW_NUMBER)
+    {
+      /* for anything but ROWNUM, the fetched value should be put in a
+         secluded place - in this case, the function's old DB_VALUE */
+      function_regu->value.vfetch_to = old_dbval_ptr;
+    }
 
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (&analytic_state, analytic_func_p,
-				       a_regu_list,
-				       buildlist->a_regu_list_ex,
+				       buildlist->a_regu_list,
 				       buildlist->a_val_list,
 				       a_outptr_list,
+				       buildlist->a_outptr_list_interm,
 				       xasl_state, &list_id->type_list,
 				       tplrec) == NULL)
     {
@@ -18433,26 +18389,28 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* create intermediary and output list files */
   {
-    QFILE_TUPLE_VALUE_TYPE_LIST output_type_list;
+    QFILE_TUPLE_VALUE_TYPE_LIST interm_type_list, output_type_list;
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
+    /* open intermediate file */
     if (qdata_get_valptr_type_list (thread_p,
-				    a_outptr_list,
-				    &output_type_list) != NO_ERROR)
+				    buildlist->a_outptr_list_interm,
+				    &interm_type_list) != NO_ERROR)
       {
 	GOTO_EXIT_ON_ERROR;
       }
 
-    interm_list_id = qfile_open_list (thread_p, &output_type_list, NULL,
+    interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL,
 				      xasl_state->query_id, ls_flag);
+
+    if (interm_type_list.domp)
+      {
+	db_private_free_and_init (thread_p, interm_type_list.domp);
+      }
+
     if (interm_list_id == NULL)
       {
-	if (output_type_list.domp)
-	  {
-	    db_private_free_and_init (thread_p, output_type_list.domp);
-	  }
-
 	GOTO_EXIT_ON_ERROR;
       }
 
@@ -18472,24 +18430,27 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  }
       }
 
-    output_list_id = qfile_open_list (thread_p, &output_type_list, NULL,
-				      xasl_state->query_id, ls_flag);
-    if (output_list_id == NULL)
+    /* open output file */
+    if (qdata_get_valptr_type_list (thread_p, a_outptr_list,
+				    &output_type_list) != NO_ERROR)
       {
-	if (output_type_list.domp)
-	  {
-	    db_private_free_and_init (thread_p, output_type_list.domp);
-	  }
-
 	GOTO_EXIT_ON_ERROR;
       }
 
-    analytic_state.output_file = output_list_id;
+    output_list_id = qfile_open_list (thread_p, &output_type_list, NULL,
+				      xasl_state->query_id, ls_flag);
 
     if (output_type_list.domp)
       {
 	db_private_free_and_init (thread_p, output_type_list.domp);
       }
+
+    if (output_list_id == NULL)
+      {
+	GOTO_EXIT_ON_ERROR;
+      }
+
+    analytic_state.output_file = output_list_id;
   }
 
   if (list_id->tuple_cnt == 0)
@@ -18564,23 +18525,15 @@ wrapup:
   analytic_func_p->next = save_next;
 
   /* restore output pointer list */
-  for (regu_list = a_outptr_list->valptrp; regu_list;
-       regu_list = regu_list->next)
+  if (analytic_func_p->function == PT_ROW_NUMBER)
     {
-      func = buildlist->a_func_list;
-      if (regu_list->value.type != TYPE_CONSTANT)
-	{
-	  continue;
-	}
-      while (func)
-	{
-	  if (func != analytic_func_p
-	      && func->default_value == regu_list->value.value.dbvalptr)
-	    {
-	      regu_list->value.value.dbvalptr = func->value;
-	    }
-	  func = func->next;
-	}
+      analytic_func_p->value = old_dbval_ptr;
+    }
+  else
+    {
+      old_dbval_ptr = analytic_func_p->value;
+      analytic_func_p->value = function_regu->value.vfetch_to;
+      function_regu->value.vfetch_to = old_dbval_ptr;
     }
 
   return (analytic_state.state == NO_ERROR) ? NO_ERROR : ER_FAILED;
@@ -18611,9 +18564,9 @@ static ANALYTIC_STATE *
 qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 				 ANALYTIC_TYPE * a_func_list,
 				 REGU_VARIABLE_LIST a_regu_list,
-				 REGU_VARIABLE_LIST a_regu_list_ex,
 				 VAL_LIST * a_val_list,
 				 OUTPTR_LIST * a_outptr_list,
+				 OUTPTR_LIST * a_outptr_list_interm,
 				 XASL_STATE * xasl_state,
 				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 				 QFILE_TUPLE_RECORD * tplrec)
@@ -18628,9 +18581,8 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 
   analytic_state->a_func_list = a_func_list;
   analytic_state->a_regu_list = a_regu_list;
-  analytic_state->a_regu_list_ex = a_regu_list_ex;
-  analytic_state->a_val_list = a_val_list;
   analytic_state->a_outptr_list = a_outptr_list;
+  analytic_state->a_outptr_list_interm = a_outptr_list_interm;
   analytic_state->xasl_state = xasl_state;
 
   analytic_state->current_key.area_size = 0;
@@ -18675,8 +18627,8 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->current_key.area_size = DB_PAGESIZE;
   analytic_state->output_tplrec = tplrec;
 
-  /* resolve variable domains in reguvar lists */
-  for (regu_list = a_regu_list_ex; regu_list; regu_list = regu_list->next)
+  /* resolve domains in regulist */
+  for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {
       /* if it's position, resolve domain */
       if (regu_list->value.type == TYPE_POSITION
@@ -18688,26 +18640,6 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 	    {
 	      regu_list->value.value.pos_descr.dom = type_list->domp[pos];
 	      regu_list->value.domain = type_list->domp[pos];
-	    }
-	}
-    }
-
-  if (a_regu_list != a_regu_list_ex)
-    {
-      /* for the last analytic evaluation, a_regu_list != a_regu_list_ex */
-      for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
-	{
-	  /* if it's position, resolve domain */
-	  if (regu_list->value.type == TYPE_POSITION
-	      && TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) ==
-	      DB_TYPE_VARIABLE)
-	    {
-	      int pos = regu_list->value.value.pos_descr.pos_no;
-	      if (pos <= type_list->type_cnt)
-		{
-		  regu_list->value.value.pos_descr.dom = type_list->domp[pos];
-		  regu_list->value.domain = type_list->domp[pos];
-		}
 	    }
 	}
     }
@@ -19020,7 +18952,7 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
       return;
     }
 
-  if (fetch_val_list (thread_p, analytic_state->a_regu_list_ex,
+  if (fetch_val_list (thread_p, analytic_state->a_regu_list,
 		      &xasl_state->vd, NULL, NULL, tpl, peek) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -19033,7 +18965,7 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
     }
 
   if (qexec_insert_tuple_into_list (thread_p, list_id,
-				    analytic_state->a_outptr_list,
+				    analytic_state->a_outptr_list_interm,
 				    &xasl_state->vd,
 				    analytic_state->output_tplrec) !=
       NO_ERROR)
@@ -19190,35 +19122,22 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
       analytic_state->offset = lsid.curr_offset;
       analytic_state->tplno = lsid.curr_tplno;
 
-      if (func_p->function == PT_ROW_NUMBER)
+      if (fetch_val_list (thread_p, analytic_state->a_regu_list,
+			  &xasl_state->vd, NULL, NULL, tplrec.tpl,
+			  PEEK) != NO_ERROR)
 	{
-	  if (qfile_add_tuple_to_list (thread_p,
-				       analytic_state->output_file,
-				       tplrec.tpl) != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &lsid);
-	      GOTO_EXIT_ON_ERROR;
-	    }
+	  qfile_close_scan (thread_p, &lsid);
+	  GOTO_EXIT_ON_ERROR;
 	}
-      else
-	{
-	  if (fetch_val_list (thread_p, analytic_state->a_regu_list,
-			      &xasl_state->vd, NULL, NULL, tplrec.tpl,
-			      PEEK) != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &lsid);
-	      GOTO_EXIT_ON_ERROR;
-	    }
 
-	  if (qexec_insert_tuple_into_list (thread_p,
-					    analytic_state->output_file,
-					    analytic_state->a_outptr_list,
-					    &xasl_state->vd,
-					    &output_tplrec) != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &lsid);
-	      GOTO_EXIT_ON_ERROR;
-	    }
+      if (qexec_insert_tuple_into_list (thread_p,
+					analytic_state->output_file,
+					analytic_state->a_outptr_list,
+					&xasl_state->vd,
+					&output_tplrec) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lsid);
+	  GOTO_EXIT_ON_ERROR;
 	}
     }
 

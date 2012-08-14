@@ -2824,22 +2824,6 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      stx_build_list_proc->a_regu_list_ex = NULL;
-    }
-  else
-    {
-      stx_build_list_proc->a_regu_list_ex =
-	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->
-					packed_xasl[offset]);
-      if (stx_build_list_proc->a_regu_list_ex == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
       stx_build_list_proc->a_outptr_list = NULL;
     }
   else
@@ -2864,6 +2848,22 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 	stx_restore_outptr_list (thread_p, &xasl_unpack_info->
 				 packed_xasl[offset]);
       if (stx_build_list_proc->a_outptr_list_ex == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->a_outptr_list_interm = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->a_outptr_list_interm =
+	stx_restore_outptr_list (thread_p, &xasl_unpack_info->
+				 packed_xasl[offset]);
+      if (stx_build_list_proc->a_outptr_list_interm == NULL)
 	{
 	  goto error;
 	}
@@ -5534,21 +5534,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      analytic->default_value = NULL;
-    }
-  else
-    {
-      analytic->default_value =
-	stx_restore_db_value (thread_p,
-			      &xasl_unpack_info->packed_xasl[offset]);
-      if (analytic->default_value == NULL)
-	{
-	  goto error;
-	}
-    }
+  ptr = or_unpack_int (ptr, &analytic->outptr_idx);
 
   ptr = or_unpack_int (ptr, &analytic->curr_cnt);
 

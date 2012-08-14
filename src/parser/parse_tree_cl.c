@@ -1373,6 +1373,25 @@ exit_on_error:
 
 
 /*
+ * pt_point_ref () - creates a reference PT_POINTER
+ *   return: pointer PT_NODE
+ *   parser(in): parser context
+ *   node(in): node to point to
+ */
+PT_NODE *
+pt_point_ref (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  PT_NODE *ret = pt_point (parser, node);
+  if (ret != NULL)
+    {
+      ret->info.pointer.type = PT_POINTER_REF;
+    }
+
+  return ret;
+}
+
+
+/*
  * free_node_in_tree_pre () - checks a pointer nodes for a recursive walk
  *   return:
  *   parser(in):
@@ -2149,7 +2168,6 @@ parser_init_node (PT_NODE * node)
       node->do_not_fold = 0;
       node->is_cnf_start = 0;
       node->is_click_counter = 0;
-      node->skip_sort = 0;
       node->buffer_pos = -1;
       node->next_row = NULL;
       node->is_value_query = 0;
@@ -15810,6 +15828,7 @@ pt_init_pointer (PT_NODE * node)
       node->info.pointer.node = NULL;
       node->info.pointer.sel = 0;
       node->info.pointer.rank = 0;
+      node->info.pointer.type = PT_POINTER_NORMAL;
     }
 
   return node;

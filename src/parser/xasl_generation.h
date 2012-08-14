@@ -99,10 +99,8 @@ struct analytic_info
 {
   ANALYTIC_TYPE *head_list;
   PT_NODE *select_node;
-  PT_NODE *arg_list;
-  REGU_VARIABLE_LIST regu_list;
+  PT_NODE *select_list;
   VAL_LIST *val_list;
-  OUTPTR_LIST *out_list;
 };
 
 typedef enum

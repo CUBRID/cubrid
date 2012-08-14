@@ -344,9 +344,9 @@ struct buildlist_proc_node
   ARITH_TYPE *g_outarith_list;	/* outside arithmetic list */
   ANALYTIC_TYPE *a_func_list;	/* analytic functions list */
   REGU_VARIABLE_LIST a_regu_list;	/* analytic regu list */
-  REGU_VARIABLE_LIST a_regu_list_ex;	/* analytic extended regu list */
   OUTPTR_LIST *a_outptr_list;	/* analytic output ptr list */
   OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */
+  OUTPTR_LIST *a_outptr_list_interm;	/* intermediate output list */
   VAL_LIST *a_val_list;		/* analytic value list */
   int g_grbynum_flag;		/* stop or continue grouping? */
   int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */

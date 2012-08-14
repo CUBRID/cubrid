@@ -3179,13 +3179,6 @@ xts_process_buildlist_proc (char *ptr,
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_regu_variable_list (build_list_proc->a_regu_list_ex);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   offset = xts_save_outptr_list (build_list_proc->a_outptr_list);
   if (offset == ER_FAILED)
     {
@@ -3194,6 +3187,13 @@ xts_process_buildlist_proc (char *ptr,
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_outptr_list (build_list_proc->a_outptr_list_ex);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_outptr_list (build_list_proc->a_outptr_list_interm);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4792,12 +4792,7 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_db_value (analytic->default_value);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
+  ptr = or_pack_int (ptr, analytic->outptr_idx);
 
   ptr = or_pack_int (ptr, analytic->curr_cnt);
 
@@ -5325,9 +5320,9 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
     PTR_SIZE +			/* g_outarith_list */
     PTR_SIZE +			/* a_func_list */
     PTR_SIZE +			/* a_regu_list */
-    PTR_SIZE +			/* a_regu_list_ex */
     PTR_SIZE +			/* a_outptr_list */
     PTR_SIZE +			/* a_outptr_list_ex */
+    PTR_SIZE +			/* a_outptr_list_interm */
     PTR_SIZE;			/* a_val_list */
 
   return size;

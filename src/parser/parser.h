@@ -92,6 +92,8 @@ extern "C"
   extern PT_NODE *parser_append_node_or (PT_NODE * node, PT_NODE * list);
   extern PT_NODE *pt_point (PARSER_CONTEXT * parser, const PT_NODE * tree);
   extern PT_NODE *pt_point_l (PARSER_CONTEXT * parser, const PT_NODE * tree);
+  extern PT_NODE *pt_point_ref (PARSER_CONTEXT * parser,
+				const PT_NODE * node);
 
   extern PT_NODE *parser_walk_leaves (PARSER_CONTEXT * parser,
 				      PT_NODE * node,
