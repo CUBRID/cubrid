@@ -1330,6 +1330,7 @@ struct background_archiving_info
 {
   LOG_PAGEID start_page_id;
   LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
   int vdes;
 };
 

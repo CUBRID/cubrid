@@ -257,7 +257,7 @@ static void log_client_append_done_actions (THREAD_ENTRY * thread_p,
 					    LOG_RECTYPE rectype,
 					    LOG_LSA * next_lsa);
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log,
-                                              char *buf, size_t len);
+					      char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
 static void log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 			   LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -1504,6 +1504,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       bg_arv_info = &log_Gl.bg_archive_info;
       bg_arv_info->start_page_id = NULL_PAGEID;
       bg_arv_info->current_page_id = NULL_PAGEID;
+      bg_arv_info->last_sync_pageid = NULL_PAGEID;
 
       bg_arv_info->vdes = fileio_format (thread_p, log_Db_fullname,
 					 log_Name_bg_archive,
@@ -1514,6 +1515,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;
 	  bg_arv_info->current_page_id = log_Gl.hdr.nxarv_pageid;
+	  bg_arv_info->last_sync_pageid = log_Gl.hdr.nxarv_pageid;
 	}
       else
 	{

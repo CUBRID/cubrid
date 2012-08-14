@@ -1092,6 +1092,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_next_wait = NULL;
 
   entry_p->check_interrupt = true;
+  entry_p->check_page_validation = true;
   entry_p->type = TT_WORKER;	/* init */
 
   entry_p->private_heap_id = db_create_private_heap ();
@@ -2193,6 +2194,52 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
 	}
 
       ret_val = thread_p->check_interrupt;
+    }
+
+  return ret_val;
+}
+
+/*
+ * thread_set_check_page_validation() -
+ *   return:
+ *   flag(in):
+ */
+bool
+thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
+{
+  bool old_val = true;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      old_val = thread_p->check_page_validation;
+      thread_p->check_page_validation = flag;
+    }
+
+  return old_val;
+}
+
+/*
+ * thread_get_check_page_validation() -
+ *   return:
+ */
+bool
+thread_get_check_page_validation (THREAD_ENTRY * thread_p)
+{
+  bool ret_val = true;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      ret_val = thread_p->check_page_validation;
     }
 
   return ret_val;

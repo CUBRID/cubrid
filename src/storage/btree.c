@@ -14761,6 +14761,7 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
   int key_cnt;
   int found;
   int ret = NO_ERROR;
+  bool old_check_page_validation;
 
   /*
    * Following conditions are satisfied.
@@ -14768,9 +14769,18 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
    * 2. bts->O_vpid.pageid == NULL_PAGEID.
    */
 
+#if defined(SERVER_MODE)
+  old_check_page_validation = thread_set_check_page_validation (thread_p,
+								false);
+#endif /* SERVER_MODE */
+
   /* fix the previous leaf page */
   bts->P_page = pgbuf_fix (thread_p, &bts->P_vpid, OLD_PAGE,
 			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+#if defined(SERVER_MODE)
+  thread_set_check_page_validation (thread_p, old_check_page_validation);
+#endif /* SERVER_MODE */
+
   if (bts->P_page == NULL)
     {
       goto exit_on_error;
@@ -14997,16 +15007,23 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
   int found;
   int leaf_not_change;
   int ret = NO_ERROR;
+  bool old_check_page_validation;
 
   /*
    * Following conditions are satisfied.
    * 1. bts->P_vpid.pageid == NULL_PAGEID.
    */
 
+#if defined(SERVER_MODE)
+  old_check_page_validation = thread_set_check_page_validation (thread_p,
+								false);
+#endif /* SERVER_MODE */
   /* fix the current leaf page again */
-  bts->C_page =
-    pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-	       PGBUF_UNCONDITIONAL_LATCH);
+  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE,
+			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+#if defined(SERVER_MODE)
+  thread_set_check_page_validation (thread_p, old_check_page_validation);
+#endif /* SERVER_MODE */
   if (bts->C_page == NULL)
     {
       goto exit_on_error;

@@ -423,6 +423,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
 
       bg_arv_info->start_page_id = NULL_PAGEID;
       bg_arv_info->current_page_id = NULL_PAGEID;
+      bg_arv_info->last_sync_pageid = NULL_PAGEID;
       if (fileio_is_volume_exist (logwr_Gl.bg_archive_name) == true)
 	{
 	  bg_arv_info->vdes =
@@ -447,6 +448,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
 	}
       bg_arv_info->start_page_id = logwr_Gl.hdr.nxarv_pageid;
       bg_arv_info->current_page_id = logwr_Gl.hdr.nxarv_pageid;
+      bg_arv_info->last_sync_pageid = logwr_Gl.hdr.nxarv_pageid;
     }
 
   return NO_ERROR;

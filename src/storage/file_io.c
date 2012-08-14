@@ -671,7 +671,6 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
   if (need_sync)
     {
       fileio_synchronize_all (thread_p, false);
-      fileio_synchronize_bg_archive_volume (thread_p);
     }
 #endif /* SERVER_MODE */
 }
@@ -1617,7 +1616,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p,
  *   return:
  *
  *   lockf_vdes(in): lock file descriptor
- *   db_name(in): database name 
+ *   db_name(in): database name
  *   log_path(in): log file path
  *
  */
@@ -1760,7 +1759,7 @@ error_return:
  *   return:
  *
  *   lockf_vdes(in): lock file descriptor
- *   db_name(in): database name 
+ *   db_name(in): database name
  *   clear_owner(in): clear lock owner
  *
  */
@@ -2507,7 +2506,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
  *
  *       NOTE: No checking for temporary volumes is performed by this function.
  *
- *	 NOTE: On WINDOWS && SERVER MODE io_mutex lock must be obtained before 
+ *	 NOTE: On WINDOWS && SERVER MODE io_mutex lock must be obtained before
  *	  calling lseek. Otherwise, expanding can interfere with fileio_read
  *	  and fileio_write calls. This caused corruptions in the temporary
  *	  file, random pages being written at the end of file instead of being

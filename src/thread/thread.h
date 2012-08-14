@@ -133,6 +133,10 @@ struct thread_entry
   bool shutdown;		/* is server going down? */
   bool check_interrupt;		/* check_interrupt == false, during
 				   fl_alloc* function call. */
+  bool check_page_validation;	/* check_page_validation == false, during
+				   btree_handle_prev_leaf_after_locking()
+				   or btree_handle_curr_leaf_after_locking()
+				   function call. */
   struct thread_entry *next_wait_thrd;
 
   void *lockwait;
@@ -245,6 +249,8 @@ extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index,
 			       int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
+extern bool thread_set_check_page_validation (THREAD_ENTRY * thread_p,
+					      bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
@@ -268,6 +274,7 @@ extern void thread_print_entry_info (THREAD_ENTRY * p);
 extern void thread_dump_threads (void);
 #endif
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
+extern bool thread_get_check_page_validation (THREAD_ENTRY * thread_p);
 
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
 				    int kill_tran_index, char *kill_user,

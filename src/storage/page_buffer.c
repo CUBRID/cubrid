@@ -590,6 +590,8 @@ static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 							      vpid,
 							      void *args),
 					 void *args);
+static bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
+					     int page_validation_level);
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
 
 #if defined(CUBRID_DEBUG)
@@ -946,8 +948,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
   int rv;
 #endif /* SERVER_MODE */
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_FETCH)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
@@ -1182,8 +1184,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_FREE)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_FREE))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -1270,8 +1272,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * since its operations and their implications are very expensive.
    * Too much I/O
    */
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       /*
        * Check if the content of the page is consistent and then scramble
@@ -1477,8 +1479,8 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -1776,8 +1778,8 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -1841,8 +1843,8 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2422,8 +2424,8 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	   * Do not cache the page in the page buffer pool.
 	   * Read the needed portion of the page directly from disk
 	   */
-	  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-	      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+	  if (pgbuf_get_check_page_validation (thread_p,
+					       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid,
 				       NULL, NULL) != DISK_VALID)
@@ -2516,8 +2518,8 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	  /* Do not cache the page in the page buffer pool.
 	   * Write the desired portion of the page directly to disk
 	   */
-	  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-	      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+	  if (pgbuf_get_check_page_validation (thread_p,
+					       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid,
 				       NULL, NULL) != DISK_VALID)
@@ -2578,8 +2580,8 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 {
   PGBUF_BCB *bufptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2622,8 +2624,7 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 {
   FILEIO_PAGE *io_pgptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2652,8 +2653,8 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 {
   PGBUF_BCB *bufptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2733,8 +2734,7 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 {
   PGBUF_BCB *bufptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2766,8 +2766,7 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2792,8 +2791,7 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2817,8 +2815,7 @@ pgbuf_get_volume_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-      PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -6181,6 +6178,31 @@ pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr)
 #endif /* SERVER_MODE */
 
 /*
+ * pgbuf_get_check_page_validation -
+ *   return:
+ *
+ */
+static bool
+pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
+				 int page_validation_level)
+{
+#if !defined(NDEBUG)
+  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
+      page_validation_level)
+    {
+#if defined(SERVER_MODE)
+      if (thread_get_check_page_validation (thread_p) == true)
+#endif /* SERVER_MODE */
+	{
+	  return true;
+	}
+    }
+#endif
+
+  return false;
+}
+
+/*
  * pgbuf_is_valid_page () - Verify if given page is a valid one
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   vpid(in): Complete Page identifier
@@ -6545,8 +6567,9 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
   else
     {
       if (bufptr->fcnt <= 0
-	  && (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
-	      PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+	  &&
+	  (pgbuf_get_check_page_validation
+	   (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL)))
 	{
 	  int i;
 	  /* The page should be scrambled, otherwise some one step on it */

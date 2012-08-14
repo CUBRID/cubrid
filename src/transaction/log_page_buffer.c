@@ -2954,6 +2954,14 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
       bg_arv_info->current_page_id = pageid;
     }
 
+  assert_release (bg_arv_info->current_page_id >=
+		  bg_arv_info->last_sync_pageid);
+  if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) >
+      prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+    {
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
+      bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
+    }
 }
 
 /*
@@ -7643,11 +7651,13 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;
 	  bg_arv_info->current_page_id = log_Gl.hdr.nxarv_pageid;
+	  bg_arv_info->last_sync_pageid = log_Gl.hdr.nxarv_pageid;
 	}
       else
 	{
 	  bg_arv_info->start_page_id = NULL_PAGEID;
 	  bg_arv_info->current_page_id = NULL_PAGEID;
+	  bg_arv_info->last_sync_pageid = NULL_PAGEID;
 
 	  er_log_debug (ARG_FILE_LINE,
 			"Unable to create temporary archive log %s\n",
@@ -13064,6 +13074,7 @@ error:
       bg_arv_info->vdes = NULL_VOLDES;
       bg_arv_info->start_page_id = NULL_PAGEID;
       bg_arv_info->current_page_id = NULL_PAGEID;
+      bg_arv_info->last_sync_pageid = NULL_PAGEID;
 
       er_log_debug (ARG_FILE_LINE,
 		    "background archiving error, hdr->start_page_id = %d, "
