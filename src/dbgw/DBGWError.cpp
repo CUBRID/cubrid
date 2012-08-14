@@ -231,9 +231,11 @@ namespace dbgw
   {
   }
 
-  NotExistConfFileException::NotExistConfFileException(const char *szPath) throw() :
-    DBGWException(DBGWErrorCode::CONF_NOT_EXIST_VERSION,
-        (boost::format("No such file or directory. (%s)") % szPath).str())
+  NotExistConfFileException::NotExistConfFileException(
+      const char *szPath) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_NOT_EXIST_VERSION,
+            (boost::format("No such file or directory. (%s)") % szPath).str()))
   {
   }
 
