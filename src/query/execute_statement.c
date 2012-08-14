@@ -15190,8 +15190,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* savepoint for statement atomicity */
   savepoint_name = NULL;
 
-  if (!statement->info.merge.update.assignment
-      && !statement->info.merge.insert.value_clauses && !statement->xasl_id)
+  if ((!statement->info.merge.update.assignment
+      && !statement->info.merge.insert.value_clauses) || !statement->xasl_id)
     {
       /* nothing to execute */
       statement->etc = NULL;
