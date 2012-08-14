@@ -102,7 +102,7 @@ public class CUBRIDConnection implements Connection {
 		user = s;
 		is_closed = false;
 		auto_commit = true;
-		holdability = ResultSet.HOLD_CURSORS_OVER_COMMIT;
+		holdability = ResultSet.CLOSE_CURSORS_AT_COMMIT;
 		error = null;
 		mdata = null;
 		ending = false;
