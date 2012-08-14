@@ -4503,7 +4503,8 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   else
     {
       /* Just mark the class as "updating statistics is required". */
-      log_mark_modified_class_as_update_stats_required (thread_p, &classoid);
+      log_add_to_modified_class_list (thread_p, &classoid,
+				      UPDATE_STATS_ACTION_SET);
       error = NO_ERROR;
     }
 

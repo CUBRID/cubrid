@@ -594,6 +594,14 @@ struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
   int process_id;
 };
 
+typedef enum update_stats_action_type UPDATE_STATS_ACTION_TYPE;
+enum update_stats_action_type
+{
+  UPDATE_STATS_ACTION_SET,
+  UPDATE_STATS_ACTION_KEEP,
+  UPDATE_STATS_ACTION_RESET
+};
+
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
 struct modified_class_entry
 {

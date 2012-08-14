@@ -388,10 +388,7 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 static void log_complete_topop_attach (LOG_TDES * tdes);
 
 static int log_is_valid_locator (const char *locator);
-static int log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
-						    const OID * class_oid,
-						    bool
-						    mark_as_update_stats_required);
+
 static bool log_is_class_being_modified_internal (THREAD_ENTRY * thread_p,
 						  const OID * class_oid);
 static void log_cleanup_modified_class (THREAD_ENTRY * thread_p,
@@ -4980,12 +4977,12 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_add_to_modified_class_list_internal -
+ * log_add_to_modified_class_list -
  *
  * return:
  *
  *   class_oid(in):
- *   mark_as_update_stats_required(in):
+ *   update_stats_action(in):
  *
  * NOTE: Function for LOG_TDES.modified_class_list
  *       This list keeps the following information:
@@ -4998,9 +4995,9 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *       the second information.
  */
 int
-log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
-					 const OID * class_oid,
-					 bool mark_as_update_stats_required)
+log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
+				const OID * class_oid,
+				UPDATE_STATS_ACTION_TYPE update_stats_action)
 {
   LOG_TDES *tdes;
   MODIFIED_CLASS_ENTRY *t = NULL;
@@ -5032,30 +5029,31 @@ log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
 	}
 
       COPY_OID (&t->class_oid, class_oid);
+      LSA_SET_NULL (&t->last_modified_lsa);
+      t->need_update_stats = false;
       t->next = tdes->modified_class_list;
       tdes->modified_class_list = t;
-
-      if (mark_as_update_stats_required)
-	{
-	  LSA_SET_NULL (&t->last_modified_lsa);
-	}
-      else
-	{
-	  t->need_update_stats = false;
-	}
     }
 
-  if (mark_as_update_stats_required)
+  switch (update_stats_action)
     {
+    case UPDATE_STATS_ACTION_SET:
       /* In this case, we do not update "last_modified_lsa", because
        * this is aimed at delaying updating statistics of this class
        * until "the transaction is committed". This is not a modification.
        */
       t->need_update_stats = true;
-    }
-  else
-    {
+      break;
+    case UPDATE_STATS_ACTION_KEEP:
       LSA_COPY (&t->last_modified_lsa, &tdes->tail_lsa);
+      break;
+    case UPDATE_STATS_ACTION_RESET:
+      LSA_COPY (&t->last_modified_lsa, &tdes->tail_lsa);
+      t->need_update_stats = false;
+      break;
+    default:
+      assert (false);
+      break;
     }
 
   return NO_ERROR;
@@ -5094,39 +5092,6 @@ log_is_class_being_modified_internal (THREAD_ENTRY * thread_p,
 	}
     }
   return false;
-}
-
-/*
- * log_add_to_modified_class_list -
- *
- * return:
- *
- *   class_oid(in):
- *
- * NOTE: See the function "log_add_to_modified_class_list_internal".
- */
-int
-log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
-				const OID * class_oid)
-{
-  return log_add_to_modified_class_list_internal (thread_p, class_oid, false);
-}
-
-/*
- * log_mark_modified_class_as_update_stats_required -
- *
- * return:
- *
- *   class_oid(in):
- *
- * NOTE: See the function "log_add_to_modified_class_list_internal".
- */
-int
-log_mark_modified_class_as_update_stats_required (THREAD_ENTRY *
-						  thread_p,
-						  const OID * class_oid)
-{
-  return log_add_to_modified_class_list_internal (thread_p, class_oid, true);
 }
 
 /*
