@@ -6857,7 +6857,47 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   else
     {
       /* function index */
-      r2 = pt_print_bytes_l (parser, p->info.index.function_expr);
+      int list_size = 0;
+      int i;
+      PT_NODE *q = NULL;
+      PARSER_VARCHAR *r5 = 0;
+
+      q = p->info.index.column_names;
+      while (q != NULL)
+	{
+	  list_size++;
+	  q = q->next;
+	}
+
+      q = p->info.index.column_names;
+      for (i = 0; i < p->info.index.func_pos && q != NULL; i++)
+	{
+	  r5 = pt_print_bytes (parser, q);
+	  r5 = pt_append_bytes (parser, r5, ", ", 2);
+	  r2 = pt_append_varchar (parser, r2, r5);
+	  q = q->next;
+	}
+
+      /* print function expression */
+      r5 = pt_print_bytes (parser, p->info.index.function_expr);
+      if (q && i < list_size - p->info.index.func_no_args)
+	{
+	  r5 = pt_append_bytes (parser, r5, ", ", 2);
+	}
+      r2 = pt_append_varchar (parser, r2, r5);
+
+      /* do not print the function arguments again */
+      for (i = p->info.index.func_pos;
+	   i < list_size - p->info.index.func_no_args && q != NULL; i++)
+	{
+	  r5 = pt_print_bytes (parser, q);
+	  if (q->next && i < list_size - p->info.index.func_no_args - 1)
+	    {
+	      r5 = pt_append_bytes (parser, r5, ", ", 2);
+	    }
+	  r2 = pt_append_varchar (parser, r2, r5);
+	  q = q->next;
+	}
     }
 
   if (!(parser->custom_print & PT_SUPPRESS_INDEX))
