@@ -1971,6 +1971,14 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
 	{
 	  h = 0;		/* 12:01am means 00:01 */
 	}
+      else if (h > 12)
+	{
+	  if (syntax_check)
+	    {
+	      *syntax_check = p;
+	    }
+	  return NULL;
+	}
     }
   else
     {
@@ -1995,6 +2003,14 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
 	      if (h == 12)
 		{
 		  h = 0;
+		}
+	      else if (h > 12)
+		{
+		  if (syntax_check)
+		    {
+		      *syntax_check = p;
+		    }
+		  return NULL;
 		}
 	    }
 	  else
@@ -2893,13 +2909,29 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
   /* attempt to read an explicit separated TIME string (a time-only string)
    * */
   mtime = 0;
-  syntax_check = false;
+  syntax_check = NULL;
 
   p = parse_explicit_mtime_separated (str, strend, &mtime, &syntax_check,
 				      NULL);
 
   if (p)
     {
+      if (p[0] == ' ')
+	{
+	  while (p < strend && char_isspace (*p))
+	    {
+	      p++;
+	    }
+
+	  /* if there is one non-space character in remaining characters */
+	  if (p != strend)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	      return ER_TIME_CONVERSION;
+	    }
+	}
+
       *time = mtime / 1000;
       *millisecond = mtime % 1000;
       return NO_ERROR;
