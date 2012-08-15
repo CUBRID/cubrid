@@ -19580,6 +19580,26 @@ qexec_clear_pred_context (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * qexec_clear_func_pred () - clear the predicate
+ *   return: int
+ *   func_pred(in) : The function predicate
+ *
+ *  Note: Use an XASL_NODE to clear allocated memmory.
+ */
+
+int
+qexec_clear_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pred)
+{
+  XASL_NODE xasl_node;
+
+  memset (&xasl_node, 0, sizeof (XASL_NODE));
+
+  qexec_clear_regu_var (&xasl_node, func_pred->func_regu, true);
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_clear_partition_expression () - clear partition expression
  * return : cleared count or error code
  * thread_p (in) :

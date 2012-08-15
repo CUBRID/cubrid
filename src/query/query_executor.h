@@ -748,6 +748,8 @@ extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p,
 				     PRED_EXPR_WITH_CONTEXT * pred_filter,
 				     bool dealloc_dbvalues);
+extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p,
+				  FUNC_PRED * pred_filter);
 extern int qexec_clear_partition_expression (THREAD_ENTRY * thread_p,
 					     REGU_VARIABLE * expr);
 

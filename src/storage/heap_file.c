@@ -20443,7 +20443,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   char *expr_stream = NULL;
   int expr_stream_size;
   FUNC_PRED *func_pred;
-  void *fi_cache_context = NULL;
+  void *unpack_info = NULL;
   DB_VALUE *res;
   REGU_VARIABLE *regu_var;
   int nr_atts;
@@ -20473,8 +20473,12 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
     }
   if (stx_map_stream_to_func_pred (NULL, (FUNC_PRED **) & func_pred,
 				   expr_stream, expr_stream_size,
-				   &fi_cache_context))
+				   &unpack_info))
     {
+      if (atts_free)
+	{
+	  free_and_init (atts);
+	}
       return ER_FAILED;
     }
 
@@ -20486,14 +20490,17 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
       if (heap_attrinfo_start (thread_p, &attr_info->class_oid, nr_atts,
 			       atts, attr_info) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
+      attrinfo_end = true;
+
       if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes,
 				       attr_info) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
-      attrinfo_end = true;
     }
 
   regu_var = func_pred->func_regu;
@@ -20506,6 +20513,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
     {
       pr_clone_value (res, result);
     }
+
+end:
   if (attrinfo_end)
     {
       heap_attrinfo_clear_dbvalues (attr_info);
@@ -20513,6 +20522,14 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   if (atts_free)
     {
       free_and_init (atts);
+    }
+  if (unpack_info)
+    {
+      (void) qexec_clear_func_pred (thread_p, func_pred);
+      stx_free_additional_buff (unpack_info);
+      stx_free_xasl_unpack_info (unpack_info);
+      db_private_free_and_init (thread_p, unpack_info);
+      func_pred->func_regu = NULL;
     }
 
   return error;
