@@ -800,7 +800,7 @@ pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser,
       temp_data_type->precision = cinfo->prec;
       temp_data_type->dec_precision = cinfo->scale;
 
-      new_att = temp_expr;
+      new_att = att;
     }
   else
     {
