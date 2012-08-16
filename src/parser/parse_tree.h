@@ -533,7 +533,7 @@
              i < (parser_->host_var_count + parser_->auto_param_count); i++, hv++) \
             db_value_clear(hv); \
         free_and_init(parser_->host_variables); \
-	free_and_init(parser_->host_variables_reset_flag);} while (0)
+	free_and_init(parser_->host_var_expected_domains);} while (0)
 
 #define SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
@@ -541,7 +541,7 @@
                  parser_->host_variables != parent_parser->host_variables) { \
                  CLEAR_HOST_VARIABLES(parser_); } \
              parser_->host_variables = parent_parser->host_variables; \
-	     parser_->host_variables_reset_flag = parent_parser->host_variables_reset_flag; \
+	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
              parser_->set_host_var = 1; } } while (0)
@@ -549,7 +549,7 @@
 #define RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
-	     parser_->host_variables_reset_flag = NULL; \
+	     parser_->host_var_expected_domains = NULL; \
              parser_->auto_param_count = 0; parser_->set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
@@ -2917,10 +2917,7 @@ struct parser_context
   QUERY_ID query_id;		/* id assigned to current query */
   DB_VALUE *host_variables;	/* host variables place holder;
 				   DB_VALUE array */
-  int *host_variables_reset_flag;	/* flag for each HV :
-					 *       0 : flag not initialized
-					 *      -1 : doesn't need reset
-					 *       1 : needs reset */
+  TP_DOMAIN **host_var_expected_domains;	/* expected domains for host variables */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the
 						 * execution of statements
 						 * during a client

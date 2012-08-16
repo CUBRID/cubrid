@@ -7556,38 +7556,14 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 void
 pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 {
-  DB_VALUE *hv_val;
-  DB_TYPE typ, exptyp;
-
-  hv_val = &parser->host_variables[hv_node->info.host_var.index];
-  typ = DB_VALUE_DOMAIN_TYPE (hv_val);
-  exptyp = TP_DOMAIN_TYPE (hv_node->expected_domain);
-  if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
+  if (parser->host_var_count <= hv_node->info.host_var.index)
     {
-      /* If the host variable was not given before by the user,
-         preset it by the expected domain.
-         When the user set the host variable,
-         its value will be casted to this domain if necessary. */
-      (void) db_value_domain_init (hv_val, exptyp,
-				   hv_node->expected_domain->precision,
-				   hv_node->expected_domain->scale);
-    }
-  else if (typ != exptyp)
-    {
-      if (tp_value_cast (hv_val, hv_val, hv_node->expected_domain,
-			 false) != DOMAIN_COMPATIBLE)
-	{
-	  PT_INTERNAL_ERROR (parser, "cannot coerce host var");
-	}
+      /* automated parameters are not needed an expected domain */
+      return;
     }
 
-  if (TP_TYPE_HAS_COLLATION (DB_VALUE_DOMAIN_TYPE (hv_val)))
-    {
-      db_put_cs_and_collation (hv_val,
-			       TP_DOMAIN_CODESET (hv_node->expected_domain),
-			       TP_DOMAIN_COLLATION
-			       (hv_node->expected_domain));
-    }
+  parser->host_var_expected_domains[hv_node->info.host_var.index] =
+    hv_node->expected_domain;
 }
 
 /* pt_set_expected_domain - set the expected tomain of a PT_NODE

@@ -2717,133 +2717,56 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 {
   DB_VALUE *val, *hv;
   DB_TYPE typ;
-  TP_DOMAIN *hv_dom, *val_dom;
-  int num_errors, i;
+  TP_DOMAIN *hv_dom;
+  int i;
 
   if (parser == NULL || count <= 0 || values == NULL)
     {
       return;
     }
 
-  num_errors = 0;
   parser->set_host_var = 0;
 
   if (parser->host_var_count > count)
     {
-      /* oh ho, an user gave me wrong data ... generate warning! */
+      /* oh no, an user gave me wrong data ... generate warning! */
       PT_WARNINGmf2 (parser, NULL,
 		     MSGCAT_SET_PARSER_RUNTIME,
 		     MSGCAT_RUNTIME_HOSTVAR_INDEX_ERROR, count,
 		     parser->host_var_count);
-      num_errors++;
+      return;
     }
-  else
-    {
-      if (parser->host_var_count > 0 &&
-	  parser->host_variables_reset_flag == NULL)
-	{
-	  /* first usage of HV in this parser */
-	  parser->host_variables_reset_flag = (int *)
-	    malloc (parser->host_var_count * sizeof (int));
-	  if (parser->host_variables_reset_flag == NULL)
-	    {
-	      PT_ERRORmf (parser, NULL, MSGCAT_SET_PARSER_RUNTIME,
-			  MSGCAT_RUNTIME_OUT_OF_MEMORY,
-			  parser->host_var_count * sizeof (int));
-	      num_errors++;
-	      return;
-	    }
-	  (void) memset (parser->host_variables_reset_flag, 0,
-			 parser->host_var_count * sizeof (int));
-	}
-      /* cast and copy the given values to the place holder */
-      for (val = values, hv = parser->host_variables, i = 0;
-	   i < parser->host_var_count; val++, hv++, i++)
-	{
-	  if (parser->host_variables_reset_flag[i] == 1)
-	    {
-	      (void) pr_clear_value (hv);
-	    }
-	  else if (parser->host_variables_reset_flag[i] == 0)
-	    {
-	      if (DB_VALUE_DOMAIN_TYPE (hv) != DB_TYPE_NULL)
-		{
-		  parser->host_variables_reset_flag[i] = -1;
-		}
-	      else
-		{
-		  parser->host_variables_reset_flag[i] = 1;
-		}
-	    }
 
-	  if (pt_is_reference_to_reusable_oid (val))
-	    {
-	      PT_ERRORm (parser, NULL, MSGCAT_SET_ERROR,
-			 -(ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED));
-	      num_errors++;
-	    }
-	  else if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_NULL)
-	    {
-	      /* hv: value is ? (null or not null) && type is null
-	         host variable place holders are not set before;
-	         it's first time to use */
-	      (void) pr_clone_value (val, hv);
-	    }
-	  else if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_VARIABLE)
-	    {
-	      (void) pr_clone_value (val, hv);
-	    }
-	  else
-	    {
-	      /* hv: type is not null
-	         the user are setting new host variables;
-	         host variable place holders were used before */
-	      if (!DB_IS_NULL (hv))
-		{
-		  pr_clear_value (hv);
-		}
-	      hv_dom = tp_domain_resolve_value (hv, NULL);
-	      val_dom = tp_domain_resolve_value (val, NULL);
-	      if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_ENUMERATION)
-		{
-		  (void) pr_clone_value (val, hv);
-		}
-	      else if (tp_domain_match (hv_dom, val_dom, TP_EXACT_MATCH))
-		{
-		  (void) pr_clone_value (val, hv);
-		}
-	      else
-		{
-		  if (!hv_dom ||
-		      tp_value_cast_preserve_domain (val, hv, hv_dom, false,
-						     true) !=
-		      DOMAIN_COMPATIBLE)
-		    {
-		      typ = DB_VALUE_DOMAIN_TYPE (hv);
-		      PT_ERRORmf2 (parser, NULL,
-				   MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   "host var",
-				   pt_type_enum_to_db_domain_name
-				   (pt_db_to_type_enum (typ)));
-		      num_errors++;
-		      if (hv_dom)
-			{
-			  /* restore original type */
-			  db_value_domain_init (hv, TP_DOMAIN_TYPE (hv_dom),
-						hv_dom->precision,
-						hv_dom->scale);
-			}
-		    }
-		}
-	    }
+  /* cast and copy the given values to the place holder */
+  for (val = values, hv = parser->host_variables, i = 0;
+       i < parser->host_var_count; val++, hv++, i++)
+    {
+      if (pt_is_reference_to_reusable_oid (val))
+	{
+	  PT_ERRORm (parser, NULL, MSGCAT_SET_ERROR,
+		     -(ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED));
+	  return;
+	}
+
+      pr_clear_value (hv);
+      hv_dom = parser->host_var_expected_domains[i];
+      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN)
+	{
+	  pr_clone_value (val, hv);
+	}
+      else if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) !=
+	       DOMAIN_COMPATIBLE)
+	{
+	  typ = TP_DOMAIN_TYPE (hv_dom);
+	  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		       pt_type_enum_to_db_domain_name
+		       (pt_db_to_type_enum (typ)));
+	  return;
 	}
     }
 
-  if (num_errors == 0)
-    {
-      parser->set_host_var = 1;	/* OK */
-    }
+  parser->set_host_var = 1;	/* OK */
 }
 
 /*

@@ -1156,9 +1156,9 @@ parser_free_parser (PARSER_CONTEXT * parser)
       free_and_init (parser->host_variables);
     }
 
-  if (parser->host_variables_reset_flag)
+  if (parser->host_var_expected_domains)
     {
-      free_and_init (parser->host_variables_reset_flag);
+      free_and_init (parser->host_var_expected_domains);
     }
 
   parser_free_lcks_classes (parser);

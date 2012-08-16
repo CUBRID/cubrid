@@ -2378,6 +2378,8 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
     prepared_session->parser->host_var_count
     + prepared_session->parser->auto_param_count;
   prepare_info.host_variables.vals = prepared_session->parser->host_variables;
+  prepare_info.host_var_expected_domains =
+    prepared_session->parser->host_var_expected_domains;
   /* set autoparam count */
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
@@ -2497,9 +2499,9 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
       free_and_init (parser->host_variables);
     }
 
-  if (parser->host_variables_reset_flag)
+  if (parser->host_var_expected_domains)
     {
-      free_and_init (parser->host_variables_reset_flag);
+      free_and_init (parser->host_var_expected_domains);
     }
 
   parser->auto_param_count = 0;
@@ -2507,6 +2509,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
 
   parser->auto_param_count = prepare_info.auto_param_count;
   parser->host_variables = prepare_info.host_variables.vals;
+  parser->host_var_expected_domains = prepare_info.host_var_expected_domains;
   parser->host_var_count =
     prepare_info.host_variables.size - prepare_info.auto_param_count;
 
@@ -2958,9 +2961,9 @@ db_close_session_local (DB_SESSION * session)
       free_and_init (parser->host_variables);
     }
 
-  if (parser->host_variables_reset_flag)
+  if (parser->host_var_expected_domains)
     {
-      free_and_init (parser->host_variables_reset_flag);
+      free_and_init (parser->host_var_expected_domains);
     }
 
   parser->host_var_count = parser->auto_param_count = 0;

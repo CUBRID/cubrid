@@ -139,6 +139,7 @@ struct db_prepare_info
   DB_QUERY_TYPE *columns;	/* columns */
   CUBRID_STMT_TYPE stmt_type;	/* statement type */
   DB_VALUE_ARRAY host_variables;	/* statement host variables */
+  TP_DOMAIN **host_var_expected_domains;
   int auto_param_count;		/* number of auto parametrized values */
   int recompile;		/* statement should be recompiled */
   int oids_included;

@@ -425,6 +425,7 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->columns = NULL;
   info->host_variables.size = 0;
   info->host_variables.vals = NULL;
+  info->host_var_expected_domains = NULL;
   info->auto_param_count = 0;
   info->recompile = 0;
   info->oids_included = 0;
@@ -459,6 +460,13 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	  size += OR_VALUE_ALIGNED_SIZE (&(info->host_variables.vals[i]));
 	}
       packed_size += size;
+
+      size = 0;
+      for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
+	{
+	  size += or_packed_domain_size (info->host_var_expected_domains[i], 0);
+	}
+      packed_size += size;
     }
   /* calculate size for columns */
   packed_size += or_packed_query_format_size (info->columns, &columns_cnt);
@@ -490,20 +498,6 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   *buffer = ptr;
 
   /* begin packing */
-  /* parameters */
-  if (info->host_variables.size == 0)
-    {
-      ptr = or_pack_int (ptr, 0);
-    }
-  else
-    {
-      int i = 0;
-      ptr = or_pack_int (ptr, info->host_variables.size);
-      for (i = 0; i < info->host_variables.size; i++)
-	{
-	  ptr = or_pack_db_value (ptr, &(info->host_variables.vals[i]));
-	}
-    }
   /* columns */
   ptr = or_pack_query_format (ptr, info->columns, columns_cnt);
   /* query */
@@ -521,6 +515,24 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   for (i = 0; i < info->into_count; i++)
     {
       ptr = or_pack_string (ptr, info->into_list[i]);
+    }
+  /* parameters */
+  if (info->host_variables.size == 0)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      int i = 0;
+      ptr = or_pack_int (ptr, info->host_variables.size);
+      for (i = 0; i < info->host_variables.size; i++)
+	{
+	  ptr = or_pack_db_value (ptr, &(info->host_variables.vals[i]));
+	}
+      for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
+	{
+	  ptr = or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
+	}
     }
 
   return packed_size;
@@ -541,26 +553,8 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
   assert (info != NULL);
   assert (buffer != NULL);
 
-  /* unpack parameters */
-  ptr = or_unpack_int (buffer, &(info->host_variables.size));
-  if (info->host_variables.size > 0)
-    {
-      int i = 0;
-      info->host_variables.vals =
-	(DB_VALUE *) malloc (info->host_variables.size * sizeof (DB_VALUE));
-      if (info->host_variables.vals == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, info->host_variables.size * sizeof (DB_VALUE));
-	  goto error;
-	}
-      for (i = 0; i < info->host_variables.size; i++)
-	{
-	  ptr = or_unpack_db_value (ptr, &(info->host_variables.vals[i]));
-	}
-    }
   /* unpack column info */
-  ptr = or_unpack_query_format (ptr, &info->columns);
+  ptr = or_unpack_query_format (buffer, &info->columns);
   /* unpack query */
   ptr = or_unpack_string_alloc (ptr, &info->statement);
   /* unpack statement type */
@@ -585,6 +579,40 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
       for (i = 0; i < info->into_count; i++)
 	{
 	  ptr = or_unpack_string_alloc (ptr, &info->into_list[i]);
+	}
+    }
+  /* unpack parameters */
+  ptr = or_unpack_int (ptr, &(info->host_variables.size));
+  if (info->host_variables.size > 0)
+    {
+      unsigned int i = 0, var_count;
+
+      var_count = info->host_variables.size;
+      info->host_variables.vals =
+	(DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
+      if (info->host_variables.vals == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, info->host_variables.size * sizeof (DB_VALUE));
+	  goto error;
+	}
+      for (i = 0; i < var_count; i++)
+	{
+	  ptr = or_unpack_db_value (ptr, &(info->host_variables.vals[i]));
+	}
+
+      var_count = info->host_variables.size - info->auto_param_count;
+      info->host_var_expected_domains =
+	(TP_DOMAIN **) malloc (var_count * sizeof (TP_DOMAIN *));
+      if (info->host_var_expected_domains == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, var_count * sizeof (TP_DOMAIN *));
+	  goto error;
+	}
+      for (i = 0; i < var_count; i++)
+	{
+	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
 	}
     }
   return NO_ERROR;
@@ -628,6 +656,10 @@ error:
     {
       db_value_clear_array (&info->host_variables);
       free_and_init (info->host_variables.vals);
+    }
+  if (info->host_var_expected_domains)
+    {
+      free_and_init (info->host_var_expected_domains);
     }
   if (info->into_list != NULL)
     {
