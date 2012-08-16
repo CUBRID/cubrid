@@ -135,6 +135,11 @@ typedef struct tf_ct_class
 #define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
 #define CT_COLLATION_NAME          "_db_collation"
 #define CT_USER_NAME               "db_user"
+#define CT_TRIGGER_NAME            "db_trigger"
+#define CT_ROOT_NAME               "db_root"
+#define CT_PASSWORD_NAME           "db_password"
+#define CT_AUTHORIZATION_NAME      "db_authorization"
+#define CT_AUTHORIZATIONS_NAME     "db_authorizations"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"

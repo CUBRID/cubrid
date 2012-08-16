@@ -150,6 +150,7 @@ const char *AU_DBA_USER_NAME = "dba";
          strcmp(name, CT_METHARG_NAME) == 0 || \
          strcmp(name, CT_METHFILE_NAME) == 0 || \
          strcmp(name, CT_QUERYSPEC_NAME) == 0 || \
+         strcmp(name, CT_RESOLUTION_NAME) ==0 || \
          strcmp(name, CT_INDEX_NAME) == 0 || \
          strcmp(name, CT_INDEXKEY_NAME) == 0 || \
          strcmp(name, CT_CLASSAUTH_NAME) == 0 || \
@@ -160,7 +161,12 @@ const char *AU_DBA_USER_NAME = "dba";
          strcmp(name, CT_SERIAL_NAME) == 0 || \
          strcmp(name, CT_USER_NAME) == 0 || \
          strcmp(name, CT_COLLATION_NAME) == 0 || \
-         strcmp(name, CT_HA_APPLY_INFO_NAME) == 0)
+         strcmp(name, CT_HA_APPLY_INFO_NAME) == 0 || \
+         strcmp(name, CT_TRIGGER_NAME) == 0 || \
+         strcmp(name, CT_ROOT_NAME) == 0 || \
+         strcmp(name, CT_PASSWORD_NAME) == 0 || \
+         strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
+         strcmp(name, CT_AUTHORIZATIONS_NAME) == 0)
 
 /*
  * AU_GRANT
