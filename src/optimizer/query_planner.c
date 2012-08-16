@@ -1099,6 +1099,7 @@ qo_top_plan_new (QO_PLAN * plan)
   QO_ENV *env;
   PT_NODE *tree, *group_by, *order_by, *orderby_for;
   PT_MISC_TYPE all_distinct;
+  PARSER_CONTEXT *parser;
 
   if (plan == NULL || plan->top_rooted)
     {
@@ -1108,7 +1109,8 @@ qo_top_plan_new (QO_PLAN * plan)
   if (plan->info == NULL ||	/* worst plan */
       (env = (plan->info)->env) == NULL
       || bitset_cardinality (&((plan->info)->nodes)) < env->Nnodes
-      || /* sub-plan */ (tree = QO_ENV_PT_TREE (env)) == NULL)
+      || /* sub-plan */ (tree = QO_ENV_PT_TREE (env)) == NULL
+      || (parser = QO_ENV_PARSER (env)) == NULL)
     {
       return plan;		/* do nothing */
     }
@@ -1258,7 +1260,8 @@ qo_top_plan_new (QO_PLAN * plan)
 			  ;	/* give up; DO NOT DELETE ME - need future work */
 			}
 		      else if (!is_index_w_prefix &&
-			       !tree->info.query.q.select.connect_by)
+			       !tree->info.query.q.select.connect_by &&
+			       !pt_has_analytic (parser, tree))
 			{
 			  orderby_skip =
 			    pt_sort_spec_cover (plan->iscan_sort_list,
