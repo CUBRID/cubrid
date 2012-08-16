@@ -158,7 +158,8 @@ const char *AU_DBA_USER_NAME = "dba";
          strcmp(name, CT_STORED_PROC_ARGS_NAME) == 0 || \
          strcmp(name, CT_PARTITION_NAME) == 0 || \
          strcmp(name, CT_SERIAL_NAME) == 0 || \
-	 strcmp(name, CT_COLLATION_NAME) == 0 || \
+         strcmp(name, CT_USER_NAME) == 0 || \
+         strcmp(name, CT_COLLATION_NAME) == 0 || \
          strcmp(name, CT_HA_APPLY_INFO_NAME) == 0)
 
 /*
@@ -3129,6 +3130,13 @@ au_drop_user (MOP user)
 
   AU_DISABLE (save);
 
+  if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "drop_user");
+      goto error;
+    }
+
   /* check if user is dba/public or current user */
   if (user == Au_dba_user || user == Au_public_user || user == Au_user)
     {
@@ -3353,8 +3361,6 @@ au_drop_user (MOP user)
 	}
     }
 
-  AU_ENABLE (save);
-
   /*
    * could go through classes created by this user and change ownership
    * to the dba ? - do this as the classes are referenced instead
@@ -3365,8 +3371,6 @@ au_drop_user (MOP user)
     {
       remove_user_cache_references (user);
     }
-
-  return (error);
 
 error:
   AU_ENABLE (save);

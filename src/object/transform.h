@@ -134,6 +134,7 @@ typedef struct tf_ct_class
 #define CT_SERIAL_NAME             "db_serial"
 #define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
 #define CT_COLLATION_NAME          "_db_collation"
+#define CT_USER_NAME               "db_user"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
