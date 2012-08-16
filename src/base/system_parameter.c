@@ -4715,6 +4715,19 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
   int id, error;
   THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn_p;
+#endif
+
+  if (prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (value == NULL || value[0] == '\0')
+    {
+      return PRM_ERR_BAD_VALUE;
+    }
+
+#if defined (SERVER_MODE)
   if (PRM_IS_FOR_SESSION (prm->flag) && BO_IS_SERVER_RESTARTED ())
     {
       id = prm_get_id (prm);
@@ -4743,16 +4756,6 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
    * just set the system parameter stored on server
    */
 #endif /* SERVER_MODE */
-
-  if (prm == NULL)
-    {
-      return PRM_ERR_UNKNOWN_PARAM;
-    }
-
-  if (value == NULL || strlen (value) == 0)
-    {
-      return PRM_ERR_BAD_VALUE;
-    }
 
   if (PRM_IS_INTEGER (prm))
     {
