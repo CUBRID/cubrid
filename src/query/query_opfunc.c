@@ -6833,6 +6833,12 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		}
 
 	      dtmp = DB_GET_DOUBLE (&dval);
+
+	      /* mathematically, dtmp should be zero or positive; however, due
+	       * to some precision errors, in some cases it can be a very small
+	       * negative number of which we cannot extract the square root */
+	      dtmp = (dtmp < 0.0f ? 0.0f : dtmp);
+
 	      dtmp = sqrt (dtmp);
 	      DB_MAKE_DOUBLE (&dval, dtmp);
 
@@ -9893,6 +9899,12 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	    }
 
 	  dtmp = DB_GET_DOUBLE (&dval);
+
+	  /* mathematically, dtmp should be zero or positive; however, due to
+	   * some precision errors, in some cases it can be a very small
+	   * negative number of which we cannot extract the square root */
+	  dtmp = (dtmp < 0.0f ? 0.0f : dtmp);
+
 	  dtmp = sqrt (dtmp);
 	  DB_MAKE_DOUBLE (&dval, dtmp);
 
