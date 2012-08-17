@@ -9226,7 +9226,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  /* TODO : this requires a generic fix: maybe 'arg1_hv' should never be set
 	   * to arg1->info.expr.arg1;
-	   * arg1 may not be necessarely a HV node, but arg1_hv may be a direct
+	   * arg1 may not be necessarily a HV node, but arg1_hv may be a direct
 	   * link to argument of arg1 (in case arg1 is an expression with
 	   * unary operator)- see code at beginning of function when arguments
 	   * are checked;
@@ -9234,7 +9234,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (arg1_hv && arg1_type == PT_TYPE_MAYBE
 	      && arg1->node_type == PT_HOST_VAR)
 	    {
-	      d = pt_xasl_type_enum_to_domain (node->type_enum);
+	      d = pt_node_to_db_domain (parser, node, NULL);
 	      SET_EXPECTED_DOMAIN (arg1, d);
 	      pt_preset_hostvar (parser, arg1);
 	    }
