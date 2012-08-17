@@ -1183,19 +1183,24 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_NORMAL].list == NULL)
+  if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_NORMAL].list != NULL)
     {
-      qmgr_initialize_temp_file_list (&qmgr_Query_table.temp_file_list
-				      [TEMP_FILE_MEMBUF_NORMAL],
-				      TEMP_FILE_MEMBUF_NORMAL);
+      qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list
+				    [TEMP_FILE_MEMBUF_NORMAL]);
     }
-  if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_KEY_BUFFER].list ==
+  qmgr_initialize_temp_file_list (&qmgr_Query_table.temp_file_list
+				  [TEMP_FILE_MEMBUF_NORMAL],
+				  TEMP_FILE_MEMBUF_NORMAL);
+
+  if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_KEY_BUFFER].list !=
       NULL)
     {
-      qmgr_initialize_temp_file_list (&qmgr_Query_table.temp_file_list
-				      [TEMP_FILE_MEMBUF_KEY_BUFFER],
-				      TEMP_FILE_MEMBUF_KEY_BUFFER);
+      qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list
+				    [TEMP_FILE_MEMBUF_KEY_BUFFER]);
     }
+  qmgr_initialize_temp_file_list (&qmgr_Query_table.temp_file_list
+				  [TEMP_FILE_MEMBUF_KEY_BUFFER],
+				  TEMP_FILE_MEMBUF_KEY_BUFFER);
 
   csect_exit (CSECT_QPROC_QUERY_TABLE);
 
