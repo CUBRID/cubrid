@@ -14743,7 +14743,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
 	  /* generate initial outlist (for data fetching) */
 	  buildlist->a_outptr_list_ex =
-	    pt_to_outlist (parser, select_list_ex, NULL, unbox);
+	    pt_to_outlist (parser, select_list_ex, &xasl->selected_upd_list,
+			   unbox);
 
 	  if (buildlist->a_regu_list == NULL)
 	    {
