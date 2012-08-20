@@ -657,7 +657,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      goto error_continue;
 	    }
-
+	  if (csql_Is_interactive)
+	    {
+	      line_no = 0;
+	    }
 	  continue;
 	}
       else
@@ -714,6 +717,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
     error_continue:
 
+      if (csql_Is_interactive)
+	{
+	  line_no = 0;
+	}
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
 
