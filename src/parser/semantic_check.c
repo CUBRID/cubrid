@@ -9528,6 +9528,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
       if (node->info.query.q.select.connect_by)
 	{
+	  bool has_level_greater, has_level_lesser;
 	  int disallow_ops[] = {
 	    2,			/* number of operators */
 	    PT_CONNECT_BY_ISCYCLE,
@@ -9537,6 +9538,18 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 				   node->info.query.q.select.connect_by,
 				   pt_expr_disallow_op_pre, disallow_ops,
 				   NULL, NULL);
+	  if (node->info.query.q.select.check_cycles
+	      != CONNECT_BY_CYCLES_NONE)
+	    {
+	      pt_check_level_expr (parser,
+				   node->info.query.q.select.connect_by,
+				   &has_level_greater, &has_level_lesser);
+	      if (has_level_lesser)
+		{
+		  node->info.query.q.select.check_cycles =
+		    CONNECT_BY_CYCLES_IGNORE;
+		}
+	    }
 	}
 
       node = pt_semantic_type (parser, node, info);

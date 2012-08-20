@@ -15251,8 +15251,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      parent_tuple_added = true;
 		    }
 
-		  /* only add a child if it doesnt create a cycle */
-		  if (cycle == 0)
+		  /* only add a child if it doesn't create a cycle or if
+		   * cycles should be ignored
+		   */
+		  if (cycle == 0 || XASL_IS_FLAGED (xasl, XASL_IGNORE_CYCLES))
 		    {
 		      if (has_order_siblings_by)
 			{

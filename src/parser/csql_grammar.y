@@ -11572,7 +11572,8 @@ opt_nocycle
 			PT_NODE *node = parser_top_select_stmt_node ();
 			if (node)
 			  {
-			    node->info.query.q.select.has_nocycle = true;
+			    node->info.query.q.select.check_cycles =
+			      CONNECT_BY_CYCLES_NONE;
 			  }
 
 		DBG_PRINT}}

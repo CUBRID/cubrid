@@ -13333,7 +13333,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.q.select.waitsecs_hint = NULL;
   p->info.query.q.select.jdbc_life_time = NULL;
   p->info.query.q.select.flag = 0;
-  p->info.query.q.select.has_nocycle = 0;
+  p->info.query.q.select.check_cycles = CONNECT_BY_CYCLES_ERROR;
   p->info.query.q.select.single_table_opt = 0;
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
@@ -13732,7 +13732,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.query.q.select.connect_by)
 	{
 	  r1 = pt_print_and_list (parser, p->info.query.q.select.connect_by);
-	  if (p->info.query.q.select.has_nocycle)
+	  if (p->info.query.q.select.check_cycles == CONNECT_BY_CYCLES_NONE)
 	    {
 	      q = pt_append_nulstring (parser, q, " connect by nocycle ");
 	    }

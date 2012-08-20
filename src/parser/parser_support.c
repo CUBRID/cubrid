@@ -1580,6 +1580,133 @@ pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   return node;
 }
 
+/*
+ * pt_check_level_expr () - check if expression can be reduced to "LEVEL <= x
+ *			    AND ..." or to "LEVEL >= x AND ...".
+ *
+ * parser(in): PARSER_CONTEXT
+ * expr(in): expression PT_NODE
+ * has_greater(out): can be reduced to LEVEL >= x
+ * has_lesser(out): can be reduced to LEVEL <= x
+ *
+ * NOTE: this was originally designed to check connect by clause in order to
+ *	 determine if cycles can be allowed or if we risk to generate infinite
+ *	 loops
+ */
+void
+pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
+		     bool * has_greater, bool * has_lesser)
+{
+  bool has_greater_1;
+  bool has_lesser_1;
+  bool has_greater_2;
+  bool has_lesser_2;
+  int op;
+  PT_NODE *arg1;
+  PT_NODE *arg2;
+
+  *has_greater = 0;
+  *has_lesser = 0;
+
+  if (!expr)
+    {
+      return;
+    }
+  if (!PT_IS_EXPR_NODE (expr))
+    {
+      return;
+    }
+
+  op = expr->info.expr.op;
+  arg1 = expr->info.expr.arg1;
+  arg2 = expr->info.expr.arg2;
+  switch (expr->info.expr.op)
+    {
+    case PT_NOT:
+      /* NOT greater => lesser */
+      /* NOT lesser => greater */
+      pt_check_level_expr (parser, arg1, &has_greater_1, &has_lesser_1);
+      *has_greater = has_lesser_1;
+      *has_lesser = has_greater_1;
+      break;
+    case PT_OR:
+      /* the OR EXPR will have as result a lesser value or a greater value
+       * for LEVEL if both branches have lesser, respective greater values
+       * for LEVEL
+       */
+      pt_check_level_expr (parser, arg1, &has_greater_1, &has_lesser_1);
+      pt_check_level_expr (parser, arg2, &has_greater_2, &has_lesser_2);
+      *has_greater = has_greater_1 && has_greater_2;
+      *has_lesser = has_lesser_1 && has_lesser_2;
+      break;
+    case PT_AND:
+      /* the AND EXPR will have as result a lesser value or a greater value
+       * for LEVEL if any branch has a lesser, respective a greater value
+       * for LEVEL
+       */
+      pt_check_level_expr (parser, arg1, &has_greater_1, &has_lesser_1);
+      pt_check_level_expr (parser, arg2, &has_greater_2, &has_lesser_2);
+      *has_greater = has_greater_1 || has_greater_2;
+      *has_lesser = has_lesser_1 || has_lesser_2;
+      break;
+    case PT_EQ:
+    case PT_LT:
+    case PT_GT:
+    case PT_LE:
+    case PT_GE:
+      {
+	bool lhs_level = arg1->info.expr.op == PT_LEVEL;
+	bool rhs_level = arg2->info.expr.op == PT_LEVEL;
+	if ((lhs_level && rhs_level) || (!lhs_level && !rhs_level))
+	  {
+	    /* leave both has_greater and has_lesser as false */
+	    return;
+	  }
+	if (op == PT_EQ)
+	  {
+	    *has_lesser = true;
+	    *has_greater = true;
+	  }
+	else if (op == PT_GE || op == PT_GT)
+	  {
+	    if (lhs_level)
+	      {
+		*has_greater = true;
+	      }
+	    else
+	      {
+		*has_lesser = true;
+	      }
+	  }
+	else if (op == PT_LE || op == PT_LT)
+	  {
+	    if (lhs_level)
+	      {
+		*has_lesser = true;
+	      }
+	    else
+	      {
+		*has_greater = true;
+	      }
+	  }
+      }
+      break;
+    case PT_BETWEEN:
+    case PT_RANGE:
+    case PT_EQ_SOME:
+    case PT_IS_IN:
+      if (arg1->info.expr.op == PT_LEVEL)
+	{
+	  *has_lesser = true;
+	  *has_greater = true;
+	}
+      break;
+    default:
+      /* leave both has_greater and has_lesser as false */
+      break;
+    }
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_arg1_part () - returns arg1 for union, intersection or difference

@@ -1327,6 +1327,12 @@ typedef enum
   PT_SPEC_FLAG_HAS_UNIQUE = 0x04	/* the spec has unique */
 } PT_SPEC_FLAG;
 
+typedef enum
+{
+  CONNECT_BY_CYCLES_ERROR = 0,
+  CONNECT_BY_CYCLES_NONE,
+  CONNECT_BY_CYCLES_IGNORE
+} PT_CONNECT_BY_CHECK_CYCLES;
 /*
  * Type definitions
  */
@@ -2233,7 +2239,7 @@ struct pt_select_info
   PT_HINT_ENUM hint;
   int flavor;
   short flag;			/* flags */
-  unsigned has_nocycle:1;	/* CONNECT BY NOCYCLE */
+  PT_CONNECT_BY_CHECK_CYCLES check_cycles;	/* CONNECT BY CHECK CYCLES */
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 

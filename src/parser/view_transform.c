@@ -3776,8 +3776,8 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 	parser_copy_tree_list (parser,
 			       query_spec->info.query.q.select.
 			       after_cb_filter);
-      new_query->info.query.q.select.has_nocycle =
-	query_spec->info.query.q.select.has_nocycle;
+      new_query->info.query.q.select.check_cycles =
+	query_spec->info.query.q.select.check_cycles;
       new_query->info.query.q.select.single_table_opt =
 	query_spec->info.query.q.select.single_table_opt;
     }
