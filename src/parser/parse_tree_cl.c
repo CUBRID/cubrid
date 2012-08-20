@@ -15991,8 +15991,7 @@ pt_init_merge (PT_NODE * p)
   p->info.merge.check_where = NULL;
   p->info.merge.waitsecs_hint = NULL;
   p->info.merge.hint = PT_HINT_NONE;
-  p->info.merge.server_op = false;
-  p->info.merge.has_unique = false;
+  p->info.merge.flags = 0;
 
   return p;
 }

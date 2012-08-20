@@ -22015,7 +22015,8 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	  spec->next = NULL;
 	  statement->info.query.q.select.from = spec;
 	  statement =
-	    pt_add_row_classoid_name (parser, statement, info->server_op);
+	    pt_add_row_classoid_name (parser, statement,
+				      (info->flags & PT_MERGE_INFO_SERVER_OP));
 	  assert (statement != NULL);
 	  statement = pt_add_row_oid_name (parser, statement);
 	  assert (statement != NULL);
@@ -22861,7 +22862,8 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       goto cleanup;
     }
 
-  insert->has_uniques = statement->info.merge.has_unique;
+  insert->has_uniques =
+    (statement->info.merge.flags & PT_MERGE_INFO_HAS_UNIQUE);
   insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
   hint_arg = statement->info.merge.waitsecs_hint;
   if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT

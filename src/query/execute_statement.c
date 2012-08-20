@@ -6818,7 +6818,8 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   check_where = statement->node_type == PT_MERGE
     ? statement->info.merge.check_where : statement->info.update.check_where;
   has_unique = statement->node_type == PT_MERGE
-    ? statement->info.merge.has_unique : statement->info.update.has_unique;
+    ? (statement->info.merge.flags & PT_MERGE_INFO_HAS_UNIQUE)
+    : statement->info.update.has_unique;
 
   /* load data in update structures */
   error = init_update_data (parser, statement, &assigns, &assign_count,
@@ -14413,9 +14414,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto exit;
 	}
-      if (!statement->info.merge.has_unique)
+      if (has_unique)
 	{
-	  statement->info.merge.has_unique = (bool) has_unique;
+	  statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
 	}
 
       lhs = statement->info.merge.update.assignment->info.expr.arg1;
@@ -14512,9 +14513,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto exit;
 	}
-      if (!statement->info.merge.has_unique)
+      if (has_unique)
 	{
-	  statement->info.merge.has_unique = (bool) has_unique;
+	  statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
 	}
 
       /* check not nulls attrs are present in attr list */
@@ -14788,6 +14789,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* nothing to merge */
       statement->xasl_id = NULL;
+      statement->info.merge.flags |= PT_MERGE_INFO_FALSE_WHERE;
       goto cleanup;
     }
 
@@ -14867,9 +14869,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto cleanup;
 	}
-      if (!statement->info.merge.has_unique)
+      if (has_unique)
 	{
-	  statement->info.merge.has_unique = (bool) has_unique;
+	  statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
 	}
 
       server_update = (!has_trigger && !has_virt
@@ -14935,9 +14937,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto cleanup;
 	}
-      if (!statement->info.merge.has_unique)
+      if (has_unique)
 	{
-	  statement->info.merge.has_unique = (bool) has_unique;
+	  statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
 	}
 
       /* check not nulls attrs are present in attr list */
@@ -14953,7 +14955,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   server_op = (server_insert && server_update);
-  statement->info.merge.server_op = server_op;
 
   if (server_op)
     {
@@ -14961,6 +14962,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       XASL_NODE *xasl;
       char *stream;
       int size;
+
+      statement->info.merge.flags |= PT_MERGE_INFO_SERVER_OP;
 
       /* make query string */
       parser->dont_prt_long_string = 1;
@@ -15190,8 +15193,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* savepoint for statement atomicity */
   savepoint_name = NULL;
 
-  if ((!statement->info.merge.update.assignment
-      && !statement->info.merge.insert.value_clauses) || !statement->xasl_id)
+  if (statement->info.merge.flags & PT_MERGE_INFO_FALSE_WHERE)
     {
       /* nothing to execute */
       statement->etc = NULL;
@@ -15215,7 +15217,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto exit;
     }
 
-  if (statement->info.merge.server_op)
+  if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {
       /* server side execution */
 

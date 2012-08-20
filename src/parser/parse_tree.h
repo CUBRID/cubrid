@@ -2438,8 +2438,10 @@ struct pt_merge_info
   PT_NODE *check_where;		/* check option */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
-  bool has_unique;		/* whether there's an unique constraint */
-  bool server_op;		/* whether it can be server-side operation */
+#define PT_MERGE_INFO_HAS_UNIQUE  1 /* has unique constraints */
+#define PT_MERGE_INFO_SERVER_OP	  2 /* server side operation */
+#define PT_MERGE_INFO_FALSE_WHERE 4 /* merge condition always false */
+  short flags;			/* statement specific flags */
 };
 
 /* Info for SET NAMES */
