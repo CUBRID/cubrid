@@ -2825,11 +2825,18 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
    * string failed */
 
   p = parse_date_separated (str, strend, &date, &syntax_check, &year_digits,
-			    NULL);
+			    &sep_ch);
 
   if (p || syntax_check)
     {
       bool space_separator = false;
+      bool has_explicit_date_part = false;
+
+      /* check whether string has explicit date part */
+      if (sep_ch == '-' || sep_ch == '/')
+	{
+	  has_explicit_date_part = true;
+	}
 
       if (!syntax_check)
 	{
@@ -2879,14 +2886,20 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 		  else
 		    {
 		      /* no time value found following the date and separator
-		       * keep trying to parse the string as a (separated and
-		       * then) compact time */
+		       * check whether is a Date string with space suffix
+		       * for example,"2012-8-15     " */
+		      if (has_explicit_date_part)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_TIME_CONVERSION, 0);
+			  return ER_TIME_CONVERSION;
+			}
 		    }
 		}
 	    }
 	  else
 	    {
-	      /* Invalid date followed by separator */
+	      /* Invalid date followed by separator, */
 	      int time_parts = 0;
 
 	      p = syntax_check;
@@ -2894,7 +2907,6 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 	      p =
 		parse_mtime_separated (p, strend, &mtime, &syntax_check,
 				       &time_parts, NULL, NULL, false);
-
 	      if (p || syntax_check)
 		{
 		  /* date-time string with an invalid date and/or time */
@@ -2902,6 +2914,25 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 			  ER_TIME_CONVERSION, 0);
 		  return ER_TIME_CONVERSION;
 		}
+	      else
+		{
+		  if (has_explicit_date_part)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_TIME_CONVERSION, 0);
+		      return ER_TIME_CONVERSION;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  if (p && has_explicit_date_part)
+	    {
+	      /* only explicit Date type, should return an error. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	      return ER_TIME_CONVERSION;
 	    }
 	}
     }
@@ -2911,8 +2942,8 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
   mtime = 0;
   syntax_check = NULL;
 
-  p = parse_explicit_mtime_separated (str, strend, &mtime, &syntax_check,
-				      NULL);
+  p =
+    parse_explicit_mtime_separated (str, strend, &mtime, &syntax_check, NULL);
 
   if (p)
     {
