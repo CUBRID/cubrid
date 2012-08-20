@@ -861,6 +861,20 @@ extern "C"
 						 PT_NODE * charset_node,
 						 PT_NODE * coll_node,
 						 int *charset, int *coll_id);
+  extern bool pt_get_collation_info (PT_NODE * node, int *coll_id,
+				     INTL_CODESET * codeset,
+				     PT_COLL_COERC_LEV * coerc_level);
+  extern int pt_common_collation (const int arg1_coll,
+				  const INTL_CODESET arg1_cs,
+				  PT_COLL_COERC_LEV arg1_coerc_level,
+				  const int arg2_coll,
+				  const INTL_CODESET arg2_cs,
+				  PT_COLL_COERC_LEV arg2_coerc_level,
+				  const int arg3_coll,
+				  const INTL_CODESET arg3_cs,
+				  PT_COLL_COERC_LEV arg3_coerc_level,
+				  const int args_w_coll, bool op_has_3_args,
+				  int *common_coll, INTL_CODESET * common_cs);
 #ifdef __cplusplus
 }
 #endif

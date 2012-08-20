@@ -309,9 +309,6 @@ static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 					   DB_VALUE * arg3);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
 static bool pt_is_op_w_collation (const PT_OP_TYPE op);
-static bool pt_get_collation_info (PT_NODE * node, int *coll_id,
-				   INTL_CODESET * codeset,
-				   PT_COLL_COERC_LEV * coerc_level);
 static int pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
 						      PT_NODE * node,
 						      int *coll_id,
@@ -322,17 +319,6 @@ static PT_NODE *pt_coerce_node_collation (PARSER_CONTEXT * parser,
 					  PT_NODE * node, const int coll_id,
 					  const INTL_CODESET codeset,
 					  bool force_mode);
-static int pt_common_collation (const int arg1_coll,
-				const INTL_CODESET arg1_cs,
-				PT_COLL_COERC_LEV arg1_coerc_level,
-				const int arg2_coll,
-				const INTL_CODESET arg2_cs,
-				PT_COLL_COERC_LEV arg2_coerc_level,
-				const int arg3_coll,
-				const INTL_CODESET arg3_cs,
-				PT_COLL_COERC_LEV arg3_coerc_level,
-				const int args_w_coll, bool op_has_3_args,
-				int *common_coll, INTL_CODESET * common_cs);
 static int pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node);
 static PT_NODE *pt_node_to_enumeration_expr (PARSER_CONTEXT * parser,
 					     PT_NODE * data_type,
@@ -16213,7 +16199,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	error = db_make_string (result, username);
 	if (error < 0)
 	  {
-	    db_string_free (username);
+	    db_string_free ((char *) username);
 	    PT_ERRORc (parser, o1, er_msg ());
 	    return 0;
 	  }
@@ -19664,7 +19650,7 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
  *   coerc_level: collation coercibility level of node
  *
  */
-static bool
+bool
 pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
 		       PT_COLL_COERC_LEV * coerc_level)
 {
@@ -19709,6 +19695,17 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
 	  || node->info.expr.op == PT_VERSION)
 	{
 	  *coerc_level = PT_COLLATION_L4_COERC;
+	  break;
+	}
+      if (node->info.expr.op == PT_CAST
+	  && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
+	{
+	  int dummy;
+	  INTL_CODESET dummy_cs;
+	  /* collation and codeset of wrapped CAST, but get coercibility
+	   * from original node */
+	  pt_get_collation_info (node->info.expr.arg1, &dummy, &dummy_cs,
+				 coerc_level);
 	  break;
 	}
       /* fall through */
@@ -20139,7 +20136,7 @@ cannot_coerce:
  *   common_cs(out): common codeset detected
  *
  */
-static int
+int
 pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 		     PT_COLL_COERC_LEV arg1_coerc_level,
 		     const int arg2_coll, const INTL_CODESET arg2_cs,
