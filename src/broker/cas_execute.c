@@ -3809,10 +3809,13 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
       {
 	char *value, *invalid_pos = NULL;
 	int val_size;
+	int val_length;
 	bool is_composed = false;
 	int composed_size;
 
 	net_arg_get_str (&value, &val_size, net_value);
+
+	val_size--;
 
 	if (intl_check_string (value, val_size, &invalid_pos,
 			       lang_get_client_charset ()) != 0)
@@ -3868,7 +3871,11 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  }
 	else
 	  {
-	    err_code = db_make_string (&db_val, value);
+	    intl_char_count ((unsigned char *) value, val_size,
+			     lang_get_client_charset (), &val_length);
+	    err_code = db_make_varchar (&db_val, val_length, value, val_size,
+					lang_get_client_charset (),
+					lang_get_client_collation ());
 	    db_put_cs_and_collation (&db_val, lang_get_client_charset (),
 				     lang_get_client_collation ());
 	    db_val.need_clear = is_composed;

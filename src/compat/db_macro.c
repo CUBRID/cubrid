@@ -5838,7 +5838,7 @@ int
 db_put_cs_and_collation (DB_VALUE * value, const int codeset,
 			 const int collation_id)
 {
-  int error;
+  int error = NO_ERROR;
 
   CHECK_1ARG_ERROR (value);
 
