@@ -1570,6 +1570,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 257 Cannot MERGE UPDATE column %s referenced in ON clause.
 258 The number of columns, %d, in ( %s ) do not match\nthe number of columns, %d, in ( %s ).
 259 Prefixes of columns not allowed in function index expression.
+260 %s cannot be a PARTITION BY or ORDER BY column
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

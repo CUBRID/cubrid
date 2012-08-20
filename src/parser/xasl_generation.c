@@ -72,7 +72,8 @@ typedef enum
 { SORT_LIST_AFTER_ISCAN = 1,
   SORT_LIST_ORDERBY,
   SORT_LIST_GROUPBY,
-  SORT_LIST_AFTER_GROUPBY
+  SORT_LIST_AFTER_GROUPBY,
+  SORT_LIST_ANALYTIC_WINDOW
 } SORT_LIST_MODE;
 
 static int pt_Hostvar_sno = 1;
@@ -5356,9 +5357,18 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
   int i, k;
   int adjust_for_hidden_col_from = -1;
   DB_TYPE dom_type;
+  bool is_analytic_window = false;
 
   sort_list = sort = lastsort = NULL;
   i = 0;			/* SORT_LIST pos_no start from 0 */
+
+  if (sort_mode == SORT_LIST_ANALYTIC_WINDOW)
+    {
+      /* analytic sort specs behave just as ORDER BY sort specs, but error
+         messages differ */
+      sort_mode = SORT_LIST_ORDERBY;
+      is_analytic_window = true;
+    }
 
   /* check if a hidden column is in the select list; if it is the case, store
      the position in 'adjust_for_hidden_col_from' - index starting from 1
@@ -5479,10 +5489,42 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 
       /* GROUP BY ?  or  ORDER BY ? are not allowed */
       dom_type = TP_DOMAIN_TYPE (node->info.sort_spec.pos_descr.dom);
-      if (dom_type == DB_TYPE_BLOB
-	  || dom_type == DB_TYPE_CLOB
-	  || (node->info.sort_spec.expr->node_type == PT_HOST_VAR
-	      && dom_type == DB_TYPE_VARIABLE))
+
+      if (is_analytic_window
+	  && (dom_type == DB_TYPE_BLOB || dom_type == DB_TYPE_CLOB
+	      || dom_type == DB_TYPE_VARIABLE))
+	{
+	  /* analytic sort spec expressions have been moved to select list;
+	     check for host variable there */
+	  for (col = col_list, k = 1; col; col = col->next, k++)
+	    {
+	      if (node->info.sort_spec.pos_descr.pos_no == k)
+		{
+		  break;
+		}
+	    }
+
+	  if (col == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "sort spec out of bounds");
+	      return NULL;
+	    }
+
+	  if (col->node_type == PT_HOST_VAR || dom_type != DB_TYPE_VARIABLE)
+	    {
+	      PT_ERRORmf (parser, col,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_NOT_ALLOWED_IN_WINDOW,
+			  pt_short_print (parser, col));
+	      return NULL;
+	    }
+
+	  /* we allow variable domain but no host var */
+	}
+      else if (dom_type == DB_TYPE_BLOB
+	       || dom_type == DB_TYPE_CLOB
+	       || (node->info.sort_spec.expr->node_type == PT_HOST_VAR
+		   && dom_type == DB_TYPE_VARIABLE))
 	{
 	  if (sort_mode == SORT_LIST_ORDERBY)
 	    {
@@ -20849,14 +20891,18 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
     {
       analytic->sort_list =
 	pt_to_sort_list (parser, order_list, analytic_info->select_list,
-			 SORT_LIST_ORDERBY);
+			 SORT_LIST_ANALYTIC_WINDOW);
 
       if (analytic->sort_list == NULL)
 	{
-	  PT_ERROR (parser, tree,
-		    msgcat_message (MSGCAT_CATALOG_CUBRID,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_SORT_SPEC_NOT_EXIST));
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERROR (parser, tree,
+			msgcat_message (MSGCAT_CATALOG_CUBRID,
+					MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_SORT_SPEC_NOT_EXIST));
+	    }
+
 	  goto exit_on_error;
 	}
     }
