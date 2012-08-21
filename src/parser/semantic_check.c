@@ -357,6 +357,8 @@ static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser,
 					    PT_NODE * spec,
 					    PT_NODE * spec_list,
 					    PT_NODE * select_list);
+static PT_NODE *pt_remove_null_sort_specs (PARSER_CONTEXT * parser,
+					   PT_NODE * list);
 static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser,
 					    PT_NODE * node, void *arg,
 					    int *continue_walk);
@@ -14103,6 +14105,59 @@ pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
 }
 
 /*
+ * pt_remove_null_sort_specs () - remove NULL sort columns (e.g. ORDER BY NULL)
+ *   return: new list, without NULL specs
+ *   parser(in): parser context
+ *   list(in): spec list
+ */
+static PT_NODE *
+pt_remove_null_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
+{
+  PT_NODE *item, *expr, *save_next;
+
+  /* check nulls */
+  if (parser == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  if (list == NULL)
+    {
+      return NULL;
+    }
+
+  /* remove nulls */
+  item = list;
+  list = NULL;
+  while (item)
+    {
+      /* unlink */
+      save_next = item->next;
+      item->next = NULL;
+
+      expr = item->info.sort_spec.expr;
+      if (item->node_type == PT_SORT_SPEC && expr != NULL
+	  && expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_NULL)
+	{
+	  /* NULL spec, get rid of it */
+	  parser_free_tree (parser, item);
+	}
+      else
+	{
+	  /* normal spec, keep it */
+	  list = parser_append_node (item, list);
+	}
+
+      /* continue */
+      item = save_next;
+    }
+
+  /* list contains only normal specs */
+  return list;
+}
+
+/*
  * pt_check_analytic_function () -
  *   return:
  *   parser(in):
@@ -14146,6 +14201,13 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 		  pt_short_print (parser, func));
       return func;
     }
+
+  /* remove NULL specs */
+  func->info.function.analytic.partition_by =
+    pt_remove_null_sort_specs (parser,
+			       func->info.function.analytic.partition_by);
+  func->info.function.analytic.order_by =
+    pt_remove_null_sort_specs (parser, func->info.function.analytic.order_by);
 
   partition_by = func->info.function.analytic.partition_by;
   order_by = func->info.function.analytic.order_by;
