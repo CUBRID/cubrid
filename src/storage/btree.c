@@ -10104,6 +10104,10 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
+  if (max_key >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
+    {
+      max_key = DISK_VPID_SIZE;
+    }
   max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
   if (max_key > max_key_len)
     {
@@ -10524,6 +10528,10 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
+  if (max_key >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
+    {
+      max_key = DISK_VPID_SIZE;
+    }
   max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
   if (max_key > max_key_len)
     {
