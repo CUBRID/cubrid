@@ -318,8 +318,9 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 {
   int error = NO_ERROR;
 
-  if (locator_add_or_remove_index (NULL, rec, obj_oid, class_oid, true,
-				   SINGLE_ROW_INSERT, (HEAP_SCANCACHE *) NULL,
+  if (locator_add_or_remove_index (NULL, rec, obj_oid, class_oid, NULL, false,
+				   true, SINGLE_ROW_INSERT,
+				   (HEAP_SCANCACHE *) NULL,
 				   /* ejin: for replication... */
 				   false,	/* 7th arg -> data or schema */
 				   false, NULL)	/* 8th arg -> make repl. log or not */

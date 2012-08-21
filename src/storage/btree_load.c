@@ -2288,10 +2288,10 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 	  goto exit_on_error;
 	}
 
-      ret = locator_attribute_info_force (thread_p, hfid, oid, &attr_info,
-					  &cache_attr_id, 1, LC_FLUSH_UPDATE,
-					  SINGLE_ROW_UPDATE, &upd_scancache,
-					  &force_count, true,
+      ret = locator_attribute_info_force (thread_p, hfid, oid, NULL, false,
+					  &attr_info, &cache_attr_id, 1,
+					  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE,
+					  &upd_scancache, &force_count, true,
 					  REPL_INFO_TYPE_STMT_NORMAL);
       if (ret != NO_ERROR)
 	{

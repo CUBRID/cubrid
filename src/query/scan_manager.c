@@ -3335,6 +3335,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       }
   }
 
+  isidp->duplicate_key_locked = false;
+
   return ret;
 
 exit_on_error:

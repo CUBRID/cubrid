@@ -376,6 +376,10 @@ struct upddel_class_info_internal
   OID *oid;			/* instance oid of current class */
   OID *class_oid;		/* oid of current class */
   HFID *class_hfid;		/* hfid of current class */
+  BTID *btid;			/* btid of the current class */
+  bool btid_dup_key_locked;	/* true, if coresponding btid contain
+				   duplicate keys locked when searching  */
+
   OID prev_class_oid;		/* previous class oid */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
@@ -387,6 +391,10 @@ struct upddel_class_info_internal
   int no_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
   DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
+  BTID *btids;			/* btids used when searching subclasses
+				   of the current class */
+  bool *btids_dup_key_locked;	/* true, if coresponding btid contain
+				   duplicate keys locked when searching  */
 };
 
 static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
@@ -956,13 +964,17 @@ static int qexec_init_instnum_val (XASL_NODE * xasl,
 				   THREAD_ENTRY * thread_p,
 				   XASL_STATE * xasl_state);
 static int qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
-						 XASL_NODE * xasl,
-						 UPDDEL_CLASS_INFO * classes,
-						 int count);
-static int qexec_init_classes_info (THREAD_ENTRY * thread_p,
-				    UPDDEL_CLASS_INFO_INTERNAL ** classes,
-				    UPDDEL_CLASS_INFO * classes_info,
-				    int count);
+						 XASL_NODE * aptr_list,
+						 UPDDEL_CLASS_INFO *
+						 query_classes,
+						 int query_classes_count,
+						 UPDDEL_CLASS_INFO_INTERNAL *
+						 internal_classes);
+static int qexec_create_internal_classes (THREAD_ENTRY * thread_p,
+					  UPDDEL_CLASS_INFO * classes_info,
+					  int count,
+					  UPDDEL_CLASS_INFO_INTERNAL **
+					  classes);
 static int qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 					     UPDDEL_CLASS_INFO_INTERNAL *
 					     class_info, OID * current_oid);
@@ -1228,7 +1240,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QPROC_TPLDESCR_STATUS tpldescr_status;
   int ret = NO_ERROR;
 
-  if (xasl->composite_locking)
+  if ((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
+      || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr))
     {
       if (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
 	{
@@ -7525,7 +7538,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int attr_id;
   OID *oid = NULL;
   OID *class_oid = NULL;
-  UPDDEL_CLASS_INFO_INTERNAL *classes_info = NULL, *cls_info = NULL;
+  UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
   ACCESS_SPEC_TYPE *specp = NULL;
   SCAN_ID *s_id;
   LOG_LSA lsa;
@@ -7548,11 +7561,22 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   class_oid_cnt = update->no_classes;
 
+  /* Allocate memory for oids, hfids and attributes cache info of all classes
+   * used in update */
+  error =
+    qexec_create_internal_classes (thread_p, update->classes, class_oid_cnt,
+				   &internal_classes);
+  if (error != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+
   /* set X_LOCK for updatable classes */
   error =
     qexec_set_lock_for_sequential_access (thread_p, xasl->aptr_list,
-					  update->classes,
-					  update->no_classes);
+					  update->classes, update->no_classes,
+					  internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -7669,16 +7693,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   scan_open = true;
 
-  /* Allocate memory for oids, hfids and attributes cache info of all classes
-   * used in update */
-  error =
-    qexec_init_classes_info (thread_p, &classes_info, update->classes,
-			     update->no_classes);
-  if (error != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
-
   tuple_cnt = 1;
   while ((xb_scan =
 	  qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
@@ -7734,7 +7748,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	       vallist = vallist->next->next, class_oid_idx++)
 	    {
 	      upd_cls = &update->classes[class_oid_idx];
-	      cls_info = &classes_info[class_oid_idx];
+	      internal_class = &internal_classes[class_oid_idx];
 
 	      /* instance OID */
 	      valp = vallist->val;
@@ -7744,10 +7758,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	      if (DB_IS_NULL (valp))
 		{
-		  cls_info->oid = NULL;
+		  internal_class->oid = NULL;
 		  continue;
 		}
-	      cls_info->oid = DB_GET_OID (valp);
+	      internal_class->oid = DB_GET_OID (valp);
 
 	      /* class OID */
 	      valp = vallist->next->val;
@@ -7762,11 +7776,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      class_oid = DB_GET_OID (valp);
 
 	      /* class has changed to a new subclass */
-	      if (class_oid && !OID_EQ (&cls_info->prev_class_oid, class_oid))
+	      if (class_oid
+		  && !OID_EQ (&internal_class->prev_class_oid, class_oid))
 		{
 		  /* find class HFID */
 		  error =
-		    qexec_upddel_setup_current_class (upd_cls, cls_info,
+		    qexec_upddel_setup_current_class (upd_cls, internal_class,
 						      class_oid);
 		  if (error != NO_ERROR)
 		    {
@@ -7778,21 +7793,22 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    }
 
 		  /* clear attribute cache information if valid old subclass */
-		  if (!OID_ISNULL (&cls_info->prev_class_oid)
-		      && cls_info->is_attr_info_inited)
+		  if (!OID_ISNULL (&internal_class->prev_class_oid)
+		      && internal_class->is_attr_info_inited)
 		    {
 		      (void) heap_attrinfo_end (thread_p,
-						&cls_info->attr_info);
-		      cls_info->is_attr_info_inited = false;
+						&internal_class->attr_info);
+		      internal_class->is_attr_info_inited = false;
 		    }
 
 		  /* calc. heap attrobute information for new subclass */
 		  if (heap_attrinfo_start (thread_p, class_oid, -1, NULL,
-					   &cls_info->attr_info) != NO_ERROR)
+					   &internal_class->attr_info) !=
+		      NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  cls_info->is_attr_info_inited = true;
+		  internal_class->is_attr_info_inited = true;
 
 		  /* statistical information for unique btrees and scan cache */
 		  if (unique_stats_info[class_oid_idx].scan_cache_inited)
@@ -7821,19 +7837,20 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 		  if (locator_start_force_scan_cache
 		      (thread_p, &unique_stats_info[class_oid_idx].scan_cache,
-		       cls_info->class_hfid, class_oid, op_type) != NO_ERROR)
+		       internal_class->class_hfid, class_oid,
+		       op_type) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		  unique_stats_info[class_oid_idx].scan_cache_inited = true;
 
-		  COPY_OID (&cls_info->prev_class_oid, class_oid);
+		  COPY_OID (&internal_class->prev_class_oid, class_oid);
 		}
 
-	      if (!HFID_IS_NULL (cls_info->class_hfid))
+	      if (!HFID_IS_NULL (internal_class->class_hfid))
 		{
 		  if (heap_attrinfo_clear_dbvalues
-		      (&cls_info->attr_info) != NO_ERROR)
+		      (&internal_class->attr_info) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -7847,10 +7864,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      assign = &update->assigns[assign_idx];
 	      class_oid_idx = assign->cls_idx;
-	      cls_info = &classes_info[class_oid_idx];
-	      attr_info = &cls_info->attr_info;
+	      internal_class = &internal_classes[class_oid_idx];
+	      attr_info = &internal_class->attr_info;
 	      upd_cls = &update->classes[class_oid_idx];
-	      oid = cls_info->oid;
+	      oid = internal_class->oid;
 	      if (oid == NULL)
 		{
 		  /* nothing to update */
@@ -7861,8 +7878,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  continue;
 		}
 	      attr_id =
-		upd_cls->att_id[cls_info->subclass_idx * upd_cls->no_attrs +
-				assign->att_idx];
+		upd_cls->att_id[internal_class->subclass_idx *
+				upd_cls->no_attrs + assign->att_idx];
 
 
 	      if (assign->constant != NULL)
@@ -7891,10 +7908,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  for (class_oid_idx = class_oid_cnt - 1; class_oid_idx >= 0;
 	       class_oid_idx--)
 	    {
-	      cls_info = &classes_info[class_oid_idx];
+	      internal_class = &internal_classes[class_oid_idx];
 	      upd_cls = &update->classes[class_oid_idx];
 	      force_count = 0;
-	      oid = cls_info->oid;
+	      oid = internal_class->oid;
 	      if (oid == NULL)
 		{
 		  continue;
@@ -7912,10 +7929,15 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  actual_op_type = op_type;
 		}
 	      error =
-		locator_attribute_info_force (thread_p, cls_info->class_hfid,
-					      oid, &cls_info->attr_info,
+		locator_attribute_info_force (thread_p,
+					      internal_class->class_hfid,
+					      oid,
+					      internal_class->btid,
+					      internal_class->
+					      btid_dup_key_locked,
+					      &internal_class->attr_info,
 					      &upd_cls->att_id
-					      [cls_info->subclass_idx *
+					      [internal_class->subclass_idx *
 					       upd_cls->no_attrs],
 					      upd_cls->no_attrs, op,
 					      actual_op_type,
@@ -8031,16 +8053,16 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       for (s = 0; s < class_oid_cnt; s++)
 	{
-	  cls_info = &classes_info[s];
+	  internal_class = &internal_classes[s];
 	  if (unique_stats_info[s].scan_cache_inited)
 	    {
 	      (void) locator_end_force_scan_cache (thread_p,
 						   &unique_stats_info[s].
 						   scan_cache);
 	    }
-	  if (cls_info->is_attr_info_inited)
+	  if (internal_class->is_attr_info_inited)
 	    {
-	      (void) heap_attrinfo_end (thread_p, &cls_info->attr_info);
+	      (void) heap_attrinfo_end (thread_p, &internal_class->attr_info);
 	    }
 	}
 
@@ -8059,15 +8081,32 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       db_private_free (thread_p, unique_stats_info);
     }
 
-  if (classes_info != NULL)
+  if (internal_classes != NULL)
     {
-      if (classes_info->partitions != NULL)
+      for (class_oid_idx = 0; class_oid_idx < class_oid_cnt; class_oid_idx++)
 	{
-	  partition_free_partitions (thread_p, classes_info->partitions,
-				     classes_info->parts_count);
-	}
+	  if (internal_classes[class_oid_idx].btids != NULL)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].btids);
+	    }
+	  if (internal_classes[class_oid_idx].btids_dup_key_locked)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].
+			       btids_dup_key_locked);
+	    }
 
-      db_private_free (thread_p, classes_info);
+	  if (internal_classes[class_oid_idx].partitions != NULL)
+	    {
+	      partition_free_partitions (thread_p,
+					 internal_classes[class_oid_idx].
+					 partitions,
+					 internal_classes[class_oid_idx].
+					 parts_count);
+	    }
+	}
+      db_private_free (thread_p, internal_classes);
     }
 
   if (savepoint_used)
@@ -8119,7 +8158,7 @@ exit_on_error:
     {
       for (s = 0; s < class_oid_cnt; s++)
 	{
-	  cls_info = &classes_info[s];
+	  internal_class = &internal_classes[s];
 	  if (unique_stats_info[s].scan_cache_inited)
 	    {
 	      (void) locator_end_force_scan_cache (thread_p,
@@ -8127,9 +8166,9 @@ exit_on_error:
 						   scan_cache);
 	    }
 
-	  if (cls_info->is_attr_info_inited)
+	  if (internal_class->is_attr_info_inited)
 	    {
-	      (void) heap_attrinfo_end (thread_p, &cls_info->attr_info);
+	      (void) heap_attrinfo_end (thread_p, &internal_class->attr_info);
 	    }
 	}
 
@@ -8153,15 +8192,32 @@ exit_on_error:
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
 
-  if (classes_info != NULL)
+  if (internal_class != NULL)
     {
-      if (classes_info->partitions != NULL)
+      for (class_oid_idx = 0; class_oid_idx < class_oid_cnt; class_oid_idx++)
 	{
-	  partition_free_partitions (thread_p, classes_info->partitions,
-				     classes_info->parts_count);
-	}
+	  if (internal_classes[class_oid_idx].btids != NULL)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].btids);
+	    }
+	  if (internal_classes[class_oid_idx].btids_dup_key_locked)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].
+			       btids_dup_key_locked);
+	    }
 
-      db_private_free (thread_p, classes_info);
+	  if (internal_classes[class_oid_idx].partitions != NULL)
+	    {
+	      partition_free_partitions (thread_p,
+					 internal_classes[class_oid_idx].
+					 partitions,
+					 internal_classes[class_oid_idx].
+					 parts_count);
+	    }
+	}
+      db_private_free (thread_p, internal_classes);
     }
 
   return ER_FAILED;
@@ -8275,30 +8331,34 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   BTREE_UNIQUE_STATS_UPDATE_INFO *unique_stats_info = NULL;
   QPROC_DB_VALUE_LIST val_list = NULL;
   bool scan_open = false;
-  UPDDEL_CLASS_INFO *del_cls = NULL;
-  UPDDEL_CLASS_INFO_INTERNAL *classes_info = NULL, *cls_info = NULL;
+  UPDDEL_CLASS_INFO *query_class = NULL;
+  UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
 
   class_oid_cnt = delete_->no_classes;
+
+  /* Allocate memory for oids, hfids and attributes cache info of all classes
+   * used in update */
+  error =
+    qexec_create_internal_classes (thread_p, delete_->classes,
+				   delete_->no_classes, &internal_classes);
+  if (error != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
   /* set X_LOCK for deletable classes */
   error =
     qexec_set_lock_for_sequential_access (thread_p, xasl->aptr_list,
 					  delete_->classes,
-					  delete_->no_classes);
+					  delete_->no_classes,
+					  internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
-  /* Allocate memory for oids, hfids and attributes cache info of all classes
-   * used in update */
-  error =
-    qexec_init_classes_info (thread_p, &classes_info, delete_->classes,
-			     delete_->no_classes);
-  if (error != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
+
   aptr = xasl->aptr_list;
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
@@ -8411,8 +8471,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
 	       val_list = val_list->next->next, class_oid_idx++)
 	    {
-	      del_cls = &delete_->classes[class_oid_idx];
-	      cls_info = &classes_info[class_oid_idx];
+	      query_class = &delete_->classes[class_oid_idx];
+	      internal_class = &internal_classes[class_oid_idx];
 
 	      valp = val_list->val;
 	      if (valp == NULL)
@@ -8436,12 +8496,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      class_oid = DB_GET_OID (valp);
 
 	      if (class_oid
-		  && (cls_info->class_oid == NULL
-		      || !OID_EQ (cls_info->class_oid, class_oid)))
+		  && (internal_class->class_oid == NULL
+		      || !OID_EQ (internal_class->class_oid, class_oid)))
 		{
 		  /* find class HFID */
 		  error =
-		    qexec_upddel_setup_current_class (del_cls, cls_info,
+		    qexec_upddel_setup_current_class (query_class,
+						      internal_class,
 						      class_oid);
 		  if (error != NO_ERROR)
 		    {
@@ -8479,33 +8540,35 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 		  if (locator_start_force_scan_cache
 		      (thread_p, &unique_stats_info[class_oid_idx].scan_cache,
-		       cls_info->class_hfid, class_oid, op_type) != NO_ERROR)
+		       internal_class->class_hfid, class_oid,
+		       op_type) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		  unique_stats_info[class_oid_idx].scan_cache_inited = true;
 
-		  if (cls_info->no_lob_attrs)
+		  if (internal_class->no_lob_attrs)
 		    {
-		      cls_info->crt_del_lob_info =
+		      internal_class->crt_del_lob_info =
 			qexec_change_delete_lob_info (thread_p, xasl_state,
-						      cls_info,
+						      internal_class,
 						      &del_lob_info_list);
-		      if (cls_info->crt_del_lob_info == NULL)
+		      if (internal_class->crt_del_lob_info == NULL)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
 		    }
 		  else
 		    {
-		      cls_info->crt_del_lob_info = NULL;
+		      internal_class->crt_del_lob_info = NULL;
 		    }
 		}
 
-	      if (cls_info->crt_del_lob_info)
+	      if (internal_class->crt_del_lob_info)
 		{
 		  /* delete lob files */
-		  DEL_LOB_INFO *crt_del_lob_info = cls_info->crt_del_lob_info;
+		  DEL_LOB_INFO *crt_del_lob_info =
+		    internal_class->crt_del_lob_info;
 		  SCAN_CODE scan_code;
 		  int error;
 		  int i;
@@ -8529,7 +8592,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
-		      for (i = 0; i < cls_info->no_lob_attrs; i++)
+		      for (i = 0; i < internal_class->no_lob_attrs; i++)
 			{
 			  DB_VALUE *attr_valp =
 			    &crt_del_lob_info->attr_info.values[i].dbvalue;
@@ -8558,7 +8621,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      force_count = 0;
 	      if (locator_attribute_info_force
-		  (thread_p, cls_info->class_hfid, oid, NULL, NULL, 0,
+		  (thread_p, internal_class->class_hfid, oid,
+		   internal_class->btid, internal_class->btid_dup_key_locked,
+		   NULL, NULL, 0,
 		   LC_FLUSH_DELETE, op_type,
 		   &unique_stats_info[class_oid_idx].scan_cache, &force_count,
 		   false, REPL_INFO_TYPE_STMT_NORMAL) != NO_ERROR)
@@ -8674,15 +8739,32 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       db_private_free (thread_p, unique_stats_info);
     }
 
-  if (classes_info != NULL)
+  if (internal_classes != NULL)
     {
-      if (classes_info->partitions != NULL)
+      for (class_oid_idx = 0; class_oid_idx < class_oid_cnt; class_oid_idx++)
 	{
-	  partition_free_partitions (thread_p, classes_info->partitions,
-				     classes_info->parts_count);
-	}
+	  if (internal_classes[class_oid_idx].btids != NULL)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].btids);
+	    }
+	  if (internal_classes[class_oid_idx].btids_dup_key_locked)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].
+			       btids_dup_key_locked);
+	    }
 
-      db_private_free (thread_p, classes_info);
+	  if (internal_classes[class_oid_idx].partitions != NULL)
+	    {
+	      partition_free_partitions (thread_p,
+					 internal_classes[class_oid_idx].
+					 partitions,
+					 internal_classes[class_oid_idx].
+					 parts_count);
+	    }
+	}
+      db_private_free (thread_p, internal_classes);
     }
 
 
@@ -8730,15 +8812,32 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
-  if (classes_info != NULL)
+  if (internal_classes != NULL)
     {
-      if (classes_info->partitions != NULL)
+      for (class_oid_idx = 0; class_oid_idx < class_oid_cnt; class_oid_idx++)
 	{
-	  partition_free_partitions (thread_p, classes_info->partitions,
-				     classes_info->parts_count);
-	}
+	  if (internal_classes[class_oid_idx].btids != NULL)
+	    {
+	      db_private_free (thread_p, internal_classes[class_oid_idx].
+			       btids);
+	    }
+	  if (internal_classes[class_oid_idx].btids_dup_key_locked)
+	    {
+	      db_private_free (thread_p,
+			       internal_classes[class_oid_idx].
+			       btids_dup_key_locked);
+	    }
 
-      db_private_free (thread_p, classes_info);
+	  if (internal_classes[class_oid_idx].partitions != NULL)
+	    {
+	      partition_free_partitions (thread_p,
+					 internal_classes[class_oid_idx].
+					 partitions,
+					 internal_classes[class_oid_idx].
+					 parts_count);
+	    }
+	}
+      db_private_free (thread_p, internal_classes);
     }
 
   if (unique_stats_info)
@@ -9046,7 +9145,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 
 	  force_count = 0;
 	  if (locator_attribute_info_force (thread_p, &class_hfid,
-					    &unique_oid, NULL, NULL, 0,
+					    &unique_oid, &index->btid, false,
+					    NULL, NULL, 0,
 					    LC_FLUSH_DELETE, MULTI_ROW_DELETE,
 					    scan_cache, &force_count, false,
 					    REPL_INFO_TYPE_STMT_NORMAL)
@@ -9723,8 +9823,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      force_count = 0;
 	      if (locator_attribute_info_force (thread_p, &insert->class_hfid,
-						&oid, &attr_info, NULL, 0,
-						operation,
+						&oid, NULL, false, &attr_info,
+						NULL, 0, operation,
 						scan_cache_op_type,
 						&scan_cache, &force_count,
 						false,
@@ -9905,8 +10005,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  force_count = 0;
 	  if (locator_attribute_info_force (thread_p, &insert->class_hfid,
-					    &oid, &attr_info, NULL, 0,
-					    operation,
+					    &oid, NULL, false, &attr_info,
+					    NULL, 0, operation,
 					    scan_cache_op_type, &scan_cache,
 					    &force_count, false,
 					    REPL_INFO_TYPE_STMT_NORMAL) !=
@@ -10529,8 +10629,8 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
       value->do_increment = n_increment;
 
       force_count = 0;
-      if (locator_attribute_info_force (thread_p, class_hfid, oid, &attr_info,
-					&attrid, 1,
+      if (locator_attribute_info_force (thread_p, class_hfid, oid, NULL,
+					false, &attr_info, &attrid, 1,
 					LC_FLUSH_UPDATE,
 					SINGLE_ROW_UPDATE, &scan_cache,
 					&force_count, false,
@@ -11355,7 +11455,8 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   distinct_needed = (xasl->option == Q_DISTINCT) ? true : false;
 
   /* Acquire the lockset if composite locking is enabled. */
-  if (xasl->composite_locking
+  if (((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
+       || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr))
       && (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)))
     {
       if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock) !=
@@ -11528,7 +11629,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   ACCESS_SPEC_TYPE *spec_ptr[2];
   ACCESS_SPEC_TYPE *specp;
   XASL_SCAN_FNC_PTR func_vector = (XASL_SCAN_FNC_PTR) NULL;
-  int readonly_scan = true;
+  int readonly_scan = true, readonly_scan2, multi_readonly_scan = false;
   int fixed_scan_flag;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
@@ -11726,7 +11827,9 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      if (xasl->composite_locking)
+      multi_readonly_scan = (xasl->upd_del_class_cnt > 1) ||
+	(xasl->upd_del_class_cnt == 1 && xasl->scan_ptr);
+      if (xasl->composite_locking || multi_readonly_scan)
 	{
 	  readonly_scan = false;
 	  if (lock_initialize_composite_lock (thread_p, &xasl->composite_lock)
@@ -12000,9 +12103,26 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					     xasl->qstmt, "", 0);
 #endif
 #endif
+			  if (multi_readonly_scan)
+			    {
+			      if (xptr->composite_locking)
+				{
+				  readonly_scan2 = false;
+				}
+			      else
+				{
+				  readonly_scan2 = true;
+				}
+			    }
+			  else
+			    {
+			      readonly_scan2 = readonly_scan;
+			    }
+
 			  if (qexec_open_scan (thread_p, specp,
 					       xptr->val_list,
-					       &xasl_state->vd, readonly_scan,
+					       &xasl_state->vd,
+					       readonly_scan2,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
 					       iscan_oid_order,
@@ -12237,7 +12357,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      if (xasl->composite_locking
+      if (((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
+	   || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr))
 	  && XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
 	{
 	  if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock)
@@ -20845,48 +20966,65 @@ qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
  * return : error code or NO_ERROR
  * thread_p (in)  :
  * xasl (in)	  :
- * classes (in)	  :
+ * query_classes (in) : query classes
+ * internal_classes (in) : internal classes
  * count (in)	  :
  */
 static int
 qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 				      XASL_NODE * aptr_list,
-				      UPDDEL_CLASS_INFO * classes, int count)
+				      UPDDEL_CLASS_INFO * query_classes,
+				      int query_classes_count,
+				      UPDDEL_CLASS_INFO_INTERNAL *
+				      internal_classes)
 {
   XASL_NODE *aptr = NULL;
   ACCESS_SPEC_TYPE *specp = NULL;
   OID *class_oid = NULL;
   int i, j, error = NO_ERROR;
-  UPDDEL_CLASS_INFO *class_info = NULL;
+  UPDDEL_CLASS_INFO *query_class = NULL;
   bool found = false;
 
   for (aptr = aptr_list; aptr != NULL; aptr = aptr->scan_ptr)
     {
       for (specp = aptr->spec_list; specp; specp = specp->next)
 	{
-	  if (specp->type == TARGET_CLASS && specp->access == SEQUENTIAL)
+	  if (specp->type == TARGET_CLASS)
 	    {
 	      class_oid = &specp->s.cls_node.cls_oid;
 	      found = false;
 
-	      for (i = 0; i < count && !found; i++)
+	      /* search through query classes */
+	      for (i = 0; i < query_classes_count && !found; i++)
 		{
-		  class_info = &classes[i];
+		  query_class = &query_classes[i];
 
-		  for (j = 0; j < class_info->no_subclasses; j++)
+		  /* search class_oid through subclasses of a query class */
+		  for (j = 0; j < query_class->no_subclasses; j++)
 		    {
-		      if (OID_EQ (&class_info->class_oid[j], class_oid))
+		      if (OID_EQ (&query_class->class_oid[j], class_oid))
 			{
-			  if (lock_object (thread_p, class_oid,
-					   oid_Root_class_oid, X_LOCK,
-					   LK_UNCOND_LOCK) != LK_GRANTED)
+			  if (specp->access == SEQUENTIAL)
 			    {
-			      error = er_errid ();
-			      if (error == NO_ERROR)
+			      if (lock_object (thread_p, class_oid,
+					       oid_Root_class_oid, X_LOCK,
+					       LK_UNCOND_LOCK) != LK_GRANTED)
 				{
-				  error = ER_FAILED;
+				  error = er_errid ();
+				  if (error == NO_ERROR)
+				    {
+				      error = ER_FAILED;
+				    }
+				  return error;
 				}
-			      return error;
+			    }
+			  else
+			    {
+			      /* INDEX access */
+			      BTID_COPY (internal_classes[i].btids + j,
+					 &(specp->indexptr->indx_id.i.btid));
+			      internal_classes[i].btids_dup_key_locked[j] =
+				specp->s_id.s.isid.duplicate_key_locked;
 			    }
 
 			  found = true;
@@ -22103,32 +22241,34 @@ exit_on_error:
 }
 
 /*
- * qexec_init_classes_info () - initialize classes info array
+ * qexec_create_internal_classes () - create internal classes used for
+ *				    internal update / delete execution
  * return : error code or NO_ERROR
  * thread_p (in)    :
- * classes (in/out) : classes array
- * count (in)	    : number of classes
+ * query_classes (in): query classes
+ * count (in)	    : number of query classes
+ * internal_classes (in/out) : internal classes array
  */
 static int
-qexec_init_classes_info (THREAD_ENTRY * thread_p,
-			 UPDDEL_CLASS_INFO_INTERNAL ** classes,
-			 UPDDEL_CLASS_INFO * classes_info, int count)
+qexec_create_internal_classes (THREAD_ENTRY * thread_p,
+			       UPDDEL_CLASS_INFO * query_classes, int count,
+			       UPDDEL_CLASS_INFO_INTERNAL ** internal_classes)
 {
-  UPDDEL_CLASS_INFO_INTERNAL *class_ = NULL, *local_classes = NULL;
+  UPDDEL_CLASS_INFO_INTERNAL *class_ = NULL, *classes = NULL;
+  UPDDEL_CLASS_INFO *query_class = NULL;
   size_t size;
-  int i = 0, error = NO_ERROR;
+  int i = 0, j, error = NO_ERROR, cl_index;
 
-  if (classes == NULL)
+  if (internal_classes == NULL)
     {
       assert (false);
       return ER_FAILED;
     }
-
-  assert (*classes == NULL);
+  *internal_classes = NULL;
 
   size = count * sizeof (UPDDEL_CLASS_INFO_INTERNAL);
-  local_classes = db_private_alloc (thread_p, size);
-  if (local_classes == NULL)
+  classes = db_private_alloc (thread_p, size);
+  if (classes == NULL)
     {
       return ER_FAILED;
     }
@@ -22136,7 +22276,7 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
   /* initialize internal structures */
   for (i = 0; i < count; i++)
     {
-      class_ = &(local_classes[i]);
+      class_ = &(classes[i]);
       class_->oid = NULL;
       class_->class_hfid = NULL;
       class_->class_oid = NULL;
@@ -22144,20 +22284,19 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
       class_->subclass_idx = -1;
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
+      query_class = query_classes + i;
 
-      if (classes_info[i].needs_pruning)
+      if (query_class->needs_pruning)
 	{
 	  /* set partition information here */
 	  class_->needs_pruning = true;
 	  error =
-	    partition_get_partitions (thread_p, &classes_info[i].class_oid[0],
+	    partition_get_partitions (thread_p, &query_class->class_oid[0],
 				      &class_->partitions,
 				      &class_->parts_count);
 	  if (error != NO_ERROR)
 	    {
-	      db_private_free (thread_p, local_classes);
-	      *classes = NULL;
-	      return error;
+	      goto exit_on_error;
 	    }
 	}
       else
@@ -22166,61 +22305,118 @@ qexec_init_classes_info (THREAD_ENTRY * thread_p,
 	  class_->parts_count = 0;
 	}
 
+      class_->btids =
+	(BTID *) db_private_alloc (thread_p,
+				   query_class->no_subclasses *
+				   sizeof (BTID));
+      if (class_->btids == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      class_->btids_dup_key_locked =
+	(bool *) db_private_alloc (thread_p,
+				   query_class->no_subclasses *
+				   sizeof (bool));
+
+      if (class_->btids_dup_key_locked == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      for (cl_index = 0; cl_index < query_class->no_subclasses; cl_index++)
+	{
+	  BTID_SET_NULL (&class_->btids[cl_index]);
+	  class_->btids_dup_key_locked[cl_index] = false;
+	}
+      class_->btid = NULL;;
+      class_->btid_dup_key_locked = false;
+
       class_->no_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
       class_->crt_del_lob_info = NULL;
     }
 
-  *classes = local_classes;
+  *internal_classes = classes;
 
   return NO_ERROR;
+
+exit_on_error:
+  if (classes != NULL)
+    {
+      for (i = 0; i < count; i++)
+	{
+	  if (classes[i].btids != NULL)
+	    {
+	      db_private_free (thread_p, classes[i].btids);
+	    }
+	  if (classes[i].btids_dup_key_locked)
+	    {
+	      db_private_free (thread_p, classes[i].btids_dup_key_locked);
+	    }
+
+	  partition_free_partitions (thread_p, classes[i].partitions,
+				     classes[i].parts_count);
+	}
+
+      db_private_free (thread_p, classes);
+    }
+
+  return (error == NO_ERROR) ? NO_ERROR : er_errid ();
+
 }
 
 /*
  * qexec_upddel_setup_current_class () - setup current class info in a class
  *					 hierarchy
  * return : error code or NO_ERROR
- * class_info (in) : class hierarchy information
+ * query_class (in) : query class information
+ * internal_class (in) : internal class
  * current_oid (in): class oid
  *
  * Note: this function is unsed for update and delete to find class hfid when
  *  the operation is performed on a class hierarchy
  */
 static int
-qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
-				  UPDDEL_CLASS_INFO_INTERNAL * class_info,
+qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * query_class,
+				  UPDDEL_CLASS_INFO_INTERNAL * internal_class,
 				  OID * current_oid)
 {
   int i = 0;
 
-  class_info->class_oid = NULL;
-  class_info->class_hfid = NULL;
+  internal_class->class_oid = NULL;
+  internal_class->class_hfid = NULL;
 
-  if (class_info->needs_pruning)
+  if (internal_class->needs_pruning)
     {
-      /* test root class */
-      if (OID_EQ (&class_->class_oid[0], current_oid))
-	{
-	  class_info->class_oid = &class_->class_oid[0];
-	  class_info->class_hfid = &class_->class_hfid[0];
-	  class_info->subclass_idx = 0;
+      internal_class->btid = NULL;
+      internal_class->btid_dup_key_locked = false;
 
-	  class_info->no_lob_attrs = 0;
-	  class_info->lob_attr_ids = NULL;
+      /* test root class */
+      if (OID_EQ (&query_class->class_oid[0], current_oid))
+	{
+	  internal_class->class_oid = &query_class->class_oid[0];
+	  internal_class->class_hfid = &query_class->class_hfid[0];
+	  internal_class->subclass_idx = 0;
+
+	  internal_class->no_lob_attrs = 0;
+	  internal_class->lob_attr_ids = NULL;
 	  return NO_ERROR;
 	}
 
       /* look through the class partitions for the current_oid */
-      for (i = 0; i < class_info->parts_count; i++)
+      for (i = 0; i < internal_class->parts_count; i++)
 	{
-	  if (OID_EQ (&class_info->partitions[i].class_oid, current_oid))
+	  if (OID_EQ (&internal_class->partitions[i].class_oid, current_oid))
 	    {
-	      class_info->class_oid = &class_info->partitions[i].class_oid;
-	      class_info->class_hfid = &class_info->partitions[i].class_hfid;
-	      class_info->subclass_idx = 0;
+	      internal_class->class_oid =
+		&internal_class->partitions[i].class_oid;
+	      internal_class->class_hfid =
+		&internal_class->partitions[i].class_hfid;
+	      internal_class->subclass_idx = 0;
 
-	      class_info->no_lob_attrs = 0;
-	      class_info->lob_attr_ids = NULL;
+	      internal_class->no_lob_attrs = 0;
+	      internal_class->lob_attr_ids = NULL;
 	      break;
 	    }
 	}
@@ -22228,30 +22424,33 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
   else
     {
       /* look through subclasses */
-      for (i = 0; i < class_->no_subclasses; i++)
+      for (i = 0; i < query_class->no_subclasses; i++)
 	{
-	  if (OID_EQ (&class_->class_oid[i], current_oid))
+	  if (OID_EQ (&query_class->class_oid[i], current_oid))
 	    {
-	      class_info->class_oid = &class_->class_oid[i];
-	      class_info->class_hfid = &class_->class_hfid[i];
-	      class_info->subclass_idx = i;
+	      internal_class->class_oid = &query_class->class_oid[i];
+	      internal_class->class_hfid = &query_class->class_hfid[i];
+	      internal_class->btid = internal_class->btids + i;
+	      internal_class->btid_dup_key_locked =
+		internal_class->btids_dup_key_locked[i];
+	      internal_class->subclass_idx = i;
 
-	      if (class_->no_lob_attrs && class_->lob_attr_ids)
+	      if (query_class->no_lob_attrs && query_class->lob_attr_ids)
 		{
-		  class_info->no_lob_attrs = class_->no_lob_attrs[i];
-		  class_info->lob_attr_ids = class_->lob_attr_ids[i];
+		  internal_class->no_lob_attrs = query_class->no_lob_attrs[i];
+		  internal_class->lob_attr_ids = query_class->lob_attr_ids[i];
 		}
 	      else
 		{
-		  class_info->no_lob_attrs = 0;
-		  class_info->lob_attr_ids = NULL;
+		  internal_class->no_lob_attrs = 0;
+		  internal_class->lob_attr_ids = NULL;
 		}
 	      break;
 	    }
 	}
     }
 
-  if (class_info->class_hfid == NULL)
+  if (internal_class->class_hfid == NULL)
     {
       return ER_FAILED;
     }

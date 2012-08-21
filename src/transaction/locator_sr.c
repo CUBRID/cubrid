@@ -200,6 +200,8 @@ static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 int *force_count);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 OID * class_oid, OID * oid,
+				 BTID * search_btid,
+				 bool search_btid_duplicate_key_locked,
 				 RECDES * ikdrecdes, RECDES * recdes,
 				 int has_index, ATTR_ID * att_id,
 				 int n_att_id, int op_type,
@@ -208,6 +210,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 REPL_INFO_TYPE repl_info);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 				OID * old_class_oid, OID * obj_oid,
+				BTID * btid, bool btid_dup_key_locked,
 				OID * new_class_oid, HFID * new_class_hfid,
 				RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				int has_index, int *force_count);
@@ -4254,7 +4257,11 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 			  goto error1;
 			}
 		      error_code = locator_delete_force (thread_p, &hfid,
-							 oid_ptr, true,
+							 oid_ptr,
+							 &fkref->self_btid,
+							 isid.
+							 duplicate_key_locked,
+							 true,
 							 SINGLE_ROW_DELETE,
 							 &scan_cache,
 							 &force_count);
@@ -4286,6 +4293,10 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 		      error_code = locator_attribute_info_force (thread_p,
 								 &hfid,
 								 oid_ptr,
+								 &fkref->
+								 self_btid,
+								 isid.
+								 duplicate_key_locked,
 								 &attr_info,
 								 attr_ids,
 								 index->
@@ -4538,6 +4549,9 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 
 	      error_code = locator_attribute_info_force (thread_p, &hfid,
 							 &(oid_buf[i]),
+							 &fkref->self_btid,
+							 isid.
+							 duplicate_key_locked,
 							 &attr_info,
 							 &fkref->
 							 cache_attr_id, 1,
@@ -4809,6 +4823,10 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 		  error_code = locator_attribute_info_force (thread_p,
 							     &hfid,
 							     oid_ptr,
+							     &fkref->
+							     self_btid,
+							     isid.
+							     duplicate_key_locked,
 							     &attr_info,
 							     attr_ids,
 							     index->n_atts,
@@ -5031,7 +5049,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        */
       if (has_index
 	  && locator_add_or_remove_index (thread_p, recdes, oid,
-					  &real_class_oid,
+					  &real_class_oid, NULL, false,
 					  true, op_type, scan_cache, true,
 					  true, &real_hfid) != NO_ERROR)
 	{
@@ -5122,6 +5140,13 @@ error2:
  * old_hfid (in)	: source location of the record
  * old_class_oid (in)	: class owning the record
  * obj_oid (in)		: record OID
+ *   btid(in):  btid(in): The BTID of the tree used when oid it was found
+ *		(NULL at insert)
+ *		(NULL at delete, update if heap scan was used)
+ *		(not NULL at delete, update if index scan was used)
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  * new_class_oid (in)	: destination class
  * new_class_hfid (in)	: destination hfid
  * recdes (in)		: record
@@ -5136,7 +5161,8 @@ error2:
  */
 static int
 locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
-		     OID * old_class_oid, OID * obj_oid, OID * new_class_oid,
+		     OID * old_class_oid, OID * obj_oid, BTID * btid,
+		     bool btid_dup_key_locked, OID * new_class_oid,
 		     HFID * new_class_hfid, RECDES * recdes,
 		     HEAP_SCANCACHE * scan_cache, int has_index,
 		     int *force_count)
@@ -5146,8 +5172,9 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
   HEAP_SCANCACHE insert_scan_cache;
 
   /* delete this record from the class it currently resides in */
-  error = locator_delete_force (thread_p, old_hfid, obj_oid, true,
-				SINGLE_ROW_DELETE, scan_cache, force_count);
+  error = locator_delete_force (thread_p, old_hfid, obj_oid, btid,
+				btid_dup_key_locked, true, SINGLE_ROW_DELETE,
+				scan_cache, force_count);
   if (error != NO_ERROR)
     {
       return error;
@@ -5187,6 +5214,10 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
  *   hfid(in): Heap where the object is going to be inserted
  *   class_oid(in):
  *   oid(in): The object identifier
+ *   search_btid(in): The BTID of the tree where oid was found
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  *   oldrecdes(in):
  *   recdes(in):  The object in disk format
  *   has_index(in): false if we now for sure that there is not any index
@@ -5204,7 +5235,9 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
  */
 static int
 locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-		      OID * oid, RECDES * oldrecdes, RECDES * recdes,
+		      OID * oid, BTID * search_btid,
+		      bool search_btid_duplicate_key_locked,
+		      RECDES * oldrecdes, RECDES * recdes,
 		      int has_index, ATTR_ID * att_id, int n_att_id,
 		      int op_type, HEAP_SCANCACHE * scan_cache,
 		      int *force_count, bool not_check_fk,
@@ -5388,6 +5421,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    {
 	      error_code =
 		locator_move_record (thread_p, hfid, class_oid, oid,
+				     search_btid,
+				     search_btid_duplicate_key_locked,
 				     &real_class_oid, &real_hfid, recdes,
 				     scan_cache, has_index, force_count);
 	      if (error_code == NO_ERROR)
@@ -5424,11 +5459,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  if (scan == S_SUCCESS)
 	    {
 	      /* Update the indices */
-	      error_code = locator_update_index (thread_p, recdes, oldrecdes,
-						 att_id, n_att_id, oid,
-						 class_oid, op_type,
-						 scan_cache, true, true,
-						 repl_info);
+	      error_code =
+		locator_update_index (thread_p, recdes, oldrecdes,
+				      att_id, n_att_id, oid, class_oid,
+				      search_btid,
+				      search_btid_duplicate_key_locked,
+				      op_type, scan_cache, true, true,
+				      repl_info);
 	      if (error_code != NO_ERROR)
 		{
 		  /*
@@ -5455,11 +5492,11 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      op_type = SINGLE_ROW_INSERT;
 		    }
 
-		  error_code = locator_add_or_remove_index (thread_p, recdes,
-							    oid, class_oid,
-							    true, op_type,
-							    scan_cache, true,
-							    true, hfid);
+		  error_code =
+		    locator_add_or_remove_index
+		    (thread_p, recdes, oid, class_oid, search_btid,
+		     search_btid_duplicate_key_locked, true, op_type,
+		     scan_cache, true, true, hfid);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
@@ -5561,6 +5598,10 @@ error:
  *
  *   hfid(in): Heap where the object is going to be inserted
  *   oid(in): The object identifier
+ *   search_btid(in): The BTID of the tree where oid was found
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  *   has_index(in): false if we now for sure that there is not any index
  *                   on the instances of the class.
  *   op_type(in):
@@ -5573,6 +5614,8 @@ error:
  */
 int
 locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
+		      BTID * search_btid,
+		      bool search_btid_duplicate_key_locked,
 		      int has_index, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count)
 {
@@ -5728,10 +5771,12 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
        */
       if (isold_object == true && has_index)
 	{
-	  error_code = locator_add_or_remove_index (thread_p, &copy_recdes,
-						    oid, &class_oid, false,
-						    op_type, scan_cache, true,
-						    true, hfid);
+	  error_code =
+	    locator_add_or_remove_index (thread_p, &copy_recdes,
+					 oid, &class_oid, search_btid,
+					 search_btid_duplicate_key_locked,
+					 false, op_type, scan_cache, true,
+					 true, hfid);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -5968,9 +6013,10 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 	    }
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid,
-				  &obj->oid, NULL, &recdes, obj->has_index,
-				  NULL, 0, MULTI_ROW_UPDATE, &scan_cache,
-				  &force_count, false, repl_info);
+				  &obj->oid, NULL, false, NULL, &recdes,
+				  obj->has_index, NULL, 0, MULTI_ROW_UPDATE,
+				  &scan_cache, &force_count, false,
+				  repl_info);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -6190,9 +6236,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 	     LC_FLUSH_UPDATE) ? SINGLE_ROW_UPDATE : SINGLE_ROW_UPDATE_PRUNING;
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid,
-				  &obj->oid, NULL, &recdes, obj->has_index,
-				  NULL, 0, op_type, force_scancache,
-				  &force_count, false,
+				  &obj->oid, NULL, false, NULL, &recdes,
+				  obj->has_index, NULL, 0, op_type,
+				  force_scancache, &force_count, false,
 				  REPL_INFO_TYPE_STMT_NORMAL);
 	  if (error_code != NO_ERROR)
 	    {
@@ -6208,7 +6254,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 
 	case LC_FLUSH_DELETE:
 	  error_code = locator_delete_force (thread_p, &obj->hfid, &obj->oid,
-					     obj->has_index,
+					     NULL, false, obj->has_index,
 					     SINGLE_ROW_DELETE,
 					     force_scancache, &force_count);
 	  if (error_code != NO_ERROR)
@@ -6361,6 +6407,13 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p,
  *   hfid(in): Where of the object
  *   oid(in/out): The object identifier
  *                   (Set as a side effect when operation is insert)
+ *   search_btid(in): The BTID of the tree used when oid it was found
+ *		      (NULL at insert)
+ *		      (NULL at delete, update if heap scan was used)
+ *		      (not NULL at delete, update if index scan was used)
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  *   attr_info(in/out): Attribute information
  *                   (Set as a side effect to fill the rest of values)
  *   att_id(in): Updated attr id array
@@ -6379,7 +6432,9 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p,
  */
 int
 locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
-			      OID * oid, HEAP_CACHE_ATTRINFO * attr_info,
+			      OID * oid, BTID * search_btid,
+			      bool search_btid_duplicate_key_locked,
+			      HEAP_CACHE_ATTRINFO * attr_info,
 			      ATTR_ID * att_id, int n_att_id,
 			      LC_COPYAREA_OPERATION operation, int op_type,
 			      HEAP_SCANCACHE * scan_cache, int *force_count,
@@ -6485,6 +6540,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  assert (LC_IS_FLUSH_UPDATE (operation));
 	  error_code =
 	    locator_update_force (thread_p, &class_hfid, &class_oid, oid,
+				  search_btid,
+				  search_btid_duplicate_key_locked,
 				  old_recdes, &new_recdes, true, att_id,
 				  n_att_id, op_type, scan_cache, force_count,
 				  not_check_fk, repl_info);
@@ -6499,8 +6556,11 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
       break;
 
     case LC_FLUSH_DELETE:
-      error_code = locator_delete_force (thread_p, &class_hfid, oid, true,
-					 op_type, scan_cache, force_count);
+      error_code = locator_delete_force (thread_p, &class_hfid, oid,
+					 search_btid,
+					 search_btid_duplicate_key_locked,
+					 true, op_type, scan_cache,
+					 force_count);
       break;
 
     default:
@@ -6524,6 +6584,13 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
  * return:  NO_ERROR if all OK, ER_ status otherwise
  *
  *   hfid(in): Where of the object
+ *   btid(in):  btid(in): The BTID of the tree used when oid it was found
+ *		(NULL at insert)
+ *		(NULL at delete, update if heap scan was used)
+ *		(not NULL at delete, update if index scan was used)
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  *   oid(in): The object identifier
  *   newhfid(in): Where of the new object
  *   newoid_para(in): The new object identifier
@@ -6538,7 +6605,9 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
  */
 int
 locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
-			     OID * oid, HFID * newhfid, OID * newoid_para,
+			     OID * oid, BTID * btid,
+			     bool search_btid_duplicate_key_locked,
+			     HFID * newhfid, OID * newoid_para,
 			     HEAP_CACHE_ATTRINFO * attr_info,
 			     HEAP_SCANCACHE * scan_cache, int *force_count,
 			     OID * prev_oid, REPR_ID * new_reprid)
@@ -6616,8 +6685,8 @@ locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 
       new_recdes.data = copyarea->mem;
       new_recdes.area_size = copyarea->length;
-      scan = heap_attrinfo_transform_to_disk (thread_p, attr_info,
-					      NULL, &new_recdes);
+      scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, NULL,
+					      &new_recdes);
       if (scan != S_SUCCESS)
 	{
 	  copyarea_length = copyarea->length;
@@ -6645,7 +6714,8 @@ locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
       goto end;
     }
 
-  error_code = locator_delete_force (thread_p, hfid, oid, true,
+  error_code = locator_delete_force (thread_p, hfid, oid, btid,
+				     search_btid_duplicate_key_locked, true,
 				     SINGLE_ROW_DELETE, scan_cache,
 				     force_count);
   if (error_code == NO_ERROR)
@@ -6711,6 +6781,11 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
  *   recdes(in): The object
  *   inst_oid(in): The object identifier
  *   class_oid(in): The class object identifier
+ *   search_btid(in): The BTID of the tree used when oid it was found
+ *		      (NULL when add index entries)
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  *   is_insert(in): whether to add or remove the object from the indexes
  *   op_type(in):
  *   scan_cache(in):
@@ -6723,8 +6798,11 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
  */
 int
 locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
-			     OID * inst_oid, OID * class_oid, int is_insert,
-			     int op_type, HEAP_SCANCACHE * scan_cache,
+			     OID * inst_oid, OID * class_oid,
+			     BTID * search_btid,
+			     bool search_btid_duplicate_key_locked,
+			     int is_insert, int op_type,
+			     HEAP_SCANCACHE * scan_cache,
 			     bool datayn, bool need_replication, HFID * hfid)
 {
   int num_found;
@@ -6744,6 +6822,7 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
   OR_PREDICATE *or_pred = NULL;
   PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
   DB_LOGICAL ev_res;
+  BTREE_LOCKED_KEYS locked_keys;
 
   assert_release (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -6842,9 +6921,12 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 	    }
 	  else
 	    {
+	      locked_keys =
+		btree_get_locked_keys (&btid, search_btid,
+				       search_btid_duplicate_key_locked);
 	      key_ins_del = btree_delete (thread_p, &btid, key_dbvalue,
-					  class_oid, inst_oid, &unique,
-					  op_type, unique_stat_info);
+					  class_oid, inst_oid, locked_keys,
+					  &unique, op_type, unique_stat_info);
 	    }
 	}
 
@@ -7247,6 +7329,10 @@ end:
  *   n_att_id(in): Updated attr id array length
  *   inst_oid(in): The object identifier
  *   class_oid(in): The class object identifier
+ *   search_btid(in): The BTID of the tree used when oid it was found
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
  *   op_type(in):
  *   scan_cache(in):
  *   data_update(in):
@@ -7257,7 +7343,8 @@ end:
 int
 locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		      RECDES * old_recdes, ATTR_ID * att_id, int n_att_id,
-		      OID * inst_oid, OID * class_oid, int op_type,
+		      OID * inst_oid, OID * class_oid, BTID * search_btid,
+		      bool search_btid_duplicate_key_locked, int op_type,
 		      HEAP_SCANCACHE * scan_cache, bool data_update,
 		      bool need_replication, REPL_INFO_TYPE repl_info)
 {
@@ -7290,6 +7377,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   RECDES *recs[2];
   bool same_key = true;
   int c = DB_UNK;
+  BTREE_LOCKED_KEYS locked_keys;
 
   assert_release (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -7548,8 +7636,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	    {
 	      if (do_delete_only)
 		{
+		  locked_keys =
+		    btree_get_locked_keys (&old_btid, search_btid,
+					   search_btid_duplicate_key_locked);
 		  if (btree_delete (thread_p, &old_btid, old_key, class_oid,
-				    inst_oid, &unique, op_type,
+				    inst_oid, locked_keys, &unique, op_type,
 				    unique_stat_info) == NULL)
 		    {
 		      error_code = er_errid ();
@@ -7571,11 +7662,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		}
 	      else
 		{
-		  error_code = btree_update (thread_p, &old_btid, old_key,
-					     new_key,
-					     class_oid, inst_oid,
-					     op_type, unique_stat_info,
-					     &unique);
+		  locked_keys =
+		    btree_get_locked_keys (&old_btid, search_btid,
+					   search_btid_duplicate_key_locked);
+		  error_code =
+		    btree_update (thread_p, &old_btid, old_key, new_key,
+				  locked_keys, class_oid, inst_oid, op_type,
+				  unique_stat_info, &unique);
 
 		  if (error_code != NO_ERROR)
 		    {
@@ -7878,9 +7971,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
 
       key_del = btree_delete (thread_p, btid, dbvalue_ptr,
-			      class_oid,
-			      &inst_oid, &dummy, MULTI_ROW_DELETE,
-			      &unique_info);
+			      class_oid, &inst_oid, BTREE_NO_KEY_LOCKED,
+			      &dummy, MULTI_ROW_DELETE, &unique_info);
     }
 
   if (unique_info.num_nulls != 0 || unique_info.num_keys != 0
@@ -8104,7 +8196,8 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid,
 
 static DISK_ISVALID
 locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
-				BTID * btid, OID * inst_oid)
+				BTID * btid, BTREE_LOCKED_KEYS locked_keys,
+				OID * inst_oid)
 {
   DB_VALUE key;
   bool clear_key = false;
@@ -8129,8 +8222,8 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
       if (xtran_server_start_topop (thread_p, &lsa) == NO_ERROR)
 	{
 	  if (btree_delete (thread_p, btid, &key,
-			    class_oid, inst_oid, &unique, SINGLE_ROW_DELETE,
-			    NULL) != NULL)
+			    class_oid, inst_oid, locked_keys, &unique,
+			    SINGLE_ROW_DELETE, NULL) != NULL)
 	    {
 	      isvalid = DISK_VALID;
 	      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT,
@@ -8427,8 +8520,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   do
     {
       /* search index */
-      oid_cnt = btree_range_search (thread_p, btid, true,
-				    repair ? S_DELETE : S_SELECT,
+      oid_cnt = btree_range_search (thread_p, btid, true, S_SELECT,
 				    LOCKHINT_NONE,
 				    &bt_scan, &key_val_range,
 				    1, class_oid,
@@ -8452,10 +8544,12 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	      if (repair)
 		{
 		  /*don't care about filter predicate here since
-		     we are sure that oid_area[i] is contained in tree */
+		     we are sure that oid_area[i] is contained in tree,
+		     the keys has been already S_LOCK-ed, not NX_LOCK-ed */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
-						    btid, &oid_area[i]);
+						    btid, BTREE_NO_KEY_LOCKED,
+						    &oid_area[i]);
 		}
 
 	      if (isvalid == DISK_VALID)
@@ -8816,8 +8910,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   do
     {
       /* search index */
-      oid_cnt = btree_range_search (thread_p, btid, true,
-				    repair ? S_DELETE : S_SELECT,
+      oid_cnt = btree_range_search (thread_p, btid, true, S_SELECT,
 				    LOCKHINT_NONE, &bt_scan, &key_val_range,
 				    0, (OID *) NULL, isid.oid_list.oidp,
 				    ISCAN_OID_BUFFER_SIZE,
@@ -8841,10 +8934,12 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	      if (repair)
 		{
 		  /*don't care about filter predicate here since
-		     we are sure that oid_area[i] is contained in tree */
+		     we are sure that oid_area[i] is contained in tree
+		     the keys has been already S_LOCK-ed, not NX_LOCK-ed */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
-						    btid, &oid_area[i]);
+						    btid, BTREE_NO_KEY_LOCKED,
+						    &oid_area[i]);
 		}
 
 	      if (isvalid == DISK_VALID)
@@ -9128,7 +9223,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
   char *btname = NULL;
   int *attrs_prefix_length = NULL;
 
-  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, 
+  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info,
 				      &idx_info) < 0)
     {
       return DISK_ERROR;
@@ -9181,8 +9276,8 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  break;
 	}
 
-      if (heap_indexinfo_get_attrs_prefix_length (i, &attr_info, 
-						  attrs_prefix_length, 
+      if (heap_indexinfo_get_attrs_prefix_length (i, &attr_info,
+						  attrs_prefix_length,
 						  n_attrs) != NO_ERROR)
 	{
 	  free_and_init (attrids);
@@ -9191,7 +9286,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  break;
 	}
 
-      if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL, 
+      if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL,
 				      NULL, NULL, &btname, NULL) != NO_ERROR)
 	{
 	  free_and_init (attrids);
@@ -9202,14 +9297,14 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 
       if (btree_is_unique (thread_p, btid))
 	{
-	  rv = locator_check_unique_btree_entries (thread_p, btid, peek, 
+	  rv = locator_check_unique_btree_entries (thread_p, btid, peek,
 						   attrids, btname, repair);
 	}
       else
 	{
-	  rv = locator_check_btree_entries (thread_p, btid, class_hfid, 
-					    class_oid, n_attrs, attrids, 
-					    attrs_prefix_length, btname, 
+	  rv = locator_check_btree_entries (thread_p, btid, class_hfid,
+					    class_oid, n_attrs, attrids,
+					    attrs_prefix_length, btname,
 					    repair);
 	}
       if (rv != DISK_VALID)

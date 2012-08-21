@@ -221,7 +221,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
        && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
     {
       if (locator_attribute_info_force (thread_p, &upd_scancache->hfid, oid,
-					attr_info,
+					NULL, false, attr_info,
 					atts_id, updated_n_attrs_id,
 					LC_FLUSH_UPDATE,
 					SINGLE_ROW_UPDATE, upd_scancache,

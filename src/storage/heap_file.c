@@ -20359,10 +20359,11 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
     }
 
   error =
-    locator_attribute_info_force (thread_p, &upd_scancache->hfid, oid,
-				  attr_info, atts_id, updated_n_attrs_id,
-				  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE,
-				  upd_scancache, &force_count, false,
+    locator_attribute_info_force (thread_p, &upd_scancache->hfid, oid, NULL,
+				  false, attr_info, atts_id,
+				  updated_n_attrs_id, LC_FLUSH_UPDATE,
+				  SINGLE_ROW_UPDATE, upd_scancache,
+				  &force_count, false,
 				  REPL_INFO_TYPE_STMT_NORMAL);
   if (error != NO_ERROR)
     {

@@ -3851,8 +3851,8 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p,
-				   true, SINGLE_ROW_INSERT, scan_p,
-				   false, false, hfid_p) != NO_ERROR)
+				   NULL, false, true, SINGLE_ROW_INSERT,
+				   scan_p, false, false, hfid_p) != NO_ERROR)
     {
       error = er_errid ();
       goto error;
@@ -3951,8 +3951,8 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p,
-				   false, SINGLE_ROW_DELETE, scan_p,
-				   false, false, hfid_p) != NO_ERROR)
+				   NULL, false, false, SINGLE_ROW_DELETE,
+				   scan_p, false, false, hfid_p) != NO_ERROR)
     {
       error = er_errid ();
       goto error;
@@ -4123,7 +4123,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
       /* give up setting updated attr info */
       if (locator_update_index (thread_p, &record, &old_record, NULL, 0,
-				oid_p, class_oid_p,
+				oid_p, class_oid_p, NULL, false,
 				SINGLE_ROW_UPDATE, scan_p, false,
 				false,
 				REPL_INFO_TYPE_STMT_NORMAL) != NO_ERROR)

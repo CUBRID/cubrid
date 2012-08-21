@@ -15801,23 +15801,77 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 	  while (spec)
 	    {
 	      if (spec->info.spec.flag & (PT_SPEC_FLAG_DELETE
-					  | PT_SPEC_FLAG_UPDATE)
-		  && (spec->info.spec.flat_entity_list
-		      || (spec->info.spec.derived_table_type == PT_IS_SET_EXPR
-			  && spec->info.spec.path_entities
-			  && spec->info.spec.path_entities->node_type
-			  == PT_SPEC
-			  && spec->info.spec.path_entities->info.spec.
-			  flat_entity_list)))
+					  | PT_SPEC_FLAG_UPDATE))
 		{
-		  break;
+		  PT_NODE *entity_list;
+
+		  if (spec->info.spec.flat_entity_list != NULL)
+		    {
+		      entity_list = spec->info.spec.flat_entity_list;
+		    }
+		  else if (spec->info.spec.derived_table_type ==
+			   PT_IS_SET_EXPR
+			   && spec->info.spec.path_entities != NULL
+			   && spec->info.spec.path_entities->node_type
+			   == PT_SPEC
+			   && spec->info.spec.path_entities->info.spec.
+			   flat_entity_list != NULL)
+		    {
+		      entity_list = spec->info.spec.path_entities->info.spec.
+			flat_entity_list;
+		    }
+		  else
+		    {
+		      entity_list = NULL;
+		    }
+
+		  if (entity_list)
+		    {
+		      if ((node->info.query.upd_del_class_cnt > 1) ||
+			  (node->info.query.upd_del_class_cnt == 1
+			   && xasl->scan_ptr))
+			{
+			  MOP mop = entity_list->info.name.db_object;
+			  if (mop && !WS_ISVID (mop))
+			    {
+			      XASL_NODE *scan = NULL;
+			      ACCESS_SPEC_TYPE *cs = NULL;
+
+			      for (scan = xasl; scan != NULL;
+				   scan = scan->scan_ptr)
+				{
+				  for (cs = scan->spec_list; cs != NULL;
+				       cs = cs->next)
+				    {
+				      if ((cs->type == TARGET_CLASS) &&
+					  (OID_EQ (&ACCESS_SPEC_CLS_OID (cs),
+						   WS_REAL_OID (mop))))
+					{
+					  scan->composite_locking =
+					    node->info.query.
+					    composite_locking;
+					  break;
+					}
+				    }
+				  if (cs)
+				    {
+				      break;
+				    }
+				}
+			    }
+			}
+		      else
+			{
+			  xasl->composite_locking =
+			    node->info.query.composite_locking;
+			  break;
+			}
+		    }
 		}
+
 	      spec = spec->next;
 	    }
-	  if (spec)
-	    {
-	      xasl->composite_locking = node->info.query.composite_locking;
-	    }
+
 	  xasl->upd_del_class_cnt = node->info.query.upd_del_class_cnt;
 	}
 
@@ -22016,7 +22070,8 @@ pt_to_merge_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	  statement->info.query.q.select.from = spec;
 	  statement =
 	    pt_add_row_classoid_name (parser, statement,
-				      (info->flags & PT_MERGE_INFO_SERVER_OP));
+				      (info->flags
+				       & PT_MERGE_INFO_SERVER_OP));
 	  assert (statement != NULL);
 	  statement = pt_add_row_oid_name (parser, statement);
 	  assert (statement != NULL);

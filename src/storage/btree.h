@@ -78,6 +78,13 @@ typedef enum
 enum
 { BTREE_COERCE_KEY_WITH_MIN_VALUE = 1, BTREE_COERCE_KEY_WITH_MAX_VALUE = 2 };
 
+typedef enum
+{
+  BTREE_NO_KEY_LOCKED,
+  BTREE_CURRENT_KEYS_LOCKED,
+  BTREE_ALL_KEYS_LOCKED
+} BTREE_LOCKED_KEYS;
+
 #define BTREE_IS_PRIMARY_KEY(unique) ((unique) & BTREE_CONSTRAINT_PRIMARY_KEY)
 #define BTREE_IS_UNIQUE(btid)  ((btid)->unique & BTREE_CONSTRAINT_UNIQUE)
 #define BTREE_IS_PART_KEY_DESC(btid) ((btid)->part_key_desc == true)
@@ -296,6 +303,7 @@ extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
 extern DB_VALUE *btree_delete (THREAD_ENTRY * thread_p, BTID * btid,
 			       DB_VALUE * key,
 			       OID * cls_oid, OID * oid,
+			       BTREE_LOCKED_KEYS locked_keys,
 			       int *unique, int op_type,
 			       BTREE_UNIQUE_STATS * unique_stat_info);
 extern DB_VALUE *btree_insert (THREAD_ENTRY * thread_p, BTID * btid,
@@ -314,6 +322,7 @@ extern DB_VALUE *btree_insert (THREAD_ENTRY * thread_p, BTID * btid,
 			       */
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid,
 			 DB_VALUE * old_key, DB_VALUE * new_key,
+			 BTREE_LOCKED_KEYS locked_keys,
 			 OID * cls_oid, OID * oid,
 			 int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
 			 int *unique);
@@ -447,5 +456,7 @@ extern int btree_set_unique_violation_error (THREAD_ENTRY * thread_p,
 					     OID * class_oid, BTID * btid,
 					     const char *filename,
 					     int lineno);
-
+extern BTREE_LOCKED_KEYS btree_get_locked_keys (BTID * delete_btid,
+						BTID * search_btid,
+						bool duplicate_key_locked);
 #endif /* _BTREE_H_ */

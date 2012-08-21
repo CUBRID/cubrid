@@ -187,6 +187,7 @@ struct indx_scan_id
   MULTI_RANGE_OPT multi_range_opt;	/* optimization for multiple range
 					 * search*/
   INDEX_SKIP_SCAN iss;		/* index skip scan structure */
+  bool duplicate_key_locked;	/* true if duplicate key have been scanned */
 };
 
 typedef struct llist_scan_id LLIST_SCAN_ID;
