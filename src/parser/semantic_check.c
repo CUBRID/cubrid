@@ -4236,6 +4236,31 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
       save_next = data_default->next;
       data_default->next = NULL;
 
+      default_value = data_default->info.data_default.default_value;
+
+      if (PT_IS_QUERY (default_value))
+	{
+	  PT_NODE *subquery_list = NULL;
+	  default_value = pt_compile (parser, default_value);
+	  if (default_value == NULL || pt_has_error (parser))
+	    {
+	      /* compilation error */
+	      goto end;
+	    }
+	  subquery_list = pt_get_subquery_list (default_value);
+	  if (subquery_list && subquery_list->next)
+	    {
+	      /* cannot allow more than one column */
+	      char *str = pt_short_print (parser, default_value);
+	      PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_NOT_SINGLE_VALUE,
+			  (str != NULL ? str : "\0"));
+	      goto end;
+	    }
+	  /* skip other checks */
+	  goto end;
+	}
+
       result = pt_semantic_type (parser, data_default, NULL);
       if (result != NULL)
 	{
@@ -4255,8 +4280,6 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  /* an error has occurred, skip other checks */
 	  goto end;
 	}
-
-      default_value = data_default->info.data_default.default_value;
 
       node_ptr = NULL;
       (void) parser_walk_tree (parser, default_value,
