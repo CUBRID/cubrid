@@ -23827,10 +23827,18 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type,
   assert (cs != NULL);
   assert (token_id != NULL);
   assert (token_size != NULL);
-  assert (lld != NULL);
 
-  /* special case : korean short month name is read as digit */
+  if (lld == NULL)
+    {
+      error_status = ER_LANG_CODESET_NOT_AVAILABLE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2,
+	      lang_get_lang_name_from_id (intl_lang_id),
+	      lang_charset_name (codeset));
+      return error_status;
+    }
+
 #if 0
+  /* special case : korean short month name is read as digit */
   if (intl_lang_id == INTL_LANG_KOREAN && codeset == INTL_CODESET_ISO88591
       && token_type == SDT_MONTH_SHORT)
     {
@@ -23951,7 +23959,15 @@ print_string_date_token (const STRING_DATE_TOKEN token_type,
   assert (buffer != NULL);
   assert (token_id >= 0);
   assert (token_size != NULL);
-  assert (lld != NULL);
+
+  if (lld == NULL)
+    {
+      error_status = ER_LANG_CODESET_NOT_AVAILABLE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2,
+	      lang_get_lang_name_from_id (intl_lang_id),
+	      lang_charset_name (codeset));
+      return error_status;
+    }
 
   switch (token_type)
     {
