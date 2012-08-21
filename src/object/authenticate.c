@@ -5527,12 +5527,8 @@ is_protected_class (MOP classmop, SM_CLASS * sm_class, DB_AUTH auth)
 {
   int illegal = 0;
 
-  if (classmop == Au_authorizations_class)
-    {
-      /* can't alter, insert, delete, or index */
-      illegal = auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_INDEX);
-    }
-  else if (IS_CATALOG_CLASS (sm_class->header.name))
+  if (classmop == Au_authorizations_class
+      || IS_CATALOG_CLASS (sm_class->header.name))
     {
       illegal =
 	auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_UPDATE | AU_INDEX);

@@ -2080,6 +2080,7 @@ lang_set_national_charset (const char *charset_name)
   INTL_CODESET server_codeset;
   INTL_LANG server_lang;
   DB_VALUE value;
+  int au_save;
 
   if (charset_name == NULL)
     {
@@ -2095,17 +2096,21 @@ lang_set_national_charset (const char *charset_name)
 
   server_lang = lang_id ();
 
+  AU_DISABLE (au_save);
   db_make_string (&value, lang_get_lang_name_from_id (server_lang));
   if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
       /* Error Setting the language */
+      assert (false);
     }
 
   db_make_int (&value, (int) server_codeset);
   if (db_put_internal (Au_root, "charset", &value) != NO_ERROR)
     {
       /* Error Setting the nchar codeset */
+      assert (false);
     }
+  AU_ENABLE (au_save);
 
   return NO_ERROR;
 }
