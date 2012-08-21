@@ -193,7 +193,7 @@ static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2,
 				       TP_DOMAIN * domain, int *cmp);
 static int qfile_unify_types (QFILE_LIST_ID * list_id1,
-			      QFILE_LIST_ID * list_id2);
+			      const QFILE_LIST_ID * list_id2);
 #if defined (CUBRID_DEBUG)
 static void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 			       QFILE_TUPLE tpl);
@@ -848,7 +848,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
  *       This should probably set an error for non-null mismatches.
  */
 static int
-qfile_unify_types (QFILE_LIST_ID * list_id1_p, QFILE_LIST_ID * list_id2_p)
+qfile_unify_types (QFILE_LIST_ID * list_id1_p,
+		   const QFILE_LIST_ID * list_id2_p)
 {
   int i;
   int max_count = list_id1_p->type_list.type_cnt;
@@ -866,6 +867,25 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, QFILE_LIST_ID * list_id2_p)
   for (i = 0; i < max_count; i++)
     {
       type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
+      type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
+
+      if (type1 == DB_TYPE_VARIABLE)
+	{
+	  /* The domain of list1 is not resolved,
+	   * because there is no tuple.
+	   */
+	  assert_release (list_id1_p->tuple_cnt == 0);
+	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
+	  continue;
+	}
+      else if (type2 == DB_TYPE_VARIABLE)
+	{
+	  /* The domain of list2 is not resolved,
+	   * because there is no tuple.
+	   */
+	  assert_release (list_id2_p->tuple_cnt == 0);
+	  continue;
+	}
 
       if (type1 == DB_TYPE_NULL)
 	{
@@ -873,8 +893,6 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, QFILE_LIST_ID * list_id2_p)
 	}
       else
 	{
-	  type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
-
 	  if (type2 != DB_TYPE_NULL
 	      && (list_id1_p->type_list.domp[i] !=
 		  list_id2_p->type_list.domp[i]))
