@@ -855,7 +855,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 {
   LOG_PAGE *loghdr_pgptr;	/* Pointer to log header */
   const char *catmsg;
-  int error_code;
+  int error_code = NO_ERROR;
   VOLID volid1, volid2;
 
   LOG_CS_ENTER (thread_p);
@@ -897,6 +897,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       return;
     }
 
+  loghdr_pgptr = logpb_create_header_page (thread_p);
 
   /*
    * Format the volume and fetch the header page and the first append page
@@ -906,7 +907,6 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 				      prm_get_bool_value
 				      (PRM_ID_LOG_SWEEP_CLEAN), true, false,
 				      LOG_PAGESIZE, false);
-  loghdr_pgptr = logpb_create_header_page (thread_p);
   if (log_Gl.append.vdes == NULL_VOLDES
       || logpb_fetch_start_append_page (thread_p) == NULL
       || loghdr_pgptr == NULL)

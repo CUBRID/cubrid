@@ -549,6 +549,13 @@ mht_logpageidhash (const void *key, unsigned int htsize)
 {
   assert (key != NULL);
 
+  if ((*(const LOG_PAGEID *) key) == LOGPB_HEADER_PAGE_ID)
+    {
+      return 0;
+    }
+
+  assert ((*(const LOG_PAGEID *) key) >= 0);
+
   return (*(const LOG_PAGEID *) key) % htsize;
 }
 
