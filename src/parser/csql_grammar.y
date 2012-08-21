@@ -438,11 +438,12 @@ static PT_NODE *parser_pop_orderby_node (void);
 static void parser_push_select_stmt_node (PT_NODE * node);
 static PT_NODE *parser_top_select_stmt_node (void);
 static PT_NODE *parser_pop_select_stmt_node (void);
-
+static bool parser_is_select_stmt_node_empty (void);
 
 static void parser_push_hint_node (PT_NODE * node);
 static PT_NODE *parser_top_hint_node (void);
 static PT_NODE *parser_pop_hint_node (void);
+static bool parser_is_hint_node_empty (void);
 
 static void parser_push_join_type (int v);
 static int parser_top_join_type (void);
@@ -3948,7 +3949,7 @@ table_spec
 			PT_NODE *ent = $1;
 			if (ent)
 			  {
-			    PT_NODE *stmt = parser_pop_hint_node ();
+			    PT_NODE *stmt = parser_is_hint_node_empty () ? NULL : parser_pop_hint_node ();
 
 			    if (stmt)
 			      {
@@ -19838,8 +19839,6 @@ parser_make_expression (PT_OP_TYPE OP, PT_NODE * arg1, PT_NODE * arg2,
   return expr;
 }
 
-
-
 static PT_NODE *
 parser_make_link (PT_NODE * list, PT_NODE * node)
 {
@@ -19847,14 +19846,12 @@ parser_make_link (PT_NODE * list, PT_NODE * node)
   return list;
 }
 
-
 static PT_NODE *
 parser_make_link_or (PT_NODE * list, PT_NODE * node)
 {
   parser_append_node_or (node, list);
   return list;
 }
-
 
 static bool parser_cannot_cache_stack_default[STACK_SIZE];
 static bool *parser_cannot_cache_stack = parser_cannot_cache_stack_default;
@@ -19883,6 +19880,7 @@ parser_save_and_set_cannot_cache (bool value)
       parser_cannot_cache_limit *= 2;
     }
 
+  assert (parser_cannot_cache_sp >= 0);
   parser_cannot_cache_stack[parser_cannot_cache_sp++] = parser_cannot_cache;
   parser_cannot_cache = value;
 }
@@ -19890,12 +19888,9 @@ parser_save_and_set_cannot_cache (bool value)
 static void
 parser_restore_cannot_cache ()
 {
-  parser_cannot_cache_sp--;
+  assert (parser_cannot_cache_sp >= 1);
   parser_cannot_cache = parser_cannot_cache_stack[--parser_cannot_cache_sp];
 }
-
-
-
 
 static int parser_si_datetime_saved;
 
@@ -19912,8 +19907,6 @@ parser_restore_si_datetime ()
   parser_si_datetime = parser_si_datetime_saved;
 }
 
-
-
 static int parser_si_tran_id_saved;
 
 static void
@@ -19929,8 +19922,6 @@ parser_restore_si_tran_id ()
   parser_si_tran_id = parser_si_tran_id_saved;
 }
 
-
-
 static int parser_cannot_prepare_saved;
 
 static void
@@ -19945,8 +19936,6 @@ parser_restore_cannot_prepare ()
 {
   parser_cannot_prepare = parser_cannot_prepare_saved;
 }
-
-
 
 static int parser_wjc_stack_default[STACK_SIZE];
 static int *parser_wjc_stack = parser_wjc_stack_default;
@@ -19975,6 +19964,7 @@ parser_save_and_set_wjc (int value)
       parser_wjc_limit *= 2;
     }
 
+  assert (parser_wjc_sp >= 0);
   parser_wjc_stack[parser_wjc_sp++] = parser_within_join_condition;
   parser_within_join_condition = value;
 }
@@ -19982,10 +19972,9 @@ parser_save_and_set_wjc (int value)
 static void
 parser_restore_wjc ()
 {
+  assert (parser_wjc_sp >= 1);
   parser_within_join_condition = parser_wjc_stack[--parser_wjc_sp];
 }
-
-
 
 static int parser_instnum_stack_default[STACK_SIZE];
 static int *parser_instnum_stack = parser_instnum_stack_default;
@@ -20014,6 +20003,7 @@ parser_save_and_set_ic (int value)
       parser_instnum_limit *= 2;
     }
 
+  assert (parser_instnum_sp >= 0);
   parser_instnum_stack[parser_instnum_sp++] = parser_instnum_check;
   parser_instnum_check = value;
 }
@@ -20021,11 +20011,9 @@ parser_save_and_set_ic (int value)
 static void
 parser_restore_ic ()
 {
+  assert (parser_instnum_sp >= 1);
   parser_instnum_check = parser_instnum_stack[--parser_instnum_sp];
 }
-
-
-
 
 static int parser_groupbynum_stack_default[STACK_SIZE];
 static int *parser_groupbynum_stack = parser_groupbynum_stack_default;
@@ -20054,6 +20042,7 @@ parser_save_and_set_gc (int value)
       parser_groupbynum_limit *= 2;
     }
 
+  assert (parser_groupbynum_sp >= 0);
   parser_groupbynum_stack[parser_groupbynum_sp++] = parser_groupbynum_check;
   parser_groupbynum_check = value;
 }
@@ -20061,10 +20050,9 @@ parser_save_and_set_gc (int value)
 static void
 parser_restore_gc ()
 {
+  assert (parser_groupbynum_sp >= 1);
   parser_groupbynum_check = parser_groupbynum_stack[--parser_groupbynum_sp];
 }
-
-
 
 static int parser_orderbynum_stack_default[STACK_SIZE];
 static int *parser_orderbynum_stack = parser_orderbynum_stack_default;
@@ -20093,6 +20081,7 @@ parser_save_and_set_oc (int value)
       parser_orderbynum_limit *= 2;
     }
 
+  assert (parser_orderbynum_sp >= 0);
   parser_orderbynum_stack[parser_orderbynum_sp++] = parser_orderbynum_check;
   parser_orderbynum_check = value;
 }
@@ -20100,11 +20089,9 @@ parser_save_and_set_oc (int value)
 static void
 parser_restore_oc ()
 {
+  assert (parser_orderbynum_sp >= 1);
   parser_orderbynum_check = parser_orderbynum_stack[--parser_orderbynum_sp];
 }
-
-
-
 
 static int parser_sysc_stack_default[STACK_SIZE];
 static int *parser_sysc_stack = parser_sysc_stack_default;
@@ -20133,6 +20120,7 @@ parser_save_and_set_sysc (int value)
       parser_sysc_limit *= 2;
     }
 
+  assert (parser_sysc_sp >= 0);
   parser_sysc_stack[parser_sysc_sp++] = parser_sysconnectbypath_check;
   parser_sysconnectbypath_check = value;
 }
@@ -20140,11 +20128,9 @@ parser_save_and_set_sysc (int value)
 static void
 parser_restore_sysc ()
 {
+  assert (parser_sysc_sp >= 1);
   parser_sysconnectbypath_check = parser_sysc_stack[--parser_sysc_sp];
 }
-
-
-
 
 static int parser_prc_stack_default[STACK_SIZE];
 static int *parser_prc_stack = parser_prc_stack_default;
@@ -20173,6 +20159,7 @@ parser_save_and_set_prc (int value)
       parser_prc_limit *= 2;
     }
 
+  assert (parser_prc_sp >= 0);
   parser_prc_stack[parser_prc_sp++] = parser_prior_check;
   parser_prior_check = value;
 }
@@ -20180,11 +20167,9 @@ parser_save_and_set_prc (int value)
 static void
 parser_restore_prc ()
 {
+  assert (parser_prc_sp >= 1);
   parser_prior_check = parser_prc_stack[--parser_prc_sp];
 }
-
-
-
 
 static int parser_cbrc_stack_default[STACK_SIZE];
 static int *parser_cbrc_stack = parser_cbrc_stack_default;
@@ -20213,6 +20198,7 @@ parser_save_and_set_cbrc (int value)
       parser_cbrc_limit *= 2;
     }
 
+  assert (parser_cbrc_sp >= 0);
   parser_cbrc_stack[parser_cbrc_sp++] = parser_connectbyroot_check;
   parser_connectbyroot_check = value;
 }
@@ -20220,11 +20206,9 @@ parser_save_and_set_cbrc (int value)
 static void
 parser_restore_cbrc ()
 {
+  assert (parser_cbrc_sp >= 1);
   parser_connectbyroot_check = parser_cbrc_stack[--parser_cbrc_sp];
 }
-
-
-
 
 static int parser_serc_stack_default[STACK_SIZE];
 static int *parser_serc_stack = parser_serc_stack_default;
@@ -20253,6 +20237,7 @@ parser_save_and_set_serc (int value)
       parser_serc_limit *= 2;
     }
 
+  assert (parser_serc_sp >= 0);
   parser_serc_stack[parser_serc_sp++] = parser_serial_check;
   parser_serial_check = value;
 }
@@ -20260,11 +20245,9 @@ parser_save_and_set_serc (int value)
 static void
 parser_restore_serc ()
 {
+  assert (parser_serc_sp >= 1);
   parser_serial_check = parser_serc_stack[--parser_serc_sp];
 }
-
-
-
 
 static int parser_pseudoc_stack_default[STACK_SIZE];
 static int *parser_pseudoc_stack = parser_pseudoc_stack_default;
@@ -20293,6 +20276,7 @@ parser_save_and_set_pseudoc (int value)
       parser_pseudoc_limit *= 2;
     }
 
+  assert (parser_pseudoc_sp >= 0);
   parser_pseudoc_stack[parser_pseudoc_sp++] = parser_pseudocolumn_check;
   parser_pseudocolumn_check = value;
 }
@@ -20300,11 +20284,9 @@ parser_save_and_set_pseudoc (int value)
 static void
 parser_restore_pseudoc ()
 {
+  assert (parser_pseudoc_sp >= 1);
   parser_pseudocolumn_check = parser_pseudoc_stack[--parser_pseudoc_sp];
 }
-
-
-
 
 static int parser_sqc_stack_default[STACK_SIZE];
 static int *parser_sqc_stack = parser_sqc_stack_default;
@@ -20333,6 +20315,7 @@ parser_save_and_set_sqc (int value)
       parser_sqc_limit *= 2;
     }
 
+  assert (parser_sqc_sp >= 0);
   parser_sqc_stack[parser_sqc_sp++] = parser_subquery_check;
   parser_subquery_check = value;
 }
@@ -20340,11 +20323,9 @@ parser_save_and_set_sqc (int value)
 static void
 parser_restore_sqc ()
 {
+  assert (parser_sqc_sp >= 1);
   parser_subquery_check = parser_sqc_stack[--parser_sqc_sp];
 }
-
-
-
 
 static int parser_hvar_stack_default[STACK_SIZE];
 static int *parser_hvar_stack = parser_hvar_stack_default;
@@ -20373,6 +20354,7 @@ parser_save_and_set_hvar (int value)
       parser_hvar_limit *= 2;
     }
 
+  assert (parser_hvar_sp >= 0);
   parser_hvar_stack[parser_hvar_sp++] = parser_hostvar_check;
   parser_hostvar_check = value;
 }
@@ -20380,11 +20362,9 @@ parser_save_and_set_hvar (int value)
 static void
 parser_restore_hvar ()
 {
+  assert (parser_hvar_sp >= 1);
   parser_hostvar_check = parser_hvar_stack[--parser_hvar_sp];
 }
-
-
-
 
 static int parser_oracle_stack_default[STACK_SIZE];
 static int *parser_oracle_stack = parser_oracle_stack_default;
@@ -20413,16 +20393,16 @@ parser_save_found_Oracle_outer ()
       parser_oracle_limit *= 2;
     }
 
+  assert (parser_oracle_sp >= 0);
   parser_oracle_stack[parser_oracle_sp++] = parser_found_Oracle_outer;
 }
 
 static void
 parser_restore_found_Oracle_outer ()
 {
+  assert (parser_oracle_sp >= 1);
   parser_found_Oracle_outer = parser_oracle_stack[--parser_oracle_sp];
 }
-
-
 
 static PT_NODE *parser_alter_node_saved;
 
@@ -20432,15 +20412,11 @@ parser_save_alter_node (PT_NODE * node)
   parser_alter_node_saved = node;
 }
 
-
 static PT_NODE *
 parser_get_alter_node ()
 {
   return parser_alter_node_saved;
 }
-
-
-
 
 static PT_NODE *parser_attr_def_one_saved;
 
@@ -20450,19 +20426,14 @@ parser_save_attr_def_one (PT_NODE * node)
   parser_attr_def_one_saved = node;
 }
 
-
 static PT_NODE *
 parser_get_attr_def_one ()
 {
   return parser_attr_def_one_saved;
 }
 
-
-
-
 static PT_NODE *parser_orderby_node_stack_default[STACK_SIZE];
-static PT_NODE **parser_orderby_node_stack =
-  parser_orderby_node_stack_default;
+static PT_NODE **parser_orderby_node_stack = parser_orderby_node_stack_default;
 static int parser_orderby_node_sp = 0;
 static int parser_orderby_node_limit = STACK_SIZE;
 
@@ -20488,24 +20459,23 @@ parser_push_orderby_node (PT_NODE * node)
       parser_orderby_node_limit *= 2;
     }
 
+  assert (parser_orderby_node_sp >= 0);
   parser_orderby_node_stack[parser_orderby_node_sp++] = node;
 }
-
 
 static PT_NODE *
 parser_top_orderby_node ()
 {
+  assert (parser_orderby_node_sp >= 1);
   return parser_orderby_node_stack[parser_orderby_node_sp - 1];
 }
 
 static PT_NODE *
 parser_pop_orderby_node ()
 {
+  assert (parser_orderby_node_sp >= 1);
   return parser_orderby_node_stack[--parser_orderby_node_sp];
 }
-
-
-
 
 static PT_NODE *parser_select_node_stack_default[STACK_SIZE];
 static PT_NODE **parser_select_node_stack = parser_select_node_stack_default;
@@ -20534,32 +20504,36 @@ parser_push_select_stmt_node (PT_NODE * node)
       parser_select_node_limit *= 2;
     }
 
+  assert (parser_select_node_sp >= 0);
   parser_select_node_stack[parser_select_node_sp++] = node;
 }
-
 
 static PT_NODE *
 parser_top_select_stmt_node ()
 {
+  assert (parser_select_node_sp >= 1);
   return parser_select_node_stack[parser_select_node_sp - 1];
 }
 
 static PT_NODE *
 parser_pop_select_stmt_node ()
 {
+  assert (parser_select_node_sp >= 1);
   return parser_select_node_stack[--parser_select_node_sp];
 }
 
-
-
-
+static bool
+parser_is_select_stmt_node_empty ()
+{
+  return parser_select_node_sp < 1;
+}
 
 static PT_NODE *parser_hint_node_stack_default[STACK_SIZE];
 static PT_NODE **parser_hint_node_stack = parser_hint_node_stack_default;
 static int parser_hint_node_sp = 0;
 static int parser_hint_node_limit = STACK_SIZE;
 
-void
+static void
 parser_push_hint_node (PT_NODE * node)
 {
   if (parser_hint_node_sp >= parser_hint_node_limit)
@@ -20581,20 +20555,28 @@ parser_push_hint_node (PT_NODE * node)
       parser_hint_node_limit *= 2;
     }
 
+  assert (parser_hint_node_sp >= 0);
   parser_hint_node_stack[parser_hint_node_sp++] = node;
 }
 
-
-PT_NODE *
+static PT_NODE *
 parser_top_hint_node ()
 {
+  assert (parser_hint_node_sp >= 1);
   return parser_hint_node_stack[parser_hint_node_sp - 1];
 }
 
-PT_NODE *
+static PT_NODE *
 parser_pop_hint_node ()
 {
+  assert (parser_hint_node_sp >= 1);
   return parser_hint_node_stack[--parser_hint_node_sp];
+}
+
+static bool
+parser_is_hint_node_empty ()
+{
+  return parser_hint_node_sp < 1;
 }
 
 static int parser_join_type_stack_default[STACK_SIZE];
@@ -20624,23 +20606,23 @@ parser_push_join_type (int v)
       parser_join_type_limit *= 2;
     }
 
+  assert (parser_join_type_sp >= 0);
   parser_join_type_stack[parser_join_type_sp++] = v;
 }
-
 
 static int
 parser_top_join_type ()
 {
+  assert (parser_join_type_sp >= 1);
   return parser_join_type_stack[parser_join_type_sp - 1];
 }
 
 static int
 parser_pop_join_type ()
 {
+  assert (parser_join_type_sp >= 1);
   return parser_join_type_stack[--parser_join_type_sp];
 }
-
-
 
 static bool parser_is_reverse_saved;
 
@@ -20650,13 +20632,11 @@ parser_save_is_reverse (bool v)
   parser_is_reverse_saved = v;
 }
 
-
 static bool
 parser_get_is_reverse ()
 {
   return parser_is_reverse_saved;
 }
-
 
 static int
 parser_count_list (PT_NODE * list)
@@ -21483,7 +21463,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       else if (a1->node_type == PT_DOT_)
 	a1->info.dot.tag_click_counter = 1;
 
-      top_node = parser_top_select_stmt_node (); 
+      top_node = parser_is_select_stmt_node_empty () ? NULL : parser_top_select_stmt_node (); 
       if (top_node) 
       {
 	  top_node->is_click_counter = 1;
