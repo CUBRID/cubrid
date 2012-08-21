@@ -113,7 +113,7 @@ begin
 		if (nResult < 0) then
 			MessageBox("Fail to run SCHTASKS.exe. CUBRID Service Tray will not be started automatically", WARNING);
 		elseif (nResult = 0 && LAAW_PARAMETERS.nLaunchResult != 0) then
-			MessageBox("Cannot add task to Task Scheduler service. CUBRID Service Tray will not be started automatically", WARNING);
+			MessageBox("Cannot add task to Task Scheduler service. CUBRID Service Tray will not be started automatically. Please verify whether Task Scheduler service has been started.", WARNING);
 		endif;
 	endif;
 end;
