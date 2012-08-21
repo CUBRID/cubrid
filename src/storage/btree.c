@@ -226,8 +226,7 @@ static int btree_insert_into_leaf (THREAD_ENTRY * thread_p,
 				   int *key_added, BTID_INT * btid,
 				   PAGE_PTR page_ptr, DB_VALUE * key,
 				   OID * cls_oid, OID * oid,
-				   VPID * nearp_vpid,
-				   int do_unique_check, int op_type,
+				   VPID * nearp_vpid, int op_type,
 				   bool key_found, INT16 slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
@@ -8621,7 +8620,6 @@ error:
  *   oid(in): Object identifier to be inserted together with the key
  *   nearp_vpid(in): Near page identifier that may be used in allocating a new
  *                   overflow page. (Note: it may be ignored.)
- *   do_unique_check(in):
  *   op_type(in):
  *   key_found(in):
  *   slot_id(in):
@@ -8683,8 +8681,7 @@ static int
 btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 			BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 			OID * cls_oid, OID * oid, VPID * nearp_vpid,
-			int do_unique_check, int op_type,
-			bool key_found, INT16 slot_id)
+			int op_type, bool key_found, INT16 slot_id)
 {
   PAGE_PTR ovfp = NULL, newp = NULL;
   VPID ovfl_vpid, new_vpid;
@@ -8930,33 +8927,23 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
       btree_read_record (thread_p, btid, &rec, NULL, &leafrec_pnt,
 			 BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE);
 
-      /* If do_unique_check argument is true,
-       * set error code and exit
-       */
-      if (do_unique_check == true
-	  || (BTREE_IS_UNIQUE (btid)
-	      && btree_leaf_get_num_oids (&rec, offset, BTREE_LEAF_NODE,
-					  oid_size) >= 2))
+      if (BTREE_IS_UNIQUE (btid))
 	{
-	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
+	  if (BTREE_NEED_UNIQUE_CHECK (thread_p, op_type)
+	      || btree_leaf_get_num_oids (&rec, offset, BTREE_LEAF_NODE,
+					  oid_size) >= 2)
 	    {
-	      char *keyval = pr_valstring (key);
+	      if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
+		{
+		  char *keyval = pr_valstring (key);
 
-	      ret = ER_UNIQUE_VIOLATION_WITHKEY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-		      (keyval == NULL) ? "(null)" : keyval);
-	      if (keyval)
-		{
-		  free_and_init (keyval);
-		}
-	    }
-	  else
-	    {
-	      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
-		  && op_type == MULTI_ROW_UPDATE)
-		{
-		  ret = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+		  ret = ER_UNIQUE_VIOLATION_WITHKEY;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
+			  (keyval == NULL) ? "(null)" : keyval);
+		  if (keyval)
+		    {
+		      free_and_init (keyval);
+		    }
 		}
 	      else
 		{
@@ -8964,8 +8951,15 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 						    cls_oid, btid->sys_btid);
 		  ret = ER_BTREE_UNIQUE_FAILED;
 		}
+	      goto exit_on_error;
 	    }
-	  goto exit_on_error;
+	  else if (op_type == MULTI_ROW_UPDATE
+		   && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	    {
+	      ret = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+	      goto exit_on_error;
+	    }
 	}
 
       if (log_is_in_crash_recovery ())
@@ -10996,7 +10990,6 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   INT16 next_slot_id;
   LOG_LSA saved_plsa, saved_nlsa;
   LOG_LSA *temp_lsa;
-  int do_unique_check;
   OID N_class_oid, C_class_oid;
   OID saved_N_class_oid, saved_C_class_oid;
   PAGE_PTR temp_page = NULL;
@@ -12256,39 +12249,9 @@ key_insertion:
    */
   key_added = 0;
 
-#if 0
-  if (LOG_CHECK_LOG_APPLIER (thread_p))
-    {
-      do_unique_check = false;
-    }
-  else
-#endif
-  if (is_active && BTREE_IS_UNIQUE (&btid_int))
-    {
-      if (op_type == SINGLE_ROW_INSERT || op_type == MULTI_ROW_INSERT
-	  || op_type == SINGLE_ROW_UPDATE)
-	{
-	  do_unique_check = true;
-	}
-      else if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
-	       && op_type == MULTI_ROW_UPDATE)
-	{
-	  do_unique_check = true;
-	}
-      else
-	{			/* MULTI_ROW_UPDATE */
-	  do_unique_check = false;
-	}
-    }
-  else
-    {				/* in recovery || non-unique index */
-      do_unique_check = false;
-    }
-
   if (btree_insert_into_leaf (thread_p, &key_added, &btid_int,
 			      P, key, &class_oid, oid, &P_vpid,
-			      do_unique_check, op_type, key_found,
-			      p_slot_id) != NO_ERROR)
+			      op_type, key_found, p_slot_id) != NO_ERROR)
     {
       goto error;
     }

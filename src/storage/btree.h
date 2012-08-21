@@ -54,6 +54,11 @@
 #define BTREE_IS_MULTI_ROW_OP(op) \
   (op == MULTI_ROW_INSERT || op == MULTI_ROW_UPDATE || op == MULTI_ROW_DELETE\
    || op == MULTI_ROW_INSERT_PRUNING || op == MULTI_ROW_UPDATE_PRUNING)
+
+#define BTREE_NEED_UNIQUE_CHECK(thread_p, op) \
+  (logtb_is_current_active (thread_p) \
+   && (op == SINGLE_ROW_INSERT || op == MULTI_ROW_INSERT || op == SINGLE_ROW_UPDATE))
+
 #if defined(SERVER_MODE)
 /* For next-key locking */
 #define BTREE_CONTINUE                     -1
