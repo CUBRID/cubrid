@@ -44,6 +44,7 @@ public class TimeValue extends Value {
 		super();
 		Calendar cal = Calendar.getInstance();
 		cal.set(0, 0, 0, hour, min, sec);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		this.time = new Time(cal.getTimeInMillis());
 	}
@@ -52,6 +53,7 @@ public class TimeValue extends Value {
 		super(mode);
 		Calendar cal = Calendar.getInstance();
 		cal.set(0, 0, 0, hour, min, sec);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		this.time = new Time(cal.getTimeInMillis());
 		this.dbType = dbType;

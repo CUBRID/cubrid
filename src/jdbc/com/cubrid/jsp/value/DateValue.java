@@ -43,7 +43,8 @@ public class DateValue extends Value {
 	public DateValue(int year, int mon, int day) {
 		super();
 		Calendar cal = Calendar.getInstance();
-		cal.set(year, mon, day);
+		cal.set(year, mon, day, 0, 0, 0);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		date = new Date(cal.getTimeInMillis());
 	}
@@ -51,7 +52,8 @@ public class DateValue extends Value {
 	public DateValue(int year, int mon, int day, int mode, int dbType) {
 		super(mode);
 		Calendar cal = Calendar.getInstance();
-		cal.set(year, mon, day);
+		cal.set(year, mon, day, 0, 0, 0);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		date = new Date(cal.getTimeInMillis());
 		this.dbType = dbType;

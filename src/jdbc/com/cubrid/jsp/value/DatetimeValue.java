@@ -47,6 +47,7 @@ public class DatetimeValue extends Value {
 		Calendar c = Calendar.getInstance();
 		c.set(year, mon, day, hour, min, sec);
 		c.set(Calendar.MILLISECOND, msec);
+
 		timestamp = new Timestamp(c.getTimeInMillis());
 	}
 
@@ -57,6 +58,7 @@ public class DatetimeValue extends Value {
 		Calendar c = Calendar.getInstance();
 		c.set(year, mon, day, hour, min, sec);
 		c.set(Calendar.MILLISECOND, msec);
+
 		timestamp = new Timestamp(c.getTimeInMillis());
 		this.dbType = dbType;
 	}

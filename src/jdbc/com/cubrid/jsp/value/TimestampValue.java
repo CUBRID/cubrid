@@ -44,6 +44,7 @@ public class TimestampValue extends Value {
 		super();
 		Calendar cal = Calendar.getInstance();
 		cal.set(year, mon, day, hour, min, sec);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		this.timestamp = new Timestamp(cal.getTimeInMillis());
 	}
@@ -54,6 +55,7 @@ public class TimestampValue extends Value {
 		Calendar cal = Calendar.getInstance();
 		cal.clear();
 		cal.set(year, mon, day, hour, min, sec);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		this.timestamp = new Timestamp(cal.getTimeInMillis());
 		this.dbType = dbType;
