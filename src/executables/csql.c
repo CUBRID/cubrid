@@ -36,15 +36,8 @@
 #include <sys/errno.h>
 #include <signal.h>
 #include <wctype.h>
-#endif /* !WINDOWS */
-#if defined(GNU_Readline)
-#include <readline/readline.h>
-#include <readline/history.h>
-#else /* !GNU_Readline */
-#if !defined(WINDOWS)
 #include <editline/readline.h>
 #endif /* !WINDOWS */
-#endif /* GNU_Readline */
 
 #include "csql.h"
 #include "system_parameter.h"
@@ -81,14 +74,12 @@ enum
 #define LINE_BUFFER_SIZE         (4000)
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-#if !defined(GNU_Readline)
 #if !defined(WINDOWS)
 /* current max keyword is 16 + nul char + 3 for expansion */
 
 static int csql_Keyword_num;
 static KEYWORD_RECORD *csql_Keyword_list;
 #endif /* !WINDOWS */
-#endif /* !GNU_Readline */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 int (*csql_text_utf8_to_console) (const char *, const int, char **,
@@ -166,12 +157,12 @@ static bool csql_Is_time_on = false;
 static jmp_buf csql_Jmp_buf;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
 static char *csql_keyword_generator (const char *text, int state);
 static char **csql_cmd_completion_handler (const char *text, int start,
 					   int end);
 static void init_readline ();
-#endif /* ! GNU_Readline && ! WINDOWS */
+#endif /* ! WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 static void csql_pipe_handler (int sig_no);
@@ -198,7 +189,7 @@ static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 static bool csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
 /*
  * for readline keyword completion
  */
@@ -278,7 +269,7 @@ init_readline ()
 {
   rl_attempted_completion_function = csql_cmd_completion_handler;
 }
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
@@ -426,13 +417,9 @@ check_incomplete_string (char *line_read,
 static void
 start_csql (CSQL_ARGUMENT * csql_arg)
 {
-#if defined(GNU_Readline)
-  char *t;
-#else /* !GNU_Readline */
 #if !defined(WINDOWS)
   int i;
 #endif /* !WINDOWS */
-#endif /* GNU_Readline */
   unsigned char line_buf[LINE_BUFFER_SIZE];
   unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
   char *line_read = NULL;
@@ -507,7 +494,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	   csql_get_message (CSQL_INITIAL_HELP_MSG));
   csql_fputs (csql_Scratch_text, csql_Tty_fp);
 
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
   if (csql_Is_interactive)
     {
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -519,7 +506,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       csql_Keyword_list = pt_get_keyword_rec (&csql_Keyword_num);
 #endif /* ENABLE_UNUSED_FUNCTION */
     }
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
 
   for (line_no = 1;; line_no++)
     {
@@ -536,21 +523,13 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       if (csql_Is_interactive)
 	{
-#if !defined(GNU_Readline) && defined(WINDOWS)
+#if defined(WINDOWS)
 	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
 	  line_read =
 	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 #else
 	  if ((line_read = readline (csql_Prompt)) != NULL)
 	    {
-#if defined(GNU_Readline)
-	      for (t = line_read; isspace (*t); t++)
-		;
-	      if (*t != '\0')
-		{
-		  add_history (line_read);
-		}
-#endif /* GNU_Readline */
 	      if (line_read_alloced != NULL)
 		{
 		  free (line_read_alloced);
@@ -565,7 +544,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	       */
 	      flag_read_whole_line = true;
 	    }
-#endif /* !GNU_Readline && WINDOWS */
+#endif /* WINDOWS */
 	}
       else
 	{
@@ -754,9 +733,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   char *argument;		/* argument str */
   int cmd_no;			/* session command number */
   DB_HELP_COMMAND csql_cmd_no;	/* CSQL cmd no for syntax help */
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
 
   /* get session command and argument */
   ptr = line_read;
@@ -808,12 +787,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       *sess_end = sess_end_char;
     }
 
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
   if (csql_Is_interactive)
     {
       add_history (line_read);
     }
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
 
   switch ((SESSION_CMD) cmd_no)
     {
@@ -1214,7 +1193,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_HISTORY_READ:
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
 	  if (argument[0] != '\0')
@@ -1250,11 +1229,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		       "ERROR: HISTORYRead {history_number}\n");
 	    }
 	}
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
       break;
 
     case S_CMD_HISTORY_LIST:
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
 	  /* rewind history */
@@ -1270,7 +1249,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
 	    }
 	}
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
       break;
     }
 
@@ -1626,23 +1605,23 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
   if (db_get_errors (session))
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
-#if !defined(GNU_Readline) && !defined(WINDOWS)
+#if !defined(WINDOWS)
       if ((stmts != NULL) && (csql_Is_interactive))
 	{
 	  add_history (stmts);
 	}
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
       goto error;
     }
   else
     {
       total = db_statement_count (session);
-#if !defined(GNU_Readline) &&  !defined(WINDOWS)
+#if !defined(WINDOWS)
       if ((total >= 1) && (stmts != NULL) && (csql_Is_interactive))
 	{
 	  add_history (stmts);
 	}
-#endif /* !GNU_Readline && !WINDOWS */
+#endif /* !WINDOWS */
 
       /* It is assumed we must always enter the for loop below */
       total = MAX (total, 1);
