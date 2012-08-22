@@ -8949,10 +8949,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
       assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE
 	      && key_cnt + 1 == spage_number_of_records (page_ptr));
 
-      if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
-	{
-	  key_len = DISK_VPID_SIZE;
-	}
+      key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE, key_len);
       if (BTREE_GET_NODE_MAX_KEY_LEN (header_ptr) < key_len)
 	{
 	  BTREE_PUT_NODE_MAX_KEY_LEN (header_ptr, key_len);
@@ -10172,10 +10169,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
-  if (max_key >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
-    {
-      max_key = DISK_VPID_SIZE;
-    }
+  max_key = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, max_key);
+
   max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
   if (max_key > max_key_len)
     {
@@ -10596,10 +10591,8 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
-  if (max_key >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
-    {
-      max_key = DISK_VPID_SIZE;
-    }
+  max_key = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, max_key);
+
   max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
   if (max_key > max_key_len)
     {
@@ -19798,10 +19791,7 @@ btree_rv_leafrec_redo_insert_key (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE
 	  && key_cnt + 1 == spage_number_of_records (recv->pgptr));
 
-  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
-    {
-      key_len = DISK_VPID_SIZE;
-    }
+  key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE, key_len);
   if (BTREE_GET_NODE_MAX_KEY_LEN (header_ptr) < key_len)
     {
       BTREE_PUT_NODE_MAX_KEY_LEN (header_ptr, key_len);
