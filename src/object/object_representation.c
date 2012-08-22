@@ -3606,7 +3606,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	       int include_classoids, int is_null)
 {
   unsigned int carrier, extended_precision, extended_scale;
-  int precision;
+  int precision, scale;
   int has_oid, has_subdomain, has_enum;
   bool has_collation;
   TP_DOMAIN *d;
@@ -3660,6 +3660,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	}
 
       precision = 0;
+      scale = 0;
       extended_precision = 0;
       extended_scale = 0;
       has_oid = 0;
@@ -3672,9 +3673,17 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 
 	case DB_TYPE_NUMERIC:
 	  /* second byte contains scale, third & fourth bytes have precision */
-	  if (d->scale < OR_DOMAIN_SCALE_MAX)
+
+	  /* safe guard for scale */
+	  scale = d->scale;
+	  if (scale <= DB_DEFAULT_SCALE)
 	    {
-	      carrier |= d->scale << OR_DOMAIN_SCALE_SHIFT;
+	      scale = 0;
+	    }
+
+	  if (scale < OR_DOMAIN_SCALE_MAX)
+	    {
+	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
 	    }
 	  else
 	    {

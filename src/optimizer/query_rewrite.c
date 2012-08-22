@@ -1703,8 +1703,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 					  parser_copy_tree_list (parser,
 								 arg2),
 					  arg1->type_enum,
-					  TP_FLOATING_PRECISION_VALUE,
-					  TP_FLOATING_PRECISION_VALUE, dt);
+					  TP_FLOATING_PRECISION_VALUE, 0, dt);
 		  if (temp == NULL)
 		    {
 		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,
@@ -1745,8 +1744,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 					  parser_copy_tree_list (parser,
 								 arg2),
 					  arg1->type_enum,
-					  TP_FLOATING_PRECISION_VALUE,
-					  TP_FLOATING_PRECISION_VALUE, dt);
+					  TP_FLOATING_PRECISION_VALUE, 0, dt);
 		  if (temp == NULL)
 		    {
 		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,

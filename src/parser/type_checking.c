@@ -11198,8 +11198,9 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 
       if (node->data_type->info.data_type.dec_precision
 	  &&
-	  (node->data_type->info.data_type.dec_precision !=
-	   DB_DEFAULT_SCALE || DB_DEFAULT_NUMERIC_SCALE))
+	  (node->data_type->info.data_type.dec_precision != DB_DEFAULT_SCALE
+	   || node->data_type->info.data_type.dec_precision
+	      != DB_DEFAULT_NUMERIC_SCALE))
 	{
 	  precision++;		/* for decimal point */
 	}
