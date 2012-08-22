@@ -1127,11 +1127,11 @@ db_set_interrupt (int set)
  * set(in): Set or clear the flag
  *
  */
-void
+int
 db_set_suppress_repl_on_transaction (int set)
 {
-  CHECK_CONNECT_VOID ();
-  log_set_suppress_repl_on_transaction (set);
+  CHECK_CONNECT_ERROR ();
+  return log_set_suppress_repl_on_transaction (set);
 }
 
 /*

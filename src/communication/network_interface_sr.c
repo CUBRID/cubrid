@@ -1992,13 +1992,16 @@ slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 					 int reqlen)
 {
   int set;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_int (request, &set);
   xlogtb_set_suppress_repl_on_transaction (thread_p, set);
 
-  /*
-   *  No reply expected...
-   */
+  /* always success */
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 

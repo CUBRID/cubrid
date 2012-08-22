@@ -2463,6 +2463,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_EXEC_MODE old_exec_mode;
   bool old_disable_update_stats;
   bool need_schema_replication = false;
+  int suppress_repl_error = NO_ERROR;
 
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
@@ -2496,7 +2497,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto end;
 	    }
 
-	  db_set_suppress_repl_on_transaction (true);
+	  suppress_repl_error = db_set_suppress_repl_on_transaction (true);
+	  if (suppress_repl_error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	}
 
       switch (statement->node_type)
@@ -2751,14 +2756,15 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      error = locator_all_flush ();
 	    }
 
-	  db_set_suppress_repl_on_transaction (false);
+	  suppress_repl_error = db_set_suppress_repl_on_transaction (false);
 	}
 
       /* restore execution flag */
       parser->exec_mode = old_exec_mode;
 
       /* write schema replication log */
-      if (error == NO_ERROR && need_schema_replication)
+      if (error == NO_ERROR
+	  && need_schema_replication && suppress_repl_error == NO_ERROR)
 	{
 	  error = do_replicate_schema (parser, statement);
 	}
@@ -2862,6 +2868,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_EXEC_MODE old_exec_mode;
   bool old_disable_update_stats;
   bool need_schema_replication = false;
+  int suppress_repl_error;
 
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
@@ -2892,7 +2899,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      db_set_suppress_repl_on_transaction (true);
+      suppress_repl_error = db_set_suppress_repl_on_transaction (true);
+      if (suppress_repl_error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   switch (statement->node_type)
@@ -3109,14 +3120,15 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = locator_all_flush ();
 	}
 
-      db_set_suppress_repl_on_transaction (false);
+      suppress_repl_error = db_set_suppress_repl_on_transaction (false);
     }
 
   /* restore execution flag */
   parser->exec_mode = old_exec_mode;
 
   /* write schema replication log */
-  if (err == NO_ERROR && need_schema_replication)
+  if (err == NO_ERROR
+      && need_schema_replication && suppress_repl_error == NO_ERROR)
     {
       err = do_replicate_schema (parser, statement);
     }

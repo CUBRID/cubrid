@@ -2558,19 +2558,32 @@ log_dump_stat (FILE * outfp)
  *
  * NOTE:
  */
-void
+int
 log_set_suppress_repl_on_transaction (int set)
 {
 #if defined(CS_MODE)
+  int req_error = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request, *reply;
+
   request = OR_ALIGNED_BUF_START (a_request);
   or_pack_int (request, set);
 
-  (void)
-    net_client_request_no_reply
-    (NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION, request,
-     OR_ALIGNED_BUF_SIZE (a_request));
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION,
+			request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+
+  if (req_error == NO_ERROR)
+    {
+      or_unpack_int (reply, &req_error);
+    }
+
+  return req_error;
 #else /* CS_MODE */
 
   ENTER_SERVER ();
@@ -2578,6 +2591,8 @@ log_set_suppress_repl_on_transaction (int set)
   xlogtb_set_suppress_repl_on_transaction (NULL, set);
 
   EXIT_SERVER ();
+
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 

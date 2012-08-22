@@ -165,7 +165,7 @@ extern int log_reset_isolation (TRAN_ISOLATION isolation,
 extern void log_set_interrupt (int set);
 extern void log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
-extern void log_set_suppress_repl_on_transaction (int set);
+extern int log_set_suppress_repl_on_transaction (int set);
 extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator,
 					       char *real_locator);
 extern int log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);

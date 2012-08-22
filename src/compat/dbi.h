@@ -86,7 +86,7 @@ extern int db_2pc_prepared_transactions (int gtrids[], int size);
 extern int db_2pc_prepare_to_commit_transaction (int gtrid);
 extern int db_2pc_attach_transaction (int gtrid);
 extern void db_set_interrupt (int set);
-extern void db_set_suppress_repl_on_transaction (int set);
+extern int db_set_suppress_repl_on_transaction (int set);
 extern void db_checkpoint (void);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
