@@ -9098,14 +9098,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
       /* Forward */
       if (lsa.pageid < 0)
 	{
-	  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT) != 0)
-	    {
-	      lsa.pageid = 0;
-	    }
-	  else
-	    {
-	      lsa.pageid = log_Gl.hdr.fpageid;
-	    }
+	  lsa.pageid = 0;
 	}
       else if (lsa.pageid > log_Gl.hdr.append_lsa.pageid
 	       && LOG_ISRESTARTED ())

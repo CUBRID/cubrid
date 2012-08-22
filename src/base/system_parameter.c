@@ -704,9 +704,6 @@ static int prm_log_isolation_level_lower =
   TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
 static int prm_log_isolation_level_upper = TRAN_SERIALIZABLE;
 
-bool PRM_LOG_MEDIA_FAILURE_SUPPORT = true;
-static bool prm_log_media_failure_support_default = true;
-
 bool PRM_COMMIT_ON_SHUTDOWN = false;
 static bool prm_commit_on_shutdown_default = false;
 
@@ -1487,10 +1484,10 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_isolation_level_lower,
    (char *) NULL},
   {PRM_NAME_LOG_MEDIA_FAILURE_SUPPORT,
-   (PRM_REQUIRED | PRM_DEFAULT | PRM_FOR_SERVER),
-   PRM_BOOLEAN,
-   (void *) &prm_log_media_failure_support_default,
-   (void *) &PRM_LOG_MEDIA_FAILURE_SUPPORT,
+   (PRM_OBSOLETED),
+   PRM_NO_TYPE,
+   (void *) NULL,
+   (void *) NULL,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_COMMIT_ON_SHUTDOWN,
@@ -5251,7 +5248,7 @@ prm_set_default (SYSPRM_PARAM * prm)
 
 /*
  * prm_set_session_parameter_default - set session parameter value to default
- * 
+ *
  * return: PRM_ERR_NO_ERROR or SYSPRM_ERR error code
  * session_params(in): list of session parameters
  * prm_id(in): parameter id
@@ -5634,7 +5631,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_server_state_prm;
   SYSPRM_PARAM *auto_restart_server_prm;
   SYSPRM_PARAM *log_background_archiving_prm;
-  SYSPRM_PARAM *log_media_failure_support_prm;
   SYSPRM_PARAM *ha_node_list_prm;
   SYSPRM_PARAM *max_log_archives_prm;
   SYSPRM_PARAM *force_remove_log_archives_prm;
@@ -5672,8 +5668,6 @@ prm_tune_parameters (void)
   auto_restart_server_prm = prm_find (PRM_NAME_AUTO_RESTART_SERVER, NULL);
   log_background_archiving_prm =
     prm_find (PRM_NAME_LOG_BACKGROUND_ARCHIVING, NULL);
-  log_media_failure_support_prm =
-    prm_find (PRM_NAME_LOG_MEDIA_FAILURE_SUPPORT, NULL);
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
   max_log_archives_prm = prm_find (PRM_NAME_LOG_MAX_ARCHIVES, NULL);
   force_remove_log_archives_prm =
@@ -5845,12 +5839,6 @@ prm_tune_parameters (void)
 	}
     }
 #endif /* SERVER_MODE */
-
-  if (log_media_failure_support_prm != NULL
-      && !PRM_GET_BOOL (log_media_failure_support_prm->value))
-    {
-      prm_set (log_background_archiving_prm, "no", false);
-    }
 
   if (ha_node_list_prm == NULL
       || PRM_DEFAULT_VAL_USED (ha_node_list_prm->flag))
@@ -7400,16 +7388,16 @@ sysprm_unpack_different_session_parameters (char *ptr, int **data_ptr)
   return ptr;
 }
 
-/* 
- * prm_set_session_parameter_value - set a new value for the session parameter 
- *		  in session_params list identified by id 
- * 
- * return: PRM_ERR_NO_ERROR or error_code 
- * session_params (in): list of session parameters 
- * id (in): id for the session parameter that needs changed 
- * value (in): new value 
- * verify_different (in): if true, the new value is compared with the value 
- *		stored on server and the different flag is updated 
+/*
+ * prm_set_session_parameter_value - set a new value for the session parameter
+ *		  in session_params list identified by id
+ *
+ * return: PRM_ERR_NO_ERROR or error_code
+ * session_params (in): list of session parameters
+ * id (in): id for the session parameter that needs changed
+ * value (in): new value
+ * verify_different (in): if true, the new value is compared with the value
+ *		stored on server and the different flag is updated
  */
 SYSPRM_ERR
 prm_set_session_parameter_value (SESSION_PARAM * session_params,
@@ -7734,13 +7722,13 @@ prm_set_session_parameter_value (SESSION_PARAM * session_params,
 }
 
 /*
- * prm_compare_prm_value_with_value () - compare a value stored in prm_value 
- *                        field in a session parameter with a void* value 
- * 
- * return: 0 if equal, otherwise != 0 
- * prm_value (in): 
- * value (in): 
- * val_type (in): datatype for values 
+ * prm_compare_prm_value_with_value () - compare a value stored in prm_value
+ *                        field in a session parameter with a void* value
+ *
+ * return: 0 if equal, otherwise != 0
+ * prm_value (in):
+ * value (in):
+ * val_type (in): datatype for values
  */
 static int
 prm_compare_prm_value_with_value (PRM_VALUE prm_value, void *value,
@@ -7844,12 +7832,12 @@ prm_compare_prm_value_with_value (PRM_VALUE prm_value, void *value,
 }
 
 /*
- * prm_update_prm_different_flag () - update the different flag for the system 
+ * prm_update_prm_different_flag () - update the different flag for the system
  *			parameter at prm_id in prm_Def array.
- * 
- * return: void 
- * prm_id (in): parameter id 
- * is_different (in): true if different values on client and server, false 
+ *
+ * return: void
+ * prm_id (in): parameter id
+ * is_different (in): true if different values on client and server, false
  *		      otherwise
  */
 void
@@ -7868,11 +7856,11 @@ prm_update_prm_different_flag (PARAM_ID prm_id, bool is_different)
 }
 
 /*
- * sysprm_update_client_session_parameters () - update the session parameters 
+ * sysprm_update_client_session_parameters () - update the session parameters
  *			stored on client from session parameter list
- * 
- * return: void 
- * session_params (in): session parameter list  
+ *
+ * return: void
+ * session_params (in): session parameter list
  */
 void
 sysprm_update_client_session_parameters (SESSION_PARAM * session_params)

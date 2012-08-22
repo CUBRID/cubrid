@@ -327,8 +327,7 @@ static int logpb_get_guess_archive_num (THREAD_ENTRY * thread_p,
 					LOG_PAGEID pageid);
 static void logpb_set_unavailable_archive (int arv_num);
 static bool logpb_is_archive_available (int arv_num);
-static void logpb_archive_active_log (THREAD_ENTRY * thread_p,
-				      bool force_archive);
+static void logpb_archive_active_log (THREAD_ENTRY * thread_p);
 static int logpb_get_remove_archive_num (THREAD_ENTRY * thread_p,
 					 LOG_PAGEID safe_pageid,
 					 int archive_num);
@@ -2721,7 +2720,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
   if (LOGPB_AT_NEXT_ARCHIVE_PAGE_ID (log_Gl.hdr.append_lsa.pageid))
     {
       /* The log must be archived */
-      logpb_archive_active_log (thread_p, false);
+      logpb_archive_active_log (thread_p);
     }
 
   /*
@@ -4325,9 +4324,10 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
 LOG_PRIOR_NODE *
 prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p,
 				 LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-				 LOG_DATA_ADDR * addr, int num_ucrumbs,
-				 LOG_CRUMB * ucrumbs,
-				 int num_rcrumbs, LOG_CRUMB * rcrumbs)
+				 LOG_DATA_ADDR * addr, const int num_ucrumbs,
+				 const LOG_CRUMB * ucrumbs,
+				 const int num_rcrumbs,
+				 const LOG_CRUMB * rcrumbs)
 {
   LOG_PRIOR_NODE *node;
   int error = NO_ERROR;
@@ -7141,14 +7141,12 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
  *
  * return: nothing
  *
- *   force_archive(in):
- *
  * NOTE: The active portion of the log is archived from the next log
  *              archive page to the previous log page of the current append
  *              log record, to the next log archive.
  */
 static void
-logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
+logpb_archive_active_log (THREAD_ENTRY * thread_p)
 {
   char arv_name[PATH_MAX] = { '\0' };	/* Archive name        */
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;	/* Archive header page
@@ -7219,190 +7217,46 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
-  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT) || force_archive)
-    {
-      /*
-       * All pages must be archived... even the ones with unactive log records
-       * This is the desired parameter to support multimedia crashes.
-       *
-       *
-       * Note that the npages field does not include the previous lsa page
-       *
-       */
-      arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
-      last_pageid = log_Gl.append.prev_lsa.pageid - 1;
+  /*
+   * All pages must be archived... even the ones with unactive log records
+   * This is the desired parameter to support multimedia crashes.
+   *
+   *
+   * Note that the npages field does not include the previous lsa page
+   *
+   */
+  arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
+  last_pageid = log_Gl.append.prev_lsa.pageid - 1;
 
 #if 0
-      /*
-       * logpb_must_archive_last_log_page can call logpb_archive_active_log again
-       * and then, log_Gl.hdr could be changed and it make trouble. (assert or shutdown)
-       *
-       * so, new behavior of logpb_backup is fixed as don't copy incomplete last page
-       * as the result, this code block is commented.
-       */
-      if (force_archive)
-	{
-	  /*
-	   * When forcing an archive for backup purposes, it is imperative that
-	   * every single log record make it into the archive including the
-	   * current page.  This often means archiving an incomplete page.
-	   * To archive the last page in a way that recovery analysis will
-	   * realize it is incomplete, requires a dummy record with no forward
-	   * lsa pointer.  It also requires the the next record after that
-	   * be appended to a new page (which will happen automatically).
-	   */
-	  if (logpb_must_archive_last_log_page (thread_p) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
+  /*
+   * logpb_must_archive_last_log_page can call logpb_archive_active_log again
+   * and then, log_Gl.hdr could be changed and it make trouble. (assert or shutdown)
+   *
+   * so, new behavior of logpb_backup is fixed as don't copy incomplete last page
+   * as the result, this code block is commented.
+   */
+  /*
+   * When forcing an archive for backup purposes, it is imperative that
+   * every single log record make it into the archive including the
+   * current page.  This often means archiving an incomplete page.
+   * To archive the last page in a way that recovery analysis will
+   * realize it is incomplete, requires a dummy record with no forward
+   * lsa pointer.  It also requires the the next record after that
+   * be appended to a new page (which will happen automatically).
+   */
+  if (logpb_must_archive_last_log_page (thread_p) != NO_ERROR)
+    {
+      goto error;
+    }
 #endif
 
-      if (last_pageid < arvhdr->fpageid)
-	{
-	  last_pageid = arvhdr->fpageid;
-	}
-
-      arvhdr->npages = (DKNPAGES) (last_pageid - arvhdr->fpageid + 1);
-    }
-  else
+  if (last_pageid < arvhdr->fpageid)
     {
-      /*
-       * Only pages between active log records are archived.
-       * This feature is only used to support very long active transactions
-       * that use lot of log pages.
-       * This feature does not support multimedia crashes
-       */
-
-      logtb_find_smallest_and_largest_active_pages (thread_p,
-						    &arvhdr->fpageid,
-						    &last_pageid);
-
-      if (arvhdr->fpageid < log_Gl.hdr.nxarv_pageid)
-	{
-	  arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
-	}
-      else if (arvhdr->fpageid > log_Gl.hdr.nxarv_pageid)
-	{
-	  /*
-	   * We may not need to archive at this moment if we can flush all dirty
-	   * data pages whose LSA is smaller that the smallest LSA of
-	   * arvhdr->fpageid
-	   */
-
-	  smallest_lsa.pageid = arvhdr->fpageid;
-	  smallest_lsa.offset = 0;
-
-#if !defined(SERVER_MODE)
-	  pgbuf_flush_checkpoint (thread_p, &smallest_lsa, NULL,
-				  &newsmallest_lsa);
-	  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
-	    {
-	      LSA_SET_NULL (&newsmallest_lsa);
-	    }
-#else /* !SERVER_MODE */
-	  /* if archiving occurs during restart recovery
-	   * log_Gl.flushed_lsa_lower_bound becomes NULL_LSA,
-	   * So, we need to call pgbuf_flush_checkpoint()
-	   */
-	  if (!BO_IS_SERVER_RESTARTED ())
-	    {
-	      pgbuf_flush_checkpoint (thread_p, &smallest_lsa, NULL,
-				      &newsmallest_lsa);
-	      if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
-		{
-		  LSA_SET_NULL (&newsmallest_lsa);
-		}
-	      if (!LSA_ISNULL (&newsmallest_lsa))
-		{
-		  log_Gl.flushed_lsa_lower_bound.pageid =
-		    newsmallest_lsa.pageid;
-		  log_Gl.flushed_lsa_lower_bound.offset = NULL_OFFSET;
-		}
-	      else
-		{
-		  LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &smallest_lsa);
-		}
-	    }
-	  else
-	    {
-	      newsmallest_lsa.pageid = log_Gl.flushed_lsa_lower_bound.pageid;
-	      newsmallest_lsa.offset = NULL_OFFSET;
-	    }
-#endif /* !SERVER_MODE */
-
-	  if (!LSA_ISNULL (&newsmallest_lsa)
-	      && LSA_LT (&newsmallest_lsa, &smallest_lsa))
-	    {
-	      if (newsmallest_lsa.pageid < log_Gl.hdr.nxarv_pageid)
-		{
-		  arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
-		}
-	      else
-		{
-		  arvhdr->fpageid = newsmallest_lsa.pageid;
-		}
-	    }
-
-	  if (arvhdr->fpageid > log_Gl.hdr.nxarv_pageid)
-	    {
-	      /*
-	       * Do not archive at this moment since there are some pages that can be
-	       * rewritten between the next archive page and the smallest page with
-	       * active log records
-	       */
-	      log_Gl.hdr.nxarv_pageid = arvhdr->fpageid;
-	      log_Gl.hdr.nxarv_phy_pageid =
-		logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
-
-	      if (!LSA_ISNULL (&newsmallest_lsa)
-		  && LSA_LT (&newsmallest_lsa, &smallest_lsa))
-		{
-		  rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-		  if (LSA_LT (&log_Gl.hdr.chkpt_lsa, &newsmallest_lsa))
-		    {
-		      LSA_COPY (&log_Gl.hdr.chkpt_lsa, &newsmallest_lsa);
-		    }
-		  pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-		}
-	      else
-		{
-		  LOG_LSA lsa;
-		  lsa.pageid = arvhdr->fpageid;
-		  lsa.offset = NULL_OFFSET;
-
-		  rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-		  if (LSA_ISNULL (&log_Gl.hdr.chkpt_lsa)
-		      || LSA_LT (&log_Gl.hdr.chkpt_lsa, &lsa))
-		    {
-		      LSA_COPY (&log_Gl.hdr.chkpt_lsa, &lsa);
-		    }
-		  pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-		}
-
-	      logpb_flush_header (thread_p);
-	      free_and_init (malloc_arv_hdr_pgptr);
-
-	      return;
-	    }
-	}
-
-      if (last_pageid < log_Gl.hdr.nxarv_pageid)
-	{
-	  last_pageid = arvhdr->fpageid;
-	}
-      else if (last_pageid > log_Gl.append.prev_lsa.pageid - 1)
-	{
-	  last_pageid = log_Gl.append.prev_lsa.pageid - 1;
-	}
-
-      if (last_pageid < arvhdr->fpageid)
-	{
-	  last_pageid = arvhdr->fpageid;
-	}
-
-      arvhdr->npages = (DKNPAGES) (last_pageid - arvhdr->fpageid + 1);
+      last_pageid = arvhdr->fpageid;
     }
+
+  arvhdr->npages = (DKNPAGES) (last_pageid - arvhdr->fpageid + 1);
 
   /*
    * Now create the archive and start copying pages
@@ -7434,107 +7288,90 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	}
     }
 
-  /* Added for Goorm BMT:
-   * Somehow, the previous code writes active pages to archive
-   * even when media failure is not necessary. To fix this, we just
-   * skip the writing portion of the code so that the code change
-   * is minimized.
-   */
-#if defined(GOORM_BMT)
-  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT))
+  er_log_debug (ARG_FILE_LINE,
+		"logpb_archive_active_log, arvhdr->fpageid = %lld\n",
+		arvhdr->fpageid);
+
+  if (fileio_write (thread_p, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE)
+      == NULL)
     {
-#endif
+      /* Error archiving header page into archive */
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
+	      0, 0, arv_name);
+      goto error;
+    }
 
-      er_log_debug (ARG_FILE_LINE,
-		    "logpb_archive_active_log, arvhdr->fpageid = %lld\n",
-		    arvhdr->fpageid);
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && bg_arv_info->vdes != NULL_VOLDES
+      && arvhdr->fpageid == bg_arv_info->start_page_id)
+    {
+      pageid = bg_arv_info->current_page_id;
+      ar_phy_pageid = (LOG_PHY_PAGEID) (bg_arv_info->current_page_id
+					- bg_arv_info->start_page_id + 1);
+    }
+  else
+    {
+      assert (!prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+	      || bg_arv_info->vdes == NULL_VOLDES);
 
-      if (fileio_write (thread_p, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE)
-	  == NULL)
+      pageid = arvhdr->fpageid;
+      ar_phy_pageid = 1;
+    }
+
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  /* Now start dumping the current active pages to archive */
+  for (; pageid <= last_pageid;
+       pageid += num_pages, ar_phy_pageid += num_pages)
+    {
+      num_pages = MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
+      num_pages = logpb_read_page_from_active_log (thread_p, pageid,
+						   num_pages, log_pgptr);
+      if (num_pages <= 0)
 	{
-	  /* Error archiving header page into archive */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
-		  0, 0, arv_name);
 	  goto error;
 	}
 
-      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-	  && bg_arv_info->vdes != NULL_VOLDES
-	  && arvhdr->fpageid == bg_arv_info->start_page_id)
+      if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr,
+			      ar_phy_pageid, num_pages, LOG_PAGESIZE) == NULL)
 	{
-	  pageid = bg_arv_info->current_page_id;
-	  ar_phy_pageid = (LOG_PHY_PAGEID) (bg_arv_info->current_page_id
-					    - bg_arv_info->start_page_id + 1);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
+		  pageid, ar_phy_pageid, arv_name);
+	  goto error;
 	}
-      else
-	{
-	  assert (!prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-		  || bg_arv_info->vdes == NULL_VOLDES);
-
-	  pageid = arvhdr->fpageid;
-	  ar_phy_pageid = 1;
-	}
-
-      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-
-      /* Now start dumping the current active pages to archive */
-      for (; pageid <= last_pageid;
-	   pageid += num_pages, ar_phy_pageid += num_pages)
-	{
-	  num_pages = MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
-	  num_pages = logpb_read_page_from_active_log (thread_p, pageid,
-						       num_pages, log_pgptr);
-	  if (num_pages <= 0)
-	    {
-	      goto error;
-	    }
-
-	  if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr,
-				  ar_phy_pageid, num_pages,
-				  LOG_PAGESIZE) == NULL)
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
-		      pageid, ar_phy_pageid, arv_name);
-	      goto error;
-	    }
-	}
-
-      if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
-	  && bg_arv_info->vdes != NULL_VOLDES)
-	{
-	  fileio_dismount (thread_p, vdes);
-	  vdes = NULL_VOLDES;
-	  bg_arv_info->vdes = NULL_VOLDES;
-
-	  /* rename _lgar_t to _lgar[number] name */
-	  if (fileio_rename (NULL_VOLID, log_Name_bg_archive, arv_name) ==
-	      NULL)
-	    {
-	      goto error;
-	    }
-
-	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
-			       LOG_DBLOG_ARCHIVE_VOLID, 0, false);
-	  if (vdes == NULL_VOLDES)
-	    {
-	      goto error;
-	    }
-	}
-      else
-	{
-	  /*
-	   * Make sure that the whole log archive is in physical storage at this
-	   * moment
-	   */
-	  if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
-	    {
-	      goto error;
-	    }
-	}
-
-#if defined(GOORM_BMT)
     }
-#endif
+
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING)
+      && bg_arv_info->vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, vdes);
+      vdes = NULL_VOLDES;
+      bg_arv_info->vdes = NULL_VOLDES;
+
+      /* rename _lgar_t to _lgar[number] name */
+      if (fileio_rename (NULL_VOLID, log_Name_bg_archive, arv_name) == NULL)
+	{
+	  goto error;
+	}
+
+      vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
+			   LOG_DBLOG_ARCHIVE_VOLID, 0, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      /*
+       * Make sure that the whole log archive is in physical storage at this
+       * moment
+       */
+      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
+	{
+	  goto error;
+	}
+    }
 
   /* The last archive needed for system crashes */
   if (log_Gl.hdr.last_arv_num_for_syscrashes == -1)
@@ -9007,61 +8844,47 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	    }
 
 	  /* This is OK since we have already flushed the log header page */
-	  if (prm_get_bool_value (PRM_ID_LOG_MEDIA_FAILURE_SUPPORT) == false)
+	  if (first_arv_num_not_needed == last_arv_num_not_needed)
 	    {
-	      /* Remove the log archives at this point */
+	      fileio_make_log_archive_name (logarv_name, log_Archive_path,
+					    log_Prefix,
+					    first_arv_num_not_needed);
 	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_LOG,
-				       MSGCAT_LOG_MEDIACRASH_NOT_IMPORTANT);
-	      if (catmsg)
+				       MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED);
+	      if (catmsg == NULL)
 		{
-		  logpb_remove_archive_logs (thread_p, catmsg);
+		  catmsg =
+		    "COMMENT: Log archive %s is not needed any longer"
+		    " unless a database media crash occurs.\n";
 		}
+	      error_code = log_dump_log_info (log_Name_info, true,
+					      catmsg, logarv_name);
 	    }
 	  else
 	    {
-	      if (first_arv_num_not_needed == last_arv_num_not_needed)
-		{
-		  fileio_make_log_archive_name (logarv_name, log_Archive_path,
-						log_Prefix,
-						first_arv_num_not_needed);
-		  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED);
-		  if (catmsg == NULL)
-		    {
-		      catmsg =
-			"COMMENT: Log archive %s is not needed any longer"
-			" unless a database media crash occurs.\n";
-		    }
-		  error_code = log_dump_log_info (log_Name_info, true,
-						  catmsg, logarv_name);
-		}
-	      else
-		{
-		  fileio_make_log_archive_name (logarv_name_first,
-						log_Archive_path, log_Prefix,
-						first_arv_num_not_needed);
-		  fileio_make_log_archive_name (logarv_name, log_Archive_path,
-						log_Prefix,
-						last_arv_num_not_needed);
+	      fileio_make_log_archive_name (logarv_name_first,
+					    log_Archive_path, log_Prefix,
+					    first_arv_num_not_needed);
+	      fileio_make_log_archive_name (logarv_name, log_Archive_path,
+					    log_Prefix,
+					    last_arv_num_not_needed);
 
-		  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_LOGINFO_COMMENT_MANY_ARCHIVES_NONEEDED);
-		  if (catmsg == NULL)
-		    {
-		      catmsg = "COMMENT: Log archives from %s to %s are not"
-			" needed any longer unless a database media crash occurs.\n";
-		    }
-		  error_code =
-		    log_dump_log_info (log_Name_info, true, catmsg,
-				       logarv_name_first, logarv_name);
-		}
-	      if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
+	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_LOGINFO_COMMENT_MANY_ARCHIVES_NONEEDED);
+	      if (catmsg == NULL)
 		{
-		  goto error_cannot_chkpt;
+		  catmsg = "COMMENT: Log archives from %s to %s are not"
+		    " needed any longer unless a database media crash occurs.\n";
 		}
+	      error_code =
+		log_dump_log_info (log_Name_info, true, catmsg,
+				   logarv_name_first, logarv_name);
+	    }
+	  if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
+	    {
+	      goto error_cannot_chkpt;
 	    }
 
 	  logpb_flush_header (thread_p);	/* Yes, one more time, to get rid of archives */
@@ -9787,7 +9610,7 @@ loop:
   if (LSA_LT (&chkpt_lsa, &log_Gl.hdr.append_lsa)
       || log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID)
     {
-      logpb_archive_active_log (thread_p, true);
+      logpb_archive_active_log (thread_p);
     }
 
   last_arv_needed = log_Gl.hdr.nxarv_num - 1;

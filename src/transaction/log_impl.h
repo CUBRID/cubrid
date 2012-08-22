@@ -1621,10 +1621,10 @@ extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *
 							LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex,
 							LOG_DATA_ADDR * addr,
-							int num_ucrumbs,
-							LOG_CRUMB * ucrumbs,
-							int num_rcrumbs,
-							LOG_CRUMB * rcrumbs);
+							const int num_ucrumbs,
+							const LOG_CRUMB * ucrumbs,
+							const int num_rcrumbs,
+							const LOG_CRUMB * rcrumbs);
 extern LOG_LSA prior_lsa_next_record (THREAD_ENTRY * thread_p,
 				      LOG_PRIOR_NODE * node, LOG_TDES * tdes);
 #if defined (ENABLE_UNUSED_FUNCTION)
