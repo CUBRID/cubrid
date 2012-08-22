@@ -226,6 +226,7 @@ class UInputBuffer {
 		} else {
 			cal.set(year, month - 1, day, 0, 0, 0);
 		}
+		cal.set(Calendar.MILLISECOND, 0);
 
 		return new Date(cal.getTimeInMillis());
 	}
@@ -238,6 +239,7 @@ class UInputBuffer {
 
 		Calendar cal = Calendar.getInstance();
 		cal.set(1970, 0, 1, hour, minute, second);
+		cal.set(Calendar.MILLISECOND, 0);
 
 		return new Time(cal.getTimeInMillis());
 	}
