@@ -5463,7 +5463,6 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
 	    return PT_TYPE_VARNCHAR;
 	  }
 	return PT_TYPE_VARCHAR;
-	break;
       }
 
     case PT_GENERIC_TYPE_CHAR:
@@ -5473,7 +5472,6 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
 	  return PT_TYPE_VARCHAR;
 	}
       return PT_TYPE_CHAR;
-      break;
 
     case PT_GENERIC_TYPE_NCHAR:
       if (arg1_type == PT_TYPE_VARNCHAR || arg2_type == PT_TYPE_VARNCHAR
@@ -5482,7 +5480,6 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
 	  return PT_TYPE_VARNCHAR;
 	}
       return PT_TYPE_NCHAR;
-      break;
 
     case PT_GENERIC_TYPE_NUMBER:
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
