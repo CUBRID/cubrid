@@ -369,7 +369,11 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte ((const char *) db_page_str, &v) !=
 	  NO_ERROR)
 	{
-	  goto print_create_usage;
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CREATEDB,
+					   CREATEDB_MSG_INVALID_SIZE),
+		   CREATE_DB_PAGE_SIZE_L, db_page_str);
+	  goto error_exit;
 	}
       db_page_size = (int) v;
     }
@@ -387,7 +391,11 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte ((const char *) db_volume_str,
 				    &db_volume_size) != NO_ERROR)
 	{
-	  goto print_create_usage;
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CREATEDB,
+					   CREATEDB_MSG_INVALID_SIZE),
+		   CREATE_DB_VOLUME_SIZE_L, db_volume_str);
+	  goto error_exit;
 	}
     }
 
@@ -415,7 +423,11 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte ((const char *) log_page_str, &v)
 	  != NO_ERROR)
 	{
-	  goto print_create_usage;
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CREATEDB,
+					   CREATEDB_MSG_INVALID_SIZE),
+		   CREATE_LOG_PAGE_SIZE_L, log_page_str);
+	  goto error_exit;
 	}
       log_page_size = (int) v;
     }
@@ -433,7 +445,11 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte ((const char *) log_volume_str,
 				    &log_volume_size) != NO_ERROR)
 	{
-	  goto print_create_usage;
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CREATEDB,
+					   CREATEDB_MSG_INVALID_SIZE),
+		   CREATE_LOG_VOLUME_SIZE_L, log_volume_str);
+	  goto error_exit;
 	}
     }
 

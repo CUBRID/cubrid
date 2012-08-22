@@ -289,6 +289,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 46 데이터베이스를 생성할 수 없습니다.\n
 47 user file `%s'에 오류가 있습니다.\n
 48 '%s'는 %s와 %s 사이 값이어야 합니다.\n
+49 The value of %s '%s' is invalid.\n
 60 \
 createdb: 데이터베이스 생성.\n\
 사용법: %s createdb [옵션] <데이터베이스 이름>\n\
@@ -296,7 +297,7 @@ createdb: 데이터베이스 생성.\n\
 옵션:\n\
       --db-volume-size=SIZE           처음 생성되는 볼륨(generic)의 크기\n\
                                       기본값: cubrid.conf의 db_volume_size의 값\n\
-      --db-page-size=SIZE             바이트 단위의 데이터베이스 페이지 크기; 기본값: 16KB\n\
+      --db-page-size=SIZE             바이트 단위의 데이터베이스 페이지 크기; 기본값: 16K\n\
       --log-volume-size=SIZE          로그 볼륨의 크기\n\
                                       기본값: cubrid.conf의 log_volume_size의 값\n\
       --log-page-size=SIZE            바이트 단위의 로그 페이지 크기; 기본값: 데이터베이스 페이지 크기\n\

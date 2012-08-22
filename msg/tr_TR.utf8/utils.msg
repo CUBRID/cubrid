@@ -289,6 +289,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 46 Couldn't create database.\n
 47 Problem with user file `%s'\n
 48 The '%s' must be between %s and %s\n
+49 The value of %s '%s' is invalid.\n
 60 \
 createdb: Create a database.\n\
 usage: %s createdb [OPTION] database-name\n\
@@ -296,7 +297,7 @@ usage: %s createdb [OPTION] database-name\n\
 valid options:\n\
       --db-volume-size=SIZE           size of first information volume\n\
                                       default: db_volume_size in cubrid.conf\n\
-      --db-page-size=SIZE             database page SIZE in bytes; default: 16KB\n\
+      --db-page-size=SIZE             database page SIZE in bytes; default: 16K\n\
       --log-volume-size=SIZE          size of log archives\n\
                                       default: log_volume_size in cubrid.conf\n\
       --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n\
