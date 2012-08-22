@@ -2981,8 +2981,15 @@ cci_cursor_update (int req_h_id, int cursor_pos, int index,
 	}
     }
 
-  err_code = qe_cursor_update (req_handle, con_handle, cursor_pos, index,
-			       a_type, value, err_buf);
+  if ((req_handle->prepare_flag & CCI_PREPARE_UPDATABLE) == 0)
+    {
+      err_code = CCI_ER_NOT_UPDATABLE;
+    }
+  else
+    {
+      err_code = qe_cursor_update (req_handle, con_handle, cursor_pos, index,
+				   a_type, value, err_buf);
+    }
 
   con_handle->ref_count = 0;
 
@@ -4316,6 +4323,9 @@ cci_get_err_msg_internal (int err_code)
 
     case CCI_ER_INVALID_HOLDABILITY:
       return "Invalid holdability mode. The only accepted values are 0 or 1";
+
+    case CCI_ER_NOT_UPDATABLE:
+      return "Request handle is not updatable";
 
     case CAS_ER_INTERNAL:
       return "Not used";

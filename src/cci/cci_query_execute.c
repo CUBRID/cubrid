@@ -475,8 +475,10 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->handle_type = HANDLE_PREPARE;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
-  if (flag == CCI_PREPARE_UPDATABLE)
-    flag |= CCI_PREPARE_INCLUDE_OID;
+  if ((flag & CCI_PREPARE_UPDATABLE) != 0)
+    {
+      flag |= CCI_PREPARE_INCLUDE_OID;
+    }
   req_handle->prepare_flag = flag;
   req_handle->cursor_pos = 0;
   req_handle->is_closed = 0;
@@ -894,8 +896,10 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->handle_type = HANDLE_PREPARE;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
-  if (prepare_flag == CCI_PREPARE_UPDATABLE)
-    prepare_flag |= CCI_PREPARE_INCLUDE_OID;
+  if ((prepare_flag & CCI_PREPARE_UPDATABLE) != 0)
+    {
+      prepare_flag |= CCI_PREPARE_INCLUDE_OID;
+    }
   req_handle->prepare_flag = prepare_flag;
   req_handle->cursor_pos = 0;
   req_handle->is_closed = 0;
