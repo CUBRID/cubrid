@@ -4025,16 +4025,13 @@ prepare_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
   num_col_info = get_column_info (cur_p, &remain_size, &col_info, NULL, true);
   if (num_col_info < 0)
     {
-      if (col_info != NULL)
-	{
-	  FREE_MEM (col_info);
-	}
+      assert (col_info == NULL);
       return num_col_info;
     }
 
   req_handle->num_bind = num_bind_info;
   req_handle->num_col_info = num_col_info;
-  FREE_MEM (req_handle->col_info);
+  req_handle_col_info_free (req_handle);
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
@@ -4533,6 +4530,7 @@ get_column_info_error:
       for (i = 0; i < num_col_info; i++)
 	{
 	  FREE_MEM (col_info[i].col_name);
+	  FREE_MEM (col_info[i].real_attr);
 	  FREE_MEM (col_info[i].class_name);
 	  FREE_MEM (col_info[i].default_value);
 	}
@@ -4572,15 +4570,11 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
 
   size = remain_size;
 
-  num_col_info =
-    get_column_info (cur_p, &size, &col_info, &next_buf_p, false);
+  num_col_info = get_column_info (cur_p, &size, &col_info, &next_buf_p,
+				  false);
   if (num_col_info < 0)
     {
-      if (col_info != NULL)
-	{
-	  FREE_MEM (col_info);
-	}
-
+      assert (col_info == NULL);
       return num_col_info;
     }
 
@@ -4624,11 +4618,7 @@ schema_info_decode (char *buf_p, int size, T_REQ_HANDLE * req_handle)
   num_col_info = get_column_info (cur_p, &size, &col_info, NULL, false);
   if (num_col_info < 0)
     {
-      if (col_info != NULL)
-	{
-	  FREE_MEM (col_info);
-	}
-
+      assert (col_info == NULL);
       return num_col_info;
     }
 
@@ -4657,10 +4647,13 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
   cur_p += 1;
 
   size = remain_size;
-  num_col_info =
-    get_column_info (cur_p, &size, &col_info, &next_buf_p, false);
+  num_col_info = get_column_info (cur_p, &size, &col_info, &next_buf_p,
+				  false);
   if (num_col_info < 0)
-    return num_col_info;
+    {
+      assert (col_info == NULL);
+      return num_col_info;
+    }
 
   req_handle->col_info = col_info;
   req_handle->num_col_info = num_col_info;
@@ -4734,14 +4727,9 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   num_col_info = get_column_info (cur_p, &size, &col_info, NULL, true);
   if (num_col_info < 0)
     {
-      if (col_info != NULL)
-	{
-	  FREE_MEM (col_info);
-	}
+      assert (col_info == NULL);
       return num_col_info;
     }
-
-  req_handle_col_info_free (req_handle);
 
   req_handle->num_tuple = result_count;
   if (stmt_type == CUBRID_STMT_SELECT ||
@@ -4753,7 +4741,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
     }
 
   req_handle->num_col_info = num_col_info;
-  FREE_MEM (req_handle->col_info);
+  req_handle_col_info_free (req_handle);
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
