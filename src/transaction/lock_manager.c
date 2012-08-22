@@ -11173,15 +11173,16 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
     {
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
-      assert (count >= 0);
+      assert_release (count >= 0);
       entry_ptr->instant_lock_count = 0;
       if (need_unlock)
 	{
-	  assert (count >= 0);
-	  while (count--)
+	  assert_release (count >= 0);
+	  while (count > 0)
 	    {
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
 						   true);
+	      count--;
 	    }
 	}
       entry_ptr = next_ptr;
@@ -11193,15 +11194,16 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
     {
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
-      assert (count >= 0);
+      assert_release (count >= 0);
       entry_ptr->instant_lock_count = 0;
       if (need_unlock)
 	{
-	  assert (count >= 0);
-	  while (count--)
+	  assert_release (count >= 0);
+	  while (count > 0)
 	    {
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
 						   true);
+	      count--;
 	    }
 	}
       entry_ptr = next_ptr;
@@ -11213,14 +11215,15 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
     {
       count = entry_ptr->instant_lock_count;
       entry_ptr->instant_lock_count = 0;
-      assert (count >= 0);
+      assert_release (count >= 0);
       if (need_unlock)
 	{
-	  assert (count >= 0);
-	  while (count--)
+	  assert_release (count >= 0);
+	  while (count > 0)
 	    {
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
 						   true);
+	      count--;
 	    }
 	}
     }
