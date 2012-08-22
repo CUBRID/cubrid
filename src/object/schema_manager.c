@@ -12535,35 +12535,32 @@ sm_delete_class_mop (MOP op)
     }
 
   /* remove auto_increment serial object if exist */
-  if (db_Enable_replications <= 0)
+  for (att = class_->ordered_attributes; att; att = att->order_link)
     {
-      for (att = class_->ordered_attributes; att; att = att->order_link)
+      if (att->auto_increment != NULL)
 	{
-	  if (att->auto_increment != NULL)
+	  DB_VALUE name_val;
+	  char *class_name;
+
+	  error = db_get (att->auto_increment, "class_name", &name_val);
+	  if (error == NO_ERROR)
 	    {
-	      DB_VALUE name_val;
-	      char *class_name;
-
-	      error = db_get (att->auto_increment, "class_name", &name_val);
-	      if (error == NO_ERROR)
+	      class_name = DB_GET_STRING (&name_val);
+	      if (class_name != NULL
+		  && (strcmp (class_->header.name, class_name) == 0))
 		{
-		  class_name = DB_GET_STRING (&name_val);
-		  if (class_name != NULL
-		      && (strcmp (class_->header.name, class_name) == 0))
-		    {
-		      int save;
+		  int save;
 
-		      AU_DISABLE (save);
-		      error = obj_delete (att->auto_increment);
-		      AU_ENABLE (save);
-		    }
-		  db_value_clear (&name_val);
+		  AU_DISABLE (save);
+		  error = obj_delete (att->auto_increment);
+		  AU_ENABLE (save);
 		}
+	      db_value_clear (&name_val);
+	    }
 
-	      if (error != NO_ERROR)
-		{
-		  goto end;
-		}
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
 	    }
 	}
     }
