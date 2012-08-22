@@ -751,7 +751,7 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
   const char *db_user;
 
   db_user = logtb_find_current_client_name (thread_p);
-  return (db_user != NULL && !strcasecmp (db_user, "dba"));
+  return (db_user != NULL && !strcasecmp (db_user, "DBA"));
 }
 
 /*

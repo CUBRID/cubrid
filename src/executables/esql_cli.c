@@ -592,7 +592,7 @@ uci_stop (void)
  * user_name(in) : user name
  * passwd(in) : password string
  *
- * note :  Connect as user 'public' if no username is specified.
+ * note :  Connect as user 'PUBLIC' if no username is specified.
  */
 void
 uci_connect (const char *db_name, const char *user_name, const char *passwd)

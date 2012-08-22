@@ -959,7 +959,7 @@ main (int argc, char *argv[])
 	    db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 	    if (db_user[0] == '\0')
 	      {
-		strcpy (db_user, "public");
+		strcpy (db_user, "PUBLIC");
 	      }
 
 	    db_passwd = db_user + SRV_CON_DBUSER_SIZE;

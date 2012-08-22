@@ -254,7 +254,7 @@ main (int argc, char *argv[])
       return -1;
     }
   if (dbuser == NULL)
-    dbuser = (char *) "public";
+    dbuser = (char *) "PUBLIC";
   if (dbpasswd == NULL)
     dbpasswd = (char *) "";
 

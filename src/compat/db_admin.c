@@ -1287,7 +1287,7 @@ db_find_user (const char *name)
 }
 
 /*
- * db_add_user() - This will add a new user to the database.  Only the dba can
+ * db_add_user() - This will add a new user to the database.  Only the DBA can
  *       add users. If the user already exists, its object pointer will be
  *       returned and the exists flag will be set to non-zero. The exists
  *       pointer can be NULL if the caller isn't interested in this value.
@@ -1312,7 +1312,7 @@ db_add_user (const char *name, int *exists)
 }
 
 /*
- * db_drop_user() - This will remove a user from the database.  Only the dba
+ * db_drop_user() - This will remove a user from the database.  Only the DBA
  *    can remove user objects.  You should call this rather than db_drop so
  *    that the internal system tables are updated correctly.
  * return  : error code.

@@ -554,7 +554,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   status = db_init (program_name, true, database_name, volume_path,
 		    NULL, log_path, lob_path, host_name, overwrite, comment,
 		    volume_spec_file_name, db_volume_pages, db_page_size,
@@ -719,7 +719,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (boot_delete (database_name, force_delete) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -886,7 +886,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (partial_recovery == true)
     {
       log_default_input_for_archive_log_location = 1;
@@ -985,7 +985,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
     {
       fprintf (stdout, "%s\n", db_error_string (3));
@@ -1092,7 +1092,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -1214,7 +1214,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
     {
@@ -1295,7 +1295,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -1390,7 +1390,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
       fprintf (stdout, "%s\n", db_error_string (3));

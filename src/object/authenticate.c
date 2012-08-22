@@ -104,8 +104,8 @@ const char *AU_PASSWORD_CLASS_NAME = "db_password";
 const char *AU_AUTH_CLASS_NAME = "db_authorization";
 const char *AU_GRANT_CLASS_NAME = "db_grant";
 
-const char *AU_PUBLIC_USER_NAME = "public";
-const char *AU_DBA_USER_NAME = "dba";
+const char *AU_PUBLIC_USER_NAME = "PUBLIC";
+const char *AU_DBA_USER_NAME = "DBA";
 
 
 /*
@@ -297,9 +297,9 @@ int Au_disable = 1;
  *
  * When this flag is set, the authorization system will ignore passwords
  * when logging in users.  This is intended for use only be system
- * defined utility programs that want to run as the dba user but don't
+ * defined utility programs that want to run as the DBA user but don't
  * want to require a password entry each time.  These would be protected
- * through OS file protected by the dba rather than by the database
+ * through OS file protected by the DBA rather than by the database
  * authorization mechanism.
  * This initializes to zero and is changed only by calling the function
  * au_enable_system_login().
@@ -310,8 +310,8 @@ static int Au_ignore_passwords = 0;
  * Au_dba_user, Au_public_user
  *
  * These are the two system defined user objects.
- * All users are automatically a member of the public user and hence
- * grants to public are visible to everyone.  The dba is automatically
+ * All users are automatically a member of the PUBLIC user and hence
+ * grants to PUBLIC are visible to everyone.  The DBA is automatically
  * a member of all groups/users and hence will have all permissions.
  */
 MOP Au_public_user = NULL;
@@ -347,7 +347,7 @@ char Au_user_password_sha1[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
  *
  * This is a hack until we get a proper "system" authorization
  * level.  We need to detect attempts to update or delete
- * system classes by the dba when there is no approved
+ * system classes by the DBA when there is no approved
  * direct update mechanism.  This is the case for all the
  * authorization classes.  The only way they can be updated is
  * through the authorization functions or methods.
@@ -1971,7 +1971,7 @@ au_add_user (const char *name, int *exists)
 		  if (Au_public_user != NULL)
 		    {
 		      /*
-		       * every user is a member of the public group,
+		       * every user is a member of the PUBLIC group,
 		       * must make sure that the exported routines can't
 		       * be used to violate this internal connection
 		       */
@@ -1979,13 +1979,13 @@ au_add_user (const char *name, int *exists)
 			  NO_ERROR)
 			{
 			  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-				  ER_AU_CANT_ADD_MEMBER, 2, name, "public");
+				  ER_AU_CANT_ADD_MEMBER, 2, name, "PUBLIC");
 			}
 		    }
 
 		  /*
 		   * do we want to do this ?? - logically it is ok but this
-		   * means we can't have dba members since this would
+		   * means we can't have DBA members since this would
 		   * cause user hierarchy cycles.
 		   */
 #if 0
@@ -3127,7 +3127,7 @@ au_drop_user (MOP user)
   DB_VALUE name;
   const char *class_name[] = {
     /*
-     * drop user command can be called only by dba group,
+     * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
     "_db_class", "db_trigger", "db_serial", NULL
@@ -3369,7 +3369,7 @@ au_drop_user (MOP user)
 
   /*
    * could go through classes created by this user and change ownership
-   * to the dba ? - do this as the classes are referenced instead
+   * to the DBA ? - do this as the classes are referenced instead
    */
 
   error = obj_delete (user);
@@ -3609,7 +3609,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 	    }
 	  else
 	    {
-	      /* this will at least be dba */
+	      /* this will at least be DBA */
 	      gowner = au_get_class_owner (class_);
 
 	      /* see if there's already an entry for this */
@@ -3746,7 +3746,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 
   if (sm_class->owner == NULL)
     {
-      /* This shouldn't happen - assign it to the dba */
+      /* This shouldn't happen - assign it to the DBA */
       error = ER_AU_CLASS_WITH_NO_OWNER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
@@ -3795,7 +3795,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 		    {
 		      if (group == Au_dba_user)
 			{
-			  /* someones on the dba member list, give them power */
+			  /* someones on the DBA member list, give them power */
 			  *bits = AU_FULL_AUTHORIZATION;
 			}
 		      else
@@ -4757,7 +4757,7 @@ fail_end:
 
 /*
  * au_change_owner - This changes the owning user of a class.
- *                   This should be called only by the dba.
+ *                   This should be called only by the DBA.
  *   return: error code
  *   classmop(in): class whose owner is to change
  *   owner(in): new owner
@@ -5023,7 +5023,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
 
 /*
  * au_change_trigger_owner - This changes the owning user of a trigger.
- *                           This should be called only by the dba.
+ *                           This should be called only by the DBA.
  *   return: error code
  *   trigger(in): trigger whose owner is to change
  *   owner(in):new owner
@@ -5518,7 +5518,7 @@ au_user_password (char *buffer)
  *   class(in): class structure
  *   auth(in): authorization type
  *
- * Note: This is necessary because normally when dba is logged in,
+ * Note: This is necessary because normally when DBA is logged in,
  *       authorization is effectively disabled.
  *       This should be handled by another "system" level of authorization.
  */
@@ -5565,7 +5565,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
   if (Au_disable)
     return NO_ERROR;
 
-  /* try to catch attempts by even the dba to update a protected class */
+  /* try to catch attempts by even the DBA to update a protected class */
   if ((sm_class->flags & SM_CLASSFLAG_SYSTEM)
       && is_protected_class (classobj, sm_class, type))
     {
@@ -6145,9 +6145,9 @@ au_perform_login (const char *name, const char *password,
 	    {
 	      /*
 	       * hack, allow password checking to be turned off in certain
-	       * cases, like the utility programs that will always run in dba
+	       * cases, like the utility programs that will always run in DBA
 	       * mode but don't want to have to enter a password, also
-	       * if a sucessful dba login ocurred, allow users to be
+	       * if a sucessful DBA login ocurred, allow users to be
 	       * changed without entering passwords
 	       */
 
@@ -6227,7 +6227,7 @@ au_perform_login (const char *name, const char *password,
  *   return: error code
  *   name(in): user name
  *   password(in): password
- *   ignore_dba_privilege(in) : whether ignore dba's privilege or not in login
+ *   ignore_dba_privilege(in) : whether ignore DBA's privilege or not in login
  *
  * Note: If a database has already been restarted, the user will be validated
  *       immediately, otherwise the name and password are simply saved
@@ -6450,12 +6450,12 @@ au_start (void)
 	  /*
 	   * If you try to start the authorization system and
 	   * there is no user logged in, you will automatically be logged in
-	   * as "public".  Optionally, we could get a name from the
+	   * as "PUBLIC".  Optionally, we could get a name from the
 	   * cubrid.conf file or use the name of the current Unix user.
 	   */
 	  if (strlen (Au_user_name) == 0)
 	    {
-	      strcpy (Au_user_name, "public");
+	      strcpy (Au_user_name, "PUBLIC");
 	    }
 
 	  error =
@@ -6681,7 +6681,7 @@ au_export_users (FILE * outfp)
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
       fprintf (outfp,
-	       "call [find_user]('public') on class [db_user] to [g_public];\n");
+	       "call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
       do
 	{
 	  if (db_query_get_tuple_value (query_result, 0, &user_val) !=
@@ -7979,14 +7979,14 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* create the dba user and assign ownership of the system classes */
-  Au_dba_user = au_add_user ("dba", &exists);
+  /* create the DBA user and assign ownership of the system classes */
+  Au_dba_user = au_add_user ("DBA", &exists);
   if (Au_dba_user == NULL)
     {
       goto exit_on_error;
     }
 
-  /* establish the dba as the current user */
+  /* establish the DBA as the current user */
   if (au_find_user_cache_index (Au_dba_user, &index, 0) != NO_ERROR)
     {
       goto exit_on_error;
@@ -8002,8 +8002,8 @@ au_install (void)
   au_change_owner (pass, Au_user);
   au_change_owner (auth, Au_user);
 
-  /* create the public user */
-  Au_public_user = au_add_user ("public", &exists);
+  /* create the PUBLIC user */
+  Au_public_user = au_add_user ("PUBLIC", &exists);
   if (Au_public_user == NULL)
     {
       goto exit_on_error;
@@ -8011,7 +8011,7 @@ au_install (void)
 
   /*
    * grant browser access to the authorization objects
-   * note that the password class cannot be read by anyone except the dba
+   * note that the password class cannot be read by anyone except the DBA
    */
   au_grant (Au_public_user, root, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (Au_public_user, old, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);

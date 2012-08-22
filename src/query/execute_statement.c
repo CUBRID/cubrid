@@ -1839,7 +1839,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /*
-   * check if user is creator or dba
+   * check if user is creator or DBA
    */
   error = au_check_serial_authorization (serial_object);
   if (error != NO_ERROR)
@@ -2396,7 +2396,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /*
-   * check if user is creator or dba
+   * check if user is creator or DBA
    */
   error = au_check_serial_authorization (serial_object);
   if (error != NO_ERROR)

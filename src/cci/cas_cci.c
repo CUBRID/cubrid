@@ -483,7 +483,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   if (user[0] == '\0')
     {
       /* A user don't exist in the parameter and url */
-      user = (char *) "public";
+      user = (char *) "PUBLIC";
     }
 
   conn_id = cci_get_new_handle_id (host, port, dbname, user, pass);

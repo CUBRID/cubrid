@@ -272,7 +272,7 @@ main (int argc, char *argv[])
     }
 
   if (csql_arg.sysadm
-      && (csql_arg.user_name == NULL || strcmp (csql_arg.user_name, "dba")))
+      && (csql_arg.user_name == NULL || strcmp (csql_arg.user_name, "DBA")))
     {
       /* sysadm is allowed only to DBA */
       goto print_usage;

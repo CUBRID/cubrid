@@ -46,7 +46,7 @@ main (int argc, char *argv[])
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   retval = db_restart (prog_name, 0, db_name);
   if (retval != NO_ERROR && retval != ER_LOG_INCOMPATIBLE_DATABASE)
     {

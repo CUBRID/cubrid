@@ -6573,7 +6573,7 @@ get_user_name (DB_OBJECT * user)
  *    It dumps a SQL/X script that can be used to regenerate all
  *    of the currently defined triggers.
  *    It uses the login() method without passwords and as such assumes
- *    that we are running as the 'dba' user.
+ *    that we are running as the 'DBA' user.
  *    NOTE: Do not dump triggers if they are defined on one
  *    of the system classes.  These are defined as part of "createdb" and
  *    must not be emitted in the unloaddb schema file.

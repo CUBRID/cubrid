@@ -1098,7 +1098,7 @@ main (int argc, char *argv[])
 
   (void) boot_set_skip_check_ct_classes (true);
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (argv[0], TRUE, db_name) != NO_ERROR)
     {

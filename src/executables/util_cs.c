@@ -184,7 +184,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
@@ -407,7 +407,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (volext_size == -1)
@@ -668,7 +668,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (repair)
@@ -852,7 +852,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
@@ -1155,7 +1155,7 @@ acldb (UTIL_FUNCTION_ARG * arg)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
@@ -1252,7 +1252,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
@@ -1669,7 +1669,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("dba", dba_password) != NO_ERROR)
+  if (db_login ("DBA", dba_password) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1697,7 +1697,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	      passbuf = (char *) NULL;
 	    }
 	  dba_password = passbuf;
-	  if (db_login ("dba", dba_password) != NO_ERROR)
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
@@ -1836,7 +1836,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
@@ -1946,7 +1946,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
@@ -2086,7 +2086,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
@@ -2254,7 +2254,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("dba", NULL) != NO_ERROR)
+  if (db_login ("DBA", NULL) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -2424,7 +2424,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   db_Enable_replications++;
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
-  if (db_login ("dba", NULL) != NO_ERROR)
+  if (db_login ("DBA", NULL) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -2619,7 +2619,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   db_Enable_replications++;
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
-  if (db_login ("dba", NULL) != NO_ERROR)
+  if (db_login ("DBA", NULL) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -2883,7 +2883,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto check_applied_info_end;
 	}
-      if (db_login ("dba", NULL) != NO_ERROR)
+      if (db_login ("DBA", NULL) != NO_ERROR)
 	{
 	  goto check_applied_info_end;
 	}
@@ -2938,7 +2938,7 @@ check_applied_info_end:
 	  goto check_master_info_end;
 	}
 
-      if (db_login ("dba", NULL) != NO_ERROR)
+      if (db_login ("DBA", NULL) != NO_ERROR)
 	{
 	  goto check_master_info_end;
 	}

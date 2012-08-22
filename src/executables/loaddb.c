@@ -491,11 +491,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
   else
     {
-      /* if we're in the protected dba mode, just login without
+      /* if we're in the protected DBA mode, just login without
          authorization */
       AU_DISABLE_PASSWORDS ();
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-      (void) db_login ("dba", NULL);
+      (void) db_login ("DBA", NULL);
       error = db_restart (arg->command_name, true, Volume);
     }
 
@@ -992,7 +992,7 @@ error_return:
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
- * loaddb_dba - loaddb in dba mode
+ * loaddb_dba - loaddb in DBA mode
  *    return:  NO_ERROR if successful, error code otherwise
  *    argc(in): argc in main
  *    argv(in): argv in main
