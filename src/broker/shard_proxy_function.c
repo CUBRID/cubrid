@@ -51,8 +51,10 @@ static int proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
 			       T_SHARD_KEY_RANGE ** range_p_out);
 static T_SHARD_KEY_RANGE *proxy_get_range_by_param (SP_PARSER_HINT * hint_p,
 						    void **argv);
-static void proxy_update_shard_id_statistics (T_SHARD_STMT * stmt_p,
-					      T_SHARD_KEY_RANGE * range_p);
+static void proxy_update_shard_stats (T_SHARD_STMT * stmt_p,
+				      T_SHARD_KEY_RANGE * range_p);
+static void proxy_update_shard_stats_without_hint (int shard_id);
+
 
 int
 proxy_check_cas_error (char *read_msg)
@@ -321,8 +323,7 @@ error_return:
 }
 
 static void
-proxy_update_shard_id_statistics (T_SHARD_STMT * stmt_p,
-				  T_SHARD_KEY_RANGE * range_p)
+proxy_update_shard_stats (T_SHARD_STMT * stmt_p, T_SHARD_KEY_RANGE * range_p)
 {
   SP_PARSER_HINT *first_hint_p;
 
@@ -426,6 +427,32 @@ proxy_update_shard_id_statistics (T_SHARD_STMT * stmt_p,
       assert (false);
       break;
     }
+
+  return;
+}
+
+static void
+proxy_update_shard_stats_without_hint (int shard_id)
+{
+  T_SHM_SHARD_CONN_STAT *shard_stat_p;
+
+  assert (shard_id >= 0);
+  if (shard_id < 0)
+    {
+      return;
+    }
+
+  shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, shard_id);
+  if (shard_stat_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to update stats. (shard_id:%d).", shard_id);
+
+      assert (shard_stat_p);
+      return;
+    }
+
+  shard_stat_p->num_no_hint_queries_requested++;
 
   return;
 }
@@ -787,8 +814,16 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 		   "(sql_stmt:[%s]). context(%s).",
 		   sql_stmt, proxy_str_context (ctx_p));
 
-  organized_sql_stmt =
-    shard_stmt_rewrite_sql (sql_stmt, proxy_info_p->appl_server);
+  if (proxy_info_p->ignore_shard_hint == OFF)
+    {
+      organized_sql_stmt =
+	shard_stmt_rewrite_sql (sql_stmt, proxy_info_p->appl_server);
+    }
+  else
+    {
+      organized_sql_stmt = sql_stmt;
+    }
+
   if (organized_sql_stmt == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -901,30 +936,34 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 		   stmt_p->index, shard_str_stmt (stmt_p),
 		   proxy_str_context (ctx_p));
 
-  error = shard_stmt_set_hint_list (stmt_p);
-  if (error < 0)
+  if (proxy_info_p->ignore_shard_hint == OFF)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to set hint list. statement(%s). context(%s).",
-		 shard_str_stmt (stmt_p), proxy_str_context (ctx_p));
+      error = shard_stmt_set_hint_list (stmt_p);
+      if (error < 0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Failed to set hint list. statement(%s). context(%s).",
+		     shard_str_stmt (stmt_p), proxy_str_context (ctx_p));
 
-      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
+	  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+				   CAS_ER_INTERNAL);
 
-      /* check and wakeup statement waiter */
-      shard_stmt_check_waiter_and_wakeup (stmt_p);
+	  /* check and wakeup statement waiter */
+	  shard_stmt_check_waiter_and_wakeup (stmt_p);
 
-      /* 
-       * there must be no context sharing this statement at this time.
-       * so, we can free statement.
-       */
-      shard_stmt_free (stmt_p);
-      stmt_p = NULL;
+	  /* 
+	   * there must be no context sharing this statement at this time.
+	   * so, we can free statement.
+	   */
+	  shard_stmt_free (stmt_p);
+	  stmt_p = NULL;
 
-      proxy_event_free (event_p);
-      event_p = NULL;
+	  proxy_event_free (event_p);
+	  event_p = NULL;
 
-      error = -1;
-      goto end;
+	  error = -1;
+	  goto end;
+	}
     }
 
   ctx_p->prepared_stmt = stmt_p;
@@ -949,7 +988,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
     }
   stmt_p->request_buffer_length = get_msg_length (request_p);
 
+
 relay_prepare_request:
+
   if (ctx_p->is_in_tran == false || ctx_p->waiting_dummy_prepare == true)
     {
       proxy_set_force_out_tran (request_p);
@@ -1016,7 +1057,7 @@ relay_prepare_request:
   ctx_p->func_code = func_code;
 
 end:
-  if (organized_sql_stmt)
+  if (organized_sql_stmt && organized_sql_stmt != sql_stmt)
     {
       FREE_MEM (organized_sql_stmt);
     }
@@ -1025,7 +1066,7 @@ end:
   return error;
 
 free_context:
-  if (organized_sql_stmt)
+  if (organized_sql_stmt && organized_sql_stmt != sql_stmt)
     {
       FREE_MEM (organized_sql_stmt);
     }
@@ -1123,63 +1164,70 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       return -1;
     }
 
-  hint_type = shard_stmt_get_hint_type (stmt_p);
-  if (hint_type <= HT_INVAL || hint_type > HT_EOF)
+  if (proxy_info_p->ignore_shard_hint == OFF)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unsupported hint type. (hint_type:%d). context(%s).",
-		 hint_type, proxy_str_context (ctx_p));
+      hint_type = shard_stmt_get_hint_type (stmt_p);
+      if (hint_type <= HT_INVAL || hint_type > HT_EOF)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Unsupported hint type. (hint_type:%d). context(%s).",
+		     hint_type, proxy_str_context (ctx_p));
 
-      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
+	  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+				   CAS_ER_INTERNAL);
 
-      proxy_event_free (event_p);
-      event_p = NULL;
+	  proxy_event_free (event_p);
+	  event_p = NULL;
 
-      EXIT_FUNC ();
-      return -1;
-    }
+	  EXIT_FUNC ();
+	  return -1;
+	}
 
-  shard_id =
-    proxy_get_shard_id (stmt_p, (void **) (argv + BIND_VALUE_INDEX),
-			&range_p);
+      shard_id =
+	proxy_get_shard_id (stmt_p, (void **) (argv + BIND_VALUE_INDEX),
+			    &range_p);
 
-  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "Select shard. "
-	     "(prev_shard_id:%d, curr_shard_id:%d). context(%s).",
-	     ctx_p->shard_id, shard_id, proxy_str_context (ctx_p));
-
-  /* check shard_id */
-  if (shard_id == PROXY_INVALID_SHARD)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid shard id. (shard_id:%d). context(%s).",
-		 shard_id, proxy_str_context (ctx_p));
-
-      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
-
-      proxy_event_free (event_p);
-      event_p = NULL;
-
-      EXIT_FUNC ();
-      return -1;
-    }
-
-  if (ctx_p->shard_id != PROXY_INVALID_SHARD && ctx_p->shard_id != shard_id)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Shard id couldn't be changed in a transaction. "
+      PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "Select shard. "
 		 "(prev_shard_id:%d, curr_shard_id:%d). context(%s).",
 		 ctx_p->shard_id, shard_id, proxy_str_context (ctx_p));
 
-      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
+      /* check shard_id */
+      if (shard_id == PROXY_INVALID_SHARD)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Invalid shard id. (shard_id:%d). context(%s).",
+		     shard_id, proxy_str_context (ctx_p));
 
-      proxy_event_free (event_p);
-      event_p = NULL;
+	  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+				   CAS_ER_INTERNAL);
 
-      EXIT_FUNC ();
-      return -1;
+	  proxy_event_free (event_p);
+	  event_p = NULL;
+
+	  EXIT_FUNC ();
+	  return -1;
+	}
+
+      if (ctx_p->shard_id != PROXY_INVALID_SHARD
+	  && ctx_p->shard_id != shard_id)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Shard id couldn't be changed in a transaction. "
+		     "(prev_shard_id:%d, curr_shard_id:%d). context(%s).",
+		     ctx_p->shard_id, shard_id, proxy_str_context (ctx_p));
+
+	  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+				   CAS_ER_INTERNAL);
+
+	  proxy_event_free (event_p);
+	  event_p = NULL;
+
+	  EXIT_FUNC ();
+	  return -1;
+	}
+
+      ctx_p->shard_id = shard_id;
     }
-
-  ctx_p->shard_id = shard_id;
 
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
 				     ctx_p->cid, ctx_p->uid);
@@ -1277,8 +1325,15 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   ctx_p->stmt_hint_type = hint_type;
   ctx_p->stmt_h_id = srv_h_id;
 
-  /* update shard statistics */
-  proxy_update_shard_id_statistics (stmt_p, range_p);
+  if (proxy_info_p->ignore_shard_hint == OFF)
+    {
+      /* update shard statistics */
+      proxy_update_shard_stats (stmt_p, range_p);
+    }
+  else
+    {
+      proxy_update_shard_stats_without_hint (ctx_p->shard_id);
+    }
 
   new_event_p = event_p;	// add comment  
 
@@ -2075,24 +2130,32 @@ fn_proxy_cas_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 					     ctx_p->shard_id, ctx_p->cas_id);
     }
 
-  switch (ctx_p->stmt_hint_type)
+  if (proxy_info_p->ignore_shard_hint == OFF)
     {
-    case HT_NONE:
+      switch (ctx_p->stmt_hint_type)
+	{
+	case HT_NONE:
+	  proxy_info_p->num_hint_none_queries_processed++;
+	  break;
+	case HT_KEY:
+	  proxy_info_p->num_hint_key_queries_processed++;
+	  break;
+	case HT_ID:
+	  proxy_info_p->num_hint_id_queries_processed++;
+	  break;
+	case HT_ALL:
+	  proxy_info_p->num_hint_all_queries_processed++;
+	  break;
+	default:
+	  PROXY_LOG (PROXY_LOG_MODE_NOTICE,
+		     "Unsupported statement hint type. "
+		     "(hint_type:%d). context(%s).", ctx_p->stmt_hint_type,
+		     proxy_str_context (ctx_p));
+	}
+    }
+  else
+    {
       proxy_info_p->num_hint_none_queries_processed++;
-      break;
-    case HT_KEY:
-      proxy_info_p->num_hint_key_queries_processed++;
-      break;
-    case HT_ID:
-      proxy_info_p->num_hint_id_queries_processed++;
-      break;
-    case HT_ALL:
-      proxy_info_p->num_hint_all_queries_processed++;
-      break;
-    default:
-      PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Unsupported statement hint type. "
-		 "(hint_type:%d). context(%s).",
-		 ctx_p->stmt_hint_type, proxy_str_context (ctx_p));
     }
 
   ctx_p->stmt_hint_type = HT_INVAL;

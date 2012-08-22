@@ -837,6 +837,15 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      br_info[num_brs].ignore_shard_hint =
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
+						 "IGNORE_SHARD_HINT", "OFF",
+						 &lineno));
+      if (br_info[num_brs].ignore_shard_hint < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 #endif /* CUBRID_SHARD */
       num_brs++;
     }
@@ -1210,6 +1219,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	       br_info[i].proxy_log_max_size);
       fprintf (fp, "PROXY_MAX_PREPARED_STMT_COUNT\t\t=%d\n",
 	       br_info[i].proxy_max_prepared_stmt_count);
+      tmp_str = get_conf_string (br_info[i].ignore_shard_hint, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "IGNORE_SHARD_HINT\t\t=%s\n", tmp_str);
+	}
 
       shard_metadata_dump (fp, br_info[i].metadata_shm_id);
       shard_shm_dump_appl_server (fp, br_info[i].appl_server_shm_id);

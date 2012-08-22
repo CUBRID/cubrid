@@ -3161,6 +3161,7 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   int i;
   unsigned int curr_shard_id;
   static unsigned int last_shard_id = 0;
+  unsigned int last_shard_id_inc = 1;
   const unsigned int max_retry = (proxy_Shard_io.max_shard / 2);
 
   /* valid shard id */
@@ -3244,12 +3245,13 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
 	      assert (shard_io_p->cur_num_cas >= shard_io_p->num_cas_in_tran);
 	      if (shard_io_p->cur_num_cas == shard_io_p->num_cas_in_tran)
 		{
+		  last_shard_id_inc++;
 		  continue;
 		}
 	      break;
 	    }
 
-	  last_shard_id++;
+	  last_shard_id += last_shard_id_inc;
 
 	  /* not found */
 	  if (i >= proxy_Shard_io.max_shard)

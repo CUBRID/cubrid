@@ -119,7 +119,7 @@ struct shard_stat_item
 
   INT64 num_hint_key_queries_requested;
   INT64 num_hint_id_queries_requested;
-  INT64 num_hint_all_queries_requested;
+  INT64 num_no_hint_queries_requested;
 };
 
 typedef struct key_stat_item KEY_STAT_ITEM;
@@ -1875,13 +1875,65 @@ metadata_monitor (void)
   SHARD_STAT_ITEM *shard_stat_items = NULL;
   KEY_STAT_ITEM *key_stat_items = NULL;
 
+  int shard_stat_items_size;
+  int key_stat_items_size;
+  static SHARD_STAT_ITEM *shard_stat_items_old = NULL;
+  static KEY_STAT_ITEM *key_stat_items_old = NULL;
+  SHARD_STAT_ITEM *shard_stat_items_old_p = NULL;
+  KEY_STAT_ITEM *key_stat_items_old_p = NULL;
+
+  static time_t time_old;
+  time_t time_cur;
+  double elapsed_time;
+
   int i, j, k;
   int shmid;
   int col_len;
   char buf[1024];
   char line_buf[1024];
   int proxy_index;
-  int shard_stat_index, key_stat_index, range_index;
+
+  INT64 num_hint_key_qr;
+  INT64 num_hint_id_qr;
+  INT64 num_no_hint_qr;
+  INT64 num_all_qr;
+
+  INT64 num_range_qr;
+
+
+  shard_stat_items_size = sizeof (SHARD_STAT_ITEM) * MAX_SHARD_CONN;
+  key_stat_items_size = sizeof (KEY_STAT_ITEM) * MAX_SHARD_KEY;
+
+  if (shard_stat_items_old == NULL)
+    {
+      shard_stat_items_old =
+	(SHARD_STAT_ITEM *) calloc (shard_stat_items_size,
+				    shm_br->num_broker);
+      if (shard_stat_items_old == NULL)
+	{
+	  return -1;
+	}
+      memset ((void *) shard_stat_items_old, 0,
+	      shard_stat_items_size * shm_br->num_broker);
+    }
+
+  if (key_stat_items_old == NULL)
+    {
+      key_stat_items_old =
+	(KEY_STAT_ITEM *) calloc (key_stat_items_size, shm_br->num_broker);
+      if (key_stat_items_old == NULL)
+	{
+	  return -1;
+	}
+      memset ((void *) key_stat_items_old, 0,
+	      key_stat_items_size * shm_br->num_broker);
+
+      (void) time (&time_old);
+      time_old--;
+    }
+
+  (void) time (&time_cur);
+  elapsed_time = difftime (time_cur, time_old);
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -1903,12 +1955,18 @@ metadata_monitor (void)
 	  return -1;
 	}
 
+      shard_stat_items_old_p =
+	(SHARD_STAT_ITEM *) (shard_stat_items_old +
+			     (shard_stat_items_size * i));
+      key_stat_items_old_p =
+	(KEY_STAT_ITEM *) (key_stat_items_old + (key_stat_items_size * i));
+
       shm_user_p = shard_metadata_get_user (shm_metadata_cp);
       shm_key_p = shard_metadata_get_key (shm_metadata_cp);
       shm_conn_p = shard_metadata_get_conn (shm_metadata_cp);
 
       str_out ("%% %s ", shm_br->br_info[i].name);
-      str_out ("[%d] ", shmid);
+      str_out ("[%x] ", shmid);
       print_newline ();
       str_out ("MODULAR : %d, ", shm_br->br_info[i].shard_key_modular);
       str_out ("LIBRARY_NAME : %s, ",
@@ -1983,40 +2041,32 @@ metadata_monitor (void)
 	      uw_shm_detach (shm_as_cp);
 	      return -1;
 	    }
-	  for (shard_stat_index = 0;
-	       shard_stat_index < proxy_info_p->num_shard_conn;
-	       shard_stat_p =
-	       shard_shm_get_shard_stat (proxy_info_p, ++shard_stat_index))
+	  for (j = 0; j < proxy_info_p->num_shard_conn;
+	       shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, ++j))
 	    {
-	      shard_stat_items[shard_stat_index].
-		num_hint_key_queries_requested +=
+	      shard_stat_items[j].num_hint_key_queries_requested +=
 		shard_stat_p->num_hint_key_queries_requested;
-	      shard_stat_items[shard_stat_index].
-		num_hint_id_queries_requested +=
+	      shard_stat_items[j].num_hint_id_queries_requested +=
 		shard_stat_p->num_hint_id_queries_requested;
-	      shard_stat_items[shard_stat_index].
-		num_hint_all_queries_requested +=
-		shard_stat_p->num_hint_all_queries_requested;
+	      shard_stat_items[j].num_no_hint_queries_requested +=
+		shard_stat_p->num_no_hint_queries_requested;
 	    }
 	}			/* proxy_info loop */
-
-      if (shard_stat_items == NULL)
-	{
-	  str_out ("%s", "stat open error");
-	  return -1;
-	}
 
       str_out ("SHARD STATISTICS ");
       print_newline ();
 
       col_len = 0;
       col_len += sprintf (buf + col_len, "%5s ", "ID");
-      col_len += sprintf (buf + col_len, "%10s", "NUM-KEY-Q");
-      col_len += sprintf (buf + col_len, "%10s", "NUM-ID-Q");
-      col_len += sprintf (buf + col_len, "%10s", "SUM");
+      col_len += sprintf (buf + col_len, "%10s ", "NUM-KEY-Q");
+      col_len += sprintf (buf + col_len, "%10s ", "NUM-ID-Q");
+      col_len += sprintf (buf + col_len, "%15s ", "NUM-NO-HINT-Q");
+      col_len += sprintf (buf + col_len, "%15s ", "SUM");
 
       for (k = 0; k < col_len; k++)
-	line_buf[k] = '-';
+	{
+	  line_buf[k] = '-';
+	}
       line_buf[k] = '\0';
 
       str_out ("\t%s", buf);
@@ -2024,18 +2074,41 @@ metadata_monitor (void)
       str_out ("\t%s", line_buf);
       print_newline ();
 
-      for (shard_stat_index = 0;
-	   shard_stat_index < shm_conn_p->num_shard_conn; shard_stat_index++)
+      for (j = 0; j < shm_conn_p->num_shard_conn; j++)
 	{
-	  str_out ("\t%5d %10ld %9ld %9ld", shard_stat_index,
-		   shard_stat_items[shard_stat_index].
-		   num_hint_key_queries_requested,
-		   shard_stat_items[shard_stat_index].
-		   num_hint_id_queries_requested,
-		   shard_stat_items[shard_stat_index].
-		   num_hint_key_queries_requested +
-		   shard_stat_items[shard_stat_index].
-		   num_hint_id_queries_requested);
+	  if (elapsed_time > 0)
+	    {
+	      num_hint_key_qr =
+		shard_stat_items[j].num_hint_key_queries_requested -
+		shard_stat_items_old_p[j].num_hint_key_queries_requested;
+	      num_hint_id_qr =
+		shard_stat_items[j].num_hint_id_queries_requested -
+		shard_stat_items_old_p[j].num_hint_id_queries_requested;
+	      num_no_hint_qr =
+		shard_stat_items[j].num_no_hint_queries_requested -
+		shard_stat_items_old_p[j].num_no_hint_queries_requested;
+	      num_all_qr = num_hint_key_qr + num_hint_id_qr + num_no_hint_qr;
+
+	      num_hint_key_qr = num_hint_key_qr / elapsed_time;
+	      num_hint_id_qr = num_hint_id_qr / elapsed_time;
+	      num_no_hint_qr = num_no_hint_qr / elapsed_time;
+	      num_all_qr = num_all_qr / elapsed_time;
+	    }
+	  else
+	    {
+	      num_hint_key_qr =
+		shard_stat_items[j].num_hint_key_queries_requested;
+	      num_hint_id_qr =
+		shard_stat_items[j].num_hint_id_queries_requested;
+	      num_no_hint_qr =
+		shard_stat_items[j].num_no_hint_queries_requested;
+	      num_all_qr = num_hint_key_qr + num_hint_id_qr + num_no_hint_qr;
+	    }
+
+	  str_out ("\t%5d %10ld %10ld %15ld %15ld", j,
+		   num_hint_key_qr, num_hint_id_qr, num_no_hint_qr,
+		   num_all_qr);
+
 	  print_newline ();
 	}
       print_newline ();
@@ -2072,18 +2145,15 @@ metadata_monitor (void)
 		  return -1;
 		}
 
-	      for (key_stat_index = 0;
-		   key_stat_index < proxy_info_p->num_shard_key;
-		   key_stat_p =
-		   shard_shm_get_key_stat (proxy_info_p, ++key_stat_index))
+	      for (j = 0;
+		   j < proxy_info_p->num_shard_key;
+		   key_stat_p = shard_shm_get_key_stat (proxy_info_p, ++j))
 		{
-		  for (range_index = 0;
-		       range_index < key_stat_p->num_key_range; range_index++)
+		  for (k = 0; k < key_stat_p->num_key_range; k++)
 		    {
-		      key_stat_items[key_stat_index].
-			num_range_queries_requested[range_index] +=
-			key_stat_p->stat[range_index].
-			num_range_queries_requested;
+		      key_stat_items[j].
+			num_range_queries_requested[k] +=
+			key_stat_p->stat[k].num_range_queries_requested;
 		    }
 		}
 	    }
@@ -2093,24 +2163,44 @@ metadata_monitor (void)
 	      key_p = (T_SHARD_KEY *) (&(shm_key_p->shard_key[j]));
 	      str_out ("RANGE STATISTICS : %s ", key_p->key_column);
 	      print_newline ();
+
 	      col_len = 0;
 	      col_len += sprintf (buf + col_len, "%5s ~ ", "MIN");
 	      col_len += sprintf (buf + col_len, "%5s : ", "MAX");
 	      col_len += sprintf (buf + col_len, "%10s", "SHARD");
 	      col_len += sprintf (buf + col_len, "%10s", "NUM-Q");
 	      for (k = 0; k < col_len; k++)
-		line_buf[k] = '-';
+		{
+		  line_buf[k] = '-';
+		}
 	      line_buf[k] = '\0';
+
 	      str_out ("\t%s", buf);
 	      print_newline ();
 	      str_out ("\t%s", line_buf);
 	      print_newline ();
+
 	      for (k = 0; k < key_p->num_key_range; k++)
 		{
 		  range_p = (T_SHARD_KEY_RANGE *) (&(key_p->range[k]));
+
+		  if (elapsed_time > 0)
+		    {
+		      num_range_qr =
+			key_stat_items[j].num_range_queries_requested[k] -
+			key_stat_items_old_p[j].
+			num_range_queries_requested[k];
+
+		      num_range_qr = num_range_qr / elapsed_time;
+		    }
+		  else
+		    {
+		      num_range_qr =
+			key_stat_items[j].num_range_queries_requested[k];
+		    }
+
 		  str_out ("\t%5d ~ %5d : %10d %9ld", range_p->min,
-			   range_p->max, range_p->shard_id,
-			   key_stat_items[j].num_range_queries_requested[k]);
+			   range_p->max, range_p->shard_id, num_range_qr);
 		  print_newline ();
 		}
 	    }
@@ -2129,16 +2219,26 @@ metadata_monitor (void)
 	}
       print_newline ();
 
+      if (shard_stat_items)
+	{
+	  memcpy ((void *) shard_stat_items_old_p, shard_stat_items,
+		  sizeof (SHARD_STAT_ITEM) * shm_conn_p->num_shard_conn);
+	}
+
+      if (key_stat_items)
+	{
+	  memcpy ((void *) key_stat_items_old_p, key_stat_items,
+		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
+	}
+
       uw_shm_detach (shm_metadata_cp);
       uw_shm_detach (shm_as_cp);
     }
 
-  /*
-     col_len = 0;
-     col_len +=
-     sprintf (line_buf + col_len, "%8d ",
-     proxy_index + 1);
-   */
+  if (elapsed_time > 0)
+    {
+      time_old = time_cur;
+    }
 
   return 0;
 }

@@ -34,10 +34,9 @@
 
 #include "shard_key.h"
 
-/* for dbshard phase0 : will be removed */
 #define MAX_SHARD_USER	4
-#define MAX_SHARD_KEY	1
-#define MAX_SHARD_CONN	2
+#define MAX_SHARD_KEY	2
+#define MAX_SHARD_CONN	2048
 
 #define SHARD_KEY_COLUMN_LEN		(32)
 #define SHARD_KEY_RANGE_MAX		(256)

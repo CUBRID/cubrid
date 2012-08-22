@@ -346,7 +346,7 @@ struct t_shm_shard_conn_stat
 
   INT64 num_hint_key_queries_requested;
   INT64 num_hint_id_queries_requested;
-  INT64 num_hint_all_queries_requested;
+  INT64 num_no_hint_queries_requested;
 };
 
 typedef struct t_shm_shard_key_range_stat T_SHM_SHARD_KEY_RANGE_STAT;
@@ -396,6 +396,7 @@ struct t_proxy_info
 #endif
 
   int max_prepared_stmt_count;
+  char ignore_shard_hint;
 
   int proxy_log_reset;
   int proxy_access_log_reset;

@@ -305,6 +305,12 @@ shard_metadata_read_key (const char *filename)
 	  continue;
 	}
 
+      if (shm_key_p->num_shard_key > MAX_SHARD_KEY)
+	{
+	  shm_key_p->num_shard_key = MAX_SHARD_KEY;
+	  break;
+	}
+
       if (shm_key_p->num_shard_key > max_key)
 	{
 #if 0				/* multiple shard key hint : not implemented yet */
@@ -416,6 +422,11 @@ shard_metadata_read_conn (const char *filename)
       if (line[0] == '\0')
 	{
 	  continue;
+	}
+
+      if (idx_conn >= MAX_SHARD_CONN)
+	{
+	  break;
 	}
 
       if (idx_conn >= max_conn)
