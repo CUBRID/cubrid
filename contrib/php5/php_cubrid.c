@@ -1515,6 +1515,7 @@ ZEND_FUNCTION(cubrid_prepare)
 	handle_error(cubrid_retval, &error, connect);
 	RETURN_FALSE;
     }
+
     request_handle = cubrid_retval;
 
     request->conn = connect;
@@ -4487,16 +4488,8 @@ ZEND_FUNCTION(cubrid_insert_id)
 ZEND_FUNCTION(cubrid_ping)
 {
     zval *conn_id = NULL;
-    char *query = "SELECT 1+1 FROM db_root";
 
     T_CUBRID_CONNECT *connect = NULL;
-    T_CCI_ERROR error;
-
-    int cubrid_retval = 0;
-    int req_handle = 0;
-    int result = 0, ind = 0;
-
-    zend_bool connected = 0;
 
     init_error();
 
@@ -4516,55 +4509,11 @@ ZEND_FUNCTION(cubrid_ping)
 
     init_error_link(connect);
 
-    if ((cubrid_retval = cci_prepare(connect->handle, query, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-        RETURN_FALSE; 
-    }
-
-    req_handle = cubrid_retval;
-
-    if ((cubrid_retval = cci_execute(req_handle, 0, 0, &error)) < 0) {
-        goto ERR_CUBRID_PING;
-    }
-
-    while (1) {
-        cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
-        if (cubrid_retval == CCI_ER_NO_MORE_DATA) {
-            break;
-        }
-    
-        if (cubrid_retval < 0) {
-            handle_error(cubrid_retval, &error, connect);
-            goto ERR_CUBRID_PING;
-        }
-
-        if ((cubrid_retval = cci_fetch(req_handle, &error)) < 0) {
-            handle_error(cubrid_retval, &error, connect);
-            goto ERR_CUBRID_PING;
-        }
-
-        if ((cubrid_retval = cci_get_data(req_handle, 1, CCI_A_TYPE_INT, &result, &ind)) < 0) {
-            handle_error(cubrid_retval, NULL, connect);
-            goto ERR_CUBRID_PING;
-        }
-
-        if (result == 2) {
-            connected = 1;
-        } 
-    }
-
-    cci_close_req_handle(req_handle);
-
-    if (!connected) {
-        RETURN_FALSE; 
-    }
+    if (!check_connect_alive(connect)) {
+        RETURN_FALSE;
+    } 
 
     RETURN_TRUE;
-
-ERR_CUBRID_PING:
-
-    cci_close_req_handle(req_handle);
-    RETURN_FALSE;
 }
 
 ZEND_FUNCTION(cubrid_lob_get)
