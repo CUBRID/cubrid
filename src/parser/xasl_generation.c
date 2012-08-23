@@ -6795,9 +6795,10 @@ pt_set_numbering_node_etc_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->etc = *info->ordbynum_valp;
 	}
     }
-  else if (node->node_type != PT_FUNCTION)
+  else if (node->node_type != PT_FUNCTION && node->node_type != PT_SORT_SPEC)
     {
-      /* don't continue if it's not an expression or function */
+      /* don't continue if it's not an expression, function or sort spec
+         (analytic window's ORDER BY ROWNUM and PARTITION BY ROWNUM) */
       *continue_walk = PT_STOP_WALK;
     }
 
