@@ -3486,7 +3486,6 @@ ZEND_FUNCTION(cubrid_fetch_field)
     long offset = 0;
 
     T_CUBRID_REQUEST *request = NULL;
-    T_CCI_ERROR error;
 
     zend_bool is_numeric = 0, is_blob = 0;
     int max_length = 0;
@@ -3618,10 +3617,8 @@ ZEND_FUNCTION(cubrid_fetch_lengths)
     zval *req_id = NULL;
 
     T_CUBRID_REQUEST *request;
-    T_CCI_ERROR error;
-    int col, ind, res;
+    int col;
     long len = 0;
-    char *buffer;
 
     init_error();
 
@@ -3742,25 +3739,45 @@ ZEND_FUNCTION(cubrid_result)
 
     init_error_link(request->conn);
 
+    if ((cubrid_retval = cci_cursor(request->handle, row_offset + 1, 
+		    CCI_CURSOR_FIRST, &error)) == CCI_ER_NO_MORE_DATA) {
+	RETURN_FALSE;
+    } else if (cubrid_retval < 0) {
+        handle_error(cubrid_retval, &error, request->conn);
+        RETURN_FALSE;
+    }
+
     if (column) {
 	switch (Z_TYPE_P(column)) {
-	case IS_STRING:
+	case IS_STRING: {
+            char *table_name = NULL, *field_name = NULL, *tmp = NULL;
+
 	    convert_to_string_ex(&column);
 	    col_name = Z_STRVAL_P(column);
 	    col_name_len = Z_STRLEN_P(column);
 
+            tmp = strchr(col_name, '.');
+
 	    for (i = 0; i < request->col_count; i++) {
-		if (strcmp(request->col_info[i].col_name, col_name) == 0) {
-		    col_offset = i;
-		    break;
-		}
+		if (tmp == NULL) {
+                    if (strcmp(request->col_info[i].col_name, col_name) == 0) {
+		        col_offset = i;
+		        break;
+                    }
+		} else { 
+                    if ((strcmp(request->col_info[i].col_name, tmp + 1) == 0) && 
+                            (strncmp(request->col_info[i].class_name, col_name, tmp - col_name) == 0)) {
+                        col_offset = i;
+                        break;
+                    }
+                }
 	    }
 
 	    if (i == request->col_count) {
 		handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 		RETURN_FALSE;
 	    }
-
+        }
 	    break;
 	case IS_LONG:
 	    convert_to_long_ex(&column);
@@ -3776,11 +3793,6 @@ ZEND_FUNCTION(cubrid_result)
 	    handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	    RETURN_FALSE;
 	}
-    }
-
-    if ((cubrid_retval = cci_cursor(request->handle, row_offset + 1, 
-		    CCI_CURSOR_FIRST, &error)) == CCI_ER_NO_MORE_DATA) {
-	RETURN_FALSE;
     }
 
     if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
