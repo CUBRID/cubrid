@@ -2072,6 +2072,7 @@ ZEND_FUNCTION(cubrid_current_oid)
     zval *req_id= NULL;
 
     T_CUBRID_REQUEST *request;
+    T_CCI_ERROR error;
 
     char oid_buf[1024];
     int cubrid_retval = 0;
@@ -2079,7 +2080,7 @@ ZEND_FUNCTION(cubrid_current_oid)
     init_error();
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &req_id) == FAILURE) {
-	return;
+        return;
     }
 
     ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
@@ -2091,9 +2092,14 @@ ZEND_FUNCTION(cubrid_current_oid)
 	RETURN_FALSE;
     }
 
+    if ((cubrid_retval = cci_fetch(request->handle, &error)) < 0) {
+        handle_error(cubrid_retval, &error, request->conn);
+        RETURN_FALSE;
+    }
+
     if ((cubrid_retval = cci_get_cur_oid(request->handle, oid_buf)) < 0) {
-	handle_error(cubrid_retval, NULL, request->conn);
-	RETURN_FALSE;
+        handle_error(cubrid_retval, NULL, request->conn);
+        RETURN_FALSE;
     }
 
     RETURN_STRING(oid_buf, 1);
