@@ -340,6 +340,7 @@ struct cubrid_request
     int bind_num;
     int placeholder_type;
     HashTable *params;
+    int *field_lengths;
     short *l_bind;
     int fetch_field_auto_index;
     T_CCI_CUBRID_STMT sql_type;
@@ -380,7 +381,7 @@ static void php_cubrid_set_default_conn(int id TSRMLS_DC);
 static void php_cubrid_set_default_req(int id TSRMLS_DC);
 static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int is_object);
 
-static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int type TSRMLS_DC);
+static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int *field_lengths, int type TSRMLS_DC);
 static int type2str(T_CCI_COL_INFO *column_info, char *type_name, int type_name_len);
 
 static int cubrid_make_set(HashTable *ht, T_CCI_SET *set);
@@ -1908,6 +1909,9 @@ ZEND_FUNCTION(cubrid_execute)
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
 	request->row_count = exec_retval;
+        if (cubrid_retval > 0 && request->field_lengths == NULL) {
+            request->field_lengths = (int *)emalloc(sizeof(int) * res_col_count);
+        }
 	break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
@@ -1979,6 +1983,11 @@ ZEND_FUNCTION(cubrid_next_result)
         RETURN_FALSE;
     }
 
+    if (request->field_lengths != NULL) {
+        efree(request->field_lengths);
+        request->field_lengths = NULL;
+    }
+
     res_col_info = cci_get_result_info(request->handle, &res_sql_type, &res_col_count);
     if (res_sql_type == CUBRID_STMT_SELECT && !res_col_info) {
 	RETURN_FALSE;
@@ -1991,6 +2000,8 @@ ZEND_FUNCTION(cubrid_next_result)
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
 	request->row_count = cubrid_retval;
+        request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count);
+
 	break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
@@ -2346,7 +2357,7 @@ ZEND_FUNCTION(cubrid_get)
 	    RETURN_STRINGL(result, ind, 1);
 	}
     } else {
-	if ((cubrid_retval = fetch_a_row(return_value, connect->handle, request_handle, CUBRID_ASSOC TSRMLS_CC)) != SUCCESS) {
+	if ((cubrid_retval = fetch_a_row(return_value, connect->handle, request_handle, NULL, CUBRID_ASSOC TSRMLS_CC)) != SUCCESS) {
 	    handle_error(cubrid_retval, NULL, connect);
 	    RETURN_FALSE;
 	}
@@ -2780,7 +2791,7 @@ ZEND_FUNCTION(cubrid_schema)
 	}
 
 	MAKE_STD_ZVAL(temp_element);
-	if ((cubrid_retval = fetch_a_row(temp_element, connect->handle, request_handle, CUBRID_ASSOC TSRMLS_CC)) != SUCCESS) {
+	if ((cubrid_retval = fetch_a_row(temp_element, connect->handle, request_handle, NULL, CUBRID_ASSOC TSRMLS_CC)) != SUCCESS) {
 	    handle_error(cubrid_retval, NULL, connect);
 	    FREE_ZVAL(temp_element);
             goto ERR_CUBRID_SCHEMA;
@@ -3622,32 +3633,15 @@ ZEND_FUNCTION(cubrid_fetch_lengths)
 
     init_error_link(request->conn);
 
-    res = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error);
-    if (res == CCI_ER_NO_MORE_DATA) {
-	RETURN_FALSE;
-    }
-
-    if (res < 0) {
-	handle_error(res, &error, request->conn);
-	RETURN_FALSE;
+    if (request->field_lengths == NULL) {
+        handle_error (CUBRID_ER_CANNOT_GET_COLUMN_INFO, NULL, request->conn);
+        RETURN_FALSE;
     }
 
     array_init(return_value);
 
     for (col = 0; col < request->col_count; col++) {
-	if ((res = cci_get_data(request->handle, col + 1, CCI_A_TYPE_STR, &buffer, &ind)) < 0) {
-	    handle_error(res, &error, request->conn);
-            cubrid_array_destroy(return_value->value.ht ZEND_FILE_LINE_CC);
-	    RETURN_FALSE;
-	}
-
-	if (ind != -1) {
-	    len = ind;
-	} else {
-	    len = 0;
-	}
-
-	add_index_long(return_value, col, len);
+	add_index_long(return_value, col, request->field_lengths[col]);
     }
 
     return;
@@ -3879,6 +3873,9 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
 	request->row_count = cubrid_retval;
+        if (cubrid_retval > 0 && request->field_lengths == NULL) {
+            request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count);
+        }
 
         cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
         if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
@@ -3979,6 +3976,9 @@ ZEND_FUNCTION(cubrid_query)
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
         request->row_count = exec_retval;
+        if (cubrid_retval > 0 && request->field_lengths == NULL) {
+            request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count);
+        }
 
         cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
         if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
@@ -4997,6 +4997,11 @@ static void close_cubrid_request_internal(T_CUBRID_REQUEST * req)
 	efree(req->l_bind);
     }
 
+    if (req->field_lengths) {
+        efree(req->field_lengths);
+        req->field_lengths = NULL;
+    }
+
     efree(req);
 }
 
@@ -5162,7 +5167,7 @@ static int handle_error(int err_code, T_CCI_ERROR * error, T_CUBRID_CONNECT *con
     return SUCCESS;
 }
 
-static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int type TSRMLS_DC)
+static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int *field_lengths, int type TSRMLS_DC)
 {
     T_CCI_COL_INFO *column_info = NULL;
     T_CCI_U_TYPE column_type;
@@ -5225,6 +5230,14 @@ static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int type TSRM
 	    }
 	}
 
+        if (field_lengths != NULL) {
+            if (null_indicator != -1) {
+                field_lengths[i] = null_indicator;
+            } else {
+                field_lengths[i] = 0;
+            }
+        }
+
         if (null_indicator < 0) {
             if (type & CUBRID_NUM) {
                 add_index_unset(arg, i);
@@ -5239,7 +5252,6 @@ static int fetch_a_row(zval *arg, int conn_handle, int req_handle, int type TSRM
     return SUCCESS;
 
 ERR_FETCH_A_ROW:
-
     cubrid_array_destroy(arg->value.ht ZEND_FILE_LINE_CC);
     return cubrid_retval;
 }
@@ -5274,6 +5286,7 @@ static T_CUBRID_REQUEST *new_cubrid_request(void)
     request->bind_num = -1;
     request->l_bind = NULL;
     request->l_prepare = 0;
+    request->field_lengths = NULL;
     request->lob = NULL;
     request->placeholder_type = CUBRID_PLACEHOLDER_NONE; 
     request->params = NULL;
@@ -5907,6 +5920,11 @@ static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int i
 
     cubrid_retval = cci_cursor(request->handle, 0, CCI_CURSOR_CURRENT, &error);
     if (cubrid_retval == CCI_ER_NO_MORE_DATA) {
+        if (request->field_lengths != NULL) {
+            efree (request->field_lengths);
+            request->field_lengths = NULL;
+        }
+
         RETURN_FALSE;
     } else if (cubrid_retval < 0) {
         handle_error(cubrid_retval, &error, request->conn);
@@ -5918,7 +5936,7 @@ static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int i
         return;
     }
 
-    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, type TSRMLS_CC)) != SUCCESS) {
+    if ((cubrid_retval = fetch_a_row(return_value, request->conn->handle, request->handle, request->field_lengths, type TSRMLS_CC)) != SUCCESS) {
         handle_error(cubrid_retval, NULL, request->conn);
         return;
     }
