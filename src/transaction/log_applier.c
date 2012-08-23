@@ -589,7 +589,7 @@ la_log_io_read_with_max_retries (char *vname, int vdes,
 	   * This is an end of file.
 	   * We are trying to read beyond the allocated disk space
 	   */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_PB_BAD_PAGEID, 2, pageid, vname);
 	  /* TODO: wait until exist? */
 	  usleep (100 * 1000);
