@@ -2238,7 +2238,7 @@ ZEND_FUNCTION(cubrid_num_cols)
 	RETURN_LONG(request->col_count);
     default:
 	handle_error(CUBRID_ER_INVALID_SQL_TYPE, NULL, request->conn);
-	RETURN_LONG(-1);
+	RETURN_FALSE;
     }
 }
 
