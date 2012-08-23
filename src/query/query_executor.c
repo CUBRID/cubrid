@@ -18503,6 +18503,10 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       function_regu->value.vfetch_to = old_dbval_ptr;
     }
 
+  /* resolve late bindings in analytic sort list */
+  qexec_resolve_domains_on_sort_list (analytic_func_p->sort_list,
+				      buildlist->a_outptr_list_ex);
+
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (&analytic_state, analytic_func_p,
 				       buildlist->a_regu_list,
