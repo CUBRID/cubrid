@@ -3806,8 +3806,8 @@ ZEND_FUNCTION(cubrid_result)
 	RETURN_FALSE;
     }
 
-    if (ind < 0) {
-	RETURN_FALSE; 
+    if (ind == -1) {
+	return; 
     } else {
 	RETURN_STRINGL(res_buf, ind, 1);
     }
