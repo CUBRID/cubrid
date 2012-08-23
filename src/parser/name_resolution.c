@@ -189,6 +189,9 @@ static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser,
 					  PT_NODE * name,
 					  PT_BIND_NAMES_ARG * bind_arg,
 					  int *is_spec_attr);
+static void pt_mark_function_index_expression (PARSER_CONTEXT * parser,
+					       PT_NODE * expr,
+					       PT_BIND_NAMES_ARG * bind_arg);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -1189,6 +1192,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 
     case PT_EXPR:
       (void) pt_instnum_compatibility (node);
+      pt_mark_function_index_expression (parser, node, bind_arg);
       break;
 
     default:
@@ -7499,4 +7503,89 @@ pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pt_mark_function_index_expression () - mark function index expression
+ *   return:
+ *   parser(in): parser context
+ *   node(in): PT_EXPR node
+ *   bind_arg(in): list of scopes
+ */
+static void
+pt_mark_function_index_expression (PARSER_CONTEXT * parser,
+				   PT_NODE * expr,
+				   PT_BIND_NAMES_ARG * bind_arg)
+{
+  PT_NODE *arg1 = NULL, *arg2 = NULL, *arg3 = NULL;
+  SCOPES *scope = NULL;
+  PT_NODE *spec = NULL;
+  PT_NODE *attr = NULL;
+  MOP cls;
+  SM_CLASS_CONSTRAINT *constraints;
+  char *expr_str = NULL;
+  PT_NODE *flat = NULL;
+  DB_OBJECT *db = NULL;
+
+  if (expr->node_type != PT_EXPR)
+    {
+      return;
+    }
+
+  /* walk scopes */
+  for (scope = bind_arg->scopes; scope; scope = scope->next)
+    {
+      /* walk specs */
+      for (spec = scope->specs; spec; spec = spec->next)
+	{
+	  if (spec->info.spec.meta_class == PT_CLASS
+	      && !spec->info.spec.derived_table
+	      && spec->info.spec.flat_entity_list)
+	    {
+	      flat = spec->info.spec.flat_entity_list;
+	      while (flat)
+		{
+		  if (flat->node_type != PT_NAME)
+		    {
+		      PT_INTERNAL_ERROR (parser, "resolution");
+		      return;
+		    }
+
+		  /* Get the object */
+		  cls = flat->info.name.db_object;
+		  if (!cls)
+		    {
+		      PT_INTERNAL_ERROR (parser, "resolution");
+		      return;
+		    }
+
+		  constraints = sm_class_constraints (cls);
+		  while (constraints != NULL)
+		    {
+		      if (constraints->func_index_info)
+			{
+			  if (expr_str == NULL)
+			    {
+			      expr_str =
+				parser_print_function_index_expr (parser,
+								  expr);
+			    }
+
+			  if (!intl_identifier_casecmp
+			      (expr_str,
+			       constraints->func_index_info->expr_str))
+			    {
+			      PT_EXPR_INFO_SET_FLAG (expr,
+						     PT_EXPR_FUNCTION_INDEX);
+			      return;
+			    }
+			}
+		      constraints = constraints->next;
+		    }
+
+		  flat = flat->next;
+		}
+	    }
+	}
+    }
 }

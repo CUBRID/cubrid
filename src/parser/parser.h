@@ -624,6 +624,7 @@ extern "C"
   extern int pt_is_ddl_statement (const PT_NODE * node);
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
+  extern int pt_is_function_index_expression (PT_NODE * node);
 
   extern int pt_instnum_compatibility (PT_NODE * expr);
   extern int pt_groupbynum_compatibility (PT_NODE * expr);

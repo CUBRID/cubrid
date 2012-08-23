@@ -1170,6 +1170,27 @@ pt_is_attr (PT_NODE * node)
 }
 
 /*
+ * pt_is_function_index_expression () - check for function index expression 
+ *   return: true if function index expression, false otherwise
+ *   node(in/out): PT_EXPR node
+ */
+int
+pt_is_function_index_expression (PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_FUNCTION_INDEX))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * pt_is_pseudocolumn_node() -
  *    return:
  *  tree(in/out):

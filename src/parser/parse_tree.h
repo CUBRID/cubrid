@@ -1957,6 +1957,8 @@ struct pt_expr_info
 #define PT_EXPR_INFO_CAST_SHOULD_FOLD 8192	/* flag which controls if a cast
 						   expr should be folded */
 
+#define PT_EXPR_FUNCTION_INDEX 16384	/* function index expression flag */
+
   short flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (short) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (short) (f)
@@ -2439,9 +2441,9 @@ struct pt_merge_info
   PT_NODE *check_where;		/* check option */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
-#define PT_MERGE_INFO_HAS_UNIQUE  1 /* has unique constraints */
-#define PT_MERGE_INFO_SERVER_OP	  2 /* server side operation */
-#define PT_MERGE_INFO_FALSE_WHERE 4 /* merge condition always false */
+#define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
+#define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
+#define PT_MERGE_INFO_FALSE_WHERE 4	/* merge condition always false */
   short flags;			/* statement specific flags */
 };
 
