@@ -483,6 +483,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   result = parser_new_node (parser, PT_VALUE);
   if (result == NULL)
     {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
       return NULL;
     }
 

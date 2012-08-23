@@ -2269,6 +2269,10 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
     }
 
   q = pt_print_bytes (parser, p);
+  if (p->is_cnf_start)
+    {
+      return q;
+    }
 
   while (p->next)
     {				/* print in the original order ... */

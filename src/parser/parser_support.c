@@ -5589,7 +5589,7 @@ regu_regu_value_item_init (REGU_VALUE_ITEM * regu_value_item)
 }
 
 /*
- * regu_func_pred_alloc () - 
+ * regu_func_pred_alloc () -
  *   return:
  */
 FUNC_PRED *
@@ -5789,148 +5789,190 @@ regu_set_global_error (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * pt_limit_to_numbering_expr () -
+ * pt_limit_to_numbering_expr () -rewrite limit expr to xxx_num() expr
  *   return: expr node with numbering
  *   limit(in): limit node
+ *   num_op(in):
+ *   is_gry_num(in):
+ *
  */
 PT_NODE *
 pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit,
 			    PT_OP_TYPE num_op, bool is_gby_num)
 {
-  PT_NODE *node = NULL;
+  PT_NODE *lhs, *sum, *part1, *part2, *node;
+  DB_VALUE sum_val;
 
-  if (!limit)
+  if (limit == NULL)
     {
       return NULL;
     }
 
-  if (!limit->next)
+  lhs = sum = part1 = part2 = node = NULL;
+
+  if (is_gby_num == true)
     {
-      PT_NODE *num;
-      if (!is_gby_num)
-	{
-	  num = parser_new_node (parser, PT_EXPR);
-	}
-      else
-	{
-	  num = parser_new_node (parser, PT_FUNCTION);
-	}
+      lhs = parser_new_node (parser, PT_FUNCTION);
+      if (lhs != NULL)
+        {
+          lhs->type_enum = PT_TYPE_INTEGER;
+          lhs->info.function.function_type = PT_GROUPBY_NUM;
+          lhs->info.function.arg_list = NULL;
+          lhs->info.function.all_or_distinct = PT_ALL;
+        }
+    }
+  else
+    {
+      lhs = parser_new_node (parser, PT_EXPR);
+      if (lhs != NULL)
+        {
+          lhs->info.expr.op = num_op;
+        }
+    }
+
+  if (lhs == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  if (limit->next == NULL)
+    {
       node = parser_new_node (parser, PT_EXPR);
-      if (!num || !node)
+      if (node == NULL)
 	{
-	  if (num)
-	    {
-	      parser_free_tree (parser, num);
-	    }
-	  if (node)
-	    {
-	      parser_free_tree (parser, node);
-	      node = NULL;
-	    }
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_exit;
 	}
-      else
+
+      node->info.expr.op = PT_LE;
+      node->info.expr.arg1 = lhs;
+      lhs = NULL;
+
+      node->info.expr.arg2 = parser_copy_tree (parser, limit);
+      if (node->info.expr.arg2 == NULL)
 	{
-	  if (!is_gby_num)
-	    {
-	      num->info.expr.op = num_op;
-	    }
-	  else
-	    {
-	      num->type_enum = PT_TYPE_INTEGER;
-	      num->info.function.function_type = PT_GROUPBY_NUM;
-	      num->info.function.arg_list = NULL;
-	      num->info.function.all_or_distinct = PT_ALL;
-	    }
-	  node->info.expr.op = PT_LE;
-	  node->info.expr.arg1 = num;
-	  node->info.expr.arg2 = parser_copy_tree (parser, limit);
+	  goto error_exit;
 	}
     }
   else
     {
-      PT_NODE *num_l, *num_u, *sum, *part1, *part2;
-      if (!is_gby_num)
-	{
-	  num_l = parser_new_node (parser, PT_EXPR);
-	  num_u = parser_new_node (parser, PT_EXPR);
-	}
-      else
-	{
-	  num_l = parser_new_node (parser, PT_FUNCTION);
-	  num_u = parser_new_node (parser, PT_FUNCTION);
-	}
-      sum = parser_new_node (parser, PT_EXPR);
       part1 = parser_new_node (parser, PT_EXPR);
-      part2 = parser_new_node (parser, PT_EXPR);
-      node = parser_new_node (parser, PT_EXPR);
-
-      if (!num_l || !num_u || !sum || !part1 || !part2 || !node)
+      if (part1 == NULL)
 	{
-	  if (num_l)
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_exit;
+	}
+
+      part1->info.expr.op = PT_GT;
+      part1->type_enum = PT_TYPE_LOGICAL;
+      part1->info.expr.arg1 = lhs;
+      lhs = NULL;
+
+      part1->info.expr.arg2 = parser_copy_tree (parser, limit);
+      if (part1->info.expr.arg2 == NULL)
+	{
+	  goto error_exit;
+	}
+
+      part2 = parser_new_node (parser, PT_EXPR);
+      if (part2 == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_exit;
+	}
+
+      part2->info.expr.op = PT_LE;
+      part2->type_enum = PT_TYPE_LOGICAL;
+      part2->info.expr.arg1 = parser_copy_tree (parser,
+						part1->info.expr.arg1);
+      if (part2->info.expr.arg1 == NULL)
+	{
+	  goto error_exit;
+	}
+
+      sum = parser_new_node (parser, PT_EXPR);
+      if (sum == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_exit;
+	}
+
+      sum->info.expr.op = PT_PLUS;
+      sum->type_enum = PT_TYPE_NUMERIC;
+      sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
+      if (sum->data_type == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_exit;
+	}
+
+      sum->data_type->type_enum = PT_TYPE_NUMERIC;
+      sum->data_type->info.data_type.precision = 38;
+      sum->data_type->info.data_type.dec_precision = 0;
+
+      sum->info.expr.arg1 = parser_copy_tree (parser, limit);
+      sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
+      if (sum->info.expr.arg1 == NULL || sum->info.expr.arg2 == NULL)
+	{
+	  goto error_exit;
+	}
+
+      if (limit->node_type == PT_VALUE && limit->next->node_type == PT_VALUE)
+	{
+	  pt_evaluate_tree (parser, sum, &sum_val, 1);
+	  part2->info.expr.arg2 = pt_dbval_to_value (parser, &sum_val);
+	  if (part2->info.expr.arg2 == NULL)
 	    {
-	      parser_free_tree (parser, num_l);
+	      goto error_exit;
 	    }
-	  if (num_u)
-	    {
-	      parser_free_tree (parser, num_u);
-	    }
-	  if (sum)
-	    {
-	      parser_free_tree (parser, sum);
-	    }
-	  if (part1)
-	    {
-	      parser_free_tree (parser, part1);
-	    }
-	  if (part2)
-	    {
-	      parser_free_tree (parser, part2);
-	    }
-	  if (node)
-	    {
-	      parser_free_tree (parser, node);
-	      node = NULL;
-	    }
+
+	  parser_free_tree (parser, sum);
 	}
       else
 	{
-	  if (!is_gby_num)
-	    {
-	      num_l->info.expr.op = num_op;
-	      num_u->info.expr.op = num_op;
-	    }
-	  else
-	    {
-	      num_l->type_enum = PT_TYPE_INTEGER;
-	      num_l->info.function.function_type = PT_GROUPBY_NUM;
-	      num_l->info.function.arg_list = NULL;
-	      num_l->info.function.all_or_distinct = PT_ALL;
-
-	      num_u->type_enum = PT_TYPE_INTEGER;
-	      num_u->info.function.function_type = PT_GROUPBY_NUM;
-	      num_u->info.function.arg_list = NULL;
-	      num_u->info.function.all_or_distinct = PT_ALL;
-	    }
-
-	  sum->info.expr.op = PT_PLUS;
-	  sum->info.expr.arg1 = parser_copy_tree (parser, limit);
-	  sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
-
-	  part1->info.expr.op = PT_GT;
-	  part1->info.expr.arg1 = num_l;
-	  part1->info.expr.arg2 = parser_copy_tree (parser, limit);
-
-	  part2->info.expr.op = PT_LE;
-	  part2->info.expr.arg1 = num_u;
 	  part2->info.expr.arg2 = sum;
-
-	  node->info.expr.op = PT_AND;
-	  node->info.expr.arg1 = part1;
-	  node->info.expr.arg2 = part2;
 	}
+      sum = NULL;
+
+      node = parser_new_node (parser, PT_EXPR);
+      if (node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_exit;
+	}
+
+      node->info.expr.op = PT_AND;
+      node->type_enum = PT_TYPE_LOGICAL;
+      node->info.expr.arg1 = part1;
+      node->info.expr.arg2 = part2;
     }
 
   return node;
+
+error_exit:
+  if (lhs)
+    {
+      parser_free_tree (parser, lhs);
+    }
+  if (sum)
+    {
+      parser_free_tree (parser, sum);
+    }
+  if (part1)
+    {
+      parser_free_tree (parser, part1);
+    }
+  if (part2)
+    {
+      parser_free_tree (parser, part2);
+    }
+  if (node)
+    {
+      parser_free_tree (parser, node);
+    }
+
+  return NULL;
 }
 
 /*
