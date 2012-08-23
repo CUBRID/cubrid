@@ -924,10 +924,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
 		       REPL_INFO_TYPE_STMT_NORMAL);
       repl_add_update_lsa (thread_p, serial_oidp);
-    }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
-    {
       repl_end_flush_mark (thread_p, false);
     }
 
