@@ -5452,95 +5452,95 @@ ERR_CUBRID_MAKE_SET:
 
 static int type2str(T_CCI_COL_INFO * column_info, char *type_name, int type_name_len)
 {
-    char buf[64];
+    char buf[64] = {'\0'};
 
     switch (CCI_GET_COLLECTION_DOMAIN(column_info->type)) {
     case CCI_U_TYPE_UNKNOWN:
-	snprintf(buf, sizeof(buf), "unknown");
+        strncpy(buf, "unknown", 7);
 	break;
     case CCI_U_TYPE_CHAR:
-	snprintf(buf, sizeof(buf), "char(%d)", column_info->precision);
+        strncpy(buf, "char", 4);
 	break;
     case CCI_U_TYPE_STRING:
-	snprintf(buf, sizeof(buf), "varchar(%d)", column_info->precision);
+        strncpy(buf, "varchar", 7);
 	break;
     case CCI_U_TYPE_NCHAR:
-	snprintf(buf, sizeof(buf), "nchar(%d)", column_info->precision);
+        strncpy(buf, "nchar", 5);
 	break;
     case CCI_U_TYPE_VARNCHAR:
-	snprintf(buf, sizeof(buf), "varnchar(%d)", column_info->precision);
+        strncpy(buf, "varnchar", 8);
 	break;
     case CCI_U_TYPE_BIT:
-	snprintf(buf, sizeof(buf), "bit");
+        strncpy(buf, "bit", 3);
 	break;
     case CCI_U_TYPE_VARBIT:
-	snprintf(buf, sizeof(buf), "varbit(%d)", column_info->precision);
+        strncpy(buf, "varbit", 6);
 	break;
     case CCI_U_TYPE_NUMERIC:
-	snprintf(buf, sizeof(buf), "numeric(%d,%d)", column_info->precision, column_info->scale);
+        strncpy(buf, "numeric", 7);
 	break;
     case CCI_U_TYPE_INT:
-	snprintf(buf, sizeof(buf), "integer");
+        strncpy(buf, "integer", 7);
 	break;
     case CCI_U_TYPE_SHORT:
-	snprintf(buf, sizeof(buf), "smallint");
+        strncpy(buf, "smallint", 8);
 	break;
     case CCI_U_TYPE_MONETARY:
-	snprintf(buf, sizeof(buf), "monetary");
+        strncpy(buf, "monetary", 8);
 	break;
     case CCI_U_TYPE_FLOAT:
-	snprintf(buf, sizeof(buf), "float");
+        strncpy(buf, "float", 5);
 	break;
     case CCI_U_TYPE_DOUBLE:
-	snprintf(buf, sizeof(buf), "double");
+        strncpy(buf, "double", 6);
 	break;
     case CCI_U_TYPE_DATE:
-	snprintf(buf, sizeof(buf), "date");
+        strncpy(buf, "date", 4);
 	break;
     case CCI_U_TYPE_TIME:
-	snprintf(buf, sizeof(buf), "time");
+        strncpy(buf, "time", 4);
 	break;
     case CCI_U_TYPE_TIMESTAMP:
-	snprintf(buf, sizeof(buf), "timestamp");
+        strncpy(buf, "timestamp", 9);
 	break;
     case CCI_U_TYPE_SET:
-	snprintf(buf, sizeof(buf), "set");
+        strncpy(buf, "set", 3);
 	break;
     case CCI_U_TYPE_MULTISET:
-	snprintf(buf, sizeof(buf), "multiset");
+        strncpy(buf, "multiset", 8);
 	break;
     case CCI_U_TYPE_SEQUENCE:
-	snprintf(buf, sizeof(buf), "sequence");
+        strncpy(buf, "sequence", 8);
 	break;
     case CCI_U_TYPE_OBJECT:
-	snprintf(buf, sizeof(buf), "object");
+        strncpy(buf, "object", 6);
 	break;
     case CCI_U_TYPE_BIGINT:
-	snprintf(buf, sizeof(buf), "bigint");
+        strncpy(buf, "bigint", 6);
 	break;
     case CCI_U_TYPE_DATETIME:
-	snprintf(buf, sizeof(buf), "datetime");
+        strncpy(buf, "datetime", 8);
 	break;
     case CCI_U_TYPE_BLOB:
-        snprintf(buf, sizeof(buf), "blob");
+        strncpy(buf, "blob", 4);
         break;
     case CCI_U_TYPE_CLOB:
-        snprintf(buf, sizeof(buf), "clob");
+        strncpy(buf, "clob", 4);
         break;
     default:
 	/* should not enter here */
-	snprintf(buf, sizeof(buf), "[unknown]");
+        strncpy(buf, "[unknown]", 9);
 	return -1;
     }
 
     if (CCI_IS_SET_TYPE(column_info->type)) {
-	snprintf(type_name, type_name_len, "set(%s)", buf);
+        strncpy(type_name, "set", type_name_len);
     } else if (CCI_IS_MULTISET_TYPE(column_info->type)) {
-	snprintf(type_name, type_name_len, "multiset(%s)", buf);
+        strncpy(type_name, "multiset", type_name_len);
     } else if (CCI_IS_SEQUENCE_TYPE(column_info->type)) {
-	snprintf(type_name, type_name_len, "sequence(%s)", buf);
+        strncpy(type_name, "sequence", type_name_len);
     } else {
-	snprintf(type_name, type_name_len, "%s", buf);
+        strncpy(type_name, buf, type_name_len);
     }
 
     return 0;

@@ -156,13 +156,13 @@ Column count:                  2
 
 Column Names                   Column Types                   Column Len     
 ------------------------------------------------------------------------------
-s_name                         char(1)                        1              
-f_name                         varchar(6)                     6              
+s_name                         char                           1              
+f_name                         varchar                        6              
 
 
 Last Column Name:              f_name
 Last Column Table:             code
-Last Column Type:              varchar(6)
+Last Column Type:              varchar
 Last Column Len:               6
 Second Column Flags:           
 
@@ -187,15 +187,15 @@ Column count:                  5
 Column Names                   Column Types                   Column Len     
 ------------------------------------------------------------------------------
 event_code                     integer                        11             
-athlete                        varchar(40)                    40             
+athlete                        varchar                        40             
 host_year                      integer                        11             
-score                          varchar(10)                    10             
-unit                           varchar(5)                     5              
+score                          varchar                        10             
+unit                           varchar                        5              
 
 
 Last Column Name:              unit
 Last Column Table:             history
-Last Column Type:              varchar(5)
+Last Column Type:              varchar
 Last Column Len:               5
 Second Column Flags:           not_null primary_key unique_key
 
