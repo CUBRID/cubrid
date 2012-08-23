@@ -6181,7 +6181,8 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      if (arg2->node_type == PT_UNION
 		  || arg2->node_type == PT_INTERSECTION
 		  || arg2->node_type == PT_DIFFERENCE
-		  || pt_has_aggregate (parser, arg2))
+		  || pt_has_aggregate (parser, arg2)
+		  || arg2->info.query.orderby_for)
 		{
 		  PT_NODE *rewritten = NULL;
 
@@ -6206,13 +6207,27 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		  /* free old composite query */
 		  parser_free_tree (parser, cnf_node->info.expr.arg2);
 		  cnf_node->info.expr.arg2 = arg2;
-		  select_list = pt_get_select_list (parser, arg2);
 		}
 
-	      if (select_list == NULL)
-		{
-		  return NULL;
-		}
+              /* make new derived spec and append it to FROM */
+              if (mq_make_derived_spec (parser, node, arg2,
+                                        idx, &new_spec,
+                                        &new_attr) == NULL)
+                {
+                  return NULL;
+                }
+
+              /* apply qo_rewrite_subqueries() to derived table's subquery */
+              (void) parser_walk_tree (parser,
+                                       new_spec->info.spec.derived_table,
+                                       qo_rewrite_subqueries, idx, NULL,
+                                       NULL);
+
+              select_list = pt_get_select_list (parser, arg2);
+              if (select_list == NULL)
+                {
+                  return NULL;
+                }
 
 	      /* convert select list of subquery to MIN()/MAX() */
 	      new_func = parser_new_node (parser, PT_FUNCTION);
@@ -6233,22 +6248,12 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      arg2->info.query.q.select.list = new_func;
 	      /* mark as agg select */
 	      PT_SELECT_INFO_SET_FLAG (arg2, PT_SELECT_INFO_HAS_AGG);
-	      /* make new derived spec and append it to FROM */
-	      if (mq_make_derived_spec (parser, node, arg2,
-					idx, &new_spec, &new_attr) == NULL)
-		{
-		  return NULL;
-		}
+
 	      /* convert to 'attr > new_attr' */
 	      cnf_node->info.expr.arg2 = new_attr;
 	      cnf_node->info.expr.op = (op_type == PT_GT_SOME) ? PT_GT :
 		(op_type == PT_GE_SOME) ? PT_GE :
 		(op_type == PT_LT_SOME) ? PT_LT : PT_LE;
-	      /* apply qo_rewrite_subqueries() to derived table's subquery */
-	      (void) parser_walk_tree (parser,
-				       new_spec->info.spec.derived_table,
-				       qo_rewrite_subqueries, idx, NULL,
-				       NULL);
 	      break;
 
 	    default:
