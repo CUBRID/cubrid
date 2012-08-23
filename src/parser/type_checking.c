@@ -6286,7 +6286,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   int col_cnt, i;
   PT_NODE *col, *set, *spec;
 
-  if (node->info.query.has_outer_spec == 1)
+  if (node->info.query.has_outer_spec == 1 || node->info.query.is_sort_spec)
     {
       /* rewrite as empty subquery
        * for example,
@@ -6406,6 +6406,8 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
+      int hidden = node->is_hidden_column;
+
       /* rewrite as null value */
       next = node->next;
       line = node->line_number;
@@ -6428,6 +6430,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->alias_print = alias_print;
       node->type_enum = PT_TYPE_NULL;
       node->info.value.location = 0;
+      node->is_hidden_column = hidden;
       node->next = next;	/* restore link */
     }
 
@@ -6595,6 +6598,15 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		 && (node->next->info.spec.join_type == PT_JOIN_LEFT_OUTER
 		     || (node->next->info.spec.join_type ==
 			 PT_JOIN_RIGHT_OUTER)))) ? 1 : 0;
+	}
+      break;
+
+    case PT_SORT_SPEC:
+      /* if sort spec expression is query, mark it as such */
+      if (node->info.sort_spec.expr
+	  && PT_IS_QUERY (node->info.sort_spec.expr))
+	{
+	  node->info.sort_spec.expr->info.query.is_sort_spec = 1;
 	}
       break;
 

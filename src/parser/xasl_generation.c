@@ -14816,8 +14816,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	    }
 
 	  /* whatever we're left with in select_list_ex are sort columns of
-	     analytic functions, which we can dispose of now as they no longer
-	     serve a purpose */
+	     analytic functions; there might be subqueries, generate aptr and
+	     dptr lists for them */
+	  node = select_node->info.query.q.select.list;
+	  select_node->info.query.q.select.list = select_list_ex;
+
+	  pt_set_aptr (parser, select_node, xasl);
+	  pt_set_dptr (parser, select_list_ex, xasl, MATCH_ALL);
+
+	  select_node->info.query.q.select.list = node;
+
+	  /* we can dispose of the sort columns now as they no longer serve a
+	     purpose */
 	  parser_free_tree (parser, select_list_ex);
 	  select_list_ex = NULL;
 
