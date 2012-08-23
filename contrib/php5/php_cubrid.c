@@ -333,7 +333,6 @@ struct cubrid_request
     T_CUBRID_CONNECT *conn;
 
     int handle;
-    int async_mode;
     int col_count;
     int row_count;
     int l_prepare;
@@ -1901,7 +1900,6 @@ ZEND_FUNCTION(cubrid_execute)
     }
 
     request->handle = req_handle;
-    request->async_mode = option & CUBRID_ASYNC;
 
     request->col_info = res_col_info;
     request->sql_type = res_sql_type;
@@ -3852,7 +3850,6 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
     register_cubrid_request(connect, request);
 
     request->conn = connect;
-    request->async_mode = 1;
 
     if ((cubrid_retval = cci_prepare(connect->handle, query, 0, &error)) < 0) {
 	handle_error(cubrid_retval, &error, connect);
@@ -3959,7 +3956,6 @@ ZEND_FUNCTION(cubrid_query)
     register_cubrid_request(connect, request);
 
     request->conn = connect;
-    request->async_mode = 0;
 
     if ((cubrid_retval =
        cci_prepare_and_execute (connect->handle, query, 0, &exec_retval, &error)) < 0) {
@@ -5235,7 +5231,6 @@ static T_CUBRID_REQUEST *new_cubrid_request(void)
 
     request->conn = NULL;
     request->handle = 0;
-    request->async_mode = 0;
     request->row_count = -1;
     request->col_count = -1;
     request->sql_type = 0;
