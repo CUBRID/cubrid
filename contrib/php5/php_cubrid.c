@@ -3091,7 +3091,7 @@ ZEND_FUNCTION(cubrid_get_autocommit)
 
     if ((mode = cci_get_autocommit(connect->handle)) < 0) {
         handle_error(cubrid_retval, &error, connect);
-        RETURN_FALSE; 
+        return; 
     }
 
     if (mode == CCI_AUTOCOMMIT_TRUE) {
