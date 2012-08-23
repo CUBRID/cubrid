@@ -5402,17 +5402,17 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
     }
   else
     {
-      if (op_type == SINGLE_ROW_UPDATE_PRUNING ||
-	  op_type == MULTI_ROW_UPDATE_PRUNING)
+      if (op_type == SINGLE_ROW_UPDATE_PRUNING
+	  || op_type == MULTI_ROW_UPDATE_PRUNING)
 	{
 	  OID real_class_oid;
 	  HFID real_hfid;
 
 	  HFID_COPY (&real_hfid, hfid);
 	  COPY_OID (&real_class_oid, class_oid);
-	  error_code =
-	    partition_prune_update (thread_p, class_oid, recdes,
-				    &real_class_oid, &real_hfid);
+
+	  error_code = partition_prune_update (thread_p, class_oid, recdes,
+					       &real_class_oid, &real_hfid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -5436,11 +5436,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /* There will be no pruning after this point so we should reset
 	   * op_type to a non pruning operation
 	   */
-	  op_type =
-	    (op_type ==
-	     SINGLE_ROW_UPDATE_PRUNING) ? SINGLE_ROW_UPDATE :
-	    MULTI_ROW_UPDATE;
+	  op_type = ((op_type == SINGLE_ROW_UPDATE_PRUNING)
+		     ? SINGLE_ROW_UPDATE : MULTI_ROW_UPDATE);
 	}
+
       /* AN INSTANCE: Update indices if any */
 
       if (has_index)
@@ -5493,10 +5492,11 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		    }
 
 		  error_code =
-		    locator_add_or_remove_index
-		    (thread_p, recdes, oid, class_oid, search_btid,
-		     search_btid_duplicate_key_locked, true, op_type,
-		     scan_cache, true, true, hfid);
+		    locator_add_or_remove_index (thread_p, recdes, oid,
+						 class_oid, search_btid,
+						 search_btid_duplicate_key_locked,
+						 true, op_type, scan_cache,
+						 true, true, hfid);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;

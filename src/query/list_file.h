@@ -42,9 +42,9 @@
 #include "object_domain.h"
 #include "thread.h"
 
-#define QFILE_IS_LIST_CACHE_DISABLED \
-  (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 0 \
-   || prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+extern int qfile_Is_list_cache_disabled;
+
+#define QFILE_IS_LIST_CACHE_DISABLED (qfile_Is_list_cache_disabled)
 
 #define QFILE_FREE_AND_INIT_LIST_ID(list_id) \
   do {                                       \

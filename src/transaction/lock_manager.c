@@ -454,7 +454,7 @@ static const int SIZEOF_LK_WFG_EDGE = sizeof (LK_WFG_EDGE);
 static const int SIZEOF_LK_TRAN_LOCK = sizeof (LK_TRAN_LOCK);
 /* TODO : change const */
 #define SIZEOF_LK_ENTRY (offsetof (LK_ENTRY, scanid_bitset)    \
-  + (prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8))
+  + (lock_Max_scanid_bit / 8))
 
 static const int SIZEOF_LK_RES = sizeof (LK_RES);
 static const int SIZEOF_LK_HASH = sizeof (LK_HASH);
@@ -494,13 +494,13 @@ static const int LK_COMPOSITE_LOCK_OID_INCREMENT = 100;
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+static int lock_Max_scanid_bit;	/* comes from PRM_ID_LK_MAX_SCANID_BIT */
+
 static LK_WFG_EDGE TWFG_edge_block[LK_MID_TWFG_EDGE_COUNT];
 static LK_DEADLOCK_VICTIM victims[LK_MAX_VICTIM_COUNT];
 static int victim_count;
-
 #else /* !SERVER_MODE */
 static int lk_Standalone_has_xlock = 0;
-
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -1101,9 +1101,11 @@ lock_initialize_deadlock_detection (void)
 static int
 lock_initialize_scanid_bitmap (void)
 {
-  size_t nbytes =
-    1 + (MAX_NTRANS -
-	 1) * prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8;
+  size_t nbytes;
+
+  lock_Max_scanid_bit = prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT);
+
+  nbytes = 1 + (MAX_NTRANS - 1) * lock_Max_scanid_bit / 8;
   lk_Gl.scanid_bitmap = (unsigned char *) malloc (nbytes);
   if (lk_Gl.scanid_bitmap == NULL)
     {
@@ -1146,16 +1148,14 @@ lock_alloc_scanid_bit (THREAD_ENTRY * thread_p)
   unsigned char *scanid_bit;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  scanid_bit =
-    &lk_Gl.scanid_bitmap[tran_index *
-			 prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) /
-			 8];
+  scanid_bit = &lk_Gl.scanid_bitmap[tran_index * lock_Max_scanid_bit / 8];
 
   if (csect_enter (thread_p, CSECT_SCANID_BITMAP, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  for (i = 0; i < prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT); i++)
+
+  for (i = 0; i < lock_Max_scanid_bit; i++)
     {
       if (!IS_SCANID_BIT_SET (scanid_bit, i))
 	{
@@ -1163,14 +1163,16 @@ lock_alloc_scanid_bit (THREAD_ENTRY * thread_p)
 	  break;
 	}
     }
-  if (i == prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT))
+  if (i == lock_Max_scanid_bit)
     {
       csect_exit (CSECT_SCANID_BITMAP);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_ENOUGH_SCANID_BIT, 1,
-	      prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) + 1);
+	      lock_Max_scanid_bit + 1);
       return ER_NOT_ENOUGH_SCANID_BIT;
     }
+
   csect_exit (CSECT_SCANID_BITMAP);
+
   return i;
 }
 
@@ -1188,16 +1190,15 @@ lock_free_scanid_bit (THREAD_ENTRY * thread_p, int idx)
   unsigned char *scanid_bit;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  scanid_bit =
-    &lk_Gl.scanid_bitmap[tran_index *
-			 prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) /
-			 8];
+  scanid_bit = &lk_Gl.scanid_bitmap[tran_index * lock_Max_scanid_bit / 8];
 
   if (csect_enter (thread_p, CSECT_SCANID_BITMAP, INF_WAIT) != NO_ERROR)
     {
       return;
     }
+
   RESET_SCANID_BIT (scanid_bit, idx);
+
   csect_exit (CSECT_SCANID_BITMAP);
 }
 
@@ -1475,8 +1476,7 @@ lock_alloc_entry (void)
 	  fprintf (stderr, "LK_DUMP::lk_alloc_entry() = %p\n", entry_ptr);
 	}
 #endif /* LK_DUMP */
-      memset (&entry_ptr->scanid_bitset, 0,
-	      prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8);
+      memset (&entry_ptr->scanid_bitset, 0, lock_Max_scanid_bit / 8);
       return entry_ptr;
     }
 
@@ -1512,8 +1512,7 @@ lock_alloc_entry (void)
 	  fprintf (stderr, "LK_DUMP::lk_alloc_entry() = %p\n", entry_ptr);
 	}
 #endif /* LK_DUMP */
-      memset (&entry_ptr->scanid_bitset, 0,
-	      prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT) / 8);
+      memset (&entry_ptr->scanid_bitset, 0, lock_Max_scanid_bit / 8);
       return entry_ptr;
     }
 
@@ -5420,13 +5419,15 @@ static int
 lock_find_scanid_bit (unsigned char *scanid_bit)
 {
   int i;
-  for (i = 0; i < prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT); i++)
+
+  for (i = 0; i < lock_Max_scanid_bit; i++)
     {
       if (IS_SCANID_BIT_SET (scanid_bit, i))
 	{
 	  return i;
 	}
     }
+
   return -1;
 }
 
@@ -7005,6 +7006,11 @@ lock_initialize (void)
   const char *env_value;
   int error_code = NO_ERROR;
 
+  error_code = lock_initialize_scanid_bitmap ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = lock_initialize_tran_lock_table ();
   if (error_code != NO_ERROR)
     {
@@ -7026,11 +7032,6 @@ lock_initialize (void)
       goto error;
     }
   error_code = lock_initialize_deadlock_detection ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = lock_initialize_scanid_bitmap ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -7263,7 +7264,9 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   if (oid == NULL)
     {
@@ -7284,10 +7287,12 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
       return LK_GRANTED;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
@@ -7435,6 +7440,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
     }
 
 end:
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -7448,6 +7454,7 @@ end:
       er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return granted;
 #endif /* !SERVER_MODE */
@@ -7551,7 +7558,9 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   if (oid == NULL)
     {
@@ -7572,10 +7581,12 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
       return LK_GRANTED;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
@@ -7723,6 +7734,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
     }
 
 end:
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -7736,6 +7748,7 @@ end:
       er_log_debug (ARG_FILE_LINE, "lock_object_on_iscan: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return granted;
 #endif /* !SERVER_MODE */
@@ -7788,7 +7801,9 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
   LOCK intention_mode;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   if (lockset == NULL)
     {
@@ -7797,10 +7812,12 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   wait_msecs = logtb_find_wait_msecs (tran_index);
@@ -8037,6 +8054,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       db_private_free_and_init (thread_p, ins_lockinfo);
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -8050,6 +8068,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       er_log_debug (ARG_FILE_LINE, "lock_objects_lock_set: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return LK_GRANTED;
 
@@ -8103,7 +8122,9 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   if (class_oid == NULL)
     {
@@ -8112,10 +8133,12 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   wait_msecs = logtb_find_wait_msecs (tran_index);
@@ -8180,6 +8203,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       *current_lock = NULL_LOCK;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -8193,6 +8217,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       er_log_debug (ARG_FILE_LINE, "lock_scan: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return granted;
 #endif /* !SERVER_MODE */
@@ -8240,7 +8265,9 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
   LOCK intention_mode;
   int cls_count;
   int granted, i;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   if (lockhint == NULL)
     {
@@ -8255,10 +8282,12 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       return LK_GRANTED;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   wait_msecs = logtb_find_wait_msecs (tran_index);
@@ -8431,6 +8460,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       db_private_free_and_init (thread_p, cls_lockinfo);
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -8445,6 +8475,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       er_log_debug (ARG_FILE_LINE, "lock_classes_lock_hint: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return LK_GRANTED;
 
@@ -12424,7 +12455,9 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   assert (granted_mode != NULL);
   if (oid == NULL)
@@ -12448,10 +12481,12 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
     }
 
   *granted_mode = NULL_LOCK;
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
@@ -12614,6 +12649,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
     }
 
 end:
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -12629,6 +12665,7 @@ end:
 		    "lock_object_with_btid_get_granted_mode: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return granted;
 #endif /* !SERVER_MODE */
@@ -12681,7 +12718,9 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   assert (prv_total_hold_mode != NULL);
   if (oid == NULL)
@@ -12705,10 +12744,12 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
     }
 
   *prv_total_hold_mode = NULL_LOCK;
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
@@ -12857,6 +12898,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
     }
 
 end:
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -12872,6 +12914,7 @@ end:
 		    "lock_btid_object_get_prev_total_hold_mode: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   return granted;
 #endif /* !SERVER_MODE */

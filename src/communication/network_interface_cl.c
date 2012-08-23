@@ -2585,7 +2585,6 @@ log_set_suppress_repl_on_transaction (int set)
 
   return req_error;
 #else /* CS_MODE */
-
   ENTER_SERVER ();
 
   xlogtb_set_suppress_repl_on_transaction (NULL, set);
@@ -8813,9 +8812,11 @@ sysprm_change_server_parameters (const char *data)
   return rc;
 #else /* CS_MODE */
   int rc;
+
   ENTER_SERVER ();
   rc = xsysprm_change_server_parameters (data);
   EXIT_SERVER ();
+
   return rc;
 #endif /* !CS_MODE */
 }
@@ -8862,9 +8863,11 @@ sysprm_obtain_server_parameters (char *data, int len)
   return rc;
 #else /* CS_MODE */
   int rc;
+
   ENTER_SERVER ();
   rc = xsysprm_obtain_server_parameters (data, len);
   EXIT_SERVER ();
+
   return rc;
 #endif /* !CS_MODE */
 }

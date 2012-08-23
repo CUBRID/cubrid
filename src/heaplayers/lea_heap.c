@@ -213,11 +213,13 @@ munmap_is_to_be_called (void *m, void *ptr, MMAP_TRACE_H * h)
 UINTPTR
 hl_register_lea_heap (void)
 {
+#if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
       return MOCK_LEA_HEAP_ID;
     }
   else
+#endif /* !NDEBUG */
     {
       HL_MSPACE *hms;
 
@@ -271,11 +273,13 @@ destroy_mspace_internal (HL_MSPACE * hms)
 void
 hl_clear_lea_heap (UINTPTR heap_id)
 {
+#if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
       assert (heap_id == MOCK_LEA_HEAP_ID);
     }
   else
+#endif /* !NDEBUG */
     {
       HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 
@@ -296,11 +300,13 @@ hl_clear_lea_heap (UINTPTR heap_id)
 void
 hl_unregister_lea_heap (UINTPTR heap_id)
 {
+#if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
       assert (heap_id == MOCK_LEA_HEAP_ID);
     }
   else
+#endif /* !NDEBUG */
     {
       HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 
@@ -321,11 +327,13 @@ hl_unregister_lea_heap (UINTPTR heap_id)
 void *
 hl_lea_alloc (UINTPTR heap_id, size_t sz)
 {
+#if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
       return malloc (sz);
     }
   else
+#endif /* !NDEBUG */
     {
       HL_MSPACE *hms = (HL_MSPACE *) heap_id;
       void *p;
@@ -355,11 +363,13 @@ hl_lea_alloc (UINTPTR heap_id, size_t sz)
 void *
 hl_lea_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
+#if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
       return realloc (ptr, sz);
     }
   else
+#endif /* !NDEBUG */
     {
       HL_MSPACE *hms = (HL_MSPACE *) heap_id;
       void *p;
@@ -388,11 +398,13 @@ hl_lea_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 void
 hl_lea_free (UINTPTR heap_id, void *ptr)
 {
+#if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
       free (ptr);
     }
   else
+#endif /* !NDEBUG */
     {
       HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 

@@ -386,10 +386,12 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
     } while (0)
 #endif
 
+#if defined (EnableThreadMonitoring)
 #define MONITOR_WAITING_THREAD(elpased) \
     (prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD) > 0 \
      && ((elpased).tv_sec * 1000 + (elpased).tv_usec / 1000) \
          > prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
+#endif
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
 extern int mnt_Num_tran_exec_stats;

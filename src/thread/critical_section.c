@@ -519,7 +519,9 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 			      CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   assert (cs_ptr != NULL);
 
@@ -529,10 +531,13 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
+
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   error_code = pthread_mutex_lock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -664,6 +669,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
   cs_ptr->owner = thread_p->tid;
   cs_ptr->tran_index = thread_p->tran_index;
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -671,6 +677,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
       TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
 			     elapsed_time);
     }
+#endif
 
   error_code = pthread_mutex_unlock (&cs_ptr->lock);
 
@@ -682,6 +689,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+#if defined (EnableThreadMonitoring)
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       if (cs_ptr->cs_index > 0)
@@ -699,6 +707,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 		    cs_ptr->max_wait.tv_usec, cs_ptr->total_wait.tv_sec,
 		    cs_ptr->total_wait.tv_usec);
     }
+#endif
 
   return NO_ERROR;
 }
@@ -736,7 +745,9 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 					int wait_secs)
 {
   int error_code = NO_ERROR, r;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   assert (cs_ptr != NULL);
 
@@ -746,10 +757,12 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   error_code = pthread_mutex_lock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -869,6 +882,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
       cs_ptr->rwlock++;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -876,6 +890,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
       TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
 			     elapsed_time);
     }
+#endif
 
   error_code = pthread_mutex_unlock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -886,6 +901,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+#if defined (EnableThreadMonitoring)
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       if (cs_ptr->cs_index > 0)
@@ -903,6 +919,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 		    cs_ptr->max_wait.tv_usec, cs_ptr->total_wait.tv_sec,
 		    cs_ptr->total_wait.tv_usec);
     }
+#endif
 
   return NO_ERROR;
 }
@@ -939,7 +956,9 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 			       CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   assert (cs_ptr != NULL);
 
@@ -949,10 +968,12 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   error_code = pthread_mutex_lock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -1094,6 +1115,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
       cs_ptr->rwlock++;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -1101,6 +1123,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
       TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
 			     elapsed_time);
     }
+#endif
 
   /* Someone can wait for being reader. Wakeup all readers. */
   error_code = pthread_cond_broadcast (&cs_ptr->readers_ok);
@@ -1130,6 +1153,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+#if defined (EnableThreadMonitoring)
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       if (cs_ptr->cs_index > 0)
@@ -1147,6 +1171,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 		    cs_ptr->max_wait.tv_usec, cs_ptr->total_wait.tv_sec,
 		    cs_ptr->total_wait.tv_usec);
     }
+#endif
 
   return NO_ERROR;
 }
@@ -1183,7 +1208,9 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 				CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 
   assert (cs_ptr != NULL);
 
@@ -1193,10 +1220,12 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   cs_ptr->total_enter++;
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   error_code = pthread_mutex_lock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -1314,6 +1343,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
   cs_ptr->owner = thread_p->tid;
   cs_ptr->tran_index = thread_p->tran_index;
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -1321,6 +1351,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
       TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
 			     elapsed_time);
     }
+#endif
 
   error_code = pthread_mutex_unlock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -1331,6 +1362,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+#if defined (EnableThreadMonitoring)
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
       if (cs_ptr->cs_index > 0)
@@ -1348,6 +1380,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 		    cs_ptr->max_wait.tv_usec, cs_ptr->total_wait.tv_sec,
 		    cs_ptr->total_wait.tv_usec);
     }
+#endif
 
   return NO_ERROR;
 }

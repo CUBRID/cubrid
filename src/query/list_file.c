@@ -185,6 +185,7 @@ static int qfile_Free_sort_list_count = 0;
 /*
  * Query File Manager Constants/Global Variables
  */
+int qfile_Is_list_cache_disabled;
 
 static int qfile_Xasl_page_size;
 static int qfile_Max_tuple_page_size;
@@ -1272,6 +1273,10 @@ qfile_initialize (void)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+
+  qfile_Is_list_cache_disabled =
+    (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 0
+     || prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0);
 
   qfile_Max_tuple_page_size = QFILE_MAX_TUPLE_SIZE_IN_PAGE;
   qfile_Xasl_page_size = spage_max_record_size () - QFILE_PAGE_HEADER_SIZE;

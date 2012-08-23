@@ -2707,7 +2707,9 @@ void
 fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 			    const char *new_label_p)
 {
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 #if !defined(CS_MODE)
   int vol_fd;
 
@@ -2719,10 +2721,12 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
     }
 #endif /* !CS_MODE */
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   if (new_label_p == NULL)
     {
@@ -2738,6 +2742,7 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 	}
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -2752,6 +2757,7 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
       er_log_debug (ARG_FILE_LINE, "fileio_unformat: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 }
 
 /*
@@ -3585,7 +3591,9 @@ void *
 fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	     PAGEID page_id, size_t page_size)
 {
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
   off_t offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   ssize_t nbytes;
   bool is_retry = true;
@@ -3600,10 +3608,12 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   const struct aiocb *cblist[1];
 #endif /* USE_AIO */
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   while (is_retry == true)
     {
@@ -3699,6 +3709,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	}
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -3713,6 +3724,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       er_log_debug (ARG_FILE_LINE, "fileio_read: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
   if (aio_suspend (cblist, 1, NULL) < 0 || aio_return (&cb) != page_size)
@@ -3744,7 +3756,9 @@ void *
 fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	      PAGEID page_id, size_t page_size)
 {
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
   off_t offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   bool is_retry = true;
 #if defined(WINDOWS) && defined(SERVER_MODE)
@@ -3757,10 +3771,12 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   const struct aiocb *cblist[1];
 #endif /* USE_AIO */
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   while (is_retry == true)
     {
@@ -3847,6 +3863,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	}
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -3861,6 +3878,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       er_log_debug (ARG_FILE_LINE, "fileio_write: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
   if (aio_suspend (cblist, 1, NULL) < 0 || aio_return (&cb) != page_size)
@@ -3884,7 +3902,9 @@ void *
 fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 		   PAGEID page_id, int num_pages, size_t page_size)
 {
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
   off_t offset;
   ssize_t nbytes;
   size_t read_bytes;
@@ -3905,10 +3925,12 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   read_bytes = ((size_t) page_size) * ((size_t) num_pages);
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   while (read_bytes > 0)
     {
@@ -4008,6 +4030,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       read_bytes -= nbytes;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -4022,6 +4045,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       er_log_debug (ARG_FILE_LINE, "fileio_read_pages: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   mnt_file_ioreads (thread_p);
   return io_pages_p;
@@ -4034,7 +4058,9 @@ void *
 fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 		    PAGEID page_id, int num_pages, size_t page_size)
 {
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
   off_t offset;
   ssize_t nbytes;
   size_t write_bytes;
@@ -4054,10 +4080,12 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   write_bytes = ((size_t) page_size) * ((size_t) num_pages);
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
 
   while (write_bytes > 0)
     {
@@ -4156,6 +4184,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       write_bytes -= nbytes;
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
@@ -4170,6 +4199,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       er_log_debug (ARG_FILE_LINE, "fileio_write_pages: %6d.%06d\n",
 		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
+#endif
 
   fileio_compensate_flush (thread_p, vol_fd, num_pages);
   mnt_file_iowrites (thread_p, num_pages);
@@ -4224,7 +4254,9 @@ int
 fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 {
   int ret;
+#if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
+#endif
 #if defined (SERVER_MODE)
   static pthread_mutex_t inc_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
   int r;
@@ -4256,10 +4288,13 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #endif
     }
 
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&start_time, NULL);
     }
+#endif
+
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
   bzero (&cb, sizeof (cb));
   cb.aio_fildes = vol_fd;
@@ -4267,11 +4302,15 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #else /* USE_AIO */
   ret = fsync (vol_fd);
 #endif /* USE_AIO */
+
+#if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       gettimeofday (&end_time, NULL);
       DIFF_TIMEVAL (start_time, end_time, elapsed_time);
     }
+#endif
+
   if (ret != 0)
     {
       s = (vlabel == NULL) ? "Unknown" : vlabel;
@@ -4281,6 +4320,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
     }
   else
     {
+#if defined (EnableThreadMonitoring)
       if (MONITOR_WAITING_THREAD (elapsed_time))
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
@@ -4289,6 +4329,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 	  er_log_debug (ARG_FILE_LINE, "fileio_synchronize: %6d.%06d\n",
 			elapsed_time.tv_sec, elapsed_time.tv_usec);
 	}
+#endif
 
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
       while (aio_error (&cb) == EINPROGRESS)
