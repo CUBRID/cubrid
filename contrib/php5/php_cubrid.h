@@ -66,7 +66,6 @@ ZEND_FUNCTION(cubrid_connect);
 ZEND_FUNCTION(cubrid_pconnect);
 ZEND_FUNCTION(cubrid_connect_with_url);
 ZEND_FUNCTION(cubrid_pconnect_with_url);
-ZEND_FUNCTION(cubrid_disconnect);
 ZEND_FUNCTION(cubrid_close);
 ZEND_FUNCTION(cubrid_prepare);
 ZEND_FUNCTION(cubrid_bind);

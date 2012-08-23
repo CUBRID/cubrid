@@ -443,10 +443,6 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_cubrid_pconnect_with_url, 0, 0, 1)
     ZEND_ARG_INFO(0, passwd)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(arginfo_cubrid_disconnect, 0, 0, 1)
-    ZEND_ARG_INFO(0, conn_id)
-ZEND_END_ARG_INFO()
-
 ZEND_BEGIN_ARG_INFO_EX(arginfo_cubrid_close, 0, 0, 0)
     ZEND_ARG_INFO(0, conn_id)
 ZEND_END_ARG_INFO()
@@ -818,7 +814,6 @@ zend_function_entry cubrid_functions[] = {
     ZEND_FE(cubrid_pconnect, arginfo_cubrid_pconnect)
     ZEND_FE(cubrid_connect_with_url, arginfo_cubrid_connect_with_url)
     ZEND_FE(cubrid_pconnect_with_url, arginfo_cubrid_pconnect_with_url)
-    ZEND_FE(cubrid_disconnect, arginfo_cubrid_disconnect)
     ZEND_FE(cubrid_close, arginfo_cubrid_close)
     ZEND_FE(cubrid_prepare, arginfo_cubrid_prepare)
     ZEND_FE(cubrid_bind, arginfo_cubrid_bind)
@@ -896,6 +891,7 @@ zend_function_entry cubrid_functions[] = {
     ZEND_FE(cubrid_set_query_timeout, arginfo_cubrid_set_query_timeout)
 
     ZEND_FALIAS(cubrid_close_prepare, cubrid_close_request, NULL) 
+    ZEND_FALIAS(cubrid_disconnect, cubrid_close, NULL) 
     {NULL, NULL, NULL}
 };
 
@@ -1037,7 +1033,7 @@ static int php_cubrid_persistent_helper(zend_rsrc_list_entry *le TSRMLS_DC)
 {
     T_CUBRID_CONNECT *connect;
     T_CCI_ERROR error;
-    int cubrid_retval, i;
+    int cubrid_retval;
 
     if (Z_TYPE_P(le) != le_pconnect) {
         return 0;
@@ -1438,42 +1434,12 @@ ZEND_FUNCTION(cubrid_connect_with_url)
     php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAM_PASSTHRU, 0);
 }
 
-ZEND_FUNCTION(cubrid_disconnect)
-{
-    zval *conn_id = NULL;
-    T_CUBRID_CONNECT *connect = NULL;
-    int tmp;
-
-    init_error();
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &conn_id) == FAILURE) {
-	return;
-    }
-
-    ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
-    zend_list_delete(Z_RESVAL_P(conn_id));
-
-    /* On an explicit close of the default connection it had a refcount of 2,
-     * so we need one more call */
-    if (Z_RESVAL_P(conn_id) == CUBRID_G(last_connect_id)) {
-        CUBRID_G(last_connect_id) = -1;
-        CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = 0;
-
-        zend_list_delete(Z_RESVAL_P(conn_id));
-    }
-    
-    RETURN_TRUE;
-}
-
 ZEND_FUNCTION(cubrid_close)
 {
     zval *conn_id = NULL;
     T_CUBRID_CONNECT *connect = NULL;
     
-    int res_id = -1, tmp, cubrid_retval;
-    T_CCI_ERROR error;
+    int res_id = -1;
 
     init_error();
 
@@ -4789,7 +4755,7 @@ ZEND_FUNCTION(cubrid_lob_export)
 
     while (lob_size > 0) {
         if (lob_size < CUBRID_LOB_READ_BUF_SIZE) {
-            write_len = lob_size; 
+            write_len = (int)lob_size; 
         } else {
             write_len = CUBRID_LOB_READ_BUF_SIZE; 
         }
@@ -4839,7 +4805,7 @@ ZEND_FUNCTION(cubrid_lob_send)
 
     while (lob_size > 0) {
         if (lob_size < CUBRID_LOB_READ_BUF_SIZE) {
-            write_len = lob_size; 
+            write_len = (int)lob_size; 
         } else {
             write_len = CUBRID_LOB_READ_BUF_SIZE; 
         }
@@ -5727,7 +5693,7 @@ static int cubrid_parse_params(T_CUBRID_REQUEST *req, char *sql_stmt, size_t sql
 
     int quote_stat = CUBRID_QUOTES_NONE;
 
-    for (i = 0; i < sql_stmt_len; i++) {
+    for (i = 0; i < (int)sql_stmt_len; i++) {
         switch (sql_stmt[i]) {
         case '"':
             if (quote_stat == CUBRID_QUOTES_DOUBLE) {
@@ -5760,7 +5726,7 @@ static int cubrid_parse_params(T_CUBRID_REQUEST *req, char *sql_stmt, size_t sql
                     goto ERR_CUBRID_PARSE_PARAMS;
                 }
 
-                for (j = i + 1; j < sql_stmt_len; j++) {
+                for (j = i + 1; j < (int)sql_stmt_len; j++) {
                     /* length of named parameter shouldn't longer than 32 */
 
                     if ((j - i) > 32) {
