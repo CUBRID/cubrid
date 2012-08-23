@@ -1484,9 +1484,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       net_timeout_set (shm_appl->session_timeout);
       err_code = net_read_header (sock_fd, &client_msg_header);
 
-      if ((as_info->cur_keep_con == KEEP_CON_ON)
-	  && (as_info->con_status == CON_STATUS_OUT_TRAN
-	      || as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE))
+      if (as_info->cur_keep_con == KEEP_CON_ON
+	  && as_info->con_status == CON_STATUS_OUT_TRAN)
 	{
 	  as_info->con_status = CON_STATUS_IN_TRAN;
 	  as_info->transaction_start_time = time (0);
@@ -1805,12 +1804,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
   if (as_info->reset_flag
       && ((as_info->con_status != CON_STATUS_IN_TRAN
-	   && as_info->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
+	   && as_info->num_holdable_results < 1)
 	  || (get_db_connect_status () == -1)))
     {
       cas_log_debug (ARG_FILE_LINE,
-		     "process_request: reset_flag && !CON_STATUS_IN_TRAN "
-		     "&& !CON_STATUS_OUT_TRAN_HOLDABLE");
+		     "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_CLOSE_CONN;
       goto exit_on_end;
     }
@@ -1991,8 +1989,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
 
-  if (as_info->con_status == CON_STATUS_IN_TRAN
-      || as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE)
+  if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
       /* holdable results have the same lifespan of a normal session */
       net_timeout_set (shm_appl->session_timeout);
@@ -2024,7 +2021,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 	{
 	  /* if in-transaction state, return network error */
 	  if (as_info->con_status == CON_STATUS_IN_TRAN
-	      || as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE
 	      || !is_net_timed_out ())
 	    {
 	      ret_value = -1;
@@ -2067,8 +2063,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
     }
   else
     {
-      if (as_info->con_status != CON_STATUS_IN_TRAN
-	  && as_info->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
+      if (as_info->con_status != CON_STATUS_IN_TRAN)
 	{
 	  as_info->con_status = CON_STATUS_IN_TRAN;
 	  as_info->transaction_start_time = time (0);
@@ -2102,7 +2097,7 @@ set_cas_info_size (void)
 int
 restart_is_needed (void)
 {
-  if (hm_has_holdable_results ())
+  if (as_info->num_holdable_results > 0)
     {
       /* we do not want to restart the CAS when there are open
          holdable results */

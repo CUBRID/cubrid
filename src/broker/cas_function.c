@@ -232,15 +232,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   if (as_info->cur_keep_con != KEEP_CON_OFF)
     {
-      if (hm_has_holdable_results ())
-	{
-	  as_info->con_status = CON_STATUS_OUT_TRAN_HOLDABLE;
-	}
-      else
-	{
-	  as_info->con_status = CON_STATUS_OUT_TRAN;
-	}
-
+      as_info->con_status = CON_STATUS_OUT_TRAN;
       as_info->transaction_start_time = (time_t) 0;
       if (as_info->cas_log_reset)
 	{
@@ -1730,14 +1722,6 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return FN_KEEP_CONN;
     }
   ux_cursor_close (srv_handle);
-
-#ifndef LIBCAS_FOR_JSP
-  if (!hm_has_holdable_results ()
-      && as_info->con_status == CON_STATUS_OUT_TRAN_HOLDABLE)
-    {
-      as_info->con_status = CON_STATUS_OUT_TRAN;
-    }
-#endif
 
   return FN_KEEP_CONN;
 }

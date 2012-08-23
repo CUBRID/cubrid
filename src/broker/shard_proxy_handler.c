@@ -193,7 +193,8 @@ proxy_handler_is_cas_in_tran (int shard_id, int cas_id)
   as_info = shard_shm_get_as_info (proxy_info_p, shard_id, cas_id);
   if (as_info)
     {
-      return (as_info->con_status == CON_STATUS_IN_TRAN) ? true : false;
+      return (as_info->con_status == CON_STATUS_IN_TRAN
+	      || as_info->num_holdable_results > 0) ? true : false;
     }
 
   return false;
@@ -351,7 +352,7 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported function code. "
 		 "(func_code:%d). context(%s).",
 		 func_code, proxy_str_context (ctx_p));
-      /* 
+      /*
        * 1*) drop unexpected messages from cas ?
        * 2) free context ?
        */

@@ -3012,6 +3012,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       shm_appl->as_info[i].database_name[0] = '\0';
       shm_appl->as_info[i].database_host[0] = '\0';
       shm_appl->as_info[i].last_connect_time = 0;
+      shm_appl->as_info[i].num_holdable_results = 0;
       shm_appl->as_info[i].cur_sql_log_mode = br_info->sql_log_mode;
       shm_appl->as_info[i].cur_slow_log_mode = br_info->slow_log_mode;
       CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));

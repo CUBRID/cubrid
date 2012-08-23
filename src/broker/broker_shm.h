@@ -181,8 +181,7 @@ enum t_con_status
   CON_STATUS_OUT_TRAN = 0,
   CON_STATUS_IN_TRAN = 1,
   CON_STATUS_CLOSE = 2,
-  CON_STATUS_CLOSE_AND_CONNECT = 3,
-  CON_STATUS_OUT_TRAN_HOLDABLE = 4	/* OUT_TRAN with holdable result sets */
+  CON_STATUS_CLOSE_AND_CONNECT = 3
 };
 
 #if defined(WINDOWS)
@@ -282,6 +281,7 @@ struct t_appl_server_info
   time_t last_connect_time;
   INT64 num_connect_requests;
   INT64 num_restarts;
+  int num_holdable_results;
 };
 
 #if defined(CUBRID_SHARD)
@@ -303,7 +303,7 @@ struct t_client_info
   time_t req_time;		/* current request receive from client time */
   time_t res_time;		/* current response receive from cas time */
 
-  /* TODO : MORE STATISTICS INFOMATION per Client 
+  /* TODO : MORE STATISTICS INFOMATION per Client
    *  INT64 num_queries_processed;
    *  INT64 num_error_queries;
    */
@@ -332,9 +332,9 @@ struct t_shard_info
   char db_user[SRV_CON_DBUSER_SIZE];
   char db_password[SRV_CON_DBPASSWD_SIZE];
 
-  char db_conn_info[LINE_MAX];	/* cubrid - hostname(ip) 
+  char db_conn_info[LINE_MAX];	/* cubrid - hostname(ip)
 				 * mysql  - hostname(ip):port
-				 * oracle - tns 
+				 * oracle - tns
 				 */
   T_APPL_SERVER_INFO as_info[1];
 };
@@ -368,8 +368,8 @@ struct t_shm_shard_key_stat
   T_SHM_SHARD_KEY_RANGE_STAT stat[SHARD_KEY_RANGE_MAX];
 };
 
-/* NOTICE : 
- *  If you want to add struct member, 
+/* NOTICE :
+ *  If you want to add struct member,
  *  you must modify shard_shm_get_shard_info_offset too.
  */
 typedef struct t_proxy_info T_PROXY_INFO;

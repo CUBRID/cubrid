@@ -168,6 +168,14 @@ hm_srv_handle_free (int h_id)
   FREE_MEM (srv_handle->classes_chn);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+  if (srv_handle->is_holdable == true)
+    {
+      srv_handle->is_holdable = false;
+#if !defined(LIBCAS_FOR_JSP)
+      as_info->num_holdable_results--;
+#endif
+    }
+
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
 #if !defined(LIBCAS_FOR_JSP)
@@ -230,9 +238,12 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
-	  if (srv_handle->is_holdable)
+	  if (srv_handle->is_holdable == true)
 	    {
 	      srv_handle->is_holdable = false;
+#if !defined(LIBCAS_FOR_JSP)
+	      as_info->num_holdable_results--;
+#endif
 	    }
 	}
 #endif
@@ -516,39 +527,16 @@ hm_srv_handle_get_current_count (void)
 }
 
 void
-hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle, bool hold)
+hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle)
 {
   if (srv_handle == NULL)
     {
       assert (false);
       return;
     }
-  srv_handle->is_holdable = hold;
-}
 
-bool
-hm_has_holdable_results (void)
-{
-  return (hm_get_holdable_results_count () > 0);
-}
-
-int
-hm_get_holdable_results_count (void)
-{
-  int i, cnt = 0;
-
-  if (srv_handle_table == NULL)
-    {
-      return 0;
-    }
-
-  for (i = 0; i < max_srv_handle; i++)
-    {
-      if (srv_handle_table[i] != NULL)
-	{
-	  cnt += (srv_handle_table[i]->is_holdable ? 1 : 0);
-	}
-    }
-
-  return cnt;
+  srv_handle->is_holdable = true;
+#if !defined(LIBCAS_FOR_JSP)
+  as_info->num_holdable_results++;
+#endif
 }

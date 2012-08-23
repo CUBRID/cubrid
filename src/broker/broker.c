@@ -392,8 +392,8 @@ main (int argc, char *argv[])
       goto error1;
     }
 
-  /* TODO : SHARD LOG 
-     set_cubrid_file (FID_SHARD_BROKER_LOG_DIR, "logdir"); 
+  /* TODO : SHARD LOG
+     set_cubrid_file (FID_SHARD_BROKER_LOG_DIR, "logdir");
    */
 
   THREAD_BEGIN (receiver_thread, receiver_thr_f, NULL);
@@ -1409,13 +1409,13 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
 /*
  * run_appl_server () -
  *   return: pid
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *   shard_index(in): it's only valid in SHARD! shard index
- *   as_index(in): cas index 
+ *   as_index(in): cas index
  *
- * Note: activate CAS 
+ * Note: activate CAS
  */
 static int
 run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
@@ -1549,13 +1549,13 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
 /*
  * stop_appl_server () -
  *   return: NO_ERROR
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *   shard_index(in): it's only valid in SHARD! shard index
- *   as_index(in): cas index 
+ *   as_index(in): cas index
  *
- * Note: inactivate CAS 
+ * Note: inactivate CAS
  */
 static int
 stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
@@ -1581,13 +1581,13 @@ stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
 /*
  * restart_appl_server () -
  *   return: void
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *   shard_index(in): it's only valid in SHARD! shard index
- *   as_index(in): cas index 
+ *   as_index(in): cas index
  *
- * Note: inactivate and activate CAS 
+ * Note: inactivate and activate CAS
  */
 static void
 restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
@@ -1766,14 +1766,14 @@ retry:
 /*
  * cas_monitor_worker () -
  *   return: void
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *   shard_index(in): it's only valid in SHARD! shard index
- *   as_index(in): cas index 
+ *   as_index(in): cas index
  *   busy_uts(out): counting UTS_STATUS_BUSY status cas
  *
- * Note: monitoring CAS 
+ * Note: monitoring CAS
  */
 static void
 cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
@@ -1928,13 +1928,13 @@ cas_monitor_thr_f (void *ar)
 /*
  * psize_check_worker () -
  *   return: void
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *   shard_index(in): it's only valid in SHARD! shard index
- *   as_index(in): cas index 
+ *   as_index(in): cas index
  *
- * Note: check cas psize and cas log 
+ * Note: check cas psize and cas log
  */
 static void
 psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
@@ -2229,11 +2229,11 @@ psize_check_thr_f (void *ar)
  * check_cas_log () -
  *   return: void
  *   br_name(in): broker name
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *   shard_index(in): it's only valid in SHARD! shard index
- *   as_index(in): cas index 
+ *   as_index(in): cas index
  *
  * Note: check cas log and recreate
  */
@@ -2502,7 +2502,8 @@ find_idle_cas (void)
 	  shm_br->br_info[br_index].appl_server_max_num
 	  && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
 	  && shm_appl->as_info[i].cur_keep_con == KEEP_CON_AUTO
-	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN)
+	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
+	  && shm_appl->as_info[i].num_holdable_results < 1)
 	{
 	  time_t wait_time = cur_time - shm_appl->as_info[i].last_access_time;
 	  if (wait_time > max_wait_time || wait_cas_id == -1)
@@ -2518,7 +2519,8 @@ find_idle_cas (void)
       pthread_mutex_lock (&con_status_mutex);
       CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]),
 		       CON_STATUS_LOCK_BROKER);
-      if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN)
+      if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN
+          && shm_appl->as_info[wait_cas_id].num_holdable_results < 1)
 	{
 	  idle_cas_id = wait_cas_id;
 	  shm_appl->as_info[wait_cas_id].con_status =
@@ -2602,6 +2604,7 @@ find_drop_as_index (void)
 
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
 	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
+	  && shm_appl->as_info[i].num_holdable_results < 1
 	  && wait_time > max_wait_time
 	  && wait_time > shm_br->br_info[br_index].time_to_kill
 	  && exist_idle_cas == 0)
@@ -2912,8 +2915,8 @@ proxy_listener_thr_f (void *arg)
 /*
  * run_proxy_server () -
  *   return: pid
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *
  * Note: activate PROXY
@@ -3007,8 +3010,8 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 /*
  * stop_proxy_server () -
  *   return: NO_ERROR
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *
  * Note: inactivate Proxy
@@ -3038,8 +3041,8 @@ stop_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 /*
  * restart_proxy_server () -
  *   return: void
- *   as_info_p(in): T_APPL_SERVER_INFO 
- *   br_index(in): broker index 
+ *   as_info_p(in): T_APPL_SERVER_INFO
+ *   br_index(in): broker index
  *   proxy_index(in): it's only valid in SHARD! proxy index
  *
  * Note: inactivate and activate Proxy

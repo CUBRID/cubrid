@@ -4334,11 +4334,11 @@ la_apply_update_log (LA_ITEM * item)
 
   assert (new_object == object);
 
-  /* This prevents from dangling references to serial objects 
-   * during replication. 
-   * The typical scenario is to update serials, cull mops which clears 
-   * the mop up, and then truncate the table which leads updating 
-   * the serial mop to reset its values. 
+  /* This prevents from dangling references to serial objects
+   * during replication.
+   * The typical scenario is to update serials, cull mops which clears
+   * the mop up, and then truncate the table which leads updating
+   * the serial mop to reset its values.
    */
   ws_release_user_instance (new_object);
   object = new_object = NULL;
@@ -4381,11 +4381,11 @@ error_rtn:
   assert (new_object == NULL || new_object == object);
   if (object)
     {
-      /* This prevents from dangling references to serial objects 
-       * during replication. 
-       * The typical scenario is to update serials, cull mops which clears 
-       * the mop up, and then truncate the table which leads updating 
-       * the serial mop to reset its values. 
+      /* This prevents from dangling references to serial objects
+       * during replication.
+       * The typical scenario is to update serials, cull mops which clears
+       * the mop up, and then truncate the table which leads updating
+       * the serial mop to reset its values.
        */
       ws_release_user_instance (object);
       object = new_object = NULL;
@@ -4536,11 +4536,11 @@ la_apply_insert_log (LA_ITEM * item)
 
   assert (object == NULL);
 
-  /* This prevents from dangling references to serial objects 
-   * during replication. 
-   * The typical scenario is to update serials, cull mops which clears 
-   * the mop up, and then truncate the table which leads updating 
-   * the serial mop to reset its values. 
+  /* This prevents from dangling references to serial objects
+   * during replication.
+   * The typical scenario is to update serials, cull mops which clears
+   * the mop up, and then truncate the table which leads updating
+   * the serial mop to reset its values.
    */
   ws_release_user_instance (new_object);
   new_object = NULL;
@@ -4581,11 +4581,11 @@ error_rtn:
 
   if (object)
     {
-      /* This prevents from dangling references to serial objects 
-       * during replication. 
-       * The typical scenario is to update serials, cull mops which clears 
-       * the mop up, and then truncate the table which leads updating 
-       * the serial mop to reset its values. 
+      /* This prevents from dangling references to serial objects
+       * during replication.
+       * The typical scenario is to update serials, cull mops which clears
+       * the mop up, and then truncate the table which leads updating
+       * the serial mop to reset its values.
        */
       ws_release_user_instance (object);
       object = NULL;
@@ -4593,11 +4593,11 @@ error_rtn:
 
   if (new_object)
     {
-      /* This prevents from dangling references to serial objects 
-       * during replication. 
-       * The typical scenario is to update serials, cull mops which clears 
-       * the mop up, and then truncate the table which leads updating 
-       * the serial mop to reset its values. 
+      /* This prevents from dangling references to serial objects
+       * during replication.
+       * The typical scenario is to update serials, cull mops which clears
+       * the mop up, and then truncate the table which leads updating
+       * the serial mop to reset its values.
        */
       ws_release_user_instance (new_object);
       new_object = NULL;
@@ -6036,8 +6036,8 @@ la_shutdown (void)
 
   free_and_init (la_Info.log_data);
   free_and_init (la_Info.rec_type);
-  free_and_init (la_Info.undo_unzip_ptr);
-  free_and_init (la_Info.redo_unzip_ptr);
+  log_zip_free (la_Info.undo_unzip_ptr);
+  log_zip_free (la_Info.redo_unzip_ptr);
 
   free_and_init (la_Info.cache_pb->buffer_area);
   free_and_init (la_Info.cache_pb->log_buffer);
@@ -6648,7 +6648,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  HA_SERVER_STATE_TO_BE_STANDBY))
 	    {
 
-	      /* if there's no replication log to be applied, 
+	      /* if there's no replication log to be applied,
 	       * we should release dbname lock */
 	      clear_owner = true;
 	      error =

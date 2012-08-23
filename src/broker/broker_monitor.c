@@ -1393,8 +1393,7 @@ br_monitor (char *br_vector)
 			 state_interval);
 
 		      if (as_info_p->uts_status == UTS_STATUS_BUSY
-			  && as_info_p->con_status != CON_STATUS_OUT_TRAN
-			  && as_info_p->con_status != CON_STATUS_OUT_TRAN_HOLDABLE)
+			  && as_info_p->con_status != CON_STATUS_OUT_TRAN)
 			{
 			  if (as_info_p->log_msg[0] == '\0')
 			    {
