@@ -59,6 +59,7 @@
 
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
+#define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
 #define UNIQUE_SAVEPOINT_MULTIPLE_RENAME "mULTIPLErENAME"
 #define UNIQUE_SAVEPOINT_MULTIPLE_ALTER "mULTIPLEaLTER"
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
@@ -2141,6 +2142,12 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  error = tran_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY, false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   entity_spec_list = statement->info.drop.spec_list;
   for (entity_spec = entity_spec_list; entity_spec != NULL;
        entity_spec = entity_spec->next)
@@ -2151,10 +2158,15 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = drop_class_name (entity->info.name.original);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto error_exit;
 	    }
 	}
     }
+
+  return error;
+
+error_exit:
+  tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
 
   return error;
 }
@@ -9774,7 +9786,7 @@ do_promote_partition (SM_CLASS * class_)
     }
   /* Make sure we do not copy anything that actually belongs to the
    * root class (the class to which this partition belongs to).
-   * This includes: auto_increment flags, unique indexes, primary keys, 
+   * This includes: auto_increment flags, unique indexes, primary keys,
    * and foreign keys
    */
   for (smattr = ctemplate->attributes; smattr != NULL;
@@ -11767,18 +11779,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      if (node->info.create_entity.partition_info != NULL
-	  || create_like != NULL || create_select != NULL
-	  || node->info.create_entity.create_index != NULL
-	  || reuse_oid == true)
+      error = tran_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY, false);
+      if (error != NO_ERROR)
 	{
-	  error = tran_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY, false);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  do_rollback_on_error = true;
+	  goto error_exit;
 	}
+      do_rollback_on_error = true;
 
       if (create_like)
 	{
