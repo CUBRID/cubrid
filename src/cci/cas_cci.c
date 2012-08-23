@@ -761,6 +761,23 @@ cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
     {
       err_code = qe_end_tran (con_handle, type, err_buf);
     }
+  else if (type == CCI_TRAN_ROLLBACK)
+    {
+      /* even if con status is CCI_CON_STATUS_OUT_TRAN, there may be holdable
+       * req_handles that remained open after commit
+       * if a rollback is done after commit, these req_handles should be
+       * closed or freed
+       */
+      if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] !=
+	  CAS_STATEMENT_POOLING_ON)
+	{
+	  hm_req_handle_free_all (con_handle);
+	}
+      else
+	{
+	  hm_req_handle_close_all_resultsets (con_handle);
+	}
+    }
   API_ELOG (con_handle, err_code);
 
   con_handle->ref_count = 0;
