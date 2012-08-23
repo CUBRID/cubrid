@@ -55,7 +55,7 @@ function print_field_info($req_handle, $offset = 0)
     printf("%-30s %s\n", "name:", $field->name);
     printf("%-30s %s\n", "table:", $field->table);
     printf("%-30s \"%s\"\n", "default value:", $field->def);
-    printf("%-30s %d\n", "max lenght:", $field->max_length);
+    printf("%-30s %d\n", "max length:", $field->max_length);
     printf("%-30s %d\n", "not null:", $field->not_null);
     printf("%-30s %d\n", "primary key:", $field->primary_key);
     printf("%-30s %d\n", "unique key:", $field->unique_key);
@@ -172,7 +172,7 @@ Second Column Flags:
 name:                          f_name
 table:                         code
 default value:                 ""
-max lenght:                    6
+max length:                    0
 not null:                      0
 primary key:                   0
 unique key:                    0
@@ -205,7 +205,7 @@ Second Column Flags:           not_null primary_key unique_key
 name:                          athlete
 table:                         history
 default value:                 ""
-max lenght:                    13
+max length:                    0
 not null:                      1
 primary key:                   1
 unique key:                    1

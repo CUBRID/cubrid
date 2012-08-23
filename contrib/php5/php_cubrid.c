@@ -3480,7 +3480,7 @@ ZEND_FUNCTION(cubrid_fetch_field)
     zend_bool is_numeric = 0, is_blob = 0;
     int max_length = 0;
 
-    int res = 0, ind = 0, col = 0;
+    int res = 0;
     char *buffer = NULL;
     char string_type[128];
 
@@ -3510,34 +3510,6 @@ ZEND_FUNCTION(cubrid_fetch_field)
     is_numeric = numeric_type(request->col_info[offset].type);
     max_length = 0;
     is_blob = (request->col_info[offset].type == CCI_U_TYPE_BLOB)?1:0;
-
-    col = 1;
-    while (1) {
-	res = cci_cursor(request->handle, col++, CCI_CURSOR_FIRST, &error);
-	if (res == CCI_ER_NO_MORE_DATA) {
-	    break;
-	}
-
-	if (res < 0) {
-	    handle_error(res, &error, request->conn);
-            goto ERR_CUBRID_FETCH_FIELD;
-	}
-
-	if ((res = cci_fetch(request->handle, &error)) < 0) {
-	    handle_error(res, &error, request->conn);
-            goto ERR_CUBRID_FETCH_FIELD;
-	}
-
-	buffer = NULL;
-	if ((res = cci_get_data(request->handle, offset + 1, CCI_A_TYPE_STR, &buffer, &ind)) < 0) {
-	    handle_error(res, &error, request->conn);
-            goto ERR_CUBRID_FETCH_FIELD;
-	}
-
-	if (ind > max_length) {
-	    max_length = ind;
-	}
-    }
 
     add_assoc_string(return_value, "name", request->col_info[offset].col_name, 1);
     add_assoc_string(return_value, "table", request->col_info[offset].class_name, 1);
