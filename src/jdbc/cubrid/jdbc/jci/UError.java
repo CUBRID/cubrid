@@ -37,8 +37,6 @@
 package cubrid.jdbc.jci;
 
 public class UError {
-	public final static int JCI_ERROR_CODE_BASE = -2000;
-	public final static int DRIVER_ERROR_CODE_BASE = -2100;
 	public final static int METHOD_USER_ERROR_BASE = -10000;
 
 	private UConnection connection = null;
@@ -72,7 +70,7 @@ public class UError {
 		else if (jciErrorCode == UErrorCode.ER_DBMS)
 			return serverErrorCode;
 		else
-			return (JCI_ERROR_CODE_BASE - jciErrorCode);
+			return (jciErrorCode);
 	}
 
 	void copyValue(UError object) {

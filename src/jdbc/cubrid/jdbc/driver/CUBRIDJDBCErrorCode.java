@@ -30,6 +30,9 @@
 
 package cubrid.jdbc.driver;
 
+import java.util.Hashtable;
+
+
 /**
  * Title: CUBRID JDBC Driver Description:
  * 
@@ -37,136 +40,143 @@ package cubrid.jdbc.driver;
  */
 
 public class CUBRIDJDBCErrorCode {
-	public static int unknown = 0;
-	public static int connection_closed = 1;
-	public static int statement_closed = 2;
-	public static int prepared_statement_closed = 3;
-	public static int result_set_closed = 4;
-	public static int not_supported = 5;
-	public static int invalid_trans_iso_level = 6;
-	public static int invalid_url = 7;
-	public static int no_dbname = 8;
-	public static int invalid_query_type_for_executeQuery = 9;
-	public static int invalid_query_type_for_executeUpdate = 10;
-	public static int negative_value_for_length = 11;
-	public static int ioexception_in_stream = 12;
-	public static int deprecated = 13;
-	public static int not_numerical_object = 14;
-	public static int invalid_index = 15;
-	public static int invalid_column_name = 16;
-	public static int invalid_row = 17;
-	public static int conversion_error = 18;
-	public static int invalid_tuple = 19;
-	public static int invalid_value = 20;
-	public static int not_collection = 21;
-	public static int dbmetadata_closed = 22;
-	public static int non_scrollable = 23;
-	public static int non_sensitive = 24;
-	public static int non_updatable = 25;
-	public static int non_updatable_column = 26;
-	public static int invalid_query_type_for_executeInsert = 27;
-	public static int argument_zero = 28;
-	public static int empty_inputstream = 29;
-	public static int empty_reader = 30;
-	public static int insertion_query_fail = 31;
-	public static int non_scrollable_statement = 32;
-	public static int iss_fail_login = 33;
-	public static int pooled_connection_closed = 34;
-	public static int xa_connection_closed = 35;
-	public static int xa_illegal_operation = 36;
-	public static int oid_closed = 37;
-	public static int invalid_table_name = 38;
-	public static int lob_pos_invalid = 39;
-	public static int lob_is_not_writable = 40;
-	public static int request_timeout = 41;
 
-	public static String[] err_msg = {
-	// 0
-			"",
-			// 1
-			"Attempt to operate on a closed Connection.",
-			// 2
-			"Attempt to access a closed Statement.",
-			// 3
-			"Attempt to access a closed PreparedStatement.",
-			// 4
-			"Attempt to access a closed ResultSet.",
-			// 5
-			"Not supported method",
-			// 6
-			"Unknown transaction isolation level.",
-			// 7
-			"invalid URL - ",
-			// 8
-			"The database name should be given.",
-			// 9
-			"The query is not applicable to the executeQuery(). Use the executeUpdate() instead.",
-			// 10
-			"The query is not applicable to the executeUpdate(). Use the executeQuery() instead.",
-			// 11
-			"The length of the stream cannot be negative.",
-			// 12
-			"An IOException was caught during reading the inputstream.",
-			// 13
-			"Not supported method, because it is deprecated.",
-			// 14
-			"The object does not seem to be a number.",
-			// 15
-			"Missing or invalid position of the bind variable provided.",
-			// 16
-			"The column name is invalid.",
-			// 17
-			"Invalid cursor position.",
-			// 18
-			"Type conversion error.",
-			// 19
-			"Internal error: The number of attributes is different from the expected.",
-			// 20
-			"The argument is invalid.",
-			// 21
-			"The type of the column should be a collection type.",
-			// 22
-			"Attempt to operate on a closed DatabaseMetaData.",
-			// 23
-			"Attempt to call a method related to scrollability of non-scrollable ResultSet.",
-			// 24
-			"Attempt to call a method related to sensitivity of non-sensitive ResultSet.",
-			// 25
-			"Attempt to call a method related to updatability of non-updatable ResultSet.",
-			// 26
-			"Attempt to update a column which cannot be updated.",
-			// 27
-			"The query is not applicable to the executeInsert().",
-			// 28
-			"The argument row can not be zero.",
-			// 29
-			"Given InputStream object has no data.",
-			// 30
-			"Given Reader object has no data.",
-			// 31
-			"Insertion query failed.",
-			// 32
-			"Attempt to call a method related to scrollability of TYPE_FORWARD_ONLY Statement.",
-			// 33
-			"Authentication failure",
-			// 34
-			"Attempt to operate on a closed PooledConnection.",
-			// 35
-			"Attempt to operate on a closed XAConnection.",
-			// 36
-			"Illegal operation in a distributed transaction",
-			// 37
-			"Attempt to access a CUBRIDOID associated with a Connection which has been closed.",
-			// 38
-			"The table name is invalid.",
-			// 39
-			"Lob position to write is invalid.",
-			// 40
-			"Lob is not writable.",
-			// 41
-			"Request timed out."};
+	public static int unknown = -21100;
+	public static int connection_closed = -21101;
+	public static int statement_closed = -21102;
+	public static int prepared_statement_closed = -21103;
+	public static int result_set_closed = -21104;
+	public static int not_supported = -21105;
+	public static int invalid_trans_iso_level = -21106;
+	public static int invalid_url = -21107;
+	public static int no_dbname = -21108;
+	public static int invalid_query_type_for_executeQuery = -21109;
+	public static int invalid_query_type_for_executeUpdate = -21110;
+	public static int negative_value_for_length = -21111;
+	public static int ioexception_in_stream = -21112;
+	public static int deprecated = -21113;
+	public static int not_numerical_object = -21114;
+	public static int invalid_index = -21115;
+	public static int invalid_column_name = -21116;
+	public static int invalid_row = -21117;
+	public static int conversion_error = -21118;
+	public static int invalid_tuple = -21119;
+	public static int invalid_value = -21120;
+	public static int not_collection = -21121;
+	public static int dbmetadata_closed = -21122;
+	public static int non_scrollable = -21123;
+	public static int non_sensitive = -21124;
+	public static int non_updatable = -21125;
+	public static int non_updatable_column = -21126;
+	public static int invalid_query_type_for_executeInsert = -21127;
+	public static int argument_zero = -21128;
+	public static int empty_inputstream = -21129;
+	public static int empty_reader = -21130;
+	public static int insertion_query_fail = -21131;
+	public static int non_scrollable_statement = -21132;
+	public static int iss_fail_login = -21133;
+	public static int pooled_connection_closed = -21134;
+	public static int xa_connection_closed = -21135;
+	public static int xa_illegal_operation = -21136;
+	public static int oid_closed = -21137;
+	public static int invalid_table_name = -21138;
+	public static int lob_pos_invalid = -21139;
+	public static int lob_is_not_writable = -21140;
+	public static int request_timeout = -21141;
+
+	private static Hashtable<Integer, String> messageString;
+
+	private static void setMessageHash() {
+		messageString = new Hashtable<Integer, String>();
+
+		messageString.put(new Integer(unknown), "");
+		messageString.put(new Integer(connection_closed), 
+			"Attempt to operate on a closed Connection.");
+		messageString.put(new Integer(statement_closed), 
+			"Attempt to access a closed Statement.");
+		messageString.put(new Integer(prepared_statement_closed), 
+			"Attempt to access a closed PreparedStatement.");
+		messageString.put(new Integer(result_set_closed), 
+			"Attempt to access a closed ResultSet.");
+		messageString.put(new Integer(not_supported), 
+			"Not supported method");
+		messageString.put(new Integer(invalid_trans_iso_level), 
+			"Unknown transaction isolation level.");
+		messageString.put(new Integer(invalid_url), 
+			"invalid URL - ");
+		messageString.put(new Integer(no_dbname), 
+			"The database name should be given.");
+		messageString.put(new Integer(invalid_query_type_for_executeQuery), 
+			"The query is not applicable to the executeQuery(). Use the executeUpdate() instead.");
+		messageString.put(new Integer(invalid_query_type_for_executeUpdate), 
+			"The query is not applicable to the executeUpdate(). Use the executeQuery() instead.");
+		messageString.put(new Integer(negative_value_for_length), 
+			"The length of the stream cannot be negative.");
+		messageString.put(new Integer(ioexception_in_stream), 
+			"An IOException was caught during reading the inputstream.");
+		messageString.put(new Integer(deprecated), 
+			"Not supported method, because it is deprecated.");
+		messageString.put(new Integer(not_numerical_object), 
+			"The object does not seem to be a number.");
+		messageString.put(new Integer(invalid_index), 
+			"Missing or invalid position of the bind variable provided.");
+		messageString.put(new Integer(invalid_column_name), 
+			"The column name is invalid.");
+		messageString.put(new Integer(invalid_row), 
+			"Invalid cursor position.");
+		messageString.put(new Integer(conversion_error), 
+			"Type conversion error.");
+		messageString.put(new Integer(invalid_tuple), 
+			"Internal error: The number of attributes is different from the expected.");
+		messageString.put(new Integer(invalid_value), 
+			"The argument is invalid.");
+		messageString.put(new Integer(not_collection), 
+			"The type of the column should be a collection type.");
+		messageString.put(new Integer(dbmetadata_closed), 
+			"Attempt to operate on a closed DatabaseMetaData.");
+		messageString.put(new Integer(non_scrollable), 
+			"Attempt to call a method related to scrollability of non-scrollable ResultSet.");
+		messageString.put(new Integer(non_sensitive), 
+			"Attempt to call a method related to sensitivity of non-sensitive ResultSet.");
+		messageString.put(new Integer(non_updatable), 
+			"Attempt to call a method related to updatability of non-updatable ResultSet.");
+		messageString.put(new Integer(non_updatable_column), 
+			"Attempt to update a column which cannot be updated.");
+		messageString.put(new Integer(invalid_query_type_for_executeInsert), 
+			"The query is not applicable to the executeInsert().");
+		messageString.put(new Integer(argument_zero), 
+			"The argument row can not be zero.");
+		messageString.put(new Integer(empty_inputstream), 
+			"Given InputStream object has no data.");
+		messageString.put(new Integer(empty_reader), 
+			"Given Reader object has no data.");
+		messageString.put(new Integer(insertion_query_fail), 
+			"Insertion query failed.");
+		messageString.put(new Integer(non_scrollable_statement), 
+			"Attempt to call a method related to scrollability of TYPE_FORWARD_ONLY Statement.");
+		messageString.put(new Integer(iss_fail_login), 
+			"Authentication failure");
+		messageString.put(new Integer(pooled_connection_closed), 
+			"Attempt to operate on a closed PooledConnection.");
+		messageString.put(new Integer(xa_connection_closed), 
+			"Attempt to operate on a closed XAConnection.");
+		messageString.put(new Integer(xa_illegal_operation), 
+			"Illegal operation in a distributed transaction");
+		messageString.put(new Integer(oid_closed), 
+			"Attempt to access a CUBRIDOID associated with a Connection which has been closed.");
+		messageString.put(new Integer(invalid_table_name), 
+			"The table name is invalid.");
+		messageString.put(new Integer(lob_pos_invalid), 
+			"Lob position to write is invalid.");
+		messageString.put(new Integer(lob_is_not_writable), 
+			"Lob is not writable.");
+		messageString.put(new Integer(request_timeout), 
+			"Request timed out.");
+	}
 
 	public static String getMessage(int code) {
-		return err_msg[code];
+		if (messageString == null)
+			setMessageHash();
+		return (String) messageString.get(new Integer(code));
 	}
 }

@@ -114,7 +114,7 @@ uw_get_error_message (int error_code, int os_error_code)
   char *p;
   char err_msg[1024];
 
-  if (error_code < 0 || error_code > MAX_ERROR_CODE)
+  if (error_code > 0 || error_code < UW_MAX_ERROR_CODE)
     return ("No such error code.");
   if (os_error_code == 0)
     {
@@ -139,7 +139,7 @@ uw_error_message (int error_code)
 {
   static char err_msg[1024];
 
-  if (error_code < 0 || error_code > MAX_ERROR_CODE)
+  if (error_code < 0 || error_code > UW_MAX_ERROR_CODE)
     return ("No such error code.");
   else
     get_error_msg (error_code, err_msg);
@@ -149,7 +149,7 @@ uw_error_message (int error_code)
 void
 uw_error_message_r (int error_code, char *err_msg)
 {
-  if (error_code < 0 || error_code > MAX_ERROR_CODE)
+  if (error_code < 0 || error_code > UW_MAX_ERROR_CODE)
     strcpy (err_msg, "No such error code.");
   else
     get_error_msg (error_code, err_msg);
@@ -175,6 +175,8 @@ get_error_msg (int err_code, char *msg_buf)
   char default_err_msg_file[PATH_MAX];
 
   msg_buf[0] = '\0';
+  /* temporarily calculation */
+  err_code = UW_MIN_ERROR_CODE - err_code;
 
 #ifdef DISPATCHER
   strcpy (default_err_msg_file, ERROR_MSG_FILE);

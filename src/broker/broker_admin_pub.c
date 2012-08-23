@@ -2823,7 +2823,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   char err_flag = FALSE;
   int broker_check_loop_count = 30;
 
-  br_info->err_code = -1;
+  br_info->err_code = UW_ER_NO_ERROR + 1;
   br_info->os_err_code = 0;
   br_info->num_busy_count = 0;
 
@@ -3024,13 +3024,13 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 
   for (i = 0; i < broker_check_loop_count; i++)
     {
-      if (br_info->err_code < 0)
+      if (br_info->err_code > 0)
 	{
 	  SLEEP_MILISEC (0, 100);
 	}
       else
 	{
-	  if (br_info->err_code > 0)
+	  if (br_info->err_code < 0)
 	    {
 	      sprintf (admin_err_msg, "%s: %s", br_info->name,
 		       uw_get_error_message (br_info->err_code,

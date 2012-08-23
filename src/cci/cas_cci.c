@@ -4439,9 +4439,9 @@ cci_get_error_msg (int err_code, T_CCI_ERROR * error, char *buf, int bufsize)
     }
   else
     {
-      if ((err_code < CCI_ER_DBMS) && (err_code > CAS_ER_DBMS))
+      if ((err_code < CCI_ER_DBMS) && (err_code > CCI_ER_END))
 	{
-	  snprintf (buf, bufsize, "Error : %s", err_msg);
+	  snprintf (buf, bufsize, "CCI Error : %s", err_msg);
 	}
       else if ((err_code < CAS_ER_DBMS) && (err_code >= CAS_ER_IS))
 	{

@@ -107,7 +107,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
     }
 
   /* "shard/shard_broker_admin_pub.c" 2787 */
-  br_info_p->err_code = -1;
+  br_info_p->err_code = UW_ER_NO_ERROR + 1;
   br_info_p->os_err_code = 0;
   br_info_p->num_busy_count = 0;
 
@@ -215,13 +215,13 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 
   for (i = 0; i < broker_check_loop_count; i++)
     {
-      if (br_info_p->err_code < 0)
+      if (br_info_p->err_code > 0)
 	{
 	  SLEEP_MILISEC (0, 100);
 	}
       else
 	{
-	  if (br_info_p->err_code > 0)
+	  if (br_info_p->err_code < 0)
 	    {
 	      sprintf (admin_err_msg, "%s: %s", br_info_p->name,
 		       uw_get_error_message (br_info_p->err_code,
