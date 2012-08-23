@@ -319,6 +319,16 @@ typedef struct
 
 typedef struct cubrid_request T_CUBRID_REQUEST;
 
+typedef struct linked_list_node {
+    void *data;
+    struct linked_list_node *next;
+} LINKED_LIST_NODE;
+
+typedef struct linked_list {
+    LINKED_LIST_NODE *head;
+    LINKED_LIST_NODE *tail;
+} LINKED_LIST;
+
 typedef struct
 {
     T_CUBRID_ERROR recent_error;
@@ -328,8 +338,7 @@ typedef struct
     int affected_rows;
     T_CCI_CUBRID_STMT sql_type;
 
-    int req_count;
-    T_CUBRID_REQUEST **req_list;
+    LINKED_LIST *unclosed_requests;
 } T_CUBRID_CONNECT;
 
 struct cubrid_request
@@ -406,6 +415,9 @@ static char *php_cubrid_int64_to_str(php_cubrid_int64_t i64 TSRMLS_DC);
 static int cubrid_parse_params(T_CUBRID_REQUEST *req, char *sql_stmt, size_t sql_stmt_len TSRMLS_DC);
 
 static int cubrid_get_charset_internal(int conn, T_CCI_ERROR *error);
+
+static void linked_list_append(LINKED_LIST *list, void *data);
+static void linked_list_delete(LINKED_LIST *list, void *data);
 
 /************************************************************************
 * INTERFACE VARIABLES
@@ -1029,12 +1041,27 @@ static int php_cubrid_persistent_helper(zend_rsrc_list_entry *le TSRMLS_DC)
     T_CUBRID_CONNECT *connect;
     T_CCI_ERROR error;
     int cubrid_retval;
+    LINKED_LIST_NODE *head, *p;
 
     if (Z_TYPE_P(le) != le_pconnect) {
         return 0;
     }
 
     connect = (T_CUBRID_CONNECT *)le->ptr;
+
+    head = connect->unclosed_requests->head;
+
+    for (p = head->next; p != NULL; p = head->next) {
+        T_CUBRID_REQUEST *req = (T_CUBRID_REQUEST *)p->data;
+        req->conn = NULL;
+        req->handle = 0;
+        p->data = NULL;
+
+        head->next = p->next;
+        efree(p);
+    }
+
+    connect->unclosed_requests->tail = head;
 
     if ((cubrid_retval = cci_end_tran (connect->handle, CCI_TRAN_ROLLBACK, &error)) < 0) {
         php_error_docref(NULL TSRMLS_CC, E_WARNING, "Cannot rollback transaction when shutdown request");
@@ -1494,6 +1521,7 @@ ZEND_FUNCTION(cubrid_prepare)
     init_error_link(connect);
 
     request = new_cubrid_request();
+    request->conn = connect;
 
     if((cubrid_retval = cubrid_parse_params(request, query, query_len TSRMLS_CC)) < 0) {
         close_cubrid_request_internal(request);
@@ -1510,7 +1538,6 @@ ZEND_FUNCTION(cubrid_prepare)
 
     request_handle = cubrid_retval;
 
-    request->conn = connect;
     request->handle = request_handle;
     request->bind_num = cci_get_bind_num(request_handle);
 
@@ -4863,28 +4890,30 @@ static void close_cubrid_connect(zend_rsrc_list_entry * rsrc TSRMLS_DC)
 {
     T_CUBRID_CONNECT *conn = (T_CUBRID_CONNECT *)rsrc->ptr;
     T_CCI_ERROR error;
-    int i;
+    LINKED_LIST_NODE *p;
+    LINKED_LIST_NODE *head = conn->unclosed_requests->head;
 
     /* When calling cci_disconnect, all request handle in cci will be released,
      * just like calling cci_close_req_handle. So we must prevent the PHP
      * garbage collector calling cci_close_req_handle again in close_cubrid_request.
      */
 
-    for (i = 0; i < conn->req_count; i++) {
-        if (conn->req_list[i]) {
-            conn->req_list[i]->handle = 0;
-            conn->req_list[i]->conn = NULL;
-        }
+    for (p = head->next; p != NULL ; p = head->next) {
+        T_CUBRID_REQUEST *req = (T_CUBRID_REQUEST *)p->data;
+        req->conn = NULL;
+        req->handle = 0;
+        p->data = NULL;
+
+        head->next = p->next;
+        efree(p);
     }
 
     if (conn->handle) {
         cci_disconnect(conn->handle, &error); 
     }
 
-    if (conn->req_count) {
-        efree(conn->req_list);
-    }
-
+    efree(head);
+    efree(conn->unclosed_requests);
     efree(conn);
 }
 
@@ -4893,43 +4922,25 @@ static void close_cubrid_pconnect(zend_rsrc_list_entry * rsrc TSRMLS_DC)
     T_CUBRID_CONNECT *conn = (T_CUBRID_CONNECT *)rsrc->ptr;
 
     T_CCI_ERROR error;
-    int i;
-
-    for (i = 0; i < conn->req_count; i++) {
-        if (conn->req_list[i]) {
-            conn->req_list[i]->handle = 0;
-            conn->req_list[i]->conn = NULL;
-        }
-    }
 
     if (conn->handle) {
         cci_disconnect(conn->handle, &error);
     }
 
-    if (conn->req_count) {
-        free(conn->req_list);
-    }
-
+    free(conn->unclosed_requests->head);
+    free(conn->unclosed_requests);
     free(conn);
+}
+
+static int is_connection_exist(T_CUBRID_REQUEST *req)
+{
+    return req->conn ? 1 : 0;
 }
 
 static void close_cubrid_request_internal(T_CUBRID_REQUEST * req)
 {
-    int i;
-
-    if (req->conn) {
-        for (i = 0; i < req->conn->req_count; i++) {
-            if (!req->conn->req_list[i]) {
-                continue;
-            }
-
-            if (req->conn->req_list[i]->handle == req->handle) {
-                req->conn->req_list[i] = NULL;
-            }
-        }
-    }
-
-    if (req->handle) {
+    if (is_connection_exists(req)) {
+        linked_list_delete(req->conn->unclosed_requests, (void *)req);
         cci_close_req_handle(req->handle);
     }
 
@@ -4940,7 +4951,7 @@ static void close_cubrid_request_internal(T_CUBRID_REQUEST * req)
     }
 
     if (req->l_bind) {
-	efree(req->l_bind);
+        efree(req->l_bind);
     }
 
     if (req->field_lengths) {
@@ -5202,22 +5213,78 @@ ERR_FETCH_A_ROW:
 
 static T_CUBRID_CONNECT *new_cubrid_connect(int persistent)
 {
-    T_CUBRID_CONNECT *connect = persistent ? 
-        (T_CUBRID_CONNECT *) malloc(sizeof(T_CUBRID_CONNECT)) :
-        (T_CUBRID_CONNECT *) emalloc(sizeof(T_CUBRID_CONNECT));
+    T_CUBRID_CONNECT *connect = NULL;
+
+    if (persistent) {
+        connect = (T_CUBRID_CONNECT *) malloc(sizeof(T_CUBRID_CONNECT));
+        if (!connect) {
+            goto ERR_CUBRID_CONNECT;
+        }
+
+        connect->unclosed_requests = 
+            (LINKED_LIST *) malloc(sizeof(LINKED_LIST));
+        if (!connect->unclosed_requests) {
+            goto ERR_CUBRID_CONNECT;
+        }
+
+        connect->unclosed_requests->head =
+            (LINKED_LIST_NODE *) malloc(sizeof(LINKED_LIST_NODE));
+        if (!connect->unclosed_requests->head) {
+            goto ERR_CUBRID_CONNECT;
+        }
+    } else {
+        connect = (T_CUBRID_CONNECT *) emalloc(sizeof(T_CUBRID_CONNECT));
+        if (!connect) {
+            goto ERR_CUBRID_CONNECT;
+        }
+
+        connect->unclosed_requests = 
+            (LINKED_LIST *) emalloc(sizeof(LINKED_LIST));
+        if (!connect->unclosed_requests) {
+            goto ERR_CUBRID_CONNECT;
+        }
+
+        connect->unclosed_requests->head =
+            (LINKED_LIST_NODE *) emalloc(sizeof(LINKED_LIST_NODE));
+        if (!connect->unclosed_requests->head) {
+            goto ERR_CUBRID_CONNECT;
+        }
+    }
+
+    connect->unclosed_requests->head->data = NULL;
+    connect->unclosed_requests->head->next = NULL;
+    connect->unclosed_requests->tail = connect->unclosed_requests->head;
 
     connect->recent_error.code = 0;
     connect->recent_error.msg[0] = 0;
     connect->handle = 0;
 
     connect->persistent = persistent;
-    connect->req_count = 0;
-    connect->req_list = NULL;
 
     connect->affected_rows = 0;
     connect->sql_type = 0;
 
     return connect;
+
+ERR_CUBRID_CONNECT:
+    if (connect->unclosed_requests) {
+        if (persistent) {
+            free(connect->unclosed_requests);
+        } else {
+            efree(connect->unclosed_requests);
+        }
+    }
+
+    if (connect) {
+        if (persistent) {
+
+            free(connect);
+        } else {
+            efree(connect);
+        }
+    }
+
+    return NULL;
 }
 
 static T_CUBRID_REQUEST *new_cubrid_request(void)
@@ -5253,11 +5320,7 @@ static T_CUBRID_LOB *new_cubrid_lob(void)
 
 static void register_cubrid_request(T_CUBRID_CONNECT *conn, T_CUBRID_REQUEST *req)
 {
-    conn->req_list = conn->persistent ? 
-        realloc(conn->req_list, sizeof(T_CUBRID_REQUEST *) * (conn->req_count + 1)) :
-        erealloc(conn->req_list, sizeof(T_CUBRID_REQUEST *) * (conn->req_count + 1));
-    conn->req_list[conn->req_count] = req;
-    conn->req_count++;
+    linked_list_append(conn->unclosed_requests, (void *)req);
 }
 
 static int cubrid_add_index_array(zval *arg, uint index, T_CCI_SET in_set TSRMLS_DC)
@@ -5971,5 +6034,38 @@ static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int i
     if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
         handle_error(cubrid_retval, &error, request->conn);
         return;
+    }
+}
+
+static void linked_list_append(LINKED_LIST *list, void *data)
+{
+    LINKED_LIST_NODE *new_node = (LINKED_LIST_NODE *) emalloc(sizeof(LINKED_LIST_NODE));
+
+    if (!new_node) {
+        return;
+    }
+
+    new_node->data = data;
+    new_node->next = NULL;
+
+    list->tail->next = new_node;
+    list->tail = new_node;
+}
+
+static void linked_list_delete(LINKED_LIST *list, void *data)
+{
+    LINKED_LIST_NODE *p, *q;
+
+    for (p = list->head, q = p->next; q != NULL; p = q, q = q->next) {
+        if (q->data == data) {
+            p->next = q->next;
+
+            if (list->tail == q) {
+                list->tail = p;
+            }
+
+            efree(q);
+            break;
+        }
     }
 }
