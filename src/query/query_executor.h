@@ -348,6 +348,9 @@ struct buildlist_proc_node
   OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */
   OUTPTR_LIST *a_outptr_list_interm;	/* intermediate output list */
   VAL_LIST *a_val_list;		/* analytic value list */
+  PRED_EXPR *a_instnum_pred;	/* instnum predicate for query with analytic */
+  DB_VALUE *a_instnum_val;	/* inst_num() value for query with analytic */
+  int a_instnum_flag;		/* inst_num() flag for query with analytic */
   int g_grbynum_flag;		/* stop or continue grouping? */
   int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
 };

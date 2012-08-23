@@ -3207,6 +3207,22 @@ xts_process_buildlist_proc (char *ptr,
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_pred_expr (build_list_proc->a_instnum_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_db_value (build_list_proc->a_instnum_val);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, build_list_proc->a_instnum_flag);
+
   return ptr;
 }
 
@@ -5323,7 +5339,10 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
     PTR_SIZE +			/* a_outptr_list */
     PTR_SIZE +			/* a_outptr_list_ex */
     PTR_SIZE +			/* a_outptr_list_interm */
-    PTR_SIZE;			/* a_val_list */
+    PTR_SIZE +			/* a_val_list */
+    PTR_SIZE +			/* a_instnum_pred */
+    PTR_SIZE +			/* a_instnum_val */
+    OR_INT_SIZE;		/* a_instnum_flag */
 
   return size;
 }

@@ -15016,6 +15016,19 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  orderby_ok = ((xasl->orderby_list != NULL) || orderby_skip);
 	}
 
+      if (xasl->instnum_pred != NULL && pt_has_analytic (parser, select_node))
+	{
+	  /* we have an inst_num() condition which should not get evaluated
+	     in the initial fetch; move it in buildlist, qexec_execute_analytic
+	     will use it in the final sort */
+	  buildlist->a_instnum_pred = xasl->instnum_pred;
+	  buildlist->a_instnum_val = xasl->instnum_val;
+	  buildlist->a_instnum_flag = xasl->instnum_flag;
+	  xasl->instnum_pred = NULL;
+	  xasl->instnum_val = NULL;
+	  xasl->instnum_flag = 0;
+	}
+
       /* union fields for BUILDLIST_PROC_NODE - BUILDLIST_PROC */
       if (select_node->info.query.q.select.group_by)
 	{

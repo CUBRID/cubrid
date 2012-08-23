@@ -212,6 +212,7 @@ struct analytic_state
   REGU_VARIABLE_LIST a_regu_list;
   OUTPTR_LIST *a_outptr_list;
   OUTPTR_LIST *a_outptr_list_interm;
+  XASL_NODE *xasl;
   XASL_STATE *xasl_state;
 
   RECDES current_key;
@@ -226,6 +227,8 @@ struct analytic_state
   int offset;
   int tplno;
   bool is_first_group;
+  bool is_last_function;
+  bool is_output_rec;
 };
 
 /*
@@ -656,6 +659,8 @@ static ANALYTIC_STATE *qexec_initialize_analytic_state (ANALYTIC_STATE *
 							a_outptr_list,
 							OUTPTR_LIST *
 							a_outptr_list_interm,
+							bool is_last_function,
+							XASL_NODE * xasl,
 							XASL_STATE *
 							xasl_state,
 							QFILE_TUPLE_VALUE_TYPE_LIST
@@ -18504,10 +18509,24 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				       buildlist->a_val_list,
 				       a_outptr_list,
 				       buildlist->a_outptr_list_interm,
-				       xasl_state, &list_id->type_list,
-				       tplrec) == NULL)
+				       (save_next == NULL), xasl, xasl_state,
+				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (analytic_state.is_last_function)
+    {
+      /* for last function, evaluate instnum() predicate while sorting */
+      xasl->instnum_pred = buildlist->a_instnum_pred;
+      xasl->instnum_val = buildlist->a_instnum_val;
+      xasl->instnum_flag = buildlist->a_instnum_flag;
+
+      if (xasl->instnum_val != NULL)
+	{
+	  /* initialize counter to zero */
+	  (void) db_make_bigint (xasl->instnum_val, 0);
+	}
     }
 
   /* create intermediary and output list files */
@@ -18690,6 +18709,8 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 				 VAL_LIST * a_val_list,
 				 OUTPTR_LIST * a_outptr_list,
 				 OUTPTR_LIST * a_outptr_list_interm,
+				 bool is_last_function,
+				 XASL_NODE * xasl,
 				 XASL_STATE * xasl_state,
 				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 				 QFILE_TUPLE_RECORD * tplrec)
@@ -18706,7 +18727,11 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->a_regu_list = a_regu_list;
   analytic_state->a_outptr_list = a_outptr_list;
   analytic_state->a_outptr_list_interm = a_outptr_list_interm;
+
+  analytic_state->xasl = xasl;
   analytic_state->xasl_state = xasl_state;
+
+  analytic_state->is_last_function = is_last_function;
 
   analytic_state->current_key.area_size = 0;
   analytic_state->current_key.length = 0;
@@ -18809,6 +18834,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
   QFILE_TUPLE_RECORD dummy;
   int status, nkeys;
   bool is_same_partition;
+  DB_LOGICAL is_output_rec;
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
@@ -18825,6 +18851,29 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 	}
 
       peek = COPY;		/* default */
+
+      if (analytic_state->is_last_function
+	  && analytic_state->xasl->instnum_pred)
+	{
+	  /* check instnum() predicate */
+	  is_output_rec =
+	    qexec_eval_instnum_pred (thread_p, analytic_state->xasl,
+				     analytic_state->xasl_state);
+
+	  if (is_output_rec == V_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  else
+	    {
+	      analytic_state->is_output_rec = (is_output_rec == V_TRUE);
+	    }
+	}
+      else
+	{
+	  /* default - all records go to output */
+	  analytic_state->is_output_rec = true;
+	}
 
       /*
        * Retrieve the original tuple.  This will be the case if the
@@ -19087,13 +19136,18 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (qexec_insert_tuple_into_list (thread_p, list_id,
-				    analytic_state->a_outptr_list_interm,
-				    &xasl_state->vd,
-				    analytic_state->output_tplrec) !=
-      NO_ERROR)
+  if (analytic_state->is_output_rec)
     {
-      GOTO_EXIT_ON_ERROR;
+      /* records that did not pass the instnum() predicate evaluation are used
+         for computing the function value, but are not included in output */
+      if (qexec_insert_tuple_into_list (thread_p, list_id,
+					analytic_state->a_outptr_list_interm,
+					&xasl_state->vd,
+					analytic_state->output_tplrec) !=
+	  NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
 wrapup:
@@ -19206,9 +19260,11 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
       pos.offset = analytic_state->offset;
       pos.tpl = NULL;
       pos.tplno = analytic_state->tplno;
+
+      sc = S_SUCCESS;
     }
 
-  while (1)
+  while (sc != S_END)
     {
       if (analytic_state->is_first_group)
 	{
