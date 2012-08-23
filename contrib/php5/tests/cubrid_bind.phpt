@@ -38,31 +38,11 @@ $result = cubrid_fetch_assoc($req);
 
 var_dump($result);
 
-if (false != ($tmp = @cubrid_prepare($conn, "INSERT INTO bind_test(c1) VALUES(:%#@)"))) {
-    printf("[003] Expecting boolean/false, got %s/%s\n", gettype($tmp), $tmp);
-}
+$req = cubrid_prepare($conn, "INSERT INTO bind_test(c1, c5, c6, c7) VALUES('bind time test', ?, ?, ?)");
 
-if (false != ($tmp = @cubrid_prepare($conn, "INSERT INTO bind_test(c1) VALUES(:1adb)"))) {
-    printf("[004] Expecting boolean/false, got %s/%s\n", gettype($tmp), $tmp);
-}
-
-if (false != ($tmp = @cubrid_prepare($conn, "INSERT INTO bind_test(c1) VALUES(:_a-b)"))) {
-    printf("[005] Expecting boolean/false, got %s/%s\n", gettype($tmp), $tmp);
-}
-
-if (false != ($tmp = @cubrid_prepare($conn, "INSERT INTO bind_test(c1, c5, c6, c7) VALUES('bind time test', :_aa, :b3, ?)"))) {
-    printf("[006] Expecting boolean/false, got %s/%s\n", gettype($tmp), $tmp);
-}
-
-$req = cubrid_prepare($conn, "INSERT INTO bind_test(c1, c5, c6, c7) VALUES('bind time test', :_aa, :b3, :__)");
-
-if (false != ($tmp = @cubrid_bind($req, ':_aaaaa', '13:15:45'))) {
-    printf("[007] Expecting boolean/false, got %s/%s\n", gettype($tmp), $tmp);
-}
-
-cubrid_bind($req, ':_aa', '13:15:45');
-cubrid_bind($req, ':b3', '2011-03-17');
-cubrid_bind($req, ':__', '13:15:45 03/17/2011');
+cubrid_bind($req, 1, '13:15:45');
+cubrid_bind($req, 2, '2011-03-17');
+cubrid_bind($req, 3, '13:15:45 03/17/2011');
 
 cubrid_execute($req);
 

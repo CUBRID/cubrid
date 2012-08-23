@@ -85,13 +85,6 @@
 #define CUBRID_ASYNC		    2
 #define CUBRID_EXEC_QUERY_ALL       4
 
-/* Parameter bind type */
-typedef enum cubrid_placeholder_type {
-    CUBRID_PLACEHOLDER_NONE = 0,
-    CUBRID_PLACEHOLDER_NAMED = 1,
-    CUBRID_PLACEHOLDER_POSITIONAL = 2
-} T_CUBRID_PLACEHOLDER_TYPE;
-
 /* ARRAY */
 typedef enum
 {
@@ -147,12 +140,6 @@ typedef enum
 #define CUBRID_ER_TRANSFER_FAIL 		-2011
 #define CUBRID_ER_PHP				-2012
 #define CUBRID_ER_PARAM_UNBIND                  -2015
-#define CUBRID_ER_PLACEHOLDER_TYPE              -2016
-#define CUBRID_ER_NAMED_PLACEHOLDER_FORMAT      -2017
-#define CUBRID_ER_NAMED_PLACEHOLDER_LEN         -2018
-#define CUBRID_ER_NAMED_PLACEHOLDER_SAME        -2019
-#define CUBRID_ER_NAMED_PLACEHOLDER_NOT_EXISTS  -2020
-#define CUBRID_ER_QUOTES_MATCH                  -2021
 #define CUBRID_ER_INVALID_PARAM_TYPE            -2022
 /* CAUTION! Also add the error message string to db_error[] */
 
@@ -199,12 +186,6 @@ static const DB_ERROR_INFO db_error[] = {
     {CUBRID_ER_TRANSFER_FAIL, "Lob transfering error"},
     {CUBRID_ER_PHP, "PHP error"},
     {CUBRID_ER_PARAM_UNBIND, "Some parameter not binded"},
-    {CUBRID_ER_PLACEHOLDER_TYPE, "Invalid placeholder for prepare statement, use named or positional only"},
-    {CUBRID_ER_NAMED_PLACEHOLDER_FORMAT, "Invalid variable name for named placeholder"},
-    {CUBRID_ER_NAMED_PLACEHOLDER_LEN, "Length of named placeholder can't be more that 32"},
-    {CUBRID_ER_NAMED_PLACEHOLDER_SAME, "Same named placeholder can't be used multi-times in a prepare statement"},
-    {CUBRID_ER_NAMED_PLACEHOLDER_NOT_EXISTS, "Named placeholder used can't be found in prepare statement"},
-    {CUBRID_ER_QUOTES_MATCH, "Quotes in prepare statement don't match"},
     {CUBRID_ER_INVALID_PARAM_TYPE, "Invalid db parameter type"},
 };
 
@@ -350,8 +331,6 @@ struct cubrid_request
     int row_count;
     int l_prepare;
     int bind_num;
-    int placeholder_type;
-    HashTable *params;
     int *field_lengths;
     short *l_bind;
     int fetch_field_auto_index;
@@ -1523,12 +1502,6 @@ ZEND_FUNCTION(cubrid_prepare)
     request = new_cubrid_request();
     request->conn = connect;
 
-    if((cubrid_retval = cubrid_parse_params(request, query, query_len TSRMLS_CC)) < 0) {
-        close_cubrid_request_internal(request);
-        handle_error(cubrid_retval, NULL, connect);
-        RETURN_FALSE;
-    }
-
     if ((cubrid_retval = cci_prepare(connect->handle, query, 
 		    (char) ((option & CUBRID_INCLUDE_OID) ? CCI_PREPARE_INCLUDE_OID : 0), &error)) < 0) {
         close_cubrid_request_internal(request);
@@ -1558,12 +1531,10 @@ ZEND_FUNCTION(cubrid_prepare)
 
 ZEND_FUNCTION(cubrid_bind)
 {
-    zval *req_id= NULL, *bind_value = NULL, *param = NULL;
+    zval *req_id= NULL, *bind_value = NULL;
     char *bind_value_type = NULL;
     long bind_index = -1;
     int bind_value_type_len;
-
-    char *param_name;
 
     T_CUBRID_REQUEST *request = NULL;
     T_CCI_ERROR error;
@@ -1587,63 +1558,14 @@ ZEND_FUNCTION(cubrid_bind)
 
     init_error();
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rzz|s", 
-                &req_id, &param, &bind_value, &bind_value_type, &bind_value_type_len) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rlz|s", 
+                &req_id, &bind_index, &bind_value, &bind_value_type, &bind_value_type_len) == FAILURE) {
         return;
     }
 
     ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
 
     init_error_link(request->conn);
-
-    switch (Z_TYPE_P(param)) {
-    case IS_STRING:
-        if (request->placeholder_type != CUBRID_PLACEHOLDER_NAMED) {
-            handle_error(CUBRID_ER_PLACEHOLDER_TYPE, NULL, request->conn);
-            RETURN_FALSE; 
-        }
-
-        if (!request->params) {
-            RETURN_FALSE; 
-        }
-
-        bind_index = 0;
-
-        zend_hash_internal_pointer_reset(request->params);
-        while ((cubrid_retval = zend_hash_get_current_data(request->params, (void**)&param_name)) == SUCCESS) {
-            bind_index++;
-
-            if (strcmp(param_name, Z_STRVAL_P(param))) {
-                zend_hash_move_forward(request->params);
-                continue;
-            }
-
-            if (request->l_bind[bind_index - 1]) {
-                RETURN_FALSE; 
-            }
-
-            break;
-        }
-
-        if (cubrid_retval != SUCCESS) {
-            handle_error(CUBRID_ER_NAMED_PLACEHOLDER_NOT_EXISTS, NULL, request->conn);
-            RETURN_FALSE;
-        }
-
-        break;
-    case IS_LONG:
-        if (request->placeholder_type != CUBRID_PLACEHOLDER_POSITIONAL) {
-            handle_error(CUBRID_ER_PLACEHOLDER_TYPE, NULL, request->conn);
-            RETURN_FALSE;
-        }
-                
-        bind_index = Z_LVAL_P(param);	
-
-        break;
-    default:
-        handle_error(CCI_ER_ATYPE, NULL, request->conn);
-        RETURN_FALSE;
-    }
 
     if (bind_index < 1 || bind_index > request->bind_num) {
 	RETURN_FALSE;
@@ -4939,15 +4861,9 @@ static int is_connection_exist(T_CUBRID_REQUEST *req)
 
 static void close_cubrid_request_internal(T_CUBRID_REQUEST * req)
 {
-    if (is_connection_exists(req)) {
+    if (is_connection_exist(req)) {
         linked_list_delete(req->conn->unclosed_requests, (void *)req);
         cci_close_req_handle(req->handle);
-    }
-
-    if (req->params) {
-        zend_hash_destroy(req->params);
-        FREE_HASHTABLE(req->params);
-        req->params = NULL;
     }
 
     if (req->l_bind) {
@@ -5301,8 +5217,6 @@ static T_CUBRID_REQUEST *new_cubrid_request(void)
     request->l_prepare = 0;
     request->field_lengths = NULL;
     request->lob = NULL;
-    request->placeholder_type = CUBRID_PLACEHOLDER_NONE; 
-    request->params = NULL;
 
     return request;
 }
@@ -5694,135 +5608,6 @@ static char *php_cubrid_int64_to_str(php_cubrid_int64_t i64 TSRMLS_DC)
             ;
     *dst = '\0';
     return estrdup(outbuf);
-}
-
-enum cubrid_quote_stat {
-    CUBRID_QUOTES_NONE = 0, 
-    CUBRID_QUOTES_SINGLE = 1,
-    CUBRID_QUOTES_DOUBLE = 2
-};
-
-#define IS_ALPHA(c) (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z'))
-#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
-#define IS_ALPHA_NUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
-#define VALID_NAMED_PARAM(c) (IS_ALPHA_NUM(c) || (c) == '_')
-#define NAMED_PARAM_EOI(c) ((c) == '\0' || (c) == ' ' || (c) == ',' || (c) == ')')
-
-static int cubrid_parse_params(T_CUBRID_REQUEST *req, char *sql_stmt, size_t sql_stmt_len TSRMLS_DC)
-{
-    int i, j, param_index = 0, cubrid_retval = 0;
-    char *name;
-
-    int quote_stat = CUBRID_QUOTES_NONE;
-
-    for (i = 0; i < (int)sql_stmt_len; i++) {
-        switch (sql_stmt[i]) {
-        case '"':
-            if (quote_stat == CUBRID_QUOTES_DOUBLE) {
-                quote_stat = CUBRID_QUOTES_NONE;
-            } else if (quote_stat == CUBRID_QUOTES_NONE) {
-                quote_stat = CUBRID_QUOTES_DOUBLE;
-            } 
-
-            break;
-        case '\'':
-            if (quote_stat == CUBRID_QUOTES_SINGLE) {
-                quote_stat = CUBRID_QUOTES_NONE;
-            } else if (quote_stat == CUBRID_QUOTES_NONE) {
-                quote_stat = CUBRID_QUOTES_SINGLE;
-            }
-
-            break;
-        case ':':
-            if (req->placeholder_type == CUBRID_PLACEHOLDER_POSITIONAL) {
-                cubrid_retval = CUBRID_ER_PLACEHOLDER_TYPE;
-                goto ERR_CUBRID_PARSE_PARAMS;
-            }
-
-            if (quote_stat == CUBRID_QUOTES_NONE) {
-                /* named parameter can contain alphabet, digit or underscore, 
-                 * but it can't begin with digit, and can't contain underscore only */
-
-                if (!VALID_NAMED_PARAM(sql_stmt[i + 1]) || IS_DIGIT(sql_stmt[i + 1])) {
-                    cubrid_retval = CUBRID_ER_NAMED_PLACEHOLDER_FORMAT; 
-                    goto ERR_CUBRID_PARSE_PARAMS;
-                }
-
-                for (j = i + 1; j < (int)sql_stmt_len; j++) {
-                    /* length of named parameter shouldn't longer than 32 */
-
-                    if ((j - i) > 32) {
-                        cubrid_retval = CUBRID_ER_NAMED_PLACEHOLDER_LEN; 
-                        goto ERR_CUBRID_PARSE_PARAMS;
-                    }
-
-                    if (VALID_NAMED_PARAM(sql_stmt[j])) {
-                        continue;
-                    } else if (NAMED_PARAM_EOI(sql_stmt[j])) {
-                        break; 
-                    } else {
-                        cubrid_retval = CUBRID_ER_NAMED_PLACEHOLDER_FORMAT; 
-                        goto ERR_CUBRID_PARSE_PARAMS;
-                    }
-                }
-
-                if (req->params == NULL) {
-                    ALLOC_HASHTABLE(req->params);
-                    zend_hash_init(req->params, 13, NULL, NULL, 0);
-                }
-
-                if (zend_hash_find(req->params, sql_stmt + i, j - i + 1, (void **) &name) == SUCCESS) {
-                    cubrid_retval = CUBRID_ER_NAMED_PLACEHOLDER_SAME; 
-                    goto ERR_CUBRID_PARSE_PARAMS;
-                }
-
-                name = estrndup(sql_stmt + i, j - i);
-                zend_hash_index_update(req->params, param_index, name, j - i + 1, NULL);
-                efree(name);
-
-                param_index++;
-
-                sql_stmt[i] = '?';
-                for (i = i + 1; i < j; i++) {
-                    sql_stmt[i] = ' '; 
-                }
-
-                req->placeholder_type = CUBRID_PLACEHOLDER_NAMED;
-            }
-
-            break;
-        case '?':
-            if (req->placeholder_type == CUBRID_PLACEHOLDER_NAMED) {
-                cubrid_retval = CUBRID_ER_PLACEHOLDER_TYPE; 
-                goto ERR_CUBRID_PARSE_PARAMS;
-            }
-
-            if (quote_stat == CUBRID_QUOTES_NONE) {
-                req->placeholder_type = CUBRID_PLACEHOLDER_POSITIONAL;
-            }
-
-            break;
-        default:
-            break;
-        }
-    }
-
-    if (quote_stat != CUBRID_QUOTES_NONE) {
-        cubrid_retval = CUBRID_ER_QUOTES_MATCH; 
-        goto ERR_CUBRID_PARSE_PARAMS;
-    }
-
-    return 0;
-
-ERR_CUBRID_PARSE_PARAMS:
-
-    if (req->params) {
-        zend_hash_destroy(req->params);
-        FREE_HASHTABLE(req->params);
-        req->params = NULL;
-    }
-
-    return cubrid_retval;
 }
 
 static int cubrid_get_charset_internal(int conn, T_CCI_ERROR *error)
