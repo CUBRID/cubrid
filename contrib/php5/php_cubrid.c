@@ -3518,7 +3518,17 @@ ZEND_FUNCTION(cubrid_fetch_field)
 
     add_assoc_string(return_value, "name", request->col_info[offset].col_name, 1);
     add_assoc_string(return_value, "table", request->col_info[offset].class_name, 1);
-    add_assoc_string(return_value, "def", request->col_info[offset].default_value, 1);
+
+    if (is_numeric) {
+        if (request->col_info[offset].default_value[0] == '\0') {
+            add_assoc_null(return_value, "def");
+        } else {
+            add_assoc_string(return_value, "def", request->col_info[offset].default_value, 1);
+        }
+    } else {
+        add_assoc_string(return_value, "def", request->col_info[offset].default_value, 1);
+    }
+
     add_assoc_long(return_value, "max_length", max_length);
     add_assoc_long(return_value, "not_null", request->col_info[offset].is_non_null);
     add_assoc_long(return_value, "primary_key", request->col_info[offset].is_primary_key);
