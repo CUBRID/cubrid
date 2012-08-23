@@ -6056,10 +6056,27 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 			      DB_GET_STRING_SIZE (left), &ltime, &lms);
 	if (error != NO_ERROR)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
-	    error = ER_TIME_CONVERSION;
-	    goto error_return;
+	    /* left may be a date string, try it here */
+	    error =
+	      db_date_parse_datetime_parts (DB_PULL_STRING (left),
+					    DB_GET_STRING_SIZE (left),
+					    &ldatetime, &is_explicit_time,
+					    NULL, NULL, NULL);
+	    if (error != NO_ERROR || is_explicit_time)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+			0);
+		error = ER_TIME_CONVERSION;
+		goto error_return;
+	      }
+
+	    left_is_datetime = true;
+	    db_date_decode (&ldatetime.date, &month, &day, &year);
+	    is_datetime_decoded = true;
+	    result_type = DB_TYPE_VARCHAR;
+	    break;
 	  }
+
 	db_time_decode (&ltime, &lhour, &lminute, &lsecond);
 	is_time_decoded = true;
 
