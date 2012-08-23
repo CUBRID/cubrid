@@ -1145,7 +1145,7 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
 	passwd = CUBRID_G(default_passwd);
     }
 
-    snprintf(hashed_details, sizeof(hashed_details), "CUBRID:%s:%d:%s:%s", host, (int)port, dbname, userid);
+    snprintf(hashed_details, sizeof(hashed_details), "CUBRID:%s:%d:%s:%s:%s", host, (int)port, dbname, userid, passwd);
     hashed_details_length = strlen(hashed_details);
 
     if (persistent) {
@@ -1308,7 +1308,7 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
 	passwd = CUBRID_G(default_passwd);
     }
 
-    snprintf(hashed_details, sizeof(hashed_details), "%s:%s", buf, userid);
+    snprintf(hashed_details, sizeof(hashed_details), "%s:%s:%s", buf, userid, passwd);
     hashed_details_length = strlen(hashed_details);
 
     if (persistent) {
