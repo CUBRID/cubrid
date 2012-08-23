@@ -3442,12 +3442,9 @@ ZEND_FUNCTION(cubrid_data_seek)
     if (request->row_count == 0) {
 	php_error_docref(NULL TSRMLS_CC, E_WARNING, "Number of rows is NULL.\n");
 	RETURN_FALSE;
-    } else if (offset >= request->row_count || offset < 0) {
-	RETURN_FALSE;
     }
 
-    cubrid_retval = cci_cursor(request->handle, offset + 1, CUBRID_CURSOR_FIRST, &error);
-    if (cubrid_retval < 0) {
+    if ((cubrid_retval = cci_cursor(request->handle, offset + 1, CUBRID_CURSOR_FIRST, &error)) < 0) {
 	handle_error(cubrid_retval, &error, request->conn);
 	RETURN_FALSE;
     }
