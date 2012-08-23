@@ -1050,10 +1050,18 @@ ZEND_RSHUTDOWN_FUNCTION(cubrid)
 
 ZEND_MINFO_FUNCTION(cubrid)
 {
+    int major, minor, patch;
+    char info[128];
+
+    cci_get_version(&major, &minor, &patch);
+
+    snprintf(info, sizeof(info), "%d.%d.%d", major, minor, patch);
+    
     php_info_print_table_start();
     php_info_print_table_header(2, "CUBRID support", "enabled");
-    php_info_print_table_row(2, "Client API version", PHP_CUBRID_VERSION);
-    php_info_print_table_row(2, "Supported CUBRID server", "8.4.0");
+    php_info_print_table_row(2, "Version", PHP_CUBRID_VERSION);
+    php_info_print_table_row(2, "CCI Version", info);
+    php_info_print_table_row(2, "CUBRID Version", "8.4.1");
     php_info_print_table_end();
 
     DISPLAY_INI_ENTRIES();
