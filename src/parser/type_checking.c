@@ -4372,10 +4372,6 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
       common_type = expected_type;
     }
 
-  if (common_type == PT_TYPE_MAYBE && pt_is_op_with_forced_common_type (op))
-    {
-      common_type = PT_TYPE_DOUBLE;
-    }
   /* final check :
    * common_type should be PT_TYPE_MAYBE at this stage only for a small number
    * of operators (PLUS, MINUS,..) and only when at least one of the arguments
@@ -15278,6 +15274,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	{
 	  pr_clone_value ((DB_VALUE *) arg2, result);
 	}
+      else
+	{
+          assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+	  db_make_null (result);
+	  return 1;
+	}
+
+      if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
+	{
+	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, o2), pt_show_type_enum (rTyp));
+	  return 0;
+	}
 
       return 1;
 
@@ -15291,6 +15301,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       else if (cmp_result == DB_LT)
 	{
 	  pr_clone_value ((DB_VALUE *) arg2, result);
+	}
+      else
+	{
+          assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+	  db_make_null (result);
+	  return 1;
+	}
+
+      if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
+	{
+	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, o2), pt_show_type_enum (rTyp));
+	  return 0;
 	}
 
       return 1;
@@ -19384,6 +19408,9 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_NVL:
     case PT_NVL2:
     case PT_COALESCE:
+    case PT_NULLIF:
+    case PT_LEAST:
+    case PT_GREATEST:
       return true;
     default:
       return false;
@@ -20595,6 +20622,9 @@ coerce_result:
     case PT_NVL:
     case PT_NVL2:
     case PT_IFNULL:
+    case PT_GREATEST:
+    case PT_LEAST:
+    case PT_NULLIF:
       if (expr->type_enum == PT_TYPE_MAYBE
 	  && !LANG_IS_COERCIBLE_COLL (common_coll))
 	{
@@ -20602,13 +20632,6 @@ coerce_result:
 	  PT_TYPE_ENUM expr_type;
 
 	  assert (args_w_coll > 0);
-
-	  dt = parser_new_node (parser, PT_DATA_TYPE);
-	  if (dt == NULL)
-	    {
-	      goto error;
-	    }
-
 	  if (op == PT_NVL2)
 	    {
 	      if (arg2_type == PT_TYPE_MAYBE)
@@ -20630,6 +20653,12 @@ coerce_result:
 		{
 		  expr_type = arg1_type;
 		}
+	    }
+
+	  dt = parser_new_node (parser, PT_DATA_TYPE);
+	  if (dt == NULL)
+	    {
+	      goto error;
 	    }
 
 	  assert (PT_HAS_COLLATION (expr_type));
@@ -20671,9 +20700,6 @@ coerce_result:
     case PT_STRCAT:
     case PT_DATE_FORMAT:
     case PT_TIME_FORMAT:
-    case PT_GREATEST:
-    case PT_LEAST:
-    case PT_NULLIF:
     case PT_LOWER:
     case PT_UPPER:
     case PT_REPEAT:
