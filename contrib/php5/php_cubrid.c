@@ -3496,13 +3496,18 @@ ZEND_FUNCTION(cubrid_fetch_field)
 
     if (ZEND_NUM_ARGS() == 1) {
 	offset = request->fetch_field_auto_index++;
+
+        if (offset >= request->col_count) {
+            RETURN_FALSE;
+        }
+
     } else if (ZEND_NUM_ARGS() == 2) {
 	request->fetch_field_auto_index = offset + 1;
-    }
-
-    if (offset < 0 || offset >= request->col_count) {
-	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
-	RETURN_FALSE;
+    
+        if (offset < 0 || offset >= request->col_count) {
+    	    handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
+    	    RETURN_FALSE;
+        }
     }
 
     array_init(return_value);
@@ -3535,9 +3540,7 @@ ZEND_FUNCTION(cubrid_fetch_field)
     return;
 
 ERR_CUBRID_FETCH_FIELD:
-
     cubrid_array_destroy(return_value->value.ht ZEND_FILE_LINE_CC);
-
     RETURN_FALSE;
 }
 
