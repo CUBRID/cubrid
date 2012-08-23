@@ -9189,7 +9189,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
     case PT_CAST:
       cast_type = node->info.expr.cast_type;
-      if (cast_type)
+      if (cast_type && pt_check_cast_op (parser, node))
 	{
 	  node->type_enum = cast_type->type_enum;
 	  if (pt_is_set_type (cast_type))

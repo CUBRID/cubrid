@@ -92,7 +92,6 @@ typedef struct
   UINTPTR spec_id;
 } PT_CHAIN_INFO;
 
-static void pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c);
 static PT_NODE *pt_get_attributes (PARSER_CONTEXT * parser,
 				   const DB_OBJECT * c);
@@ -1066,7 +1065,7 @@ end:
  *   parser(in):
  *   node(in): the node to check
  */
-static void
+bool
 pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg1;
@@ -1078,7 +1077,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       /* this should not happen, but don't crash and burn if it does */
       assert (false);
-      return;
+      return false;
     }
 
   /* get cast type */
@@ -1092,7 +1091,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_INTERNAL_ERROR (parser, "null cast type");
 	}
-      return;
+      return false;
     }
 
   /* get argument */
@@ -1108,7 +1107,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "(null)",
 		       pt_show_type_enum (cast_type));
 	}
-      return;
+      return false;
     }
 
   /* CAST (arg_type AS cast_type) */
@@ -1138,8 +1137,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_DATE:
-	case PT_TYPE_TIME:
-	case PT_TYPE_TIMESTAMP:
+	  /* allow numeric to TIME and TIMESTAMP conversions */
 	case PT_TYPE_DATETIME:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
@@ -1258,6 +1256,15 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_VARCHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
+      if ((PT_IS_NATIONAL_CHAR_STRING_TYPE (arg_type)
+	   && PT_IS_SIMPLE_CHAR_STRING_TYPE (cast_type))
+	  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg_type)
+	      && PT_IS_NATIONAL_CHAR_STRING_TYPE (cast_type)))
+	{
+	  cast_is_valid = PT_CAST_INVALID;
+	  break;
+	}
+
       switch (cast_type)
 	{
 	case PT_TYPE_SET:
@@ -1301,7 +1308,11 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_TYPE_OBJECT:
-      cast_is_valid = PT_CAST_UNSUPPORTED;
+      /* some functions like DECODE, CASE perform wrap with CAST, allow it */
+      if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
+	{
+	  cast_is_valid = PT_CAST_UNSUPPORTED;
+	}
       break;
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
@@ -1342,6 +1353,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_BLOB:
+	case PT_TYPE_ENUMERATION:
 	  break;
 	case PT_TYPE_CLOB:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
@@ -1359,6 +1371,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NCHAR:
 	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_ENUMERATION:
 	  break;
 	case PT_TYPE_BLOB:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
@@ -1389,6 +1402,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 		   pt_show_type_enum (cast_type));
       break;
     }
+
+  return (cast_is_valid == PT_CAST_VALID) ? true : false;
 }
 
 /*
@@ -9785,7 +9800,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_EXPR:
       if (node->info.expr.op == PT_CAST)
 	{
-	  pt_check_cast_op (parser, node);
+	  (void) pt_check_cast_op (parser, node);
 	}
 
       /* check instnum compatibility */

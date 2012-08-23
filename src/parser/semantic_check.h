@@ -75,4 +75,5 @@ extern int pt_has_text_domain (PARSER_CONTEXT * parser,
 extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser,
 					     const PT_NODE * sort_value,
 					     const PT_NODE * order_list);
+extern bool pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _SEMANTIC_CHECK_H_ */
