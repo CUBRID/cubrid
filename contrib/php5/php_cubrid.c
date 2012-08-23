@@ -352,11 +352,14 @@ struct cubrid_request
 ************************************************************************/
 
 static void php_cubrid_init_globals(zend_cubrid_globals *cubrid_globals);
-static void close_cubrid_request(T_CUBRID_REQUEST *req);
-static void close_cubrid_lob(T_CUBRID_LOB *lob);
 
-static void close_cubrid_connect(T_CUBRID_CONNECT *connect);
-static void close_cubrid_pconnect(T_CUBRID_CONNECT *connect);
+static void close_cubrid_pconnect(zend_rsrc_list_entry *rsrc TSRMLS_DC);
+static void close_cubrid_connect(zend_rsrc_list_entry *rsrc TSRMLS_DC);
+static void close_cubrid_request(zend_rsrc_list_entry *rsrc TSRMLS_DC);
+static void close_cubrid_lob(zend_rsrc_list_entry *rsrc TSRMLS_DC);
+
+static void close_cubrid_request_internal(T_CUBRID_REQUEST * req);
+static void close_cubrid_lob_internal(T_CUBRID_LOB *lob);
 
 static int init_error(void);
 static int set_error(T_FACILITY_CODE facility, int code, char *msg, ...);
@@ -935,11 +938,10 @@ ZEND_MINIT_FUNCTION(cubrid)
 
     ZEND_INIT_MODULE_GLOBALS(cubrid, php_cubrid_init_globals, NULL);
 
-    le_pconnect = register_list_destructors(NULL, close_cubrid_pconnect);
-
-    le_connect = register_list_destructors(close_cubrid_connect, NULL);
-    le_request = register_list_destructors(close_cubrid_request, NULL);
-    le_lob = register_list_destructors(close_cubrid_lob, NULL);
+    le_pconnect = zend_register_list_destructors_ex(NULL, close_cubrid_pconnect, "CUBRID Connect Persistent", module_number);
+    le_connect = zend_register_list_destructors_ex(close_cubrid_connect, NULL, "CUBRID Connect", module_number);
+    le_request = zend_register_list_destructors_ex(close_cubrid_request, NULL, "CUBRID Request", module_number);
+    le_lob = zend_register_list_destructors_ex(close_cubrid_lob, NULL, "CUBRID Lob", module_number);
 
     Z_TYPE(cubrid_module_entry) = type;
 
@@ -1494,7 +1496,7 @@ ZEND_FUNCTION(cubrid_prepare)
     request = new_cubrid_request();
 
     if((cubrid_retval = cubrid_parse_params(request, query, query_len TSRMLS_CC)) < 0) {
-        close_cubrid_request(request);
+        close_cubrid_request_internal(request);
         handle_error(cubrid_retval, NULL, connect);
 	RETURN_FALSE;
     }
@@ -1884,7 +1886,7 @@ ZEND_FUNCTION(cubrid_execute)
     }
 
     if (request->lob) {
-        close_cubrid_lob(request->lob);
+        close_cubrid_lob_internal(request->lob);
         request->lob = NULL;
     }
 
@@ -4908,8 +4910,9 @@ static void php_cubrid_set_default_req(int id TSRMLS_DC)
     zend_list_addref(id);
 }
 
-static void close_cubrid_connect(T_CUBRID_CONNECT *conn)
+static void close_cubrid_connect(zend_rsrc_list_entry * rsrc TSRMLS_DC)
 {
+    T_CUBRID_CONNECT *conn = (T_CUBRID_CONNECT *)rsrc->ptr;
     T_CCI_ERROR error;
     int i;
 
@@ -4936,8 +4939,10 @@ static void close_cubrid_connect(T_CUBRID_CONNECT *conn)
     efree(conn);
 }
 
-static void close_cubrid_pconnect(T_CUBRID_CONNECT *conn)
+static void close_cubrid_pconnect(zend_rsrc_list_entry * rsrc TSRMLS_DC)
 {
+    T_CUBRID_CONNECT *conn = (T_CUBRID_CONNECT *)rsrc->ptr;
+
     T_CCI_ERROR error;
     int i;
 
@@ -4959,7 +4964,7 @@ static void close_cubrid_pconnect(T_CUBRID_CONNECT *conn)
     free(conn);
 }
 
-static void close_cubrid_request(T_CUBRID_REQUEST * req)
+static void close_cubrid_request_internal(T_CUBRID_REQUEST * req)
 {
     int i;
 
@@ -4992,12 +4997,26 @@ static void close_cubrid_request(T_CUBRID_REQUEST * req)
     efree(req);
 }
 
-static void close_cubrid_lob(T_CUBRID_LOB *lob)
+static void close_cubrid_request(zend_rsrc_list_entry * rsrc TSRMLS_DC)
+{
+    T_CUBRID_REQUEST *req = (T_CUBRID_REQUEST *)rsrc->ptr;
+
+    close_cubrid_request_internal (req);
+}
+
+static void close_cubrid_lob_internal(T_CUBRID_LOB *lob)
 {
     if (lob->lob) {
         cubrid_lob_free(lob->lob, lob->type);
     }
     efree(lob);
+}
+
+static void close_cubrid_lob(zend_rsrc_list_entry * rsrc TSRMLS_DC)
+{
+    T_CUBRID_LOB *lob = (T_CUBRID_LOB *)rsrc->ptr;
+
+    close_cubrid_lob_internal (lob);
 }
 
 static void php_cubrid_init_globals(zend_cubrid_globals * cubrid_globals)
