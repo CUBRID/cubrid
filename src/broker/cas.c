@@ -100,8 +100,10 @@ LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 #endif /* WINDOWS */
 
 #ifndef LIBCAS_FOR_JSP
-static void cleanup (int signo);
+static void cas_sig_handler (int signo);
 static int cas_init (void);
+static void cas_final (void);
+static void cas_free (void);
 static void query_cancel (int signo);
 
 #if defined(CUBRID_SHARD)
@@ -365,8 +367,8 @@ main (int argc, char *argv[])
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cleanup);
-  signal (SIGINT, cleanup);
+  signal (SIGTERM, cas_sig_handler);
+  signal (SIGINT, cas_sig_handler);
   signal (SIGUSR1, SIG_IGN);
   signal (SIGPIPE, SIG_IGN);
   signal (SIGXFSZ, SIG_IGN);
@@ -651,18 +653,19 @@ conn_proxy_retry:
 	cas_error_log_close (true);
 #endif
 
+	cas_req_count++;
+	CLOSE_SOCKET (proxy_sock_fd);
+
 	if (restart_is_needed ())
 	  {
-	    as_info->uts_status = UTS_STATUS_RESTART;
+	    cas_final ();
+	    return 0;
 	  }
 	else
 	  {
 	    as_info->uts_status = UTS_STATUS_CON_WAIT;
 	  }
 
-	cas_req_count++;
-
-	CLOSE_SOCKET (proxy_sock_fd);
 	goto conn_retry;
       }
 #if defined(WINDOWS)
@@ -714,8 +717,8 @@ main (int argc, char *argv[])
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cleanup);
-  signal (SIGINT, cleanup);
+  signal (SIGTERM, cas_sig_handler);
+  signal (SIGINT, cas_sig_handler);
   signal (SIGUSR1, SIG_IGN);
   signal (SIGPIPE, SIG_IGN);
   signal (SIGXFSZ, SIG_IGN);
@@ -1225,10 +1228,12 @@ main (int argc, char *argv[])
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_close (true);
 #endif
+	cas_req_count++;
 
 	if (is_server_aborted ())
 	  {
-	    as_info->uts_status = UTS_STATUS_RESTART;
+	    cas_final ();
+	    return 0;
 	  }
 	else
 	  if (!
@@ -1236,11 +1241,15 @@ main (int argc, char *argv[])
 	       && as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT))
 	  {
 	    if (restart_is_needed ())
-	      as_info->uts_status = UTS_STATUS_RESTART;
+	      {
+		cas_final ();
+		return 0;
+	      }
 	    else
-	      as_info->uts_status = UTS_STATUS_IDLE;
+	      {
+		as_info->uts_status = UTS_STATUS_IDLE;
+	      }
 	  }
-	cas_req_count++;
       }
 #if defined(WINDOWS)
   }
@@ -1325,14 +1334,29 @@ libcas_srv_handle_free (int h_id)
 
 #ifndef LIBCAS_FOR_JSP
 static void
-cleanup (int signo)
+cas_sig_handler (int signo)
+{
+  signal (signo, SIG_IGN);
+  cas_free ();
+  exit (0);
+}
+
+static void
+cas_final (void)
+{
+  cas_free ();
+  as_info->pid = 0;
+  as_info->uts_status = UTS_STATUS_RESTART;
+  exit (0);
+}
+
+static void
+cas_free (void)
 {
 #ifdef MEM_DEBUG
   int fd;
 #endif
   int max_process_size;
-
-  signal (signo, SIG_IGN);
 
   ux_database_shutdown ();
 
@@ -1344,12 +1368,14 @@ cleanup (int signo)
 			     "CAS MEMORY USAGE HAS EXCEEDED MAX SIZE (%dM)",
 			     max_process_size / ONE_K);
     }
+
   if (as_info->psize > shm_appl->appl_server_hard_limit)
     {
       cas_log_write_and_end (0, true,
 			     "CAS MEMORY USAGE HAS EXCEEDED HARD LIMIT (%dM)",
 			     shm_appl->appl_server_hard_limit / ONE_K);
     }
+
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
@@ -1369,8 +1395,6 @@ cleanup (int signo)
   /* At here, can not free alloced net_buf->data;
    * simply exit
    */
-
-  exit (0);
 }
 
 static void
@@ -1894,10 +1918,10 @@ net_read_process (SOCKET proxy_sock_fd,
 	  break;
 	}
 
-      /* 
+      /*
          net_read_header error case.
-         case 1 : disconnect with proxy_sock_fd 
-         case 2 : CON_STATUS_IN_TRAN && session_timeout 
+         case 1 : disconnect with proxy_sock_fd
+         case 2 : CON_STATUS_IN_TRAN && session_timeout
        */
       if (net_read_header (proxy_sock_fd, client_msg_header) < 0)
 	{
