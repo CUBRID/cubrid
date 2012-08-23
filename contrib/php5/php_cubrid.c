@@ -4362,8 +4362,6 @@ ZEND_FUNCTION(cubrid_list_dbs)
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, NULL, CUBRID_G(last_connect_id), "CUBRID-Connect", le_connect, le_pconnect);
     }
 
-    ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
-
     init_error_link(connect);
 
     array_init(return_value);
