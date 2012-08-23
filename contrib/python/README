@@ -1,0 +1,42 @@
+CUBRID-Python: CUBRID Module for Python DB API 2.0
+Author: Zhang Hui (zhanghui@nhn.com)
+Date: May, 2011
+
+Abstract
+========
+CUBRIDdb is a Python extension package that implements Python Database API 2.0.
+In additional to the minimal feature set of the standard Python DB API, 
+CUBRID Python API also exposes nearly the entire native client API of the 
+database engine in _cubrid.
+
+Project URL
+===========
+ * Project Home: http://sourceforge.net/projects/cubridinterface/
+ * Project svn: https://cubridinterface.svn.sourceforge.net/svnroot/cubridinterface/python
+
+Dependencies
+============
+ * CUBRID: 8.4.0 or higher
+ * OS    : Windows (x86 and x86_64)
+           Linux (32bit and 64bit)
+           Other Unix and Unix-like os
+ * Python: Python 2.4+
+           Python 3.0+
+
+Install
+=======
+ * Unix/Linux/Windows
+
+ To build and install from source, you should move into the top-level directory 
+ of the CUBRIDdb distribution and issue the following commands.
+  
+   > python setup.py build
+   > python setup.py install
+  
+Documents
+=========
+ * See Python DB API 2.0 Spec (http://www.python.org/dev/peps/pep-0249/)
+ 
+Samples
+=======
+ * See directory "samples".
