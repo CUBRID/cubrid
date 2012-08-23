@@ -1506,13 +1506,14 @@ ZEND_FUNCTION(cubrid_prepare)
     if((cubrid_retval = cubrid_parse_params(request, query, query_len TSRMLS_CC)) < 0) {
         close_cubrid_request_internal(request);
         handle_error(cubrid_retval, NULL, connect);
-	RETURN_FALSE;
+        RETURN_FALSE;
     }
 
     if ((cubrid_retval = cci_prepare(connect->handle, query, 
 		    (char) ((option & CUBRID_INCLUDE_OID) ? CCI_PREPARE_INCLUDE_OID : 0), &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-	RETURN_FALSE;
+        close_cubrid_request_internal(request);
+        handle_error(cubrid_retval, &error, connect);
+        RETURN_FALSE;
     }
 
     request_handle = cubrid_retval;
@@ -1522,10 +1523,10 @@ ZEND_FUNCTION(cubrid_prepare)
     request->bind_num = cci_get_bind_num(request_handle);
 
     if (request->bind_num > 0) {
-	request->l_bind = (short *) safe_emalloc(request->bind_num, sizeof(short), 0);
-	for (i = 0; i < request->bind_num; i++) {
-	    request->l_bind[i] = 0;
-	}
+        request->l_bind = (short *) safe_emalloc(request->bind_num, sizeof(short), 0);
+        for (i = 0; i < request->bind_num; i++) {
+            request->l_bind[i] = 0;
+        }
     }
 
     request->l_prepare = 1;
@@ -1844,17 +1845,13 @@ ZEND_FUNCTION(cubrid_execute)
         if (!is_prepare_and_execute_mode) {
             if ((cubrid_retval = cci_prepare(connect->handle, sql_stmt,
                     (char)((option & CUBRID_INCLUDE_OID) ? CCI_PREPARE_INCLUDE_OID : 0), &error)) < 0) {
-                close_cubrid_request_internal(request);
-                handle_error (cubrid_retval, &error, connect);
-                RETURN_FALSE;
+                goto ERR_CUBRID_EXECUTE;
             }
         } else {
             if ((cubrid_retval =
                         cci_prepare_and_execute(connect->handle, sql_stmt, 0,
                             &exec_retval, &error)) < 0) {
-                close_cubrid_request_internal(request);
-                handle_error(cubrid_retval, &error, connect);
-                RETURN_FALSE;
+                goto ERR_CUBRID_EXECUTE;
             }
         }
 
@@ -1879,14 +1876,14 @@ ZEND_FUNCTION(cubrid_execute)
         }
     
         if ((exec_retval = cci_execute(req_handle, exec_flag, 0, &error)) < 0) {
-            handle_error(exec_retval, &error, connect);
-            RETURN_FALSE;
+            goto ERR_CUBRID_EXECUTE;
         }
     }
     
     res_col_info = cci_get_result_info(req_handle, &res_sql_type, &res_col_count);
     if (res_sql_type == CUBRID_STMT_SELECT && !res_col_info) {
-        RETURN_FALSE;
+        cubrid_retval = CUBRID_ER_CANNOT_GET_COLUMN_INFO;
+        goto ERR_CUBRID_EXECUTE;
     }
 
     if (request->lob) {
@@ -1906,32 +1903,40 @@ ZEND_FUNCTION(cubrid_execute)
         if (cubrid_retval > 0 && request->field_lengths == NULL) {
             request->field_lengths = (int *)emalloc(sizeof(int) * res_col_count);
         }
-	break;
+
+        cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
+        if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
+            goto ERR_CUBRID_EXECUTE;
+        } 
+
+        break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
         CUBRID_G(last_request_affected_rows) = exec_retval;
-	break;
+        break;
     case CUBRID_STMT_CALL:
         request->row_count = exec_retval;
+        CUBRID_G(last_request_affected_rows) = exec_retval;
     default:
         break;
-    }
-
-    cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
-    if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, connect);
-	RETURN_FALSE;
     }
 
     if (!l_prepare) {
         ZEND_REGISTER_RESOURCE(return_value, request, le_request);
         php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
         register_cubrid_request(connect, request);
-	return;
+        return;
     }
 
     RETURN_TRUE;
+
+ERR_CUBRID_EXECUTE:
+    if (!l_prepare) {
+        close_cubrid_request_internal(request);
+    }
+    handle_error(cubrid_retval, &error, connect);
+    RETURN_FALSE;
 }
 
 ZEND_FUNCTION(cubrid_next_result)
@@ -3830,29 +3835,26 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
     init_error_link(connect);
 
     request = new_cubrid_request();
-    req_id = ZEND_REGISTER_RESOURCE(return_value, request, le_request);
-    register_cubrid_request(connect, request);
-
     request->conn = connect;
 
     if ((cubrid_retval = cci_prepare(connect->handle, query, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-        RETURN_FALSE;
+        goto ERR_CUBRID_UNBUFFERED_QUERY;
     }
 
     req_handle = cubrid_retval;
     request->handle = req_handle;
 
     if ((cubrid_retval = cci_execute(req_handle, CCI_EXEC_ASYNC, 0, &error)) < 0) {
-	handle_error(cubrid_retval, &error, connect);
-        RETURN_FALSE;
+        goto ERR_CUBRID_UNBUFFERED_QUERY;
     }
 
     res_col_info = cci_get_result_info(req_handle, &res_sql_type, &res_col_count);
     request->sql_type = res_sql_type;
 
     if (res_sql_type == CUBRID_STMT_SELECT && !res_col_info) {
-        RETURN_FALSE;
+        cubrid_retval = CUBRID_ER_CANNOT_GET_COLUMN_INFO;
+        goto ERR_CUBRID_UNBUFFERED_QUERY;
+
     } else if (res_sql_type == CUBRID_STMT_SELECT) {
         request->col_info = res_col_info;
         request->col_count = res_col_count;
@@ -3863,38 +3865,46 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
 
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
-	request->row_count = cubrid_retval;
+        request->row_count = cubrid_retval;
         if (cubrid_retval > 0 && request->field_lengths == NULL) {
             request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count);
         }
 
         cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
         if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-            handle_error(cubrid_retval, &error, connect);
-            RETURN_FALSE;
+            goto ERR_CUBRID_UNBUFFERED_QUERY;
         }
 
         CUBRID_G(last_request_id) = req_id;
         CUBRID_G(last_request_affected_rows) = -1;
 
-        return;
+        break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-        CUBRID_G(last_request_affected_rows) = cubrid_retval;
-
-	break;
+        CUBRID_G(last_request_affected_rows) = cubrid_retval; 
+        break;
     case CUBRID_STMT_CALL:
-	request->row_count = cubrid_retval;
+        request->row_count = cubrid_retval;
         CUBRID_G(last_request_affected_rows) = cubrid_retval;
-
     default:
-	break;
+        break;
     }
 
+    req_id = ZEND_REGISTER_RESOURCE(return_value, request, le_request);
+    register_cubrid_request(connect, request);
     php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
 
+    if (request->sql_type == CUBRID_STMT_SELECT) {
+        return;
+    }
+
     RETURN_TRUE;
+
+ERR_CUBRID_UNBUFFERED_QUERY:
+    close_cubrid_request_internal(request);
+    handle_error(cubrid_retval, &error, connect);
+    RETURN_FALSE;
 }
 
 ZEND_FUNCTION(cubrid_query)
@@ -3935,16 +3945,11 @@ ZEND_FUNCTION(cubrid_query)
     init_error_link(connect);
 
     request = new_cubrid_request();
-    req_id = ZEND_REGISTER_RESOURCE(return_value, request, le_request);
-    php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
-    register_cubrid_request(connect, request);
-
     request->conn = connect;
 
     if ((cubrid_retval =
-       cci_prepare_and_execute (connect->handle, query, 0, &exec_retval, &error)) < 0) {
-        handle_error (cubrid_retval, &error, connect);
-        RETURN_FALSE;
+       cci_prepare_and_execute(connect->handle, query, 0, &exec_retval, &error)) < 0) {
+        goto ERR_CUBRID_QUERY;
     }
 
     req_handle = cubrid_retval;
@@ -3954,7 +3959,9 @@ ZEND_FUNCTION(cubrid_query)
     request->sql_type = res_sql_type;
 
     if (res_sql_type == CUBRID_STMT_SELECT && !res_col_info) {
-        RETURN_FALSE;
+        cubrid_retval = CUBRID_ER_CANNOT_GET_COLUMN_INFO;
+        goto ERR_CUBRID_QUERY;
+
     } else if (res_sql_type == CUBRID_STMT_SELECT) {
         request->col_info = res_col_info;
         request->col_count = res_col_count;
@@ -3972,31 +3979,40 @@ ZEND_FUNCTION(cubrid_query)
 
         cubrid_retval = cci_cursor(req_handle, 1, CCI_CURSOR_CURRENT, &error);
         if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-            handle_error(cubrid_retval, &error, connect);
-            RETURN_FALSE;
+            goto ERR_CUBRID_QUERY;
         }
 
         CUBRID_G(last_request_id) = req_id;
         CUBRID_G(last_request_affected_rows) = -1;
 
-        return;
+        break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
         CUBRID_G(last_request_id) = req_id;
         CUBRID_G(last_request_affected_rows) = exec_retval;
-
-	break;
+        break;
     case CUBRID_STMT_CALL:
 	request->row_count = exec_retval;
         CUBRID_G(last_request_affected_rows) = exec_retval;
-
     default:
-	break;
+        break;
     }
 
-    cci_close_req_handle(req_handle);
+    req_id = ZEND_REGISTER_RESOURCE(return_value, request, le_request);
+    php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
+    register_cubrid_request(connect, request);
+
+    if (request->sql_type == CUBRID_STMT_SELECT) {
+        return;
+    }
+
     RETURN_TRUE;
+
+ERR_CUBRID_QUERY:
+    close_cubrid_request_internal(request);
+    handle_error(cubrid_retval, &error, connect);
+    RETURN_FALSE;
 }
 
 ZEND_FUNCTION(cubrid_get_charset)
