@@ -324,6 +324,10 @@ typedef struct
     T_CUBRID_ERROR recent_error;
     int handle;
     int persistent;
+
+    int affected_rows;
+    T_CCI_CUBRID_STMT sql_type;
+
     int req_count;
     T_CUBRID_REQUEST **req_list;
 } T_CUBRID_CONNECT;
@@ -1012,8 +1016,6 @@ ZEND_RINIT_FUNCTION(cubrid)
 {
 	CUBRID_G(last_connect_id) = -1;
 	CUBRID_G(last_request_id) = -1;
-	CUBRID_G(last_request_stmt_type) = 0;
-	CUBRID_G(last_request_affected_rows) = -1;
 
 	CUBRID_G(recent_error).code = 0;
 	CUBRID_G(recent_error).facility = 0;
@@ -1199,8 +1201,6 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
         }
     
         CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = -1;
         
         ZEND_REGISTER_RESOURCE(return_value, connect, le_pconnect);
    
@@ -1236,8 +1236,6 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
         }
     
         CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = -1;
     
         if ((cubrid_retval = cci_end_tran(cubrid_conn, CCI_TRAN_COMMIT, &error)) < 0) {
     	handle_error(cubrid_retval, &error, NULL);
@@ -1364,8 +1362,6 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
         }
     
         CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = -1;
     
         ZEND_REGISTER_RESOURCE(return_value, connect, le_pconnect);
 
@@ -1401,8 +1397,6 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
         }
     
         CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = -1;
     
         if ((cubrid_retval = cci_end_tran(cubrid_conn, CCI_TRAN_COMMIT, &error)) < 0) {
     	handle_error(cubrid_retval, &error, NULL);
@@ -1466,8 +1460,6 @@ ZEND_FUNCTION(cubrid_close)
     if (!conn_id || (conn_id && Z_RESVAL_P(conn_id) == CUBRID_G(last_connect_id))) {
         CUBRID_G(last_connect_id) = -1;
         CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = -1;
 
         if (conn_id) {
             zend_list_delete(res_id);
@@ -1895,7 +1887,7 @@ ZEND_FUNCTION(cubrid_execute)
     request->sql_type = res_sql_type;
     request->col_count = res_col_count;
 
-    CUBRID_G(last_request_stmt_type) = request->sql_type;
+    connect->sql_type = request->sql_type;
 
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
@@ -1913,11 +1905,11 @@ ZEND_FUNCTION(cubrid_execute)
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-        CUBRID_G(last_request_affected_rows) = exec_retval;
+        connect->affected_rows = exec_retval;
         break;
     case CUBRID_STMT_CALL:
         request->row_count = exec_retval;
-        CUBRID_G(last_request_affected_rows) = exec_retval;
+        connect->affected_rows = exec_retval;
     default:
         break;
     }
@@ -1954,7 +1946,7 @@ ZEND_FUNCTION(cubrid_next_result)
     init_error();
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &req_id) == FAILURE) {
-	return;
+        return;
     }
 
     ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
@@ -1978,7 +1970,7 @@ ZEND_FUNCTION(cubrid_next_result)
 
     res_col_info = cci_get_result_info(request->handle, &res_sql_type, &res_col_count);
     if (res_sql_type == CUBRID_STMT_SELECT && !res_col_info) {
-	RETURN_FALSE;
+        RETURN_FALSE;
     }
 
     request->col_info = res_col_info;
@@ -1987,31 +1979,30 @@ ZEND_FUNCTION(cubrid_next_result)
 
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
-	request->row_count = cubrid_retval;
-        request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count);
+        request->row_count = cubrid_retval;
+        request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count); 
 
-	break;
+        break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-	CUBRID_G(last_request_affected_rows) = cubrid_retval;
-	break;
+        request->conn->affected_rows = cubrid_retval;
+        break;
     case CUBRID_STMT_CALL:
-	request->row_count = cubrid_retval;
-
+        request->row_count = cubrid_retval;
     default:
-	break;
+        break;
     }
 
     cubrid_retval = cci_cursor(request->handle, 1, CCI_CURSOR_CURRENT, &error);
     if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
-	handle_error(cubrid_retval, &error, request->conn);
-	RETURN_FALSE;
+        handle_error(cubrid_retval, &error, request->conn);
+        RETURN_FALSE;
     }
 
     request->fetch_field_auto_index = 0;
 
-    CUBRID_G(last_request_stmt_type) = request->sql_type;
+    request->conn->sql_type = request->sql_type;
 
     RETURN_TRUE;
 }
@@ -2040,14 +2031,14 @@ ZEND_FUNCTION(cubrid_affected_rows)
 
     init_error_link(connect);
 
-    switch (CUBRID_G(last_request_stmt_type)) {
+    switch (connect->sql_type) {
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-	RETURN_LONG(CUBRID_G(last_request_affected_rows));
+        RETURN_LONG(connect->affected_rows);
     default:
-	handle_error(CUBRID_ER_INVALID_SQL_TYPE, NULL, connect);
-	RETURN_LONG(-1);
+        handle_error(CUBRID_ER_INVALID_SQL_TYPE, NULL, connect);
+        RETURN_LONG(-1);
     }
 }
 
@@ -2069,8 +2060,6 @@ ZEND_FUNCTION(cubrid_close_request)
      * so we need one more call */
     if (Z_RESVAL_P(req_id) == CUBRID_G(last_request_id)) {
         CUBRID_G(last_request_id) = -1;
-        CUBRID_G(last_request_stmt_type) = 0;
-        CUBRID_G(last_request_affected_rows) = -1;
 
         zend_list_delete(Z_RESVAL_P(req_id));
     }
@@ -3860,7 +3849,7 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
         request->col_count = res_col_count;
     }
 
-    CUBRID_G(last_request_stmt_type) = request->sql_type;
+    connect->sql_type = request->sql_type;
     request->fetch_field_auto_index = 0;
 
     switch (request->sql_type) {
@@ -3876,17 +3865,17 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
         }
 
         CUBRID_G(last_request_id) = req_id;
-        CUBRID_G(last_request_affected_rows) = -1;
+        connect->affected_rows = 0;
 
         break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-        CUBRID_G(last_request_affected_rows) = cubrid_retval; 
+        connect->affected_rows = cubrid_retval; 
         break;
     case CUBRID_STMT_CALL:
         request->row_count = cubrid_retval;
-        CUBRID_G(last_request_affected_rows) = cubrid_retval;
+        connect->affected_rows = cubrid_retval;
     default:
         break;
     }
@@ -3967,7 +3956,7 @@ ZEND_FUNCTION(cubrid_query)
         request->col_count = res_col_count;
     }
 
-    CUBRID_G(last_request_stmt_type) = request->sql_type;
+    connect->sql_type = request->sql_type;
     request->fetch_field_auto_index = 0;
 
     switch (request->sql_type) {
@@ -3983,18 +3972,18 @@ ZEND_FUNCTION(cubrid_query)
         }
 
         CUBRID_G(last_request_id) = req_id;
-        CUBRID_G(last_request_affected_rows) = -1;
+        connect->affected_rows = -1;
 
         break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
         CUBRID_G(last_request_id) = req_id;
-        CUBRID_G(last_request_affected_rows) = exec_retval;
+        connect->affected_rows = exec_retval;
         break;
     case CUBRID_STMT_CALL:
 	request->row_count = exec_retval;
-        CUBRID_G(last_request_affected_rows) = exec_retval;
+        connect->affected_rows = exec_retval;
     default:
         break;
     }
@@ -4451,33 +4440,32 @@ ZEND_FUNCTION(cubrid_insert_id)
 
     init_error_link(connect);
 
-    switch (CUBRID_G(last_request_stmt_type)) {
+    switch (connect->sql_type) {
     case CUBRID_STMT_INSERT:
-	if (CUBRID_G(last_request_affected_rows) < 1) {
-	    RETURN_LONG(0);
-	}
+        if (connect->affected_rows < 1) {
+            RETURN_LONG(0);
+        }
 
         if ((cubrid_retval = cci_last_insert_id(connect->handle, &last_id, &error)) < 0) {
             handle_error(cubrid_retval, &error, connect);
             RETURN_FALSE;
-	}
+        }
 
-	if (last_id == NULL) {
+        if (last_id == NULL) {
             RETURN_LONG(0);
-	} else {
+        } else {
             RETURN_STRINGL(last_id, strlen(last_id), 1);
             free(last_id);
-	}
+        } 
 
-	break;
+        break;
     case CUBRID_STMT_SELECT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-	RETURN_LONG(0);
-
+        RETURN_LONG(0);
     default:
-	handle_error(CUBRID_ER_INVALID_SQL_TYPE, NULL, connect);
-	RETURN_FALSE;
+        handle_error(CUBRID_ER_INVALID_SQL_TYPE, NULL, connect);
+        RETURN_FALSE;
     }
 }
 
@@ -4987,8 +4975,6 @@ static void php_cubrid_init_globals(zend_cubrid_globals * cubrid_globals)
 
     cubrid_globals->last_connect_id = -1;
     cubrid_globals->last_request_id = -1;
-    cubrid_globals->last_request_stmt_type = 0;
-    cubrid_globals->last_request_affected_rows = -1;
 
     cubrid_globals->default_userid = "PUBLIC";
     cubrid_globals->default_passwd = "";
@@ -5221,6 +5207,9 @@ static T_CUBRID_CONNECT *new_cubrid_connect(int persistent)
     connect->persistent = persistent;
     connect->req_count = 0;
     connect->req_list = NULL;
+
+    connect->affected_rows = 0;
+    connect->sql_type = 0;
 
     return connect;
 }

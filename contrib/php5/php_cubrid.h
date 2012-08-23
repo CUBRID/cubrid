@@ -147,8 +147,6 @@ ZEND_BEGIN_MODULE_GLOBALS(cubrid)
 
     int last_connect_id;
     int last_request_id;
-    T_CCI_CUBRID_STMT last_request_stmt_type;
-    int last_request_affected_rows;
 
     char *default_userid, *default_passwd;
 ZEND_END_MODULE_GLOBALS(cubrid)
