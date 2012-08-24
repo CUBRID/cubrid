@@ -2265,6 +2265,7 @@ union db_domain_info
     unsigned char is_null;
     unsigned char type;
     int length;
+    int collation_id;
   } char_info;
 };
 
