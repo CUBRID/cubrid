@@ -10178,14 +10178,17 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 		   RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 		   int ispeeking, int chn)
 {
-  VPID vpid;
+  VPID home_vpid, forward_vpid;
   VPID *vpidptr_incache;
   PAGE_PTR pgptr = NULL;
+  PAGE_PTR forward_pgptr = NULL;
   INT16 type;
   OID forward_oid;
   RECDES forward_recdes;
   SCAN_CODE scan;
   DISK_ISVALID oid_valid;
+  int again_count = 0;
+  int again_max = 20;
 
 #if defined(CUBRID_DEBUG)
   if (scan_cache == NULL && ispeeking == PEEK)
@@ -10230,8 +10233,10 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       return S_DOESNT_EXIST;
     }
 
-  vpid.volid = oid->volid;
-  vpid.pageid = oid->pageid;
+try_again:
+
+  home_vpid.volid = oid->volid;
+  home_vpid.pageid = oid->pageid;
 
   /*
    * Use previous scan page whenever possible, otherwise, deallocate the
@@ -10242,7 +10247,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       && scan_cache->pgptr != NULL)
     {
       vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
-      if (VPID_EQ (&vpid, vpidptr_incache))
+      if (VPID_EQ (&home_vpid, vpidptr_incache))
 	{
 	  /* We can skip the fetch operation */
 	  pgptr = scan_cache->pgptr;
@@ -10251,7 +10256,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	{
 	  /* Free the previous scan page and obtain a new page */
 	  pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
-	  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
+	  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &home_vpid, OLD_PAGE,
 					       S_LOCK, scan_cache);
 	  if (pgptr == NULL)
 	    {
@@ -10271,8 +10276,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
     }
   else
     {
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   scan_cache);
+      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &home_vpid, OLD_PAGE,
+					   S_LOCK, scan_cache);
       if (pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
@@ -10344,37 +10349,54 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return scan;
 	}
-      pgbuf_unfix_and_init (thread_p, pgptr);
 
       /* Fetch the page of relocated (forwarded) record */
-      vpid.volid = forward_oid.volid;
-      vpid.pageid = forward_oid.pageid;
+      forward_vpid.volid = forward_oid.volid;
+      forward_vpid.pageid = forward_oid.pageid;
 
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   scan_cache);
-      if (pgptr == NULL)
+      /* try to fix forward page conditionally */
+      forward_pgptr = pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE,
+				 PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+      if (forward_pgptr == NULL)
 	{
-	  /* something went wrong, return */
-	  if (er_errid () == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_HEAP_BAD_RELOCATION_RECORD, 3, oid->volid,
-		      oid->pageid, oid->slotid);
-	    }
-	  return S_ERROR;
-	}
-
-      type = spage_get_record_type (pgptr, forward_oid.slotid);
-      if (type == REC_UNKNOWN)
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
-		  3, forward_oid.volid, forward_oid.pageid,
-		  forward_oid.slotid);
 	  pgbuf_unfix_and_init (thread_p, pgptr);
-	  return S_DOESNT_EXIST;
+
+	  /* try to fix forward page unconditionally */
+	  forward_pgptr = heap_scan_pb_lock_and_fetch (thread_p,
+						       &forward_vpid,
+						       OLD_PAGE, S_LOCK,
+						       scan_cache);
+	  if (forward_pgptr == NULL)
+	    {
+	      if (er_errid () == ER_PB_BAD_PAGEID)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HEAP_BAD_RELOCATION_RECORD, 3,
+			  forward_oid.volid, forward_oid.pageid,
+			  forward_oid.slotid);
+		}
+
+	      return S_ERROR;
+	    }
+	  pgbuf_unfix_and_init (thread_p, forward_pgptr);
+
+	  if (again_count++ >= again_max)
+	    {
+	      if (er_errid () == ER_PB_BAD_PAGEID)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
+			  oid->pageid, oid->slotid);
+		}
+	      return S_ERROR;
+	    }
+
+	  goto try_again;
 	}
 
-      assert_release (type == REC_NEWHOME);
+      assert (pgptr != NULL && forward_pgptr != NULL);
+      assert (spage_get_record_type (forward_pgptr,
+				     forward_oid.slotid) == REC_NEWHOME);
 
       if (ispeeking == COPY && recdes->data == NULL)
 	{
@@ -10392,6 +10414,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 		{
 		  scan_cache->area_size = -1;
 		  pgbuf_unfix_and_init (thread_p, pgptr);
+		  pgbuf_unfix_and_init (thread_p, forward_pgptr);
 		  return S_ERROR;
 		}
 	    }
@@ -10400,7 +10423,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  /* The allocated space is enough to save the instance. */
 	}
 
-      scan = heap_get_if_diff_chn (pgptr, forward_oid.slotid, recdes,
+      scan = heap_get_if_diff_chn (forward_pgptr, forward_oid.slotid, recdes,
 				   ispeeking, chn);
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
@@ -10411,6 +10434,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	{
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 	}
+
+      pgbuf_unfix_and_init (thread_p, forward_pgptr);
 
       break;
 
@@ -10467,8 +10492,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  /* The allocated space is enough to save the instance. */
 	}
 
-      scan =
-	heap_get_if_diff_chn (pgptr, oid->slotid, recdes, ispeeking, chn);
+      scan = heap_get_if_diff_chn (pgptr, oid->slotid, recdes,
+				   ispeeking, chn);
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
 	  /* Save the page for a future scan */
