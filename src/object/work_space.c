@@ -174,6 +174,10 @@ static AREA *Objlist_area = NULL;
  *    Initialize the areas used by the workspace manager.
  *
  */
+
+int ws_Error_ignore_list[-ER_LAST_ERROR];
+int ws_Error_ignore_count = 0;
+
 #define OBJLIST_AREA_COUNT 4096
 
 
@@ -1289,7 +1293,7 @@ ws_perm_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
  *
  * Note:
  *    This is only called by the transaction locator as OIDs need to be
- *    flushed and must be converted to permanent OIDs 
+ *    flushed and must be converted to permanent OIDs
  *
  *    This assumes that the new permanent OID is guaranteed to be
  *    unique and we can avoid searching the hash table collision list
@@ -1801,12 +1805,12 @@ void
 ws_release_user_instance (MOP mop)
 {
   /* to keep instances of system classes, for instance, db_serial's.
-   * 
-   * This prevents from dangling references to serial objects 
-   * during replication. 
-   * The typical scenario is to update serials, cull mops which clears 
-   * the mop up, and then truncate the table which leads updating 
-   * the serial mop to reset its values. 
+   *
+   * This prevents from dangling references to serial objects
+   * during replication.
+   * The typical scenario is to update serials, cull mops which clears
+   * the mop up, and then truncate the table which leads updating
+   * the serial mop to reset its values.
    */
   if (db_is_system_class (mop->class_mop))
     {
@@ -5462,5 +5466,23 @@ error:
     {
       *added_ptr = added;
     }
+  return NO_ERROR;
+}
+
+/*
+ * ws_set_ignore_error_list_for_mflush() -
+ *    return: NO_ERROR or error code
+ *    error_count(in):
+ *    error_list(in):
+ */
+int
+ws_set_ignore_error_list_for_mflush (int error_count, int *error_list)
+{
+  if (error_count > 0)
+    {
+      ws_Error_ignore_count = error_count;
+      memcpy (ws_Error_ignore_list, error_list, sizeof (int) * error_count);
+    }
+
   return NO_ERROR;
 }

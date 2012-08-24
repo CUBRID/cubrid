@@ -4063,7 +4063,9 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	}
 
       /* Force the flushing area */
-      error_code = locator_force (mflush->copy_area);
+      error_code =
+	locator_force (mflush->copy_area, ws_Error_ignore_count,
+		       ws_Error_ignore_list);
 
       /* If the force failed and the system is down.. finish */
       if (error_code != NO_ERROR && !BOOT_IS_CLIENT_RESTARTED ())
@@ -4112,7 +4114,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 		{
 		  COPY_OID (&obj->oid, ws_oid (mop_toid->mop));
 		}
-	      else if (!(OID_ISTEMP (&obj->oid)))
+	      else if (!OID_ISNULL (&obj->oid) && !(OID_ISTEMP (&obj->oid)))
 		{
 		  ws_perm_oid_and_class (mop_toid->mop, &obj->oid,
 					 &obj->class_oid);
@@ -4140,8 +4142,9 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	    {
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs,
 						    mop_toid->obj);
-	      if (!OID_EQ (WS_OID (mop_toid->mop->class_mop),
-			   &obj->class_oid))
+	      if (!OID_ISNULL (&obj->oid)
+		  && !OID_EQ (WS_OID (mop_toid->mop->class_mop),
+			      &obj->class_oid))
 		{
 		  assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
 		  error_code =
@@ -5030,7 +5033,7 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 
   if (is_partitioned)
     {
-      /* This is a partitioned class. Also flush instances belonging to 
+      /* This is a partitioned class. Also flush instances belonging to
        * partitions.
        */
       error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,

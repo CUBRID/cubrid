@@ -1919,8 +1919,10 @@ default_clear_err_filter (void)
 int
 er_filter_fileset (FILE * ef)
 {
+  int i, num_ignore_error_list;
   int set_count = 0, errcode;
   char rdbuf[32];
+  int ignore_error_list[-ER_LAST_ERROR];
 
   if (ef == NULL)
     {
@@ -1967,6 +1969,23 @@ er_filter_fileset (FILE * ef)
 	  set_count++;
 	}
     }
+
+  /* set ws_ignore_error_list */
+  for (i = 1, num_ignore_error_list = 0; i < -ER_LAST_ERROR; i++)
+    {
+      if (filter_ignore_errors[i] == true)
+	{
+	  ignore_error_list[num_ignore_error_list] = -i;
+	  num_ignore_error_list++;
+	}
+    }
+
+  if (num_ignore_error_list > 0)
+    {
+      ws_set_ignore_error_list_for_mflush (num_ignore_error_list,
+					   ignore_error_list);
+    }
+
   return set_count;
 }
 

@@ -157,7 +157,8 @@ extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn,
 				LOCK lock, OID * class_oid, int class_chn,
 				int need_fetching, int prefetching,
 				LC_COPYAREA ** fetch_area);
-extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area);
+extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area,
+			   int num_ignore_error_list, int *ignore_error_list);
 extern bool xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					      LC_COPYAREA ** synch_area);
 

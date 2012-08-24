@@ -510,13 +510,14 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
  * NOTE:
  */
 int
-locator_force (LC_COPYAREA * copy_area)
+locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
+	       int *ignore_error_list)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_request;
   char *request;
   char *request_ptr;
+  int request_size;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply;
   char *desc_ptr = NULL;
@@ -525,11 +526,21 @@ locator_force (LC_COPYAREA * copy_area)
   int content_size;
   int num_objs = 0;
   int req_error;
+  int i;
   LC_COPYAREA_MANYOBJS *mobjs;
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  request = OR_ALIGNED_BUF_START (a_request);
+  request_size = OR_INT_SIZE * (6 + num_ignore_error_list);
+  request = (char *) malloc (request_size);
+
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size,
@@ -541,9 +552,14 @@ locator_force (LC_COPYAREA * copy_area)
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
 
+  request_ptr = or_pack_int (request_ptr, num_ignore_error_list);
+  for (i = 0; i < num_ignore_error_list; i++)
+    {
+      request_ptr = or_pack_int (request_ptr, ignore_error_list[i]);
+    }
+
   req_error = net_client_request_3_data (NET_SERVER_LC_FORCE,
-					 request,
-					 OR_ALIGNED_BUF_SIZE (a_request),
+					 request, request_size,
 					 desc_ptr, desc_size, content_ptr,
 					 content_size, reply,
 					 OR_ALIGNED_BUF_SIZE (a_reply),
@@ -560,16 +576,45 @@ locator_force (LC_COPYAREA * copy_area)
     {
       free_and_init (desc_ptr);
     }
+  if (request)
+    {
+      free_and_init (request);
+    }
 
   return success;
 #else /* CS_MODE */
   int success = ER_FAILED;
+  LC_COPYAREA *copy_area_clone;
+
+  /* If xlocator_force returns error,
+   * the original copy_area should not be changed.
+   * So copy_area_clone will be used.
+   */
+  copy_area_clone = locator_allocate_copy_area_by_length (copy_area->length);
+  if (copy_area_clone == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memcpy (copy_area_clone->mem, copy_area->mem, copy_area->length);
 
   ENTER_SERVER ();
 
-  success = xlocator_force (NULL, copy_area);
+  success =
+    xlocator_force (NULL, copy_area_clone, num_ignore_error_list,
+		    ignore_error_list);
 
   EXIT_SERVER ();
+
+  if (success)
+    {
+      /* Apply changes into original copy_area.
+       * The length of copy_area (not copy_area_clone) should be used.
+       */
+      memcpy (copy_area->mem, copy_area_clone->mem, copy_area->length);
+    }
+
+  locator_free_copy_area (copy_area_clone);
 
   return success;
 #endif /* !CS_MODE */
@@ -6467,7 +6512,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
     + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
     + OR_INT_SIZE		/* cache_attr_id */
     + or_packed_string_length (fk_name, &strlen)	/* fk_name */
-    + index_info_size;		/* filter predicate or function 
+    + index_info_size;		/* filter predicate or function
 				   index stream size */
 
   request = (char *) malloc (request_size);

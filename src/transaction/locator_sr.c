@@ -261,7 +261,9 @@ static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p,
 						      const char *classname,
 						      const OID * class_oid);
 
-
+static int locator_filter_errid (THREAD_ENTRY * thread_p,
+				 int num_ignore_error_count,
+				 int *ignore_error_list);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -6148,7 +6150,8 @@ error:
  *              object placed in the force_area.
  */
 int
-xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
+xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
+		int num_ignore_error, int *ingore_error_list)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
@@ -6157,7 +6160,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
   HEAP_SCANCACHE *force_scancache = NULL;
   HEAP_SCANCACHE scan_cache;
   int force_count;
-  LOG_LSA lsa;
+  LOG_LSA lsa, oneobj_lsa;
   int error_code = NO_ERROR;
   int op_type = 0;
   /* need to start a topop to ensure the atomic operation. */
@@ -6206,6 +6209,15 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 	  force_scancache = &scan_cache;
 	}
 
+      if (num_ignore_error > 0)
+	{
+	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
       switch (obj->operation)
 	{
 	case LC_FLUSH_INSERT:
@@ -6217,16 +6229,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
 				  &obj->oid, &recdes, obj->has_index, op_type,
 				  force_scancache, &force_count);
-	  if (error_code != NO_ERROR)
+
+	  if (error_code == NO_ERROR)
 	    {
-	      /*
-	       * Problems inserting the object...Maybe, the transaction should
-	       * be aborted by the caller...Quit..
-	       */
-	      goto error;
+	      /* monitor */
+	      mnt_qm_inserts (thread_p);
 	    }
-	  /* monitor */
-	  mnt_qm_inserts (thread_p);
 	  break;
 
 	case LC_FLUSH_UPDATE:
@@ -6240,16 +6248,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 				  obj->has_index, NULL, 0, op_type,
 				  force_scancache, &force_count, false,
 				  REPL_INFO_TYPE_STMT_NORMAL);
-	  if (error_code != NO_ERROR)
+
+	  if (error_code == NO_ERROR)
 	    {
-	      /*
-	       * Problems updating the object...Maybe, the transaction should be
-	       * aborted by the caller...Quit..
-	       */
-	      goto error;
+	      /* monitor */
+	      mnt_qm_updates (thread_p);
 	    }
-	  /* monitor */
-	  mnt_qm_updates (thread_p);
 	  break;
 
 	case LC_FLUSH_DELETE:
@@ -6257,16 +6261,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 					     NULL, false, obj->has_index,
 					     SINGLE_ROW_DELETE,
 					     force_scancache, &force_count);
-	  if (error_code != NO_ERROR)
+
+	  if (error_code == NO_ERROR)
 	    {
-	      /*
-	       * Problems reading the object...Maybe, the transaction should be
-	       * aborted by the caller...Quit..
-	       */
-	      goto error;
+	      /* monitor */
+	      mnt_qm_deletes (thread_p);
 	    }
-	  /* monitor */
-	  mnt_qm_deletes (thread_p);
 	  break;
 
 	default:
@@ -6279,8 +6279,49 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area)
 		  ER_LC_BADFORCE_OPERATION, 4, obj->operation,
 		  obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
 	  error_code = ER_LC_BADFORCE_OPERATION;
-	  goto error;
+	  break;
 	}			/* end-switch */
+
+      if (num_ignore_error > 0)
+	{
+	  bool need_to_abort_oneobj = false;
+
+	  if (error_code != NO_ERROR)
+	    {
+	      error_code =
+		locator_filter_errid (thread_p, num_ignore_error,
+				      ingore_error_list);
+
+	      if (error_code == NO_ERROR)
+		{
+		  /* error is filtered out */
+		  OID_SET_NULL (&obj->oid);
+		  need_to_abort_oneobj = true;
+		}
+	    }
+
+	  if (need_to_abort_oneobj)
+	    {
+	      (void) xtran_server_end_topop (thread_p,
+					     LOG_RESULT_TOPOP_ABORT,
+					     &oneobj_lsa);
+	    }
+	  else
+	    {
+	      (void) xtran_server_end_topop (thread_p,
+					     LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
+					     &oneobj_lsa);
+	    }
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  /*
+	   * Problems... Maybe, the transaction should
+	   * be aborted by the caller...Quit..
+	   */
+	  goto error;
+	}
     }				/* end-for */
 
 done:
@@ -9363,7 +9404,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 }
 
 /*
- * locator_check_all_entries_of_all_btrees () - Check consistency of all 
+ * locator_check_all_entries_of_all_btrees () - Check consistency of all
  *						entries of all btrees
  *
  * return: valid
@@ -11163,4 +11204,30 @@ error_exit:
     }
 
   return error;
+}
+
+/*
+ * locator_filter_errid() -
+ *
+ * return:
+ *   num_ignore_error_count(in):
+ *   ignore_error_list(in):
+ *   error_code(in):
+ */
+static int
+locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count,
+		      int *ignore_error_list)
+{
+  int i;
+  int error_code = er_errid ();
+
+  for (i = 0; i < num_ignore_error_count; i++)
+    {
+      if (ignore_error_list[i] == error_code)
+	{
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
+  return error_code;
 }

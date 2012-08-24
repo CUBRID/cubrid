@@ -453,6 +453,8 @@ extern DB_OBJLIST *ws_Resident_classes;
 extern MOP ws_Commit_mops;
 extern WS_STATISTICS ws_Stats;
 extern int ws_Num_dirty_mop;
+extern int ws_Error_ignore_list[-ER_LAST_ERROR];
+extern int ws_Error_ignore_count;
 
 /*
  *  WORKSPACE FUNCTIONS
@@ -703,5 +705,8 @@ extern int ws_hide_new_old_trigger_obj (MOP op);
 extern void ws_unhide_new_old_trigger_obj (MOP op);
 
 extern bool ws_need_flush (void);
+
+extern int ws_set_ignore_error_list_for_mflush (int error_count,
+						int *error_list);
 
 #endif /* _WORK_SPACE_H_ */
