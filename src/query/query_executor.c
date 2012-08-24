@@ -21518,7 +21518,7 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
 
 
     case DB_TYPE_VARCHAR:
-      return "STRING";
+      return "VARCHAR";
 
     case DB_TYPE_CHAR:
       return "CHAR";
@@ -21540,13 +21540,13 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
       return "NCHAR";
 
     case DB_TYPE_VARNCHAR:
-      return "VARNCHAR";
+      return "NCHAR VARYING";
 
     case DB_TYPE_BIT:
       return "BIT";
 
     case DB_TYPE_VARBIT:
-      return "VARBIT";
+      return "BIT VARYING";
 
     case DB_TYPE_BLOB:
       return "BLOB";
