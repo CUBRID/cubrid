@@ -886,7 +886,7 @@ usage: %s applylogdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH of copied log volumes\n\
-      --max-mem-size=SIZE     maximum process SIZE in MB; max 1000\n
+      --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
 11 Cannot open output file `%s'\n

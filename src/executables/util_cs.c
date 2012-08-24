@@ -2600,7 +2600,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_applylog_usage;
     }
-  if (max_mem_size > 1000)
+  if (max_mem_size > 500)
     {
       goto print_applylog_usage;
     }
