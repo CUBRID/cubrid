@@ -64,19 +64,30 @@ namespace dbgw
    * when loading connector.xml file.
    */
   DBGWClient::DBGWClient(DBGWConfiguration &configuration,
-      const string &nameSpace) :
-    m_configuration(configuration), m_namespace(nameSpace), m_bClosed(false),
-    m_bValidClient(false)
+      const char *szNamespace) :
+    m_configuration(configuration), m_szNamespace(NULL), m_bClosed(false),
+    m_bValidClient(false), m_bAutocommit(true)
   {
     clearException();
 
     try
       {
+        if (szNamespace != NULL)
+          {
+            m_szNamespace = strdup(szNamespace);
+            if (m_szNamespace == NULL)
+              {
+                MemoryAllocationFail e(strlen(szNamespace));
+                DBGW_LOG_ERROR(e.what());
+                throw e;
+              }
+          }
+
         m_stVersion = m_configuration.getVersion();
         m_pConnector = m_configuration.getConnector(m_stVersion);
         m_pQueryMapper = m_configuration.getQueryMapper(m_stVersion);
 
-        m_executerList = m_pConnector->getExecuterList(nameSpace.c_str());
+        m_executerList = m_pConnector->getExecuterList(m_szNamespace);
         m_bValidClient = true;
       }
     catch (DBGWException &e)
@@ -91,6 +102,11 @@ namespace dbgw
 
     try
       {
+        if (m_szNamespace != NULL)
+          {
+            free(m_szNamespace);
+          }
+
         if (close() < 0)
           {
             throw getLastException();
@@ -102,13 +118,13 @@ namespace dbgw
       }
   }
 
-  bool DBGWClient::setForceValidateResult(const char *szNamespace)
+  bool DBGWClient::setForceValidateResult()
   {
     clearException();
 
     try
       {
-        m_pConnector->setForceValidateResult(szNamespace);
+        m_pConnector->setForceValidateResult(m_szNamespace);
         return true;
       }
     catch (DBGWException &e)
@@ -125,6 +141,8 @@ namespace dbgw
     try
       {
         checkClientIsValid();
+
+        m_bAutocommit = bAutocommit;
 
         DBGWException exception;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
@@ -269,7 +287,7 @@ namespace dbgw
                 if (pReturnResult == NULL && pInternalResult == NULL)
                   {
                     bValidateResult = m_pConnector->isValidateResult(
-                        m_namespace.c_str(), pQuery->getType());
+                        m_szNamespace, pQuery->getType());
                   }
 
                 if ((*it)->isIgnoreResult() == false)
@@ -415,6 +433,11 @@ namespace dbgw
      * }
      */
     return m_bClosed;
+  }
+
+  bool DBGWClient::isAutocommit() const
+  {
+    return m_bAutocommit;
   }
 
   const DBGWQueryMapper *DBGWClient::getQueryMapper() const

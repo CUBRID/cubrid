@@ -24,6 +24,7 @@
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
 #include "DBGWQuery.h"
+#include "DBGWPorting.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWConfiguration.h"
 
@@ -39,10 +40,10 @@ namespace dbgw
   class DBGWClient
   {
   public:
-    DBGWClient(DBGWConfiguration &configuration, const string &nameSpace);
+    DBGWClient(DBGWConfiguration &configuration, const char *szNamespace = NULL);
     virtual ~ DBGWClient();
 
-    bool setForceValidateResult(const char *szNamespace);
+    bool setForceValidateResult();
     bool setAutocommit(bool bAutocommit);
     bool commit();
     bool rollback();
@@ -52,6 +53,7 @@ namespace dbgw
 
   public:
     bool isClosed() const;
+    bool isAutocommit() const;
     const DBGWQueryMapper *getQueryMapper() const;
 
   private:
@@ -65,9 +67,10 @@ namespace dbgw
     DBGWConnector *m_pConnector;
     DBGWQueryMapper *m_pQueryMapper;
     DBGWExecuterList m_executerList;
-    string m_namespace;
+    char *m_szNamespace;
     bool m_bClosed;
     bool m_bValidClient;
+    bool m_bAutocommit;
 
   private:
     static const char *szVersionString;

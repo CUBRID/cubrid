@@ -165,13 +165,13 @@ namespace dbgw
 
   int DBGWScenario::execute(DBGWConfiguration &configuration)
   {
-    DBGWClient client(configuration, m_namespace);
+    DBGWClient client(configuration, m_namespace.c_str());
     if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
       {
         throw getLastException();
       }
 
-    client.setForceValidateResult(m_namespace.c_str());
+    client.setForceValidateResult();
     client.setAutocommit(false);
 
     DBGWQueryNameList queryNameList = client.getQueryMapper()->getQueryNameList();

@@ -24,6 +24,18 @@ namespace dbgw
 
   namespace system
   {
+
+#ifdef WINDOWS
+#ifndef DBGW_ADAPTER_API
+#define DECLSPECIFIER __declspec(dllexport)
+#else
+#define DECLSPECIFIER __declspec(dllimport)
+#endif
+#else
+#define __stdcall
+#define DECLSPECIFIER
+#endif
+
     const string getFileExtension(const string &fileName);
 
     class Directory

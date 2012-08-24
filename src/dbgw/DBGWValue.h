@@ -78,6 +78,7 @@ namespace dbgw
     int getLength() const;
     string toString() const;
     bool isNull() const;
+    size_t size() const;
 
   public:
     bool operator==(const DBGWValue &value) const;
@@ -97,7 +98,7 @@ namespace dbgw
     int m_nSize;
 
   private:
-    static const int DEFUALT_INC_SIZE;
+    static const int MAX_BOUNDARY_SIZE;
   };
 
   typedef shared_ptr<DBGWValue> DBGWValueSharedPtr;
@@ -114,25 +115,25 @@ namespace dbgw
     DBGWValueSet();
     virtual ~ DBGWValueSet();
 
-    void set(size_t nIndex, DBGWValueSharedPtr pValue);
-    void set(size_t nIndex, int nValue, bool bNull = false);
-    void set(size_t nIndex, const char *szValue, bool bNull = false);
-    void set(size_t nIndex, int64 lValue, bool bNull = false);
-    void set(size_t nIndex, char cValue, bool bNull = false);
+    bool set(size_t nIndex, DBGWValueSharedPtr pValue);
+    bool set(size_t nIndex, int nValue, bool bNull = false);
+    bool set(size_t nIndex, const char *szValue, bool bNull = false);
+    bool set(size_t nIndex, int64 lValue, bool bNull = false);
+    bool set(size_t nIndex, char cValue, bool bNull = false);
     bool set(size_t nIndex, DBGWValueType type, void *pValue, bool bNull = false,
         int nSize = -1);
-    void put(const char *szKey, DBGWValueSharedPtr pValue);
-    void put(const char *szKey, int nValue, bool bNull = false);
-    void put(const char *szKey, const char *szValue, bool bNull = false);
-    void put(const char *szKey, int64 lValue, bool bNull = false);
-    void put(const char *szKey, char cValue, bool bNull = false);
+    bool put(const char *szKey, DBGWValueSharedPtr pValue);
+    bool put(const char *szKey, int nValue, bool bNull = false);
+    bool put(const char *szKey, const char *szValue, bool bNull = false);
+    bool put(const char *szKey, int64 lValue, bool bNull = false);
+    bool put(const char *szKey, char cValue, bool bNull = false);
     bool put(const char *szKey, DBGWValueType type, void *pValue,
         bool bNull = false, int nSize = -1);
-    void put(DBGWValueSharedPtr pValue);
-    void put(int nValue, bool bNull = false);
-    void put(const char *szValue, bool bNull = false);
-    void put(int64 lValue, bool bNull = false);
-    void put(char cValue, bool bNull = false);
+    bool put(DBGWValueSharedPtr pValue);
+    bool put(int nValue, bool bNull = false);
+    bool put(const char *szValue, bool bNull = false);
+    bool put(int64 lValue, bool bNull = false);
+    bool put(char cValue, bool bNull = false);
     bool put(DBGWValueType type, const void *pValue, bool bNull = false,
         int nSize = -1);
     bool replace(size_t nIndex, DBGWValueType type, void *pValue, bool bNull,

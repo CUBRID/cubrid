@@ -33,8 +33,8 @@ dbgw3_include_HEADERS = \
         $(DBGW_DIR)/DBGWError.h \
         $(DBGW_DIR)/DBGWValue.h \
         $(DBGW_DIR)/DBGWDataBaseInterface.h \
-        $(DBGW_DIR)/DBGWCUBRIDInterface.h \
-        $(DBGW_DIR)/DBGWXMLParser.h \
+        $(DBGW_DIR)/DBGWPorting.h \
+        $(DBGW_DIR)/DBGWAdapter.h \
         $(DBGW_DIR)/DBGWQuery.h \
         $(DBGW_DIR)/DBGWLogger.h \
         $(DBGW_DIR)/DBGWConfiguration.h \
@@ -47,6 +47,7 @@ dbgw3_SOURCES = \
         $(DBGW_DIR)/DBGWDataBaseInterface.cpp \
         $(DBGW_DIR)/DBGWCUBRIDInterface.cpp \
         $(DBGW_DIR)/DBGWPorting.cpp \
+        $(DBGW_DIR)/DBGWAdapter.cpp \
         $(DBGW_DIR)/DBGWXMLParser.cpp \
         $(DBGW_DIR)/DBGWQuery.cpp \
         $(DBGW_DIR)/DBGWLogger.cpp \
@@ -75,6 +76,7 @@ dbgw3_query_tester_SOURCES = \
         $(DBGW_DIR)/DBGWDataBaseInterface.cpp \
         $(DBGW_DIR)/DBGWCUBRIDInterface.cpp \
         $(DBGW_DIR)/DBGWPorting.cpp \
+        $(DBGW_DIR)/DBGWAdapter.cpp \
         $(DBGW_DIR)/DBGWXMLParser.cpp \
         $(DBGW_DIR)/DBGWQuery.cpp \
         $(DBGW_DIR)/DBGWLogger.cpp \

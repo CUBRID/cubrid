@@ -185,6 +185,13 @@ namespace dbgw
     return DBGWException(context);
   }
 
+  NotExistNamespaceException::NotExistNamespaceException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_NOT_EXIST_SERVICE,
+            "There is no service to execute. please check your connector.xml"))
+  {
+  }
+
   NotExistNamespaceException::NotExistNamespaceException(
       const char *szNamespace) throw() :
     DBGWException(
@@ -283,14 +290,14 @@ namespace dbgw
   NotExistSetException::NotExistSetException(const char *szKey) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::VALUE_NOT_EXIST_SET,
-            (boost::format("The %s key is not exist in set.") % szKey).str()))
+            (boost::format("The value (%s key) dose not exist in set.") % szKey).str()))
   {
   }
 
   NotExistSetException::NotExistSetException(size_t nIndex) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::VALUE_NOT_EXIST_SET,
-            (boost::format("The value of position %d is not exist in set.")
+            (boost::format("The value (%d position) dose not exist in set.")
                 % nIndex).str()))
   {
   }
@@ -346,6 +353,20 @@ namespace dbgw
   {
   }
 
+  AlreadyInTransactionException::AlreadyInTransactionException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CLIENT_ALREADY_IN_TRANSACTION,
+            "The client is already in transaction."))
+  {
+  }
+
+  NotInTransactionException::NotInTransactionException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CLIENT_NOT_IN_TRANSACTION,
+            "The client is not in transaction."))
+  {
+  }
+
   NotAllowedNextException::NotAllowedNextException() throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::RESULT_NOT_ALLOWED_NEXT,
@@ -358,6 +379,15 @@ namespace dbgw
         DBGWExceptionFactory::create(
             DBGWErrorCode::RESULT_NOT_ALLOWED_GET_METADATA,
             "Only Select query is able to make metadata list."))
+  {
+  }
+
+
+  NotAllowedOperationException::NotAllowedOperationException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::RESULT_NOT_ALLOWED_OPERATION,
+            "You should call next() first."))
   {
   }
 
@@ -426,6 +456,13 @@ namespace dbgw
             (boost::format(
                 "The %s's value of lhs is different from that of rhs. %s != %s")
                 % szName % lhs % rhs).str()))
+  {
+  }
+
+  NoMoreDataException::NoMoreDataException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::RESULT_NO_MORE_DATA, "There is no more data."))
   {
   }
 
@@ -516,6 +553,20 @@ namespace dbgw
         DBGWExceptionFactory::create(
             DBGWErrorCode::EXTERNAL_MEMORY_ALLOC_FAIL,
             (boost::format("Failed to allocate memory size (%d).") % nSize).str()))
+  {
+  }
+
+  InvalidHandleException::InvalidHandleException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::EXTERNAL_DBGW_INVALID_HANDLE, "The handle is invalid."))
+  {
+  }
+
+  NotEnoughBufferException::NotEnoughBufferException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGWErrorCode::EXTERNAL_DBGW_NOT_ENOUGH_BUFFER, "Not enough buffer memory."))
   {
   }
 

@@ -71,7 +71,8 @@ namespace dbgw
 
     DBGWConnection::DBGWConnection(const string &groupName, const string &host,
         int nPort, const DBGWDBInfoHashMap &dbInfoMap) :
-      m_logger(groupName), m_host(host), m_nPort(nPort), m_dbInfoMap(dbInfoMap)
+      m_logger(groupName), m_bAutocommit(true), m_host(host), m_nPort(nPort),
+      m_dbInfoMap(dbInfoMap)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -105,6 +106,80 @@ namespace dbgw
        * 		setLastException(e);
        * }
        */
+    }
+
+    bool DBGWConnection::setAutocommit(bool bAutocommit)
+    {
+      clearException();
+
+      try
+        {
+          if (m_bAutocommit == bAutocommit && bAutocommit == false)
+            {
+              AlreadyInTransactionException e;
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+
+          doSetAutocommit(bAutocommit);
+
+          m_bAutocommit = bAutocommit;
+
+          return true;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+    }
+
+    bool DBGWConnection::commit()
+    {
+      clearException();
+
+      try
+        {
+          if (m_bAutocommit)
+            {
+              NotInTransactionException e;
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+
+          doCommit();
+
+          return true;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+    }
+
+    bool DBGWConnection::rollback()
+    {
+      clearException();
+
+      try
+        {
+          if (m_bAutocommit)
+            {
+              NotInTransactionException e;
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+
+          doRollback();
+
+          return true;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     const char *DBGWConnection::getHost() const
@@ -162,6 +237,25 @@ namespace dbgw
        * }
        */
       return m_dbInfoMap;
+    }
+
+    bool DBGWConnection::isAutocommit() const
+    {
+      /**
+       * We don't need to clear error because this api will not make error.
+       *
+       * clearException();
+       *
+       * try
+       * {
+       *                blur blur blur;
+       * }
+       * catch (DBGWException &e)
+       * {
+       *                setLastException(e);
+       * }
+       */
+      return m_bAutocommit;
     }
 
     DBGWPreparedStatement::DBGWPreparedStatement(DBGWBoundQuerySharedPtr pQuery) :
@@ -448,7 +542,8 @@ namespace dbgw
 
     DBGWResult::DBGWResult(const DBGWLogger &logger, int nAffectedRow,
         bool bNeedFetch) :
-      m_logger(logger), m_nAffectedRow(nAffectedRow), m_bNeedFetch(bNeedFetch)
+      m_logger(logger), m_nAffectedRow(nAffectedRow), m_bNeedFetch(bNeedFetch),
+      m_bNeverFetched(true)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -493,11 +588,15 @@ namespace dbgw
           if (!isNeedFetch())
             {
               NotAllowedNextException e;
-              DBGW_LOG_ERROR(e.what());
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
 
-          return doFirst();
+          doFirst();
+
+          m_bNeverFetched = true;
+
+          return true;
         }
       catch (DBGWException &e)
         {
@@ -522,6 +621,8 @@ namespace dbgw
 
           bExistMoreData = doNext();
 
+          m_bNeverFetched = false;
+
           if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
             {
               LogBuffer resultLogBuf("Result:");
@@ -539,6 +640,62 @@ namespace dbgw
         }
 
       return bExistMoreData;
+    }
+
+    const DBGWValue *DBGWResult::getValue(const char *szKey) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_bNeverFetched)
+            {
+              NotAllowedOperationException e;
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+
+          const DBGWValue *pValue = DBGWValueSet::getValue(szKey);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
+
+          return pValue;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return NULL;
+        }
+    }
+
+    const DBGWValue *DBGWResult::getValue(size_t nIndex) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_bNeverFetched)
+            {
+              NotAllowedOperationException e;
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+
+          const DBGWValue *pValue = DBGWValueSet::getValue(nIndex);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
+
+          return pValue;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return NULL;
+        }
     }
 
     const MetaDataList *DBGWResult::getMetaDataList() const

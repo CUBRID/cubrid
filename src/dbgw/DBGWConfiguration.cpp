@@ -881,10 +881,18 @@ namespace dbgw
 
   void DBGWConnector::setForceValidateResult(const char *szNamespace)
   {
+    if (m_serviceList.empty())
+      {
+        NotExistNamespaceException e;
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
     for (DBGWServiceList::const_iterator it = m_serviceList.begin(); it
         != m_serviceList.end(); it++)
       {
-        if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
+        if (szNamespace == NULL
+            || !strcmp((*it)->getNameSpace().c_str(), szNamespace))
           {
             return (*it)->setForceValidateResult();
           }
@@ -898,10 +906,18 @@ namespace dbgw
   bool DBGWConnector::isValidateResult(const char *szNamespace,
       DBGWQueryType::Enum type) const
   {
+    if (m_serviceList.empty())
+      {
+        NotExistNamespaceException e;
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
     for (DBGWServiceList::const_iterator it = m_serviceList.begin(); it
         != m_serviceList.end(); it++)
       {
-        if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
+        if (szNamespace == NULL
+            || !strcmp((*it)->getNameSpace().c_str(), szNamespace))
           {
             return (*it)->isValidateResult(type);
           }
@@ -914,10 +930,18 @@ namespace dbgw
 
   DBGWExecuterList DBGWConnector::getExecuterList(const char *szNamespace)
   {
+    if (m_serviceList.empty())
+      {
+        NotExistNamespaceException e;
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
     for (DBGWServiceList::iterator it = m_serviceList.begin(); it
         != m_serviceList.end(); it++)
       {
-        if (!strcmp((*it)->getNameSpace().c_str(), szNamespace))
+        if (szNamespace == NULL
+            || !strcmp((*it)->getNameSpace().c_str(), szNamespace))
           {
             return (*it)->getExecuterList();
           }

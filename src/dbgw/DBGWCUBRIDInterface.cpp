@@ -167,7 +167,7 @@ namespace dbgw
     DBGWCUBRIDConnection::DBGWCUBRIDConnection(const string &groupName,
         const string &host, int nPort, const DBGWDBInfoHashMap &dbInfoMap) :
       DBGWConnection(groupName, host, nPort, dbInfoMap), m_bClosed(false),
-      m_hCCIConnection(-1), m_bAutocommit(true)
+      m_hCCIConnection(-1)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -343,39 +343,25 @@ namespace dbgw
         }
     }
 
-    bool DBGWCUBRIDConnection::setAutocommit(bool bAutocommit)
+    void DBGWCUBRIDConnection::doSetAutocommit(bool bAutocommit)
     {
-      clearException();
-
-      try
+      int nResult;
+      if (bAutocommit)
         {
-          int nResult;
-          if (bAutocommit)
-            {
-              nResult = cci_set_autocommit(m_hCCIConnection, CCI_AUTOCOMMIT_TRUE);
-            }
-          else
-            {
-              nResult
-                = cci_set_autocommit(m_hCCIConnection, CCI_AUTOCOMMIT_FALSE);
-            }
-
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  "Failed to set autocommit.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          m_bAutocommit = bAutocommit;
-
-          return true;
+          nResult = cci_set_autocommit(m_hCCIConnection, CCI_AUTOCOMMIT_TRUE);
         }
-      catch (DBGWException &e)
+      else
         {
-          setLastException(e);
-          return false;
+          nResult
+            = cci_set_autocommit(m_hCCIConnection, CCI_AUTOCOMMIT_FALSE);
+        }
+
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to set autocommit.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
         }
     }
 
@@ -426,62 +412,40 @@ namespace dbgw
         }
     }
 
-    bool DBGWCUBRIDConnection::commit()
+    void DBGWCUBRIDConnection::doCommit()
     {
-      clearException();
-
-      try
+      T_CCI_ERROR cciError;
+      int nResult =
+          cci_end_tran(m_hCCIConnection, CCI_TRAN_COMMIT, &cciError);
+      if (nResult < 0)
         {
-          T_CCI_ERROR cciError;
-          int nResult =
-              cci_end_tran(m_hCCIConnection, CCI_TRAN_COMMIT, &cciError);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  cciError, "Failed to commit database.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-          DBGW_LOG_INFO(m_logger.getLogMessage("connection commit.").c_str());
-          return true;
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              cciError, "Failed to commit database.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
         }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
+      DBGW_LOG_INFO(m_logger.getLogMessage("connection commit.").c_str());
     }
 
-    bool DBGWCUBRIDConnection::rollback()
+    void DBGWCUBRIDConnection::doRollback()
     {
-      clearException();
-
-      try
+      T_CCI_ERROR cciError;
+      int nResult = cci_end_tran(m_hCCIConnection, CCI_TRAN_ROLLBACK,
+          &cciError);
+      if (nResult < 0)
         {
-          T_CCI_ERROR cciError;
-          int nResult = cci_end_tran(m_hCCIConnection, CCI_TRAN_ROLLBACK,
-              &cciError);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  cciError, "Failed to rollback database.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-          DBGW_LOG_INFO(m_logger.getLogMessage("connection rollback.").c_str());
-          return true;
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              cciError, "Failed to rollback database.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
         }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
+      DBGW_LOG_INFO(m_logger.getLogMessage("connection rollback.").c_str());
     }
 
     string DBGWCUBRIDConnection::dump()
     {
       boost::format status("[DUMP][CONN] DBGW(AU : %d), CCI(AU : %d)");
-      status % m_bAutocommit % cci_get_autocommit(m_hCCIConnection);
+      status % isAutocommit() % cci_get_autocommit(m_hCCIConnection);
       return status.str();
     }
 
@@ -588,7 +552,7 @@ namespace dbgw
             default:
               CUBRIDException e = CUBRIDExceptionFactory::create(
                   "Failed to bind parameter. invalid parameter type.");
-              DBGW_LOG_ERROR(e.what());
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
 
@@ -754,11 +718,9 @@ namespace dbgw
         }
     }
 
-    bool DBGWCUBRIDResult::doFirst()
+    void DBGWCUBRIDResult::doFirst()
     {
       m_cursorPos = CCI_CURSOR_FIRST;
-
-      return true;
     }
 
     bool DBGWCUBRIDResult::doNext()
@@ -770,16 +732,29 @@ namespace dbgw
         }
 
       T_CCI_ERROR cciError;
-      int nResult;
-      if ((nResult = cci_cursor(m_hCCIRequest, 1, (T_CCI_CURSOR_POS) m_cursorPos,
-          &cciError)) == 0)
+      int nResult = cci_cursor(m_hCCIRequest, 1, (T_CCI_CURSOR_POS) m_cursorPos,
+          &cciError);
+      if (nResult == CCI_ER_NO_MORE_DATA)
+        {
+          NoMoreDataException e;
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+      else if (nResult != CCI_ER_NO_ERROR)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
+              "Failed to move cursor.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+      else
         {
           nResult = cci_fetch(m_hCCIRequest, &cciError);
           if (nResult != CCI_ER_NO_ERROR)
             {
               CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
                   cciError, "Failed to fetch data.");
-              DBGW_LOG_ERROR(e.what());
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
 
@@ -787,18 +762,6 @@ namespace dbgw
 
           m_cursorPos = CCI_CURSOR_CURRENT;
           return true;
-        }
-
-      if (nResult == CCI_ER_NO_MORE_DATA)
-        {
-          return false;
-        }
-      else
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
-              "Failed to move cursor.");
-          DBGW_LOG_ERROR(e.what());
-          throw e;
         }
     }
 
@@ -812,7 +775,7 @@ namespace dbgw
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(
               "Cannot get the cci col info.");
-          DBGW_LOG_ERROR(e.what());
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
 
@@ -838,7 +801,7 @@ namespace dbgw
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(e.what());
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
 
@@ -857,7 +820,7 @@ namespace dbgw
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(e.what());
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
 
@@ -877,7 +840,7 @@ namespace dbgw
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(e.what());
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
           throw e;
         }
 

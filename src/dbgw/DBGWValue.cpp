@@ -46,7 +46,7 @@ namespace dbgw
       }
   }
 
-  const int DBGWValue::DEFUALT_INC_SIZE = 1024;
+  const int DBGWValue::MAX_BOUNDARY_SIZE = 1024 * 1024 * 1;   // 1 MByte
 
   DBGWValue::DBGWValue() :
     m_type(DBGW_VAL_TYPE_UNDEFINED), m_bNull(false), m_nSize(-1)
@@ -456,6 +456,11 @@ namespace dbgw
       }
   }
 
+  size_t DBGWValue::size() const
+  {
+    return m_nSize;
+  }
+
   bool DBGWValue::operator==(const DBGWValue &value) const
   {
     clearException();
@@ -536,7 +541,15 @@ namespace dbgw
 
         if (m_nSize <= nSize)
           {
-            m_nSize = nSize + DEFUALT_INC_SIZE;
+            if (nSize > MAX_BOUNDARY_SIZE)
+              {
+                m_nSize = nSize;
+              }
+            else
+              {
+                m_nSize = nSize * 2;
+              }
+
             if (m_stValue.szValue != NULL)
               {
                 free(m_stValue.szValue);
@@ -644,7 +657,7 @@ namespace dbgw
     clear();
   }
 
-  void DBGWValueSet::set(size_t nIndex, DBGWValueSharedPtr pValue)
+  bool DBGWValueSet::set(size_t nIndex, DBGWValueSharedPtr pValue)
   {
     /**
      * We don't need to clear error because this api will not make error.
@@ -671,127 +684,136 @@ namespace dbgw
       }
 
     m_valueList[nIndex] = pValue;
+    return true;
   }
 
-  void DBGWValueSet::set(size_t nIndex, int nValue, bool bNull)
+  bool DBGWValueSet::set(size_t nIndex, int nValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    if (m_valueList.size() <= nIndex)
-      {
-        m_valueList.resize(nIndex + 1);
-      }
+    clearException();
 
-    if (m_valueList[nIndex] != NULL)
+    try
       {
-        removeIndexMap(nIndex);
-      }
+        if (m_valueList.size() <= nIndex)
+          {
+            m_valueList.resize(nIndex + 1);
+          }
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-    m_valueList[nIndex] = p;
+        if (m_valueList[nIndex] != NULL)
+          {
+            removeIndexMap(nIndex);
+          }
+
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList[nIndex] = p;
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
-  void DBGWValueSet::set(size_t nIndex, const char *szValue, bool bNull)
+  bool DBGWValueSet::set(size_t nIndex, const char *szValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    if (m_valueList.size() <= nIndex)
-      {
-        m_valueList.resize(nIndex + 1);
-      }
+    clearException();
 
-    if (m_valueList[nIndex] != NULL)
+    try
       {
-        removeIndexMap(nIndex);
-      }
+        if (m_valueList.size() <= nIndex)
+          {
+            m_valueList.resize(nIndex + 1);
+          }
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
-        bNull));
-    m_valueList[nIndex] = p;
+        if (m_valueList[nIndex] != NULL)
+          {
+            removeIndexMap(nIndex);
+          }
+
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
+            bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList[nIndex] = p;
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
-  void DBGWValueSet::set(size_t nIndex, int64 lValue, bool bNull)
+  bool DBGWValueSet::set(size_t nIndex, int64 lValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    if (m_valueList.size() <= nIndex)
-      {
-        m_valueList.resize(nIndex + 1);
-      }
+    clearException();
 
-    if (m_valueList[nIndex] != NULL)
+    try
       {
-        removeIndexMap(nIndex);
-      }
+        if (m_valueList.size() <= nIndex)
+          {
+            m_valueList.resize(nIndex + 1);
+          }
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-    m_valueList[nIndex] = p;
+        if (m_valueList[nIndex] != NULL)
+          {
+            removeIndexMap(nIndex);
+          }
+
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList[nIndex] = p;
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
-  void DBGWValueSet::set(size_t nIndex, char cValue, bool bNull)
+  bool DBGWValueSet::set(size_t nIndex, char cValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    if (m_valueList.size() <= nIndex)
-      {
-        m_valueList.resize(nIndex + 1);
-      }
+    clearException();
 
-    if (m_valueList[nIndex] != NULL)
+    try
       {
-        removeIndexMap(nIndex);
-      }
+        if (m_valueList.size() <= nIndex)
+          {
+            m_valueList.resize(nIndex + 1);
+          }
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-    m_valueList[nIndex] = p;
+        if (m_valueList[nIndex] != NULL)
+          {
+            removeIndexMap(nIndex);
+          }
+
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList[nIndex] = p;
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
   bool DBGWValueSet::set(size_t nIndex, DBGWValueType type, void *pValue,
@@ -815,6 +837,7 @@ namespace dbgw
           {
             throw getLastException();
           }
+
         m_valueList[nIndex] = p;
         return true;
       }
@@ -825,7 +848,7 @@ namespace dbgw
       }
   }
 
-  void DBGWValueSet::put(const char *szKey, DBGWValueSharedPtr pValue)
+  bool DBGWValueSet::put(const char *szKey, DBGWValueSharedPtr pValue)
   {
     /**
      * We don't need to clear error because this api will not make error.
@@ -843,90 +866,21 @@ namespace dbgw
      */
     m_indexMap[szKey] = m_valueList.size();
     m_valueList.push_back(pValue);
+    return true;
   }
 
-  void DBGWValueSet::put(const char *szKey, int nValue, bool bNull)
-  {
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-    m_indexMap[szKey] = m_valueList.size();
-    m_valueList.push_back(p);
-  }
-
-  void DBGWValueSet::put(const char *szKey, const char *szValue, bool bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
-        bNull));
-    m_indexMap[szKey] = m_valueList.size();
-    m_valueList.push_back(p);
-  }
-
-  void DBGWValueSet::put(const char *szKey, int64 lValue, bool bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-    m_indexMap[szKey] = m_valueList.size();
-    m_valueList.push_back(p);
-  }
-
-  void DBGWValueSet::put(const char *szKey, char cValue, bool bNull)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-    m_indexMap[szKey] = m_valueList.size();
-    m_valueList.push_back(p);
-  }
-
-  bool DBGWValueSet::put(const char *szKey, DBGWValueType type, void *pValue,
-      bool bNull, int nSize)
+  bool DBGWValueSet::put(const char *szKey, int nValue, bool bNull)
   {
     clearException();
+
     try
       {
-        DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
         if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
           {
             throw getLastException();
           }
+
         m_indexMap[szKey] = m_valueList.size();
         m_valueList.push_back(p);
         return true;
@@ -938,7 +892,101 @@ namespace dbgw
       }
   }
 
-  void DBGWValueSet::put(DBGWValueSharedPtr pValue)
+  bool DBGWValueSet::put(const char *szKey, const char *szValue, bool bNull)
+  {
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
+            bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_indexMap[szKey] = m_valueList.size();
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::put(const char *szKey, int64 lValue, bool bNull)
+  {
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_indexMap[szKey] = m_valueList.size();
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::put(const char *szKey, char cValue, bool bNull)
+  {
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_indexMap[szKey] = m_valueList.size();
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::put(const char *szKey, DBGWValueType type, void *pValue,
+      bool bNull, int nSize)
+  {
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_indexMap[szKey] = m_valueList.size();
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValueSet::put(DBGWValueSharedPtr pValue)
   {
     /**
      * We don't need to clear error because this api will not make error.
@@ -955,94 +1003,103 @@ namespace dbgw
      * }
      */
     m_valueList.push_back(pValue);
+    return true;
   }
 
-  void DBGWValueSet::put(int nValue, bool bNull)
+  bool DBGWValueSet::put(int nValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-    m_valueList.push_back(p);
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
-  void DBGWValueSet::put(const char *szValue, bool bNull)
+  bool DBGWValueSet::put(const char *szValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
+    clearException();
 
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
-        bNull));
-    m_valueList.push_back(p);
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
+            bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
-  void DBGWValueSet::put(int64 lValue, bool bNull)
+  bool DBGWValueSet::put(int64 lValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-    m_valueList.push_back(p);
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
-  void DBGWValueSet::put(char cValue, bool bNull)
+  bool DBGWValueSet::put(char cValue, bool bNull)
   {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-    m_valueList.push_back(p);
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
+        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList.push_back(p);
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
   }
 
   bool DBGWValueSet::put(DBGWValueType type, const void *pValue,
       bool bNull, int nSize)
   {
     clearException();
+
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
@@ -1050,6 +1107,7 @@ namespace dbgw
           {
             throw getLastException();
           }
+
         m_valueList.push_back(p);
         return true;
       }
@@ -1064,6 +1122,7 @@ namespace dbgw
       void *pValue, bool bNull, int nSize)
   {
     clearException();
+
     try
       {
         if (m_valueList.size() <= nIndex || m_valueList[nIndex] == NULL)
@@ -1300,7 +1359,7 @@ namespace dbgw
 
     try
       {
-        if (nIndex >= m_valueList.size())
+        if (nIndex >= m_valueList.size() || m_valueList[nIndex] == NULL)
           {
             NotExistSetException e(nIndex);
             DBGW_LOG_ERROR(e.what());

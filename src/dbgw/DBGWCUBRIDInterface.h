@@ -61,10 +61,12 @@ namespace dbgw
       bool close();
       DBGWPreparedStatementSharedPtr preparedStatement(
           const DBGWBoundQuerySharedPtr p_query);
-      bool setAutocommit(bool bAutocommit);
       bool setIsolation(DBGW_TRAN_ISOLATION isolation);
-      bool commit();
-      bool rollback();
+
+    protected:
+      void doSetAutocommit(bool bAutocommit);
+      void doCommit();
+      void doRollback();
 
     public:
       /* For DEBUG */
@@ -73,7 +75,6 @@ namespace dbgw
     private:
       bool m_bClosed;
       int m_hCCIConnection;
-      bool m_bAutocommit;
     };
 
     /**
@@ -116,7 +117,7 @@ namespace dbgw
       virtual ~ DBGWCUBRIDResult();
 
     protected:
-      bool doFirst();
+      void doFirst();
       bool doNext();
 
     private:

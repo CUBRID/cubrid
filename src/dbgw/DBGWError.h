@@ -36,6 +36,7 @@ namespace dbgw
       CONF_NOT_YET_LOADED                       = -22104,
       CONF_NOT_EXIST_VERSION                    = -22105,
       CONF_NOT_EXIST_FILE                       = -22106,
+      CONF_NOT_EXIST_SERVICE                    = -22107,
 
       SQL_NOT_EXIST_CONN                        = -22200,
       SQL_INVALID_SQL                           = -22201,
@@ -49,6 +50,8 @@ namespace dbgw
 
       CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
       CLIENT_INVALID_CLIENT                     = -22401,
+      CLIENT_ALREADY_IN_TRANSACTION             = -22402,
+      CLIENT_NOT_IN_TRANSACTION                 = -22403,
 
       RESULT_NOT_ALLOWED_NEXT                   = -22500,
       RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
@@ -56,6 +59,7 @@ namespace dbgw
       RESULT_VALIDATE_FAIL                      = -22503,
       RESULT_VALIDATE_TYPE_FAIL                 = -22504,
       RESULT_VALIDATE_VALUE_FAIL                = -22505,
+      RESULT_NO_MORE_DATA                       = -22506,
 
       INTERFACE_ERROR                           = -22600,
 
@@ -70,7 +74,11 @@ namespace dbgw
 
       EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
       EXTERNAL_STANDARD_ERROR                   = -22801,
-      EXTERNAL_MEMORY_ALLOC_FAIL                = -22802
+      EXTERNAL_MEMORY_ALLOC_FAIL                = -22802,
+      EXTERNAL_DBGW_INVALID_HANDLE              = -22803,
+      EXTERNAL_DBGW_NOT_ENOUGH_BUFFER           = -22804,
+
+      OLD_DBGW_INTERFACE_ERROR                  = -22900
     };
 
   }
@@ -128,6 +136,7 @@ namespace dbgw
   class NotExistNamespaceException : public DBGWException
   {
   public:
+    NotExistNamespaceException() throw();
     NotExistNamespaceException(const char *szNamespace) throw();
   };
 
@@ -230,6 +239,18 @@ namespace dbgw
     InvalidClientException() throw();
   };
 
+  class AlreadyInTransactionException : public DBGWException
+  {
+  public:
+    AlreadyInTransactionException() throw();
+  };
+
+  class NotInTransactionException : public DBGWException
+  {
+  public:
+    NotInTransactionException() throw();
+  };
+
   class NotAllowedNextException : public DBGWException
   {
   public:
@@ -245,6 +266,7 @@ namespace dbgw
   class NotAllowedOperationException : public DBGWException
   {
   public:
+    NotAllowedOperationException() throw();
     NotAllowedOperationException(const char *szOperation,
         const char *szQueryType) throw();
   };
@@ -270,6 +292,12 @@ namespace dbgw
     ValidateValueFailException(const char *szName, const string &lhs) throw();
     ValidateValueFailException(const char *szName, const string &lhs,
         const string &rhs) throw();
+  };
+
+  class NoMoreDataException : public DBGWException
+  {
+  public:
+    NoMoreDataException() throw();
   };
 
   class CreateFailParserExeception : public DBGWException
@@ -337,6 +365,18 @@ namespace dbgw
   {
   public:
     MemoryAllocationFail(int nSize) throw();
+  };
+
+  class InvalidHandleException : public DBGWException
+  {
+  public:
+    InvalidHandleException() throw();
+  };
+
+  class NotEnoughBufferException : public DBGWException
+  {
+  public:
+    NotEnoughBufferException() throw();
   };
 
 }

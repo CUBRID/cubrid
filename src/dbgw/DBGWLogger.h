@@ -86,7 +86,7 @@ namespace dbgw
 #define DBGW_LOG_INFO(LOG) \
   do { \
     if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
-      DBGWLogger::writeLog(__FILE__, __LINE__, CCI_LOG_LEVEL_WARN, LOG); \
+      DBGWLogger::writeLog(__FILE__, __LINE__, CCI_LOG_LEVEL_INFO, LOG); \
     } \
   } while (false)
 

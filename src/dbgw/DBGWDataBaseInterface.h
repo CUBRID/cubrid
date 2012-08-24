@@ -56,15 +56,21 @@ namespace dbgw
       virtual bool close() = 0;
       virtual DBGWPreparedStatementSharedPtr preparedStatement(
           const DBGWBoundQuerySharedPtr p_query) = 0;
-      virtual bool setAutocommit(bool bAutocommit) = 0;
+      bool setAutocommit(bool bAutocommit);
       virtual bool setIsolation(DBGW_TRAN_ISOLATION isolation) = 0;
-      virtual bool commit() = 0;
-      virtual bool rollback() = 0;
+      bool commit();
+      bool rollback();
 
     public:
       virtual const char *getHost() const;
       virtual int getPort() const;
       const DBGWDBInfoHashMap &getDBInfoMap() const;
+      bool isAutocommit() const;
+
+    protected:
+      virtual void doSetAutocommit(bool bAutocommit) = 0;
+      virtual void doCommit() = 0;
+      virtual void doRollback() = 0;
 
     protected:
       const DBGWLogger m_logger;
@@ -74,6 +80,7 @@ namespace dbgw
       virtual string dump() = 0;
 
     private:
+      bool m_bAutocommit;
       string m_host;
       int m_nPort;
       const DBGWDBInfoHashMap &m_dbInfoMap;
@@ -144,6 +151,8 @@ namespace dbgw
       bool next();
 
     public:
+      virtual const DBGWValue *getValue(const char *szKey) const;
+      virtual const DBGWValue *getValue(size_t nIndex) const;
       bool isNeedFetch() const;
       const MetaDataList *getMetaDataList() const;
       int getRowCount() const;
@@ -159,7 +168,7 @@ namespace dbgw
           DBGWValueType type, int orgType) = 0;
       void makeMetaData();
       virtual void doMakeMetadata(MetaDataList &metaList) = 0;
-      virtual bool doFirst() = 0;
+      virtual void doFirst() = 0;
       virtual bool doNext() = 0;
 
     protected:
@@ -171,6 +180,7 @@ namespace dbgw
     private:
       int m_nAffectedRow;
       bool m_bNeedFetch;
+      bool m_bNeverFetched;
       MetaDataList m_metaList;
     };
 
