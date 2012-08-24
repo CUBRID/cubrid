@@ -2216,7 +2216,7 @@ la_apply_pre (LOG_LSA * final)
     {
       la_Info.redo_unzip_ptr =
 	log_zip_alloc (la_Info.act_log.db_iopagesize, false);
-      if (la_Info.undo_unzip_ptr == NULL)
+      if (la_Info.redo_unzip_ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
@@ -3828,7 +3828,6 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 
   char *undo_data = NULL;
   LOG_ZIP *redo_unzip_data = NULL;
-  LOG_ZIP *undo_unzip_data = NULL;
   int rec_len = 0;
 
   bool is_diff = false;
@@ -3837,7 +3836,6 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
   LSA_COPY (&lsa, &prev_lrec->forw_lsa);
   prev_log = *(struct log_undoredo **) logs;
 
-  undo_unzip_data = la_Info.undo_unzip_ptr;
   redo_unzip_data = la_Info.redo_unzip_ptr;
 
   while (true)
@@ -6036,8 +6034,17 @@ la_shutdown (void)
 
   free_and_init (la_Info.log_data);
   free_and_init (la_Info.rec_type);
-  log_zip_free (la_Info.undo_unzip_ptr);
-  log_zip_free (la_Info.redo_unzip_ptr);
+
+  if (la_Info.undo_unzip_ptr != NULL)
+    {
+      log_zip_free (la_Info.undo_unzip_ptr);
+      la_Info.undo_unzip_ptr = NULL;
+    }
+  if (la_Info.redo_unzip_ptr != NULL)
+    {
+      log_zip_free (la_Info.redo_unzip_ptr);
+      la_Info.redo_unzip_ptr = NULL;
+    }
 
   free_and_init (la_Info.cache_pb->buffer_area);
   free_and_init (la_Info.cache_pb->log_buffer);

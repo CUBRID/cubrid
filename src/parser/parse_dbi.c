@@ -835,6 +835,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values,
   int indx;
 
   assert (parser != NULL);
+  db_make_null (&e_val);
 
   for (element = values, indx = 0;
        element != NULL; element = element->next, indx++)
@@ -846,6 +847,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values,
 	      != NO_ERROR)
 	    {
 	      PT_ERRORc (parser, element, db_error_string (3));
+	      pr_clear_value (&e_val);
 	      return NULL;
 	    }
 	}
@@ -858,6 +860,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values,
 	   * cannot be made, because this is not a constant sequence.
 	   * Yeah, this is a kludge....
 	   */
+	  pr_clear_value (&e_val);
 	  return NULL;
 	}
       /* db_seq_add() clones the value so we can clear the element value
