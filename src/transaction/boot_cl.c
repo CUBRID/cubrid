@@ -3153,19 +3153,89 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "page_id", "bigint", NULL);
+  error_code =
+    smt_add_attribute (def, "committed_lsa_pageid", "bigint", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "offset", "integer", NULL);
+  error_code =
+    smt_add_attribute (def, "committed_lsa_offset", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code =
+    smt_add_attribute (def, "committed_rep_pageid", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code =
+    smt_add_attribute (def, "committed_rep_offset", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "append_lsa_pageid", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "append_lsa_offset", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "eof_lsa_pageid", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "eof_lsa_offset", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "final_lsa_pageid", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "final_lsa_offset", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "required_lsa_pageid", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "required_lsa_offset", "bigint", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
   error_code = smt_add_attribute (def, "log_record_time", "datetime", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "log_commit_time", "datetime", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3219,12 +3289,6 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "required_page_id", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
   error_code = smt_add_attribute (def, "start_time", "datetime", NULL);
   if (error_code != NO_ERROR)
     {
@@ -3257,13 +3321,15 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code = db_constrain_non_null (class_mop, "page_id", 0, 1);
+  error_code =
+    db_constrain_non_null (class_mop, "committed_lsa_pageid", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = db_constrain_non_null (class_mop, "offset", 0, 1);
+  error_code =
+    db_constrain_non_null (class_mop, "committed_lsa_offset", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;

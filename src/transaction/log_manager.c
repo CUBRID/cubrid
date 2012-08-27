@@ -226,9 +226,20 @@ static void log_append_topope_commit_client_loose_ends (THREAD_ENTRY *
 static void log_append_topope_abort_client_loose_ends (THREAD_ENTRY *
 						       thread_p,
 						       LOG_TDES * tdes);
+static void log_append_repl_info_internal (THREAD_ENTRY * thread_p,
+					   LOG_TDES * tdes, bool is_commit,
+					   int with_lock);
 static void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				  bool is_commit);
+static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p,
+					    LOG_TDES * tdes, bool is_commit);
+static void log_append_unlock_log_internal (THREAD_ENTRY * thread_p,
+					    LOG_TDES * tdes, int with_lock);
 static void log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_append_unlock_log_with_lock (THREAD_ENTRY * thread_p,
+					     LOG_TDES * tdes);
+static void log_append_repl_info_and_unlock_log (THREAD_ENTRY * thread_p,
+						 LOG_TDES * tdes);
 static void log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 LOG_RECTYPE iscommitted);
 static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p,
@@ -4800,19 +4811,20 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 }
 
 /*
- * log_append_repl_info - APPEND REPLICATION LOG RECORD
+ * log_append_repl_info_internal - APPEND REPLICATION LOG RECORD
  *
  * return: nothing
  *
  *   thread_p(in):
  *   tdes(in): State structure of transaction being committed/aborted.
  *   is_commit(in):
+ *   with_lock(in):
  *
  * NOTE:critical section is set by its caller function.
  */
 static void
-log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		      bool is_commit)
+log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+			       bool is_commit, int with_lock)
 {
   LOG_REPL_RECORD *repl_rec;
   struct log_replication *log;
@@ -4864,7 +4876,15 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	      log->length = repl_rec->length;
 	      log->rcvindex = repl_rec->rcvindex;
 
-	      (void) prior_lsa_next_record (thread_p, node, tdes);
+	      if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
+		{
+		  (void) prior_lsa_next_record_with_lock (thread_p, node,
+							  tdes);
+		}
+	      else
+		{
+		  (void) prior_lsa_next_record (thread_p, node, tdes);
+		}
 
 	      repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
 	    }
@@ -4875,17 +4895,35 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 }
 
+static void
+log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+		      bool is_commit)
+{
+  return log_append_repl_info_internal (thread_p, tdes, is_commit,
+					LOG_PRIOR_LSA_WITHOUT_LOCK);
+}
+
+static void
+log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				bool is_commit)
+{
+  return log_append_repl_info_internal (thread_p, tdes, is_commit,
+					LOG_PRIOR_LSA_WITH_LOCK);
+}
+
 /*
- * log_append_unlock_log - APPEND UNLOCK LOG
+ * log_append_unlock_log_internal - APPEND UNLOCK LOG
  *
  * return: nothing
  *
  *   tdes(in):  State structure of transaction being committed/aborted.
+ *   with_lock(in):  
  *
  * NOTE:critical section is set by its caller function.
  */
 static void
-log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+log_append_unlock_log_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				int with_lock)
 {
   LOG_PRIOR_NODE *node;
 
@@ -4897,7 +4935,45 @@ log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       return;
     }
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
+    {
+      (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
+    }
+  else
+    {
+      (void) prior_lsa_next_record (thread_p, node, tdes);
+    }
+
+  return;
+}
+
+static void
+log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  return log_append_unlock_log_internal (thread_p, tdes,
+					 LOG_PRIOR_LSA_WITHOUT_LOCK);
+}
+
+static void
+log_append_unlock_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  return log_append_unlock_log_internal (thread_p, tdes,
+					 LOG_PRIOR_LSA_WITH_LOCK);
+}
+
+static void
+log_append_repl_info_and_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+
+  log_append_repl_info_with_lock (thread_p, tdes, true);
+  log_append_unlock_log_with_lock (thread_p, tdes);
+
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+
+  return;
 }
 
 /*
@@ -5890,9 +5966,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  /* for the replication agent guarantee the order of transaction */
-	  log_append_repl_info (thread_p, tdes, true);
-
-	  log_append_unlock_log (thread_p, tdes);
+	  log_append_repl_info_and_unlock_log (thread_p, tdes);
 	}
 
       if (retain_lock != true)

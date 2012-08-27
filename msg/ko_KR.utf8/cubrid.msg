@@ -1103,7 +1103,7 @@ $ LOADDB
 1035 log applier: log applier의 메모리 크기(%1$d MB)가 최대 메모리 크기(%2$d MB) 보다 크거나 시작 시 메모리 크기(%3$d MB) 보다 2배 이상 증가하였습니다. required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
 1036 log applier: log applier가 시그널에 의해 종료됩니다.
 1037 log writer: log writer가 시그널에 의해 종료됩니다.
-1038 log applier: log applier가 시작되었습니다. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d.
+1038 log applier: log applier가 시작되었습니다. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
 1039 log writer: log writer가 시작되었습니다. mode: %1$d.
 1040 HA generic: %1$s.
 1041 구문 "%1$s" 수행 시 지정한 크기를 초과하는 문자열에서 잘림이 발생하였습니다.

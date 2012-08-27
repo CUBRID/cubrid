@@ -387,6 +387,12 @@ enum LOG_HA_FILESTAT
   LOG_HA_FILESTAT_SYNCHRONIZED = 2
 };
 
+enum LOG_PRIOR_LSA_LOCK
+{
+  LOG_PRIOR_LSA_WITHOUT_LOCK = 0,
+  LOG_PRIOR_LSA_WITH_LOCK = 1
+};
+
 /*
  * LOG PAGE
  */
@@ -1622,11 +1628,17 @@ extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *
 							LOG_RCVINDEX rcvindex,
 							LOG_DATA_ADDR * addr,
 							const int num_ucrumbs,
-							const LOG_CRUMB * ucrumbs,
+							const LOG_CRUMB *
+							ucrumbs,
 							const int num_rcrumbs,
-							const LOG_CRUMB * rcrumbs);
+							const LOG_CRUMB *
+							rcrumbs);
 extern LOG_LSA prior_lsa_next_record (THREAD_ENTRY * thread_p,
 				      LOG_PRIOR_NODE * node, LOG_TDES * tdes);
+extern LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY * thread_p,
+						LOG_PRIOR_NODE * node,
+						LOG_TDES * tdes);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void logpb_remove_append (LOG_TDES * tdes);
 #endif

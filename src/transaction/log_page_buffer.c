@@ -197,7 +197,6 @@ static int rv;
       log_Gl.append.prev_lsa.offset))
 
 
-
 /* LOG BUFFER STRUCTURE */
 
 /* WARNING:
@@ -471,6 +470,11 @@ static int prior_lsa_gen_redo_record_from_crumbs (THREAD_ENTRY * thread_p,
 						  LOG_DATA_ADDR * addr,
 						  int num_crumbs,
 						  LOG_CRUMB * crumbs);
+static LOG_LSA
+prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
+				LOG_PRIOR_NODE * node, LOG_TDES * tdes,
+				int with_lock);
+
 
 static void logpb_start_append (THREAD_ENTRY * thread_p,
 				LOG_RECORD_HEADER * header);
@@ -4407,21 +4411,26 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p,
 }
 
 /*
- * prior_lsa_next_record -
+ * prior_lsa_next_record_internal -
  *
  * return: start lsa of log record
  *
  *   node(in/out):
  *   tdes(in/out):
+ *   with_lock(in):
  */
-LOG_LSA
-prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
-		       LOG_TDES * tdes)
+static LOG_LSA
+prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
+				LOG_PRIOR_NODE * node, LOG_TDES * tdes,
+				int with_lock)
 {
   LOG_LSA start_lsa;
   int rv;
 
-  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
+    {
+      rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+    }
 
   prior_lsa_start_append (thread_p, node, tdes);
 
@@ -4456,33 +4465,52 @@ prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 
   log_Gl.prior_info.list_size += (sizeof (LOG_PRIOR_NODE) + node->data_header_length + node->ulength + node->rlength);	/* bytes */
 
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
-
-  if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
+  if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
-      mnt_prior_lsa_list_maxed (thread_p);
+      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+
+      if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
+	{
+	  mnt_prior_lsa_list_maxed (thread_p);
 
 #if defined(SERVER_MODE)
-      if (!log_is_in_crash_recovery ())
-	{
-	  thread_wakeup_log_flush_thread ();
+	  if (!log_is_in_crash_recovery ())
+	    {
+	      thread_wakeup_log_flush_thread ();
 
-	  thread_sleep (0, 1000);	/* 1msec */
-	}
-      else
-	{
+	      thread_sleep (0, 1000);	/* 1msec */
+	    }
+	  else
+	    {
+	      LOG_CS_ENTER (thread_p);
+	      logpb_prior_lsa_append_all_list (thread_p);
+	      LOG_CS_EXIT ();
+	    }
+#else
 	  LOG_CS_ENTER (thread_p);
 	  logpb_prior_lsa_append_all_list (thread_p);
 	  LOG_CS_EXIT ();
-	}
-#else
-      LOG_CS_ENTER (thread_p);
-      logpb_prior_lsa_append_all_list (thread_p);
-      LOG_CS_EXIT ();
 #endif
+	}
     }
 
   return start_lsa;
+}
+
+LOG_LSA
+prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+		       LOG_TDES * tdes)
+{
+  return prior_lsa_next_record_internal (thread_p, node, tdes,
+					 LOG_PRIOR_LSA_WITHOUT_LOCK);
+}
+
+LOG_LSA
+prior_lsa_next_record_with_lock (THREAD_ENTRY * thread_p,
+				 LOG_PRIOR_NODE * node, LOG_TDES * tdes)
+{
+  return prior_lsa_next_record_internal (thread_p, node, tdes,
+					 LOG_PRIOR_LSA_WITH_LOCK);
 }
 
 /*
