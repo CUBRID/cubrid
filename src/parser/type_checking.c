@@ -8516,6 +8516,27 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 				  arg2->data_type);
 	    }
 	  break;
+	case PT_TIMEDIFF:
+	  if (PT_IS_DATE_TIME_TYPE (arg1_type)
+	      && PT_IS_DATE_TIME_TYPE (arg2_type))
+	    {
+	      if (arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_DATE)
+		{
+		  if (arg2_type != arg1_type)
+		    {
+		      node->type_enum = PT_TYPE_NONE;
+		    }
+		}
+	      else
+		{
+		  /* arg1_type is PT_TYPE_DATETIME or PT_TYPE_TIMESTAMP. */
+		  if (arg2_type == PT_TYPE_TIME || arg2_type == PT_TYPE_DATE)
+		    {
+		      node->type_enum == PT_TYPE_NONE;
+		    }
+		}
+	    }
+	  break;
 	default:
 	  break;
 	}
@@ -16142,7 +16163,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       error = db_time_diff (arg1, arg2, result);
       if (error < 0)
 	{
-	  PT_ERRORc (parser, o1, er_msg ());
+	  PT_ERRORc (parser, expr, er_msg ());
 	  return 0;
 	}
       else

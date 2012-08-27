@@ -22019,7 +22019,7 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
   int total_seconds1, total_seconds2, time_diff, date_diff = 0;
   int min_res, sec_res, hour_res;
   int ret_int, ms;
-  bool is_val1_time = true, is_val2_time = true;
+  DB_TYPE val1_type = DB_TYPE_TIME, val2_type = DB_TYPE_TIME;
   int hour_aux, min_aux, sec_aux, ms_aux;
 
   assert (val1 != NULL);
@@ -22038,56 +22038,81 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
     }
 
   /* get date/time information from val1 */
-  if (db_get_time_from_dbvalue (val1, &hour1, &min1, &sec1, &ms) != NO_ERROR)
+  if (db_get_time_from_dbvalue (val1, &hour1, &min1, &sec1, &ms) == NO_ERROR)
     {
-      error_status = ER_TIME_CONVERSION;
-      goto error;
-    }
-
-  if (db_get_datetime_from_dbvalue (val1, &y1, &m1, &d1, &hour_aux, &min_aux,
-				    &sec_aux, &ms_aux, NULL) == NO_ERROR)
-    {
-      if (hour_aux != hour1 || min_aux != min1 || sec_aux != sec1)
+      if (db_get_datetime_from_dbvalue (val1, &y1, &m1, &d1, &hour_aux,
+					&min_aux, &sec_aux, &ms_aux, NULL)
+	  == NO_ERROR)
 	{
-	  y1 = 0;
-	  m1 = 0;
-	  d1 = 0;
+	  if (hour_aux != hour1 || min_aux != min1 || sec_aux != sec1)
+	    {
+	      y1 = 0;
+	      m1 = 0;
+	      d1 = 0;
+	    }
+	  else
+	    {
+	      val1_type = DB_TYPE_DATETIME;
+	    }
+	}
+    }
+  else
+    {
+      /* val1 may be Date type, try it here */
+      if (db_get_datetime_from_dbvalue (val1, &y1, &m1, &d1, &hour_aux,
+					&min_aux, &sec_aux, &ms_aux, NULL)
+	  == NO_ERROR)
+	{
+	  val1_type = DB_TYPE_DATE;
 	}
       else
 	{
-	  is_val1_time = false;
+	  error_status = ER_TIME_CONVERSION;
+	  goto error;
 	}
     }
 
   /* get date/time information from val2 */
-  if (db_get_time_from_dbvalue (val2, &hour2, &min2, &sec2, &ms) != NO_ERROR)
+  if (db_get_time_from_dbvalue (val2, &hour2, &min2, &sec2, &ms) == NO_ERROR)
     {
-      error_status = ER_TIME_CONVERSION;
-      goto error;
-    }
-
-  if (db_get_datetime_from_dbvalue (val2, &y2, &m2, &d2, &hour_aux, &min_aux,
-				    &sec_aux, &ms_aux, NULL) == NO_ERROR)
-    {
-      if (hour_aux != hour2 || min_aux != min2 || sec_aux != sec2)
+      if (db_get_datetime_from_dbvalue (val2, &y2, &m2, &d2, &hour_aux,
+					&min_aux, &sec_aux, &ms_aux, NULL)
+	  == NO_ERROR)
 	{
-	  y2 = 0;
-	  m2 = 0;
-	  d2 = 0;
+	  if (hour_aux != hour2 || min_aux != min2 || sec_aux != sec2)
+	    {
+	      y2 = 0;
+	      m2 = 0;
+	      d2 = 0;
+	    }
+	  else
+	    {
+	      val2_type = DB_TYPE_DATETIME;
+	    }
+	}
+    }
+  else
+    {
+      /* val2 may be Date type, try it here */
+      if (db_get_datetime_from_dbvalue (val2, &y2, &m2, &d2, &hour_aux,
+					&min_aux, &sec_aux, &ms_aux, NULL)
+	  == NO_ERROR)
+	{
+	  val2_type = DB_TYPE_DATE;
 	}
       else
 	{
-	  is_val2_time = false;
+	  error_status = ER_TIME_CONVERSION;
+	  goto error;
 	}
     }
-
-  if (is_val1_time != is_val2_time)
+  if (val1_type != val2_type)
     {
-      error_status = ER_TIME_CONVERSION;
+      error_status = ER_QPROC_INVALID_PARAMETER;
       goto error;
     }
 
-  if (!is_val1_time)
+  if (val1_type != DB_TYPE_TIME)
     {
       /* convert dates to days */
       leap_years1 = count_leap_years_up_to (y1 - 1);
