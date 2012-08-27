@@ -2983,6 +2983,19 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 
 	  if (p)
 	    {
+	      while (p < strend && char_isspace (*p))
+		{
+		  p++;
+		}
+
+	      /* if remaining characters includes one non-space character */
+	      if (p != strend)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_TIME_CONVERSION, 0);
+		  return ER_TIME_CONVERSION;
+		}
+
 	      *time = mtime / 1000;
 	      *millisecond = mtime % 1000;
 	      return NO_ERROR;
