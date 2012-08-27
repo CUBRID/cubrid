@@ -5212,7 +5212,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
   /* remove XASL cache entries which are relevant with this class */
   if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
       && (qexec_remove_xasl_cache_ent_by_class (thread_p,
-						&class->class_oid) !=
+						&class->class_oid, 1) !=
 	  NO_ERROR))
     {
       er_log_debug (ARG_FILE_LINE,
@@ -5224,9 +5224,9 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
     }
   /* remove filter predicatecache entries which are relevant with this class */
   if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
-      && (qexec_remove_filter_pred_cache_ent_by_class (thread_p,
-						       &class->class_oid) !=
-	  NO_ERROR))
+      &&
+      (qexec_remove_filter_pred_cache_ent_by_class
+       (thread_p, &class->class_oid) != NO_ERROR))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "log_cleanup_modified_class: "

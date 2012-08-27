@@ -14552,7 +14552,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
  */
 int
 qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
-				      const OID * class_oid)
+				      const OID * class_oid, int force_remove)
 {
   XASL_CACHE_ENTRY *ent;
   void *last;
@@ -14582,7 +14582,8 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
 	  /* remove my transaction id from the entry and do compaction */
 	  (void) qexec_remove_my_transaction_id (thread_p, ent);
 #endif
-	  if (qexec_delete_xasl_cache_ent (thread_p, ent, NULL) == NO_ERROR)
+	  if (qexec_delete_xasl_cache_ent (thread_p, ent, &force_remove) ==
+	      NO_ERROR)
 	    {
 	      last = NULL;	/* for mht_get2() */
 	    }
@@ -14690,6 +14691,12 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
   int rc;
   const OID *o;
   int i;
+  int force_delete = 0;
+
+  if (args)
+    {
+      force_delete = *((int *) args);
+    }
 
   if (!ent)
     {
@@ -14699,7 +14706,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
   /* mark it to be deleted */
   ent->deletion_marker = true;
 #if defined(SERVER_MODE)
-  if (ent->deletion_marker && ent->last_ta_idx == 0)
+  if (ent->deletion_marker && (ent->last_ta_idx == 0 || force_delete))
 #else /* SA_MODE */
   if (ent->deletion_marker)
 #endif /* SERVER_MODE */
@@ -20203,7 +20210,8 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       /* check if it is marked to be deleted */
       if (ent->deletion_marker)
 	{
-	  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
+	  /* make sure an entity marked for delete was indeed deleted */
+	  assert (0);
 	  ent = NULL;
 	  goto end;
 	}
@@ -20211,17 +20219,6 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       /* check ownership */
       if (ent && !OID_EQ (&ent->creator_oid, user_oid))
 	{
-	  ent = NULL;
-	}
-
-      /* check age - timeout */
-      if (ent && prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT) >= 0
-	  && (difftime (time (NULL),
-			ent->time_created.tv_sec) >
-	      prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT)))
-	{
-	  /* delete the entry which is timed out */
-	  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
 	  ent = NULL;
 	}
 
@@ -20329,7 +20326,8 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     {
       if (ent->deletion_marker)
 	{
-	  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
+	  /* make sure an entity marked for delete was indeed deleted */
+	  assert (0);
 	  ent = NULL;
 	  goto end;
 	}
@@ -20690,7 +20688,8 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
     {
       if (ent->deletion_marker)
 	{
-	  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
+	  /* make sure an entity marked for delete was indeed deleted */
+	  assert (0);
 	  ent = NULL;
 	}
 
@@ -20868,73 +20867,54 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data,
 
   /* mark it to be deleted */
   ent->deletion_marker = true;
-#if defined(SERVER_MODE)
-  if (ent->deletion_marker && ent->last_ta_idx == 0)
-#else /* SA_MODE */
-  if (ent->deletion_marker)
-#endif /* SERVER_MODE */
+  /* remove the entry from query string hash table */
+  if (mht_rem2 (filter_pred_ent_cache.qstr_ht, ent->query_string, ent,
+		NULL, NULL) != NO_ERROR)
     {
-      /* remove the entry from query string hash table */
-      if (mht_rem2 (filter_pred_ent_cache.qstr_ht, ent->query_string, ent,
-		    NULL, NULL) != NO_ERROR)
-	{
-	  if (!ent->deletion_marker)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_delete_filter_pred_cache_ent: mht_rem2 "
-			    "failed for qstr %s\n", ent->query_string);
-	    }
-	}
-      /* remove the entry from xasl file id hash table */
-      if (mht_rem2 (filter_pred_ent_cache.xid_ht, &ent->xasl_id, ent,
-		    NULL, NULL) != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"qexec_delete_filter_pred_cache_ent: mht_rem failed for"
-			" xasl_id { first_vpid { %d %d } "
-			"temp_vfid { %d %d } }\n",
-			ent->xasl_id.first_vpid.pageid,
-			ent->xasl_id.first_vpid.volid,
-			ent->xasl_id.temp_vfid.fileid,
-			ent->xasl_id.temp_vfid.volid);
-	}
-      /* remove the entries from class oid hash table */
-      for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
-	{
-	  if (mht_rem2 (filter_pred_ent_cache.oid_ht, o, ent, NULL, NULL) !=
-	      NO_ERROR)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_delete_filter_pred_cache_ent: mht_rem "
-			    " failed for class_oid { %d %d %d }\n",
-			    ent->class_oid_list[i].pageid,
-			    ent->class_oid_list[i].slotid,
-			    ent->class_oid_list[i].volid);
-	    }
-	}
-
-      /*do not destroy pseudo file! */
-
-      /* clear out list cache */
-      if (ent->list_ht_no >= 0)
-	{
-	  (void) qfile_clear_list_cache (thread_p, ent->list_ht_no, true);
-	}
-      rc = qexec_free_filter_pred_cache_ent (thread_p, ent, NULL);
-      filter_pred_ent_cache.num--;	/* counter */
-    }
-  else
-    {
-      /* remove from the query string hash table to allow
-         new XASL with the same query string to be registered */
-      if (mht_rem2 (filter_pred_ent_cache.qstr_ht, ent->query_string, ent,
-		    NULL, NULL) != NO_ERROR)
+      if (!ent->deletion_marker)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_delete_filter_pred_cache_ent: mht_rem2 "
 			"failed for qstr %s\n", ent->query_string);
 	}
     }
+  /* remove the entry from xasl file id hash table */
+  if (mht_rem2 (filter_pred_ent_cache.xid_ht, &ent->xasl_id, ent,
+		NULL, NULL) != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "qexec_delete_filter_pred_cache_ent: mht_rem failed for"
+		    " xasl_id { first_vpid { %d %d } "
+		    "temp_vfid { %d %d } }\n",
+		    ent->xasl_id.first_vpid.pageid,
+		    ent->xasl_id.first_vpid.volid,
+		    ent->xasl_id.temp_vfid.fileid,
+		    ent->xasl_id.temp_vfid.volid);
+    }
+  /* remove the entries from class oid hash table */
+  for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
+    {
+      if (mht_rem2 (filter_pred_ent_cache.oid_ht, o, ent, NULL, NULL) !=
+	  NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"qexec_delete_filter_pred_cache_ent: mht_rem "
+			" failed for class_oid { %d %d %d }\n",
+			ent->class_oid_list[i].pageid,
+			ent->class_oid_list[i].slotid,
+			ent->class_oid_list[i].volid);
+	}
+    }
+
+  /*do not destroy pseudo file! */
+
+  /* clear out list cache */
+  if (ent->list_ht_no >= 0)
+    {
+      (void) qfile_clear_list_cache (thread_p, ent->list_ht_no, true);
+    }
+  rc = qexec_free_filter_pred_cache_ent (thread_p, ent, NULL);
+  filter_pred_ent_cache.num--;	/* counter */
 
   return rc;
 }
