@@ -14263,6 +14263,14 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
       order_list = order_by;
     }
 
+  /* check for nested analytic functions */
+  if (pt_has_analytic (parser, order_list))
+    {
+      PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+                 MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
+      goto error_exit;
+    }
+
   /* replace names/exprs with positions in select list where possible; this
    * also re-processes PT_VALUE sort expressions so we can identify and reduce
    * cases like:
@@ -14294,6 +14302,23 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
          otherwise, wait for XASL generation */
       if (col != NULL)
 	{
+          PT_NODE *save_next = col->next;
+
+          col->next = NULL;
+          if (pt_has_analytic (parser, col))
+            {
+              col->next = save_next;
+
+              /* sort expression contains analytic function */
+              PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+                         MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
+              goto error_exit;
+            }
+          else
+            {
+              col->next = save_next;
+            }
+
 	  /* create a value node and replace expr with it */
 	  temp = parser_new_node (parser, PT_VALUE);
 	  if (temp == NULL)
@@ -14342,6 +14367,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 	    }
 	  else
 	    {
+              /* check if we are going to remove the link */
 	      if (link && match == link)
 		{
 		  temp = order_list;
@@ -14351,6 +14377,16 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 		    }
 		  link = temp;
 		}
+
+              /* check if we are going to remove the first ORDER BY node */
+              if (link && match == link->next)
+                {
+                  /* func may be printed again by pt_find_matching_sort_spec,
+                     make sure we don't reference garbage in order_by */
+                  func->info.function.analytic.order_by = match->next;
+                }
+
+              /* remove match */
 	      order->next = pt_remove_from_list (parser, match, order->next);
 	    }
 	}
