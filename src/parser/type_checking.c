@@ -8532,7 +8532,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		  /* arg1_type is PT_TYPE_DATETIME or PT_TYPE_TIMESTAMP. */
 		  if (arg2_type == PT_TYPE_TIME || arg2_type == PT_TYPE_DATE)
 		    {
-		      node->type_enum == PT_TYPE_NONE;
+		      node->type_enum = PT_TYPE_NONE;
 		    }
 		}
 	    }
