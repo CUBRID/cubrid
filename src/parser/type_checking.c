@@ -7247,32 +7247,84 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 	PT_NODE *item = NULL;
 	PT_NODE *prev = NULL;
 	PT_NODE *new_node = NULL;
-	PT_NODE *select_list = pt_get_select_list (parser, query);
-	for (item = select_list; item != NULL; prev = item, item = item->next)
-	  {
-	    new_node = NULL;
-	    if (item->type_enum == new_type)
-	      {
-		continue;
-	      }
-	    new_node =
-	      pt_wrap_with_cast_op (parser, item, new_type, 0, 0, data_type);
-	    if (new_node == NULL)
-	      {
-		return ER_FAILED;
-	      }
+	PT_NODE *select_list = NULL;
+	PT_NODE *node_list = NULL;
 
-	    if (new_node != item)
+	/* values query's select_list is pt_node_list-->pt_node_list-->... */
+	if (PT_IS_VALUE_QUERY (query))
+	  {
+	    for (node_list = query->info.query.q.select.list;
+		 node_list != NULL; node_list = node_list->next)
 	      {
-		item = new_node;
-		/* first node in the list */
-		if (prev == NULL)
+		select_list = node_list->info.node_list.list;
+
+		prev = NULL;
+		for (item = select_list; item != NULL;
+		     prev = item, item = item->next)
 		  {
-		    query->info.query.q.select.list = item;
+		    new_node = NULL;
+		    if (item->type_enum == new_type)
+		      {
+			continue;
+		      }
+
+		    new_node =
+		      pt_wrap_with_cast_op (parser, item, new_type, 0, 0,
+					    data_type);
+		    if (new_node == NULL)
+		      {
+			return ER_FAILED;
+		      }
+
+		    if (new_node != item)
+		      {
+			item = new_node;
+			PT_SET_VALUE_QUERY (item);
+			/* first node in the list */
+			if (prev == NULL)
+			  {
+			    node_list->info.node_list.list = item;
+			  }
+			else
+			  {
+			    prev->next = item;
+			  }
+		      }
 		  }
-		else
+	      }
+	  }
+	else
+	  {
+	    select_list = pt_get_select_list (parser, query);
+
+	    for (item = select_list; item != NULL;
+		 prev = item, item = item->next)
+	      {
+		new_node = NULL;
+		if (item->type_enum == new_type)
 		  {
-		    prev->next = item;
+		    continue;
+		  }
+		new_node =
+		  pt_wrap_with_cast_op (parser, item, new_type, 0, 0,
+					data_type);
+		if (new_node == NULL)
+		  {
+		    return ER_FAILED;
+		  }
+
+		if (new_node != item)
+		  {
+		    item = new_node;
+		    /* first node in the list */
+		    if (prev == NULL)
+		      {
+			query->info.query.q.select.list = item;
+		      }
+		    else
+		      {
+			prev->next = item;
+		      }
 		  }
 	      }
 	  }
@@ -11208,7 +11260,7 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 	  &&
 	  (node->data_type->info.data_type.dec_precision != DB_DEFAULT_SCALE
 	   || node->data_type->info.data_type.dec_precision
-	      != DB_DEFAULT_NUMERIC_SCALE))
+	   != DB_DEFAULT_NUMERIC_SCALE))
 	{
 	  precision++;		/* for decimal point */
 	}
@@ -15288,7 +15340,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       else
 	{
-          assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
 	  db_make_null (result);
 	  return 1;
 	}
@@ -15316,7 +15368,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       else
 	{
-          assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
 	  db_make_null (result);
 	  return 1;
 	}

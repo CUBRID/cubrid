@@ -3960,14 +3960,24 @@ error:
 PT_NODE *
 pt_get_subquery_list (PT_NODE * node)
 {
-  PT_NODE *col;
+  PT_NODE *col, *list;
 
   while (node)
     {
       switch (node->node_type)
 	{
 	case PT_SELECT:
-	  node = node->info.query.q.select.list;
+	  list = node->info.query.q.select.list;
+
+	  if (PT_IS_VALUE_QUERY (node))
+	    {
+	      assert (list != NULL);
+	      node = list->info.node_list.list;
+	    }
+	  else
+	    {
+	      node = list;
+	    }
 
 	  if (node && node->node_type == PT_VALUE
 	      && node->type_enum == PT_TYPE_STAR)
