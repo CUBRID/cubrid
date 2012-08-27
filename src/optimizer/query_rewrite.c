@@ -6091,7 +6091,8 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (tp_valid_indextype (pt_type_enum_to_db (arg1->type_enum))
 	  && (pt_is_attr (arg1) || pt_is_function_index_expression (arg1)))
 	{
-	  if (tp_valid_indextype (pt_type_enum_to_db (arg2->type_enum)))
+	  if (tp_valid_indextype (pt_type_enum_to_db (arg2->type_enum))
+              && !pt_has_analytic (parser, arg2))
 	    {
 	      select_list = pt_get_select_list (parser, arg2);
 	      if (select_list != NULL &&
