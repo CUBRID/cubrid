@@ -12959,15 +12959,19 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	    {
 	      /* make sure the expression is compiled using the appropriate
 	       * name, the partition name */
-	      error =
-		do_recreate_filter_index_constr (NULL, new_filter_index_info,
-						 NULL,
-						 sm_class_name (classop),
-						 sm_class_name (sub_partitions
-								[i]));
-	      if (error != NO_ERROR)
+	      if (new_filter_index_info->num_attrs > 0)
 		{
-		  goto fail_end;
+		  error =
+		    do_recreate_filter_index_constr (NULL,
+						     new_filter_index_info,
+						     NULL,
+						     sm_class_name (classop),
+						     sm_class_name
+						     (sub_partitions[i]));
+		  if (error != NO_ERROR)
+		    {
+		      goto fail_end;
+		    }
 		}
 	    }
 	  else
