@@ -2815,7 +2815,19 @@ pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE * att1,
   dt1 = att1->data_type;
   dt2 = att2->data_type;
 
-  common_type = pt_common_type (att1->type_enum, att2->type_enum);
+  if ((PT_IS_STRING_TYPE (att1->type_enum)
+       && att2->type_enum == PT_TYPE_MAYBE)
+      || (PT_IS_STRING_TYPE (att2->type_enum)
+	  && att1->type_enum == PT_TYPE_MAYBE))
+    {
+      common_type = (att1->type_enum == PT_TYPE_MAYBE ? att2->type_enum :
+		     att1->type_enum);
+    }
+  else
+    {
+      common_type = pt_common_type (att1->type_enum, att2->type_enum);
+    }
+
   if (common_type != PT_TYPE_NONE)
     {
       SEMAN_COMPATIBLE_INFO att1_info, att2_info;
@@ -9923,7 +9935,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 				       node->info.merge.using->info.spec.
 				       flat_entity_list->info.name.original))
 	{
-	  PT_ERRORm (parser, node->info.merge.into, MSGCAT_SET_PARSER_SEMANTIC,
+	  PT_ERRORm (parser, node->info.merge.into,
+		     MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_MERGE_CANT_AFFECT_SOURCE_TABLE);
 	  break;
 	}
@@ -14267,7 +14280,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
   if (pt_has_analytic (parser, order_list))
     {
       PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
-                 MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
+		 MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
       goto error_exit;
     }
 
@@ -14302,22 +14315,22 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
          otherwise, wait for XASL generation */
       if (col != NULL)
 	{
-          PT_NODE *save_next = col->next;
+	  PT_NODE *save_next = col->next;
 
-          col->next = NULL;
-          if (pt_has_analytic (parser, col))
-            {
-              col->next = save_next;
+	  col->next = NULL;
+	  if (pt_has_analytic (parser, col))
+	    {
+	      col->next = save_next;
 
-              /* sort expression contains analytic function */
-              PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
-              goto error_exit;
-            }
-          else
-            {
-              col->next = save_next;
-            }
+	      /* sort expression contains analytic function */
+	      PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      col->next = save_next;
+	    }
 
 	  /* create a value node and replace expr with it */
 	  temp = parser_new_node (parser, PT_VALUE);
@@ -14367,7 +14380,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 	    }
 	  else
 	    {
-              /* check if we are going to remove the link */
+	      /* check if we are going to remove the link */
 	      if (link && match == link)
 		{
 		  temp = order_list;
@@ -14378,15 +14391,15 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 		  link = temp;
 		}
 
-              /* check if we are going to remove the first ORDER BY node */
-              if (link && match == link->next)
-                {
-                  /* func may be printed again by pt_find_matching_sort_spec,
-                     make sure we don't reference garbage in order_by */
-                  func->info.function.analytic.order_by = match->next;
-                }
+	      /* check if we are going to remove the first ORDER BY node */
+	      if (link && match == link->next)
+		{
+		  /* func may be printed again by pt_find_matching_sort_spec,
+		     make sure we don't reference garbage in order_by */
+		  func->info.function.analytic.order_by = match->next;
+		}
 
-              /* remove match */
+	      /* remove match */
 	      order->next = pt_remove_from_list (parser, match, order->next);
 	    }
 	}
