@@ -1064,6 +1064,16 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 		      return NULL;
 		    }
 
+		  /* In case of DB_TYPE_ENUMERATION as expected type we need
+		     to compute data type from expected_domain of host
+		     variable */
+		  if (value->type_enum == PT_TYPE_ENUMERATION
+		      && expected_db_type == DB_TYPE_ENUMERATION)
+		    {
+		      value->data_type =
+			pt_domain_to_data_type (parser,
+						value->expected_domain);
+		    }
 		  hv_dom = pt_node_to_db_domain (parser, value, NULL);
 		  hv_dom = tp_domain_cache (hv_dom);
 		  if (!hv_dom	/* domain must be cached before use! */
