@@ -3323,14 +3323,18 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
 	}
       else
 	{
-	  int lower_length;
+	  int lower_length = TP_FLOATING_PRECISION_VALUE;
 	  intl_lower_string (alphabet,
 			     (unsigned char *) DB_PULL_STRING (string),
 			     lower_str, src_length);
 	  lower_str[lower_size] = 0;
-	  intl_char_count (lower_str, lower_size,
-			   (INTL_CODESET) DB_GET_STRING_CODESET (string),
-			   &lower_length);
+
+	  if (db_value_precision (string) != TP_FLOATING_PRECISION_VALUE)
+	    {
+	      intl_char_count (lower_str, lower_size,
+			       (INTL_CODESET) DB_GET_STRING_CODESET (string),
+			       &lower_length);
+	    }
 	  qstr_make_typed_string (str_type, lower_string, lower_length,
 				  (char *) lower_str, lower_size,
 				  DB_GET_STRING_CODESET (string),
@@ -3425,15 +3429,18 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
 	}
       else
 	{
-	  int upper_length;
+	  int upper_length = TP_FLOATING_PRECISION_VALUE;
 	  intl_upper_string (alphabet,
 			     (unsigned char *) DB_PULL_STRING (string),
 			     upper_str, src_length);
 
 	  upper_str[upper_size] = 0;
-	  intl_char_count (upper_str, upper_size,
-			   (INTL_CODESET) DB_GET_STRING_CODESET (string),
-			   &upper_length);
+	  if (db_value_precision (string) != TP_FLOATING_PRECISION_VALUE)
+	    {
+	      intl_char_count (upper_str, upper_size,
+			       (INTL_CODESET) DB_GET_STRING_CODESET (string),
+			       &upper_length);
+	    }
 	  qstr_make_typed_string (str_type, upper_string, upper_length,
 				  (char *) upper_str, upper_size,
 				  DB_GET_STRING_CODESET (string),
@@ -24873,7 +24880,7 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
       goto error;
     }
 
-  /* there is no need to check DB_GET_STRING_LENGTH 
+  /* there is no need to check DB_GET_STRING_LENGTH
      or DB_GET_STRING_SIZE or cnt, we control ip format by ourselves */
   ip_string = DB_GET_CHAR (string, &cnt);
   local_ipstring = (char *) db_private_alloc (NULL, cnt + 1);
@@ -24950,7 +24957,7 @@ error:
  *      ER_QSTR_INVALID_DATA_TYPE
  *      ER_OBJ_INVALID_ARGUMENTS
  *      ER_OPFUNC_INET_NTOA_ARG
- * 
+ *
  * Note:
  */
 int
