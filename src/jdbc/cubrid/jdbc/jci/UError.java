@@ -37,7 +37,7 @@
 package cubrid.jdbc.jci;
 
 public class UError {
-	public final static int METHOD_USER_ERROR_BASE = -10000;
+	public final static int METHOD_USER_ERROR_BASE = -100000;
 
 	private UConnection connection = null;
 	private int jciErrorCode;

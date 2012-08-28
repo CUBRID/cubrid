@@ -131,8 +131,6 @@ typedef enum
 #define CAS_REQ_HEADER_OLEDB	"OLEDB"
 #define CAS_REQ_HEADER_CCI	"CCI"
 
-#define CAS_METHOD_USER_ERROR_BASE	-10000
-
 typedef enum t_cas_func_code T_CAS_FUNC_CODE;
 enum t_cas_func_code
 {
