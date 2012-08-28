@@ -514,7 +514,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 	       int *ignore_error_list)
 {
 #if defined(CS_MODE)
-  int success = ER_FAILED;
+  int error_code = ER_FAILED;
   char *request;
   char *request_ptr;
   int request_size;
@@ -566,8 +566,8 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 					 desc_ptr, desc_size, NULL, 0);
   if (!req_error)
     {
-      (void) or_unpack_int (reply, &success);
-      if (success == NO_ERROR)
+      (void) or_unpack_int (reply, &error_code);
+      if (error_code == NO_ERROR)
 	{
 	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr);
 	}
@@ -581,9 +581,9 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
       free_and_init (request);
     }
 
-  return success;
+  return error_code;
 #else /* CS_MODE */
-  int success = ER_FAILED;
+  int error_code = ER_FAILED;
   LC_COPYAREA *copy_area_clone;
 
   /* If xlocator_force returns error,
@@ -600,23 +600,21 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 
   ENTER_SERVER ();
 
-  success =
-    xlocator_force (NULL, copy_area_clone, num_ignore_error_list,
+  error_code =
+    xlocator_force (NULL, copy_area, num_ignore_error_list,
 		    ignore_error_list);
 
   EXIT_SERVER ();
 
-  if (success)
+  if (error_code != NO_ERROR)
     {
-      /* Apply changes into original copy_area.
-       * The length of copy_area (not copy_area_clone) should be used.
-       */
+      /* Restore copy_area */
       memcpy (copy_area->mem, copy_area_clone->mem, copy_area->length);
     }
 
   locator_free_copy_area (copy_area_clone);
 
-  return success;
+  return error_code;
 #endif /* !CS_MODE */
 }
 
