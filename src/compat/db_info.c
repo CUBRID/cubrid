@@ -500,10 +500,13 @@ db_is_deleted (DB_OBJECT * obj)
       return 1;
     }
 
-  /* if the deleted bit is off and we have obtained any lock, then it
-     must be real.
+  /* If we have obtained any lock except X_LOCK, that means it is real.
+   * However deleted bit is off and to hold X_LOCK does not guarantee it exists,
+   * wever deleted bit is off and to hold X_LOCK does not guarantee it exists,
+   * for instance, trigger action do server-side delete and trigger does not
+   * know it. Therefore we need to check it if we hold X_LOCK on the object.
    */
-  if (obj->lock != NULL_LOCK)
+  if (NULL_LOCK < obj->lock && obj->lock < X_LOCK)
     {
       return 0;
     }
