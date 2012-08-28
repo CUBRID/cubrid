@@ -14187,6 +14187,9 @@ cleanup:
  * MERGE STATEMENT
  */
 
+/* used to generate unique savepoint names */
+static int merge_savepoint_number = 0;
+
 /*
  * do_check_merge_trigger() -
  *   return: Error code
@@ -14386,6 +14389,19 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int result = 0;
 
   CHECK_MODIFICATION_ERROR ();
+
+  /* savepoint for statement atomicity */
+  savepoint_name = mq_generate_name (parser, "UmsP", &merge_savepoint_number);
+  if (savepoint_name == NULL)
+    {
+      err = ER_GENERIC_ERROR;
+      goto exit;
+    }
+  err = tran_savepoint (savepoint_name, false);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
 
   AU_DISABLE (parser->au_save);
 
@@ -14757,7 +14773,7 @@ exit:
   if ((err < NO_ERROR) && savepoint_name
       && (err != ER_LK_UNILATERALLY_ABORTED))
     {
-      do_rollback_savepoints (parser, savepoint_name);
+      (void) db_abort_to_savepoint (savepoint_name);
     }
 
   AU_ENABLE (parser->au_save);
@@ -15203,7 +15219,17 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   /* savepoint for statement atomicity */
-  savepoint_name = NULL;
+  savepoint_name = mq_generate_name (parser, "UmsP", &merge_savepoint_number);
+  if (savepoint_name == NULL)
+    {
+      err = ER_GENERIC_ERROR;
+      goto exit;
+    }
+  err = tran_savepoint (savepoint_name, false);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
 
   if (statement->info.merge.flags & PT_MERGE_INFO_FALSE_WHERE)
     {
@@ -15523,7 +15549,7 @@ exit:
   if ((err < NO_ERROR) && savepoint_name
       && (err != ER_LK_UNILATERALLY_ABORTED))
     {
-      do_rollback_savepoints (parser, savepoint_name);
+      (void) db_abort_to_savepoint (savepoint_name);
     }
 
   return (err < NO_ERROR) ? err : result;
