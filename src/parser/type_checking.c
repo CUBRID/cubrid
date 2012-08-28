@@ -19820,6 +19820,9 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
 	}
       /* fall through */
     case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
     case PT_FUNCTION:
     case PT_METHOD_CALL:
       assert (has_collation);
@@ -19914,6 +19917,9 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     case PT_EXPR:
     case PT_FUNCTION:
     case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
       *coerc_level =
 	(has_collation) ? PT_COLLATION_L3_COERC : PT_COLLATION_FULLY_COERC;
       break;
