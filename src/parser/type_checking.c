@@ -107,6 +107,20 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
    PT_ARE_COMPARABLE_CHAR_TYPE (typ1, typ2) ||				      \
    PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
 
+#define PT_IS_RECURSIVE_EXPRESSION(node)				      \
+  ((node)->node_type == PT_EXPR &&					      \
+    (PT_IS_LEFT_RECURSIVE_EXPRESSION(node) ||				      \
+     PT_IS_RIGHT_RECURSIVE_EXPRESSION(node)))
+
+#define PT_IS_LEFT_RECURSIVE_EXPRESSION(node)				      \
+    ((node)->info.expr.op == PT_GREATEST ||				      \
+    (node)->info.expr.op == PT_LEAST ||					      \
+    (node)->info.expr.op == PT_COALESCE)
+
+#define PT_IS_RIGHT_RECURSIVE_EXPRESSION(node)				      \
+    ((node)->info.expr.op == PT_CASE ||					      \
+     (node)->info.expr.op == PT_DECODE)
+
 typedef struct compare_between_operator
 {
   PT_OP_TYPE left;
@@ -247,6 +261,8 @@ static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser,
 				      PT_NODE * node);
 static PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node,
 			       bool arg1_is_false);
+static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser,
+					     PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 				  void *arg, int *continue_walk);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -326,6 +342,9 @@ static PT_NODE *pt_node_to_enumeration_expr (PARSER_CONTEXT * parser,
 static PT_NODE *pt_select_list_to_enumeration_expr (PARSER_CONTEXT * parser,
 						    PT_NODE * data_type,
 						    PT_NODE * node);
+static bool pt_is_enumeration_special_comparison (PT_NODE * arg1,
+						  PT_OP_TYPE op,
+						  PT_NODE * arg2);
 static PT_NODE *pt_fix_enumeration_comparison (PARSER_CONTEXT * parser,
 					       PT_NODE * expr);
 
@@ -3798,7 +3817,10 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type,
       return def_type.val.type;
     }
 
-  if (pt_are_equivalent_types (def_type, arg_type))
+  /* In some cases that involve ENUM (e.g. bit_length function) we need to
+   * convert ENUM to the other type even if the types are equivalent */
+  if (pt_are_equivalent_types (def_type, arg_type)
+      && arg_type != PT_TYPE_ENUMERATION)
     {
       /* def_type includes type */
       if (arg_type == PT_TYPE_LOGICAL)
@@ -4167,7 +4189,8 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type,
 	}
       break;
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
-      if (PT_IS_DISCRETE_NUMBER_TYPE (op_type))
+      if (PT_IS_DISCRETE_NUMBER_TYPE (op_type)
+	  || op_type == PT_TYPE_ENUMERATION)
 	{
 	  /* PT_GENERIC_TYPE_DISCRETE_NUMBER is equivalent with
 	     SHORT, INTEGER and BIGINT */
@@ -4176,7 +4199,7 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type,
       break;
 
     case PT_GENERIC_TYPE_NUMBER:
-      if (PT_IS_NUMERIC_TYPE (op_type))
+      if (PT_IS_NUMERIC_TYPE (op_type) || op_type == PT_TYPE_ENUMERATION)
 	{
 	  /* any NUMBER type is equivalent with PT_GENERIC_TYPE_NUMBER */
 	  return true;
@@ -4184,7 +4207,7 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type,
       break;
 
     case PT_GENERIC_TYPE_STRING:
-      if (PT_IS_CHAR_STRING_TYPE (op_type))
+      if (PT_IS_CHAR_STRING_TYPE (op_type) || op_type == PT_TYPE_ENUMERATION)
 	{
 	  /* any STRING type is equivalent with PT_GENERIC_TYPE_STRING */
 	  return true;
@@ -4192,7 +4215,8 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type,
       break;
 
     case PT_GENERIC_TYPE_CHAR:
-      if (op_type == PT_TYPE_CHAR || op_type == PT_TYPE_VARCHAR)
+      if (op_type == PT_TYPE_CHAR || op_type == PT_TYPE_VARCHAR
+	  || op_type == PT_TYPE_ENUMERATION)
 	{
 	  /* CHAR and VARCHAR are equivalent to PT_GENERIC_TYPE_CHAR */
 	  return true;
@@ -4563,7 +4587,17 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	  return NULL;
 	}
       arg2_type = arg2_list->type_enum;
-      common_type = pt_common_type_op (arg1_eq_type, op, arg2_type);
+      if (pt_is_enumeration_special_comparison (arg1, op, arg2))
+	{
+	  /* In case of 'ENUM IN [query]' we need to convert all elements of
+	     right argument to the ENUM type in order to preserve an eventual
+	     index scan on left argument */
+	  common_type = PT_TYPE_ENUMERATION;
+	}
+      else
+	{
+	  common_type = pt_common_type_op (arg1_eq_type, op, arg2_type);
+	}
       if (PT_IS_COLLECTION_TYPE (common_type))
 	{
 	  /* we cannot make a decision during type checking in this case */
@@ -4625,14 +4659,24 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
       bool should_cast = false;
       PT_NODE *data_type = NULL;
 
-      common_type = collection_type =
-	pt_get_common_collection_type (arg2, &should_cast);
-      if (common_type != PT_TYPE_NONE)
+      if (pt_is_enumeration_special_comparison (arg1, op, arg2))
 	{
-	  common_type = pt_common_type_op (arg1_eq_type, op, common_type);
+	  /* In case of 'ENUM IN (...)' we need to convert all elements of right
+	     argument to the ENUM type in order to preserve an eventual index 
+	     scan on left argument */
+	  common_type = arg1_eq_type = collection_type = PT_TYPE_ENUMERATION;
+	}
+      else
+	{
+	  common_type = collection_type =
+	    pt_get_common_collection_type (arg2, &should_cast);
 	  if (common_type != PT_TYPE_NONE)
 	    {
-	      arg1_eq_type = common_type;
+	      common_type = pt_common_type_op (arg1_eq_type, op, common_type);
+	      if (common_type != PT_TYPE_NONE)
+		{
+		  arg1_eq_type = common_type;
+		}
 	    }
 	}
       if (common_type == PT_TYPE_OBJECT ||
@@ -4916,11 +4960,21 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 
   if (pt_is_symmetric_op (op))
     {
-      /* We should make sure that, for symmetric operators, all arguments are
-         of the same type. */
-      common_type = pt_infer_common_type (op, &arg1_eq_type, &arg2_eq_type,
-					  &arg3_eq_type,
-					  expr->expected_domain);
+      if (pt_is_enumeration_special_comparison (arg1, op, arg2))
+	{
+	  /* In case of 'ENUM = const' we need to convert the right argument to
+	     the ENUM type in order to preserve an eventual index scan on left
+	     argument */
+	  common_type = PT_TYPE_ENUMERATION;
+	}
+      else
+	{
+	  /* We should make sure that, for symmetric operators, all arguments
+	     are of the same type. */
+	  common_type =
+	    pt_infer_common_type (op, &arg1_eq_type, &arg2_eq_type,
+				  &arg3_eq_type, expr->expected_domain);
+	}
       if (common_type == PT_TYPE_NONE)
 	{
 	  /* this is an error */
@@ -5057,6 +5111,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
     {
       arg1_eq_type = sig.arg1_type.val.type;
     }
+  if (PT_IS_RECURSIVE_EXPRESSION (expr)
+      && expr->info.expr.recursive_type != PT_TYPE_NONE)
+    {
+      /* In case of recursive expression (PT_GREATEST, PT_LEAST, ...) the common
+         type is stored in recursive_type */
+      arg1_eq_type = expr->info.expr.recursive_type;
+    }
   error = pt_coerce_expression_argument (parser, expr, &arg1, arg1_eq_type,
 					 arg1_dt);
   if (error != NO_ERROR)
@@ -5071,6 +5132,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
   if (!sig.arg2_type.is_generic)
     {
       arg2_eq_type = sig.arg2_type.val.type;
+    }
+  if (PT_IS_RECURSIVE_EXPRESSION (expr)
+      && expr->info.expr.recursive_type != PT_TYPE_NONE)
+    {
+      /* In case of recursive expression (PT_GREATEST, PT_LEAST, ...) the common
+         type is stored in recursive_type */
+      arg2_eq_type = expr->info.expr.recursive_type;
     }
   error = pt_coerce_expression_argument (parser, expr, &arg2, arg2_eq_type,
 					 arg2_dt);
@@ -5204,16 +5272,24 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-  arg1 = expr->info.expr.arg1;
-  if (arg1)
+  if (PT_IS_RECURSIVE_EXPRESSION (expr)
+      && expr->info.expr.recursive_type != PT_TYPE_NONE)
     {
-      arg1_type = arg1->type_enum;
+      arg1_type = arg2_type = expr->info.expr.recursive_type;
     }
-
-  arg2 = expr->info.expr.arg2;
-  if (arg2)
+  else
     {
-      arg2_type = arg2->type_enum;
+      arg1 = expr->info.expr.arg1;
+      if (arg1)
+	{
+	  arg1_type = arg1->type_enum;
+	}
+
+      arg2 = expr->info.expr.arg2;
+      if (arg2)
+	{
+	  arg2_type = arg2->type_enum;
+	}
     }
 
   arg3 = expr->info.expr.arg3;
@@ -6564,6 +6640,54 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
 }
 
 /*
+ * pt_eval_recursive_expr_type () - evaluates type for recursive expression
+ *	nodes.
+ *   return: evaluated node
+ *   parser(in):
+ *   recursive_expr(in): recursive expression node to evaluate.
+ */
+static PT_NODE *
+pt_eval_recursive_expr_type (PARSER_CONTEXT * parser,
+			     PT_NODE * recursive_expr)
+{
+  PT_OP_TYPE op;
+
+  if (recursive_expr == NULL)
+    {
+      return NULL;
+    }
+
+  if (PT_IS_RECURSIVE_EXPRESSION (recursive_expr))
+    {
+      op = recursive_expr->info.expr.op;
+      if (PT_IS_LEFT_RECURSIVE_EXPRESSION (recursive_expr))
+	{
+	  if (recursive_expr->info.expr.arg1 != NULL
+	      && PT_IS_RECURSIVE_EXPRESSION (recursive_expr->info.expr.arg1)
+	      && op == recursive_expr->info.expr.arg1->info.expr.op)
+	    {
+	      recursive_expr->info.expr.arg1 =
+		pt_eval_recursive_expr_type (parser,
+					     recursive_expr->info.expr.arg1);
+	    }
+	}
+      else
+	{
+	  if (recursive_expr->info.expr.arg2 != NULL
+	      && PT_IS_RECURSIVE_EXPRESSION (recursive_expr->info.expr.arg2)
+	      && op == recursive_expr->info.expr.arg2->info.expr.op)
+	    {
+	      recursive_expr->info.expr.arg2 =
+		pt_eval_recursive_expr_type (parser,
+					     recursive_expr->info.expr.arg2);
+	    }
+	}
+    }
+
+  return pt_eval_expr_type (parser, recursive_expr);
+}
+
+/*
  * pt_eval_type_pre () -
  *   return:
  *   parser(in):
@@ -6579,6 +6703,9 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *derived_table;
   SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
 
+  /* To ensure that after exit of recursive expression node the evaluation of
+     type will continue in normal mode */
+  *continue_walk = PT_CONTINUE_WALK;
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
@@ -6797,6 +6924,151 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	    }
 	}
+      break;
+
+    case PT_EXPR:
+      {
+	PT_NODE *recurs_expr = node, *node_tmp = NULL;
+	PT_TYPE_ENUM common_type = PT_TYPE_NONE;
+	bool has_enum = false;
+	PT_NODE **recurs_arg = NULL, **norm_arg = NULL;
+	PT_OP_TYPE op = recurs_expr->info.expr.op;
+
+	/* Because the recursive expressions with more than two
+	   arguments are build as PT_GREATEST(PT_GREATEST(..., argn-1), argn)
+	   we need to compute the common type between all arguments in order to
+	   give a correct return type. Let's say we have the following call
+	   to PT_GREATEST: greatest(e1, e2, e3, 2) where e1, e2, e3 are ENUMs.
+	   The internal form is rewrited to
+	   greatest(greatest(greatest(e1, e2), e3), 2). For the inner call the
+	   common type will be STRING. For middle call the common type will be
+	   STRING and for the outer call the common type will be DOUBLE and both
+	   arguments will be casted to DOUBLE including the returned STRING
+	   of the middle (or even inner) call. If the string does not have
+	   a numeric format, the call will fail. The natural behaviour is a
+	   conversion of all enum arguments to the type of '2' (integer). So we
+	   compute the common type of all arguments and store it in the
+	   recursive_type member of the PT_EXPR_INFO structure and use it in
+	   pt_eval_type function (and other places) as common type. */
+	if (!PT_IS_RECURSIVE_EXPRESSION (node)
+	    || node->info.expr.recursive_type != PT_TYPE_NONE)
+	  {
+	    break;
+	  }
+
+	while (recurs_expr != NULL
+	       && PT_IS_RECURSIVE_EXPRESSION (recurs_expr)
+	       && op == recurs_expr->info.expr.op)
+	  {
+	    if (PT_IS_LEFT_RECURSIVE_EXPRESSION (recurs_expr))
+	      {
+		norm_arg = &recurs_expr->info.expr.arg2;
+		recurs_arg = &recurs_expr->info.expr.arg1;
+	      }
+	    else
+	      {
+		norm_arg = &recurs_expr->info.expr.arg1;
+		recurs_arg = &recurs_expr->info.expr.arg2;
+	      }
+	    /* In order to correctly compute the common type we need to
+	       know the type of each argument and therefore we compute
+	       it. */
+	    node_tmp = pt_semantic_type (parser, *norm_arg, arg);
+	    if (*norm_arg == NULL || pt_has_error (parser))
+	      {
+		return node;
+	      }
+	    *norm_arg = node_tmp;
+	    if ((*norm_arg)->type_enum != PT_TYPE_ENUMERATION)
+	      {
+		if (common_type == PT_TYPE_NONE)
+		  {
+		    common_type = (*norm_arg)->type_enum;
+		  }
+		else
+		  {
+		    common_type =
+		      pt_common_type (common_type, (*norm_arg)->type_enum);
+		  }
+	      }
+	    else
+	      {
+		has_enum = true;
+	      }
+	    if (*recurs_arg == NULL
+		|| !PT_IS_RECURSIVE_EXPRESSION (*recurs_arg)
+		|| op != (*recurs_arg)->info.expr.op)
+	      {
+		node_tmp = pt_semantic_type (parser, *recurs_arg, arg);
+		if (node_tmp == NULL || pt_has_error (parser))
+		  {
+		    return node;
+		  }
+		*recurs_arg = node_tmp;
+		if ((*recurs_arg)->type_enum != PT_TYPE_ENUMERATION)
+		  {
+		    if (common_type == PT_TYPE_NONE)
+		      {
+			common_type = (*recurs_arg)->type_enum;
+		      }
+		    else
+		      {
+			common_type =
+			  pt_common_type (common_type,
+					  (*recurs_arg)->type_enum);
+		      }
+		  }
+		else
+		  {
+		    has_enum = true;
+		  }
+	      }
+	    if (recurs_expr->info.expr.arg3 != NULL)
+	      {
+		node_tmp =
+		  pt_semantic_type (parser, recurs_expr->info.expr.arg3, arg);
+		if (node_tmp == NULL || pt_has_error (parser))
+		  {
+		    return node;
+		  }
+		recurs_expr->info.expr.arg3 = node_tmp;
+	      }
+	    recurs_expr = *recurs_arg;
+	  }
+
+	if (has_enum)
+	  {
+	    if (common_type == PT_TYPE_NONE)
+	      {
+		/* Proceed to normal type evaluation: each function node
+		   evaluates only its own arguments */
+		break;
+	      }
+	    common_type = pt_common_type (common_type, PT_TYPE_ENUMERATION);
+	    recurs_expr = node;
+	    while (PT_IS_RECURSIVE_EXPRESSION (recurs_expr)
+		   && op == recurs_expr->info.expr.op)
+	      {
+		recurs_expr->info.expr.recursive_type = common_type;
+
+		if (PT_IS_LEFT_RECURSIVE_EXPRESSION (recurs_expr))
+		  {
+		    recurs_expr = recurs_expr->info.expr.arg1;
+		  }
+		else
+		  {
+		    recurs_expr = recurs_expr->info.expr.arg2;
+		  }
+	      }
+	  }
+
+	node = pt_eval_recursive_expr_type (parser, node);
+	/* Because for recursive functions we evaluate type here, we don't
+	   need to evaluate it twice so we skip the normal path
+	   of type evaluation */
+	*continue_walk = PT_LIST_WALK;
+	return node;
+      }
       break;
 
     default:
@@ -8605,7 +8877,17 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (arg2)
 	{
-	  common_type = pt_common_type_op (arg1_type, op, arg2_type);
+	  if (pt_is_enumeration_special_comparison (arg1, op, arg2))
+	    {
+	      /* In case of 'ENUM = const' or 'ENUM IN ...' we need to convert
+	         the right argument to the ENUM type in order to preserve an
+	         eventual index scan on left argument */
+	      common_type = PT_TYPE_ENUMERATION;
+	    }
+	  else
+	    {
+	      common_type = pt_common_type_op (arg1_type, op, arg2_type);
+	    }
 	}
 
       if (pt_is_symmetric_type (common_type))
@@ -8954,11 +9236,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (!((first_node ? PT_IS_STRING_TYPE (arg1_type) : true)
 		&& (arg2_type != PT_TYPE_NULL && arg2_type != PT_TYPE_NA
 		    ? PT_IS_STRING_TYPE (arg2_type) : true)
-		&& PT_IS_STRING_TYPE (arg3_type)) &&
-	      !((first_node ? PT_IS_NUMERIC_TYPE (arg1_type) : true)
-		&& (arg2_type != PT_TYPE_NULL && arg2_type != PT_TYPE_NA
-		    ? PT_IS_NUMERIC_TYPE (arg2_type) : true)
-		&& PT_IS_NUMERIC_TYPE (arg3_type)))
+		&& (PT_IS_STRING_TYPE (arg3_type)
+		    || arg3_type == PT_TYPE_ENUMERATION))
+	      && !((first_node ? PT_IS_NUMERIC_TYPE (arg1_type) : true)
+		   && (arg2_type != PT_TYPE_NULL
+		       && arg2_type !=
+		       PT_TYPE_NA ? PT_IS_NUMERIC_TYPE (arg2_type) : true)
+		   && (PT_IS_NUMERIC_TYPE (arg3_type)
+		       || arg3_type == PT_TYPE_ENUMERATION)))
 	    {
 	      /* cast to type of first parameter */
 
@@ -9328,7 +9613,11 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       arg3 = NULL;
-      common_type = pt_common_type_op (arg1_type, op, arg2_type);
+      common_type = node->info.expr.recursive_type;
+      if (common_type == PT_TYPE_NONE)
+	{
+	  common_type = pt_common_type_op (arg1_type, op, arg2_type);
+	}
       if (common_type == PT_TYPE_NONE)
 	{
 	  node->type_enum = PT_TYPE_NONE;
@@ -9601,7 +9890,15 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
   if (arg1_type == arg2_type)
     {
-      common_type = arg1_type;
+      if (arg1_type == PT_TYPE_ENUMERATION)
+	{
+	  /* The common type between two ENUMs is string */
+	  common_type = PT_TYPE_VARCHAR;
+	}
+      else
+	{
+	  common_type = arg1_type;
+	}
     }
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && PT_IS_STRING_TYPE (arg2_type))
 	   || (PT_IS_NUMERIC_TYPE (arg2_type)
@@ -10956,6 +11253,17 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	     ? DB_MAX_NUMERIC_PRECISION : dt->info.data_type.precision);
 	  break;
 
+	case PT_TYPE_ENUMERATION:
+	  if (arg1 != NULL && arg1->type_enum == PT_TYPE_ENUMERATION)
+	    {
+	      dt = parser_copy_tree_list (parser, arg1->data_type);
+	    }
+	  else if (arg2 != NULL && arg2->type_enum == PT_TYPE_ENUMERATION)
+	    {
+	      dt = parser_copy_tree_list (parser, arg2->data_type);
+	    }
+	  break;
+
 	default:
 	  break;
 	}
@@ -11465,14 +11773,19 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && arg_type != PT_TYPE_NULL
 	  && arg_type != PT_TYPE_NA && !pt_is_set_type (arg_list))
 	{
-	  /* cast arg_list to double */
-	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_DOUBLE,
-					   0, 0, NULL);
+	  /* To display the sum as integer and not scientific */
+	  PT_TYPE_ENUM cast_type =
+	    (arg_type ==
+	     PT_TYPE_ENUMERATION ? PT_TYPE_INTEGER : PT_TYPE_DOUBLE);
+
+	  /* cast arg_list to double or integer */
+	  arg_list =
+	    pt_wrap_with_cast_op (parser, arg_list, cast_type, 0, 0, NULL);
 	  if (arg_list == NULL)
 	    {
 	      return node;
 	    }
-	  arg_type = PT_TYPE_DOUBLE;
+	  arg_type = cast_type;
 	  node->info.function.arg_list = arg_list;
 	}
       break;
@@ -11482,6 +11795,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (!PT_IS_NUMERIC_TYPE (arg_type)
 	  && !PT_IS_STRING_TYPE (arg_type)
 	  && !PT_IS_DATE_TIME_TYPE (arg_type)
+	  && arg_type != PT_TYPE_ENUMERATION
 	  && arg_type != PT_TYPE_MAYBE
 	  && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
 	{
@@ -11505,6 +11819,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	if (!PT_IS_NUMERIC_TYPE (arg_type)
 	    && !PT_IS_STRING_TYPE (arg_type)
 	    && !PT_IS_DATE_TIME_TYPE (arg_type)
+	    && arg_type != PT_TYPE_ENUMERATION
 	    && arg_type != PT_TYPE_MAYBE
 	    && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
 	  {
@@ -11625,6 +11940,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		if (!(PT_IS_NUMERIC_TYPE (PT_TYPE_MIN + i) ||
 		      PT_IS_CHAR_STRING_TYPE (PT_TYPE_MIN + i) ||
 		      PT_IS_DATE_TIME_TYPE (PT_TYPE_MIN + i) ||
+		      PT_TYPE_MIN + i == PT_TYPE_ENUMERATION ||
 		      PT_TYPE_MIN + i == PT_TYPE_LOGICAL ||
 		      PT_TYPE_MIN + i == PT_TYPE_NONE ||
 		      PT_TYPE_MIN + i == PT_TYPE_NA ||
@@ -11783,6 +12099,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	if (!PT_IS_NUMERIC_TYPE (arg1_type)
 	    && !PT_IS_STRING_TYPE (arg1_type)
 	    && !PT_IS_DATE_TIME_TYPE (arg1_type)
+	    && arg1_type != PT_TYPE_ENUMERATION
 	    && arg1_type != PT_TYPE_MAYBE
 	    && arg1_type != PT_TYPE_NULL && arg1_type != PT_TYPE_NA)
 	  {
@@ -20940,6 +21257,90 @@ pt_select_list_to_enumeration_expr (PARSER_CONTEXT * parser,
       break;
     }
   return node;
+}
+
+/*
+* pt_is_enumeration_special_comparison () - check if the comparison is a
+*     '=' comparison that involves ENUM types and constants or if it's a IN
+*     'IN' comparison in which the left operator is an ENUM.
+* return : true if it is a special ENUM comparison or false otherwise.
+* arg1 (in) : left argument
+* op (in)   : expression operator
+* arg2 (in) : right argument
+*/
+static bool
+pt_is_enumeration_special_comparison (PT_NODE * arg1, PT_OP_TYPE op,
+				      PT_NODE * arg2)
+{
+  PT_NODE *arg_tmp = NULL;
+
+  if (arg1 == NULL || arg2 == NULL)
+    {
+      return false;
+    }
+
+  switch (op)
+    {
+    case PT_EQ:
+    case PT_NULLSAFE_EQ:
+      if (arg1->type_enum != PT_TYPE_ENUMERATION)
+	{
+	  if (arg2->type_enum != PT_TYPE_ENUMERATION)
+	    {
+	      return false;
+	    }
+
+	  arg_tmp = arg1;
+	  arg1 = arg2;
+	  arg2 = arg_tmp;
+	}
+      else if (arg2->type_enum == PT_TYPE_ENUMERATION
+	       && arg1->data_type != NULL && arg2->data_type != NULL)
+	{
+	  PT_NODE *e1 = arg1->data_type->info.data_type.enumeration;
+	  PT_NODE *e2 = arg2->data_type->info.data_type.enumeration;
+	  int l1, l2;
+	  PARSER_VARCHAR *pvc1, *pvc2;
+
+	  for (; e1 != NULL && e2 != NULL; e1 = e1->next, e2 = e2->next)
+	    {
+	      pvc1 = e1->info.value.data_value.str;
+	      pvc2 = e2->info.value.data_value.str;
+	      l1 = pt_get_varchar_length (pvc1);
+	      l2 = pt_get_varchar_length (pvc2);
+	      if (l1 != l2
+		  || memcmp (pt_get_varchar_bytes (pvc1),
+			     pt_get_varchar_bytes (pvc2), l1))
+		{
+		  break;
+		}
+	    }
+	  if (e1 == NULL && e2 == NULL)
+	    {
+	      return true;
+	    }
+	}
+      if (arg2->node_type == PT_EXPR)
+	{
+	  if (arg2->info.expr.op != PT_TO_ENUMERATION_VALUE)
+	    {
+	      return false;
+	    }
+	}
+      else
+	{
+	  if (!PT_IS_CONST (arg2))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+      return (arg1->type_enum == PT_TYPE_ENUMERATION);
+    default:
+      return false;
+    }
 }
 
 /*

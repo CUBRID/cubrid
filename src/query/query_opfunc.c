@@ -2475,6 +2475,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
     case DB_TYPE_TIMESTAMP:	/* == DB_TYPE_UTIME */
+    case DB_TYPE_ENUMERATION:
       {
 	TP_DOMAIN_STATUS err_dom;
 	err_dom = tp_value_cast (dbval2_p, &arg_val, domain_p, false);

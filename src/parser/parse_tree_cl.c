@@ -9258,6 +9258,7 @@ pt_init_expr (PT_NODE * p)
   p->info.expr.flag = 0;
   p->info.expr.location = 0;
   p->info.expr.is_order_dependent = false;
+  p->info.expr.recursive_type = PT_TYPE_NONE;
   return p;
 }
 

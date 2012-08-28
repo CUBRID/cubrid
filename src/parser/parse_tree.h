@@ -1965,6 +1965,8 @@ struct pt_expr_info
 #define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (short) ~(f)
   short location;		/* 0 : WHERE; n : join condition of n-th FROM */
   bool is_order_dependent;	/* true if expression is order dependent */
+  PT_TYPE_ENUM recursive_type;	/* common type for recursive expression
+				 * arguments (like PT_GREATEST, PT_LEAST,...) */
 };
 
 

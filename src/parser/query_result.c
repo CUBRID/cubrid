@@ -483,7 +483,19 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	   col && attr1 && attr2;
 	   col = col->next, attr1 = attr1->next, attr2 = attr2->next)
 	{
-	  common_type = pt_common_type (attr1->type_enum, attr2->type_enum);
+	  /* preserve the ENUM type as common type between two ENUMs in UNION,
+	     DIFFERENCE and INTERSECTION. The ENUM domains already have been
+	     verified and if they are different an error is generated. */
+	  if (attr1->type_enum == attr2->type_enum
+	      && attr1->type_enum == PT_TYPE_ENUMERATION)
+	    {
+	      common_type = PT_TYPE_ENUMERATION;
+	    }
+	  else
+	    {
+	      common_type =
+		pt_common_type (attr1->type_enum, attr2->type_enum);
+	    }
 
 	  if (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL)
 	    db_make_null (&col->info.value.db_value);
