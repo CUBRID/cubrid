@@ -520,8 +520,9 @@ public class UStatement {
 
 			if (!isReturnable
 					&& close_srv_handle
-					&& !(relatedConnection.getAutoCommit() == true && relatedConnection
-							.brokerInfoStatementPooling() == false)) {
+					&& (relatedConnection.getAutoCommit() == false
+						|| relatedConnection.brokerInfoStatementPooling() == true
+						|| ((prepare_flag & UConnection.PREPARE_HOLDABLE) != 0))) {
 				synchronized (relatedConnection) {
 					outBuffer.newRequest(UFunctionCode.CLOSE_USTATEMENT);
 					outBuffer.addInt(serverHandler);

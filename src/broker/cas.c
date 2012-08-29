@@ -612,7 +612,7 @@ conn_proxy_retry:
 
 	if (as_info->cur_statement_pooling)
 	  {
-	    hm_srv_handle_free_all ();
+	    hm_srv_handle_free_all (true);
 	  }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1170,7 +1170,7 @@ main (int argc, char *argv[])
 
 	    if (as_info->cur_statement_pooling)
 	      {
-		hm_srv_handle_free_all ();
+		hm_srv_handle_free_all (true);
 	      }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1364,7 +1364,7 @@ cas_free (void)
 
   if (as_info->cur_statement_pooling)
     {
-      hm_srv_handle_free_all ();
+      hm_srv_handle_free_all (true);
     }
 
   max_process_size = (shm_appl->appl_server_max_size > 0) ?

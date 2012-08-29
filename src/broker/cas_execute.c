@@ -1055,7 +1055,14 @@ ux_end_tran (int tran_type, bool reset_con_status)
 
   if (!as_info->cur_statement_pooling)
     {
-      hm_srv_handle_free_all ();
+      if (tran_type == CCI_TRAN_COMMIT)
+	{
+	  hm_srv_handle_free_all (false);
+	}
+      else
+	{
+	  hm_srv_handle_free_all (true);
+	}
     }
   else
     {
@@ -1072,7 +1079,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
     }
 
 #else /* !LIBCAS_FOR_JSP */
-  hm_srv_handle_free_all ();
+  hm_srv_handle_free_all (true);
 #endif /* !LIBCAS_FOR_JSP */
 
   if (tran_type == CCI_TRAN_COMMIT)

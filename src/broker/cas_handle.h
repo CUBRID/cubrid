@@ -196,7 +196,7 @@ struct t_srv_handle
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle,
 			      unsigned int seq_num);
 extern void hm_srv_handle_free (int h_id);
-extern void hm_srv_handle_free_all (void);
+extern void hm_srv_handle_free_all (bool free_holdable);
 extern void hm_srv_handle_qresult_end_all (bool end_holdable);
 extern T_SRV_HANDLE *hm_find_srv_handle (int h_id);
 extern void hm_qresult_clear (T_QUERY_RESULT * q_result);

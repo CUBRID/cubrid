@@ -184,25 +184,37 @@ hm_srv_handle_free (int h_id)
 }
 
 void
-hm_srv_handle_free_all ()
+hm_srv_handle_free_all (bool free_holdable)
 {
   T_SRV_HANDLE *srv_handle;
   int i;
+  int new_max_handle_id = 0;
 
   for (i = 0; i < max_handle_id; i++)
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL)
 	continue;
+      if (srv_handle->is_holdable && !free_holdable)
+	{
+	  new_max_handle_id = i;
+	  continue;
+	}
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
-    }
-  max_handle_id = 0;
 #if !defined(LIBCAS_FOR_JSP)
-  current_handle_count = 0;
-  as_info->num_holdable_results = 0;
+      current_handle_count--;
+#endif
+    }
+  max_handle_id = new_max_handle_id;
+#if !defined(LIBCAS_FOR_JSP)
+  if (free_holdable)
+    {
+      current_handle_count = 0;
+      as_info->num_holdable_results = 0;
+    }
 #endif
 }
 
@@ -249,6 +261,10 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	}
 #endif
     }
+#if !defined(LIBCAS_FOR_JSP)
+  /* make sure that as_info->num_holdable_results is 0 after rollback */
+  assert (!end_holdable || as_info->num_holdable_results == 0);
+#endif
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
