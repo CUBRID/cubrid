@@ -302,6 +302,10 @@ extern "C"
     unsigned int bt_num_inserts;
     unsigned int bt_num_deletes;
     unsigned int bt_num_updates;
+    unsigned int bt_num_covered;
+    unsigned int bt_num_noncovered;
+    unsigned int bt_num_resumes;
+    unsigned int bt_num_multi_range_opt;
 
     /* Execution statistics for the query manager */
     unsigned int qm_num_selects;
@@ -316,6 +320,7 @@ extern "C"
     unsigned int qm_num_nljoins;
     unsigned int qm_num_mjoins;
     unsigned int qm_num_objfetches;
+    unsigned int qm_num_holdable_cursors;
 
     /* Execution statistics for network communication */
     unsigned int net_num_requests;

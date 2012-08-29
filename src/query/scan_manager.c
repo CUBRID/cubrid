@@ -6208,6 +6208,8 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 
       multi_range_opt->tplrec.size = 0;
       multi_range_opt->tplrec.tpl = NULL;
+
+      mnt_bt_multi_range_opt (thread_p);
     }
 
   return err;

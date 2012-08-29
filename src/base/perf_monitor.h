@@ -191,6 +191,7 @@ struct mnt_server_exec_stats
   UINT64 bt_num_covered;
   UINT64 bt_num_noncovered;
   UINT64 bt_num_resumes;
+  UINT64 bt_num_multi_range_opt;
 
   /* Execution statistics for the query manager */
   UINT64 qm_num_selects;
@@ -232,7 +233,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 61
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 62
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -496,6 +497,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_noncovered(thread_p)
 #define mnt_bt_resumes(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_resumes(thread_p)
+#define mnt_bt_multi_range_opt(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_multi_range_opt(thread_p)
 
 /* Execution statistics for the query manager */
 #define mnt_qm_selects(thread_p) \
@@ -595,6 +598,7 @@ extern void mnt_x_bt_updates (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_covered (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_noncovered (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_resumes (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_multi_range_opt (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_selects (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_inserts (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_deletes (THREAD_ENTRY * thread_p);
@@ -669,6 +673,7 @@ extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 #define mnt_bt_covered(thread_p)
 #define mnt_bt_noncovered(thread_p)
 #define mnt_bt_resumes(thread_p)
+#define mnt_bt_multi_range_opt(thread_p)
 
 #define mnt_qm_selects(thread_p)
 #define mnt_qm_inserts(thread_p)

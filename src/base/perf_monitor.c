@@ -468,6 +468,8 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->bt_num_noncovered);
   CALC_STAT_DIFF (stats_diff->bt_num_resumes, p->bt_num_resumes,
 		  q->bt_num_resumes);
+  CALC_STAT_DIFF (stats_diff->bt_num_multi_range_opt,
+		  p->bt_num_multi_range_opt, q->bt_num_multi_range_opt);
 
   CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
 		  q->qm_num_selects);
@@ -639,6 +641,9 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
     CALC_GLOBAL_STAT_DIFF (p->bt_num_noncovered, q->bt_num_noncovered);
   stats_diff->bt_num_resumes =
     CALC_GLOBAL_STAT_DIFF (p->bt_num_resumes, q->bt_num_resumes);
+  stats_diff->bt_num_multi_range_opt =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_multi_range_opt,
+			   q->bt_num_multi_range_opt);
 
   stats_diff->qm_num_selects =
     CALC_GLOBAL_STAT_DIFF (p->qm_num_selects, q->qm_num_selects);
@@ -1794,6 +1799,7 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_btree_covered",
   "Num_btree_noncovered",
   "Num_btree_resumes",
+  "Num_btree_multirange_optimization",
   "Num_query_selects",
   "Num_query_inserts",
   "Num_query_deletes",
@@ -2877,6 +2883,23 @@ mnt_x_bt_resumes (THREAD_ENTRY * thread_p)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_num_resumes, 1);
+    }
+}
+
+/*
+ * mnt_x_bt_multi_range_opt - Increase bt_num_multi_range_opt counter of the
+ *                            current transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_multi_range_opt (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_multi_range_opt, 1);
     }
 }
 

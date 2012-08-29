@@ -123,6 +123,8 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->bt_num_resumes));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->bt_num_multi_range_opt));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_inserts));
@@ -267,6 +269,8 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->bt_num_noncovered));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->bt_num_resumes));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->bt_num_multi_range_opt));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;
