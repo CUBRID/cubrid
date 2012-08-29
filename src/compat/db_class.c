@@ -1890,12 +1890,6 @@ db_truncate_class (DB_OBJECT * class_)
   CHECK_1ARG_ERROR (class_);
   CHECK_MODIFICATION_ERROR ();
 
-  error_code = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS
-					   | CHECK_PARTITION_PARENT, NULL);
-  if (error_code == NO_ERROR)
-    {
-      error_code = sm_truncate_class (class_);
-    }
-
+  error_code = sm_truncate_class (class_);
   return error_code;
 }
