@@ -424,7 +424,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
 
   if (!as_info->cur_statement_pooling)
     {
-      hm_srv_handle_free_all ();
+      hm_srv_handle_free_all (true);
     }
 
   err_code = cas_mysql_end_tran (tran_type);
