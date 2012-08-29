@@ -7237,20 +7237,20 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (node->info.update.limit)
 	{
 	  limit_ptr = &node->info.update.limit;
-          if (node->info.query.limit->next)
-            {
-              limit_ptr = &node->info.query.limit->next;
-            }
+	  if (node->info.update.limit->next)
+	    {
+	      limit_ptr = &node->info.update.limit->next;
+	    }
 	}
       break;
     case PT_DELETE:
       if (node->info.delete_.limit)
 	{
 	  limit_ptr = &node->info.delete_.limit;
-          if (node->info.query.limit->next)
-            {
-              limit_ptr = &node->info.query.limit->next;
-            }
+	  if (node->info.delete_.limit->next)
+	    {
+	      limit_ptr = &node->info.delete_.limit->next;
+	    }
 	}
       break;
     default:
