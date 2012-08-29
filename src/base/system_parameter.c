@@ -5812,6 +5812,7 @@ prm_tune_parameters (void)
   /* reset to default 'active mode' */
   (void) prm_set_default (ha_mode_prm);
   (void) prm_set (ha_server_state_prm, HA_SERVER_STATE_ACTIVE_STR, false);
+
   if (force_remove_log_archives_prm != NULL
       && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
     {
@@ -5826,6 +5827,11 @@ prm_tune_parameters (void)
 	  prm_set (ha_server_state_prm, newval, false);
 	}
       prm_set (auto_restart_server_prm, "no", false);
+
+      if (PRM_GET_INT (ha_mode_prm->value) == HA_MODE_REPLICA)
+	{
+	  prm_set (force_remove_log_archives_prm, "yes", false);
+	}
     }
   else
     {
