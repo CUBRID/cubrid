@@ -999,6 +999,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 		    char *admin_err_msg)
 {
   int err = 0;
+  bool is_conf_found = false;
   char default_conf_file_path[PATH_MAX], file_name[PATH_MAX],
     file_being_dealt_with[PATH_MAX];
   struct stat stat_buf;
@@ -1042,6 +1043,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
     }
   if (stat (file_being_dealt_with, &stat_buf) == 0)
     {
+      is_conf_found = true;
       err = broker_config_read_internal (file_being_dealt_with, br_info,
 					 num_broker, br_shm_id,
 					 admin_log_file, admin_flag,
@@ -1058,12 +1060,20 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 #endif /* WINDOWS */
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
+	  is_conf_found = true;
 	  err = broker_config_read_internal (file_being_dealt_with, br_info,
 					     num_broker, br_shm_id,
 					     admin_log_file, admin_flag,
 					     acl_flag, acl_file,
 					     admin_err_msg);
 	}
+    }
+
+  if (!is_conf_found)
+    {
+      err = -1;
+      fprintf (stderr, "Error: can't find %s\n",
+	       (conf_file == NULL) ? default_conf_file_path : conf_file);
     }
 
   return err;
