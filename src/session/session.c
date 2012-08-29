@@ -56,6 +56,7 @@ typedef struct active_sessions
 {
   MHT_TABLE *sessions_table;
   SESSION_ID last_sesson_id;
+  int num_holdable_cursors;
 } ACTIVE_SESSIONS;
 
 typedef struct session_timeout_info SESSION_TIMEOUT_INFO;
@@ -115,7 +116,7 @@ typedef struct session_state
 } SESSION_STATE;
 
 /* the active sessions storage */
-static ACTIVE_SESSIONS sessions = { NULL, 0 };
+static ACTIVE_SESSIONS sessions = { NULL, 0, 0 };
 
 static unsigned int sessions_hash (const void *key,
 				   unsigned int hash_table_size);
@@ -246,6 +247,7 @@ int
 session_states_init (THREAD_ENTRY * thread_p)
 {
   sessions.last_sesson_id = 0;
+  sessions.num_holdable_cursors = 0;
 
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 
@@ -2527,7 +2529,7 @@ session_dump_prepared_statement (PREPARED_STATEMENT * stmt_p)
 
 /*
  * qentry_to_sentry () - create a session query entry from a query manager
- *			 entry 
+ *			 entry
  * return : session query entry or NULL
  * qentry_p (in) : query manager query entry
  */
@@ -2561,7 +2563,7 @@ qentry_to_sentry (QMGR_QUERY_ENTRY * qentry_p)
 
 /*
  * session_preserve_temporary_files () - remove list files used by qentry_p
- *					 from the file manager so that it 
+ *					 from the file manager so that it
  *					 doesn't delete them at transaction
  *					 end
  * return : error code or NO_ERROR
@@ -2611,7 +2613,7 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p,
 
 /*
  * sentry_to_qentry () - create a query manager entry from a session query
- *			 entry 
+ *			 entry
  * return : void
  * sentry_p (in)     : session query entry
  * qentry_p (in/out) : query manager query entry
@@ -2716,11 +2718,13 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p,
       sqentry_p->next = state_p->queries;
       state_p->queries = sqentry_p;
     }
+
+  mnt_qm_holdable_cursor (thread_p, ++sessions.num_holdable_cursors);
   csect_exit (CSECT_SESSION_STATE);
 }
 
 /*
- * session_free_sentry_data () - close list files associated with a query 
+ * session_free_sentry_data () - close list files associated with a query
  *				 entry
  * return : void
  * thread_p (in) :
@@ -2746,6 +2750,8 @@ session_free_sentry_data (THREAD_ENTRY * thread_p,
       qmgr_free_temp_file_list (thread_p, sentry_p->temp_file,
 				sentry_p->query_id, false);
     }
+
+  mnt_qm_holdable_cursor (thread_p, --sessions.num_holdable_cursors);
 }
 
 /*
@@ -2874,7 +2880,7 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p,
 
 /*
  * session_remove_query_entry_info () - remove a query entry from the holdable
- *					queries list but do not close the 
+ *					queries list but do not close the
  *					associated list files
  * return : error code or NO_ERROR
  * thread_p (in) : active thread
@@ -2927,7 +2933,10 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p,
 	    {
 	      prev->next = sentry_p->next;
 	    }
+
 	  free_and_init (sentry_p);
+	  mnt_qm_holdable_cursor (thread_p, --sessions.num_holdable_cursors);
+
 	  break;
 	}
       prev = sentry_p;

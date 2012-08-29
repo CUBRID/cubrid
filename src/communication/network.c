@@ -145,6 +145,10 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_mjoins));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->qm_num_objfetches));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->qm_num_holdable_cursors));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->net_num_requests));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->fc_num_pages));
@@ -285,6 +289,10 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->qm_num_nljoins));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_mjoins));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->qm_num_objfetches));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->qm_num_holdable_cursors));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->net_num_requests));
   ptr += OR_INT64_SIZE;

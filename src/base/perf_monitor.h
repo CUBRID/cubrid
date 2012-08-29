@@ -205,6 +205,7 @@ struct mnt_server_exec_stats
   UINT64 qm_num_nljoins;
   UINT64 qm_num_mjoins;
   UINT64 qm_num_objfetches;
+  UINT64 qm_num_holdable_cursors;
 
   /* Execution statistics for network communication */
   UINT64 net_num_requests;
@@ -231,7 +232,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 60
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 61
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -521,6 +522,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_mjoins(thread_p)
 #define mnt_qm_objfetches(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_objfetches(thread_p)
+#define mnt_qm_holdable_cursor(thread_p, num_cursors) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_holdable_cursor(thread_p, num_cursors)
 
 /* Prior LSA */
 #define mnt_prior_lsa_list_size(thread_p, list_size) \
@@ -604,6 +607,8 @@ extern void mnt_x_qm_methscans (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_nljoins (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_mjoins (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_objfetches (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p,
+				      int num_cursors);
 extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
 
 extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p,
@@ -677,6 +682,7 @@ extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 #define mnt_qm_nljoins(thread_p)
 #define mnt_qm_mjoins(thread_p)
 #define mnt_qm_objfetches(thread_p)
+#define mnt_qm_holdable_cursor(thread_p, num_cursors)
 
 #define mnt_net_requests(thread_p)
 

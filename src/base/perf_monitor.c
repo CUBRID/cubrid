@@ -493,6 +493,8 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->qm_num_mjoins);
   CALC_STAT_DIFF (stats_diff->qm_num_objfetches, p->qm_num_objfetches,
 		  q->qm_num_objfetches);
+  CALC_STAT_DIFF (stats_diff->qm_num_holdable_cursors,
+		  p->qm_num_holdable_cursors, q->qm_num_holdable_cursors);
 
   CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
 		  q->net_num_requests);
@@ -662,6 +664,9 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
     CALC_GLOBAL_STAT_DIFF (p->qm_num_mjoins, q->qm_num_mjoins);
   stats_diff->qm_num_objfetches =
     CALC_GLOBAL_STAT_DIFF (p->qm_num_objfetches, q->qm_num_objfetches);
+  stats_diff->qm_num_holdable_cursors =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_holdable_cursors,
+			   q->qm_num_holdable_cursors);
 
   stats_diff->net_num_requests =
     CALC_GLOBAL_STAT_DIFF (p->net_num_requests, q->net_num_requests);
@@ -1801,6 +1806,7 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_query_nljoins",
   "Num_query_mjoins",
   "Num_query_objfetches",
+  "Num_query_holdable_cursors",
   "Num_network_requests",
   "Num_adaptive_flush_pages",
   "Num_adaptive_flush_log_pages",
@@ -3075,6 +3081,23 @@ mnt_x_qm_objfetches (THREAD_ENTRY * thread_p)
   if (stats != NULL)
     {
       ADD_STATS (stats, qm_num_objfetches, 1);
+    }
+}
+
+/*
+ * mnt_x_holdable_cursor - Increase qm_num_holdable_cursors counter of the
+ *                         current transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p, int num_cursors)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      SET_STATS (stats, qm_num_holdable_cursors, num_cursors);
     }
 }
 
