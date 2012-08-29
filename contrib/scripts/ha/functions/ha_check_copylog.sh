@@ -75,7 +75,7 @@ if [ ! -d $repl_log_path ]; then
 	else
 		pw_option="-p $dba_password"
 	fi
-	csql -S -u dba $pw_option --sysadm $db_name -c "select * from db_ha_apply_info where db_name='$db_name' and copied_log_path='$repl_log_path'" | grep "There are no results."
+	csql -S -u DBA $pw_option --sysadm $db_name -c "select * from db_ha_apply_info where db_name='$db_name' and copied_log_path='$repl_log_path'" | grep "There are no results."
 	if [ $? -eq $SUCCESS ]; then
 		echo $(hostname) > $output_file
 	fi

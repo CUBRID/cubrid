@@ -97,9 +97,15 @@ VALUES \
 	'$db_name', \
 	datetime '$local_db_creation', \
 	'$repl_log_path', \
-	-1, -1, \
+	$pageid, $offset, \
+	$pageid, $offset, \
+	$pageid, $offset, \
+	$pageid, $offset, \
+	$pageid, $offset, \
+	$pageid, $offset, \
 	NULL, \
 	NULL, \
+	NULL, \
 	0, \
 	0, \
 	0, \
@@ -107,7 +113,6 @@ VALUES \
 	0, \
 	0, \
 	0, \
-	$pageid, \
 	NULL \
 )"
 }
@@ -117,14 +122,14 @@ function print_old_ha_apply_info()
 	echo -ne "\n\n"
 	echo -ne "2. select old db_ha_apply_info. \n\n"
 	if [ -z "$dba_password" ]; then
-		cmd_select="csql -u dba -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, page_id, offset, required_page_id FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
+		cmd_select="csql -u DBA -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, committed_lsa_pageid, committed_lsa_offset, committed_rep_pageid, committed_rep_offset, required_lsa_pageid, required_lsa_offset FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
 
 		echo "$current_host ]$ $cmd_select"
 		eval $cmd_select
 		echo ""
 
 	else
-		cmd_select="csql -u dba -p '$dba_password' -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, page_id, offset, required_page_id FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
+		cmd_select="csql -u DBA -p '$dba_password' -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, committed_lsa_pageid, committed_lsa_offset, committed_rep_pageid, committed_rep_offset, required_lsa_pageid, required_lsa_offset FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
 
 		echo "$current_host ]$ $cmd_select"
 		eval $cmd_select
@@ -138,28 +143,28 @@ function insert_new_ha_apply_info()
 	echo -ne "3. insert new db_ha_apply_info on slave. \n\n"
 
 	if [ -z "$dba_password" ]; then
-		cmd_delete="csql --sysadm -u dba -S $db_name -c \"DELETE FROM db_ha_apply_info WHERE db_name='$db_name'\""
-		cmd_insert="csql --sysadm -u dba -S $db_name -c \"$csql_cmd\""
+		cmd_delete="csql --sysadm -u DBA -S $db_name -c \"DELETE FROM db_ha_apply_info WHERE db_name='$db_name'\""
+		cmd_insert="csql --sysadm -u DBA -S $db_name -c \"$csql_cmd\""
 
 		echo "$current_host ]$ $cmd_delete"
 		eval $cmd_delete
 		echo "$current_host ]$ $cmd_insert"
 		eval $cmd_insert
 
-		cmd_select="csql -u dba -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, page_id, offset, required_page_id FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
+		cmd_select="csql -u DBA -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, committed_lsa_pageid, committed_lsa_offset, committed_rep_pageid, committed_rep_offset, required_lsa_pageid, required_lsa_offset FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
 		echo "$current_host ]$ $cmd_select"
 		eval $cmd_select
 
 	else
-		cmd_delete="csql --sysadm -u dba -p '$dba_password' -S $db_name -c \"DELETE FROM db_ha_apply_info WHERE db_name='$db_name'\""
-		cmd_insert="csql --sysadm -u dba -p '$dba_password' -S $db_name -c \"$csql_cmd\""
+		cmd_delete="csql --sysadm -u DBA -p '$dba_password' -S $db_name -c \"DELETE FROM db_ha_apply_info WHERE db_name='$db_name'\""
+		cmd_insert="csql --sysadm -u DBA -p '$dba_password' -S $db_name -c \"$csql_cmd\""
 
 		echo "$current_host ]$ $cmd_delete"
 		eval $cmd_delete
 		echo "$current_host ]$ $cmd_insert"
 		eval $cmd_insert
 
-		cmd_select="csql -u dba -p '$dba_password' -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, page_id, offset, required_page_id FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
+		cmd_select="csql -u DBA -p '$dba_password' -S $db_name -l -c \"SELECT db_name, db_creation_time, copied_log_path, committed_lsa_pageid, committed_lsa_offset, committed_rep_pageid, committed_rep_offset, required_lsa_pageid, required_lsa_offset FROM db_ha_apply_info WHERE db_name='$db_name'\"" 
 		echo "$current_host ]$ $cmd_select"
 		eval $cmd_select
 	fi

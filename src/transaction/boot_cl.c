@@ -3223,7 +3223,8 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "required_lsa_offset", "bigint", NULL);
+  error_code =
+    smt_add_attribute (def, "required_lsa_offset", "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

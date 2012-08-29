@@ -865,8 +865,8 @@ function init_ha_info_on_master()
 	if [ -n "$dba_password" ]; then
 		pw_option="-p $dba_password"
 	fi
-	ssh_cubrid $master_host "csql -C -u dba $pw_option --sysadm $db_name@localhost -c \"delete from db_ha_apply_info where db_name='$db_name'\""
-	ssh_cubrid $master_host "csql -C -u dba $pw_option --sysadm $db_name@localhost -c \"select * from db_ha_apply_info where db_name='$db_name'\""
+	ssh_cubrid $master_host "csql -C -u DBA $pw_option --sysadm $db_name@localhost -c \"delete from db_ha_apply_info where db_name='$db_name'\""
+	ssh_cubrid $master_host "csql -C -u DBA $pw_option --sysadm $db_name@localhost -c \"select * from db_ha_apply_info where db_name='$db_name'\""
 }
 	
 function init_ha_info_on_slave()
@@ -922,7 +922,7 @@ function init_ha_info_on_replica()
 		if [ -n "$dba_password" ]; then
 			pw_option="-p $dba_password"
 		fi
-		command3="csql -S -u dba $pw_option --sysadm $db_name -c \"delete from db_ha_apply_info where db_name='$db_name' and copied_log_path='$repl_log_path'\""
+		command3="csql -S -u DBA $pw_option --sysadm $db_name -c \"delete from db_ha_apply_info where db_name='$db_name' and copied_log_path='$repl_log_path'\""
 		command4="sh $function_home/ha_check_copylog.sh -t $ha_temp_home -d $db_name -r $repl_log_path $pw_option -o $copylog_output"
 		command5="cubrid heartbeat start"
 		

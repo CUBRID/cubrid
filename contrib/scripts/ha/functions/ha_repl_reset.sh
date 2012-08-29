@@ -89,25 +89,25 @@ function ha_repl_reset_applylogdb()
 	if [ -z "$dba_password" ]; then
 
 		echo " - move(backup) old db_ha_apply_info if exist"
-		cmd_update="csql --sysadm -u dba -C $db_name@localhost -c \"UPDATE db_ha_apply_info SET copied_log_path='$new_log_path' WHERE db_name='$db_name' AND copied_log_path='$log_path'\""
+		cmd_update="csql --sysadm -u DBA -C $db_name@localhost -c \"UPDATE db_ha_apply_info SET copied_log_path='$new_log_path' WHERE db_name='$db_name' AND copied_log_path='$log_path'\""
 		echo "$current_host ]$ $cmd_update"
 		eval $cmd_update
 
 		echo -ne "\n\n"
 		echo " - select old db_ha_apply_info"
-		cmd_select="csql -u dba -C $db_name@localhost -l -c \"SELECT db_name, db_creation_time, copied_log_path, page_id, offset FROM db_ha_apply_info WHERE db_name='$db_name' AND copied_log_path='$new_log_path'\"" 
+		cmd_select="csql -u DBA -C $db_name@localhost -l -c \"SELECT db_name, db_creation_time, copied_log_path, committed_lsa_pageid, committed_lsa_offset, committed_rep_pageid, committed_rep_offset, required_lsa_pageid, required_lsa_offset FROM db_ha_apply_info WHERE db_name='$db_name' AND copied_log_path='$new_log_path'\"" 
 		echo "$current_host ]$ $cmd_select"
 		eval $cmd_select
 
 	else
 		echo " - move(backup) old db_ha_apply_info if exist"
-		cmd_update="csql --sysadm -u dba -p '$dba_password' -C $db_name@localhost -c \"UPDATE db_ha_apply_info SET copied_log_path='$new_log_path' WHERE db_name='$db_name' AND copied_log_path='$log_path'\""
+		cmd_update="csql --sysadm -u DBA -p '$dba_password' -C $db_name@localhost -c \"UPDATE db_ha_apply_info SET copied_log_path='$new_log_path' WHERE db_name='$db_name' AND copied_log_path='$log_path'\""
 		echo "$current_host ]$ $cmd_update"
 		eval $cmd_update
 
 		echo -ne "\n\n"
 		echo " - select old db_ha_apply_info"
-		cmd_select="csql -u dba -p '$dba_password' -C $db_name@localhost -l -c \"SELECT db_name, db_creation_time, copied_log_path, page_id, offset FROM db_ha_apply_info WHERE db_name='$db_name' AND copied_log_path='$new_log_path'\"" 
+		cmd_select="csql -u DBA -p '$dba_password' -C $db_name@localhost -l -c \"SELECT db_name, db_creation_time, copied_log_path, committed_lsa_pageid, committed_lsa_offset, committed_rep_pageid, committed_rep_offset, required_lsa_pageid, required_lsa_offset FROM db_ha_apply_info WHERE db_name='$db_name' AND copied_log_path='$new_log_path'\"" 
 
 		echo "$current_host ]$ $cmd_select"
 		eval $cmd_select
