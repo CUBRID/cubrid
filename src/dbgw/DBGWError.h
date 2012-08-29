@@ -50,8 +50,9 @@ namespace dbgw
 
       CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
       CLIENT_INVALID_CLIENT                     = -22401,
-      CLIENT_ALREADY_IN_TRANSACTION             = -22402,
-      CLIENT_NOT_IN_TRANSACTION                 = -22403,
+      CLIENT_NOT_EXIST_GROUP                    = -22402,
+      CLIENT_ALREADY_IN_TRANSACTION             = -22403,
+      CLIENT_NOT_IN_TRANSACTION                 = -22404,
 
       RESULT_NOT_ALLOWED_NEXT                   = -22500,
       RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
@@ -237,6 +238,12 @@ namespace dbgw
   {
   public:
     InvalidClientException() throw();
+  };
+
+  class NotExistGroupException : public DBGWException
+  {
+  public:
+    NotExistGroupException(const char *szSqlName) throw();
   };
 
   class AlreadyInTransactionException : public DBGWException

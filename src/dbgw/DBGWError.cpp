@@ -205,7 +205,7 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(
             DBGWErrorCode::CONF_NOT_EXIST_QUERY_IN_XML,
-            (boost::format("The %s query is not exist in xml.") % szSqlName).str()))
+            (boost::format("There is no '%s' query in querymap") % szSqlName).str()))
   {
   }
 
@@ -364,6 +364,14 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::CLIENT_NOT_IN_TRANSACTION,
             "The client is not in transaction."))
+  {
+  }
+
+  NotExistGroupException::NotExistGroupException(const char *szSqlName) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CLIENT_NOT_EXIST_GROUP,
+            (boost::format("There is no group (%s) to execute query.")
+                % szSqlName).str()))
   {
   }
 

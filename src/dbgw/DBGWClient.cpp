@@ -264,6 +264,7 @@ namespace dbgw
 
         bool bValidateResult = false;
         bool bMakeResult = false;
+        bool bExecuted = false;
         DBGWException validateFailException;
         DBGWResultSharedPtr pReturnResult, pInternalResult;
         for (DBGWExecuterList::iterator it = m_executerList.begin(); it
@@ -283,6 +284,8 @@ namespace dbgw
                   {
                     continue;
                   }
+
+                bExecuted = true;
 
                 if (pReturnResult == NULL && pInternalResult == NULL)
                   {
@@ -375,6 +378,14 @@ namespace dbgw
           {
             setLastException(validateFailException);
           }
+
+        if (bExecuted == false)
+          {
+            NotExistGroupException e(szSqlName);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
         return pReturnResult;
       }
     catch (DBGWException &e)
