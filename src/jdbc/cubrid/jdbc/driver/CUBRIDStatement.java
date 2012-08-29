@@ -791,6 +791,8 @@ public class CUBRIDStatement implements Statement {
 	}
 
 	protected void executeCore(boolean all) throws SQLException {
+		completed = false;
+		
 		if (u_stmt.is_result_cacheable()) {
 			jdbc_cache_make(all);
 		} else {
@@ -806,8 +808,6 @@ public class CUBRIDStatement implements Statement {
 				u_con.turnOnAutoCommitBySelf();
 			}
 		}
-
-		completed = false;
 	}
 
 	protected void executeCoreInternal(boolean all,
