@@ -347,7 +347,7 @@ namespace dbgw
 
     m_pTester->addParameter(
         properties.getCString(XML_NODE_PARAM_PROP_NAME, false),
-        properties.getValueType(XML_NODE_PARAM_PROP_TYPE),
+        properties.get30ValueType(XML_NODE_PARAM_PROP_TYPE),
         properties.get(XML_NODE_PARAM_PROP_VALUE, false),
         properties.getBool(XML_NODE_PARAM_PROP_ISNULL, false));
   }

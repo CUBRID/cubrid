@@ -49,7 +49,7 @@ namespace dbgw
     int getInt(const char *szName, bool bRequired);
     bool getBool(const char *szName, bool bRequired);
     void getValidateResult(const char *szName, bool bValidateResult[]);
-    DBGWValueType getValueType(const char *szName);
+    DBGWValueType get30ValueType(const char *szName);
     CCI_LOG_LEVEL getLogLevel(const char *szName);
 
   public:
@@ -72,6 +72,8 @@ namespace dbgw
     DBGWParser(const string &fileName);
     virtual ~ DBGWParser();
 
+    virtual void setRealFileName(const string &realFileName);
+
   public:
     static void parse(DBGWParser *pParser);
 
@@ -85,12 +87,13 @@ namespace dbgw
 
   protected:
     const string &getFileName() const;
+    const string &getRealFileName() const;
     const string &getParentElementName() const;
     bool isRootElement() const;
     bool isCdataSection() const;
 
   private:
-    static void doParse(DBGWParser *pParser, const char *szFileName);
+    static void doParse(DBGWParser *pParser);
     static void onElementStart(void *pParam, const XML_Char *szName,
         const XML_Char *szAttr[]);
     static void onElementEnd(void *pParam, const XML_Char *szName);
@@ -104,6 +107,7 @@ namespace dbgw
 
   private:
     string m_fileName;
+    string m_realFileName;
     DBGWExpatXMLElementStack m_elementStack;
     bool m_bCdataSection;
   };

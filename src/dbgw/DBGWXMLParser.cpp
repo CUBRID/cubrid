@@ -255,7 +255,7 @@ namespace dbgw
       }
   }
 
-  DBGWValueType DBGWExpatXMLProperties::getValueType(const char *szName)
+  DBGWValueType DBGWExpatXMLProperties::get30ValueType(const char *szName)
   {
     const char *szType = get(szName, true);
 
@@ -348,7 +348,7 @@ namespace dbgw
   }
 
   DBGWParser::DBGWParser(const string &fileName) :
-    m_fileName(fileName), m_bCdataSection(false)
+    m_fileName(fileName), m_realFileName(fileName), m_bCdataSection(false)
   {
   }
 
@@ -356,9 +356,19 @@ namespace dbgw
   {
   }
 
+  void DBGWParser::setRealFileName(const string &realFileName)
+  {
+    m_realFileName = realFileName;
+  }
+
   const string &DBGWParser::getFileName() const
   {
     return m_fileName;
+  }
+
+  const string &DBGWParser::getRealFileName() const
+  {
+    return m_realFileName;
   }
 
   const string &DBGWParser::getParentElementName() const
@@ -378,7 +388,7 @@ namespace dbgw
 
   void DBGWParser::parse(DBGWParser *pParser)
   {
-    const char *szPath = pParser->m_fileName.c_str();
+    const char *szPath = pParser->getFileName().c_str();
     DBGWStringList fileNameList;
     system::DirectorySharedPtr pDir = system::DirectoryFactory::create(szPath);
     if (pDir->isDirectory())
@@ -398,7 +408,8 @@ namespace dbgw
             continue;
           }
 
-        doParse(pParser, it->c_str());
+        pParser->setRealFileName(*it);
+        doParse(pParser);
       }
   }
 
@@ -414,9 +425,9 @@ namespace dbgw
   {
   }
 
-  void DBGWParser::doParse(DBGWParser *pParser, const char *szFileName)
+  void DBGWParser::doParse(DBGWParser *pParser)
   {
-    DBGWExpatXMLParser parser(szFileName);
+    DBGWExpatXMLParser parser(pParser->getRealFileName());
 
     XML_SetUserData(parser.get(), pParser);
     XML_SetElementHandler(parser.get(), onElementStart, onElementEnd);
@@ -424,10 +435,10 @@ namespace dbgw
     XML_SetCharacterDataHandler(parser.get(), onElementContent);
     XML_SetUnknownEncodingHandler(parser.get(), onUnknownEncoding, NULL);
 
-    FILE *fp = fopen(szFileName, "r");
+    FILE *fp = fopen(pParser->getRealFileName().c_str(), "r");
     if (fp == NULL)
       {
-        CreateFailParserExeception e(szFileName);
+        CreateFailParserExeception e(pParser->getRealFileName().c_str());
         DBGW_LOGF_INFO("%s (%d)", e.what(), errno);
         throw e;
       }
@@ -457,7 +468,8 @@ namespace dbgw
       {
         errCode = XML_GetErrorCode(parser.get());
         InvalidXMLSyntaxException e(XML_ErrorString(errCode),
-            szFileName, XML_GetCurrentLineNumber(parser.get()),
+            pParser->getRealFileName().c_str(),
+            XML_GetCurrentLineNumber(parser.get()),
             XML_GetCurrentColumnNumber(parser.get()));
         DBGW_LOG_ERROR(e.what());
         throw e;
@@ -878,7 +890,7 @@ namespace dbgw
 
     DBGWQueryParameter stParam;
     stParam.name = properties.get(XML_NODE_PARAM_PROP_NAME, true);
-    stParam.type = properties.getValueType(XML_NODE_PARAM_PROP_TYPE);
+    stParam.type = properties.get30ValueType(XML_NODE_PARAM_PROP_TYPE);
 
     const char *szMode = properties.get(XML_NODE_PARAM_PROP_MODE, true);
     if (!strcasecmp(szMode, "in"))
@@ -957,6 +969,16 @@ namespace dbgw
   {
     if (getParentElementName() != XML_NODE_CONNECTOR
         && getParentElementName() != XML_NODE_QUERYMAP)
+      {
+        return;
+      }
+
+    if (getParentElementName() == XML_NODE_CONNECTOR && m_pConnector == NULL)
+      {
+        return;
+      }
+
+    if (getParentElementName() == XML_NODE_QUERYMAP && m_pQueryMapper == NULL)
       {
         return;
       }
