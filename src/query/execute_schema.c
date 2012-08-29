@@ -13335,8 +13335,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	{
 	  /* check if attribute is contained in this constraint */
 	  SM_ATTRIBUTE **sm_constr_attr = sm_cls_constr->attributes;
-	  bool name_found_in_constr = false;
 	  int nb_att_in_constr = 0;
+	  int attr_name_found_at = -1;
 
 	  while (*sm_constr_attr != NULL)
 	    {
@@ -13344,13 +13344,13 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		  !intl_identifier_casecmp ((*sm_constr_attr)->header.name,
 					    attr_name_to_check))
 		{
-		  name_found_in_constr = true;
+		  attr_name_found_at = nb_att_in_constr;
 		}
 	      sm_constr_attr++;
 	      nb_att_in_constr++;
 	    }
 
-	  if (name_found_in_constr)
+	  if (attr_name_found_at != -1)
 	    {
 	      bool save_constr = false;
 
@@ -13389,7 +13389,9 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		    ATT_CHG_PROPERTY_PRESENT_OLD;
 		  save_constr = true;
 
-		  if (sm_cls_constr->attrs_prefix_length != NULL)
+		  if (sm_cls_constr->attrs_prefix_length != NULL &&
+		      sm_cls_constr->
+		      attrs_prefix_length[attr_name_found_at] != -1)
 		    {
 		      attr_chg_properties->p[P_PREFIX_INDEX] |=
 			ATT_CHG_PROPERTY_PRESENT_OLD;
