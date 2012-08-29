@@ -11346,8 +11346,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
     {
-      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_nulstring (parser, q, " as [");
       q = pt_append_nulstring (parser, q, p->alias_print);
+      q = pt_append_nulstring (parser, q, "]");
     }
 
   return q;
@@ -11576,8 +11577,9 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
     {
-      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_nulstring (parser, q, " as [");
       q = pt_append_nulstring (parser, q, p->alias_print);
+      q = pt_append_nulstring (parser, q, "]");
     }
 
   return q;
@@ -12765,8 +12767,9 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
     {
-      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_nulstring (parser, q, " as [");
       q = pt_append_nulstring (parser, q, p->alias_print);
+      q = pt_append_nulstring (parser, q, "]");
     }
 
   parser->custom_print = save_custom;
@@ -13880,8 +13883,9 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " as ");
+	  q = pt_append_nulstring (parser, q, " as [");
 	  q = pt_append_nulstring (parser, q, p->alias_print);
+	  q = pt_append_nulstring (parser, q, "]");
 	}
     }
 
@@ -15466,8 +15470,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
     {
-      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_nulstring (parser, q, " as [");
       q = pt_append_nulstring (parser, q, p->alias_print);
+      q = pt_append_nulstring (parser, q, "]");
     }
 
   return q;
