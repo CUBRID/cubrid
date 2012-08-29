@@ -6092,7 +6092,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  && (pt_is_attr (arg1) || pt_is_function_index_expression (arg1)))
 	{
 	  if (tp_valid_indextype (pt_type_enum_to_db (arg2->type_enum))
-              && !pt_has_analytic (parser, arg2))
+	      && !pt_has_analytic (parser, arg2))
 	    {
 	      select_list = pt_get_select_list (parser, arg2);
 	      if (select_list != NULL &&
@@ -6215,25 +6215,25 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		  cnf_node->info.expr.arg2 = arg2;
 		}
 
-              /* make new derived spec and append it to FROM */
-              if (mq_make_derived_spec (parser, node, arg2,
+	      /* make new derived spec and append it to FROM */
+	      if (mq_make_derived_spec (parser, node, arg2,
                                         idx, &new_spec,
                                         &new_attr) == NULL)
-                {
-                  return NULL;
-                }
+		{
+		  return NULL;
+		}
 
-              /* apply qo_rewrite_subqueries() to derived table's subquery */
-              (void) parser_walk_tree (parser,
-                                       new_spec->info.spec.derived_table,
-                                       qo_rewrite_subqueries, idx, NULL,
-                                       NULL);
+	      /* apply qo_rewrite_subqueries() to derived table's subquery */
+	      (void) parser_walk_tree (parser,
+				       new_spec->info.spec.derived_table,
+				       qo_rewrite_subqueries, idx, NULL,
+				       NULL);
 
-              select_list = pt_get_select_list (parser, arg2);
-              if (select_list == NULL)
-                {
-                  return NULL;
-                }
+	      select_list = pt_get_select_list (parser, arg2);
+	      if (select_list == NULL)
+		{
+		  return NULL;
+		}
 
 	      /* convert select list of subquery to MIN()/MAX() */
 	      new_func = parser_new_node (parser, PT_FUNCTION);
@@ -6356,7 +6356,7 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      if (pt_is_const_not_hostvar (dnf_node->info.expr.arg2)
 		  && !PT_IS_NULL_NODE (dnf_node->info.expr.arg2))
 		{
-	      dnf_node->info.expr.arg2 =
+		  dnf_node->info.expr.arg2 =
 		    pt_rewrite_to_auto_param (parser,
 					      dnf_node->info.expr.arg2);
 		}
@@ -6366,14 +6366,14 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      if (pt_is_const_not_hostvar (between_and->info.expr.arg1)
 		  && !PT_IS_NULL_NODE (between_and->info.expr.arg1))
 		{
-	      between_and->info.expr.arg1 =
+		  between_and->info.expr.arg1 =
 		    pt_rewrite_to_auto_param (parser,
 					      between_and->info.expr.arg1);
 		}
 	      if (pt_is_const_not_hostvar (between_and->info.expr.arg2)
 		  && !PT_IS_NULL_NODE (between_and->info.expr.arg2))
 		{
-	      between_and->info.expr.arg2 =
+		  between_and->info.expr.arg2 =
 		    pt_rewrite_to_auto_param (parser,
 					      between_and->info.expr.arg2);
 		}
@@ -6385,14 +6385,14 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 		  if (pt_is_const_not_hostvar (range->info.expr.arg1)
 		      && !PT_IS_NULL_NODE (range->info.expr.arg1))
 		    {
-		  range->info.expr.arg1 =
+		      range->info.expr.arg1 =
 			pt_rewrite_to_auto_param (parser,
 						  range->info.expr.arg1);
 		    }
 		  if (pt_is_const_not_hostvar (range->info.expr.arg2)
 		      && !PT_IS_NULL_NODE (range->info.expr.arg2))
 		    {
-		  range->info.expr.arg2 =
+		      range->info.expr.arg2 =
 			pt_rewrite_to_auto_param (parser,
 						  range->info.expr.arg2);
 		    }
@@ -6496,6 +6496,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
+  PT_NODE **limit_ptr;
   bool call_auto_parameterize = false;
 
   dummy = NULL;
@@ -6805,9 +6806,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  *merge_del_wherep = pt_cnf (parser, *merge_del_wherep);
 	}
       if (*orderby_for_p)
-        {
-          *orderby_for_p = pt_cnf (parser, *orderby_for_p);
-        }
+	{
+	  *orderby_for_p = pt_cnf (parser, *orderby_for_p);
+	}
 
       /* in HAVING clause with GROUP BY,
        * move non-aggregate terms to WHERE clause
@@ -7211,6 +7212,54 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   if (node->node_type == PT_UPDATE && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, node->info.update.assignment);
+    }
+
+  limit_ptr = NULL;
+  /* auto parameterize for limit clause */
+  switch (node->node_type)
+    {
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_SELECT:
+      if (node->info.query.limit)
+	{
+	  limit_ptr = &node->info.query.limit;
+	  /* It is enough to check only the count of limit clause
+	   * whether the query generates an empty result set.*/
+	  if (node->info.query.limit->next)
+	    {
+	      limit_ptr = &node->info.query.limit->next;
+	    }
+	}
+      break;
+    case PT_UPDATE:
+      if (node->info.update.limit)
+	{
+	  limit_ptr = &node->info.update.limit;
+          if (node->info.query.limit->next)
+            {
+              limit_ptr = &node->info.query.limit->next;
+            }
+	}
+      break;
+    case PT_DELETE:
+      if (node->info.delete_.limit)
+	{
+	  limit_ptr = &node->info.delete_.limit;
+          if (node->info.query.limit->next)
+            {
+              limit_ptr = &node->info.query.limit->next;
+            }
+	}
+      break;
+    default:
+      break;
+    }
+  if (limit_ptr != NULL && pt_is_const_not_hostvar (*limit_ptr)
+      && !PT_IS_NULL_NODE (*limit_ptr))
+    {
+      *limit_ptr = pt_rewrite_to_auto_param (parser, *limit_ptr);
     }
 
   if (node->node_type == PT_SELECT)
