@@ -7226,7 +7226,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  limit_ptr = &node->info.query.limit;
 	  /* It is enough to check only the count of limit clause
-	   * whether the query generates an empty result set.*/
+	   * whether the query generates an empty result set.
+	   */
 	  if (node->info.query.limit->next)
 	    {
 	      limit_ptr = &node->info.query.limit->next;
@@ -7237,6 +7238,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (node->info.update.limit)
 	{
 	  limit_ptr = &node->info.update.limit;
+	  /* It is enough to check only the count of limit clause
+	   * whether the query generates an empty result set.
+	   */
 	  if (node->info.update.limit->next)
 	    {
 	      limit_ptr = &node->info.update.limit->next;
@@ -7247,6 +7251,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (node->info.delete_.limit)
 	{
 	  limit_ptr = &node->info.delete_.limit;
+	  /* It is enough to check only the count of limit clause
+	   * whether the query generates an empty result set.
+	   */
 	  if (node->info.delete_.limit->next)
 	    {
 	      limit_ptr = &node->info.delete_.limit->next;
