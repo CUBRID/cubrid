@@ -111,11 +111,6 @@ static char net_Server_host[MAXHOSTNAMELEN + 1] = "";
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
 
-#if defined(CS_MODE)
-static QUERY_ID save_query_id = NULL_QUERY_ID;
-#endif /* CS_MODE */
-
-
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
 static int check_server_capabilities (int server_cap, int client_type,
@@ -1155,60 +1150,6 @@ net_client_request (int request, char *argbuf, int argsize, char *replybuf,
 		    int replysize, char *databuf, int datasize,
 		    char *replydata, int replydatasize)
 {
-  /*
-   * if request is SERVER_QM_QUERY_END, delay to send the request until next
-   * request.
-   * if next request is SERVER_TM_SERVER_COMMIT or SERVER_TM_SERVER_ABORT,
-   * do not send SERVER_QM_QUERY_END request to be kept, else send it before
-   * sending next request.
-   */
-  if (request == NET_SERVER_QM_QUERY_END && save_query_id == NULL_QUERY_ID)
-    {
-      /* unpack query id and save it, and return success */
-      (void) or_unpack_ptr (argbuf, &save_query_id);
-      (void) or_pack_int (replybuf, (int) NO_ERROR);
-      replydatasize = sizeof (int);
-      return 0;
-    }
-
-  if (request == NET_SERVER_TM_SERVER_COMMIT
-      || request == NET_SERVER_TM_SERVER_ABORT)
-    {
-      /* skip to send SERVER_QM_QUERY_END request */
-      save_query_id = NULL_QUERY_ID;
-    }
-  else if (save_query_id != NULL_QUERY_ID)
-    {
-      int status = ER_FAILED;
-      int req_error;
-      OR_ALIGNED_BUF (OR_PTR_SIZE) a_request;
-      char *requestbuf;
-      OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-      char *reply;
-
-      requestbuf = OR_ALIGNED_BUF_START (a_request);
-      reply = OR_ALIGNED_BUF_START (a_reply);
-
-      (void) or_pack_ptr (requestbuf, save_query_id);
-
-      /* send SERVER_QM_QUERY_END request */
-      req_error = net_client_request_internal (NET_SERVER_QM_QUERY_END,
-					       requestbuf,
-					       OR_ALIGNED_BUF_SIZE
-					       (a_request), reply,
-					       OR_ALIGNED_BUF_SIZE (a_reply),
-					       NULL, 0, NULL, 0);
-      if (!req_error)
-	{
-	  (void) or_unpack_int (reply, &status);
-	}
-
-      save_query_id = NULL_QUERY_ID;
-#if 0				/* ignore result */
-      return ((int) status);
-#endif
-    }
-
   return (net_client_request_internal (request, argbuf, argsize,
 				       replybuf, replysize,
 				       databuf, datasize,

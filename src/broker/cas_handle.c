@@ -202,6 +202,7 @@ hm_srv_handle_free_all ()
   max_handle_id = 0;
 #if !defined(LIBCAS_FOR_JSP)
   current_handle_count = 0;
+  as_info->num_holdable_results = 0;
 #endif
 }
 

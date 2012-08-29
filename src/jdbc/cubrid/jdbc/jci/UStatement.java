@@ -472,10 +472,10 @@ public class UStatement {
 		try {
 			relatedConnection.cancel();
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(localError);
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			localError.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 		return localError;
@@ -522,9 +522,20 @@ public class UStatement {
 					&& close_srv_handle
 					&& !(relatedConnection.getAutoCommit() == true && relatedConnection
 							.brokerInfoStatementPooling() == false)) {
-				relatedConnection.deferred_close_handle.add(new Integer(
-						serverHandler));
+				synchronized (relatedConnection) {
+					outBuffer.newRequest(UFunctionCode.CLOSE_USTATEMENT);
+					outBuffer.addInt(serverHandler);
+					outBuffer.addByte(relatedConnection.getAutoCommit() 
+									  ? (byte) 1 : (byte) 0);
+					relatedConnection.send_recv_msg();
+				}
 			}
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
+			return;
+		} catch (IOException e) {
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+			return;
 		} finally {
 			currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
 			isClosed = true;
@@ -568,16 +579,16 @@ public class UStatement {
 			return true;
 	}
 
-	synchronized public void closeCursor(){
-		try{
+	synchronized public void closeCursor() {
+		try {
 			outBuffer.newRequest(UFunctionCode.CURSOR_CLOSE);
 			outBuffer.addInt(serverHandler);
 			relatedConnection.send_recv_msg();
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -726,9 +737,9 @@ public class UStatement {
 
 			readResultInfo(inBuffer);
 			if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
-			    	inBuffer.readInt(); // result_cache_lifetime
-			    	commandTypeIs = inBuffer.readByte();
-			    	inBuffer.readInt(); // num_markers
+				inBuffer.readInt(); // result_cache_lifetime
+				commandTypeIs = inBuffer.readByte();
+				inBuffer.readInt(); // num_markers
 				isUpdatable = (inBuffer.readByte() == 1) ? true : false;
 				columnNumber = inBuffer.readInt();
 				readColumnInfo(inBuffer);
@@ -737,10 +748,10 @@ public class UStatement {
 				}
 			}
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} finally {
 			relatedConnection.skip_checkcas = false;
@@ -755,7 +766,7 @@ public class UStatement {
 					close();
 				} else if (relatedConnection.need_checkcas
 						&& relatedConnection.check_cas() == false) {
-				    	relatedConnection.clientSocketClose();
+					relatedConnection.clientSocketClose();
 				} else {
 					return;
 					// close();
@@ -801,7 +812,7 @@ public class UStatement {
 				read_fetch_data(inBuffer);
 			}
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		}
 
@@ -915,11 +926,11 @@ public class UStatement {
 			}
 			return batchResult;
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
@@ -1435,12 +1446,12 @@ public class UStatement {
 
 			totalTupleNumber = inBuffer.readInt();
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			cursorPosition = currentCursor;
 			e.toUError(errorHandler);
 			return;
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			cursorPosition = currentCursor;
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return;
@@ -1478,12 +1489,12 @@ public class UStatement {
 			columnNumber = inBuffer.readInt();
 			readColumnInfo(inBuffer);
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			closeInternal();
 			e.toUError(errorHandler);
 			return false;
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			closeInternal();
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return false;
@@ -1564,10 +1575,10 @@ public class UStatement {
 			read_fetch_data(inBuffer);
 			realFetched = true;
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -1626,10 +1637,10 @@ public class UStatement {
 				relatedConnection.send_recv_msg();
 			}
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
@@ -1679,12 +1690,12 @@ public class UStatement {
 			plan = inBuffer.readString(inBuffer.remainedCapacity(),
 					relatedConnection.getCharset());
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			closeInternal();
 			e.toUError(errorHandler);
 			return null;
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			closeInternal();
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return null;
@@ -1718,12 +1729,12 @@ public class UStatement {
 				read_fetch_data(inBuffer);
 			}
 		} catch (UJciException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			closeInternal();
 			e.toUError(errorHandler);
 			return false;
 		} catch (IOException e) {
-		    	relatedConnection.logException(e);
+			relatedConnection.logException(e);
 			closeInternal();
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			return false;
@@ -2105,10 +2116,10 @@ public class UStatement {
 	}
 
 	public String getQuery() {
-	    return sql_stmt;
+		return sql_stmt;
 	}
 
 	public UBindParameter getBindParameter() {
-	    return bindParameter;
+		return bindParameter;
 	}
 }

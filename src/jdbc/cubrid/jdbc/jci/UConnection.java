@@ -168,7 +168,6 @@ public class UConnection {
 	boolean skip_checkcas;
 	boolean need_checkcas;
 	Vector<UStatement> pooled_ustmts;
-	Vector<Integer> deferred_close_handle;
 	Object curThread;
 
 	private UUrlCache url_cache = null;
@@ -858,12 +857,6 @@ public class UConnection {
 			outBuffer.addByte(prepareFlag);
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
-			while (deferred_close_handle.isEmpty() != true) {
-				Integer close_handle = (Integer) deferred_close_handle
-						.remove(0);
-				outBuffer.addInt(close_handle.intValue());
-			}
-
 			UInputBuffer inBuffer;
 			inBuffer = send_recv_msg();
 
@@ -1441,7 +1434,6 @@ public class UConnection {
 		    	logException(e);
 		}
 		clearPooledUStatements();
-		deferred_close_handle.clear();
 	}
 
 	UInputBuffer send_recv_msg(boolean recv_result) throws UJciException,
@@ -1719,9 +1711,6 @@ public class UConnection {
 
 		if (transactionList == null) {
 			transactionList = new Vector<UStatement>();
-		}
-		if (deferred_close_handle == null) {
-			deferred_close_handle = new Vector<Integer>();
 		}
 
 		if (pooled_ustmts == null) {

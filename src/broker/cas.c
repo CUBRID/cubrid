@@ -90,6 +90,7 @@
    ||((func_code) == CAS_FC_CLOSE_REQ_HANDLE) \
    ||((func_code) == CAS_FC_GET_DB_VERSION) \
    ||((func_code) == CAS_FC_GET_ATTR_TYPE_STR) \
+   ||((func_code) == CAS_FC_CURSOR_CLOSE) \
    ||((func_code) == CAS_FC_END_SESSION))
 
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf,
@@ -1361,6 +1362,11 @@ cas_free (void)
 
   ux_database_shutdown ();
 
+  if (as_info->cur_statement_pooling)
+    {
+      hm_srv_handle_free_all ();
+    }
+
   max_process_size = (shm_appl->appl_server_max_size > 0) ?
     shm_appl->appl_server_max_size : (psize_at_start * 2);
   if (as_info->psize > max_process_size)
@@ -1671,6 +1677,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 #ifndef LIBCAS_FOR_JSP
   if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0
+      && as_info->con_status == CON_STATUS_IN_TRAN
       && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT)
     {
       /* no error and auto commit is needed */

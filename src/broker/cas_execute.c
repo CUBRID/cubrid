@@ -314,7 +314,7 @@ static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session,
 					     int stmt_id);
-static bool has_stmt_result_set (T_QUERY_RESULT * q_result);
+static bool has_stmt_result_set (char stmt_type);
 #ifndef LIBCAS_FOR_JSP
 static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
 #endif /* !LIBCAS_FOR_JSP */
@@ -929,7 +929,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       srv_handle->is_prepared = TRUE;
     }
 
-  if ((flag & CCI_PREPARE_HOLDABLE))
+  if (has_stmt_result_set (stmt_type) && (flag & CCI_PREPARE_HOLDABLE))
     {
       hm_srv_handle_set_holdable (srv_handle);
     }
@@ -1411,7 +1411,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 		    &srv_handle->use_query_cache);
 
 #ifndef LIBCAS_FOR_JSP
-  if (has_stmt_result_set (srv_handle->q_result) == false
+  if (has_stmt_result_set (srv_handle->q_result->stmt_type) == false
       && srv_handle->auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -1709,7 +1709,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
 #ifndef LIBCAS_FOR_JSP
   if (srv_handle->num_q_result < 2
-      && has_stmt_result_set (srv_handle->q_result) == false
+      && has_stmt_result_set (srv_handle->q_result->stmt_type) == false
       && srv_handle->auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -4966,7 +4966,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
     }
 
   result = (DB_QUERY_RESULT *) q_result->result;
-  if (result == NULL || has_stmt_result_set (q_result) == false)
+  if (result == NULL || has_stmt_result_set (q_result->stmt_type) == false)
     {
       return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
     }
@@ -8777,12 +8777,12 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 }
 
 static bool
-has_stmt_result_set (T_QUERY_RESULT * q_result)
+has_stmt_result_set (char stmt_type)
 {
-  if (q_result->stmt_type == CUBRID_STMT_SELECT
-      || q_result->stmt_type == CUBRID_STMT_CALL
-      || q_result->stmt_type == CUBRID_STMT_GET_STATS
-      || q_result->stmt_type == CUBRID_STMT_EVALUATE)
+  if (stmt_type == CUBRID_STMT_SELECT
+      || stmt_type == CUBRID_STMT_CALL
+      || stmt_type == CUBRID_STMT_GET_STATS
+      || stmt_type == CUBRID_STMT_EVALUATE)
     {
       return true;
     }
@@ -8795,7 +8795,7 @@ static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
   if (srv_handle->num_q_result < 2
-      && ((has_stmt_result_set (srv_handle->q_result) == true
+      && ((has_stmt_result_set (srv_handle->q_result->stmt_type) == true
 	   && srv_handle->auto_commit_mode == TRUE
 	   && srv_handle->forward_only_cursor == TRUE)
 	  || (shm_appl->select_auto_commit == ON

@@ -344,17 +344,6 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   if (argc > 2)
     {
       net_arg_get_char (auto_commit_mode, argv[2]);
-
-#if !defined(CUBRID_SHARD)
-      for (i = 3; i < argc; i++)
-	{
-	  int deferred_close_handle;
-	  net_arg_get_int (&deferred_close_handle, argv[i]);
-	  cas_log_write (0, true, "close_req_handle srv_h_id %d",
-			 deferred_close_handle);
-	  hm_srv_handle_free (deferred_close_handle);
-	}
-#endif
     }
   else
     {
@@ -932,9 +921,6 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv,
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
   char auto_commit_mode = FALSE;
-
-  /* check for newly added parameter (autocommit mode) */
-  assert (argc == 2);
 
   if (argc < 1)
     {
@@ -1721,6 +1707,10 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       /* has already been closed */
       return FN_KEEP_CONN;
     }
+
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+                 "cursor_close srv_h_id %d", srv_h_id);
+
   ux_cursor_close (srv_handle);
 
   return FN_KEEP_CONN;

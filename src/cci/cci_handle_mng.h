@@ -69,8 +69,6 @@
 
 #define ALTER_HOST_MAX_SIZE                     256
 
-#define DEFERRED_CLOSE_HANDLE_ALLOC_SIZE        256
-
 #define CON_HANDLE_ID_FACTOR			1000000
 
 #define GET_CON_ID(H) ((H) / CON_HANDLE_ID_FACTOR)
@@ -229,9 +227,6 @@ typedef struct
   /* to check timeout */
   struct timeval start_time;	/* function start time to check timeout */
   int current_timeout;		/* login_timeout or query_timeout */
-  int deferred_max_close_handle_count;
-  int *deferred_close_handle_list;
-  int deferred_close_handle_count;
   void *logger;
   int is_holdable;
   int no_backslash_escapes;
