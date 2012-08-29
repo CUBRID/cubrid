@@ -9825,6 +9825,14 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
 	  PT_INTERNAL_ERROR (parser, "invalid spec id");
 	  return;
 	}
+
+      if (from->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
+        {
+          PT_ERRORm (parser, from, MSGCAT_SET_PARSER_SEMANTIC,
+                     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+          return;
+        }
+
       from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
 
       node = node->next;
@@ -9865,6 +9873,14 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      PT_INTERNAL_ERROR (parser, "invalid spec id");
 	      return;
 	    }
+
+	  if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
+            {
+              PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
+                         MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+              return;
+            }
+
 	  node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
 	}
       else
@@ -9878,6 +9894,14 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  PT_INTERNAL_ERROR (parser, "invalid spec id");
 		  return;
 		}
+
+              if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
+                {
+                  PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
+                             MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+                  return;
+                }
+
 	      node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
 
 	      lhs = lhs->next;

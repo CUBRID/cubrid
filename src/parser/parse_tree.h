@@ -1324,7 +1324,8 @@ typedef enum
   PT_SPEC_FLAG_NONE = 0x0,	/* the spec will not be altered */
   PT_SPEC_FLAG_UPDATE = 0x01,	/* the spec will be updated */
   PT_SPEC_FLAG_DELETE = 0x02,	/* the spec will be deleted */
-  PT_SPEC_FLAG_HAS_UNIQUE = 0x04	/* the spec has unique */
+  PT_SPEC_FLAG_HAS_UNIQUE = 0x04,	/* the spec has unique */
+  PT_SPEC_FLAG_IS_PARTITION = 0x08
 } PT_SPEC_FLAG;
 
 typedef enum
