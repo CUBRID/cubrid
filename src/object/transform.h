@@ -166,6 +166,7 @@ typedef struct tf_ct_class
 #define CT_DBCOLL_BUILT_IN_COLUMN	   "built_in"
 #define CT_DBCOLL_EXPANSIONS_COLUMN	   "expansions"
 #define CT_DBCOLL_CONTRACTIONS_COLUMN	   "contractions"
+#define CT_DBCOLL_UCA_STRENGTH		   "uca_strength"
 #define CT_DBCOLL_CHECKSUM_COLUMN	   "checksum"
 
 #define SET_AUTO_INCREMENT_SERIAL_NAME(SR_NAME, CL_NAME, AT_NAME)  \

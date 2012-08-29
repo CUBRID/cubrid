@@ -251,7 +251,7 @@ static void lang_free_collations (void);
 #define LANG_CHAR_COUNT_TR 352
 
 #define LANG_COLL_GENERIC_SORT_OPT \
-  {TAILOR_QUATERNARY, false, false, 1, false, CONTR_IGNORE, false}
+  {TAILOR_UNDEFINED, false, false, 1, false, CONTR_IGNORE, false}
 #define LANG_COLL_NO_EXP 0, NULL, NULL, NULL
 #define LANG_COLL_NO_CONTR NULL, 0, 0, NULL, 0, 0
 

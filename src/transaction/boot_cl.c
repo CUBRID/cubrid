@@ -3410,6 +3410,9 @@ boot_add_collations (MOP class_mop)
       DB_MAKE_INTEGER (&val, lang_coll->coll.count_contr);
       db_put_internal (obj, CT_DBCOLL_CONTRACTIONS_COLUMN, &val);
 
+      DB_MAKE_INTEGER (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
+      db_put_internal (obj, CT_DBCOLL_UCA_STRENGTH, &val);
+
       assert (strlen (lang_coll->coll.checksum) == 32);
       DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.checksum, 32,
 		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
@@ -3471,6 +3474,13 @@ boot_define_collations (MOP class_mop)
 
   error_code = smt_add_attribute (def, CT_DBCOLL_CONTRACTIONS_COLUMN,
 				  "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, CT_DBCOLL_UCA_STRENGTH, "integer",
+				  NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4922,7 +4932,8 @@ boot_define_view_db_collation (void)
     {"charset_name", "varchar(255)"},
     {"is_builtin", "varchar(3)"},
     {"has_expansions", "varchar(3)"},
-    {"contractions", "integer"}
+    {"contractions", "integer"},
+    {"uca_strength", "varchar(255)"}
   };
 
   int num_cols = sizeof (columns) / sizeof (columns[0]);
@@ -4969,7 +4980,16 @@ boot_define_view_db_collation (void)
 	   "  WHEN 1 THEN 'YES'"
 	   "  ELSE 'ERROR'"
 	   " END,"
-	   " [c].[contractions]"
+	   " [c].[contractions],"
+	   " CASE [c].[uca_strength]"
+	   "  WHEN 0 THEN 'NOT APPLICABLE'"
+	   "  WHEN 1 THEN 'PRIMARY'"
+	   "  WHEN 2 THEN 'SECONDARY'"
+	   "  WHEN 3 THEN 'TERTIARY'"
+	   "  WHEN 4 THEN 'QUATERNARY'"
+	   "  WHEN 5 THEN 'IDENTITY'"
+	   "  ELSE 'UNKNOWN'"
+	   " END"
 	   " FROM [%s] [c]"
 	   " ORDER BY [c].[coll_id]",
 	   INTL_CODESET_ISO88591,
