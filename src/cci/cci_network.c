@@ -586,10 +586,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	    }
 	}
 
-      if (result_code < 0)
-	{
-	  goto error_return;
-	}
+      goto error_return;
     }
 
   memcpy (con_handle->cas_info, recv_msg_header.info_ptr,

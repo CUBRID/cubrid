@@ -686,10 +686,10 @@ extern "C"
 					     char *db_name,
 					     char *db_user, char *dbpasswd);
   extern int cci_connect_ex (char *ip, int port, char *db, char *user,
-			     char *pass, T_CCI_ERROR * error);
+			     char *pass, T_CCI_ERROR * err_buf);
   extern int cci_connect_with_url (char *url, char *user, char *password);
   extern int cci_connect_with_url_ex (char *url, char *user, char *pass,
-				      T_CCI_ERROR * error);
+				      T_CCI_ERROR * err_buf);
   extern int cci_disconnect (int con_handle, T_CCI_ERROR * err_buf);
   extern int cci_end_tran (int con_handle, char type, T_CCI_ERROR * err_buf);
   extern int cci_prepare (int con_handle,
