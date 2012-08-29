@@ -2361,29 +2361,6 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 	}
       strcpy (lf->locale_name, locale_str);
       err_status = locale_check_and_set_default_files (lf, true);
-      if (err_status != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-  else if (input_path != NULL)
-    {
-      /* Prepare the selected library file. */
-      count_loc = 1;
-      lf = &lf_one;
-      lf_one.lib_file = malloc (strlen (input_path) + 1);
-      if (lf_one.lib_file == NULL)
-	{
-	  err_status = ER_LOC_INIT;
-	  LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
-	  goto error;
-	}
-      strcpy (lf_one.lib_file, input_path);
-      err_status = locale_check_and_set_default_files (lf, true);
-      if (err_status != NO_ERROR)
-	{
-	  goto error;
-	}
     }
   else
     {
@@ -2394,6 +2371,26 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
   if (err_status != NO_ERROR)
     {
       goto error;
+    }
+  
+  if (input_path != NULL)
+    {
+      /* set lib file in all locales */
+      for (i = 0; i < count_loc; i++)
+	{
+	  if (lf[i].lib_file != NULL)
+	    {
+	      free_and_init (lf[i].lib_file);
+	    }
+
+	  lf[i].lib_file = strdup (input_path);
+	  if (lf[i].lib_file == NULL)
+	    {
+	      err_status = ER_LOC_INIT;
+	      LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
+	      goto error;	      
+	    }
+	}
     }
 
   /* Do the actual dumping. */
