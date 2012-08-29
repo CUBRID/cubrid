@@ -114,6 +114,7 @@ extern char cas_client_type;
 
 extern int cas_default_isolation_level;
 extern int cas_default_lock_timeout;
+extern bool cas_default_ansi_quotes;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern bool cas_default_no_backslash_escapes;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

@@ -67,13 +67,20 @@
 
 #include "dbi.h"
 
-#define OUT_STR		1
-#define IN_STR		0
-
 #define QUERY_BUFFER_MAX                4096
 
 #define FK_INFO_SORT_BY_PKTABLE_NAME	1
 #define FK_INFO_SORT_BY_FKTABLE_NAME	2
+
+typedef enum
+{
+  NONE_TOKENS,
+  SQL_STYLE_COMMENT,
+  C_STYLE_COMMENT,
+  CPP_STYLE_COMMENT,
+  SINGLE_QUOTED_STRING,
+  DOUBLE_QUOTED_STRING
+} STATEMENT_STATUS;
 
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
@@ -245,6 +252,7 @@ static void trigger_status_str (DB_TRIGGER_STATUS trig_status, char *buf);
 static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
 
 static int get_num_markers (char *stmt);
+static char *consume_tokens (char *stmt, STATEMENT_STATUS stmt_status);
 static char get_stmt_type (char *stmt);
 static int execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 			     T_BROKER_VERSION client_version, char exec_flag);
@@ -650,9 +658,6 @@ ux_is_database_connected (void)
 void
 ux_get_default_setting ()
 {
-  int err_code = 0;
-  char buffer[LINE_MAX], *p;
-
   ux_get_tran_setting (&cas_default_lock_timeout,
 		       &cas_default_isolation_level);
   if (cas_default_isolation_level < TRAN_MINVALUE_ISOLATION
@@ -670,10 +675,25 @@ ux_get_default_setting ()
       cas_db_sys_param[0] = '\0';
     }
 
+  cas_default_ansi_quotes = true;
+
+  ux_get_system_parameter ("ansi_quotes", &cas_default_ansi_quotes);
 
   cas_default_no_backslash_escapes = true;
 
-  strncpy (buffer, "no_backslash_escapes", LINE_MAX);
+  ux_get_system_parameter ("no_backslash_escapes",
+			   &cas_default_no_backslash_escapes);
+
+  return;
+}
+
+void
+ux_get_system_parameter (const char *param, bool * value)
+{
+  int err_code = 0;
+  char buffer[LINE_MAX], *p;
+
+  strncpy (buffer, param, LINE_MAX);
   err_code = db_get_system_parameters (buffer, LINE_MAX);
   if (err_code != NO_ERROR)
     {
@@ -686,13 +706,13 @@ ux_get_default_setting ()
       return;
     }
 
-  if (*(p + 1) == 'y')
+  if (*(p + 1) == 'n')
     {
-      cas_default_no_backslash_escapes = true;
+      *value = false;
     }
   else
     {
-      cas_default_no_backslash_escapes = false;
+      *value = true;
     }
 
   return;
@@ -6210,28 +6230,109 @@ trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf)
 static int
 get_num_markers (char *stmt)
 {
-  char state = OUT_STR;
   char *p;
-  int num_q = 0;
+  int num_markers = 0;
 
   for (p = stmt; *p; p++)
     {
       if (*p == '?')
 	{
-	  if (state == OUT_STR)
-	    num_q++;
+	  num_markers++;
+	}
+      else if (*p == '-' && *(p + 1) == '-')
+	{
+	  p = consume_tokens (p + 2, SQL_STYLE_COMMENT);
+	}
+      else if (*p == '/' && *(p + 1) == '*')
+	{
+	  p = consume_tokens (p + 2, C_STYLE_COMMENT);
+	}
+      else if (*p == '/' && *(p + 1) == '/')
+	{
+	  p = consume_tokens (p + 2, CPP_STYLE_COMMENT);
 	}
       else if (*p == '\'')
 	{
-	  state = (state == OUT_STR) ? IN_STR : OUT_STR;
+	  p = consume_tokens (p + 1, SINGLE_QUOTED_STRING);
 	}
-      else if (cas_default_no_backslash_escapes == false
-	       && *p == '\\' && state == IN_STR)
+      else if (cas_default_ansi_quotes == false && *p == '\"')
 	{
-	  p++;
+	  p = consume_tokens (p + 1, DOUBLE_QUOTED_STRING);
+	}
+
+      if (*p == '\0')
+	{
+	  break;
 	}
     }
-  return num_q;
+
+  return num_markers;
+}
+
+static char *
+consume_tokens (char *stmt, STATEMENT_STATUS stmt_status)
+{
+  char *p = stmt;
+
+  if (stmt_status == SQL_STYLE_COMMENT || stmt_status == CPP_STYLE_COMMENT)
+    {
+      for (; *p; p++)
+	{
+	  if (*p == '\n')
+	    {
+	      break;
+	    }
+	}
+    }
+  else if (stmt_status == C_STYLE_COMMENT)
+    {
+      for (; *p; p++)
+	{
+	  if (*p == '*' && *(p + 1) == '/')
+	    {
+	      p++;
+	      break;
+	    }
+	}
+    }
+  else if (stmt_status == SINGLE_QUOTED_STRING)
+    {
+      for (; *p; p++)
+	{
+	  if (*p == '\'' && *(p + 1) == '\'')
+	    {
+	      p++;
+	    }
+	  else if (cas_default_no_backslash_escapes == false && *p == '\\')
+	    {
+	      p++;
+	    }
+	  else if (*p == '\'')
+	    {
+	      break;
+	    }
+	}
+    }
+  else if (stmt_status == DOUBLE_QUOTED_STRING)
+    {
+      for (; *p; p++)
+	{
+	  if (*p == '\"' && *(p + 1) == '\"')
+	    {
+	      p++;
+	    }
+	  else if (cas_default_no_backslash_escapes == false && *p == '\\')
+	    {
+	      p++;
+	    }
+	  else if (*p == '\"')
+	    {
+	      break;
+	    }
+	}
+    }
+
+  return p;
 }
 
 static char

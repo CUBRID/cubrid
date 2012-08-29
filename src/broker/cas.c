@@ -161,6 +161,7 @@ SOCKET new_req_sock_fd = INVALID_SOCKET;
 #endif /* !LIBCAS_FOR_JSP */
 int cas_default_isolation_level = 0;
 int cas_default_lock_timeout = -1;
+bool cas_default_ansi_quotes = true;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 bool cas_default_no_backslash_escapes = true;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
