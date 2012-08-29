@@ -536,15 +536,18 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
 
   if (!node)
     {
-      if (er_errid () != NO_ERROR)
+      if (!pt_has_error (parser))
 	{
-	  PT_ERRORc (parser, in_node, er_msg ());
-	}
-      else
-	{
-	  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_IS_NOT_DEFINED, pt_short_print (parser,
-								      in_node));
+	  if (er_errid () != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, in_node, er_msg ());
+	    }
+	  else
+	    {
+	      PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+			  pt_short_print (parser, in_node));
+	    }
 	}
     }
   else
@@ -3128,8 +3131,8 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat,
 	{
 	  if (attr->info.name.default_value != NULL)
 	    {
-	      PT_INTERNAL_ERROR (parser, "resolution");
-	      return 0;
+	      /* default value was already set */
+	      return 1;
 	    }
 	  if (att->default_value.default_expr != DB_DEFAULT_NONE)
 	    {
@@ -3149,6 +3152,11 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat,
 		{
 		  PT_INTERNAL_ERROR (parser, "resolution");
 		  return 0;
+		}
+	      if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
+		{
+		  attr->info.name.default_value->data_type =
+		    pt_domain_to_data_type (parser, att->domain);
 		}
 	    }
 	}
