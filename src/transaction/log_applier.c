@@ -5172,13 +5172,14 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	    }
 	  else
 	    {
+	      errid = er_errid ();
+
 	      help_sprint_value (&item->key, buf, 255);
 	      sprintf (error_string, "[%s,%s] %s",
 		       item->class_name, buf, db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE,
 			    "Internal system failure: %s", error_string);
 
-	      errid = er_errid ();
 	      if (errid == ER_NET_CANT_CONNECT_SERVER
 		  || errid == ER_OBJ_NO_CONNECT)
 		{
