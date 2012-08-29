@@ -21010,7 +21010,8 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
   else if (PT_IS_POINTER_REF_NODE (func_info->arg_list))
     {
       /* fetch operand type */
-      analytic->opr_dbtype = pt_node_to_db_type (func_info->arg_list);
+      analytic->opr_dbtype =
+        pt_node_to_db_type (func_info->arg_list->info.pointer.node);
 
       /* resolve operand dbval_ptr */
       if (pt_resolve_analytic_references
