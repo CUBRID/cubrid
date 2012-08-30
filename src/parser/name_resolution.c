@@ -2602,6 +2602,17 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      {
 		fill_in_insert_default_function_arguments (parser, node);
 	      }
+	    /* bind names for insert attributes list */
+	    scopestack.specs = node->info.merge.into;
+	    bind_arg->scopes = &scopestack;
+	    spec_frame.next = bind_arg->spec_frames;
+	    spec_frame.extra_specs = NULL;
+	    bind_arg->spec_frames = &spec_frame;
+	    pt_bind_scope (parser, bind_arg);
+	    node->info.merge.insert.attr_list =
+	      parser_walk_tree (parser, node->info.merge.insert.attr_list,
+				pt_bind_names, bind_arg, pt_bind_names_post,
+				bind_arg);
 	  }
 
 	assert (node->info.merge.into->next == NULL);
