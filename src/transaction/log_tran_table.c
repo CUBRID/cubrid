@@ -2822,35 +2822,6 @@ logtb_has_updated (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_disable_replication -
- *   return: none
- */
-void
-logtb_disable_replication (THREAD_ENTRY * thread_p)
-{
-  db_Enable_replications = 0;
-  er_log_debug (ARG_FILE_LINE,
-		"logtb_disable_replication: db_Enable_replications = %d\n",
-		db_Enable_replications);
-}
-
-/*
- * logtb_enable_replication -
- *   return: none
- */
-void
-logtb_enable_replication (THREAD_ENTRY * thread_p)
-{
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
-    {
-      db_Enable_replications = 1;
-      er_log_debug (ARG_FILE_LINE,
-		    "logtb_enable_replication: db_Enable_replications = %d\n",
-		    db_Enable_replications);
-    }
-}
-
-/*
  * logtb_disable_update -
  *   return: none
  */

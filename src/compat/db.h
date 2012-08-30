@@ -57,10 +57,6 @@ extern SESSION_ID db_Session_id;
 
 extern int db_Row_count;
 
-#if !defined(_DB_ENABLE_REPLICATIONS_)
-extern int db_Enable_replications;
-#endif /* _DB_ENABLE_REPLICATIONS_ */
-
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;

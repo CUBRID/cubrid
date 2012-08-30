@@ -84,7 +84,6 @@ int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 #endif
-int db_Enable_replications = 0;
 int db_Disable_modifications = 0;
 char *db_Preferred_hosts = NULL;
 

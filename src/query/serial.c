@@ -873,7 +873,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
       return ER_FAILED;
     }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       repl_start_flush_mark (thread_p);
     }
@@ -918,7 +919,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
     }
 
   /* make replication log for the special type of update for serial */
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       repl_log_insert (thread_p, serial_class_oidp, serial_oidp,
 		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,

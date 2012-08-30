@@ -2908,7 +2908,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && db_Enable_replications <= 0)
+      if (reset_on_commit == true && log_does_allow_replication () == true)
 	{
 	  /*
 	   * fail-back action
@@ -2964,7 +2964,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && db_Enable_replications <= 0)
+      if (reset_on_commit == true && log_does_allow_replication () == true)
 	{
 	  /*
 	   * fail-back action

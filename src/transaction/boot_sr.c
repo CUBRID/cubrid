@@ -3444,11 +3444,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       logtb_disable_update (NULL);
     }
-  /* replication? */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
-    {
-      logtb_enable_replication (NULL);
-    }
 
   error_code = serial_initialize_cache_pool (thread_p);
   if (error_code != NO_ERROR)

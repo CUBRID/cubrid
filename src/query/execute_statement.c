@@ -13726,7 +13726,7 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
   static const char *unknown_schema_name = "-";
   unsigned int save_custom;
 
-  if (db_Enable_replications > 0)
+  if (log_does_allow_replication () == false)
     {
       return NO_ERROR;
     }

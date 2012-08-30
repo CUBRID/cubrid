@@ -209,4 +209,6 @@ extern LOG_COPY *log_copy_area_malloc_recv (int num_records,
 					    int contents_length);
 extern int log_dump_log_info (const char *logname_info,
 			      bool also_stdout, const char *fmt, ...);
+extern bool log_does_allow_replication (void);
+
 #endif /* _LOG_COMM_H_ */

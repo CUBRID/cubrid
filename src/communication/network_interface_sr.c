@@ -7973,7 +7973,8 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   REPL_INFO repl_info = { 0, NULL };
   REPL_INFO_SCHEMA repl_schema = { 0, NULL, NULL };
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       ptr = or_unpack_int (request, &repl_info.repl_info_type);
       switch (repl_info.repl_info_type)

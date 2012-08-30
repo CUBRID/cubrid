@@ -2047,7 +2047,8 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	}
     }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2319,7 +2320,8 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	}
     }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2445,7 +2447,8 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	}
     }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2683,7 +2686,8 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	}
     }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -4246,7 +4250,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        */
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
-	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      /* for CC(Click Counter) : at here */
@@ -4281,7 +4286,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	}
       else
 	{
-	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes,
 					&tdes->topops.stack[tdes->
@@ -4335,7 +4341,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       else
 	{
 	  state = TRAN_UNACTIVE_ABORTED;
-	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes,
 					&tdes->topops.stack[tdes->
@@ -5963,7 +5970,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 
       log_cleanup_modified_class_list (thread_p, tdes, true, false);
 
-      if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+      if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	  && log_does_allow_replication () == true)
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  log_append_repl_info_and_unlock_log (thread_p, tdes);

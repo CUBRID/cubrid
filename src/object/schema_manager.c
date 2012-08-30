@@ -14845,7 +14845,7 @@ sm_truncate_class (MOP class_mop)
     }
 
 #if 0
-  if (keep_pk == true && db_Enable_replications <= 0)
+  if (keep_pk == true && log_does_allow_replication () == true)
     {
       error = sm_truncate_using_delete (class_mop);
     }

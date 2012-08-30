@@ -294,11 +294,6 @@
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
 
-#if !defined(_DB_ENABLE_REPLICATIONS_)
-#define _DB_ENABLE_REPLICATIONS_
-extern int db_Enable_replications;
-#endif /* _DB_ENABLE_REPLICATIONS_ */
-
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;
@@ -1914,8 +1909,6 @@ extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
-extern void logtb_disable_replication (THREAD_ENTRY * thread_p);
-extern void logtb_enable_replication (THREAD_ENTRY * thread_p);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);
 extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);

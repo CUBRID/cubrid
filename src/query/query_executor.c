@@ -10717,7 +10717,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   lock_start_instant_lock_mode (tran_index);
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       repl_start_flush_mark (thread_p);
     }
@@ -10850,7 +10851,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
     }
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       repl_end_flush_mark (thread_p, false);
     }
@@ -10892,7 +10894,8 @@ exit_on_error:
 
   err = ER_FAILED;
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       repl_end_flush_mark (thread_p, true);
     }

@@ -2421,7 +2421,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  db_Enable_replications++;
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
   if (db_login ("DBA", NULL) != NO_ERROR)
@@ -2616,7 +2615,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   free (log_path_base);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  db_Enable_replications++;
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
   if (db_login ("DBA", NULL) != NO_ERROR)

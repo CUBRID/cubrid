@@ -40,6 +40,14 @@
 #include "misc_string.h"
 #include "intl_support.h"
 #include "log_impl.h"
+#if !defined(WINDOWS)
+#if defined(CS_MODE)
+#include "db.h"
+#endif /* CS_MODE */
+#if defined(SERVER_MODE)
+#include "connection_defs.h"
+#endif /* SERVER_MODE */
+#endif /* !WINDOWS */
 
 struct tran_state_name
 {
@@ -512,4 +520,48 @@ log_dump_log_info (const char *logname_info, bool also_stdout,
   va_end (ap);
 
   return NO_ERROR;
+}
+
+bool
+log_does_allow_replication (void)
+{
+#if defined(WINDOWS) || defined(SA_MODE)
+  return false;
+
+#elif defined(CS_MODE)		/* WINDOWS || SA_MODE */
+  int client_type;
+
+  client_type = db_get_client_type ();
+  if (client_type == DB_CLIENT_TYPE_LOG_COPIER
+      || client_type == DB_CLIENT_TYPE_LOG_APPLIER)
+    {
+      return false;
+    }
+
+  return true;
+
+#elif defined(SERVER_MODE)	/* CS_MODE */
+  static int ha_mode = -1;
+  int ha_state;
+
+  if (ha_mode == -1)
+    {
+      ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+    }
+
+  ha_state = css_ha_server_state ();
+  if (ha_mode == HA_MODE_OFF
+      || (ha_state != HA_SERVER_STATE_ACTIVE
+	  && ha_state != HA_SERVER_STATE_TO_BE_STANDBY))
+    {
+      return false;
+    }
+
+  assert (db_Disable_modifications == 0);
+
+  return true;
+#else /* SERVER_MODE */
+
+  return false;
+#endif
 }

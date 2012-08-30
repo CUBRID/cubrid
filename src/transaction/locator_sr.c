@@ -5556,7 +5556,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        * We have to set UPDATE LSA number to the log info.
        * The target log info was already created when the locator_update_index
        */
-      if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+      if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	  && log_does_allow_replication () == true)
 	{
 	  repl_add_update_lsa (thread_p, oid);
 	}
@@ -7010,9 +7011,10 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
        * Generates the replication log info. for data insert/delete
        * for the update cases, refer to locator_update_force()
        */
-      if (db_Enable_replications > 0 && need_replication
+      if (need_replication
 	  && index->type == BTREE_PRIMARY_KEY
-	  && key_ins_del != NULL && !LOG_CHECK_LOG_APPLIER (thread_p))
+	  && key_ins_del != NULL && !LOG_CHECK_LOG_APPLIER (thread_p)
+	  && log_does_allow_replication () == true)
 	{
 	  error_code = repl_log_insert (thread_p, class_oid, inst_oid,
 					datayn ? LOG_REPLICATION_DATA :
@@ -7503,9 +7505,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   for (i = 0; i < num_btids; i++)
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
-      if (pk_btid_index == -1 && db_Enable_replications > 0
-	  && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
-	  && index->type == BTREE_PRIMARY_KEY)
+      if (pk_btid_index == -1 && need_replication
+	  && !LOG_CHECK_LOG_APPLIER (thread_p)
+	  && index->type == BTREE_PRIMARY_KEY
+	  && log_does_allow_replication () == true)
 	{
 	  pk_btid_index = i;
 	}
@@ -10626,7 +10629,8 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 {
   int error_code = NO_ERROR;
 
-  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && log_does_allow_replication () == true)
     {
       switch (repl_info->repl_info_type)
 	{

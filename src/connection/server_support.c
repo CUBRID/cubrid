@@ -2642,10 +2642,8 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"css_check_ha_server_state_for_client: "
-				"logtb_disable_update() "
-				"logtb_disable_replication()\n");
+				"logtb_disable_update() \n");
 		  logtb_disable_update (thread_p);
-		  logtb_disable_replication (thread_p);
 		}
 	    }
 	}
@@ -2798,10 +2796,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
       if (state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"logtb_enable_update() "
-			"logtb_enable_replication()\n");
+			"logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
-	  logtb_enable_replication (thread_p);
 	}
       break;
 
@@ -2846,10 +2842,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
       if (state == HA_SERVER_STATE_STANDBY)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"logtb_disable_update() "
-			"logtb_disable_replication()\n");
+			"logtb_disable_update() \n");
 	  logtb_disable_update (thread_p);
-	  logtb_disable_replication (thread_p);
 	}
       break;
 
@@ -2864,10 +2858,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
       if (state == HA_SERVER_STATE_MAINTENANCE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"logtb_enable_update() "
-			"logtb_disable_replication()\n");
+			"logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
-	  logtb_disable_replication (thread_p);
 
 	  boot_server_status (BOOT_SERVER_MAINTENANCE);
 	}
@@ -2979,10 +2971,8 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
       if (server_state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: "
-			"logtb_enable_update() "
-			"logtb_enable_replication()\n");
+			"logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
-	  logtb_enable_replication (thread_p);
 	}
     }
 
@@ -2996,9 +2986,8 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
       if (server_state == HA_SERVER_STATE_STANDBY)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: "
-			"logtb_disable_update() " "log_tb_replication()\n");
+			"logtb_disable_update() \n");
 	  logtb_disable_update (thread_p);
-	  logtb_disable_replication (thread_p);
 	}
     }
 
