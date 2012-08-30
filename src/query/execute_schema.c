@@ -1515,9 +1515,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      error_code = ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      error_code = ER_BLOCK_DDL_STMT;
       goto error_exit;
     }
 
@@ -1773,9 +1772,8 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   if (statement == NULL)
@@ -1977,9 +1975,8 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   if (statement == NULL)
@@ -2032,9 +2029,8 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   if (statement == NULL)
@@ -2119,9 +2115,8 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   /* partitioned sub-class check */
@@ -2417,9 +2412,8 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      error = ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      error = ER_BLOCK_DDL_STMT;
       goto error_exit;
     }
 
@@ -2806,9 +2800,8 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   /* class should be already available */
@@ -2859,9 +2852,8 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      error_code = ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      error_code = ER_BLOCK_DDL_STMT;
       goto error_exit;
     }
 
@@ -2983,9 +2975,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      error = ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      error = ER_BLOCK_DDL_STMT;
       goto error_exit;
     }
 
@@ -3685,9 +3676,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   alter_info = hash_parts = newparts = hashtail = NULL;
@@ -7446,9 +7436,8 @@ do_drop_partition (MOP class_, int drop_sub_flag)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   if (!class_)
@@ -11736,9 +11725,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      error = ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      error = ER_BLOCK_DDL_STMT;
       goto error_exit;
     }
 

@@ -1164,6 +1164,8 @@ $ LOADDB
 1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
 1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
 1098 Locales for language '%s' are not available with charset '%s'.
+1099 시스템 파라미터 block_ddl_statement=yes의 설정으로 인해 DDL 질의문을 실행할 수 없습니다.
+1100 시스템 파라미터 block_nowhere_statement=yes의 설정으로 인해 WHERE 절이 없는 질의문을 실행할 수 없습니다.
 1099 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL

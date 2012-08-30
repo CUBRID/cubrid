@@ -1376,7 +1376,10 @@
 
 #define ER_LANG_CODESET_NOT_AVAILABLE		    -1098
 
-#define ER_LAST_ERROR                               -1099
+#define ER_BLOCK_DDL_STMT                           -1099
+#define ER_BLOCK_NOWHERE_STMT                       -1100
+
+#define ER_LAST_ERROR                               -1101
 
 #define DB_TRUE 1
 #define DB_FALSE 0

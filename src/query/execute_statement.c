@@ -1024,9 +1024,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   db_make_null (&value);
@@ -1328,7 +1327,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /*
    * invariant for max_val <= e37. Like the above invariant, if
-   * max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID, 
+   * max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID,
    * start_val invalid error message should be displayed if the invariant
    * is voilated.
    */
@@ -1362,7 +1361,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * invariant for abs(inc_val) <= (max_val - min_val).
    * if this invariant is voilated, inc_val, min_val or max_val should be
-   * responsible for it. If max_val_msgid == 0, which means max_val is 
+   * responsible for it. If max_val_msgid == 0, which means max_val is
    * initialized from a constant, not inputted by user,  in this case, we don't
    * expect max_val should be responsible for the violation.
    */
@@ -1783,9 +1782,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   db_make_null (&value);
@@ -2353,9 +2351,8 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   db_make_null (&class_name_val);
@@ -5260,9 +5257,8 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.delete_.search_cond == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_NOWHERE_STMT, 0);
+      return ER_BLOCK_NOWHERE_STMT;
     }
 
   return check_trigger (TR_EVENT_STATEMENT_DELETE,
@@ -5371,9 +5367,8 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.update.search_cond == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_NOWHERE_STMT, 0);
+      return ER_BLOCK_NOWHERE_STMT;
     }
 
   err = check_trigger (TR_EVENT_STATEMENT_UPDATE, do_func, parser, statement);
@@ -5471,9 +5466,8 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   name = PT_NODE_TR_NAME (statement);
@@ -5607,9 +5601,8 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   /* The grammar has beem define such that DROP TRIGGER can only
@@ -5814,9 +5807,8 @@ do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   speclist = statement->info.remove_trigger.trigger_spec_list;
@@ -5854,9 +5846,8 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   old_name = statement->info.rename_trigger.old_name->info.name.original;
@@ -10762,7 +10753,7 @@ cleanup:
  *	  INSERT INTO t(i,str,d) VALUES(1,'1','01-01-01') ON DUPLICATE KEY
  *	      UPDATE i = 2;
  *	  builds the SELECT statement:
- *	  SELECT t FROM t WHERE i = 1 UNION 
+ *	  SELECT t FROM t WHERE i = 1 UNION
  *        SELECT t FROM t WHERE (str = '1' AND d = '01-01-01');
  */
 static int
@@ -11314,7 +11305,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	   * if the object does belong to any partition. If we don't do it
 	   * here, the error will be thrown when the object is flushed either
 	   * by the next statement or by a commit/rollback call. However,
-	   * there cases when we don't need to do this. Hash partitioning 
+	   * there cases when we don't need to do this. Hash partitioning
 	   * algorithm guarantees that there always is a partition for each
 	   * record and range partitioning using maxvalue/minvalue does the
 	   * same. This flushing should be refined
@@ -13755,8 +13746,8 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_DROP:
-      /* No replication log will be written 
-       * when there's no applicable table for "drop if exists" 
+      /* No replication log will be written
+       * when there's no applicable table for "drop if exists"
        */
       if (statement->info.drop.if_exists
 	  && statement->info.drop.spec_list == NULL)
@@ -14212,9 +14203,8 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.merge.search_cond == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_NOWHERE_STMT, 0);
+      return ER_BLOCK_NOWHERE_STMT;
     }
 
   err = check_merge_trigger (do_func, parser, statement);

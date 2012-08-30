@@ -472,9 +472,8 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   name_list = statement->info.sp.name;
@@ -523,9 +522,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   name = (char *) PT_NODE_SP_NAME (statement);
@@ -593,9 +591,8 @@ jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
-      return ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
+      return ER_BLOCK_DDL_STMT;
     }
 
   type = PT_NODE_SP_TYPE (statement);
