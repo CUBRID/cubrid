@@ -641,6 +641,11 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 						    entry_addr_ptr,
 						    LK_ENTRY * class_entry,
 						    LOCK * others_lock);
+
+static void lock_increment_class_granules (LK_ENTRY * class_entry);
+
+static void lock_decrement_class_granules (LK_ENTRY * class_entry);
+
 #endif /* SERVER_MODE */
 
 
@@ -3424,7 +3429,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
 			 int tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *inst_entry;
+  LK_ENTRY *inst_entry, *superclass_entry = NULL;
   int s_count, x_count;
   LOCK max_class_lock = NULL_LOCK;	/* escalated class lock mode */
   int granted;
@@ -3436,6 +3441,8 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
     {
       return LK_GRANTED;
     }
+
+  superclass_entry = class_entry->class_entry;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
@@ -3450,8 +3457,22 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
     }
 
   /* check if the lock escalation is needed. */
-  if (class_entry->ngranules <
-      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
+  if (superclass_entry != NULL
+      && !OID_IS_ROOTOID (&superclass_entry->res_head->oid))
+    {
+      /* Superclass_entry points to a root class in a class hierarchy.
+       * Escalate locks only if the criteria for the superclass is met.
+       * Superclass keeps a counter for all locks set in the hierarchy.
+       */
+      if (superclass_entry->ngranules <
+	  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
+	{
+	  pthread_mutex_unlock (&tran_lock->hold_mutex);
+	  return LK_GRANTED;
+	}
+    }
+  else if (class_entry->ngranules <
+	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
     {
       pthread_mutex_unlock (&tran_lock->hold_mutex);
       return LK_GRANTED;
@@ -3917,10 +3938,7 @@ start:
 
 	  /* to manage granules */
 	  entry_ptr->class_entry = class_entry;
-	  if (class_entry)
-	    {
-	      class_entry->ngranules++;
-	    }
+	  lock_increment_class_granules (class_entry);
 
 	  /* add the lock entry into the transaction hold list */
 	  lock_insert_into_tran_hold_list (entry_ptr);
@@ -4027,10 +4045,7 @@ start:
 	    }
 	  /* to manage granules */
 	  entry_ptr->class_entry = class_entry;
-	  if (class_entry)
-	    {
-	      class_entry->ngranules++;
-	    }
+	  lock_increment_class_granules (class_entry);
 
 	  /* add the lock entry into the holder list */
 	  lock_position_holder_entry (res_ptr, entry_ptr);
@@ -4274,8 +4289,8 @@ start:
 	       && (entry_ptr->instant_lock_count == 0
 		   && entry_ptr->granted_mode >= IX_LOCK)) && compat1 != true)
 	    {
-	      /* if the lock is already aquired with incompatible mode by current transaction,
-	         remove instant instance locks */
+	      /* if the lock is already acquired with incompatible mode by
+	         current transaction, remove instant instance locks */
 	      lock_stop_instant_lock_mode (thread_p, tran_index, false);
 	    }
 	  else
@@ -4539,10 +4554,7 @@ lock_conversion_treatement:
     {
       /* to manage granules */
       entry_ptr->class_entry = class_entry;
-      if (class_entry)
-	{
-	  class_entry->ngranules++;
-	}
+      lock_increment_class_granules (class_entry);
     }
 
   *entry_addr_ptr = entry_ptr;
@@ -4735,10 +4747,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
       (void) lock_delete_from_tran_hold_list (curr);
 
       /* to manage granules */
-      if (curr->class_entry)
-	{
-	  curr->class_entry->ngranules--;
-	}
+      lock_decrement_class_granules (curr->class_entry);
 
       /* If it's not the end of transaction, it's a non2pl lock */
       if (release_flag == false && move_to_non2pl == true)
@@ -4925,7 +4934,8 @@ lock_demote_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
 			       const OID * class_oid)
 {
   LK_ENTRY *entry_ptr;
-  enum { SKIP, DEMOTE, DECREMENT_COUNT };
+  enum
+  { SKIP, DEMOTE, DECREMENT_COUNT };
   int demote = SKIP;
   LK_ACQUISITION_HISTORY *prev, *last, *p;
 
@@ -5077,7 +5087,8 @@ lock_unlock_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
 			       const OID * class_oid)
 {
   LK_ENTRY *entry_ptr;
-  enum { SKIP, UNLOCK, DEMOTE };
+  enum
+  { SKIP, UNLOCK, DEMOTE };
   int demote_unlock = SKIP;
   LK_ACQUISITION_HISTORY *prev, *last, *p;
 
@@ -5278,7 +5289,7 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index,
       if (class_oid == NULL || OID_ISNULL (class_oid)
 	  || OID_EQ (&curr->res_head->class_oid, class_oid))
 	{
-	  if (curr->granted_mode <= lock)
+	  if (curr->granted_mode <= lock || lock == X_LOCK)
 	    {
 	      /* found : the same class_oid and interesting lock mode
 	       * --> unlock it.
@@ -7148,7 +7159,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
   LOCK old_class_lock;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
-  LK_ENTRY *class_entry = NULL;
+  LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
 #if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
@@ -7280,15 +7291,24 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
     {
       if (old_class_lock < new_class_lock)
 	{
-	  root_class_entry =
-	    lock_get_class_lock (oid_Root_class_oid, tran_index);
+	  if (class_entry != NULL && class_entry->class_entry != NULL
+	      && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->oid))
+	    {
+	      /* preserve class hierarchy */
+	      superclass_entry = class_entry->class_entry;
+	    }
+	  else
+	    {
+	      superclass_entry =
+		lock_get_class_lock (oid_Root_class_oid, tran_index);
+	    }
 
 	  granted =
 	    lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
 					       btid, new_class_lock,
 					       wait_msecs, &class_entry,
-					       root_class_entry);
+					       superclass_entry);
 	  if (granted != LK_GRANTED)
 	    {
 	      goto end;
@@ -7315,7 +7335,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 	    }
 	}
       /* NOTE that in case of acquiring a lock on an instance object,
-       * the class oid of the intance object must be given.
+       * the class oid of the instance object must be given.
        */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
@@ -7367,6 +7387,156 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 {
   return lock_object_with_btid (thread_p, oid, class_oid,
 				NULL, lock, cond_flag);
+}
+
+/*
+ * lock_subclass () - Lock a class in a class hierarchy
+ *
+ * return: one of following values)
+ *     LK_GRANTED
+ *     LK_NOTGRANTED_DUE_ABORTED
+ *     LK_NOTGRANTED_DUE_TIMEOUT
+ *     LK_NOTGRANTED_DUE_ERROR
+ *
+ *   subclass_oid(in): Identifier of subclass to lock
+ *   superclass_oid(in): Identifier of the superclass
+ *   lock(in): Requested lock mode
+ *   cond_flag(in):
+ */
+int
+lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
+	       const OID * superclass_oid, LOCK lock, int cond_flag)
+{
+#if !defined (SERVER_MODE)
+  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
+    {
+      lk_Standalone_has_xlock = true;
+    }
+  return LK_GRANTED;
+
+#else /* !SERVER_MODE */
+  LOCK new_superclass_lock, old_superclass_lock;
+  LK_ENTRY *superclass_entry = NULL, *subclass_entry = NULL;
+  int granted;
+  int tran_index;
+  int wait_msecs;
+  TRAN_ISOLATION isolation;
+#if defined (EnableThreadMonitoring)
+  struct timeval start_time, end_time, elapsed_time;
+#endif
+
+  if (subclass_oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_subclass", "NULL subclass OID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  if (superclass_oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_subclass", "NULL superclass OID pointer");
+      return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  if (lock == NULL_LOCK)
+    {
+      return LK_GRANTED;
+    }
+
+#if defined (EnableThreadMonitoring)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
+    {
+      gettimeofday (&start_time, NULL);
+    }
+#endif
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (cond_flag == LK_COND_LOCK)	/* conditional request */
+    {
+      wait_msecs = LK_FORCE_ZERO_WAIT;
+    }
+  else
+    {
+      wait_msecs = logtb_find_wait_msecs (tran_index);
+    }
+  isolation = logtb_find_isolation (tran_index);
+
+  /* get the intentional lock mode to be acquired on class oid */
+  if (lock <= S_LOCK)
+    {
+      new_superclass_lock = IS_LOCK;
+    }
+  else
+    {
+      new_superclass_lock = IX_LOCK;
+    }
+
+  /* Check if current transaction has already held the class lock.
+   * If the class lock is not held, hold the class lock, now.
+   */
+  superclass_entry = lock_get_class_lock (superclass_oid, tran_index);
+  old_superclass_lock =
+    (superclass_entry) ? superclass_entry->granted_mode : NULL_LOCK;
+
+
+  if (old_superclass_lock < new_superclass_lock)
+    {
+      /* superclass is already locked, just promote to the new lock */
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index,
+					   superclass_oid, (OID *) NULL,
+					   NULL, new_superclass_lock,
+					   wait_msecs, &superclass_entry,
+					   NULL);
+      if (granted != LK_GRANTED)
+	{
+	  goto end;
+	}
+    }
+  /* case 2 : resource type is LOCK_RESOURCE_CLASS */
+  /* acquire a lock on the given class object */
+  if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
+    {
+      /* demote S_LOCK of a class to IS_LOCK */
+      if (lock == SIX_LOCK)
+	{
+	  lock = IX_LOCK;
+	}
+      else if (lock == S_LOCK)
+	{
+	  lock = IS_LOCK;
+	}
+    }
+
+  /* NOTE that in case of acquiring a lock on a class object,
+   * the higher lock granule of the class object must not be given.
+   */
+
+  granted =
+    lock_internal_perform_lock_object (thread_p, tran_index, subclass_oid,
+				       (OID *) NULL, NULL, lock,
+				       wait_msecs, &subclass_entry,
+				       superclass_entry);
+end:
+#if defined (EnableThreadMonitoring)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+      er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
+    }
+#endif
+
+  return granted;
+#endif /* !SERVER_MODE */
 }
 
 /*
@@ -11599,10 +11769,7 @@ start:
 
 	  /* to manage granules */
 	  entry_ptr->class_entry = class_entry;
-	  if (class_entry)
-	    {
-	      class_entry->ngranules++;
-	    }
+	  lock_increment_class_granules (class_entry);
 
 	  /* add the lock entry into the transaction hold list */
 	  lock_insert_into_tran_hold_list (entry_ptr);
@@ -11712,10 +11879,7 @@ start:
 	    }
 	  /* to manage granules */
 	  entry_ptr->class_entry = class_entry;
-	  if (class_entry)
-	    {
-	      class_entry->ngranules++;
-	    }
+	  lock_increment_class_granules (class_entry);
 
 	  /* add the lock entry into the holder list */
 	  lock_position_holder_entry (res_ptr, entry_ptr);
@@ -12248,15 +12412,65 @@ lock_conversion_treatement:
     {
       /* to manage granules */
       entry_ptr->class_entry = class_entry;
-      if (class_entry)
-	{
-	  class_entry->ngranules++;
-	}
+      lock_increment_class_granules (class_entry);
     }
 
   *entry_addr_ptr = entry_ptr;
   return LK_GRANTED;
 }
+
+/*
+ * lock_increment_class_granules () - increment the lock counter for a class
+ * return : void
+ * class_entry (in/out)	     : class entry
+ *
+ */
+static void
+lock_increment_class_granules (LK_ENTRY * class_entry)
+{
+  if (class_entry == NULL
+      || class_entry->res_head->type != LOCK_RESOURCE_CLASS)
+    {
+      return;
+    }
+
+  class_entry->ngranules++;
+  if (class_entry->class_entry != NULL
+      && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->oid))
+    {
+      /* This is a class in a class hierarchy so increment the
+       * number of granules for the superclass
+       */
+      class_entry->class_entry->ngranules++;
+    }
+}
+
+/*
+ * lock_decrement_class_granules () - decrement the lock counter for a class
+ * return : void
+ * class_entry (in/out)	     : class entry
+ *
+ */
+static void
+lock_decrement_class_granules (LK_ENTRY * class_entry)
+{
+  if (class_entry == NULL
+      || class_entry->res_head->type != LOCK_RESOURCE_CLASS)
+    {
+      return;
+    }
+
+  class_entry->ngranules--;
+  if (class_entry->class_entry != NULL
+      && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->oid))
+    {
+      /* This is a class in a class hierarchy so decrement the
+       * number of granules for the superclass
+       */
+      class_entry->class_entry->ngranules--;
+    }
+}
+
 #endif /* SERVER_MODE */
 
 /*

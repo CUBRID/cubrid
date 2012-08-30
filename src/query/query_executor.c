@@ -388,9 +388,7 @@ struct upddel_class_info_internal
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   bool needs_pruning;		/* true if partition pruning should be
 				 * performed on this class */
-  OR_PARTITION *partitions;	/* class partitions */
-  int parts_count;		/* number of partitions */
-
+  PRUNING_CONTEXT context;	/* partition pruning context */
   int no_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
   DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
@@ -5810,10 +5808,48 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 
   if (curr_spec->needs_pruning && !curr_spec->pruned)
     {
+      PARTITION_SPEC_TYPE *partition_spec = NULL;
+      LOCK lock = NULL_LOCK;
+      int granted;
       int error = partition_prune_spec (thread_p, vd, curr_spec);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit_on_error;
+	}
+      assert (s_id != NULL);
+
+      if (composite_locking == 0)
+	{
+	  lock = IS_LOCK;
+	}
+      else
+	{
+	  if (curr_spec->access == SEQUENTIAL)
+	    {
+	      lock = X_LOCK;
+	    }
+	  else
+	    {
+	      assert (curr_spec->access == INDEX);
+	      lock = IX_LOCK;
+	    }
+	}
+
+      for (partition_spec = curr_spec->parts; partition_spec != NULL;
+	   partition_spec = partition_spec->next)
+	{
+	  granted = lock_subclass (thread_p, &partition_spec->oid,
+				   &ACCESS_SPEC_CLS_OID (curr_spec), lock,
+				   LK_UNCOND_LOCK);
+	  if (granted != LK_GRANTED)
+	    {
+	      error = er_errid ();
+	      if (error == NO_ERROR)
+		{
+		  error = ER_FAILED;
+		}
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -6004,6 +6040,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
   return NO_ERROR;
 
 exit_on_error:
+
+  if (curr_spec->needs_pruning && curr_spec->parts != NULL)
+    {
+      /* reset pruning info */
+      db_private_free (thread_p, curr_spec->parts);
+      curr_spec->parts = NULL;
+      curr_spec->curent = NULL;
+      curr_spec->pruned = false;
+    }
 
   return ER_FAILED;
 }
@@ -7563,7 +7608,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool scan_open = false;
   LC_COPYAREA_OPERATION op = LC_FLUSH_UPDATE;
   int actual_op_type = op_type;
-
+  PRUNING_CONTEXT *pcontext = NULL;
   class_oid_cnt = update->no_classes;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes
@@ -7928,10 +7973,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  op = LC_FLUSH_UPDATE_PRUNE;
 		  actual_op_type = (op_type == MULTI_ROW_UPDATE) ?
 		    MULTI_ROW_UPDATE_PRUNING : SINGLE_ROW_UPDATE_PRUNING;
+		  pcontext = &internal_class->context;
 		}
 	      else
 		{
 		  actual_op_type = op_type;
+		  pcontext = NULL;
 		}
 	      error =
 		locator_attribute_info_force (thread_p,
@@ -7949,7 +7996,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					      &unique_stats_info
 					      [class_oid_idx].
 					      scan_cache,
-					      &force_count, false, repl_info);
+					      &force_count, false, repl_info,
+					      pcontext);
 	      if (op == LC_FLUSH_UPDATE_PRUNE)
 		{
 		  /* reset op types here */
@@ -8101,14 +8149,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			       internal_classes[class_oid_idx].
 			       btids_dup_key_locked);
 	    }
-
-	  if (internal_classes[class_oid_idx].partitions != NULL)
+	  if (internal_classes[class_oid_idx].needs_pruning)
 	    {
-	      partition_free_partitions (thread_p,
-					 internal_classes[class_oid_idx].
-					 partitions,
-					 internal_classes[class_oid_idx].
-					 parts_count);
+	      partition_clear_pruning_context (&internal_classes
+					       [class_oid_idx].context);
 	    }
 	}
       db_private_free (thread_p, internal_classes);
@@ -8213,13 +8257,10 @@ exit_on_error:
 			       btids_dup_key_locked);
 	    }
 
-	  if (internal_classes[class_oid_idx].partitions != NULL)
+	  if (internal_classes[class_oid_idx].needs_pruning)
 	    {
-	      partition_free_partitions (thread_p,
-					 internal_classes[class_oid_idx].
-					 partitions,
-					 internal_classes[class_oid_idx].
-					 parts_count);
+	      partition_clear_pruning_context (&internal_classes
+					       [class_oid_idx].context);
 	    }
 	}
       db_private_free (thread_p, internal_classes);
@@ -8631,7 +8672,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		   NULL, NULL, 0,
 		   LC_FLUSH_DELETE, op_type,
 		   &unique_stats_info[class_oid_idx].scan_cache, &force_count,
-		   false, REPL_INFO_TYPE_STMT_NORMAL) != NO_ERROR)
+		   false, REPL_INFO_TYPE_STMT_NORMAL, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -8760,13 +8801,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			       btids_dup_key_locked);
 	    }
 
-	  if (internal_classes[class_oid_idx].partitions != NULL)
+	  if (internal_classes[class_oid_idx].needs_pruning)
 	    {
-	      partition_free_partitions (thread_p,
-					 internal_classes[class_oid_idx].
-					 partitions,
-					 internal_classes[class_oid_idx].
-					 parts_count);
+	      partition_clear_pruning_context (&internal_classes
+					       [class_oid_idx].context);
 	    }
 	}
       db_private_free (thread_p, internal_classes);
@@ -8833,13 +8871,10 @@ exit_on_error:
 			       btids_dup_key_locked);
 	    }
 
-	  if (internal_classes[class_oid_idx].partitions != NULL)
+	  if (internal_classes[class_oid_idx].needs_pruning)
 	    {
-	      partition_free_partitions (thread_p,
-					 internal_classes[class_oid_idx].
-					 partitions,
-					 internal_classes[class_oid_idx].
-					 parts_count);
+	      partition_clear_pruning_context (&internal_classes
+					       [class_oid_idx].context);
 	    }
 	}
       db_private_free (thread_p, internal_classes);
@@ -9154,8 +9189,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 					    NULL, NULL, 0,
 					    LC_FLUSH_DELETE, MULTI_ROW_DELETE,
 					    scan_cache, &force_count, false,
-					    REPL_INFO_TYPE_STMT_NORMAL)
-	      != NO_ERROR)
+					    REPL_INFO_TYPE_STMT_NORMAL,
+					    NULL) != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
@@ -9474,6 +9509,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool skip_insertion = false;
   int no_default_expr = 0;
   LC_COPYAREA_OPERATION operation = LC_FLUSH_INSERT;
+  PRUNING_CONTEXT context, *pcontext = NULL;
 
   if (insert->needs_pruning)
     {
@@ -9661,6 +9697,18 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       /* we are inserting multiple values ...
        * ie. insert into foo select ... */
+      if (scan_cache_op_type == SINGLE_ROW_INSERT_PRUNING
+	  || scan_cache_op_type == MULTI_ROW_INSERT_PRUNING)
+	{
+	  /* initialize the pruning context here */
+	  pcontext = &context;
+	  partition_init_pruning_context (pcontext);
+	}
+      else
+	{
+	  pcontext = NULL;
+	}
+
       if (locator_start_force_scan_cache (thread_p, &scan_cache,
 					  &insert->class_hfid, &class_oid,
 					  scan_cache_op_type) != NO_ERROR)
@@ -9833,8 +9881,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						scan_cache_op_type,
 						&scan_cache, &force_count,
 						false,
-						REPL_INFO_TYPE_STMT_NORMAL)
-		  != NO_ERROR)
+						REPL_INFO_TYPE_STMT_NORMAL,
+						pcontext) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -10014,8 +10062,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					    NULL, 0, operation,
 					    scan_cache_op_type, &scan_cache,
 					    &force_count, false,
-					    REPL_INFO_TYPE_STMT_NORMAL) !=
-	      NO_ERROR)
+					    REPL_INFO_TYPE_STMT_NORMAL,
+					    NULL) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -10073,6 +10121,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (scan_cache_inited)
     {
       (void) locator_end_force_scan_cache (thread_p, &scan_cache);
+    }
+  if (pcontext != NULL)
+    {
+      partition_clear_pruning_context (pcontext);
+      pcontext = NULL;
     }
   if (savepoint_used)
     {
@@ -10138,7 +10191,11 @@ exit_on_error:
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
-
+  if (pcontext != NULL)
+    {
+      partition_clear_pruning_context (pcontext);
+      pcontext = NULL;
+    }
   return ER_FAILED;
 }
 
@@ -10307,12 +10364,30 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  /* found it */
 		  break;
 		}
-	      /* cls_oid might still refer to this spec through a partition.
-	       * See if we already pruned this spec and search through
-	       * partitions for the appropriate class */
 	      if (!specp->pruned && specp->type == TARGET_CLASS)
 		{
-		  partition_prune_spec (thread_p, &xasl_state->vd, specp);
+		  /* cls_oid might still refer to this spec through a
+		   * partition. See if we already pruned this spec and search
+		   * through partitions for the appropriate class
+		   */
+		  PARTITION_SPEC_TYPE *partition_spec = NULL;
+		  int granted;
+		  if (partition_prune_spec (thread_p, &xasl_state->vd, specp)
+		      != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  for (partition_spec = specp->parts; partition_spec != NULL;
+		       partition_spec = partition_spec->next)
+		    {
+		      granted = lock_subclass (thread_p, &partition_spec->oid,
+					       &ACCESS_SPEC_CLS_OID (specp),
+					       IS_LOCK, LK_UNCOND_LOCK);
+		      if (granted != LK_GRANTED)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
 		}
 	      current = specp->parts;
 	      found = false;
@@ -10639,7 +10714,7 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 					LC_FLUSH_UPDATE,
 					SINGLE_ROW_UPDATE, &scan_cache,
 					&force_count, false,
-					REPL_INFO_TYPE_STMT_NORMAL) !=
+					REPL_INFO_TYPE_STMT_NORMAL, NULL) !=
 	  NO_ERROR)
 	{
 	  error = ER_FAILED;
@@ -21034,6 +21109,15 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 	{
 	  if (specp->type == TARGET_CLASS)
 	    {
+	      if (specp->needs_pruning)
+		{
+		  /* This is a partitioned class and the IX_LOCK we currently
+		   * hold on it is enough. Later in the execution, when
+		   * pruning is performed, partitions will be locked with
+		   * X_LOCK
+		   */
+		  continue;
+		}
 	      class_oid = &specp->s.cls_node.cls_oid;
 	      found = false;
 
@@ -22285,7 +22369,7 @@ exit_on_error:
 
 /*
  * qexec_create_internal_classes () - create internal classes used for
- *				    internal update / delete execution
+ *				      internal update / delete execution
  * return : error code or NO_ERROR
  * thread_p (in)    :
  * query_classes (in): query classes
@@ -22300,7 +22384,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
   UPDDEL_CLASS_INFO_INTERNAL *class_ = NULL, *classes = NULL;
   UPDDEL_CLASS_INFO *query_class = NULL;
   size_t size;
-  int i = 0, j, error = NO_ERROR, cl_index;
+  int i = 0, error = NO_ERROR, cl_index;
 
   if (internal_classes == NULL)
     {
@@ -22327,6 +22411,8 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       class_->subclass_idx = -1;
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
+      partition_init_pruning_context (&class_->context);
+
       query_class = query_classes + i;
 
       if (query_class->needs_pruning)
@@ -22334,18 +22420,13 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 	  /* set partition information here */
 	  class_->needs_pruning = true;
 	  error =
-	    partition_get_partitions (thread_p, &query_class->class_oid[0],
-				      &class_->partitions,
-				      &class_->parts_count);
+	    partition_load_pruning_context (thread_p,
+					    &query_class->class_oid[0],
+					    &class_->context);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
-	}
-      else
-	{
-	  class_->partitions = NULL;
-	  class_->parts_count = 0;
 	}
 
       class_->btids =
@@ -22398,8 +22479,10 @@ exit_on_error:
 	      db_private_free (thread_p, classes[i].btids_dup_key_locked);
 	    }
 
-	  partition_free_partitions (thread_p, classes[i].partitions,
-				     classes[i].parts_count);
+	  if (classes[i].needs_pruning)
+	    {
+	      partition_clear_pruning_context (&classes[i].context);
+	    }
 	}
 
       db_private_free (thread_p, classes);
@@ -22448,14 +22531,15 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * query_class,
 	}
 
       /* look through the class partitions for the current_oid */
-      for (i = 0; i < internal_class->parts_count; i++)
+      for (i = 0; i < internal_class->context.count; i++)
 	{
-	  if (OID_EQ (&internal_class->partitions[i].class_oid, current_oid))
+	  if (OID_EQ (&internal_class->context.partitions[i].class_oid,
+		      current_oid))
 	    {
 	      internal_class->class_oid =
-		&internal_class->partitions[i].class_oid;
+		&internal_class->context.partitions[i].class_oid;
 	      internal_class->class_hfid =
-		&internal_class->partitions[i].class_hfid;
+		&internal_class->context.partitions[i].class_hfid;
 	      internal_class->subclass_idx = 0;
 
 	      internal_class->no_lob_attrs = 0;

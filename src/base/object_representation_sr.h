@@ -182,6 +182,7 @@ struct or_partition
   OID class_oid;		/* class OID */
   HFID class_hfid;		/* class HFID */
   int partition_type;		/* partition type (range, list, hash) */
+  REPR_ID rep_id;		/* class representation id */
   DB_SEQ *values;		/* values for range and list partition types */
 };
 
@@ -203,7 +204,8 @@ extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
 					      RECDES * record);
 extern int or_class_get_partition_info (RECDES * record,
-					OID * partition_info);
+					OID * partition_info,
+					REPR_ID * repr_id);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern const char *or_get_attrname (RECDES * record, int attrid);
 extern OR_CLASS *or_get_class (RECDES * record);

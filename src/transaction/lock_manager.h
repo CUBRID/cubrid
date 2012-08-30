@@ -135,6 +135,9 @@ extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid,
 				   int cond_flag, int wait_msecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid,
 			const OID * class_oid, LOCK lock, int cond_flag);
+extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
+			  const OID * superclass_oid, LOCK lock,
+			  int cond_flag);
 extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 				  const OID * class_oid, const BTID * btid,
 				  LOCK lock, int cond_flag);

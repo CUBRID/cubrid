@@ -3415,6 +3415,7 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
  * return : error code or NO_ERROR
  * record (in) : record descriptor
  * partition_info (in/out) : partition information
+ * repr_id (in/out):  representation id from record
  *
  * Note: This function extracts the partition information from a class record.
  * Partition information is represented by the OID of the tuple from the
@@ -3425,7 +3426,8 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
  * partition_info will be returned as a NULL OID
  */
 int
-or_class_get_partition_info (RECDES * record, OID * partition_info)
+or_class_get_partition_info (RECDES * record, OID * partition_info,
+			     REPR_ID * repr_id)
 {
   int error = NO_ERROR;
   int i = 0, nparts = 0;
@@ -3438,6 +3440,11 @@ or_class_get_partition_info (RECDES * record, OID * partition_info)
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (repr_id != NULL)
+    {
+      *repr_id = or_class_repid (record);
     }
 
   OID_SET_NULL (partition_info);
@@ -3474,7 +3481,7 @@ or_class_get_partition_info (RECDES * record, OID * partition_info)
 	{
 	  /* internal storage error */
 	  assert (false);
-          set_free (setref);
+	  set_free (setref);
 	  return ER_FAILED;
 	}
 
@@ -3487,14 +3494,14 @@ or_class_get_partition_info (RECDES * record, OID * partition_info)
 	{
 	  /* internal storage error */
 	  assert (false);
-          set_free (setref);
+	  set_free (setref);
 	  return ER_FAILED;
 	}
       COPY_OID (partition_info, DB_GET_OID (&value));
       if (OID_ISNULL (partition_info))
 	{
 	  /* if it exists in the schema then it shouldn't be NULL */
-          set_free (setref);
+	  set_free (setref);
 	  return ER_FAILED;
 	}
       break;

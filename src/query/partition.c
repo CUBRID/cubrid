@@ -51,32 +51,29 @@ typedef enum pruning_op
   PO_IS_NULL
 } PRUNING_OP;
 
-typedef struct partition_node PARTITION_NODE;
-struct partition_node
+#define NELEMENTS 1024		/* maximum number of partitions */
+#define _WORDSIZE 8 * sizeof(int)
+
+#define MAX_ELEMENTS 1024
+#define BITS_IN_WORD (8 * sizeof(unsigned int))
+#define BITSET_WORD_COUNT (MAX_ELEMENTS / sizeof (unsigned int) * 8)
+#define BITSET_LENGTH(s) ((((s)->count - 1) / BITS_IN_WORD)+1)
+
+typedef struct pruning_bitset PRUNING_BITSET;
+struct pruning_bitset
 {
-  OR_PARTITION *partition;
-  PARTITION_NODE *next;
+  unsigned int set[BITSET_WORD_COUNT];
+  int count;
 };
 
-typedef struct pruning_context PRUNING_CONTEXT;
-struct pruning_context
+typedef struct pruning_bitset_iterator PRUNING_BITSET_ITERATOR;
+struct pruning_bitset_iterator
 {
-  THREAD_ENTRY *thread_p;	/* current thread */
-  OID root_oid;			/* OID of the root class */
-  ACCESS_SPEC_TYPE *spec;	/* class to prune */
-  VAL_DESCR *vd;		/* value descriptor */
-  DB_PARTITION_TYPE partition_type;	/* hash, range, list */
-
-  OR_PARTITION *partitions;	/* partitions array */
-  int count;			/* number of partitions */
-
-  void *fp_cache_context;	/* unpacking info */
-  FUNC_PRED *partition_pred;	/* partition predicate */
-  int attr_position;		/* attribute position in index key */
-  ATTR_ID attr_id;		/* id of the attribute which defines the
-				 * partitions */
-  int error_code;		/* error encountered during pruning */
+  const PRUNING_BITSET *set;
+  int next;
 };
+
+#define PARTITIONS_COUNT(pinfo) ((pinfo == NULL)? 0 : pinfo->count - 1)
 
 #define PARTITION_CACHE_NAME "Partitions_Cache"
 #define PARTITION_CACHE_SIZE 200
@@ -97,6 +94,26 @@ struct partition_cache_entry
   ATTR_ID attr_id;		/* attribute id of the partitioning key */
 };
 
+/* PRUNING_BITSET operations */
+static void pruningset_init (PRUNING_BITSET *, int);
+static void pruningset_set_all (PRUNING_BITSET *);
+static void pruningset_copy (PRUNING_BITSET *, const PRUNING_BITSET *);
+static void pruningset_add (PRUNING_BITSET *, int);
+static void pruningset_remove (PRUNING_BITSET *, int);
+static void pruningset_intersect (PRUNING_BITSET *, const PRUNING_BITSET *);
+static void pruningset_union (PRUNING_BITSET *, const PRUNING_BITSET *);
+static bool pruningset_is_set (const PRUNING_BITSET *, int);
+static int pruningset_popcount (const PRUNING_BITSET *);
+static void pruningset_iterator_init (const PRUNING_BITSET *,
+				      PRUNING_BITSET_ITERATOR *);
+static int pruningset_iterator_next (PRUNING_BITSET_ITERATOR *);
+static int pruningset_to_spec_list (PRUNING_CONTEXT * pinfo,
+				    const PRUNING_BITSET * pruned);
+
+/* pruning operations */
+static int partition_find_root_class_oid (THREAD_ENTRY * thread_p,
+					  const OID * class_oid,
+					  OID * super_oid);
 static int partition_free_cache_entry (const void *key, void *data,
 				       void *args);
 static int partition_cache_pruning_context (PRUNING_CONTEXT * pinfo);
@@ -108,11 +125,6 @@ static int partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo,
 static PARTITION_CACHE_ENTRY
   * partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo);
 static PRUNING_OP partition_rel_op_to_pruning_op (REL_OP op);
-static void partition_init_pruning_context (PRUNING_CONTEXT * pinfo);
-static int partition_load_pruning_context (THREAD_ENTRY * thread_p,
-					   const OID * class_oid,
-					   PRUNING_CONTEXT * pinfo);
-static void partition_clear_pruning_context (PRUNING_CONTEXT * pinfo);
 static int partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
 					       OR_PARTITION * master);
 static int partition_get_position_in_key (PRUNING_CONTEXT * pinfo);
@@ -120,33 +132,27 @@ static ATTR_ID partition_get_attribute_id (REGU_VARIABLE * regu_var);
 static void partition_set_cache_info_for_expr (REGU_VARIABLE * regu_var,
 					       ATTR_ID attr_id,
 					       HEAP_CACHE_ATTRINFO * info);
-static PARTITION_NODE *partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
-						  PARTITION_NODE * partitions,
-						  const PRED_EXPR * pr,
-						  MATCH_STATUS * status);
-static PARTITION_NODE *partition_match_index (PRUNING_CONTEXT * pinfo,
-					      PARTITION_NODE * partitions,
-					      const KEY_INFO * key,
-					      RANGE_TYPE range_type,
-					      MATCH_STATUS * status);
-static PARTITION_NODE *partition_match_key_range (PRUNING_CONTEXT * pinfo,
-						  const PARTITION_NODE *
-						  partitions,
-						  const KEY_RANGE * range,
-						  MATCH_STATUS * status);
+static MATCH_STATUS partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
+					       const PRED_EXPR * pr,
+					       PRUNING_BITSET * pruned);
+static MATCH_STATUS partition_match_index (PRUNING_CONTEXT * pinfo,
+					   const KEY_INFO * key,
+					   RANGE_TYPE range_type,
+					   PRUNING_BITSET * pruned);
+static MATCH_STATUS partition_match_key_range (PRUNING_CONTEXT * pinfo,
+					       const KEY_RANGE * range,
+					       PRUNING_BITSET * pruned);
 static bool partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo,
 					       const REGU_VARIABLE * left,
 					       const REGU_VARIABLE * right);
-static PARTITION_NODE *partition_prune (PRUNING_CONTEXT * pinfo,
-					const PARTITION_NODE * partitions,
-					const REGU_VARIABLE * arg,
-					const PRUNING_OP op,
-					MATCH_STATUS * status);
-static PARTITION_NODE *partition_prune_db_val (PRUNING_CONTEXT * pinfo,
-					       const PARTITION_NODE * parts,
-					       const DB_VALUE * val,
-					       const PRUNING_OP op,
-					       MATCH_STATUS * status);
+static MATCH_STATUS partition_prune (PRUNING_CONTEXT * pinfo,
+				     const REGU_VARIABLE * arg,
+				     const PRUNING_OP op,
+				     PRUNING_BITSET * pruned);
+static MATCH_STATUS partition_prune_db_val (PRUNING_CONTEXT * pinfo,
+					    const DB_VALUE * val,
+					    const PRUNING_OP op,
+					    PRUNING_BITSET * pruned);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo,
 					 const REGU_VARIABLE * key,
 					 DB_VALUE * attr_key,
@@ -159,22 +165,18 @@ static int partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo,
 					      const REGU_VARIABLE * key,
 					      DB_VALUE * value_p,
 					      bool * is_value);
-static PARTITION_NODE *partition_prune_range (PRUNING_CONTEXT * pinfo,
-					      const PARTITION_NODE *
-					      partitions,
-					      const DB_VALUE * val,
-					      const PRUNING_OP op,
-					      MATCH_STATUS * status);
-static PARTITION_NODE *partition_prune_list (PRUNING_CONTEXT * pinfo,
-					     const PARTITION_NODE *
-					     partitions, const DB_VALUE * val,
-					     const PRUNING_OP op,
-					     MATCH_STATUS * status);
-static PARTITION_NODE *partition_prune_hash (PRUNING_CONTEXT * pinfo,
-					     const PARTITION_NODE *
-					     partitions, const DB_VALUE * val,
-					     const PRUNING_OP op,
-					     MATCH_STATUS * status);
+static MATCH_STATUS partition_prune_range (PRUNING_CONTEXT * pinfo,
+					   const DB_VALUE * val,
+					   const PRUNING_OP op,
+					   PRUNING_BITSET * pruned);
+static MATCH_STATUS partition_prune_list (PRUNING_CONTEXT * pinfo,
+					  const DB_VALUE * val,
+					  const PRUNING_OP op,
+					  PRUNING_BITSET * pruned);
+static MATCH_STATUS partition_prune_hash (PRUNING_CONTEXT * pinfo,
+					  const DB_VALUE * val,
+					  const PRUNING_OP op,
+					  PRUNING_BITSET * pruned);
 static int partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
 						const OID * class_oid,
 						RECDES * recdes,
@@ -184,28 +186,206 @@ static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);
 
 static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
 
-/* partition list manipulation functions */
-static PARTITION_NODE *partition_new_node (THREAD_ENTRY * thread_p,
-					   OR_PARTITION * partition);
-static void partition_free_list (THREAD_ENTRY * thread_p,
-				 PARTITION_NODE * list);
-static PARTITION_NODE *partition_build_list (THREAD_ENTRY * thread_p,
-					     OR_PARTITION * partitions,
-					     int parts_count);
-static PARTITION_NODE *partition_intersect_lists (THREAD_ENTRY *
-						  thread_p,
-						  PARTITION_NODE * left,
-						  PARTITION_NODE * right);
-static PARTITION_NODE *partition_merge_lists (THREAD_ENTRY * thread_p,
-					      PARTITION_NODE * left,
-					      PARTITION_NODE * right);
-static PARTITION_NODE *partition_add_node_to_list (THREAD_ENTRY *
-						   thread_p,
-						   PARTITION_NODE * list,
-						   OR_PARTITION * partition);
-static int partition_count_elements_in_list (PARTITION_NODE * list);
-static int partition_list_to_spec_list (PRUNING_CONTEXT * pinfo,
-					PARTITION_NODE * list);
+/* PRUNING_BITSET manipulation functions */
+/*
+ * pruningset_init () - initialize a PRUNING_BITSET object
+ * return : void
+ * s (in/out) : PRUNING_BITSET object
+ * count (in) : number of elements
+ */
+static void
+pruningset_init (PRUNING_BITSET * s, int count)
+{
+  s->count = count;
+  memset (s->set, 0, BITSET_WORD_COUNT);
+}
+
+/*
+ * pruningset_set_all () - set all bits in in a PRUNING_BITSET
+ * return : void
+ * set (in/out) : PRUNING_BITSET object
+ */
+static void
+pruningset_set_all (PRUNING_BITSET * set)
+{
+  memset (set->set, (~0), BITSET_WORD_COUNT);
+}
+
+/*
+ * pruningset_copy () - copy a PRUNING_BITSET
+ * return : void
+ * dest (in/out) : destination
+ * src (in)	 : source
+ */
+static void
+pruningset_copy (PRUNING_BITSET * dest, const PRUNING_BITSET * src)
+{
+  unsigned int i;
+  pruningset_init (dest, src->count);
+  for (i = 0; i < BITSET_LENGTH (dest); i++)
+    {
+      dest->set[i] = src->set[i];
+    }
+}
+
+/*
+ * pruningset_add () - add an element
+ * return : void
+ * s (in/out) : PRUNING_BITSET object
+ * i (in)     : element to add
+ */
+static void
+pruningset_add (PRUNING_BITSET * s, int i)
+{
+  s->set[i / BITS_IN_WORD] |= (1 << (i % BITS_IN_WORD));
+}
+
+/*
+ * pruningset_remove () - remove an element
+ * return : void
+ * s (in/out) : PRUNING_BITSET object
+ * i (in)     : element to remove
+ */
+static void
+pruningset_remove (PRUNING_BITSET * s, int i)
+{
+  s->set[i / BITS_IN_WORD] &= ~(1 << (i % BITS_IN_WORD));
+}
+
+/*
+ * pruningset_intersect () - perform intersection on two PRUNING_BITSET
+ *			     objects
+ * return : void
+ * left (in/out) :
+ * right (in)	 :
+ */
+static void
+pruningset_intersect (PRUNING_BITSET * left, const PRUNING_BITSET * right)
+{
+  unsigned int i;
+  for (i = 0; i < BITSET_LENGTH (left); i++)
+    {
+      left->set[i] &= right->set[i];
+    }
+}
+
+/*
+ * pruningset_union () - perform intersection on two PRUNING_BITSET objects
+ * return : void
+ * left (in/out) :
+ * right (in)	 :
+ */
+static void
+pruningset_union (PRUNING_BITSET * left, const PRUNING_BITSET * right)
+{
+  unsigned int max, i;
+  max = BITSET_LENGTH (left);
+  if (BITSET_LENGTH (left) > BITSET_LENGTH (right))
+    {
+      max = BITSET_LENGTH (right);
+    }
+
+  for (i = 0; i < max; i++)
+    {
+      left->set[i] |= right->set[i];
+    }
+}
+
+/*
+ * pruningset_is_set () - test if an element is set
+ * return : true if the element is set
+ * s (in) : PRUNING_BITSET object
+ * idx (in) : index to test
+ */
+static bool
+pruningset_is_set (const PRUNING_BITSET * s, int idx)
+{
+  return ((s->set[idx / BITS_IN_WORD] & (1 << (idx % BITS_IN_WORD))) != 0);
+}
+
+/*
+ * pruningset_popcount () - return the number of elements which are set in a
+ *			    PRUNING_BITSET object
+ * return : number of elements set
+ * s (in) : PRUNING_BITSET object
+ */
+static int
+pruningset_popcount (const PRUNING_BITSET * s)
+{
+  /* we expect to have only a few bits set, so the Brian Kernighan algorithm
+   * should be the fastest.
+   */
+  int count = 0;
+  unsigned i, v;
+  for (i = 0; i < BITSET_LENGTH (s); i++)
+    {
+      v = s->set[i];
+      for (; v != 0; count++)
+	{
+	  v &= v - 1;
+	}
+    }
+
+  if (count > s->count)
+    {
+      return s->count;
+    }
+  return count;
+}
+
+/*
+ * pruningset_iterator_init () - initialize an iterator
+ * return : void
+ * set (in) :
+ * i (in/out) :
+ */
+static void
+pruningset_iterator_init (const PRUNING_BITSET * set,
+			  PRUNING_BITSET_ITERATOR * i)
+{
+  i->set = set;
+  i->next = 0;
+}
+
+/*
+ * pruningset_iterator_next () - advance the iterator
+ * return      : next element
+ * it (in/out) : iterator
+ */
+static int
+pruningset_iterator_next (PRUNING_BITSET_ITERATOR * it)
+{
+  unsigned int i, j;
+  unsigned int word;
+  int pos = 0;
+
+  if (it->next >= it->set->count)
+    {
+      it->next = -1;
+      return -1;
+    }
+
+  for (i = it->next / BITS_IN_WORD; i < BITSET_LENGTH (it->set); i++)
+    {
+      if (it->set->set[i] == 0)
+	{
+	  continue;
+	}
+      word = it->set->set[i];
+      pos = it->next % BITS_IN_WORD;
+      for (j = pos; j < BITS_IN_WORD; j++)
+	{
+	  if ((word & (1 << j)) != 0)
+	    {
+	      it->next = i * BITS_IN_WORD + j + 1;
+	      return (i * BITS_IN_WORD + j);
+	    }
+	}
+      it->next = (i + 1) * BITS_IN_WORD;
+    }
+  it->next = -1;
+  return -1;
+}
 
 /*
  * partition_free_cache_entry () - free memory allocated for a cache entry
@@ -252,13 +432,17 @@ partition_free_cache_entry (const void *key, void *data, void *args)
  * return : error code or NO_ERROR
  * pinfo (in/out) : pruning context
  * entry_p (in)	  : cache entry
+ *
+ * Note: The cached information is not copied into the curent context, it is
+ * just referenced. This is because the cached information for partitions
+ * represents only schema information and this information cannot be changed
+ * unless the changer has exclusive access to this class. In this case,
+ * other callers do not have access to this area.
  */
 static int
 partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo,
 					  PARTITION_CACHE_ENTRY * entry_p)
 {
-  int i;
-
   assert (pinfo != NULL);
   assert (entry_p != NULL);
 
@@ -271,64 +455,13 @@ partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo,
       return ER_FAILED;
     }
 
-  pinfo->partitions =
-    (OR_PARTITION *) db_private_alloc (pinfo->thread_p,
-				       pinfo->count * sizeof (OR_PARTITION));
-  if (pinfo->partitions == NULL)
-    {
-      pinfo->error_code = ER_FAILED;
-      goto error_return;
-    }
-
-  for (i = 0; i < pinfo->count; i++)
-    {
-      COPY_OID (&pinfo->partitions[i].db_part_oid,
-		&entry_p->partitions[i].db_part_oid);
-
-      COPY_OID (&pinfo->partitions[i].class_oid,
-		&entry_p->partitions[i].class_oid);
-
-      HFID_COPY (&pinfo->partitions[i].class_hfid,
-		 &entry_p->partitions[i].class_hfid);
-
-      pinfo->partitions[i].partition_type =
-	entry_p->partitions[i].partition_type;
-      if (entry_p->partitions[i].values != NULL)
-	{
-	  pinfo->partitions[i].values =
-	    db_seq_copy (entry_p->partitions[i].values);
-	  if (pinfo->partitions[i].values == NULL)
-	    {
-	      pinfo->error_code = ER_FAILED;
-	      goto error_return;
-	    }
-	}
-    }
+  pinfo->partitions = entry_p->partitions;
 
   pinfo->attr_id = entry_p->attr_id;
 
   pinfo->partition_type = pinfo->partitions[0].partition_type;
 
   return NO_ERROR;
-
-error_return:
-
-  if (pinfo->partitions != NULL)
-    {
-      int j;
-      /* i holds the actual count of allocated partition values */
-      for (j = 0; i < i; j++)
-	{
-	  if (pinfo->partitions[j].values != NULL)
-	    {
-	      db_seq_free (pinfo->partitions[j].values);
-	    }
-	}
-      db_private_free_and_init (pinfo->thread_p, pinfo->partitions);
-      pinfo->count = 0;
-    }
-
-  return ER_FAILED;
 }
 
 /*
@@ -341,7 +474,7 @@ static PARTITION_CACHE_ENTRY *
 partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo)
 {
   PARTITION_CACHE_ENTRY *entry_p = NULL;
-  int i;
+  int i = 0;
   HL_HEAPID old_heap_id = 0;
 
   assert (pinfo != NULL);
@@ -389,6 +522,9 @@ partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo)
 
       entry_p->partitions[i].partition_type =
 	pinfo->partitions[i].partition_type;
+
+      entry_p->partitions[i].rep_id = pinfo->partitions[i].rep_id;
+
       if (pinfo->partitions[i].values != NULL)
 	{
 	  entry_p->partitions[i].values =
@@ -545,6 +681,7 @@ partition_load_context_from_cache (PRUNING_CONTEXT * pinfo, bool * is_modfied)
     }
 
   csect_exit (CSECT_PARTITION_CACHE);
+  pinfo->is_from_cache = true;
   return true;
 }
 
@@ -697,368 +834,25 @@ partition_rel_op_to_pruning_op (REL_OP op)
 }
 
 /*
- * partition_new_node () - create a new node
- * return : node or null
- * thread_p (in)  :
- * partition (in) : partition information for the node
- */
-static PARTITION_NODE *
-partition_new_node (THREAD_ENTRY * thread_p, OR_PARTITION * partition)
-{
-  PARTITION_NODE *node =
-    (PARTITION_NODE *) db_private_alloc (thread_p, sizeof (PARTITION_NODE));
-
-  if (node == NULL)
-    {
-      return NULL;
-    }
-  node->partition = partition;
-  node->next = NULL;
-
-  return node;
-}
-
-/*
- * partition_free_list () - free nodes in a list
- * return : void
- * thread_p (in) :
- * list (in)	 : list to be freed
- */
-static void
-partition_free_list (THREAD_ENTRY * thread_p, PARTITION_NODE * list)
-{
-  while (list != NULL)
-    {
-      PARTITION_NODE *next = list->next;
-
-      db_private_free (thread_p, list);
-      list = next;
-    }
-}
-
-/*
- * partition_build_list () - create a PARTITION_NODE list from an array of
- *			     partitions
- * return : partition list or null
- * thread_p (in)    :
- * partitions (in)  : array of elements to put into the list
- * parts_count (in) : number of elements in partitions array
- *
- *  Note: The code dealing with pruning has to perform merges and
- *  intersections on lists of partitions. In order to speed up these
- *  operations we will work with sorted lists and since each partition info
- *  from a node is a pointer to an element from an array, the easiest way to
- *  accomplish this is to use the address of the node->partitions pointer as
- *  an ordering criteria.
- */
-static PARTITION_NODE *
-partition_build_list (THREAD_ENTRY * thread_p, OR_PARTITION * partitions,
-		      int parts_count)
-{
-  PARTITION_NODE *list = NULL;
-  int i = 0;
-
-  /* We will insert elements at the beginning of the list but we want the
-   * list to be sorted ascending. This is why we parser partitions from end to
-   * start
-   */
-  list = partition_new_node (thread_p, &partitions[parts_count - 1]);
-  if (list == NULL)
-    {
-      goto error_exit;
-    }
-
-  for (i = parts_count - 2; i >= 0; i--)
-    {
-      PARTITION_NODE *node = partition_new_node (thread_p, &partitions[i]);
-
-      if (node == NULL)
-	{
-	  goto error_exit;
-	}
-      node->partition = &partitions[i];
-      node->next = list;
-      list = node;
-    }
-
-  return list;
-
-error_exit:
-  (void) partition_free_list (thread_p, list);
-  return NULL;
-}
-
-/*
- * partition_merge_lists () - perform reunion on two lists
- * return :
- * thread_p (in)  :
- * left (in)	  :
- * right (in)	  :
- *
- *  Note: this function performs reunion on left and right lists
- *  and returns the result as a new list. Nodes not used from left and right
- *  lists are freed during this merge.
- */
-static PARTITION_NODE *
-partition_merge_lists (THREAD_ENTRY * thread_p, PARTITION_NODE * left,
-		       PARTITION_NODE * right)
-{
-  PARTITION_NODE *merge = NULL, *mnext = NULL;
-  if (left == NULL)
-    {
-      return right;
-    }
-  if (right == NULL)
-    {
-      return left;
-    }
-
-  if (left->partition > right->partition)
-    {
-      merge = right;
-      right = right->next;
-      merge->next = NULL;
-    }
-  else
-    {
-      merge = left;
-      left = left->next;
-      merge->next = NULL;
-
-      if (merge->partition == right->partition)
-	{
-	  PARTITION_NODE *aux = right;
-	  right = right->next;
-	  db_private_free (thread_p, aux);
-	}
-    }
-
-  mnext = merge;
-  while (left != NULL && right != NULL)
-    {
-      if (left->partition > right->partition)
-	{
-	  /* add right and move to next right */
-	  mnext->next = right;
-	  right = right->next;
-	  mnext = mnext->next;
-	  mnext->next = NULL;
-	}
-      else
-	{
-	  /* add left and move to the next left */
-	  mnext->next = left;
-	  left = left->next;
-	  mnext = mnext->next;
-	  mnext->next = NULL;
-	  if (mnext->partition == right->partition)
-	    {
-	      /* also move right to next and free current right */
-	      PARTITION_NODE *aux = right;
-	      right = right->next;
-	      db_private_free (thread_p, aux);
-	    }
-	}
-    }
-
-  /* add what's left */
-  if (left != NULL)
-    {
-      mnext->next = left;
-    }
-  else if (right != NULL)
-    {
-      mnext->next = right;
-    }
-
-  return merge;
-}
-
-/*
- * partition_intersect_lists () - perform intersection on two lists
- * return :
- * thread_p (in)  :
- * left (in)	  :
- * right (in)	  :
- *
- *  Note: this function performs intersection between left and right lists
- *  and returns the result as a new list. Nodes not used from left or right
- *  lists are freed during this merge.
- */
-static PARTITION_NODE *
-partition_intersect_lists (THREAD_ENTRY * thread_p, PARTITION_NODE * left,
-			   PARTITION_NODE * right)
-{
-  PARTITION_NODE *merge = NULL, *mnext = NULL;
-
-  /* We know that left and right lists are sorted and we will use this
-   * information to speed up the intersection
-   */
-  if (left == NULL || right == NULL)
-    {
-      /* nothing to merge */
-      (void) partition_free_list (thread_p, left);
-      (void) partition_free_list (thread_p, right);
-      return NULL;
-    }
-
-  if (left->partition > right->partition)
-    {
-      /* swap lists, it will make things easier */
-      PARTITION_NODE *aux = right;
-      right = left;
-      left = aux;
-    }
-
-  while (left != NULL && right != NULL)
-    {
-      PARTITION_NODE *lnext, *rnext;
-
-      if (left->partition == right->partition)
-	{
-	  /* Add left to merge and free right. Then move to the next node
-	   * in left and next node in right
-	   */
-	  if (merge == NULL)
-	    {
-	      merge = left;
-	      left = left->next;
-	      merge->next = NULL;
-	      mnext = merge;
-	    }
-	  else
-	    {
-	      mnext->next = left;
-	      left = left->next;
-	      mnext->next->next = NULL;
-	      mnext = mnext->next;
-	    }
-	  /* free right, we don't need it anymore */
-	  rnext = right->next;
-	  db_private_free (thread_p, right);
-	  right = rnext;
-	  continue;
-	}
-      else if (left->partition < right->partition)
-	{
-	  /* left is not in right. Free current left node and move to the next
-	     one */
-	  lnext = left->next;
-	  db_private_free (thread_p, left);
-	  left = lnext;
-	}
-      else if (left->partition > right->partition)
-	{
-	  /* right is not in left. Free current right node and move to the
-	     next one */
-	  rnext = right->next;
-	  db_private_free (thread_p, right);
-	  right = rnext;
-	}
-    }
-
-  /* at this point, if either left or right are not NULL, we have to free them
-     because they don't contain useful information */
-  (void) partition_free_list (thread_p, left);
-  (void) partition_free_list (thread_p, right);
-
-  return merge;
-}
-
-/*
- * partition_add_node_to_list () - add a node to a list
- * return : list or NULL on error
- * thread_p (in)  : thread
- * list (in)	  : list to add the new node to
- * partition (in) : contents of the new node
- *
- *  Note: in case of an error, this function also frees the memory allocated
- *  for the list
- */
-static PARTITION_NODE *
-partition_add_node_to_list (THREAD_ENTRY * thread_p, PARTITION_NODE * list,
-			    OR_PARTITION * partition)
-{
-  PARTITION_NODE *n = NULL, *node = NULL;
-
-  node = partition_new_node (thread_p, partition);
-  if (node == NULL)
-    {
-      (void) partition_free_list (thread_p, list);
-      return NULL;
-    }
-
-  if (list == NULL)
-    {
-      /* no elements in the list, just return node as new head */
-      return node;
-    }
-
-  if (list->partition >= node->partition)
-    {
-      /* we have to insert it before the head of the list */
-      node->next = list;
-      return node;
-    }
-
-  /* search for appropriate location into which to insert this node */
-  n = list;
-  while (n != NULL)
-    {
-      PARTITION_NODE *next = n->next;
-      if ((n->partition <= node->partition)
-	  && (next == NULL || node->partition <= next->partition))
-	{
-	  /* if element =< new_node =< next, we found the place for it */
-	  node->next = n->next;
-	  n->next = node;
-	  break;
-	}
-      n = n->next;
-    }
-
-  return list;
-}
-
-/*
- * partition_count_elements_in_list () - count the elements in a list
- * return : number of elements
- * list (in) : list
- */
-static int
-partition_count_elements_in_list (PARTITION_NODE * list)
-{
-  int count = 0;
-
-  while (list)
-    {
-      count++;
-      list = list->next;
-    }
-
-  return count;
-}
-
-/*
- * partition_list_to_spec_list () - convert a list of nodes to an array of
- *				    PARTITION_SPEC_TYPE elements
+ * pruningset_to_spec_list () - convert a pruningset to an array of
+ *				PARTITION_SPEC_TYPE elements
  * return : error code or NO_ERROR
- * thread_p (in)      :
- * list (in)	      :
- * spec_list (in/out) :
+ * pinfo (in)  : pruning context
+ * pruned (in) : pruned partitions
  */
 static int
-partition_list_to_spec_list (PRUNING_CONTEXT * pinfo, PARTITION_NODE * list)
+pruningset_to_spec_list (PRUNING_CONTEXT * pinfo,
+			 const PRUNING_BITSET * pruned)
 {
-  int cnt = 0, i = 0, error = NO_ERROR;
-  PARTITION_NODE *node = NULL;
+  int cnt = 0, i = 0, pos = 0, error = NO_ERROR;
   PARTITION_SPEC_TYPE *spec = NULL;
   bool is_index = false;
   char *btree_name = NULL;
   OID *master_oid = NULL;
   BTID *master_btid = NULL;
+  PRUNING_BITSET_ITERATOR it;
 
-  cnt = partition_count_elements_in_list (list);
+  cnt = pruningset_popcount (pruned);
   if (cnt == 0)
     {
       /* pruning did not find any partition, just return */
@@ -1091,13 +885,13 @@ partition_list_to_spec_list (PRUNING_CONTEXT * pinfo, PARTITION_NODE * list)
       error = ER_FAILED;
       goto cleanup;
     }
-
-  for (i = 0, node = list; i < cnt; i++, node = node->next)
+  pruningset_iterator_init (pruned, &it);
+  pos = 0;
+  for (i = 0, pos = pruningset_iterator_next (&it); i < cnt && pos >= 0;
+       i++, pos = pruningset_iterator_next (&it))
     {
-      assert (node != NULL);
-
-      COPY_OID (&spec[i].oid, &node->partition->class_oid);
-      HFID_COPY (&spec[i].hfid, &node->partition->class_hfid);
+      COPY_OID (&spec[i].oid, &pinfo->partitions[pos + 1].class_oid);
+      HFID_COPY (&spec[i].hfid, &pinfo->partitions[pos + 1].class_hfid);
       if (i == cnt - 1)
 	{
 	  spec[i].next = NULL;
@@ -1265,36 +1059,30 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo,
 
 /*
  * partition_prune_list () - Perform pruning for LIST type partitions
- * return : partition list
- * pinfo (in)	    : pruning context
- * partitions (in)  : list of partitions on which to perform pruning
- * val	      (in)  : the value to which the partition expression is compared
- * op (in)	    : operator to apply
- * status (in/out)  : match status
+ * return : match status
+ * pinfo (in)	  : pruning context
+ * val (in)	  : the value to which the partition expression is compared
+ * op (in)	  : operator to apply
+ * pruned (in/out): pruned partitions
  */
-static PARTITION_NODE *
-partition_prune_list (PRUNING_CONTEXT * pinfo,
-		      const PARTITION_NODE * partitions,
-		      const DB_VALUE * val, const PRUNING_OP op,
-		      MATCH_STATUS * status)
+static MATCH_STATUS
+partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
+		      const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
-  PARTITION_NODE *parts = NULL;
-  const PARTITION_NODE *part = NULL;
+  OR_PARTITION *part;
   int size = 0, i = 0;
   DB_SEQ *part_collection = NULL;
   DB_COLLECTION *val_collection = NULL;
-  *status = MATCH_NOT_FOUND;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
 
-  part = partitions;
-
-  while (part)
+  for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
     {
-      part_collection = part->partition->values;
+      part = &pinfo->partitions[i + 1];
+      part_collection = part->values;
       size = db_set_size (part_collection);
       if (size < 0)
 	{
-	  *status = MATCH_NOT_FOUND;
-	  goto cleanup;
+	  return MATCH_NOT_FOUND;
 	}
 
       switch (op)
@@ -1309,8 +1097,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	     */
 	    if (!db_value_type_is_collection (val))
 	      {
-		*status = MATCH_NOT_FOUND;
-		return NULL;
+		return MATCH_NOT_FOUND;
 	      }
 
 	    val_collection = DB_GET_COLLECTION (val);
@@ -1329,11 +1116,9 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	    if (found)
 	      {
 		/* add this partition */
-		parts = partition_add_node_to_list (pinfo->thread_p, parts,
-						    part->partition);
-
+		pruningset_add (pruned, i);
 	      }
-	    *status = MATCH_OK;
+	    status = MATCH_OK;
 	    break;
 	  }
 
@@ -1347,8 +1132,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	     */
 	    if (!db_value_type_is_collection (val))
 	      {
-		*status = MATCH_NOT_FOUND;
-		return NULL;
+		status = MATCH_NOT_FOUND;
 	      }
 
 	    val_collection = DB_GET_COLLECTION (val);
@@ -1367,11 +1151,9 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	    if (!found)
 	      {
 		/* add this partition */
-		parts = partition_add_node_to_list (pinfo->thread_p, parts,
-						    part->partition);
-
+		pruningset_add (pruned, i);
 	      }
-	    *status = MATCH_OK;
+	    status = MATCH_OK;
 	    break;
 	  }
 
@@ -1380,12 +1162,10 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	  if (db_set_has_null (part_collection))
 	    {
 	      /* add this partition */
-	      parts = partition_add_node_to_list (pinfo->thread_p, parts,
-						  part->partition);
+	      pruningset_add (pruned, i);
 	      /* Since partition values are disjoint sets this is the only
 	         possible result */
-	      *status = MATCH_OK;
-	      return parts;
+	      return MATCH_OK;
 	    }
 	  break;
 
@@ -1394,12 +1174,10 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	  if (db_set_ismember (part_collection, (DB_VALUE *) val))
 	    {
 	      /* add this partition */
-	      parts = partition_add_node_to_list (pinfo->thread_p, parts,
-						  part->partition);
+	      pruningset_add (pruned, i);
 	      /* Since partition values are disjoint sets this is the only
 	         possible result */
-	      *status = MATCH_OK;
-	      return parts;
+	      return MATCH_OK;
 	    }
 	  break;
 
@@ -1409,39 +1187,31 @@ partition_prune_list (PRUNING_CONTEXT * pinfo,
 	case PO_GT:
 	case PO_GE:
 	default:
-	  *status = MATCH_NOT_FOUND;
-	  parts = NULL;
-	  break;
+	  return status = MATCH_NOT_FOUND;
 	}
-      part = part->next;
     }
 
-cleanup:
-  return parts;
+  return status;
 }
 
 /*
  * partition_prune_hash () - Perform pruning for HASH type partitions
- * return : partition list
- * pinfo (in)	    : pruning context
- * partitions (in)  : list of partitions on which to perform pruning
- * val	      (in)  : the value to which the partition expression is compared
- * op (in)	    : operator to apply
- * status (in/out)  : match status
+ * return : match status
+ * pinfo (in)	  : pruning context
+ * val (in)	  : the value to which the partition expression is compared
+ * op (in)	  : operator to apply
+ * pruned (in/out): pruned partitions
  */
-static PARTITION_NODE *
-partition_prune_hash (PRUNING_CONTEXT * pinfo,
-		      const PARTITION_NODE * partitions,
-		      const DB_VALUE * val_p, const PRUNING_OP op,
-		      MATCH_STATUS * status)
+static MATCH_STATUS
+partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p,
+		      const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
-  PARTITION_NODE *parts = NULL;
   int idx = 0;
-  int hash_size = pinfo->count - 1;
+  int hash_size = PARTITIONS_COUNT (pinfo);
   TP_DOMAIN *col_domain = NULL;
   DB_VALUE val;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
 
-  *status = MATCH_NOT_FOUND;
   col_domain = pinfo->partition_pred->func_regu->domain;
   switch (op)
     {
@@ -1456,14 +1226,12 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 	      == DOMAIN_INCOMPATIBLE)
 	    {
 	      /* We cannot set an error here because this is not considered
-	       * to be an error when scanning regular tables either. We
-	       * can consider this predicate to be always false so status to
-	       * MATCH_OK to simulate the case when no appropriate partition
-	       * was found.
+	       * to be an error when scanning regular tables. We can consider
+	       * this predicate to be always false so status to MATCH_OK
+	       * to simulate the case when no appropriate partition was found.
 	       */
 	      er_clear ();
-	      *status = MATCH_OK;
-	      return NULL;
+	      status = MATCH_OK;
 	    }
 	}
       else
@@ -1473,9 +1241,8 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 
       idx = mht_get_hash_number (hash_size, &val);
       /* Start from 1 because we're using position 0 for the master class */
-      parts = partition_add_node_to_list (pinfo->thread_p, parts,
-					  &pinfo->partitions[idx + 1]);
-      *status = MATCH_OK;
+      pruningset_add (pruned, idx);
+      status = MATCH_OK;
       break;
 
     case PO_IN:
@@ -1484,19 +1251,17 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 	int size = 0, i, idx;
 	if (!db_value_type_is_collection (val_p))
 	  {
-	    *status = MATCH_NOT_FOUND;
 	    /* This is an error and it should be handled outside of the
 	     * pruning environment
 	     */
-	    return NULL;
+	    return MATCH_NOT_FOUND;
 	  }
 	values = DB_GET_COLLECTION (val_p);
 	size = db_set_size (values);
 	if (size < 0)
 	  {
 	    pinfo->error_code = ER_FAILED;
-	    *status = MATCH_NOT_FOUND;
-	    return NULL;
+	    return MATCH_NOT_FOUND;
 	  }
 	for (i = 0; i < size; i++)
 	  {
@@ -1504,9 +1269,9 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 	    if (db_set_get (values, i, &col) != NO_ERROR)
 	      {
 		pinfo->error_code = ER_FAILED;
-		*status = MATCH_NOT_FOUND;
-		return NULL;
+		return MATCH_NOT_FOUND;
 	      }
+
 	    if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (&col))
 	      {
 		/* A failed coercion is not an error in this case,
@@ -1515,75 +1280,75 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo,
 		if (tp_value_cast (val_p, &val, col_domain, false)
 		    == DOMAIN_INCOMPATIBLE)
 		  {
+		    pr_clear_value (&col);
 		    er_clear ();
 		    continue;
 		  }
 	      }
 
 	    idx = mht_get_hash_number (hash_size, &col);
-	    parts = partition_add_node_to_list (pinfo->thread_p, parts,
-						&pinfo->partitions[idx + 1]);
+	    pruningset_add (pruned, idx);
+
+	    pr_clear_value (&col);
 	  }
-	*status = MATCH_OK;
+	status = MATCH_OK;
 	break;
       }
 
     case PO_IS_NULL:
       /* first partition */
-      parts = partition_add_node_to_list (pinfo->thread_p, parts,
-					  &pinfo->partitions[1]);
-      *status = MATCH_OK;
+      pruningset_add (pruned, 0);
+      status = MATCH_OK;
       break;
 
     default:
-      *status = MATCH_NOT_FOUND;
+      status = MATCH_NOT_FOUND;
       break;
     }
 
-  return parts;
+  return status;
 }
 
 /*
  * partition_prune_range () - Perform pruning for RANGE type partitions
- * return : partition list
- * pinfo (in)	    : pruning context
- * partitions (in)  : list of partitions on which to perform pruning
- * val	      (in)  : the value to which the partition expression is compared
- * op (in)	    : operator to apply
- * status (in/out)  : match status
+ * return : match status
+ * pinfo (in)	   : pruning context
+ * val(in)	   : the value to which the partition expression is compared
+ * op (in)	   : operator to apply
+ * pruned (in/out) : pruned partitions
  */
-static PARTITION_NODE *
-partition_prune_range (PRUNING_CONTEXT * pinfo,
-		       const PARTITION_NODE * partitions,
-		       const DB_VALUE * val, const PRUNING_OP op,
-		       MATCH_STATUS * status)
+static MATCH_STATUS
+partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
+		       const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
   int i = 0, error = NO_ERROR;
-  PARTITION_NODE *parts = NULL;
-  const PARTITION_NODE *part = NULL;
+  OR_PARTITION *part;
   DB_VALUE min, max;
   int rmin = DB_UNK, rmax = DB_UNK;
-  part = partitions;
+  MATCH_STATUS status;
 
   DB_MAKE_NULL (&min);
   DB_MAKE_NULL (&max);
 
-  while (part)
+  for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
     {
+      part = &pinfo->partitions[i + 1];
       pr_clear_value (&min);
       pr_clear_value (&max);
 
-      error = db_set_get (part->partition->values, 0, &min);
+      error = db_set_get (part->values, 0, &min);
       if (error != NO_ERROR)
 	{
 	  pinfo->error_code = error;
+	  status = MATCH_NOT_FOUND;
 	  goto cleanup;
 	}
 
-      db_set_get (part->partition->values, 1, &max);
+      error = db_set_get (part->values, 1, &max);
       if (error != NO_ERROR)
 	{
 	  pinfo->error_code = error;
+	  status = MATCH_NOT_FOUND;
 	  goto cleanup;
 	}
 
@@ -1607,7 +1372,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	  rmax = tp_value_compare (val, &max, 1, 1);
 	}
 
-      *status = MATCH_OK;
+      status = MATCH_OK;
       switch (op)
 	{
 	case PO_EQ:
@@ -1615,14 +1380,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	   * which min <= value < max */
 	  if ((rmin == DB_EQ || rmin == DB_LT) && rmax == DB_LT)
 	    {
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = NO_ERROR;
-		}
+	      pruningset_add (pruned, i);
 	      /* no need to look any further */
 	      goto cleanup;
 	    }
@@ -1633,15 +1391,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	     min < value qualify */
 	  if (rmin == DB_LT)
 	    {
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
+	      pruningset_add (pruned, i);
 	    }
 	  break;
 
@@ -1651,27 +1401,12 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	  if (rmin == DB_EQ)
 	    {
 	      /* this is the only partition than can qualify */
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = ER_FAILED;
-		}
+	      pruningset_add (pruned, i);
 	      goto cleanup;
 	    }
 	  else if (rmin == DB_LT)
 	    {
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
+	      pruningset_add (pruned, i);
 	    }
 	  break;
 
@@ -1680,15 +1415,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	     value < max qualify */
 	  if (rmax == DB_LT)
 	    {
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
+	      pruningset_add (pruned, i);
 	    }
 	  break;
 
@@ -1697,115 +1424,78 @@ partition_prune_range (PRUNING_CONTEXT * pinfo,
 	     value < max qualify */
 	  if (rmax == DB_LT)
 	    {
-	      /* this is the only partition that can qualify */
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
+	      pruningset_add (pruned, i);
 	    }
 	  break;
 
 	case PO_IS_NULL:
 	  if (DB_IS_NULL (&min))
 	    {
-	      parts =
-		partition_add_node_to_list (pinfo->thread_p, parts,
-					    part->partition);
-	      if (parts == NULL)
-		{
-		  pinfo->error_code = ER_FAILED;
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
+	      pruningset_add (pruned, i);
 	      /* no need to look any further */
 	      goto cleanup;
 	    }
 	  break;
 
 	default:
-	  *status = MATCH_NOT_FOUND;
+	  status = MATCH_NOT_FOUND;
 	  goto cleanup;
 	  break;
 	}
-      part = part->next;
     }
 
 cleanup:
   pr_clear_value (&min);
   pr_clear_value (&max);
-
-  if (error != NO_ERROR)
-    {
-      (void) partition_free_list (pinfo->thread_p, parts);
-      parts = NULL;
-    }
-
-  return parts;
+  return status;
 }
 
 /*
  * partition_prune_db_val () - prune partitions using the given DB_VALUE
- * return : pruned partitions or NULL
+ * return : match status
  * pinfo (in)	   : pruning context
- * partitions (in) : list of partitions to prune
  * val (in)	   : value to use for pruning
  * op (in)	   : operation to be applied for value
- * status (in/out) : pruning status
+ * pruned (in/out) : pruned partitions
  */
-static PARTITION_NODE *
-partition_prune_db_val (PRUNING_CONTEXT * pinfo,
-			const PARTITION_NODE * partitions,
-			const DB_VALUE * val, const PRUNING_OP op,
-			MATCH_STATUS * status)
+static MATCH_STATUS
+partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
+			const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
-  PARTITION_NODE *pruned = NULL;
-
   switch (pinfo->partition_type)
     {
     case DB_PARTITION_HASH:
-      pruned = partition_prune_hash (pinfo, partitions, val, op, status);
-      break;
+      return partition_prune_hash (pinfo, val, op, pruned);
     case DB_PARTITION_RANGE:
-      pruned = partition_prune_range (pinfo, partitions, val, op, status);
-      break;
+      return partition_prune_range (pinfo, val, op, pruned);
     case DB_PARTITION_LIST:
-      pruned = partition_prune_list (pinfo, partitions, val, op, status);
-      break;
+      return partition_prune_list (pinfo, val, op, pruned);
     default:
-      *status = MATCH_NOT_FOUND;
-      break;
+      return MATCH_NOT_FOUND;
     }
 
-  return pruned;
+  return MATCH_NOT_FOUND;
 }
 
 /*
  * partition_prune () - perform pruning on the specified partitions list
- * return : partition list
- * pinfo (in)	    : pruning context
- * partitions (in)  : list of partitions on which to perform pruning
- * val	      (in)  : the value to which the partition expression is compared
- * op (in)	    : operator to apply
- * status (in/out)  : match status
+ * return : match status
+ * pinfo (in)	  : pruning context
+ * val (in)	  : the value to which the partition expression is compared
+ * op (in)	  : operator to apply
+ * pruned (in/out): pruned partitions
  */
-static PARTITION_NODE *
-partition_prune (PRUNING_CONTEXT * pinfo, const PARTITION_NODE * partitions,
-		 const REGU_VARIABLE * arg, const PRUNING_OP op,
-		 MATCH_STATUS * status)
+static MATCH_STATUS
+partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg,
+		 const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
-  PARTITION_NODE *pruned = NULL;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
   DB_VALUE val;
   bool is_value = false;
 
   if (arg == NULL && op != PO_IS_NULL)
     {
-      *status = MATCH_NOT_FOUND;
-      return NULL;
+      return MATCH_NOT_FOUND;
     }
 
   if (op == PO_IS_NULL)
@@ -1818,20 +1508,20 @@ partition_prune (PRUNING_CONTEXT * pinfo, const PARTITION_NODE * partitions,
     {
       /* pruning failed */
       pinfo->error_code = ER_FAILED;
-      return NULL;
+      return MATCH_NOT_FOUND;
     }
 
   if (!is_value)
     {
       /* cannot perform pruning */
-      *status = MATCH_NOT_FOUND;
-      return NULL;
+      return MATCH_NOT_FOUND;
     }
 
-  pruned = partition_prune_db_val (pinfo, partitions, &val, op, status);
+  status = partition_prune_db_val (pinfo, &val, op, pruned);
 
   pr_clear_value (&val);
-  return pruned;
+
+  return status;
 }
 
 /*
@@ -2072,25 +1762,22 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo,
 /*
  * partition_match_pred_expr () - get partitions matching a predicate
  *				  expression
- * return : partition list
- * pinfo (in)	    : pruning context
- * partitions (in)  : partitions
- * pr (in)	    : predicate expression
- * status (in/out)  : matching status
+ * return : match status
+ * pinfo (in)	  : pruning context
+ * pr (in)	  : predicate expression
+ * pruned (in/out): pruned partitions
  */
-static PARTITION_NODE *
-partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
-			   PARTITION_NODE * partitions, const PRED_EXPR * pr,
-			   MATCH_STATUS * status)
+static MATCH_STATUS
+partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr,
+			   PRUNING_BITSET * pruned)
 {
-  PARTITION_NODE *parts = NULL;
-  MATCH_STATUS lstatus, rstatus;
+  MATCH_STATUS status = MATCH_OK;
   REGU_VARIABLE *part_expr = pinfo->partition_pred->func_regu;
 
-  if (pr == NULL || status == NULL)
+  if (pr == NULL)
     {
       assert (false);
-      return NULL;
+      return MATCH_NOT_FOUND;
     }
 
   switch (pr->type)
@@ -2100,52 +1787,51 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
 	/* T_PRED contains conjunctions and disjunctions of PRED_EXPR.
 	 * Get partitions matching the left PRED_EXPR and partitions matching
 	 * the right PRED_EXPR and merge or intersect the lists */
-	PARTITION_NODE *lleft = NULL, *lright = NULL;
-	lleft =
-	  partition_match_pred_expr (pinfo, partitions, pr->pe.pred.lhs,
-				     &lstatus);
-	lright =
-	  partition_match_pred_expr (pinfo, partitions, pr->pe.pred.rhs,
-				     &rstatus);
+	PRUNING_BITSET left_set, right_set;
+	MATCH_STATUS lstatus, rstatus;
+
+	pruningset_init (&left_set, PARTITIONS_COUNT (pinfo));
+	pruningset_init (&right_set, PARTITIONS_COUNT (pinfo));
+
+	lstatus =
+	  partition_match_pred_expr (pinfo, pr->pe.pred.lhs, &left_set);
+
+	rstatus =
+	  partition_match_pred_expr (pinfo, pr->pe.pred.rhs, &right_set);
 	if (pr->pe.pred.bool_op == B_AND)
 	  {
 	    /* do intersection between left and right */
 	    if (lstatus == MATCH_NOT_FOUND)
 	      {
 		/* pr->pe.pred.lhs does not refer part_expr so return right */
-		parts = lright;
-		*status = rstatus;
+		pruningset_copy (pruned, &right_set);
+		status = rstatus;
 	      }
 	    else if (rstatus == MATCH_NOT_FOUND)
 	      {
 		/* pr->pe.pred.rhs does not refer part_expr so return right */
-		parts = lleft;
-		*status = lstatus;
+		pruningset_copy (pruned, &left_set);
+		status = lstatus;
 	      }
 	    else
 	      {
-		*status = MATCH_OK;
-		parts =
-		  partition_intersect_lists (pinfo->thread_p, lleft, lright);
-		lleft = NULL;
-		lright = NULL;
+		status = MATCH_OK;
+		pruningset_intersect (&left_set, &right_set);
+		pruningset_copy (pruned, &left_set);
 	      }
 	  }
 	else if (pr->pe.pred.bool_op == B_OR)
 	  {
 	    if (lstatus == MATCH_NOT_FOUND || rstatus == MATCH_NOT_FOUND)
 	      {
-		*status = MATCH_NOT_FOUND;
-		(void) partition_free_list (pinfo->thread_p, lleft);
-		(void) partition_free_list (pinfo->thread_p, lright);
+		status = MATCH_NOT_FOUND;
 	      }
 	    else
 	      {
-		*status = MATCH_OK;
-		parts =
-		  partition_merge_lists (pinfo->thread_p, lleft, lright);
-		lleft = NULL;
-		lright = NULL;
+		pruningset_union (&left_set, &right_set);
+		pruningset_copy (pruned, &left_set);
+
+		status = MATCH_OK;
 	      }
 	  }
 	break;
@@ -2162,16 +1848,15 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
 	    PRUNING_OP op =
 	      partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_comp.
 					      rel_op);
-	    *status = MATCH_NOT_FOUND;
+	    status = MATCH_NOT_FOUND;
 	    if (partition_do_regu_variables_match (pinfo, left, part_expr))
 	      {
-		parts =
-		  partition_prune (pinfo, partitions, right, op, status);
+		status = partition_prune (pinfo, right, op, pruned);
 	      }
 	    else
 	      if (partition_do_regu_variables_match (pinfo, right, part_expr))
 	      {
-		parts = partition_prune (pinfo, partitions, left, op, status);
+		status = partition_prune (pinfo, left, op, pruned);
 	      }
 	    break;
 	  }
@@ -2197,7 +1882,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
 	      }
 	    if (partition_do_regu_variables_match (pinfo, regu, part_expr))
 	      {
-		parts = partition_prune (pinfo, partitions, list, op, status);
+		status = partition_prune (pinfo, list, op, pruned);
 	      }
 	  }
 	  break;
@@ -2207,17 +1892,17 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
 	  /* Don't know how to work with LIKE/RLIKE expressions yet. There are
 	   * some cases in which we can deduce a range from the like pattern.
 	   */
-	  *status = MATCH_NOT_FOUND;
+	  status = MATCH_NOT_FOUND;
 	  break;
 	}
       break;
 
     case T_NOT_TERM:
-      *status = MATCH_NOT_FOUND;
+      status = MATCH_NOT_FOUND;
       break;
     }
 
-  return parts;
+  return status;
 }
 
 /*
@@ -2228,22 +1913,20 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
  * key_range (in)  : key range
  * status (in/out) : pruning status
  */
-static PARTITION_NODE *
+static MATCH_STATUS
 partition_match_key_range (PRUNING_CONTEXT * pinfo,
-			   const PARTITION_NODE * partitions,
-			   const KEY_RANGE * key_range, MATCH_STATUS * status)
+			   const KEY_RANGE * key_range,
+			   PRUNING_BITSET * pruned)
 {
-  PARTITION_NODE *pruned = NULL, *left = NULL, *right = NULL;
-  PRUNING_OP lop, rop;
+  PRUNING_OP lop = PO_INVALID, rop = PO_INVALID;
   MATCH_STATUS lstatus, rstatus;
+  PRUNING_BITSET left, right;
 
   switch (key_range->range)
     {
     case NA_NA:
       /* v1 and v2 are N/A, so that no range is defined */
-      *status = MATCH_NOT_FOUND;
-      pruned = NULL;
-      break;
+      return MATCH_NOT_FOUND;
 
     case GE_LE:
       /* v1 <= key <= v2 */
@@ -2315,20 +1998,19 @@ partition_match_key_range (PRUNING_CONTEXT * pinfo,
       break;
     }
 
+  pruningset_init (&left, PARTITIONS_COUNT (pinfo));
+  pruningset_init (&right, PARTITIONS_COUNT (pinfo));
   /* prune left */
   if (lop == PO_INVALID)
     {
       lstatus = MATCH_NOT_FOUND;
-      left = NULL;
     }
   else
     {
-      left =
-	partition_prune (pinfo, partitions, key_range->key1, lop, &lstatus);
+      lstatus = partition_prune (pinfo, key_range->key1, lop, &left);
       if (pinfo->error_code != NO_ERROR)
 	{
-	  assert (left == NULL);
-	  return NULL;
+	  return MATCH_NOT_FOUND;
 	}
     }
 
@@ -2336,88 +2018,79 @@ partition_match_key_range (PRUNING_CONTEXT * pinfo,
   if (rop == PO_INVALID)
     {
       rstatus = MATCH_NOT_FOUND;
-      right = NULL;
     }
   else
     {
-      right =
-	partition_prune (pinfo, partitions, key_range->key2, rop, &rstatus);
+      rstatus = partition_prune (pinfo, key_range->key2, rop, &right);
       if (pinfo->error_code != NO_ERROR)
 	{
-	  assert (right == NULL);
-	  (void) partition_free_list (pinfo->thread_p, left);
-	  return NULL;
+	  return MATCH_NOT_FOUND;
 	}
     }
 
   if (lstatus == MATCH_NOT_FOUND)
     {
-      *status = rstatus;
-      return right;
+      pruningset_copy (pruned, &right);
+      return rstatus;
     }
+
   if (rstatus == MATCH_NOT_FOUND)
     {
-      *status = lstatus;
-      return left;
+      pruningset_copy (pruned, &left);
+      return lstatus;
     }
 
-  *status = MATCH_OK;
-  pruned = partition_intersect_lists (pinfo->thread_p, left, right);
-
-  return pruned;
+  pruningset_copy (pruned, &left);
+  pruningset_intersect (pruned, &right);
+  return MATCH_OK;
 }
 
 /*
  * partition_match_index_key () - get the list of partitions that fit into the
  *				  index key
- * return : partition list
- * pinfo (in)	    : pruning context
- * partitions (in)  : partitions to search
- * key (in)	    : index key info
- * range_type (in)  : range type
- * status (in/out)  : match status
- *
+ * return : match status
+ * pinfo (in)	      : pruning context
+ * key (in)	      : index key info
+ * range_type (in)    : range type
+ * partitions (in/out): pruned partitions
  */
-static PARTITION_NODE *
-partition_match_index (PRUNING_CONTEXT * pinfo, PARTITION_NODE * partitions,
-		       const KEY_INFO * key, RANGE_TYPE range_type,
-		       MATCH_STATUS * status)
+static MATCH_STATUS
+partition_match_index (PRUNING_CONTEXT * pinfo, const KEY_INFO * key,
+		       RANGE_TYPE range_type, PRUNING_BITSET * pruned)
 {
   int error = NO_ERROR, i;
-  int ptype = partitions->partition->partition_type;
-  PARTITION_NODE *pruned = NULL;
+  int ptype = pinfo->partitions[0].partition_type;
+  PRUNING_BITSET key_pruned;
+  MATCH_STATUS status;
 
   if (pinfo->partition_pred->func_regu->type != TYPE_ATTR_ID)
     {
-      *status = MATCH_NOT_FOUND;
-      return NULL;
+      return MATCH_NOT_FOUND;
     }
 
-  /* We do not care which range_type this index scan is supposed to
+  status = MATCH_OK;
+  /* We do not care which range_type this index scan is supposed to 
    * perform. Each key range produces a list of partitions and we will
    * merge those lists to get the full list of partitions that contains
    * information for our search
    */
   for (i = 0; i < key->key_cnt; i++)
     {
-      PARTITION_NODE *key_parts =
-	partition_match_key_range (pinfo, partitions, &key->key_ranges[i],
-				   status);
-      if (*status == MATCH_NOT_FOUND)
+      pruningset_init (&key_pruned, PARTITIONS_COUNT (pinfo));
+      status =
+	partition_match_key_range (pinfo, &key->key_ranges[i], &key_pruned);
+      if (status == MATCH_NOT_FOUND)
 	{
 	  /* For key ranges we have to find a match for all ranges.
 	   * If we get a MATCH_NOT_FOUND then we have to assume that all
 	   * partitions have to be scanned for the result
 	   */
-	  (void) partition_free_list (pinfo->thread_p, pruned);
-	  pruned = NULL;
+	  pruningset_set_all (pruned);
 	  break;
 	}
-      pruned = partition_merge_lists (pinfo->thread_p, pruned, key_parts);
-      key_parts = NULL;
+      pruningset_union (pruned, &key_pruned);
     }
-
-  return pruned;
+  return status;
 }
 
 /*
@@ -2425,7 +2098,7 @@ partition_match_index (PRUNING_CONTEXT * pinfo, PARTITION_NODE * partitions,
  * return : void
  * pinfo (in/out)  : pruning context
  */
-static void
+void
 partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
 {
   if (pinfo == NULL)
@@ -2434,6 +2107,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
       return;
     }
 
+  OID_SET_NULL (&pinfo->root_oid);
   pinfo->thread_p = NULL;
   pinfo->partitions = NULL;
   pinfo->spec = NULL;
@@ -2443,7 +2117,61 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->partition_pred = NULL;
   pinfo->attr_position = -1;
   pinfo->error_code = NO_ERROR;
-  OID_SET_NULL (&pinfo->root_oid);
+  pinfo->scan_cache_list = NULL;
+  pinfo->is_attr_info_inited = false;
+  pinfo->is_from_cache = false;
+}
+
+/*
+ * partition_find_root_class_oid () - Find the OID of the root partitioned
+ *				      class
+ * return : error code or NO_ERROR
+ * thread_p (in)      : thread entry
+ * class_oid (in)     : either the OID of the partitioned class or the OID of
+ *			one of the partitions
+ * super_oid (in/out) : OID of the partitioned class
+ */
+static int
+partition_find_root_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid,
+			       OID * super_oid)
+{
+  int error = NO_ERROR, super_count = 0;
+  OID *super_classes = NULL;
+
+  error =
+    heap_get_class_supers (thread_p, class_oid, &super_classes, &super_count);
+  if (error != NO_ERROR)
+    {
+      if (super_classes != NULL)
+	{
+	  free_and_init (super_classes);
+	}
+      return error;
+    }
+
+  if (super_count > 1)
+    {
+      OID_SET_NULL (super_oid);
+    }
+  else if (super_count != 1)
+    {
+      /* class_oid has no superclasses which means that it is not a partition
+       * of a partitioned class. However, class_oid might still point to a
+       * partitioned class so we're trying this bellow
+       */
+      COPY_OID (super_oid, class_oid);
+    }
+  else if (super_count == 1)
+    {
+      COPY_OID (super_oid, super_classes);
+    }
+
+  if (super_classes != NULL)
+    {
+      free_and_init (super_classes);
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2454,13 +2182,12 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
  * vd (in)	  : value descriptor
  * pinfo (in)	  : pruning context
  */
-static int
+int
 partition_load_pruning_context (THREAD_ENTRY * thread_p,
 				const OID * class_oid,
 				PRUNING_CONTEXT * pinfo)
 {
   int error = NO_ERROR;
-  PARTITION_NODE *parts = NULL;
   OR_PARTITION *master = NULL;
   MATCH_STATUS status = MATCH_NOT_FOUND;
   bool is_modified = false;
@@ -2481,22 +2208,21 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
     {
       if (pinfo->error_code != NO_ERROR)
 	{
-	  return pinfo->error_code;
+	  error = pinfo->error_code;
+	  goto error_return;
 	}
     }
   else
     {
       master = &pinfo->partitions[0];
+      pinfo->root_repr_id = master->rep_id;
       /* load the partition predicate which is not deserialized in the
        * cache
        */
       error = partition_load_partition_predicate (pinfo, master);
       if (error != NO_ERROR)
 	{
-	  /* cleanup and return error */
-	  partition_free_partitions (thread_p, pinfo->partitions,
-				     pinfo->count);
-	  return error;
+	  goto error_return;
 	}
       return NO_ERROR;
     }
@@ -2517,22 +2243,34 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
   error = partition_load_partition_predicate (pinfo, master);
   if (error != NO_ERROR)
     {
-      /* cleanup and return error */
-      partition_free_partitions (thread_p, pinfo->partitions, pinfo->count);
-      return error;
+      goto error_return;
     }
 
   pinfo->partition_type = master->partition_type;
+  pinfo->root_repr_id = master->rep_id;
 
   pinfo->attr_id =
     partition_get_attribute_id (pinfo->partition_pred->func_regu);
+  pinfo->is_from_cache = false;
 
   if (!is_modified)
     {
-      /* cache the loaded info */
+      /* Cache the loaded info. If the call below is successful, pinfo
+       * will be returned holding the cached information
+       */
       partition_cache_pruning_context (pinfo);
     }
   return NO_ERROR;
+
+error_return:
+  if (pinfo != NULL)
+    {
+      partition_clear_pruning_context (pinfo);
+
+      pinfo->error_code = error;
+    }
+
+  return error;
 }
 
 /*
@@ -2541,28 +2279,36 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
  * return : void
  * pinfo (in) : pruning context
  */
-static void
+void
 partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
 {
+  SCANCACHE_LIST *list, *next;
+
   if (pinfo == NULL)
     {
       assert (false);
       return;
     }
 
-  if (pinfo->partitions != NULL)
+  if (!pinfo->is_from_cache)
     {
-      int i;
-
-      for (i = 0; i < pinfo->count; i++)
+      if (pinfo->partitions != NULL)
 	{
-	  if (pinfo->partitions[i].values != NULL)
+	  int i;
+
+	  for (i = 0; i < pinfo->count; i++)
 	    {
-	      db_seq_free (pinfo->partitions[i].values);
+	      if (pinfo->partitions[i].values != NULL)
+		{
+		  db_seq_free (pinfo->partitions[i].values);
+		}
 	    }
+	  db_private_free (pinfo->thread_p, pinfo->partitions);
 	}
-      db_private_free (pinfo->thread_p, pinfo->partitions);
     }
+
+  pinfo->partitions = NULL;
+  pinfo->count = 0;
 
   if (pinfo->partition_pred != NULL
       && pinfo->partition_pred->func_regu != NULL)
@@ -2570,11 +2316,25 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
       (void) qexec_clear_partition_expression (pinfo->thread_p,
 					       pinfo->partition_pred->
 					       func_regu);
+      pinfo->partition_pred = NULL;
     }
   if (pinfo->fp_cache_context != NULL)
     {
-      db_private_free (pinfo->thread_p, pinfo->fp_cache_context);
+      db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
     }
+  if (pinfo->is_attr_info_inited)
+    {
+      heap_attrinfo_end (pinfo->thread_p, &(pinfo->attr_info));
+    }
+  list = pinfo->scan_cache_list;
+  while (list != NULL)
+    {
+      next = list->next;
+      heap_scancache_end (pinfo->thread_p, &list->scan_cache);
+      db_private_free (pinfo->thread_p, list);
+      list = next;
+    }
+  pinfo->scan_cache_list = NULL;
 }
 
 /*
@@ -2833,55 +2593,37 @@ static int
 partition_prune_heap_scan (PRUNING_CONTEXT * pinfo)
 {
   int error = NO_ERROR;
-  PARTITION_NODE *parts = NULL, *pruned = NULL;
+  PRUNING_BITSET pruned;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
   assert (pinfo != NULL);
   assert (pinfo->partitions != NULL);
 
-  parts = partition_build_list (pinfo->thread_p, pinfo->partitions + 1,
-				pinfo->count - 1);
-  if (parts == NULL)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
+  pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));
 
   if (pinfo->spec->where_pred == NULL)
     {
-      pruned = NULL;
       status = MATCH_NOT_FOUND;
     }
   else
     {
-      pruned =
-	partition_match_pred_expr (pinfo, parts, pinfo->spec->where_pred,
-				   &status);
+      status =
+	partition_match_pred_expr (pinfo, pinfo->spec->where_pred, &pruned);
       if (pinfo->error_code != NO_ERROR)
 	{
-	  error = pinfo->error_code;
-	  goto cleanup;
+	  return pinfo->error_code;
 	}
     }
 
   if (status != MATCH_NOT_FOUND)
     {
-      partition_list_to_spec_list (pinfo, pruned);
+      error = pruningset_to_spec_list (pinfo, &pruned);
     }
   else
     {
       /* consider all partitions */
-      partition_list_to_spec_list (pinfo, parts);
-    }
-
-cleanup:
-  if (parts != NULL)
-    {
-      (void) partition_free_list (pinfo->thread_p, parts);
-    }
-  if (pruned != NULL)
-    {
-      (void) partition_free_list (pinfo->thread_p, pruned);
+      pruningset_set_all (&pruned);
+      error = pruningset_to_spec_list (pinfo, &pruned);
     }
   return error;
 }
@@ -2895,81 +2637,47 @@ static int
 partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 {
   int error = NO_ERROR;
-  PARTITION_NODE *parts = NULL;
+  PRUNING_BITSET pruned;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
   assert (pinfo != NULL);
   assert (pinfo->partitions != NULL);
 
-  parts = partition_build_list (pinfo->thread_p, pinfo->partitions + 1,
-				pinfo->count - 1);
-  if (parts == NULL)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-
+  pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));
   if (pinfo->spec->where_pred != NULL)
     {
-      PARTITION_NODE *pruned = NULL;
 
-      pruned =
-	partition_match_pred_expr (pinfo, parts, pinfo->spec->where_pred,
-				   &status);
-      if (status == MATCH_NOT_FOUND)
-	{
-	  assert (pruned == NULL);
-	}
-      else
-	{
-	  (void) partition_free_list (pinfo->thread_p, parts);
-	  parts = pruned;
-	}
+      status =
+	partition_match_pred_expr (pinfo, pinfo->spec->where_pred, &pruned);
     }
 
   if (pinfo->spec->where_key != NULL)
     {
-      PARTITION_NODE *pruned = NULL;
-
-      pruned =
-	partition_match_pred_expr (pinfo, parts, pinfo->spec->where_key,
-				   &status);
-      if (status == MATCH_NOT_FOUND)
-	{
-	  assert (pruned == NULL);
-	}
-      else
-	{
-	  (void) partition_free_list (pinfo->thread_p, parts);
-	  parts = pruned;
-	}
+      status =
+	partition_match_pred_expr (pinfo, pinfo->spec->where_key, &pruned);
     }
 
   if (pinfo->attr_position != -1)
     {
-      PARTITION_NODE *pruned = NULL;
-
-      pruned =
-	partition_match_index (pinfo, parts,
-			       &pinfo->spec->indexptr->key_info,
-			       pinfo->spec->indexptr->range_type, &status);
-      if (status == MATCH_NOT_FOUND)
+      status =
+	partition_match_index (pinfo, &pinfo->spec->indexptr->key_info,
+			       pinfo->spec->indexptr->range_type, &pruned);
+    }
+  if (status == MATCH_NOT_FOUND)
+    {
+      if (pinfo->error_code != NO_ERROR)
 	{
-	  assert (pruned == NULL);
+	  return pinfo->error_code;
 	}
       else
 	{
-	  (void) partition_free_list (pinfo->thread_p, parts);
-	  parts = pruned;
+	  pruningset_set_all (&pruned);
+	  error = pruningset_to_spec_list (pinfo, &pruned);
 	}
     }
-
-  partition_list_to_spec_list (pinfo, parts);
-
-cleanup:
-  if (parts != NULL)
+  else
     {
-      (void) partition_free_list (pinfo->thread_p, parts);
+      error = pruningset_to_spec_list (pinfo, &pruned);
     }
 
   return error;
@@ -3057,51 +2765,51 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
 				     OID * partition_oid,
 				     HFID * partition_hfid)
 {
-  PARTITION_NODE *parts = NULL, *pruned = NULL;
-  HEAP_CACHE_ATTRINFO attr_info;
-  bool clear_attrinfo = false, clear_dbvalues = false;
+  PRUNING_BITSET pruned;
+  PRUNING_BITSET_ITERATOR it;
+  bool clear_dbvalues = false;
   DB_VALUE *result = NULL;
   MATCH_STATUS status = MATCH_NOT_FOUND;
-  int error = NO_ERROR;
+  int error = NO_ERROR, count = 0, pos;
   PRUNING_OP op = PO_EQ;
+  REPR_ID repr_id = NULL_REPRID;
 
   assert (partition_oid != NULL);
   assert (partition_hfid != NULL);
 
-  parts =
-    partition_build_list (pinfo->thread_p, pinfo->partitions + 1,
-			  pinfo->count - 1);
-  if (parts == NULL)
+  pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));
+  if (!pinfo->is_attr_info_inited)
     {
-      error = ER_FAILED;
-      goto cleanup;
+      error =
+	heap_attrinfo_start (pinfo->thread_p, &pinfo->root_oid, 1,
+			     &pinfo->attr_id, &pinfo->attr_info);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      partition_set_cache_info_for_expr (pinfo->partition_pred->func_regu,
+					 pinfo->attr_id, &pinfo->attr_info);
+      pinfo->is_attr_info_inited = true;
     }
-
+  /* set root representation id to the recdes so that we can read the value
+   * as belonging to the partitioned table
+   */
+  repr_id = or_rep_id (recdes);
+  or_set_rep_id (recdes, pinfo->root_repr_id);
   error =
-    heap_attrinfo_start (pinfo->thread_p, class_oid, 1, &pinfo->attr_id,
-			 &attr_info);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  clear_attrinfo = true;
-
-  error =
-    heap_attrinfo_read_dbvalues (pinfo->thread_p, &attr_info.inst_oid,
-				 recdes, &attr_info);
+    heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid,
+				 recdes, &pinfo->attr_info);
+  or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
   clear_dbvalues = true;
 
-  (void) partition_set_cache_info_for_expr (pinfo->partition_pred->func_regu,
-					    pinfo->attr_id, &attr_info);
-
   error =
     fetch_peek_dbval (pinfo->thread_p, pinfo->partition_pred->func_regu, NULL,
-		      (OID *) class_oid, &attr_info.inst_oid, NULL, &result);
+		      (OID *) class_oid, &pinfo->attr_info.inst_oid, NULL,
+		      &result);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -3115,9 +2823,16 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
       op = PO_IS_NULL;
     }
 
-  pruned = partition_prune_db_val (pinfo, parts, result, op, &status);
+  status = partition_prune_db_val (pinfo, result, op, &pruned);
+  count = pruningset_popcount (&pruned);
+  if (status != MATCH_OK)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
+      error = ER_PARTITION_NOT_EXIST;
+      goto cleanup;
+    }
 
-  if (pruned == NULL)
+  if (count != 1)
     {
       /* At this stage we should absolutely have a result. If we don't then
        * something went wrong (either some internal error (e.g. allocation
@@ -3139,26 +2854,13 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
       goto cleanup;
     }
 
-  if (status != MATCH_OK)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
-      error = ER_PARTITION_NOT_EXIST;
-      goto cleanup;
-    }
+  pruningset_iterator_init (&pruned, &it);
 
-  if (pruned->next != NULL)
-    {
-      /* this should never happen, a tuple cannot belong to more than one
-       * partition
-       */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
-      error = ER_PARTITION_NOT_EXIST;
-      goto cleanup;
-    }
+  pos = pruningset_iterator_next (&it);
+  assert_release (pos >= 0);
 
-  COPY_OID (partition_oid, &pruned->partition->class_oid);
-  HFID_COPY (partition_hfid, &pruned->partition->class_hfid);
+  COPY_OID (partition_oid, &pinfo->partitions[pos + 1].class_oid);
+  HFID_COPY (partition_hfid, &pinfo->partitions[pos + 1].class_hfid);
 
   if (!OID_EQ (class_oid, partition_oid))
     {
@@ -3172,37 +2874,15 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
        * exactly the same. Because of this, we can take a shortcut here and
        * only update the bits from the representation id
        */
-      REPR_ID newrep_id = NULL_REPRID, oldrep_id = NULL_REPRID;
-      newrep_id = heap_get_class_repr_id (pinfo->thread_p, partition_oid);
-      if (newrep_id <= 0)
-	{
-	  error = ER_FAILED;
-	  goto cleanup;
-	}
-      oldrep_id = or_rep_id (recdes);
-      if (newrep_id != oldrep_id)
-	{
-	  /* set newrep_id */
-	  error = or_set_rep_id (recdes, newrep_id);
-	}
+
+      repr_id = pinfo->partitions[pos + 1].rep_id;
+      error = or_set_rep_id (recdes, repr_id);
     }
 
 cleanup:
   if (clear_dbvalues)
     {
-      heap_attrinfo_clear_dbvalues (&attr_info);
-    }
-  if (clear_attrinfo)
-    {
-      heap_attrinfo_end (pinfo->thread_p, &attr_info);
-    }
-  if (parts != NULL)
-    {
-      (void) partition_free_list (pinfo->thread_p, parts);
-    }
-  if (pruned != NULL)
-    {
-      (void) partition_free_list (pinfo->thread_p, pruned);
+      heap_attrinfo_clear_dbvalues (&pinfo->attr_info);
     }
   return error;
 }
@@ -3214,44 +2894,88 @@ cleanup:
  * class_oid (in) : OID of the root class
  * recdes (in)	  : Record describing the new object
  * scan_cache (in): Heap scan cache
+ * pcontext (in)  : pruning context
  * pruned_class_oid (in/out) : partition to insert into
  * pruned_hfid (in/out)	     : HFID of the partition
+ * superclass_oid (in/out)   : OID of the partitioned class
+ *
+ * Note: The pruning context argument may be null, in which case, this
+ * function loads the pruning context internally. If the pcontext argument
+ * is not null, this function uses that context to perform internal
+ * operations.
+ * If the INSERT operation is repetitive (e.g: for INSERT...SELECT), the
+ * caller should initialize a PRUNING_CONTEXT object (by calling
+ * partition_init_pruning_context) and pass it to this function for each
+ * insert operation in the query.
  */
 int
 partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 			RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-			OID * pruned_class_oid, HFID * pruned_hfid)
+			PRUNING_CONTEXT * pcontext, OID * pruned_class_oid,
+			HFID * pruned_hfid, OID * superclass_oid)
 {
   PRUNING_CONTEXT pinfo;
+  bool keep_pruning_context = false;
   int error = NO_ERROR;
 
   assert (pruned_class_oid != NULL);
   assert (pruned_hfid != NULL);
-
-  (void) partition_init_pruning_context (&pinfo);
-
-  error = partition_load_pruning_context (thread_p, class_oid, &pinfo);
-  if (error != NO_ERROR)
+  if (superclass_oid != NULL)
     {
-      return error;
+      OID_SET_NULL (superclass_oid);
     }
 
-  if (pinfo.partitions == NULL)
+  if (pcontext == NULL)
+    {
+      /* set it to point to pinfo so that we use the same variable */
+      pcontext = &pinfo;
+      keep_pruning_context = false;
+      (void) partition_init_pruning_context (pcontext);
+      error = partition_load_pruning_context (thread_p, class_oid, pcontext);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else
+    {
+      pcontext->is_from_cache = true;
+      keep_pruning_context = true;
+      if (pcontext->partitions == NULL)
+	{
+	  error = partition_load_pruning_context (thread_p, class_oid,
+						  pcontext);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  if (pcontext->partitions == NULL)
     {
       /* no partitions, cleanup and exit */
       goto cleanup;
     }
 
   error =
-    partition_find_partition_for_record (&pinfo, class_oid, recdes,
+    partition_find_partition_for_record (pcontext, class_oid, recdes,
 					 pruned_class_oid, pruned_hfid);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
-
+  if (superclass_oid != NULL)
+    {
+      COPY_OID (superclass_oid, &pcontext->root_oid);
+    }
 cleanup:
-  (void) partition_clear_pruning_context (&pinfo);
+  if (keep_pruning_context && error == NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  (void) partition_clear_pruning_context (pcontext);
   return error;
 }
 
@@ -3261,18 +2985,30 @@ cleanup:
  * thread_p (in)  : thread entry
  * class_oid (in) : OID of the root class
  * recdes (in)	  : Record describing the new object
+ * pcontext (in)  : pruning context
  * pruned_class_oid (in/out) : partition to insert into
  * pruned_hfid (in/out)	     : HFID of the partition
+ * superclass_oid (in/out)   : OID of the partitioned class
+ *
+ * Note: The pruning context argument may be null, in which case, this
+ * function loads the pruning context internally. If the pcontext argument
+ * is not null, this function uses that context to perform internal
+ * operations.
+ * If the UPDATE operation is repetitive (e.g: for server side UPDATE), the
+ * caller should initialize a PRUNING_CONTEXT object (by calling
+ * partition_init_pruning_context) and pass it to this function.
  */
 int
 partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
-			RECDES * recdes, OID * pruned_class_oid,
-			HFID * pruned_hfid)
+			RECDES * recdes, PRUNING_CONTEXT * pcontext,
+			OID * pruned_class_oid, HFID * pruned_hfid,
+			OID * superclass_oid)
 {
   PRUNING_CONTEXT pinfo;
   int error = NO_ERROR;
   int super_count = 0;
-  OID *super_class = NULL;
+  OID super_class;
+  bool keep_pruning_context = false;
 
   if (OID_IS_ROOTOID (class_oid))
     {
@@ -3281,44 +3017,49 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
       return NO_ERROR;
     }
 
-  (void) partition_init_pruning_context (&pinfo);
-  /* Due to the nature of the way in which UPDATE statements are executed,
-   * class_oid either points to the root partitioned class or to the actual
-   * partition in which the updated record resides. Since it is more probable
-   * for class_oid to be a partition, not the root, we check this first
-   */
-  error =
-    heap_get_class_supers (thread_p, class_oid, &super_class, &super_count);
-  if (error != NO_ERROR)
+  OID_SET_NULL (&super_class);
+  if (superclass_oid != NULL)
     {
-      return error;
+      OID_SET_NULL (superclass_oid);
     }
 
-  if (super_count > 1)
+  if (pcontext == NULL)
     {
-      /* A partition may only have one superclass so this is not a
-       * partition */
-      if (super_class != NULL)
+      /* set it to point to pinfo so that we use the same variable */
+      pcontext = &pinfo;
+      keep_pruning_context = false;
+      (void) partition_init_pruning_context (pcontext);
+
+      error =
+	partition_find_root_class_oid (thread_p, class_oid, &super_class);
+      if (error != NO_ERROR)
 	{
-	  free_and_init (super_class);
+	  return error;
 	}
-      return NO_ERROR;
-    }
 
-  if (super_count != 1)
-    {
-      /* class_oid has no superclasses which means that it is not a partition
-       * of a partitioned class. However, class_oid might still point to a
-       * partitioned class so we're trying this bellow
-       */
-      error = partition_load_pruning_context (thread_p, class_oid, &pinfo);
+      if (OID_ISNULL (&super_class))
+	{
+	  /* not a partitioned class */
+	  return NO_ERROR;
+	}
+
+      error =
+	partition_load_pruning_context (thread_p, &super_class, pcontext);
     }
   else
     {
-      error = partition_load_pruning_context (thread_p, super_class, &pinfo);
+      keep_pruning_context = true;
+      if (pcontext->partitions == NULL)
+	{
+	  /* this context should have been loaded before */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error = ER_FAILED;
+	}
     }
 
-  if (error != NO_ERROR || pinfo.partitions == NULL)
+
+  if (error != NO_ERROR || pcontext->partitions == NULL)
     {
       /* Error while initializing pruning context or there are no partitions,
          cleanup and exit */
@@ -3326,89 +3067,86 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
 
   error =
-    partition_find_partition_for_record (&pinfo, class_oid, recdes,
+    partition_find_partition_for_record (pcontext, class_oid, recdes,
 					 pruned_class_oid, pruned_hfid);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
+  if (superclass_oid != NULL)
+    {
+      COPY_OID (superclass_oid, &pcontext->root_oid);
+    }
+
 cleanup:
-  if (super_class != NULL)
+  if (keep_pruning_context && error == NO_ERROR)
     {
-      free_and_init (super_class);
-    }
-
-  (void) partition_clear_pruning_context (&pinfo);
-
-  return error;
-}
-
-/*
- * partition_get_partitions () - get partitions of a partitioned class
- * return : error code or NO_ERROR
- * thread_p (in)      : thread entry
- * root_oid (in)      : root class OID
- * partitions (in/out): partitions
- * parts_count(in/out): partitions count
- */
-int
-partition_get_partitions (THREAD_ENTRY * thread_p, const OID * root_oid,
-			  OR_PARTITION ** partitions, int *parts_count)
-{
-  int error = NO_ERROR;
-  PRUNING_CONTEXT pinfo;
-  bool is_modified = false;
-
-  if (root_oid == NULL || partitions == NULL || parts_count == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  (void) partition_init_pruning_context (&pinfo);
-
-  COPY_OID (&pinfo.root_oid, root_oid);
-  pinfo.thread_p = thread_p;
-
-  if (partition_load_context_from_cache (&pinfo, &is_modified))
-    {
-      *partitions = pinfo.partitions;
-      *parts_count = pinfo.count;
       return NO_ERROR;
     }
-  else if (pinfo.error_code != NO_ERROR)
-    {
-      return error;
-    }
 
-  /* not cached, load it */
-  error =
-    heap_get_class_partitions (thread_p, root_oid, partitions, parts_count);
-
+  (void) partition_clear_pruning_context (pcontext);
+  pcontext = NULL;
   return error;
 }
 
 /*
- * partition_free_partitions () - free memory for partitions
- * return : void
- * thread_p (in)      : thread entry
- * partitions (in/out): partitions
- * parts_count(in/out): partitions count
+ * partition_get_scan_cache_for_class () - look for a cached SCANCACHE object
+ *					   for a partition
+ * return : cached object or NULL
+ * pcontext (in)      : pruning context
+ * partition_oid (in) : partition
  */
-void
-partition_free_partitions (THREAD_ENTRY * thread_p,
-			   OR_PARTITION * partitions, int parts_count)
+HEAP_SCANCACHE *
+partition_get_scancache (PRUNING_CONTEXT * pcontext,
+			 const OID * partition_oid)
 {
-  int i;
+  SCANCACHE_LIST *list = NULL;
 
-  for (i = 0; i < parts_count; i++)
+  if (partition_oid == NULL || pcontext == NULL)
     {
-      if (partitions[i].values != NULL)
-	{
-	  db_seq_free (partitions[i].values);
-	}
+      assert_release (partition_oid != NULL && pcontext == NULL);
+      return NULL;
     }
 
-  db_private_free (thread_p, partitions);
+  list = pcontext->scan_cache_list;
+  while (list != NULL)
+    {
+      if (OID_EQ (&list->scan_cache.class_oid, partition_oid))
+	{
+	  return &list->scan_cache;
+	}
+      list = list->next;
+    }
+
+  return NULL;
+}
+
+/*
+ * partition_new_scancache () - create a new scancache entry in the context
+ * return : scancache entry or NULL
+ * pcontext (in) : pruning context
+ */
+HEAP_SCANCACHE *
+partition_new_scancache (PRUNING_CONTEXT * pcontext)
+{
+  SCANCACHE_LIST *node = NULL;
+  node =
+    (SCANCACHE_LIST *) db_private_alloc (pcontext->thread_p,
+					 sizeof (SCANCACHE_LIST));
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  if (heap_scancache_quick_start (&node->scan_cache) != NO_ERROR)
+    {
+      db_private_free (pcontext->thread_p, node);
+      return NULL;
+    }
+
+  /* add it at the beginning */
+  node->next = pcontext->scan_cache_list;
+  pcontext->scan_cache_list = node;
+  return &node->scan_cache;
 }
