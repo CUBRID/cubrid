@@ -64,6 +64,7 @@
 #include "authenticate.h"
 #include "trigger_manager.h"
 #include "system_parameter.h"
+#include "schema_manager.h"
 
 #include "dbi.h"
 
@@ -7146,8 +7147,11 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
   const char *name_trigger_target = NULL;
   TR_TRIGGER *trigger = NULL;
   int error = NO_ERROR;
+  bool is_pattern_match;
 
-  if (!class_name && !flag)
+  is_pattern_match = (flag & CCI_CLASS_NAME_PATTERN_MATCH) ? true : false;
+
+  if (class_name == NULL && !is_pattern_match)
     {
       goto end;
     }
@@ -7186,22 +7190,28 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	      break;
 	    }
 
-	  if (flag & CCI_CLASS_NAME_PATTERN_MATCH)
+	  if (is_pattern_match)
 	    {
 	      if (str_like (name_trigger_target, class_name, '\\') == 1)
 		{
-		  num_trig++;
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
-		  break;
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		  num_trig++;
 		}
 	    }
 	  else
 	    {
 	      if (strcmp (class_name, name_trigger_target) == 0)
 		{
-		  num_trig++;
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
-		  break;
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		  num_trig++;
 		}
 	    }
 	}
