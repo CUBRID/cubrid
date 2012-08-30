@@ -5490,6 +5490,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
       SM_CLASS *class_;
       DB_VALUE pname;
       int au_save;
+
       class_name = name->info.name.original;
       classop = db_find_class (class_name);
       if (classop != NULL)
@@ -5508,32 +5509,33 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 			  name->info.name.partition_of = class_->partition_of;
 			}
 		      else
-                        {
-                          if (spec_parent
-                              && spec_parent->node_type != PT_SELECT
-                              && spec_parent->node_type != PT_CREATE_INDEX
-                              && spec_parent->node_type != PT_DROP_INDEX
-                              && spec_parent->node_type != PT_ALTER_INDEX
-                              && spec_parent->node_type != PT_MERGE
-                              && spec_parent->node_type != PT_DELETE
-                              && spec_parent->node_type != PT_UPDATE)
-                            {
-                              /* partition not allowed */
-                              AU_ENABLE (au_save);
-                              PT_ERRORm (parser, spec,
-                                         MSGCAT_SET_PARSER_SEMANTIC,
-                                         MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-                              pr_clear_value (&pname);
-                              return NULL;
-                            }
+			{
+			  if (spec_parent
+			      && spec_parent->node_type != PT_SELECT
+			      && spec_parent->node_type != PT_CREATE_INDEX
+			      && spec_parent->node_type != PT_DROP_INDEX
+			      && spec_parent->node_type != PT_ALTER_INDEX
+			      && spec_parent->node_type != PT_MERGE
+			      && spec_parent->node_type != PT_DELETE
+			      && spec_parent->node_type != PT_UPDATE)
+			    {
+			      /* partition not allowed */
+			      AU_ENABLE (au_save);
+			      PT_ERRORm (parser, spec,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+			      pr_clear_value (&pname);
+			      return NULL;
+			    }
 
-                          /* mark this spec as a partition */
-                          if (spec_parent == NULL
-                              || !IS_UPDATE_OBJ (spec_parent))
-                            {
-                              spec->info.spec.flag |= PT_SPEC_FLAG_IS_PARTITION;
-                            }
-                        }
+			  /* mark this spec as a partition */
+			  if (spec_parent == NULL
+			      || !IS_UPDATE_OBJ (spec_parent))
+			    {
+			      spec->info.spec.flag |=
+				PT_SPEC_FLAG_IS_PARTITION;
+			    }
+			}
 
 		      pr_clear_value (&pname);
 		    }
@@ -5547,6 +5549,11 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	    }
 
 	  AU_ENABLE (au_save);
+	}
+      else
+	{
+	  PT_ERRORc (parser, spec, db_error_string (3));
+	  return NULL;
 	}
 
       /* if ONLY... */

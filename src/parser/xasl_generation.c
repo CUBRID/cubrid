@@ -18156,6 +18156,11 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
   XASL_NODE *xasl;
   XASL_SUPP_INFO *info = (XASL_SUPP_INFO *) arg;
 
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
   *continue_walk = PT_CONTINUE_WALK;
 
   if (parser->abort)
@@ -21011,7 +21016,7 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
     {
       /* fetch operand type */
       analytic->opr_dbtype =
-        pt_node_to_db_type (func_info->arg_list->info.pointer.node);
+	pt_node_to_db_type (func_info->arg_list->info.pointer.node);
 
       /* resolve operand dbval_ptr */
       if (pt_resolve_analytic_references
