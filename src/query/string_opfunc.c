@@ -24902,8 +24902,7 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
 	  break;
 	}
       slice = strtol (local_ipslice, NULL, 0);
-      if (errno == ERANGE || errno == EINVAL || slice < 0
-	  || slice >= ipsegmax)
+      if (slice < 0 || slice >= ipsegmax)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
 		  1, DB_GET_CHAR (string, &cnt));
