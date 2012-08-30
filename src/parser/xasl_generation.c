@@ -7318,7 +7318,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
       if (real_node != NULL && real_node->data_type != NULL)
 	{
 	  domain =
-	    pt_data_type_to_db_domain (parser, real_node->data_type, NULL);
+	    pt_node_data_type_to_db_domain (parser, real_node->data_type,
+                                            real_node->type_enum);
 
 	  if (domain != NULL)
 	    {
