@@ -109,7 +109,7 @@ LOG_GLOBAL log_Gl = {
    false},
 
   /* background archiving info */
-  {NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
+  {NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
 };
 
 #if defined(HAVE_ATOMIC_BUILTINS)
