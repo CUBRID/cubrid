@@ -6228,7 +6228,15 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	}
       break;
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_BIGINT:
     case PT_TYPE_DOUBLE:
+    case PT_TYPE_MONETARY:
+    case PT_TYPE_DATE:
+    case PT_TYPE_TIME:
+    case PT_TYPE_TIMESTAMP:
+    case PT_TYPE_DATETIME:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
     case PT_TYPE_NONE:
