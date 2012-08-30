@@ -2526,6 +2526,8 @@ error_exit:
 	  sleep_nsecs = 1;
 	}
       ++retried;
+
+      er_init (er_msg_file, ER_NEVER_EXIT);
       goto retry;
     }
 

@@ -2619,7 +2619,16 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize,
   char *reply = NULL;
   int error;
 
-  assert (logwr_Gl.logpg_area_size >= length);
+  if (logwr_Gl.logpg_area_size < length)
+    {
+      /* 
+       * It means log_buffer_size/log_page_size are different between master 
+       * and slave.
+       * In this case, we have to disconnect from server and try to reconnect.
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
+      return ER_NET_SERVER_CRASHED;
+    }
 
   (void) css_queue_receive_data_buffer (rc, logwr_Gl.logpg_area,
 					logwr_Gl.logpg_area_size);
