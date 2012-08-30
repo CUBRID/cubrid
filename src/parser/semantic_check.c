@@ -5985,6 +5985,13 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      if (SM_COMPARE_NAMES (smatt->header.name,
 				    pcol->info.name.original) == 0)
 		{
+		  if (smatt->class_mop
+		      != stmt->info.alter.entity_name->info.name.db_object)
+		    {
+		      PT_ERRORm (parser, stmt,
+				 MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_INVALID_PARTITION_INHERITED_ATTR);
+		    }
 		  pcol->type_enum =
 		    (PT_TYPE_ENUM) pt_db_to_type_enum (smatt->type->id);
 		  assert (smatt->domain != NULL);
@@ -6024,9 +6031,35 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     }
   else
     {
-      PT_ERRORm (parser, stmt,
-		 MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_NO_PARTITION_COLUMN);
+      bool found = false;
+      if (stmt->node_type == PT_CREATE_ENTITY
+	  && stmt->info.create_entity.supclass_list)
+	{
+	  DB_OBJECT *sup_dbobj =
+	    stmt->info.create_entity.supclass_list->info.name.db_object;
+	  if (au_fetch_class (sup_dbobj, &smclass, AU_FETCH_READ, AU_SELECT)
+	      == NO_ERROR)
+	    {
+	      for (smatt = smclass->attributes; smatt != NULL;
+		   smatt = smatt->header.next)
+		{
+		  if (SM_COMPARE_NAMES (smatt->header.name,
+					pcol->info.name.original) == 0)
+		    {
+		      PT_ERRORm (parser, stmt,
+				 MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_INVALID_PARTITION_INHERITED_ATTR);
+		      found = true;
+		    }
+		}
+	    }
+	}
+      if (!found)
+	{
+	  PT_ERRORm (parser, stmt,
+		     MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_NO_PARTITION_COLUMN);
+	}
     }
 
   pcol = pinfo->info.partition.expr;
