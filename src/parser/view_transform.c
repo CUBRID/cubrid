@@ -10773,31 +10773,37 @@ get_authorization_name (DB_AUTH auth)
       return "";
 
     case DB_AUTH_SELECT:
-      return "Select";
+      return "SELECT";
 
     case DB_AUTH_INSERT:
-      return "Insert";
+      return "INSERT";
 
     case DB_AUTH_UPDATE:
-      return "Update";
+      return "UPDATE";
 
     case DB_AUTH_DELETE:
-      return "Delete";
+      return "DELETE";
 
     case DB_AUTH_ALTER:
-      return "Alter";
+      return "ALTER";
 
     case DB_AUTH_INDEX:
-      return "Index";
+      return "INDEX";
 
     case DB_AUTH_EXECUTE:
-      return "Execute";
+      return "EXECUTE";
 
     case DB_AUTH_REPLACE:
-      return "Replace";
+      return "REPLACE";
 
     case DB_AUTH_INSERT_UPDATE:
-      return "Insert on duplicate key update";
+      return "INSERT/UPDATE";
+
+    case DB_AUTH_UPDATE_DELETE:
+      return "UPDATE/DELETE";
+
+    case DB_AUTH_INSERT_UPDATE_DELETE:
+      return "INSERT/UPDATE/DELETE";
 
     default:
       return "";
