@@ -737,6 +737,7 @@ public class CUBRIDStatement implements Statement {
 
 	protected CUBRIDOID executeInsertCore() throws SQLException {
 		CUBRIDCancelQueryThread t = null;
+		completed = false;
 
 		if (query_timeout > 0) {
 			t = new CUBRIDCancelQueryThread(this, query_timeout);
@@ -764,7 +765,6 @@ public class CUBRIDStatement implements Statement {
 			throw con.createCUBRIDException(cpErr);
 		}
 
-		completed = false;
 		return oid;
 	}
 
