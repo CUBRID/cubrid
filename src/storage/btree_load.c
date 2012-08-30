@@ -1705,6 +1705,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
   char *next;
   int next_size;
   int key_size = -1;
+  int rec_length;
 
   temp_recdes.data = OR_ALIGNED_BUF_START (a_temp_data);
   temp_recdes.area_size = NODE_HEADER_SIZE;
@@ -1784,8 +1785,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 #if 0				/* TODO: currently not used */
 	  load_args->first_leafpgid = load_args->leaf.vpid;
 #endif
-	  load_args->max_recsize =
-	    spage_max_space_for_new_record (thread_p, load_args->leaf.pgptr);
 	  load_args->overflowing = false;
 	  assert (load_args->ovf.pgptr == NULL);
 
@@ -1795,6 +1794,12 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	    {
 	      goto error;
 	    }
+
+	  key_size =
+	    BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
+				       load_args->cur_key_len);
+
+	  load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + key_size;
 	}
       else
 	{			/* This is not the first call to this function */
@@ -1887,18 +1892,19 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		    }
 		  else
 		    {		/* Current page is a leaf page */
+		      cur_maxspace =
+			spage_max_space_for_new_record (thread_p,
+							load_args->leaf.
+							pgptr);
 
-		      /* Try to insert the new record to the current leaf page. Remember
-		       * that the new record is very big (almost the size of a page)
-		       * and thus can fit only into an empty page. If it does not fit into
-		       * current leaf page then get a new one, and insert it there.
-		       */
+		      rec_length =
+			load_args->new_pos - load_args->out_recdes.data +
+			OR_OID_SIZE + DB_ALIGN (DISK_VPID_SIZE,
+						INT_ALIGNMENT);
 
-		      if (spage_number_of_records (load_args->leaf.pgptr) > 1)
+		      if (cur_maxspace <
+			  rec_length + LOAD_FIXED_EMPTY_FOR_LEAF)
 			{
-			  /* The current leaf page does not have room for the new record,
-			   * since only one record on a page can have overflow OIDs.
-			   */
 			  if (btree_proceed_leaf (thread_p, load_args) ==
 			      NULL)
 			    {
@@ -2047,21 +2053,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 				  load_args->ovf.pgptr);
 		  load_args->ovf.pgptr = NULL;
 
-		  /* Proceed the current leaf page (i.e., flush the current leaf page
-		     which had some overflow pages connected to it; and obtain a new
-		     leaf page */
-
-		  if (btree_proceed_leaf (thread_p, load_args) == NULL)
-		    {
-		      goto error;
-		    }
-
 		  /* Turn off the overflowing mode */
 		  load_args->overflowing = false;
-		  load_args->max_recsize =
-		    spage_max_space_for_new_record (thread_p,
-						    load_args->leaf.pgptr);
-
 		}		/* Current page is an overflow page */
 
 	      /* Create the first part of the next record in main memory */
@@ -2070,6 +2063,10 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		{
 		  goto error;
 		}
+
+	      key_size = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
+						    load_args->cur_key_len);
+	      load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + key_size;
 	    }			/* different key */
 	}
 

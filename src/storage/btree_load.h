@@ -71,7 +71,8 @@
 
 #define BTREE_MAX_ALIGN INT_ALIGNMENT	/* Maximum Alignment            */
 					     /* Maximum Leaf Node Entry Size */
-#define LEAFENTSZ(n)  ( LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + OR_OID_SIZE + BTREE_MAX_ALIGN + n )
+#define LEAFENTSZ(n)  ( LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
+                            + OR_OID_SIZE + BTREE_MAX_ALIGN + n )
 					     /* Maximum Non_Leaf Entry Size  */
 #define NLEAFENTSZ(n) ( NON_LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + n )
 
@@ -259,6 +260,12 @@
     (vf)->fileid = _BTREE_GET_OVFID_FILEID (ptr); \
     (vf)->volid = _BTREE_GET_OVFID_VOLID (ptr); \
   } while (0)
+
+#define BTREE_GET_KEY_LEN_IN_PAGE(node_type, key_len) \
+  ((((node_type) == BTREE_LEAF_NODE && (key_len) >= BTREE_MAX_KEYLEN_INPAGE) \
+    ||((node_type) == BTREE_NON_LEAF_NODE  \
+      && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
+    ? DISK_VPID_SIZE : (key_len))
 
 #define BTREE_PUT_NODE_TYPE(ptr, val) \
   OR_PUT_SHORT((ptr) + BTREE_NODE_TYPE_OFFSET, val)

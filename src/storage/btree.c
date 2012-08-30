@@ -66,11 +66,6 @@
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page   */
 #define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
 
-#define BTREE_GET_KEY_LEN_IN_PAGE(node_type, key_len) \
-   ((((node_type) == BTREE_LEAF_NODE && (key_len) >= BTREE_MAX_KEYLEN_INPAGE)                    \
-      || ((node_type) == BTREE_NON_LEAF_NODE && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
-    ? DISK_VPID_SIZE : (key_len))
-
 #define BTREE_NODE_MAX_SPLIT_SIZE(page_ptr) \
   (db_page_size() - spage_header_size() - spage_get_space_for_record((page_ptr), HEADER))
 
@@ -15412,7 +15407,7 @@ btree_class_lock_escalated (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
  *     2. The first OID of the bts->currKey has not been previously locked,
  *     and the last key from tree is not reached
  *     3. The last key must be locked
- 
+ *
  *  In cases 1,2: bts->C_page != NULL and bts->C_vpid.pageid != NULL_PAGEID.
  *  In case 3, bts->P_page != NULL and bts->P_vpid.pageid != NULL_PAGEID
  *
@@ -16801,7 +16796,7 @@ start_locking:
     {
       if (rec_oid_cnt > 1 && next_key_locked)
 	{
-	  /* remove next key lock since only current key lock is needed 
+	  /* remove next key lock since only current key lock is needed
 	   * when delete or update multi OID key
 	   */
 	  lock_unlock_object (thread_p, OID_ISNULL (&nk_pseudo_oid) ?
@@ -16995,7 +16990,7 @@ start_locking:
 					      bts->lock_mode, true);
 			}
 
-		      /* realease key locks if they have been previously 
+		      /* realease key locks if they have been previously
 		         locked */
 		      if (next_key_locked)
 			{
@@ -17046,7 +17041,7 @@ start_locking:
 						  bts->lock_mode, true);
 			    }
 
-			  /* realease key locks if they have been previously 
+			  /* realease key locks if they have been previously
 			     locked */
 			  if (next_key_locked)
 			    {
