@@ -878,8 +878,11 @@ public class UConnection {
 		}
 
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
-			if (errorHandler.getJdbcErrorCode() == -111)
+			if (errorHandler.getJdbcErrorCode() == -111
+			    || errorHandler.getJdbcErrorCode() == -199
+			    || errorHandler.getJdbcErrorCode() == -224) {
 				need_checkcas = true;
+			}
 			if (need_checkcas) {
 				if (check_cas() == false) {
 					clientSocketClose();
