@@ -3625,9 +3625,13 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
-      qfile_finalize_list_cache (thread_p);	/* before removing temp vols */
-      (void) qexec_finalize_xasl_cache (thread_p);	/* before removing temp vols */
+
+      /* before removing temp vols */
+      qfile_finalize_list_cache (thread_p);
+      (void) qexec_finalize_xasl_cache (thread_p);
       (void) qexec_finalize_filter_pred_cache (thread_p);
+      session_states_finalize (thread_p);
+
       (void) boot_remove_all_temp_volumes (thread_p);
       log_final (thread_p);
 
@@ -4190,10 +4194,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
   boot_server_status (BOOT_SERVER_DOWN);
 
   catcls_finalize_class_oid_to_oid_hash_table ();
-
   serial_finalize_cache_pool ();
-
-  session_states_finalize (thread_p);
   partition_cache_finalize (thread_p);
 #if defined(SERVER_MODE)
 #if defined(DIAG_DEVEL)
