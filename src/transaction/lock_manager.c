@@ -170,6 +170,7 @@ extern int lock_Comp[11][11];
 #define RESET_SCANID_BIT(s, i)  (s[i/8] &= ~(1 << (i%8)))
 #define IS_SCANID_BIT_SET(s, i) (s[i/8] & (1 << (i%8)))
 #define RESOURCE_ALLOC_WAIT_TIME 10000	/* 10 msec */
+#define KEY_LOCK_ESCALATION_THRESHOLD 10	/* key lock escalation threshold */
 
 /* type of locking resource */
 typedef enum
@@ -640,7 +641,9 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 						    LK_ENTRY **
 						    entry_addr_ptr,
 						    LK_ENTRY * class_entry,
-						    LOCK * others_lock);
+						    LOCK * others_lock,
+						    KEY_LOCK_ESCALATION *
+						    key_lock_escalation);
 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
@@ -5237,6 +5240,9 @@ lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index,
   while (curr != (LK_ENTRY *) NULL)
     {
       next = curr->tran_next;
+      /* since class lock can't be NS_LOCK or NX_LOCK,
+       * curr->granted_mode <= lock condition is enough
+       */
       if (curr->granted_mode <= lock)
 	{
 	  lock_internal_perform_unlock_object (thread_p, curr, true, false);
@@ -5358,7 +5364,7 @@ lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
     {
       next = curr->tran_next;
       if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
-	  && curr->granted_mode <= lock)
+	  && (curr->granted_mode <= lock || lock == X_LOCK))
 	{
 	  unlock = false;
 
@@ -5469,7 +5475,7 @@ lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
     {
       next = curr->tran_next;
       if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
-	  && curr->granted_mode <= lock
+	  && (curr->granted_mode <= lock || lock == X_LOCK)
 	  && OID_IS_PSEUDO_OID (&curr->res_head->oid))
 	{
 	  unlock = false;
@@ -9002,7 +9008,6 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   int tran_index;
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
-  int rv;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -9108,7 +9113,7 @@ lock_find_tran_hold_entry (int tran_index, const OID * oid)
   unsigned int hash_index;
   LK_HASH *hash_anchor;
   LK_RES *res_ptr;
-  LK_ENTRY *i, *entry_ptr;
+  LK_ENTRY *entry_ptr;
   int rv;
 
   hash_index = LK_OBJ_LOCK_HASH (oid);
@@ -11584,6 +11589,7 @@ lock_internal_hold_object_instant_get_granted_mode (int tran_index,
  *   entry_addr_ptr(in):
  *   class_entry(in):
  *   prv_tot_hold_mode(out): the previous total hold lock mode
+ *   key_lock_escalation(out): key lock escalation
  *
  * Note : lock an object whose id is pointed by oid with given lock mode
  *     'lock'. prv_tot_hold_mode is computed only when the lock is granted
@@ -11606,7 +11612,9 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
 						    entry_addr_ptr,
 						    LK_ENTRY *
 						    class_entry,
-						    LOCK * prv_tot_hold_mode)
+						    LOCK * prv_tot_hold_mode,
+						    KEY_LOCK_ESCALATION *
+						    key_lock_escalation)
 {
   TRAN_ISOLATION isolation;
   unsigned int hash_index;
@@ -11637,6 +11645,10 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
   thrd_entry = thread_p;
 
   *prv_tot_hold_mode = new_mode = group_mode = old_mode = NULL_LOCK;
+  if (key_lock_escalation)
+    {
+      *key_lock_escalation = NO_KEY_LOCK_ESCALATION;
+    }
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
     {
@@ -12115,6 +12127,23 @@ start:
   /* The object exists in the hash chain &
    * I am a lock holder of the lockable object.
    */
+  if (key_lock_escalation)
+    {
+      /* currently, only NS key lock can be escalated to NX */
+      if (lock == NS_LOCK && entry_ptr->granted_mode == NS_LOCK
+	  && entry_ptr->count >= KEY_LOCK_ESCALATION_THRESHOLD)
+	{
+	  /* key lock escalation needed
+	   * since this NS-lock has been requested more than
+	   * KEY_LOCK_ESCALATION_THRESHOLD times, means that the current
+	   * transaction already acquired at least
+	   * KEY_LOCK_ESCALATION_THRESHOLD locks on different pseudo oids
+	   * attached to key
+	   */
+	  lock = NX_LOCK;
+	  *key_lock_escalation = NEED_KEY_LOCK_ESCALATION;
+	}
+    }
   lock_conversion = true;
   old_mode = entry_ptr->granted_mode;
   assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
@@ -12195,6 +12224,15 @@ start:
 	    }
 
 	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	}
+
+      if ((key_lock_escalation)
+	  && (*key_lock_escalation == NEED_KEY_LOCK_ESCALATION))
+	{
+	  /* key escalation needed and the escalation lock granted
+	   * update key_lock_escalation state
+	   */
+	  *key_lock_escalation = KEY_LOCK_ESCALATED;
 	}
 
       entry_ptr->granted_mode = new_mode;
@@ -12284,13 +12322,6 @@ start:
   entry_ptr->count += 1;
   entry_ptr->thrd_entry = thread_p;
 
-  /* change res_ptr->total_holders_mode (total mode of holder list).
-     The previous total holders mode will be calculated when resume
-     after suspension */
-  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
-  assert (res_ptr->total_holders_mode != NA_LOCK);
-
   /* remove the lock entry from the holder list */
   prev = (LK_ENTRY *) NULL;
   curr = res_ptr->holder;
@@ -12308,8 +12339,71 @@ start:
       prev->next = entry_ptr->next;
     }
 
-  /* position the lock entry in the holder list according to UPR */
-  lock_position_holder_entry (res_ptr, entry_ptr);
+  if ((key_lock_escalation)
+      && (*key_lock_escalation == NEED_KEY_LOCK_ESCALATION))
+    {
+      /* lock escalation needed,
+       * NS_LOCK already granted
+       * the escalation lock - NX_LOCK - can't be granted
+       * move entry_ptr from holder to waiter
+       */
+      assert (lock == NX_LOCK && entry_ptr->granted_mode == NS_LOCK);
+      /* set holder_mode to NULL in order to avoid unexpected deadlocks */
+      entry_ptr->granted_mode = NULL_LOCK;
+
+      /* lock entry removed from the holder list, change total_holders_mode */
+      assert (res_ptr->total_holders_mode >= NULL_LOCK);
+      group_mode = NULL_LOCK;
+      for (i = res_ptr->holder; i != (LK_ENTRY *) NULL; i = i->next)
+	{
+	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+	  group_mode = lock_Conv[i->granted_mode][group_mode];
+	  assert (group_mode != NA_LOCK);
+	}
+      res_ptr->total_holders_mode = group_mode;
+
+      /* remove the lock entry from the transaction lock hold list */
+      lock_delete_from_tran_hold_list (entry_ptr);
+      entry_ptr->tran_next = NULL;
+      entry_ptr->tran_prev = NULL;
+
+      /* append the lock request at the end of the waiter */
+      prev = (LK_ENTRY *) NULL;
+      for (i = res_ptr->waiter; i != (LK_ENTRY *) NULL;)
+	{
+	  prev = i;
+	  i = i->next;
+	}
+      if (prev == (LK_ENTRY *) NULL)
+	{
+	  res_ptr->waiter = entry_ptr;
+	}
+      else
+	{
+	  prev->next = entry_ptr;
+	}
+      entry_ptr->next = NULL;
+
+      /* change total_waiters_mode (total mode of waiting waiter) */
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
+      res_ptr->total_waiters_mode =
+	lock_Conv[lock][res_ptr->total_waiters_mode];
+      assert (res_ptr->total_waiters_mode != NA_LOCK);
+    }
+  else
+    {
+      /* change res_ptr->total_holders_mode (total mode of holder list).
+       * The previous total holders mode will be calculated when resume
+       * after suspension
+       */
+      assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
+      res_ptr->total_holders_mode =
+	lock_Conv[lock][res_ptr->total_holders_mode];
+      assert (res_ptr->total_holders_mode != NA_LOCK);
+
+      /* position the lock entry in the holder list according to UPR */
+      lock_position_holder_entry (res_ptr, entry_ptr);
+    }
 
 blocked:
 
@@ -12356,6 +12450,15 @@ blocked:
       RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
     }
 
+  if ((key_lock_escalation)
+      && (*key_lock_escalation == NEED_KEY_LOCK_ESCALATION))
+    {
+      /* key escalation needed and the escalation lock granted
+       * update key_lock_escalation state
+       */
+      *key_lock_escalation = KEY_LOCK_ESCALATED;
+    }
+
   /* calculate the previous total hold mode */
   *prv_tot_hold_mode =
     lock_Conv[old_mode][lock_get_all_except_transaction (oid, class_oid,
@@ -12363,7 +12466,9 @@ blocked:
 
   /* The transaction now got the lock on the object */
 lock_conversion_treatement:
-
+  /* in case of key lock escalation, removing unnecesarry PSEUDO-OIDs locks
+   * is done outside of this function
+   */
   if (entry_ptr->res_head->type == LOCK_RESOURCE_CLASS
       && lock_conversion == true)
     {
@@ -12807,6 +12912,7 @@ end:
  *   lock(in): Requested lock mode
  *   cond_flag(in):
  *   prv_total_hold_mode(out): the prevoious total hold lock mode
+ *   key_lock_escalation(out): key lock escalation status
  *
  * Note : lock an object whose id is pointed by oid with given lock mode
  *	'lock'. prv_total_hold_mode is computed only when the lock is granted
@@ -12817,7 +12923,9 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 					   const OID * class_oid,
 					   const BTID * btid, LOCK lock,
 					   int cond_flag,
-					   LOCK * prv_total_hold_mode)
+					   LOCK * prv_total_hold_mode,
+					   KEY_LOCK_ESCALATION *
+					   key_lock_escalation)
 {
 #if !defined (SERVER_MODE)
   if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
@@ -12852,6 +12960,11 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
 	      "lock_object", "NULL ClassOID pointer");
       return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  if (key_lock_escalation)
+    {
+      *key_lock_escalation = NO_KEY_LOCK_ESCALATION;
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -12902,7 +13015,8 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 
       granted = lock_internal_lock_object_get_prev_total_hold_mode
 	(thread_p, tran_index, oid, (OID *) NULL, btid, lock,
-	 wait_msecs, &root_class_entry, NULL, prv_total_hold_mode);
+	 wait_msecs, &root_class_entry, NULL, prv_total_hold_mode,
+	 key_lock_escalation);
       goto end;
     }
 
@@ -12957,7 +13071,8 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
       granted =
 	lock_internal_lock_object_get_prev_total_hold_mode
 	(thread_p, tran_index, oid, (OID *) NULL, btid, lock, wait_msecs,
-	 &class_entry, root_class_entry, prv_total_hold_mode);
+	 &class_entry, root_class_entry, prv_total_hold_mode,
+	 key_lock_escalation);
       goto end;
     }
   else
@@ -13011,7 +13126,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
       granted =
 	lock_internal_lock_object_get_prev_total_hold_mode
 	(thread_p, tran_index, oid, class_oid, btid, lock, wait_msecs,
-	 &inst_entry, class_entry, prv_total_hold_mode);
+	 &inst_entry, class_entry, prv_total_hold_mode, key_lock_escalation);
       goto end;
     }
 

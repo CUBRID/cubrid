@@ -60,6 +60,13 @@
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };
 
+typedef enum
+{
+  NO_KEY_LOCK_ESCALATION = 0,
+  NEED_KEY_LOCK_ESCALATION = 1,
+  KEY_LOCK_ESCALATED = 2
+} KEY_LOCK_ESCALATION;
+
 typedef struct lk_acquisition_history LK_ACQUISITION_HISTORY;
 struct lk_acquisition_history
 {
@@ -225,7 +232,9 @@ extern int lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 						      LOCK lock,
 						      int cond_flag,
 						      LOCK *
-						      prev_tot_hold_mode);
+						      prev_tot_hold_mode,
+						      KEY_LOCK_ESCALATION *
+						      key_lock_escalation);
 extern LOCK lock_get_total_holders_mode (const OID * oid,
 					 const OID * class_oid);
 extern LOCK lock_get_all_except_transaction (const OID * oid,

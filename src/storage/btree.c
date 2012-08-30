@@ -440,6 +440,15 @@ static int btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY *
 							    first_ovfl_vpid,
 							    OID * oid,
 							    OID * class_oid);
+static int btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY *
+							      thread_p,
+							      BTID * btid,
+							      RECDES * rec,
+							      int offset,
+							      VPID *
+							      first_ovfl_vpid,
+							      OID *
+							      class_oid);
 static int btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY *
 						       thread_p,
 						       BTID_INT * btid_int,
@@ -10897,12 +10906,13 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 	  return ret_val;
 	}
 
+      /* don't care about key lock escalation on remaining PSEUDO-OIDS */
       if (lock_btid_object_get_prev_total_hold_mode (thread_p,
 						     &temp_pseudo_oid,
 						     class_oid, btid, NS_LOCK,
 						     LK_COND_LOCK,
-						     &prev_tot_hold_mode)
-	  != LK_GRANTED)
+						     &prev_tot_hold_mode,
+						     NULL) != LK_GRANTED)
 	{
 	  return ER_FAILED;
 	}
@@ -10946,9 +10956,10 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 				 temp_pseudo_oid.volid,
 				 btid, &temp_pseudo_oid);
 
+	  /* don't care about key lock escalation on remaining PSEUDO-OIDS */
 	  if (lock_btid_object_get_prev_total_hold_mode
 	      (thread_p, &temp_pseudo_oid, class_oid, btid, NS_LOCK,
-	       LK_COND_LOCK, &prev_tot_hold_mode) != LK_GRANTED)
+	       LK_COND_LOCK, &prev_tot_hold_mode, NULL) != LK_GRANTED)
 	    {
 	      ret_val = ER_FAILED;
 	      goto end;
@@ -10974,10 +10985,11 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   btree_make_pseudo_oid (oid->pageid, oid->slotid, oid->volid, btid,
 			 &temp_pseudo_oid);
 
+  /* don't care about key lock escalation on remaining PSEUDO-OIDS */
   if (lock_btid_object_get_prev_total_hold_mode (thread_p, &temp_pseudo_oid,
 						 class_oid, btid, NS_LOCK,
 						 LK_COND_LOCK,
-						 &prev_tot_hold_mode)
+						 &prev_tot_hold_mode, NULL)
       != LK_GRANTED)
     {
       ret_val = ER_FAILED;
@@ -10991,6 +11003,128 @@ end:
 
   return ret_val;
 }
+
+/*
+ * btree_insert_unlock_curr_key_remaining_pseudo_oid - unlock the remaining
+ *						       pseudo oids of current
+ *						       key in btree_insert
+ *
+ *   return: (error code)
+ *   thread_p(in):
+ *   btid(in): B+tree index identifier
+ *   rec(in): leaf record
+ *   offset(in): offset of oid(s) following the key
+ *   first_ovfl_vpid(in): first overflow vpid of leaf record
+ *   class_oid(in): class oid
+ *
+ * Note:
+ *  This function must be called by btree_insert if the following conditions
+ * are satisfied:
+ *  1. current key locking require many pseudo-oids locks (non-unique B-tree,
+ *     key already exists in B-tree, the total transactions hold mode is
+ *     NS-lock on PSEUDO-OID attached to the first key buffer OID).
+ *  2. many pseudo-oids locks has been already NS-locked, and the first
+ *     pseudo-oid has been already escalated to NX-lock. 
+ *
+ *   The function iterate through OID-list starting with the second OID.
+ * The attached pseudo-OIDs that was previously NS-locked by the current
+ * transaction, is unlocked now.
+ *   When insert in tree, the PSEUDO-OIDs are NS-locked in the order they
+ * are found in current key lock buffer
+ */
+static int
+btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
+						   BTID * btid,
+						   RECDES * rec, int offset,
+						   VPID * first_ovfl_vpid,
+						   OID * class_oid)
+{
+
+  char *rec_oid_ptr = NULL;
+  int oid_pos, oids_cnt;
+  OID temp_pseudo_oid;
+  char *header_ptr = NULL;
+  PAGE_PTR O_page = NULL;
+  int ret_val = NO_ERROR;
+  VPID O_vpid;
+  RECDES peek_rec;
+
+  assert_release (btid && rec && first_ovfl_vpid && class_oid);
+
+  oids_cnt = btree_leaf_get_num_oids (rec, offset, BTREE_LEAF_NODE,
+				      OR_OID_SIZE);
+
+  /* starting with the second oid */
+  rec_oid_ptr = rec->data + offset;
+  for (oid_pos = 1; oid_pos < oids_cnt; oid_pos++)
+    {
+      OR_GET_OID (rec_oid_ptr, &temp_pseudo_oid);
+      /* make pseudo OID */
+      btree_make_pseudo_oid (temp_pseudo_oid.pageid, temp_pseudo_oid.slotid,
+			     temp_pseudo_oid.volid, btid, &temp_pseudo_oid);
+      if (ret_val != NO_ERROR)
+	{
+	  return ret_val;
+	}
+
+      lock_remove_object_lock (thread_p, &temp_pseudo_oid, class_oid,
+			       NS_LOCK);
+
+      rec_oid_ptr += OR_OID_SIZE;
+    }
+
+  /* get OIDS from overflow OID page, create and lock pseudo OIDs */
+  O_vpid = *first_ovfl_vpid;
+  while (O_vpid.pageid != NULL_PAGEID)
+    {
+      O_page = pgbuf_fix (thread_p, &O_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
+      if (O_page == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      if (spage_get_record (O_page, 1, &peek_rec, PEEK) != S_SUCCESS)
+	{
+	  ret_val = ER_FAILED;
+	  goto end;
+	}
+
+      assert (peek_rec.length % 4 == 0);
+      oids_cnt = btree_leaf_get_num_oids (&peek_rec, 0, BTREE_OVERFLOW_NODE,
+					  OR_OID_SIZE);
+      rec_oid_ptr = peek_rec.data;
+      for (oid_pos = 0; oid_pos < oids_cnt; oid_pos++)
+	{
+	  OR_GET_OID (rec_oid_ptr, &temp_pseudo_oid);
+	  /* make pseudo OID */
+	  btree_make_pseudo_oid (temp_pseudo_oid.pageid,
+				 temp_pseudo_oid.slotid,
+				 temp_pseudo_oid.volid,
+				 btid, &temp_pseudo_oid);
+
+	  lock_remove_object_lock (thread_p, &temp_pseudo_oid, class_oid,
+				   NS_LOCK);
+
+	  rec_oid_ptr += OR_OID_SIZE;
+	}
+
+      /* advance to the next page */
+      btree_get_header_ptr (O_page, &header_ptr);
+      btree_get_next_overflow_vpid (header_ptr, &O_vpid);
+
+      pgbuf_unfix_and_init (thread_p, O_page);
+    }
+
+end:
+  if (O_page)
+    {
+      pgbuf_unfix_and_init (thread_p, O_page);
+    }
+
+  return ret_val;
+}
+
 
 /*
  * btree_insert () -
@@ -11063,6 +11197,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   LOCK next_key_granted_mode = NULL_LOCK;
   LOCK current_lock = NULL_LOCK, prev_tot_hold_mode = NULL_LOCK;
   bool curr_key_many_locks_needed = false;
+  KEY_LOCK_ESCALATION curr_key_lock_escalation = NO_KEY_LOCK_ESCALATION;
 #if defined(SERVER_MODE)
   bool old_check_interrupt;
 #endif /* SERVER_MODE */
@@ -11393,7 +11528,6 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   COPY_OID (&C_class_oid, &class_oid);
 
 start_point:
-
   if (next_lock_flag == true || curr_lock_flag == true)
     {
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
@@ -12133,6 +12267,7 @@ curr_key_locking:
     {
       COPY_OID (&C_class_oid, &class_oid);
       COPY_OID (&C_oid, oid);
+      assert (curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION);
     }
 
   btree_make_pseudo_oid (C_oid.pageid, C_oid.slotid, C_oid.volid,
@@ -12163,7 +12298,14 @@ curr_key_locking:
 		  prev_tot_hold_mode =
 		    lock_get_all_except_transaction (&C_oid, &C_class_oid,
 						     tran_index);
-		  curr_key_many_locks_needed = prev_tot_hold_mode == NS_LOCK;
+		  if (prev_tot_hold_mode == NS_LOCK)
+		    {
+		      curr_key_many_locks_needed = true;
+		    }
+		  else
+		    {
+		      curr_key_many_locks_needed = false;
+		    }
 		}
 	      else if (prev_tot_hold_mode == NS_LOCK)
 		{
@@ -12177,8 +12319,13 @@ curr_key_locking:
 	  goto curr_key_lock_consistency;
 	}
 
-      lock_unlock_object (thread_p, &saved_C_oid, &saved_C_class_oid,
-			  current_lock, true);
+      lock_remove_object_lock (thread_p, &saved_C_oid, &saved_C_class_oid,
+			       current_lock);
+      if (curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION)
+	{
+	  curr_key_lock_escalation = NO_KEY_LOCK_ESCALATION;
+	}
+
       curr_lock_flag = false;
       OID_SET_NULL (&saved_C_oid);
       OID_SET_NULL (&saved_C_class_oid);
@@ -12204,10 +12351,36 @@ curr_key_locking:
 						   &C_class_oid,
 						   btid, current_lock,
 						   LK_COND_LOCK,
-						   &prev_tot_hold_mode);
-      curr_key_many_locks_needed = (!BTREE_IS_UNIQUE (&btid_int) &&
-				    key_found &&
-				    prev_tot_hold_mode == NS_LOCK);
+						   &prev_tot_hold_mode,
+						   &curr_key_lock_escalation);
+
+      curr_key_many_locks_needed = false;
+      if (curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION)
+	{
+	  if (!BTREE_IS_UNIQUE (&btid_int) && key_found
+	      && prev_tot_hold_mode == NS_LOCK)
+	    {
+	      curr_key_many_locks_needed = true;
+	    }
+	}
+      else
+	{
+	  /* key lock already escalated or key lock escalation needed,
+	   * key lock escalation make sense only for multiple oids key
+	   * key lock is escalated when the lock on PSEUDO-OID attached 
+	   * to the first OID from key buffer is escalated from NS to NX
+	   */
+	  if (ret_val == LK_GRANTED)
+	    {
+	      current_lock = NX_LOCK;
+	      assert (lock_get_object_lock
+		      (&C_oid, &C_class_oid,
+		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == NX_LOCK
+		      || lock_get_object_lock
+		      (&C_class_oid, oid_Root_class_oid,
+		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == X_LOCK);
+	    }
+	}
     }
 
   if (ret_val == LK_GRANTED)
@@ -12230,7 +12403,8 @@ curr_key_locking:
 	}
 
       /* UNCONDITIONAL lock request */
-      if (current_lock == NX_LOCK)
+      if (current_lock == NX_LOCK
+	  && curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION)
 	{
 	  /* prev_tot_hold_mode set to NULL_LOCK */
 	  ret_val = lock_object_with_btid (thread_p, &C_oid, &C_class_oid,
@@ -12242,11 +12416,27 @@ curr_key_locking:
 	  /* current_lock set to NS_LOCK */
 	  ret_val = lock_btid_object_get_prev_total_hold_mode
 	    (thread_p, &C_oid, &C_class_oid, btid, current_lock,
-	     LK_UNCOND_LOCK, &prev_tot_hold_mode);
+	     LK_UNCOND_LOCK, &prev_tot_hold_mode, &curr_key_lock_escalation);
 
-	  curr_key_many_locks_needed = (!BTREE_IS_UNIQUE (&btid_int) &&
-					key_found &&
-					prev_tot_hold_mode == NS_LOCK);
+	  curr_key_many_locks_needed = false;
+	  if (curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION)
+	    {
+	      if (!BTREE_IS_UNIQUE (&btid_int) && key_found
+		  && prev_tot_hold_mode == NS_LOCK)
+		{
+		  curr_key_many_locks_needed = true;
+		}
+	    }
+	  else
+	    {
+	      current_lock = NX_LOCK;
+	      assert (lock_get_object_lock
+		      (&C_oid, &C_class_oid,
+		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == NX_LOCK
+		      || lock_get_object_lock
+		      (&C_class_oid, oid_Root_class_oid,
+		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == X_LOCK);
+	    }
 	}
 
       if (ret_val != LK_GRANTED)
@@ -12269,7 +12459,8 @@ curr_key_locking:
 	  goto start_point;
 	}
 
-      if (curr_key_many_locks_needed)
+      if (curr_key_many_locks_needed ||
+	  curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION)
 	{
 	  /* still have to lock pseudo OIDS, peek the record again */
 	  if (spage_get_record (P, p_slot_id, &peek_rec, PEEK) != S_SUCCESS)
@@ -12296,6 +12487,17 @@ curr_key_lock_consistency:
 	{
 	  goto error;
 	}
+    }
+
+  if (curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION)
+    {
+      /* key lock escalated       
+       * unlock remaining PSEUDO-OIDs of current key, previously NS-locked
+       */
+      assert (curr_key_many_locks_needed == false);
+      btree_insert_unlock_curr_key_remaining_pseudo_oid
+	(thread_p, btid_int.sys_btid, &peek_rec, offset, &leaf_pnt.ovfl,
+	 &C_class_oid);
     }
 
   /* valid point for key insertion
