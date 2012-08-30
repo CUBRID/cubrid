@@ -10607,7 +10607,7 @@ error:
 
   if (!error_expected)
     {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_restore");
+      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "logpb_restore");
     }
 
   if (lgat_tmpname[0] != '\0')
