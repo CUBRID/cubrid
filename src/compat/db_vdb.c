@@ -3532,6 +3532,7 @@ bool
 db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
 {
   PT_NODE *statement;
+  bool sync;
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -3565,5 +3566,9 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
       return false;
     }
 
-  return !pt_statement_have_methods (session->parser, statement);
+  sync = ((pt_statement_have_methods (session->parser, statement)
+	   || (statement->node_type == PT_SELECT
+	       && statement->is_click_counter)) ? true : false);
+
+  return !sync;
 }

@@ -13559,7 +13559,9 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* adjust query flag */
   if (parser->exec_mode == ASYNC_EXEC)
     {
-      if (pt_statement_have_methods (parser, statement))
+      if (pt_statement_have_methods (parser, statement)
+	  || (statement->node_type == PT_SELECT
+	      && statement->is_click_counter))
 	{
 	  query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
 	}
