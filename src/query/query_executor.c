@@ -755,7 +755,7 @@ static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				 XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-				 XASL_STATE * xasl_state);
+				 XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p,
@@ -9477,7 +9477,7 @@ exit_on_error:
  */
 static int
 qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-		      XASL_STATE * xasl_state)
+		      XASL_STATE * xasl_state, bool skip_aptr)
 {
   INSERT_PROC_NODE *insert = &xasl->proc.insert;
   SCAN_CODE xb_scan;
@@ -9519,15 +9519,18 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
 
-  if (aptr
-      && qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
+  if (!skip_aptr)
     {
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
+      if (aptr
+	  && qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
     }
 
   /* This guarantees that the result list file will have a type list.
-     Copying a list_id structure fails unless it has a type list. */
+	 Copying a list_id structure fails unless it has a type list. */
   if (qexec_setup_list_id (xasl) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
@@ -11820,7 +11823,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  old_wait_msecs =
 	    xlogtb_reset_wait_msecs (thread_p, xasl->proc.insert.wait_msecs);
 	}
-      error = qexec_execute_insert (thread_p, xasl, xasl_state);
+      error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -18590,7 +18593,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* resolve late bindings in analytic sort list */
   qexec_resolve_domains_on_sort_list (analytic_func_p->sort_list,
-				      buildlist->a_outptr_list_ex);
+				      buildlist->a_outptr_list_ex->valptrp);
 
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (&analytic_state, analytic_func_p,
@@ -22607,8 +22610,18 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   savepoint_used = 1;
 
+  /* execute insert aptr */
+  if (xasl->proc.merge.insert_xasl)
+    {
+      XASL_NODE *xptr = xasl->proc.merge.insert_xasl;
+      if (xptr && xptr->aptr_list)
+	{
+	  error =
+	    qexec_execute_mainblock (thread_p, xptr->aptr_list, xasl_state);
+	}
+    }
   /* execute update */
-  if (xasl->proc.merge.update_xasl)
+  if (error == NO_ERROR && xasl->proc.merge.update_xasl)
     {
       error = qexec_execute_update (thread_p, xasl->proc.merge.update_xasl,
 				    xasl_state);
@@ -22623,7 +22636,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (error == NO_ERROR && xasl->proc.merge.insert_xasl)
     {
       error = qexec_execute_insert (thread_p, xasl->proc.merge.insert_xasl,
-				    xasl_state);
+				    xasl_state, true);
     }
 
   /* check error */

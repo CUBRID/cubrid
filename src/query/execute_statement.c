@@ -11628,11 +11628,14 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* execute the subquery */
-      error = do_select (parser, qry);
-      if (error < NO_ERROR || qry->etc == NULL)
+      if (qry->etc == NULL)
 	{
-	  return error;
+	  /* execute the subquery */
+	  error = do_select (parser, qry);
+	  if (error < NO_ERROR || qry->etc == NULL)
+	    {
+	      return error;
+	    }
 	}
 
       /* insert subquery results into target class */
@@ -14375,6 +14378,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *flat, *values_list = NULL;
   PT_NODE **links = NULL;
   PT_NODE *hint_arg;
+  QUERY_ID ins_query_id;
   int no_vals, no_consts;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
@@ -14544,6 +14548,45 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto exit;
 	}
+
+      /* get results from insert's select query */
+      if (err >= NO_ERROR
+	  && (values_list = statement->info.merge.insert.value_clauses)
+	  != NULL)
+	{
+	  ins_select_stmt =
+	    pt_to_merge_insert_query (parser,
+				      values_list->info.node_list.list,
+				      &statement->info.merge);
+	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
+
+	  if (ins_select_stmt == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_GENERIC_ERROR;
+		}
+	      goto exit;
+	    }
+
+	  err = do_select (parser, ins_select_stmt);
+
+	  if (err < NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  if (ins_select_stmt->etc == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_GENERIC_ERROR;
+		}
+	      goto exit;
+	    }
+	  ins_query_id = parser->query_id;
+	}
     }
 
   /* IX lock on the class */
@@ -14683,24 +14726,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_NODE *save_list;
       PT_MISC_TYPE save_type;
-
-      ins_select_stmt =
-	pt_to_merge_insert_query (parser, values_list->info.node_list.list,
-				  &statement->info.merge);
-      ins_select_stmt = mq_translate (parser, ins_select_stmt);
-      if (ins_select_stmt == NULL)
-	{
-	  err = er_errid ();
-	  if (err == NO_ERROR)
-	    {
-	      err = ER_GENERIC_ERROR;
-	    }
-	  if (old_wait_msecs >= -1)
-	    {
-	      (void) tran_reset_wait_times (old_wait_msecs);
-	    }
-	  goto exit;
-	}
+      QUERY_ID save_query_id;
 
       /* save node list */
       save_type = values_list->info.node_list.list_type;
@@ -14711,8 +14737,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       obt_begin_insert_values ();
       /* execute subquery & insert its results into target class */
+      save_query_id = parser->query_id;
+      parser->query_id = ins_query_id;
       err = insert_subquery_results (parser, statement, values_list, flat,
 				     &savepoint_name);
+      parser->query_id = save_query_id;
       if (parser->abort)
 	{
 	  err = er_errid ();
@@ -15206,7 +15235,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int au_save;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
-  PT_NODE *hint_arg;
+  PT_NODE *ins_select_stmt = NULL, *del_select_stmt = NULL, *hint_arg;
+  QUERY_ID ins_query_id;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -15342,6 +15372,50 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      /* get results from insert's select query */
+      if (err >= NO_ERROR
+	  && (values_list = statement->info.merge.insert.value_clauses)
+	  != NULL)
+	{
+	  QUERY_ID save_query_id;
+
+	  ins_select_stmt =
+	    pt_to_merge_insert_query (parser,
+				      values_list->info.node_list.list,
+				      &statement->info.merge);
+	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
+
+	  if (ins_select_stmt == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_GENERIC_ERROR;
+		}
+	      goto exit;
+	    }
+
+	  save_query_id = parser->query_id;
+	  parser->query_id = -1;
+	  err = do_select (parser, ins_select_stmt);
+	  ins_query_id = parser->query_id;
+	  parser->query_id = save_query_id;
+
+	  if (err < NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  if (ins_select_stmt->etc == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_GENERIC_ERROR;
+		}
+	      goto exit;
+	    }
+	}
+
       hint_arg = statement->info.merge.waitsecs_hint;
       if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT)
 	  && PT_IS_HINT_NODE (hint_arg))
@@ -15404,37 +15478,32 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* delete part */
 	  if (err >= NO_ERROR && statement->info.merge.update.has_delete)
 	    {
-	      PT_NODE *select_stmt;
-
-	      select_stmt =
+	      del_select_stmt =
 		pt_to_merge_upd_del_query (parser, NULL,
 					   &statement->info.merge,
 					   PT_COMPOSITE_LOCKING_DELETE);
-	      select_stmt = mq_translate (parser, select_stmt);
-	      if (select_stmt == NULL)
+	      del_select_stmt = mq_translate (parser, del_select_stmt);
+	      if (del_select_stmt == NULL)
 		{
-		  if (select_stmt == NULL)
+		  err = er_errid ();
+		  if (err == NO_ERROR)
 		    {
-		      err = er_errid ();
-		      if (err == NO_ERROR)
-			{
-			  err = ER_GENERIC_ERROR;
-			}
-		      if (old_wait_msecs >= -1)
-			{
-			  (void) tran_reset_wait_times (old_wait_msecs);
-			}
-		      goto exit;
+		      err = ER_GENERIC_ERROR;
 		    }
+		  if (old_wait_msecs >= -1)
+		    {
+		      (void) tran_reset_wait_times (old_wait_msecs);
+		    }
+		  goto exit;
 		}
 
 	      AU_SAVE_AND_ENABLE (au_save);
-	      err = do_select (parser, select_stmt);
+	      err = do_select (parser, del_select_stmt);
 	      AU_RESTORE (au_save);
 
 	      if (err >= NO_ERROR)
 		{
-		  list_id = (QFILE_LIST_ID *) select_stmt->etc;
+		  list_id = (QFILE_LIST_ID *) del_select_stmt->etc;
 		  if (list_id)
 		    {
 		      /* delete each oid */
@@ -15455,7 +15524,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  pt_end_query (parser);
 		}
-	      parser_free_tree (parser, select_stmt);
+	      parser_free_tree (parser, del_select_stmt);
+	      del_select_stmt = NULL;
 	    }
 	}
 
@@ -15464,42 +15534,26 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  && (values_list = statement->info.merge.insert.value_clauses)
 	  != NULL)
 	{
-	  PT_NODE *select_stmt, *save_list;
+	  PT_NODE *save_list;
 	  PT_MISC_TYPE save_type;
-
-	  select_stmt =
-	    pt_to_merge_insert_query (parser,
-				      values_list->info.node_list.list,
-				      &statement->info.merge);
-	  select_stmt = mq_translate (parser, select_stmt);
-
-	  if (select_stmt == NULL)
-	    {
-	      err = er_errid ();
-	      if (err == NO_ERROR)
-		{
-		  err = ER_GENERIC_ERROR;
-		}
-	      if (old_wait_msecs >= -1)
-		{
-		  (void) tran_reset_wait_times (old_wait_msecs);
-		}
-	      goto exit;
-	    }
+	  QUERY_ID save_query_id;
 
 	  /* save node list */
 	  save_type = values_list->info.node_list.list_type;
 	  save_list = values_list->info.node_list.list;
 
 	  values_list->info.node_list.list_type = PT_IS_SUBQUERY;
-	  values_list->info.node_list.list = select_stmt;
+	  values_list->info.node_list.list = ins_select_stmt;
 
 	  AU_SAVE_AND_DISABLE (au_save);
 
 	  obt_begin_insert_values ();
+	  save_query_id = parser->query_id;
+	  parser->query_id = ins_query_id;
 	  /* execute subquery & insert its results into target class */
 	  err = insert_subquery_results (parser, statement, values_list, flat,
 					 &savepoint_name);
+	  parser->query_id = save_query_id;
 	  if (parser->abort)
 	    {
 	      err = er_errid ();
@@ -15515,7 +15569,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  values_list->info.node_list.list_type = save_type;
 	  values_list->info.node_list.list = save_list;
 
-	  parser_free_tree (parser, select_stmt);
+	  parser_free_tree (parser, ins_select_stmt);
+	  ins_select_stmt = NULL;
 	}
 
       if (old_wait_msecs >= -1)
@@ -15530,6 +15585,15 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 exit:
+  if (ins_select_stmt != NULL)
+    {
+      parser_free_tree (parser, ins_select_stmt);
+    }
+  if (del_select_stmt != NULL)
+    {
+      parser_free_tree (parser, del_select_stmt);
+    }
+
   if ((err < NO_ERROR) && er_errid () != NO_ERROR)
     {
       pt_record_error (parser, parser->statement_number,
