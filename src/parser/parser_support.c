@@ -1170,7 +1170,7 @@ pt_is_attr (PT_NODE * node)
 }
 
 /*
- * pt_is_function_index_expression () - check for function index expression 
+ * pt_is_function_index_expression () - check for function index expression
  *   return: true if function index expression, false otherwise
  *   node(in/out): PT_EXPR node
  */
@@ -8959,6 +8959,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'log_page_ioreads' as [variable] , exec_stats('Num_log_page_ioreads') as [value])"
     "UNION ALL (SELECT 'log_page_iowrites' as [variable] , exec_stats('Num_log_page_iowrites') as [value])"
     "UNION ALL (SELECT 'log_append_records' as [variable] , exec_stats('Num_log_append_records') as [value])"
+    "UNION ALL (SELECT 'log_archives' as [variable] , exec_stats('Num_log_archives') as [value])"
     "UNION ALL (SELECT 'log_start_checkpoints' as [variable] , exec_stats('Num_log_start_checkpoints') as [value])"
     "UNION ALL (SELECT 'log_end_checkpoints' as [variable] , exec_stats('Num_log_end_checkpoints') as [value])"
     "UNION ALL (SELECT 'log_wals' as [variable] , exec_stats('Num_log_wals') as [value])"
@@ -8982,6 +8983,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'btree_covered' as [variable] , exec_stats('Num_btree_covered') as [value])"
     "UNION ALL (SELECT 'btree_noncovered' as [variable] , exec_stats('Num_btree_noncovered') as [value])"
     "UNION ALL (SELECT 'btree_resumes' as [variable] , exec_stats('Num_btree_resumes') as [value])"
+    "UNION ALL (SELECT 'btree_multirange_optimization' as [variable] , exec_stats('Num_btree_multirange_optimization') as [value])"
     "UNION ALL (SELECT 'query_selects' as [variable] , exec_stats('Num_query_selects') as [value])"
     "UNION ALL (SELECT 'query_inserts' as [variable] , exec_stats('Num_query_inserts') as [value])"
     "UNION ALL (SELECT 'query_deletes' as [variable] , exec_stats('Num_query_deletes') as [value])"
@@ -8994,10 +8996,16 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'query_nljoins' as [variable] , exec_stats('Num_query_nljoins') as [value])"
     "UNION ALL (SELECT 'query_mjoins' as [variable] , exec_stats('Num_query_mjoins') as [value])"
     "UNION ALL (SELECT 'query_objfetches' as [variable] , exec_stats('Num_query_objfetches') as [value])"
+    "UNION ALL (SELECT 'query_holdable_cursors' as [variable] , exec_stats('Num_query_holdable_cursors') as [value])"
     "UNION ALL (SELECT 'network_requests' as [variable] , exec_stats('Num_network_requests') as [value])"
     "UNION ALL (SELECT 'adaptive_flush_pages' as [variable] , exec_stats('Num_adaptive_flush_pages') as [value])"
     "UNION ALL (SELECT 'adaptive_flush_log_pages' as [variable] , exec_stats('Num_adaptive_flush_log_pages') as [value])"
-    "UNION ALL (SELECT 'adaptive_flush_max_pages' as [variable] , exec_stats('Num_adaptive_flush_max_pages') as [value]);";
+    "UNION ALL (SELECT 'adaptive_flush_max_pages' as [variable] , exec_stats('Num_adaptive_flush_max_pages') as [value])"
+    "UNION ALL (SELECT 'prior_lsa_list_size' as [variable] , exec_stats('Num_prior_lsa_list_size') as [value])"
+    "UNION ALL (SELECT 'prior_lsa_list_maxed' as [variable] , exec_stats('Num_prior_lsa_list_maxed') as [value])"
+    "UNION ALL (SELECT 'prior_lsa_list_removed' as [variable] , exec_stats('Num_prior_lsa_list_removed') as [value])"
+    "UNION ALL (SELECT 'heap_stats_bestspace_entries' as [variable] , exec_stats('Num_heap_stats_bestspace_entries') as [value])"
+    "UNION ALL (SELECT 'heap_stats_bestspace_maxed' as [variable] , exec_stats('Num_heap_stats_bestspace_maxed') as [value])";
 
   lang_set_parser_use_client_charset (false);
   node = parser_parse_string (parser, query);
