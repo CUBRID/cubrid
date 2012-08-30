@@ -138,6 +138,7 @@
 #define DUMPLOCALE_IS_COLLATION_CP_ORDER	(1 << 8)
 #define DUMPLOCALE_IS_COLLATION_WEIGHT_ORDER	(1 << 9)
 #define DUMPLOCALE_IS_NORMALIZATION		(1 << 10)
+#define DUMPLOCALE_IS_TEXT_CONV			(1 << 11)
 
 #define ERR_MSG_SIZE 512
 
@@ -460,8 +461,10 @@ struct text_conversion
   char *win_codepages;		/* Windows codepage identifier */
   char *nl_lang_str;		/* Linux language string */
 
-  unsigned char first_lead_byte;	/* used in DBCS encoding schemes */
-
+  unsigned char byte_flag[256];	/* used in DBCS encoding schemes :
+				 * 0 : single byte character 
+				 * 1 : leading byte for double byte char
+				 * 2 : invalid byte */
   /* UTF-8 to text */
   unsigned int utf8_first_cp;
   unsigned int utf8_last_cp;

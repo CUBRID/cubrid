@@ -2313,6 +2313,11 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
       dl_settings |= DUMPLOCALE_IS_NORMALIZATION;
     }
 
+  if (utility_get_option_bool_value (arg_map, DUMPLOCALE_CONSOLE_CONV_S))
+    {
+      dl_settings |= DUMPLOCALE_IS_TEXT_CONV;
+    }
+
   /* Check command line arguments for incompatibilities. */
   if (locale_str != NULL && input_path != NULL)
     {

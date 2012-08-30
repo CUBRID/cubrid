@@ -122,7 +122,7 @@ TEXT_CONVERSION con_iso_8859_9_conv = {
   TEXT_CONV_ISO_88599_BUILTIN,	/* type */
   (char *) "28599",		/* Windows Code page */
   (char *) "iso88599",		/* Linux charset identifiers */
-  0,				/* first lead byte value : not used for ISO */
+  {0},				/* byte flags : not used for ISO */
   0, 0, NULL,			/* UTF-8 to console : filled by init function */
   0, 0, NULL,			/* console to UTF-8 : filled by init function */
   intl_text_utf8_to_single_byte,	/* UTF-8 to console conversion function */
@@ -134,7 +134,7 @@ TEXT_CONVERSION con_iso_8859_1_conv = {
   TEXT_CONV_ISO_88591_BUILTIN,	/* type */
   (char *) "28591",		/* Windows Code page */
   (char *) "iso88591",		/* Linux charset identifiers */
-  0,				/* first lead byte value : not used for ISO */
+  {0},				/* byte flags : not used for ISO */
   0, 0, NULL,			/* UTF-8 to console : filled by init function */
   0, 0, NULL,			/* console to UTF-8 : filled by init function */
   intl_text_utf8_to_single_byte,	/* UTF-8 to console conversion function */
@@ -3338,23 +3338,33 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
  * intl_cp_to_dbcs() - converts a codepoint to DBCS encoding 
  *  return: number of bytes for encoding; 0 means not encoded
  *  codepoint(in) : code point (16 bit value)
- *  first_lead_byte(in): value of the first lead byte
+ *  byte_flag(in): flag array : 0: single byte char,
+ *				1: is a leading byte for DBCS,
+ *				2: byte value not used
  *  seq(in/out) : pre-allocated buffer for DBCS sequence
  *
  */
 int
 intl_cp_to_dbcs (const unsigned int codepoint,
-		 const unsigned char first_lead_byte, unsigned char *seq)
+		 const unsigned char *byte_flag, unsigned char *seq)
 {
   assert (seq != NULL);
 
-  /* no DBCS encoding schemes should have a lead byte value lower than this */
-  assert (first_lead_byte >= 0x7f);
+  /* is_lead_byte is assumed to have 256 elements */
+  assert (byte_flag != NULL);
 
-  if (codepoint < first_lead_byte)
+  if (codepoint <= 0xff)
     {
-      /* 1 byte */
-      *seq = (unsigned char) codepoint;
+      if (byte_flag[codepoint] == 0)
+	{
+	  /* 1 byte */
+	  *seq = (unsigned char) codepoint;
+	}
+      else
+	{
+	  /* undefined or lead byte */
+	  *seq = '?';
+	}
       return 1;
     }
   if (codepoint <= 0xffff)
@@ -3435,37 +3445,31 @@ intl_utf8_to_cp (const unsigned char *utf8, const int size,
 
 /*
  * intl_dbcs_to_cp() - converts a DBCS encoded char to DBCS codepoint
- *  return: unicode code point; 0xffffffff means error 
+ *  return: DBCS code point; 0xffffffff means error 
  *  seq(in) : buffer for DBCS char
  *  size(in) : size of buffer
- *  first_lead_byte(in) : value of the first lead byte
+ *  byte_flag(in) : array of flags for lead bytes
  *  next_char(in/out): pointer to next character
  *
  */
 unsigned int
 intl_dbcs_to_cp (const unsigned char *seq, const int size,
-		 const unsigned char first_lead_byte,
-		 unsigned char **next_char)
+		 const unsigned char *byte_flag, unsigned char **next_char)
 {
   assert (seq != NULL);
   assert (size > 0);
   assert (next_char != NULL);
 
-  assert (first_lead_byte >= 0x7f);
+  assert (byte_flag != NULL);
 
-  if (seq[0] < first_lead_byte)
-    {
-      *next_char = (unsigned char *) seq + 1;
-      return (unsigned int) (seq[0]);
-    }
-  else if (size >= 2)
+  if (byte_flag[seq[0]] == 1 && size >= 2)
     {
       *next_char = (unsigned char *) seq + 2;
       return (unsigned int) (((seq[0]) << 8) | (seq[1]));
     }
 
   *next_char = (unsigned char *) seq + 1;
-  return 0xffffffff;
+  return (unsigned int) (seq[0]);
 }
 
 
@@ -3958,25 +3962,51 @@ int
 intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size,
 			       char **out_buf, int *out_size)
 {
+  return intl_text_single_byte_to_utf8_ext (lang_get_txt_conv (), in_buf,
+					    in_size, out_buf, out_size);
+}
+
+/*
+ * intl_text_single_byte_to_utf8_ext() - converts a buffer containing text
+ *					 with ISO 8859-X encoding to UTF-8
+ *
+ *   return: error code
+ *   t(in): text conversion data
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(in/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer; NULL if conversion
+ *			is not required
+ *   out_size(in/out): size of string (NUL terminator not included)
+ */
+int
+intl_text_single_byte_to_utf8_ext (void *t,
+				   const char *in_buf, const int in_size,
+				   char **out_buf, int *out_size)
+{
   const unsigned char *p_in = NULL;
   unsigned char *p_out = NULL;
-  TEXT_CONVERSION *txt_conv = lang_get_txt_conv ();
+  TEXT_CONVERSION *txt_conv;
+  bool is_ascii = true;
 
   assert (in_buf != NULL);
   assert (out_buf != NULL);
   assert (out_size != NULL);
-  assert (txt_conv != NULL);
+  assert (t != NULL);
+
+  txt_conv = (TEXT_CONVERSION *) t;
 
   p_in = (const unsigned char *) in_buf;
   while (p_in < (const unsigned char *) in_buf + in_size)
     {
       if (*p_in++ >= 0x80)
 	{
+	  is_ascii = false;
 	  break;
 	}
     }
 
-  if (p_in >= (const unsigned char *) in_buf + in_size)
+  if (is_ascii)
     {
       *out_buf = NULL;
       return NO_ERROR;
@@ -4047,10 +4077,10 @@ intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size,
  *   return: error code
  *   in_buf(in): buffer
  *   in_size(in): size of input string (NUL terminator not included)
- *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *   out_buf(in/out) : output buffer : uses the pre-allocated buffer passed
  *			as input or a new allocated buffer; NULL if conversion
  *			is not required
- *   out_size(out): size of output string (NUL terminator not counted)
+ *   out_size(in/out): size of output string (NUL terminator not counted)
  */
 int
 intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
@@ -4060,6 +4090,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
   unsigned char *p_out = NULL;
   unsigned char *p_next = NULL;
   TEXT_CONVERSION *txt_conv = lang_get_txt_conv ();
+  bool is_ascii = true;
 
   assert (in_buf != NULL);
   assert (out_buf != NULL);
@@ -4071,11 +4102,12 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
     {
       if (*p_in++ >= 0x80)
 	{
+	  is_ascii = false;
 	  break;
 	}
     }
 
-  if (p_in >= (const unsigned char *) in_buf + in_size)
+  if (is_ascii)
     {
       *out_buf = NULL;
       return NO_ERROR;
@@ -4269,25 +4301,50 @@ int
 intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
 			char **out_buf, int *out_size)
 {
+  return intl_text_dbcs_to_utf8_ext (lang_get_txt_conv (), in_buf, in_size,
+				     out_buf, out_size);
+}
+
+/*
+ * intl_text_dbcs_to_utf8_ext() - converts a buffer containing text with DBCS
+ *				  encoding to UTF-8
+ *
+ *   return: error code
+ *   t(in): text conversion data
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(in/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer; NULL if conversion
+ *			is not required
+ *   out_size(in/out): size of string (NUL terminator not included)
+ */
+int
+intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf, const int in_size,
+			    char **out_buf, int *out_size)
+{
   const unsigned char *p_in = NULL;
   unsigned char *p_out = NULL;
-  TEXT_CONVERSION *txt_conv = lang_get_txt_conv ();
+  TEXT_CONVERSION *txt_conv;
+  bool is_ascii = true;
 
   assert (in_buf != NULL);
   assert (out_buf != NULL);
   assert (out_size != NULL);
-  assert (txt_conv != NULL);
+  assert (t != NULL);
+
+  txt_conv = (TEXT_CONVERSION *) t;
 
   p_in = (const unsigned char *) in_buf;
   while (p_in < (const unsigned char *) in_buf + in_size)
     {
       if (*p_in++ >= 0x80)
 	{
+	  is_ascii = false;
 	  break;
 	}
     }
 
-  if (p_in >= (const unsigned char *) in_buf + in_size)
+  if (is_ascii)
     {
       *out_buf = NULL;
       return NO_ERROR;
@@ -4298,18 +4355,20 @@ intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
       /* a DBCS text may contain ASCII characters (encoded with 1 byte) which
        * may expand to maximum 2 bytes in UTF-8 and DBCS characters (2 bytes)
        * which may expand to maximum 3 bytes in UTF-8;
-       * Apply a safe expansion of 2 */
-      *out_buf = malloc (in_size * 2 + 1);
+       * Also it may contain single byte characters which may expand to 3
+       * bytes characters in UTF-8
+       * Apply a safe expansion of 3 */
+      *out_buf = malloc (in_size * 3 + 1);
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, in_size * 2 + 1);
+		  1, in_size * 3 + 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
   else
     {
-      if (*out_size < in_size * 2 + 1)
+      if (*out_size < in_size * 3 + 1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
@@ -4325,7 +4384,7 @@ intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
       unsigned int text_cp = intl_dbcs_to_cp (p_in,
 					      (const unsigned char *) in_buf +
 					      in_size - p_in,
-					      txt_conv->first_lead_byte,
+					      txt_conv->byte_flag,
 					      &p_next);
 
       if (text_cp >= txt_conv->text_first_cp
@@ -4371,10 +4430,10 @@ intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
  *   return: error code
  *   in_buf(in): buffer
  *   in_size(in): size of input string (NUL terminator not included)
- *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *   out_buf(in/out) : output buffer : uses the pre-allocated buffer passed
  *			as input or a new allocated buffer; NULL if conversion
  *			is not required
- *   out_size(out): size of output string (NUL terminator not counted)
+ *   out_size(in/out): size of output string (NUL terminator not counted)
  */
 int
 intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
@@ -4384,6 +4443,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
   unsigned char *p_out = NULL;
   unsigned char *p_next = NULL;
   TEXT_CONVERSION *txt_conv = lang_get_txt_conv ();
+  bool is_ascii = true;
 
   assert (in_buf != NULL);
   assert (out_buf != NULL);
@@ -4395,11 +4455,12 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
     {
       if (*p_in++ >= 0x80)
 	{
+	  is_ascii = false;
 	  break;
 	}
     }
 
-  if (p_in >= (const unsigned char *) in_buf + in_size)
+  if (is_ascii)
     {
       *out_buf = NULL;
       return NO_ERROR;

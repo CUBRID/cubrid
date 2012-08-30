@@ -189,6 +189,7 @@ static void dump_collation_codepoint (COLL_DATA * coll,
 				      bool print_weight, bool print_cp);
 static int dump_locale_normalization (UNICODE_NORMALIZATION * norm);
 static void dump_unicode_mapping (UNICODE_MAPPING * um, const int mode);
+static int dump_console_conversion (TEXT_CONVERSION * tc);
 
 static int comp_func_coll_uca_exp_fo (const void *arg1, const void *arg2);
 static int comp_func_coll_uca_exp (const void *arg1, const void *arg2);
@@ -3735,7 +3736,6 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
   unsigned int i;
   unsigned int cp_text = 0;
   unsigned int cp_unicode = 0;
-  unsigned char first_lead_byte = 0;
   TXT_CONV_ITEM min_values = { 0xffff, 0xffff };
   TXT_CONV_ITEM max_values = { 0, 0 };
 
@@ -3787,6 +3787,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       printf ("Using file: %s\n", conv_file_name);
     }
 
+  memset (ld->txt_conv.byte_flag, 0, sizeof (ld->txt_conv.byte_flag));
   while (fgets (str, sizeof (str), fp))
     {
       char *s;
@@ -3833,11 +3834,17 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
       if (*s == '\0' || *s == '#')
 	{
-	  if (ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE
-	      && first_lead_byte == 0)
+	  if (ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE)
 	    {
-	      assert (cp_text < 0xff);
-	      first_lead_byte = cp_text;
+	      assert (cp_text <= 0xff);
+	      if (strncasecmp (s, "#DBCS", 5) == 0)
+		{
+		  ld->txt_conv.byte_flag[cp_text] = 1;
+		}
+	      else
+		{
+		  ld->txt_conv.byte_flag[cp_text] = 2;
+		}
 	    }
 	  continue;
 	}
@@ -3906,12 +3913,6 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
   assert (ld->txt_conv.text_first_cp < ld->txt_conv.text_last_cp);
   assert (ld->txt_conv.utf8_first_cp < ld->txt_conv.utf8_last_cp);
-
-  ld->txt_conv.first_lead_byte = first_lead_byte;
-  if (is_verbose && ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE)
-    {
-      printf ("DBCS lead bytes range : %02X - FF\n", first_lead_byte);
-    }
 
   if (ld->txt_conv.text_last_cp == 0 || ld->txt_conv.utf8_last_cp == 0)
     {
@@ -3986,7 +3987,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 	{
 	  assert (ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE);
 	  utf8_to_text_item->size =
-	    intl_cp_to_dbcs (cp_text, ld->txt_conv.first_lead_byte,
+	    intl_cp_to_dbcs (cp_text, ld->txt_conv.byte_flag,
 			     utf8_to_text_item->bytes);
 	}
     }
@@ -5484,8 +5485,8 @@ locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
       return 0;
     }
 
-  PRINT_VAR_TO_C_FILE (fp, "unsigned char", "tc_first_lead_byte",
-		       tc->first_lead_byte, "%u", ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "tc_is_lead_byte", "unsigned char",
+			     "%u", 256, tc->byte_flag, ld->locale_name);
   PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_first_cp",
 		       tc->utf8_first_cp, "%u", ld->locale_name);
   PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_last_cp",
@@ -6112,6 +6113,15 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("* Normalization data *\n");
       dump_locale_normalization (&(lld->unicode_norm));
     }
+
+  /* Dump normalization data. */
+  if ((dl_settings & DUMPLOCALE_IS_TEXT_CONV) != 0)
+    {
+      printf ("\n");
+      printf ("* Console conversion data *\n");
+      dump_console_conversion (lld->txt_conv);
+    }
+
 exit:
   return err_status;
 }
@@ -6780,7 +6790,6 @@ exit:
  *			       structure in human-readable text format.
  * Returns : NO_ERROR.
  * norm(in)  : the UNICODE_NORMALIZATION to be dumped in text format.
- * dl_settings(in): the commmand line options encoded into an int mask.
  */
 static int
 dump_locale_normalization (UNICODE_NORMALIZATION * norm)
@@ -6898,6 +6907,230 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
     }
 }
 
+/*
+ * dump_console_conversion - dump Console text conversion data structure
+ *			     in human-readable text format.
+ * Returns : NO_ERROR.
+ * tc(in): the TEXT_CONVERSION to be dumped in text format.
+ */
+static int
+dump_console_conversion (TEXT_CONVERSION * tc)
+{
+  char utf8_seq[INTL_UTF8_MAX_CHAR_SIZE + 1];
+  char cnv_utf8_buf[2 * 3 + 1];
+  unsigned char *cnv_utf8;
+  CONV_CP_TO_BYTES *c_item;
+  unsigned int utf8_cp, con_cp;
+  unsigned char *next;
+  int utf8_size;
+  char *char_to_print = NULL;
+  int err;
+
+  if (tc == NULL || tc->conv_type == TEXT_CONV_NO_CONVERSION)
+    {
+      printf ("\nNo console conversion for this locale.\n\n");
+      goto exit;
+    }
+
+  printf ("\nType: ");
+  if (tc->conv_type == TEXT_CONV_ISO_88591_BUILTIN
+      || tc->conv_type == TEXT_CONV_ISO_88599_BUILTIN)
+    {
+      printf ("built-in %s console to UTF-8 encoding \n",
+	      (tc->conv_type == TEXT_CONV_ISO_88591_BUILTIN) ? "ISO 8859-1"
+	      : "ISO 8859-9");
+    }
+  else
+    {
+      printf ("%s byte console to UTF-8 encoding \n",
+	      (tc->conv_type == TEXT_CONV_GENERIC_1BYTE) ? "single"
+	      : "double");
+    }
+
+  printf ("Windows codepages: %s\n", tc->win_codepages);
+  printf ("Linux LANG charset values: %s\n", tc->nl_lang_str);
+
+  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE
+      && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
+    {
+      goto exit;
+    }
+
+  printf ("\nConsole to UTF-8 conversion:\n");
+  printf ("Console codepoint -> Unicode codepoint | Character (UTF-8) \n");
+  for (con_cp = 0; con_cp <= tc->text_last_cp; con_cp++)
+    {
+      unsigned char dbcs_seq[2 + 1];
+      int dbcs_size;
+
+      if (tc->conv_type == TEXT_CONV_GENERIC_2BYTE && con_cp <= 0xff
+	  && tc->byte_flag[con_cp] != 0)
+	{
+	  printf ("%02X -> Undefined or leading byte\n", con_cp);
+	  continue;
+	}
+      utf8_cp = con_cp;
+
+      if (con_cp >= tc->text_first_cp)
+	{
+	  c_item = &(tc->text_to_utf8[con_cp - tc->text_first_cp]);
+	  utf8_cp = intl_utf8_to_cp (c_item->bytes, c_item->size, &next);
+	  assert ((unsigned char *) next - c_item->bytes == c_item->size);
+
+	  if (utf8_cp == 0x3f)
+	    {
+	      assert (con_cp != 0x3f);
+	      printf ("%04X -> Undefined codepoint\n", con_cp);
+	      continue;
+	    }
+
+	  utf8_size = intl_cp_to_utf8 (utf8_cp, utf8_seq);
+	  assert (utf8_size < sizeof (utf8_seq));
+	  utf8_seq[utf8_size] = '\0';
+
+	  char_to_print = (utf8_cp > 0x20) ? utf8_seq : "";
+
+	  dbcs_size = intl_cp_to_dbcs (con_cp, tc->byte_flag, dbcs_seq);
+	  dbcs_seq[dbcs_size] = '\0';
+
+	  cnv_utf8 = cnv_utf8_buf;
+	  utf8_size = sizeof (cnv_utf8_buf);
+
+	  if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
+	    {
+	      err = intl_text_single_byte_to_utf8_ext (tc, dbcs_seq,
+						       dbcs_size, &cnv_utf8,
+						       &utf8_size);
+	      assert (err == NO_ERROR);
+	    }
+	  else
+	    {
+	      if (dbcs_size == 2 && tc->byte_flag[dbcs_seq[0]] != 1)
+		{
+		  /* invalid console codepoint */
+		  cnv_utf8 = NULL;
+		}
+	      else
+		{
+		  err = intl_text_dbcs_to_utf8_ext (tc, dbcs_seq, dbcs_size,
+						    &cnv_utf8, &utf8_size);
+		  assert (err == NO_ERROR);
+		}
+	    }
+
+	  if (cnv_utf8 != NULL)
+	    {
+	      assert (utf8_size <= sizeof (cnv_utf8_buf));
+	      char_to_print = cnv_utf8;
+	    }
+	}
+      else
+	{
+	  utf8_size = intl_cp_to_utf8 (utf8_cp, utf8_seq);
+	  assert (utf8_size < sizeof (utf8_seq));
+	  utf8_seq[utf8_size] = '\0';
+
+	  char_to_print = (utf8_cp > 0x20) ? utf8_seq : "";
+	}
+
+      if (con_cp <= 0xff)
+	{
+	  printf ("%02X -> Ux%04X | %s\n", con_cp, utf8_cp, char_to_print);
+	}
+      else
+	{
+	  printf ("%04X -> Ux%04X | %s\n", con_cp, utf8_cp, char_to_print);
+	}
+    }
+
+  if (tc->text_last_cp
+      < ((tc->conv_type == TEXT_CONV_GENERIC_1BYTE) ? (unsigned int) 0xff
+	 : (unsigned int) 0xffff))
+    {
+      if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
+	{
+	  printf ("Range %02X - FF is not mapped\n", tc->text_last_cp + 1);
+	}
+      else
+	{
+	  printf ("Range %04X - FFFF is not mapped\n", tc->text_last_cp + 1);
+	}
+    }
+
+  printf ("\n\nUTF-8 to console conversion:\n");
+  printf ("Unicode codepoint [Unicode character] ->"
+	  " Console codepoint | Character (UTF-8 encoding)\n");
+  for (utf8_cp = 0; utf8_cp <= tc->utf8_last_cp; utf8_cp++)
+    {
+      if (utf8_cp > 0x20)
+	{
+	  utf8_size = intl_cp_to_utf8 (utf8_cp, utf8_seq);
+	  assert (utf8_size < sizeof (utf8_seq));
+	  utf8_seq[utf8_size] = '\0';
+	}
+      else
+	{
+	  utf8_seq[0] = ' ';
+	  utf8_seq[1] = '\0';
+	}
+
+      con_cp = utf8_cp;
+      char_to_print = utf8_seq;
+
+      if (utf8_cp >= tc->utf8_first_cp)
+	{
+	  c_item = &(tc->utf8_to_text[utf8_cp - tc->utf8_first_cp]);
+
+	  con_cp =
+	    intl_dbcs_to_cp (c_item->bytes, c_item->size, tc->byte_flag,
+			     &next);
+	  assert (next - c_item->bytes == c_item->size);
+
+	  if (con_cp == 0x3f)
+	    {
+	      assert (utf8_cp != 0x3f);
+	      printf ("Ux%04X [%s] -> Not mapped\n", utf8_cp, utf8_seq);
+	      continue;
+	    }
+
+	  cnv_utf8 = cnv_utf8_buf;
+	  utf8_size = sizeof (cnv_utf8_buf);
+
+	  if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
+	    {
+	      err = intl_text_single_byte_to_utf8_ext (tc, c_item->bytes,
+						       c_item->size,
+						       &cnv_utf8, &utf8_size);
+	      assert (err == NO_ERROR);
+	    }
+	  else
+	    {
+	      err = intl_text_dbcs_to_utf8_ext (tc, c_item->bytes,
+						c_item->size, &cnv_utf8,
+						&utf8_size);
+	      assert (err == NO_ERROR);
+	    }
+	  assert (utf8_size <= sizeof (cnv_utf8_buf));
+	  char_to_print = cnv_utf8 ? cnv_utf8 : utf8_seq;
+	}
+
+      if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
+	{
+	  printf ("Ux%04X [%s] -> %02X | %s\n", utf8_cp, utf8_seq, con_cp,
+		  char_to_print);
+	}
+      else
+	{
+	  printf ("Ux%04X [%s] -> %04X | %s\n", utf8_cp, utf8_seq, con_cp,
+		  char_to_print);
+	}
+    }
+
+  printf ("Codepoints above Ux%04X are not mapped\n", tc->utf8_last_cp);
+
+exit:
+  return 0;
+}
 
 /*
  * hash_to_string() - converts a 16 byte hash to the hex representation
@@ -7127,7 +7360,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
     {
       TEXT_CONVERSION *tc = &(ld->txt_conv);
 
-      input_size += sizeof (tc->first_lead_byte);
+      input_size += sizeof (tc->byte_flag);
       input_size += sizeof (tc->utf8_first_cp);
       input_size += sizeof (tc->utf8_last_cp);
       input_size += sizeof (tc->text_first_cp);
@@ -7240,8 +7473,8 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
     {
       TEXT_CONVERSION *tc = &(ld->txt_conv);
 
-      memcpy (buf_pos, &(tc->first_lead_byte), sizeof (tc->first_lead_byte));
-      buf_pos += sizeof (tc->first_lead_byte);
+      memcpy (buf_pos, tc->byte_flag, sizeof (tc->byte_flag));
+      buf_pos += sizeof (tc->byte_flag);
 
       memcpy (buf_pos, &(tc->utf8_first_cp), sizeof (tc->utf8_first_cp));
       buf_pos += sizeof (tc->utf8_first_cp);

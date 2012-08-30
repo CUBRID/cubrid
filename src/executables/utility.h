@@ -1212,6 +1212,8 @@ typedef struct _ha_config
 #define DUMPLOCALE_END_VALUE_L			"end-value"
 #define DUMPLOCALE_NORMALIZATION_S		'z'
 #define DUMPLOCALE_NORMALIZATION_L		"normalization"
+#define DUMPLOCALE_CONSOLE_CONV_S		'k'
+#define DUMPLOCALE_CONSOLE_CONV_L		"console-conversion"
 
 #define VERSION_S                               20000
 #define VERSION_L                               "version"

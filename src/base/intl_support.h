@@ -292,14 +292,14 @@ extern "C"
   extern int intl_cp_to_utf8 (const unsigned int codepoint,
 			      unsigned char *utf8_seq);
   extern int intl_cp_to_dbcs (const unsigned int codepoint,
-			      const unsigned char first_lead_byte,
+			      const unsigned char *byte_flag,
 			      unsigned char *seq);
   extern unsigned int intl_utf8_to_cp (const unsigned char *utf8,
 				       const int size,
 				       unsigned char **next_char);
   extern unsigned int intl_dbcs_to_cp (const unsigned char *seq,
 				       const int size,
-				       const unsigned char first_lead_byte,
+				       const unsigned char *byte_flag,
 				       unsigned char **next_char);
   extern int intl_utf8_to_cp_list (const unsigned char *utf8, const int size,
 				   unsigned int *cp_array,
@@ -308,11 +308,19 @@ extern "C"
   extern int intl_text_single_byte_to_utf8 (const char *in_buf,
 					    const int in_size, char **out_buf,
 					    int *out_size);
+  extern int intl_text_single_byte_to_utf8_ext (void *txt_conv,
+						const char *in_buf,
+						const int in_size,
+						char **out_buf,
+						int *out_size);
   extern int intl_text_utf8_to_single_byte (const char *in_buf,
 					    const int in_size, char **out_buf,
 					    int *out_size);
   extern int intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
 				     char **out_buf, int *out_size);
+  extern int intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf,
+					 const int in_size, char **out_buf,
+					 int *out_size);
   extern int intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
 				     char **out_buf, int *out_size);
   extern int intl_fast_iso88591_to_utf8 (const unsigned char *in_buf,

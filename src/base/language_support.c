@@ -962,14 +962,14 @@ init_user_locales (void)
 	    }
 	}
 
+      if (lang_get_generic_unicode_norm () == NULL
+	  && lld->unicode_norm.is_enabled)
+	{
+	  lang_set_generic_unicode_norm (&(lld->unicode_norm));
+	}
+
       if (is_new_locale)
 	{
-	  if (lang_get_generic_unicode_norm () == NULL
-	      && lld->unicode_norm.is_enabled)
-	    {
-	      lang_set_generic_unicode_norm (&(lld->unicode_norm));
-	    }
-
 	  er_status = register_lang_locale_data (lld);
 
 	  if (er_status != NO_ERROR)
@@ -4706,6 +4706,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
     }
   else
     {
+      unsigned char *is_lead_byte;
       assert (txt_conv_type == TEXT_CONV_GENERIC_1BYTE
 	      || txt_conv_type == TEXT_CONV_GENERIC_2BYTE);
 
@@ -4721,9 +4722,10 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 
       lld->txt_conv->conv_type = txt_conv_type;
 
-      SHLIB_GET_VAL (lld->txt_conv->first_lead_byte,
-		     "tc_first_lead_byte", unsigned char,
-		     lib_handle, lld->lang_name);
+      SHLIB_GET_ADDR (is_lead_byte,
+		      "tc_is_lead_byte", unsigned char *,
+		      lib_handle, lld->lang_name);
+      memcpy (lld->txt_conv->byte_flag, is_lead_byte, 256);
 
       SHLIB_GET_VAL (lld->txt_conv->utf8_first_cp,
 		     "tc_utf8_first_cp", unsigned int,

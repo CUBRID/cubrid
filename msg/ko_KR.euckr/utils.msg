@@ -969,5 +969,6 @@ valid options:\n\
   -e, --end-value     filtering option; ending codepoint for \n\
                       -a, --identifier-alphabet, -c, -w; \n\
                       default : maximum value read from locale shared library\n\
+  -k, --console-conversion  dump console conversion data; default : disable\n\
   -z, --normalization   dump normalization data; default : disable\n
 
