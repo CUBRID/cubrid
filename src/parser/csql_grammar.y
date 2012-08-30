@@ -6692,6 +6692,10 @@ merge_update_insert_clause
 	  merge_insert_clause
 		{{
 		DBG_PRINT}}
+	| merge_insert_clause
+	  merge_update_clause
+		{{
+		DBG_PRINT}}
 	;
 
 merge_update_clause
