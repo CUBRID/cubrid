@@ -137,7 +137,7 @@ public class CUBRIDDriver implements Driver {
 
 	public Connection connect(String url, Properties info) throws SQLException {
 	    if (!acceptsURL(url)) {
-		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+		return null;
 	    }
 
 	    if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
