@@ -7277,6 +7277,7 @@ pt_is_compatible_type (const PT_TYPE_ENUM
 	  case PT_TYPE_DOUBLE:
 	  case PT_TYPE_NUMERIC:
 	  case PT_TYPE_MONETARY:
+	  case PT_TYPE_LOGICAL:	/* logical is compatible with these types */
 	    is_compatible = true;
 	    break;
 	  default:

@@ -3668,6 +3668,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
     {
     case PT_TYPE_NONE:
       return "none";
+      /* treat PT_TYPE__LOGICAL as PT_TYPE_INTEGER */
+    case PT_TYPE_LOGICAL:
     case PT_TYPE_INTEGER:
       return "integer";
     case PT_TYPE_BIGINT:
@@ -3702,8 +3704,7 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "bit varying";
     case PT_TYPE_MONETARY:
       return "monetary";
-    case PT_TYPE_LOGICAL:
-      return "logical";
+
     case PT_TYPE_MAYBE:
       return "uncertain";
 
