@@ -42,6 +42,16 @@
 #include "db.h"
 #include "network_interface_cl.h"
 
+
+#define LOCK_TIMEOUT_ERROR(err)                                  \
+           ((err) == ER_LK_UNILATERALLY_ABORTED                  \
+            || (err) == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG          \
+            || (err) == ER_LK_OBJECT_TIMEOUT_CLASS_MSG           \
+            || (err) == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG         \
+            || (err) == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG       \
+            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG        \
+            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)
+
 static int pt_find_size_from_dbtype (const DB_TYPE T_type);
 static int pt_arity_of_query_type (const DB_QUERY_TYPE * qt);
 static char *pt_get_attr_name (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -295,26 +305,31 @@ pt_report_to_ersys (const PARSER_CONTEXT * parser,
 		    const PT_ERROR_TYPE error_type)
 {
   PT_NODE *error_node;
+  int err;
   char buf[1000];
 
   error_node = parser->error_msgs;
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
-      switch (error_type)
+      err = er_errid ();
+      if (!LOCK_TIMEOUT_ERROR (err))
 	{
-	case PT_SYNTAX:
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SYNTAX, 2,
-		  error_node->info.error_msg.error_message, "");
-	  break;
-	case PT_SEMANTIC:
-	default:
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2,
-		  error_node->info.error_msg.error_message, "");
-	  break;
-	case PT_EXECUTION:
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2,
-		  error_node->info.error_msg.error_message, "");
-	  break;
+	  switch (error_type)
+	    {
+	    case PT_SYNTAX:
+	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SYNTAX,
+		      2, error_node->info.error_msg.error_message, "");
+	      break;
+	    case PT_SEMANTIC:
+	    default:
+	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC,
+		      2, error_node->info.error_msg.error_message, "");
+	      break;
+	    case PT_EXECUTION:
+	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE,
+		      2, error_node->info.error_msg.error_message, "");
+	      break;
+	    }
 	}
       return;
     }
@@ -343,6 +358,7 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
   PT_NODE *error_node;
   char buf[1000];
   char *stmt_string = NULL;
+  int err;
 
   if (parser == NULL)
     {
@@ -360,21 +376,28 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
     stmt_string = (char *) "";
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
-      switch (error_type)
+      err = er_errid ();
+      if (!LOCK_TIMEOUT_ERROR (err))
 	{
-	case PT_SYNTAX:
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SYNTAX, 2,
-		  error_node->info.error_msg.error_message, stmt_string);
-	  break;
-	case PT_SEMANTIC:
-	default:
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2,
-		  error_node->info.error_msg.error_message, stmt_string);
-	  break;
-	case PT_EXECUTION:
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2,
-		  error_node->info.error_msg.error_message, stmt_string);
-	  break;
+	  switch (error_type)
+	    {
+	    case PT_SYNTAX:
+	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SYNTAX,
+		      2, error_node->info.error_msg.error_message,
+		      stmt_string);
+	      break;
+	    case PT_SEMANTIC:
+	    default:
+	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC,
+		      2, error_node->info.error_msg.error_message,
+		      stmt_string);
+	      break;
+	    case PT_EXECUTION:
+	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE,
+		      2, error_node->info.error_msg.error_message,
+		      stmt_string);
+	      break;
+	    }
 	}
       return;
     }
