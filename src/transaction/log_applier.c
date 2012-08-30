@@ -4957,10 +4957,17 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_DROP_TRIGGER:
     case CUBRID_STMT_REMOVE_TRIGGER:
     case CUBRID_STMT_SET_TRIGGER:
+
+      /* 
+       * When we create the schema objects, the object's owner must be changed
+       * to the appropriate owner. 
+       * Special alter statement, non partitioned -> partitioned is the same.
+       */
       if ((item->item_type == CUBRID_STMT_CREATE_CLASS
 	   || item->item_type == CUBRID_STMT_CREATE_SERIAL
 	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE
-	   || item->item_type == CUBRID_STMT_CREATE_TRIGGER)
+	   || item->item_type == CUBRID_STMT_CREATE_TRIGGER
+	   || item->item_type == CUBRID_STMT_ALTER_CLASS)
 	  && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
