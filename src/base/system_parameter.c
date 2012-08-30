@@ -3467,8 +3467,19 @@ prm_calc_pages_by_size (const char *size, const char *page, PGLENGTH len)
   if (PRM_IS_SET (size_prm->flag))
     {
       size_value = PRM_GET_SIZE (size_prm->value);
-      page_value = (int) (size_value / len);
-      snprintf (newval, LINE_MAX, "%d", page_value);
+
+      if (page_prm->datatype == PRM_FLOAT)
+	{
+	  snprintf (newval, LINE_MAX, "%.2f", (float) size_value / len);
+	}
+      else
+	{
+	  assert (page_prm->datatype == PRM_INTEGER);
+
+	  page_value = (int) (size_value / len);
+	  snprintf (newval, LINE_MAX, "%d", page_value);
+	}
+
       if (prm_set (page_prm, newval, false) != NO_ERROR)
 	{
 	  return PRM_ERR_BAD_VALUE;
