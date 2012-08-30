@@ -153,6 +153,7 @@ static MATCH_STATUS partition_prune_db_val (PRUNING_CONTEXT * pinfo,
 					    const DB_VALUE * val,
 					    const PRUNING_OP op,
 					    PRUNING_BITSET * pruned);
+static bool partition_is_reguvar_constant (const REGU_VARIABLE * regu_var);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo,
 					 const REGU_VARIABLE * key,
 					 DB_VALUE * attr_key,
@@ -1670,6 +1671,53 @@ error:
   return ER_FAILED;
 }
 
+/*
+ * partition_is_reguvar_const () - test if a regu_variable is a constant
+ * return : true if constant, false otherwise
+ * regu_var (in) :
+ */
+static bool
+partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
+{
+  if (regu_var == NULL)
+    {
+      return false;
+    }
+  switch (regu_var->type)
+    {
+    case TYPE_DBVAL:
+    case TYPE_POS_VALUE:
+    case TYPE_REGUVAL_LIST:
+      return true;
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      {
+	ARITH_TYPE *arithptr = regu_var->value.arithptr;
+	if (arithptr->leftptr != NULL
+	    && !partition_is_reguvar_const (arithptr->leftptr))
+	  {
+	    return false;
+	  }
+	if (arithptr->rightptr != NULL
+	    && !partition_is_reguvar_const (arithptr->rightptr))
+	  {
+	    return false;
+	  }
+
+	if (arithptr->thirdptr != NULL
+	    && !partition_is_reguvar_const (arithptr->thirdptr))
+	  {
+	    return false;
+	  }
+	/* either all arguments are constants of this is an expression with
+	 * no arguments
+	 */
+	return true;
+      }
+    default:
+      return false;
+    }
+}
 
 /*
  * partition_get_value_from_key () - get a value from an index key
@@ -1746,7 +1794,10 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo,
 	  }
 	break;
       }
-
+    case TYPE_INARITH:
+      error =
+	partition_get_value_from_regu_var (pinfo, key, attr_key, is_present);
+      break;
     default:
       assert (false);
 
@@ -1784,48 +1835,31 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo,
   assert_release (src != NULL && value_p != NULL);
   assert_release (src->type == TYPE_INARITH);
 
+  *is_value = false;
   DB_MAKE_NULL (value_p);
 
-  arithptr = src->value.arithptr;
-  switch (arithptr->opcode)
+  if (!partition_is_reguvar_const (src))
     {
-    case T_SYS_DATE:
-    case T_SYS_TIME:
-    case T_SYS_TIMESTAMP:
-    case T_UTC_TIME:
-    case T_UTC_DATE:
-      /* backup arithptr value */
-      val_backup = arithptr->value;
-      arithptr->value = value_p;
-
-      error = fetch_peek_dbval (pinfo->thread_p, (REGU_VARIABLE *) src,
-				pinfo->vd, NULL, NULL, NULL, &peek_val);
-      if (error != NO_ERROR)
-	{
-	  *is_value = false;
-	  DB_MAKE_NULL (value_p);
-	}
-      else
-	{
-	  *is_value = true;
-	}
-
-      /* restore arithptr */
-      arithptr->value = val_backup;
-      break;
-
-    case T_CAST:
-    case T_CAST_NOFAIL:
-      break;
-
-    default:
-      DB_MAKE_NULL (value_p);
-
-      *is_value = false;
-      break;
+      return NO_ERROR;
     }
 
-  return error;
+  error = fetch_peek_dbval (pinfo->thread_p, (REGU_VARIABLE *) src,
+			    pinfo->vd, NULL, NULL, NULL, &peek_val);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* peek_val will be cleared when scanning is performed on this REGU_VAR */
+  error = pr_clone_value (peek_val, value_p);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  *is_value = true;
+
+  return NO_ERROR;
 }
 
 /*
