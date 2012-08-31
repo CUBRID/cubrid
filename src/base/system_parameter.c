@@ -3111,6 +3111,10 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
 #endif /* !CS_MODE */
 
+#if !defined (SERVER_MODE)
+  prm_init_intl_param ();
+#endif
+
   /*
    * Read installation configuration file - $CUBRID/conf/cubrid.conf
    * or use conf_file if exist
@@ -3260,7 +3264,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 
   intl_Mbs_support = prm_get_bool_value (PRM_ID_INTL_MBS_SUPPORT);
 #if !defined (SERVER_MODE)
-  prm_init_intl_param ();
+  intl_String_validation =
+    prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
 #endif
 
   return NO_ERROR;
@@ -8068,8 +8073,5 @@ prm_init_intl_param (void)
       PRM_CLEAR_BIT (PRM_ALLOCATED, prm_number_lang->flag);
       prm_set (prm_number_lang, lang_get_Lang_name (), true);
     }
-
-  intl_String_validation =
-    prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
 }
 #endif
