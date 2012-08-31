@@ -4593,6 +4593,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	  int pad_size = 0, trimmed_length = 0, trimmed_size = 0;
 	  int char_count = 0;
 	  unsigned char pad[8];
+	  DB_DOMAIN *domain = NULL;
 
 	  if (def->data_type == NULL
 	      || def->data_type->info.data_type.enumeration == NULL)
@@ -4644,13 +4645,27 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    }
 
 	  /* check that number of elements is lower or equal than
-	     DB_UINT16_MAX */
-	  if (count > DB_UINT16_MAX)
+	     DB_ENUM_ELEMENTS_MAX */
+	  if (count > DB_ENUM_ELEMENTS_MAX)
 	    {
 	      PT_ERRORmf2 (parser, def,
 			   MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_ENUM_TYPE_TOO_MANY_VALUES,
-			   count, DB_UINT16_MAX);
+			   count, DB_ENUM_ELEMENTS_MAX);
+	    }
+
+	  /* check that the aggregate size of the ENUM elements is not greater
+	     than DB_ENUM_ELEMENTS_MAX_AGG_SIZE */
+	  domain = pt_data_type_to_db_domain (parser, def->data_type, NULL);
+	  if (domain != NULL)
+	    {
+	      count = or_packed_domain_size (domain, 0);
+	      if (count > DB_ENUM_ELEMENTS_MAX_AGG_SIZE)
+		{
+		  PT_ERRORm (parser, def,
+			     MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_ENUM_AGG_STRINGS_SIZE_TOO_LARGE);
+		}
 	    }
 
 	  /* check duplicates */

@@ -47,14 +47,6 @@
  */
 #define BTREE_CURRENT_REV_LEVEL 0
 
-#define NON_LEAF_RECORD_SIZE (2 * OR_INT_SIZE)	/* Non_Leaf Node Record Size */
-#define LEAF_RECORD_SIZE (2 * OR_INT_SIZE)	/* Leaf Node Record Size */
-#define STAT_INFO_SIZE (sizeof( BTREE_STAT_INFO))
-#define SPLIT_INFO_SIZE (sizeof(BTREE_NODE_SPLIT_INFO))
-
-#define DISK_VFID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
-#define DISK_VPID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
-
 /* each index page is supposed to be left empty as indicated by the
  * UNFILL FACTOR during index loading phase.
  */
@@ -110,77 +102,7 @@
 #define BTREE_NON_LEAF_NODE 	((short)1)
 #define BTREE_OVERFLOW_NODE   ((short)2)
 
-/* offset values to access fields */
-#define BTREE_NODE_TYPE_SIZE            OR_SHORT_SIZE
-#define BTREE_NODE_KEY_CNT_SIZE         OR_SHORT_SIZE
-#define BTREE_NODE_MAX_KEY_LEN_SIZE     OR_SHORT_SIZE
-#define BTREE_NODE_NEXT_VPID_SIZE       DISK_VPID_SIZE	/* SHORT + INT */
-#define BTREE_NODE_PREV_VPID_SIZE       DISK_VPID_SIZE	/* SHORT + INT */
-#define BTREE_NODE_PADDING_SIZE         OR_SHORT_SIZE
-#define BTREE_NODE_SPLIT_INFO_SIZE      SPLIT_INFO_SIZE
-
-#define BTREE_NUM_OIDS_SIZE             OR_INT_SIZE
-#define BTREE_NUM_NULLS_SIZE            OR_INT_SIZE
-#define BTREE_NUM_KEYS_SIZE             OR_INT_SIZE
-#define BTREE_TOPCLASS_OID_SIZE         OR_OID_SIZE
-#define BTREE_UNIQUE_SIZE               OR_INT_SIZE
-#define BTREE_REVERSE_SIZE              OR_INT_SIZE
-#define BTREE_REV_LEVEL_SIZE            OR_INT_SIZE
-#define BTREE_OVFID_SIZE                DISK_VFID_SIZE	/* INT + SHORT */
-#define BTREE_RESERVED_SIZE             OR_SHORT_SIZE	/* currently, unused */
-
-#define BTREE_NODE_TYPE_OFFSET          (0)
-
-#define BTREE_NODE_KEY_CNT_OFFSET \
-  (BTREE_NODE_TYPE_OFFSET + BTREE_NODE_TYPE_SIZE)
-
-#define BTREE_NODE_MAX_KEY_LEN_OFFSET \
-  (BTREE_NODE_KEY_CNT_OFFSET + BTREE_NODE_KEY_CNT_SIZE)
-
-#define BTREE_NODE_NEXT_VPID_OFFSET \
-  (BTREE_NODE_MAX_KEY_LEN_OFFSET + BTREE_NODE_MAX_KEY_LEN_SIZE)
-
-#define BTREE_NODE_PREV_VPID_OFFSET \
-  (BTREE_NODE_NEXT_VPID_OFFSET + BTREE_NODE_NEXT_VPID_SIZE)
-
-#define BTREE_NODE_PADDING_OFFSET \
-  (BTREE_NODE_PREV_VPID_OFFSET + BTREE_NODE_PREV_VPID_SIZE)
-
-#define BTREE_NODE_SPLIT_INFO_OFFSET \
-  (BTREE_NODE_PADDING_OFFSET + BTREE_NODE_PADDING_SIZE)
-
-#define BTREE_NUM_OIDS_OFFSET \
-  (BTREE_NODE_SPLIT_INFO_OFFSET + BTREE_NODE_SPLIT_INFO_SIZE)
-
-#define BTREE_NUM_NULLS_OFFSET \
-  (BTREE_NUM_OIDS_OFFSET + BTREE_NUM_OIDS_SIZE)
-
-#define BTREE_NUM_KEYS_OFFSET \
-  (BTREE_NUM_NULLS_OFFSET + BTREE_NUM_NULLS_SIZE)
-
-#define BTREE_TOPCLASS_OID_OFFSET \
-  (BTREE_NUM_KEYS_OFFSET + BTREE_NUM_KEYS_SIZE)
-
-#define BTREE_UNIQUE_OFFSET \
-  (BTREE_TOPCLASS_OID_OFFSET + BTREE_TOPCLASS_OID_SIZE)
-
-#define BTREE_REVERSE_RESERVED_OFFSET \
-  (BTREE_UNIQUE_OFFSET + BTREE_UNIQUE_SIZE)
-
-#define BTREE_REV_LEVEL_OFFSET \
-  (BTREE_REVERSE_RESERVED_OFFSET + BTREE_REVERSE_SIZE)
-
-#define BTREE_OVFID_OFFSET \
-  (BTREE_REV_LEVEL_OFFSET + BTREE_REV_LEVEL_SIZE)
-
-#define BTREE_RESERVED_OFFSET \
-  (BTREE_OVFID_OFFSET + BTREE_OVFID_SIZE)
-
-#define BTREE_KEY_TYPE_OFFSET \
-  (BTREE_RESERVED_OFFSET + BTREE_RESERVED_SIZE)
-
 #define NODE_HEADER_SIZE       BTREE_NUM_OIDS_OFFSET	/* Node Header Disk Size */
-#define ROOT_HEADER_FIXED_SIZE BTREE_KEY_TYPE_OFFSET
 
 /* readers/writers for fields */
 #define BTREE_GET_NODE_TYPE(ptr) \
@@ -349,13 +271,6 @@
  * Type definitions related to b+tree structure and operations
  */
 
-typedef struct btree_node_split_info BTREE_NODE_SPLIT_INFO;
-struct btree_node_split_info
-{
-  float pivot;			/* pivot = split_slot_id / num_keys */
-  int index;			/* number of key insert after node split */
-};
-
 typedef struct btree_node_header BTREE_NODE_HEADER;
 struct btree_node_header
 {				/*  Node header information  */
@@ -445,8 +360,8 @@ extern void btree_read_overflow_header (RECDES * Rec,
 #endif
 extern void btree_write_node_header (RECDES * Rec,
 				     BTREE_NODE_HEADER * header);
-extern void btree_write_root_header (RECDES * Rec,
-				     BTREE_ROOT_HEADER * root_header);
+extern int btree_write_root_header (RECDES * Rec,
+				    BTREE_ROOT_HEADER * root_header);
 extern void btree_read_root_header (RECDES * Rec,
 				    BTREE_ROOT_HEADER * root_header);
 extern int btree_get_key_length (DB_VALUE *);

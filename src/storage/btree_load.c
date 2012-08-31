@@ -1287,7 +1287,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
   temp_recdes.area_size = DB_PAGESIZE;
   temp_recdes.data = temp_data;
-  btree_write_root_header (&temp_recdes, &root_header);
+  if (btree_write_root_header (&temp_recdes, &root_header) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   sp_success = spage_update (thread_p, load_args->nleaf.pgptr, HEADER,
 			     &temp_recdes);

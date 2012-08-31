@@ -819,10 +819,11 @@ btree_read_node_header (RECDES * rec, BTREE_NODE_HEADER * header)
  * Note: Writes the first record (header record) for a root page.
  * rec must be long enough to hold the header record.
  */
-void
+int
 btree_write_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
 {
   OR_BUF buf;
+  int rc = NO_ERROR;
 
   btree_write_node_header (rec, &root_header->node);
 
@@ -835,11 +836,22 @@ btree_write_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
   BTREE_PUT_REV_LEVEL (rec->data, root_header->rev_level);
   BTREE_PUT_OVFID (rec->data, &root_header->ovfid);
 
-  or_init (&buf, rec->data + BTREE_KEY_TYPE_OFFSET, -1);
-  or_put_domain (&buf, root_header->key_type, 0, 0);
+  or_init (&buf, rec->data + BTREE_KEY_TYPE_OFFSET,
+	   rec->area_size ==
+	   -1 ? -1 : rec->area_size - BTREE_KEY_TYPE_OFFSET);
+  rc = or_put_domain (&buf, root_header->key_type, 0, 0);
 
   rec->type = REC_HOME;
   rec->length = ROOT_HEADER_FIXED_SIZE + CAST_BUFLEN (buf.ptr - buf.buffer);
+
+  if (rc != NO_ERROR && er_errid () == NO_ERROR)
+    {
+      /* if an error occurs then set a generic error so that at least
+         an error to be send to client. */
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
+
+  return rc;
 }
 
 /*
@@ -2561,7 +2573,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
-  btree_write_root_header (&rec, &root_header);
+  if (btree_write_root_header (&rec, &root_header) != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* insert the root header information into the root page */
   if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
     {
@@ -7390,7 +7406,11 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	      /* update the root header */
 	      root_header.num_nulls--;
 	      root_header.num_oids--;
-	      btree_write_root_header (&copy_rec, &root_header);
+	      if (btree_write_root_header (&copy_rec, &root_header) !=
+		  NO_ERROR)
+		{
+		  goto error;
+		}
 
 	      log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
 					 &btid->vfid, P, HEADER,
@@ -7457,7 +7477,10 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  /* update the root header */
 	  root_header.num_oids--;
 	  root_header.num_keys--;	/* guess existing key delete */
-	  btree_write_root_header (&copy_rec, &root_header);
+	  if (btree_write_root_header (&copy_rec, &root_header) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 
 	  log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
 				     &btid->vfid, P, HEADER, copy_rec1.length,
@@ -11271,7 +11294,11 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       /* update the root header */
       VFID_COPY (&root_header.ovfid, &btid_int.ovfid);
-      btree_write_root_header (&peek_rec, &root_header);
+      if (btree_write_root_header (&peek_rec, &root_header) != NO_ERROR)
+	{
+	  goto error;
+	}
+
       if (spage_update (thread_p, P, HEADER, &peek_rec) != SP_SUCCESS)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
@@ -11308,7 +11335,10 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       max_key = key_len_in_page;
 
       /* update the root header */
-      btree_write_root_header (&copy_rec, &root_header);
+      if (btree_write_root_header (&copy_rec, &root_header) != NO_ERROR)
+	{
+	  goto error;
+	}
 
       log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD, &btid->vfid,
 				 P, HEADER, copy_rec1.length, copy_rec.length,
@@ -11356,7 +11386,11 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 				       0, &copy_rec1);
 
 	      /* update the root header */
-	      btree_write_root_header (&copy_rec, &root_header);
+	      if (btree_write_root_header (&copy_rec, &root_header) !=
+		  NO_ERROR)
+		{
+		  goto error;
+		}
 
 	      log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
 					 &btid->vfid, P, HEADER,
@@ -11424,7 +11458,10 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  /* update the root header */
 	  root_header.num_oids++;
 	  root_header.num_keys++;	/* guess new key insert */
-	  btree_write_root_header (&copy_rec, &root_header);
+	  if (btree_write_root_header (&copy_rec, &root_header) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 
 	  log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
 				     &btid->vfid, P, HEADER, copy_rec1.length,
@@ -12727,7 +12764,10 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
 			       -(unique_stat_info->num_keys), &undo_rec);
 
       /* update the root header */
-      btree_write_root_header (&redo_rec, &root_header);
+      if (btree_write_root_header (&redo_rec, &root_header) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
 
       /* log the update with undo-redo record */
       log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,

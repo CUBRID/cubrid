@@ -1576,6 +1576,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 261 Query must evaluate to a single value\n(%s).
 262 Nested analytic functions are not allowed.
 263 An inherited attribute cannot be used as the partitioning key.
+264 The aggregate size of enumeration elements is too large.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
