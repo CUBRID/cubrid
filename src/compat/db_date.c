@@ -2867,6 +2867,19 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 
 	      if (p)
 		{
+		  while (p < strend && char_isspace (*p))
+		    {
+		      p++;
+		    }
+
+		  /* if there is one non-space character in remaining characters */
+		  if (p != strend)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_TIME_CONVERSION, 0);
+		      return ER_TIME_CONVERSION;
+		    }
+
 		  if (year_digits >= 3 || (time_parts >= 2 && year_digits))
 		    {
 		      *time = mtime / 1000;
