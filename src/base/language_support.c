@@ -2800,6 +2800,16 @@ lang_get_uca_w_l4 (const COLL_DATA * coll_data,
     }
 }
 
+/* retrieve UCA weight level:
+ * l = level
+ * i = position weight array
+ * l13w = array of compressed weight for levels 1,2,3
+ * l4w = array of weight level 4
+ */
+#define GET_UCA_WEIGHT(l, i, l13w, l4w)		\
+  ((l == 0) ? (UCA_GET_L1_W (l13w[i])) :	\
+   (l == 1) ? (UCA_GET_L2_W (l13w[i])) :	\
+   (l == 2) ? (UCA_GET_L3_W (l13w[i])) : (l4w[i]))
 
 /*
  * lang_strcmp_utf8_uca_w_level() - string compare for UTF8 for a locale using
@@ -2836,6 +2846,7 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
   int result = 0;
 
   assert (offset != NULL && *offset > -1);
+  assert (level >= 0 && level <= 4);
 
   str1_end = str1 + size1;
   str2_end = str2 + size2;
@@ -2937,32 +2948,63 @@ lang_strcmp_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 	}
 
     compare:
-      if ((num_ce1 == 0 && str1 >= str1_end)
-	  || (num_ce2 == 0 && str2 >= str2_end))
+      if (num_ce1 == 0 && str1 >= str1_end)
 	{
-	  break;
+	  /* str1 was consumed */
+	  if (num_ce2 == 0)
+	    {
+	      if (str2 >= str2_end)
+		{
+		  /* both strings consumed and equal */
+		  assert (result == 0);
+		  goto exit;
+		}
+	      else
+		{
+		  goto read_weights2;
+		}
+	    }
+
+	  assert (num_ce2 > 0);
+	  /* consume any remaining zero-weight values (skip them) from str2 */
+	  do
+	    {
+	      w2 = GET_UCA_WEIGHT (level, ce_index2, uca_w_l13_2, uca_w_l4_2);
+	      if (w2 != 0)
+		{
+		  /* non-zero weight : strings are not equal */
+		  result = -1;
+		  goto exit;
+		}
+	      ce_index2++;
+	      num_ce2--;
+	    }
+	  while (num_ce2 > 0);
+
+	  goto read_weights2;
 	}
 
-      if (level == 0)
+      if (num_ce2 == 0 && str2 >= str2_end)
 	{
-	  w1 = UCA_GET_L1_W (uca_w_l13_1[ce_index1]);
-	  w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
+	  /* consume any remaining zero-weight values (skip them) from str1 */
+	  while (num_ce1 > 0)
+	    {
+	      w1 = GET_UCA_WEIGHT (level, ce_index1, uca_w_l13_1, uca_w_l4_1);
+	      if (w1 != 0)
+		{
+		  /* non-zero weight : strings are not equal */
+		  result = 1;
+		  goto exit;
+		}
+	      ce_index1++;
+	      num_ce1--;
+	    }
+
+	  goto read_weights1;
 	}
-      else if (level == 1)
-	{
-	  w1 = UCA_GET_L2_W (uca_w_l13_1[ce_index1]);
-	  w2 = UCA_GET_L2_W (uca_w_l13_2[ce_index2]);
-	}
-      else if (level == 2)
-	{
-	  w1 = UCA_GET_L3_W (uca_w_l13_1[ce_index1]);
-	  w2 = UCA_GET_L3_W (uca_w_l13_2[ce_index2]);
-	}
-      else if (level == 3)
-	{
-	  w1 = uca_w_l4_1[ce_index1];
-	  w2 = uca_w_l4_2[ce_index2];
-	}
+
+      w1 = GET_UCA_WEIGHT (level, ce_index1, uca_w_l13_1, uca_w_l4_1);
+      w2 = GET_UCA_WEIGHT (level, ce_index2, uca_w_l13_2, uca_w_l4_2);
 
       /* ignore zero weights (unless character is space) */
       if (w1 == 0 && *str1 != 0x20)
