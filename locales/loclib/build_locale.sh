@@ -41,12 +41,12 @@ fi
 if [ "$1" = "64bit" ]
 then
 gcc $DBG_PARAM -m64 -Wall -fPIC -c locale.c
-gcc -m64 -shared -Wl -o libcubrid_$3.so locale.o
+gcc -m64 -shared -o libcubrid_$3.so locale.o
 else
 if [ "$1" = "32bit" ]
 then
 gcc $DBG_PARAM -m32 -Wall -fPIC -c locale.c
-gcc -m32 -shared -Wl -o libcubrid_$3.so locale.o
+gcc -m32 -shared -o libcubrid_$3.so locale.o
 else
 show_usage
 exit 1

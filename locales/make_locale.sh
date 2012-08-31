@@ -126,12 +126,8 @@ echo "Done."
 cd $current_dir
 fi
 
-echo "Copying $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so to $CUBRID/lib"
-cp $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so $CUBRID/lib/libcubrid_$SELECTED_LOCALE.so
-echo "Done."
-
-echo "Removing shared object $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so"
-rm -f $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so
+echo "Moving $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so to $CUBRID/lib"
+mv -f $CUBRID/locales/loclib/libcubrid_$SELECTED_LOCALE.so $CUBRID/lib/libcubrid_$SELECTED_LOCALE.so
 echo "Done."
 
 echo "Removing locale C source file $CUBRID/locales/loclib/locale.c"
