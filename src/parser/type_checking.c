@@ -20381,7 +20381,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (!force_mode
 	      && (node->data_type->info.data_type.collation_id != coll_id)
 	      && (node->node_type != PT_EXPR
-		  || node->info.expr.op != PT_CAST))
+		  || node->info.expr.op != PT_CAST)
+	      && (node->node_type != PT_HOST_VAR))
 	    {
 	      PT_NODE *dt = parser_copy_tree_list (parser, node->data_type);
 
