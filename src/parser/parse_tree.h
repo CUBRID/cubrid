@@ -48,7 +48,7 @@
 
 
 #define PT_ERRORc( parser, node, msg ) \
-    pt_frob_error( parser, node, msg )
+    pt_frob_error( parser, node, "%s", msg )
 
 #define PT_ERRORf( parser, node, msg, arg1) \
     pt_frob_error( parser, node, msg, arg1 )
