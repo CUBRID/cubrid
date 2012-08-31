@@ -8883,6 +8883,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
+      parser->custom_print &= ~PT_PRINT_ALIAS;
       if (p->info.spec.range_var
 	  && p->info.spec.range_var->info.name.original
 	  && p->info.spec.range_var->info.name.original[0])
@@ -13383,6 +13384,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
   bool is_first_list;
+  unsigned int save_custom;
+  PT_NODE *from = NULL, *derived_table = NULL;
 
   if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IDX_SCHEMA))
     {
@@ -13657,9 +13660,28 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
 
-      if (p->info.query.q.select.from)
+      from = p->info.query.q.select.from;
+      if (from != NULL)
 	{
-	  r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
+	  /* for derived_table alias should be printed
+	   * e.g.
+	   *    create table t2(id int primary key)
+	   *         as select id from (select count(*) id from t1)
+	   */
+	  derived_table = from->info.spec.derived_table;
+	  if (derived_table != NULL)
+	    {
+	      save_custom = parser->custom_print;
+	      parser->custom_print |= PT_PRINT_ALIAS;
+	    }
+
+	  r1 = pt_print_bytes_spec_list (parser, from);
+
+	  if (derived_table != NULL)
+	    {
+	      parser->custom_print = save_custom;
+	    }
+
 	  q = pt_append_nulstring (parser, q, " from ");
 	  q = pt_append_varchar (parser, q, r1);
 	}
