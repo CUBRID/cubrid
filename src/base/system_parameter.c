@@ -683,12 +683,12 @@ UINT64 PRM_LOG_BUFFER_SIZE = 2097152;
 static UINT64 prm_log_buffer_size_default = 2097152;
 static UINT64 prm_log_buffer_size_lower = 196608;
 
-int PRM_LOG_CHECKPOINT_NPAGES = 10000;
-static int prm_log_checkpoint_npages_default = 10000;
+int PRM_LOG_CHECKPOINT_NPAGES = 100000;
+static int prm_log_checkpoint_npages_default = 100000;
 static int prm_log_checkpoint_npages_lower = 10;
 
-int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES = 720;
-static int prm_log_checkpoint_interval_minutes_default = 720;
+int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES = 60;
+static int prm_log_checkpoint_interval_minutes_default = 60;
 static int prm_log_checkpoint_interval_minutes_lower = 1;
 
 int PRM_LOG_CHECKPOINT_SLEEP_MSECS = 1;
