@@ -489,54 +489,132 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
   return -1;
 }
 
+BOOL SetPrivilege( HANDLE hToken, LPCTSTR lpszPrivilege,BOOL bEnablePrivilege)
+{
+    TOKEN_PRIVILEGES tp;
+    LUID luid;
+
+    /* receives LUID of privilege */
+    if ( !LookupPrivilegeValue(NULL, lpszPrivilege, &luid ) )
+    {
+        return FALSE;
+    }
+
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;
+    if (bEnablePrivilege)
+    {
+        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+     }
+    else
+    {
+        tp.Privileges[0].Attributes = 0;
+    }
+
+    if ( !AdjustTokenPrivileges( hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL))
+    {
+          return FALSE;
+    }
+
+    if (GetLastError() == ERROR_NOT_ALL_ASSIGNED)
+    {
+          return FALSE;
+    }
+
+    return TRUE;
+}
+
 int
 cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 {
-  ULARGE_INTEGER lk, lu;
-  FILETIME dummy1, dummy2, kt, ut;
-  PROCESS_MEMORY_COUNTERS pmc;
-  MEMORYSTATUSEX ms;
-  HANDLE hProcess;
+    ULARGE_INTEGER lk, lu;
+    FILETIME dummy1, dummy2, kt, ut;
+    PROCESS_MEMORY_COUNTERS pmc;
+    MEMORYSTATUSEX ms;
+    HANDLE hProcess = NULL, hToken = NULL;
+    int ret = 0;
 
-  stat->pid = pid;
-
-  /* get pseudo process handle, that no need close */
-  hProcess = GetCurrentProcess ();
-
-  if (!GetProcessTimes (hProcess, &dummy1, &dummy2, &kt, &ut))
+    stat->pid = pid;
+    if(!OpenThreadToken(GetCurrentThread(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, FALSE, &hToken))
     {
-      return -1;
+        if (GetLastError() == ERROR_NO_TOKEN)
+        {
+            if (!ImpersonateSelf(SecurityImpersonation))
+            {
+                return -1;
+            }
+
+            if(!OpenThreadToken(GetCurrentThread(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, FALSE, &hToken))
+            {
+                return -1;
+            }
+        }
+        else
+        {
+            return -1;
+        }
     }
 
-  lk.HighPart = kt.dwHighDateTime;
-  lk.LowPart = kt.dwLowDateTime;
-  lu.HighPart = ut.dwHighDateTime;
-  lu.LowPart = ut.dwLowDateTime;
-
-  stat->cpu_kernel = lk.QuadPart;
-  stat->cpu_user = lu.QuadPart;
-
-  memset (&pmc, 0, sizeof (pmc));
-  pmc.cb = sizeof (pmc);
-
-  if (!GetProcessMemoryInfo (GetCurrentProcess (), &pmc, sizeof (pmc)))
+    /* enable SeDebugPrivilege */
+    if(!SetPrivilege(hToken, SE_DEBUG_NAME, TRUE))
     {
-      return -1;
+        ret = -1;
+        goto error_exit;
     }
 
-  stat->mem_physical = pmc.WorkingSetSize;
-
-  memset (&ms, 0, sizeof (ms));
-  ms.dwLength = sizeof (ms);
-
-  if (!GlobalMemoryStatusEx (&ms))
+    hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+    if (hProcess == NULL)
     {
-      return -1;
+        ret = -1;
+        goto error_exit;
     }
 
-  stat->mem_virtual = ms.ullTotalVirtual - ms.ullAvailVirtual;
+    if (!GetProcessTimes (hProcess, &dummy1, &dummy2, &kt, &ut))
+    {
+        ret = -1;
+        goto error_exit;
+    }
 
-  return 0;
+    lk.HighPart = kt.dwHighDateTime;
+    lk.LowPart = kt.dwLowDateTime;
+    lu.HighPart = ut.dwHighDateTime;
+    lu.LowPart = ut.dwLowDateTime;
+
+    stat->cpu_kernel = lk.QuadPart;
+    stat->cpu_user = lu.QuadPart;
+
+    memset (&pmc, 0, sizeof (pmc));
+    pmc.cb = sizeof (pmc);
+
+    if (!GetProcessMemoryInfo (hProcess, &pmc, sizeof (pmc)))
+    {
+        ret = -1;
+        goto error_exit;
+    }
+
+    stat->mem_physical = pmc.WorkingSetSize;
+
+    memset (&ms, 0, sizeof (ms));
+    ms.dwLength = sizeof (ms);
+
+    if (!GlobalMemoryStatusEx (&ms))
+    {
+        ret = -1;
+        goto error_exit;
+    }
+
+    stat->mem_virtual = ms.ullTotalVirtual - ms.ullAvailVirtual;
+
+error_exit:
+    if (hProcess != NULL)
+    {
+        CloseHandle( hProcess );
+    }
+    if (hToken != NULL)
+    {
+        CloseHandle(hToken);
+    }
+    return ret;
 }
 
 int
