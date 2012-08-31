@@ -290,7 +290,8 @@ static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY *
 static REGU_VALUE_ITEM *stx_regu_value_item_alloc_and_init (THREAD_ENTRY *
 							    thread_p);
 static char *stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
-					REGU_VALUE_LIST * regu_value_list);
+					REGU_VALUE_LIST * regu_value_list,
+					TP_DOMAIN * domain);
 static void stx_init_regu_variable (REGU_VARIABLE * regu);
 
 static int stx_mark_struct_visited (THREAD_ENTRY * thread_p, const void *ptr,
@@ -5052,7 +5053,9 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr,
 	  goto error;
 	}
 
-      ptr = stx_build_regu_value_list (thread_p, ptr, regu_list);
+      ptr =
+	stx_build_regu_value_list (thread_p, ptr, regu_list,
+				   regu_var->domain);
       if (ptr == NULL)
 	{
 	  goto error;
@@ -5988,7 +5991,8 @@ stx_regu_value_item_alloc_and_init (THREAD_ENTRY * thread_p)
  */
 static char *
 stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
-			   REGU_VALUE_LIST * regu_value_list)
+			   REGU_VALUE_LIST * regu_value_list,
+			   TP_DOMAIN * domain)
 {
   int i, count, offset;
   REGU_VALUE_ITEM *list_node;
@@ -6047,6 +6051,7 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
       regu_value_list->current_value = list_node;
 
       ptr = or_unpack_int (ptr, &regu->type);
+      regu->domain = domain;
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH
 	  && regu->type != TYPE_POS_VALUE)
