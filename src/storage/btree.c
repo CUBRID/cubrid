@@ -489,13 +489,6 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
   FILE_OVF_BTREE_DES btdes_ovf;
 
-  /* Start a top system operation */
-
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      goto error;
-    }
-
   /*
    * Create the overflow file. Try to create the overflow file in the
    * same volume where the btree was defined
@@ -510,29 +503,15 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 		   &btdes_ovf, NULL, 0) == NULL)
     {
       VFID_SET_NULL (&btid->ovfid);
-      goto error;
+      return ER_FAILED;
     }
 
   if (BTREE_IS_NEW_FILE (btid))
     {
-      assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
-	      == FILE_NEW_FILE);
-
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+      assert_release (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		      == FILE_NEW_FILE);
     }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-      file_new_declare_as_old (thread_p, &btid->ovfid);
-    }
-
   return NO_ERROR;
-
-error:
-
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
-  return ER_FAILED;
 }
 
 /*
@@ -11274,10 +11253,17 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       && (key_len >= MIN (BTREE_MAX_KEYLEN_INPAGE,
 			  BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)))
     {
-      if (btree_create_overflow_key_file (thread_p, &btid_int) != NO_ERROR)
+      if (log_start_system_op (thread_p) == NULL)
 	{
 	  goto error;
 	}
+
+      if (btree_create_overflow_key_file (thread_p, &btid_int) != NO_ERROR)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  goto error;
+	}
+
       log_append_undoredo_data2 (thread_p, RVBT_UPDATE_OVFID,
 				 &btid_int.sys_btid->vfid, P, HEADER,
 				 sizeof (VFID), sizeof (VFID),
@@ -11288,10 +11274,21 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       btree_write_root_header (&peek_rec, &root_header);
       if (spage_update (thread_p, P, HEADER, &peek_rec) != SP_SUCCESS)
 	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  goto error;
 	}
 
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
+
+      if (BTREE_IS_NEW_FILE (&btid_int))
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  file_new_declare_as_old (thread_p, &btid_int.ovfid);
+	}
     }
 
   if (key_len_in_page > max_key)

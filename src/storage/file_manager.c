@@ -8037,6 +8037,9 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 	     Get the next allocation set */
 	  if (VPID_ISNULL (&allocset->next_allocset_vpid))
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_FILE_TABLE_CORRUPTED, 2, vfid->volid, vfid->fileid);
+	      assert_release (0);
 	      VPID_SET_NULL (&allocset_vpid);
 	    }
 	  else
