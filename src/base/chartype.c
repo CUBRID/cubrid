@@ -76,7 +76,6 @@ char_isdigit (int c)
   return ((c) >= '0' && (c) <= '9');
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * char_isxdigit() - test for a hexa decimal digit character
  *   return: non-zero if c is a hexa decimal digit character,
@@ -89,7 +88,6 @@ char_isxdigit (int c)
   return (char_isdigit ((c)) || ((c) >= 'a' && (c) <= 'f')
 	  || ((c) >= 'A' && (c) <= 'F'));
 }
-#endif
 
 /*
  * char_isalnum() - test for a alphanumeric character

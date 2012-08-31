@@ -435,6 +435,7 @@ static int db_check_or_create_null_term_string (const DB_VALUE * str_val,
 						bool ignore_trail_spaces,
 						char **str_out,
 						bool * do_alloc);
+static bool is_valid_ip_slice (const char *ipslice);
 
 /* reads cnt digits until non-digit char reached,
  * returns nr of characters traversed
@@ -24901,11 +24902,20 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
 	{
 	  break;
 	}
+
+      if (!is_valid_ip_slice (local_ipslice))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
+		  1, ip_string);
+	  error_code = ER_OPFUNC_INET_ATON_ARG;
+	  goto error;
+	}
+
       slice = strtol (local_ipslice, NULL, 0);
       if (slice < 0 || slice >= ipsegmax)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
-		  1, DB_GET_CHAR (string, &cnt));
+		  1, ip_string);
 	  error_code = ER_OPFUNC_INET_ATON_ARG;
 	  goto error;
 	}
@@ -24918,7 +24928,7 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
       || slice_count != 4)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
-	      1, DB_GET_CHAR (string, &cnt));
+	      1, ip_string);
       error_code = ER_OPFUNC_INET_ATON_ARG;
       goto error;
     }
@@ -25042,4 +25052,71 @@ error:
       return NO_ERROR;
     }
   return error_code;
+}
+
+/*
+ * is_valid_ip_slice () - check whether ip slice is valid
+ * 
+ * Arguments:
+ *  ipslice (in) : IP slice
+ *
+ * Returns: true or false
+ */
+static bool
+is_valid_ip_slice (const char *ipslice)
+{
+  int pos = 0;
+  int base_type = 10;		/* base type can be 8(oct), 10(dec), 16(hex) */
+
+  assert (ipslice != NULL);
+  if (ipslice[0] == '\0')
+    {
+      return false;
+    }
+
+  if (ipslice[0] == '0')
+    {
+      if (tolower (ipslice[1]) == 'x')
+	{
+	  if (ipslice[2] == '\0')
+	    {
+	      return false;
+	    }
+	  base_type = 16;
+	  pos = 2;
+	}
+      else if (ipslice[1] != '\0')
+	{
+	  base_type = 8;
+	  pos = 1;
+	}
+    }
+
+  while (ipslice[pos] != '\0')
+    {
+      if (base_type == 10)
+	{
+	  if (!char_isdigit (ipslice[pos]))
+	    {
+	      return false;
+	    }
+	}
+      else if (base_type == 8)
+	{
+	  if (!('0' <= ipslice[pos] && ipslice[pos] <= '7'))
+	    {
+	      return false;
+	    }
+	}
+      else
+	{			/* base_type = 16 */
+	  if (!char_isxdigit (ipslice[pos]))
+	    {
+	      return false;
+	    }
+	}
+      pos++;
+    }
+
+  return true;
 }

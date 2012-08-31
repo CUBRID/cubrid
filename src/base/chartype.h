@@ -42,8 +42,8 @@ extern "C"
   extern int char_isalnum (int c);
   extern int char_isspace (int c);
   extern int char_iseol (int c);
-#if defined (ENABLE_UNUSED_FUNCTION)
   extern int char_isxdigit (int c);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int char_isascii (int c);
 #endif
 
