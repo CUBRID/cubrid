@@ -44,7 +44,7 @@
 
 #include "porting.h"
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
+#if !defined(CAS_BROKER) && !defined(CAS_CCI)
 #include "storage_common.h"
 #endif
 
@@ -200,7 +200,7 @@ lockf (int fd, int cmd, long size)
     }
 }
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
+#if !defined(CAS_BROKER) && !defined(CAS_CCI)
 #include "environment_variable.h"
 /*
  * cuserid - returns a pointer to a string containing a user name
@@ -784,7 +784,7 @@ lock_region (int fd, int cmd, long offset, long size)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
+#if !defined(CAS_BROKER) && !defined(CAS_CCI)
 /* free_space -
  *   return:
  *   path(in):
@@ -1119,7 +1119,7 @@ stristr (const char *s, const char *find)
   return (char *) s;
 }
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
+#if !defined(CAS_BROKER) && !defined(CAS_CCI)
 /*
  * wrapper for cuserid() function
  */

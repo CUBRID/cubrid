@@ -275,7 +275,7 @@ get_elapsed_time (struct timeval *start_time)
       return 0;
     }
 
-  cci_gettimeofday (&end_time, NULL);
+  gettimeofday (&end_time, NULL);
 
   start_time_milli = start_time->tv_sec * 1000 + start_time->tv_usec / 1000;
   end_time_milli = end_time.tv_sec * 1000 + end_time.tv_usec / 1000;
@@ -1295,7 +1295,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 
   if (con_handle->log_slow_queries)
     {
-      cci_gettimeofday (&st, NULL);
+      gettimeofday (&st, NULL);
     }
 
   API_SLOG (con_handle);
@@ -1396,7 +1396,7 @@ execute_end:
     {
       long elapsed;
 
-      cci_gettimeofday (&et, NULL);
+      gettimeofday (&et, NULL);
       elapsed = ELAPSED_MSECS (et, st);
       if (elapsed > con_handle->slow_query_threshold_millis)
 	{
@@ -1474,7 +1474,7 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
 
   if (con_handle->log_slow_queries)
     {
-      cci_gettimeofday (&st, NULL);
+      gettimeofday (&st, NULL);
     }
 
   API_SLOG (con_handle);
@@ -1511,7 +1511,7 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
     {
       long elapsed;
 
-      cci_gettimeofday (&et, NULL);
+      gettimeofday (&et, NULL);
       elapsed = ELAPSED_MSECS (et, st);
       if (elapsed > con_handle->slow_query_threshold_millis)
 	{
@@ -6120,7 +6120,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       goto create_datasource_error;
     }
 
-  ds->mutex = MALLOC (sizeof (cci_mutex_t));
+  ds->mutex = MALLOC (sizeof (pthread_mutex_t));
   if (ds->mutex == NULL)
     {
       err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
@@ -6131,9 +6131,9 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 	}
       goto create_datasource_error;
     }
-  cci_mutex_init ((cci_mutex_t *) ds->mutex, NULL);
+  pthread_mutex_init ((pthread_mutex_t *) ds->mutex, NULL);
 
-  ds->cond = MALLOC (sizeof (cci_cond_t));
+  ds->cond = MALLOC (sizeof (pthread_cond_t));
   if (ds->cond == NULL)
     {
       err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
@@ -6144,7 +6144,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 	}
       goto create_datasource_error;
     }
-  cci_cond_init ((cci_cond_t *) ds->cond, NULL);
+  pthread_cond_init ((pthread_cond_t *) ds->cond, NULL);
 
   ds->num_idle = ds->pool_size;
   for (i = 0; i < ds->pool_size; i++)
@@ -6194,12 +6194,12 @@ create_datasource_error:
   FREE_MEM (ds->url);
   if (ds->mutex != NULL)
     {
-      cci_mutex_destroy ((cci_mutex_t *) ds->mutex);
+      pthread_mutex_destroy ((pthread_mutex_t *) ds->mutex);
       FREE (ds->mutex);
     }
   if (ds->cond != NULL)
     {
-      cci_cond_destroy ((cci_cond_t *) ds->cond);
+      pthread_cond_destroy ((pthread_cond_t *) ds->cond);
       FREE (ds->cond);
     }
   FREE_MEM (ds->con_handles);
@@ -6221,9 +6221,9 @@ cci_datasource_destroy (T_CCI_DATASOURCE * ds)
   FREE_MEM (ds->pass);
   FREE_MEM (ds->url);
 
-  cci_mutex_destroy ((cci_mutex_t *) ds->mutex);
+  pthread_mutex_destroy ((pthread_mutex_t *) ds->mutex);
   FREE_MEM (ds->mutex);
-  cci_cond_destroy ((cci_cond_t *) ds->cond);
+  pthread_cond_destroy ((pthread_cond_t *) ds->cond);
   FREE_MEM (ds->cond);
 
   if (ds->con_handles)
@@ -6267,7 +6267,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
     }
 
   /* critical section begin */
-  cci_mutex_lock ((cci_mutex_t *) ds->mutex);
+  pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
   if (ds->num_idle == 0)
     {
       /* wait max_wait msecs */
@@ -6275,7 +6275,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
       struct timeval tv;
       int r;
 
-      cci_gettimeofday (&tv, NULL);
+      gettimeofday (&tv, NULL);
       ts.tv_sec = tv.tv_sec + (ds->max_wait / 1000);
       ts.tv_nsec = (tv.tv_usec + (ds->max_wait % 1000) * 1000) * 1000;
       if (ts.tv_nsec > 1000000000)
@@ -6286,13 +6286,13 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
       while (ds->num_idle == 0)
 	{
-	  r = cci_cond_timedwait ((cci_cond_t *) ds->cond,
-				  (cci_mutex_t *) ds->mutex, &ts);
+	  r = pthread_cond_timedwait ((pthread_cond_t *) ds->cond,
+				      (pthread_mutex_t *) ds->mutex, &ts);
 	  if (r == ETIMEDOUT)
 	    {
 	      err_buf->err_code = CCI_ER_DATASOURCE_TIMEOUT;
 	      snprintf (err_buf->err_msg, 1023, "All connections are used");
-	      cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+	      pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
 	      return CCI_ER_DATASOURCE_TIMEOUT;
 	    }
 	  else if (r != 0)
@@ -6300,7 +6300,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 	      err_buf->err_code = CCI_ER_DATASOURCE_TIMEDWAIT;
 	      snprintf (err_buf->err_msg, 1023, "pthread_cond_timedwait : %d",
 			r);
-	      cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+	      pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
 	      return CCI_ER_DATASOURCE_TIMEDWAIT;
 	    }
 	}
@@ -6318,7 +6318,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 	  break;
 	}
     }
-  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+  pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
   /* critical section end */
 
   if (id < 0)
@@ -6361,7 +6361,7 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
     }
 
   /* critical section begin */
-  cci_mutex_lock ((cci_mutex_t *) ds->mutex);
+  pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
   for (i = 0; i < ds->pool_size; i++)
     {
       if (ds->con_handles[i] == -conn)
@@ -6375,13 +6375,13 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
   if (i == ds->pool_size)
     {
       /* could not found con_handles */
-      cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+      pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
       return 0;
     }
 
   ds->num_idle++;
-  cci_cond_signal ((cci_cond_t *) ds->cond);
-  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+  pthread_cond_signal ((pthread_cond_t *) ds->cond);
+  pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
   /* critical section end */
 
   return 1;

@@ -68,27 +68,27 @@ namespace cci
   class _Mutex
   {
   private:
-    cci_mutex_t mutex;
+    pthread_mutex_t mutex;
 
   public:
     _Mutex()
     {
-      cci_mutex_init(&mutex, NULL);
+      pthread_mutex_init(&mutex, NULL);
     }
 
     ~_Mutex()
     {
-      cci_mutex_destroy(&mutex);
+      pthread_mutex_destroy(&mutex);
     }
 
     int lock()
     {
-      return cci_mutex_lock(&mutex);
+      return pthread_mutex_lock(&mutex);
     }
 
     int unlock()
     {
-      return cci_mutex_unlock(&mutex);
+      return pthread_mutex_unlock(&mutex);
     }
   };
 }
@@ -191,7 +191,7 @@ private:
     struct timeval tv;
     struct tm cal;
 
-    cci_gettimeofday(&tv, NULL);
+    gettimeofday(&tv, NULL);
     localtime_r(&tv.tv_sec, &cal);
     cal.tm_year += 1900;
     cal.tm_mon += 1;
@@ -300,7 +300,7 @@ private:
   long int now()
   {
     struct timeval tv;
-    cci_gettimeofday(&tv, NULL);
+    gettimeofday(&tv, NULL);
     return tv.tv_usec;
   }
 

@@ -483,14 +483,14 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
   /* send msg header */
   if (con_handle->log_trace_network)
     {
-      cci_gettimeofday (&ts, NULL);
+      gettimeofday (&ts, NULL);
     }
   err = net_send_msg_header (con_handle->sock_fd, &send_msg_header);
   if (con_handle->log_trace_network)
     {
       long elapsed;
 
-      cci_gettimeofday (&te, NULL);
+      gettimeofday (&te, NULL);
       elapsed = (te.tv_sec - ts.tv_sec) * 1000;
       elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][H][S:%d][E:%d][T:%d]",
@@ -503,14 +503,14 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
 
   if (con_handle->log_trace_network)
     {
-      cci_gettimeofday (&ts, NULL);
+      gettimeofday (&ts, NULL);
     }
   err = net_send_stream (con_handle->sock_fd, msg, size);
   if (con_handle->log_trace_network)
     {
       long elapsed;
 
-      cci_gettimeofday (&te, NULL);
+      gettimeofday (&te, NULL);
       elapsed = (te.tv_sec - ts.tv_sec) * 1000;
       elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][B][S:%d][E:%d][T:%d]",
@@ -556,7 +556,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 
   if (con_handle->log_trace_network)
     {
-      cci_gettimeofday (&ts, NULL);
+      gettimeofday (&ts, NULL);
     }
   result_code =
     net_recv_msg_header (con_handle->sock_fd, broker_port,
@@ -565,7 +565,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
     {
       long elapsed;
 
-      cci_gettimeofday (&te, NULL);
+      gettimeofday (&te, NULL);
       elapsed = (te.tv_sec - ts.tv_sec) * 1000;
       elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][H][S:%d][E:%d][T:%d]",
@@ -612,7 +612,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 
       if (con_handle->log_trace_network)
 	{
-	  cci_gettimeofday (&ts, NULL);
+	  gettimeofday (&ts, NULL);
 	}
       result_code = net_recv_stream (con_handle->sock_fd, broker_port, tmp_p,
 				     *(recv_msg_header.msg_body_size_ptr),
@@ -621,7 +621,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	{
 	  long elapsed;
 
-	  cci_gettimeofday (&te, NULL);
+	  gettimeofday (&te, NULL);
 	  elapsed = (te.tv_sec - ts.tv_sec) * 1000;
 	  elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
 	  CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][B][S:%d][E:%d][T:%d]",

@@ -58,6 +58,9 @@ extern "C"
  ************************************************************************/
 #include "system.h"
 #include "cas_cci.h"
+#if defined(WINDOWS)
+#include "porting.h"
+#endif
 
 /************************************************************************
  * PUBLIC DEFINITIONS							*
@@ -65,8 +68,6 @@ extern "C"
 
 #if defined(WINDOWS)
 #define __func__		__FUNCTION__
-#define PATH_MAX		256
-#define mkdir(dir, mode)        _mkdir(dir)
 #define localtime_r(time, tm)   localtime_s((tm), (const time_t *)(time))
 #define gettid()                GetCurrentThreadId()
 #else
@@ -215,7 +216,7 @@ extern "C"
         time_to_check = (CON_HANDLE)->query_timeout;                \
       }                                                             \
       if (time_to_check > 0) {                                      \
-        cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
+        gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
         (CON_HANDLE)->current_timeout = (time_to_check);            \
       }                                                             \
     }                                                               \
@@ -225,7 +226,7 @@ extern "C"
   do {                                                              \
     if (CON_HANDLE) {                                               \
       if ((CON_HANDLE)->login_timeout > 0) {                        \
-        cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
+        gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
         (CON_HANDLE)->current_timeout = (CON_HANDLE)->login_timeout;\
       }                                                             \
     }                                                               \
@@ -245,20 +246,11 @@ extern "C"
   } while (0)
 
 #if defined(WINDOWS)
-#define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
-  typedef int socklen_t;
   typedef unsigned long in_addr_t;
 #else
   typedef int SOCKET;
 #define INVALID_SOCKET (-1)
 #define IS_INVALID_SOCKET(socket) ((socket) < 0)
-#endif
-
-#if defined(WINDOWS)
-#define snprintf _snprintf
-#define strcasecmp(str1, str2) _stricmp(str1, str2)
-#define strncasecmp(str1, str2, size) _strnicmp(str1, str2, size)
-#define strtok_r strtok_s
 #endif
 
 /************************************************************************
@@ -300,53 +292,6 @@ extern "C"
     int num_idle;
     int *con_handles;		/* realloc by pool_size */
   };
-
-#if defined(WINDOWS)
-  typedef struct
-  {
-    CRITICAL_SECTION cs;
-    CRITICAL_SECTION *csp;
-  } cci_mutex_t;
-
-  typedef HANDLE cci_mutexattr_t;
-
-#define PTHREAD_MUTEX_INITIALIZER       {{ NULL, 0, 0, NULL, NULL, 0 }, NULL}
-
-  typedef union
-  {
-    CONDITION_VARIABLE native_cond;
-
-    struct
-    {
-      unsigned int waiting;
-      CRITICAL_SECTION lock_waiting;
-      enum
-      {
-	COND_SIGNAL = 0,
-	COND_BROADCAST = 1,
-	MAX_EVENTS = 2
-      } EVENTS;
-      HANDLE events[MAX_EVENTS];
-      HANDLE broadcast_block_event;
-    };
-  } cci_cond_t;
-
-  typedef HANDLE cci_condattr_t;
-
-#define ETIMEDOUT WAIT_TIMEOUT
-#define PTHREAD_COND_INITIALIZER        { NULL }
-
-  struct timespec
-  {
-    int tv_sec;
-    int tv_nsec;
-  };
-#else
-  typedef pthread_mutex_t cci_mutex_t;
-  typedef pthread_mutexattr_t cci_mutexattr_t;
-  typedef pthread_cond_t cci_cond_t;
-  typedef pthread_condattr_t cci_condattr_t;
-#endif
 
   typedef unsigned int (*HASH_FUNC) (void *key, unsigned int ht_size);
   typedef int (*CMP_FUNC) (void *key1, void *key2);
@@ -396,64 +341,7 @@ extern "C"
 /************************************************************************
  * PUBLIC FUNCTION PROTOTYPES						*
  ************************************************************************/
-#if defined (WINDOWS)
-  extern cci_mutex_t cci_Internal_mutex_for_mutex_initialize;
-  extern int cci_mutex_init (cci_mutex_t * mutex, cci_mutexattr_t * attr);
-  extern int cci_mutex_destroy (cci_mutex_t * mutex);
-
-  extern void port_cci_mutex_init_and_lock (cci_mutex_t * mutex);
-
-  __inline int cci_mutex_lock (cci_mutex_t * mutex)
-  {
-    if (mutex->csp == &mutex->cs)
-      {
-	EnterCriticalSection (mutex->csp);
-      }
-    else
-      {
-	port_cci_mutex_init_and_lock (mutex);
-      }
-
-    return 0;
-  }
-
-  __inline int cci_mutex_unlock (cci_mutex_t * mutex)
-  {
-    if (mutex->csp->LockCount == -1)
-      {
-	/* this means unlock mutex which isn't locked */
-	assert (0);
-	return 0;
-      }
-
-    LeaveCriticalSection (mutex->csp);
-    return 0;
-  }
-
-  extern int cci_cond_init (cci_cond_t * cond, const cci_condattr_t * attr);
-  extern int cci_cond_wait (cci_cond_t * cond, cci_mutex_t * mutex);
-  extern int cci_cond_timedwait (cci_cond_t * cond, cci_mutex_t * mutex,
-				 struct timespec *ts);
-  extern int cci_cond_destroy (cci_cond_t * cond);
-  extern int cci_cond_signal (cci_cond_t * cond);
-  extern int cci_cond_broadcast (cci_cond_t * cond);
-#else
-#define cci_mutex_init pthread_mutex_init
-#define cci_mutex_destroy pthread_mutex_destroy
-#define cci_mutex_lock pthread_mutex_lock
-#define cci_mutex_unlock pthread_mutex_unlock
-#define cci_cond_init pthread_cond_init
-#define cci_cond_destroy pthread_cond_destroy
-#define cci_cond_signal pthread_cond_signal
-#define cci_cond_timedwait pthread_cond_timedwait
-#define cci_cond_wait pthread_cond_wait
-#define cci_gettimeofday gettimeofday
-#endif
-
   extern int get_elapsed_time (struct timeval *start_time);
-#if defined(WINDOWS)
-  extern int cci_gettimeofday (struct timeval *tp, void *tzp);
-#endif
 
   extern unsigned int mht_5strhash (void *key, unsigned int ht_size);
   extern int mht_strcasecmpeq (void *key1, void *key2);
