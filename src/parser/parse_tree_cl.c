@@ -6875,10 +6875,9 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1 = 0, *r2 = 0, *r3 = 0, *r4 = 0;
   unsigned int saved_cp = parser->custom_print;
+  PT_NODE *sort_spec, *prefix_length;
 
   parser->custom_print |= PT_SUPPRESS_RESOLVED;
-
-  r2 = pt_print_index_columns (parser, p);
 
   if (!(parser->custom_print & PT_SUPPRESS_INDEX))
     {
@@ -6919,15 +6918,35 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
+  /* if use prefix_length, the length of sort_spec must be 1 */
+  prefix_length = p->info.index.prefix_length;
+  if (prefix_length != NULL)
+    {
+      sort_spec = p->info.index.column_names;
+      assert (sort_spec != NULL);
+
+      /* sort_spec */
+      r3 = pt_print_bytes (parser, sort_spec->info.sort_spec.expr);
+      r2 = pt_append_varchar (parser, r2, r3);
+
+      /* prefix_length */
+      r3 = pt_print_bytes (parser, prefix_length);
+      r2 = pt_append_nulstring (parser, r2, " (");
+      r2 = pt_append_varchar (parser, r2, r3);
+      r2 = pt_append_nulstring (parser, r2, ") ");
+
+      if (sort_spec->info.sort_spec.asc_or_desc == PT_DESC)
+	{
+	  r2 = pt_append_nulstring (parser, r2, " desc ");
+	}
+    }
+  else
+    {
+      r2 = pt_print_index_columns (parser, p);
+    }
+
   b = pt_append_nulstring (parser, b, " (");
   b = pt_append_varchar (parser, b, r2);
-  if (p->info.index.prefix_length)
-    {
-      r3 = pt_print_bytes (parser, p->info.index.prefix_length);
-      b = pt_append_nulstring (parser, b, " (");
-      b = pt_append_varchar (parser, b, r3);
-      b = pt_append_nulstring (parser, b, ") ");
-    }
   b = pt_append_nulstring (parser, b, ") ");
 
   if (p->info.index.where)
