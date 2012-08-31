@@ -581,6 +581,10 @@ public class UStatement {
 	}
 
 	synchronized public void closeCursor() {
+		if (isReturnable) {
+			return;
+		}
+		
 		try {
 			outBuffer.newRequest(UFunctionCode.CURSOR_CLOSE);
 			outBuffer.addInt(serverHandler);
