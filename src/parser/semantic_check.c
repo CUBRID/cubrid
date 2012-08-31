@@ -9661,14 +9661,20 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	       */
 	      if (r->node_type == PT_VALUE && r->alias_print == NULL)
 		{
-		  assert (r->type_enum == PT_TYPE_INTEGER);
-		  if (r->info.value.data_value.i == 0 ||
-		      r->info.value.data_value.i > max_position)
+		  if (r->type_enum != PT_TYPE_INTEGER)
+                    {
+                      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+                                 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+                      continue;
+                    }
+		  else if (r->info.value.data_value.i == 0 ||
+		           r->info.value.data_value.i > max_position)
 		    {
 		      PT_ERRORmf (parser, r,
 				  MSGCAT_SET_PARSER_SEMANTIC,
 				  MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
 				  r->info.value.data_value.i);
+                      continue;
 		    }
 		}
 	      else if (r->node_type == PT_HOST_VAR)
