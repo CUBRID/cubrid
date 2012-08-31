@@ -207,6 +207,12 @@ static int locale_compute_coll_checksum (COLL_DATA * cd);
 static int locale_alphabet_data_size (ALPHABET_DATA * a);
 static int locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf);
 static int locale_compute_locale_checksum (LOCALE_DATA * ld);
+static int common_collation_end_rule (void *data, LOCALE_DATA * ld,
+				      const int rule_id,
+				      TAILOR_RULE * t_rule);
+static int common_collation_start_rule (void *data, const char **attr,
+					LOCALE_DATA * ld,
+					TAILOR_RULE * t_rule);
 
 #define PRINT_DEBUG_START(d, a, m, s)				      \
    do {								      \
@@ -2004,8 +2010,7 @@ start_collation_rule (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
-  char *ref_buf_p = NULL;
-  int ref_buf_size = 0;
+  int status;
 
   assert (data != NULL);
 
@@ -2030,34 +2035,11 @@ start_collation_rule (void *data, const char **attr)
       return 0;
     }
 
-  assert (ld->last_rule_pos_type == RULE_POS_BUFFER);
-
-  strcpy (t_rule->anchor_buf, ld->last_anchor_buf);
-
-  /* reference is last reference or anchor if no last refence is available */
-  if (ld->last_r_buf_p == NULL)
+  status = common_collation_start_rule (data, attr, ld, t_rule);
+  if (status != 0)
     {
-      ref_buf_p = ld->last_anchor_buf;
-      ref_buf_size = strlen (ld->last_anchor_buf);
+      return status;
     }
-  else
-    {
-      ref_buf_p = ld->last_r_buf_p;
-      ref_buf_size = ld->last_r_buf_size;
-    }
-
-  assert (ref_buf_size > 0);
-  assert (ref_buf_p != NULL);
-
-  t_rule->r_buf = (char *) malloc (ref_buf_size);
-  if (t_rule->r_buf == NULL)
-    {
-      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
-      PRINT_DEBUG_START (data, attr, "memory allocation failed", -1);
-      return -1;
-    }
-  memcpy (t_rule->r_buf, ref_buf_p, ref_buf_size);
-  t_rule->r_buf_size = ref_buf_size;
 
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
@@ -2446,6 +2428,7 @@ end_collation_rule (void *data, const char *el_name)
   TAILOR_RULE *t_rule = NULL;
   COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
+  int status;
 
   assert (data != NULL);
 
@@ -2500,55 +2483,10 @@ end_collation_rule (void *data, const char *el_name)
       return -1;
     }
 
-  if (ld->last_rule_level != TAILOR_UNDEFINED)
+  status = common_collation_end_rule (data, ld, rule_id, t_rule);
+  if (status != 0)
     {
-      if (ld->last_rule_level != t_rule->level)
-	{
-	  /* first rule must match the level of anchor */
-	  pd->xml_error = XML_CUB_ERR_PARSER;
-	  PRINT_DEBUG_END (data, "Rule level doesn't match reset level", -1);
-	  return -1;
-	}
-
-      /* reset level of anchor : don't need to check for following rules */
-      ld->last_rule_level = TAILOR_UNDEFINED;
-    }
-
-  t_rule->direction = ld->last_rule_dir;
-  t_rule->r_pos_type = ld->last_rule_pos_type;
-
-  /* last tailor character is the new reference */
-  if (!(t_rule->multiple_chars))
-    {
-      /* reset rule position */
-      ld->last_rule_pos_type = RULE_POS_BUFFER;
-
-      assert (t_rule->t_buf_size > 0);
-
-      ld->last_r_buf_size = t_rule->t_buf_size;
-      ld->last_r_buf_p = t_rule->t_buf;
-
-      memcpy (ld->last_anchor_buf, t_rule->t_buf, t_rule->t_buf_size);
-      ld->last_anchor_buf[t_rule->t_buf_size] = '\0';
-    }
-
-  /* BEFORE applies only for the first rule after <reset> */
-  ld->last_rule_dir = TAILOR_AFTER;
-
-
-  if (pd->verbose)
-    {
-      char msg[ERR_MSG_SIZE];
-      int xml_line_no = XML_GetCurrentLineNumber (pd->xml_parser);
-      int xml_col_no = XML_GetCurrentColumnNumber (pd->xml_parser);
-
-      snprintf (msg, sizeof (msg) - 1,
-		"* Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d ;"
-		" XML: line: %d , col:%d *",
-		rule_id, t_rule->level, t_rule->direction,
-		t_rule->r_pos_type, t_rule->multiple_chars, xml_line_no,
-		xml_col_no);
-      PRINT_DEBUG_END (data, msg, 0);
+      return status;
     }
 
   return 0;
@@ -2569,9 +2507,7 @@ start_collation_x (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   TAILOR_RULE *t_rule = NULL;
-  char *ref_buf_p = NULL;
-  int ref_buf_size = 0;
-  int anchor_len;
+  int status;
 
   assert (data != NULL);
 
@@ -2593,24 +2529,11 @@ start_collation_x (void *data, const char **attr)
       return -1;
     }
 
-  assert (ld->last_rule_pos_type == RULE_POS_BUFFER);
-  anchor_len = strlen (ld->last_anchor_buf);
-
-  assert (anchor_len > 0);
-
-  strcpy (t_rule->anchor_buf, ld->last_anchor_buf);
-
-  t_rule->r_buf = (char *) malloc (anchor_len);
-  if (t_rule->r_buf == NULL)
+  status = common_collation_start_rule (data, attr, ld, t_rule);
+  if (status != 0)
     {
-      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
-      PRINT_DEBUG_START (data, attr, "memory allocation failed", -1);
-      return -1;
+      return status;
     }
-
-  memcpy (t_rule->r_buf, t_rule->anchor_buf, anchor_len);
-  t_rule->r_buf_size = anchor_len;
-  t_rule->direction = ld->last_rule_dir;
 
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
@@ -2674,6 +2597,7 @@ end_collation_x_rule (void *data, const char *el_name)
   TAILOR_RULE *t_rule = NULL;
   COLL_TAILORING *curr_coll_tail = NULL;
   int rule_id;
+  int status;
 
   assert (data != NULL);
 
@@ -2723,19 +2647,10 @@ end_collation_x_rule (void *data, const char *el_name)
       return -1;
     }
 
-  if (pd->verbose)
+  status = common_collation_end_rule (data, ld, rule_id, t_rule);
+  if (status != 0)
     {
-      char msg[ERR_MSG_SIZE];
-      int xml_line_no = XML_GetCurrentLineNumber (pd->xml_parser);
-      int xml_col_no = XML_GetCurrentColumnNumber (pd->xml_parser);
-
-      snprintf (msg, sizeof (msg) - 1,
-		"* Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d ;"
-		" XML: line: %d , col:%d *",
-		rule_id, t_rule->level, t_rule->direction,
-		t_rule->r_pos_type, t_rule->multiple_chars, xml_line_no,
-		xml_col_no);
-      PRINT_DEBUG_END (data, msg, 0);
+      return status;
     }
 
   clear_data_buffer (data);
@@ -7536,4 +7451,129 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   hash_to_string (hash, ld->checksum);
 
   return NO_ERROR;
+}
+
+/* 
+ * common_collation_end_rule() - finishes a collation rule
+ *
+ * Returns: error status
+ * data(in/out): user data
+ * ld(in/out): locale data
+ * rule_id(in): collation rule id (position in rule list)
+ * t_rule(in/out): collation rule
+ */
+static int
+common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id,
+			   TAILOR_RULE * t_rule)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+
+  assert (data != NULL);
+  assert (ld != NULL);
+  assert (t_rule != NULL);
+
+  if (ld->last_rule_level != TAILOR_UNDEFINED)
+    {
+      if (ld->last_rule_level != t_rule->level)
+	{
+	  /* first rule must match the level of anchor */
+	  pd->xml_error = XML_CUB_ERR_PARSER;
+	  PRINT_DEBUG_END (data, "Rule level doesn't match reset level", -1);
+	  return -1;
+	}
+
+      /* reset level of anchor : don't need to check for following rules */
+      ld->last_rule_level = TAILOR_UNDEFINED;
+    }
+
+  t_rule->direction = ld->last_rule_dir;
+  t_rule->r_pos_type = ld->last_rule_pos_type;
+
+  /* last tailor character is the new reference */
+  if (!(t_rule->multiple_chars))
+    {
+      /* reset rule position */
+      ld->last_rule_pos_type = RULE_POS_BUFFER;
+
+      assert (t_rule->t_buf_size > 0);
+
+      ld->last_r_buf_size = t_rule->t_buf_size;
+      ld->last_r_buf_p = t_rule->t_buf;
+
+      memcpy (ld->last_anchor_buf, t_rule->t_buf, t_rule->t_buf_size);
+      ld->last_anchor_buf[t_rule->t_buf_size] = '\0';
+    }
+
+  /* BEFORE applies only for the first rule after <reset> */
+  ld->last_rule_dir = TAILOR_AFTER;
+
+  if (pd->verbose)
+    {
+      char msg[ERR_MSG_SIZE];
+      int xml_line_no = XML_GetCurrentLineNumber (pd->xml_parser);
+      int xml_col_no = XML_GetCurrentColumnNumber (pd->xml_parser);
+
+      snprintf (msg, sizeof (msg) - 1,
+		"* Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d ;"
+		" XML: line: %d , col:%d *",
+		rule_id, t_rule->level, t_rule->direction,
+		t_rule->r_pos_type, t_rule->multiple_chars, xml_line_no,
+		xml_col_no);
+      PRINT_DEBUG_END (data, msg, 0);
+    }
+
+  return 0;
+}
+
+/* 
+ * common_collation_start_rule() - starts a collation rule
+ *
+ * Returns: error status
+ * data(in/out): user data
+ * attr(in): element name
+ * ld(in/out): locale data
+ * t_rule(in/out): collation rule
+ */
+static int
+common_collation_start_rule (void *data, const char **attr, LOCALE_DATA * ld,
+			     TAILOR_RULE * t_rule)
+{
+  char *ref_buf_p = NULL;
+  int ref_buf_size = 0;
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+
+  assert (data != NULL);
+  assert (ld != NULL);
+  assert (t_rule != NULL);
+
+  assert (ld->last_rule_pos_type == RULE_POS_BUFFER);
+
+  strcpy (t_rule->anchor_buf, ld->last_anchor_buf);
+
+  /* reference is last reference or anchor if no last refence is available */
+  if (ld->last_r_buf_p == NULL)
+    {
+      ref_buf_p = ld->last_anchor_buf;
+      ref_buf_size = strlen (ld->last_anchor_buf);
+    }
+  else
+    {
+      ref_buf_p = ld->last_r_buf_p;
+      ref_buf_size = ld->last_r_buf_size;
+    }
+
+  assert (ref_buf_size > 0);
+  assert (ref_buf_p != NULL);
+
+  t_rule->r_buf = (char *) malloc (ref_buf_size);
+  if (t_rule->r_buf == NULL)
+    {
+      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
+      PRINT_DEBUG_START (data, attr, "memory allocation failed", -1);
+      return -1;
+    }
+  memcpy (t_rule->r_buf, ref_buf_p, ref_buf_size);
+  t_rule->r_buf_size = ref_buf_size;
+
+  return 0;
 }
