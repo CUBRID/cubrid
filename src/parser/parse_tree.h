@@ -678,7 +678,8 @@ enum pt_custom_print
 				 * calls pt_short_print
 				 * instead pt_print_tree
 				 */
-  PT_SUPPRESS_FULL_RANGE_TERM = 0x4000000	/* This is for query in create ... as ... */
+  PT_SUPPRESS_FULL_RANGE_TERM = 0x4000000,	/* This is for query in create ... as ... */
+  PT_SUPPRESS_NUMBER_VALUE_TEXT = 0x8000000	/* for info.parts.values */
 };
 
 /* all statement node types should be assigned their API statement enumeration */

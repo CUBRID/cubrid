@@ -7554,9 +7554,16 @@ static PARSER_VARCHAR *
 pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+  unsigned int save_custom;
 
   r1 = pt_print_bytes (parser, p->info.parts.name);
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_SUPPRESS_NUMBER_VALUE_TEXT;
+
   r2 = pt_print_bytes_l (parser, p->info.parts.values);
+
+  parser->custom_print = save_custom;
 
   q = pt_append_nulstring (parser, q, " partition ");
   q = pt_append_varchar (parser, q, r1);
@@ -15125,7 +15132,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
-      if (p->info.value.text)
+      if (p->info.value.text != NULL
+	  && !(parser->custom_print & PT_SUPPRESS_NUMBER_VALUE_TEXT))
 	{
 	  r = p->info.value.text;
 	}
