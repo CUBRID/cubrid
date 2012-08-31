@@ -4981,47 +4981,61 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	{
 	  goto error2;
 	}
-      granted =
-	lock_subclass (thread_p, &real_class_oid, &superclass_oid,
-		       IX_LOCK, LK_UNCOND_LOCK);
-      if (granted != LK_GRANTED)
+      if (!OID_ISNULL (&superclass_oid))
 	{
-	  error_code = er_errid ();
-	  if (error_code == NO_ERROR)
+	  granted =
+	    lock_subclass (thread_p, &real_class_oid, &superclass_oid,
+			   IX_LOCK, LK_UNCOND_LOCK);
+	  if (granted != LK_GRANTED)
 	    {
-	      error_code = ER_FAILED;
-	    }
-	  goto error2;
-	}
-      if (pcontext != NULL)
-	{
-	  /* The scan_cache above is started for the partitioned class, not
-	   * for the actual partition in which we will be performing the
-	   * insert. See if we already have a scan_cache structure created
-	   * for the target partition and use that one instead of the one
-	   * supplied to this function
-	   */
-	  insert_cache = partition_get_scancache (pcontext, &real_class_oid);
-	  if (insert_cache == NULL)
-	    {
-	      /* create a new one and cache it */
-	      insert_cache = partition_new_scancache (pcontext);
-	      if (insert_cache == NULL)
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  goto error2;
 		}
-
-	      error_code =
-		locator_start_force_scan_cache (thread_p, insert_cache,
-						&real_hfid, &real_class_oid,
-						MULTI_ROW_INSERT);
-	      if (error_code != NO_ERROR)
+	      goto error2;
+	    }
+	  if (pcontext != NULL)
+	    {
+	      /* The scan_cache above is started for the partitioned class,
+	       * not for the actual partition in which we will be performing
+	       * the insert. See if we already have a scan_cache structure
+	       * created for the target partition and use that one instead of
+	       * the one supplied to this function
+	       */
+	      insert_cache =
+		partition_get_scancache (pcontext, &real_class_oid);
+	      if (insert_cache == NULL)
 		{
-		  return error_code;
+		  /* create a new one and cache it */
+		  insert_cache = partition_new_scancache (pcontext);
+		  if (insert_cache == NULL)
+		    {
+		      error_code = ER_FAILED;
+		      goto error2;
+		    }
+
+		  error_code =
+		    locator_start_force_scan_cache (thread_p, insert_cache,
+						    &real_hfid,
+						    &real_class_oid,
+						    MULTI_ROW_INSERT);
+		  if (error_code != NO_ERROR)
+		    {
+		      return error_code;
+		    }
 		}
 	    }
 	}
+      else
+	{
+	  /* class_oid was not a partitioned class. This can happen
+	   * if, for example, this is a request from HA. In this which case
+	   * class_oid already points to the designated partition
+	   */
+	  assert_release (OID_EQ (class_oid, &real_class_oid));
+	}
+
       /* There will be no pruning after this point. Reset op_type to a
        * non-pruning operation
        */
