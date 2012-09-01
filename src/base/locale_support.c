@@ -3643,7 +3643,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
   FILE *fp = NULL;
   char err_msg[ERR_MSG_SIZE];
   char str[TXT_CONV_LINE_SIZE];
-  char conv_file_name[LOC_FILE_PATH_SIZE];
+  char conv_file_name[PATH_MAX];
   int status = NO_ERROR;
   int line_count = 0;
   int txt_conv_max_items = 0;
@@ -4629,7 +4629,7 @@ int
 locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales,
 			bool is_lang_init)
 {
-  char locale_cfg_file[LOC_FILE_PATH_SIZE];
+  char locale_cfg_file[PATH_MAX];
   char line[1024];
   FILE *fp = NULL;
   LOCALE_FILE *locale_files = NULL;
@@ -4942,10 +4942,10 @@ int
 locale_prepare_C_file (void)
 {
   FILE *fp;
-  char c_file_path[LOC_FILE_PATH_SIZE];
+  char c_file_path[PATH_MAX];
   char err_msg[ERR_MSG_SIZE];
 
-  envvar_loclib_dir_file (c_file_path, PATH_MAX, "locale.c");
+  envvar_loclib_dir_file (c_file_path, sizeof (c_file_path), "locale.c");
 
   fp = fopen_ex (c_file_path, "w");
   if (fp == NULL)
@@ -4983,14 +4983,14 @@ static int
 locale_save_to_C_file (LOCALE_FILE * lf, LOCALE_DATA * ld)
 {
   FILE *fp;
-  char c_file_path[LOC_FILE_PATH_SIZE];
+  char c_file_path[PATH_MAX];
   char err_msg[ERR_MSG_SIZE];
   int i;
 
   assert (lf != NULL);
   assert (ld != NULL);
 
-  envvar_loclib_dir_file (c_file_path, PATH_MAX, "locale.c");
+  envvar_loclib_dir_file (c_file_path, sizeof (c_file_path), "locale.c");
 
   fp = fopen_ex (c_file_path, "a");
   if (fp == NULL)

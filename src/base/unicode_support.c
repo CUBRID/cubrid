@@ -115,7 +115,7 @@ static UNICODE_CHAR *unicode_data = NULL;
 static int unicode_data_lower_mult = 1;
 static int unicode_data_upper_mult = 1;
 
-static char last_unicode_file[LOC_FILE_PATH_SIZE] = { 0 };
+static char last_unicode_file[PATH_MAX] = { 0 };
 
 static int load_unicode_data (const LOCALE_DATA * ld);
 static int create_alphabet (ALPHABET_DATA * a, const int max_letters,
@@ -143,7 +143,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
   ALPHABET_DATA *a = NULL;
   ALPHABET_DATA *i_a = NULL;
   ALPHABET_TAILORING *a_tailoring = NULL;
-  char unicode_file[LOC_FILE_PATH_SIZE];
+  char unicode_file[PATH_MAX];
   char err_msg[ERR_MSG_SIZE];
   int er_status = NO_ERROR;
   uint32 cp;

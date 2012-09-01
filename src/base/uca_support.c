@@ -130,7 +130,7 @@ struct uca_storage
   int count_exp;
 
   /* settings for previous instance (used only by DUCET storage) */
-  char prev_file_path[LOC_FILE_PATH_SIZE];
+  char prev_file_path[PATH_MAX];
   int prev_contr_policy;
 };
 
@@ -608,7 +608,7 @@ init_uca_instance (LOCALE_COLLATION * lc)
   int i;
   int err_status = NO_ERROR;
   UCA_COLL_CE_LIST *uca_cp = NULL;
-  char ducet_file_path[LOC_FILE_PATH_SIZE];
+  char ducet_file_path[PATH_MAX];
 
   assert (lc != NULL);
 

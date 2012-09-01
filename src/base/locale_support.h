@@ -29,6 +29,7 @@
 #ident "$Id$"
 
 #include <stddef.h>
+#include "porting.h"
 #include "dbtype.h"
 #include "locale_lib_common.h"
 
@@ -166,8 +167,6 @@
   (((val) & MAPPING_INDEX_MASK) == MAPPING_INDEX_MASK)
 
 #define GET_MAPPING_OFFSET(val)	((val) & ~MAPPING_INDEX_MASK)
-
-#define LOC_FILE_PATH_SIZE  256
 
 typedef unsigned short UCA_CP;
 typedef unsigned short UCA_W;
@@ -434,7 +433,7 @@ struct alphabet_tailoring
 				 * 1 : UnicodeData with specified file
 				 * 2 : ASCII letter and casing */
   /* file path for Unicode data (if 'alphabet_mode' == 1) */
-  char unicode_data_file[LOC_FILE_PATH_SIZE];
+  char unicode_data_file[PATH_MAX];
 
   int count_rules;		/* # of tailorings */
   int max_rules;		/* # of max (allocated tailorings) */
@@ -488,7 +487,7 @@ struct text_conversion_prm
   char win_codepages[TXT_CONV_SYSTEM_STR_SIZE];	/* Windows codepage identifier */
   char nl_lang_str[TXT_CONV_SYSTEM_STR_SIZE];	/* Linux language string */
 
-  char conv_file[LOC_FILE_PATH_SIZE];
+  char conv_file[PATH_MAX];
 };
 
 #define UNICODE_NORMALIZATION_DECORATOR "std"
@@ -563,7 +562,7 @@ struct locale_data
   int unicode_mode;		/* 0 : default UnicodeData
 				 * 1 : UnicodeData with specified file */
   /* file path for Unicode data (if 'alphabet_mode' == 1) */
-  char unicode_data_file[LOC_FILE_PATH_SIZE];
+  char unicode_data_file[PATH_MAX];
 
   /* normalization */
   UNICODE_NORMALIZATION unicode_normalization;
