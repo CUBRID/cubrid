@@ -9720,6 +9720,7 @@ do_promote_partition (SM_CLASS * class_)
   SM_CLASS *current = NULL;
   DB_CTMPL *ctemplate = NULL;
   SM_ATTRIBUTE *smattr = NULL;
+  bool has_pk = false;
 
   CHECK_1ARG_ERROR (class_);
 
@@ -9784,7 +9785,12 @@ do_promote_partition (SM_CLASS * class_)
       /* reset flags that belong to the root partitioned table */
       smattr->auto_increment = NULL;
       smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
-      smattr->flags &= ~(SM_ATTFLAG_PRIMARY_KEY);
+      if ((smattr->flags & SM_ATTFLAG_PRIMARY_KEY) != 0)
+	{
+	  smattr->flags &= ~(SM_ATTFLAG_PRIMARY_KEY);
+	  smattr->flags &= ~(SM_ATTFLAG_NON_NULL);
+	  has_pk = true;
+	}
       smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
       smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
@@ -9809,7 +9815,11 @@ do_promote_partition (SM_CLASS * class_)
     {
       /* remove the partition information from properties */
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PARTITION);
-      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
+      if (has_pk)
+	{
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_NOT_NULL);
+	}
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
