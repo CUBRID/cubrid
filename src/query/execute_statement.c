@@ -14398,6 +14398,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   int result = 0;
+  bool insert_only = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -14418,8 +14419,12 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (pt_false_where (parser, statement))
     {
-      /* nothing to merge */
-      goto exit;
+      insert_only = true;
+      if (!statement->info.merge.insert.value_clauses)
+	{
+	  /* nothing to execute */
+	  goto exit;
+	}
     }
 
   spec = statement->info.merge.into;
@@ -14432,7 +14437,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_obj = flat->info.name.db_object;
 
   /* check update part */
-  if (statement->info.merge.update.assignment)
+  if (statement->info.merge.update.assignment && !insert_only)
     {
       err = update_check_for_fk_cache_attr (parser, statement);
       if (err != NO_ERROR)
@@ -14615,7 +14620,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto exit;
     }
 
-  if (statement->info.merge.update.assignment)
+  if (statement->info.merge.update.assignment && !insert_only)
     {
       if (!statement->info.merge.update.do_class_attrs)
 	{
@@ -14663,7 +14668,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* do update part */
-  if (statement->info.merge.update.assignment)
+  if (statement->info.merge.update.assignment && !insert_only)
     {
       if (statement->info.merge.update.do_class_attrs)
 	{
@@ -14830,7 +14835,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
-  bool server_insert, server_update, server_op;
+  bool server_insert, server_update, server_op, insert_only = false;
 
   PT_NODE *select_statement = NULL;
   PT_NODE *select_names = NULL, *select_values = NULL;
@@ -14851,10 +14856,13 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (pt_false_where (parser, statement))
     {
-      /* nothing to merge */
-      statement->xasl_id = NULL;
-      statement->info.merge.flags |= PT_MERGE_INFO_FALSE_WHERE;
-      goto cleanup;
+      statement->info.merge.flags |= PT_MERGE_INFO_INSERT_ONLY;
+      if (!statement->info.merge.insert.value_clauses)
+	{
+	  /* nothing to prepare */
+	  goto cleanup;
+	}
+      insert_only = true;
     }
 
   if (statement->xasl_id)
@@ -14870,7 +14878,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   flat = spec->info.spec.flat_entity_list;
   class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-  if (statement->info.merge.update.assignment)
+  if (statement->info.merge.update.assignment && !insert_only)
     {
       err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
       if (err == NO_ERROR && !has_trigger)
@@ -14918,7 +14926,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* check update part */
-  if (statement->info.merge.update.assignment)
+  if (statement->info.merge.update.assignment && !insert_only)
     {
       err = update_check_for_fk_cache_attr (parser, statement);
       if (err != NO_ERROR)
@@ -15159,7 +15167,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      if (statement->info.merge.update.assignment)
+      if (statement->info.merge.update.assignment && !insert_only)
 	{
 	  /* make the SELECT statement for OID list to be updated */
 	  no_vals = 0;
@@ -15252,8 +15260,15 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   PT_NODE *ins_select_stmt = NULL, *del_select_stmt = NULL, *hint_arg;
   QUERY_ID ins_query_id;
+  bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
 
   CHECK_MODIFICATION_ERROR ();
+
+  if (insert_only && !statement->info.merge.insert.value_clauses)
+    {
+      /* nothing to execute */
+      goto exit;
+    }
 
   /* savepoint for statement atomicity */
   savepoint_name = mq_generate_name (parser, "UmsP", &merge_savepoint_number);
@@ -15265,13 +15280,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   err = tran_savepoint (savepoint_name, false);
   if (err != NO_ERROR)
     {
-      goto exit;
-    }
-
-  if (statement->info.merge.flags & PT_MERGE_INFO_FALSE_WHERE)
-    {
-      /* nothing to execute */
-      statement->etc = NULL;
       goto exit;
     }
 
@@ -15352,7 +15360,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* client side execution */
 
-      if (statement->info.merge.update.assignment
+      if (statement->info.merge.update.assignment && !insert_only
 	  && !statement->info.merge.update.do_class_attrs)
 	{
 	  int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
@@ -15452,7 +15460,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* update part */
-      if (statement->info.merge.update.assignment)
+      if (statement->info.merge.update.assignment && !insert_only)
 	{
 	  AU_SAVE_AND_DISABLE (au_save);
 

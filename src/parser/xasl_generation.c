@@ -22245,6 +22245,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;
   OID *oid = NULL;
   int error = NO_ERROR;
+  bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
 
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)
@@ -22258,7 +22259,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       return NULL;
     }
 
-  if (statement->info.merge.update.assignment)
+  if (statement->info.merge.update.assignment && !insert_only)
     {
       /* generate XASL for UPDATE part */
       update_xasl =

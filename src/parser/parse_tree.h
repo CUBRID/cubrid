@@ -2447,7 +2447,7 @@ struct pt_merge_info
   PT_HINT_ENUM hint;		/* hint flag */
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
-#define PT_MERGE_INFO_FALSE_WHERE 4	/* merge condition always false */
+#define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */
   short flags;			/* statement specific flags */
 };
 
