@@ -452,6 +452,7 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
   int level = 0;
   PT_NODE *temp, *entity;
   short scope_location;
+  bool error_saved = false;
 
   /* skip hint argument name, index name */
   if (in_node->node_type == PT_NAME
@@ -465,6 +466,12 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
   if (pt_resolved (in_node))
     {
       return in_node;
+    }
+
+  if (er_errid () != NO_ERROR)
+    {
+      er_stack_push ();
+      error_saved = true;
     }
 
   /* resolve all name nodes and path expressions */
@@ -596,6 +603,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
 		}
 	    }
 	}
+    }
+
+  if (error_saved)
+    {
+      er_stack_pop ();
     }
 
   return node;
