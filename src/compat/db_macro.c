@@ -2155,11 +2155,9 @@ db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = DB_TYPE_TIME;
-  db_time_encode (&value->data.time, hour, min, sec);
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
-
-  return NO_ERROR;
+  return db_time_encode (&value->data.time, hour, min, sec);
 }
 
 /*
@@ -2174,16 +2172,16 @@ db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time)
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = DB_TYPE_TIME;
+  value->need_clear = false;
   if (time)
     {
       value->data.time = *time;
+      value->domain.general_info.is_null = 0;
     }
   else
     {
-      db_time_encode (&value->data.time, 0, 0, 0);
+      value->domain.general_info.is_null = 1;
     }
-  value->domain.general_info.is_null = 0;
-  value->need_clear = false;
 
   return NO_ERROR;
 }
@@ -2202,11 +2200,9 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = DB_TYPE_DATE;
-  db_date_encode (&value->data.date, mon, day, year);
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
-
-  return NO_ERROR;
+  return db_date_encode (&value->data.date, mon, day, year);
 }
 
 /*
@@ -2224,12 +2220,12 @@ db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date)
   if (date)
     {
       value->data.date = *date;
+      value->domain.general_info.is_null = 0;
     }
   else
     {
-      db_date_encode (&value->data.date, 0, 0, 0);
+      value->domain.general_info.is_null = 1;
     }
-  value->domain.general_info.is_null = 0;
   value->need_clear = false;
 
   return NO_ERROR;
@@ -2415,12 +2411,12 @@ db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
   if (datetime)
     {
       value->data.datetime = *datetime;
+      value->domain.general_info.is_null = 0;
     }
   else
     {
-      db_datetime_encode (&value->data.datetime, 0, 0, 0, 0, 0, 0, 0);
+      value->domain.general_info.is_null = 1;
     }
-  value->domain.general_info.is_null = 0;
   value->need_clear = false;
 
   return NO_ERROR;
@@ -5289,8 +5285,8 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
 	DB_DATE db_date;
 	char tmp[DATE_BUF_SIZE];
 
-	db_date_encode (&db_date, date->month, date->day, date->year);
-	if (db_date_to_string (tmp, DATE_BUF_SIZE, &db_date) == 0)
+	if (db_date_encode (&db_date, date->month, date->day, date->year) !=
+	    NO_ERROR || db_date_to_string (tmp, DATE_BUF_SIZE, &db_date) == 0)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
@@ -5554,7 +5550,7 @@ coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       {
-	char tmp[TIME_BUF_SIZE];
+	char tmp[DATETIME_BUF_SIZE];
 
 	if (db_datetime_string (datetime, "", tmp, DATETIME_BUF_SIZE) != 0)
 	  {

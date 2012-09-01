@@ -4066,12 +4066,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	short hh, mm, ss;
 	net_arg_get_time (&hh, &mm, &ss, net_value);
 	err_code = db_make_time (&db_val, hh, mm, ss);
-	if ((int) db_val.data.time < 0)
-	  {
-	    err_code = ER_TIME_CONVERSION;
-	    return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR,
-					    "Conversion error in time format");
-	  }
       }
       break;
     case CCI_U_TYPE_TIMESTAMP:
@@ -4082,9 +4076,21 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	DB_TIMESTAMP ts;
 
 	net_arg_get_timestamp (&yr, &mon, &day, &hh, &mm, &ss, net_value);
-	db_date_encode (&date, mon, day, yr);
-	db_time_encode (&time, hh, mm, ss);
-	db_timestamp_encode (&ts, &date, &time);
+	err_code = db_date_encode (&date, mon, day, yr);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	err_code = db_time_encode (&time, hh, mm, ss);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	err_code = db_timestamp_encode (&ts, &date, &time);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
 	err_code = db_make_timestamp (&db_val, ts);
       }
       break;
@@ -4094,7 +4100,11 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	DB_DATETIME dt;
 
 	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
-	db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
+	err_code = db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
 	err_code = db_make_datetime (&db_val, &dt);
       }
       break;

@@ -1709,7 +1709,7 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-                 "cursor_close srv_h_id %d", srv_h_id);
+		 "cursor_close srv_h_id %d", srv_h_id);
 
   ux_cursor_close (srv_handle);
 
@@ -2172,13 +2172,13 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	short yr, mon, day, hh, mm, ss, ms;
 	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
 	if (type == CCI_U_TYPE_DATE)
-	  write2_func ("%d/%d/%d", yr, mon, day);
+	  write2_func ("%d-%d-%d", yr, mon, day);
 	else if (type == CCI_U_TYPE_TIME)
 	  write2_func ("%d:%d:%d", hh, mm, ss);
 	else if (type == CCI_U_TYPE_TIMESTAMP)
-	  write2_func ("%d/%d/%d %d:%d:%d", yr, mon, day, hh, mm, ss);
+	  write2_func ("%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
 	else
-	  write2_func ("%d/%d/%d %d:%d:%d.%03d",
+	  write2_func ("%d-%d-%d %d:%d:%d.%03d",
 		       yr, mon, day, hh, mm, ss, ms);
       }
       break;

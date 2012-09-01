@@ -364,7 +364,6 @@ static int get_next_format (char *sp, const INTL_CODESET codeset,
 			    char **next_pos);
 static int get_cur_year (void);
 static int get_cur_month (void);
-static int is_valid_date (int month, int day, int year, int day_of_the_week);
 /* utility functions */
 static int add_and_normalize_date_time (int *years,
 					int *months,
@@ -13819,11 +13818,7 @@ db_to_timestamp (const DB_VALUE * src_str,
   day = (daycount == 0) ? 1 : day;
   week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
 
-  if (is_valid_date (month, day, year, week) == true)
-    {
-      db_date_encode (&tmp_date, month, day, year);
-    }
-  else
+  if (db_date_encode (&tmp_date, month, day, year) != NO_ERROR)
     {
       error_status = ER_DATE_CONVERSION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -14644,13 +14639,6 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
   day = (daycount == 0) ? 1 : day;
   week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
 
-  if (!is_valid_date (month, day, year, week) == true)
-    {
-      error_status = ER_DATE_CONVERSION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      goto exit;
-    }
-
   /**************            Check TIME        ****************/
   if (am == true && pm == false && hour <= 12)
     {				/* If A.M.    */
@@ -14672,8 +14660,12 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
     }
 
   /*************         Make DATETIME        *****************/
-  db_datetime_encode (&tmp_datetime, month, day, year, hour, minute,
-		      second, millisecond);
+  error_status = db_datetime_encode (&tmp_datetime, month, day, year, hour,
+				     minute, second, millisecond);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
 
   if (DB_MAKE_DATETIME (result_datetime, &tmp_datetime) != NO_ERROR)
     {
@@ -18142,41 +18134,6 @@ int
 get_day (int month, int day, int year)
 {
   return day_of_week (julian_encode (month, day, year));
-}
-
-/*
- * is_valid_date () -
- */
-static int
-is_valid_date (int month, int day, int year, int day_of_the_week)
-{
-  int julian_date;
-  int test_month, test_day, test_year, test_day_of_the_week;
-
-  /*
-   * Now encode it and then decode it again and see if we get the same
-   * day; if not, it was a bogus specification, like 2/29 on a non-leap
-   * year.
-   */
-  julian_date = julian_encode (month, day, year);
-  julian_decode (julian_date, &test_month, &test_day, &test_year,
-		 &test_day_of_the_week);
-
-  if (month == test_month && day == test_day && year == test_year)
-    {
-      if (day_of_the_week == test_day_of_the_week || day_of_the_week == -1)
-	{
-	  return true;
-	}
-      else
-	{
-	  return false;
-	}
-    }
-  else
-    {
-      return false;
-    }
 }
 
 /*

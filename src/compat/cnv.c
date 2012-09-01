@@ -6912,8 +6912,8 @@ db_string_value (const char *string, int str_size, const char *format,
 	{
 	case DB_TYPE_DATE:
 	  {
-	    DB_DATE date;
-	    db_date_encode (&date, 0, 0, 0);
+	    DB_DATE date = 0;
+
 	    if (csect_enter (NULL, CSECT_CNV_FMT_LEXER, INF_WAIT) != NO_ERROR)
 	      {
 		return NULL;
@@ -7514,7 +7514,14 @@ db_string_date (const char *date_string,
       int m, d, y;
 
       /* Is this a bogus date like 9/31? */
-      db_date_encode (the_date, month, day, year);
+      error = db_date_encode (the_date, month, day, year);
+      if (error != NO_ERROR)
+	{
+	  error = CNV_ERR_UNKNOWN_DATE;
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
+		     local_date_string (month, day, year));
+	  goto function_end;
+	}
       db_date_decode (the_date, &m, &d, &y);
       if (!(month == m && day == d && year == y))
 	{
@@ -7524,6 +7531,7 @@ db_string_date (const char *date_string,
 	}
     }
 
+function_end:
   return error ? NULL : cnv_fmt_next_token ();
 }
 
@@ -8532,9 +8540,25 @@ db_string_timestamp (const char *timestamp_string,
     {
       int m, d, y;
 
-      db_date_encode (&the_date, month, day, year);
-      db_time_encode (&the_time,
-		      (hrs == 12 && pm ? hour % 12 + 12 : hour), min, sec);
+      error = db_date_encode (&the_date, month, day, year);
+      if (error != NO_ERROR)
+	{
+	  error = CNV_ERR_UNKNOWN_DATE;
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
+		     local_date_string (month, day, year));
+	  goto function_end;
+	}
+      error = db_time_encode (&the_time,
+			      (hrs == 12 && pm ? hour % 12 + 12 : hour), min,
+			      sec);
+      if (error != NO_ERROR)
+	{
+	  error = CNV_ERR_UNKNOWN_DATE;
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
+		     local_date_string (month, day, year));
+	  goto function_end;
+	}
+
       /* Is this a bogus date like 9/31? */
       db_date_decode (&the_date, &m, &d, &y);
       if (!(month == m && day == d && year == y))
@@ -8555,6 +8579,7 @@ db_string_timestamp (const char *timestamp_string,
 	}
     }
 
+function_end:
   return (error ? NULL : cnv_fmt_next_token ());
 }
 

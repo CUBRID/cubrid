@@ -2755,7 +2755,7 @@ extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
 
 /* DB_DATE functions */
-extern void db_date_encode (DB_DATE * date, int month, int day, int year);
+extern int db_date_encode (DB_DATE * date, int month, int day, int year);
 extern void db_date_decode (DB_DATE * date, int *monthp,
 			    int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
@@ -2776,8 +2776,8 @@ extern int db_timestamp_to_string (char *buf, int bufsize,
 extern int db_string_to_timestamp (const char *buf, DB_TIMESTAMP * utime);
 
 /* DB_TIME functions */
-extern void db_time_encode (DB_TIME * timeval,
-			    int hour, int minute, int second);
+extern int db_time_encode (DB_TIME * timeval,
+			   int hour, int minute, int second);
 extern void db_time_decode (DB_TIME * timeval, int *hourp,
 			    int *minutep, int *secondp);
 extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);

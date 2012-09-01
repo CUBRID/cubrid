@@ -285,21 +285,30 @@ julian_decode (int jul, int *monthp, int *dayp, int *yearp, int *weekp)
 
 /*
  * db_date_encode() -
- * return : void
+ * return : error code
  * date(out):
  * month(in): month (1 - 12)
  * day(in): day (1 - 31)
  * year(in):
  */
-void
+int
 db_date_encode (DB_DATE * date, int month, int day, int year)
 {
   DB_DATE tmp;
   int tmp_month, tmp_day, tmp_year;
 
-  if (month < 0 || month > 12 || day < 0 || day > 31)
+  if (date == NULL)
     {
-      *date = 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  *date = 0;
+  if (year < 0 || year > 9999 || month < 0 || month > 12
+      || day < 0 || day > 31)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
     }
   else
     {
@@ -310,9 +319,18 @@ db_date_encode (DB_DATE * date, int month, int day, int year)
        * us some bogus data.
        */
       julian_decode (tmp, &tmp_month, &tmp_day, &tmp_year, NULL);
-      *date = (month == tmp_month && day == tmp_day && year == tmp_year)
-	? tmp : 0;
+      if (month == tmp_month && day == tmp_day && year == tmp_year)
+	{
+	  *date = tmp;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	  return ER_DATE_CONVERSION;
+	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -363,27 +381,34 @@ encode_time (int hour, int minute, int second)
 /*
  * db_time_encode() - Converts hour/minute/second into an encoded relative
  *    time value.
- * return : void
+ * return : error code
  * timeval(out) : time value
  * hour(in): hour
  * minute(in): minute
  * second(in): second
  */
-void
+int
 db_time_encode (DB_TIME * timeval, int hour, int minute, int second)
 {
-  if (timeval != NULL)
+  if (timeval == NULL)
     {
-      if (hour >= 0 && minute >= 0 && second >= 0 &&
-	  hour < 24 && minute < 60 && second < 60)
-	{
-	  *timeval = (((hour * 60) + minute) * 60) + second;
-	}
-      else
-	{
-	  *timeval = -1;
-	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+      return ER_TIME_CONVERSION;
     }
+
+  if (hour >= 0 && minute >= 0 && second >= 0 &&
+      hour < 24 && minute < 60 && second < 60)
+    {
+      *timeval = (((hour * 60) + minute) * 60) + second;
+    }
+  else
+    {
+      *timeval = -1;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+      return ER_TIME_CONVERSION;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -4078,10 +4103,8 @@ int
 db_datetime_encode (DB_DATETIME * datetime, int month, int day, int year,
 		    int hour, int minute, int second, int millisecond)
 {
-  db_date_encode (&datetime->date, month, day, year);
   datetime->time = encode_mtime (hour, minute, second, millisecond);
-
-  return NO_ERROR;
+  return db_date_encode (&datetime->date, month, day, year);
 }
 
 /*
