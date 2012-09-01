@@ -508,7 +508,7 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 
   if (BTREE_IS_NEW_FILE (btid))
     {
-      assert_release (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+      assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
 		      == FILE_NEW_FILE);
     }
   return NO_ERROR;
