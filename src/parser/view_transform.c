@@ -4402,10 +4402,17 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
-  /* flag spec for update/delete */
   from = merge_statement->info.merge.into;
+  /* check partition operation */
+  if (from->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
+    {
+      PT_ERRORm (parser, from, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+      return NULL;
+    }
   if (merge_statement->info.merge.update.assignment)
     {
+      /* flag spec for update/delete */
       auth |= DB_AUTH_UPDATE;
       (void) pt_mark_spec_list_for_update (parser, merge_statement);
       if (merge_statement->info.merge.update.has_delete)
