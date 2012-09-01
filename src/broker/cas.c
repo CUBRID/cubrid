@@ -1979,6 +1979,7 @@ net_read_process (SOCKET proxy_sock_fd,
     {
       if (as_info->con_status != CON_STATUS_IN_TRAN)
 	{
+	  cas_log_write_client_ip (as_info->cas_clt_ip);
 	  as_info->con_status = CON_STATUS_IN_TRAN;
 	  errors_in_transaction = 0;
 	}

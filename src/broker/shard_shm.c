@@ -968,6 +968,24 @@ shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p, int shard_id, int as_id)
   return as_info_p;
 }
 
+bool
+shard_shm_set_as_client_ip (T_PROXY_INFO * proxy_info_p, int shard_id,
+			    int as_id, unsigned int ip_addr)
+{
+  T_APPL_SERVER_INFO *as_info_p = NULL;
+
+  as_info_p = shard_shm_get_as_info (proxy_info_p, shard_id, as_id);
+  if (as_info_p == NULL)
+    {
+      return false;
+    }
+
+  memcpy (&as_info_p->cas_clt_ip[0], &ip_addr,
+	  sizeof (as_info_p->cas_clt_ip));
+
+  return true;
+}
+
 T_PROXY_INFO *
 shard_shm_get_proxy_info (char *shm_as_cp, int proxy_id)
 {

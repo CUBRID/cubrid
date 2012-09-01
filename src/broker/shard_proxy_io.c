@@ -2983,6 +2983,14 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
   if (cas_io_p->is_in_tran == true)
     {
+      if (shard_shm_set_as_client_ip (proxy_info_p, shard_id, cas_id, 0) ==
+	  false)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Unable to find CAS info in shared memory. "
+		     "(shard_id:%d, cas_id:%d).", shard_id, cas_id);
+	}
+
       shard_io_p->num_cas_in_tran--;
 
       PROXY_DEBUG_LOG ("shard/CAS status. (num_cas_in_tran=%d, shard_id=%d).",
@@ -3058,6 +3066,13 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
       cas_io_p->fd = INVALID_SOCKET;
       shard_stmt_del_all_srv_h_id_for_shard_cas (cas_io_p->shard_id,
 						 cas_io_p->cas_id);
+    }
+
+  if (shard_shm_set_as_client_ip (proxy_info_p, shard_id, cas_id, 0) == false)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unable to find CAS info in shared memory. "
+		 "(shard_id:%d, cas_id:%d).", shard_id, cas_id);
     }
 
   cas_io_p->is_in_tran = false;
@@ -3156,6 +3171,7 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   int error;
   T_SHARD_IO *shard_io_p;
   T_CAS_IO *cas_io_p;
+  T_CLIENT_INFO *cilent_info_p;
   unsigned int retry_count = 0;
 
   int i;
@@ -3322,6 +3338,24 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   assert (cas_io_p->ctx_uid == 0);
   assert (cas_io_p->fd != INVALID_SOCKET);
 
+  cilent_info_p = shard_shm_get_client_info (proxy_info_p, ctx_cid);
+  if (cilent_info_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unable to find cilent info in shared memory. "
+		 "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
+    }
+  else if (shard_shm_set_as_client_ip (proxy_info_p, cas_io_p->shard_id,
+				       cas_io_p->cas_id,
+				       cilent_info_p->client_ip) == false)
+    {
+
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unable to find CAS info in shared memory. "
+		 "(shard_id:%d, cas_id:%d).", cas_io_p->shard_id,
+		 cas_io_p->cas_id);
+    }
+
   cas_io_p->is_in_tran = true;
   cas_io_p->ctx_cid = ctx_cid;
   cas_io_p->ctx_uid = ctx_uid;
@@ -3395,6 +3429,13 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
       EXIT_FUNC ();
       return;
+    }
+
+  if (shard_shm_set_as_client_ip (proxy_info_p, shard_id, cas_id, 0) == false)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unable to find CAS info in shared memory. "
+		 "(shard_id:%d, cas_id:%d).", shard_id, cas_id);
     }
 
   cas_io_p->is_in_tran = false;

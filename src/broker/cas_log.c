@@ -617,6 +617,20 @@ cas_log_write_query_string (char *query, int size)
 #endif /* LIBCAS_FOR_JSP */
 }
 
+void
+cas_log_write_client_ip (const unsigned char *ip_addr)
+{
+#ifndef LIBCAS_FOR_JSP
+  char client_ip_str[16];
+
+  if (ip_addr != NULL && *((int *) ip_addr) != 0)
+    {
+      ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), ip_addr);
+      cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);
+    }
+#endif
+}
+
 #if !defined (NDEBUG)
 void
 cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)

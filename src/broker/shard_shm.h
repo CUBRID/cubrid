@@ -56,6 +56,9 @@ extern T_CLIENT_INFO *shard_shm_get_client_info (T_PROXY_INFO * proxy_info_p,
 						 int idx);
 extern T_APPL_SERVER_INFO *shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p,
 						  int shard_id, int as_id);
+extern bool shard_shm_set_as_client_ip (T_PROXY_INFO * proxy_info_p,
+					int shard_id, int as_id,
+					unsigned int ip_addr);
 
 extern T_SHM_SHARD_CONN_STAT *shard_shm_get_first_shard_stat (T_PROXY_INFO *
 							      proxy_info_p);
