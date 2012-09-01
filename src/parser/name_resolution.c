@@ -192,6 +192,11 @@ static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser,
 static void pt_mark_function_index_expression (PARSER_CONTEXT * parser,
 					       PT_NODE * expr,
 					       PT_BIND_NAMES_ARG * bind_arg);
+static void pt_bind_names_merge_insert (PARSER_CONTEXT * parser,
+					PT_NODE * node,
+					PT_BIND_NAMES_ARG * bind_arg,
+					SCOPES * scopestack,
+					PT_EXTRA_SPECS_FRAME * specs_frame);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -2614,17 +2619,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      {
 		fill_in_insert_default_function_arguments (parser, node);
 	      }
-	    /* bind names for insert attributes list */
-	    scopestack.specs = node->info.merge.into;
-	    bind_arg->scopes = &scopestack;
-	    spec_frame.next = bind_arg->spec_frames;
-	    spec_frame.extra_specs = NULL;
-	    bind_arg->spec_frames = &spec_frame;
-	    pt_bind_scope (parser, bind_arg);
-	    node->info.merge.insert.attr_list =
-	      parser_walk_tree (parser, node->info.merge.insert.attr_list,
-				pt_bind_names, bind_arg, pt_bind_names_post,
-				bind_arg);
+	    /* resolve insert attributes, values */
+	    pt_bind_names_merge_insert (parser, node, bind_arg, &scopestack,
+					&spec_frame);
 	  }
 
 	assert (node->info.merge.into->next == NULL);
@@ -7639,4 +7636,92 @@ pt_mark_function_index_expression (PARSER_CONTEXT * parser,
 	    }
 	}
     }
+}
+
+/*
+ * pt_bind_names_merge_insert () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   bind_arg(in):
+ *   scopestack(in):
+ *   spec_frame(in):
+ */
+static void
+pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
+			    PT_BIND_NAMES_ARG * bind_arg, SCOPES * scopestack,
+			    PT_EXTRA_SPECS_FRAME * spec_frame)
+{
+  PT_NODE *temp_node, *node_list, *save_next, *prev_node;
+  bool is_first_node;
+
+  assert (node->node_type == PT_MERGE);
+
+  /* bind names for insert attributes list */
+  scopestack->specs = node->info.merge.into;
+  bind_arg->scopes = scopestack;
+  spec_frame->next = bind_arg->spec_frames;
+  spec_frame->extra_specs = NULL;
+  bind_arg->spec_frames = spec_frame;
+  pt_bind_scope (parser, bind_arg);
+  node->info.merge.insert.attr_list =
+    parser_walk_tree (parser, node->info.merge.insert.attr_list, pt_bind_names,
+		      bind_arg, pt_bind_names_post, bind_arg);
+
+  /* bind names for default function in insert values list */
+  node_list = node->info.merge.insert.value_clauses->info.node_list.list;
+  for (temp_node = node_list, is_first_node = true; temp_node != NULL;
+       temp_node = temp_node->next, is_first_node = false)
+    {
+      if (temp_node->node_type == PT_EXPR
+	  && temp_node->info.expr.op == PT_DEFAULTF)
+	{
+	  scopestack->specs = node->info.merge.into;
+	  bind_arg->scopes = scopestack;
+	  spec_frame->next = bind_arg->spec_frames;
+	  spec_frame->extra_specs = NULL;
+	  bind_arg->spec_frames = spec_frame;
+	  pt_bind_scope (parser, bind_arg);
+
+	  save_next = temp_node->next;
+	  temp_node->next = NULL;
+	  temp_node = parser_walk_tree (parser, temp_node, pt_bind_names,
+					bind_arg, pt_bind_names_post,
+					bind_arg);
+	  temp_node->next = save_next;
+
+	  if (is_first_node)
+	    {
+	      node->info.merge.insert.value_clauses->info.node_list.list =
+		temp_node;
+	    }
+	  else
+	    {
+	      prev_node->next = temp_node;
+	    }
+	}
+      prev_node = temp_node;
+    }
+
+  /* bind names for the rest of insert values list */
+  scopestack->specs = node->info.merge.using;
+  bind_arg->scopes = scopestack;
+  spec_frame->next = bind_arg->spec_frames;
+  spec_frame->extra_specs = NULL;
+  bind_arg->spec_frames = spec_frame;
+  pt_bind_scope (parser, bind_arg);
+  node->info.merge.insert.value_clauses =
+    parser_walk_tree (parser, node->info.merge.insert.value_clauses,
+		      pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+  /* bind names for insert search condition */
+  scopestack->specs = node->info.merge.using;
+  bind_arg->scopes = scopestack;
+  spec_frame->next = bind_arg->spec_frames;
+  spec_frame->extra_specs = NULL;
+  bind_arg->spec_frames = spec_frame;
+  pt_bind_scope (parser, bind_arg);
+  node->info.merge.insert.search_cond =
+    parser_walk_tree (parser, node->info.merge.insert.search_cond,
+		      pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 }
