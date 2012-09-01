@@ -25,7 +25,7 @@ $res = cubrid_is_instance($conn, $oid);
 if ($res == 1) {
     printf("Intance pointed by %s exists.\n", $oid);
 } else {
-    printf ("[003] [%d] %s\n", cburid_errno($conn), cubrid_error($conn));
+    printf ("[003] [%d] %s\n", cubrid_errno($conn), cubrid_error($conn));
 }
 
 cubrid_disconnect($conn);

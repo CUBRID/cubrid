@@ -11,7 +11,7 @@ require_once('until.php')
 
 include_once('connect.inc');
 
-$conn = cubrid_connect_with_url("CUBRID:$host:$port:$db:::?&login_timeout=5000&query_timeout=5000&disconnect_on_query_timeout=yes");
+$conn = cubrid_connect_with_url("CUBRID:$host:$port:$db:::?login_timeout=5000&query_timeout=5000&disconnect_on_query_timeout=yes");
 
 $req = cubrid_prepare($conn, "SELECT * FROM code");
 
