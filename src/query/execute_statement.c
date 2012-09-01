@@ -1830,6 +1830,21 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  /*
+   * after serial.next_value, the currect value maybe changed, but cub_cas
+   * still hold the old value. To get the new value. we need decache it 
+   * then refetch it from server again.
+   */
+  assert (WS_ISDIRTY (serial_object) == false);
+
+  ws_decache (serial_object);
+
+  error = au_fetch_instance_force (serial_object, NULL, DB_FETCH_WRITE);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
