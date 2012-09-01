@@ -16354,11 +16354,19 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
       || (func_index_info && (func_index_info->attr_index_start + 1) > 1))
     {
       DB_MIDXKEY midxkey;
+      int midxkey_size = recdes->length;
+
+      if (func_index_info != NULL)
+	{
+	  /* this will allocate more than it is needed to store the key, but
+	     there is no decent way to calculate the correct size */
+	  midxkey_size += OR_VALUE_ALIGNED_SIZE (fi_res);
+	}
 
       /* Allocate storage for the buf of midxkey */
-      if (recdes->length > DBVAL_BUFSIZE)
+      if (midxkey_size > DBVAL_BUFSIZE)
 	{
-	  midxkey.buf = db_private_alloc (thread_p, recdes->length);
+	  midxkey.buf = db_private_alloc (thread_p, midxkey_size);
 	  if (midxkey.buf == NULL)
 	    {
 	      return NULL;
@@ -16378,7 +16386,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 
       DB_MAKE_MIDXKEY (db_value, &midxkey);
 
-      if (recdes->length > DBVAL_BUFSIZE)
+      if (midxkey_size > DBVAL_BUFSIZE)
 	{
 	  db_value->need_clear = true;
 	}

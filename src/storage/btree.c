@@ -3661,23 +3661,29 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 		      pr_clone_value (&key_value, &elem);
 		    }
 
-		  if (BTS->use_desc_index)
+		  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&elem))
+                      || TP_IS_DATE_OR_TIME_TYPE (DB_VALUE_TYPE (&elem)))
 		    {
-		      if (DB_IS_NULL (&(env->stat_info->max_value)))
+		      if (BTS->use_desc_index)
 			{
-			  pr_clone_value (&elem,
-					  &(env->stat_info->max_value));
-			}
-		      pr_clone_value (&elem, &(env->stat_info->min_value));
-		    }
-		  else
-		    {
-		      if (DB_IS_NULL (&(env->stat_info->min_value)))
-			{
+			  if (DB_IS_NULL (&(env->stat_info->max_value)))
+			    {
+			      pr_clone_value (&elem,
+					      &(env->stat_info->max_value));
+			    }
 			  pr_clone_value (&elem,
 					  &(env->stat_info->min_value));
 			}
-		      pr_clone_value (&elem, &(env->stat_info->max_value));
+		      else
+			{
+			  if (DB_IS_NULL (&(env->stat_info->min_value)))
+			    {
+			      pr_clone_value (&elem,
+					      &(env->stat_info->min_value));
+			    }
+			  pr_clone_value (&elem,
+					  &(env->stat_info->max_value));
+			}
 		    }
 
 		  pr_clear_value (&elem);
