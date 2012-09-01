@@ -1179,9 +1179,8 @@ ZEND_MINFO_FUNCTION(cubrid)
     
     php_info_print_table_start();
     php_info_print_table_header(2, "CUBRID support", "enabled");
-    php_info_print_table_row(2, "Version", PHP_CUBRID_VERSION);
+    php_info_print_table_row(2, "Driver Version", PHP_CUBRID_VERSION);
     php_info_print_table_row(2, "CCI Version", info);
-    php_info_print_table_row(2, "CUBRID Version", "8.4.9");
     php_info_print_table_end();
 
     DISPLAY_INI_ENTRIES();
