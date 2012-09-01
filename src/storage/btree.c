@@ -17111,30 +17111,6 @@ start_locking:
 				{
 				  goto error;
 				}
-			      /* Now unlock the object, because we don't want
-			       * to leave a lock behind, since we are using
-			       * the fake range here. */
-			      lock_unlock_object (thread_p, &inst_oid,
-						  &class_oid, bts->lock_mode,
-						  true);
-
-			      if (!OID_ISNULL (&ck_pseudo_oid))
-				{
-				  lock_unlock_object (thread_p,
-						      &ck_pseudo_oid,
-						      &class_oid,
-						      bts->key_lock_mode,
-						      true);
-				}
-
-			      if (!OID_ISNULL (&nk_pseudo_oid))
-				{
-				  lock_unlock_object (thread_p,
-						      &nk_pseudo_oid,
-						      &saved_nk_class_oid,
-						      bts->key_lock_mode,
-						      true);
-				}
 
 			      oids_cnt++;
 			      goto end_of_scan;
@@ -17969,24 +17945,6 @@ start_locking:
 			      goto error;
 			    }
 
-			  lock_unlock_object (thread_p, &inst_oid,
-					      &class_oid, bts->lock_mode,
-					      true);
-
-			  if (!OID_ISNULL (&ck_pseudo_oid))
-			    {
-			      lock_unlock_object (thread_p,
-						  &ck_pseudo_oid, &class_oid,
-						  bts->key_lock_mode, true);
-			    }
-
-			  if (!OID_ISNULL (&nk_pseudo_oid))
-			    {
-			      lock_unlock_object (thread_p, &nk_pseudo_oid,
-						  &saved_nk_class_oid,
-						  bts->key_lock_mode, true);
-			    }
-
 			  oids_cnt++;
 			  goto end_of_scan;
 			}
@@ -18310,25 +18268,6 @@ start_locking:
 			      != NO_ERROR)
 			    {
 			      goto error;
-			    }
-
-			  lock_unlock_object (thread_p, &inst_oid,
-					      &class_oid, bts->lock_mode,
-					      true);
-
-			  if (!OID_ISNULL (&ck_pseudo_oid))
-			    {
-			      lock_unlock_object (thread_p,
-						  &ck_pseudo_oid, &class_oid,
-						  bts->key_lock_mode, true);
-			    }
-
-			  if (!OID_ISNULL (&nk_pseudo_oid))
-			    {
-			      lock_unlock_object (thread_p,
-						  &nk_pseudo_oid,
-						  &saved_nk_class_oid,
-						  bts->key_lock_mode, true);
 			    }
 
 			  oids_cnt++;
