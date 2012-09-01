@@ -2182,7 +2182,7 @@ partition_match_index (PRUNING_CONTEXT * pinfo, const KEY_INFO * key,
 
   status = MATCH_OK;
 
-  /* We do not care which range_type this index scan is supposed to 
+  /* We do not care which range_type this index scan is supposed to
    * perform. Each key range produces a list of partitions and we will
    * merge those lists to get the full list of partitions that contains
    * information for our search
@@ -2440,6 +2440,8 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
 
   if (pinfo->fp_cache_context != NULL)
     {
+      stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
+      stx_free_xasl_unpack_info (pinfo->fp_cache_context);
       db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
     }
 

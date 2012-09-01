@@ -7230,12 +7230,12 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 	      /*free allocated memory */
 	      if (pred_filter_cache_context)
 		{
-		  free_and_init (pred_filter_cache_context);
+		  db_private_free_and_init (thread_p, pred_filter_cache_context);
 		}
 	      pred_filter = NULL;
 	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
 	      /*add clone to free list */
-	      qexec_free_filter_pred_cache_clo (cache_clone_p);
+	      qexec_free_filter_pred_cache_clo (thread_p, cache_clone_p);
 	      cache_clone_p = NULL;
 	    }
 

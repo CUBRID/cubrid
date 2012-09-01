@@ -20507,7 +20507,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
       nr_atts = n_atts;
       atts = att_ids;
     }
-  if (stx_map_stream_to_func_pred (NULL, (FUNC_PRED **) & func_pred,
+
+  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) & func_pred,
 				   expr_stream, expr_stream_size,
 				   &unpack_info))
     {
@@ -20542,7 +20543,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   regu_var = func_pred->func_regu;
   heap_update_regu_var_cache_attrinfo (regu_var, attr_info);
 
-  error = fetch_peek_dbval (NULL, func_pred->func_regu, NULL,
+  error = fetch_peek_dbval (thread_p, func_pred->func_regu, NULL,
 			    &attr_info->class_oid, &attr_info->inst_oid, NULL,
 			    &res);
   if (error == NO_ERROR)
@@ -20562,7 +20563,7 @@ end:
   if (unpack_info)
     {
       (void) qexec_clear_func_pred (thread_p, func_pred);
-      stx_free_additional_buff (unpack_info);
+      stx_free_additional_buff (thread_p, unpack_info);
       stx_free_xasl_unpack_info (unpack_info);
       db_private_free_and_init (thread_p, unpack_info);
       func_pred->func_regu = NULL;

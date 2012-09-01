@@ -404,7 +404,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p,
   char *p = NULL;
   int header_size;
   int offset;
-  XASL_UNPACK_INFO *temp_unpack_info_ptr = NULL;
+  XASL_UNPACK_INFO *unpack_info_p = NULL;
 
   if (!pred || !pred_stream || !pred_unpack_info_ptr || pred_stream_size <= 0)
     {
@@ -413,8 +413,8 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p,
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, pred_stream, pred_stream_size);
-  temp_unpack_info_ptr = stx_get_xasl_unpack_info_ptr (thread_p);
-  temp_unpack_info_ptr->track_allocated_bufers = 1;
+  unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to filter predicate in the stream buffer */
   p = or_unpack_int (pred_stream, &header_size);
@@ -427,15 +427,18 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p,
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (!pwc)
     {
-      stx_free_xasl_unpack_info (stx_get_xasl_unpack_info_ptr (thread_p));
-      goto end;
+      stx_free_visited_ptrs (thread_p);
+      stx_free_additional_buff (thread_p, unpack_info_p);
+      stx_free_xasl_unpack_info (unpack_info_p);
+      db_private_free_and_init (thread_p, unpack_info_p);
+
+      return stx_get_xasl_errcode (thread_p);
     }
 
   /* set result */
   *pred = pwc;
-  *pred_unpack_info_ptr = temp_unpack_info_ptr;
+  *pred_unpack_info_ptr = unpack_info_p;
 
-end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
@@ -460,6 +463,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl,
   char *p = NULL;
   int header_size;
   int offset;
+  XASL_UNPACK_INFO *unpack_info_p = NULL;
 
   if (!xasl || !xasl_stream || !xasl_unpack_info_ptr || xasl_stream_size <= 0)
     {
@@ -468,6 +472,8 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl,
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
+  unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to expr XASL in the stream buffer */
   p = or_unpack_int (xasl_stream, &header_size);
@@ -480,15 +486,18 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl,
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (!p_xasl)
     {
-      stx_free_xasl_unpack_info (stx_get_xasl_unpack_info_ptr (thread_p));
-      goto end;
+      stx_free_visited_ptrs (thread_p);
+      stx_free_additional_buff (thread_p, unpack_info_p);
+      stx_free_xasl_unpack_info (unpack_info_p);
+      db_private_free_and_init (thread_p, unpack_info_p);
+
+      return stx_get_xasl_errcode (thread_p);
     }
 
   /* set result */
   *xasl = p_xasl;
-  *xasl_unpack_info_ptr = stx_get_xasl_unpack_info_ptr (thread_p);
+  *xasl_unpack_info_ptr = unpack_info_p;
 
-end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
@@ -515,13 +524,13 @@ stx_free_xasl_unpack_info (void *xasl_unpack_info)
 }
 
 /*
- * stx_free_additional_buff () - free additional buffers allocated during 
+ * stx_free_additional_buff () - free additional buffers allocated during
  *				 XASL unpacking
  * return : void
  * xasl_unpack_info (in) : XASL unpack info
  */
 void
-stx_free_additional_buff (void *xasl_unpack_info)
+stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
 {
 #if defined (SERVER_MODE)
   if (xasl_unpack_info)
@@ -532,8 +541,8 @@ stx_free_additional_buff (void *xasl_unpack_info)
       while (add_buff != NULL)
 	{
 	  temp = add_buff->next;
-	  free_and_init (add_buff->buff);
-	  free_and_init (add_buff);
+	  db_private_free_and_init (thread_p, add_buff->buff);
+	  db_private_free_and_init (thread_p, add_buff);
 	  add_buff = temp;
 	}
     }

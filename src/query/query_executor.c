@@ -861,7 +861,8 @@ static XASL_CACHE_ENTRY *qexec_alloc_filter_pred_cache_ent (int req_size);
 static XASL_CACHE_CLONE *qexec_expand_filter_pred_cache_clo_arr (int n_exp);
 static XASL_CACHE_CLONE *qexec_alloc_filter_pred_cache_clo (XASL_CACHE_ENTRY *
 							    ent);
-static int qexec_append_LRU_filter_pred_cache_clo (XASL_CACHE_CLONE * clo);
+static int qexec_append_LRU_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
+						   XASL_CACHE_CLONE * clo);
 static int qexec_delete_LRU_filter_pred_cache_clo (XASL_CACHE_CLONE * clo);
 static int qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data,
 				      void *args);
@@ -9530,7 +9531,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* This guarantees that the result list file will have a type list.
-	 Copying a list_id structure fails unless it has a type list. */
+     Copying a list_id structure fails unless it has a type list. */
   if (qexec_setup_list_id (xasl) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
@@ -19659,7 +19660,7 @@ qexec_finalize_filter_pred_cache (THREAD_ENTRY * thread_p)
 	  (void) qexec_delete_LRU_filter_pred_cache_clo (clo);
 
 	  /* add clone to free_list */
-	  ret = qexec_free_filter_pred_cache_clo (clo);
+	  ret = qexec_free_filter_pred_cache_clo (thread_p, clo);
 	}			/* while */
     }
 
@@ -20031,8 +20032,11 @@ qexec_alloc_filter_pred_cache_clo (XASL_CACHE_ENTRY * ent)
  *   cache_clone_p(in)    :
  */
 int
-qexec_free_filter_pred_cache_clo (XASL_CACHE_CLONE * clo)
+qexec_free_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
+				  XASL_CACHE_CLONE * clo)
 {
+  HL_HEAPID save_heapid;
+
   if (!clo)
     {
       return ER_FAILED;
@@ -20054,8 +20058,12 @@ qexec_free_filter_pred_cache_clo (XASL_CACHE_CLONE * clo)
 
   if (clo->xasl_buf_info)
     {
-      stx_free_additional_buff (clo->xasl_buf_info);
-      free_and_init (clo->xasl_buf_info);
+      save_heapid = db_change_private_heap (thread_p, 0);
+
+      stx_free_additional_buff (thread_p, clo->xasl_buf_info);
+      db_private_free_and_init (thread_p, clo->xasl_buf_info);
+
+      (void) db_change_private_heap (thread_p, save_heapid);
     }
 
   /* initialize */
@@ -20074,7 +20082,8 @@ qexec_free_filter_pred_cache_clo (XASL_CACHE_CLONE * clo)
  *   cache_clone_p(in)    :
  */
 static int
-qexec_append_LRU_filter_pred_cache_clo (XASL_CACHE_CLONE * clo)
+qexec_append_LRU_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
+					XASL_CACHE_CLONE * clo)
 {
   int ret = NO_ERROR;
 
@@ -20135,7 +20144,7 @@ qexec_append_LRU_filter_pred_cache_clo (XASL_CACHE_CLONE * clo)
       (void) qexec_delete_LRU_filter_pred_cache_clo (del);
 
       /* add clone to free_list */
-      ret = qexec_free_filter_pred_cache_clo (del);
+      ret = qexec_free_filter_pred_cache_clo (thread_p, del);
     }
 
   clo->LRU_prev = clo->LRU_next = NULL;	/* init */
@@ -20233,7 +20242,7 @@ qexec_free_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data,
 	      (void) qexec_delete_LRU_filter_pred_cache_clo (clo);
 	    }
 	  /* add clone to free_list */
-	  ret = qexec_free_filter_pred_cache_clo (clo);
+	  ret = qexec_free_filter_pred_cache_clo (thread_p, clo);
 	}			/* for (cache_clone_p = ent->clo_list; ...) */
     }
 
@@ -20809,7 +20818,8 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	    {			/* push clone back to free_list */
 	      /* append to LRU list */
 	      if (filter_pred_clo_cache.max_clones > 0	/* enable cache clone */
-		  && qexec_append_LRU_filter_pred_cache_clo (clo) == NO_ERROR)
+		  && qexec_append_LRU_filter_pred_cache_clo (thread_p,
+							     clo) == NO_ERROR)
 		{
 		  /* add to clone list */
 		  clo->next = ent->clo_list;
@@ -20818,7 +20828,7 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	      else
 		{
 		  /* give up; add to free_list */
-		  (void) qexec_free_filter_pred_cache_clo (clo);
+		  (void) qexec_free_filter_pred_cache_clo (thread_p, clo);
 		}
 	    }
 	  else
@@ -20853,7 +20863,7 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	  if (clo)
 	    {			/* push clone back to free_list */
 	      /* give up; add to free_list */
-	      (void) qexec_free_filter_pred_cache_clo (clo);
+	      (void) qexec_free_filter_pred_cache_clo (thread_p, clo);
 	    }
 	  else
 	    {			/* pop clone from free_list */

@@ -827,7 +827,8 @@ extern XASL_CACHE_ENTRY
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
 #endif /* ENABLE_UNUSED_FUNCTION */
-extern int qexec_free_filter_pred_cache_clo (XASL_CACHE_CLONE * clo);
+extern int qexec_free_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
+					     XASL_CACHE_CLONE * clo);
 extern int xasl_id_hash_cmpeq (const void *key1, const void *key2);
 extern int qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
 						 const OID * class_oid,
@@ -877,7 +878,8 @@ extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p,
 					int xasl_stream_size,
 					void **xasl_unpack_info_ptr);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
-extern void stx_free_additional_buff (void *unpack_info_ptr);
+extern void stx_free_additional_buff (THREAD_ENTRY * thread_p,
+				      void *unpack_info_ptr);
 
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl,
 					 int index,
