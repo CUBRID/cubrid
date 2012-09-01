@@ -11742,7 +11742,10 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			"This statement has no record by 'limit 0' clause.\n");
 	  return NO_ERROR;
 	}
-      assert (l == V_FALSE);
+      else if (l == V_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
   switch (xasl->type)
