@@ -226,8 +226,8 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 					LC_FLUSH_UPDATE,
 					SINGLE_ROW_UPDATE, upd_scancache,
 					&force_count, false,
-					REPL_INFO_TYPE_STMT_NORMAL, NULL) !=
-	  NO_ERROR)
+					REPL_INFO_TYPE_STMT_NORMAL, NULL,
+					NULL) != NO_ERROR)
 	{
 	  result = -1;
 	}

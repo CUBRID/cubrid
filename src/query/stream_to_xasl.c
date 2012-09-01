@@ -2496,6 +2496,22 @@ stx_build_func_pred (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      func_pred->cache_attrinfo = NULL;
+    }
+  else
+    {
+      func_pred->cache_attrinfo =
+	stx_restore_cache_attrinfo (thread_p,
+				    &xasl_unpack_info->packed_xasl[offset]);
+      if (func_pred->cache_attrinfo == NULL)
+	{
+	  goto error;
+	}
+    }
+
   return ptr;
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);

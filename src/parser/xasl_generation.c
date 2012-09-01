@@ -7319,7 +7319,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	{
 	  domain =
 	    pt_node_data_type_to_db_domain (parser, real_node->data_type,
-                                            real_node->type_enum);
+					    real_node->type_enum);
 
 	  if (domain != NULL)
 	    {
@@ -21876,6 +21876,7 @@ pt_to_func_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * expr)
     {
       func_pred->func_regu =
 	pt_to_regu_variable (parser, expr, UNBOX_AS_VALUE);
+      func_pred->cache_attrinfo = symbols->cache_attrinfo;
     }
 
   if (pt_has_error (parser))

@@ -641,6 +641,7 @@ typedef struct func_pred FUNC_PRED;
 struct func_pred
 {
   REGU_VARIABLE *func_regu;	/* function expression regulator variable */
+  HEAP_CACHE_ATTRINFO *cache_attrinfo;
 };
 
 #define XASL_LINK_TO_REGU_VARIABLE 1	/* is linked to regu variable ? */

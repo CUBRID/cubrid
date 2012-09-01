@@ -194,6 +194,14 @@ struct function_index_info
   int expr_stream_size;
   int col_id;
   int attr_index_start;
+  void *expr;
+};
+
+typedef struct func_pred_unpack_info FUNC_PRED_UNPACK_INFO;
+struct func_pred_unpack_info
+{
+  void *func_pred;
+  void *unpack_info;
 };
 
 #if 0				/* TODO: check not use - ksseo */
@@ -427,7 +435,9 @@ extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p,
 					 int btid_index,
 					 HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid,
-					 DB_VALUE * db_value, char *buf);
+					 DB_VALUE * db_value, char *buf,
+					 FUNC_PRED_UNPACK_INFO *
+					 func_indx_preds);
 
 extern BTID *heap_indexinfo_get_btid (int btid_index,
 				      HEAP_CACHE_ATTRINFO * attrinfo);

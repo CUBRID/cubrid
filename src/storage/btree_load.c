@@ -218,6 +218,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   void *buf_info = NULL;
+  void *func_unpack_info = NULL;
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -315,6 +316,15 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       func_index_info.expr_stream_size = func_pred_stream_size;
       func_index_info.col_id = func_col_id;
       func_index_info.attr_index_start = func_attr_index_start;
+      func_index_info.expr = NULL;
+      if (stx_map_stream_to_func_pred (thread_p,
+				       (FUNC_PRED **) & func_index_info.expr,
+				       func_pred_stream,
+				       func_pred_stream_size,
+				       &func_unpack_info))
+	{
+	  goto error;
+	}
       sort_args->func_index_info = &func_index_info;
     }
 
@@ -353,6 +363,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			       sort_args->filter->num_attrs_pred,
 			       sort_args->filter->attrids_pred,
 			       sort_args->filter->cache_pred) != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  if (sort_args->func_index_info)
+    {
+      if (heap_attrinfo_start (thread_p, &sort_args->class_ids[cur_class],
+			       sort_args->n_attrs,
+			       &sort_args->attr_ids[attr_offset],
+			       ((FUNC_PRED *) sort_args->func_index_info->
+				expr)->cache_attrinfo) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -448,6 +469,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 	{
 	  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
 	}
+      if (sort_args->func_index_info)
+	{
+	  heap_attrinfo_end (thread_p,
+			     ((FUNC_PRED *) sort_args->func_index_info->
+			      expr)->cache_attrinfo);
+	}
     }
   sort_args->attrinfo_inited = 0;
   if (sort_args->scancache_inited)
@@ -523,6 +550,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
     {
       stx_free_xasl_unpack_info (buf_info);
     }
+  if (sort_args->func_index_info && sort_args->func_index_info->expr)
+    {
+      (void) qexec_clear_func_pred (thread_p,
+				    sort_args->func_index_info->expr);
+    }
+  if (func_unpack_info)
+    {
+      stx_free_additional_buff (thread_p, func_unpack_info);
+      stx_free_xasl_unpack_info (func_unpack_info);
+      db_private_free_and_init (thread_p, func_unpack_info);
+    }
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
   addr.vfid = NULL;
@@ -549,6 +587,12 @@ error:
       if (sort_args->filter)
 	{
 	  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
+	}
+      if (sort_args->func_index_info && sort_args->func_index_info->expr)
+	{
+	  heap_attrinfo_end (thread_p,
+			     ((FUNC_PRED *) sort_args->func_index_info->
+			      expr)->cache_attrinfo);
 	}
     }
 
@@ -578,7 +622,18 @@ error:
     {
       stx_free_xasl_unpack_info (buf_info);
     }
-
+  if (sort_args->func_index_info && sort_args->func_index_info->expr)
+    {
+      (void) qexec_clear_func_pred (thread_p,
+				    (FUNC_PRED *) sort_args->func_index_info->
+				    expr);
+    }
+  if (func_unpack_info)
+    {
+      stx_free_additional_buff (thread_p, func_unpack_info);
+      stx_free_xasl_unpack_info (func_unpack_info);
+      db_private_free_and_init (thread_p, func_unpack_info);
+    }
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   return NULL;
@@ -2292,7 +2347,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 					  &attr_info, &cache_attr_id, 1,
 					  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE,
 					  &upd_scancache, &force_count, true,
-					  REPL_INFO_TYPE_STMT_NORMAL, NULL);
+					  REPL_INFO_TYPE_STMT_NORMAL, NULL,
+					  NULL);
       if (ret != NO_ERROR)
 	{
 	  heap_attrinfo_end (thread_p, &attr_info);
@@ -2388,6 +2444,13 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		{
 		  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
 		}
+	      if (sort_args->func_index_info &&
+		  sort_args->func_index_info->expr)
+		{
+		  heap_attrinfo_end (thread_p,
+				     ((FUNC_PRED *) sort_args->
+				      func_index_info->expr)->cache_attrinfo);
+		}
 	    }
 	  sort_args->attrinfo_inited = 0;
 	  if (sort_args->scancache_inited)
@@ -2474,6 +2537,18 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		  return (SORT_ERROR_OCCURRED);
 		}
 	      continue;
+	    }
+	}
+
+      if (sort_args->func_index_info && sort_args->func_index_info->expr)
+	{
+	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid,
+					   &sort_args->in_recdes,
+					   ((FUNC_PRED *) sort_args->
+					    func_index_info->expr)->
+					   cache_attrinfo) != NO_ERROR)
+	    {
+	      return (SORT_ERROR_OCCURRED);
 	    }
 	}
 

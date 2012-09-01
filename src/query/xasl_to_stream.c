@@ -3012,6 +3012,13 @@ xts_process_func_pred (char *ptr, const FUNC_PRED * func_pred)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_cache_attrinfo (func_pred->cache_attrinfo);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
@@ -5260,6 +5267,7 @@ xts_sizeof_func_pred (const FUNC_PRED * xasl)
 {
   int size = 0;
   size += PTR_SIZE;		/* REGU_VAR pointer */
+  size += PTR_SIZE;		/* HEAP_CACHE_ATTRINFO pointer */
 
   return size;
 }

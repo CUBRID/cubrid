@@ -323,8 +323,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 				   (HEAP_SCANCACHE *) NULL,
 				   /* ejin: for replication... */
 				   false,	/* 7th arg -> data or schema */
-				   false, NULL)	/* 8th arg -> make repl. log or not */
-      != NO_ERROR)
+				   false, NULL,	/* 8th arg -> make repl. log or not */
+				   NULL) != NO_ERROR)
     {
       error = er_errid ();
     }

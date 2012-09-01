@@ -198,7 +198,8 @@ static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count,
-				 PRUNING_CONTEXT * pcontext);
+				 PRUNING_CONTEXT * pcontext,
+				 FUNC_PRED_UNPACK_INFO * func_preds);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 OID * class_oid, OID * oid,
 				 BTID * search_btid,
@@ -3959,7 +3960,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
       /* must be updated when key_prefix_length will be added for FK and PK */
       key_dbvalue = heap_attrvalue_get_key (thread_p, i, &index_attrinfo,
 					    recdes, &btid, &dbvalue,
-					    aligned_buf);
+					    aligned_buf, NULL);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -4312,7 +4313,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 								 &force_count,
 								 false,
 								 REPL_INFO_TYPE_STMT_NORMAL,
-								 NULL);
+								 NULL, NULL);
 		      if (error_code != NO_ERROR)
 			{
 			  goto error1;
@@ -4566,7 +4567,7 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 							 &upd_scancache,
 							 &force_count, true,
 							 REPL_INFO_TYPE_STMT_NORMAL,
-							 NULL);
+							 NULL, NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error1;
@@ -4843,7 +4844,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 							     &force_count,
 							     false,
 							     REPL_INFO_TYPE_STMT_NORMAL,
-							     NULL);
+							     NULL, NULL);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
@@ -4938,6 +4939,8 @@ error3:
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *              between heap changes.
  *   force_count(in):
+ *   pcontext(in): partition pruning context
+ *   func_preds(in): cached function index expressions
  *
  * Note: The given object is inserted on this heap and all appropiate
  *              index entries are inserted.
@@ -4946,7 +4949,8 @@ static int
 locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      OID * oid, RECDES * recdes, int has_index, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count,
-		      PRUNING_CONTEXT * pcontext)
+		      PRUNING_CONTEXT * pcontext,
+		      FUNC_PRED_UNPACK_INFO * func_preds)
 {
   char *classname;		/* Classname to update */
   RECDES new_recdes;
@@ -5121,7 +5125,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  && locator_add_or_remove_index (thread_p, recdes, oid,
 					  &real_class_oid, NULL, false,
 					  true, op_type, insert_cache, true,
-					  true, &real_hfid) != NO_ERROR)
+					  true, &real_hfid, func_preds) !=
+	  NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error1;
@@ -5277,7 +5282,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index,
 			      SINGLE_ROW_INSERT, insert_cache, force_count,
-			      NULL);
+			      NULL, NULL);
     }
   else
     {
@@ -5295,7 +5300,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index,
 			      SINGLE_ROW_INSERT, &insert_cache, force_count,
-			      NULL);
+			      NULL, NULL);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -5622,7 +5627,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 						 class_oid, search_btid,
 						 search_btid_duplicate_key_locked,
 						 true, op_type, scan_cache,
-						 true, true, hfid);
+						 true, true, hfid, NULL);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
@@ -5904,7 +5909,7 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 					 oid, &class_oid, search_btid,
 					 search_btid_duplicate_key_locked,
 					 false, op_type, scan_cache, true,
-					 true, hfid);
+					 true, hfid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -6354,7 +6359,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
 				  &obj->oid, &recdes, obj->has_index, op_type,
-				  force_scancache, &force_count, NULL);
+				  force_scancache, &force_count, NULL, NULL);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -6592,6 +6597,8 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p,
  *   scan_cache(in):
  *   force_count(in):
  *   not_check_fk(in):
+ *   pcontext(in): partition pruning context
+ *   func_preds(in): cached function index expressions
  *
  * Note: Force an object represented by an attribute information structure.
  *       For insert the oid is set as a side effect.
@@ -6606,7 +6613,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 			      LC_COPYAREA_OPERATION operation, int op_type,
 			      HEAP_SCANCACHE * scan_cache, int *force_count,
 			      bool not_check_fk, REPL_INFO_TYPE repl_info,
-			      PRUNING_CONTEXT * pcontext)
+			      PRUNING_CONTEXT * pcontext,
+			      FUNC_PRED_UNPACK_INFO * func_preds)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
@@ -6701,7 +6709,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  error_code =
 	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid,
 				  &new_recdes, true, op_type, scan_cache,
-				  force_count, pcontext);
+				  force_count, pcontext, func_preds);
 	}
       else
 	{
@@ -6800,6 +6808,7 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
  *                false if the target object is "schema"
  *   need_replication(in): true if replication is needed
  *   hfid(in):
+ *   func_preds(in): cached function index expressions
  *
  * Note:Either insert indices (in_insert) or delete indices.
  */
@@ -6810,7 +6819,8 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 			     bool search_btid_duplicate_key_locked,
 			     int is_insert, int op_type,
 			     HEAP_SCANCACHE * scan_cache,
-			     bool datayn, bool need_replication, HFID * hfid)
+			     bool datayn, bool need_replication, HFID * hfid,
+			     FUNC_PRED_UNPACK_INFO * func_preds)
 {
   int num_found;
   int i, num_btids;
@@ -6893,7 +6903,9 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
        */
       key_dbvalue = heap_attrvalue_get_key (thread_p, i, &index_attrinfo,
 					    recdes, &btid, &dbvalue,
-					    aligned_buf);
+					    aligned_buf,
+					    (func_preds ? &func_preds[i] :
+					     NULL));
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -7230,7 +7242,8 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 	      /*free allocated memory */
 	      if (pred_filter_cache_context)
 		{
-		  db_private_free_and_init (thread_p, pred_filter_cache_context);
+		  db_private_free_and_init (thread_p,
+					    pred_filter_cache_context);
 		}
 	      pred_filter = NULL;
 	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
@@ -7554,10 +7567,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
       new_key = heap_attrvalue_get_key (thread_p, i, new_attrinfo, new_recdes,
 					&new_btid, &new_dbvalue,
-					aligned_newbuf);
+					aligned_newbuf, NULL);
       old_key = heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes,
 					&old_btid, &old_dbvalue,
-					aligned_oldbuf);
+					aligned_oldbuf, NULL);
 
       if ((new_key == NULL) || (old_key == NULL))
 	{
@@ -7728,7 +7741,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  repl_old_key = heap_attrvalue_get_key (thread_p, pk_btid_index,
 						 old_attrinfo, old_recdes,
 						 &old_btid, &old_dbvalue,
-						 aligned_oldbuf);
+						 aligned_oldbuf, NULL);
 	  if (repl_old_key == NULL)
 	    {
 	      error_code = ER_FAILED;
@@ -7924,7 +7937,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	      dbvalue_ptr = heap_attrvalue_get_key (thread_p, i,
 						    &index_attrinfo,
 						    &copy_rec, &inst_btid,
-						    &dbvalue, aligned_buf);
+						    &dbvalue, aligned_buf,
+						    NULL);
 	      if (dbvalue_ptr == NULL)
 		{
 		  continue;
@@ -7949,7 +7963,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	  dbvalue_ptr = heap_attrvalue_get_key (thread_p, key_index,
 						&index_attrinfo, &copy_rec,
 						&inst_btid, &dbvalue,
-						aligned_buf);
+						aligned_buf, NULL);
 	}
 
       /* Delete the instance from the B-tree */
@@ -8793,7 +8807,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	      || ((key = heap_attrvalue_get_key (thread_p, index_id,
 						 &attr_info, &peek, btid,
 						 &dbvalue,
-						 aligned_buf)) == NULL))
+						 aligned_buf, NULL)) == NULL))
 	    {
 	      if (isallvalid != DISK_INVALID)
 		{
