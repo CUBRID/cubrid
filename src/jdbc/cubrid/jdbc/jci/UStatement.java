@@ -765,7 +765,8 @@ public class UStatement {
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
 			if (errorHandler.getJdbcErrorCode() == -111
 			    || errorHandler.getJdbcErrorCode() == -199
-			    || errorHandler.getJdbcErrorCode() == -224) {
+			    || errorHandler.getJdbcErrorCode() == -224
+			    || errorHandler.getJdbcErrorCode() == -677 ) {
 				relatedConnection.need_checkcas = true;
 			}
 			if (relatedConnection.brokerInfoStatementPooling() == true) {

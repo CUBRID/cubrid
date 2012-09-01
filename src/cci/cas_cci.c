@@ -119,7 +119,8 @@ int wsa_initialize ();
   ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
 #define IS_SERVER_DOWN(e) \
   (((e) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED) \
-   || ((e) == ER_OBJ_NO_CONNECT) || ((e) == ER_NET_SERVER_CRASHED))
+   || ((e) == ER_OBJ_NO_CONNECT) || ((e) == ER_NET_SERVER_CRASHED) \
+   || ((e) == ER_BO_CONNECT_FAILED))
 #define CCI_SET_ERROR_BUFFER(e, err_buf) \
   do { \
     if (((e) != CCI_ER_NO_ERROR) && ((err_buf) != NULL) \

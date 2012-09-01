@@ -880,7 +880,8 @@ public class UConnection {
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
 			if (errorHandler.getJdbcErrorCode() == -111
 			    || errorHandler.getJdbcErrorCode() == -199
-			    || errorHandler.getJdbcErrorCode() == -224) {
+			    || errorHandler.getJdbcErrorCode() == -224
+			    || errorHandler.getJdbcErrorCode() == -677) {
 				need_checkcas = true;
 			}
 			if (need_checkcas) {
