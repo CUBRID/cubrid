@@ -104,7 +104,7 @@ LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 static void cas_sig_handler (int signo);
 static int cas_init (void);
 static void cas_final (void);
-static void cas_free (void);
+static void cas_free (bool free_srv_handle);
 static void query_cancel (int signo);
 
 #if defined(CUBRID_SHARD)
@@ -1339,21 +1339,21 @@ static void
 cas_sig_handler (int signo)
 {
   signal (signo, SIG_IGN);
-  cas_free ();
+  cas_free (false);
   exit (0);
 }
 
 static void
 cas_final (void)
 {
-  cas_free ();
+  cas_free (true);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
   exit (0);
 }
 
 static void
-cas_free (void)
+cas_free (bool free_srv_handle)
 {
 #ifdef MEM_DEBUG
   int fd;
@@ -1362,7 +1362,7 @@ cas_free (void)
 
   ux_database_shutdown ();
 
-  if (as_info->cur_statement_pooling)
+  if (as_info->cur_statement_pooling && free_srv_handle == true)
     {
       hm_srv_handle_free_all (true);
     }
