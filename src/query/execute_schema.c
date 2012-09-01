@@ -13098,12 +13098,14 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     {
       /* delete current serial */
       int save;
+      OID *oidp, serial_obj_id;
+
+      OID_SET_NULL (&serial_obj_id);
 
       if (found_att->auto_increment == NULL)
 	{
 	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
 	  MOP serial_class_mop, serial_mop;
-	  DB_IDENTIFIER serial_obj_id;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
@@ -13123,6 +13125,13 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	{
 	  goto exit;
 	}
+
+      if (OID_ISNULL (&serial_obj_id))
+	{
+	  oidp = ws_identifier (found_att->auto_increment);
+	  COPY_OID (&serial_obj_id, oidp);
+	}
+
       AU_DISABLE (save);
 
       error = obj_delete (found_att->auto_increment);
@@ -13133,6 +13142,9 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	{
 	  goto exit;
 	}
+
+      (void) serial_decache (&serial_obj_id);
+
       found_att->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
       found_att->auto_increment = NULL;
     }

@@ -46,6 +46,7 @@
 #include "parser.h"
 #include "execute_statement.h"
 #include "execute_schema.h"
+#include "network_interface_cl.h"
 
 #define ERROR_SET(error, code) \
   do {                     \
@@ -677,6 +678,7 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
   /* remove related auto_increment serial obj if exist */
   if ((error == NO_ERROR) && (auto_increment_obj != NULL))
     {
+      OID *oidp, serial_obj_id;
       /*
        * check if user is creator or DBA
        */
@@ -686,11 +688,18 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
 	  goto exit_on_error;
 	}
 
+      oidp = ws_identifier (auto_increment_obj);
+      COPY_OID (&serial_obj_id, oidp);
+
       AU_DISABLE (au_save);
 
       error = obj_delete (auto_increment_obj);
 
       AU_ENABLE (au_save);
+      if (error == NO_ERROR)
+	{
+	  (void) serial_decache (&serial_obj_id);
+	}
     }
 exit_on_error:
   return (error);

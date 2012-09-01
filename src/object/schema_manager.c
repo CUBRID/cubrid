@@ -12550,10 +12550,19 @@ sm_delete_class_mop (MOP op)
 		  && (strcmp (class_->header.name, class_name) == 0))
 		{
 		  int save;
+		  OID *oidp, serial_obj_id;
+
+		  oidp = ws_identifier (att->auto_increment);
+		  COPY_OID (&serial_obj_id, oidp);
 
 		  AU_DISABLE (save);
 		  error = obj_delete (att->auto_increment);
 		  AU_ENABLE (save);
+
+		  if (error == NO_ERROR)
+		    {
+		      (void) serial_decache (&serial_obj_id);
+		    }
 		}
 	      db_value_clear (&name_val);
 	    }
@@ -15123,7 +15132,7 @@ cleanup:
 }
 
 /*
- * sm_free_function_index_info () - 
+ * sm_free_function_index_info () -
  */
 void
 sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info)
@@ -15148,7 +15157,7 @@ sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info)
 }
 
 /*
- * sm_free_filter_index_info () - 
+ * sm_free_filter_index_info () -
  */
 void
 sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
