@@ -1456,9 +1456,10 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
       net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
       net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
-      err_code = prepare_column_list_info_set (session, flag,
-					       srv_handle->q_result, net_buf,
-					       client_version);
+      err_code =
+	prepare_column_list_info_set (session, srv_handle->prepare_flag,
+				      srv_handle->q_result, net_buf,
+				      client_version);
       if (err_code != NO_ERROR)
 	{
 	  goto execute_error;
@@ -1754,9 +1755,10 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
       net_buf_cp_byte (net_buf, srv_handle->q_result[0].stmt_type);
       net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
-      err_code = prepare_column_list_info_set (session, flag,
-					       &srv_handle->q_result[0],
-					       net_buf, client_version);
+      err_code =
+	prepare_column_list_info_set (session, srv_handle->prepare_flag,
+				      &srv_handle->q_result[0], net_buf,
+				      client_version);
       if (err_code != NO_ERROR)
 	{
 	  goto execute_all_error;
@@ -1897,9 +1899,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
       net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
       net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
-      err_code = prepare_column_list_info_set (session, flag,
-					       srv_handle->q_result, net_buf,
-					       client_version);
+      err_code =
+	prepare_column_list_info_set (session, srv_handle->prepare_flag,
+				      srv_handle->q_result, net_buf,
+				      client_version);
       if (err_code != NO_ERROR)
 	{
 	  goto execute_error;
