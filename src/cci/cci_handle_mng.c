@@ -816,6 +816,13 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->log_trace_api = false;
   con_handle->log_trace_network = false;
 
+  con_handle->deferred_max_close_handle_count =
+    DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+  con_handle->deferred_close_handle_list =
+    (int *) MALLOC (sizeof (int) *
+                    con_handle->deferred_max_close_handle_count);
+  con_handle->deferred_close_handle_count = 0;
+
   con_handle->is_holdable = 1;
   con_handle->no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_NOT_SET;
 
@@ -881,6 +888,8 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
   FREE_MEM (con_handle->db_passwd);
   con_handle->url[0] = '\0';
   FREE_MEM (con_handle->req_handle_table);
+  FREE_MEM (con_handle->deferred_close_handle_list);
+
   if (con_handle->stmt_pool != NULL)
     {
       mht_destroy (con_handle->stmt_pool, true, true);

@@ -168,6 +168,7 @@ public class UConnection {
 	boolean skip_checkcas;
 	boolean need_checkcas;
 	Vector<UStatement> pooled_ustmts;
+	Vector<Integer> deferred_close_handle;
 	Object curThread;
 
 	private UUrlCache url_cache = null;
@@ -857,6 +858,12 @@ public class UConnection {
 			outBuffer.addByte(prepareFlag);
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
+			while (deferred_close_handle.isEmpty() != true) {
+				Integer close_handle = (Integer) deferred_close_handle
+						.remove(0);
+				outBuffer.addInt(close_handle.intValue());
+			}
+			
 			UInputBuffer inBuffer;
 			inBuffer = send_recv_msg();
 
@@ -1438,6 +1445,7 @@ public class UConnection {
 		    	logException(e);
 		}
 		clearPooledUStatements();
+		deferred_close_handle.clear();
 	}
 
 	UInputBuffer send_recv_msg(boolean recv_result) throws UJciException,
@@ -1720,6 +1728,10 @@ public class UConnection {
 		if (pooled_ustmts == null) {
 			pooled_ustmts = new Vector<UStatement>();
 		}
+		
+		if (deferred_close_handle == null) {
+			deferred_close_handle = new Vector<Integer>();
+		}
 
 		if (!isServerSideJdbc) {
 			if (getCASInfoStatus() == CAS_INFO_STATUS_INACTIVE
@@ -1801,81 +1813,84 @@ public class UConnection {
 	}
 
     public void setConnectionProperties(ConnectionProperties connProperties) {
-	this.connectionProperties = connProperties;
-	sessionId = connectionProperties.getSessionId();
+		this.connectionProperties = connProperties;
+		sessionId = connectionProperties.getSessionId();
     }
 
     private Log getLogger() {
-	if (log == null) {
-	    log = new BasicLogger(connectionProperties.getLogFile());
-	}
-	return log;
+		if (log == null) {
+		    log = new BasicLogger(connectionProperties.getLogFile());
+		}
+		return log;
     }
 
     public UJciException createJciException(int err) {
-	UJciException e = new UJciException(err);
-	if (connectionProperties == null || !connectionProperties.getLogOnException()) {
-	    return e;
-	}
-
-	StringBuffer b = new StringBuffer();
-	b.append("DUMP EXCEPTION\n");
-	b.append("[JCI EXCEPTION]");
-
-	synchronized (this) {
-	    getLogger().logInfo(b.toString(), e);
-	}
-	return e;
+		UJciException e = new UJciException(err);
+		if (connectionProperties == null || !connectionProperties.getLogOnException()) {
+		    return e;
+		}
+	
+		StringBuffer b = new StringBuffer();
+		b.append("DUMP EXCEPTION\n");
+		b.append("[JCI EXCEPTION]");
+	
+		synchronized (this) {
+		    getLogger().logInfo(b.toString(), e);
+		}
+		return e;
     }
 
     public UJciException createJciException(int err, int indicator, int srv_err, String msg) {
-	UJciException e = new UJciException(err, indicator, srv_err, msg);
-	logException(e);
-	return e;
+		UJciException e = new UJciException(err, indicator, srv_err, msg);
+		logException(e);
+		return e;
     }
 
     public void logException(Throwable t) {
-	if (connectionProperties == null || !connectionProperties.getLogOnException()) {
-	    return;
-	}
-
-	StringBuffer b = new StringBuffer();
-	b.append("DUMP EXCEPTION\n");
-	b.append("[" + t.getClass().getName() + "]");
-
-	synchronized (this) {
-	    getLogger().logInfo(b.toString(), t);
-	}
+		if (connectionProperties == null || !connectionProperties.getLogOnException()) {
+		    return;
+		}
+	
+		StringBuffer b = new StringBuffer();
+		b.append("DUMP EXCEPTION\n");
+		b.append("[" + t.getClass().getName() + "]");
+	
+		synchronized (this) {
+		    getLogger().logInfo(b.toString(), t);
+		}
     }
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
     public void logSlowQuery(long begin, long end, String sql, UBindParameter p) {
-	if (connectionProperties == null || connectionProperties.getLogSlowQueris() != true) {
-	    return;
-	}
-
-	long elapsed = end - begin;
-	if (connectionProperties.getSlowQueryThresholdMillis() > elapsed) {
-	    return;
-	}
-
-	StringBuffer b = new StringBuffer();
-	b.append("SLOW QUERY\n");
-	b.append(String.format("[TIME]\nSTART: %s, ELAPSED: %d\n", dateFormat.format(new Date(begin)), elapsed));
-	b.append("[SQL]\n").append(sql).append('\n');
-	if (p != null) {
-	    b.append("[BIND]\n");
-	    for (int i = 0; i < p.values.length; i++) {
-		if (i != 0)
-		    b.append(", ");
-		b.append(p.values[i].toString());
-	    }
-	    b.append('\n');
-	}
-
-	synchronized (this) {
-	    getLogger().logInfo(b.toString());
-	}
+		if (connectionProperties == null || connectionProperties.getLogSlowQueris() != true) {
+		    return;
+		}
+	
+		long elapsed = end - begin;
+		if (connectionProperties.getSlowQueryThresholdMillis() > elapsed) {
+		    return;
+		}
+	
+		StringBuffer b = new StringBuffer();
+		b.append("SLOW QUERY\n");
+		b.append(String.format("[TIME]\nSTART: %s, ELAPSED: %d\n", dateFormat.format(new Date(begin)), elapsed));
+		b.append("[SQL]\n").append(sql).append('\n');
+		if (p != null) {
+		    b.append("[BIND]\n");
+		    for (int i = 0; i < p.values.length; i++) {
+				if (i != 0)
+				    b.append(", ");
+				b.append(p.values[i].toString());
+		    }
+		    b.append('\n');
+		}
+	
+		synchronized (this) {
+		    getLogger().logInfo(b.toString());
+		}
     }
 
+	public boolean isInTran() {
+		return getCASInfoStatus() == CAS_INFO_STATUS_ACTIVE;
+	}
 }

@@ -2877,19 +2877,30 @@ cursor_update_error:
 }
 
 void
-ux_cursor_close (T_SRV_HANDLE * srv_handle)
+ux_cursor_close (T_SRV_HANDLE * srv_handle, bool unset_holdable)
 {
   int idx = 0;
+
   if (srv_handle == NULL)
     {
       return;
     }
+
   idx = srv_handle->cur_result_index - 1;
   if (idx < 0)
     {
       return;
     }
+
   db_query_end (srv_handle->q_result[idx].result);
+
+  if (unset_holdable == true && srv_handle->is_holdable == true)
+    {
+      srv_handle->is_holdable = false;
+#if !defined(LIBCAS_FOR_JSP)
+      as_info->num_holdable_results--;
+#endif
+    }
 }
 
 int
@@ -5065,6 +5076,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
+	      ux_cursor_close(srv_handle, true);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif /* !LIBCAS_FOR_JSP */
@@ -5141,6 +5153,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
+              ux_cursor_close(srv_handle, true);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif /* !LIBCAS_FOR_JSP */
@@ -5160,6 +5173,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
+              ux_cursor_close(srv_handle, true);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif /* !LIBCAS_FOR_JSP */

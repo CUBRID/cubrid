@@ -330,6 +330,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   int sql_size;
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
+  int i;
 
   if (argc < 2)
     {
@@ -343,6 +344,17 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   if (argc > 2)
     {
       net_arg_get_char (auto_commit_mode, argv[2]);
+
+#if !defined(CUBRID_SHARD)
+      for (i = 3; i < argc; i++)
+        {
+          int deferred_close_handle;
+          net_arg_get_int (&deferred_close_handle, argv[i]);
+          cas_log_write (0, true, "close_req_handle srv_h_id %d",
+                         deferred_close_handle);
+          hm_srv_handle_free (deferred_close_handle);
+        }
+#endif
     }
   else
     {
@@ -1701,7 +1713,7 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   net_arg_get_int (&srv_h_id, argv[0]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
-  if (srv_handle == NULL)
+  if (srv_handle == NULL || srv_handle->num_q_result < 1)
     {
       /* has already been closed */
       return FN_KEEP_CONN;
@@ -1710,7 +1722,14 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "cursor_close srv_h_id %d", srv_h_id);
 
-  ux_cursor_close (srv_handle);
+  if (srv_handle->num_q_result == 1)
+    {
+      ux_cursor_close (srv_handle, true);
+    }
+  else
+    {
+      ux_cursor_close (srv_handle, false);
+    }
 
   return FN_KEEP_CONN;
 }

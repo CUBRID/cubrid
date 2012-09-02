@@ -419,6 +419,13 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
+  while (con_handle->deferred_close_handle_count > 0)
+    {
+      ADD_ARG_INT (&net_buf,
+                   con_handle->deferred_close_handle_list[--con_handle->
+                                                          deferred_close_handle_count]);
+    }
+
   if (net_buf.err_code < 0)
     {
       err_code = net_buf.err_code;
@@ -800,11 +807,19 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   /* prepare info */
   net_buf_cp_str (&net_buf, &func_code, 1);
+  prepare_argc_count += con_handle->deferred_close_handle_count;
   ADD_ARG_INT (&net_buf, prepare_argc_count);
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
 	       con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &prepare_flag, 1);
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+
+  while (con_handle->deferred_close_handle_count > 0)
+    {
+      ADD_ARG_INT (&net_buf,
+                   con_handle->deferred_close_handle_list[--con_handle->
+                                                          deferred_close_handle_count]);
+    }
 
   /* execute info */
   ADD_ARG_BYTES (&net_buf, &execute_flag, 1);
@@ -1164,6 +1179,8 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CLOSE_REQ_HANDLE;
   int err_code = 0;
+  int *new_deferred_close_handle_list = NULL;
+  int new_deferred_max_close_handle_count;
 
   /* same to qe_close_con.
      when statement pool is on,
@@ -1176,6 +1193,58 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
     {
       return 0;
     }
+
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT ||
+      req_handle->stmt_type == CUBRID_STMT_GET_STATS ||
+      req_handle->stmt_type == CUBRID_STMT_CALL ||
+      req_handle->stmt_type == CUBRID_STMT_CALL_SP ||
+      req_handle->stmt_type == CUBRID_STMT_EVALUATE)
+    {
+      goto send_close_handle_msg;
+    }
+
+  if (con_handle->deferred_close_handle_count == 0 &&
+      con_handle->deferred_max_close_handle_count !=
+      DEFERRED_CLOSE_HANDLE_ALLOC_SIZE)
+    {
+      /* shrink the list size */
+      new_deferred_close_handle_list =
+        (int *) REALLOC (con_handle->deferred_close_handle_list,
+                         sizeof (int) * DEFERRED_CLOSE_HANDLE_ALLOC_SIZE);
+      if (new_deferred_close_handle_list == NULL)
+        {
+          goto send_close_handle_msg;
+        }
+      con_handle->deferred_max_close_handle_count =
+        DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+      con_handle->deferred_close_handle_list = new_deferred_close_handle_list;
+    }
+  else if (con_handle->deferred_close_handle_count + 1 >
+           con_handle->deferred_max_close_handle_count)
+    {
+      /* grow the list size */
+      new_deferred_max_close_handle_count =
+        con_handle->deferred_max_close_handle_count +
+        DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+      new_deferred_close_handle_list =
+        (int *) REALLOC (con_handle->deferred_close_handle_list,
+                         sizeof (int) * new_deferred_max_close_handle_count);
+      if (new_deferred_close_handle_list == NULL)
+        {
+          goto send_close_handle_msg;
+        }
+      con_handle->deferred_max_close_handle_count =
+        new_deferred_max_close_handle_count;
+      con_handle->deferred_close_handle_list = new_deferred_close_handle_list;
+    }
+
+  con_handle->deferred_close_handle_list[con_handle->
+                                         deferred_close_handle_count++] =
+    req_handle->server_handle_id;
+
+  return err_code;
+
+send_close_handle_msg:
 
   net_buf_init (&net_buf);
 
@@ -1194,6 +1263,10 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
+      if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
+        {
+          err_code = 0;
+        }
       return err_code;
     }
 

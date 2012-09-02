@@ -523,20 +523,27 @@ public class UStatement {
 					&& (relatedConnection.getAutoCommit() == false
 						|| relatedConnection.brokerInfoStatementPooling() == true
 						|| ((prepare_flag & UConnection.PREPARE_HOLDABLE) != 0))) {
-				synchronized (relatedConnection) {
-					outBuffer.newRequest(UFunctionCode.CLOSE_USTATEMENT);
-					outBuffer.addInt(serverHandler);
-					outBuffer.addByte(relatedConnection.getAutoCommit() 
-									  ? (byte) 1 : (byte) 0);
-					relatedConnection.send_recv_msg();
+				if (getSqlType()) {
+					synchronized (relatedConnection) {
+						outBuffer.newRequest(UFunctionCode.CLOSE_USTATEMENT);
+						outBuffer.addInt(serverHandler);
+						outBuffer.addByte(relatedConnection.getAutoCommit() 
+										  ? (byte) 1 : (byte) 0);
+						relatedConnection.send_recv_msg();
+					}
+				} else {
+					relatedConnection.deferred_close_handle.add(new Integer(
+							serverHandler));
 				}
 			}
 		} catch (UJciException e) {
-			e.toUError(errorHandler);
-			return;
+			if (relatedConnection.isInTran()) {
+				e.toUError(errorHandler);
+			}
 		} catch (IOException e) {
-			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-			return;
+			if (relatedConnection.isInTran()) {
+				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+			}
 		} finally {
 			currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
 			isClosed = true;
