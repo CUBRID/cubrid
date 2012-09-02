@@ -6461,12 +6461,11 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
   int slot_id = 0;
   int lk_result;
   int slot_num;
+  PAGE_PTR pgptr;
 
-  PAGE_PTR pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
-					      recdes->type != REC_NEWHOME,
-					      recdes->length,
-					      scan_cache);
-
+  pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
+				     (recdes->type != REC_NEWHOME),
+				     recdes->length, scan_cache);
   if (pgptr == NULL)
     {
       return NULL;
@@ -6485,8 +6484,8 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
       oid->slotid = slot_id;
 
       /* lock the object to be inserted conditionally */
-      lk_result =
-	lock_object (thread_p, oid, class_oid, X_LOCK, LK_COND_LOCK);
+      lk_result = lock_object (thread_p, oid, class_oid, X_LOCK,
+			       LK_COND_LOCK);
       if (lk_result == LK_GRANTED)
 	{
 	  return pgptr;		/* OK */
@@ -6508,7 +6507,6 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 
   return NULL;
 }
-
 
 
 /*
@@ -6560,6 +6558,13 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 #endif
 
+  /* The class object was already IX-locked during compile time 
+   * under normal situation. 
+   * However, with prepare-execute-commit-execute-... scenario, 
+   * the class object is not properly IX-locked since the previous commit 
+   * released the entire acquired locks including IX-lock.
+   * So we have to make it sure the class object is IX-locked at this moment.
+   */
   if (lock_object (thread_p, class_oid, oid_Root_class_oid,
 		   IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
