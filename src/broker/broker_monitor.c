@@ -883,13 +883,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 static int
 appl_monitor (char *br_vector)
 {
-  struct tm cur_tm;
-  time_t last_access_time, last_connect_time, tran_start_time;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
   int i, j, k, appl_offset;
-  int col_len;
-  char line_buf[1024], ip_str[16];
   static time_t time_old;
 
   static APPL_MONITORING_ITEM *appl_mnt_olds = NULL;

@@ -7074,7 +7074,7 @@ sysprm_unpack_session_parameters (char *ptr,
 	  goto error;
 	}
 
-      ptr = or_unpack_int (ptr, &prm->prm_id);
+      ptr = or_unpack_int (ptr, (int *) (&prm->prm_id));
       ptr = or_unpack_int (ptr, &prm->flag);
       ptr = or_unpack_int (ptr, &prm->datatype);
 

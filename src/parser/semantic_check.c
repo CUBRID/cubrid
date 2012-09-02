@@ -6047,16 +6047,18 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   else
     {
       bool found = false;
+
       if (stmt->node_type == PT_CREATE_ENTITY
 	  && stmt->info.create_entity.supclass_list)
 	{
 	  DB_OBJECT *sup_dbobj =
 	    stmt->info.create_entity.supclass_list->info.name.db_object;
+
 	  if (au_fetch_class (sup_dbobj, &smclass, AU_FETCH_READ, AU_SELECT)
 	      == NO_ERROR)
 	    {
 	      for (smatt = smclass->attributes; smatt != NULL;
-		   smatt = smatt->header.next)
+		   smatt = (SM_ATTRIBUTE *) smatt->header.next)
 		{
 		  if (SM_COMPARE_NAMES (smatt->header.name,
 					pcol->info.name.original) == 0)
@@ -6069,10 +6071,10 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		}
 	    }
 	}
+
       if (!found)
 	{
-	  PT_ERRORm (parser, stmt,
-		     MSGCAT_SET_PARSER_SEMANTIC,
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_NO_PARTITION_COLUMN);
 	}
     }
@@ -9662,19 +9664,19 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	      if (r->node_type == PT_VALUE && r->alias_print == NULL)
 		{
 		  if (r->type_enum != PT_TYPE_INTEGER)
-                    {
-                      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
-                                 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
-                      continue;
-                    }
+		    {
+		      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+		      continue;
+		    }
 		  else if (r->info.value.data_value.i == 0 ||
-		           r->info.value.data_value.i > max_position)
+			   r->info.value.data_value.i > max_position)
 		    {
 		      PT_ERRORmf (parser, r,
 				  MSGCAT_SET_PARSER_SEMANTIC,
 				  MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
 				  r->info.value.data_value.i);
-                      continue;
+		      continue;
 		    }
 		}
 	      else if (r->node_type == PT_HOST_VAR)

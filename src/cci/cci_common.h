@@ -68,7 +68,6 @@ extern "C"
 
 #if defined(WINDOWS)
 #define __func__		__FUNCTION__
-#define localtime_r(time, tm)   localtime_s((tm), (const time_t *)(time))
 #define gettid()                GetCurrentThreadId()
 #else
 #define gettid()                syscall(__NR_gettid)

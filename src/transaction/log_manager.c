@@ -4906,16 +4906,16 @@ static void
 log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		      bool is_commit)
 {
-  return log_append_repl_info_internal (thread_p, tdes, is_commit,
-					LOG_PRIOR_LSA_WITHOUT_LOCK);
+  log_append_repl_info_internal (thread_p, tdes, is_commit,
+				 LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
 static void
 log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				bool is_commit)
 {
-  return log_append_repl_info_internal (thread_p, tdes, is_commit,
-					LOG_PRIOR_LSA_WITH_LOCK);
+  log_append_repl_info_internal (thread_p, tdes, is_commit,
+				 LOG_PRIOR_LSA_WITH_LOCK);
 }
 
 /*
@@ -4950,22 +4950,18 @@ log_append_unlock_log_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       (void) prior_lsa_next_record (thread_p, node, tdes);
     }
-
-  return;
 }
 
 static void
 log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  return log_append_unlock_log_internal (thread_p, tdes,
-					 LOG_PRIOR_LSA_WITHOUT_LOCK);
+  log_append_unlock_log_internal (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
 static void
 log_append_unlock_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  return log_append_unlock_log_internal (thread_p, tdes,
-					 LOG_PRIOR_LSA_WITH_LOCK);
+  log_append_unlock_log_internal (thread_p, tdes, LOG_PRIOR_LSA_WITH_LOCK);
 }
 
 static void
@@ -4979,8 +4975,6 @@ log_append_repl_info_and_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   log_append_unlock_log_with_lock (thread_p, tdes);
 
   pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
-
-  return;
 }
 
 /*
@@ -5056,7 +5050,6 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	}
 #endif /* !NDEBUG */
     }
-
 }
 
 /*

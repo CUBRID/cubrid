@@ -330,7 +330,6 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   int sql_size;
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
-  int i;
 
   if (argc < 2)
     {

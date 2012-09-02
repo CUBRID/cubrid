@@ -199,7 +199,7 @@ static char *xts_process_method_spec_type (char *ptr,
 					   const METHOD_SPEC_TYPE *
 					   method_spec);
 static char *xts_process_rlist_spec_type (char *ptr,
-					  const SET_SPEC_TYPE * set_spec);
+					  const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
 static char *xts_process_val_list (char *ptr, const VAL_LIST * val_list);
 static char *xts_process_regu_variable (char *ptr,
@@ -4375,7 +4375,7 @@ xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec)
 }
 
 static char *
-xts_process_rlist_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
+xts_process_rlist_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec)
 {
   /* here, currently empty implementation,
    * actually, it can do some extra info save.
@@ -5023,7 +5023,6 @@ xts_process_regu_value_list (char *ptr,
 			     const REGU_VALUE_LIST * regu_value_list)
 {
   REGU_VALUE_ITEM *regu_value_item;
-  int offset;
   REGU_DATATYPE type;
 
   assert (regu_value_list);

@@ -7187,12 +7187,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGEID pageid, last_pageid;
   LOG_PHY_PAGEID ar_phy_pageid;
-  LOG_LSA smallest_lsa, newsmallest_lsa;
   int vdes = NULL_VOLDES;
   const char *catmsg;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   int error_code = NO_ERROR;
   int num_pages = 0;
 

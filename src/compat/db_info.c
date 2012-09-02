@@ -135,7 +135,7 @@ db_find_class (const char *name)
 
   retval = sm_find_class (name);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -163,9 +163,9 @@ db_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
 		 DB_FETCH_WRITE) ? DB_FETCH_QUERY_WRITE : purpose));
 
   /* This always allocates an external mop list ! */
-  retval = (sm_fetch_all_objects (op, purpose));
+  retval = sm_fetch_all_objects (op, purpose);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -184,9 +184,9 @@ db_fetch_all_classes (DB_FETCH_MODE purpose)
   CHECK_CONNECT_NULL ();
 
   /* return external list of class MOPs */
-  retval = (sm_fetch_all_classes (1, purpose));
+  retval = sm_fetch_all_classes (1, purpose);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -203,9 +203,9 @@ db_fetch_base_classes (DB_FETCH_MODE purpose)
 
   CHECK_CONNECT_NULL ();
 
-  retval = (sm_fetch_all_base_classes (1, purpose));
+  retval = sm_fetch_all_base_classes (1, purpose);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -229,8 +229,7 @@ db_get_all_objects (DB_OBJECT * op)
 
   retval = sm_fetch_all_objects (op, DB_FETCH_QUERY_READ);
 
-
-  return (retval);
+  return retval;
 }
 
 /*
@@ -250,8 +249,7 @@ db_get_all_classes (void)
 
   retval = sm_fetch_all_classes (1, DB_FETCH_QUERY_READ);
 
-
-  return (retval);
+  return retval;
 }
 
 /*
@@ -268,8 +266,7 @@ db_get_base_classes (void)
 
   retval = sm_fetch_all_base_classes (1, DB_FETCH_QUERY_READ);
 
-
-  return (retval);
+  return retval;
 }
 
 /*
@@ -305,6 +302,7 @@ db_is_class (MOP obj)
     {
       return 0;
     }
+
   assert (class_ != NULL);
   if (sm_get_class_type (class_) != SM_CLASS_CT)
     {
@@ -343,7 +341,9 @@ db_is_any_class (MOP obj)
     {
       return 0;
     }
+
   assert (class_ != NULL);
+
   return 1;
 }
 
@@ -360,9 +360,9 @@ db_is_instance (MOP obj)
 
   CHECK_CONNECT_ZERO ();
 
-  retval = (obj_isinstance (obj));
+  retval = obj_isinstance (obj);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -393,7 +393,7 @@ db_is_instance_of (MOP obj, MOP class_)
 	}
     }
 
-  return (status);
+  return status;
 }
 
 /*
@@ -411,9 +411,9 @@ db_is_subclass (MOP classmop, MOP supermop)
   CHECK_CONNECT_ZERO ();
   CHECK_2ARGS_ZERO (classmop, supermop);
 
-  retval = (sm_is_subclass (classmop, supermop));
+  retval = sm_is_subclass (classmop, supermop);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -428,9 +428,9 @@ db_is_superclass (MOP supermop, MOP classmop)
 {
   int retval;
 
-  retval = (db_is_subclass (classmop, supermop));
+  retval = db_is_subclass (classmop, supermop);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -446,11 +446,11 @@ db_is_partition (DB_OBJECT * classobj, DB_OBJECT * superobj)
   int retval;
 
   CHECK_CONNECT_ZERO ();
-  CHECK_1ARG_NULL (classobj);
+  CHECK_1ARG_MINUSONE (classobj);
 
-  retval = (sm_is_partition (classobj, superobj));
+  retval = sm_is_partition (classobj, superobj);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -526,7 +526,9 @@ db_is_deleted (DB_OBJECT * obj)
    * for the MOP deleted flag should be unnecessary but be safe.
    */
   if (error == ER_HEAP_UNKNOWN_OBJECT || obj->deleted)
-    return 1;
+    {
+      return 1;
+    }
 
   return error;
 }
@@ -558,8 +560,7 @@ db_get_class (MOP obj)
 
   retval = sm_get_class (obj);
 
-
-  return (retval);
+  return retval;
 }
 
 /*

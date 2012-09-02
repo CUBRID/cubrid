@@ -2064,7 +2064,6 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
 		int buffer_size)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
-  int rc;
 
   if (!conn || conn->status != CONN_OPEN)
     {

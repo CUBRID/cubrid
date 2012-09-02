@@ -6019,7 +6019,7 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
 			   REGU_VALUE_LIST * regu_value_list,
 			   TP_DOMAIN * domain)
 {
-  int i, count, offset;
+  int i, count;
   REGU_VALUE_ITEM *list_node;
   REGU_VARIABLE *regu;
   XASL_UNPACK_INFO *xasl_unpack_info =
@@ -6075,7 +6075,7 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr,
 
       regu_value_list->current_value = list_node;
 
-      ptr = or_unpack_int (ptr, &regu->type);
+      ptr = or_unpack_int (ptr, (int *) (&regu->type));
       regu->domain = domain;
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH

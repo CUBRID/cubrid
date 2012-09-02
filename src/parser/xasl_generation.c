@@ -7295,7 +7295,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
   PT_NODE *save_node = NULL, *save_next = NULL;
   REGU_VARIABLE *r1 = NULL, *r2 = NULL, *r3 = NULL;
   PT_NODE *empty_str = NULL;
-  int i;
 
   if (node == NULL)
     {
@@ -17413,13 +17412,14 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      DB_ATTRIBUTE *attrs, *attr;
 
 		      attrs = db_get_attributes (class_obj);
-		      for (attr = attrs; attr; attr = attr->header.next)
+		      for (attr = attrs; attr;
+			   attr = (DB_ATTRIBUTE *) attr->header.next)
 			{
 			  if ((attr->type->id == DB_TYPE_BLOB
 			       || attr->type->id == DB_TYPE_CLOB)
-			      && attr->class_mop !=
-			      node->info.spec.flat_entity_list->info.name.
-			      db_object)
+			      && (attr->class_mop !=
+				  node->info.spec.flat_entity_list->info.name.
+				  db_object))
 			    {
 			      /* count lob attributes that don't belong to the
 			       * root table
@@ -17440,13 +17440,14 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			    {
 			      goto error_return;
 			    }
-			  for (attr = attrs; attr; attr = attr->header.next)
+			  for (attr = attrs; attr;
+			       attr = (DB_ATTRIBUTE *) attr->header.next)
 			    {
 			      if ((attr->type->id == DB_TYPE_BLOB
 				   || attr->type->id == DB_TYPE_CLOB)
-				  && attr->class_mop !=
-				  node->info.spec.flat_entity_list->info.name.
-				  db_object)
+				  && (attr->class_mop !=
+				      node->info.spec.flat_entity_list->info.
+				      name.db_object))
 				{
 				  class_info->lob_attr_ids[j][count++] =
 				    attr->id;
@@ -22246,7 +22247,8 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;
   OID *oid = NULL;
   int error = NO_ERROR;
-  bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+  bool insert_only =
+    (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
 
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)

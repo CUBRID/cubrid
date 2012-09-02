@@ -2095,7 +2095,6 @@ get_cputime_sec (int pid)
 static THREAD_FUNC
 psize_check_thr_f (void *ar)
 {
-  int pid;
   int workset_size;
   float pct_cpu;
   int cpu_time;

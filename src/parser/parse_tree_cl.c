@@ -16158,7 +16158,7 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_index_columns (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = NULL, *r1, *r2;
+  PARSER_VARCHAR *b = NULL, *r1;
   int list_size = 0, i;
   PT_NODE *q = NULL;
 

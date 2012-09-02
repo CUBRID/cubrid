@@ -33,6 +33,7 @@
 #include <sys/socket.h>
 #endif /* !WINDOWS */
 
+extern int css_gethostname (char *passed_name, int length);
 extern unsigned int css_gethostid (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_fd_down (SOCKET fd);

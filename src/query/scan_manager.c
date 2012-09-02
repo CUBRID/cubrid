@@ -4062,7 +4062,6 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SET_SCAN_ID *ssidp;
   KEY_VAL_RANGE *key_vals;
   int i;
-  REGU_VARIABLE_LIST list_node;
 
   if (scan_id == NULL)
     {
