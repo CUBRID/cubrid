@@ -2794,7 +2794,8 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
       pr_clear_value (hv);
       hv_dom = parser->host_var_expected_domains[i];
-      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN)
+      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN
+	  || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
 	  pr_clone_value (val, hv);
 	}
