@@ -22730,8 +22730,8 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (xasl->proc.merge.delete_xasl)
     {
-      xasl->list_id->tuple_cnt +=
-	xasl->proc.merge.delete_xasl->list_id->tuple_cnt;
+      /* don't add the number of deleted tuples, they are
+         a subset of the updated ones */
       /* monitor */
       mnt_qm_deletes (thread_p);
     }

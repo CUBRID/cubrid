@@ -14714,11 +14714,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  /* delete each oid */
 		  err = delete_list_by_oids (parser, list_id);
-		  /* set result count */
-		  if (err >= NO_ERROR)
-		    {
-		      result += err;
-		    }
+		  /* don't add the number of deleted tuples, they are
+		     a subset of the updated ones */
 		  if (err >= NO_ERROR && list_id->tuple_cnt > 0)
 		    {
 		      err = sm_flush_and_decache_objects (class_obj, true);
@@ -15526,11 +15523,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      AU_SAVE_AND_DISABLE (au_save);
 		      err = delete_list_by_oids (parser, list_id);
 		      AU_RESTORE (au_save);
-		      /* set result count */
-		      if (err >= NO_ERROR)
-			{
-			  result += err;
-			}
+		      /* don't add the number of deleted tuples, they are
+			 a subset of the updated ones */
 		      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
 			{
 			  err =
