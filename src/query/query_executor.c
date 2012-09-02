@@ -380,7 +380,7 @@ struct upddel_class_info_internal
   OID *class_oid;		/* oid of current class */
   HFID *class_hfid;		/* hfid of current class */
   BTID *btid;			/* btid of the current class */
-  bool btid_dup_key_locked;	/* true, if coresponding btid contain
+  bool *btid_dup_key_locked;	/* true, if coresponding btid contain
 				   duplicate keys locked when searching  */
 
   OID prev_class_oid;		/* previous class oid */
@@ -394,7 +394,7 @@ struct upddel_class_info_internal
   DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
   BTID *btids;			/* btids used when searching subclasses
 				   of the current class */
-  bool *btids_dup_key_locked;	/* true, if coresponding btid contain
+  bool **btids_dup_key_locked;	/* true, if coresponding btid contain
 				   duplicate keys locked when searching  */
 };
 
@@ -7619,6 +7619,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool scan_open = false;
   LC_COPYAREA_OPERATION op = LC_FLUSH_UPDATE;
   int actual_op_type = op_type;
+  bool btid_dup_key_locked = false;
   PRUNING_CONTEXT *pcontext = NULL;
   class_oid_cnt = update->no_classes;
 
@@ -7991,12 +7992,21 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  actual_op_type = op_type;
 		  pcontext = NULL;
 		}
+
+	      if (internal_class->btid_dup_key_locked != NULL)
+		{
+		  btid_dup_key_locked =
+		    *(internal_class->btid_dup_key_locked);
+		}
+	      else
+		{
+		  btid_dup_key_locked = false;
+		}
 	      error =
 		locator_attribute_info_force (thread_p,
 					      internal_class->class_hfid,
 					      oid,
 					      internal_class->btid,
-					      internal_class->
 					      btid_dup_key_locked,
 					      &internal_class->attr_info,
 					      &upd_cls->att_id
@@ -8392,6 +8402,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
+  bool btid_dup_key_locked = false;
 
   class_oid_cnt = delete_->no_classes;
 
@@ -8677,9 +8688,18 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 
 	      force_count = 0;
+	      if (internal_class->btid_dup_key_locked != NULL)
+		{
+		  btid_dup_key_locked =
+		    *(internal_class->btid_dup_key_locked);
+		}
+	      else
+		{
+		  btid_dup_key_locked = false;
+		}
 	      if (locator_attribute_info_force
 		  (thread_p, internal_class->class_hfid, oid,
-		   internal_class->btid, internal_class->btid_dup_key_locked,
+		   internal_class->btid, btid_dup_key_locked,
 		   NULL, NULL, 0,
 		   LC_FLUSH_DELETE, op_type,
 		   &unique_stats_info[class_oid_idx].scan_cache, &force_count,
@@ -21199,7 +21219,7 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 			      BTID_COPY (internal_classes[i].btids + j,
 					 &(specp->indexptr->indx_id.i.btid));
 			      internal_classes[i].btids_dup_key_locked[j] =
-				specp->s_id.s.isid.duplicate_key_locked;
+				&(specp->s_id.s.isid.duplicate_key_locked);
 			    }
 
 			  found = true;
@@ -22487,9 +22507,9 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 	}
 
       class_->btids_dup_key_locked =
-	(bool *) db_private_alloc (thread_p,
-				   query_class->no_subclasses *
-				   sizeof (bool));
+	(bool **) db_private_alloc (thread_p,
+				    query_class->no_subclasses *
+				    sizeof (bool *));
 
       if (class_->btids_dup_key_locked == NULL)
 	{
@@ -22499,10 +22519,10 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       for (cl_index = 0; cl_index < query_class->no_subclasses; cl_index++)
 	{
 	  BTID_SET_NULL (&class_->btids[cl_index]);
-	  class_->btids_dup_key_locked[cl_index] = false;
+	  class_->btids_dup_key_locked[cl_index] = NULL;
 	}
-      class_->btid = NULL;;
-      class_->btid_dup_key_locked = false;
+      class_->btid = NULL;
+      class_->btid_dup_key_locked = NULL;
 
       class_->no_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
@@ -22564,7 +22584,7 @@ qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * query_class,
   if (internal_class->needs_pruning)
     {
       internal_class->btid = NULL;
-      internal_class->btid_dup_key_locked = false;
+      internal_class->btid_dup_key_locked = NULL;
 
       /* test root class */
       if (OID_EQ (&query_class->class_oid[0], current_oid))
