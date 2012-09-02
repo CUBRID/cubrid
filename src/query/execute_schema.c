@@ -9752,8 +9752,9 @@ do_promote_partition (SM_CLASS * class_)
   /* Copy attributes in the order in which they were defined in order to
    * preserve the order from the root class
    */
-  classobj_copy_attlist (current->ordered_attributes, NULL, 1,
-			 &ctemplate->attributes);
+  error =
+    classobj_copy_attlist (current->ordered_attributes, NULL, 1,
+			   &ctemplate->attributes);
   if (error != NO_ERROR)
     {
       dbt_abort_class (ctemplate);
@@ -9774,6 +9775,13 @@ do_promote_partition (SM_CLASS * class_)
       dbt_abort_class (ctemplate);
       return error;
     }
+  for (smattr = ctemplate->class_attributes; smattr != NULL;
+       smattr = (SM_ATTRIBUTE *) smattr->header.next)
+    {
+      /* make attributes point to the subclass, not the parent */
+      smattr->class_mop = subclass_mop;
+    }
+
   /* Make sure we do not copy anything that actually belongs to the
    * root class (the class to which this partition belongs to).
    * This includes: auto_increment flags, unique indexes, primary keys,
@@ -9799,7 +9807,6 @@ do_promote_partition (SM_CLASS * class_)
   ctemplate->inheritance = NULL;
   ctemplate->methods = NULL;
   ctemplate->resolutions = NULL;
-  ctemplate->class_attributes = NULL;
   ctemplate->class_methods = NULL;
   ctemplate->class_resolutions = NULL;
   ctemplate->method_files = NULL;

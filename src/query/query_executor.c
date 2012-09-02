@@ -6928,6 +6928,15 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     }
   else if (spec->type == TARGET_CLASS_ATTR)
     {
+      if (spec->s_id.s.hsid.caches_inited)
+	{
+	  heap_attrinfo_end (thread_p,
+			     spec->s_id.s.hsid.pred_attrs.attr_cache);
+	  heap_attrinfo_end (thread_p,
+			     spec->s_id.s.hsid.rest_attrs.attr_cache);
+	  spec->s_id.s.hsid.caches_inited = false;
+	}
+
       error =
 	scan_open_class_attr_scan (thread_p, &spec->s_id, grouped,
 				   spec->single_fetch, spec->s_dbval,

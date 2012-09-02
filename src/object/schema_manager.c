@@ -8566,6 +8566,91 @@ retain_former_ids (SM_TEMPLATE * flat)
 	  pr_clear_value (&pname);
 	}
 
+      /* Check each new inherited class attribute.  These attribute will not
+         have an assigned id and their class MOPs will not match */
+      for (new_att = flat->class_attributes; new_att != NULL;
+	   new_att = (SM_ATTRIBUTE *) new_att->header.next)
+	{
+	  /* is this a new attribute ? */
+	  if (new_att->id == -1)
+	    {
+	      /* is it inherited ? */
+	      if (new_att->class_mop != NULL
+		  && new_att->class_mop != flat->op)
+		{
+		  /* look for a matching attribute in the existing representation */
+		  found = find_matching_att (flat->current->class_attributes,
+					     new_att, 0);
+		  if (found != NULL)
+		    {
+		      /* re-use this attribute */
+		      new_att->id = found->id;
+		    }
+		  else
+		    {
+		      /* couldn't find it, it may have been renamed in the super
+		         class though */
+		      if (au_fetch_class_force (new_att->class_mop, &sclass,
+						AU_FETCH_READ) == NO_ERROR)
+			{
+			  /* search the super class' pending attribute list for
+			     this name */
+			  if (sclass->new_ != NULL)
+			    {
+			      super_new =
+				find_matching_att (sclass->new_->
+						   class_attributes, new_att,
+						   0);
+			      if (super_new != NULL)
+				{
+				  if (is_partition)
+				    {
+				      /* the current class is a partition
+				       * it is not necessary to check the ID
+				       * of attribute in a the old configuration
+				       * Also, in case of ALTER .. CHANGE with
+				       * attribute rename and/or type change,
+				       * the old attribute will not be found by
+				       * name and type */
+				      found = super_new;
+				      new_att->id = found->id;
+				      continue;
+				    }
+				  /*
+				   * search the supers original attribute list
+				   * based on the id of the new one
+				   */
+				  super_old =
+				    find_matching_att (sclass->
+						       class_attributes,
+						       super_new, 1);
+				  if (super_old != NULL)
+				    {
+				      if (SM_COMPARE_NAMES
+					  (super_old->header.name,
+					   new_att->header.name) != 0)
+					{
+					  /* search our old list with the old name */
+					  found =
+					    find_matching_att (flat->
+							       current->
+							       class_attributes,
+							       super_old, 0);
+					  if (found != NULL)
+					    {
+					      /* found the renamed attribute, reuse id */
+					      new_att->id = found->id;
+					    }
+					}
+				    }
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	}
+
       /* Check each new inherited attribute.  These attribute will not have
          an assigned id and their class MOPs will not match */
       for (new_att = flat->attributes; new_att != NULL;
