@@ -1120,6 +1120,7 @@ parser_create_parser (void)
   parser->is_in_and_list = false;
   parser->is_holdable = false;
   parser->auto_param_count = 0;
+  parser->ddl_stmt_for_replication = NULL;
 
   return parser;
 }

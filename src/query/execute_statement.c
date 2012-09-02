@@ -146,7 +146,6 @@ static void initialize_serial_invariant (SERIAL_INVARIANT * invariant,
 					 int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants,
 				    int num_invariants, int *ret_msg_id);
-static bool is_schema_repl_log_statment (const PT_NODE * node);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -275,7 +274,7 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants,
  *           otherwise false
  *   node(in):
  */
-static bool
+bool
 is_schema_repl_log_statment (const PT_NODE * node)
 {
   /* All DDLs will be replicated via schema replication */
@@ -1832,7 +1831,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /*
    * after serial.next_value, the currect value maybe changed, but cub_cas
-   * still hold the old value. To get the new value. we need decache it 
+   * still hold the old value. To get the new value. we need decache it
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
@@ -13735,15 +13734,13 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO_SCHEMA repl_schema;
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_schema_name = "-";
-  unsigned int save_custom;
 
   if (log_does_allow_replication () == false)
     {
       return NO_ERROR;
     }
 
-  save_custom = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_FULL_RANGE_TERM;
+  assert_release (parser->ddl_stmt_for_replication != NULL);
 
   switch (statement->node_type)
     {
@@ -13770,8 +13767,7 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->info.drop.if_exists
 	  && statement->info.drop.spec_list == NULL)
 	{
-	  error = NO_ERROR;
-	  goto end;
+	  return NO_ERROR;
 	}
       repl_schema.statement_type = CUBRID_STMT_DROP_CLASS;
       break;
@@ -13865,8 +13861,7 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_UPDATE_STATS:	/* UPDATE STATISTICS statements are not replicated intentionally. */
     default:
-      error = NO_ERROR;
-      goto end;
+      return NO_ERROR;
     }
 
   repl_info.repl_info_type = REPL_INFO_TYPE_SCHEMA;
@@ -13878,14 +13873,11 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       repl_schema.name = (char *) pt_get_varchar_bytes (name);
     }
-  repl_schema.ddl = parser_print_tree_with_quotes (parser, statement);
+  repl_schema.ddl = parser->ddl_stmt_for_replication;
 
   repl_info.info = (char *) &repl_schema;
 
   error = locator_flush_replication_info (&repl_info);
-
-end:
-  parser->custom_print = save_custom;
 
   return error;
 }
@@ -15260,7 +15252,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   PT_NODE *ins_select_stmt = NULL, *del_select_stmt = NULL, *hint_arg;
   QUERY_ID ins_query_id;
-  bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+  bool insert_only =
+    (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
 
   CHECK_MODIFICATION_ERROR ();
 

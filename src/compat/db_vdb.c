@@ -180,6 +180,8 @@ db_open_local (void)
   session->statements = NULL;
   session->is_subsession_for_prepared = false;
   session->next = NULL;
+  session->ddl_stmts_for_replication = NULL;
+
   return session;
 }
 
@@ -629,6 +631,31 @@ db_compile_statement_local (DB_SESSION * session)
   if (seed == 0)
     {
       srand48 (seed = (long) time (NULL));
+    }
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+      && is_schema_repl_log_statment (statement)
+      && log_does_allow_replication () == true)
+    {
+      if (session->ddl_stmts_for_replication == NULL)
+	{
+	  int size = sizeof (char *) * session->dimension;
+
+	  session->ddl_stmts_for_replication = (char **) malloc (size);
+
+	  if (session->ddl_stmts_for_replication == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  memset (session->ddl_stmts_for_replication, '\0', size);
+	}
+
+      session->ddl_stmts_for_replication[stmt_ndx] =
+	parser_print_tree_with_quotes (parser, statement);
+
+      assert_release (session->ddl_stmts_for_replication[stmt_ndx] != NULL);
     }
 
   /* do semantic check for the statement */
@@ -1760,6 +1787,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	{
 	  return er_errid ();
 	}
+    }
+
+  if (session->ddl_stmts_for_replication != NULL)
+    {
+      parser->ddl_stmt_for_replication =
+	session->ddl_stmts_for_replication[stmt_ndx];
     }
 
   /* forget about any previous compilation errors, if any */
@@ -2945,6 +2978,14 @@ db_close_session_local (DB_SESSION * session)
 	    }
 	}
     }
+
+  parser->ddl_stmt_for_replication = NULL;
+
+  if (session->ddl_stmts_for_replication != NULL)
+    {
+      free_and_init (session->ddl_stmts_for_replication);
+    }
+
   session->dimension = session->stmt_ndx = 0;
   if (session->type_list)
     {

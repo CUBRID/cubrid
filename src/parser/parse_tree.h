@@ -678,8 +678,7 @@ enum pt_custom_print
 				 * calls pt_short_print
 				 * instead pt_print_tree
 				 */
-  PT_SUPPRESS_FULL_RANGE_TERM = 0x4000000,	/* This is for query in create ... as ... */
-  PT_SUPPRESS_NUMBER_VALUE_TEXT = 0x8000000	/* for info.parts.values */
+  PT_SUPPRESS_BIGINT_CAST = 0x4000000
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2989,6 +2988,7 @@ struct parser_context
   bool is_holdable;		/* set to true if result must be available across
 				   commits */
   bool dont_collect_exec_stats:1;
+  char *ddl_stmt_for_replication;
 };
 
 /* used in assignments enumeration */

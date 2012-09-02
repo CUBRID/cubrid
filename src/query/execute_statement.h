@@ -190,6 +190,7 @@ extern int do_execute_session_statement (PARSER_CONTEXT * parser,
 					 PT_NODE * statement);
 extern int do_evaluate_default_expr (PARSER_CONTEXT * parser,
 				     PT_NODE * class_name);
+extern bool is_schema_repl_log_statment (const PT_NODE * node);
 
 extern int do_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
