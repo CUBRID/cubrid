@@ -11244,7 +11244,30 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 				    || lhs->type_enum == PT_TYPE_NUMERIC)
 				  || lhs->data_type != NULL);
 		  lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
-		  d = tp_domain_resolve_default (lhs_dbtype);
+
+		  if (rhs->node_type != PT_HOST_VAR)
+		    {
+		      d = tp_domain_resolve_default (lhs_dbtype);
+		    }
+		  else
+		    {
+		      if (lhs->expected_domain != NULL)
+			{
+			  d = lhs->expected_domain;
+			}
+		      else
+			{
+			  d = tp_domain_resolve_default (lhs_dbtype);
+			}
+
+		      if (PT_HAS_COLLATION (lhs->type_enum))
+			{
+			  d = tp_domain_copy (d, false);
+			  d->codeset = sci.cs;
+			  d->collation_id = sci.collation_id;
+			  d = tp_domain_cache (d);
+			}
+		    }
 		}
 
 	      pt_set_expected_domain (rhs, d);
