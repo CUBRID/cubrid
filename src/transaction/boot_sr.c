@@ -2973,7 +2973,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
-  mnt_server_init (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1);
 #endif /* SERVER_MODE */
 
   if (db_name == NULL)
@@ -3081,9 +3080,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
-
-  mnt_server_final ();
-  mnt_server_init (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1);
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {
@@ -3144,6 +3140,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* SERVER_MODE */
+
+  mnt_server_init (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1);
 
   /*
    * Compose the full name of the database and find location of logs
