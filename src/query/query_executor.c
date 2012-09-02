@@ -1021,9 +1021,45 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (xasl->instnum_pred)
     {
-      /* evaluate predicate */
-      ev_res = eval_pred (thread_p, xasl->instnum_pred,
-			  &xasl_state->vd, NULL);
+      PRED_EXPR *pr = xasl->instnum_pred;
+
+      /* this case is for: 
+       *  select * from table limit 3,  or
+       *  select * from table where rownum <= 3
+       *  and we can change operator <= to < and reevaluate last 
+       *  condition. (to stop scan at this time)
+       */
+      if (pr->type == T_EVAL_TERM &&
+	  pr->pe.eval_term.et_type == T_COMP_EVAL_TERM &&
+	  (pr->pe.eval_term.et.et_comp.lhs->type == TYPE_CONSTANT &&
+	   pr->pe.eval_term.et.et_comp.rhs->type == TYPE_POS_VALUE) &&
+	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op == R_LE)
+	{
+	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op = R_LT;
+	  /* evaluate predicate */
+	  ev_res = eval_pred (thread_p, xasl->instnum_pred,
+			      &xasl_state->vd, NULL);
+
+	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op = R_LE;
+
+	  if (ev_res != V_TRUE)
+	    {
+	      ev_res = eval_pred (thread_p, xasl->instnum_pred,
+				  &xasl_state->vd, NULL);
+
+	      if (ev_res == V_TRUE)
+		{
+		  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_LAST_STOP;
+		}
+	    }
+	}
+      else
+	{
+	  /* evaluate predicate */
+	  ev_res = eval_pred (thread_p, xasl->instnum_pred,
+			      &xasl_state->vd, NULL);
+	}
+
       switch (ev_res)
 	{
 	case V_FALSE:
@@ -7215,6 +7251,21 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				    {
 				      return S_ERROR;
 				    }
+
+
+				  if ((xasl->instnum_flag
+				       & XASL_INSTNUM_FLAG_SCAN_LAST_STOP))
+				    {
+				      if (qexec_end_one_iteration
+					  (thread_p, xasl, xasl_state,
+					   tplrec) != NO_ERROR)
+					{
+					  return S_ERROR;
+					}
+
+				      return S_SUCCESS;
+				    }
+
 				  if ((xasl->instnum_flag
 				       & XASL_INSTNUM_FLAG_SCAN_STOP))
 				    {
@@ -7286,6 +7337,21 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					{
 					  return S_ERROR;
 					}
+
+				      if ((xasl->instnum_flag
+					   &
+					   XASL_INSTNUM_FLAG_SCAN_LAST_STOP))
+					{
+					  if (qexec_end_one_iteration
+					      (thread_p, xasl, xasl_state,
+					       tplrec) != NO_ERROR)
+					    {
+					      return S_ERROR;
+					    }
+
+					  return S_SUCCESS;
+					}
+
 				      if (xasl->instnum_flag
 					  & XASL_INSTNUM_FLAG_SCAN_STOP)
 					{
