@@ -3610,7 +3610,7 @@ extern int db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2);
 extern int db_is_updatable_object (DB_OBJECT * obj);
 extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
 
-extern int db_check_single_query (DB_SESSION * session, int stmt_no);
+extern int db_check_single_query (DB_SESSION * session);
 
 /* query pre-processing functions */
 extern int db_get_query_format (const char *CSQL_query,

@@ -250,7 +250,7 @@ extern int db_init (const char *program, int print_version,
 		    int npages, int desired_pagesize,
 		    int log_npages, int desired_log_page_size);
 
-extern int db_check_single_query (DB_SESSION * session, int stmt_no);
+extern int db_check_single_query (DB_SESSION * session);
 extern int db_parse_one_statement (DB_SESSION * session);
 #ifdef __cplusplus
 extern "C"

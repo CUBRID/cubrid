@@ -554,6 +554,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   T_CCI_QUERY_RESULT *qr = NULL;
   char fetch_flag;
   char forward_only_cursor;
+  char include_column_info;
   int remain_msg_size = 0;
   int remained_time = 0;
   bool use_server_query_cancel = false;
@@ -706,11 +707,19 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
       msg = result_msg + (result_msg_size - remain_msg_size);
-      err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
-      if (err_code < 0)
+
+      NET_STR_TO_BYTE (include_column_info, msg);
+      remain_msg_size -= NET_SIZE_BYTE;
+      msg += NET_SIZE_BYTE;
+
+      if (include_column_info == 1)
 	{
-	  FREE_MEM (result_msg);
-	  return err_code;
+	  err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
+	  if (err_code < 0)
+	    {
+	      FREE_MEM (result_msg);
+	      return err_code;
+	    }
 	}
     }
 
@@ -767,6 +776,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   int result_msg_size;
   T_CCI_QUERY_RESULT *qr = NULL;
   char fetch_flag;
+  char include_column_info;
   int remain_msg_size = 0;
   int remained_time = 0;
   int num_tuple = 0;
@@ -954,11 +964,19 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
       msg = result_msg + (result_msg_size - remain_msg_size);
-      err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
-      if (err_code < 0)
+
+      NET_STR_TO_BYTE (include_column_info, msg);
+      remain_msg_size -= NET_SIZE_BYTE;
+      msg += NET_SIZE_BYTE;
+
+      if (include_column_info == 1)
 	{
-	  FREE_MEM (result_msg);
-	  return err_code;
+	  err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
+	  if (err_code < 0)
+	    {
+	      FREE_MEM (result_msg);
+	      return err_code;
+	    }
 	}
     }
 
@@ -1029,7 +1047,7 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
   if (param_name == CCI_PARAM_AUTO_COMMIT)
     {
       val = con_handle->autocommit_mode;
-      memcpy (ret_val, (char *) &val, 4);
+      memcpy (ret_val, (char *) &val, sizeof (int));
     }
   else
     {
@@ -1055,18 +1073,18 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 
       err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
 			       err_buf);
-      result_msg_size -= 4;
+      result_msg_size -= NET_SIZE_INT;
 
       if (err_code >= 0)
 	{
-	  if (result_msg_size < 4)
+	  if (result_msg_size < NET_SIZE_INT)
 	    {
 	      err_code = CCI_ER_COMMUNICATION;
 	    }
 	  else
 	    {
-	      NET_STR_TO_INT (val, result_msg + 4);
-	      memcpy (ret_val, (char *) &val, 4);
+	      NET_STR_TO_INT (val, result_msg + NET_SIZE_INT);
+	      memcpy (ret_val, (char *) &val, sizeof (int));
 	    }
 	}
 
@@ -1311,10 +1329,10 @@ qe_cursor (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, int offset,
       return CCI_ER_COMMUNICATION;
     }
 
-  cur_p = result_msg + 4;
-  result_msg_size -= 4;
+  cur_p = result_msg + NET_SIZE_INT;
+  result_msg_size -= NET_SIZE_INT;
 
-  if (result_msg_size < 4)
+  if (result_msg_size < NET_SIZE_INT)
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
@@ -1499,11 +1517,13 @@ qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type, void *value,
   else if (CCI_IS_SEQUENCE_TYPE (u_type))
     u_type = CCI_U_TYPE_SEQUENCE;
 
-  col_value_p += 4;
+  col_value_p += NET_SIZE_INT;
   if (u_type == CCI_U_TYPE_NULL)
     {
-      u_type = (T_CCI_U_TYPE) * col_value_p;
-      col_value_p++;
+      char type;
+      NET_STR_TO_BYTE (type, col_value_p);
+      u_type = (T_CCI_U_TYPE) type;
+      col_value_p += NET_SIZE_BYTE;
       data_size--;
     }
 
@@ -3930,41 +3950,41 @@ prepare_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
   T_CCI_COL_INFO *col_info = NULL;
   int result_cache_lifetime;
 
-  if (remain_size < 4)
+  if (remain_size < NET_SIZE_INT)
     {
       return CCI_ER_COMMUNICATION;
     }
 
   NET_STR_TO_INT (result_cache_lifetime, cur_p);
-  remain_size -= 4;
-  cur_p += 4;
+  remain_size -= NET_SIZE_INT;
+  cur_p += NET_SIZE_INT;
 
-  if (remain_size < 1)
+  if (remain_size < NET_SIZE_BYTE)
     {
       return CCI_ER_COMMUNICATION;
     }
 
-  stmt_type = *cur_p;
-  remain_size -= 1;
-  cur_p += 1;
+  NET_STR_TO_BYTE (stmt_type, cur_p);
+  remain_size -= NET_SIZE_BYTE;
+  cur_p += NET_SIZE_BYTE;
 
-  if (remain_size < 4)
+  if (remain_size < NET_SIZE_INT)
     {
       return CCI_ER_COMMUNICATION;
     }
 
   NET_STR_TO_INT (num_bind_info, cur_p);
-  remain_size -= 4;
-  cur_p += 4;
+  remain_size -= NET_SIZE_INT;
+  cur_p += NET_SIZE_INT;
 
-  if (remain_size < 1)
+  if (remain_size < NET_SIZE_BYTE)
     {
       return CCI_ER_COMMUNICATION;
     }
 
-  updatable_flag = *cur_p;
-  remain_size -= 1;
-  cur_p += 1;
+  NET_STR_TO_BYTE (updatable_flag, cur_p);
+  remain_size -= NET_SIZE_BYTE;
+  cur_p += NET_SIZE_BYTE;
 
   num_col_info = get_column_info (cur_p, &remain_size, &col_info, NULL, true);
   if (num_col_info < 0)
@@ -4257,7 +4277,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
       *ret_col_info = NULL;
     }
 
-  if (remain_size < 4)
+  if (remain_size < NET_SIZE_INT)
     {
       return CCI_ER_COMMUNICATION;
     }
@@ -4273,8 +4293,8 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
       return CCI_ER_COMMUNICATION;
     }
 
-  remain_size -= 4;
-  cur_p += 4;
+  remain_size -= NET_SIZE_INT;
+  cur_p += NET_SIZE_INT;
 
   col_info =
     (T_CCI_COL_INFO *) MALLOC (sizeof (T_CCI_COL_INFO) * num_col_info);
@@ -4288,38 +4308,40 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
   for (i = 0; i < num_col_info; i++)
     {
       int name_size;
+      char type;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].type = (T_CCI_U_TYPE) * cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (type, cur_p);
+      col_info[i].type = (T_CCI_U_TYPE) type;
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 2)
+      if (remain_size < NET_SIZE_SHORT)
 	{
 	  goto get_column_info_error;
 	}
       NET_STR_TO_SHORT (col_info[i].scale, cur_p);
-      remain_size -= 2;
-      cur_p += 2;
+      remain_size -= NET_SIZE_SHORT;
+      cur_p += NET_SIZE_SHORT;
 
-      if (remain_size < 4)
+      if (remain_size < NET_SIZE_INT)
 	{
 	  goto get_column_info_error;
 	}
       NET_STR_TO_INT (col_info[i].precision, cur_p);
-      remain_size -= 4;
-      cur_p += 4;
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
 
-      if (remain_size < 4)
+      if (remain_size < NET_SIZE_INT)
 	{
 	  goto get_column_info_error;
 	}
       NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= 4;
-      cur_p += 4;
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
 
       if (remain_size < name_size)
 	{
@@ -4338,13 +4360,13 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
 	  continue;
 	}
 
-      if (remain_size < 4)
+      if (remain_size < NET_SIZE_INT)
 	{
 	  goto get_column_info_error;
 	}
       NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= 4;
-      cur_p += 4;
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
 
       if (remain_size < name_size)
 	{
@@ -4354,13 +4376,13 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
       remain_size -= name_size;
       cur_p += name_size;
 
-      if (remain_size < 4)
+      if (remain_size < NET_SIZE_INT)
 	{
 	  goto get_column_info_error;
 	}
       NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= 4;
-      cur_p += 4;
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
 
       if (remain_size < name_size)
 	{
@@ -4370,21 +4392,21 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
       remain_size -= name_size;
       cur_p += name_size;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_non_null = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_non_null, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 4)
+      if (remain_size < NET_SIZE_INT)
 	{
 	  goto get_column_info_error;
 	}
       NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= 4;
-      cur_p += 4;
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
 
       if (remain_size < name_size)
 	{
@@ -4398,61 +4420,61 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
       remain_size -= name_size;
       cur_p += name_size;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
       col_info[i].is_auto_increment = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_unique_key = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_unique_key, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_primary_key = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_primary_key, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_reverse_index = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_reverse_index, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_reverse_unique = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_reverse_unique, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_foreign_key = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_foreign_key, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < 1)
+      if (remain_size < NET_SIZE_BYTE)
 	{
 	  goto get_column_info_error;
 	}
-      col_info[i].is_shared = *cur_p;
-      remain_size -= 1;
-      cur_p += 1;
+      NET_STR_TO_BYTE (col_info[i].is_shared, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
     }
 
   if (ret_col_info)
@@ -4497,11 +4519,11 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
   char *next_buf_p;
   T_CCI_COL_INFO *col_info = NULL;
 
-  if (remain_size < 4)
+  if (remain_size < NET_SIZE_INT)
     return CCI_ER_COMMUNICATION;
   NET_STR_TO_INT (class_name_size, cur_p);
-  remain_size -= 4;
-  cur_p += 4;
+  remain_size -= NET_SIZE_INT;
+  cur_p += NET_SIZE_INT;
 
   if (remain_size < class_name_size || class_name_size <= 0)
     {

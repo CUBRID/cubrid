@@ -1358,6 +1358,7 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
       (req_info->client_version, PROTOCOL_V2))
     {
+      net_buf_cp_byte (net_buf, 1);	/* include_column_info */
       net_buf_cp_int (net_buf, 0, NULL);	/* result_cache_lifetime */
       net_buf_cp_byte (net_buf, srv_handle->stmt_type);
       net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);

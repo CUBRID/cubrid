@@ -2337,9 +2337,11 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       goto cleanup;
     }
 
-  err = db_check_single_query (prepared_session, prepared_statement_ndx);
+  err = db_check_single_query (prepared_session);
   if (err != NO_ERROR)
     {
+      err = ER_IT_MULTIPLE_STATEMENT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
       goto cleanup;
     }
 
@@ -3343,19 +3345,17 @@ db_free_query (DB_SESSION * session)
  *    one statement given, and that it is a valid query statement.
  * return : error code
  * session(in) : session handle
- * stmt_no(in) : statement number
  */
 int
-db_check_single_query (DB_SESSION * session, int stmt_no)
+db_check_single_query (DB_SESSION * session)
 {
   if (session->dimension > 1)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
-      return er_errid ();
+      return ER_IT_MULTIPLE_STATEMENT;
     }
+
   return NO_ERROR;
 }
-
 
 /*
  * db_get_parser() - This function returns session's parser

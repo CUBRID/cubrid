@@ -40,6 +40,8 @@ abstract public class UJCIUtil {
 	private static boolean bMMDB;
 	private static boolean bSendAppInfo;
 	private static boolean bJDBC4;
+	private static Boolean bMysqlMode = null;
+	private static Boolean bOracleMode = null;
 
 	static {
 		String value = System.getProperty("ConsoleDebug");
@@ -111,19 +113,29 @@ abstract public class UJCIUtil {
 	}
 
 	public static boolean isMysqlMode(Class<?> c) {
-		String split[] = c.getName().split("\\.");
-		if (split.length > 2 && split[2].equals("mysql")) {
-			return true;
+		if (bMysqlMode == null) {
+			String split[] = c.getName().split("\\.");
+			if (split.length > 2 && split[2].equals("mysql")) {
+				bMysqlMode = new Boolean(true);
+			} else {
+				bMysqlMode = new Boolean(false);
+			}
 		}
-		return false;
+
+		return bMysqlMode.booleanValue();
 	}
 
 	public static boolean isOracleMode(Class<?> c) {
-		String split[] = c.getName().split("\\.");
-		if (split.length > 2 && split[2].equals("oracle")) {
-			return true;
+		if (bOracleMode == null) {
+			String split[] = c.getName().split("\\.");
+			if (split.length > 2 && split[2].equals("oracle")) {
+				bOracleMode = new Boolean(true);
+			} else {
+				bOracleMode = new Boolean(false);
+			}
 		}
-		return false;
+
+		return bOracleMode.booleanValue();
 	}
 
 	public static boolean isServerSide() {

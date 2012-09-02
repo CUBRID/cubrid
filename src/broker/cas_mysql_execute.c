@@ -604,9 +604,10 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
   srv_handle->tuple_count = num_tuple;
 
-  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
-      (req_info->client_version, PROTOCOL_V2))
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+					   PROTOCOL_V2))
     {
+      net_buf_cp_byte (net_buf, 1);	/* include_column_info */
       net_buf_cp_int (net_buf, 0, NULL);	/* result_cache_lifetime */
       net_buf_cp_byte (net_buf, srv_handle->stmt_type);
       net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
@@ -1271,7 +1272,7 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	data_size = 4 + 8 + 0;
 	break;
       }
-      /* 
+      /*
          case MYSQL_TYPE_DECIMAL:
          case MYSQL_TYPE_NEWDECIMAL:
          {

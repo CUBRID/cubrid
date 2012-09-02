@@ -88,6 +88,11 @@
 	  SHORT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
+#define NET_STR_TO_BYTE(BYTE_VALUE, PTR)                                \
+        do {                                                            \
+          (BYTE_VALUE) = *(char*)PTR;                                   \
+        } while (0)
+
 #define NET_STR_TO_FLOAT(FLOAT_VALUE, PTR)	                        \
 	do {					                        \
 	  float		macro_var_tmp_value;		                \

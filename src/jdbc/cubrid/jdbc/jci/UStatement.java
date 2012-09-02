@@ -742,14 +742,17 @@ public class UStatement {
 
 			readResultInfo(inBuffer);
 			if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
-				inBuffer.readInt(); // result_cache_lifetime
-				commandTypeIs = inBuffer.readByte();
-				inBuffer.readInt(); // num_markers
-				isUpdatable = (inBuffer.readByte() == 1) ? true : false;
-				columnNumber = inBuffer.readInt();
-				readColumnInfo(inBuffer);
-				if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-					columnNumber = parameterNumber + 1;
+				// include_column_info
+				if (inBuffer.readByte() == 1) {
+					inBuffer.readInt(); // result_cache_lifetime
+					commandTypeIs = inBuffer.readByte();
+					inBuffer.readInt(); // num_markers
+					isUpdatable = (inBuffer.readByte() == 1) ? true : false;
+					columnNumber = inBuffer.readInt();
+					readColumnInfo(inBuffer);
+					if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+						columnNumber = parameterNumber + 1;
+					}
 				}
 			}
 		} catch (UJciException e) {
