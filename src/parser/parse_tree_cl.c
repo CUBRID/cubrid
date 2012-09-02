@@ -582,6 +582,33 @@ static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
+
+typedef struct pt_string_block PT_STRING_BLOCK;
+struct pt_string_block
+{
+  char *body;
+  int length;
+  int size;
+};
+
+static void
+strcat_with_realloc (PT_STRING_BLOCK * sb, char *tail)
+{
+  char *cp = sb->body;
+  int margin = 32;
+
+  if (sb->size - sb->length < strlen (tail) + margin)
+    {
+      sb->size = (sb->size + strlen (tail) + margin) * 2;
+      sb->body = realloc (sb->body, sb->size);
+      cp = sb->body;
+    }
+
+  strcat (cp, tail);
+  sb->length = sb->length + strlen (tail);
+}
+
+
 /*
  * pt_lambda_check_reduce_eq () -
  *   return:
@@ -2265,17 +2292,35 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
 PARSER_VARCHAR *
 pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r;
+  PARSER_VARCHAR *q = 0, *r, *prev;
+  PT_STRING_BLOCK sb;
+
+  sb.body = NULL;
+  sb.length = 0;
+  sb.size = 1024;
 
   if (!p)
     {
-      return 0;
+      return NULL;
     }
 
-  q = pt_print_bytes (parser, p);
+  prev = pt_print_bytes (parser, p);
+
   if (p->is_cnf_start)
     {
-      return q;
+      return prev;
+    }
+
+  sb.body = malloc (sb.size);
+  if (sb.body == NULL)
+    {
+      return NULL;
+    }
+
+  sb.body[0] = 0;
+  if (prev)
+    {
+      strcat_with_realloc (&sb, prev->bytes);
     }
 
   while (p->next)
@@ -2284,13 +2329,17 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
       r = pt_print_bytes (parser, p);
       if (r)
 	{
-	  if (q)
+	  if (prev)
 	    {
-	      q = pt_append_bytes (parser, q, ", ", 2);
+	      strcat_with_realloc (&sb, ", ");
 	    }
-	  q = pt_append_varchar (parser, q, r);
+
+	  strcat_with_realloc (&sb, r->bytes);
 	}
     }
+
+  q = pt_append_nulstring (parser, q, sb.body);
+  free (sb.body);
 
   return q;
 }
@@ -2510,6 +2559,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   return q;
 }
+
 
 /*
  * pt_print_query_spec_no_list() - prints query specifications
@@ -9245,6 +9295,76 @@ pt_init_expr (PT_NODE * p)
   return p;
 }
 
+static void
+pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t,
+	     PARSER_VARCHAR * lhs)
+{
+  const char *op1 = NULL, *op2 = NULL;
+  PARSER_VARCHAR *rhs1 = NULL, *rhs2 = NULL;
+
+  switch (t->info.expr.op)
+    {
+    case PT_BETWEEN_GE_LE:
+      op1 = pt_show_binopcode (PT_GE);
+      op2 = pt_show_binopcode (PT_LE);
+      break;
+    case PT_BETWEEN_GE_LT:
+      op1 = pt_show_binopcode (PT_GE);
+      op2 = pt_show_binopcode (PT_LT);
+      break;
+    case PT_BETWEEN_GT_LE:
+      op1 = pt_show_binopcode (PT_GT);
+      op2 = pt_show_binopcode (PT_LE);
+      break;
+    case PT_BETWEEN_GT_LT:
+      op1 = pt_show_binopcode (PT_GT);
+      op2 = pt_show_binopcode (PT_LT);
+      break;
+    case PT_BETWEEN_EQ_NA:
+      op1 = pt_show_binopcode (PT_EQ);
+      break;
+    case PT_BETWEEN_INF_LE:
+      op1 = pt_show_binopcode (PT_LE);
+      break;
+    case PT_BETWEEN_INF_LT:
+      op1 = pt_show_binopcode (PT_LT);
+      break;
+    case PT_BETWEEN_GT_INF:
+      op1 = pt_show_binopcode (PT_GT);
+      break;
+    case PT_BETWEEN_GE_INF:
+      op1 = pt_show_binopcode (PT_GE);
+      break;
+
+    default:
+      assert(false);
+      return;
+    }
+
+  rhs1 = pt_print_bytes (parser, t->info.expr.arg1);
+  if (op2)
+    {
+      rhs2 = pt_print_bytes (parser, t->info.expr.arg2);
+    }
+
+  if (lhs && rhs1)
+    {
+      strcat_with_realloc (sb, lhs->bytes);
+      strcat_with_realloc (sb, op1);
+      strcat_with_realloc (sb, rhs1->bytes);
+
+      if (rhs2)
+	{
+	  strcat_with_realloc (sb, " and ");
+	  strcat_with_realloc (sb, lhs->bytes);
+	  strcat_with_realloc (sb, op2);
+	  strcat_with_realloc (sb, rhs2->bytes);
+	}
+    }
+}
+
+
+
 /*
  * pt_print_expr () -
  *   return:
@@ -11060,186 +11180,53 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_RANGE:
       if (parser->custom_print & PT_CONVERT_RANGE)
 	{
+	  PT_STRING_BLOCK sb;
+	  sb.length = 0;
+	  sb.size = 1024;
+	  sb.body = NULL;
+
+	  sb.body = malloc (sb.size);
+	  if (sb.body == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  sb.body[0] = 0;
+
 	  r4 = pt_print_bytes (parser, p->info.expr.arg1);
+
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      q = pt_append_nulstring (parser, q, "(");
+	      strcat_with_realloc (&sb, "(");
 	    }
+
 	  for (t = p->info.expr.arg2; t; t = t->or_next)
 	    {
-	      switch (t->info.expr.op)
+	      if (!p->info.expr.paren_type)
 		{
-		case PT_BETWEEN_GE_LE:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_GE));
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, " and ");
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_LE));
-		  q = pt_append_varchar (parser, q, r2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_GE_LT:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_GE));
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, " and ");
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_LT));
-		  q = pt_append_varchar (parser, q, r2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_GT_LE:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_GT));
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, " and ");
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_LE));
-		  q = pt_append_varchar (parser, q, r2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_GT_LT:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_GT));
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, " and ");
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_LT));
-		  q = pt_append_varchar (parser, q, r2);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_EQ_NA:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_EQ));
-		  q = pt_append_varchar (parser, q, r1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_INF_LE:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_LE));
-		  q = pt_append_varchar (parser, q, r1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_INF_LT:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_LT));
-		  q = pt_append_varchar (parser, q, r1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_GE_INF:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_GE));
-		  q = pt_append_varchar (parser, q, r1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		case PT_BETWEEN_GT_INF:
-		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, "(");
-		    }
-		  q = pt_append_varchar (parser, q, r4);
-		  q = pt_append_nulstring (parser, q,
-					   pt_show_binopcode (PT_GT));
-		  q = pt_append_varchar (parser, q, r1);
-		  if (!p->info.expr.paren_type)
-		    {
-		      q = pt_append_nulstring (parser, q, ")");
-		    }
-		  break;
-		default:
-		  break;
+		  strcat_with_realloc (&sb, "(");
 		}
+
+	      pt_print_range_op (parser, &sb, t, r4);
+
+	      if (!p->info.expr.paren_type)
+		{
+		  strcat_with_realloc (&sb, ")");
+		}
+
 	      if (t->or_next)
 		{
-		  q = pt_append_nulstring (parser, q, " or ");
+		  strcat_with_realloc (&sb, " or ");
 		}
 	    }
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      q = pt_append_nulstring (parser, q, ")");
+	      strcat_with_realloc (&sb, ")");
 	    }
+
+	  q = pt_append_nulstring (parser, q, sb.body);
+	  free (sb.body);
+
 	  /* break case PT_RANGE */
 	  break;
 	}

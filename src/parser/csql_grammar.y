@@ -948,6 +948,7 @@ typedef struct YYLTYPE
 %type <c2> in_pred_operand
 %type <c2> opt_as_identifier_attr_name
 %type <c2> insert_assignment_list
+%type <c2> expression_queue
 /*}}}*/
 
 /* Token define */
@@ -11228,18 +11229,35 @@ alias_enabled_expression_
 	;
 
 expression_list
-	: expression_list  ',' expression_
+	: expression_queue
 		{{
 
-			$$ = parser_make_link ($1, $3);
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = CONTAINER_AT_0($1);
+
+		DBG_PRINT}}
+	;
+
+expression_queue
+	: expression_queue  ',' expression_
+		{{
+			container_2 new_q;
+
+			PT_NODE* q_head = CONTAINER_AT_0($1);
+			PT_NODE* q_tail = CONTAINER_AT_1($1);
+			q_tail->next = $3;
+
+			SET_CONTAINER_2(new_q, q_head, $3);
+			$$ = new_q;
+			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| expression_
 		{{
+			container_2 new_q;
 
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			SET_CONTAINER_2(new_q, $1, $1);
+			$$ = new_q;
+			PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;

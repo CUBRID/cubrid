@@ -4757,6 +4757,20 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    case PT_BETWEEN:
 	    case PT_IS_IN:
 	    case PT_RANGE:
+
+	      if (dnf_node->info.expr.op == PT_IS_IN
+		  && PT_IS_SET_TYPE (dnf_node->info.expr.arg2))
+		{
+		  /* 
+		   * skip merge in list
+		   * server will eliminate duplicate keys
+		   * this is because merging huge in list takes 
+		   * too much time.
+		   */
+		  qo_convert_to_range_helper (parser, dnf_node);
+		  break;
+		}
+
 	      /* convert all comparison nodes in the DNF list which have
 	         the same attribute as its LHS into one RANGE node
 	         containing multi-range spec */
@@ -6217,8 +6231,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 	      /* make new derived spec and append it to FROM */
 	      if (mq_make_derived_spec (parser, node, arg2,
-                                        idx, &new_spec,
-                                        &new_attr) == NULL)
+					idx, &new_spec, &new_attr) == NULL)
 		{
 		  return NULL;
 		}
