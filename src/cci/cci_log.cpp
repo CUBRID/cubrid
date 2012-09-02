@@ -190,18 +190,21 @@ private:
   {
     struct timeval tv;
     struct tm cal;
+    time_t t;
 
-    gettimeofday(&tv, NULL);
-    localtime_r(&tv.tv_sec, &cal);
+    gettimeofday (&tv, NULL);
+    t = tv.tv_sec;
+
+    localtime_r (&t, &cal);
     cal.tm_year += 1900;
     cal.tm_mon += 1;
 
     char buf[128];
-    unsigned long tid = gettid();
-    snprintf(buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
-        cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
-        cal.tm_sec, (int)(tv.tv_usec / 1000), tid,
-        cciLogLevelStr[level]);
+    unsigned long tid = gettid ();
+    snprintf (buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
+              cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
+              cal.tm_sec, (int)(tv.tv_usec / 1000), tid,
+              cciLogLevelStr[level]);
 
     write(buf);
   }
