@@ -217,11 +217,42 @@ extern unsigned int db_on_server;
   false,        /* is_desc */                          \
   0				/* is_visited */
 
+/* Same as DOMAIN_INIT but set the prec and scale. */
+#define DOMAIN_INIT4(prec, scale)                      \
+  (prec),       /* precision */                        \
+  (scale),      /* scale */                            \
+  NULL,         /* class */                            \
+  NULL,         /* set domain */                       \
+  {0, NULL},    /* enumeration */                      \
+  {-1, -1, -1}, /* class OID */                        \
+  1,            /* built_in_index (set in tp_init) */  \
+  0,            /* codeset */                          \
+  0,            /* collation id */                     \
+  0,            /* self_ref */                         \
+  1,            /* is_cached */                        \
+  0,            /* is_parameterized */                 \
+  false,        /* is_desc */                          \
+  0				/* is_visited */
+
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
-TP_DOMAIN tp_Integer_domain = { NULL, NULL, &tp_Integer, DOMAIN_INIT };
-TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint, DOMAIN_INIT };
-TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float, DOMAIN_INIT };
-TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double, DOMAIN_INIT };
+TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short,
+  DOMAIN_INIT4 (DB_SHORT_PRECISION, 0)
+};
+TP_DOMAIN tp_Integer_domain = { NULL, NULL, &tp_Integer,
+  DOMAIN_INIT4 (DB_INTEGER_PRECISION, 0)
+};
+TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint,
+  DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0)
+};
+TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float,
+  DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0)
+};
+TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double,
+  DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0)
+};
+TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary,
+  DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION, 0)
+};
 
 TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String,
   DB_MAX_VARCHAR_PRECISION, 0,
@@ -253,13 +284,17 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };
 TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
 TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
-TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT };
-TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT };
-TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date, DOMAIN_INIT };
-TP_DOMAIN tp_Datetime_domain = { NULL, NULL, &tp_Datetime, DOMAIN_INIT };
-
-TP_DOMAIN tp_Monetary_domain = {
-  NULL, NULL, &tp_Monetary, DOMAIN_INIT
+TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time,
+  DOMAIN_INIT4 (DB_TIME_PRECISION, 0)
+};
+TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime,
+  DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0)
+};
+TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date,
+  DOMAIN_INIT4 (DB_DATE_PRECISION, 0)
+};
+TP_DOMAIN tp_Datetime_domain = { NULL, NULL, &tp_Datetime,
+  DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
 
 TP_DOMAIN tp_Variable_domain = {
@@ -271,7 +306,6 @@ TP_DOMAIN tp_Substructure_domain = {
 };
 TP_DOMAIN tp_Pointer_domain = { NULL, NULL, &tp_Pointer, DOMAIN_INIT };
 TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
-TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
 TP_DOMAIN tp_Oid_domain = { NULL, NULL, &tp_Oid, DOMAIN_INIT3 };
 TP_DOMAIN tp_Enumeration_domain =

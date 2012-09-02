@@ -1375,20 +1375,51 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
   switch (domain_type)
     {
     case DB_TYPE_INTEGER:
+      retval = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION,
+				    0, NULL);
+      break;
+    case DB_TYPE_SHORT:
+      retval = tp_domain_construct (domain_type, NULL, DB_SHORT_PRECISION,
+				    0, NULL);
+      break;
+    case DB_TYPE_BIGINT:
+      retval = tp_domain_construct (domain_type, NULL, DB_BIGINT_PRECISION,
+				    0, NULL);
+      break;
     case DB_TYPE_FLOAT:
+      retval = tp_domain_construct (domain_type, NULL,
+				    DB_FLOAT_DECIMAL_PRECISION, 0, NULL);
+      break;
     case DB_TYPE_DOUBLE:
+      retval = tp_domain_construct (domain_type, NULL,
+				    DB_DOUBLE_DECIMAL_PRECISION, 0, NULL);
+      break;
+    case DB_TYPE_MONETARY:
+      retval = tp_domain_construct (domain_type, NULL,
+				    DB_MONETARY_DECIMAL_PRECISION, 0, NULL);
+      break;
+    case DB_TYPE_TIME:
+      retval = tp_domain_construct (domain_type, NULL, DB_TIME_PRECISION,
+				    0, NULL);
+      break;
+    case DB_TYPE_DATE:
+      retval = tp_domain_construct (domain_type, NULL, DB_DATE_PRECISION,
+				    0, NULL);
+      break;
+    case DB_TYPE_UTIME:
+      retval = tp_domain_construct (domain_type, NULL, DB_TIMESTAMP_PRECISION,
+				    0, NULL);
+      break;
+    case DB_TYPE_DATETIME:
+      retval = tp_domain_construct (domain_type, NULL, DB_DATETIME_PRECISION,
+				    DB_DATETIME_DECIMAL_SCALE, NULL);
+      break;
     case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_TIME:
-    case DB_TYPE_UTIME:
-    case DB_TYPE_DATETIME:
-    case DB_TYPE_DATE:
-    case DB_TYPE_MONETARY:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
     case DB_TYPE_ERROR:
-    case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
     case DB_TYPE_OBJECT:
@@ -1396,7 +1427,6 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
-    case DB_TYPE_BIGINT:
     case DB_TYPE_ENUMERATION:
       retval = tp_domain_construct (domain_type, (DB_OBJECT *) 0, 0, 0,
 				    (TP_DOMAIN *) 0);

@@ -1133,6 +1133,15 @@ db_value_precision (const DB_VALUE * value)
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_NUMERIC:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_UTIME:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
       return value->domain.numeric_info.precision;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
@@ -1141,10 +1150,6 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       return value->domain.char_info.length;
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
@@ -1152,15 +1157,10 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_TIME:
-    case DB_TYPE_UTIME:
-    case DB_TYPE_DATE:
-    case DB_TYPE_MONETARY:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
     case DB_TYPE_ERROR:
-    case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
     default:
@@ -1178,7 +1178,8 @@ db_value_scale (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
 
-  if (value->domain.general_info.type == DB_TYPE_NUMERIC)
+  if (value->domain.general_info.type == DB_TYPE_NUMERIC
+      || value->domain.general_info.type == DB_TYPE_DATETIME)
     {
       return value->domain.numeric_info.scale;
     }

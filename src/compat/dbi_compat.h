@@ -1971,6 +1971,42 @@ typedef unsigned int SESSION_ID;
 #define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
+/* This constant defines the default precision of DB_TYPE_BIGINT. */
+#define DB_BIGINT_PRECISION      19
+
+/* This constant defines the default precision of DB_TYPE_INTEGER. */
+#define DB_INTEGER_PRECISION      10
+
+/* This constant defines the default precision of DB_TYPE_SMALLINT. */
+#define DB_SMALLINT_PRECISION      5
+
+/* This constant defines the default precision of DB_TYPE_SHORT.*/
+#define DB_SHORT_PRECISION      DB_SMALLINT_PRECISION
+
+/* This constant defines the default decimal precision of DB_TYPE_FLOAT. */
+#define DB_FLOAT_DECIMAL_PRECISION      7
+
+/* This constant defines the default decimal precision of DB_TYPE_DOUBLE. */
+#define DB_DOUBLE_DECIMAL_PRECISION      15
+
+/* This constant defines the default decimal precision of DB_TYPE_MONETARY. */
+#define DB_MONETARY_DECIMAL_PRECISION DB_DOUBLE_DECIMAL_PRECISION
+
+/* This constant defines the default precision of DB_TYPE_TIME. */
+#define DB_TIME_PRECISION      8
+
+/* This constant defines the default precision of DB_TYPE_DATE. */
+#define DB_DATE_PRECISION      10
+
+/* This constant defines the default precision of DB_TYPE_TIMESTAMP. */
+#define DB_TIMESTAMP_PRECISION      19
+
+/* This constant defines the default precision of DB_TYPE_DATETIME. */
+#define DB_DATETIME_PRECISION      23
+
+/* This constant defines the default scale of DB_TYPE_DATETIME. */
+#define DB_DATETIME_DECIMAL_SCALE      3
+
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection
