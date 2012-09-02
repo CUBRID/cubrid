@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "xserver_interface.h"
 #include "memory_alloc.h"
@@ -38,7 +39,10 @@
 #include "btree.h"
 #include "extendible_hash.h"
 #include "heap_file.h"
+#include "partition.h"
 #include "db.h"
+
+#define SQUARE(n) ((n)*(n))
 
 /* Used by the "stats_update_statistics" routine to create the list of all
    classes from the extendible hashing directory used by the catalog manager. */
@@ -47,6 +51,23 @@ struct class_id_list
 {
   OID class_id;
   CLASS_ID_LIST *next;
+};
+
+typedef struct partition_stats_acumulator PARTITION_STATS_ACUMULATOR;
+struct partition_stats_acumulator
+{
+  double leafs;			/* number of leaf pages including overflow pages */
+  double pages;			/* number of total pages */
+  double height;		/* the height of the B+tree */
+  double keys;			/* number of keys */
+  int key_size;			/* number of key columns */
+  double *pkeys;		/* partial keys info
+				   for example: index (a, b, ..., x)
+				   pkeys[0]          -> # of {a}
+				   pkeys[1]          -> # of {a, b}
+				   ...
+				   pkeys[key_size-1] -> # of {a, b, ..., x}
+				 */
 };
 
 static void stats_free_class_list (CLASS_ID_LIST * clsid_list);
@@ -61,6 +82,10 @@ static int stats_compare_datetime (DB_DATETIME * datetime1_p,
 				   DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 static unsigned int stats_get_time_stamp (void);
+static int stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
+						      OID * class_oid,
+						      OID * partitions,
+						      int count);
 #if defined(CUBRID_DEBUG)
 static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
 #endif /* CUBRID_DEBUG */
@@ -108,6 +133,8 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
   DB_VALUE *db_value_p;
   DB_DATA *db_data_p;
   int i, j;
+  OID *partitions = NULL;
+  int count = 0, error_code = NO_ERROR;
 
   cls_info_p = catalog_get_class_info (thread_p, class_id_p);
   if (cls_info_p == NULL)
@@ -131,6 +158,31 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
 	}
 
       catalog_free_class_info (cls_info_p);
+      return NO_ERROR;
+    }
+
+  error_code = partition_get_partition_oids (thread_p, class_id_p,
+					     &partitions, &count);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (count != 0)
+    {
+      /* Update statistics for all partitions and the partitioned class */
+      assert (partitions != NULL);
+      catalog_free_class_info (cls_info_p);
+      cls_info_p = NULL;
+      error_code = stats_update_partitioned_class_statistics (thread_p,
+							      class_id_p,
+							      partitions,
+							      count);
+      db_private_free (thread_p, partitions);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
       return NO_ERROR;
     }
 
@@ -1150,3 +1202,525 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
   fprintf (fpp, "\n\n");
 }
 #endif /* CUBRID_DEBUG */
+
+/*
+ * stats_update_partitioned_class_statistics () - compute statistics for a
+ *						  partitioned class
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * class_id_p (in) : oid of the partitioned class
+ * partitions (in) : oids of partitions
+ * int partitions_count (in) : number of partitions
+ *
+ * Note: Since, during plan generation we only have access to the partitioned
+ * class, we have to keep an estimate of average statistics in this class. We
+ * are using the average because we consider the case in which only one
+ * partition is pruned to be the most common case.
+ *
+ * The average is computed as the mean (1 + coefficient of variation). We
+ * use this coefficient to account for situations in which an index is not
+ * balanced in the hierarchy (i.e: has lots of keys in some partitions but
+ * very few keys in others). This type of distribution should be considered
+ * worse than a balanced distribution since we don't know which partition
+ * will be used in the query.
+ */
+static int
+stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
+					   OID * class_id_p, OID * partitions,
+					   int partitions_count)
+{
+  int i, j, k, btree_iter, m;
+  int error = NO_ERROR;
+  CLS_INFO *cls_info_p = NULL;
+  CLS_INFO *subcls_info = NULL;
+  DISK_REPR *disk_repr_p = NULL, *subcls_disk_rep = NULL;
+  REPR_ID repr_id = NULL_REPRID, subcls_repr_id = NULL_REPRID;
+  DISK_ATTR *disk_attr_p = NULL, *subcls_attr_p = NULL;
+  BTREE_STATS *btree_stats_p = NULL;
+  BTREE_STATS *computed_stats = NULL;
+  int n_btrees = 0;
+  bool *is_disk_min_max_set = NULL;
+  PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
+
+  assert_release (class_id_p != NULL && partitions != NULL
+		  && partitions_count > 0);
+
+  for (i = 0; i < partitions_count; i++)
+    {
+      error = xstats_update_class_statistics (thread_p, &partitions[i]);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p);
+  if (cls_info_p == NULL)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+
+  error = catalog_get_last_representation_id (thread_p, class_id_p, &repr_id);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  cls_info_p->tot_pages = 0;
+  cls_info_p->tot_objects = 0;
+
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
+  if (disk_repr_p == NULL)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+  if (disk_repr_p->n_fixed != 0)
+    {
+      is_disk_min_max_set =
+	(bool *) db_private_alloc (thread_p,
+				   disk_repr_p->n_fixed * sizeof (bool));
+      if (is_disk_min_max_set == NULL)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      memset (is_disk_min_max_set, 0, disk_repr_p->n_fixed * sizeof (bool));
+    }
+  /* partitions_count number of btree_stats we will need to use */
+  n_btrees = 0;
+  for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
+    {
+      if (i < disk_repr_p->n_fixed)
+	{
+	  disk_attr_p = disk_repr_p->fixed + i;
+	}
+      else
+	{
+	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
+	}
+
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
+	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+	{
+	  n_btrees++;
+	}
+    }
+
+  if (n_btrees == 0)
+    {
+      /* We're not really interested in this */
+      error = NO_ERROR;
+      goto cleanup;
+    }
+
+  mean =
+    (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p,
+						     n_btrees *
+						     sizeof
+						     (PARTITION_STATS_ACUMULATOR));
+  if (mean == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  stddev =
+    (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p,
+						     n_btrees *
+						     sizeof
+						     (PARTITION_STATS_ACUMULATOR));
+  if (stddev == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  memset (mean, 0, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
+  memset (stddev, 0, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
+
+  /* initialize pkeys */
+  btree_iter = 0;
+  for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
+    {
+      if (i < disk_repr_p->n_fixed)
+	{
+	  disk_attr_p = disk_repr_p->fixed + i;
+	}
+      else
+	{
+	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
+	}
+
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
+	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+	{
+	  mean[btree_iter].key_size = btree_stats_p->key_size;
+	  mean[btree_iter].pkeys =
+	    (double *) db_private_alloc (thread_p,
+					 mean[btree_iter].key_size *
+					 sizeof (double));
+	  if (mean[btree_iter].pkeys == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  memset (mean[btree_iter].pkeys, 0,
+		  mean[btree_iter].key_size * sizeof (double));
+
+	  stddev[btree_iter].key_size = btree_stats_p->key_size;
+	  stddev[btree_iter].pkeys =
+	    (double *) db_private_alloc (thread_p,
+					 mean[btree_iter].key_size *
+					 sizeof (double));
+	  if (stddev[btree_iter].pkeys == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  memset (stddev[btree_iter].pkeys, 0,
+		  mean[btree_iter].key_size * sizeof (double));
+	  DB_MAKE_NULL (&btree_stats_p->min_value);
+	  DB_MAKE_NULL (&btree_stats_p->max_value);
+	  btree_iter++;
+	}
+    }
+  /* Compute class statistics:
+   * For each btree compute the mean, standard deviation and coefficient of
+   * variation. The global statistics for each btree will be the
+   * mean * (1 + cv). We do this so that the optimizer will pick the tree with
+   * the lowest dispersion.
+   */
+
+  for (i = 0; i < partitions_count; i++)
+    {
+      /* clean subclass loaded in previous iteration */
+      if (subcls_info != NULL)
+	{
+	  catalog_free_class_info (subcls_info);
+	  subcls_info = NULL;
+	}
+      if (subcls_disk_rep != NULL)
+	{
+	  catalog_free_representation (subcls_disk_rep);
+	  subcls_disk_rep = NULL;
+	}
+
+      subcls_info = catalog_get_class_info (thread_p, &partitions[i]);
+      if (subcls_info == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+      cls_info_p->tot_pages += subcls_info->tot_pages;
+      cls_info_p->tot_objects += subcls_info->tot_objects;
+
+      /* get disk repr for subclass */
+      error = catalog_get_last_representation_id (thread_p, &partitions[i],
+						  &subcls_repr_id);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
+						    subcls_repr_id);
+      if (subcls_disk_rep == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      /* add partition information to the accumulators and also update
+       * min/max values for partitioned class disk representation
+       */
+      btree_iter = 0;
+      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable;
+	   j++)
+	{
+	  if (j < subcls_disk_rep->n_fixed)
+	    {
+	      subcls_attr_p = subcls_disk_rep->fixed + j;
+	      disk_attr_p = disk_repr_p->fixed + j;
+	      if (subcls_disk_rep->num_objects != 0)
+		{
+		  /* Use this opportunity to update min/max values here */
+		  if (!is_disk_min_max_set[j])
+		    {
+		      /* shallow copy */
+		      disk_attr_p->min_value = subcls_attr_p->min_value;
+		      disk_attr_p->max_value = subcls_attr_p->max_value;
+		      is_disk_min_max_set[j] = true;
+		    }
+		  else
+		    {
+		      if (stats_compare_data
+			  (&disk_attr_p->min_value, &subcls_attr_p->min_value,
+			   disk_attr_p->type) > 0)
+			{
+			  disk_attr_p->min_value = subcls_attr_p->min_value;
+			}
+
+		      if (stats_compare_data
+			  (&disk_attr_p->max_value, &subcls_attr_p->max_value,
+			   disk_attr_p->type) < 0)
+			{
+			  disk_attr_p->max_value = subcls_attr_p->max_value;
+			}
+		    }
+		}
+	    }
+	  else
+	    {
+	      subcls_attr_p =
+		subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
+	      disk_attr_p =
+		disk_repr_p->variable + (j - disk_repr_p->n_fixed);
+	    }
+
+	  for (k = 0, btree_stats_p = subcls_attr_p->bt_stats;
+	       k < subcls_attr_p->n_btstats; k++, btree_stats_p++)
+	    {
+	      /* leafs */
+	      mean[btree_iter].leafs += btree_stats_p->leafs;
+
+	      mean[btree_iter].pages += btree_stats_p->pages;
+
+	      mean[btree_iter].height += btree_stats_p->height;
+
+	      mean[btree_iter].keys += btree_stats_p->keys;
+	      for (m = 0; m < btree_stats_p->key_size; m++)
+		{
+		  mean[btree_iter].pkeys[m] += btree_stats_p->pkeys[m];
+		}
+
+	      btree_iter++;
+	    }
+	}
+    }
+
+  /* compute actual mean */
+  for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
+    {
+      mean[btree_iter].leafs /= partitions_count;
+
+      mean[btree_iter].pages /= partitions_count;
+
+      mean[btree_iter].height /= partitions_count;
+
+      mean[btree_iter].keys /= partitions_count;
+
+      for (m = 0; m < mean[btree_iter].key_size; m++)
+	{
+	  mean[btree_iter].pkeys[m] /= partitions_count;
+	}
+    }
+
+  for (i = 0; i < partitions_count; i++)
+    {
+      /* clean subclass loaded in previous iteration */
+      if (subcls_disk_rep != NULL)
+	{
+	  catalog_free_representation (subcls_disk_rep);
+	  subcls_disk_rep = NULL;
+	}
+
+      /* get disk repr for subclass */
+      error = catalog_get_last_representation_id (thread_p, &partitions[i],
+						  &subcls_repr_id);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
+						    subcls_repr_id);
+      if (subcls_disk_rep == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      /* add partition information to the accumulators */
+      btree_iter = 0;
+      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable;
+	   j++)
+	{
+	  if (j < subcls_disk_rep->n_fixed)
+	    {
+	      subcls_attr_p = subcls_disk_rep->fixed + j;
+	    }
+	  else
+	    {
+	      subcls_attr_p =
+		subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
+	    }
+
+	  for (k = 0, btree_stats_p = subcls_attr_p->bt_stats;
+	       k < subcls_attr_p->n_btstats; k++, btree_stats_p++)
+	    {
+	      /* leafs */
+	      stddev[btree_iter].leafs +=
+		SQUARE (btree_stats_p->leafs - mean[btree_iter].leafs);
+
+	      stddev[btree_iter].pages +=
+		SQUARE (btree_stats_p->pages - mean[btree_iter].pages);
+
+	      stddev[btree_iter].height +=
+		SQUARE (btree_stats_p->height - mean[btree_iter].height);
+
+	      stddev[btree_iter].keys +=
+		SQUARE (btree_stats_p->keys - mean[btree_iter].keys);
+	      for (m = 0; m < btree_stats_p->key_size; m++)
+		{
+		  stddev[btree_iter].pkeys[m] +=
+		    SQUARE (btree_stats_p->pkeys[m] -
+			    mean[btree_iter].pkeys[m]);
+		}
+
+	      btree_iter++;
+	    }
+	}
+    }
+
+
+  for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
+    {
+      stddev[btree_iter].leafs =
+	sqrt (stddev[btree_iter].leafs / partitions_count);
+
+      stddev[btree_iter].pages =
+	sqrt (stddev[btree_iter].pages / partitions_count);
+
+      stddev[btree_iter].height =
+	sqrt (stddev[btree_iter].height / partitions_count);
+
+      stddev[btree_iter].keys =
+	sqrt (stddev[btree_iter].keys / partitions_count);
+
+      for (m = 0; m < mean[btree_iter].key_size; m++)
+	{
+	  stddev[btree_iter].pkeys[m] =
+	    sqrt (stddev[btree_iter].pkeys[m] / partitions_count);
+	}
+    }
+
+  /* compute new statistics */
+  btree_iter = 0;
+  for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
+    {
+      if (i < disk_repr_p->n_fixed)
+	{
+	  disk_attr_p = disk_repr_p->fixed + i;
+	}
+      else
+	{
+	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
+	}
+
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
+	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+	{
+	  if (mean[btree_iter].leafs != 0)
+	    {
+	      btree_stats_p->leafs =
+		(int) (mean[btree_iter].leafs *
+		       (1 +
+			stddev[btree_iter].leafs / mean[btree_iter].leafs));
+	    }
+	  if (mean[btree_iter].pages != 0)
+	    {
+	      btree_stats_p->pages =
+		(int) (mean[btree_iter].pages *
+		       (1 +
+			stddev[btree_iter].pages / mean[btree_iter].pages));
+	    }
+	  if (mean[btree_iter].height != 0)
+	    {
+	      btree_stats_p->height =
+		(int) (mean[btree_iter].height *
+		       (1 +
+			stddev[btree_iter].height / mean[btree_iter].height));
+	    }
+	  if (mean[btree_iter].keys != 0)
+	    {
+	      btree_stats_p->keys =
+		(int) (mean[btree_iter].keys *
+		       (1 + stddev[btree_iter].keys / mean[btree_iter].keys));
+	    }
+	  for (m = 0; m < mean[btree_iter].key_size; m++)
+	    {
+	      if (mean[btree_iter].pkeys[m] != 0)
+		{
+		  btree_stats_p->pkeys[m] =
+		    (int) (mean[btree_iter].pkeys[m] * (1 +
+							stddev[btree_iter].
+							pkeys[m] /
+							mean[btree_iter].
+							pkeys[m]));
+		}
+	    }
+	  btree_iter++;
+	}
+    }
+
+  /* replace the current disk representation structure/information in the
+     catalog with the newly computed statistics */
+  error = catalog_add_representation (thread_p, class_id_p, repr_id,
+				      disk_repr_p);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  cls_info_p->time_stamp = stats_get_time_stamp ();
+
+  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+
+cleanup:
+  if (is_disk_min_max_set != NULL)
+    {
+      db_private_free (thread_p, is_disk_min_max_set);
+    }
+  if (mean != NULL)
+    {
+      for (i = 0; i < n_btrees; i++)
+	{
+	  if (mean[i].pkeys != NULL)
+	    {
+	      db_private_free (thread_p, mean[i].pkeys);
+	    }
+	}
+      db_private_free (thread_p, mean);
+    }
+  if (stddev != NULL)
+    {
+      for (i = 0; i < n_btrees; i++)
+	{
+	  if (stddev[i].pkeys != NULL)
+	    {
+	      db_private_free (thread_p, stddev[i].pkeys);
+	    }
+	}
+      db_private_free (thread_p, stddev);
+    }
+  if (subcls_info)
+    {
+      catalog_free_class_info (subcls_info);
+    }
+  if (subcls_disk_rep != NULL)
+    {
+      catalog_free_representation (subcls_disk_rep);
+    }
+  if (cls_info_p != NULL)
+    {
+      catalog_free_class_info (cls_info_p);
+    }
+  if (disk_repr_p != NULL)
+    {
+      catalog_free_representation (disk_repr_p);
+    }
+
+  return error;
+}

@@ -73,7 +73,7 @@ struct pruning_bitset_iterator
   int next;
 };
 
-#define PARTITIONS_COUNT(pinfo) ((pinfo == NULL)? 0 : pinfo->count - 1)
+#define PARTITIONS_COUNT(pinfo) (((pinfo) == NULL) ? 0 : (pinfo)->count - 1)
 
 #define PARTITION_CACHE_NAME "Partitions_Cache"
 #define PARTITION_CACHE_SIZE 200
@@ -123,7 +123,7 @@ static int partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo,
 						     PARTITION_CACHE_ENTRY *
 						     entry_p);
 static PARTITION_CACHE_ENTRY
-  *partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo);
+  * partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo);
 static PRUNING_OP partition_rel_op_to_pruning_op (REL_OP op);
 static int partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
 					       OR_PARTITION * master);
@@ -3292,4 +3292,67 @@ partition_new_scancache (PRUNING_CONTEXT * pcontext)
   pcontext->scan_cache_list = node;
 
   return &node->scan_cache;
+}
+
+/*
+ * partition_get_partition_oids () - get OIDs of partition classes
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * class_oid (in)	   : partitioned class OID
+ * partition_oids (in/out) : partition OIDs
+ * count (in/out)	   : number of partitions
+ */
+int
+partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid,
+			      OID ** partition_oids, int *count)
+{
+  int error = NO_ERROR;
+  PRUNING_CONTEXT context;
+  int i;
+  OID *oids = NULL;
+
+  assert_release (class_oid != NULL && partition_oids != NULL
+		  && count != NULL);
+
+  partition_init_pruning_context (&context);
+
+  error = partition_load_pruning_context (thread_p, class_oid, &context);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (context.count == 0)
+    {
+      *count = 0;
+      *partition_oids = NULL;
+      goto cleanup;
+    }
+  oids =
+    (OID *) db_private_alloc (thread_p,
+			      PARTITIONS_COUNT (&context) * sizeof (OID));
+  if (oids == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  for (i = 0; i < PARTITIONS_COUNT (&context); i++)
+    {
+      COPY_OID (&oids[i], &context.partitions[i + 1].class_oid);
+    }
+  *count = PARTITIONS_COUNT (&context);
+  *partition_oids = oids;
+
+cleanup:
+  partition_clear_pruning_context (&context);
+  if (error != NO_ERROR)
+    {
+      if (oids != NULL)
+	{
+	  db_private_free (thread_p, oids);
+	}
+      *partition_oids = NULL;
+      *count = 0;
+    }
+  return error;
 }

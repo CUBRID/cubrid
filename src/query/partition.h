@@ -99,4 +99,8 @@ extern int partition_prune_update (THREAD_ENTRY * thread_p,
 				   PRUNING_CONTEXT * pcontext,
 				   OID * pruned_class_oid,
 				   HFID * pruned_hfid, OID * superclass_oid);
+
+extern int partition_get_partition_oids (THREAD_ENTRY * thread_p,
+					 const OID * class_oid,
+					 OID ** partition_oids, int *count);
 #endif /* _PARTITION_SR_H_ */
