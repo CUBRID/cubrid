@@ -2588,6 +2588,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       parser_walk_tree (parser, node->info.insert.value_clauses,
 			pt_undef_names, node->info.insert.spec, NULL, NULL);
 
+      if (!pt_has_error (parser))
+	{
+	  /* make sure attributes were not bound to parameters */
+	  for (attr = node->info.insert.attr_list; attr; attr = attr->next)
+	    {
+	      if (attr->info.name.meta_class == PT_PARAMETER)
+		{
+		  /* this is not an attribute of insert spec */
+		  PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_NOT_ATTRIBUTE_OF,
+			       attr->info.name.original,
+			       node->info.insert.spec->info.spec.entity_name->
+			       info.name.original);
+		}
+	    }
+	}
+
     insert_end:
       /* pop the extra spec frame and add any extra specs
        * to the from list
