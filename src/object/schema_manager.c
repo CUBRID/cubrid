@@ -536,8 +536,8 @@ static int sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint);
 static int sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain);
 static const char *sm_type_name (DB_TYPE id);
 #endif
-static int filter_foreign_keys (SM_TEMPLATE * template_,
-				SM_CLASS * super_class);
+static int filter_local_constraints (SM_TEMPLATE * template_,
+				     SM_CLASS * super_class);
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -9018,7 +9018,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			   * key constraints do not share the same index so
 			   * it's expected to have different btid in this case
 			   */
-			  if (!BTID_IS_EQUAL (&btid, &c->index_btid)
+			  if (sm_is_global_only_constraint (c, class_)
+			      && !BTID_IS_EQUAL (&btid, &c->index_btid)
 			      && SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
 			    {
 			      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS,
@@ -9029,7 +9030,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			{
 			  BTID index_btid;
 			  BTID_SET_NULL (&index_btid);
-			  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+			  if (sm_is_global_only_constraint (c, class_))
 			    {
 			      /* unique indexes are shared indexes */
 			      BTID_COPY (&index_btid, &c->index_btid);
@@ -9060,7 +9061,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	  break;
 	}
       /* drop foreign keys that were dropped in the superclass */
-      error = filter_foreign_keys (flat, class_);
+      error = filter_local_constraints (flat, class_);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -10452,8 +10453,24 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
   SM_CLASS *super_class;
   SM_CLASS_CONSTRAINT *super_con, *shared_con;
   const int *asc_desc;
+  bool is_local = true;
 
-  if (con->attributes[0]->class_mop == classop)
+  if (con->attributes[0]->class_mop != classop)
+    {
+      is_local = false;
+      if (au_fetch_class_force (con->attributes[0]->class_mop,
+				&super_class, AU_FETCH_READ))
+	{
+	  return er_errid ();
+	}
+
+      if (!sm_is_global_only_constraint (con, super_class))
+	{
+	  is_local = true;
+	}
+    }
+
+  if (is_local)
     {
       /* its local, allocate our very own index */
       unique = BTREE_CONSTRAINT_UNIQUE;
@@ -10497,12 +10514,6 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
   else
     {
       /* its inherited, go get the btid from the super class */
-      if (au_fetch_class_force (con->attributes[0]->class_mop,
-				&super_class, AU_FETCH_READ))
-	{
-	  return er_errid ();
-	}
-
       super_con = classobj_find_class_constraint (super_class->constraints,
 						  con->type, con->name);
       if (super_con != NULL)
@@ -11040,7 +11051,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *flat_constraints, *con, *new_con, *prev, *next;
-
+  bool is_partitioned;
   /* Get the cached constraint info for the flattened template.
    * Sigh, convert the template property list to a transient constraint
    * cache so we have a prayer of dealing with it.
@@ -11215,16 +11226,29 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
    *
    * UNIQUE constraints are inheritable but INDEX'es are not.
    */
-
+  is_partitioned = sm_is_partitioned_class (classop);
   for (con = flat_constraints;
        ((con != NULL) && (error == NO_ERROR)); con = con->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
+	  && BTID_IS_NULL (&(con->index_btid)))
 	{
-	  if (BTID_IS_NULL (&(con->index_btid)))
+	  if (is_partitioned && class_->users == NULL)
 	    {
-	      error = inherit_constraint (classop, con);
+	      SM_CLASS *super_class = NULL;
+	      error = au_fetch_class_force (class_->inheritance->op,
+					    &super_class, AU_FETCH_READ);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      if (!sm_is_global_only_constraint (con, super_class))
+		{
+		  /* partitions may have local unique indexes */
+		  continue;
+		}
 	    }
+	  error = inherit_constraint (classop, con);
 	}
     }
 
@@ -15105,14 +15129,14 @@ sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs)
 }
 
 /*
- * filter_foreign_keys () - filter foreign keys which were droped from the
- *			    inherited class
+ * filter_local_constraints () - filter constrains which were dropped from the
+ *				 inherited class
  * return : error code or NO_ERROR
  * template_ (in/out) : class template
  * super_class (in) : superclass
  */
 static int
-filter_foreign_keys (SM_TEMPLATE * template_, SM_CLASS * super_class)
+filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
 {
   SM_CLASS_CONSTRAINT *old_constraints = NULL, *new_constraints = NULL;
   SM_CLASS_CONSTRAINT *c, *new_con;
@@ -15161,10 +15185,18 @@ filter_foreign_keys (SM_TEMPLATE * template_, SM_CLASS * super_class)
 
   for (c = old_constraints; c != NULL; c = c->next)
     {
-      if (c->type != SM_CONSTRAINT_FOREIGN_KEY)
+      if (c->type != SM_CONSTRAINT_FOREIGN_KEY
+	  && c->type != SM_CONSTRAINT_UNIQUE
+	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE)
 	{
 	  continue;
 	}
+      if (c->type != SM_CONSTRAINT_FOREIGN_KEY
+	  && sm_is_global_only_constraint (c, super_class))
+	{
+	  continue;
+	}
+
       /* search for this constraint in the new constraints */
       new_con =
 	classobj_find_class_constraint (new_constraints, c->type, c->name);
@@ -15261,4 +15293,112 @@ sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
     {
       free_and_init (filter_index_info->att_ids);
     }
+}
+
+/*
+ * sm_is_global_only_constraint () - verify if this constraint must be global
+ *				     across a class hierarchy
+ * return : true/false
+ * constraint (in) : constraint
+ * super_class (in) : the class to which this constraint belongs to
+ * Note: 
+ *  SM_CONSTRAINT_INDEX		  - always local
+ *  SM_CONSTRAINT_REVERSE_INDEX	  - always local
+ *  SM_CONSTRAINT_FOREIGN_KEY	  - always local
+ *  SM_CONSTRAINT_UNIQUE	  - global unless this is a partitioned class
+ *				    and the partitioning key belongs to the
+ *				    index
+ *  SM_CONSTRAINT_REVERSE_UNIQUE  - same as SM_CONSTRAINT_UNIQUE
+ *  SM_CONSTRAINT_PRIMARY_KEY	  - always global
+ */
+bool
+sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint,
+			      SM_CLASS * super_class)
+{
+  int error = NO_ERROR;
+  int is_partition = 0;
+  char *attr_name = NULL;
+  DB_VALUE pname;
+  DB_VALUE pattr;
+  SM_ATTRIBUTE *key_attr = NULL, *attr = NULL;
+  bool found = false;
+  int i;
+
+  assert_release (super_class != NULL && constraint != NULL);
+  if (super_class == NULL || constraint == NULL)
+    {
+      return false;
+    }
+  switch (constraint->type)
+    {
+    case SM_CONSTRAINT_UNIQUE:
+    case SM_CONSTRAINT_REVERSE_UNIQUE:
+      /* not enough information yet */
+      break;
+    case SM_CONSTRAINT_INDEX:
+    case SM_CONSTRAINT_REVERSE_INDEX:
+    case SM_CONSTRAINT_FOREIGN_KEY:
+    case SM_CONSTRAINT_NOT_NULL:
+      /* always local */
+      return false;
+    case SM_CONSTRAINT_PRIMARY_KEY:
+      /* always global */
+      return true;
+    }
+
+  if (constraint->attributes == NULL)
+    {
+      return false;
+    }
+
+  if (super_class->partition_of == NULL)
+    {
+      /* For normal inheritance chains, unique constraints are always
+       * shared
+       */
+      return true;
+    }
+  /* test if the partitioning key is part of the index */
+  DB_MAKE_NULL (&pname);
+  DB_MAKE_NULL (&pattr);
+
+  error = db_get (super_class->partition_of, PARTITION_ATT_PVALUES, &pattr);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+  error = set_get_element (DB_GET_SEQ (&pattr), 0, &pname);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  key_attr = classobj_find_attribute (super_class, DB_GET_STRING (&pname), 0);
+  if (key_attr == NULL)
+    {
+      goto error_return;
+    }
+
+  pr_clear_value (&pname);
+  pr_clear_value (&pattr);
+
+  i = 0;
+  attr = constraint->attributes[0];
+  while (attr)
+    {
+      if (key_attr->id == attr->id)
+	{
+	  found = true;
+	  break;
+	}
+      i++;
+      attr = constraint->attributes[i];
+    }
+
+  return (!found);
+
+error_return:
+  pr_clear_value (&pname);
+  pr_clear_value (&pattr);
+  return false;
 }

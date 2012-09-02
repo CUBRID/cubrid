@@ -574,7 +574,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
     {
       SM_CLASS_CONSTRAINT *c;
       SM_CLASS *class_;
-
+      bool is_local = false;
       error = au_fetch_class_force (filter_class, &class_, AU_FETCH_READ);
       if (error != NO_ERROR)
 	{
@@ -609,6 +609,28 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
 	      || c->type == SM_CONSTRAINT_REVERSE_INDEX
 	      || c->type == SM_CONSTRAINT_FOREIGN_KEY
 	      || c->attributes[0]->class_mop == filter_class)
+	    {
+	      is_local = true;
+	    }
+	  else if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+	    {
+	      SM_CLASS *super_class = NULL;
+	      error = au_fetch_class_force (c->attributes[0]->class_mop,
+					    &super_class, AU_FETCH_READ);
+	      if (error != NO_ERROR)
+		{
+		  goto error_condition;
+		}
+	      if (!sm_is_global_only_constraint (c, super_class))
+		{
+		  is_local = true;
+		}
+	      else
+		{
+		  is_local = false;
+		}
+	    }
+	  if (is_local)
 	    {
 	      if (classobj_put_index_id
 		  (new_properties, c->type, c->name, c->attributes,
