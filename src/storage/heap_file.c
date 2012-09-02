@@ -6560,6 +6560,12 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 #endif
 
+  if (lock_object (thread_p, class_oid, oid_Root_class_oid,
+		   IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      return ER_FAILED;
+    }
+
   addr.pgptr = heap_find_slot_for_insert_with_lock (thread_p, hfid,
 						    scan_cache, oid, recdes,
 						    class_oid);
