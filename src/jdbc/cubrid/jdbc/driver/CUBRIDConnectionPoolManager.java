@@ -76,8 +76,7 @@ abstract class CUBRIDConnectionPoolManager {
 					Context ctx = new InitialContext();
 					cpds = (CUBRIDConnectionPoolDataSource) ctx.lookup(dsName);
 				} catch (NamingException e) {
-					throw new CUBRIDException(CUBRIDJDBCErrorCode.unknown, e
-							.toString());
+					throw new CUBRIDException(CUBRIDJDBCErrorCode.unknown, e.toString(), e);
 				}
 
 				poolDataSourceTable.put(dsName, cpds);

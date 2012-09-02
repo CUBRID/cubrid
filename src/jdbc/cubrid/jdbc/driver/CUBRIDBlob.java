@@ -95,17 +95,17 @@ public class CUBRIDBlob implements Blob {
 	 */
 	public long length() throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		return lobHandle.getLobSize();
 	}
 
 	public byte[] getBytes(long pos, int length) throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1 || length < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (length == 0) {
 			return new byte[0];
@@ -140,7 +140,7 @@ public class CUBRIDBlob implements Blob {
 
 		if (total_read_len < buf.length) {
 			// In common case, this code cannot be executed
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, null);
 			// byte[]new_buf = new byte[total_read_len];
 			// System.arraycopy (buf, 0, new_buf, 0, total_read_len);
 			// return new_buf;
@@ -157,10 +157,10 @@ public class CUBRIDBlob implements Blob {
 	public InputStream getBinaryStream(long pos, long length)
 			throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1 || length < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 
 		return new CUBRIDBufferedInputStream(new CUBRIDBlobInputStream(this,
@@ -182,10 +182,10 @@ public class CUBRIDBlob implements Blob {
 	public int setBytes(long pos, byte[] bytes, int offset, int len)
 			throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1 || offset < 0 || len < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (offset + len > bytes.length) {
 			throw new IndexOutOfBoundsException();
@@ -193,7 +193,7 @@ public class CUBRIDBlob implements Blob {
 
 		if (isWritable) {
 			if (length() + 1 != pos) {
-				throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid);
+				throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
 			}
 
 			pos--; // pos is now offset from 0
@@ -217,21 +217,21 @@ public class CUBRIDBlob implements Blob {
 
 			return total_write_len;
 		} else {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 	}
 
 	public OutputStream setBinaryStream(long pos) throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 
 		if (isWritable) {
 			if (length() + 1 != pos) {
-				throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid);
+				throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
 			}
 
 			OutputStream out = new CUBRIDBufferedOutputStream(
@@ -239,7 +239,7 @@ public class CUBRIDBlob implements Blob {
 			addFlushableStream(out);
 			return out;
 		} else {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 	}
 

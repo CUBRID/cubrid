@@ -150,7 +150,6 @@ public class UConnection {
 	private int processId;
 	private Socket client;
 	private UError errorHandler;
-	private Vector<UStatement> transactionList;
 	private boolean isClosed = false;
 	private byte[] dbInfo;
 	private int lastIsolationLevel;
@@ -389,7 +388,6 @@ public class UConnection {
 				}
 			}
 
-			transactionList.add(null);
 			update_executed = true;
 			return batchResult;
 		} catch (UJciException e) {
@@ -409,8 +407,6 @@ public class UConnection {
 			return;
 		}
 		// jci 3.0
-		clearTransactionList();
-		transactionList = null;
 		if (client != null) {
 			disconnect();
 		}
@@ -493,7 +489,6 @@ public class UConnection {
 			return;
 
 		try {
-			clearTransactionList();
 			if (client != null
 					&& getCASInfoStatus() != CAS_INFO_STATUS_INACTIVE) {
 				checkReconnect();
@@ -604,7 +599,6 @@ public class UConnection {
 			errorHandler.copyValue(returnValue.getRecentError());
 			return null;
 		}
-		transactionList.add(returnValue);
 		return returnValue;
 	}
 
@@ -832,83 +826,107 @@ public class UConnection {
 		return isClosed;
 	}
 
-	synchronized public UStatement prepare(String sqlStatement, byte prepareFlag) {
-		return (prepare(sqlStatement, prepareFlag, false));
+    public boolean isErrorToReconnect(int error) {
+	switch (error) {
+	case -111: // ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
+	case -199: // ER_NET_SERVER_CRASHED
+	case -224: // ER_OBJ_NO_CONNECT
+	case -677: // ER_BO_CONNECT_FAILED
+	case UErrorCode.ER_COMMUNICATION:
+	case UErrorCode.ER_ILLEGAL_DATA_SIZE:
+	    return true;
+	default:
+	    return false;
+	}
+    }
+
+    private UStatement prepareInternal(String sql, byte flag, boolean recompile)
+	    throws IOException, UJciException {
+	errorHandler.clear();
+
+	checkReconnect();
+	if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+	    return null;
 	}
 
-	synchronized public UStatement prepare(String sqlStatement,
-			byte prepareFlag, boolean recompile_flag) {
-		UStatement returnValue = null;
+	outBuffer.newRequest(output, UFunctionCode.PREPARE);
+	outBuffer.addStringWithNull(sql);
+	outBuffer.addByte(flag);
+	outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
-		errorHandler = new UError(this);
-		if (isClosed == true) {
-			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-			return null;
-		}
-		try {
-			skip_checkcas = true;
-			need_checkcas = false;
-
-			checkReconnect();
-			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
-				return null;
-
-			outBuffer.newRequest(output, UFunctionCode.PREPARE);
-			outBuffer.addStringWithNull(sqlStatement);
-			outBuffer.addByte(prepareFlag);
-			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
-
-			while (deferred_close_handle.isEmpty() != true) {
-				Integer close_handle = (Integer) deferred_close_handle
-						.remove(0);
-				outBuffer.addInt(close_handle.intValue());
-			}
-			
-			UInputBuffer inBuffer;
-			inBuffer = send_recv_msg();
-
-			if (recompile_flag)
-				returnValue = new UStatement(this, inBuffer, true,
-						sqlStatement, prepareFlag);
-			else
-				returnValue = new UStatement(this, inBuffer, false,
-						sqlStatement, prepareFlag);
-		} catch (UJciException e) {
-		    	logException(e);
-			e.toUError(errorHandler);
-		} catch (IOException e) {
-		    	logException(e);
-			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
-				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-		} finally {
-			skip_checkcas = false;
-		}
-
-		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
-			if (errorHandler.getJdbcErrorCode() == -111
-			    || errorHandler.getJdbcErrorCode() == -199
-			    || errorHandler.getJdbcErrorCode() == -224
-			    || errorHandler.getJdbcErrorCode() == -677) {
-				need_checkcas = true;
-			}
-			if (need_checkcas) {
-				if (check_cas() == false) {
-					clientSocketClose();
-				}
-				return (prepare(sqlStatement, prepareFlag, recompile_flag));
-			} else {
-				return null;
-			}
-		}
-
-		if (returnValue.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR) {
-			errorHandler.copyValue(returnValue.getRecentError());
-			return null;
-		}
-		transactionList.add(returnValue);
-		pooled_ustmts.add(returnValue);
-		return returnValue;
+	while (deferred_close_handle.isEmpty() != true) {
+	    Integer close_handle = (Integer) deferred_close_handle.remove(0);
+	    outBuffer.addInt(close_handle.intValue());
 	}
+
+	UInputBuffer inBuffer = send_recv_msg();
+	UStatement stmt;
+	if (recompile) {
+	    stmt = new UStatement(this, inBuffer, true, sql, flag);
+	} else {
+	    stmt = new UStatement(this, inBuffer, false, sql, flag);
+	}
+
+	if (stmt.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR) {
+	    errorHandler.copyValue(stmt.getRecentError());
+	    return null;
+	}
+
+	pooled_ustmts.add(stmt);
+	return stmt;
+    }
+
+    synchronized public UStatement prepare(String sql, byte flag) {
+	return prepare(sql, flag, false);
+    }
+
+    synchronized public UStatement prepare(String sql, byte flag,
+	    boolean recompile) {
+	errorHandler = new UError(this);
+	if (isClosed) {
+	    errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+	    return null;
+	}
+
+	UStatement stmt = null;
+
+	skip_checkcas = true;
+	need_checkcas = false;
+
+	// first
+	try {
+	    stmt = prepareInternal(sql, flag, recompile);
+	    return stmt;
+	} catch (UJciException e) {
+	    logException(e);
+	    e.toUError(errorHandler);
+	} catch (IOException e) {
+	    logException(e);
+	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+	    errorHandler.setStackTrace(e.getStackTrace());
+	}
+
+	// second
+	try {
+	    if (!isActive() && isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+		clientSocketClose();
+	    } else {
+		return null;
+	    }
+
+	    stmt = prepareInternal(sql, flag, recompile);
+	    return stmt;
+	} catch (UJciException e) {
+	    logException(e);
+	    e.toUError(errorHandler);
+	} catch (IOException e) {
+	    logException(e);
+	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+	    errorHandler.setStackTrace(e.getStackTrace());
+	}
+
+	return null;
+    }
 
 	synchronized public void putByOID(CUBRIDOID oid, String attributeName[],
 			Object values[]) {
@@ -1103,7 +1121,6 @@ public class UConnection {
 		}
 
 		try {
-			clearTransactionList();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -1501,6 +1518,7 @@ public class UConnection {
 		client.setTcpNoDelay(true);
 		client.setSoTimeout(SOCKET_TIMEOUT);
 		needReconnection = false;
+		isClosed = false;
 		if (connectionProperties.getReconnectTime() > 0)
 			lastRCTime = System.currentTimeMillis() / 1000;
 
@@ -1721,9 +1739,6 @@ public class UConnection {
 			outBuffer = new UOutputBuffer(this);
 		}
 
-		if (transactionList == null) {
-			transactionList = new Vector<UStatement>();
-		}
 
 		if (pooled_ustmts == null) {
 			pooled_ustmts = new Vector<UStatement>();
@@ -1779,12 +1794,6 @@ public class UConnection {
 			send_recv_msg();
 		} catch (Exception e) {
 		}
-	}
-
-	private void clearTransactionList() {
-		if (transactionList == null)
-			return;
-		transactionList.clear();
 	}
 
 	// end jci 3.0
@@ -1890,7 +1899,7 @@ public class UConnection {
 		}
     }
 
-	public boolean isInTran() {
-		return getCASInfoStatus() == CAS_INFO_STATUS_ACTIVE;
-	}
+    public boolean isActive() {
+	return getCASInfoStatus() == CAS_INFO_STATUS_ACTIVE;
+    }
 }

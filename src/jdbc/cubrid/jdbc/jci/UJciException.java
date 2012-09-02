@@ -59,6 +59,7 @@ public class UJciException extends Exception {
 	}
 
 	void toUError(UError error) {
+	    	error.setStackTrace(getStackTrace());
 		if (jciErrCode == UErrorCode.ER_DBMS) {
 			String msg;
 			if (serverErrIndicator == UErrorCode.DBMS_ERROR_INDICATOR) {

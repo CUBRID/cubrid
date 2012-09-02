@@ -43,6 +43,7 @@ public class UError {
 	private int jciErrorCode;
 	private int serverErrorCode;
 	private String errorMessage;
+	private StackTraceElement[] stackTrace;
 
 	UError(UConnection c) {
 	    	connection = c;
@@ -78,6 +79,7 @@ public class UError {
 		jciErrorCode = object.jciErrorCode;
 		errorMessage = object.errorMessage;
 		serverErrorCode = object.serverErrorCode;
+		stackTrace = object.stackTrace;
 	}
 
 	synchronized void setDBError(int code, String message) {
@@ -100,5 +102,15 @@ public class UError {
 
 	void clear() {
 		jciErrorCode = UErrorCode.ER_NO_ERROR;
+	}
+
+	public void setStackTrace(StackTraceElement[] stackTrace) {
+	    this.stackTrace = stackTrace;
+	}
+
+	public void changeStackTrace(Throwable t) {
+	    if (stackTrace != null) {
+		t.setStackTrace(stackTrace);
+	    }
 	}
 }

@@ -1166,7 +1166,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			case UErrorCode.ER_NO_ERROR:
 				break;
 			case UErrorCode.ER_IS_CLOSED:
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed, null);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1330,7 +1330,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				break;
 			case UErrorCode.ER_IS_CLOSED:
 				close();
-				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed, null);
 			default:
 				throw con.createCUBRIDException(error);
 			}
@@ -1638,7 +1638,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized ResultSet getImportedKeys(String catalog,
 			String schema, String table) throws SQLException {
 		if (table == null) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name, null);
 		}
 		return getForeignKeys(USchType.SCH_IMPORTED_KEYS, table, null);
 	}
@@ -1646,7 +1646,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized ResultSet getExportedKeys(String catalog,
 			String schema, String table) throws SQLException {
 		if (table == null) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name, null);
 		}
 		return getForeignKeys(USchType.SCH_EXPORTED_KEYS, table, null);
 	}
@@ -1655,7 +1655,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			String primarySchema, String primaryTable, String foreignCatalog,
 			String foreignSchema, String foreignTable) throws SQLException {
 		if (primaryTable == null || foreignTable == null) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name, null);
 		}
 		return getForeignKeys(USchType.SCH_CROSS_REFERENCE, primaryTable,
 				foreignTable);
@@ -2220,7 +2220,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	private void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed, null);
 		}
 	}
 

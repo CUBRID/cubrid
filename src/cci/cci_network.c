@@ -688,7 +688,6 @@ error_return:
   FREE_MEM (tmp_p);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
-  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
 
   return result_code;
 }

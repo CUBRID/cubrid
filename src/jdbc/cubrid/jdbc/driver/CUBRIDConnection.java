@@ -323,7 +323,7 @@ public class CUBRIDConnection implements Connection {
 			uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
 			break;
 		default:
-			throw createCUBRIDException(CUBRIDJDBCErrorCode.invalid_trans_iso_level);
+			throw createCUBRIDException(CUBRIDJDBCErrorCode.invalid_trans_iso_level, null);
 		}
 
 		synchronized (u_con) {
@@ -639,7 +639,7 @@ public class CUBRIDConnection implements Connection {
 
 	private void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw createCUBRIDException(CUBRIDJDBCErrorCode.connection_closed);
+			throw createCUBRIDException(CUBRIDJDBCErrorCode.connection_closed, null);
 		}
 	}
 
@@ -861,14 +861,14 @@ public class CUBRIDConnection implements Connection {
 	    return e;
 	}
 
-	CUBRIDException createCUBRIDException(int errCode) {
-	    CUBRIDException e = new CUBRIDException(errCode);
+	CUBRIDException createCUBRIDException(int errCode, Throwable t) {
+	    CUBRIDException e = new CUBRIDException(errCode, t);
 	    u_con.logException(e);
 	    return e;
 	}
 
-	CUBRIDException createCUBRIDException(int errCode, String msg) {
-	    CUBRIDException e = new CUBRIDException(errCode, msg);
+	CUBRIDException createCUBRIDException(int errCode, String msg, Throwable t) {
+	    CUBRIDException e = new CUBRIDException(errCode, msg, t);
 	    u_con.logException(e);
 	    return e;
 	}

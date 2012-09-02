@@ -510,7 +510,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	}
     }
 
-  return 0;
+  return CCI_ER_NO_ERROR;
 }
 
 int

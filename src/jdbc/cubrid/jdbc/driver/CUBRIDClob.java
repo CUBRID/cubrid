@@ -124,7 +124,7 @@ public class CUBRIDClob implements Clob {
 	 */
 	public synchronized long length() throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (clobCharLength < 0) {
 			readClobPartially(Long.MAX_VALUE, 1);
@@ -136,10 +136,10 @@ public class CUBRIDClob implements Clob {
 	public synchronized String getSubString(long pos, int length)
 			throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1 || length < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (length == 0) {
 			return "";
@@ -160,10 +160,10 @@ public class CUBRIDClob implements Clob {
 	/* JDK 1.6 */
 	public Reader getCharacterStream(long pos, long length) throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1 || length < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 
 		return new CUBRIDBufferedReader(
@@ -172,7 +172,7 @@ public class CUBRIDClob implements Clob {
 
 	public InputStream getAsciiStream() throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 
 		return new CUBRIDBufferedInputStream(new CUBRIDClobInputStream(this),
@@ -189,13 +189,13 @@ public class CUBRIDClob implements Clob {
 
 	public synchronized int setString(long pos, String str) throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (!isWritable) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 		if (str == null || str.length() <= 0) {
 			return 0;
@@ -203,7 +203,7 @@ public class CUBRIDClob implements Clob {
 
 		if (readClobPartially(pos, 1) != 0) {
 			// only append is allowed.
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
 		}
 
 		byte[] bytes = string2bytes(str);
@@ -228,16 +228,16 @@ public class CUBRIDClob implements Clob {
 	public int setString(long pos, String str, int offset, int len)
 			throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1 || offset < 0 || len < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (offset + len > str.length()) {
 			throw new IndexOutOfBoundsException();
 		}
 		if (!isWritable) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 		if (str == null || len == 0) {
 			return 0;
@@ -249,18 +249,18 @@ public class CUBRIDClob implements Clob {
 	public synchronized OutputStream setAsciiStream(long pos)
 			throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (!isWritable) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 
 		if (readClobPartially(pos, 1) != 0) {
 			// only append is allowed.
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
 		}
 
 		OutputStream out = new CUBRIDBufferedOutputStream(
@@ -272,18 +272,18 @@ public class CUBRIDClob implements Clob {
 
 	public Writer setCharacterStream(long pos) throws SQLException {
 		if (lobHandle == null) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (pos < 1) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (!isWritable) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 
 		if (readClobPartially(pos, 1) != 0) {
 			// only append is allowed.
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
 		}
 
 		Writer out = new CUBRIDBufferedWriter(new CUBRIDClobWriter(this, pos),
@@ -381,7 +381,7 @@ public class CUBRIDClob implements Clob {
 		try {
 			return (s.getBytes(charsetName));
 		} catch (UnsupportedEncodingException e) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, e.getMessage());
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, e.getMessage(), e);
 		}
 	}
 
@@ -390,7 +390,7 @@ public class CUBRIDClob implements Clob {
 		try {
 			return (new String(b, start, len, charsetName));
 		} catch (UnsupportedEncodingException e) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, e.getMessage());
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, e.getMessage(), e);
 		}
 	}
 
@@ -434,7 +434,7 @@ public class CUBRIDClob implements Clob {
 			throw new NullPointerException();
 		}
 		if (pos < 1 || length < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (length == 0) {
 			return new byte[0];
@@ -465,7 +465,7 @@ public class CUBRIDClob implements Clob {
 
 		if (total_read_len < buf.length) {
 			// In common case, this code cannot be executed
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, null);
 			// byte[]new_buf = new byte[total_read_len];
 			// System.arraycopy (buf, 0, new_buf, 0, total_read_len);
 			// return new_buf;
@@ -480,7 +480,7 @@ public class CUBRIDClob implements Clob {
 			throw new NullPointerException();
 		}
 		if (pos < 1 || offset < 0 || len < 0) {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
 		if (offset + len > bytes.length) {
 			throw new IndexOutOfBoundsException();
@@ -488,7 +488,7 @@ public class CUBRIDClob implements Clob {
 
 		if (isWritable) {
 			if (lobHandle.getLobSize() + 1 != pos) {
-				throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid);
+				throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
 			}
 
 			pos--; // pos is now offset from 0
@@ -512,7 +512,7 @@ public class CUBRIDClob implements Clob {
 
 			return total_write_len;
 		} else {
-			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable);
+			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_is_not_writable, null);
 		}
 	}
 

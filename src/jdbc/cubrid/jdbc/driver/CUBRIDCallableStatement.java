@@ -602,7 +602,7 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 
 	private void beforeGetValue(int index) throws SQLException {
 		if (index < 0 || index > u_stmt.getParameterCount()) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index, null);
 		}
 
 		synchronized (u_stmt) {

@@ -43,23 +43,31 @@ public class CUBRIDException extends SQLException {
 
 	public CUBRIDException(UError error) {
 		this(error.getErrorMsg(), error.getJdbcErrorCode());
+		error.changeStackTrace(this);
 	}
 
 	public CUBRIDException(UError error, Throwable t) {
 		this(error.getErrorMsg(), error.getJdbcErrorCode());
-		setStackTrace(t.getStackTrace());
+		if (t != null) {
+		    setStackTrace(t.getStackTrace());
+		}
 	}
 
 	public CUBRIDException(int errCode, Throwable t) {
 		this(CUBRIDJDBCErrorCode.getMessage(errCode), errCode);
-		setStackTrace(t.getStackTrace());
+		if (t != null) {
+		    setStackTrace(t.getStackTrace());
+		}
 	}
 
 	public CUBRIDException(int errCode) {
  		this(CUBRIDJDBCErrorCode.getMessage(errCode), errCode);
 	}
 
-	public CUBRIDException(int errCode, String msg) {
+	public CUBRIDException(int errCode, String msg, Throwable t) {
 		this(CUBRIDJDBCErrorCode.getMessage(errCode) + msg, errCode);
+		if (t != null) {
+		    setStackTrace(t.getStackTrace());
+		}
 	}
 }

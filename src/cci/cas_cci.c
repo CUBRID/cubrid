@@ -121,6 +121,8 @@ int wsa_initialize ();
   (((e) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED) \
    || ((e) == ER_OBJ_NO_CONNECT) || ((e) == ER_NET_SERVER_CRASHED) \
    || ((e) == ER_BO_CONNECT_FAILED))
+#define IS_ER_TO_RECONNECT(e1, e2) \
+  IS_ER_COMMUNICATION (e1) || IS_SERVER_DOWN (e2)
 #define CCI_SET_ERROR_BUFFER(e, err_buf) \
   do { \
     if (((e) != CCI_ER_NO_ERROR) && ((err_buf) != NULL) \
@@ -822,6 +824,23 @@ ret:
   return err_code;
 }
 
+static int
+reset_connect (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
+{
+  int connect_done;
+  int con_err_code;
+  T_CCI_ERROR err_buf;
+
+  req_handle_content_free (req_handle, 1);
+  con_err_code = cas_connect_with_ret (con_handle, &err_buf, &connect_done);
+  if (con_err_code < 0 || !connect_done)
+    {
+      return con_err_code;
+    }
+
+  return CCI_ER_NO_ERROR;
+}
+
 int
 cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 {
@@ -891,27 +910,28 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag, err_buf, 0);
-
-  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
-      || IS_SERVER_DOWN (err_buf->err_code))
+  if (err_code != CCI_ER_NO_ERROR)
     {
-      con_err_code = cas_connect_with_ret (con_handle, err_buf,
-					   &connect_done);
-
-      if (con_err_code < 0)
+      if (IS_OUT_TRAN (con_handle))
 	{
-	  err_code = con_err_code;
-	  goto prepare_error;
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+	    {
+	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
+		{
+		  goto prepare_error;
+		}
+	      err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag,
+				     err_buf, 0);
+	    }
 	}
-      if (!connect_done)
+      else
 	{
-	  /* connection is no problem */
-	  goto prepare_error;
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+	    {
+              /* reconnect for the next executing */
+	      reset_connect (con_handle, req_handle);
+	    }
 	}
-
-      req_handle_content_free (req_handle, 0);
-      err_code = qe_prepare (req_handle, con_handle, sql_stmt,
-			     flag, err_buf, 0);
     }
 
   if (err_code < 0)
@@ -1258,6 +1278,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
   int err_code = CCI_ER_NO_ERROR;
+  int con_err_code = 0;
   struct timeval st, et;
 
 #ifdef CCI_DEBUG
@@ -1338,29 +1359,37 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
 			     err_buf);
     }
-  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
-      || IS_SERVER_DOWN (err_buf->err_code))
+
+  if (err_code < 0)
     {
-      int connect_done;
-
-      err_code = cas_connect_with_ret (con_handle, err_buf, &connect_done);
-      if (err_code < 0)
+      if (IS_OUT_TRAN (con_handle))
 	{
-	  goto execute_end;
-	}
-
-      if (connect_done)
-	{
-	  /* error is caused by connection fail */
-	  req_handle_content_free (req_handle, 1);
-	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
-				 req_handle->prepare_flag, err_buf, 1);
-	  if (err_code < 0)
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
 	    {
+	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
+		{
+		  goto execute_end;
+		}
+	      err_code = qe_prepare (req_handle, con_handle,
+				     req_handle->sql_text,
+				     req_handle->prepare_flag, err_buf, 1);
+	      if (err_code < 0)
+		{
+		  goto execute_end;
+		}
+	      err_code =
+		qe_execute (req_handle, con_handle, flag, max_col_size,
+			    err_buf);
+	    }
+	}
+      else
+	{
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+	    {
+	      /* reconnect for the next executing */
+	      reset_connect (con_handle, req_handle);
 	      goto execute_end;
 	    }
-	  err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
-				 err_buf);
 	}
     }
 
@@ -1596,6 +1625,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
   int err_code = CCI_ER_NO_ERROR;
+  int con_err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1643,27 +1673,35 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
       err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
     }
 
-  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
-      || IS_SERVER_DOWN (err_buf->err_code))
+  if (err_code < 0)
     {
-      int connect_done;
-
-      err_code = cas_connect_with_ret (con_handle, err_buf, &connect_done);
-      if (err_code < 0)
+      if (IS_OUT_TRAN (con_handle))
 	{
-	  goto execute_end;
-	}
-
-      if (connect_done)
-	{
-	  req_handle_content_free (req_handle, 1);
-	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
-				 req_handle->prepare_flag, err_buf, 1);
-	  if (err_code < 0)
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
 	    {
+	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
+		{
+		  goto execute_end;
+		}
+	      err_code = qe_prepare (req_handle, con_handle,
+				     req_handle->sql_text,
+				     req_handle->prepare_flag, err_buf, 1);
+	      if (err_code < 0)
+		{
+		  goto execute_end;
+		}
+	      err_code = qe_execute_array (req_handle, con_handle, qr,
+					   err_buf);
+	    }
+	}
+      else
+	{
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+	    {
+              /* reconnect for the next executing */
+	      reset_connect (con_handle, req_handle);
 	      goto execute_end;
 	    }
-	  err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
 	}
     }
 
@@ -5479,6 +5517,7 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 		       T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
+  int con_err_code = 0;
 
   if (req_handle->valid)
     {
@@ -5488,22 +5527,23 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
   req_handle_content_free (req_handle, 1);
   err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
 			 req_handle->prepare_flag, err_buf, 1);
-
-  if ((IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
-      || IS_SERVER_DOWN (err_buf->err_code))
+  if (err_code == CCI_ER_NO_ERROR)
     {
-      int connect_done;
+      return err_code;
+    }
 
-      err_code = cas_connect_with_ret (con_handle, err_buf, &connect_done);
-      if (err_code < 0)
-	{
-	  return err_code;
-	}
-      if (connect_done)
-	{
-	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
-				 req_handle->prepare_flag, err_buf, 1);
-	}
+  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+    {
+      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
+        {
+          return err_code;
+        }
+    }
+
+  if (IS_OUT_TRAN (con_handle))
+    {
+      err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			     req_handle->prepare_flag, err_buf, 1);
     }
   return err_code;
 }

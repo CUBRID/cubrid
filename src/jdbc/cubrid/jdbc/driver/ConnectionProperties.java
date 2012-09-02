@@ -72,7 +72,7 @@ public class ConnectionProperties {
 		}
 	    } catch (IllegalAccessException iae) {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url,
-			" illegal access properties");
+			" illegal access properties", null);
 	    }
 	}
     }
@@ -108,7 +108,7 @@ public class ConnectionProperties {
 		valueAsObject = o;
 	    } else {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url,
-			" '" + o + "' uncompitable value for the " + propertyName);
+			" '" + o + "' uncompitable value for the " + propertyName, null);
 	    }
 	}
 

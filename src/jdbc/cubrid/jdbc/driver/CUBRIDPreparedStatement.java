@@ -101,7 +101,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 					checkIsOpen();
 					if ((!first_result_type)
 							&& (u_stmt.getCommandType() != CUBRIDCommandType.CUBRID_STMT_CALL_SP)) {
-						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeQuery);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeQuery, null);
 					}
 					executeCore(false);
 					getMoreResults();
@@ -133,7 +133,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 					}
 					checkIsOpen();
 					if (first_result_type) {
-						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeUpdate);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeUpdate, null);
 					}
 					executeCore(false);
 					getMoreResults();
@@ -319,7 +319,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		synchronized (u_stmt) {
@@ -358,7 +358,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			len = x.read(value);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		byte[] value2 = new byte[len];
@@ -535,7 +535,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			len = reader.read(value);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		synchronized (u_stmt) {
@@ -588,7 +588,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			((CUBRIDBufferedOutputStream) out).streamCopyFromInputStream(
 					inputStream, Long.MAX_VALUE);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		setBlob(parameterIndex, blob);
@@ -609,7 +609,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			((CUBRIDBufferedOutputStream) out).streamCopyFromInputStream(
 					inputStream, length);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		setBlob(parameterIndex, blob);
@@ -629,7 +629,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			((CUBRIDBufferedWriter) out).streamCopyFromReader(reader,
 					Long.MAX_VALUE);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		setClob(parameterIndex, clob);
@@ -649,7 +649,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			((CUBRIDBufferedWriter) out).streamCopyFromReader(reader, length);
 		} catch (IOException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 
 		setClob(parameterIndex, clob);
@@ -908,7 +908,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 
 	protected void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.prepared_statement_closed, null);
 		}
 	}
 
@@ -917,7 +917,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		case UErrorCode.ER_NO_ERROR:
 			break;
 		case UErrorCode.ER_BIND_INDEX:
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_index, null);
 		case UErrorCode.ER_INVALID_ARGUMENT:
 			throw new IllegalArgumentException();
 		default:

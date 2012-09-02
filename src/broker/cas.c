@@ -1714,6 +1714,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
       as_info->num_transactions_processed++;
+
+      /* should be OUT_TRAN in auto commit */
+      as_info->con_status = CON_STATUS_OUT_TRAN;
     }
 #endif /* !LIBCAS_FOR_JSP */
 

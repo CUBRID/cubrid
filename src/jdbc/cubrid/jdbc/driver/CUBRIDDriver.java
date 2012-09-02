@@ -147,7 +147,7 @@ public class CUBRIDDriver implements Driver {
 	    Pattern pattern = Pattern.compile(URL_PATTERN, Pattern.CASE_INSENSITIVE);
 	    Matcher matcher = pattern.matcher(url);
 	    if (!matcher.find()) {
-		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url, null);
 	    }
 
 	    String dummy;

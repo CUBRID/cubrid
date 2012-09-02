@@ -135,7 +135,7 @@ public class CUBRIDStatement implements Statement {
 					if (!u_stmt.getSqlType()) {
 						u_stmt.close();
 						u_stmt = null;
-						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeQuery);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeQuery, null);
 					}
 
 					executeCore(false);
@@ -149,7 +149,7 @@ public class CUBRIDStatement implements Statement {
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, e);
 		}
 	}
 
@@ -328,7 +328,7 @@ public class CUBRIDStatement implements Statement {
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, e);
 		}
 	}
 
@@ -337,7 +337,7 @@ public class CUBRIDStatement implements Statement {
 		checkIsOpen();
 
 		if (!is_scrollable)
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_scrollable_statement);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.non_scrollable_statement, null);
 
 		switch (direction) {
 		case ResultSet.FETCH_FORWARD:
@@ -416,7 +416,7 @@ public class CUBRIDStatement implements Statement {
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, e);
 		}
 	}
 
@@ -459,7 +459,7 @@ public class CUBRIDStatement implements Statement {
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, e);
 		}
 	}
 
@@ -503,7 +503,7 @@ public class CUBRIDStatement implements Statement {
 					if (u_stmt.getSqlType()) {
 						u_stmt.close();
 						u_stmt = null;
-						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeUpdate);
+						throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeUpdate, null);
 					}
 
 					executeCore(false);
@@ -523,7 +523,7 @@ public class CUBRIDStatement implements Statement {
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, e);
 		}
 	}
 
@@ -641,7 +641,7 @@ public class CUBRIDStatement implements Statement {
 				}
 			}
 		} catch (NullPointerException e) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, e);
 		}
 	}
 
@@ -757,8 +757,7 @@ public class CUBRIDStatement implements Statement {
 			break;
 		case UErrorCode.ER_CMD_IS_NOT_INSERT:
 			con.autoRollback();
-			throw con.createCUBRIDException(
-					CUBRIDJDBCErrorCode.invalid_query_type_for_executeInsert);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_query_type_for_executeInsert, null);
 		default:
 			UError cpErr = new UError(error);
 			con.autoRollback();
@@ -925,7 +924,7 @@ public class CUBRIDStatement implements Statement {
 
 	private void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
+			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.statement_closed, null);
 		}
 	}
 

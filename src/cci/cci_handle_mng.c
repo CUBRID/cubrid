@@ -605,6 +605,7 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
   if (!reuse)
     FREE_MEM (req_handle->bind_mode);
+  req_handle->valid = 0;
 }
 
 static int
