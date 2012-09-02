@@ -4633,8 +4633,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	  expr->info.expr.arg1 = arg1;
 	}
 
-      if (pt_wrap_select_list_with_cast_op (parser, arg2, arg2_eq_type, NULL)
-	  != NO_ERROR)
+      if (pt_wrap_select_list_with_cast_op (parser, arg2, arg2_eq_type,
+					    0, 0, NULL, false) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -7497,17 +7497,22 @@ pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
- * pt_wrap_select_list_with_cast_op () - cast the nodes of a select list to
- *					 the type new_type
- *   return	  : NO_ERROR on success, error code on failure
- *   parser(in)	  : parser context
- *   query(in)	  : the select query
- *   new_type(in) : the new_type
- *   data_type(in): the data type of new_type
+ * pt_wrap_select_list_with_cast_op () - cast the nodes of a select list
+ *				to the type new_type, using the specified
+ *				precision and scale
+ *   return	   : NO_ERROR on success, error code on failure
+ *   parser(in)	   : parser context
+ *   query(in)	   : the select query
+ *   new_type(in)  : the new_type
+ *   p(in)	   : precision
+ *   s(in)	   : scale
+ *   data_type(in) : the data type of new_type
+ *   force_wrap(in): forces wrapping with cast for collatable nodes
  */
 int
 pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
-				  PT_TYPE_ENUM new_type, PT_NODE * data_type)
+				  PT_TYPE_ENUM new_type, int p, int s,
+				  PT_NODE * data_type, bool force_wrap)
 {
   int i = 0;
   PT_NODE *new_node = NULL;
@@ -7535,13 +7540,13 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 		     prev = item, item = item->next)
 		  {
 		    new_node = NULL;
-		    if (item->type_enum == new_type)
+		    if (item->type_enum == new_type && !force_wrap)
 		      {
 			continue;
 		      }
 
 		    new_node =
-		      pt_wrap_with_cast_op (parser, item, new_type, 0, 0,
+		      pt_wrap_with_cast_op (parser, item, new_type, p, s,
 					    data_type);
 		    if (new_node == NULL)
 		      {
@@ -7573,12 +7578,12 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 		 prev = item, item = item->next)
 	      {
 		new_node = NULL;
-		if (item->type_enum == new_type)
+		if (item->type_enum == new_type && !force_wrap)
 		  {
 		    continue;
 		  }
 		new_node =
-		  pt_wrap_with_cast_op (parser, item, new_type, 0, 0,
+		  pt_wrap_with_cast_op (parser, item, new_type, p, s,
 					data_type);
 		if (new_node == NULL)
 		  {
@@ -7611,7 +7616,8 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 	err =
 	  pt_wrap_select_list_with_cast_op (parser,
 					    query->info.query.q.union_.arg1,
-					    new_type, data_type);
+					    new_type, p, s, data_type,
+					    force_wrap);
 	if (err != NO_ERROR)
 	  {
 	    return err;
@@ -7620,7 +7626,8 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 	err =
 	  pt_wrap_select_list_with_cast_op (parser,
 					    query->info.query.q.union_.arg2,
-					    new_type, data_type);
+					    new_type, p, s, data_type,
+					    force_wrap);
 	if (err != NO_ERROR)
 	  {
 	    return err;
@@ -20055,6 +20062,8 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_NVL:
     case PT_NVL2:
     case PT_IFNULL:
+    case PT_IS_IN:
+    case PT_IS_NOT_IN:
       has_collation = true;
     case PT_LOCATE:
     case PT_POSITION:
@@ -20297,6 +20306,9 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_SELECT:
     case PT_FUNCTION:
     case PT_METHOD_CALL:
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
       if (!PT_HAS_COLLATION (node->type_enum)
 	  && !PT_IS_COLLECTION_TYPE (node->type_enum))
 	{
@@ -20396,6 +20408,48 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 				       dt) != NO_ERROR)
 		    {
 		      parser_free_node (parser, dt);
+		      goto cannot_coerce;
+		    }
+		}
+	      else if (node->node_type == PT_SELECT
+		       || node->node_type == PT_DIFFERENCE
+		       || node->node_type == PT_INTERSECTION
+		       || node->node_type == PT_UNION)
+		{
+		  PT_NODE *select_list;
+		  int nb_select_list;
+
+		  if (node->node_type == PT_SELECT)
+		    {
+		      select_list = node->info.query.q.select.list;
+		    }
+		  else
+		    {
+		      /* It is enough to count the number of select list items
+		       * from one of the union/intersect/difference arguments.
+		       * If they would be different, this code would not be
+		       * reached, an arg incompatibility is thrown before.
+		       * Because of the left side recursivity of table ops,
+		       * arg2 is always a PT_SELECT.
+		       */
+		      PT_NODE *union_arg2 = node->info.query.q.union_.arg2;
+		      assert (union_arg2->node_type == PT_SELECT);
+		      select_list = union_arg2->info.query.q.select.list;
+		    }
+
+		  nb_select_list = pt_length_of_list (select_list);
+		  if (nb_select_list != 1)
+		    {
+		      goto cannot_coerce;
+		    }
+		  if (pt_wrap_select_list_with_cast_op (parser, node,
+							node->type_enum,
+							dt->info.data_type.
+							precision,
+							dt->info.data_type.
+							dec_precision,
+							dt, true) != NO_ERROR)
+		    {
 		      goto cannot_coerce;
 		    }
 		}
