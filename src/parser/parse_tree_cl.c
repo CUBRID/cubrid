@@ -973,6 +973,11 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	    {
 	      node->next = pt_walk_private (parser, node->next, walk);
 	    }
+
+	  if (walk->continue_walk != PT_STOP_WALK)
+	    {
+	      walk->continue_walk = save_continue;
+	    }
 	}
 
       /* and visit this node again */
