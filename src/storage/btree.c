@@ -509,7 +509,7 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
   if (BTREE_IS_NEW_FILE (btid))
     {
       assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
-		      == FILE_NEW_FILE);
+	      == FILE_NEW_FILE);
     }
   return NO_ERROR;
 }
@@ -3662,7 +3662,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 		    }
 
 		  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&elem))
-                      || TP_IS_DATE_OR_TIME_TYPE (DB_VALUE_TYPE (&elem)))
+		      || TP_IS_DATE_OR_TIME_TYPE (DB_VALUE_TYPE (&elem)))
 		    {
 		      if (BTS->use_desc_index)
 			{
@@ -11032,7 +11032,7 @@ end:
  *     key already exists in B-tree, the total transactions hold mode is
  *     NS-lock on PSEUDO-OID attached to the first key buffer OID).
  *  2. many pseudo-oids locks has been already NS-locked, and the first
- *     pseudo-oid has been already escalated to NX-lock. 
+ *     pseudo-oid has been already escalated to NX-lock.
  *
  *   The function iterate through OID-list starting with the second OID.
  * The attached pseudo-OIDs that was previously NS-locked by the current
@@ -11999,8 +11999,8 @@ start_point:
 	     indexes */
 	  if (next_lock_flag == true)
 	    {
-	      lock_unlock_object (thread_p, &saved_N_oid, &saved_N_class_oid,
-				  NS_LOCK, true);
+	      lock_remove_object_lock (thread_p, &saved_N_oid,
+				       &saved_N_class_oid, NS_LOCK);
 	      next_lock_flag = false;
 	      OID_SET_NULL (&saved_N_oid);
 	      OID_SET_NULL (&saved_N_class_oid);
@@ -12115,8 +12115,8 @@ start_point:
 		{
 		  if (next_lock_flag == true)
 		    {
-		      lock_unlock_object (thread_p, &saved_N_oid,
-					  &saved_N_class_oid, NS_LOCK, true);
+		      lock_remove_object_lock (thread_p, &saved_N_oid,
+					       &saved_N_class_oid, NS_LOCK);
 		      next_lock_flag = false;
 		      OID_SET_NULL (&saved_N_oid);
 		      OID_SET_NULL (&saved_N_class_oid);
@@ -12151,8 +12151,8 @@ start_point:
 	    {
 	      if (next_lock_flag == true)
 		{
-		  lock_unlock_object (thread_p, &saved_N_oid,
-				      &saved_N_class_oid, NS_LOCK, true);
+		  lock_remove_object_lock (thread_p, &saved_N_oid,
+					   &saved_N_class_oid, NS_LOCK);
 		  next_lock_flag = false;
 		  OID_SET_NULL (&saved_N_oid);
 		  OID_SET_NULL (&saved_N_class_oid);
@@ -12179,8 +12179,8 @@ start_point:
 	     curr key locking */
 	  goto curr_key_locking;
 	}
-      lock_unlock_object (thread_p, &saved_N_oid, &saved_N_class_oid, NS_LOCK,
-			  true);
+      lock_remove_object_lock (thread_p, &saved_N_oid, &saved_N_class_oid,
+			       NS_LOCK);
       next_lock_flag = false;
       OID_SET_NULL (&saved_N_oid);
       OID_SET_NULL (&saved_N_class_oid);
@@ -12407,7 +12407,7 @@ curr_key_locking:
 	{
 	  /* key lock already escalated or key lock escalation needed,
 	   * key lock escalation make sense only for multiple oids key
-	   * key lock is escalated when the lock on PSEUDO-OID attached 
+	   * key lock is escalated when the lock on PSEUDO-OID attached
 	   * to the first OID from key buffer is escalated from NS to NX
 	   */
 	  if (ret_val == LK_GRANTED)
@@ -12531,7 +12531,7 @@ curr_key_lock_consistency:
 
   if (curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION)
     {
-      /* key lock escalated       
+      /* key lock escalated
        * unlock remaining PSEUDO-OIDs of current key, previously NS-locked
        */
       assert (curr_key_many_locks_needed == false);
@@ -12587,7 +12587,7 @@ key_insertion:
 
   if (next_lock_flag == true)
     {
-      lock_unlock_object (thread_p, &N_oid, &N_class_oid, NS_LOCK, true);
+      lock_remove_object_lock (thread_p, &N_oid, &N_class_oid, NS_LOCK);
     }
 
   mnt_bt_inserts (thread_p);
@@ -12625,11 +12625,11 @@ error:
 
   if (next_lock_flag)
     {
-      lock_unlock_object (thread_p, &N_oid, &N_class_oid, NS_LOCK, true);
+      lock_remove_object_lock (thread_p, &N_oid, &N_class_oid, NS_LOCK);
     }
   if (curr_lock_flag)
     {
-      lock_unlock_object (thread_p, &C_oid, &C_class_oid, current_lock, true);
+      lock_remove_object_lock (thread_p, &C_oid, &C_class_oid, current_lock);
     }
 
 #if defined(SERVER_MODE)
@@ -15708,8 +15708,8 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   if (!OID_ISNULL (ck_pseudo_oid))
     {
-      (void) lock_unlock_object (thread_p, ck_pseudo_oid, class_oid,
-				 bts->key_lock_mode, true);
+      lock_remove_object_lock (thread_p, ck_pseudo_oid, class_oid,
+			       bts->key_lock_mode);
       OID_SET_NULL (ck_pseudo_oid);
     }
 
@@ -15970,8 +15970,8 @@ start_locking:
     }
   if (!OID_ISNULL (nk_pseudo_oid))
     {
-      lock_unlock_object (thread_p, nk_pseudo_oid, nk_class_oid,
-			  bts->key_lock_mode, true);
+      lock_remove_object_lock (thread_p, nk_pseudo_oid, nk_class_oid,
+			       bts->key_lock_mode);
       OID_SET_NULL (nk_pseudo_oid);
       OID_SET_NULL (nk_class_oid);
     }
@@ -17044,9 +17044,9 @@ start_locking:
 	  /* remove next key lock since only current key lock is needed
 	   * when delete or update multi OID key
 	   */
-	  lock_unlock_object (thread_p, OID_ISNULL (&nk_pseudo_oid) ?
-			      &saved_nk_pseudo_oid : &nk_pseudo_oid,
-			      &saved_nk_class_oid, bts->key_lock_mode, true);
+	  lock_remove_object_lock (thread_p, OID_ISNULL (&nk_pseudo_oid) ?
+				   &saved_nk_pseudo_oid : &nk_pseudo_oid,
+				   &saved_nk_class_oid, bts->key_lock_mode);
 	  next_key_locked = false;
 	}
       /*
@@ -17215,19 +17215,20 @@ start_locking:
 		         locked */
 		      if (next_key_locked)
 			{
-			  lock_unlock_object (thread_p,
-					      OID_ISNULL (&nk_pseudo_oid) ?
-					      &saved_nk_pseudo_oid :
-					      &nk_pseudo_oid,
-					      &saved_nk_class_oid,
-					      bts->key_lock_mode, true);
+			  lock_remove_object_lock (thread_p,
+						   OID_ISNULL (&nk_pseudo_oid)
+						   ? &saved_nk_pseudo_oid :
+						   &nk_pseudo_oid,
+						   &saved_nk_class_oid,
+						   bts->key_lock_mode);
 			}
 
 		      if (curr_key_locked)
 			{
-			  lock_unlock_object (thread_p, &saved_ck_pseudo_oid,
-					      &saved_class_oid,
-					      bts->key_lock_mode, true);
+			  lock_remove_object_lock (thread_p,
+						   &saved_ck_pseudo_oid,
+						   &saved_class_oid,
+						   bts->key_lock_mode);
 			}
 		    }
 
@@ -17267,20 +17268,21 @@ start_locking:
 			  if (next_key_locked)
 			    {
 			      /* TO DO saved_clas_oid */
-			      lock_unlock_object (thread_p,
-						  OID_ISNULL (&nk_pseudo_oid)
-						  ? &saved_nk_pseudo_oid :
-						  &nk_pseudo_oid,
-						  &saved_nk_class_oid,
-						  bts->key_lock_mode, true);
+			      lock_remove_object_lock (thread_p,
+						       OID_ISNULL
+						       (&nk_pseudo_oid) ?
+						       &saved_nk_pseudo_oid :
+						       &nk_pseudo_oid,
+						       &saved_nk_class_oid,
+						       bts->key_lock_mode);
 			    }
 
 			  if (curr_key_locked)
 			    {
-			      lock_unlock_object (thread_p,
-						  &saved_ck_pseudo_oid,
-						  &saved_class_oid,
-						  bts->key_lock_mode, true);
+			      lock_remove_object_lock (thread_p,
+						       &saved_ck_pseudo_oid,
+						       &saved_class_oid,
+						       bts->key_lock_mode);
 			    }
 			}
 
@@ -17301,19 +17303,20 @@ start_locking:
 		      if (next_key_locked)
 			{
 			  /* TO DO saved_clas_oid */
-			  lock_unlock_object (thread_p,
-					      OID_ISNULL (&nk_pseudo_oid) ?
-					      &saved_nk_pseudo_oid :
-					      &nk_pseudo_oid,
-					      &saved_nk_class_oid,
-					      bts->key_lock_mode, true);
+			  lock_remove_object_lock (thread_p,
+						   OID_ISNULL (&nk_pseudo_oid)
+						   ? &saved_nk_pseudo_oid :
+						   &nk_pseudo_oid,
+						   &saved_nk_class_oid,
+						   bts->key_lock_mode);
 			}
 
 		      if (curr_key_locked)
 			{
-			  lock_unlock_object (thread_p, &saved_ck_pseudo_oid,
-					      &saved_class_oid,
-					      bts->key_lock_mode, true);
+			  lock_remove_object_lock (thread_p,
+						   &saved_ck_pseudo_oid,
+						   &saved_class_oid,
+						   bts->key_lock_mode);
 			}
 		      /*
 		       * Note the implementation of lock_unlock_object().
@@ -21038,16 +21041,14 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	       * corresponding to the instance OID being rejected */
 	      if (ck_pseudo_oid != NULL && !OID_ISNULL (ck_pseudo_oid))
 		{
-		  lock_unlock_object (thread_p,
-				      ck_pseudo_oid,
-				      class_oid, bts->key_lock_mode, true);
+		  lock_remove_object_lock (thread_p, ck_pseudo_oid,
+					   class_oid, bts->key_lock_mode);
 		}
 
 	      if (nk_pseudo_oid != NULL && !OID_ISNULL (nk_pseudo_oid))
 		{
-		  lock_unlock_object (thread_p,
-				      nk_pseudo_oid,
-				      class_oid, bts->key_lock_mode, true);
+		  lock_remove_object_lock (thread_p, nk_pseudo_oid,
+					   class_oid, bts->key_lock_mode);
 		}
 	    }
 #endif
@@ -21065,18 +21066,18 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	   * to instance which is overwritten */
 	  if (!OID_ISNULL (&(last_item->ck_ps_oid)))
 	    {
-	      lock_unlock_object (thread_p,
-				  &(last_item->ck_ps_oid),
-				  &(last_item->class_oid),
-				  bts->key_lock_mode, true);
+	      lock_remove_object_lock (thread_p,
+				       &(last_item->ck_ps_oid),
+				       &(last_item->class_oid),
+				       bts->key_lock_mode);
 	    }
 
 	  if (!OID_ISNULL (&(last_item->nk_ps_oid)))
 	    {
-	      lock_unlock_object (thread_p,
-				  &(last_item->nk_ps_oid),
-				  &(last_item->class_oid),
-				  bts->key_lock_mode, true);
+	      lock_remove_object_lock (thread_p,
+				       &(last_item->nk_ps_oid),
+				       &(last_item->class_oid),
+				       bts->key_lock_mode);
 	    }
 	}
 #endif
