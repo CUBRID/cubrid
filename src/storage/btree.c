@@ -10909,10 +10909,6 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
       /* make pseudo OID */
       btree_make_pseudo_oid (temp_pseudo_oid.pageid, temp_pseudo_oid.slotid,
 			     temp_pseudo_oid.volid, btid, &temp_pseudo_oid);
-      if (ret_val != NO_ERROR)
-	{
-	  return ret_val;
-	}
 
       /* don't care about key lock escalation on remaining PSEUDO-OIDS */
       if (lock_btid_object_get_prev_total_hold_mode (thread_p,
@@ -12374,6 +12370,7 @@ curr_key_locking:
   current_lock = ((!BTREE_IS_UNIQUE (&btid_int) && key_found) ||
 		  (next_key_granted_mode != S_LOCK &&
 		   next_key_granted_mode != NX_LOCK)) ? NS_LOCK : NX_LOCK;
+curr_key_lock_promote:
   if (current_lock == NX_LOCK)
     {
       /* lock state replication via next key locking */
@@ -12525,7 +12522,8 @@ curr_key_lock_consistency:
 	  (thread_p, btid_int.sys_btid, &peek_rec, offset, &leaf_pnt.ovfl,
 	   oid, &C_class_oid) != NO_ERROR)
 	{
-	  goto error;
+	  current_lock = NX_LOCK;
+	  goto curr_key_lock_promote;
 	}
     }
 
