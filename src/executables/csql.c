@@ -1736,21 +1736,28 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       switch (stmt_type)
 	{
 	case CUBRID_STMT_SELECT:
-	  csql_results (csql_arg, result, attr_spec, stmt_start_line_no,
-			stmt_type);
+	  {
+	    const char *msg_p;
+
+	    csql_results (csql_arg, result, attr_spec, stmt_start_line_no,
+			  stmt_type);
 
 #if defined(CS_MODE)
-	  if (prm_query_mode_sync)
-	    csql_Row_count = db_error;
+	    if (prm_query_mode_sync)
+	      {
+		csql_Row_count = db_error;
+	      }
 #else /* !CS_MODE */
-	  csql_Row_count = db_error;
+	    csql_Row_count = db_error;
 #endif /* CS_MODE */
 
-	  sprintf (csql_Scratch_text, csql_get_message (CSQL_ROWS),
-		   csql_Row_count, "selected");
-
-	  csql_display_msg (csql_Scratch_text);
-	  break;
+	    msg_p = ((csql_Row_count > 1)
+		     ? csql_get_message (CSQL_ROWS)
+		     : csql_get_message (CSQL_ROW));
+	    sprintf (csql_Scratch_text, msg_p, csql_Row_count, "selected");
+	    csql_display_msg (csql_Scratch_text);
+	    break;
+	  }
 
 	case CUBRID_STMT_CALL:
 	case CUBRID_STMT_EVALUATE:
