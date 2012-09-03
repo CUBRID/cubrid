@@ -1123,8 +1123,8 @@ cci_bind_param (int req_h_id, int index, T_CCI_A_TYPE a_type, void *value,
 		T_CCI_U_TYPE u_type, char flag)
 {
   int err_code = 0;
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_FULL_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1275,8 +1275,8 @@ cci_bind_param_array (int req_h_id, int index, T_CCI_A_TYPE a_type,
 int
 cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   int con_err_code = 0;
   struct timeval st, et;
@@ -1622,8 +1622,8 @@ int
 cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 		   T_CCI_ERROR * err_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   int con_err_code = CCI_ER_NO_ERROR;
 
@@ -2005,8 +2005,8 @@ ret:
 int
 cci_close_req_handle (int req_h_id)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_DEBUG
@@ -2071,8 +2071,8 @@ int
 cci_cursor (int req_h_id, int offset, T_CCI_CURSOR_POS origin,
 	    T_CCI_ERROR * err_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_FULL_DEBUG
@@ -2179,8 +2179,8 @@ int
 cci_get_data (int req_h_id, int col_no, int a_type, void *value,
 	      int *indicator)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_FULL_DEBUG
@@ -2305,8 +2305,8 @@ ret:
 int
 cci_get_cur_oid (int req_h_id, char *oid_str_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_DEBUG
@@ -3179,8 +3179,8 @@ cci_cursor_update (int req_h_id, int cursor_pos, int index,
 		   T_CCI_A_TYPE a_type, void *value, T_CCI_ERROR * err_buf)
 {
   int err_code = CCI_ER_NO_ERROR;
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -3319,8 +3319,8 @@ ret:
 int
 cci_fetch_buffer_clear (int req_h_id)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -3365,7 +3365,7 @@ cci_execute_result (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 		    T_CCI_ERROR * err_buf)
 {
   T_REQ_HANDLE *req_handle = NULL;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -3673,8 +3673,8 @@ int
 cci_get_param_info (int req_h_id, T_CCI_PARAM_INFO ** param,
 		    T_CCI_ERROR * err_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -4940,8 +4940,8 @@ ret:
 static int
 fetch_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   int result_set_index = 0;
 
@@ -5096,8 +5096,8 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 static int
 get_query_info (int req_h_id, char log_type, char **out_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
   while (1)
@@ -5134,8 +5134,8 @@ get_query_info (int req_h_id, char log_type, char **out_buf)
 static int
 next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 {
-  T_REQ_HANDLE *req_handle;
-  T_CON_HANDLE *con_handle;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
   err_buf_reset (err_buf);

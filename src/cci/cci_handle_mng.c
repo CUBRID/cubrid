@@ -367,6 +367,11 @@ hm_find_req_handle (int req_handle_id, T_CON_HANDLE ** ret_con_h)
   T_CON_HANDLE *con_handle;
   T_REQ_HANDLE *req_handle;
 
+  if (ret_con_h)
+    {
+      *ret_con_h = NULL;
+    }
+
   if (req_handle_id < 1)
     {
       return NULL;
@@ -821,7 +826,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
     DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
   con_handle->deferred_close_handle_list =
     (int *) MALLOC (sizeof (int) *
-                    con_handle->deferred_max_close_handle_count);
+		    con_handle->deferred_max_close_handle_count);
   con_handle->deferred_close_handle_count = 0;
 
   con_handle->is_holdable = 1;
