@@ -10837,7 +10837,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
       goto error;
     }
   codeset = lld->codeset;
-  res_collation = (domain != NULL) ? TP_DOMAIN_CODESET (domain)
+  res_collation = (domain != NULL) ? TP_DOMAIN_COLLATION (domain)
     : LANG_GET_BINARY_COLLATION (codeset);
 
   res_type = DB_VALUE_DOMAIN_TYPE (time_value);
@@ -20149,7 +20149,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
       return error_status;
     }
   codeset = lld->codeset;
-  res_collation = (domain != NULL) ? TP_DOMAIN_CODESET (domain)
+  res_collation = (domain != NULL) ? TP_DOMAIN_COLLATION (domain)
     : LANG_GET_BINARY_COLLATION (codeset);
 
   res_type = DB_VALUE_DOMAIN_TYPE (date_value);
