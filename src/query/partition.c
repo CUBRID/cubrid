@@ -2788,9 +2788,22 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 
   if (pinfo->attr_position != -1)
     {
-      status = partition_match_index (pinfo, &pinfo->spec->indexptr->key_info,
-				      pinfo->spec->indexptr->range_type,
-				      &pruned);
+      if (pinfo->spec->indexptr->use_iss && pinfo->attr_position == 0)
+	{
+	  /* The first position is missing in ISS and we're dealing with a
+	   * virtual predicate key = NULL. In this case, all partitions
+	   * qualify for the search
+	   */
+	  pruningset_set_all (&pruned);
+	  status = MATCH_OK;
+	}
+      else
+	{
+	  status = partition_match_index (pinfo,
+					  &pinfo->spec->indexptr->key_info,
+					  pinfo->spec->indexptr->range_type,
+					  &pruned);
+	}
     }
   if (status == MATCH_NOT_FOUND)
     {
