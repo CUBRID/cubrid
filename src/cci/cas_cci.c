@@ -928,7 +928,7 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	{
 	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
 	    {
-              /* reconnect for the next executing */
+	      /* reconnect for the next executing */
 	      reset_connect (con_handle, req_handle);
 	    }
 	}
@@ -1698,7 +1698,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	{
 	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
 	    {
-              /* reconnect for the next executing */
+	      /* reconnect for the next executing */
 	      reset_connect (con_handle, req_handle);
 	      goto execute_end;
 	    }
@@ -1740,7 +1740,7 @@ int
 cci_get_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
 		      T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -1939,7 +1939,7 @@ int
 cci_set_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
 		      T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -5535,9 +5535,9 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
   if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
     {
       if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
-        {
-          return err_code;
-        }
+	{
+	  return err_code;
+	}
     }
 
   if (IS_OUT_TRAN (con_handle))
