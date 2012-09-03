@@ -169,8 +169,8 @@ static char *make_sql_stmt (char *src);
 
 const char *cci_client_name = "JDBC";
 
-static char *cas_ip = NULL;
-static int cas_port = 0;
+static char *broker_host = NULL;
+static int broker_port = 0;
 static char *dbname = NULL;
 static char *dbuser = NULL;
 static char *dbpasswd = NULL;
@@ -238,14 +238,14 @@ main (int argc, char *argv[])
 	}
     }
 
-  if (cas_ip == NULL || cas_ip[0] == '\0')
+  if (broker_host == NULL || broker_host[0] == '\0')
     {
-      fprintf (stderr, "error:cas_ip\n");
+      fprintf (stderr, "error:broker_host\n");
       return -1;
     }
-  if (cas_port <= 0)
+  if (broker_port <= 0)
     {
-      fprintf (stderr, "error:cas_port(%d)\n", cas_port);
+      fprintf (stderr, "error:broker_port(%d)\n", broker_port);
       return -1;
     }
   if (dbname == NULL || dbname[0] == '\0')
@@ -278,8 +278,8 @@ main (int argc, char *argv[])
 
   if (!batch_mode && !cubrid_manager_run)
     {
-      fprintf (stdout, "cas_ip = %s\n", cas_ip);
-      fprintf (stdout, "cas_port = %d\n", cas_port);
+      fprintf (stdout, "broker_host = %s\n", broker_host);
+      fprintf (stdout, "broker_port = %d\n", broker_port);
       fprintf (stdout, "num_thread = %d\n", num_thread);
       fprintf (stdout, "repeat = %d\n", repeat_count);
       fprintf (stdout, "dbname = %s\n", dbname);
@@ -322,7 +322,7 @@ main (int argc, char *argv[])
       for (i = 0; i < num_thread; i++)
 	{
 	  con_handle[i] =
-	    cci_connect (cas_ip, cas_port, dbname, dbuser, dbpasswd);
+	    cci_connect (broker_host, broker_port, dbname, dbuser, dbpasswd);
 	  cci_get_db_version (con_handle[i], NULL, 0);
 	}
       for (i = 0; i < num_thread; i++)
@@ -509,10 +509,10 @@ get_args (int argc, char *argv[])
 	  qa_test_flag = 1;
 	  break;
 	case 'I':
-	  cas_ip = optarg;
+	  broker_host = optarg;
 	  break;
 	case 'P':
-	  cas_port = atoi (optarg);
+	  broker_port = atoi (optarg);
 	  break;
 	case 'd':
 	  dbname = optarg;
@@ -576,7 +576,7 @@ get_args (int argc, char *argv[])
 
 getargs_err:
   fprintf (stderr,
-	   "usage : %s -I cas_ip -P cas_port -d dbname [-u dbuser] [-p dbpasswd] [-t num_thread] [-r repeat_count] [-Q] [-o result_file] exec_script_file\n",
+	   "usage : %s -I broker_host -P broker_port -d dbname [-u dbuser] [-p dbpasswd] [-t num_thread] [-r repeat_count] [-Q] [-o result_file] exec_script_file\n",
 	   argv[0]);
   return -1;
 }
@@ -692,14 +692,15 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
   memset (dup_req_h, 0, sizeof (int) * SERVER_HANDLE_ALLOC_SIZE);
 #endif
 
-  con_h = cci_connect (cas_ip, cas_port, dbname, dbuser, dbpasswd);
+  con_h = cci_connect (broker_host, broker_port, dbname, dbuser, dbpasswd);
   if (con_h < 0)
     {
       PRINT_CCI_ERROR (con_h, NULL, result_fp);
       goto end_cas_runner;
     }
 #ifdef DUP_RUN
-  dup_con_h = cci_connect (cas_ip, cas_port, dbname, dbuser, dbpasswd);
+  dup_con_h =
+    cci_connect (broker_host, broker_port, dbname, dbuser, dbpasswd);
   if (dup_con_h < 0)
     {
       fprintf (stderr, "DUP_RUN cci_connect error\n");
@@ -1040,11 +1041,11 @@ read_conf (void)
 	{
 	  if (strcasecmp (buf1, "CAS_IP") == 0)
 	    {
-	      STRDUP (cas_ip, buf2);
+	      STRDUP (broker_host, buf2);
 	    }
 	  else if (strcasecmp (buf1, "CAS_PORT") == 0)
 	    {
-	      cas_port = atoi (buf2);
+	      broker_port = atoi (buf2);
 	    }
 	  else if (strcasecmp (buf1, "DBNAME") == 0)
 	    {
@@ -1550,10 +1551,10 @@ set_args_with_node_info (char *node_name)
 
   if (dbname == NULL)
     dbname = node->dbname;
-  if (cas_ip == NULL)
-    cas_ip = node->ip;
-  if (cas_port == 0)
-    cas_port = node->port;
+  if (broker_host == NULL)
+    broker_host = node->ip;
+  if (broker_port == 0)
+    broker_port = node->port;
   if (dbuser == NULL)
     dbuser = node->dbuser;
   if (dbpasswd == NULL)
