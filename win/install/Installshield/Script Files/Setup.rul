@@ -33,7 +33,7 @@
 // ----- DLL function prototypes -----
 
 
-    // your DLL function prototypes
+// your DLL function prototypes
 
 #include "../../../version.h"
 
@@ -62,14 +62,14 @@ NUMBER  nvCodePage;
 #define WM_SETTINGCHANGE      0x001A
 #define SMTO_ABORTIFHUNG      0x0002
 
-#define SD_AGREE				14
-#define SD_DISAGREE				15
+#define SD_AGREE                14
+#define SD_DISAGREE                15
 #define SD_CUSTOM_LICENSE                 104
-#define	ST_CUBRID_VERSION		@IFX_PRODUCT_VERSION
+#define    ST_CUBRID_VERSION        @IFX_PRODUCT_VERSION
 #define ODBC_VERSION            @IFX_PRODUCT_VERSION
 
 #ifndef STILL_ACTIVE
-	#define STILL_ACTIVE    0x00000103
+    #define STILL_ACTIVE    0x00000103
 #endif
 
 prototype RunProgram(STRING, STRING, NUMBER, NUMBER, NUMBER, BYREF NUMBER);
@@ -84,34 +84,34 @@ function RunProgram(szProgram, szCmdLine, nWait, nShow, nTimeOut, nvExitCode)
     STARTUPINFO siData;
     PROCESS_INFORMATION piData;
 begin
-   	siData.cb = 68;
-	siData.lpReserved = NULL;
-	siData.lpDesktop = NULL;
-	siData.lpTitle = NULL;
-	siData.dwX = 0;
-	siData.dwY = 0;
-	siData.dwXSize = 0;
-	siData.dwYSize = 0;
-	siData.dwXCountChars = 0;
-	siData.dwYCountChars = 0;
-	siData.dwFillAttribute = 0;
-	siData.dwFlags = 1;
-	siData.wShowWindow = nShow;
-	siData.lpReserved2 = NULL;
-	siData.hStdInput = NULL;
-	siData.hStdOutput = NULL;
-	siData.hStdError = NULL;
+    siData.cb = 68;
+    siData.lpReserved = NULL;
+    siData.lpDesktop = NULL;
+    siData.lpTitle = NULL;
+    siData.dwX = 0;
+    siData.dwY = 0;
+    siData.dwXSize = 0;
+    siData.dwYSize = 0;
+    siData.dwXCountChars = 0;
+    siData.dwYCountChars = 0;
+    siData.dwFillAttribute = 0;
+    siData.dwFlags = 1;
+    siData.wShowWindow = nShow;
+    siData.lpReserved2 = NULL;
+    siData.hStdInput = NULL;
+    siData.hStdOutput = NULL;
+    siData.hStdError = NULL;
 
     if (kernel32.CreateProcessA(NULL, szProgram + " " + szCmdLine, NULL, NULL,
                        TRUE, 0, NULL, NULL, &siData, &piData) = 0) then
-       return (-1);
+        return (-1);
     endif;
 
-	if ( nWait != WAIT ) then
-       nvExitCode = 0;
-       return 0;
-	endif;
-	
+    if ( nWait != WAIT ) then
+        nvExitCode = 0;
+        return 0;
+    endif;
+    
     WaitForSingleObject(piData.hProcess, nTimeOut);
 
     kernel32.GetExitCodeProcess(piData.hProcess, &nvExitCode);
@@ -123,61 +123,61 @@ begin
 end;
 
 function OnMaintUIBefore()
-	STRING svResult, szCaption, PROGRAM, szMsg;
-	NUMBER nResult, nType, nvSize, ExitCode;
-	STRING unInstallString, szKey, szNale, szName;
+    STRING svResult, szCaption, PROGRAM, szMsg;
+    NUMBER nResult, nType, nvSize, ExitCode;
+    STRING unInstallString, szKey, szNale, szName;
 begin    
     //Maintenance Mode
-   	nResult = StrFind(CMDLINE, "CUB_UNINSTALL");
+    nResult = StrFind(CMDLINE, "CUB_UNINSTALL");
 
     // 현재 System의 Code page를 가져온다.
     nvCodePage = GetACP();
-   	
-  	if (nResult < 0) then
-  		MessageBox(@SCRIPT_STR_0001, SEVERE); 
+       
+    if (nResult < 0) then
+        MessageBox(@SCRIPT_STR_0001, SEVERE); 
         exit;
-	endif;	
-	
-	svResult = SdLoadString(IFX_MAINTUI_MSG);
-	szCaption = SdLoadString(IFX_ONMAINTUI_CAPTION);
-	nResult = SprintfBox(MB_OKCANCEL,szCaption,"%s",svResult);
-	remove_completely = FALSE;
-	
-	if (nResult = IDOK) then 
-	    szMsg = @SCRIPT_STR_0002;
-	    szCaption = @SCRIPT_STR_0003;
-	    nResult = SprintfBox(MB_YESNO, szCaption, "%s", szMsg);
-	    if (nResult = IDYES) then
-			remove_completely = TRUE;
-  		endif;
+    endif;    
+    
+    svResult = SdLoadString(IFX_MAINTUI_MSG);
+    szCaption = SdLoadString(IFX_ONMAINTUI_CAPTION);
+    nResult = SprintfBox(MB_OKCANCEL,szCaption,"%s",svResult);
+    remove_completely = FALSE;
+    
+    if (nResult = IDOK) then 
+        szMsg = @SCRIPT_STR_0002;
+        szCaption = @SCRIPT_STR_0003;
+        nResult = SprintfBox(MB_YESNO, szCaption, "%s", szMsg);
+        if (nResult = IDYES) then
+            remove_completely = TRUE;
+        endif;
 
-		SetStatusWindow(0, "");
-		Enable(STATUSEX);
-		StatusUpdate(ON, 100);
-		FeatureRemoveAll();		
-	else
-		exit;		
-	endif;
+        SetStatusWindow(0, "");
+        Enable(STATUSEX);
+        StatusUpdate(ON, 100);
+        FeatureRemoveAll();        
+    else
+        exit;        
+    endif;
 end;
 
 function OnMaintUIAfter()
-	STRING restart_source_path;
-	STRING setupfilecopy_program, setupfilecopy_source, setupfilecopy_target;
-	int	   ExitCode;
-	BOOL   bOpt1, bOpt2;
+    STRING restart_source_path;
+    STRING setupfilecopy_program, setupfilecopy_source, setupfilecopy_target;
+    int       ExitCode;
+    BOOL   bOpt1, bOpt2;
 begin
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "tmp", WAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "var", WAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "log", WAIT, SW_HIDE, -1, ExitCode) ;
+    RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "tmp", WAIT, SW_HIDE, -1, ExitCode) ;
+    RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "var", WAIT, SW_HIDE, -1, ExitCode) ;
+    RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "log", WAIT, SW_HIDE, -1, ExitCode) ;
    
-	if (remove_completely = TRUE) then
-		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"conf", WAIT, SW_HIDE, -1, ExitCode) ;
-		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"databases", WAIT, SW_HIDE, -1, ExitCode) ;
-	endif;
-	
-	DeleteProgramFolder ("CUBRID");
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q " + TARGETDIR, WAIT, SW_HIDE, -1, ExitCode) ;
-   	SdFinish("", @SCRIPT_STR_0004, "", "", "", bOpt1, bOpt2);
+    if (remove_completely = TRUE) then
+        RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"conf", WAIT, SW_HIDE, -1, ExitCode) ;
+        RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"databases", WAIT, SW_HIDE, -1, ExitCode) ;
+    endif;
+    
+    DeleteProgramFolder ("CUBRID");
+    RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q " + TARGETDIR, WAIT, SW_HIDE, -1, ExitCode) ;
+    SdFinish("", @SCRIPT_STR_0004, "", "", "", bOpt1, bOpt2);
 end;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -204,25 +204,25 @@ function OnFirstUIBefore()
     LIST    listStartCopy;
     NUMBER  nvSize, nvType;
 
-    NUMBER	nVS, nUniSQL, nUniCAS, nEMSServer, nEMSClient;
+    NUMBER    nVS, nUniSQL, nUniCAS, nEMSServer, nEMSClient;
 
-	STRING 	szName, szCompany, szSerial;   
-	NUMBER nReserved;
-	BOOL    bNKey;
-	BOOL jvm_fail;
-	BOOL javaw_fail;
-	STRING ordblist_txt;
-	STRING java_msg, svValue, szKey, szKey_sp1, regJavaLibTarget, regTemp;
-begin	
+    STRING     szName, szCompany, szSerial;   
+    NUMBER nReserved;
+    BOOL    bNKey;
+    BOOL jvm_fail;
+    BOOL javaw_fail;
+    STRING ordblist_txt;
+    STRING java_msg, svValue, szKey, szKey_sp1, regJavaLibTarget, regTemp;
+begin    
     // TO DO: if you want to enable background, window title, and caption bar title
     // SetTitle( @TITLE_MAIN, 24, WHITE );
     // SetTitle( @TITLE_CAPTIONBAR, 0, BACKGROUNDCAPTION );
     // Enable( FULLWINDOWMODE );
     // Enable( BACKGROUND );
     // SetColor(BACKGROUND,RGB (0, 128, 128));
-	// Set Initial value
+    // Set Initial value
 
-	UNINSTALL_STRING = UNINSTALL_STRING + " CUB_UNINSTALL";
+    UNINSTALL_STRING = UNINSTALL_STRING + " CUB_UNINSTALL";
 
     szVersionName = @IFX_PRODUCT_VERSION;    
     // 현재 System의 Code page를 가져온다.
@@ -247,30 +247,30 @@ Dlg_SdAskDestPath:
     szMsg = @SCRIPT_STR_0007;
 
     if ( AskPath( szMsg, TARGETDIR, szTarget ) = BACK ) then
-       if (bNKey) then 
-          goto Dlg_SdAskDestPath;
-       else 
-          goto Dlg_SdWelcome;
-       endif;
+        if (bNKey) then 
+            goto Dlg_SdAskDestPath;
+        else 
+            goto Dlg_SdWelcome;
+        endif;
     endif;
 
     if (szTarget % " ") then
         MessageBox(@SCRIPT_STR_0008, SEVERE);
-    	TARGETDIR = szTarget;
-    	goto Dlg_SdAskDestPath;
+        TARGETDIR = szTarget;
+        goto Dlg_SdAskDestPath;
     endif;
 
     if (ExistsDir (szTarget) = EXISTS) then
-	   	szMsg = @SCRIPT_STR_0009;
-	   	
-	   	if (AskYesNo (szMsg, NO) = NO) then
-          szMsg = "";
-          goto Dlg_SdAskDestPath;  
+        szMsg = @SCRIPT_STR_0009;
+           
+        if (AskYesNo (szMsg, NO) = NO) then
+            szMsg = "";
+            goto Dlg_SdAskDestPath;  
         endif;
     else 
-    	if (CreateDir (szTarget) < 0) then
-			MessageBox (szTarget + @SCRIPT_STR_0010, SEVERE);
-        	goto Dlg_SdAskDestPath;        
+        if (CreateDir (szTarget) < 0) then
+            MessageBox (szTarget + @SCRIPT_STR_0010, SEVERE);
+            goto Dlg_SdAskDestPath;        
         endif;
     endif;
     
@@ -279,78 +279,78 @@ Dlg_SdAskDestPath:
     SHELL_OBJECT_FOLDER = @IFX_PRODUCT_NAME;             
 
 Dlg_SdLicense:                               
-   	szLicenseFile = SUPPORTDIR ^ "license.txt";
+    szLicenseFile = SUPPORTDIR ^ "license.txt";
     szTitle    = "CUBRID " + ST_CUBRID_VERSION + "  " + @SCRIPT_STR_0011;
-   	szMsg      = @SCRIPT_STR_0012;
+    szMsg      = @SCRIPT_STR_0012;
     
-	szQuestion = "";
-	nResult = SdLicense2(szTitle, @SCRIPT_STR_0013, @SCRIPT_STR_0014, szLicenseFile, FALSE);
+    szQuestion = "";
+    nResult = SdLicense2(szTitle, @SCRIPT_STR_0013, @SCRIPT_STR_0014, szLicenseFile, FALSE);
     if (nResult = BACK) goto Dlg_SdAskDestPath;
 
 Dlg_SetupType:
-   	nvSize = 0;
+    nvSize = 0;
 
-	// if windows가 95, 98, ME 버젼이면 대화상자 보여주고 다음 단계로 넘어간다.
-	if (SYSINFO.WIN9X.bWin9X) then
-		MessageBox(@SCRIPT_STR_0015, WARNING);
-		nSetupType = "CLIENT_ONLY";
-		FeatureSetupTypeSet(MEDIA, "CLIENT_ONLY");
+    // if windows가 95, 98, ME 버젼이면 대화상자 보여주고 다음 단계로 넘어간다.
+    if (SYSINFO.WIN9X.bWin9X) then
+        MessageBox(@SCRIPT_STR_0015, WARNING);
+        nSetupType = "CLIENT_ONLY";
+        FeatureSetupTypeSet(MEDIA, "CLIENT_ONLY");
 
-		// 공간 확인...		
-	    FeatureCompareSizeRequired(MEDIA,TARGETDIR,nvSize);
+        // 공간 확인...        
+        FeatureCompareSizeRequired(MEDIA,TARGETDIR,nvSize);
 
-	    if (nvSize != 0) then
-         	MessageBox( szSdStr_NotEnoughSpace, WARNING );
-	        goto Dlg_SdAskDestPath;
-        endif;		
-	else
-		nSetupType = "ALL";
-		szTitle    = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0017;
-   		szMsg      = @SCRIPT_STR_0018;
+        if (nvSize != 0) then
+             MessageBox( szSdStr_NotEnoughSpace, WARNING );
+            goto Dlg_SdAskDestPath;
+        endif;        
+    else
+        nSetupType = "ALL";
+        szTitle    = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0017;
+        szMsg      = @SCRIPT_STR_0018;
 
-	    nResult = SdSetupTypeEx ( szTitle , szMsg , "" , nSetupType , 0 );
+        nResult = SdSetupTypeEx ( szTitle , szMsg , "" , nSetupType , 0 );
 
-	    if (nResult = BACK) then
-        	goto Dlg_SdLicense;
+        if (nResult = BACK) then
+            goto Dlg_SdLicense;
         endif;
 
-	    FeatureCompareSizeRequired(MEDIA,TARGETDIR,nvSize);
+        FeatureCompareSizeRequired(MEDIA,TARGETDIR,nvSize);
 
-	    if (nvSize != 0) then
-         	MessageBox( szSdStr_NotEnoughSpace, WARNING );
-	        goto Dlg_SetupType;
+        if (nvSize != 0) then
+            MessageBox( szSdStr_NotEnoughSpace, WARNING );
+            goto Dlg_SetupType;
         endif;
     endif;
 
     if (nSetupType = "ALL") then
-    	szSummaryMsg = @SCRIPT_STR_0019;
-   	else                         
-    	szSummaryMsg = @SCRIPT_STR_0020;
-   	endif;
+        szSummaryMsg = @SCRIPT_STR_0019;
+    else                         
+        szSummaryMsg = @SCRIPT_STR_0020;
+    endif;
   
     szMsg = @SCRIPT_STR_0021;
     StrReplace(szMsg, "TOKEN", ST_CUBRID_VERSION, 0);
     
     szTitle = @SCRIPT_STR_0022;
     
-	nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
+    nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
 
-	if (nResult == IDNO) then
-   		goto Dlg_SetupType;
-   	endif;
+    if (nResult == IDNO) then
+        goto Dlg_SetupType;
+    endif;
 
 Dlg_SdStartCopy:
-	if ( nvCodePage = 949 ) then
-	   	szTitle = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0028;
-	else
-    	szTitle = @SCRIPT_STR_0028 + " CUBRID " + ST_CUBRID_VERSION;
-	endif;
+    if ( nvCodePage = 949 ) then
+        szTitle = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0028;
+    else
+        szTitle = @SCRIPT_STR_0028 + " CUBRID " + ST_CUBRID_VERSION;
+    endif;
     //The following is an example of how to add a string(svName) to a list(listStartCopy).
     //eg. ListAddString(listStartCopy,svName,AFTER);
     listStartCopy = ListCreate( STRINGLIST );
 
-	ListAddString(listStartCopy, @SCRIPT_STR_0029 + TARGETDIR, AFTER);
-	ListAddString(listStartCopy, szSummaryMsg, AFTER);
+    ListAddString(listStartCopy, @SCRIPT_STR_0029 + TARGETDIR, AFTER);
+    ListAddString(listStartCopy, szSummaryMsg, AFTER);
 
     nResult = SdStartCopy( szTitle, "", listStartCopy );
 
@@ -358,12 +358,12 @@ Dlg_SdStartCopy:
   
     ListDestroy(listStartCopy);
     if (@CUBRID_ARCH = "x64") then
-    	REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;
+        REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;
     endif;
 
     /* check if jvm is installed */
     if (RunProgram("javaw.exe", "", WAIT, SW_HIDE, -1, ExitCode) < 0) then
-		szMsg = @SCRIPT_STR_0036;
+        szMsg = @SCRIPT_STR_0036;
         MessageBox (szMsg, INFORMATION); 
     endif;
 
@@ -371,26 +371,26 @@ Dlg_SdStartCopy:
     LongPathToQuote (szPath, TRUE);
        
     if (FindFile ( szPath, "cubrid.conf", svResult ) = 0) then
-      old_conf = TRUE;
+        old_conf = TRUE;
     elseif (FindFile ( szPath, "cubrid_broker.conf", svResult ) = 0) then
-      old_conf = TRUE;      
+        old_conf = TRUE;      
     elseif (FindFile ( szPath, "cm.conf", svResult ) = 0) then
-      old_conf = TRUE;
+        old_conf = TRUE;
     elseif (FindFile ( szPath, "cm.pass", svResult ) = 0) then
-      old_conf = TRUE;
+        old_conf = TRUE;
     elseif (FindFile ( szPath, "cmdb.pass", svResult ) = 0) then
-      old_conf = TRUE;
+        old_conf = TRUE;
     endif;
      
     if (old_conf = TRUE) then
-	    szTitle = @SCRIPT_STR_0031;
-	    szMsg = @SCRIPT_STR_0037;
-	    
-		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
-	    if (nResult = IDNO) then
-	      old_conf = FALSE;
-	    endif;
-	endif;
+        szTitle = @SCRIPT_STR_0031;
+        szMsg = @SCRIPT_STR_0037;
+        
+        nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
+        if (nResult = IDNO) then
+            old_conf = FALSE;
+        endif;
+    endif;
 
     // setup default status
     SetStatusWindow(0, "");
@@ -427,43 +427,43 @@ begin
 end;
     
 function TaskKill(szFile)
-	STRING msg;
-begin	
-	msg = @SCRIPT_STR_0052;
-	StrReplace(szFile, TARGETDIR^"bin\\", "", 0);
-	StrReplace(msg, "TOKEN", szFile, 0);
-		
-	if (AskYesNo (msg, YES) = YES) then                                                                                          
-		LaunchAppAndWait(WINSYSDIR + "\\taskkill", " /im " + szFile, WAIT) ;   
-		Delay(2);
-	else
-		exit;
-	endif;    
+    STRING msg;
+begin    
+    msg = @SCRIPT_STR_0052;
+    StrReplace(szFile, TARGETDIR^"bin\\", "", 0);
+    StrReplace(msg, "TOKEN", szFile, 0);
+        
+    if (AskYesNo (msg, YES) = YES) then
+        LaunchAppAndWait(WINSYSDIR + "\\taskkill", " /im " + szFile, WAIT) ;   
+        Delay(2);
+    else
+        exit;
+    endif;    
 end;
 
 function OnFileLocked(szFile)
-	STRING msg;
-	int	   nResult;
+    STRING msg;
+    int       nResult;
 begin
-	if (ExistsDir(szFile) == EXISTS) then // 디렉토리일때
-		return ERR_IGNORE;
-	else                                 // 파일일때
-		if (szFile = TARGETDIR^"bin\\CUBRID_service_tray.exe") then
-			TaskKill(szFile);
-			return ERR_RETRY;
-		endif;
-	
-	    msg = @SCRIPT_STR_0038;
-		StrReplace(msg, "TOKEN", szFile, 0);
-		
-		if (AskYesNo (msg, YES) = NO) then
-			msg = @SCRIPT_STR_0039;
-			MessageBox(msg, WARNING);
-			exit;
-		else
-			return ERR_RETRY;
-		endif;
-	endif;
+    if (ExistsDir(szFile) == EXISTS) then // 디렉토리일때
+        return ERR_IGNORE;
+    else                                 // 파일일때
+        if (szFile = TARGETDIR^"bin\\CUBRID_service_tray.exe") then
+            TaskKill(szFile);
+            return ERR_RETRY;
+        endif;
+    
+        msg = @SCRIPT_STR_0038;
+        StrReplace(msg, "TOKEN", szFile, 0);
+        
+        if (AskYesNo (msg, YES) = NO) then
+            msg = @SCRIPT_STR_0039;
+            MessageBox(msg, WARNING);
+            exit;
+        else
+            return ERR_RETRY;
+        endif;
+    endif;
 end;
 
  
@@ -478,135 +478,135 @@ end;
 //
 ///////////////////////////////////////////////////////////////////////////////
 function OnFirstUIAfter()
-	//-------------------------------
-	  #define WM_WININICHANGE 0x001A
-	 
-	  STRING szKey, szEnv;
-	  POINTER pEnv;
-	
-	//-------------------------------   
-	
-	STRING szTitle, szMsg1, szMsg2, szOption1, szOption2,szTemp,szMsg, szTemp_host ;
-	NUMBER bOpt1, bOpt2,nOption, nReserved;       
-	NUMBER  nvFileHandle;  
-	//NUMBER  nvHostkey;   
-	NUMBER  nvHostkey;  
-	STRING  stTARGETDIR;        
-	
-	STRING  svResult ;    
-	STRING  szHostKeyTitle, szKeyTray ;
-	    
-	STRING  szQuestion ,svValue, svNumValue;
-	NUMBER  lResult, lCount ,nAppDataCISDL, ExitCode;
-	NUMBER  nResult,nResult1,nResult2,nResult3,nResult4,nResult5 ,nvSize,nvType  ;    
-	STRING  PROGRAM , tmpTARGET, szProgramVSQL, szProgramEMC, szProgramQA, szAppDataPath, szQuickLaunchPath;
-	STRING  szFolderQA, szQATarget;
-	STRING  szDocCUBRIDManual;
-	STRING  szDocTempFolder, szServiceTray;
-	STRING  setupfilecopy_program, setupfilecopy_param;
+    //-------------------------------
+    #define WM_WININICHANGE 0x001A
+     
+    STRING szKey, szEnv;
+    POINTER pEnv;
+    
+    //-------------------------------   
+    
+    STRING szTitle, szMsg1, szMsg2, szOption1, szOption2,szTemp,szMsg, szTemp_host ;
+    NUMBER bOpt1, bOpt2,nOption, nReserved;       
+    NUMBER  nvFileHandle;  
+    //NUMBER  nvHostkey;   
+    NUMBER  nvHostkey;  
+    STRING  stTARGETDIR;        
+    
+    STRING  svResult ;    
+    STRING  szHostKeyTitle, szKeyTray ;
+        
+    STRING  szQuestion ,svValue, svNumValue;
+    NUMBER  lResult, lCount ,nAppDataCISDL, ExitCode;
+    NUMBER  nResult,nResult1,nResult2,nResult3,nResult4,nResult5 ,nvSize,nvType  ;    
+    STRING  PROGRAM , tmpTARGET, szProgramVSQL, szProgramEMC, szProgramQA, szAppDataPath, szQuickLaunchPath;
+    STRING  szFolderQA, szQATarget;
+    STRING  szDocCUBRIDManual;
+    STRING  szDocTempFolder, szServiceTray;
+    STRING  setupfilecopy_program, setupfilecopy_param;
 
-	STRING	szValue;
-	NUMBER	nSize;
+    STRING    szValue;
+    NUMBER    nSize;
 begin
-   szTitle = "";
-   nOption   = SYS_BOOTMACHINE;
-   szMsg2    = "Click Finish to exit %P setup.";
-   nReserved = 0;
+    szTitle = "";
+    nOption   = SYS_BOOTMACHINE;
+    szMsg2    = "Click Finish to exit %P setup.";
+    nReserved = 0;
    
-   if (SYSINFO.WINNT.bWin2000 = FALSE) then
-   		PROGRAM = TARGETDIR + "\\bin\\dbghelp.dll";
-		LongPathToQuote(PROGRAM, TRUE);
-		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + PROGRAM, WAIT) ;
-   endif;
+    if (SYSINFO.WINNT.bWin2000 = FALSE) then
+        PROGRAM = TARGETDIR + "\\bin\\dbghelp.dll";
+        LongPathToQuote(PROGRAM, TRUE);
+        LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + PROGRAM, WAIT) ;
+    endif;
 
 Dlg_Completed:
-	// Make ShortCut icon
-	szProgramQA = TARGETDIR^"\\doc\\Q&A.lnk";
-	szQATarget = WINSYSDIR + "\\Q&A.lnk";
+    // Make ShortCut icon
+    szProgramQA = TARGETDIR^"\\doc\\Q&A.lnk";
+    szQATarget = WINSYSDIR + "\\Q&A.lnk";
 
     LongPathToQuote( szProgramQA, TRUE);
-	LongPathToQuote( szQATarget, TRUE);
+    LongPathToQuote( szQATarget, TRUE);
 
-	CopyFile(szProgramQA, szQATarget);
-	
-	Delay(1);
-		
-		nResult = CreateShellObjects( "" );
+    CopyFile(szProgramQA, szQATarget);
+    
+    Delay(1);
+        
+    nResult = CreateShellObjects( "" );
 
-	szDocTempFolder = "CUBRID";
-	CreateProgramFolder(szDocTempFolder);     
-		
-	if ( nvCodePage = 949 ) then
-       szDocCUBRIDManual = "http://www.cubrid.com";
+    szDocTempFolder = "CUBRID";
+    CreateProgramFolder(szDocTempFolder);     
+        
+    if ( nvCodePage = 949 ) then
+        szDocCUBRIDManual = "http://www.cubrid.com";
     else
-       szDocCUBRIDManual = "http://www.cubrid.org";
+        szDocCUBRIDManual = "http://www.cubrid.org";
     endif;
 
     LongPathToQuote( szDocCUBRIDManual, TRUE); 
     AddFolderIcon(szDocTempFolder, "CUBRID Website", "rundll32.exe url.dll,FileProtocolHandler "+ szDocCUBRIDManual,"" , "", 0, "", NULL);
 
-	if (nSetupType = "ALL") then
-		szServiceTray = TARGETDIR^"\\bin\\CUBRID_Service_Tray.exe";
-		LongPathToQuote( szServiceTray, TRUE);
-		AddFolderIcon(szDocTempFolder, "CUBRID Service Tray", szServiceTray, TARGETDIR^"\\bin" , "", 0, "", REPLACE );
-	endif;
+    if (nSetupType = "ALL") then
+        szServiceTray = TARGETDIR^"\\bin\\CUBRID_Service_Tray.exe";
+        LongPathToQuote( szServiceTray, TRUE);
+        AddFolderIcon(szDocTempFolder, "CUBRID Service Tray", szServiceTray, TARGETDIR^"\\bin" , "", 0, "", REPLACE );
+    endif;
     
-	Delay(1);
-	
-	SdFinish(szTitle, "", "", "", "", bOpt1, bOpt2);
+    Delay(1);
+    
+    SdFinish(szTitle, "", "", "", "", bOpt1, bOpt2);
 
-	if ( nvCodePage = 949 ) then
-		RunProgram ("rundll32.exe url.dll,FileProtocolHandler http://www.cubrid.com/developer.cub", "", NOWAIT, SW_SHOW, -1, ExitCode);
-	endif;
+    if ( nvCodePage = 949 ) then
+        RunProgram ("rundll32.exe url.dll,FileProtocolHandler http://www.cubrid.com/developer.cub", "", NOWAIT, SW_SHOW, -1, ExitCode);
+    endif;
 
     if (nSetupType = "ALL") then
-		// 인스톨후 CUBRID Service Tray 를 실행.
-		PROGRAM = TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe";
-		LongPathToQuote (PROGRAM, TRUE);
-		LaunchAppAndWait (PROGRAM, "", NOWAIT);
-		
-		PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe";
-		LongPathToQuote (PROGRAM, TRUE);
-		LaunchAppAndWait (PROGRAM, "-start", NOWAIT);
-	endif;
-    if (@CUBRID_ARCH = "x64") then	
-    	REGDB_OPTIONS = REGDB_OPTIONS & ~REGDB_OPTION_WOW64_64KEY;
+        // 인스톨후 CUBRID Service Tray 를 실행.
+        PROGRAM = TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe";
+        LongPathToQuote (PROGRAM, TRUE);
+        LaunchAppAndWait (PROGRAM, "", NOWAIT);
+        
+        PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe";
+        LongPathToQuote (PROGRAM, TRUE);
+        LaunchAppAndWait (PROGRAM, "-start", NOWAIT);
+    endif;
+    if (@CUBRID_ARCH = "x64") then    
+        REGDB_OPTIONS = REGDB_OPTIONS & ~REGDB_OPTION_WOW64_64KEY;
     endif;
     return 0;
 end;
 
 function RefreshEnvironment()
-	STRING      sParam;
-	POINTER     pParam, pResult;
-	LONG        lResult;
+    STRING      sParam;
+    POINTER     pParam, pResult;
+    LONG        lResult;
 begin
-	sParam      = "Environment";
-	pParam      = &sParam;
-	pResult     = &lResult;
+    sParam      = "Environment";
+    pParam      = &sParam;
+    pResult     = &lResult;
 
-	SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, pParam, SMTO_ABORTIFHUNG, 100, pResult);
+    SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, pParam, SMTO_ABORTIFHUNG, 100, pResult);
 end;  
 
 function makeconf(conffile)
-	STRING  confcopy_program, conffilename, distfilename, versionfilename;
-	STRING  cmd_arg;
-	int	   ExitCode;
+    STRING  confcopy_program, conffilename, distfilename, versionfilename;
+    STRING  cmd_arg;
+    int       ExitCode;
 begin
-	confcopy_program = SRCDIR^"\\makeconf.bat";
-	conffilename = conffile;
-	distfilename = conffilename+"-dist";
-	versionfilename = conffilename + "."+szVersionName;
-	
-	LongPathToQuote(confcopy_program, TRUE);	
-	LongPathToQuote(conffilename, TRUE);
-	LongPathToQuote(distfilename, TRUE);
-	LongPathToQuote(versionfilename, TRUE);
-	cmd_arg = conffilename + " " + distfilename + " " + versionfilename;
+    confcopy_program = SRCDIR^"\\makeconf.bat";
+    conffilename = conffile;
+    distfilename = conffilename+"-dist";
+    versionfilename = conffilename + "."+szVersionName;
+    
+    LongPathToQuote(confcopy_program, TRUE);    
+    LongPathToQuote(conffilename, TRUE);
+    LongPathToQuote(distfilename, TRUE);
+    LongPathToQuote(versionfilename, TRUE);
+    cmd_arg = conffilename + " " + distfilename + " " + versionfilename;
 
     if (old_conf) then
-    	cmd_arg = cmd_arg + " TRUE";
+        cmd_arg = cmd_arg + " TRUE";
     else
-    	cmd_arg = cmd_arg + " FALSE";
+        cmd_arg = cmd_arg + " FALSE";
     endif;
     
     RunProgram(confcopy_program, cmd_arg, WAIT, SW_HIDE, -1, ExitCode);
@@ -621,9 +621,9 @@ end;
 // Note: This event is called for all setups.
 //---------------------------------------------------------------------------
 function OnSetUpdateMode()
-	number	nIgnore, nMediaFlags, nInstalledVersion, nUpdateVersion, nResult;
-	string	szVersion, szIgnore, szMsg;
-begin	
-	UPDATEMODE = FALSE; // Non-update mode by default.
+    number    nIgnore, nMediaFlags, nInstalledVersion, nUpdateVersion, nResult;
+    string    szVersion, szIgnore, szMsg;
+begin    
+    UPDATEMODE = FALSE; // Non-update mode by default.
 end;
 #include "ComponentEvents.rul"

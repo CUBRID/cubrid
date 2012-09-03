@@ -4,27 +4,27 @@
 ///////////////////////////////////////////////////////////////////////////////
 export prototype CUBRID_Installing();
 function CUBRID_Installing()
-	NUMBER	nResult;
-	STRING	szProgram, PROGRAM;
-	STRING	szKey, szKeyTray;
-	NUMBER	nvType, nvSize;
-	STRING	svNumValue;
+    NUMBER    nResult;
+    STRING    szProgram, PROGRAM;
+    STRING    szKey, szKeyTray;
+    NUMBER    nvType, nvSize;
+    STRING    svNumValue;
 
 begin
     if (CreateRegistrySet ("CUBRID") < 0 ) then
-    	MessageBox (@SCRIPT_STR_0044,SEVERE);
-		abort;
-	endif;
+        MessageBox (@SCRIPT_STR_0044,SEVERE);
+        abort;
+    endif;
 
-	Disable(LOGGING) ;
-	szKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";      
+    Disable(LOGGING) ;
+    szKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
 
-	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
-	RegDBGetKeyValueEx (szKey, "Path" , nvType, svNumValue, nvSize);
-	nResult = RegDBSetKeyValueEx(szKey, "Path", REGDB_STRING_EXPAND, TARGETDIR^"\\bin\\;" + svNumValue  , -1);
-	RefreshEnvironment();
+    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+    RegDBGetKeyValueEx (szKey, "Path" , nvType, svNumValue, nvSize);
+    nResult = RegDBSetKeyValueEx(szKey, "Path", REGDB_STRING_EXPAND, TARGETDIR^"\\bin\\;" + svNumValue  , -1);
+    RefreshEnvironment();
 
-	Enable(LOGGING) ;
+    Enable(LOGGING) ;
 end;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -33,89 +33,88 @@ end;
 ///////////////////////////////////////////////////////////////////////////////
 export prototype CUBRID_Installed();
 function CUBRID_Installed()
-	STRING	PROGRAM, Service_Path;
-	STRING  TARGET_PATH, TARGET_DIR;
-	STRING  szDBPath, svResult, szCaption;
-	STRING  SCH_FILE, OBJ_FILE, dbtxt;
-	int     nResult;
+    STRING    PROGRAM, Service_Path;
+    STRING  TARGET_PATH, TARGET_DIR;
+    STRING  szDBPath, svResult, szCaption;
+    STRING  SCH_FILE, OBJ_FILE, dbtxt;
+    int     nResult;
 begin
-	RefreshEnvironment();
+    RefreshEnvironment();
 
-	Delay(3);
+    Delay(3);
      
-	dbtxt = TARGETDIR^"databases\\databases.txt";
-	LongPathToQuote(dbtxt, TRUE);
-	nResult  = Is (FILE_EXISTS, dbtxt);
+    dbtxt = TARGETDIR^"databases\\databases.txt";
+    LongPathToQuote(dbtxt, TRUE);
+    nResult  = Is (FILE_EXISTS, dbtxt);
 
-	if (nResult = FALSE) then
-		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c echo on > " + dbtxt, WAIT) ;
-	endif;
+    if (nResult = FALSE) then
+        LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c echo on > " + dbtxt, WAIT) ;
+    endif;
 
-	// mkdir conf files
-	makeconf(TARGETDIR^"conf\\cubrid_broker.conf");
-	makeconf(TARGETDIR^"conf\\cubrid.conf");
-	makeconf(TARGETDIR^"conf\\cm.conf");
-	makeconf(TARGETDIR^"conf\\cmdb.pass");
-	makeconf(TARGETDIR^"conf\\cm.pass");
+    // mkdir conf files
+    makeconf(TARGETDIR^"conf\\cubrid_broker.conf");
+    makeconf(TARGETDIR^"conf\\cubrid.conf");
+    makeconf(TARGETDIR^"conf\\cm.conf");
+    makeconf(TARGETDIR^"conf\\cmdb.pass");
+    makeconf(TARGETDIR^"conf\\cm.pass");
     
-	// Register CUBRID Service	
-	
-	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
-	Service_Path = TARGETDIR + "\\bin";
-	LongPathToQuote (PROGRAM, TRUE);
-	LongPathToQuote (Service_Path, TRUE);
-	
-	if (LaunchAppAndWait (PROGRAM, "-i " + Service_Path, WAIT ) < 0) then  
-		MessageBox(@SCRIPT_STR_0045 + " : " + PROGRAM, WARNING);
-	endif;
+    // Register CUBRID Service    
+    PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
+    Service_Path = TARGETDIR + "\\bin";
+    LongPathToQuote (PROGRAM, TRUE);
+    LongPathToQuote (Service_Path, TRUE);
+    
+    if (LaunchAppAndWait (PROGRAM, "-i " + Service_Path, WAIT ) < 0) then  
+        MessageBox(@SCRIPT_STR_0045 + " : " + PROGRAM, WARNING);
+    endif;
 
-	// Start CUBRIDService
-	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
-	LongPathToQuote(PROGRAM, TRUE);
-	LaunchAppAndWait(PROGRAM, "-start", WAIT);
+    // Start CUBRIDService
+    PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
+    LongPathToQuote(PROGRAM, TRUE);
+    LaunchAppAndWait(PROGRAM, "-start", WAIT);
 
-	Delay(1);
+    Delay(1);
               
-	svResult = @SCRIPT_STR_0046;
-	szCaption = @SCRIPT_STR_0047;
-	nResult = SprintfBox(MB_YESNO,szCaption,"%s",svResult);
+    svResult = @SCRIPT_STR_0046;
+    szCaption = @SCRIPT_STR_0047;
+    nResult = SprintfBox(MB_YESNO,szCaption,"%s",svResult);
 
-	if (nResult = IDYES) then
-		szDBPath = TARGETDIR^"\\databases\\demodb";
-		DeleteFile(szDBPath^"\\*");
+    if (nResult = IDYES) then
+        szDBPath = TARGETDIR^"\\databases\\demodb";
+        DeleteFile(szDBPath^"\\*");
 
-		// make demodb database
-		TARGET_DIR = TARGETDIR + "\\databases\\demodb";
-		if (ChangeDirectory (TARGET_DIR) = 0) then
-			TARGET_PATH = TARGETDIR;
-			PROGRAM = TARGETDIR + "\\bin\\makedemo_is.bat";
-			SCH_FILE = TARGETDIR + "\\bin\\demodb_schema";
-			OBJ_FILE = TARGETDIR + "\\bin\\demodb_objects";
-						
-			LongPathToQuote(PROGRAM, TRUE);
-			LongPathToQuote(TARGET_PATH, TRUE);
-			LaunchAppAndWait(PROGRAM, "demodb " + TARGET_PATH, WAIT) ;
-			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + PROGRAM, WAIT) ;
-			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + SCH_FILE, WAIT) ;
-			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + OBJ_FILE, WAIT) ;
-		endif;
-	endif;  
-	
-	if (SYSINFO.nOSMajor >= 6) then
-		nResult = LaunchAppAndWait("SCHTASKS.exe","/Create /TN \"CUBRID Service Tray\" /TR " + TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe /SC ONLOGON /RL HIGHEST", LAAW_OPTION_WAIT);
-		if (nResult < 0) then
-			MessageBox("Fail to run SCHTASKS.exe. CUBRID Service Tray will not be started automatically", WARNING);
-		elseif (nResult = 0 && LAAW_PARAMETERS.nLaunchResult != 0) then
-			MessageBox("Cannot add task to Task Scheduler service. CUBRID Service Tray will not be started automatically. Please verify whether Task Scheduler service has been started.", WARNING);
-		endif;
-	else
-		nResult = LaunchAppAndWait("SCHTASKS.exe", "/Create /TN \"CUBRID Service Tray\" /TR " + TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe /SC ONLOGON /RU SYSTEM", LAAW_OPTION_WAIT);
-		if (nResult < 0) then
-			MessageBox("Fail to run SCHTASKS.exe. CUBRID Service Tray will not be started automatically", WARNING);
-		elseif (nResult = 0 && LAAW_PARAMETERS.nLaunchResult != 0) then
-			MessageBox("Cannot add task to Task Scheduler service. CUBRID Service Tray will not be started automatically. Please verify whether Task Scheduler service has been started.", WARNING);
-		endif;
-	endif;
+        // make demodb database
+        TARGET_DIR = TARGETDIR + "\\databases\\demodb";
+        if (ChangeDirectory (TARGET_DIR) = 0) then
+            TARGET_PATH = TARGETDIR;
+            PROGRAM = TARGETDIR + "\\bin\\makedemo_is.bat";
+            SCH_FILE = TARGETDIR + "\\bin\\demodb_schema";
+            OBJ_FILE = TARGETDIR + "\\bin\\demodb_objects";
+                        
+            LongPathToQuote(PROGRAM, TRUE);
+            LongPathToQuote(TARGET_PATH, TRUE);
+            LaunchAppAndWait(PROGRAM, "demodb " + TARGET_PATH, WAIT) ;
+            LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + PROGRAM, WAIT) ;
+            LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + SCH_FILE, WAIT) ;
+            LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + OBJ_FILE, WAIT) ;
+        endif;
+    endif;  
+    
+    if (SYSINFO.nOSMajor >= 6) then
+        nResult = LaunchAppAndWait("SCHTASKS.exe","/Create /TN \"CUBRID Service Tray\" /TR " + TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe /SC ONLOGON /RL HIGHEST", LAAW_OPTION_WAIT);
+        if (nResult < 0) then
+            MessageBox("Fail to run SCHTASKS.exe. CUBRID Service Tray will not be started automatically", WARNING);
+        elseif (nResult = 0 && LAAW_PARAMETERS.nLaunchResult != 0) then
+            MessageBox("Cannot add task to Task Scheduler service. CUBRID Service Tray will not be started automatically. Please verify whether Task Scheduler service has been started.", WARNING);
+        endif;
+    else
+        nResult = LaunchAppAndWait("SCHTASKS.exe", "/Create /TN \"CUBRID Service Tray\" /TR " + TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe /SC ONLOGON /RU SYSTEM", LAAW_OPTION_WAIT);
+        if (nResult < 0) then
+            MessageBox("Fail to run SCHTASKS.exe. CUBRID Service Tray will not be started automatically", WARNING);
+        elseif (nResult = 0 && LAAW_PARAMETERS.nLaunchResult != 0) then
+            MessageBox("Cannot add task to Task Scheduler service. CUBRID Service Tray will not be started automatically. Please verify whether Task Scheduler service has been started.", WARNING);
+        endif;
+    endif;
 end;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -125,31 +124,31 @@ end;
  
 export prototype CUBRID_UnInstalling();
 function CUBRID_UnInstalling()
-	STRING PROGRAM, TARGET_PATH;
-	NUMBER nResult;
+    STRING PROGRAM, TARGET_PATH;
+    NUMBER nResult;
 begin
-	Disable(LOGGING);
-	
-	LaunchAppAndWait("SCHTASKS.exe ", "/Delete /TN \"CUBRID Service Tray\" /F", WAIT) ;
-
-	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
-	LongPathToQuote(PROGRAM, TRUE);
-	if (LaunchAppAndWait (PROGRAM, "-u", WAIT) < 0) then 
-//		MessageBox("Sorry, Fail to unregiste to NT Service", WARNING);
-	endif;          
-
-	PROGRAM = TARGETDIR + "\\bin\\setupManage.exe ";
-	TARGET_PATH = TARGETDIR;
-	LongPathToQuote(TARGET_PATH, TRUE);
-	LongPathToQuote(PROGRAM, TRUE);	
-	nResult = LaunchAppAndWait (PROGRAM,  " -d " + TARGET_PATH, WAIT );
-	if nResult < 0 then
-//		MessageBox ("Sorry, Fail to remove the path information.", WARNING);
-	endif;
-
-	RefreshEnvironment();
+    Disable(LOGGING);
     
-	Enable(LOGGING) ;
+    LaunchAppAndWait("SCHTASKS.exe ", "/Delete /TN \"CUBRID Service Tray\" /F", WAIT) ;
+
+    PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
+    LongPathToQuote(PROGRAM, TRUE);
+    if (LaunchAppAndWait (PROGRAM, "-u", WAIT) < 0) then 
+//        MessageBox("Sorry, Fail to unregiste to NT Service", WARNING);
+    endif;          
+
+    PROGRAM = TARGETDIR + "\\bin\\setupManage.exe ";
+    TARGET_PATH = TARGETDIR;
+    LongPathToQuote(TARGET_PATH, TRUE);
+    LongPathToQuote(PROGRAM, TRUE);    
+    nResult = LaunchAppAndWait (PROGRAM,  " -d " + TARGET_PATH, WAIT );
+    if nResult < 0 then
+//        MessageBox ("Sorry, Fail to remove the path information.", WARNING);
+    endif;
+
+    RefreshEnvironment();
+    
+    Enable(LOGGING) ;
 
 end;
 
@@ -159,39 +158,39 @@ end;
 ///////////////////////////////////////////////////////////////////////////////
 export prototype ODBC_Installing();
 function ODBC_Installing()
-	STRING szKey, szOldKey;
-	NUMBER nResult;
+    STRING szKey, szOldKey;
+    NUMBER nResult;
 begin
     // registry 
     if (CreateRegistrySet ("ODBC") < 0 ) then
-		MessageBox (@SCRIPT_STR_0049,SEVERE);
-	endif;
+        MessageBox (@SCRIPT_STR_0049,SEVERE);
+    endif;
 
     // registry 
-	szKey = "SOFTWARE\\ODBC\\ODBCINST.INI\\CUBRID Driver";
-	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+    szKey = "SOFTWARE\\ODBC\\ODBCINST.INI\\CUBRID Driver";
+    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
 
-	nResult = RegDBSetKeyValueEx(szKey, "DriverODBCVer", REGDB_STRING, ODBC_VERSION , -1);
+    nResult = RegDBSetKeyValueEx(szKey, "DriverODBCVer", REGDB_STRING, ODBC_VERSION , -1);
 end;
 
 export prototype OLEDB_Installed();
 function OLEDB_Installed()
-	STRING PROGRAM;
+    STRING PROGRAM;
 begin
-	PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
-	LongPathToQuote (PROGRAM, TRUE);
-	if (LaunchAppAndWait("regsvr32.exe", "/s " + PROGRAM, WAIT) < 0)then
-		MessageBox(@SCRIPT_STR_0051, WARNING);
-	endif;
+    PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
+    LongPathToQuote (PROGRAM, TRUE);
+    if (LaunchAppAndWait("regsvr32.exe", "/s " + PROGRAM, WAIT) < 0)then
+        MessageBox(@SCRIPT_STR_0051, WARNING);
+    endif;
 end;
 
 export prototype OLEDB_UnInstalling();
 function OLEDB_UnInstalling()
-	STRING PROGRAM;
+    STRING PROGRAM;
 begin
-	PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
-	LongPathToQuote(PROGRAM, TRUE);
-	if (LaunchAppAndWait("regsvr32.exe", "/s /u " + PROGRAM, WAIT) < 0)then
-		MessageBox(@SCRIPT_STR_0050, WARNING);
-	endif;
+    PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
+    LongPathToQuote(PROGRAM, TRUE);
+    if (LaunchAppAndWait("regsvr32.exe", "/s /u " + PROGRAM, WAIT) < 0)then
+        MessageBox(@SCRIPT_STR_0050, WARNING);
+    endif;
 end;
