@@ -12645,7 +12645,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 
 	new_node = pt_coerce_node_collation (parser, node, arg1_coll,
-					     arg1_cs, false);
+					     arg1_cs, true);
 
 	if (new_node == NULL)
 	  {
