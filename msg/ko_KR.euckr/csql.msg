@@ -97,7 +97,6 @@ $ These 3 should be blank
 188 너무 많은 파일명이 입력되었습니다.
 190 없는 세션 명령어입니다. 도움말 메시지를 보려면 ';help'를 입력하세요.
 191 세션 명령어가 모호합니다. 더 자세히 입력하세요.
-192 없는 명령어입니다. 가능한 명령어를 보려면 ';syntax'를 입력하세요.
 193 명령어가 모호합니다. 더 자세히 입력하세요.
 194 명령어 옵션 조합이 잘못되었습니다.
 196 미정의 에러 발생.
@@ -160,7 +159,6 @@ $ csql help messages
    ;DATE                       - 지역 날짜, 시간 출력.\n\
    ;DATAbase                   - 접근 중인 데이터베이스 이름 출력.\n\
    ;SChema class-name          - 클래스의 스키마 정보 출력.\n\
-   ;SYntax [sql-cmd-name]      - 명령어 문법 출력.\n\
    ;TRigger [`*'|trigger-name] - 트리거 정의 출력.\n\
    ;Get system_parameter       - 시스템 파라메터 보기.\n\
    ;SEt system_parameter=value - 시스템 파라메터 설정.\n\

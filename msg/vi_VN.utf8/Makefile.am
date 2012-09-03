@@ -19,7 +19,7 @@
 
 
 vi_VN.utf8dir = @CUBRID_LOCALEDIR@/vi_VN.utf8
-dist_vi_VN.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_vi_VN.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg
 vi_VN.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat

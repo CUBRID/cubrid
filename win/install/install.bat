@@ -70,31 +70,18 @@ copy %SRC_DIR%\..\..\..\src\cm_common\cm_stat.h %DEST_DIR%\include\cm_stat.h
 copy %SRC_DIR%\..\..\..\src\cm_common\cm_dep.h %DEST_DIR%\include\cm_dep.h
 
 copy %SRC_DIR%\..\..\..\msg\en_US\*.msg 		%MSG_EN_US_DIR%
-copy %SRC_DIR%\..\..\..\msg\en_US\syntax.txt	%MSG_EN_US_DIR%
 copy %SRC_DIR%\..\..\..\msg\en_US.utf8\*.msg 		%MSG_EN_US_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\en_US.utf8\syntax.txt	%MSG_EN_US_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\ko_KR.euckr\*.msg 	%MSG_EUCKR_DIR%
-copy %SRC_DIR%\..\..\..\msg\ko_KR.euckr\syntax.txt	%MSG_EUCKR_DIR%
-copy %SRC_DIR%\..\..\..\msg\ko_KR.utf8\*.msg 	%MSG_UTFKR_DIR%
-copy %SRC_DIR%\..\..\..\msg\ko_KR.utf8\syntax.txt 	%MSG_UTFKR_DIR%
+copy %SRC_DIR%\..\..\..\msg\ko_KR.euckr\*.msg 		%MSG_EUCKR_DIR%
+copy %SRC_DIR%\..\..\..\msg\ko_KR.utf8\*.msg	 	%MSG_UTFKR_DIR%
 copy %SRC_DIR%\..\..\..\msg\tr_TR.utf8\*.msg 		%MSG_TR_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\tr_TR.utf8\syntax.txt	%MSG_TR_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\de_DE.utf8\*.msg 		%MSG_DE_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\de_DE.utf8\syntax.txt	%MSG_DE_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\es_ES.utf8\*.msg 		%MSG_ES_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\es_ES.utf8\syntax.txt	%MSG_ES_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\fr_FR.utf8\*.msg 		%MSG_FR_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\fr_FR.utf8\syntax.txt	%MSG_FR_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\it_IT.utf8\*.msg 		%MSG_IT_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\it_IT.utf8\syntax.txt	%MSG_IT_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\ja_JP.utf8\*.msg 		%MSG_JA_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\ja_JP.utf8\syntax.txt	%MSG_JA_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\km_KH.utf8\*.msg 		%MSG_KM_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\km_KH.utf8\syntax.txt	%MSG_KM_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\vi_VN.utf8\*.msg 		%MSG_VI_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\vi_VN.utf8\syntax.txt	%MSG_VI_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\zh_CN.utf8\*.msg 		%MSG_ZH_UTF8_DIR%
-copy %SRC_DIR%\..\..\..\msg\zh_CN.utf8\syntax.txt	%MSG_ZH_UTF8_DIR%
 
 mkdir %DEST_DIR%\locales
 mkdir %DEST_DIR%\locales\data

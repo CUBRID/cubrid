@@ -19,7 +19,7 @@
 
 
 tr_TR.utf8dir = @CUBRID_LOCALEDIR@/tr_TR.utf8
-dist_tr_TR.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_tr_TR.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg
 tr_TR.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat

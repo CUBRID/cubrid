@@ -19,7 +19,7 @@
 
 
 ko_KR.utf8dir = @CUBRID_LOCALEDIR@/ko_KR.utf8
-dist_ko_KR.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_ko_KR.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg
 ko_KR.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat

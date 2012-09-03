@@ -101,48 +101,11 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"help", S_CMD_HELP},
   {"schema", S_CMD_SCHEMA},
   {"database", S_CMD_DATABASE},
-  {"syntax", S_CMD_SYNTAX},
   {"trigger", S_CMD_TRIGGER},
   {"info", S_CMD_INFO},
   /* history stuffs */
   {"historyread", S_CMD_HISTORY_READ},
   {"historylist", S_CMD_HISTORY_LIST}
-};
-
-/* help command table */
-typedef struct
-{
-  const char *text;		/* lower case cmd name */
-  DB_HELP_COMMAND cmd_no;	/* command number */
-} HELP_CMD_TABLE;
-
-static HELP_CMD_TABLE csql_Help_cmd_table[] = {
-  {"general", DB_HELP_GENERAL},
-  {"alter", DB_HELP_ALTER},
-  {"call", DB_HELP_CALL},
-  {"commit", DB_HELP_COMMIT},
-  {"create", DB_HELP_CREATE},
-  {"delete", DB_HELP_DELETE},
-  {"drop", DB_HELP_DROP},
-  {"execute", DB_HELP_EXECUTE},
-  {"get", DB_HELP_GET},
-  {"grant", DB_HELP_GRANT},
-  {"index", DB_HELP_INDEX},
-  {"insert", DB_HELP_INSERT},
-  {"rename", DB_HELP_RENAME},
-  {"revoke", DB_HELP_REVOKE},
-  {"rollback", DB_HELP_ROLLBACK},
-  {"select", DB_HELP_SELECT},
-  {"set", DB_HELP_SET},
-  {"statistics", DB_HELP_STATISTICS},
-  {"trigger", DB_HELP_TRIGGER},
-  {"update", DB_HELP_UPDATE},
-  {"create vclass", DB_HELP_PROXY},
-  {"exclude", DB_HELP_EXCLUDE},
-  {"use", DB_HELP_USE},
-  {"partition", DB_HELP_PARTITION},
-  {"stored procedure", DB_HELP_STORED_PROCEDURE},
-  {"user", DB_HELP_USER}
 };
 
 /*
@@ -198,86 +161,6 @@ csql_get_session_cmd_no (const char *input)
       return (-1);
     }
   return (csql_Session_cmd_table[matched_index].cmd_no);
-}
-
-/*
- * csql_get_help_cmd_no() - get help syntax entry with the given command string
- *   return: CSQL_FAILURE/CSQL_SUCCESS
- *   cmd(in)
- *   csql_cmd_no_ptr(out)
- *
- * Note:
- *   If `cmd' is NULL, this function assumes "general". The search function
- *   succeed when there is only one entry which starts with the given string,
- *   or there is an entry which matches exactly.
- */
-int
-csql_get_help_cmd_no (const char *cmd, DB_HELP_COMMAND * csql_cmd_no_ptr)
-{
-  int i;			/* loop counter */
-  int input_cmd_length;		/* input command length */
-  int num_matches = 0;		/* # of matched commands */
-  int matched_index = -1;	/* last matched entry index */
-  char *lc_cmd = NULL;		/* lower case input */
-
-  if (cmd == NULL)
-    {				/* special case */
-      *csql_cmd_no_ptr = DB_HELP_GENERAL;
-      return (CSQL_SUCCESS);
-    }
-
-  /*
-   * This stuff probably ought to be using the mbs_ routines, but because
-   * of the current special circumstances it's probably ok.  The use of
-   * tolower() is bound to lose in multi-byte language environments, but it
-   * probably doesn't matter because the strings are being compared against a
-   * table of constants that are all ASCII.  In other words, the downcase
-   * code here will screw up the conversion, but in that case the string
-   * wasn't going to match any of the keys anyway so it doesn't matter.
-   */
-
-  lc_cmd = (char *) malloc (strlen (cmd) + 1);
-  if (lc_cmd == NULL)
-    {
-      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
-      return (CSQL_FAILURE);
-    }
-  for (i = 0; cmd[i] != '\0'; i++)
-    {
-      lc_cmd[i] = tolower (cmd[i]);
-    }
-  lc_cmd[i] = '\0';
-
-  input_cmd_length = strlen (lc_cmd);
-  num_matches = 0;
-  matched_index = -1;
-  for (i = 0; i < (int) DIM (csql_Help_cmd_table); i++)
-    {
-      if (strncmp (lc_cmd, csql_Help_cmd_table[i].text, input_cmd_length) ==
-	  0)
-	{
-	  if (strlen (csql_Help_cmd_table[i].text) == input_cmd_length)
-	    {
-	      /* exact match */
-	      free_and_init (lc_cmd);
-	      *csql_cmd_no_ptr = csql_Help_cmd_table[i].cmd_no;
-	      return (CSQL_SUCCESS);
-	    }
-	  num_matches++;
-	  matched_index = i;
-	}
-    }
-  free_and_init (lc_cmd);
-
-  if (num_matches != 1)
-    {
-      csql_Error_code = (num_matches > 1) ? CSQL_ERR_CUBRID_STMT_AMBIGUOUS :
-	CSQL_ERR_CUBRID_STMT_NOT_FOUND;
-      return (CSQL_FAILURE);
-    }
-
-  *csql_cmd_no_ptr = csql_Help_cmd_table[matched_index].cmd_no;
-  return (CSQL_SUCCESS);
 }
 
 /*
@@ -640,80 +523,6 @@ error:
   if (help != NULL)
     {
       help_free_trigger (help);
-    }
-
-  if (csql_Error_code == CSQL_ERR_SQL_ERROR)
-    {
-      csql_display_csql_err (0, 0);
-    }
-  else
-    {
-      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-    }
-  csql_free_more_lines ();
-}
-
-/*
- * csql_help_syntax() - display syntax summary for given command
- *   return: none
- *   csql_cmd_no(in)
- */
-void
-csql_help_syntax (DB_HELP_COMMAND csql_cmd_no)
-{
-  char **line_ptr;
-  COMMAND_HELP *csql_syntax = NULL;
-
-  if ((csql_syntax = help_command (csql_cmd_no)) == NULL)
-    {
-      csql_Error_code = CSQL_ERR_SQL_ERROR;
-      goto error;
-    }
-
-  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL,
-				    MSGCAT_CSQL_SET_CSQL,
-				    CSQL_HELP_SQL_NAME_HEAD_TEXT));
-  APPEND_MORE_LINE (3, csql_syntax->name);
-
-  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL,
-				    MSGCAT_CSQL_SET_CSQL,
-				    CSQL_HELP_SQL_DESCRIPTION_HEAD_TEXT));
-  for (line_ptr = csql_syntax->description;
-       line_ptr != NULL && *line_ptr != NULL; line_ptr++)
-    {
-      APPEND_MORE_LINE (0, *line_ptr);
-    }
-
-  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL,
-				    MSGCAT_CSQL_SET_CSQL,
-				    CSQL_HELP_SQL_SYNTAX_HEAD_TEXT));
-  for (line_ptr = csql_syntax->bnf; line_ptr != NULL && *line_ptr != NULL;
-       line_ptr++)
-    {
-      APPEND_MORE_LINE (0, *line_ptr);
-    }
-
-  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL,
-				    MSGCAT_CSQL_SET_CSQL,
-				    CSQL_HELP_SQL_EXAMPLE_HEAD_TEXT));
-  for (line_ptr = csql_syntax->example; line_ptr != NULL && *line_ptr != NULL;
-       line_ptr++)
-    {
-      APPEND_MORE_LINE (0, *line_ptr);
-    }
-
-  csql_display_more_lines (msgcat_message (MSGCAT_CATALOG_CSQL,
-					   MSGCAT_CSQL_SET_CSQL,
-					   CSQL_HELP_SQL_TITLE_TEXT));
-
-  help_free_command (csql_syntax);
-  csql_free_more_lines ();
-  return;
-
-error:
-  if (csql_syntax != NULL)
-    {
-      help_free_command (csql_syntax);
     }
 
   if (csql_Error_code == CSQL_ERR_SQL_ERROR)

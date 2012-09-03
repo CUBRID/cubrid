@@ -110,7 +110,6 @@ enum
   CSQL_E_TOOMANYFILENAMES_TEXT = 188,
   CSQL_E_SESSCMDNOTFOUND_TEXT = 190,
   CSQL_E_SESSCMDAMBIGUOUS_TEXT = 191,
-  CSQL_E_CSQLCMDNOTFOUND_TEXT = 192,
   CSQL_E_CSQLCMDAMBIGUOUS_TEXT = 193,
   CSQL_E_INVALIDARGCOM_TEXT = 194,
   CSQL_E_UNKNOWN_TEXT = 196,
@@ -207,7 +206,6 @@ typedef enum
   S_CMD_HELP,
   S_CMD_SCHEMA,
   S_CMD_DATABASE,
-  S_CMD_SYNTAX,
   S_CMD_TRIGGER,
   S_CMD_INFO,
 
@@ -303,8 +301,6 @@ extern char *csql_get_tmp_buf (size_t size);
 extern void nonscr_display_error (char *buffer, int buf_length);
 
 extern int csql_get_session_cmd_no (const char *input);
-extern int csql_get_help_cmd_no (const char *cmd,
-				 DB_HELP_COMMAND * csql_cmd_no_ptr);
 
 extern void csql_results (const CSQL_ARGUMENT * csql_arg,
 			  DB_QUERY_RESULT * result, DB_QUERY_TYPE * attr_spec,
@@ -324,7 +320,6 @@ extern const char *csql_errmsg (int code);
 extern void csql_help_menu (void);
 extern void csql_help_schema (const char *class_name);
 extern void csql_help_trigger (const char *class_name);
-extern void csql_help_syntax (DB_HELP_COMMAND csql_cmd_no);
 extern void csql_help_info (const char *command, int aucommit_flag);
 extern void csql_killtran (const char *argument);
 

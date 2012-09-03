@@ -732,7 +732,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   char *sess_cmd;		/* session command pointer */
   char *argument;		/* argument str */
   int cmd_no;			/* session command number */
-  DB_HELP_COMMAND csql_cmd_no;	/* CSQL cmd no for syntax help */
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
@@ -1014,13 +1013,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
 	    }
 	}
-      break;
-
-    case S_CMD_SYNTAX:
-      if (csql_get_help_cmd_no ((argument[0] == '\0') ? NULL : argument,
-				&csql_cmd_no) == CSQL_FAILURE)
-	return false;
-      csql_help_syntax (csql_cmd_no);
       break;
 
     case S_CMD_INFO:

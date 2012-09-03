@@ -99,47 +99,6 @@ struct trigger_description
 
 };
 
-/*
- * DB_HELP_COMMAND
- *
- * Note :
- *    Constants to indicate a command for which help is available.
- */
-
-typedef enum help_commands
-{
-
-  DB_HELP_GENERAL = 0,
-  DB_HELP_CREATE,
-  DB_HELP_ALTER,
-  DB_HELP_INSERT,
-  DB_HELP_DROP,
-  DB_HELP_SELECT,
-  DB_HELP_UPDATE,
-  DB_HELP_DELETE,
-  DB_HELP_COMMIT,
-  DB_HELP_ROLLBACK,
-  DB_HELP_INDEX,
-  DB_HELP_GRANT,
-  DB_HELP_REVOKE,
-  DB_HELP_CALL,
-  DB_HELP_STATISTICS,
-  DB_HELP_RENAME,
-
-  DB_HELP_EXCLUDE,
-  DB_HELP_USE,
-  DB_HELP_PROXY,
-
-  DB_HELP_GET,
-  DB_HELP_SET,
-  DB_HELP_TRIGGER,
-  DB_HELP_EXECUTE,
-
-  DB_HELP_PARTITION,
-  DB_HELP_STORED_PROCEDURE,
-  DB_HELP_USER
-} DB_HELP_COMMAND;
-
 typedef enum obj_print_type
 {
   OBJ_PRINT_CSQL_SCHEMA_COMMAND = 0,
@@ -196,9 +155,6 @@ extern void help_print_obj (MOP obj);
 
 /* Command help */
 
-extern COMMAND_HELP *help_command_name (const char *name);
-extern COMMAND_HELP *help_command (DB_HELP_COMMAND cmd);
-extern void help_free_command (COMMAND_HELP * help);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void help_print_command (DB_HELP_COMMAND cmd);
 extern void help_fprint_command (FILE * fp, DB_HELP_COMMAND cmd);

@@ -19,7 +19,7 @@
 
 
 ko_KR.euckrdir = @CUBRID_LOCALEDIR@/ko_KR.euckr
-dist_ko_KR.euckr_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_ko_KR.euckr_DATA = cubrid.msg csql.msg utils.msg esql.msg
 ko_KR.euckr_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat

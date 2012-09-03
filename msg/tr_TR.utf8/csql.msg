@@ -97,7 +97,6 @@ $ These 3 should be blank
 188 Too many file names have been entered.
 190 No such session command. Type `;help' for help messages.
 191 More than one session command matched. Please specify more.
-192 No such command. Type `;syntax general' to see available commands.
 193 More than one command matched. Please specify more.
 194 Invalid combination of command line arguments (options).
 196 An undefined error has occurred.
@@ -162,7 +161,6 @@ $ csql help messages
    ;DATE                       - display the local time, date.\n\
    ;DATAbase                   - display the name of database being accessed.\n\
    ;SChema class-name          - display schema information of a class.\n\
-   ;SYntax [sql-cmd-name]      - display syntax of a command.\n\
    ;TRigger [`*'|trigger-name] - display trigger definition.\n\
    ;Get system_parameter       - get the value of a system parameter.\n\
    ;SEt system_parameter=value - set the value of a system parameter.\n\

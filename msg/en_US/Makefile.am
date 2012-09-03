@@ -19,7 +19,7 @@
 
 
 en_USdir = @CUBRID_LOCALEDIR@/en_US
-dist_en_US_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_en_US_DATA = cubrid.msg csql.msg utils.msg esql.msg
 en_US_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat

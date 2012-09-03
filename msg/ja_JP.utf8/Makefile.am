@@ -19,7 +19,7 @@
 
 
 ja_JP.utf8dir = @CUBRID_LOCALEDIR@/ja_JP.utf8
-dist_ja_JP.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_ja_JP.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg
 ja_JP.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat

@@ -19,7 +19,7 @@
 
 
 km_KH.utf8dir = @CUBRID_LOCALEDIR@/km_KH.utf8
-dist_km_KH.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+dist_km_KH.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg
 km_KH.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat
