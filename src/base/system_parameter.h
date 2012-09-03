@@ -344,6 +344,8 @@ extern void prm_set_integer_list_value (PARAM_ID prm_id, int *value);
 extern void prm_set_size_value (PARAM_ID prm_id, UINT64 value);
 
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
+extern int sysprm_load_and_init_client (const char *db_name,
+					const char *conf_file);
 extern int sysprm_reload_and_init (const char *db_name,
 				   const char *conf_file);
 extern void sysprm_final (void);

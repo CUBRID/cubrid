@@ -357,7 +357,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (client_credential->db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init_client (client_credential->db_name, NULL)
+      != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       return ER_BO_CANT_LOAD_SYSPRM;
@@ -750,7 +751,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (client_credential->db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init_client (client_credential->db_name, NULL)
+      != NO_ERROR)
     {
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);

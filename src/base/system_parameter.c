@@ -2876,15 +2876,18 @@ static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 static int prm_print_session_prm (const SESSION_PARAM * sprm, char *buf,
 				  size_t len, PRM_PRINT_MODE print_mode);
 static int sysprm_load_and_init_internal (const char *db_name,
-					  const char *conf_file, bool reload);
+					  const char *conf_file, bool reload,
+					  bool check_intl_param);
 static void prm_check_environment (void);
 static int prm_check_parameters (void);
 static int prm_load_by_section (INI_TABLE * ini, const char *section,
 				bool ignore_section, bool reload,
-				const char *file, bool ha);
+				const char *file, bool ha,
+				bool check_intl_param);
 static int prm_read_and_parse_ini_file (const char *prm_file_name,
 					const char *db_name,
-					const bool reload, const bool ha);
+					const bool reload, const bool ha,
+					const bool check_intl_param);
 static void prm_report_bad_entry (const char *key, int line, int err,
 				  const char *where);
 static int prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag);
@@ -3050,12 +3053,13 @@ sysprm_set_er_log_file (const char *db_name)
  *   db_name(in): database name
  *   conf_file(in): config file
  *   reload(in):
+ *   check_intl_param(in):
  *
  * Note: Parameters would be tuned and forced according to the internal rules.
  */
 static int
 sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
-			       bool reload)
+			       bool reload, bool check_intl_param)
 {
   char *base_db_name;
   char file_being_dealt_with[PATH_MAX];
@@ -3152,7 +3156,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
   else
     {
       r = prm_read_and_parse_ini_file (file_being_dealt_with,
-				       base_db_name, reload, HA_IGNORE);
+				       base_db_name, reload, HA_IGNORE,
+				       check_intl_param);
     }
 
   if (r != NO_ERROR)
@@ -3171,7 +3176,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
 	  r = prm_read_and_parse_ini_file (file_being_dealt_with,
-					   base_db_name, reload, HA_IGNORE);
+					   base_db_name, reload, HA_IGNORE,
+					   check_intl_param);
 	}
     }
 #endif /* !SERVER_MODE */
@@ -3197,7 +3203,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
 	  r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL,
-					   reload, HA_READ);
+					   reload, HA_READ, check_intl_param);
 	}
     }
 
@@ -3281,7 +3287,21 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 int
 sysprm_load_and_init (const char *db_name, const char *conf_file)
 {
-  return sysprm_load_and_init_internal (db_name, conf_file, false);
+  return sysprm_load_and_init_internal (db_name, conf_file, false, false);
+}
+
+/*
+ * sysprm_load_and_init_client - Read system parameters from the init files
+ *				 (client version)
+ *   return: NO_ERROR or ER_FAILED
+ *   db_name(in): database name
+ *   conf_file(in): config file
+ *
+ */
+int
+sysprm_load_and_init_client (const char *db_name, const char *conf_file)
+{
+  return sysprm_load_and_init_internal (db_name, conf_file, false, true);
 }
 
 /*
@@ -3294,7 +3314,7 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
 int
 sysprm_reload_and_init (const char *db_name, const char *conf_file)
 {
-  return sysprm_load_and_init_internal (db_name, conf_file, true);
+  return sysprm_load_and_init_internal (db_name, conf_file, true, false);
 }
 
 /*
@@ -3305,11 +3325,13 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
  *   ignore_section(in):
  *   reload(in):
  *   file(in):
+ *   ha(in):
+ *   check_intl_param(in):
  */
 static int
 prm_load_by_section (INI_TABLE * ini, const char *section,
 		     bool ignore_section, bool reload, const char *file,
-		     bool ha)
+		     bool ha, bool check_intl_param)
 {
   int i, error;
   int sec_len;
@@ -3371,6 +3393,23 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 				PRM_ERR_DEPRICATED, file);
 	}
 
+      if (check_intl_param)
+	{
+	  if (strcasecmp (PRM_NAME_INTL_DATE_LANG, prm->name) == 0
+	      || strcasecmp (PRM_NAME_INTL_NUMBER_LANG, prm->name) == 0)
+	    {
+	      INTL_LANG dummy;
+	      if (value == NULL
+		  || lang_get_lang_id_from_name (value, &dummy) != 0)
+		{
+		  error = PRM_ERR_BAD_VALUE;
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error,
+					file);
+		  return error;
+		}
+	    }
+	}
+
       error = prm_set (prm, value, true);
       if (error != NO_ERROR)
 	{
@@ -3388,10 +3427,13 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
  *   prm_file_name(in):
  *   db_name(in):
  *   reload(in):
+ *   ha(in):
+ *   check_intl_param(in):
  */
 static int
 prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
-			     const bool reload, const bool ha)
+			     const bool reload, const bool ha,
+			     const bool check_intl_param)
 {
   INI_TABLE *ini;
   char sec_name[LINE_MAX];
@@ -3410,31 +3452,34 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
     }
 
   error =
-    prm_load_by_section (ini, "common", true, reload, prm_file_name, ha);
+    prm_load_by_section (ini, "common", true, reload, prm_file_name, ha,
+			 check_intl_param);
   if (error == NO_ERROR && !ha && db_name != NULL && *db_name != '\0')
     {
       snprintf (sec_name, LINE_MAX, "@%s", db_name);
       error =
-	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
+	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha,
+			     check_intl_param);
     }
   if (error == NO_ERROR && !ha)
     {
       error =
 	prm_load_by_section (ini, "service", false, reload, prm_file_name,
-			     ha);
+			     ha, check_intl_param);
     }
   if (error == NO_ERROR && ha && PRM_HA_MODE != HA_MODE_OFF
       && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
       error =
-	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
+	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha,
+			     check_intl_param);
       if (error == NO_ERROR && getlogin_r (user_name, MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
 	  error =
 	    prm_load_by_section (ini, sec_name, true, reload, prm_file_name,
-				 ha);
+				 ha, check_intl_param);
 	}
     }
 
@@ -3741,6 +3786,19 @@ prm_change (const char *data, bool check)
       else
 	{
 	  return PRM_ERR_CANNOT_CHANGE;
+	}
+      if (check)
+	{
+	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0
+	      || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
+	    {
+	      INTL_LANG dummy;
+
+	      if (lang_get_lang_id_from_name (value, &dummy) != 0)
+		{
+		  return PRM_ERR_BAD_VALUE;
+		}
+	    }
 	}
 #if defined (SA_MODE)
       err = prm_set (prm, value, true);
@@ -4824,16 +4882,6 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
     {
       char *val, **valp;
 
-      if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0
-	  || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
-	{
-	  INTL_LANG dummy;
-
-	  if (lang_get_lang_id_from_name (value, &dummy) != 0)
-	    {
-	      return PRM_ERR_BAD_VALUE;
-	    }
-	}
       if (PRM_IS_ALLOCATED (prm->flag))
 	{
 	  char *str = PRM_GET_STRING (prm->value);
