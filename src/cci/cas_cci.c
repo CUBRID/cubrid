@@ -430,7 +430,7 @@ static int
 cci_connect_with_url_internal (char *url, char *user, char *pass,
 			       T_CCI_ERROR * err_buf)
 {
-  char *token[MAX_URL_MATCH_COUNT];
+  char *token[MAX_URL_MATCH_COUNT] = { NULL };
   int err_code = CCI_ER_NO_ERROR;
   unsigned i;
 
@@ -438,7 +438,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   char *end = NULL;
   char *host, *dbname;
   int port;
-  int conn_id;
+  int conn_id = -1;
   bool use_url = false;
   T_CON_HANDLE *conn = NULL;
 
