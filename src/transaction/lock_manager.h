@@ -43,19 +43,26 @@
 #endif /* SERVER_MODE */
 #include "thread.h"
 
-#define LK_GRANTED                           1
-#define LK_NOTGRANTED                        2
-#define LK_NOTGRANTED_DUE_ABORTED            3
-#define LK_NOTGRANTED_DUE_TIMEOUT            4
-#define LK_NOTGRANTED_DUE_ERROR              5
-#define LK_GRANTED_PUSHINSET_LOCKONE         6
-#define LK_GRANTED_PUSHINSET_RELOCKALL       7
+enum
+{
+  LK_GRANTED = 1,
+  LK_NOTGRANTED = 2,
+  LK_NOTGRANTED_DUE_ABORTED = 3,
+  LK_NOTGRANTED_DUE_TIMEOUT = 4,
+  LK_NOTGRANTED_DUE_ERROR = 5,
+  LK_GRANTED_PUSHINSET_LOCKONE = 6,
+  LK_GRANTED_PUSHINSET_RELOCKALL = 7
+};
 
-#define LK_INFINITE_WAIT   (-1)	/* Value to wait forever                   */
-#define LK_FORCE_ZERO_WAIT (-2)	/* Value to force a timeout without setting
-				 * errors */
-#define LK_ZERO_WAIT       0	/* Value to timeout immediately.. not wait */
-
+enum
+{
+/* Value to timeout immediately.. not wait */
+  LK_ZERO_WAIT = 0,
+/* Value to wait forever */
+  LK_INFINITE_WAIT = -1,
+/* Value to force a timeout without setting errors */
+  LK_FORCE_ZERO_WAIT = -2
+};
 
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };

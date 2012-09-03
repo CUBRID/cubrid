@@ -37,37 +37,59 @@
 #define COPY          false	/* Don't peek, but copy a slotted record */
 #define DONT_PEEK     COPY	/* Same as copy */
 
-#define ANCHORED                  1
-#define ANCHORED_DONT_REUSE_SLOTS 2
-#define UNANCHORED_ANY_SEQUENCE   3
-#define UNANCHORED_KEEP_SEQUENCE  4
+enum
+{
+  ANCHORED = 1,
+  ANCHORED_DONT_REUSE_SLOTS = 2,
+  UNANCHORED_ANY_SEQUENCE = 3,
+  UNANCHORED_KEEP_SEQUENCE = 4
+};
 
-#define REC_UNKNOWN            0	/* Unknown record type */
-#define REC_ASSIGN_ADDRESS     1	/* Record without content,
-					   just the address */
-#define REC_HOME               2	/* Home of record */
-#define REC_NEWHOME            3	/* No the original home of record.
-					   part of relocation process */
-#define REC_RELOCATION         4	/* Record describe new home of record */
-#define REC_BIGONE             5	/* Record describe location of big record */
-#define REC_MARKDELETED        6	/* Slot does not describe any record.
-					   A record was stored in this slot.
-					   Slot cannot be reused. */
-#define REC_DELETED_WILL_REUSE 7	/* Slot does not describe any record.
-					   A record was stored in this slot.
-					   Slot will be reused. */
-#define REC_4BIT_USED_TYPE_MAX 7	/* current used 4bit record type max */
+enum
+{
+/* Unknown record type */
+  REC_UNKNOWN = 0,
+
+/* Record without content, just the address */
+  REC_ASSIGN_ADDRESS = 1,
+
+/* Home of record */
+  REC_HOME = 2,
+
+/* No the original home of record.  part of relocation process */
+  REC_NEWHOME = 3,
+
+/* Record describe new home of record */
+  REC_RELOCATION = 4,
+
+/* Record describe location of big record */
+  REC_BIGONE = 5,
+
+/* Slot does not describe any record.
+ * A record was stored in this slot.  Slot cannot be reused. 
+ */
+  REC_MARKDELETED = 6,
+
+/* Slot does not describe any record.
+ * A record was stored in this slot.  Slot will be reused. 
+ */
+  REC_DELETED_WILL_REUSE = 7,
+
+/* current used 4bit record type max */
+  REC_4BIT_USED_TYPE_MAX = 7,
 
 /* unused reserved record type */
-#define REC_RESERVED_TYPE_08   8
-#define REC_RESERVED_TYPE_09   9
-#define REC_RESERVED_TYPE_10   10
-#define REC_RESERVED_TYPE_11   11
-#define REC_RESERVED_TYPE_12   12
-#define REC_RESERVED_TYPE_13   13
-#define REC_RESERVED_TYPE_14   14
-#define REC_RESERVED_TYPE_15   15
-#define REC_4BIT_TYPE_MAX      15	/* 4bit record type max */
+  REC_RESERVED_TYPE_08 = 8,
+  REC_RESERVED_TYPE_09 = 9,
+  REC_RESERVED_TYPE_10 = 10,
+  REC_RESERVED_TYPE_11 = 11,
+  REC_RESERVED_TYPE_12 = 12,
+  REC_RESERVED_TYPE_13 = 13,
+  REC_RESERVED_TYPE_14 = 14,
+  REC_RESERVED_TYPE_15 = 15,
+/* 4bit record type max */
+  REC_4BIT_TYPE_MAX = 15
+};
 
 /* Some platform like windows used their own SP_ERROR. */
 #ifdef SP_ERROR
