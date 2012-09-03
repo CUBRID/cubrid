@@ -1250,22 +1250,10 @@
 		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>다른 버전의 CUBRID가 각각 다른 기기에서 이용될 경우, \nCUBRID 서버 TOKEN 은 CUBRID 클라이언트 TOKEN 이상에서만 호환됩니다.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1914636370</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1033</td><td>Compatibility information</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1042</td><td>호환성 정보</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0023</td><td>1033</td><td>Additional Options</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0023</td><td>1042</td><td>바로가기 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0024</td><td>1033</td><td>Select Additional Options to create shortcuts.</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0024</td><td>1042</td><td>바로 가기 아이콘을 생성하시려면 다음 옵션을 선택하시기 바랍니다.</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0025</td><td>1033</td><td>Create Desktop Shortcut</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0025</td><td>1042</td><td>데스크탑 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0026</td><td>1033</td><td>Create Quick Launch Shortcut</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0026</td><td>1042</td><td>빠른 실행 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0027</td><td>1033</td><td>Create Start Menu Shortcut</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0027</td><td>1042</td><td>시작 메뉴 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0028</td><td>1033</td><td>Setup is starting</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0028</td><td>1042</td><td>설치를 시작합니다</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0029</td><td>1033</td><td>Destination Directory : </td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0029</td><td>1042</td><td>대상 디렉토리 : </td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0030</td><td>1033</td><td>Shortcuts : </td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0030</td><td>1042</td><td>바로가기 아이콘 :</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0031</td><td>1033</td><td>Configuration files</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0031</td><td>1042</td><td>설정 파일 유지</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0032</td><td>1033</td><td/><td>0</td><td/><td>-1323328437</td></row>

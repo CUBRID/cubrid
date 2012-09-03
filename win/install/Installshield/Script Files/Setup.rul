@@ -51,8 +51,6 @@ prototype TaskKill(STRING);
 
 // your global variables
 STRING  nSetupType;
-STRING  szTextDeskTopIcon, szTextQuickLaunchIcon, szTextStartMenuIcon;
-NUMBER  nvCheckDeskTopIcon, nvCheckQuickLaunchIcon, nvCheckStartMenuIcon;
 STRING  szVersionName, szVersionName1, szVersionName2;
 LIST    szVersionList;
 BOOL    cp_old_dbtxt;
@@ -225,9 +223,6 @@ begin
 	// Set Initial value
 
 	UNINSTALL_STRING = UNINSTALL_STRING + " CUB_UNINSTALL";
-	nvCheckDeskTopIcon = TRUE;
-	nvCheckQuickLaunchIcon = FALSE;
-	nvCheckStartMenuIcon = TRUE;
 
     szVersionName = @IFX_PRODUCT_VERSION;    
     // 현재 System의 Code page를 가져온다.
@@ -344,28 +339,6 @@ Dlg_SetupType:
    		goto Dlg_SetupType;
    	endif;
 
-Dlg_AskShortcutPath:
-	szTitle = @SCRIPT_STR_0023;
-	szMsg = @SCRIPT_STR_0024;
-	szTextDeskTopIcon = @SCRIPT_STR_0025;
-	szTextQuickLaunchIcon = @SCRIPT_STR_0026;
-	szTextStartMenuIcon = @SCRIPT_STR_0027;
-	
-	SetDialogTitle(DLG_ASK_OPTIONS, szTitle);
-
- 	nResult = AskOptions (NONEXCLUSIVE, szMsg,
-						szTextDeskTopIcon, nvCheckDeskTopIcon,
-						szTextQuickLaunchIcon, nvCheckQuickLaunchIcon,
-						szTextStartMenuIcon, nvCheckStartMenuIcon);
-
-	if (nResult = BACK) then
-		if (SYSINFO.WIN9X.bWin9X) then
-			goto Dlg_SdLicense; 
-		else
-			goto Dlg_SetupType;
-		endif;
-	endif;
-
 Dlg_SdStartCopy:
 	if ( nvCodePage = 949 ) then
 	   	szTitle = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0028;
@@ -378,24 +351,10 @@ Dlg_SdStartCopy:
 
 	ListAddString(listStartCopy, @SCRIPT_STR_0029 + TARGETDIR, AFTER);
 	ListAddString(listStartCopy, szSummaryMsg, AFTER);
-	ListAddString(listStartCopy, @SCRIPT_STR_0030, AFTER);
-
-	// Add short cut icon information that will be added.
-	if (nvCheckDeskTopIcon = TRUE) then
-		ListAddString(listStartCopy, "   " + @SCRIPT_STR_0025, AFTER);
-	endif;
-			
-	if (nvCheckQuickLaunchIcon = TRUE) then
-		ListAddString(listStartCopy, "   " + @SCRIPT_STR_0026, AFTER);
-	endif;
-			
-	if (nvCheckStartMenuIcon = TRUE) then
-		ListAddString(listStartCopy, "   " + @SCRIPT_STR_0027, AFTER);
-	endif;	  
 
     nResult = SdStartCopy( szTitle, "", listStartCopy );
 
-    if (nResult = BACK) goto Dlg_AskShortcutPath;
+    if (nResult = BACK) goto Dlg_SetupType;
   
     ListDestroy(listStartCopy);
     if (@CUBRID_ARCH = "x64") then
@@ -462,10 +421,8 @@ begin
     RegDBSetItem(REGDB_APPPATH, szAppPath);
     RegDBSetItem(REGDB_APPPATH_DEFAULT, szAppPath ^ @IFX_PRODUCT_KEY);
     if (!MAINTENANCE) then
-        if (nvCheckStartMenuIcon = TRUE) then
-            szAppPath = UNINSTALL_STRING;
-            AddFolderIcon( szProgramFolder, "Uninstall CUBRID", szAppPath, "", "", 0, "", REPLACE);
-        endif;
+        szAppPath = UNINSTALL_STRING;
+        AddFolderIcon( szProgramFolder, "Uninstall CUBRID", szAppPath, "", "", 0, "", REPLACE);
     endif;
 end;
     
@@ -574,27 +531,25 @@ Dlg_Completed:
 	
 	Delay(1);
 		
-	if (nvCheckStartMenuIcon = TRUE) then
 		nResult = CreateShellObjects( "" );
 
-		szDocTempFolder = "CUBRID";
-		CreateProgramFolder(szDocTempFolder);     
+	szDocTempFolder = "CUBRID";
+	CreateProgramFolder(szDocTempFolder);     
 		
-		if ( nvCodePage = 949 ) then
-            szDocCUBRIDManual = "http://www.cubrid.com";
-        else
-            szDocCUBRIDManual = "http://www.cubrid.org";
-        endif;
-
-        LongPathToQuote( szDocCUBRIDManual, TRUE); 
-        AddFolderIcon(szDocTempFolder, "CUBRID Website", "rundll32.exe url.dll,FileProtocolHandler "+ szDocCUBRIDManual,"" , "", 0, "", NULL);
-
-		if (nSetupType = "ALL") then
-			szServiceTray = TARGETDIR^"\\bin\\CUBRID_Service_Tray.exe";
-			LongPathToQuote( szServiceTray, TRUE);
-			AddFolderIcon(szDocTempFolder, "CUBRID Service Tray", szServiceTray, TARGETDIR^"\\bin" , "", 0, "", REPLACE );
-		endif;
+	if ( nvCodePage = 949 ) then
+       szDocCUBRIDManual = "http://www.cubrid.com";
+    else
+       szDocCUBRIDManual = "http://www.cubrid.org";
     endif;
+
+    LongPathToQuote( szDocCUBRIDManual, TRUE); 
+    AddFolderIcon(szDocTempFolder, "CUBRID Website", "rundll32.exe url.dll,FileProtocolHandler "+ szDocCUBRIDManual,"" , "", 0, "", NULL);
+
+	if (nSetupType = "ALL") then
+		szServiceTray = TARGETDIR^"\\bin\\CUBRID_Service_Tray.exe";
+		LongPathToQuote( szServiceTray, TRUE);
+		AddFolderIcon(szDocTempFolder, "CUBRID Service Tray", szServiceTray, TARGETDIR^"\\bin" , "", 0, "", REPLACE );
+	endif;
     
 	Delay(1);
 	
