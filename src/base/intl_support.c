@@ -3820,7 +3820,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
  *    - 2 bytes: A1 - FE , 00 - FF
  *    - 3 bytes: 8F	 , 00 - FF , 00 - FF
  */
-static bool
+bool
 intl_check_euckr (const unsigned char *buf, int size, char **pos)
 {
   const unsigned char *p = buf;

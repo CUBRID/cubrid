@@ -1155,10 +1155,12 @@ lang_get_codeset_name (int codeset_id)
       return "utf8";
     case INTL_CODESET_ISO88591:
       return "iso88591";
+    case INTL_CODESET_KSC5601_EUC:
+      return "euckr";
     }
 
   /* codeset_id is propagated downwards from the grammar, so it is either
-   * INTL_CODESET_UTF8 or INTL_CODESET_ISO88591 */
+   * INTL_CODESET_UTF8, INTL_CODESET_KSC5601_EUC or INTL_CODESET_ISO88591 */
   assert (false);
 
   return "";

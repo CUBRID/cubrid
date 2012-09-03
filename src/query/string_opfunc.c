@@ -1524,7 +1524,8 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
   assert (DB_VALUE_DOMAIN_TYPE (dbval2) == DB_TYPE_INTEGER);
 
   codeset = DB_GET_INTEGER (dbval2);
-  if (codeset != INTL_CODESET_UTF8 && codeset != INTL_CODESET_ISO88591)
+  if (codeset != INTL_CODESET_UTF8 && codeset != INTL_CODESET_ISO88591
+      && codeset != INTL_CODESET_KSC5601_EUC)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       err_status = ER_OBJ_INVALID_ARGUMENTS;
@@ -1609,9 +1610,12 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
     }
   num_as_bytes[num_byte_count] = '\0';
 
-  if (codeset == INTL_CODESET_UTF8 &&
-      intl_check_utf8 ((const unsigned char *) num_as_bytes,
-		       num_byte_count, &invalid_pos) != 0)
+  if ((codeset == INTL_CODESET_UTF8 &&
+       intl_check_utf8 ((const unsigned char *) num_as_bytes,
+			num_byte_count, &invalid_pos) != 0)
+      || (codeset == INTL_CODESET_KSC5601_EUC &&
+	  intl_check_euckr ((const unsigned char *) num_as_bytes,
+			    num_byte_count, &invalid_pos) != 0))
     {
       DB_MAKE_NULL (res);
       db_private_free (NULL, num_as_bytes);
