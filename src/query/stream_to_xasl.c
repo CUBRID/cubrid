@@ -2687,6 +2687,22 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      stx_build_list_proc->push_list_id = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->push_list_id =
+	stx_restore_list_id (thread_p,
+			     &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_build_list_proc->push_list_id == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       stx_build_list_proc->g_outptr_list = NULL;
     }
   else

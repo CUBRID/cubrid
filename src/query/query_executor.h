@@ -335,6 +335,7 @@ struct buildlist_proc_node
   XASL_NODE *eptr_list;		/* having subquery list */
   SORT_LIST *groupby_list;	/* sorting fields */
   SORT_LIST *after_groupby_list;	/* sorting fields */
+  QFILE_LIST_ID *push_list_id;	/* file descriptor for push list */
   OUTPTR_LIST *g_outptr_list;	/* group_by output ptr list */
   REGU_VARIABLE_LIST g_regu_list;	/* group_by regu. list */
   VAL_LIST *g_val_list;		/* group_by value list */

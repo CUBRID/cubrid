@@ -13107,7 +13107,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (statement->node_type == PT_SELECT
 	  && PT_SELECT_INFO_IS_FLAGED (statement,
-				       PT_SELECT_INFO_MULTI_UPATE_AGG))
+				       PT_SELECT_INFO_MULTI_UPDATE_AGG))
 	{
 	  XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
 	}
@@ -13309,7 +13309,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (xasl && (err == NO_ERROR) && !pt_has_error (parser))
 	{
 	  if (PT_SELECT_INFO_IS_FLAGED (statement,
-					PT_SELECT_INFO_MULTI_UPATE_AGG))
+					PT_SELECT_INFO_MULTI_UPDATE_AGG))
 	    {
 	      XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
 	    }
@@ -14386,6 +14386,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE **links = NULL;
   PT_NODE *hint_arg;
   QUERY_ID ins_query_id;
+  QUERY_ID upd_query_id;
+  QUERY_ID save_query_id;
   int no_vals, no_consts;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
@@ -14482,10 +14484,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto exit;
 	    }
 
-	  upd_select_stmt =
-	    pt_to_merge_upd_del_query (parser, select_values,
-				       &statement->info.merge,
-				       PT_COMPOSITE_LOCKING_UPDATE);
+	  upd_select_stmt = pt_to_merge_update_query (parser, select_values,
+						      &statement->info.merge);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.
@@ -14493,26 +14493,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
 	  if (upd_select_stmt == NULL)
-	    {
-	      err = er_errid ();
-	      if (err == NO_ERROR)
-		{
-		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-		  err = er_errid ();
-		}
-	      goto exit;
-	    }
-	}
-
-      if (statement->info.merge.update.has_delete)
-	{
-	  /* make the SELECT statement for OID list to be deleted */
-	  del_select_stmt =
-	    pt_to_merge_upd_del_query (parser, NULL, &statement->info.merge,
-				       PT_COMPOSITE_LOCKING_DELETE);
-	  del_select_stmt = mq_translate (parser, del_select_stmt);
-	  if (del_select_stmt == NULL)
 	    {
 	      err = er_errid ();
 	      if (err == NO_ERROR)
@@ -14582,7 +14562,14 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto exit;
 	    }
 
+	  /* enable authorization checking during methods in queries */
+	  AU_ENABLE (parser->au_save);
+	  save_query_id = parser->query_id;
+	  parser->query_id = -1;
 	  err = do_select (parser, ins_select_stmt);
+	  ins_query_id = parser->query_id;
+	  parser->query_id = save_query_id;
+	  AU_DISABLE (parser->au_save);
 
 	  if (err < NO_ERROR)
 	    {
@@ -14597,7 +14584,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      goto exit;
 	    }
-	  ins_query_id = parser->query_id;
 	}
     }
 
@@ -14625,7 +14611,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
+	  save_query_id = parser->query_id;
+	  parser->query_id = -1;
 	  err = do_select (parser, upd_select_stmt);
+	  upd_query_id = parser->query_id;
+	  parser->query_id = save_query_id;
 	  AU_DISABLE (parser->au_save);
 	  if (err < NO_ERROR)
 	    {
@@ -14662,6 +14652,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* do update part */
   if (statement->info.merge.update.assignment && !insert_only)
     {
+      save_query_id = parser->query_id;
+      parser->query_id = upd_query_id;
       if (statement->info.merge.update.do_class_attrs)
 	{
 	  /* update class attributes */
@@ -14671,20 +14663,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* OID list update */
 	  err = update_objs_for_list_file (parser, list_id, statement);
-	  /* free returned QFILE_LIST_ID */
-	  if (list_id)
-	    {
-	      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
-		{
-		  err = sm_flush_and_decache_objects (class_obj, true);
-		}
-	      regu_free_listid (list_id);
-	    }
-	  if (err >= NO_ERROR)
-	    {
-	      pt_end_query (parser);
-	    }
+	  /* keep update OID list for delete part */
 	}
+      parser->query_id = save_query_id;
 
       /* set result count */
       if (err >= NO_ERROR)
@@ -14693,20 +14674,44 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* do delete part */
-      if (statement->info.merge.update.has_delete)
+      if (statement->info.merge.update.has_delete && err >= NO_ERROR)
 	{
+	  /* make the SELECT statement for OID list to be deleted */
+	  del_select_stmt =
+	    pt_to_merge_delete_query (parser, &statement->info.merge, list_id);
+	  del_select_stmt = mq_translate (parser, del_select_stmt);
+	  if (del_select_stmt == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		  err = er_errid ();
+		}
+	      goto exit;
+	    }
 	  /* flush necessary objects before execute */
 	  err = sm_flush_objects (class_obj);
 	  if (err != NO_ERROR)
 	    {
 	      goto exit;
 	    }
-
 	  /* enable authorization checking during methods in queries */
+	  save_query_id = parser->query_id;
+	  parser->query_id = -1;
 	  AU_ENABLE (parser->au_save);
 	  err = do_select (parser, del_select_stmt);
 	  AU_DISABLE (parser->au_save);
-
+	  /* free list file resulted from update */
+	  if (list_id)
+	    {
+	      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		{
+		  err = sm_flush_and_decache_objects (class_obj, true);
+		}
+	      regu_free_listid (list_id);
+	    }
 	  if (err >= NO_ERROR)
 	    {
 	      list_id = (QFILE_LIST_ID *) del_select_stmt->etc;
@@ -14722,11 +14727,18 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  regu_free_listid (list_id);
 		}
+
 	      pt_end_query (parser);
 	    }
 	  parser_free_tree (parser, del_select_stmt);
 	  del_select_stmt = NULL;
+	  parser->query_id = save_query_id;
 	}
+
+      save_query_id = parser->query_id;
+      parser->query_id = upd_query_id;
+      pt_end_query (parser);
+      parser->query_id = save_query_id;
     }
 
   /* do insert part */
@@ -14766,6 +14778,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       parser_free_tree (parser, ins_select_stmt);
       ins_select_stmt = NULL;
+
+      /* pt_end_query() already called by insert_subquery_results() */
     }
 
   if (old_wait_msecs >= -1)
@@ -15173,10 +15187,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto cleanup;
 	    }
 
-	  select_statement =
-	    pt_to_merge_upd_del_query (parser, select_values,
-				       &statement->info.merge,
-				       PT_COMPOSITE_LOCKING_UPDATE);
+	  select_statement = pt_to_merge_update_query (parser, select_values,
+						       &statement->info.merge);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.
@@ -15249,6 +15261,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   PT_NODE *ins_select_stmt = NULL, *del_select_stmt = NULL, *hint_arg;
   QUERY_ID ins_query_id;
+  QUERY_ID save_query_id;
   bool insert_only =
     (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
 
@@ -15390,8 +15403,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  && (values_list = statement->info.merge.insert.value_clauses)
 	  != NULL)
 	{
-	  QUERY_ID save_query_id;
-
 	  ins_select_stmt =
 	    pt_to_merge_insert_query (parser,
 				      values_list->info.node_list.list,
@@ -15473,28 +15484,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      result += err;
 	    }
 
-	  if (!statement->info.merge.update.do_class_attrs)
-	    {
-	      /* free returned QFILE_LIST_ID */
-	      if (list_id)
-		{
-		  if (err >= NO_ERROR && list_id->tuple_cnt > 0)
-		    {
-		      err = sm_flush_and_decache_objects (class_obj, true);
-		    }
-		  regu_free_listid (list_id);
-		}
-	      /* end the query; reset query_id and call qmgr_end_query() */
-	      pt_end_query (parser);
-	    }
-
 	  /* delete part */
 	  if (err >= NO_ERROR && statement->info.merge.update.has_delete)
 	    {
 	      del_select_stmt =
-		pt_to_merge_upd_del_query (parser, NULL,
-					   &statement->info.merge,
-					   PT_COMPOSITE_LOCKING_DELETE);
+		pt_to_merge_delete_query (parser, &statement->info.merge,
+					  list_id);
 	      del_select_stmt = mq_translate (parser, del_select_stmt);
 	      if (del_select_stmt == NULL)
 		{
@@ -15511,32 +15506,50 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 
 	      AU_SAVE_AND_ENABLE (au_save);
+	      save_query_id = parser->query_id;
+	      parser->query_id = -1;
 	      err = do_select (parser, del_select_stmt);
 	      AU_RESTORE (au_save);
 
 	      if (err >= NO_ERROR)
 		{
-		  list_id = (QFILE_LIST_ID *) del_select_stmt->etc;
-		  if (list_id)
+		  QFILE_LIST_ID *del_list_id =
+		    (QFILE_LIST_ID *) del_select_stmt->etc;
+		  if (del_list_id)
 		    {
 		      /* delete each oid */
 		      AU_SAVE_AND_DISABLE (au_save);
-		      err = delete_list_by_oids (parser, list_id);
+		      err = delete_list_by_oids (parser, del_list_id);
 		      AU_RESTORE (au_save);
 		      /* don't add the number of deleted tuples, they are
 			 a subset of the updated ones */
-		      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		      if (err >= NO_ERROR && del_list_id->tuple_cnt > 0)
 			{
 			  err =
 			    sm_flush_and_decache_objects (class_obj, true);
 			}
-		      regu_free_listid (list_id);
+		      regu_free_listid (del_list_id);
 		    }
 		  pt_end_query (parser);
 		}
 	      parser_free_tree (parser, del_select_stmt);
 	      del_select_stmt = NULL;
+	      parser->query_id = save_query_id;
 	    }
+
+	  if (!statement->info.merge.update.do_class_attrs)
+	    {
+	      /* free returned QFILE_LIST_ID */
+	      if (list_id)
+		{
+		  if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		    {
+		      err = sm_flush_and_decache_objects (class_obj, true);
+		    }
+		  regu_free_listid (list_id);
+		}
+	    }
+	  pt_end_query (parser);
 	}
 
       /* insert part */

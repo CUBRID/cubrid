@@ -225,11 +225,12 @@ extern XASL_NODE *parser_generate_do_stmt_xasl (PARSER_CONTEXT * p,
 						PT_NODE * node);
 extern FUNC_PRED *pt_to_func_pred (PARSER_CONTEXT * parser,
 				   PT_NODE * spec, PT_NODE * expr);
-extern PT_NODE *pt_to_merge_upd_del_query (PARSER_CONTEXT * parser,
-					   PT_NODE * select_list,
-					   PT_MERGE_INFO * info,
-					   PT_COMPOSITE_LOCKING
-					   composite_locking);
+extern PT_NODE *pt_to_merge_update_query (PARSER_CONTEXT * parser,
+					  PT_NODE * select_list,
+					  PT_MERGE_INFO * info);
+extern PT_NODE *pt_to_merge_delete_query (PARSER_CONTEXT * parser,
+					  PT_MERGE_INFO * info,
+					  QFILE_LIST_ID * updated_oids);
 extern PT_NODE *pt_to_merge_insert_query (PARSER_CONTEXT * parser,
 					  PT_NODE * select_list,
 					  PT_MERGE_INFO * info);

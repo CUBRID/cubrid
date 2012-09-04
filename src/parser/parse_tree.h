@@ -2241,6 +2241,7 @@ struct pt_select_info
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
   PT_NODE *check_where;		/* with check option predicate */
+  QFILE_LIST_ID *push_list;	/* list file descriptor pushed to server*/
   PT_HINT_ENUM hint;
   int flavor;
   short flag;			/* flags */
@@ -2253,12 +2254,15 @@ struct pt_select_info
 #define PT_SELECT_INFO_DUMMY		4	/* is dummy (i.e., 'SELECT * FROM x') ? */
 #define PT_SELECT_INFO_HAS_AGG		8	/* has any type of aggregation? */
 #define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
-#define PT_SELECT_INFO_MULTI_UPATE_AGG	32	/* is query for multi-table update
+#define PT_SELECT_INFO_MULTI_UPDATE_AGG	32	/* is query for multi-table update
 						 * using aggregate */
 #define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
 #define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
 #define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
 #define PT_SELECT_INFO_IS_MERGE_QUERY	512	/* is a query of a merge stmt */
+#define	PT_SELECT_INFO_LIST_PUSHER	1024	/* dummy subquery that pushes a list file
+						 * descriptor to be used at server
+						 * as its own result */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))

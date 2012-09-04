@@ -4663,8 +4663,11 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	}
 
-      mq_push_paths_select (parser, statement,
-			    statement->info.query.q.select.from);
+      if (!PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
+	{
+	  mq_push_paths_select (parser, statement,
+				statement->info.query.q.select.from);
+	}
       break;
 
     default:

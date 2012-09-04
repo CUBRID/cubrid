@@ -548,7 +548,8 @@ static int qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 				     VAL_LIST * vl,
 				     XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK *
-				     composite_lock, int upd_del_cls_cnt);
+				     composite_lock, int upd_del_cls_cnt,
+				     OID * default_cls_oid);
 static QPROC_TPLDESCR_STATUS qexec_generate_tuple_descriptor (THREAD_ENTRY *
 							      thread_p,
 							      QFILE_LIST_ID *
@@ -1104,6 +1105,7 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  *	  locks.
  *   upd_del_cls_cnt(in): number of classes for wich rows will be updated or
  *	  deleted.
+ *   default_cls_oid(in): default class oid
  */
 static int
 qexec_add_composite_lock (THREAD_ENTRY * thread_p,
@@ -1111,7 +1113,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 			  VAL_LIST * vl,
 			  XASL_STATE * xasl_state,
 			  LK_COMPOSITE_LOCK * composite_lock,
-			  int upd_del_cls_cnt)
+			  int upd_del_cls_cnt, OID * default_cls_oid)
 {
   int ret = NO_ERROR, idx;
   DB_VALUE *dbval, element;
@@ -1126,7 +1128,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p,
   idx = 0;
   while (reg_var_list && idx < upd_del_cls_cnt)
     {
-      if (reg_var_list->next == NULL)
+      if (reg_var_list->next == NULL && default_cls_oid == NULL)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -1162,33 +1164,40 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 
 	  COPY_OID (&instance_oid, DB_GET_OID (dbval));
 
-	  ret =
-	    fetch_peek_dbval (thread_p, &reg_var_list->value,
-			      &xasl_state->vd, NULL, NULL, NULL, &dbval);
-	  if (ret != NO_ERROR)
+	  if (default_cls_oid != NULL)
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      COPY_OID (&class_oid, default_cls_oid);
 	    }
-
-	  typ = DB_VALUE_DOMAIN_TYPE (dbval);
-	  if (typ == DB_TYPE_VOBJ)
+	  else
 	    {
-	      /* grab the real oid */
-	      ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	      ret =
+		fetch_peek_dbval (thread_p, &reg_var_list->value,
+				  &xasl_state->vd, NULL, NULL, NULL, &dbval);
 	      if (ret != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      dbval = &element;
+
 	      typ = DB_VALUE_DOMAIN_TYPE (dbval);
-	    }
+	      if (typ == DB_TYPE_VOBJ)
+		{
+		  /* grab the real oid */
+		  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+		  if (ret != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  dbval = &element;
+		  typ = DB_VALUE_DOMAIN_TYPE (dbval);
+		}
 
-	  if (typ != DB_TYPE_OID)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
+	      if (typ != DB_TYPE_OID)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 
-	  COPY_OID (&class_oid, DB_GET_OID (dbval));
+	      COPY_OID (&class_oid, DB_GET_OID (dbval));
+	    }
 
 	  ret =
 	    lock_add_composite_lock (thread_p, composite_lock,
@@ -1200,7 +1209,10 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 	}
 
       idx++;
-      reg_var_list = reg_var_list->next;
+      if (reg_var_list)
+	{
+	  reg_var_list = reg_var_list->next;
+	}
     }
 
   return ret;
@@ -1288,6 +1300,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
+  OID * class_oid = NULL;
   int ret = NO_ERROR;
 
   if ((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
@@ -1295,11 +1308,16 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       if (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
 	{
+	  if (xasl->aptr_list && xasl->aptr_list->type == BUILDLIST_PROC
+	      && xasl->aptr_list->proc.buildlist.push_list_id)
+	    {
+	      class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
+	    }
 	  ret =
 	    qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
 				      xasl->val_list, xasl_state,
 				      &xasl->composite_lock,
-				      xasl->upd_del_class_cnt);
+				      xasl->upd_del_class_cnt, class_oid);
 	  if (ret != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -3470,7 +3488,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	  if (qexec_add_composite_lock
 	      (thread_p, gbstate->g_outptr_list->valptrp, gbstate->g_val_list,
 	       xasl_state, gbstate->composite_lock,
-	       gbstate->upd_del_class_cnt) != NO_ERROR)
+	       gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -12030,6 +12048,19 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       break;
     default:
+
+      /* check for push list query */
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.push_list_id)
+	{
+	  if (qfile_copy_list_id (xasl->list_id,
+				  xasl->proc.buildlist.push_list_id, false)
+	      != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  xasl->status = XASL_SUCCESS;
+	  return NO_ERROR;
+	}
 
       /* click counter check */
       if (xasl->selected_upd_list)
@@ -22769,8 +22800,21 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* execute delete */
   if (error == NO_ERROR && xasl->proc.merge.delete_xasl)
     {
+      QFILE_LIST_ID *save_list_id;
+      XASL_NODE *update_aptr, *delete_aptr;
+
+      update_aptr = xasl->proc.merge.update_xasl->aptr_list;
+      delete_aptr = xasl->proc.merge.delete_xasl->aptr_list->aptr_list;
+
+      save_list_id = delete_aptr->list_id;
+      delete_aptr->list_id = update_aptr->list_id;
+      delete_aptr->status = XASL_SUCCESS;
+
       error = qexec_execute_delete (thread_p, xasl->proc.merge.delete_xasl,
 				    xasl_state);
+
+      delete_aptr->list_id = save_list_id;
+      delete_aptr->status = XASL_CLEARED;
     }
   /* execute insert */
   if (error == NO_ERROR && xasl->proc.merge.insert_xasl)
