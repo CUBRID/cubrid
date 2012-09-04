@@ -860,7 +860,7 @@ are_all_services_running (unsigned int sleep_time)
 
   /* check whether cub_broker is running */
   if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0
-      && !is_broker_running ())
+      && is_broker_running () != 0)
     {
       return false;
     }
@@ -1379,14 +1379,13 @@ process_broker (int command_type, int argc, const char **argv,
     case START:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_BROKER_NAME, PRINT_CMD_START);
-      if (is_broker_running () == NO_ERROR)
+      switch (is_broker_running ())
 	{
+	case 0:
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_BROKER_NAME);
 	  return NO_ERROR;
-	}
-      else
-	{
+	case 1:
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
@@ -1395,9 +1394,8 @@ process_broker (int command_type, int argc, const char **argv,
 		COMMAND_TYPE_START, NULL
 	      };
 
-	      status =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
+				     true, false, NULL);
 #endif
 	    }
 	  else
@@ -1409,6 +1407,10 @@ process_broker (int command_type, int argc, const char **argv,
 	    }
 
 	  print_result (PRINT_BROKER_NAME, status, command_type);
+	  return status;
+	default:
+	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
 	}
       break;
     case STOP:
@@ -1463,8 +1465,9 @@ process_broker (int command_type, int argc, const char **argv,
 
 	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		       PRINT_BROKER_NAME, PRINT_CMD_STATUS);
-	if (is_broker_running ())
+	switch (is_broker_running ())
 	  {
+	  case 0:		/* no error */
 	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
 	    if (args == NULL)
 	      {
@@ -1481,11 +1484,14 @@ process_broker (int command_type, int argc, const char **argv,
 	      proc_execute (UTIL_MONITOR_NAME, args, true, false, NULL);
 
 	    free (args);
-	  }
-	else
-	  {
+	    return status;
+	  case 1:		/* shm_open error */
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_BROKER_NAME);
+	    return NO_ERROR;
+	  default:		/* other error */
+	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	    return ER_GENERIC_ERROR;
 	  }
       }
       break;
