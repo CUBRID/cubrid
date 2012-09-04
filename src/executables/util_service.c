@@ -202,7 +202,7 @@ static void finalize_properties (void);
 static const char *get_property (int property_type);
 static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type, bool process_window_service);
-static int process_server (int command_type, int argc, const char **argv,
+static int process_server (int command_type, int argc, char **argv,
 			   bool show_usage, bool process_window_service);
 static int process_broker (int command_type, int argc, const char **argv,
 			   bool process_window_service);
@@ -221,7 +221,7 @@ static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
 static bool is_server_running (const char *type, const char *server_name,
 			       int pid);
-static bool is_broker_running (void);
+static int is_broker_running (void);
 static bool is_manager_running (unsigned int sleep_time);
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -484,7 +484,7 @@ main (int argc, char *argv[])
       break;
     case SERVER:
       status =
-	process_server (command_type, argc - 3, (const char **) &argv[3],
+	process_server (command_type, argc - 3, &argv[3],
 			true, process_window_service);
       break;
     case BROKER:
@@ -1143,7 +1143,7 @@ is_server_running (const char *type, const char *server_name, int pid)
  * NOTE:
  */
 static int
-process_server (int command_type, int argc, const char **argv,
+process_server (int command_type, int argc, char **argv,
 		bool show_usage, bool process_window_service)
 {
   char buf[4096];
@@ -1351,12 +1351,12 @@ process_server (int command_type, int argc, const char **argv,
  * return:
  *
  */
-static bool
+static int
 is_broker_running (void)
 {
   const char *args[] = { UTIL_MONITOR_NAME, 0 };
   int status = proc_execute (UTIL_MONITOR_NAME, args, true, true, NULL);
-  return status == NO_ERROR ? true : false;
+  return status;
 }
 
 /*
@@ -1379,7 +1379,7 @@ process_broker (int command_type, int argc, const char **argv,
     case START:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_BROKER_NAME, PRINT_CMD_START);
-      if (is_broker_running () == true)
+      if (is_broker_running () == NO_ERROR)
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_BROKER_NAME);
@@ -1414,14 +1414,9 @@ process_broker (int command_type, int argc, const char **argv,
     case STOP:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_BROKER_NAME, PRINT_CMD_STOP);
-      if (is_broker_running () != true)
+      switch (is_broker_running ())
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_BROKER_NAME);
-	  return NO_ERROR;
-	}
-      else
-	{
+	case 0:		/* no error */
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
@@ -1444,6 +1439,14 @@ process_broker (int command_type, int argc, const char **argv,
 	    }
 
 	  print_result (PRINT_BROKER_NAME, status, command_type);
+	  return status;
+	case 1:		/* shm_open error */
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_BROKER_NAME);
+	  return NO_ERROR;
+	default:		/* other error */
+	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
 	}
       break;
     case RESTART:

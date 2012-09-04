@@ -272,13 +272,15 @@ main (int argc, char **argv)
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
       fprintf (stderr, "VERSION %s\n", makestring (BUILD_NUMBER));
-      return 1;
+      return 2;
     }
 
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
 			    0, NULL, NULL, NULL);
   if (err < 0)
-    exit (1);
+    {
+      return 2;
+    }
 
   ut_cd_work_dir ();
 
@@ -289,19 +291,19 @@ main (int argc, char **argv)
     {
       fprintf (stderr, "master shared memory open error[0x%x]\r\n",
 	       master_shm_id);
-      exit (1);
+      return 1;
     }
   if (shm_br->num_broker < 1 || shm_br->num_broker > MAX_BROKER_NUM)
     {
       fprintf (stderr, "broker configuration error\r\n");
-      return 1;
+      return 2;
     }
 
   br_vector = (char *) malloc (shm_br->num_broker);
   if (br_vector == NULL)
     {
       fprintf (stderr, "memory allocation error\r\n");
-      return 1;
+      return 2;
     }
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -311,7 +313,7 @@ main (int argc, char **argv)
   if (get_args (argc, argv, br_vector) < 0)
     {
       free (br_vector);
-      return 1;
+      return 2;
     }
 
   if (refresh_sec > 0 && !tty_mode)
@@ -434,7 +436,7 @@ main (int argc, char **argv)
       endwin ();
     }
 
-  exit (0);
+  return 0;
 }
 
 static void
