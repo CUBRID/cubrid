@@ -347,13 +347,13 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
 
 #if !defined(CUBRID_SHARD)
       for (i = 3; i < argc; i++)
-        {
-          int deferred_close_handle;
-          net_arg_get_int (&deferred_close_handle, argv[i]);
-          cas_log_write (0, true, "close_req_handle srv_h_id %d",
-                         deferred_close_handle);
-          hm_srv_handle_free (deferred_close_handle);
-        }
+	{
+	  int deferred_close_handle;
+	  net_arg_get_int (&deferred_close_handle, argv[i]);
+	  cas_log_write (0, true, "close_req_handle srv_h_id %d",
+			 deferred_close_handle);
+	  hm_srv_handle_free (deferred_close_handle);
+	}
 #endif
     }
   else
@@ -836,8 +836,8 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
 			      ? CCI_NO_BACKSLASH_ESCAPES_TRUE :
 			      CCI_NO_BACKSLASH_ESCAPES_FALSE);
 
-      cas_log_write (0, true, "get_db_parameter no_backslash_escapes %d",
-		     no_backslash_escapes);
+      cas_log_write (0, true, "get_db_parameter no_backslash_escapes %s",
+		     (cas_default_no_backslash_escapes ? "true" : "false"));
 
       net_buf_cp_int (net_buf, 0, NULL);
       net_buf_cp_int (net_buf, no_backslash_escapes, NULL);

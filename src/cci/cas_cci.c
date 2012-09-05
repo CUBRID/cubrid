@@ -1806,16 +1806,24 @@ long
 cci_escape_string (int con_h_id, char *to, const char *from,
 		   unsigned long length, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   unsigned long i;
   char *target_ptr = to;
+  int no_backslash_escapes;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_escape_string %d", con_h_id));
 #endif
 
   err_buf_reset (err_buf);
+
+  if (con_h_id == CCI_NO_BACKSLASH_ESCAPES_FALSE
+      || con_h_id == CCI_NO_BACKSLASH_ESCAPES_TRUE)
+    {
+      no_backslash_escapes = con_h_id;
+      goto convert;
+    }
 
   while (1)
     {
@@ -1865,6 +1873,9 @@ cci_escape_string (int con_h_id, char *to, const char *from,
 	}
     }
 
+  no_backslash_escapes = con_handle->no_backslash_escapes;
+
+convert:
   for (i = 0; i < length; i++)
     {
       if (from[i] == '\'')
@@ -1874,8 +1885,7 @@ cci_escape_string (int con_h_id, char *to, const char *from,
 	  *(target_ptr + 1) = '\'';
 	  target_ptr += 2;
 	}
-      else if (con_handle->no_backslash_escapes ==
-	       CCI_NO_BACKSLASH_ESCAPES_FALSE)
+      else if (no_backslash_escapes == CCI_NO_BACKSLASH_ESCAPES_FALSE)
 	{
 	  if (from[i] == '\0')
 	    {
@@ -1921,7 +1931,11 @@ cci_escape_string (int con_h_id, char *to, const char *from,
   /* terminating NULL char */
   *target_ptr = '\0';
 
-  con_handle->ref_count = 0;
+  if (con_handle != NULL)
+    {
+      con_handle->ref_count = 0;
+    }
+
   return ((long) (target_ptr - to));
 
 error:
