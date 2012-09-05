@@ -329,7 +329,7 @@ END_OF_FILE
 function print_setup_sh ()
 {
 cat << \END_OF_FILE
-#!/bin/sh -f
+#!/bin/sh
 
 PRODUCT_CODE=cubrid
 PRODUCT_NAME=CUBRID
@@ -586,28 +586,16 @@ echo ""
 #endif
 
 #./confcp.sh $target_dir
-targets="$target_dir/conf/cubrid_broker.conf \
-         $target_dir/conf/cm.conf \
-         $target_dir/conf/cm.pass \
-         $target_dir/conf/cmdb.pass \
-         $target_dir/conf/cubrid.conf"
+targets=$(ls $target_dir/conf/*-dist)
 
 for arg in $targets
 do
-    # keep old conf file
-    if [ "$KEEP_OLD_CONF" = "FALSE" ]; then
-      if [ -w $arg ]; then
-          mv -f "$arg" "$arg".bak > /dev/null 2>&1
-      fi
-
-      mv -f "$arg"-dist "$arg" > /dev/null 2>&1
-    else
-      if [ ! -w $arg ]; then
-          cp -f "$arg"-dist "$arg" > /dev/null 2>&1
-      fi
-
-      mv -f "$arg"-dist "$arg"."$version" > /dev/null 2>&1
+    file=${arg%%-dist}
+    # save old conf file
+    if [ -f $file ]; then
+      mv -f "$file" "$file".save > /dev/null 2>&1
     fi
+    mv -f "$file"-dist "$file" > /dev/null 2>&1
 done
 
 cp -f COPYING $CUBRID
@@ -684,13 +672,13 @@ function build_bin_pack ()
   echo "version=\"2008 R$major.$minor\"" > $install_dir/version.sh
   echo "BuildNumber=$build_number" >> $install_dir/version.sh
 
-  conf_files="cubrid.conf cubrid_broker.conf cm.conf cm.pass cmdb.pass"
+  conf_files=$(ls $archive_dir/conf/*.conf $archive_dir/conf/*.pass $archive_dir/conf/*.txt 2> /dev/null)
   for file in $conf_files; do
-    if [ -f $archive_dir/conf/$file ]; then
-      mv -f $archive_dir/conf/$file $archive_dir/conf/$file-dist
+    if [ -f $file ]; then
+      mv -f $file $file-dist
     fi
-    if [ ! -f $archive_dir/conf/$file-dist ]; then
-      print_fatal "Config file [$archive_dir/conf/$file-dist] not found"
+    if [ ! -f $file-dist ]; then
+      print_fatal "Config file [$file-dist] not found"
     fi
   done
 
@@ -700,7 +688,7 @@ function build_bin_pack ()
     tar cf - CUBRID-product.tar.gz CUBRID_Setup.sh COPYING version.sh check_glibc_version >> $package_file)
 
   for file in $conf_files; do
-    mv -f $archive_dir/conf/$file-dist $archive_dir/conf/$file
+    mv -f $file-dist $file
   done
 }
 
