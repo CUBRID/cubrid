@@ -20674,6 +20674,18 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 
 	  if (LANG_IS_COERCIBLE_COLL (arg1_coll))
 	    {
+	      if (LANG_IS_COERCIBLE_COLL (arg2_coll))
+		{
+		  /* always choose iso88591_bin if the other is utf8_bin or
+		   * euckr_bin; conversion to ISO-8859-1 charset is always
+		   * allowed and does not require byte conversion */
+		  if (arg1_coll == LANG_COLL_ISO_BINARY)
+		    {
+		      *common_coll = arg1_coll;
+		      *common_cs = arg1_cs;
+		      return 0;
+		    }
+		}
 	      *common_coll = arg2_coll;
 	      *common_cs = arg2_cs;
 	      return 0;
