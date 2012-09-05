@@ -17167,7 +17167,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 	    parser_copy_tree_list (parser, oid_node);
 	  oid_node->next = save_next;
 	  statement->info.query.q.select.group_by = group_by;
-	  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MULTI_UPDATE_AGG);
+	  PT_SELECT_INFO_SET_FLAG (statement,
+				   PT_SELECT_INFO_MULTI_UPDATE_AGG);
 	}
 
       /* don't allow orderby_for without order_by */
@@ -22104,6 +22105,9 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   statement->info.query.composite_locking = PT_COMPOSITE_LOCKING_UPDATE;
   PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_MERGE_QUERY);
 
+  /* we don't need to keep this query */
+  statement->cannot_prepare = 1;
+
   return statement;
 }
 
@@ -22238,7 +22242,8 @@ pt_to_merge_delete_query (PARSER_CONTEXT * parser, PT_MERGE_INFO * info,
 	}
       else
 	{
-	  where = parser_copy_tree_list (parser, info->update.del_search_cond);
+	  where =
+	    parser_copy_tree_list (parser, info->update.del_search_cond);
 	}
     }
   else
@@ -22264,6 +22269,9 @@ pt_to_merge_delete_query (PARSER_CONTEXT * parser, PT_MERGE_INFO * info,
   statement->info.query.upd_del_class_cnt = 1;
   statement->info.query.composite_locking = PT_COMPOSITE_LOCKING_DELETE;
   PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_MERGE_QUERY);
+
+  /* we don't need to keep this query */
+  statement->cannot_prepare = 1;
 
   /* needs compile */
   statement = pt_compile (parser, statement);
@@ -22372,6 +22380,9 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
       subq->info.query.q.select.where = expr;
     }
   PT_SELECT_INFO_SET_FLAG (subq, PT_SELECT_INFO_IS_MERGE_QUERY);
+
+  /* we don't need to keep this query */
+  subq->cannot_prepare = 1;
 
   return subq;
 
@@ -22497,7 +22508,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		 sizeof (int) * xptr->n_oid_list);
 
   /* set host variable count */
-  xasl->dbval_cnt = parser->host_var_count + parser->auto_param_count;
+  xasl->dbval_cnt = parser->dbval_cnt;
 
   return xasl;
 }
