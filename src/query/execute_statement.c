@@ -13105,13 +13105,6 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl && !pt_has_error (parser))
     {
-      if (statement->node_type == PT_SELECT
-	  && PT_SELECT_INFO_IS_FLAGED (statement,
-				       PT_SELECT_INFO_MULTI_UPDATE_AGG))
-	{
-	  XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
-	}
-
       if (pt_false_where (parser, statement))
 	{
 	  /* there is no results, this is a compile time false where clause */
@@ -13308,12 +13301,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (xasl && (err == NO_ERROR) && !pt_has_error (parser))
 	{
-	  if (PT_SELECT_INFO_IS_FLAGED (statement,
-					PT_SELECT_INFO_MULTI_UPDATE_AGG))
-	    {
-	      XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
-	    }
-
 	  /* convert the created XASL tree to the byte stream for transmission
 	     to the server */
 	  err = xts_map_xasl_to_stream (xasl, &stream, &size);

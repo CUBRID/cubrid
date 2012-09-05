@@ -15171,6 +15171,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       buildlist->push_list_id = select_node->info.query.q.select.push_list;
     }
 
+  /* set flag for multi-update subquery */
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_MULTI_UPDATE_AGG))
+    {
+      XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
+    }
+
   return xasl;
 
 exit_on_error:
@@ -17715,12 +17721,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
       goto cleanup;
-    }
-
-  if (PT_SELECT_INFO_IS_FLAGED (aptr_statement,
-				PT_SELECT_INFO_MULTI_UPDATE_AGG))
-    {
-      XASL_SET_FLAG (xasl->aptr_list, XASL_MULTI_UPDATE_AGG);
     }
 
   /* flush all classes and count classes for update */
@@ -22045,7 +22045,7 @@ PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 			  PT_MERGE_INFO * info)
 {
-  PT_NODE *statement, *where;
+  PT_NODE *statement, *where, *group_by, *oid, *save_next;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -22101,9 +22101,31 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
     }
   statement->info.query.q.select.where = where;
 
+  /* add group by */
+  group_by = parser_new_node (parser, PT_SORT_SPEC);
+  if (group_by)
+    {
+      oid = statement->info.query.q.select.list;
+      save_next = oid->next;
+      oid->next = NULL;
+      group_by->info.sort_spec.expr = parser_copy_tree_list (parser, oid);
+      group_by->info.sort_spec.asc_or_desc = PT_ASC;
+      group_by->info.sort_spec.pos_descr.dom =
+	pt_xasl_node_to_domain (parser, oid);
+      group_by->info.sort_spec.pos_descr.pos_no = 1;
+      oid->next = save_next;
+      statement->info.query.q.select.group_by = group_by;
+    }
+  else
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   statement->info.query.upd_del_class_cnt = 1;
   statement->info.query.composite_locking = PT_COMPOSITE_LOCKING_UPDATE;
   PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_MERGE_QUERY);
+  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MULTI_UPDATE_AGG);
 
   /* we don't need to keep this query */
   statement->cannot_prepare = 1;
