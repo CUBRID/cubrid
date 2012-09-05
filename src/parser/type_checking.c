@@ -9331,9 +9331,11 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  if (arg2_type != arg1_type
-	      && pt_coerce_value (parser, arg2, arg2,
-				  arg1_type, arg1->data_type) != NO_ERROR)
+	  /* arg2 can be NULL here, if CAST is not compatible */
+	  if (arg2 == NULL ||
+	      (arg2_type != arg1_type
+	       && pt_coerce_value (parser, arg2, arg2,
+				   arg1_type, arg1->data_type) != NO_ERROR))
 	    {
 	      node->type_enum = PT_TYPE_NONE;
 	    }

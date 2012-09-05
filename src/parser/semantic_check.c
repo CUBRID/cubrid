@@ -2538,10 +2538,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
 
 	  att_cs = (INTL_CODESET) src->data_type->info.data_type.units;
 
-	  if ((att_cs == INTL_CODESET_UTF8
-	       && dest_sci->cs == INTL_CODESET_KSC5601_EUC)
-	      || (att_cs == INTL_CODESET_KSC5601_EUC
-		  && dest_sci->cs == INTL_CODESET_UTF8))
+	  if (!INTL_CAN_COERCE_CS (att_cs, dest_sci->cs))
 	    {
 	      *is_cast_allowed = false;
 	    }
