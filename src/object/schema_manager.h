@@ -336,7 +336,6 @@ extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
 extern void sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info);
 extern void sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info);
 
-extern bool sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint,
-					  SM_CLASS * super_class);
+extern bool sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint);
 
 #endif /* _SCHEMA_MANAGER_H_ */

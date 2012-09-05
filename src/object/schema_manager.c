@@ -9018,7 +9018,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			   * key constraints do not share the same index so
 			   * it's expected to have different btid in this case
 			   */
-			  if (sm_is_global_only_constraint (c, class_)
+			  if (sm_is_global_only_constraint (c)
 			      && !BTID_IS_EQUAL (&btid, &c->index_btid)
 			      && SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
 			    {
@@ -9030,7 +9030,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			{
 			  BTID index_btid;
 			  BTID_SET_NULL (&index_btid);
-			  if (sm_is_global_only_constraint (c, class_))
+			  if (sm_is_global_only_constraint (c))
 			    {
 			      /* unique indexes are shared indexes */
 			      BTID_COPY (&index_btid, &c->index_btid);
@@ -10455,17 +10455,27 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
   const int *asc_desc;
   bool is_local = true;
 
+  /* At this point, we have to distinguish between the following cases:
+   *  1. This is a subclass and the constraint is inherited
+   *      -> just copy the BTID
+   *  2. This is a subclass and the constraint is duplicated
+   *      -> create a new BTID and load it
+   *  3. This is the top class in the hierarchy and the constraint is
+   *     inherited in the subclasses
+   *      -> create the constraint and load data from this class and all
+   *         subclasses
+   *  4. This is the top class in the hierarchy and the constraint is
+   *     duplicated in the subclasses
+   *      -> create the constraint and only load data from this class
+   */
   if (con->attributes[0]->class_mop != classop)
     {
+      /* This is an inherited constraint */
       is_local = false;
-      if (au_fetch_class_force (con->attributes[0]->class_mop,
-				&super_class, AU_FETCH_READ))
-	{
-	  return er_errid ();
-	}
 
-      if (!sm_is_global_only_constraint (con, super_class))
+      if (!sm_is_global_only_constraint (con))
 	{
+	  /* This constraint is duplicated in subclasses: case 4 */
 	  is_local = true;
 	}
     }
@@ -10473,10 +10483,26 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
   if (is_local)
     {
       /* its local, allocate our very own index */
+      DB_OBJLIST *local_subclasses = NULL;
       unique = BTREE_CONSTRAINT_UNIQUE;
       if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
 	  unique |= BTREE_CONSTRAINT_PRIMARY_KEY;
+	}
+
+      if (con->attributes[0]->class_mop == classop)
+	{
+	  if (sm_is_global_only_constraint (con))
+	    {
+	      /* This is an inherited constraint, load subclasses: case 3 */
+	      local_subclasses = subclasses;
+	    }
+	  else
+	    {
+	      /* This is a duplicated constraint, do not load subclasses:
+	       * case 4 */
+	      local_subclasses = NULL;
+	    }
 	}
 
       if (con->shared_cons_name)
@@ -10501,11 +10527,11 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 
 	  reverse = SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type);
 
-	  if (allocate_index (classop, class_, subclasses, con->attributes,
-			      asc_desc, con->attrs_prefix_length,
-			      unique, reverse, con->name,
-			      &con->index_btid, NULL, NULL, -1, NULL,
-			      con->filter_predicate, con->func_index_info))
+	  if (allocate_index
+	      (classop, class_, local_subclasses, con->attributes, asc_desc,
+	       con->attrs_prefix_length, unique, reverse, con->name,
+	       &con->index_btid, NULL, NULL, -1, NULL, con->filter_predicate,
+	       con->func_index_info))
 	    {
 	      return er_errid ();
 	    }
@@ -10513,6 +10539,12 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
     }
   else
     {
+      if (au_fetch_class_force (con->attributes[0]->class_mop,
+				&super_class, AU_FETCH_READ))
+	{
+	  return er_errid ();
+	}
+
       /* its inherited, go get the btid from the super class */
       super_con = classobj_find_class_constraint (super_class->constraints,
 						  con->type, con->name);
@@ -11051,6 +11083,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *flat_constraints, *con, *new_con, *prev, *next;
+  SM_ATTRIBUTE *attr = NULL;
   bool is_partitioned;
   /* Get the cached constraint info for the flattened template.
    * Sigh, convert the template property list to a transient constraint
@@ -11231,23 +11264,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
        ((con != NULL) && (error == NO_ERROR)); con = con->next)
     {
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
+	  && sm_is_global_only_constraint (con)
 	  && BTID_IS_NULL (&(con->index_btid)))
 	{
-	  if (is_partitioned && class_->users == NULL)
-	    {
-	      SM_CLASS *super_class = NULL;
-	      error = au_fetch_class_force (class_->inheritance->op,
-					    &super_class, AU_FETCH_READ);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	      if (!sm_is_global_only_constraint (con, super_class))
-		{
-		  /* partitions may have local unique indexes */
-		  continue;
-		}
-	    }
 	  error = inherit_constraint (classop, con);
 	}
     }
@@ -11304,6 +11323,17 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	}
     }
 
+  if (is_partitioned && flat != NULL && flat->partition_of == NULL)
+    {
+      /* this class is not partitioned anymore, clear the partitioning key
+       * flag from the attribute
+       */
+      for (attr = flat->instance_attributes; attr != NULL;
+	   attr = (SM_ATTRIBUTE *) attr->header.next)
+	{
+	  attr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
+	}
+    }
 end:
   /* This was used only for convenience here, be sure to free it.
    * Eventually, we'll just maintain these directly on the template.
@@ -15192,7 +15222,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
 	  continue;
 	}
       if (c->type != SM_CONSTRAINT_FOREIGN_KEY
-	  && sm_is_global_only_constraint (c, super_class))
+	  && sm_is_global_only_constraint (c))
 	{
 	  continue;
 	}
@@ -15312,23 +15342,17 @@ sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
  *  SM_CONSTRAINT_PRIMARY_KEY	  - always global
  */
 bool
-sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint,
-			      SM_CLASS * super_class)
+sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint)
 {
-  int error = NO_ERROR;
-  int is_partition = 0;
-  char *attr_name = NULL;
-  DB_VALUE pname;
-  DB_VALUE pattr;
-  SM_ATTRIBUTE *key_attr = NULL, *attr = NULL;
-  bool found = false;
+  SM_ATTRIBUTE *attr = NULL;
   int i;
 
-  assert_release (super_class != NULL && constraint != NULL);
-  if (super_class == NULL || constraint == NULL)
+  if (constraint == NULL)
     {
+      assert_release (constraint != NULL);
       return false;
     }
+
   switch (constraint->type)
     {
     case SM_CONSTRAINT_UNIQUE:
@@ -15351,54 +15375,18 @@ sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint,
       return false;
     }
 
-  if (super_class->partition_of == NULL)
-    {
-      /* For normal inheritance chains, unique constraints are always
-       * shared
-       */
-      return true;
-    }
-  /* test if the partitioning key is part of the index */
-  DB_MAKE_NULL (&pname);
-  DB_MAKE_NULL (&pattr);
-
-  error = db_get (super_class->partition_of, PARTITION_ATT_PVALUES, &pattr);
-  if (error != NO_ERROR)
-    {
-      goto error_return;
-    }
-  error = set_get_element (DB_GET_SEQ (&pattr), 0, &pname);
-  if (error != NO_ERROR)
-    {
-      goto error_return;
-    }
-
-  key_attr = classobj_find_attribute (super_class, DB_GET_STRING (&pname), 0);
-  if (key_attr == NULL)
-    {
-      goto error_return;
-    }
-
-  pr_clear_value (&pname);
-  pr_clear_value (&pattr);
-
   i = 0;
   attr = constraint->attributes[0];
-  while (attr)
+  while (attr != NULL)
     {
-      if (key_attr->id == attr->id)
+      if (attr->flags & SM_ATTFLAG_PARTITION_KEY)
 	{
-	  found = true;
-	  break;
+	  /* partitioning key belongs to the constraint, it can be local */
+	  return false;
 	}
       i++;
       attr = constraint->attributes[i];
     }
 
-  return (!found);
-
-error_return:
-  pr_clear_value (&pname);
-  pr_clear_value (&pattr);
-  return false;
+  return true;
 }

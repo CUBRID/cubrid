@@ -621,7 +621,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
 		{
 		  goto error_condition;
 		}
-	      if (!sm_is_global_only_constraint (c, super_class))
+	      if (!sm_is_global_only_constraint (c))
 		{
 		  is_local = true;
 		}

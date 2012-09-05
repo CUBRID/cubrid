@@ -391,8 +391,9 @@ static int do_redistribute_partitions_data (const char *class_name,
 static int do_find_auto_increment_serial (MOP * auto_increment_obj,
 					  const char *class_name,
 					  const char *attr_name);
-
-static PT_NODE *pt_filter_unique_constraints (PT_NODE ** constraints);
+static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate,
+					     PT_NODE * constraints,
+					     bool is_partitioned);
 /*
  * Function Group :
  * DO functions for alter statement
@@ -8725,6 +8726,41 @@ do_alter_partitioning_pre (PARSER_CONTEXT * parser,
   switch (alter_op)
     {
     case PT_APPLY_PARTITION:
+      {
+	PT_NODE *pt_key_col = NULL;
+	const char *key_col_name = NULL;
+	SM_ATTRIBUTE *attr = NULL;
+	error =
+	  do_check_fk_constraints_internal (pinfo->root_tmpl,
+					    alter->info.alter.constraint_list,
+					    true);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	/* Set SM_ATTFLAG_PARTITION_KEY on the partitioning key. Notice that
+	 * at this point, we have access to the root class template which is
+	 * being edited. The calling function will call finish on this
+	 * template and we will create the actual partitions on the "post"
+	 * action of the alter statement.
+	 */
+	pt_key_col =
+	  alter->info.alter.alter_clause.partition.info->info.partition.
+	  keycol;
+	key_col_name = pt_key_col->info.name.original;
+	attr = pinfo->root_tmpl->attributes;
+
+	while (attr != NULL)
+	  {
+	    if (SM_COMPARE_NAMES (key_col_name, attr->header.name) == 0)
+	      {
+		attr->flags |= SM_ATTFLAG_PARTITION_KEY;
+		break;
+	      }
+	    attr = (SM_ATTRIBUTE *) attr->header.next;
+	  }
+	break;
+      }
     case PT_ADD_PARTITION:
     case PT_ADD_HASHPARTITION:
       /* create new partitions */
@@ -8825,6 +8861,12 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter,
   switch (alter_op)
     {
     case PT_APPLY_PARTITION:
+      error = do_create_partition (parser, alter, pinfo);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
       error = do_get_partition_keycol (pinfo->keycol, pinfo->root_op);
       if (error != NO_ERROR)
 	{
@@ -9803,6 +9845,7 @@ do_promote_partition (SM_CLASS * class_)
       smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
       smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
+      smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
     }
 
   ctemplate->inheritance = NULL;
@@ -10846,8 +10889,8 @@ constraint_error:
 }
 
 /*
- * do_check_fk_constraints() - Checks that foreign key constraints are
- *                             consistent with the schema.
+ * do_check_fk_constraints_internal () - Checks that foreign key constraints
+ *					 are consistent with the schema.
  * The routine only works when a new class is created or when it is altered
  * with a single change; it might not work in the future if a class will be
  * altered with multiple changes in a single call.
@@ -10872,8 +10915,9 @@ constraint_error:
  *
  * Note : The class object is not modified
  */
-int
-do_check_fk_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
+static int
+do_check_fk_constraints_internal (DB_CTMPL * ctemplate, PT_NODE * constraints,
+				  bool is_partitioned)
 {
   int error = NO_ERROR;
   PT_NODE *cnstr;
@@ -10890,7 +10934,7 @@ do_check_fk_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
       fk_info =
 	(PT_FOREIGN_KEY_INFO *) & cnstr->info.constraint.un.foreign_key;
-      if (ctemplate->partition_of != NULL
+      if (is_partitioned
 	  && (fk_info->delete_action == PT_RULE_SET_NULL
 	      || fk_info->update_action == PT_RULE_SET_NULL))
 	{
@@ -10946,7 +10990,7 @@ do_check_fk_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 	    {
 	      continue;
 	    }
-	  if (ctemplate->partition_of != NULL &&
+	  if (is_partitioned &&
 	      (c->fk_info->delete_action == SM_FOREIGN_KEY_SET_NULL ||
 	       c->fk_info->update_action == SM_FOREIGN_KEY_SET_NULL))
 	    {
@@ -10978,6 +11022,35 @@ do_check_fk_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
 error_exit:
   return error;
+}
+
+/*
+* do_check_fk_constraints() - Checks that foreign key constraints are
+*                             consistent with the schema.
+*   return: Error code
+*   ctemplate(in/out): Class template
+*   constraints(in): List of all the class constraints that have been added.
+*                    Currently the function does not support checking for
+*                    consistency when NOT NULL constraints are added.
+* Note : The class object is not modified
+*/
+int
+do_check_fk_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
+{
+  bool is_partitioned = false;
+  if (ctemplate == NULL)
+    {
+      assert_release (ctemplate != NULL);
+      return ER_FAILED;
+    }
+
+  if (ctemplate->partition_of != NULL)
+    {
+      is_partitioned = true;
+    }
+
+  return do_check_fk_constraints_internal (ctemplate, constraints,
+					   is_partitioned);
 }
 
 
@@ -11537,6 +11610,24 @@ do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       return error;
     }
 
+  if (pt_node->info.create_entity.partition_info)
+    {
+      /* set partitioning key flag on the attribute */
+      PT_NODE *pt_key_col =
+	pt_node->info.create_entity.partition_info->info.partition.keycol;
+      const char *key_col_name = pt_key_col->info.name.original;
+      SM_ATTRIBUTE *attr = ctemplate->attributes;
+
+      while (attr != NULL)
+	{
+	  if (SM_COMPARE_NAMES (key_col_name, attr->header.name) == 0)
+	    {
+	      attr->flags |= SM_ATTFLAG_PARTITION_KEY;
+	      break;
+	    }
+	  attr = (SM_ATTRIBUTE *) attr->header.next;
+	}
+    }
   return (error);
 }
 
@@ -11732,7 +11823,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   SM_CLASS *source_class = NULL;
   PT_NODE *create_select = NULL;
   PT_NODE *create_index = NULL;
-  PT_NODE *unique_constraints = NULL;
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
   bool reuse_oid = false;
@@ -11799,16 +11889,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  if (node->info.create_entity.partition_info)
-	    {
-	      /* Delay creating unique constraints until partitions are
-	       * created. This is needed to correctly evaluate local
-	       * indexes versus global indexes creation.
-	       */
-	      unique_constraints =
-		pt_filter_unique_constraints (&node->info.create_entity.
-					      constraint_list);
-	    }
 	  ctemplate = dbt_create_class (class_name);
 	}
       break;
@@ -11962,39 +12042,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  goto error_exit;
 	}
-      if (unique_constraints != NULL)
-	{
-	  locator_flush_class (class_obj);
-	  class_obj = db_find_class (class_name);
-	  if (class_obj == NULL)
-	    {
-	      error = er_errid ();
-	      goto error_exit;
-	    }
-	  do_abort_class_on_error = true;
-	  ctemplate = dbt_edit_class (class_obj);
-	  if (ctemplate == NULL)
-	    {
-	      error = er_errid ();
-	      goto error_exit;
-	    }
-	  error = do_add_constraints (ctemplate, unique_constraints);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  class_obj = dbt_finish_class (ctemplate);
-	  if (class_obj == NULL)
-	    {
-	      error = er_errid ();
-	      goto error_exit;
-	    }
-	  do_abort_class_on_error = false;
-	  node->info.create_entity.constraint_list =
-	    parser_append_node (unique_constraints,
-				node->info.create_entity.constraint_list);
-	  unique_constraints = NULL;
-	}
     }
   if (create_like)
     {
@@ -12058,12 +12105,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   return error;
 
 error_exit:
-  if (unique_constraints != NULL)
-    {
-      node->info.create_entity.constraint_list =
-	parser_append_node (unique_constraints,
-			    node->info.create_entity.constraint_list);
-    }
   if (query_columns != NULL)
     {
       db_free_query_format (query_columns);
@@ -16912,39 +16953,6 @@ replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   return node;
-}
-
-static PT_NODE *
-pt_filter_unique_constraints (PT_NODE ** constraints)
-{
-  PT_NODE *local_constraints = NULL;
-  PT_NODE *unique_constraints = NULL;
-  PT_NODE *next_constr = NULL, *current_constr = NULL;
-
-  if (constraints == NULL || *constraints == NULL)
-    {
-      return NULL;
-    }
-
-  for (current_constr = *constraints; current_constr != NULL;
-       current_constr = next_constr)
-    {
-      next_constr = current_constr->next;
-      current_constr->next = NULL;
-      if (current_constr->info.constraint.type == PT_CONSTRAIN_UNIQUE)
-	{
-	  unique_constraints = parser_append_node (current_constr,
-						   unique_constraints);
-	}
-      else
-	{
-	  local_constraints = parser_append_node (current_constr,
-						  local_constraints);
-	}
-    }
-
-  *constraints = local_constraints;
-  return unique_constraints;
 }
 
 /*

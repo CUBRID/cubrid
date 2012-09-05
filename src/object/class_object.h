@@ -407,7 +407,9 @@ typedef enum
   SM_ATTFLAG_REVERSE_UNIQUE = 64,	/* attribute has a reverse unique 0x40 */
   SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
-  SM_ATTFLAG_FOREIGN_KEY = 512	/* attribute has a primary key 0x200 */
+  SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
+  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for
+					   the class 0x400 */
 } SM_ATTRIBUTE_FLAG;
 
 /* attribute constraint types */
