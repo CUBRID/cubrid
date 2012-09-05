@@ -22453,10 +22453,6 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	pt_to_merge_update_xasl (parser, statement, non_null_upd_attrs);
       if (update_xasl == NULL)
 	{
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	    }
 	  return NULL;
 	}
       if (statement->info.merge.update.has_delete)
@@ -22465,10 +22461,6 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  delete_xasl = pt_to_merge_delete_xasl (parser, statement);
 	  if (delete_xasl == NULL)
 	    {
-	      if (pt_has_error (parser))
-		{
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		}
 	      return NULL;
 	    }
 	}
@@ -22482,10 +22474,6 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 				 default_expr_attrs);
       if (insert_xasl == NULL)
 	{
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	    }
 	  return NULL;
 	}
     }
@@ -22991,12 +22979,7 @@ cleanup:
     {
       parser_free_tree (parser, from);
     }
-  if (pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      xasl = NULL;
-    }
-  else if (error != NO_ERROR)
+  if (error != NO_ERROR)
     {
       xasl = NULL;
     }
@@ -23253,12 +23236,7 @@ cleanup:
     {
       parser_free_tree (parser, aptr_statement);
     }
-  if (pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      xasl = NULL;
-    }
-  else if (error != NO_ERROR)
+  if (error != NO_ERROR)
     {
       xasl = NULL;
     }
@@ -23471,12 +23449,7 @@ cleanup:
     {
       parser_free_tree (parser, from);
     }
-  if (pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      xasl = NULL;
-    }
-  else if (error != NO_ERROR)
+  if (error != NO_ERROR)
     {
       xasl = NULL;
     }

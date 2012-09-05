@@ -14478,7 +14478,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_restore_assignment_links (statement->info.merge.update.
 				       assignment, links, -1);
 
+	  AU_ENABLE (parser->au_save);
 	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
+	  AU_DISABLE (parser->au_save);
 	  if (upd_select_stmt == NULL)
 	    {
 	      err = er_errid ();
@@ -14537,7 +14539,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    pt_to_merge_insert_query (parser,
 				      values_list->info.node_list.list,
 				      &statement->info.merge);
+	  AU_ENABLE (parser->au_save);
 	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
+	  AU_DISABLE (parser->au_save);
 
 	  if (ins_select_stmt == NULL)
 	    {
@@ -14666,7 +14670,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* make the SELECT statement for OID list to be deleted */
 	  del_select_stmt =
 	    pt_to_merge_delete_query (parser, &statement->info.merge, list_id);
+	  AU_ENABLE (parser->au_save);
 	  del_select_stmt = mq_translate (parser, del_select_stmt);
+	  AU_DISABLE (parser->au_save);
 	  if (del_select_stmt == NULL)
 	    {
 	      err = er_errid ();
@@ -15076,13 +15082,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* mark the beginning of another level of xasl packing */
 	  pt_enter_packing_buf ();
 
-	  AU_SAVE_AND_DISABLE (au_save);
-
 	  /* generate MERGE XASL */
 	  xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd,
 				   &non_nulls_ins, default_expr_attrs);
-
-	  AU_RESTORE (au_save);
 
 	  stream = NULL;
 
@@ -15181,12 +15183,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_restore_assignment_links (statement->info.merge.update.
 				       assignment, links, -1);
 
-	  /* translate views or virtual classes into base classes;
-	     If we are updating a proxy, the SELECT is not yet fully
-	     translated. If we are updating anything else, this is a no-op. */
-
-	  /* this prevents authorization checking during view transformation */
-	  AU_SAVE_AND_DISABLE (au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 	  select_statement = mq_translate (parser, select_statement);
 	  AU_RESTORE (au_save);
 	  if (select_statement)
@@ -15394,7 +15391,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    pt_to_merge_insert_query (parser,
 				      values_list->info.node_list.list,
 				      &statement->info.merge);
+	  AU_SAVE_AND_ENABLE (au_save);
 	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
+	  AU_RESTORE (au_save);
 
 	  if (ins_select_stmt == NULL)
 	    {
@@ -15477,7 +15476,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      del_select_stmt =
 		pt_to_merge_delete_query (parser, &statement->info.merge,
 					  list_id);
+	      AU_SAVE_AND_ENABLE (au_save);
 	      del_select_stmt = mq_translate (parser, del_select_stmt);
+	      AU_RESTORE (au_save);
 	      if (del_select_stmt == NULL)
 		{
 		  err = er_errid ();
