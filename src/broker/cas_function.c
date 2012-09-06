@@ -807,10 +807,25 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
   else if (param_name == CCI_PARAM_LOCK_TIMEOUT)
     {
       int lock_timeout;
+      char lock_timeout_string[32];
 
       ux_get_tran_setting (&lock_timeout, NULL);
-      cas_log_write (0, true, "get_db_parameter lock_timeout %d ms",
-		     lock_timeout);
+
+      if (lock_timeout == 0)
+	{
+	  sprintf (lock_timeout_string, "0 (No wait)");
+	}
+      else if (lock_timeout == -1)
+	{
+	  sprintf (lock_timeout_string, "-1 (Infinite wait)");
+	}
+      else
+	{
+	  sprintf (lock_timeout_string, "%d ms", lock_timeout);
+	}
+
+      cas_log_write (0, true, "get_db_parameter lock_timeout %s",
+		     lock_timeout_string);
 
       net_buf_cp_int (net_buf, 0, NULL);
       net_buf_cp_int (net_buf, lock_timeout, NULL);
@@ -884,16 +899,39 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv,
   else if (param_name == CCI_PARAM_LOCK_TIMEOUT)
     {
       int lock_timeout;
+      char lock_timeout_string[32];
 
       net_arg_get_int (&lock_timeout, argv[1]);
 
       if (lock_timeout == -2)
-	lock_timeout = cas_default_lock_timeout;
+	{
+	  lock_timeout = cas_default_lock_timeout;
+	}
+
+      if (lock_timeout < -1)
+	{
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return FN_KEEP_CONN;
+	}
 
       ux_set_lock_timeout (lock_timeout);
 
-      cas_log_write (0, true, "set_db_parameter lock_timeout %d ms",
-		     lock_timeout);
+      if (lock_timeout == 0)
+	{
+	  sprintf (lock_timeout_string, "0 (No wait)");
+	}
+      else if (lock_timeout == -1)
+	{
+	  sprintf (lock_timeout_string, "-1 (Infinite wait)");
+	}
+      else
+	{
+	  sprintf (lock_timeout_string, "%d ms", lock_timeout);
+	}
+
+      cas_log_write (0, true, "set_db_parameter lock_timeout %s",
+		     lock_timeout_string);
 
       net_buf_cp_int (net_buf, 0, NULL);
     }

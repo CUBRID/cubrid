@@ -1739,7 +1739,7 @@ $set 14 MSGCAT_SET_LOCK
 33 Transaction (index %2d, %s, %s@%s|%d)\n
 34 Isolation %s\n
 35 State %s\n
-36 Timeout_period %.2f\n
+36 Timeout_period %s\n
 37 Unilaterally aborted transactions with indices:\n
 38 %d ,
 39 Timed_out transactions with indices:\n

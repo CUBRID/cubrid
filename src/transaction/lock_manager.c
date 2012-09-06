@@ -10690,6 +10690,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   LK_RES *res_ptr;
   LK_RES *res_prev;
   int rv;
+  float lock_timeout_sec;
+  char lock_timeout_string[64];
 
   if (outfp == NULL)
     {
@@ -10723,6 +10725,26 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       isolation = logtb_find_isolation (tran_index);
       state = logtb_find_state (tran_index);
       wait_msecs = logtb_find_wait_msecs (tran_index);
+      lock_timeout_sec = lock_wait_msecs_to_secs (wait_msecs);
+
+      if (lock_timeout_sec > 0)
+	{
+	  sprintf (lock_timeout_string, ": %.2f", lock_timeout_sec);
+	}
+      else if ((int) lock_timeout_sec == LK_ZERO_WAIT
+	       || (int) lock_timeout_sec == LK_FORCE_ZERO_WAIT)
+	{
+	  sprintf (lock_timeout_string, ": No wait");
+	}
+      else if ((int) lock_timeout_sec == LK_INFINITE_WAIT)
+	{
+	  sprintf (lock_timeout_string, ": Infinite wait");
+	}
+      else
+	{
+	  assert_release (0);
+	  sprintf (lock_timeout_string, ": %d", (int) lock_timeout_sec);
+	}
 
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				      MSGCAT_SET_LOCK,
@@ -10740,7 +10762,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				      MSGCAT_SET_LOCK,
 				      MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
-	       lock_wait_msecs_to_secs (wait_msecs));
+	       lock_timeout_string);
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				      MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
     }
