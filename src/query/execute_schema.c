@@ -7294,10 +7294,6 @@ do_is_partitioned_classobj (int *is_partition,
 		}
 	      subobjs[i++] = objs->op;
 	    }
-	  if (i < pcnt)
-	    {
-	      goto partition_failed;
-	    }
 
 	  *sub_partitions = subobjs;
 	}
