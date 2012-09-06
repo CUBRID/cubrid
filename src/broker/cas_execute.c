@@ -1114,7 +1114,8 @@ ux_end_tran (int tran_type, bool reset_con_status)
 #ifndef LIBCAS_FOR_JSP
       if (reset_con_status)
 	{
-	  assert_release (as_info->con_status == CON_STATUS_IN_TRAN);
+	  assert_release (as_info->con_status == CON_STATUS_IN_TRAN
+	                  || as_info->con_status == CON_STATUS_OUT_TRAN);
 	  as_info->con_status = CON_STATUS_OUT_TRAN;
 	  as_info->transaction_start_time = (time_t) 0;
 	}
