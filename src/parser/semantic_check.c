@@ -14381,6 +14381,12 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
       /* try to match with something in the select list */
       for (col = select_list, index = 1; col; col = col->next, index++)
 	{
+	  if (col->is_hidden_column)
+	    {
+	      /* skip hidden columns; they might disappear later on */
+	      continue;
+	    }
+
 	  if (pt_compare_sort_spec_expr (parser, expr, col))
 	    {
 	      /* found a match in select list */
