@@ -191,6 +191,7 @@ struct t_srv_handle
   bool use_query_cache;
   bool is_fetch_completed;
   bool is_holdable;
+  bool is_from_current_transaction;
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle,

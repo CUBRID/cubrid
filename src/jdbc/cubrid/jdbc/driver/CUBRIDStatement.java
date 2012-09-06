@@ -84,6 +84,7 @@ public class CUBRIDStatement implements Statement {
 	private int fetch_size;
 	private ArrayList<String> batchs;
 	private int result_index;
+	private boolean is_from_current_transaction;
 
 	protected CUBRIDStatement(CUBRIDConnection c, int t, int concur,
                 int hold) {
@@ -112,6 +113,7 @@ public class CUBRIDStatement implements Statement {
 		result_info = null;
 		query_info_flag = false;
 		only_query_plan = false;
+		is_from_current_transaction = true;
 	}
 
 	/*
@@ -738,6 +740,7 @@ public class CUBRIDStatement implements Statement {
 	protected CUBRIDOID executeInsertCore() throws SQLException {
 		CUBRIDCancelQueryThread t = null;
 		completed = false;
+		setCurrentTransaction(true);
 
 		if (query_timeout > 0) {
 			t = new CUBRIDCancelQueryThread(this, query_timeout);
@@ -791,7 +794,8 @@ public class CUBRIDStatement implements Statement {
 
 	protected void executeCore(boolean all) throws SQLException {
 		completed = false;
-		
+		setCurrentTransaction(true);
+	
 		if (u_stmt.is_result_cacheable()) {
 			jdbc_cache_make(all);
 		} else {
@@ -962,5 +966,13 @@ public class CUBRIDStatement implements Statement {
 	/* JDK 1.7 */
 	public boolean isCloseOnCompletion() throws SQLException {
 		throw new java.lang.UnsupportedOperationException();
+	}
+
+	public void setCurrentTransaction (boolean is_from_current_transaction) {
+		this.is_from_current_transaction = is_from_current_transaction;
+	}
+	
+	public boolean isFromCurrentTransaction() {
+		return is_from_current_transaction;
 	}
 }

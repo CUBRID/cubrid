@@ -158,6 +158,7 @@ typedef struct
   int valid;
   int query_timeout;
   int is_closed;
+  int is_from_current_transaction;
 } T_REQ_HANDLE;
 
 typedef struct

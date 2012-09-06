@@ -1298,6 +1298,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     }
 
   db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
+  srv_handle->is_from_current_transaction = true;
 #if 0				/* yaw */
   if ((err_code = check_class_chn (srv_handle)) < 0)
     {
@@ -1610,6 +1611,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
 
       db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
+      srv_handle->is_from_current_transaction = true;
 
       if (clt_cache_time)
 	db_set_client_cache_time (session, stmt_id, clt_cache_time);

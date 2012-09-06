@@ -654,8 +654,11 @@ public class CUBRIDConnection implements Connection {
 	private void completeStatementForCommit() throws SQLException {
 		for (int i = 0; i < statements.size(); i++) {
 			CUBRIDStatement stmt = (CUBRIDStatement) statements.get(i);
-			if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT)
+
+			if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
+				stmt.setCurrentTransaction(false);
 				continue;
+			}
 			else if (stmt instanceof CUBRIDPreparedStatement) {
 				statements.remove(i);
 				if (u_con.brokerInfoStatementPooling() == true)
@@ -670,6 +673,12 @@ public class CUBRIDConnection implements Connection {
 	private void completeAllStatements() throws SQLException {
 		for (int i = 0; i < statements.size(); i++) {
 			CUBRIDStatement stmt = (CUBRIDStatement) statements.get(i);
+
+			if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT
+			    && !stmt.isFromCurrentTransaction()) {
+				continue;
+			}
+
 			if (stmt instanceof CUBRIDPreparedStatement) {
 
 				statements.remove(i);

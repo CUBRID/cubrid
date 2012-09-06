@@ -472,6 +472,13 @@ hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle)
 	{
 	  continue;
 	}
+
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0
+          && !req_handle->is_from_current_transaction)
+        {
+          continue;
+        }
+
       req_handle->is_closed = 1;
     }
 }
@@ -489,11 +496,14 @@ hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle)
 	{
 	  continue;
 	}
+
       if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
 	{
 	  /* skip holdable req_handles */
+          req_handle->is_from_current_transaction = 0;
 	  continue;
 	}
+
       req_handle->is_closed = 1;
     }
 }

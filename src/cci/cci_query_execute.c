@@ -483,6 +483,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->cursor_pos = 0;
   req_handle->is_closed = 0;
   req_handle->valid = 1;
+  req_handle->is_from_current_transaction = 1;
 
   if (!reuse)
     {
@@ -758,6 +759,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
     }
 
   req_handle->is_closed = 0;
+  req_handle->is_from_current_transaction = 1;
 
   return res_count;
 
@@ -914,6 +916,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->cursor_pos = 0;
   req_handle->is_closed = 0;
   req_handle->valid = 1;
+  req_handle->is_from_current_transaction = 1;
 
   if (req_handle->stmt_type == CUBRID_STMT_SELECT)
     {

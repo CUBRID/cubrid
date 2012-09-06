@@ -120,6 +120,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->use_query_cache = false;
   srv_handle->is_fetch_completed = false;
   srv_handle->is_holdable = false;
+  srv_handle->is_from_current_transaction = true;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   srv_handle->send_metadata_before_execute = false;
 #endif
@@ -223,6 +224,7 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 {
   T_SRV_HANDLE *srv_handle;
   int i;
+  int count_unclosed_holdable = 0;
 
   for (i = 0; i < max_handle_id; i++)
     {
@@ -238,8 +240,17 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
       if (srv_handle->is_holdable && !end_holdable)
 	{
 	  /* do not close holdable results */
-	  continue;
+          srv_handle->is_from_current_transaction = false;
+          count_unclosed_holdable++;
+          continue;
 	}
+
+      if (srv_handle->is_holdable && !srv_handle->is_from_current_transaction)
+        {
+          /* end only holdable handles from the current transaction */
+          count_unclosed_holdable++;
+          continue;
+        }
 
       if (srv_handle->schema_type < 0
 	  || srv_handle->schema_type == CCI_SCH_CLASS
@@ -262,8 +273,10 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 #endif
     }
 #if !defined(LIBCAS_FOR_JSP)
-  /* make sure that as_info->num_holdable_results is 0 after rollback */
-  assert (!end_holdable || as_info->num_holdable_results == 0);
+  /* make sure that as_info->num_holdable_results is 0 after rollback
+   * if no holdable results were from previous transactions
+   */
+  assert (count_unclosed_holdable == as_info->num_holdable_results);
 #endif
 }
 
