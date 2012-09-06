@@ -197,6 +197,11 @@ static void pt_bind_names_merge_insert (PARSER_CONTEXT * parser,
 					PT_BIND_NAMES_ARG * bind_arg,
 					SCOPES * scopestack,
 					PT_EXTRA_SPECS_FRAME * specs_frame);
+static void pt_bind_names_merge_update (PARSER_CONTEXT * parser,
+					PT_NODE * node,
+					PT_BIND_NAMES_ARG * bind_arg,
+					SCOPES * scopestack,
+					PT_EXTRA_SPECS_FRAME * specs_frame);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -2622,50 +2627,55 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       break;
 
     case PT_MERGE:
-      {
-	if (node->info.merge.insert.value_clauses)
-	  {
-	    /* resolve missing attr_list as star */
-	    if (!node->info.merge.insert.attr_list)
-	      {
-		node->info.merge.insert.attr_list =
-		  pt_resolve_star (parser, node->info.merge.into, NULL);
-	      }
-	    /* resolve DEFAULT clauses */
-	    if (node->info.merge.into->info.spec.entity_name)
-	      {
-		fill_in_insert_default_function_arguments (parser, node);
-	      }
-	    /* resolve insert attributes, values */
-	    pt_bind_names_merge_insert (parser, node, bind_arg, &scopestack,
-					&spec_frame);
-	  }
+      if (node->info.merge.insert.value_clauses)
+	{
+	  /* resolve missing attr_list as star */
+	  if (!node->info.merge.insert.attr_list)
+	    {
+	      node->info.merge.insert.attr_list =
+		pt_resolve_star (parser, node->info.merge.into, NULL);
+	    }
+	  /* resolve DEFAULT clauses */
+	  if (node->info.merge.into->info.spec.entity_name)
+	    {
+	      fill_in_insert_default_function_arguments (parser, node);
+	    }
+	  /* resolve insert attributes, values */
+	  pt_bind_names_merge_insert (parser, node, bind_arg, &scopestack,
+				      &spec_frame);
+	}
 
-	assert (node->info.merge.into->next == NULL);
-	node->info.merge.into->next = node->info.merge.using;
+      if (node->info.merge.update.assignment)
+	{
+	  /* resolved update assignment list */
+	  pt_bind_names_merge_update (parser, node, bind_arg, &scopestack,
+				      &spec_frame);
+	}
 
-	scopestack.specs = node->info.merge.into;
-	bind_arg->scopes = &scopestack;
-	spec_frame.next = bind_arg->spec_frames;
-	spec_frame.extra_specs = NULL;
-	bind_arg->spec_frames = &spec_frame;
-	pt_bind_scope (parser, bind_arg);
+      assert (node->info.merge.into->next == NULL);
+      node->info.merge.into->next = node->info.merge.using;
 
-	parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
-			    pt_bind_names_post, bind_arg);
+      scopestack.specs = node->info.merge.into;
+      bind_arg->scopes = &scopestack;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+      bind_arg->spec_frames = &spec_frame;
+      pt_bind_scope (parser, bind_arg);
 
-	/* flag any "correlated" names as undefined. */
-	parser_walk_tree (parser, node->info.merge.insert.value_clauses,
-			  pt_undef_names, node->info.merge.into, NULL, NULL);
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
+			  pt_bind_names_post, bind_arg);
 
-	bind_arg->spec_frames = bind_arg->spec_frames->next;
-	bind_arg->scopes = bind_arg->scopes->next;
+      /* flag any "correlated" names as undefined. */
+      parser_walk_tree (parser, node->info.merge.insert.value_clauses,
+			pt_undef_names, node->info.merge.into, NULL, NULL);
 
-	/* don't revisit leaves */
-	*continue_walk = PT_LIST_WALK;
+      bind_arg->spec_frames = bind_arg->spec_frames->next;
+      bind_arg->scopes = bind_arg->scopes->next;
 
-	node->info.merge.into->next = NULL;
-      }
+      /* don't revisit leaves */
+      *continue_walk = PT_LIST_WALK;
+
+      node->info.merge.into->next = NULL;
       break;
 
     case PT_CREATE_INDEX:
@@ -7682,8 +7692,8 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
   bind_arg->spec_frames = spec_frame;
   pt_bind_scope (parser, bind_arg);
   node->info.merge.insert.attr_list =
-    parser_walk_tree (parser, node->info.merge.insert.attr_list, pt_bind_names,
-		      bind_arg, pt_bind_names_post, bind_arg);
+    parser_walk_tree (parser, node->info.merge.insert.attr_list,
+		      pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
   /* bind names for default function in insert values list */
   node_list = node->info.merge.insert.value_clauses->info.node_list.list;
@@ -7741,4 +7751,65 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
   node->info.merge.insert.search_cond =
     parser_walk_tree (parser, node->info.merge.insert.search_cond,
 		      pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+}
+
+/*
+ * pt_bind_names_merge_update () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   bind_arg(in):
+ *   scopestack(in):
+ *   spec_frame(in):
+ */
+static void
+pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node,
+			    PT_BIND_NAMES_ARG * bind_arg, SCOPES * scopestack,
+			    PT_EXTRA_SPECS_FRAME * spec_frame)
+{
+  PT_NODE *assignment;
+
+  /* resolve lhs with target spec only */
+  scopestack->specs = node->info.merge.into;
+  bind_arg->scopes = scopestack;
+  spec_frame->next = bind_arg->spec_frames;
+  spec_frame->extra_specs = NULL;
+  bind_arg->spec_frames = spec_frame;
+  pt_bind_scope (parser, bind_arg);
+  for (assignment = node->info.merge.update.assignment; assignment;
+       assignment = assignment->next)
+    {
+      if (PT_IS_N_COLUMN_UPDATE_EXPR (assignment->info.expr.arg1))
+	{
+	  assignment->info.expr.arg1->info.expr.arg1 =
+	    parser_walk_tree (parser,
+			      assignment->info.expr.arg1->info.expr.arg1,
+			      pt_bind_names, bind_arg, pt_bind_names_post,
+			      bind_arg);
+	}
+      else
+	{
+	  assignment->info.expr.arg1 =
+	    parser_walk_tree (parser, assignment->info.expr.arg1,
+			      pt_bind_names, bind_arg, pt_bind_names_post,
+			      bind_arg);
+	}
+    }
+
+  /* resolve rhs with both source and target specs */
+  scopestack->specs = node->info.merge.into;
+  node->info.merge.into->next = node->info.merge.using;
+  bind_arg->scopes = scopestack;
+  spec_frame->next = bind_arg->spec_frames;
+  spec_frame->extra_specs = NULL;
+  bind_arg->spec_frames = spec_frame;
+  pt_bind_scope (parser, bind_arg);
+  for (assignment = node->info.merge.update.assignment; assignment;
+       assignment = assignment->next)
+    {
+      assignment->info.expr.arg2 =
+	parser_walk_tree (parser, assignment->info.expr.arg2, pt_bind_names,
+			  bind_arg, pt_bind_names_post, bind_arg);
+    }
+  node->info.merge.into->next = NULL;
 }
