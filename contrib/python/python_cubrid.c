@@ -257,6 +257,68 @@ _cubrid_connect (PyObject * self, PyObject * args, PyObject * kwargs)
 			kwargs);
 }
 
+static char _cubrid_escape_string__doc__[] =
+"escape_string()\n\
+Escape special characters in a string for use in an SQL statement";
+
+static PyObject *
+_cubrid_escape_string (PyObject * self, PyObject *args,
+                       PyObject * kwargs)
+{
+  static char *kwList[] = {"escape_string", "no_backslash_escapes", NULL};
+  int no_backslash_escapes = -1;
+  char *unescape_string = NULL, *escape_string = NULL;
+  int len = -1, res;
+  T_CCI_ERROR error;
+
+  PyObject *op;
+
+  if (!PyArg_ParseTupleAndKeywords (args, kwargs,
+            "s#|i", kwList, &unescape_string, &len, &no_backslash_escapes))
+    {
+      return NULL;
+    }
+
+  if (len < 0)
+    {
+      return handle_error (CUBRID_ER_INVALID_PARAM, NULL);
+    }
+
+  if (no_backslash_escapes == 0)
+    {
+      no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_FALSE;
+    }
+  else
+    {
+      no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_TRUE;
+    }
+
+  escape_string = (char *) malloc (len * 2 + 16);
+
+  if (!escape_string)
+    {
+      return handle_error (CUBRID_ER_NO_MORE_MEMORY, NULL);
+    }
+
+  memset(escape_string, 0, len * 2 + 16);
+
+  if ((res = cci_escape_string (no_backslash_escapes,
+                  escape_string, unescape_string, len, &error)) < 0)
+    {
+      free (escape_string);
+      return handle_error (res, &error);
+    }
+#if PY_MAJOR_VERSION >= 3
+  op = PyUnicode_FromStringAndSize (escape_string, res);
+#else
+  op = PyString_FromStringAndSize (escape_string, res);
+#endif
+
+  free (escape_string);
+
+  return op;
+}
+
 static PyObject *
 _cubrid_ConnectionObject_new (PyTypeObject * type, PyObject * args,
 			      PyObject * kwargs)
@@ -3093,6 +3155,11 @@ static struct PyMethodDef _cubrid_methods[] = {
    (PyCFunction) _cubrid_connect,
    METH_VARARGS | METH_KEYWORDS,
    _cubrid_connect__doc__},
+  {
+   "escape_string",
+   (PyCFunction) _cubrid_escape_string,
+   METH_VARARGS | METH_KEYWORDS,
+   _cubrid_escape_string__doc__},
   {NULL, NULL}
 };
 
