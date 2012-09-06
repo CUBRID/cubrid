@@ -801,7 +801,6 @@ public class UStatement {
 	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 		relatedConnection.clientSocketClose();
 	    }
-	    return;
 	} else if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 	    try {
 		reset();
