@@ -615,6 +615,11 @@ conn_proxy_retry:
 	    hm_srv_handle_free_all (true);
 	  }
 
+	if (!is_xa_prepared ())
+	  {
+	    ux_end_tran (CCI_TRAN_ROLLBACK, false);
+	  }
+
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	if (fn_ret != FN_KEEP_SESS)
 	  {
@@ -622,16 +627,7 @@ conn_proxy_retry:
 	  }
 #endif
 
-	if (is_xa_prepared ())
-	  {
-	    ux_database_shutdown ();
-	  }
-	else
-	  {
-	    ux_end_tran (CCI_TRAN_ROLLBACK, false);
-	  }
-
-	if (as_info->reset_flag == TRUE)
+	if (as_info->reset_flag == TRUE || is_xa_prepared ())
 	  {
 	    ux_database_shutdown ();
 	    as_info->reset_flag = FALSE;
