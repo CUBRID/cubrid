@@ -1071,6 +1071,11 @@ installdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   db = cfg_find_db (db_name);
   if (db != NULL)
     {
@@ -1098,11 +1103,6 @@ installdb (UTIL_FUNCTION_ARG * arg)
   cfg_write_directory (dir);
 
   cfg_added = true;
-
-  /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	    "%s_%s.err", db_name, arg->command_name);
-  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -2377,7 +2377,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
     {
       goto error;
     }
-  
+
   if (input_path != NULL)
     {
       /* set lib file in all locales */
@@ -2393,7 +2393,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 	    {
 	      err_status = ER_LOC_INIT;
 	      LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
-	      goto error;	      
+	      goto error;
 	    }
 	}
     }
