@@ -1169,6 +1169,14 @@ main (int argc, char *argv[])
 		hm_srv_handle_free_all (true);
 	      }
 
+	    if (!is_xa_prepared ())
+	      {
+		if (ux_end_tran (CCI_TRAN_ROLLBACK, false) < 0)
+		  {
+		    as_info->reset_flag = TRUE;
+		  }
+	      }
+
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    if (fn_ret != FN_KEEP_SESS)
 	      {
@@ -1180,10 +1188,6 @@ main (int argc, char *argv[])
 	      {
 		ux_database_shutdown ();
 		ux_database_connect (db_name, db_user, db_passwd, NULL);
-	      }
-	    else
-	      {
-		ux_end_tran (CCI_TRAN_ROLLBACK, false);
 	      }
 
 	    if (as_info->reset_flag == TRUE)
@@ -1712,7 +1716,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       as_info->num_transactions_processed++;
 
       /* should be OUT_TRAN in auto commit */
-      as_info->con_status = CON_STATUS_OUT_TRAN;
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      if (as_info->con_status == CON_STATUS_IN_TRAN)
+	{
+	  as_info->con_status = CON_STATUS_OUT_TRAN;
+	}
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
     }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -1731,6 +1740,14 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 #ifndef LIBCAS_FOR_JSP
   as_info->log_msg[0] = '\0';
+  if (as_info->con_status == CON_STATUS_IN_TRAN)
+    {
+      cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
+    }
+  else
+    {
+      cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+    }
 #endif /* !LIBCAS_FOR_JSP */
 
   if (net_buf->err_code)
@@ -1749,15 +1766,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr,
 	      NET_BUF_HEADER_MSG_SIZE);
 #ifndef LIBCAS_FOR_JSP
-      if (as_info->con_status == CON_STATUS_IN_TRAN)
-	{
-	  cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
-	}
-      else
-	{
-	  cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
-	}
-
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
 	~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=

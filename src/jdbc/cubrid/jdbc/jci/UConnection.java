@@ -834,6 +834,7 @@ public class UConnection {
 	case -677: // ER_BO_CONNECT_FAILED
 	case UErrorCode.ER_COMMUNICATION:
 	case UErrorCode.ER_ILLEGAL_DATA_SIZE:
+	case UErrorCode.CAS_ER_COMMUNICATION:
 	    return true;
 	default:
 	    return false;

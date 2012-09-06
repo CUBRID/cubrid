@@ -1114,6 +1114,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
 #ifndef LIBCAS_FOR_JSP
       if (reset_con_status)
 	{
+	  assert_release (as_info->con_status == CON_STATUS_IN_TRAN);
 	  as_info->con_status = CON_STATUS_OUT_TRAN;
 	  as_info->transaction_start_time = (time_t) 0;
 	}
@@ -5078,7 +5079,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-	      ux_cursor_close(srv_handle, true);
+	      ux_cursor_close (srv_handle, true);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif /* !LIBCAS_FOR_JSP */
@@ -5155,7 +5156,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-              ux_cursor_close(srv_handle, true);
+	      ux_cursor_close (srv_handle, true);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif /* !LIBCAS_FOR_JSP */
@@ -5175,7 +5176,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-              ux_cursor_close(srv_handle, true);
+	      ux_cursor_close (srv_handle, true);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif /* !LIBCAS_FOR_JSP */
@@ -7263,7 +7264,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	  obj_trigger_target = trigger->class_mop;
 	  assert (obj_trigger_target != NULL);
 
-	  name_trigger_target = (char *) sm_class_name (obj_trigger_target);
+	  name_trigger_target = sm_class_name (obj_trigger_target);
 	  if (name_trigger_target == NULL)
 	    {
 	      error = er_errid ();
@@ -7272,7 +7273,8 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 
 	  if (is_pattern_match)
 	    {
-	      if (str_like (name_trigger_target, class_name, '\\') == 1)
+	      if (str_like ((char *) name_trigger_target, class_name, '\\') ==
+		  1)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -9296,10 +9298,10 @@ get_backslash_escape_string (void)
 {
   if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
     {
-      return "\\";
+      return (char *) "\\";
     }
   else
     {
-      return "\\\\";
+      return (char *) "\\\\";
     }
 }

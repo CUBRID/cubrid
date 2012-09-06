@@ -40,8 +40,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/un.h>
+#include <poll.h>
 #endif /* WINDOWS */
 
+#include "porting.h"
 #include "cas_common.h"
 #include "cas_network.h"
 #include "cas.h"
@@ -475,167 +477,149 @@ net_timeout_set (int timeout_sec)
   net_timeout = timeout_sec;
 }
 
+#if !defined(CUBRID_SHARD)
+extern SOCKET new_req_sock_fd;
+#endif /* CUBRID_SHARD */
+
+static int
 #if defined(CUBRID_SHARD)
-static int
 read_from_proxy (SOCKET sock_fd, char *buf, int size)
-#else
-static int
+#else				/* CUBRID_SHARD */
 read_from_client (SOCKET sock_fd, char *buf, int size)
 #endif				/* CUBRID_SHARD */
 {
   int read_len;
-  struct timeval timeout_val, *timeout_ptr;
-#ifdef ASYNC_MODE
-  SELECT_MASK read_mask;
-  int nfound;
-  int maxfd;
-#if !defined(CUBRID_SHARD)
-  extern SOCKET new_req_sock_fd;
-#endif /* CUBRID_SHARD */
+#if defined(ASYNC_MODE)
+  struct pollfd po[2] = { {0, 0, 0}, {0, 0, 0} };
+  int timeout, po_size, n;
 #endif /* ASYNC_MODE */
-
-  if (net_timeout < 0)
-    timeout_ptr = NULL;
-  else
-    {
-      timeout_val.tv_sec = net_timeout;
-      timeout_val.tv_usec = 0;
-      timeout_ptr = &timeout_val;
-    }
 
   unset_net_timeout_flag ();
   if (net_error_flag)
-    return -1;
+    {
+      return -1;
+    }
 
-#ifdef ASYNC_MODE
-retry_select:
+#if defined(ASYNC_MODE)
+  timeout = net_timeout < 0 ? -1 : net_timeout * 1000;
 
-  FD_ZERO (&read_mask);
-  FD_SET (sock_fd, (fd_set *) & read_mask);
-  maxfd = (int) sock_fd + 1;
+  po[0].fd = sock_fd;
+  po[0].events = POLLIN;
+  po_size = 1;
+
 #if !defined(CUBRID_SHARD)
   if (!IS_INVALID_SOCKET (new_req_sock_fd))
     {
-      FD_SET (new_req_sock_fd, (fd_set *) & read_mask);
-      if (new_req_sock_fd > sock_fd)
-	maxfd = (int) new_req_sock_fd + 1;
+      po[1].fd = new_req_sock_fd;
+      po[1].events = POLLIN;
+      po_size = 2;
     }
 #endif /* CUBRID_SHARD */
-  nfound =
-    select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
-	    timeout_ptr);
-  if (nfound < 0)
+
+retry_poll:
+  n = poll (po, po_size, timeout);
+  if (n < 0)
     {
       if (errno == EINTR)
 	{
-	  goto retry_select;
+	  goto retry_poll;
 	}
-      net_error_flag = 1;
-      return -1;
+      else
+	{
+	  net_error_flag = 1;
+	  return -1;
+	}
     }
-#endif /* ASYNC_MODE */
-
-#ifdef ASYNC_MODE
-#if defined(CUBRID_SHARD)
-  if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
+  else if (n == 0)
     {
-#else
-  if (!IS_INVALID_SOCKET (new_req_sock_fd)
-      && FD_ISSET (new_req_sock_fd, (fd_set *) & read_mask))
-    {
-      return -1;
-    }
-  else if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
-    {
-#endif /* CUBRID_SHARD */
-#endif /* ASYNC_MODE */
-      read_len = READ_FROM_SOCKET (sock_fd, buf, size);
-#ifdef ASYNC_MODE
-    }
-  else
-    {
+      /* TIMEOUT */
       set_net_timeout_flag ();
       return -1;
     }
-#endif /* ASYNC_MODE */
-
-  if (read_len <= 0)
+  else
     {
-      net_error_flag = 1;
+#if !defined(CUBRID_SHARD)
+      if (!IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
+	{
+	  /* CHANGE CLIENT */
+	  return -1;
+	}
+#endif /* CUBRID_SHARD */
+      if (po[0].revents & POLLIN)
+	{
+#endif /* ASYNC_MODE */
+	  /* RECEIVE NEW REQUEST */
+	  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
+	  if (read_len <= 0)
+	    {
+	      net_error_flag = 1;
+	    }
+#if defined(ASYNC_MODE)
+	}
     }
+#endif /* ASYNC_MODE */
 
   return read_len;
 }
 
-#if defined(CUBRID_SHARD)
 static int
+#if defined(CUBRID_SHARD)
 write_to_proxy (SOCKET sock_fd, const char *buf, int size)
 #else
-static int
 write_to_client (SOCKET sock_fd, const char *buf, int size)
 #endif				/* CUBRID_SHARD */
 {
   int write_len;
-  struct timeval timeout_val, *timeout_ptr;
 #ifdef ASYNC_MODE
-  SELECT_MASK write_mask;
-  int maxfd;
-  int nfound;
+  struct pollfd po[1] = { {0, 0, 0} };
+  int timeout, n;
+
+  timeout = net_timeout < 0 ? -1 : net_timeout * 1000;
 #endif /* ASYNC_MODE */
 
-  if (net_timeout < 0)
+  if (net_error_flag || IS_INVALID_SOCKET (sock_fd))
     {
-      timeout_ptr = NULL;
+      return -1;
     }
-  else
-    {
-      timeout_val.tv_sec = net_timeout;
-      timeout_val.tv_usec = 0;
-      timeout_ptr = &timeout_val;
-    }
-
-  if (net_error_flag)
-    return -1;
-
-  if (IS_INVALID_SOCKET (sock_fd))
-    return -1;
 
 #ifdef ASYNC_MODE
-retry_select:
+  po[0].fd = sock_fd;
+  po[0].events = POLLOUT;
 
-  FD_ZERO (&write_mask);
-  FD_SET (sock_fd, (fd_set *) & write_mask);
-  maxfd = (int) sock_fd + 1;
-  nfound =
-    select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0,
-	    timeout_ptr);
-  if (nfound < 0)
+retry_poll:
+  n = poll (po, 1, timeout);
+  if (n < 0)
     {
       if (errno == EINTR)
 	{
-	  goto retry_select;
+	  goto retry_poll;
 	}
+      else
+	{
+	  net_error_flag = 1;
+	  return -1;
+	}
+    }
+  else if (n == 0)
+    {
+      /* TIMEOUT */
       net_error_flag = 1;
       return -1;
-    }
-#endif /* ASYNC_MODE */
-
-#ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) & write_mask))
-    {
-#endif /* ASYNC_MODE */
-      write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
-#ifdef ASYNC_MODE
     }
   else
     {
-      net_error_flag = 1;
-      return -1;
+      if (po[0].revents & POLLOUT)
+	{
+#endif /* ASYNC_MODE */
+	  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
+	  if (write_len <= 0)
+	    {
+	      net_error_flag = 1;
+	    }
+#if defined(ASYNC_MODE)
+	}
     }
 #endif /* ASYNC_MODE */
-
-  if (write_len <= 0)
-    net_error_flag = 1;
 
   return write_len;
 }
