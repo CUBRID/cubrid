@@ -3513,7 +3513,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      PT_MISC_TYPE q_type =
 		q->info.spec.range_var->info.name.meta_class;
 	      if (p_type != q_type &&
-		  (p_type = PT_META_CLASS || q_type == PT_META_CLASS))
+		  (p_type == PT_META_CLASS || q_type == PT_META_CLASS))
 		{
 		  /* this happens in statements like:
 		   * SELECT class t, t.attr FROM t 
@@ -6645,10 +6645,26 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   assert (sc_info != NULL);
 
+  if (statement != NULL && statement->node_type == PT_MERGE
+      && statement->info.merge.into != NULL)
+    {
+      /* chain merge specs for flat name resolving */
+      statement->info.merge.into->next = statement->info.merge.using;
+      statement->info.merge.using = NULL;
+    }
+
   /* Replace each Entity Spec with an Equivalent flat list */
   statement =
     parser_walk_tree (parser, statement, pt_flat_spec_pre,
 		      &chk_parent, pt_continue_walk, NULL);
+
+  if (statement != NULL && statement->node_type == PT_MERGE
+      && statement->info.merge.into != NULL)
+    {
+      /* unchain merge specs */
+      statement->info.merge.using = statement->info.merge.into->next;
+      statement->info.merge.into->next = NULL;
+    }
 
   /* resolve names in search conditions, assignments, and assignations */
   if (!pt_has_error (parser))
