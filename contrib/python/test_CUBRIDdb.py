@@ -4,7 +4,7 @@ import time
 
 class DBAPI20Test(unittest.TestCase):
     driver = CUBRIDdb
-    connect_args = ('CUBRID:localhost:33000:demodb', 'public')
+    connect_args = ('CUBRID:localhost:33000:demodb:::', 'public', '')
     connect_kw_args = {}
     table_prefix = 'dbapi20test_'
 

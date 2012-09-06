@@ -5,7 +5,7 @@ import time
 
 class DatabaseTest(unittest.TestCase):
     driver = _cubrid
-    connect_args = ('CUBRID:localhost:33000:demodb', 'public')
+    connect_args = ('CUBRID:localhost:33000:demodb:::', 'public', '')
     connect_kw_args = {}
 
     def setUp(self):
