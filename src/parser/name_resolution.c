@@ -2903,9 +2903,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 		      if (top_node != NULL
 			  && (top_node->node_type == PT_CREATE_INDEX
-			      || top_node->node_type == PT_ALTER_INDEX)
-			  || (top_node->node_type == PT_ALTER
-			      && top_node->info.alter.create_index != NULL))
+			      || top_node->node_type == PT_ALTER_INDEX
+			      || (top_node->node_type == PT_ALTER
+				  && (top_node->info.alter.create_index !=
+				      NULL))))
 			{
 			  /* check if function name is a spec attribute */
 			  if (pt_function_name_is_spec_attr (parser, node,
