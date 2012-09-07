@@ -188,6 +188,9 @@ static int parameter_info_decode (char *buf, int size, int num_param,
 static int decode_fetch_result (T_REQ_HANDLE * req_handle,
 				char *result_msg_org, char *result_msg_start,
 				int result_msg_size, char *charset);
+static int
+qe_close_req_handle_internal (T_REQ_HANDLE * req_handle, 
+      T_CON_HANDLE * con_handle, bool force_close);
 #if defined(WINDOWS)
 static int get_windows_charset_code (char *str);
 #endif
@@ -1179,6 +1182,13 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 int
 qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
+  return qe_close_req_handle_internal(req_handle, con_handle, false);
+}
+
+static int
+qe_close_req_handle_internal (T_REQ_HANDLE * req_handle, 
+      T_CON_HANDLE * con_handle, bool force_close)
+{
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CLOSE_REQ_HANDLE;
   int err_code = 0;
@@ -1201,7 +1211,7 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
       req_handle->stmt_type == CUBRID_STMT_GET_STATS ||
       req_handle->stmt_type == CUBRID_STMT_CALL ||
       req_handle->stmt_type == CUBRID_STMT_CALL_SP ||
-      req_handle->stmt_type == CUBRID_STMT_EVALUATE)
+      req_handle->stmt_type == CUBRID_STMT_EVALUATE || force_close)
     {
       goto send_close_handle_msg;
     }
@@ -1276,6 +1286,41 @@ send_close_handle_msg:
   err_code = net_recv_msg (con_handle, NULL, NULL, NULL);
 
   return err_code;
+}
+
+void
+qe_close_req_handle_all (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle;
+
+  /* close handle in req handle table */
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      if (con_handle->req_handle_table[i] == NULL)
+	{
+	  continue;
+	}
+      req_handle = con_handle->req_handle_table[i];
+
+	  qe_close_req_handle_internal(req_handle, con_handle, true);
+    }
+
+  /* close handle in deferred close handle list */
+  for (i = 0; i < con_handle->deferred_close_handle_count; i++)
+    {
+	  req_handle = con_handle->deferred_close_handle_list[i];
+	  
+      qe_close_req_handle_internal(req_handle, con_handle, true);
+    }
+
+  /* clear deferred close handle list */
+  for (i = 0; i < con_handle->deferred_close_handle_count; i++)
+    {
+      con_handle->deferred_close_handle_list[i] = NULL;
+    }
+  con_handle->deferred_close_handle_count = 0;
+
 }
 
 int
