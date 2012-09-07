@@ -1577,6 +1577,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 262 Nested analytic functions are not allowed.
 263 An inherited attribute cannot be used as the partitioning key.
 264 The aggregate size of enumeration elements is too large.
+265 Cannot use target table in source spec.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

@@ -35,7 +35,6 @@
 #include "query_executor.h"
 #include "xasl_generation.h"
 #include "xasl_support.h"
-#include "error_manager.h"
 #include "db.h"
 #include "environment_variable.h"
 #include "parser.h"
@@ -53,7 +52,6 @@
 #include "system_parameter.h"
 #include "execute_schema.h"
 #include "porting.h"
-#include "error_manager.h"
 #include "list_file.h"
 #include "execute_statement.h"
 #include "query_graph.h"
@@ -89,6 +87,12 @@ typedef struct name_to_derived_path_info
   UINTPTR old_spec_id;
   PT_NODE *new_spec_name;
 } NAME_TO_DERIVED_PATH_INFO;
+
+typedef struct
+{
+  PT_NODE *spec;
+  bool found;
+} PT_IS_SPEC_IN_LIST_INFO;
 
 typedef struct pred_regu_variable_p_list_node *PRED_REGU_VARIABLE_P_LIST,
   PRED_REGU_VARIABLE_P_LIST_NODE;
@@ -751,6 +755,9 @@ static int pt_check_parent_eq_class_for_ordby_keylimit (QO_PLAN * parent,
 static PT_NODE *pt_name_to_derived_path_pre (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *arg,
 					     int *continue_walk);
+static PT_NODE *pt_is_spec_in_list_pre (PARSER_CONTEXT * parser,
+					PT_NODE * node, void *arg,
+					int *continue_walk);
 
 
 static void
@@ -22613,6 +22620,14 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       goto cleanup;
     }
+  /* temporary: don't allow target to be used in source spec */
+  if (pt_is_spec_in_list (parser, info->into,
+			  aptr_statement->info.query.q.select.from->next))
+    {
+      error = MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC;
+      PT_ERRORm (parser, info->using, MSGCAT_SET_PARSER_SEMANTIC, error);
+      goto cleanup;
+    }
 
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
@@ -23045,6 +23060,15 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       return NULL;
     }
+  /* temporary: don't allow target to be used in source spec */
+  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+			  aptr_statement->info.query.q.select.from))
+    {
+      error = MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC;
+      PT_ERRORm (parser, statement->info.merge.using,
+		 MSGCAT_SET_PARSER_SEMANTIC, error);
+      return NULL;
+    }
 
   attrs = statement->info.merge.insert.attr_list;
   class_obj =
@@ -23300,6 +23324,7 @@ pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto cleanup;
     }
+  /* specs already checked at update subquery */
 
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
@@ -23493,4 +23518,57 @@ pt_name_to_derived_path_pre (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   return node;
+}
+
+/*
+ * pt_is_spec_in_list_pre () -
+ *
+ * return:
+ * parser(in):
+ * node(in):
+ * arg(in/out):
+ * continue_walk(in):
+ */
+static PT_NODE *pt_is_spec_in_list_pre (PARSER_CONTEXT * parser,
+					PT_NODE * node, void *arg,
+					int *continue_walk)
+{
+  PT_IS_SPEC_IN_LIST_INFO * info = (PT_IS_SPEC_IN_LIST_INFO *) arg;
+
+  if (node && node->node_type == PT_SPEC)
+    {
+      if (info->spec->info.spec.flat_entity_list
+	  && node->info.spec.flat_entity_list
+	  && !intl_identifier_casecmp (info->spec->info.spec.flat_entity_list->
+				       info.name.original, node->info.spec.
+				       flat_entity_list->info.name.original))
+	{
+	  info->found = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_is_spec_in_list () - Find out if a spec is in a given spec list
+ *
+ *   return:
+ *   parser(in):
+ *   spec(in):
+ *   spec_list(in):
+ */
+bool
+pt_is_spec_in_list (PARSER_CONTEXT * parser, PT_NODE * spec,
+		    PT_NODE * spec_list)
+{
+  PT_IS_SPEC_IN_LIST_INFO arg;
+
+  arg.spec = spec;
+  arg.found = false;
+  (void) parser_walk_tree (parser, spec_list, pt_is_spec_in_list_pre, &arg,
+			   NULL, NULL);
+
+  return arg.found;
 }

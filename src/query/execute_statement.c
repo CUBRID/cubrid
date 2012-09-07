@@ -14493,6 +14493,17 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      goto exit;
 	    }
+	  /* temporary: don't allow target to be used in source spec */
+	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				  upd_select_stmt->info.query.q.select.from->
+				  next))
+	    {
+	      PT_ERRORm (parser, statement->info.merge.using,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+	      err = er_errid ();
+	      goto exit;
+	    }
 	}
     }
 
@@ -14551,6 +14562,16 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  err = ER_GENERIC_ERROR;
 		}
+	      goto exit;
+	    }
+	  /* temporary: don't allow target to be used in source spec */
+	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				  ins_select_stmt->info.query.q.select.from))
+	    {
+	      PT_ERRORm (parser, statement->info.merge.using,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+	      err = er_errid ();
 	      goto exit;
 	    }
 
@@ -14686,6 +14707,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      goto exit;
 	    }
+	  /* specs already checked at update subquery */
 	  /* flush necessary objects before execute */
 	  err = sm_flush_objects (class_obj);
 	  if (err != NO_ERROR)
@@ -15117,9 +15139,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      err = er_errid ();
-	      pt_record_error (parser, parser->statement_number,
-			       statement->line_number,
-			       statement->column_number, er_msg (), NULL);
+	      if (err != NO_ERROR)
+		{
+		  pt_record_error (parser, parser->statement_number,
+				   statement->line_number,
+				   statement->column_number, er_msg (), NULL);
+		}
 	    }
 
 	  /* mark the end of another level of xasl packing */
@@ -15191,6 +15216,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_RESTORE (au_save);
 	  if (select_statement)
 	    {
+	      /* temporary: don't allow target to be used in source spec */
+	      if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				      select_statement->info.query.q.select.
+				      from->next))
+		{
+		  PT_ERRORm (parser, statement->info.merge.using,
+			     MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+		  err = er_errid ();
+		  goto cleanup;
+		}
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
 	      /* save the XASL_ID to be used by do_execute_merge() */
@@ -15407,6 +15443,16 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      goto exit;
 	    }
+	  /* temporary: don't allow target to be used in source spec */
+	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				  ins_select_stmt->info.query.q.select.from))
+	    {
+	      PT_ERRORm (parser, statement->info.merge.using,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+	      err = er_errid ();
+	      goto exit;
+	    }
 
 	  save_query_id = parser->query_id;
 	  parser->query_id = -1;
@@ -15495,6 +15541,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  goto exit;
 		}
+	      /* specs already checked at update subquery */
 
 	      AU_SAVE_AND_ENABLE (au_save);
 	      save_query_id = parser->query_id;
