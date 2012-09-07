@@ -612,14 +612,20 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 
   QUERY_RESULT_FREE (req_handle);
   if (!reuse)
-    FREE_MEM (req_handle->sql_text);
+    {
+      FREE_MEM (req_handle->sql_text);
+    }
   req_handle_col_info_free (req_handle);
   if (!reuse)
-    qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+    {
+      qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+    }
   hm_req_handle_fetch_buf_free (req_handle);
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
   if (!reuse)
-    FREE_MEM (req_handle->bind_mode);
+    {
+      FREE_MEM (req_handle->bind_mode);
+    }
   req_handle->valid = 0;
 }
 

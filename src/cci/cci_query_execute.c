@@ -422,8 +422,8 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   while (con_handle->deferred_close_handle_count > 0)
     {
       ADD_ARG_INT (&net_buf,
-                   con_handle->deferred_close_handle_list[--con_handle->
-                                                          deferred_close_handle_count]);
+		   con_handle->deferred_close_handle_list[--con_handle->
+							  deferred_close_handle_count]);
     }
 
   if (net_buf.err_code < 0)
@@ -819,8 +819,8 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   while (con_handle->deferred_close_handle_count > 0)
     {
       ADD_ARG_INT (&net_buf,
-                   con_handle->deferred_close_handle_list[--con_handle->
-                                                          deferred_close_handle_count]);
+		   con_handle->deferred_close_handle_list[--con_handle->
+							  deferred_close_handle_count]);
     }
 
   /* execute info */
@@ -1212,37 +1212,37 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
     {
       /* shrink the list size */
       new_deferred_close_handle_list =
-        (int *) REALLOC (con_handle->deferred_close_handle_list,
-                         sizeof (int) * DEFERRED_CLOSE_HANDLE_ALLOC_SIZE);
+	(int *) REALLOC (con_handle->deferred_close_handle_list,
+			 sizeof (int) * DEFERRED_CLOSE_HANDLE_ALLOC_SIZE);
       if (new_deferred_close_handle_list == NULL)
-        {
-          goto send_close_handle_msg;
-        }
+	{
+	  goto send_close_handle_msg;
+	}
       con_handle->deferred_max_close_handle_count =
-        DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+	DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
       con_handle->deferred_close_handle_list = new_deferred_close_handle_list;
     }
   else if (con_handle->deferred_close_handle_count + 1 >
-           con_handle->deferred_max_close_handle_count)
+	   con_handle->deferred_max_close_handle_count)
     {
       /* grow the list size */
       new_deferred_max_close_handle_count =
-        con_handle->deferred_max_close_handle_count +
-        DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+	con_handle->deferred_max_close_handle_count +
+	DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
       new_deferred_close_handle_list =
-        (int *) REALLOC (con_handle->deferred_close_handle_list,
-                         sizeof (int) * new_deferred_max_close_handle_count);
+	(int *) REALLOC (con_handle->deferred_close_handle_list,
+			 sizeof (int) * new_deferred_max_close_handle_count);
       if (new_deferred_close_handle_list == NULL)
-        {
-          goto send_close_handle_msg;
-        }
+	{
+	  goto send_close_handle_msg;
+	}
       con_handle->deferred_max_close_handle_count =
-        new_deferred_max_close_handle_count;
+	new_deferred_max_close_handle_count;
       con_handle->deferred_close_handle_list = new_deferred_close_handle_list;
     }
 
   con_handle->deferred_close_handle_list[con_handle->
-                                         deferred_close_handle_count++] =
+					 deferred_close_handle_count++] =
     req_handle->server_handle_id;
 
   return err_code;
@@ -1267,9 +1267,9 @@ send_close_handle_msg:
   if (err_code < 0)
     {
       if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
-        {
-          err_code = 0;
-        }
+	{
+	  err_code = 0;
+	}
       return err_code;
     }
 
@@ -4069,9 +4069,10 @@ prepare_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
       return num_col_info;
     }
 
+  req_handle_col_info_free (req_handle);
+
   req_handle->num_bind = num_bind_info;
   req_handle->num_col_info = num_col_info;
-  req_handle_col_info_free (req_handle);
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
@@ -4345,7 +4346,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
   char *cur_p = buf_p;
   int remain_size = *size;
   int num_col_info = 0;
-  T_CCI_COL_INFO *col_info = NULL;
+  T_CCI_COL_INFO *col_info;
   int i;
 
   if (ret_col_info)
@@ -4372,185 +4373,189 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
   remain_size -= NET_SIZE_INT;
   cur_p += NET_SIZE_INT;
 
-  col_info =
-    (T_CCI_COL_INFO *) MALLOC (sizeof (T_CCI_COL_INFO) * num_col_info);
-  if (col_info == NULL)
+  col_info = NULL;
+  if (num_col_info > 0)
     {
-      return CCI_ER_NO_MORE_MEMORY;
-    }
-
-  memset ((char *) col_info, 0, sizeof (T_CCI_COL_INFO) * num_col_info);
-
-  for (i = 0; i < num_col_info; i++)
-    {
-      int name_size;
-      char type;
-
-      if (remain_size < NET_SIZE_BYTE)
+      col_info = (T_CCI_COL_INFO *) MALLOC (sizeof (T_CCI_COL_INFO)
+					    * num_col_info);
+      if (col_info == NULL)
 	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (type, cur_p);
-      col_info[i].type = (T_CCI_U_TYPE) type;
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
-
-      if (remain_size < NET_SIZE_SHORT)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_SHORT (col_info[i].scale, cur_p);
-      remain_size -= NET_SIZE_SHORT;
-      cur_p += NET_SIZE_SHORT;
-
-      if (remain_size < NET_SIZE_INT)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_INT (col_info[i].precision, cur_p);
-      remain_size -= NET_SIZE_INT;
-      cur_p += NET_SIZE_INT;
-
-      if (remain_size < NET_SIZE_INT)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= NET_SIZE_INT;
-      cur_p += NET_SIZE_INT;
-
-      if (remain_size < name_size)
-	{
-	  goto get_column_info_error;
-	}
-      ALLOC_N_COPY (col_info[i].col_name, cur_p, name_size, char *);
-      if (col_info[i].col_name == NULL)
-	{
-	  goto get_column_info_error;
-	}
-      remain_size -= name_size;
-      cur_p += name_size;
-
-      if (is_prepare == false)
-	{
-	  continue;
+	  return CCI_ER_NO_MORE_MEMORY;
 	}
 
-      if (remain_size < NET_SIZE_INT)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= NET_SIZE_INT;
-      cur_p += NET_SIZE_INT;
+      memset ((char *) col_info, 0, sizeof (T_CCI_COL_INFO) * num_col_info);
 
-      if (remain_size < name_size)
+      for (i = 0; i < num_col_info; i++)
 	{
-	  goto get_column_info_error;
-	}
-      ALLOC_N_COPY (col_info[i].real_attr, cur_p, name_size, char *);
-      remain_size -= name_size;
-      cur_p += name_size;
+	  int name_size;
+	  char type;
 
-      if (remain_size < NET_SIZE_INT)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= NET_SIZE_INT;
-      cur_p += NET_SIZE_INT;
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (type, cur_p);
+	  col_info[i].type = (T_CCI_U_TYPE) type;
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < name_size)
-	{
-	  goto get_column_info_error;
-	}
-      ALLOC_N_COPY (col_info[i].class_name, cur_p, name_size, char *);
-      remain_size -= name_size;
-      cur_p += name_size;
+	  if (remain_size < NET_SIZE_SHORT)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_SHORT (col_info[i].scale, cur_p);
+	  remain_size -= NET_SIZE_SHORT;
+	  cur_p += NET_SIZE_SHORT;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (col_info[i].is_non_null, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (remain_size < NET_SIZE_INT)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_INT (col_info[i].precision, cur_p);
+	  remain_size -= NET_SIZE_INT;
+	  cur_p += NET_SIZE_INT;
 
-      if (remain_size < NET_SIZE_INT)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_INT (name_size, cur_p);
-      remain_size -= NET_SIZE_INT;
-      cur_p += NET_SIZE_INT;
+	  if (remain_size < NET_SIZE_INT)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_INT (name_size, cur_p);
+	  remain_size -= NET_SIZE_INT;
+	  cur_p += NET_SIZE_INT;
 
-      if (remain_size < name_size)
-	{
-	  goto get_column_info_error;
-	}
-      ALLOC_N_COPY (col_info[i].default_value, cur_p, name_size, char *);
-      if (col_info[i].default_value == NULL)
-	{
-	  goto get_column_info_error;
-	}
-      remain_size -= name_size;
-      cur_p += name_size;
+	  if (remain_size < name_size)
+	    {
+	      goto get_column_info_error;
+	    }
+	  ALLOC_N_COPY (col_info[i].col_name, cur_p, name_size, char *);
+	  if (col_info[i].col_name == NULL)
+	    {
+	      goto get_column_info_error;
+	    }
+	  remain_size -= name_size;
+	  cur_p += name_size;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      col_info[i].is_auto_increment = *cur_p;
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (is_prepare == false)
+	    {
+	      continue;
+	    }
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (col_info[i].is_unique_key, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (remain_size < NET_SIZE_INT)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_INT (name_size, cur_p);
+	  remain_size -= NET_SIZE_INT;
+	  cur_p += NET_SIZE_INT;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (col_info[i].is_primary_key, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (remain_size < name_size)
+	    {
+	      goto get_column_info_error;
+	    }
+	  ALLOC_N_COPY (col_info[i].real_attr, cur_p, name_size, char *);
+	  remain_size -= name_size;
+	  cur_p += name_size;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (col_info[i].is_reverse_index, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (remain_size < NET_SIZE_INT)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_INT (name_size, cur_p);
+	  remain_size -= NET_SIZE_INT;
+	  cur_p += NET_SIZE_INT;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (col_info[i].is_reverse_unique, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (remain_size < name_size)
+	    {
+	      goto get_column_info_error;
+	    }
+	  ALLOC_N_COPY (col_info[i].class_name, cur_p, name_size, char *);
+	  remain_size -= name_size;
+	  cur_p += name_size;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
-	}
-      NET_STR_TO_BYTE (col_info[i].is_foreign_key, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_non_null, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
 
-      if (remain_size < NET_SIZE_BYTE)
-	{
-	  goto get_column_info_error;
+	  if (remain_size < NET_SIZE_INT)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_INT (name_size, cur_p);
+	  remain_size -= NET_SIZE_INT;
+	  cur_p += NET_SIZE_INT;
+
+	  if (remain_size < name_size)
+	    {
+	      goto get_column_info_error;
+	    }
+	  ALLOC_N_COPY (col_info[i].default_value, cur_p, name_size, char *);
+	  if (col_info[i].default_value == NULL)
+	    {
+	      goto get_column_info_error;
+	    }
+	  remain_size -= name_size;
+	  cur_p += name_size;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  col_info[i].is_auto_increment = *cur_p;
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_unique_key, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_primary_key, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_reverse_index, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_reverse_unique, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_foreign_key, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      goto get_column_info_error;
+	    }
+	  NET_STR_TO_BYTE (col_info[i].is_shared, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
 	}
-      NET_STR_TO_BYTE (col_info[i].is_shared, cur_p);
-      remain_size -= NET_SIZE_BYTE;
-      cur_p += NET_SIZE_BYTE;
     }
 
   if (ret_col_info)
@@ -4773,17 +4778,20 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
       return num_col_info;
     }
 
+  req_handle_col_info_free (req_handle);
+
   req_handle->num_tuple = result_count;
   if (stmt_type == CUBRID_STMT_SELECT ||
       stmt_type == CUBRID_STMT_GET_STATS ||
       stmt_type == CUBRID_STMT_CALL || stmt_type == CUBRID_STMT_EVALUATE)
     {
       if (req_handle->execute_flag & CCI_EXEC_ASYNC)
-	req_handle->num_tuple = -1;
+	{
+	  req_handle->num_tuple = -1;
+	}
     }
 
   req_handle->num_col_info = num_col_info;
-  req_handle_col_info_free (req_handle);
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
