@@ -546,7 +546,8 @@ static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr);
 static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl);
-static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid);
+static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid,
+					    bool is_class);
 static LK_ENTRY *lock_add_non2pl_lock (LK_RES * res_ptr, int tran_index,
 				       LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr,
@@ -648,6 +649,8 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
 static void lock_decrement_class_granules (LK_ENTRY * class_entry);
+static LK_ENTRY *lock_find_class_entry (int tran_index,
+					const OID * class_oid);
 
 #endif /* SERVER_MODE */
 
@@ -2112,6 +2115,53 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl)
  *   - lk_add_non2pl_lock()
  *   - lk_position_holder_entry()
  */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_find_class_entry - Find a class lock entry
+ *                           in the transaction lock hold list
+ *
+ * return:
+ *
+ *   tran_index(in):
+ *   class_oid(in):
+ *
+ * Note:This function finds a class lock entry, whose lock object id
+ *     is the given class_oid, in the transaction lock hold list.
+ */
+static LK_ENTRY *
+lock_find_class_entry (int tran_index, const OID * class_oid)
+{
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  int rv;
+
+  /* The caller is not holding any mutex */
+
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  rv = pthread_mutex_lock (&tran_lock->hold_mutex);
+
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      entry_ptr = tran_lock->root_class_hold;
+    }
+  else
+    {
+      entry_ptr = tran_lock->class_hold_list;
+      while (entry_ptr != (LK_ENTRY *) NULL)
+	{
+	  if (OID_EQ (&entry_ptr->res_head->oid, class_oid))
+	    {
+	      break;
+	    }
+	  entry_ptr = entry_ptr->tran_next;
+	}
+    }
+
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+  return entry_ptr;		/* it might be NULL */
+}
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -4945,7 +4995,7 @@ lock_demote_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
   /* The caller is not holding any mutex */
 
   /* demote only one class lock */
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid);
+  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
 
   if (entry_ptr != NULL)
     {
@@ -5095,7 +5145,7 @@ lock_unlock_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
   int demote_unlock = SKIP;
   LK_ACQUISITION_HISTORY *prev, *last, *p;
 
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid);
+  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
 
   if (entry_ptr != NULL)
     {
@@ -5199,7 +5249,7 @@ lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index,
   LK_ENTRY *entry_ptr;
 
   /* unlock the shared instance lock (S_LOCK) */
-  entry_ptr = lock_find_tran_hold_entry (tran_index, inst_oid);
+  entry_ptr = lock_find_tran_hold_entry (tran_index, inst_oid, false);
 
   if (entry_ptr != NULL && entry_ptr->granted_mode == S_LOCK)
     {
@@ -8568,10 +8618,14 @@ lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid,
 #else /* !SERVER_MODE */
   LK_ENTRY *entry_ptr = NULL;
   int tran_index;
+  bool is_class;
+
+  is_class =
+    (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid)) ? true : false;
 
   /* get transaction table index */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  entry_ptr = lock_find_tran_hold_entry (tran_index, oid);
+  entry_ptr = lock_find_tran_hold_entry (tran_index, oid, is_class);
 
   if (entry_ptr != NULL)
     {
@@ -8601,6 +8655,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
   int tran_index;		/* transaction table index */
   TRAN_ISOLATION isolation;	/* transaction isolation level */
   LK_ENTRY *entry_ptr;
+  bool is_class;
 
   if (oid == NULL)
     {
@@ -8615,12 +8670,15 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
       return;
     }
 
+  is_class =
+    (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid)) ? true : false;
+
   /* get transaction table index */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   if (force == true)
     {
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid);
+      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, is_class);
 
       if (entry_ptr != NULL)
 	{
@@ -9105,7 +9163,7 @@ lock_unlock_by_isolation_level (THREAD_ENTRY * thread_p)
 }
 
 static LK_ENTRY *
-lock_find_tran_hold_entry (int tran_index, const OID * oid)
+lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class)
 {
 #if !defined (SERVER_MODE)
   return NULL;
@@ -9115,6 +9173,11 @@ lock_find_tran_hold_entry (int tran_index, const OID * oid)
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr;
   int rv;
+
+  if (is_class)
+    {
+      return lock_find_class_entry (tran_index, oid);
+    }
 
   hash_index = LK_OBJ_LOCK_HASH (oid);
   hash_anchor = &lk_Gl.obj_hash_table[hash_index];
@@ -9218,7 +9281,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
   /* get the granted lock mode acquired on the given class oid */
   if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
     {
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid);
+      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, true);
       if (entry_ptr != NULL)
 	{
 	  lock_mode = entry_ptr->granted_mode;
@@ -9226,7 +9289,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
       return lock_mode;		/* might be NULL_LOCK */
     }
 
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid);
+  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
   if (entry_ptr != NULL)
     {
       lock_mode = entry_ptr->granted_mode;
@@ -9251,7 +9314,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
 	  lock_mode = NULL_LOCK;
 	}
 
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid);
+      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, false);
       if (entry_ptr != NULL)
 	{
 	  lock_mode = entry_ptr->granted_mode;
@@ -9462,7 +9525,7 @@ lock_get_class_lock (const OID * class_oid, int tran_index)
     }
   else
     {
-      entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid);
+      entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
     }
 
   return entry_ptr;
