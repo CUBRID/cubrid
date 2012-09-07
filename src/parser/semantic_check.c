@@ -532,6 +532,12 @@ pt_update_compatible_info (PARSER_CONTEXT * parser,
 	      cinfo->coerc = MIN (att1_info->coerc, att2_info->coerc);
 	    }
 	}
+      else
+	{
+	  cinfo->collation_id = att1_info->collation_id;
+	  cinfo->cs = att1_info->cs;
+	  cinfo->coerc = MIN (att1_info->coerc, att2_info->coerc);
+	}
     }
 
   return is_compatible;
@@ -2378,9 +2384,7 @@ pt_union_compatible (PARSER_CONTEXT * parser,
 
 	      /* numeric type, fixed size string type */
 	      if (common_type == PT_TYPE_NUMERIC
-		  || common_type == PT_TYPE_CHAR
-		  || common_type == PT_TYPE_NCHAR
-		  || common_type == PT_TYPE_BIT)
+		  || PT_IS_STRING_TYPE (common_type))
 		{
 		  if ((dt1->info.data_type.precision !=
 		       dt2->info.data_type.precision)
