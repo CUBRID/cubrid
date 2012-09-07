@@ -632,7 +632,7 @@ int
 cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 {
   int err_code = CCI_ER_NO_ERROR;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("(%d)cci_disconnect", con_h_id));
@@ -722,7 +722,7 @@ ret:
 int
 cci_cancel (int con_h_id)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int ref_count;
   int err;
 
@@ -755,7 +755,7 @@ int
 cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
 {
   int err_code = CCI_ER_NO_ERROR;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -994,7 +994,7 @@ error:
 int
 cci_get_bind_num (int req_h_id)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int num_bind;
 
 #ifdef CCI_DEBUG
@@ -1023,7 +1023,7 @@ cci_get_bind_num (int req_h_id)
 int
 cci_is_updatable (int req_h_id)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int updatable_flag;
 
 #ifdef CCI_DEBUG
@@ -1052,7 +1052,7 @@ cci_is_updatable (int req_h_id)
 T_CCI_COL_INFO *
 cci_get_result_info (int req_h_id, T_CCI_CUBRID_STMT * cmd_type, int *num)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   T_CCI_COL_INFO *col_info;
 
 #ifdef CCI_FULL_DEBUG
@@ -1168,7 +1168,7 @@ cci_bind_param (int req_h_id, int index, T_CCI_A_TYPE a_type, void *value,
 int
 cci_register_out_param (int req_h_id, int index)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int err_code = 0;
 
   MUTEX_LOCK (con_handle_table_mutex);
@@ -1198,7 +1198,7 @@ cci_register_out_param (int req_h_id, int index)
 int
 cci_bind_param_array_size (int req_h_id, int array_size)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_FULL_DEBUG
@@ -1228,7 +1228,7 @@ int
 cci_bind_param_array (int req_h_id, int index, T_CCI_A_TYPE a_type,
 		      void *value, int *null_ind, T_CCI_U_TYPE u_type)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_FULL_DEBUG
@@ -1582,7 +1582,7 @@ int
 cci_get_thread_result (int con_id, T_CCI_ERROR * err_buf)
 {
   int err_code = CCI_ER_NO_ERROR;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
   err_buf_reset (err_buf);
 
@@ -2139,7 +2139,7 @@ ret:
 int
 cci_fetch_size (int req_h_id, int fetch_size)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_FULL_DEBUG
@@ -2238,7 +2238,7 @@ int
 cci_schema_info (int con_h_id, T_CCI_SCH_TYPE type, char *arg1,
 		 char *arg2, char flag, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
   int req_handle_id = -1;
   int err_code = CCI_ER_NO_ERROR;
@@ -2362,7 +2362,7 @@ int
 cci_oid_get (int con_h_id, char *oid_str, char **attr_name,
 	     T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
   int req_handle_id = -1;
   int err_code = CCI_ER_NO_ERROR;
@@ -2442,7 +2442,7 @@ int
 cci_oid_put (int con_h_id, char *oid_str, char **attr_name, char **new_val,
 	     T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -2502,7 +2502,7 @@ int
 cci_oid_put2 (int con_h_id, char *oid_str, char **attr_name, void **new_val,
 	      int *a_type, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -2561,7 +2561,7 @@ ret:
 int
 cci_set_autocommit (int con_h_id, CCI_AUTOCOMMIT_MODE autocommit_mode)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
   T_CCI_ERROR tmp_error;
 
@@ -2612,7 +2612,7 @@ cci_set_autocommit (int con_h_id, CCI_AUTOCOMMIT_MODE autocommit_mode)
 CCI_AUTOCOMMIT_MODE
 cci_get_autocommit (int con_h_id)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
   while (1)
@@ -2653,7 +2653,7 @@ cci_get_autocommit (int con_h_id)
 int
 cci_set_holdability (int con_h_id, int holdable)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
   if (holdable < 0 || holdable > 1)
@@ -2703,7 +2703,7 @@ cci_set_holdability (int con_h_id, int holdable)
 int
 cci_get_holdability (int con_h_id)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
   int holdable = 0;
 
@@ -2746,7 +2746,7 @@ cci_get_holdability (int con_h_id)
 int
 cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_DEBUG
@@ -2801,7 +2801,7 @@ int
 cci_get_class_num_objs (int con_h_id, char *class_name, int flag,
 			int *num_objs, int *num_pages, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -2859,7 +2859,7 @@ int
 cci_oid (int con_h_id, T_CCI_OID_CMD cmd, char *oid_str,
 	 T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -2920,7 +2920,7 @@ int
 cci_oid_get_class_name (int con_h_id, char *oid_str, char *out_buf,
 			int out_buf_size, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -3516,7 +3516,7 @@ int
 cci_get_attr_type_str (int con_h_id, char *class_name, char *attr_name,
 		       char *buf, int buf_size, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -3598,7 +3598,7 @@ cci_query_info_free (char *out_buf)
 int
 cci_set_max_row (int req_h_id, int max_row)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int err_code = 0;
 
 #ifdef CCI_DEBUG
@@ -3628,7 +3628,7 @@ int
 cci_savepoint (int con_h_id, T_CCI_SAVEPOINT_CMD cmd, char *savepoint_name,
 	       T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -3756,7 +3756,7 @@ cci_param_info_free (T_CCI_PARAM_INFO * param)
 int
 cci_set_query_timeout (int req_h_id, int timeout)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
   int old_value;
 
   if (timeout < 0)
@@ -3787,7 +3787,7 @@ cci_set_query_timeout (int req_h_id, int timeout)
 int
 cci_get_query_timeout (int req_h_id)
 {
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("(%d:%d)cci_get_query_timeout", CON_ID (req_h_id),
@@ -3809,7 +3809,7 @@ static int
 cci_lob_new (int con_h_id, void *lob, T_CCI_U_TYPE type,
 	     T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   T_LOB *lob_handle = NULL;
 
@@ -3935,7 +3935,7 @@ static int
 cci_lob_write (int con_h_id, void *lob, long long start_pos,
 	       int length, const char *buf, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   T_LOB *lob_handle = (T_LOB *) lob;
   int nwritten = 0;
@@ -4043,7 +4043,7 @@ static int
 cci_lob_read (int con_h_id, void *lob, long long start_pos,
 	      int length, char *buf, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code = CCI_ER_NO_ERROR;
   T_LOB *lob_handle = (T_LOB *) lob;
   int nread = 0;
@@ -4191,7 +4191,7 @@ int
 cci_xa_prepare (int con_id, XID * xid, T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("(%d)cci_xa_prepare", con_id));
@@ -4242,7 +4242,7 @@ int
 cci_xa_recover (int con_id, XID * xid, int num_xid, T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("(%d)cci_xa_recover", con_id));
@@ -4292,7 +4292,7 @@ int
 cci_xa_end_tran (int con_id, XID * xid, char type, T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("(%d)cci_xa_end_tran", con_id));
@@ -4343,7 +4343,7 @@ cci_xa_end_tran (int con_id, XID * xid, char type, T_CCI_ERROR * err_buf)
 int
 cci_get_dbms_type (int con_h_id)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int dbms_type;
 
   MUTEX_LOCK (con_handle_table_mutex);
@@ -4366,7 +4366,7 @@ cci_get_dbms_type (int con_h_id)
 int
 cci_set_charset (int con_h_id, char *charset)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int err_code;
 
 #ifdef CCI_DEBUG
@@ -5940,7 +5940,7 @@ cci_check_property (char **property, T_CCI_ERROR * err_buf)
 static void
 cci_disconnect_force (int con_h_id, bool try_close)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
   if (con_h_id <= 0)
     {

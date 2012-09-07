@@ -249,7 +249,7 @@ con_alloc_error:
 int
 hm_con_handle_free (int con_id)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
 
   con_handle = hm_find_con_handle (con_id);
   if (con_handle == NULL)
@@ -270,9 +270,9 @@ hm_con_handle_free (int con_id)
 int
 hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
 {
-  T_CON_HANDLE *con_handle;
+  T_CON_HANDLE *con_handle = NULL;
   int req_handle_id;
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
 
   *ret_req_handle = NULL;
 
@@ -286,7 +286,9 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
   req_handle_id = new_req_handle_id (con_handle);
 
   if (req_handle_id < 0)
-    return (req_handle_id);
+    {
+      return (req_handle_id);
+    }
 
   req_handle = (T_REQ_HANDLE *) MALLOC (sizeof (T_REQ_HANDLE));
   if (req_handle == NULL)
@@ -364,8 +366,8 @@ hm_find_req_handle (int req_handle_id, T_CON_HANDLE ** ret_con_h)
 {
   int con_id;
   int req_id;
-  T_CON_HANDLE *con_handle;
-  T_REQ_HANDLE *req_handle;
+  T_CON_HANDLE *con_handle = NULL;
+  T_REQ_HANDLE *req_handle = NULL;
 
   if (ret_con_h)
     {
@@ -418,7 +420,7 @@ void
 hm_req_handle_free_all (T_CON_HANDLE * con_handle)
 {
   int i;
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
 
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
@@ -438,7 +440,7 @@ void
 hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle)
 {
   int i;
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
 
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
@@ -463,7 +465,7 @@ void
 hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle)
 {
   int i;
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
 
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
@@ -487,7 +489,7 @@ void
 hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle)
 {
   int i;
-  T_REQ_HANDLE *req_handle;
+  T_REQ_HANDLE *req_handle = NULL;
 
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
