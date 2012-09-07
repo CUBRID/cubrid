@@ -22223,11 +22223,12 @@ static void
 pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 			    PT_NODE *coll_node)
 {
-  LANG_COLLATION *lang_coll;
+  LANG_COLLATION *lang_coll = NULL;
 
   assert (node != NULL);
   assert (node->node_type == PT_VALUE);
 
+  /* coll_node is the optional collation specified by user with COLLATE */
   if (coll_node == NULL)
     {
       int client_collation = lang_get_client_collation ();
@@ -22258,8 +22259,17 @@ pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
     	  /* check charset-collation compatibility */
     	  if (lang_coll->codeset != node->data_type->info.data_type.units)
     	    {
-    	      PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+    	      /* set an error only when charset and collation given by user
+    	         are not compatible */
+    	      if (coll_node != NULL)
+    		{
+    		  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+		}
+	      /* COLLATE was not specified: leave the default collation of
+	         charset set by charset introducer */
+	      assert (node->info.value.print_collation == false);
+
 	      return;
     	    }
     	  else
