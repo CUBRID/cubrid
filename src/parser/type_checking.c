@@ -9634,7 +9634,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       if (common_type == PT_TYPE_MAYBE)
 	{
-	  common_type = (arg1_type == PT_TYPE_MAYBE) ? arg2_type : arg1_type;
+	  common_type = (arg1_type == PT_TYPE_MAYBE &&
+			 arg2_type != PT_TYPE_NULL) ? arg2_type : arg1_type;
 	}
 
       if (common_type == PT_TYPE_MAYBE)
