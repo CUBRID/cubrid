@@ -4032,7 +4032,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 
   if (is_partition == 1)
     {
-      error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT, false);
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -4171,7 +4171,8 @@ fail_end:
   if (savepoint_grant && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT);
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT);
     }
   if (sub_partitions)
     {
@@ -4564,7 +4565,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 
   if (is_partition == 1)
     {
-      error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE, false);
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -4741,7 +4742,8 @@ fail_end:
   if (savepoint_revoke && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
     }
   if (sub_partitions)
     {
@@ -4873,7 +4875,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
 	}
       else			/* if partitioned class; do actions to all partitions */
 	{
-	  error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER, false);
+	  error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
 	  if (error != NO_ERROR)
 	    goto fail_return;
 	  savepoint_owner = 1;
@@ -4894,7 +4896,8 @@ fail_return:
   if (savepoint_owner && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
     }
   if (sub_partitions)
     {

@@ -548,7 +548,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  PT_END;
 	}
 #endif
-      error = tran_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD, false);
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
       if (error == NO_ERROR)
 	{
 	  error = do_add_attributes (parser, ctemplate,
@@ -558,7 +558,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -568,7 +569,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -577,7 +579,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      error = er_errid ();
 	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -585,7 +588,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (ctemplate == NULL)
 	    {
 	      error = er_errid ();
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -594,7 +598,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -604,7 +609,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      (void) dbt_abort_class (ctemplate);
 	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+		tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -618,7 +624,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -632,7 +639,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -1160,7 +1168,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       pinfo.root_op = vclass;
       pinfo.keycol[0] = 0;
 
-      error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER, false);
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER);
       if (error != NO_ERROR)
 	{
 	  dbt_abort_class (ctemplate);
@@ -1250,7 +1258,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	    }
 	  return error;
 	}
@@ -1311,7 +1320,8 @@ alter_partition_fail:
   if (partition_savepoint && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER);
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER);
     }
   return error;
 }
@@ -1523,7 +1533,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   /* Multiple alter operations in a single statement need to be atomic. */
-  error_code = tran_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_ALTER, false);
+  error_code = tran_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_ALTER);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1594,7 +1604,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 error_exit:
   if (do_rollback && error_code != ER_LK_UNILATERALLY_ABORTED)
     {
-      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_ALTER);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_ALTER);
     }
 
   return error_code;
@@ -2139,7 +2149,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = tran_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY, false);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
   if (error != NO_ERROR)
     {
       return error;
@@ -2163,7 +2173,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   return error;
 
 error_exit:
-  tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
+  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
 
   return error;
 }
@@ -2423,7 +2433,7 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       /* Multiple renaming operations in a single statement need to be
          atomic. */
-      error = tran_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME, false);
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -2463,7 +2473,7 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 error_exit:
   if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME);
     }
 
   return error;
@@ -3409,7 +3419,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       if (error == NO_ERROR)
 	{
-	  error = tran_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX, false);
+	  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -3500,7 +3510,7 @@ error_exit:
     {
       if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
 	{
-	  tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
 	}
     }
   error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ?
@@ -11872,7 +11882,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      error = tran_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY, false);
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -11901,7 +11911,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto error_exit;
 	    }
 
-	  error = tran_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY, false);
+	  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -12112,7 +12122,7 @@ error_exit:
     }
   if (do_rollback_on_error && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
     }
   return error;
 }
@@ -12472,7 +12482,7 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = tran_savepoint (UNIQUE_SAVEPOINT_TRUNCATE, false);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_TRUNCATE);
   if (error != NO_ERROR)
     {
       return error;
@@ -12485,7 +12495,8 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      (void) tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_TRUNCATE);
+	      (void)
+		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_TRUNCATE);
 	    }
 
 	  return error;
@@ -12633,7 +12644,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
       has_partitions = true;
     }
 
-  error = tran_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR, false);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -12937,7 +12948,7 @@ exit:
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
     }
 
   if (attr_chg_prop.constr_info != NULL)

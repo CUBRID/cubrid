@@ -2774,8 +2774,8 @@ sm_rename_class (MOP op, const char *new_name)
   error = do_is_partitioned_classobj (&is_partition, op, NULL, NULL);
   if (is_partition == PARTITIONED_CLASS)
     {
-      if ((error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME,
-				   false)) != NO_ERROR)
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+      if (error != NO_ERROR)
 	{
 	  return error;
 	}
@@ -2859,7 +2859,8 @@ sm_rename_class (MOP op, const char *new_name)
       if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
 	{
 	  (void)
-	    tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+	    tran_abort_upto_system_savepoint
+	    (UNIQUE_PARTITION_SAVEPOINT_RENAME);
 	}
     }
 
@@ -12295,7 +12296,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
    *  to a class with instances and the constraint is violated.  In this
    *  situation, we do not want to abort the entire transaction.
    */
-  error = tran_savepoint (UNIQUE_SAVEPOINT_NAME, false);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_NAME);
 
   if ((error == NO_ERROR) && (template_->op != NULL))
     {
@@ -12483,7 +12484,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
       abort_subclasses (newsubs);
       if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID)
 	{
-	  (void) tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_NAME);
+	  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
 	}
       else
 	{
@@ -12611,7 +12612,7 @@ sm_delete_class_mop (MOP op)
 
   if (is_partition == 1)
     {
-      error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP, false);
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -12622,7 +12623,8 @@ sm_delete_class_mop (MOP op)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+	      tran_abort_upto_system_savepoint
+		(UNIQUE_PARTITION_SAVEPOINT_DROP);
 	    }
 	  return error;
 	}
@@ -12633,13 +12635,13 @@ sm_delete_class_mop (MOP op)
   oldsupers = NULL;
 
   /* if the delete fails, we'll need to rollback to savepoint */
-  error = tran_savepoint (UNIQUE_SAVEPOINT_NAME2, false);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_NAME2);
   if (error != NO_ERROR)
     {
       if (subdel == 1 && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
 	  && error != ER_LK_UNILATERALLY_ABORTED)
 	{
-	  tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+	  tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
 	}
       return error;
     }
@@ -12876,11 +12878,11 @@ end:
     {
       if (subdel == 1)
 	{
-	  tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
+	  tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_DROP);
 	}
       else
 	{
-	  tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_NAME2);
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME2);
 	}
     }
 
@@ -13039,7 +13041,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	      goto fail_end;
 	    }
 	}
-      error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX, false);
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -13328,7 +13330,8 @@ fail_end:
   if (savepoint_index && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
     }
   if (sub_partitions)
     {
@@ -13437,7 +13440,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 
   if (is_partition == 1)
     {
-      error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX, false);
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -13555,7 +13558,8 @@ fail_end:
   if (savepoint_index && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
     }
   if (sub_partitions)
     {
@@ -14856,7 +14860,7 @@ sm_truncate_class (MOP class_mop)
 
   assert (class_mop != NULL);
 
-  error = tran_savepoint (UNIQUE_SAVEPOINT_SM_TRUNCATE, false);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_SM_TRUNCATE);
   if (error != NO_ERROR)
     {
       return error;
@@ -15112,7 +15116,7 @@ error_exit:
 
   if (error != ER_LK_UNILATERALLY_ABORTED)
     {
-      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_SM_TRUNCATE);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_SM_TRUNCATE);
     }
 
   if (unique_save_info != NULL)
@@ -15331,7 +15335,7 @@ sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
  * return : true/false
  * constraint (in) : constraint
  * super_class (in) : the class to which this constraint belongs to
- * Note: 
+ * Note:
  *  SM_CONSTRAINT_INDEX		  - always local
  *  SM_CONSTRAINT_REVERSE_INDEX	  - always local
  *  SM_CONSTRAINT_FOREIGN_KEY	  - always local

@@ -1377,12 +1377,26 @@ tran_get_savepoints (DB_NAMELIST ** savepoint_list)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * tran_savepoint - Declare a user savepoint
+ * tran_system_savepoint -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   savept_name(in): Name of the savepoint
- *   user(in): true if user-defined, not internally by system
+ *
+ */
+int
+tran_system_savepoint (const char *savept_name)
+{
+  return tran_savepoint_internal (savept_name, SYSTEM_SAVEPOINT);
+}
+
+/*
+ * tran_savepoint_internal - Declare a user savepoint
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   savept_name(in): Name of the savepoint
+ *   savepoint_type(in):
  *
  * NOTE: A savepoint is established for the current transaction, so
  *              that future transaction actions can be rolled back to this
@@ -1401,7 +1415,8 @@ tran_get_savepoints (DB_NAMELIST ** savepoint_list)
  *              transaction can have.
  */
 int
-tran_savepoint (const char *savept_name, bool user)
+tran_savepoint_internal (const char *savept_name,
+			 SAVEPOINT_TYPE savepoint_type)
 {
   LOG_LSA savept_lsa;
   int error_code = NO_ERROR;
@@ -1428,7 +1443,7 @@ tran_savepoint (const char *savept_name, bool user)
     }
 
   /* add savepoint to local list */
-  if (user)
+  if (savepoint_type == USER_SAVEPOINT)
     {
       error_code = tran_add_savepoint (savept_name);
       if (error_code != NO_ERROR)
@@ -1441,12 +1456,47 @@ tran_savepoint (const char *savept_name, bool user)
 }
 
 /*
- * tran_abort_upto_savepoint - Abort operations of a transaction upto a savepoint
+ * tran_abort_upto_system_savepoint -
  *
  * return: state of partial aborted operation (i.e., notify if
  *              there are client actions that need to be undone).
  *
  *   savepoint_name(in): Name of the savepoint
+ */
+int
+tran_abort_upto_system_savepoint (const char *savepoint_name)
+{
+  return tran_internal_abort_upto_savepoint (savepoint_name,
+					     SYSTEM_SAVEPOINT, false);
+}
+
+/*
+ * tran_abort_upto_user_savepoint -
+ *
+ * return: state of partial aborted operation (i.e., notify if
+ *              there are client actions that need to be undone).
+ *   savepoint_name(in): Name of the savepoint
+ */
+int
+tran_abort_upto_user_savepoint (const char *savepoint_name)
+{
+  /* delete client's local copy of savepoint names back to here */
+  tran_free_list_upto_savepoint (savepoint_name);
+
+  return tran_internal_abort_upto_savepoint (savepoint_name,
+					     USER_SAVEPOINT, false);
+}
+
+/*
+ * tran_internal_abort_upto_savepoint - Abort operations of a transaction
+ *    upto a savepoint
+ *
+ * return: state of partial aborted operation (i.e., notify if
+ *              there are client actions that need to be undone).
+ *
+ *   savepoint_name(in): Name of the savepoint
+ *   savepoint_type(in):
+ *   client_decache_all_but_norealclasses(in):
  *
  * NOTE: All the effects of the current transaction after the
  *              given savepoint are undone, and all effects of the transaction
@@ -1470,26 +1520,8 @@ tran_savepoint (const char *savept_name, bool user)
  *              that need to be accessed in the future.
  */
 int
-tran_abort_upto_savepoint (const char *savepoint_name)
-{
-  /* delete client's local copy of savepoint names back to here */
-  tran_free_list_upto_savepoint (savepoint_name);
-
-  return tran_internal_abort_upto_savepoint (savepoint_name, false);
-}
-
-/*
- * tran_internal_abort_upto_savepoint -
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   savepoint_name(in):
- *   client_decache_all_but_norealclasses(in):
- *
- * NOTE:
- */
-int
 tran_internal_abort_upto_savepoint (const char *savepoint_name,
+				    SAVEPOINT_TYPE savepoint_type,
 				    bool client_decache_all_but_norealclasses)
 {
   int error_code = NO_ERROR;
@@ -1530,6 +1562,15 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       error_code = er_errid ();
+      if (savepoint_type == SYSTEM_SAVEPOINT && state == TRAN_UNACTIVE_UNKNOWN
+	  && error_code != NO_ERROR && !tran_has_updated ())
+	{
+	  /*
+	   * maybe transaction has been unilaterally aborted by the system
+	   * and ER_LK_UNILATERALLY_ABORTED was overwritten by a consecutive error.
+	   */
+	  (void) tran_unilaterally_abort ();
+	}
 #if defined(CUBRID_DEBUG)
       if (error_code != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED &&
 	  error_code != ER_NET_SERVER_CRASHED)

@@ -5066,7 +5066,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        * Problems inserting the object...Maybe, the transaction should be
        * aborted by the caller...Quit..
        */
-      error_code = ER_FAILED;
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	}
       goto error2;
     }
 
@@ -5089,7 +5093,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   *
 	   * Maybe the transaction should be aborted by the caller.
 	   */
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
 	  goto error1;
 	}
 
@@ -5103,14 +5111,22 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   * information. Maybe, the transaction should be aborted by
 	   * the caller...Quit
 	   */
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
 	  goto error1;
 	}
 
       if (catcls_Enable == true
 	  && catcls_insert_catalog_classes (thread_p, recdes) != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
 	  goto error1;
 	}
 
@@ -5128,7 +5144,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					  true, &real_hfid, func_preds) !=
 	  NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
 	  goto error1;
 	}
 
@@ -5154,7 +5174,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
 			       recdes, &isold_object, insert_cache) == NULL)
 		{
-		  error_code = ER_FAILED;
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		    }
 		  goto error1;
 		}
 
@@ -5782,14 +5806,16 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
   if (heap_get_with_class_oid (thread_p, &class_oid, oid, &copy_recdes,
 			       scan_cache, COPY) != S_SUCCESS)
     {
-      int err_id = er_errid ();
+      error_code = er_errid ();
 
-      if (err_id == ER_HEAP_NODATA_NEWADDRESS)
+      if (error_code == ER_HEAP_NODATA_NEWADDRESS)
 	{
 	  isold_object = false;
 	  er_clear ();		/* clear ER_HEAP_NODATA_NEWADDRESS */
+
+	  error_code = NO_ERROR;
 	}
-      else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
+      else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 	{
 	  isold_object = false;
 	  er_clear ();
@@ -5803,7 +5829,10 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 	   * Problems reading the object...Maybe, the transaction should be
 	   * aborted by the caller...Quit..
 	   */
-	  error_code = ER_FAILED;
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
 	  goto error;
 	}
     }
@@ -5830,7 +5859,11 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_delete_force: ehash_delete failed for tran %d\n",
 			LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
 	  goto error;
 	}
 
@@ -5945,7 +5978,11 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
       er_log_debug (ARG_FILE_LINE,
 		    "locator_delete_force: hf_delete failed for tran %d\n",
 		    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      error_code = ER_FAILED;
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	}
       goto error;
     }
   *force_count = 1;
@@ -6476,6 +6513,7 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
+  assert_release (error_code == er_errid ());
   return error_code;
 }
 
@@ -7006,7 +7044,14 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 
       if (key_ins_del == NULL)
 	{
-	  error_code = ER_FAILED;
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+	    }
 	  goto error;
 	}
     }

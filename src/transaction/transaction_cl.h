@@ -42,6 +42,11 @@
 #define TM_TRAN_WAIT_MSECS() (tm_Tran_wait_msecs)
 #define TM_TRAN_ID()         (tm_Tran_ID)
 
+typedef enum savepoint_type
+{
+  USER_SAVEPOINT = 1,
+  SYSTEM_SAVEPOINT = 2
+} SAVEPOINT_TYPE;
 
 extern int tm_Tran_index;
 extern TRAN_ISOLATION tm_Tran_isolation;
@@ -78,9 +83,13 @@ extern int tran_end_topop (LOG_RESULT_TOPOP result);
 extern int tran_get_savepoints (DB_NAMELIST ** savepoint_list);
 #endif
 extern void tran_free_savepoint_list (void);
-extern int tran_savepoint (const char *savept_name, bool user);
-extern int tran_abort_upto_savepoint (const char *savepoint_name);
+extern int tran_system_savepoint (const char *savept_name);
+extern int tran_savepoint_internal (const char *savept_name,
+				    SAVEPOINT_TYPE savepoint_type);
+extern int tran_abort_upto_user_savepoint (const char *savepoint_name);
+extern int tran_abort_upto_system_savepoint (const char *savepoint_name);
 extern int tran_internal_abort_upto_savepoint (const char *savepoint_name,
+					       SAVEPOINT_TYPE savepoint_type,
 					       bool
 					       client_decache_only_insts);
 extern void tran_set_query_timeout (int query_timeout);

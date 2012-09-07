@@ -2538,7 +2538,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		    }
 		}
 
-	      /* in some cases, the object has been decached in before 
+	      /* in some cases, the object has been decached in before
 	       * trigger. we need fetch it again.
 	       */
 	      if (error == NO_ERROR && object->decached)
@@ -2836,7 +2836,7 @@ obt_enable_unique_checking (bool new_state)
 
 /*
  * obj_set_force_flush - set force_flush flag of the template
- * 
+ *
  * return : void
  * template_ptr (in/out)
  */
@@ -2850,7 +2850,7 @@ obt_set_force_flush (OBJ_TEMPLATE * template_ptr)
 
 /*
  * obj_reset_force_flush - reset force_flush flag of the template
- * 
+ *
  * return : void
  * template_ptr (in/out)
  */
@@ -2924,7 +2924,7 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 		  sprintf (savepoint_name, "%s-%d",
 			   OBJ_INTERNAL_SAVEPOINT_NAME,
 			   template_savepoint_count++);
-		  if (tran_savepoint (savepoint_name, false) != NO_ERROR)
+		  if (tran_system_savepoint (savepoint_name) != NO_ERROR)
 		    {
 		      return er_errid ();
 		    }
@@ -2962,7 +2962,7 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
   if (error != NO_ERROR && savepoint_used
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (savepoint_name);
+      (void) tran_abort_upto_system_savepoint (savepoint_name);
     }
 
   return error;
@@ -3064,7 +3064,7 @@ free_temp_object (MOP obj)
 /*
  * obt_populate_known_arguments - Populate default and auto_increment
  *				  arguments of template_ptr
- *    return: error code if unsuccessful 
+ *    return: error code if unsuccessful
  *
  *    template_ptr(in): temporary object
  *

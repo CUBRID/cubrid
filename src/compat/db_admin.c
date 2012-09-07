@@ -828,7 +828,7 @@ db_savepoint_transaction_internal (const char *savepoint_name)
 {
   int retval;
 
-  retval = tran_savepoint (savepoint_name, true);
+  retval = tran_savepoint_internal (savepoint_name, USER_SAVEPOINT);
 
   return (retval);
 }
@@ -877,7 +877,7 @@ db_abort_to_savepoint_internal (const char *savepoint_name)
       return db_abort_transaction ();
     }
 
-  error = tran_abort_upto_savepoint (savepoint_name);
+  error = tran_abort_upto_user_savepoint (savepoint_name);
 
   if (error == NO_ERROR)
     {

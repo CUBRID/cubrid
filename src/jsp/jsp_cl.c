@@ -906,7 +906,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
       goto error;
     }
 
-  err = tran_savepoint (SAVEPOINT_ADD_STORED_PROC, false);
+  err = tran_system_savepoint (SAVEPOINT_ADD_STORED_PROC);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1053,7 +1053,7 @@ error:
 
   if (has_savepoint)
     {
-      tran_abort_upto_savepoint (SAVEPOINT_ADD_STORED_PROC);
+      tran_abort_upto_system_savepoint (SAVEPOINT_ADD_STORED_PROC);
     }
 
   free_and_init (checked_name);

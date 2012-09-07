@@ -3224,7 +3224,7 @@ do_check_internal_statements (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      error = tran_savepoint (savepoint_name, false);
+      error = tran_system_savepoint (savepoint_name);
       if (error != NO_ERROR)
 	return error;
 
@@ -3249,7 +3249,7 @@ do_check_internal_statements (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       if (error < NO_ERROR)
 	{
-	  (void) tran_abort_upto_savepoint (savepoint_name);
+	  (void) tran_abort_upto_system_savepoint (savepoint_name);
 	  return error;
 	}
       return num_rows;
@@ -5190,7 +5190,7 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 		  result = ER_GENERIC_ERROR;
 		  goto exit;
 		}
-	      result = tran_savepoint (savepoint_name, false);
+	      result = tran_system_savepoint (savepoint_name);
 	      if (result != NO_ERROR)
 		{
 		  goto exit;
@@ -5247,7 +5247,7 @@ exit:
       && (result != ER_LK_UNILATERALLY_ABORTED))
     {
       /* savepoint from tran_savepoint() */
-      (void) db_abort_to_savepoint (savepoint_name);
+      (void) tran_abort_upto_system_savepoint (savepoint_name);
     }
   return result;
 }
@@ -6853,7 +6853,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
     {
       savepoint_name =
 	mq_generate_name (parser, "UusP", &update_savepoint_number);
-      error = tran_savepoint (savepoint_name, false);
+      error = tran_system_savepoint (savepoint_name);
       if (error != NO_ERROR)
 	{
 	  goto done;
@@ -6882,7 +6882,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       error = ER_GENERIC_ERROR;
       if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
 	{
-	  (void) tran_abort_upto_savepoint (savepoint_name);
+	  (void) tran_abort_upto_system_savepoint (savepoint_name);
 	}
       goto done;
     }
@@ -6905,7 +6905,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 	  cursor_close (&cursor_id);
 	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
 	    {
-	      (void) tran_abort_upto_savepoint (savepoint_name);
+	      (void) tran_abort_upto_system_savepoint (savepoint_name);
 	    }
 	  goto done;
 	}
@@ -6922,7 +6922,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 	  cursor_close (&cursor_id);
 	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
 	    {
-	      (void) tran_abort_upto_savepoint (savepoint_name);
+	      (void) tran_abort_upto_system_savepoint (savepoint_name);
 	    }
 	  goto done;
 	}
@@ -6938,7 +6938,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       cursor_close (&cursor_id);
       if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
 	{
-	  (void) tran_abort_upto_savepoint (savepoint_name);
+	  (void) tran_abort_upto_system_savepoint (savepoint_name);
 	}
       goto done;
     }
@@ -6963,7 +6963,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 	  if ((error < NO_ERROR) && savepoint_name
 	      && (error != ER_LK_UNILATERALLY_ABORTED))
 	    {
-	      (void) tran_abort_upto_savepoint (savepoint_name);
+	      (void) tran_abort_upto_system_savepoint (savepoint_name);
 	      break;
 	    }
 	}
@@ -8658,7 +8658,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
       savepoint_name =
 	mq_generate_name (parser, "UdsP", &delete_savepoint_number);
 
-      error = tran_savepoint (savepoint_name, false);
+      error = tran_system_savepoint (savepoint_name);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -8762,7 +8762,7 @@ cleanup:
   if (has_savepoint && (error < NO_ERROR) && savepoint_name
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_savepoint (savepoint_name);
+      (void) tran_abort_upto_system_savepoint (savepoint_name);
     }
 
   if (oids != NULL)
@@ -11696,7 +11696,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	    {
 	      *savepoint_name = mq_generate_name (parser, "UisP",
 						  &insert_savepoint_number);
-	      error = tran_savepoint (*savepoint_name, false);
+	      error = tran_system_savepoint (*savepoint_name);
 	    }
 
 	  if (error >= NO_ERROR)
@@ -12217,7 +12217,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_ENABLE (save);
 	  return ER_GENERIC_ERROR;
 	}
-      error = tran_savepoint (savepoint_name, false);
+      error = tran_system_savepoint (savepoint_name);
       if (error != NO_ERROR)
 	{
 	  AU_ENABLE (save);
@@ -12332,7 +12332,8 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       && (error != ER_LK_UNILATERALLY_ABORTED))
     {
       /* savepoint from tran_savepoint() */
-      (void) tran_internal_abort_upto_savepoint (savepoint_name, true);
+      (void) tran_internal_abort_upto_savepoint (savepoint_name,
+						 SYSTEM_SAVEPOINT, true);
       /* Use a special version of rollback which will not clobber
          cached views. We can do this because we know insert can not
          have created any views.
@@ -14293,7 +14294,7 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
 	      result = ER_GENERIC_ERROR;
 	      goto exit;
 	    }
-	  result = tran_savepoint (savepoint_name, false);
+	  result = tran_system_savepoint (savepoint_name);
 	  if (result != NO_ERROR)
 	    {
 	      goto exit;
@@ -14343,7 +14344,7 @@ exit:
       && (result != ER_LK_UNILATERALLY_ABORTED))
     {
       /* savepoint from tran_savepoint() */
-      (void) db_abort_to_savepoint (savepoint_name);
+      (void) tran_abort_upto_system_savepoint (savepoint_name);
     }
   return result;
 }
@@ -14390,7 +14391,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = ER_GENERIC_ERROR;
       goto exit;
     }
-  err = tran_savepoint (savepoint_name, false);
+  err = tran_system_savepoint (savepoint_name);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -14669,7 +14670,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* make the SELECT statement for OID list to be deleted */
 	  del_select_stmt =
-	    pt_to_merge_delete_query (parser, &statement->info.merge, list_id);
+	    pt_to_merge_delete_query (parser, &statement->info.merge,
+				      list_id);
 	  AU_ENABLE (parser->au_save);
 	  del_select_stmt = mq_translate (parser, del_select_stmt);
 	  AU_DISABLE (parser->au_save);
@@ -15177,7 +15179,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  select_statement = pt_to_merge_update_query (parser, select_values,
-						       &statement->info.merge);
+						       &statement->info.
+						       merge);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.
@@ -15264,7 +15267,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = ER_GENERIC_ERROR;
       goto exit;
     }
-  err = tran_savepoint (savepoint_name, false);
+  err = tran_system_savepoint (savepoint_name);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -15510,7 +15513,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      err = delete_list_by_oids (parser, del_list_id);
 		      AU_RESTORE (au_save);
 		      /* don't add the number of deleted tuples, they are
-			 a subset of the updated ones */
+		         a subset of the updated ones */
 		      if (err >= NO_ERROR && del_list_id->tuple_cnt > 0)
 			{
 			  err =

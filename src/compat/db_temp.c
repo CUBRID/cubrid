@@ -995,7 +995,7 @@ dbt_rename (DB_CTMPL * def,
 
   if (auto_increment_obj != NULL)
     {
-      error = tran_savepoint (ATTR_RENAME_SAVEPOINT, false);
+      error = tran_system_savepoint (ATTR_RENAME_SAVEPOINT);
     }
 
   if (error == NO_ERROR)
@@ -1011,7 +1011,7 @@ dbt_rename (DB_CTMPL * def,
 
 	  if (error != NO_ERROR)
 	    {
-	      tran_abort_upto_savepoint (ATTR_RENAME_SAVEPOINT);
+	      tran_abort_upto_system_savepoint (ATTR_RENAME_SAVEPOINT);
 	    }
 	}
     }
