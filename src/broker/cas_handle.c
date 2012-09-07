@@ -240,17 +240,17 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
       if (srv_handle->is_holdable && !end_holdable)
 	{
 	  /* do not close holdable results */
-          srv_handle->is_from_current_transaction = false;
-          count_unclosed_holdable++;
-          continue;
+	  srv_handle->is_from_current_transaction = false;
+	  count_unclosed_holdable++;
+	  continue;
 	}
 
       if (srv_handle->is_holdable && !srv_handle->is_from_current_transaction)
-        {
-          /* end only holdable handles from the current transaction */
-          count_unclosed_holdable++;
-          continue;
-        }
+	{
+	  /* end only holdable handles from the current transaction */
+	  count_unclosed_holdable++;
+	  continue;
+	}
 
       if (srv_handle->schema_type < 0
 	  || srv_handle->schema_type == CCI_SCH_CLASS
@@ -350,9 +350,9 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
   if (free_flag == TRUE)
     {
       srv_handle->q_result = NULL;
-      srv_handle->num_q_result = 0;
     }
 
+  srv_handle->num_q_result = 0;
   srv_handle->cur_result = NULL;
   srv_handle->cur_result_index = 0;
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
