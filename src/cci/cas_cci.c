@@ -6422,11 +6422,26 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
       if (ds->con_handles[i] == -conn)
 	{
 	  T_CCI_ERROR err_buf;
+
+	  if (ds->pool_prepared_statement == false)
+	    {
+	      T_CON_HANDLE *con_handle;
+
+	      con_handle = hm_find_con_handle (conn);
+	      if (con_handle == NULL)
+		{
+		  continue;
+		}
+
+	      qe_close_req_handle_all (con_handle);
+	    }
+
 	  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &err_buf);
 	  ds->con_handles[i] = conn;
 	  break;
 	}
     }
+
   if (i == ds->pool_size)
     {
       /* could not found con_handles */

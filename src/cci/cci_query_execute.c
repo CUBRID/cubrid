@@ -188,6 +188,11 @@ static int parameter_info_decode (char *buf, int size, int num_param,
 static int decode_fetch_result (T_REQ_HANDLE * req_handle,
 				char *result_msg_org, char *result_msg_start,
 				int result_msg_size, char *charset);
+static int qe_close_req_handle_internal (T_REQ_HANDLE * req_handle,
+					 T_CON_HANDLE * con_handle,
+					 bool force_close);
+static int qe_send_close_handle_msg (T_CON_HANDLE * con_handle,
+				     int server_handle_id);
 #if defined(WINDOWS)
 static int get_windows_charset_code (char *str);
 #endif
@@ -1179,8 +1184,13 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 int
 qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
-  T_NET_BUF net_buf;
-  char func_code = CAS_FC_CLOSE_REQ_HANDLE;
+  return qe_close_req_handle_internal (req_handle, con_handle, false);
+}
+
+static int
+qe_close_req_handle_internal (T_REQ_HANDLE * req_handle,
+			      T_CON_HANDLE * con_handle, bool force_close)
+{
   int err_code = 0;
   int *new_deferred_close_handle_list = NULL;
   int new_deferred_max_close_handle_count;
@@ -1201,7 +1211,7 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
       req_handle->stmt_type == CUBRID_STMT_GET_STATS ||
       req_handle->stmt_type == CUBRID_STMT_CALL ||
       req_handle->stmt_type == CUBRID_STMT_CALL_SP ||
-      req_handle->stmt_type == CUBRID_STMT_EVALUATE)
+      req_handle->stmt_type == CUBRID_STMT_EVALUATE || force_close)
     {
       goto send_close_handle_msg;
     }
@@ -1249,10 +1259,54 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 
 send_close_handle_msg:
 
+  err_code = qe_send_close_handle_msg (con_handle,
+				       req_handle->server_handle_id);
+
+  return err_code;
+}
+
+void
+qe_close_req_handle_all (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle;
+
+  /* close handle in req handle table */
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      if (con_handle->req_handle_table[i] == NULL)
+    {
+	  continue;
+    }
+      req_handle = con_handle->req_handle_table[i];
+
+      qe_close_req_handle_internal (req_handle, con_handle, true);
+    }
+  hm_req_handle_free_all (con_handle);
+
+  /* close handle in deferred close handle list */
+  for (i = 0; i < con_handle->deferred_close_handle_count; i++)
+    {
+      qe_send_close_handle_msg (con_handle,
+				con_handle->deferred_close_handle_list[i]);
+
+      con_handle->deferred_close_handle_list[i] = 0;
+    }
+  con_handle->deferred_close_handle_count = 0;
+
+}
+
+static int
+qe_send_close_handle_msg (T_CON_HANDLE * con_handle, int server_handle_id)
+{
+  int err_code = 0;
+  T_NET_BUF net_buf;
+  char func_code = CAS_FC_CLOSE_REQ_HANDLE;
+
   net_buf_init (&net_buf);
 
   net_buf_cp_str (&net_buf, &func_code, 1);
-  ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
+  ADD_ARG_INT (&net_buf, server_handle_id);
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
   if (net_buf.err_code < 0)
