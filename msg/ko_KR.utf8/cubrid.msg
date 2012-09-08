@@ -1166,7 +1166,8 @@ $ LOADDB
 1098 Locales for language '%s' are not available with charset '%s'.
 1099 시스템 파라미터 block_ddl_statement=yes의 설정으로 인해 DDL 질의문을 실행할 수 없습니다.
 1100 시스템 파라미터 block_nowhere_statement=yes의 설정으로 인해 WHERE 절이 없는 질의문을 실행할 수 없습니다.
-1099 마지막 에러
+1101 The current transaction could not aquire a key lock on PSEUDO-OID (%1$d|%2$d|%3$d) attached to OID (%4$d|%5$d|%6$d)
+1102 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

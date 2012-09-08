@@ -7189,7 +7189,7 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
   PAGE_PTR O_page = NULL;
   int ret_val = NO_ERROR;
   RECDES peek_recdes;
-  OID temp_oid, last_oid;
+  OID temp_oid, last_oid, last_pseudo_oid;
   char *header_ptr = NULL;
   VPID O_vpid;
 
@@ -7241,13 +7241,18 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
     }
 
   btree_make_pseudo_oid (last_oid.pageid, last_oid.slotid,
-			 last_oid.volid, btid_int->sys_btid, &last_oid);
+			 last_oid.volid, btid_int->sys_btid,
+			 &last_pseudo_oid);
 
-  if (lock_object_with_btid (thread_p, &last_oid, class_oid,
+  if (lock_object_with_btid (thread_p, &last_pseudo_oid, class_oid,
 			     btid_int->sys_btid, NX_LOCK, LK_COND_LOCK)
       != LK_GRANTED)
     {
-      ret_val = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_KEY_LOCK,
+	      6, last_pseudo_oid.volid, last_pseudo_oid.pageid,
+	      last_pseudo_oid.slotid, last_oid.volid, last_oid.pageid,
+	      last_oid.slotid);
+      ret_val = ER_CANNOT_GET_KEY_LOCK;
     }
 
 end:
@@ -16489,6 +16494,20 @@ get_oidcnt_and_oidptr:
 
       offset = rec.length;
       node_type = BTREE_LEAF_NODE;
+
+      if (!bts->read_uncommitted && bts->read_cur_key)
+	{
+	  if (bts->prev_oid_pos != -1 && DB_IS_NULL (&prev_key)
+	      && DB_IS_NULL (&bts->cur_key) == false)
+	    {
+	      /* we are reached the end of leaf level,
+	         save previous key, needed when handle next processing
+	         after unconditional locking, if the page has been changed
+	         during unconditional locking */
+	      pr_clone_value (&bts->cur_key, &prev_key);
+	      clear_prev_key = true;
+	    }
+	}
 
       goto start_locking;
 #else /* SERVER_MODE */

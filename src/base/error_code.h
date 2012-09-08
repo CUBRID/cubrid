@@ -1376,7 +1376,8 @@
 #define ER_BLOCK_DDL_STMT                           -1099
 #define ER_BLOCK_NOWHERE_STMT                       -1100
 
-#define ER_LAST_ERROR                               -1101
+#define ER_CANNOT_GET_KEY_LOCK                      -1101
+#define ER_LAST_ERROR                               -1102
 
 /*
  * CAUTION!
