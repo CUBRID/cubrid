@@ -533,7 +533,9 @@ extern int yycolumn_end;
 [rR][eE][fF][eE][rR][eE][nN][cC][eE][sS]				{ begin_token(yytext);   return REFERENCES; }
 [rR][eE][fF][eE][rR][eE][nN][cC][iI][nN][gG]				{ begin_token(yytext);   return REFERENCING; }
 [rR][eE][gG][eE][xX][pP]						{ begin_token(yytext);   return REGEXP; }
-[rR][eE][jJ][eE][cC][tT]						{ begin_token(yytext);   return REJECT_; }
+[rR][eE][jJ][eE][cC][tT]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return REJECT_; }
 [rR][eE][lL][aA][tT][iI][vV][eE]					{ begin_token(yytext);   return RELATIVE_; }
 [rR][eE][mM][oO][vV][eE]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
