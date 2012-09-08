@@ -2173,7 +2173,10 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   return error;
 
 error_exit:
-  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
+  if (error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
+    }
 
   return error;
 }
