@@ -10505,7 +10505,9 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	   */
 	  bool found = false;
 	  for (specp = xasl->spec_list;
-	       specp && specp->type == TARGET_CLASS; specp = specp->next)
+	       specp && specp->type == TARGET_CLASS
+	       && !XASL_IS_FLAGED (xasl, XASL_OBJFETCH_IGNORE_CLASSOID);
+	       specp = specp->next)
 	    {
 	      PARTITION_SPEC_TYPE *current = NULL;
 	      if (OID_EQ (&ACCESS_SPEC_CLS_OID (specp), &cls_oid))

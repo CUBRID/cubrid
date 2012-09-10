@@ -15184,6 +15184,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
     }
 
+  /* set flag to ignore class oid in object fetch */
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY)
+      && xasl->fptr_list)
+    {
+      XASL_SET_FLAG (xasl->fptr_list, XASL_OBJFETCH_IGNORE_CLASSOID);
+    }
+
   return xasl;
 
 exit_on_error:

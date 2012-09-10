@@ -659,6 +659,7 @@ struct func_pred
 					 * clause... sometimes cycles may be
 					 * ignored
 					 */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID 1024  /* fetch proc should ignore class oid */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
