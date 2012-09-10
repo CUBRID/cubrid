@@ -1412,6 +1412,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   net_buf_cp_int (net_buf, n, NULL);
 
   srv_handle->max_col_size = max_col_size;
+  srv_handle->num_q_result = 1;
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1909,6 +1910,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   net_buf_cp_int (net_buf, n, NULL);
 
   srv_handle->max_col_size = max_col_size;
+  srv_handle->num_q_result = 1;
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
