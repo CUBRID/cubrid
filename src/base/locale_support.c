@@ -4558,7 +4558,7 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	}
       else
 	{
-	  uca_process_collation (lc, is_verbose);
+	  er_status = uca_process_collation (lc, is_verbose);
 	  if (er_status != NO_ERROR)
 	    {
 	      goto exit;
