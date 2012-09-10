@@ -20718,7 +20718,7 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       *common_cs = arg2_cs;
 
       /* check arg3 */
-      if (op_has_3_args)
+      if (op_has_3_args && arg3_coll != *common_coll)
 	{
 	  if (arg2_coerc_level > arg3_coerc_level)
 	    {
