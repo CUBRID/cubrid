@@ -10744,6 +10744,8 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where,
   DB_VALUE bool_val;
   int error;
 
+  DB_MAKE_NULL (&bool_val);
+
   /* evaluate check option */
   if (check_where != NULL)
     {

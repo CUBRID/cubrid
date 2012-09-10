@@ -4667,6 +4667,8 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 			     MSGCAT_SET_PARSER_SEMANTIC,
 			     MSGCAT_SEMANTIC_ENUM_AGG_STRINGS_SIZE_TOO_LARGE);
 		}
+
+	      tp_domain_free (domain);
 	    }
 
 	  /* check duplicates */
@@ -6481,6 +6483,14 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     {
       return;
     }
+
+  DB_MAKE_NULL (&ptype);
+  DB_MAKE_NULL (&pname);
+  DB_MAKE_NULL (&pattr);
+  DB_MAKE_NULL (&attname);
+  DB_MAKE_NULL (&minele);
+  DB_MAKE_NULL (&maxele);
+  DB_MAKE_NULL (&null_val);
 
   class_name = (char *) stmt->info.alter.entity_name->info.name.original;
   cmd = stmt->info.alter.code;
@@ -9002,6 +9012,8 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (parser != NULL && node != NULL &&
 	  node->info.method_call.method_name != NULL);
 
+  DB_MAKE_NULL (&val);
+
   /* check if call has a target */
   if (!(target = node->info.method_call.on_call_target))
     {
@@ -10892,7 +10904,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		}
 	      else
 		{
-		  /* apply typechecking on ALTER TABLE ADD INDEX 
+		  /* apply typechecking on ALTER TABLE ADD INDEX
 		     statements, to check the expression in the WHERE clause of a
 		     partial index */
 		  PT_NODE *p = node->info.alter.create_index;
@@ -10990,7 +11002,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_semantic_quick_check_node () - perform semantic validation on a 
+ * pt_semantic_quick_check_node () - perform semantic validation on a
  *				     node that is not necessarily part of a
  *				     statement
  * return : modified node or NULL on error
@@ -14503,9 +14515,9 @@ error_exit:
   return func;
 }
 
-/* pt_check_function_index_expr () - check if there is at most one expression 
- *				     in the index definition and , if one 
- *				     expression does exist, it is checked to 
+/* pt_check_function_index_expr () - check if there is at most one expression
+ *				     in the index definition and , if one
+ *				     expression does exist, it is checked to
  *				     see if it meets the constraints of being
  *				     part of an index
  * return :
@@ -14703,7 +14715,7 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts,
 }
 
 /*
- * pt_check_filter_index_expr_post () 
+ * pt_check_filter_index_expr_post ()
  *
  * return : current node
  * parser (in)	: parser context
@@ -15058,7 +15070,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case F_SET:
 	case F_MULTISET:
 	case F_SEQUENCE:
-	  /* the functions above are used in the 
+	  /* the functions above are used in the
 	     argument IN (values list) expression */
 	case F_ELT:
 	case F_INSERT_SUBSTRING:

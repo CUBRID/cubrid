@@ -1281,9 +1281,10 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
   DB_VALUE base_value;
   const char *base_name;
 
+  DB_MAKE_NULL (&base_value);
+
   if (!template_ptr->is_class_update)
     {
-
       class_ = template_ptr->class_;
 
       if (template_ptr->base_class != NULL)
@@ -1535,6 +1536,8 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
   DB_AUTH auth;
   DB_OBJECT *object;
 
+  DB_MAKE_NULL (&base_value);
+
   if ((template_ptr == NULL) || (att == NULL) || (value == NULL))
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -1680,6 +1683,9 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
   const char *base_name;
   DB_AUTH auth;
 
+  DB_MAKE_NULL (&base_value);
+  DB_MAKE_NULL (&dummy_value);
+
   if (value == NULL)
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -1688,7 +1694,6 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
   if (!base_assignment && template_ptr->base_class != NULL)
     {
-      DB_MAKE_NULL (&dummy_value);
       auth = (template_ptr->object == NULL) ? DB_AUTH_INSERT : DB_AUTH_UPDATE;
       if (mq_update_attribute (template_ptr->classobj, att->header.name,
 			       template_ptr->base_classobj, &dummy_value,

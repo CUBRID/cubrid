@@ -3626,7 +3626,7 @@ classobj_cache_not_null_constraints (const char *class_name,
 	  new_->attributes[0] = att;
 	  new_->attributes[1] = NULL;
 
-	  sm_free_constraint_name (constraint_name);
+	  free_and_init (constraint_name);
 	}
     }
 
@@ -3641,7 +3641,7 @@ memory_error:
   classobj_free_class_constraints (constraints);
   if (constraint_name)
     {
-      sm_free_constraint_name (constraint_name);
+      free_and_init (constraint_name);
     }
   if (ws_name)
     {
@@ -6360,7 +6360,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 
   if (auto_cons_name != NULL)
     {
-      sm_free_constraint_name (auto_cons_name);
+      free_and_init (auto_cons_name);
     }
 
   if (constraint_type != DB_CONSTRAINT_FOREIGN_KEY)
@@ -6424,7 +6424,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 
   if (new_cons_name != NULL && new_cons_name != constraint->name)
     {
-      sm_free_constraint_name (new_cons_name);
+      free_and_init (new_cons_name);
     }
 
   return error;
@@ -6443,7 +6443,7 @@ error_exit:
 
   if (new_cons_name != NULL && new_cons_name != constraint->name)
     {
-      sm_free_constraint_name (new_cons_name);
+      free_and_init (new_cons_name);
     }
 
   return error;

@@ -273,6 +273,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
   const char *label;
 
   assert (parser != NULL);
+  DB_MAKE_NULL (&val1);
 
   if (tree == NULL || val == NULL)
     {

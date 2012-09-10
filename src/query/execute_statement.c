@@ -310,6 +310,8 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   SM_CLASS *smclass;
   int error;
   TP_DOMAIN_STATUS status;
+  char *user_name;
+
   assert (class_name->node_type == PT_NAME);
 
   error = au_fetch_class_force (class_name->info.name.db_object, &smclass,
@@ -344,13 +346,13 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 					 &att->default_value.value);
 	      break;
 	    case DB_DEFAULT_USER:
-	      error = db_make_string (&att->default_value.value,
-				      db_get_user_and_host_name ());
+	      user_name = db_get_user_and_host_name ();
+	      error = db_make_string (&att->default_value.value, user_name);
 	      att->default_value.value.need_clear = true;
 	      break;
 	    case DB_DEFAULT_CURR_USER:
-	      error = DB_MAKE_STRING (&att->default_value.value,
-				      db_get_user_name ());
+	      user_name = db_get_user_name ();
+	      error = DB_MAKE_STRING (&att->default_value.value, user_name);
 	      att->default_value.value.need_clear = true;
 	      break;
 	    default:
@@ -3757,6 +3759,8 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE *ret_val, db_val;
   int error;
 
+  DB_MAKE_NULL (&db_val);
+
   cls = statement->info.get_stats.class_;
   arg = statement->info.get_stats.args;
   into = statement->info.get_stats.into_var;
@@ -3919,6 +3923,8 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *name;
   DB_VALUE val;
 
+  DB_MAKE_NULL (&val);
+
   name = statement->info.rollback_work.save_name;
   if (name == NULL)
     {
@@ -3968,6 +3974,8 @@ do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *save_name;
   PT_NODE *name;
   DB_VALUE val;
+
+  DB_MAKE_NULL (&val);
 
   name = statement->info.savepoint.save_name;
   if (name == NULL)
@@ -4133,6 +4141,8 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool async_ws;
   float wait_secs;
 
+  DB_MAKE_NULL (&val);
+
   while ((error == NO_ERROR) && (mode != NULL))
     {
       switch (mode->node_type)
@@ -4231,11 +4241,15 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_OPT_COST:
       {
 	DB_VALUE plan;
+
+	DB_MAKE_NULL (&plan);
+
 	pt_evaluate_tree (parser, statement->info.get_opt_lvl.args, &plan, 1);
 	if (pt_has_error (parser))
 	  {
 	    return ER_OBJ_INVALID_ARGUMENTS;
 	  }
+
 	qo_get_optimization_param (cost, QO_PARAM_COST,
 				   DB_GET_STRING (&plan));
 	pr_clear_value (&plan);
@@ -4363,6 +4377,8 @@ do_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *val;
   DB_VALUE db_val;
   int error = NO_ERROR;
+
+  DB_MAKE_NULL (&db_val);
 
   val = statement->info.set_sys_params.val;
   if (val == NULL)
@@ -5894,6 +5910,9 @@ do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   DB_VALUE src, dst;
 
+  DB_MAKE_NULL (&src);
+  DB_MAKE_NULL (&dst);
+
   pt_evaluate_tree (parser, statement->info.set_trigger.val, &src, 1);
   if (pt_has_error (parser))
     {
@@ -6556,7 +6575,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  DB_VALUE ** values, int *values_cnt)
 {
   int error = NO_ERROR;
-  int assign_cnt = 0, upd_cls_cnt = 0, vals_cnt = 0, idx, idx2, idx3;
+  int assign_cnt = 0, upd_cls_cnt = 0, vals_cnt = 0, idx, idx2, idx3, i;
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *node = NULL, *assignments, *spec, *class_spec, *check_where;
   DB_VALUE *dbvals = NULL;
@@ -6643,6 +6662,11 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       error = ER_REGU_NO_SPACE;
       goto error_return;
+    }
+
+  for (i = 0; i < assign_cnt + upd_cls_cnt; i++)
+    {
+      DB_MAKE_NULL (&dbvals[i]);
     }
 
   /* initialize classes info array */
@@ -11671,6 +11695,11 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	      goto cleanup;
 	    }
 
+	  for (i = 0; i < degree; i++)
+	    {
+	      DB_MAKE_NULL (&vals[i]);
+	    }
+
 	  /* allocate attribute descriptor array */
 	  if (degree)
 	    {
@@ -14564,6 +14593,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      goto exit;
 	    }
+
+	  ins_select_stmt->etc = NULL;
+
 	  /* temporary: don't allow target to be used in source spec */
 	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
 				  ins_select_stmt->info.query.q.select.from))
@@ -14588,6 +14620,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      goto exit;
 	    }
+
 	  if (ins_select_stmt->etc == NULL)
 	    {
 	      err = er_errid ();
@@ -14728,7 +14761,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = sm_flush_and_decache_objects (class_obj, true);
 		}
 	      regu_free_listid (list_id);
+	      list_id = NULL;
 	    }
+
 	  if (err >= NO_ERROR)
 	    {
 	      list_id = (QFILE_LIST_ID *) del_select_stmt->etc;
@@ -14743,6 +14778,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      err = sm_flush_and_decache_objects (class_obj, true);
 		    }
 		  regu_free_listid (list_id);
+		  list_id = NULL;
 		}
 
 	      pt_end_query (parser);
@@ -14814,10 +14850,23 @@ exit:
     {
       parser_free_tree (parser, upd_select_stmt);
     }
+
+  if (list_id != NULL)
+    {
+      regu_free_listid (list_id);
+      qmgr_end_query (upd_query_id);
+    }
+
   if (ins_select_stmt != NULL)
     {
+      if (ins_select_stmt->etc != NULL)
+        {
+          regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
+          qmgr_end_query (ins_query_id);
+        }
       parser_free_tree (parser, ins_select_stmt);
     }
+
   if (del_select_stmt != NULL)
     {
       parser_free_tree (parser, del_select_stmt);
@@ -15378,6 +15427,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      result += list_id->tuple_cnt;
 	    }
 	  regu_free_listid (list_id);
+	  list_id = NULL;
 	}
       /* end the query; reset query_id and call qmgr_end_query() */
       pt_end_query (parser);
@@ -15443,6 +15493,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      goto exit;
 	    }
+
+	  ins_select_stmt->etc = NULL;
+
 	  /* temporary: don't allow target to be used in source spec */
 	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
 				  ins_select_stmt->info.query.q.select.from))
@@ -15464,6 +15517,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      goto exit;
 	    }
+
 	  if (ins_select_stmt->etc == NULL)
 	    {
 	      err = er_errid ();
@@ -15585,6 +15639,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      err = sm_flush_and_decache_objects (class_obj, true);
 		    }
 		  regu_free_listid (list_id);
+		  list_id = NULL;
 		}
 	    }
 	  pt_end_query (parser);
@@ -15648,11 +15703,22 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 exit:
   if (ins_select_stmt != NULL)
     {
+      if (ins_select_stmt->etc != NULL)
+        {
+          regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
+          qmgr_end_query (ins_query_id);
+        }
       parser_free_tree (parser, ins_select_stmt);
     }
+
   if (del_select_stmt != NULL)
     {
       parser_free_tree (parser, del_select_stmt);
+    }
+
+  if (list_id != NULL)
+    {
+      regu_free_listid (list_id);
     }
 
   if ((err < NO_ERROR) && er_errid () != NO_ERROR)

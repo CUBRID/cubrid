@@ -493,6 +493,8 @@ db_set_base_server_time (SERVER_INFO * server_info)
       DB_DATETIME *dt = &server_info->value[0]->data.datetime;
       int msecs;
 
+      memset (&c_time_struct, 0, sizeof (struct tm));
+
       db_datetime_decode (dt, &c_time_struct.tm_mon,
 			  &c_time_struct.tm_mday, &c_time_struct.tm_year,
 			  &c_time_struct.tm_hour, &c_time_struct.tm_min,

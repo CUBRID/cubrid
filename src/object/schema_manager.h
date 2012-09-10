@@ -54,8 +54,8 @@ struct root_class
 
 /*
  * Structure used when truncating a class and changing an attribute.
- * During these operations, indexes are dropped and recreated. 
- * The information needed to recreate the constraints (indexes) are saved in 
+ * During these operations, indexes are dropped and recreated.
+ * The information needed to recreate the constraints (indexes) are saved in
  * this structure.
  */
 typedef struct sm_constraint_info SM_CONSTRAINT_INFO;
@@ -117,7 +117,6 @@ extern char *sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl,
 					      const char **att_names,
 					      const int *asc_desc,
 					      const char *given_name);
-extern void sm_free_constraint_name (char *);
 extern int sm_add_constraint (MOP classop,
 			      DB_CONSTRAINT_TYPE constraint_type,
 			      const char *constraint_name,

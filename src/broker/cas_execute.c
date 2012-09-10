@@ -810,6 +810,8 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
 
+  sql_stmt = srv_handle->sql_stmt;
+
   if (flag & CCI_PREPARE_QUERY_INFO)
     {
       cas_log_query_info_init (srv_handle->id, FALSE);
@@ -6475,6 +6477,10 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 
   q_result->col_updatable = FALSE;
   q_result->include_oid = FALSE;
+  if (q_result->null_type_column != NULL)
+    {
+      FREE_MEM (q_result->null_type_column);
+    }
 
   if (stmt_type == CUBRID_STMT_SELECT)
     {

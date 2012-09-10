@@ -13796,7 +13796,7 @@ sm_default_constraint_name (const char *class_name,
  *    normalized name is generated using the constraint type and attribute
  *    names.
  *    In either case, the returned name is generated its own memory area
- *    and should be deallocated with by calling sm_free_constraint_name()
+ *    and should be deallocated with by calling free()
  *    when it is no longer needed.
  *    This function differs from sm_produce_constraint_name_mop() in that
  *    the class name is supplied as a parameters and therefore, does not
@@ -13881,21 +13881,6 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl,
   return sm_produce_constraint_name (template_classname (tmpl),
 				     constraint_type, att_names, asc_desc,
 				     given_name);
-}
-
-/*
- * sm_free_constraint_name() - Deallocate the system generated constraint name.
- *   return: none
- *   constraint_name(in): Constraint name
- */
-
-void
-sm_free_constraint_name (char *constraint_name)
-{
-  if (constraint_name != NULL)
-    {
-      free_and_init (constraint_name);
-    }
 }
 
 /*

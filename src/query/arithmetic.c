@@ -3739,7 +3739,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 {
   DB_TYPE type;
   const char *type_name;
-  char buf[128];
+  char *buf;
 
   type = DB_VALUE_TYPE (value);
   type_name = pr_type_name (type);
@@ -3757,21 +3757,34 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      snprintf (buf, sizeof (buf), "%s (%d)", type_name,
-		value->domain.char_info.length);
-      db_make_string (result, buf);
-      break;
-
     case DB_TYPE_NUMERIC:
-      snprintf (buf, sizeof (buf), "%s (%u, %u)", type_name,
-		value->domain.numeric_info.precision,
-		value->domain.numeric_info.scale);
+      buf = db_private_alloc (NULL, 128);
+      if (buf == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                  128);
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+
+      if (type == DB_TYPE_NUMERIC)
+        {
+          snprintf (buf, 128, "%s (%u, %u)", type_name,
+                    value->domain.numeric_info.precision,
+                    value->domain.numeric_info.scale);
+        }
+      else
+        {
+          snprintf (buf, 128, "%s (%d)", type_name,
+                    value->domain.char_info.length);
+        }
+
       db_make_string (result, buf);
+      result->need_clear = true;
       break;
 
     default:
       db_make_string (result, type_name);
-
     }
+
   return NO_ERROR;
 }

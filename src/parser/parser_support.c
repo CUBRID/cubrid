@@ -5824,6 +5824,8 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit,
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
 
+  DB_MAKE_NULL (&sum_val);
+
   if (limit == NULL)
     {
       return NULL;

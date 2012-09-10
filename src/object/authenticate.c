@@ -6304,6 +6304,7 @@ au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user,
 		 DB_VALUE * password)
 {
   int error = NO_ERROR;
+  char *user_name;
 
   if (user != NULL)
     {
@@ -6330,7 +6331,9 @@ au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user,
 
   if (error == NO_ERROR)
     {
-      error = clogin_user (db_get_user_name ());
+      user_name = db_get_user_name ();
+      error = clogin_user (user_name);
+
       if (error == NO_ERROR)
 	{
 	  db_make_null (returnval);
@@ -6339,6 +6342,8 @@ au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user,
 	{
 	  db_make_error (returnval, error);
 	}
+
+      db_string_free (user_name);
     }
   else
     {

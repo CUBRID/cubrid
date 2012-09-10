@@ -897,6 +897,7 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values,
   DB_VALUE e_val;
 
   assert (parser != NULL && values != NULL);
+  db_make_null (&e_val);
 
   for (element = *values; element != NULL; element = element->next)
     {

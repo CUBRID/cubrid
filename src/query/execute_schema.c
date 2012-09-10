@@ -2680,6 +2680,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 	  func_index_info->attr_index_start = nnames - func_index_args_count;
 	}
     }
+
   cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
 				      (const char **) attnames,
 				      asc_desc, constraint_name);
@@ -2746,11 +2747,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  error =
-	    sm_add_constraint (obj, ctype, cname,
-			       (const char **) attnames, asc_desc,
-			       attrs_prefix_length, false,
-			       p_pred_index_info, func_index_info);
+	  error = sm_add_constraint (obj, ctype, cname,
+				     (const char **) attnames, asc_desc,
+				     attrs_prefix_length, false,
+				     p_pred_index_info, func_index_info);
 	}
       else
 	{
@@ -2759,7 +2759,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 				      (const char **) attnames,
 				      false, mysql_index_name);
 	}
-      sm_free_constraint_name (cname);
     }
 
 end:
@@ -2789,6 +2788,11 @@ end:
   if (attrs_prefix_length)
     {
       free_and_init (attrs_prefix_length);
+    }
+
+  if (cname != NULL)
+    {
+      free_and_init (cname);
     }
 
   return error;
@@ -2967,7 +2971,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   char **attnames = NULL;
   int *asc_desc = NULL;
   int *attrs_prefix_length = NULL;
-  char *cname;
+  char *cname = NULL;
   SM_CLASS *smcls;
   SM_CLASS_CONSTRAINT *idx;
   SM_ATTRIBUTE **attp;
@@ -3435,6 +3439,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      goto error_exit;
 	    }
+
 	  error = sm_add_constraint (obj, ctype, cname,
 				     (const char **) attnames,
 				     asc_desc, attrs_prefix_length,
@@ -3444,7 +3449,6 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    {
 	      goto error_exit;
 	    }
-	  sm_free_constraint_name (cname);
 	}
     }
 
@@ -3489,13 +3493,20 @@ end:
     {
       free_and_init (attnames);
     }
+
   if (asc_desc)
     {
       free_and_init (asc_desc);
     }
+
   if (attrs_prefix_length)
     {
       free_and_init (attrs_prefix_length);
+    }
+
+  if (cname != NULL)
+    {
+      free_and_init (cname);
     }
 
   return error;
@@ -5470,10 +5481,14 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (castval != NULL)
 	    {
 	      DB_DOMAIN *dom = pt_data_type_to_db_domain (parser, node, NULL);
+
 	      if (tp_value_strict_cast (castval, &retval, dom) == NO_ERROR)
 		{
+		  tp_domain_free (dom);
 		  break;
 		}
+
+	      tp_domain_free (dom);
 	    }
 
 	default:
@@ -5834,6 +5849,7 @@ select_hash_partition (PRUNING_INFO * ppi, PT_NODE * expr)
   DB_VALUE *hval, ele;
   SM_CLASS *subcls;
   DB_VALUE temp;
+
   db_make_null (&temp);
 
   pt_evaluate_tree (ppi->parser, expr->info.expr.arg2, &temp, 1);
@@ -8566,6 +8582,12 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	    {
 	      goto cleanup;
 	    }
+
+	  if (new_func_index_info)
+	    {
+	      sm_free_function_index_info (new_func_index_info);
+	      free_and_init (new_func_index_info);
+	    }
 	}
     }
   else
@@ -8618,6 +8640,12 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
+	    }
+
+	  if (new_func_index_info)
+	    {
+	      sm_free_function_index_info (new_func_index_info);
+	      free_and_init (new_func_index_info);
 	    }
 	}
     }
@@ -10790,7 +10818,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 					asc_desc, class_attributes, NULL,
 					NULL, NULL);
 
-		  sm_free_constraint_name (constraint_name);
+		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
 		  if (error != NO_ERROR)
 		    {
@@ -10862,7 +10890,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 					      asc_desc, class_attributes,
 					      NULL, NULL, NULL);
 
-		  sm_free_constraint_name (constraint_name);
+		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
 
 		  if (error != NO_ERROR)
@@ -12399,7 +12427,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
       if (new_cons_name != NULL && new_cons_name != c->name)
 	{
-	  sm_free_constraint_name (new_cons_name);
+	  free_and_init (new_cons_name);
 	}
 
       if (free_constraint)
@@ -13838,6 +13866,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	}
     }
 
+  tp_domain_free (attr_db_domain);
+
   /* special case : AUTO INCREMENT */
   if (is_att_prop_set
       (attr_chg_properties->p[P_AUTO_INCR],
@@ -15247,12 +15277,17 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
       else
 	{
 	  DB_VALUE src, dest;
+
+	  DB_MAKE_NULL (&src);
+	  DB_MAKE_NULL (&dest);
+
 	  def_val = pt_semantic_type (parser, def_val, NULL);
 	  if (pt_has_error (parser) || def_val == NULL)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      return er_errid ();
 	    }
+
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
 	  if (tp_value_coerce (&src, &dest, (TP_DOMAIN *)
 			       pt_type_enum_to_db_domain (desired_type))

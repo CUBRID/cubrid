@@ -11544,6 +11544,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser,
     }
 
   term_exprs[0] = new_term;
+  free_and_init (query_str);
 
   return NO_ERROR;
 
@@ -14194,7 +14195,7 @@ exit_on_error:
  *                           a XASL buildschema proc
  *   return:
  *   parser(in):
- *   select_node(in): the query node 
+ *   select_node(in): the query node
  */
 static XASL_NODE *
 pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node)
@@ -21100,7 +21101,7 @@ unlink_and_exit:
  * NOTE: This function has the following behavior:
  *
  *   1. When it receives an analytic function node, it  will put it in ex_list
- *   and will return a reference PT_POINTER to the node. 
+ *   and will return a reference PT_POINTER to the node.
  *
  *   2. When it receives an expression containing analytic functions, it will
  *   put all analytic nodes AND subexpressions that DO NOT contain analytic

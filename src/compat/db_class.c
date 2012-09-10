@@ -1815,9 +1815,8 @@ db_add_constraint (MOP classmop,
       retval = sm_add_constraint (classmop, constraint_type, name,
 				  att_names, NULL, NULL, class_attributes,
 				  NULL, NULL);
+      free_and_init (name);
     }
-
-  sm_free_constraint_name (name);
 
   return (retval);
 }
@@ -1868,9 +1867,8 @@ db_drop_constraint (MOP classmop,
       retval = sm_drop_constraint (classmop, constraint_type, name,
 				   att_names, class_attributes ? true : false,
 				   false);
+      free_and_init (name);
     }
-
-  sm_free_constraint_name (name);
 
   return (retval);
 }

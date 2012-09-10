@@ -3302,7 +3302,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_TYPEOF:
-      db_typeof_dbval (arithptr->value, peek_right);
+      if (db_typeof_dbval (arithptr->value, peek_right) != NO_ERROR)
+        {
+          goto error;
+        }
       break;
 
     case T_INDEX_CARDINALITY:

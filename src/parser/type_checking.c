@@ -4662,7 +4662,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
       if (pt_is_enumeration_special_comparison (arg1, op, arg2))
 	{
 	  /* In case of 'ENUM IN (...)' we need to convert all elements of right
-	     argument to the ENUM type in order to preserve an eventual index 
+	     argument to the ENUM type in order to preserve an eventual index
 	     scan on left argument */
 	  common_type = arg1_eq_type = collection_type = PT_TYPE_ENUMERATION;
 	}
@@ -13680,7 +13680,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_TYPEOF:
-      db_typeof_dbval (result, arg1);
+      if (db_typeof_dbval (result, arg1) != NO_ERROR)
+	{
+	  db_make_null (result);
+	}
       break;
 
     case PT_CONCAT_WS:
@@ -17444,10 +17447,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_TO_ENUMERATION_VALUE:
       {
 	TP_DOMAIN *enum_domain = NULL;
+
 	assert (expr->info.expr.arg1 != NULL);
 	assert (expr->data_type != NULL);
-	enum_domain =
-	  pt_data_type_to_db_domain (parser, expr->data_type, NULL);
+
+	enum_domain = pt_data_type_to_db_domain (parser, expr->data_type,
+						 NULL);
 	if (enum_domain == NULL)
 	  {
 	    return 0;

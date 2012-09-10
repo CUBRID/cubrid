@@ -273,6 +273,9 @@ pt_eval_value_path (PARSER_CONTEXT * parser, PT_NODE * path)
 {
   DB_VALUE val;
   PT_NODE *tmp;
+
+  DB_MAKE_NULL (&val);
+
   if (pt_eval_path_expr (parser, path, &val))
     {
       /* make val into a PT_VALUE node */
@@ -1388,7 +1391,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
   /* if an attribute has a default expression as default value
    * and that expression refers to the current date and time,
    * then we make sure that we mark this statement as one that
-   * needs the system datetime from the server 
+   * needs the system datetime from the server
    */
   if (node->node_type == PT_INSERT)
     {
@@ -1425,8 +1428,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
        * If the statement such as "INSERT INTO tbl DEFAULT" is given,
        * we rewrite it to "INSERT INTO tbl VALUES (DEFAULT, DEFAULT, ...)"
        * to support "server-side insertion" simply.
-       * In this situation, the server will get "default value" from 
-       * "original_value" of the current representation, but sometimes 
+       * In this situation, the server will get "default value" from
+       * "original_value" of the current representation, but sometimes
        * it is not the latest default value. (See the comment for sm_attribute
        * structure on class_object.h for more information.)
        * However, the client always knows it, so it's better for the server to
@@ -2792,7 +2795,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       break;
 
     case PT_DATA_TYPE:
-      /* don't visit leaves unless this is an object which might contain a 
+      /* don't visit leaves unless this is an object which might contain a
          name (i.e. CAST(value AS name) ) */
       if (node->type_enum != PT_TYPE_OBJECT)
 	{
@@ -3517,7 +3520,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 		  (p_type == PT_META_CLASS || q_type == PT_META_CLASS))
 		{
 		  /* this happens in statements like:
-		   * SELECT class t, t.attr FROM t 
+		   * SELECT class t, t.attr FROM t
 		   * which are rewriten to:
 		   * SELECT class t, t.attr FROM t, class t
 		   * In this context, t is different from class t and we
@@ -5989,7 +5992,7 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 }
 
 /*
- * pt_resolve_vclass_args () - modifies the attribute list in the insert 
+ * pt_resolve_vclass_args () - modifies the attribute list in the insert
  *	  statement by adding to the specified attributes the ones missing with
  *	  their default values (if not null). is applied only to views.
  *
@@ -6675,7 +6678,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  || statement->node_type == PT_ALTER_INDEX
 	  || statement->node_type == PT_DROP_INDEX)
 	{
-	  /* backup the name of the index because it is not part of the 
+	  /* backup the name of the index because it is not part of the
 	     table spec yet */
 	  idx_name = statement->info.index.index_name;
 	  statement->info.index.index_name = NULL;
@@ -7483,7 +7486,7 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser,
 
 /*
  * pt_op_type_from_default_expr_type () - returns the corresponding PT_OP_TYPE
- *					  for the given default expression 
+ *					  for the given default expression
  *   return: a PT_OP_TYPE (the desired operation)
  *   expr_type(in): a DB_DEFAULT_EXPR_TYPE (the default expression)
  */
@@ -7540,7 +7543,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
 
 /*
  * pt_function_name_is_spec_attr () - checks if a generic function name is
- *	actually an attribute name. It is used to distinguish between an error 
+ *	actually an attribute name. It is used to distinguish between an error
  *	caused by the wrong usage of a prefix length index or an function
  *      index.
  *

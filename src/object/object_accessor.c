@@ -757,6 +757,8 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
   OBJ_TEMPLATE *temp;
   MOBJ obj, ref_obj;
 
+  DB_MAKE_NULL (&base_value);
+
   if (op->is_temp)
     {
       error = obj_set_temp (op, att, value);
@@ -1999,6 +2001,7 @@ obj_copy (MOP op)
   DB_VALUE value;
 
   new_mop = NULL;
+  DB_MAKE_NULL (&value);
 
   /* op must be an object */
   if (op == NULL || locator_is_class (op, DB_FETCH_CLREAD_INSTWRITE))

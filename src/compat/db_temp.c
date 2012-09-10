@@ -417,12 +417,8 @@ dbt_add_constraint (DB_CTMPL * def,
 	  error = smt_add_constraint (def, constraint_type, name,
 				      attnames, NULL, class_attributes, NULL,
 				      NULL, NULL);
+	  free_and_init (name);
 	}
-    }
-
-  if (name)
-    {
-      sm_free_constraint_name (name);
     }
 
   return (error);
@@ -480,12 +476,8 @@ dbt_drop_constraint (DB_CTMPL * def,
 	     the type indicated by the constraint_type parameter. */
 	  error = smt_drop_constraint (def, attnames, name, class_attributes,
 				       attflag);
+	  free_and_init (name);
 	}
-    }
-
-  if (name)
-    {
-      sm_free_constraint_name (name);
     }
 
   return (error);
@@ -534,11 +526,7 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
     {
       error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name,
 				  attnames, NULL, 0, &fk_info, NULL, NULL);
-    }
-
-  if (name)
-    {
-      sm_free_constraint_name (name);
+      free_and_init (name);
     }
 
   if (def->op == NULL && temp_cons != NULL)

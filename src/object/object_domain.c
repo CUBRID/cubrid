@@ -574,8 +574,10 @@ static void tp_swizzle_oid (TP_DOMAIN * domain);
 static int tp_domain_check_class (TP_DOMAIN * domain);
 static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src,
 						   const TP_DOMAIN * dest);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
 			      bool * do_alloc);
+#endif
 static int tp_atotime (const DB_VALUE * src, DB_TIME * temp);
 static int tp_atodate (const DB_VALUE * src, DB_DATE * temp);
 static int tp_atoutime (const DB_VALUE * src, DB_UTIME * temp);
@@ -4402,6 +4404,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tp_null_terminate - NULL terminate the given DB_VALUE string.
  *    return: NO_ERROR or error code
@@ -4455,6 +4458,7 @@ tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tp_atotime - coerce a string to a time
@@ -5215,24 +5219,28 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
       DB_MAKE_CHAR (result, DB_VALUE_PRECISION (result), str_float,
 		    strlen (str_float), DB_GET_STRING_CODESET (result),
 		    DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_NCHAR:
       DB_MAKE_NCHAR (result, DB_VALUE_PRECISION (result), str_float,
 		     strlen (str_float), DB_GET_STRING_CODESET (result),
 		     DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_VARCHAR:
       DB_MAKE_VARCHAR (result, DB_VALUE_PRECISION (result), str_float,
 		       strlen (str_float), DB_GET_STRING_CODESET (result),
 		       DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_VARNCHAR:
       DB_MAKE_VARNCHAR (result, DB_VALUE_PRECISION (result), str_float,
 			strlen (str_float), DB_GET_STRING_CODESET (result),
 			DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     default:
@@ -5289,24 +5297,28 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
       DB_MAKE_CHAR (result, DB_VALUE_PRECISION (result), str_double,
 		    strlen (str_double), DB_GET_STRING_CODESET (result),
 		    DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_NCHAR:
       DB_MAKE_NCHAR (result, DB_VALUE_PRECISION (result), str_double,
 		     strlen (str_double), DB_GET_STRING_CODESET (result),
 		     DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_VARCHAR:
       DB_MAKE_VARCHAR (result, DB_VALUE_PRECISION (result), str_double,
 		       strlen (str_double), DB_GET_STRING_CODESET (result),
 		       DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_VARNCHAR:
       DB_MAKE_VARNCHAR (result, DB_VALUE_PRECISION (result), str_double,
 			strlen (str_double), DB_GET_STRING_CODESET (result),
 			DB_GET_STRING_COLLATION (result));
+      result->need_clear = true;
       break;
 
     default:
