@@ -1275,9 +1275,9 @@ qe_close_req_handle_all (T_CON_HANDLE * con_handle)
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
       if (con_handle->req_handle_table[i] == NULL)
-    {
+	{
 	  continue;
-    }
+	}
       req_handle = con_handle->req_handle_table[i];
 
       qe_close_req_handle_internal (req_handle, con_handle, true);
