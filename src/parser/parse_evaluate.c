@@ -320,6 +320,10 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 
 	      result = (error == NO_ERROR);
 	    }
+	  else
+	    {
+	      result = false;
+	    }
 	}
       break;
 
