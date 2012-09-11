@@ -527,7 +527,9 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	    }
 
 	  if (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL)
-	    db_make_null (&col->info.value.db_value);
+	    {
+	      db_make_null (&col->info.value.db_value);
+	    }
 
 	  if ((attr2->type_enum == PT_TYPE_NONE)
 	      || (attr2->type_enum == PT_TYPE_NA)
@@ -573,7 +575,7 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      col->data_type = parser_copy_tree_list (parser,
 						      attr2->data_type);
 	    }
-	  else if (common_type == PT_TYPE_NUMERIC
+	  else if (PT_IS_PARAMETERIZED_TYPE (common_type)
 		   || (common_type != PT_TYPE_NONE
 		       && col->type_enum != common_type))
 	    {

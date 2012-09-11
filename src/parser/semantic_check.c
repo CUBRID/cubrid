@@ -2716,6 +2716,14 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  return NULL;
 	}
+
+      if (node->data_type)
+	{
+	  parser_free_tree (parser, node->data_type);
+	}
+      node->data_type = parser_copy_tree_list (parser,
+					       node->info.query.q.union_.
+					       arg1->data_type);
     }
 
   return node;
@@ -2922,6 +2930,18 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 				     cnt1))
 	{
 	  result = NULL;
+	}
+      else
+	{
+	  /* copy the new data_type to the actual UNION node */
+	  if (node->data_type != NULL)
+	    {
+	      parser_free_tree (parser, node->data_type);
+	    }
+
+	  node->data_type = parser_copy_tree (parser,
+					      node->info.query.q.union_.arg1->
+					      data_type);
 	}
     }
 
