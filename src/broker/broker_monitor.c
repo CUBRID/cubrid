@@ -272,7 +272,7 @@ main (int argc, char **argv)
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
       fprintf (stderr, "VERSION %s\n", makestring (BUILD_NUMBER));
-      return 2;
+      return 3;
     }
 
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
@@ -296,14 +296,14 @@ main (int argc, char **argv)
   if (shm_br->num_broker < 1 || shm_br->num_broker > MAX_BROKER_NUM)
     {
       fprintf (stderr, "broker configuration error\r\n");
-      return 2;
+      return 3;
     }
 
   br_vector = (char *) malloc (shm_br->num_broker);
   if (br_vector == NULL)
     {
       fprintf (stderr, "memory allocation error\r\n");
-      return 2;
+      return 3;
     }
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -313,7 +313,7 @@ main (int argc, char **argv)
   if (get_args (argc, argv, br_vector) < 0)
     {
       free (br_vector);
-      return 2;
+      return 3;
     }
 
   if (refresh_sec > 0 && !tty_mode)

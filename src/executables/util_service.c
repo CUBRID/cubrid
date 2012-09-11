@@ -1381,11 +1381,11 @@ process_broker (int command_type, int argc, const char **argv,
 		     PRINT_BROKER_NAME, PRINT_CMD_START);
       switch (is_broker_running ())
 	{
-	case 0:
+	case 0:		/* no error */
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_BROKER_NAME);
 	  return NO_ERROR;
-	case 1:
+	case 1:		/* shm_open error */
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
@@ -1408,6 +1408,10 @@ process_broker (int command_type, int argc, const char **argv,
 
 	  print_result (PRINT_BROKER_NAME, status, command_type);
 	  return status;
+	case 2:		/* no conf file */
+	  fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
 	default:
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
@@ -1446,6 +1450,10 @@ process_broker (int command_type, int argc, const char **argv,
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_BROKER_NAME);
 	  return NO_ERROR;
+	case 2:		/* no conf file */
+	  fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
 	default:		/* other error */
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
@@ -1489,6 +1497,10 @@ process_broker (int command_type, int argc, const char **argv,
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_BROKER_NAME);
 	    return NO_ERROR;
+	  case 2:		/* no conf file */
+	    fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
 	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	    return ER_GENERIC_ERROR;
@@ -1617,12 +1629,12 @@ process_broker (int command_type, int argc, const char **argv,
  * return:
  *
  */
-static bool
+static int
 is_shard_running (void)
 {
   const char *args[] = { UTIL_SMONITOR_NAME, 0 };
   int status = proc_execute (UTIL_SMONITOR_NAME, args, true, true, NULL);
-  return status == NO_ERROR ? true : false;
+  return status;
 }
 
 /*
@@ -1645,14 +1657,13 @@ process_shard (int command_type, int argc, const char **argv,
     case START:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_SHARD_NAME, PRINT_CMD_START);
-      if (is_shard_running () == true)
+      switch (is_shard_running ())
 	{
+	case 0:		/* no error */
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_SHARD_NAME);
 	  return NO_ERROR;
-	}
-      else
-	{
+	case 1:		/* shm_open error */
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
@@ -1675,19 +1686,22 @@ process_shard (int command_type, int argc, const char **argv,
 	    }
 
 	  print_result (PRINT_SHARD_NAME, status, command_type);
+	  return status;
+	case 2:		/* no conf file */
+	  fprintf (stderr, "Error: can't find shard.conf\n");
+	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
+	default:
+	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
 	}
       break;
     case STOP:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_SHARD_NAME, PRINT_CMD_STOP);
-      if (is_shard_running () != true)
+      switch (is_shard_running ())
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_SHARD_NAME);
-	  return NO_ERROR;
-	}
-      else
-	{
+	case 0:
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
@@ -1710,6 +1724,18 @@ process_shard (int command_type, int argc, const char **argv,
 	    }
 
 	  print_result (PRINT_SHARD_NAME, status, command_type);
+	  return status;
+	case 1:		/* shm_open error */
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_SHARD_NAME);
+	  return NO_ERROR;
+	case 2:		/* no conf file */
+	  fprintf (stderr, "Error: can't find shard_broker.conf\n");
+	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
+	default:		/* other error */
+	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
+	  return ER_GENERIC_ERROR;
 	}
       break;
     case RESTART:
@@ -1726,8 +1752,9 @@ process_shard (int command_type, int argc, const char **argv,
 
 	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		       PRINT_SHARD_NAME, PRINT_CMD_STATUS);
-	if (is_shard_running ())
+	switch (is_shard_running ())
 	  {
+	  case 0:		/* no error */
 	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
 	    if (args == NULL)
 	      {
@@ -1744,11 +1771,18 @@ process_shard (int command_type, int argc, const char **argv,
 	      proc_execute (UTIL_SMONITOR_NAME, args, true, false, NULL);
 
 	    free (args);
-	  }
-	else
-	  {
+	    return status;
+	  case 1:		/* shm_open error */
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_SHARD_NAME);
+	    return NO_ERROR;
+	  case 2:		/* no conf file */
+	    fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	    print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
+	    return ER_GENERIC_ERROR;
+	  default:		/* other error */
+	    print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
+	    return ER_GENERIC_ERROR;
 	  }
       }
       break;
