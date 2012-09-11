@@ -502,6 +502,9 @@ static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item,
 						LOG_LSA * last_lsa);
 
 static int la_commit_transaction (void);
+static int la_find_last_deleted_arv_num (void);
+
+
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -799,11 +802,10 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
       guess_num = *arv_log_num;
     }
 
-  guess_num = MAX (guess_num, la_Info.last_deleted_archive_num + 1);
-
-  left = la_Info.last_deleted_archive_num + 1;
+  left = MAX (0, la_Info.last_deleted_archive_num + 1);
   right = la_Info.act_log.log_hdr->nxarv_num - 1;
 
+  guess_num = MAX (guess_num, left);
   do
     {
       if (la_Info.arv_log.log_vdes != NULL_VOLDES
@@ -6228,7 +6230,7 @@ la_init (const char *log_path, const int max_mem_size)
   LSA_SET_NULL (&la_Info.last_committed_lsa);
   LSA_SET_NULL (&la_Info.last_committed_rep_lsa);
 
-  la_Info.last_deleted_archive_num = 0;
+  la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;
 
   la_Info.max_mem_size = max_mem_size;
@@ -6523,8 +6525,13 @@ check_applied_info_end:
 
   if (check_copied_info && (page_num > 1))
     {
-
       LOG_PAGE *logpage;
+
+      /* get last deleted archive number */
+      if (la_Info.last_deleted_archive_num == (-1))
+	{
+	  la_Info.last_deleted_archive_num = la_find_last_deleted_arv_num ();
+	}
 
       la_Info.log_data = (char *) malloc (la_Info.act_log.db_iopagesize);
       if (la_Info.log_data == NULL)
@@ -6702,6 +6709,36 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num,
   return last_deleted_arv_num;
 }
 
+static int
+la_find_last_deleted_arv_num (void)
+{
+  int arv_log_num;
+  char arv_log_path[PATH_MAX];
+  int arv_log_vdes = NULL_VOLDES;
+
+  arv_log_num = la_Info.act_log.log_hdr->nxarv_num - 1;
+  while (arv_log_num >= 0)
+    {
+      /* make archive_name */
+      fileio_make_log_archive_name (arv_log_path,
+				    la_Info.log_path,
+				    la_Info.act_log.log_hdr->prefix_name,
+				    arv_log_num);
+
+      /* open the archive file */
+      arv_log_vdes = fileio_open (arv_log_path, O_RDONLY, 0);
+      if (arv_log_vdes == NULL_VOLDES)
+	{
+	  break;
+	}
+
+      fileio_close (arv_log_vdes);
+      arv_log_num--;
+    }
+
+  return arv_log_num;
+}
+
 /*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
@@ -6809,6 +6846,12 @@ la_apply_log_file (const char *database_name, const char *log_path,
   fileio_make_log_info_name (la_Info.loginf_path, la_Info.log_path,
 			     la_slave_db_name);
 
+  /* get last deleted archive number */
+  if (la_Info.last_deleted_archive_num == (-1))
+    {
+      la_Info.last_deleted_archive_num = la_find_last_deleted_arv_num ();
+    }
+
   /* find out the last log applied LSA */
   error = la_get_last_ha_applied_info ();
   if (error != NO_ERROR)
@@ -6871,7 +6914,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		la_remove_archive_logs (la_slave_db_name,
 					la_Info.last_deleted_archive_num,
 					la_Info.act_log.log_hdr->nxarv_num);
-	      if (la_Info.last_deleted_archive_num > 0)
+	      if (la_Info.last_deleted_archive_num >= 0)
 		{
 		  (void) la_update_last_deleted_arv_num (la_Info.
 							 log_path_lockf_vdes,
