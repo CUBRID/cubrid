@@ -12329,6 +12329,7 @@ opt_select_limit_clause
 				  }
 			      }
 			  }
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -12343,8 +12344,8 @@ limit_options
 			  {
 			    node->info.query.limit = $1;
 			    node->info.query.rewrite_limit = 1;
-			    $$ = node;
 			  }
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -12362,8 +12363,8 @@ limit_options
 			      }
 			    node->info.query.limit = limit1;
 			    node->info.query.rewrite_limit = 1;
-			    $$ = node;
 			  }
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -12381,8 +12382,8 @@ limit_options
 			      }
 			    node->info.query.limit = limit1;
 			    node->info.query.rewrite_limit = 1;
-			    $$ = node;
 			  }
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -16969,9 +16970,9 @@ opt_using_charset
 			    node->type_enum = PT_TYPE_INTEGER;
 			    node->info.value.data_value.i = charset;
 			  }
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| USING char_string_literal
