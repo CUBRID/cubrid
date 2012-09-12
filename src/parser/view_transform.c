@@ -4663,7 +4663,8 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	}
 
-      if (!PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
+      if (!PT_SELECT_INFO_IS_FLAGED (statement, 
+				     PT_SELECT_INFO_IS_MERGE_QUERY))
 	{
 	  mq_push_paths_select (parser, statement,
 				statement->info.query.q.select.from);
@@ -8318,6 +8319,58 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		parser_append_node (cw, statement->info.merge.check_where);
 	    }
 	  check_where_part = &cw->info.check_option.expr;
+	}
+
+      /* check invertible on update assignments */
+      if (statement->info.merge.update.assignment != NULL)
+	{
+	  for (assign = statement->info.merge.update.assignment;
+	       assign != NULL; assign = assign->next)
+	    {
+	      /* get lhs, rhs */
+	      lhs = &(assign->info.expr.arg1);
+	      rhs = &(assign->info.expr.arg2);
+	      if (PT_IS_N_COLUMN_UPDATE_EXPR (*lhs))
+		{
+		  /* get lhs element */
+		  lhs = &((*lhs)->info.expr.arg1);
+
+		  /* get rhs element */
+		  rhs = &((*rhs)->info.query.q.select.list);
+		}
+
+	      for (; *lhs && *rhs; *lhs = lhs_next, *rhs = rhs_next)
+		{
+		  /* cut-off and save next link */
+		  lhs_next = (*lhs)->next;
+		  (*lhs)->next = NULL;
+		  rhs_next = (*rhs)->next;
+		  (*rhs)->next = NULL;
+
+		  *rhs = mq_translate_value (parser, *rhs);
+
+		  result = pt_invert (parser, *lhs, *rhs);
+		  if (!result)
+		    {
+		      /* error not invertible/updatable */
+		      PT_ERRORmf (parser, assign, MSGCAT_SET_PARSER_RUNTIME,
+				  MSGCAT_RUNTIME_VASG_TGT_UNINVERTBL,
+				  pt_short_print (parser, *lhs));
+		      goto exit_on_error;
+		    }
+
+		  if (*lhs)
+		    {
+		      parser_free_tree (parser, *lhs);
+		    }
+		  *lhs = result->next;	/* the name */
+		  result->next = NULL;
+		  *rhs = result;	/* the right hand side */
+
+		  lhs = &((*lhs)->next);
+		  rhs = &((*rhs)->next);
+		}
+	    }
 	}
 
       /* check insert part attributes */
