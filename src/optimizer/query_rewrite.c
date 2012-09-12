@@ -3711,7 +3711,7 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
     {
       like->next = between->next;
       between->next = NULL;
-      goto error;
+      goto error_exit;
     }
 
   return;
