@@ -12611,6 +12611,13 @@ db_to_date (const DB_VALUE * src_str,
   day = (daycount == 0) ? 1 : day;
   week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
 
+  if (week != -1 && week != db_get_day_of_week (year, month, day))
+    {
+      error_status = ER_DATE_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
   DB_MAKE_DATE (result_date, month, day, year);
 
   if (*(DB_GET_DATE (result_date)) == 0)
@@ -13822,6 +13829,13 @@ db_to_timestamp (const DB_VALUE * src_str,
   day = (daycount == 0) ? 1 : day;
   week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
 
+  if (week != -1 && week != db_get_day_of_week (year, month, day))
+    {
+      error_status = ER_DATE_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
   if (db_date_encode (&tmp_date, month, day, year) != NO_ERROR)
     {
       error_status = ER_DATE_CONVERSION;
@@ -14642,6 +14656,13 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
   month = (monthcount == 0) ? get_cur_month () : month;
   day = (daycount == 0) ? 1 : day;
   week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
+
+  if (week != -1 && week != db_get_day_of_week (year, month, day))
+    {
+      error_status = ER_DATE_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
 
   /**************            Check TIME        ****************/
   if (am == true && pm == false && hour <= 12)
