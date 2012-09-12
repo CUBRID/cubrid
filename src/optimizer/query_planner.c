@@ -9584,9 +9584,9 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       /* bail out if the datatype is not arithmetic */
       if ((pc_lhs == PC_ATTR
-	   && !qo_is_arithmetic_type (pt_expr->info.expr.arg2))
+	   && !qo_is_arithmetic_type (pt_expr->info.expr.arg1))
 	  || (pc_rhs == PC_ATTR
-	      && !qo_is_arithmetic_type (pt_expr->info.expr.arg1)))
+	      && !qo_is_arithmetic_type (pt_expr->info.expr.arg2)))
 	return DEFAULT_COMP_SELECTIVITY;
 
       /* get high and low values for the class of the attribute. */
@@ -10339,7 +10339,6 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
       rc = 1;
       break;
     default:
-      QO_ASSERT (env, UNEXPECTED_CASE);
       *low_value = *high_value = 0.0;
       break;
     }
