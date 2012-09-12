@@ -10241,8 +10241,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (func_indx_preds)
     {
-      (void) heap_free_func_pred_unpack_info (thread_p, n_indexes,
-					      func_indx_preds, NULL);
+      heap_free_func_pred_unpack_info (thread_p, n_indexes,
+				       func_indx_preds, NULL);
     }
   if (index_attr_info_inited)
     {
@@ -10311,8 +10311,8 @@ exit_on_error:
   qexec_close_scan (thread_p, specp);
   if (func_indx_preds)
     {
-      (void) heap_free_func_pred_unpack_info (thread_p, n_indexes,
-					      func_indx_preds, NULL);
+      heap_free_func_pred_unpack_info (thread_p, n_indexes,
+				       func_indx_preds, NULL);
     }
   if (index_attr_info_inited)
     {
