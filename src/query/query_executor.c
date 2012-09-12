@@ -983,16 +983,6 @@ static int qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 static int qexec_upddel_setup_current_class (UPDDEL_CLASS_INFO * class_,
 					     UPDDEL_CLASS_INFO_INTERNAL *
 					     class_info, OID * current_oid);
-static int qexec_init_func_pred_unpack_info (THREAD_ENTRY * thread_p,
-					     HEAP_CACHE_ATTRINFO * attr_info,
-					     const OID * class_oid,
-					     FUNC_PRED_UNPACK_INFO **
-					     func_indx_preds);
-static void qexec_free_func_pred_unpack_info (THREAD_ENTRY * thread_p,
-					      int n_indexes,
-					      FUNC_PRED_UNPACK_INFO *
-					      func_indx_preds,
-					      int *attr_info_started);
 
 /*
  * Utility routines
@@ -1300,7 +1290,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
-  OID * class_oid = NULL;
+  OID *class_oid = NULL;
   int ret = NO_ERROR;
 
   if ((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
@@ -9841,8 +9831,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       /* if the class has at least one function index, the function
        * expressions will be cached */
-      if (qexec_init_func_pred_unpack_info (thread_p, &attr_info, &class_oid,
-					    &func_indx_preds) != NO_ERROR)
+      if (heap_init_func_pred_unpack_info (thread_p, &attr_info, &class_oid,
+					   &func_indx_preds) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -10251,8 +10241,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (func_indx_preds)
     {
-      (void) qexec_free_func_pred_unpack_info (thread_p, n_indexes,
-					       func_indx_preds, NULL);
+      (void) heap_free_func_pred_unpack_info (thread_p, n_indexes,
+					      func_indx_preds, NULL);
     }
   if (index_attr_info_inited)
     {
@@ -10321,8 +10311,8 @@ exit_on_error:
   qexec_close_scan (thread_p, specp);
   if (func_indx_preds)
     {
-      (void) qexec_free_func_pred_unpack_info (thread_p, n_indexes,
-					       func_indx_preds, NULL);
+      (void) heap_free_func_pred_unpack_info (thread_p, n_indexes,
+					      func_indx_preds, NULL);
     }
   if (index_attr_info_inited)
     {
@@ -22882,195 +22872,4 @@ exit_on_error:
     }
 
   return error;
-}
-
-/*
- * qexec_init_func_pred_unpack_info () - if function indexes are found,
- *			each function expression is unpacked and cached
- *			in order to be used during bulk inserts
- *			(insert ... select).
- *   return: NO_ERROR, or ER_FAILED
- *   thread_p(in): thread entry
- *   attr_info(in): heap_cache_attrinfo
- *   class_oid(in): the class oid
- *   func_indx_preds(out):
- */
-static int
-qexec_init_func_pred_unpack_info (THREAD_ENTRY * thread_p,
-				  HEAP_CACHE_ATTRINFO * attr_info,
-				  const OID * class_oid,
-				  FUNC_PRED_UNPACK_INFO ** func_indx_preds)
-{
-  OR_FUNCTION_INDEX *fi_info = NULL;
-  int n_indexes;
-  int i, j;
-  int *att_ids = NULL;
-  int error_status = NO_ERROR;
-  OR_INDEX *idx;
-  FUNC_PRED_UNPACK_INFO *fi_preds = NULL;
-  int *attr_info_started = NULL;
-
-  if (attr_info == NULL || class_oid == NULL || func_indx_preds == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  *func_indx_preds = NULL;
-
-  n_indexes = attr_info->last_classrepr->n_indexes;
-  for (i = 0; i < n_indexes; i++)
-    {
-      idx = &(attr_info->last_classrepr->indexes[i]);
-      fi_info = idx->func_index_info;
-      if (fi_info)
-	{
-	  if (fi_preds == NULL)
-	    {
-	      fi_preds =
-		(FUNC_PRED_UNPACK_INFO *) db_private_alloc (thread_p,
-							    n_indexes *
-							    sizeof
-							    (FUNC_PRED_UNPACK_INFO));
-	      if (!fi_preds)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  n_indexes * sizeof (FUNC_PRED_UNPACK_INFO));
-		  error_status = ER_FAILED;
-		  goto error;
-		}
-	      for (j = 0; j < n_indexes; j++)
-		{
-		  fi_preds[j].func_pred = NULL;
-		  fi_preds[j].unpack_info = NULL;
-		}
-
-	      attr_info_started =
-		(int *) (db_private_alloc (thread_p, n_indexes *
-					   sizeof (int)));
-	      if (attr_info_started == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  n_indexes * sizeof (int));
-		  error_status = ER_FAILED;
-		  goto error;
-		}
-	      for (j = 0; j < n_indexes; j++)
-		{
-		  attr_info_started[j] = 0;
-		}
-	    }
-
-	  if (stx_map_stream_to_func_pred (thread_p,
-					   (FUNC_PRED **) & (fi_preds[i].
-							     func_pred),
-					   fi_info->expr_stream,
-					   fi_info->expr_stream_size,
-					   &(fi_preds[i].unpack_info)))
-	    {
-	      error_status = ER_FAILED;
-	      return ER_FAILED;
-	    }
-
-	  att_ids = (ATTR_ID *) db_private_alloc (thread_p, idx->n_atts *
-						  sizeof (ATTR_ID));
-	  if (!att_ids)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      idx->n_atts * sizeof (ATTR_ID));
-	      error_status = ER_FAILED;
-	      goto error;
-	    }
-
-	  for (j = 0; j < idx->n_atts; j++)
-	    {
-	      att_ids[j] = idx->atts[j]->id;
-	    }
-
-	  if (heap_attrinfo_start (thread_p, class_oid, idx->n_atts,
-				   att_ids,
-				   ((FUNC_PRED *) fi_preds[i].func_pred)->
-				   cache_attrinfo) != NO_ERROR)
-	    {
-	      error_status = ER_FAILED;
-	      goto error;
-	    }
-
-	  attr_info_started[i] = 1;
-
-	  if (att_ids)
-	    {
-	      db_private_free_and_init (thread_p, att_ids);
-	    }
-	}
-    }
-
-  *func_indx_preds = fi_preds;
-  return NO_ERROR;
-
-error:
-  if (att_ids)
-    {
-      db_private_free_and_init (thread_p, att_ids);
-    }
-  qexec_free_func_pred_unpack_info (thread_p, n_indexes,
-				    fi_preds, attr_info_started);
-  if (attr_info_started)
-    {
-      db_private_free_and_init (thread_p, attr_info_started);
-    }
-
-  return error_status;
-
-}
-
-/*
- * qexec_free_func_pred_unpack_info () -
- *   return:
- *   thread_p(in): thread entry
- *   n_indexes(in): number of indexes
- *   func_indx_preds(in):
- *   attr_info_started(in): array of int (1 if coresponding cache_attrinfo
- *					  must be cleaned, 0 otherwise)
- *			    if null all cache_attrinfo must be cleaned
- */
-static void
-qexec_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes,
-				  FUNC_PRED_UNPACK_INFO * func_indx_preds,
-				  int *attr_info_started)
-{
-  int i;
-
-  if (func_indx_preds == NULL)
-    {
-      return;
-    }
-
-  for (i = 0; i < n_indexes; i++)
-    {
-      if (func_indx_preds[i].func_pred)
-	{
-	  if (attr_info_started == NULL || attr_info_started[i])
-	    {
-	      assert (((FUNC_PRED *) func_indx_preds[i].func_pred)->
-		      cache_attrinfo);
-	      (void) heap_attrinfo_end (thread_p,
-					((FUNC_PRED *) func_indx_preds[i].
-					 func_pred)->cache_attrinfo);
-	    }
-	  (void) qexec_clear_func_pred (thread_p,
-					(FUNC_PRED *) func_indx_preds[i].
-					func_pred);
-	}
-
-      if (func_indx_preds[i].unpack_info)
-	{
-	  stx_free_additional_buff (thread_p, func_indx_preds[i].unpack_info);
-	  stx_free_xasl_unpack_info (func_indx_preds[i].unpack_info);
-	  db_private_free_and_init (thread_p, func_indx_preds[i].unpack_info);
-	}
-    }
-  db_private_free_and_init (thread_p, func_indx_preds);
 }

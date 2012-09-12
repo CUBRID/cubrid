@@ -2233,7 +2233,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->partition_pred = NULL;
   pinfo->attr_position = -1;
   pinfo->error_code = NO_ERROR;
-  pinfo->scan_cache_list = NULL;
+  pinfo->insert_cache_list = NULL;
   pinfo->is_attr_info_inited = false;
   pinfo->is_from_cache = false;
 }
@@ -2401,7 +2401,7 @@ error_return:
 void
 partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
 {
-  SCANCACHE_LIST *list, *next;
+  INSERTCACHE_LIST *list, *next;
 
   if (pinfo == NULL)
     {
@@ -2450,16 +2450,27 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
       heap_attrinfo_end (pinfo->thread_p, &(pinfo->attr_info));
     }
 
-  list = pinfo->scan_cache_list;
+  list = pinfo->insert_cache_list;
   while (list != NULL)
     {
       next = list->next;
-      heap_scancache_end (pinfo->thread_p, &list->scan_cache);
+      if (list->insert_cache.is_scan_cache_started)
+	{
+	  heap_scancache_end (pinfo->thread_p,
+			      &list->insert_cache.scan_cache);
+	}
+      if (list->insert_cache.func_index_pred != NULL)
+	{
+	  heap_free_func_pred_unpack_info (pinfo->thread_p,
+					   list->insert_cache.n_indexes,
+					   list->insert_cache.func_index_pred,
+					   NULL);
+	}
       db_private_free (pinfo->thread_p, list);
       list = next;
     }
 
-  pinfo->scan_cache_list = NULL;
+  pinfo->insert_cache_list = NULL;
 }
 
 /*
@@ -3246,17 +3257,17 @@ cleanup:
 }
 
 /*
- * partition_get_scan_cache_for_class () - look for a cached SCANCACHE object
- *					   for a partition
+ * partition_get_insertcache () - get cached insert information for a
+ *				  partition
  * return : cached object or NULL
  * pcontext (in)      : pruning context
  * partition_oid (in) : partition
  */
-HEAP_SCANCACHE *
-partition_get_scancache (PRUNING_CONTEXT * pcontext,
-			 const OID * partition_oid)
+PRUNING_INSERT_CACHE *
+partition_get_insertcache (PRUNING_CONTEXT * pcontext,
+			   const OID * partition_oid)
 {
-  SCANCACHE_LIST *list = NULL;
+  INSERTCACHE_LIST *node = NULL;
 
   if (partition_oid == NULL || pcontext == NULL)
     {
@@ -3264,47 +3275,46 @@ partition_get_scancache (PRUNING_CONTEXT * pcontext,
       return NULL;
     }
 
-  list = pcontext->scan_cache_list;
-  while (list != NULL)
+  node = pcontext->insert_cache_list;
+  while (node != NULL)
     {
-      if (OID_EQ (&list->scan_cache.class_oid, partition_oid))
+      if (OID_EQ (&node->insert_cache.scan_cache.class_oid, partition_oid))
 	{
-	  return &list->scan_cache;
+	  return &node->insert_cache;
 	}
-      list = list->next;
+      node = node->next;
     }
 
   return NULL;
 }
 
 /*
- * partition_new_scancache () - create a new scancache entry in the context
- * return : scancache entry or NULL
+ * partition_new_scancache () - create a new object to hold insert related
+ *				objects
+ * return : insert cache entry or NULL
  * pcontext (in) : pruning context
  */
-HEAP_SCANCACHE *
-partition_new_scancache (PRUNING_CONTEXT * pcontext)
+PRUNING_INSERT_CACHE *
+partition_new_insertcache (PRUNING_CONTEXT * pcontext)
 {
-  SCANCACHE_LIST *node = NULL;
+  INSERTCACHE_LIST *node = NULL;
 
-  node = (SCANCACHE_LIST *) db_private_alloc (pcontext->thread_p,
-					      sizeof (SCANCACHE_LIST));
+  node = (INSERTCACHE_LIST *) db_private_alloc (pcontext->thread_p,
+						sizeof (INSERTCACHE_LIST));
   if (node == NULL)
     {
       return NULL;
     }
 
-  if (heap_scancache_quick_start (&node->scan_cache) != NO_ERROR)
-    {
-      db_private_free (pcontext->thread_p, node);
-      return NULL;
-    }
+  node->insert_cache.is_scan_cache_started = false;
+  node->insert_cache.n_indexes = 0;
+  node->insert_cache.func_index_pred = NULL;
 
   /* add it at the beginning */
-  node->next = pcontext->scan_cache_list;
-  pcontext->scan_cache_list = node;
+  node->next = pcontext->insert_cache_list;
+  pcontext->insert_cache_list = node;
 
-  return &node->scan_cache;
+  return &node->insert_cache;
 }
 
 /*

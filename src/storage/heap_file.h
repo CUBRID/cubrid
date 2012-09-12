@@ -489,6 +489,17 @@ extern int xheap_get_class_num_objects_pages (THREAD_ENTRY * thread_p,
 extern int xheap_has_instance (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       OID * class_oid);
 
+extern int heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p,
+					    HEAP_CACHE_ATTRINFO * attr_info,
+					    const OID * class_oid,
+					    FUNC_PRED_UNPACK_INFO **
+					    func_indx_preds);
+
+extern void heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p,
+					     int n_indexes,
+					     FUNC_PRED_UNPACK_INFO *
+					     func_indx_preds,
+					     int *attr_info_started);
 
 /* auto-increment */
 extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p,

@@ -28,11 +28,25 @@
 #include "thread.h"
 #include "query_executor.h"
 
-typedef struct scancache_list SCANCACHE_LIST;
-struct scancache_list
+/* object for caching objects used in INSERT statements for each partition */
+typedef struct pruning_insert_cache PRUNING_INSERT_CACHE;
+struct pruning_insert_cache
 {
-  SCANCACHE_LIST *next;
-  HEAP_SCANCACHE scan_cache;
+  HEAP_SCANCACHE scan_cache;	/* cached partition heap info */
+  bool is_scan_cache_started;	/* true if cache has been started */
+  FUNC_PRED_UNPACK_INFO *func_index_pred;	/* an array of function indexes
+						 * cached for repeated evaluation */
+  int n_indexes;		/* number of indexes */
+};
+
+/* linked list for caching PRUNING_INSERT_CACHE object in the pruning
+ * context
+ */
+typedef struct insertcache_list INSERTCACHE_LIST;
+struct insertcache_list
+{
+  INSERTCACHE_LIST *next;
+  PRUNING_INSERT_CACHE insert_cache;
 };
 
 typedef struct pruning_context PRUNING_CONTEXT;
@@ -47,8 +61,8 @@ struct pruning_context
 
   OR_PARTITION *partitions;	/* partitions array */
 
-  SCANCACHE_LIST *scan_cache_list;	/* scan caches for partitions affected by
-					 * the query using this context */
+  INSERTCACHE_LIST *insert_cache_list;	/* caches for partitions affected
+					 * by the query using this context */
   int count;			/* number of partitions */
 
   void *fp_cache_context;	/* unpacking info */
@@ -79,10 +93,13 @@ extern void partition_cache_finalize (THREAD_ENTRY * thread_p);
 extern void partition_decache_class (THREAD_ENTRY * thread_p,
 				     const OID * class_oid);
 
-extern HEAP_SCANCACHE *partition_get_scancache (PRUNING_CONTEXT * pcontext,
-						const OID * partition_oid);
+extern PRUNING_INSERT_CACHE *partition_get_insertcache (PRUNING_CONTEXT *
+							pcontext,
+							const OID *
+							partition_oid);
 
-extern HEAP_SCANCACHE *partition_new_scancache (PRUNING_CONTEXT * pcontext);
+extern PRUNING_INSERT_CACHE *partition_new_insertcache (PRUNING_CONTEXT *
+							pcontext);
 
 extern int partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
 				 ACCESS_SPEC_TYPE * access_spec);

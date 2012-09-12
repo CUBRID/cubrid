@@ -269,6 +269,13 @@ static int locator_filter_errid (THREAD_ENTRY * thread_p,
 				 int num_ignore_error_count,
 				 int *ignore_error_list);
 
+static PRUNING_INSERT_CACHE *locator_setup_insertcache (PRUNING_CONTEXT *
+							pcontext,
+							const OID *
+							class_oid,
+							const HFID * hfid,
+							bool
+							has_function_index);
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -4942,7 +4949,7 @@ error3:
  *   pcontext(in): partition pruning context
  *   func_preds(in): cached function index expressions
  *
- * Note: The given object is inserted on this heap and all appropiate
+ * Note: The given object is inserted on this heap and all appropriate
  *              index entries are inserted.
  */
 static int
@@ -4959,7 +4966,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   int error_code = NO_ERROR;
   OID real_class_oid;
   HFID real_hfid;
-  HEAP_SCANCACHE *insert_cache;
+  HEAP_SCANCACHE *local_scan_cache = NULL;
+  FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   OID null_oid = {
     NULL_PAGEID, NULL_SLOTID, NULL_VOLID
   };
@@ -4969,10 +4977,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   HFID_COPY (&real_hfid, hfid);
   COPY_OID (&real_class_oid, class_oid);
 
-  insert_cache = scan_cache;
+  local_scan_cache = scan_cache;
+  local_func_preds = func_preds;
 
-  if (op_type == SINGLE_ROW_INSERT_PRUNING ||
-      op_type == MULTI_ROW_INSERT_PRUNING)
+  if (op_type == SINGLE_ROW_INSERT_PRUNING
+      || op_type == MULTI_ROW_INSERT_PRUNING)
     {
       OID superclass_oid;
       int granted;
@@ -5007,28 +5016,29 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	       * created for the target partition and use that one instead of
 	       * the one supplied to this function
 	       */
-	      insert_cache =
-		partition_get_scancache (pcontext, &real_class_oid);
-	      if (insert_cache == NULL)
+	      PRUNING_INSERT_CACHE *ins_cache = NULL;
+	      bool has_func_idx = (func_preds != NULL);
+
+	      ins_cache =
+		locator_setup_insertcache (pcontext, &real_class_oid,
+					   &real_hfid, has_func_idx);
+	      if (ins_cache == NULL)
 		{
-		  /* create a new one and cache it */
-		  insert_cache = partition_new_scancache (pcontext);
-		  if (insert_cache == NULL)
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
 		    {
 		      error_code = ER_FAILED;
-		      goto error2;
-		    }
-
-		  error_code =
-		    locator_start_force_scan_cache (thread_p, insert_cache,
-						    &real_hfid,
-						    &real_class_oid,
-						    MULTI_ROW_INSERT);
-		  if (error_code != NO_ERROR)
-		    {
-		      return error_code;
 		    }
 		}
+	      local_func_preds = ins_cache->func_index_pred;
+	      local_scan_cache = &ins_cache->scan_cache;
+	    }
+	  else
+	    {
+	      /* disable function indexes optimization if we don't have access
+	       * to a pruning context
+	       */
+	      local_func_preds = NULL;
 	    }
 	}
       else
@@ -5060,7 +5070,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   /* insert object and lock it */
 
   if (heap_insert (thread_p, &real_hfid, &real_class_oid, oid, recdes,
-		   insert_cache) == NULL)
+		   local_scan_cache) == NULL)
     {
       /*
        * Problems inserting the object...Maybe, the transaction should be
@@ -5140,9 +5150,9 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
       if (has_index
 	  && locator_add_or_remove_index (thread_p, recdes, oid,
 					  &real_class_oid, NULL, false,
-					  true, op_type, insert_cache, true,
-					  true, &real_hfid, func_preds) !=
-	  NO_ERROR)
+					  true, op_type, local_scan_cache,
+					  true, true, &real_hfid,
+					  local_func_preds) != NO_ERROR)
 	{
 	  error_code = er_errid ();
 	  if (error_code == NO_ERROR)
@@ -5152,7 +5162,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  goto error1;
 	}
 
-      /* check the foreign key constrants */
+      /* check the foreign key constraints */
       if (has_index && !locator_Dont_check_foreign_key)
 	{
 	  error_code =
@@ -5172,7 +5182,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
 	      if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
-			       recdes, &isold_object, insert_cache) == NULL)
+			       recdes, &isold_object,
+			       local_scan_cache) == NULL)
 		{
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
@@ -5280,27 +5291,19 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 
   if (context != NULL)
     {
-      /* search a "cached" HEAP_SCANCACHE for this record */
+      /* setup a PRUNING_INSERT_CACHE object for this class */
       HEAP_SCANCACHE *insert_cache = NULL;
-      insert_cache = partition_get_scancache (context, new_class_oid);
-      if (insert_cache == NULL)
+      PRUNING_INSERT_CACHE *ins_cache = NULL;
+      ins_cache =
+	locator_setup_insertcache (context, new_class_oid, new_class_hfid,
+				   false);
+      if (ins_cache == NULL)
 	{
-	  /* create a new one and cache it */
-	  insert_cache = partition_new_scancache (context);
-	  if (insert_cache == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  error =
-	    locator_start_force_scan_cache (thread_p, insert_cache,
-					    new_class_hfid, new_class_oid,
-					    MULTI_ROW_INSERT);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  error = er_errid ();
+	  return (error != NO_ERROR) ? error : ER_FAILED;
 	}
+
+      insert_cache = &ins_cache->scan_cache;
 
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
@@ -5311,14 +5314,15 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
   else
     {
       HEAP_SCANCACHE insert_cache;
-      error =
-	locator_start_force_scan_cache (thread_p, &insert_cache,
-					new_class_hfid, new_class_oid,
-					SINGLE_ROW_INSERT);
+
+      error = locator_start_force_scan_cache (thread_p, &insert_cache,
+					      new_class_hfid, new_class_oid,
+					      SINGLE_ROW_INSERT);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
+
       /* insert the new record */
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
@@ -11258,4 +11262,70 @@ locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count,
 	}
     }
   return error_code;
+}
+
+/*
+ * locator_setup_insertcache () - setup a cache for repeated insert operations
+ *				  which require partition pruning
+ * return : INSERTCACHE on success, NULL on error
+ * pcontext (in)  : pruning context
+ * class_oid (in) : OID of the pruned partition
+ * hfid (in)	  : HFID of the pruned partition
+ * has_function_indexes (in)  : true if function indexes should be cached
+ */
+static PRUNING_INSERT_CACHE *
+locator_setup_insertcache (PRUNING_CONTEXT * pcontext, const OID * class_oid,
+			   const HFID * hfid, bool has_function_indexes)
+{
+  PRUNING_INSERT_CACHE *ins_cache = NULL;
+  int error_code = NO_ERROR;
+
+  ins_cache = partition_get_insertcache (pcontext, class_oid);
+  if (ins_cache != NULL)
+    {
+      /* already cached, return it */
+      return ins_cache;
+    }
+
+  /* create a new one and cache it */
+  ins_cache = partition_new_insertcache (pcontext);
+  if (ins_cache == NULL)
+    {
+      return NULL;
+    }
+  error_code = locator_start_force_scan_cache (pcontext->thread_p,
+					       &ins_cache->scan_cache, hfid,
+					       class_oid, MULTI_ROW_INSERT);
+  if (error_code != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  ins_cache->is_scan_cache_started = true;
+
+  if (has_function_indexes)
+    {
+      HEAP_CACHE_ATTRINFO attr_info;
+
+      error_code = heap_attrinfo_start (pcontext->thread_p, class_oid,
+					-1, NULL, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  return NULL;
+	}
+      ins_cache->n_indexes = attr_info.last_classrepr->n_indexes;
+      error_code =
+	heap_init_func_pred_unpack_info (pcontext->thread_p, &attr_info,
+					 class_oid,
+					 &ins_cache->func_index_pred);
+      heap_attrinfo_end (pcontext->thread_p, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  ins_cache->n_indexes = 0;
+	  ins_cache->func_index_pred = NULL;
+	  return NULL;
+	}
+    }
+
+  return ins_cache;
 }
