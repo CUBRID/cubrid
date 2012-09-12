@@ -111,10 +111,13 @@ static void css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
 					     unsigned short request_id);
 static void css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
 					       unsigned short request_id,
-					       void *buf);
-static void css_process_dereg_ha_process (CSS_CONN_ENTRY * conn,
-					  unsigned short request_id,
-					  char *pid_p);
+					       char *buf);
+static void css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
+					      unsigned short request_id,
+					      char *pid_p);
+static void css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
+					       unsigned short request_id,
+					       char *args);
 static void css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
 static void css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
@@ -578,8 +581,7 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
 #if !defined(WINDOWS)
 	      if (IS_MASTER_CONN_NAME_HA_SERVER (temp->name))
 		{
-		  hb_dereg_process (temp->pid, &time_buffer);
-		  free_and_init (time_buffer);
+		  hb_deregister_by_pid (temp->pid);
 		}
 	      else
 #endif
@@ -1163,7 +1165,7 @@ error_return:
  */
 static void
 css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
-				   unsigned short request_id, void *buf)
+				   unsigned short request_id, char *buf)
 {
 #if !defined(WINDOWS)
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
@@ -1199,53 +1201,28 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
 }
 
 /*
- * css_process_dereg_ha_process()
+ * css_process_ha_deregister_by_pid()
  *   return: none
  *   conn(in):
  *   request_id(in):
  *   pid_p(in):
  */
 static void
-css_process_dereg_ha_process (CSS_CONN_ENTRY * conn,
-			      unsigned short request_id, char *pid_p)
+css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
+				  unsigned short request_id, char *pid_p)
 {
 #if !defined(WINDOWS)
-  char *buffer = NULL;
   pid_t pid;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      goto error_return;
+      pid = ntohl (*((int *) pid_p));
+      hb_deregister_by_pid (pid);
     }
 
-  pid = ntohl (*((int *) pid_p));
-  hb_dereg_process (pid, &buffer);
-
-  if (buffer == NULL)
-    {
-      goto error_return;
-    }
-
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
-    {
-      css_cleanup_info_connection (conn);
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
-  return;
-
-error_return:
   if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
-    }
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
     }
   return;
 #else
@@ -1262,6 +1239,45 @@ error_return:
     }
 #endif
 }
+
+/*
+ * css_process_ha_deregister_by_args()
+ *   return: none
+ *   conn(in):
+ *   request_id(in):
+ *   pid_p(in):
+ */
+static void
+css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
+				   unsigned short request_id, char *args)
+{
+#if !defined(WINDOWS)
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+    {
+      hb_deregister_by_args (args);
+    }
+
+  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+  return;
+#else
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_MASTER,
+				   MASTER_MSG_PROCESS_ERROR));
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+#endif
+}
+
+
 
 /*
  * css_process_reconfig_heartbeat()
@@ -1542,8 +1558,11 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	case IS_REGISTERED_HA_PROC:
 	  css_process_is_registered_ha_proc (conn, request_id, buffer);
 	  break;
-	case DEREGISTER_HA_PROCESS:
-	  css_process_dereg_ha_process (conn, request_id, buffer);
+	case DEREGISTER_HA_PROCESS_BY_PID:
+	  css_process_ha_deregister_by_pid (conn, request_id, buffer);
+	  break;
+	case DEREGISTER_HA_PROCESS_BY_ARGS:
+	  css_process_ha_deregister_by_args (conn, request_id, buffer);
 	  break;
 	case RECONFIG_HEARTBEAT:
 	  css_process_reconfig_heartbeat (conn, request_id);

@@ -185,6 +185,7 @@ Available command:\n\
     restart     [database-name]\n\
     status\n\
     acl         <status|reload> database-name\n
+37 The server was configured for HA.\n
 26 cubrid utility, version %s\n\
 usage: %s broker <command> [args]\n\
 \n\
@@ -208,12 +209,11 @@ Available command:\n\
 usage: %s heartbeat <command> [args]\n\
 \n\
 Available command:\n\
-    start\n\
-    stop\n\
-    act\n\
-    deact\n\
-    deregister  process-id\n\
-    list\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    copylogdb   <start|stop> database-name node-name\n\
+    applylogdb  <start|stop> database-name node-name\n\
+    status\n\
     reload\n
 31 '%s' argument is not needed.\n
 32 A database-name is missing.\n
@@ -221,6 +221,8 @@ Available command:\n\
 34 Invalid Parameter. %s %s\n
 35 Cannot allocate memory.\n
 36 The server was not configured for HA.\n
+38 The server configured for HA is not listed in ha_db_list.\n
+39 The server configured for HA is not listed in ha_node_list.\n
 62 cubrid utility, version %s\n\
 usage: %s shard <command> [args]\n\
 \n\

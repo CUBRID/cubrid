@@ -185,6 +185,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     restart     [데이터베이스 이름]\n\
     status\n\
     acl         <status|reload> 데이터베이스 이름\n
+37 서버가 HA 모드로 설정되어 있습니다.\n
 26 cubrid 유틸리티, 버전 %s\n\
 사용법: %s broker <명령어> [인자]\n\
 \n\
@@ -208,12 +209,11 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 사용법: %s heartbeat <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start\n\
-    stop\n\
-    act\n\
-    deact\n\
-    deregister  <프로세스 아이디>\n\
-    list\n\
+    start       [데이터베이스 이름]\n\
+    stop        [데이터베이스 이름]\n\
+    copylogdb   <start|stop> <데이터베이스 이름> <노드 이름>\n\
+    applylogdb  <start|stop> <데이터베이스 이름> <노드 이름>\n\
+    status\n\
     reload\n
 31 '%s' 인자가 필요 없습니다.\n
 32 데이터베이스 이름이 누락됐습니다.\n
@@ -221,6 +221,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 34 설정에 오류가 있습니다. %s %s\n
 35 메모리 할당에 실패하였습니다.\n
 36 서버가 HA 모드로 설정되지 않았습니다.\n
+38 서버가 HA 모드로 설정되어 있으나, ha_db_list 목록에는 설정되어 있지 않습니다.\n
+39 서버가 HA 모드로 설정되어 있으나, ha_node_list 목록에는 설정되어 있지 않습니다.\n
 62 cubrid 유틸리티, 버전 %s\n\
 사용법: %s shard <명령어> [인자]\n\
 \n\

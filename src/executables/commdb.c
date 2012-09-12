@@ -90,8 +90,9 @@ static void process_ha_node_info_query (CSS_CONN_ENTRY * conn,
 					int verbose_yn);
 static void process_ha_process_info_query (CSS_CONN_ENTRY * conn,
 					   int verbose_yn);
-static void process_dereg_ha_process (CSS_CONN_ENTRY * conn,
-				      char *pid_string);
+static void process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
+					  char *pid_string);
+static void process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args);
 
 
 static int process_batch_command (CSS_CONN_ENTRY * conn);
@@ -106,8 +107,10 @@ static bool commdb_Arg_ha_mode_server_info = false;
 static char *commdb_Arg_ha_mode_server_name = NULL;
 static bool commdb_Arg_print_ha_node_info = false;
 static bool commdb_Arg_print_ha_process_info = false;
-static bool commdb_Arg_dereg_ha_process = false;
-static char *commdb_Arg_dereg_ha_process_pid = NULL;
+static bool commdb_Arg_ha_deregister_by_pid = false;
+static char *commdb_Arg_ha_deregister_pid = NULL;
+static bool commdb_Arg_ha_deregister_by_args = false;
+static char *commdb_Arg_ha_deregister_args = NULL;
 static bool commdb_Arg_kill_all_ha_utils = false;
 static bool commdb_Arg_is_registered = false;
 static char *commdb_Arg_is_registered_id = NULL;
@@ -629,21 +632,18 @@ process_kill_all_ha_utils (CSS_CONN_ENTRY * conn)
 static int
 process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
 {
+#if !defined(WINDOWS)
   char *reply_buffer = NULL;
   int size = 0;
-#if !defined(WINDOWS)
-  HBP_PROC_REGISTER send_data;
-  int send_len = sizeof (HBP_PROC_REGISTER);
+  char buffer[HB_MAX_SZ_PROC_ARGS];
+  int len;
   unsigned short rid;
-#endif /* !WINDOWS */
 
-#if !defined(WINDOWS)
-  strcpy (send_data.args, args);
+  strncpy (buffer, args, sizeof (buffer) - 1);
+  len = strlen (buffer) + 1;
   rid =
-    send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) &send_data,
-			  send_len);
+    send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
-#endif
 
   if (size > 0)
     {
@@ -662,35 +662,34 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
       free_and_init (reply_buffer);
     }
 
+#endif /* !WINDOWS */
   return 2;
 }
 
 /*
- * process_dereg_ha_process() - deregister heartbeat process
+ * process_ha_deregister_by_pid() - deregister heartbeat process by pid
  *   return:  none
  *   conn(in): connection info
  *   pid_string(in):
  */
 static void
-process_dereg_ha_process (CSS_CONN_ENTRY * conn, char *pid_string)
+process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string)
 {
+#if !defined(WINDOWS)
   char *reply_buffer = NULL;
   int size = 0;
-#if !defined(WINDOWS)
   unsigned short rid;
-#endif /* !WINDOWS */
 
-#if !defined(WINDOWS)
   pid_t pid;
 
   pid = htonl (atoi (pid_string));
 
-  rid = send_request_one_arg (conn, DEREGISTER_HA_PROCESS, (char *) &pid,
-			      sizeof (pid));
+  rid =
+    send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_PID, (char *) &pid,
+			  sizeof (pid));
   return_string (conn, rid, &reply_buffer, &size);
-#endif
 
-  if (size)
+  if (size && reply_buffer[0] != '\0')
     {
       printf ("\n%s\n", reply_buffer);
     }
@@ -699,6 +698,46 @@ process_dereg_ha_process (CSS_CONN_ENTRY * conn, char *pid_string)
     {
       free_and_init (reply_buffer);
     }
+#endif /* !WINDOWS */
+
+  return;
+}
+
+/*
+ * process_ha_deregister_by_args () - deregister heartbeat process by args
+ *   return:  none
+ *   conn(in): connection info
+ *   args(in): process arguments
+ */
+static void
+process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
+{
+#if !defined(WINDOWS)
+  char *reply_buffer = NULL;
+  int size = 0;
+  char buffer[HB_MAX_SZ_PROC_ARGS];
+  int len;
+  unsigned short rid;
+
+  strncpy (buffer, args, sizeof (buffer) - 1);
+  len = strlen (buffer) + 1;
+  rid =
+    send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_ARGS,
+			  (char *) buffer, len);
+  return_string (conn, rid, &reply_buffer, &size);
+
+  if (size && reply_buffer[0] != '\0')
+    {
+      printf ("%s\n\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+#endif /* !WINDOWS */
+  return;
 }
 
 /*
@@ -720,7 +759,7 @@ process_reconfig_heartbeat (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size)
+  if (size && reply_buffer[0] != '\0')
     {
       printf ("\n%s\n", reply_buffer);
     }
@@ -750,7 +789,7 @@ process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size)
+  if (size && reply_buffer[0] != '\0')
     {
       printf ("\n%s\n", reply_buffer);
     }
@@ -780,7 +819,7 @@ process_activate_heartbeat (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size)
+  if (size && reply_buffer[0] != '\0')
     {
       printf ("\n%s\n", reply_buffer);
     }
@@ -809,32 +848,78 @@ process_batch_command (CSS_CONN_ENTRY * conn)
       process_slave_kill (conn, (char *) commdb_Arg_server_name,
 			  commdb_Arg_shutdown_time, pid);
     }
+
   if (commdb_Arg_kill_all)
-    process_master_shutdown (conn, commdb_Arg_shutdown_time);
+    {
+      process_master_shutdown (conn, commdb_Arg_shutdown_time);
+    }
+
   if (commdb_Arg_halt_shutdown)
-    process_master_stop_shutdown (conn);
+    {
+      process_master_stop_shutdown (conn);
+    }
+
   if (commdb_Arg_print_info)
-    process_status_query (conn, COMM_SERVER, NULL);
+    {
+      process_status_query (conn, COMM_SERVER, NULL);
+    }
+
   if (commdb_Arg_print_all_info)
-    process_status_query (conn, COMM_ALL, NULL);
+    {
+      process_status_query (conn, COMM_ALL, NULL);
+    }
+
   if (commdb_Arg_ha_mode_server_info)
-    process_ha_server_mode (conn, (char *) commdb_Arg_ha_mode_server_name);
+    {
+      process_ha_server_mode (conn, (char *) commdb_Arg_ha_mode_server_name);
+    }
+
   if (commdb_Arg_print_ha_node_info)
-    process_ha_node_info_query (conn, commdb_Arg_verbose_output);
+    {
+      process_ha_node_info_query (conn, commdb_Arg_verbose_output);
+    }
+
   if (commdb_Arg_print_ha_process_info)
-    process_ha_process_info_query (conn, commdb_Arg_verbose_output);
+    {
+      process_ha_process_info_query (conn, commdb_Arg_verbose_output);
+    }
+
   if (commdb_Arg_kill_all_ha_utils)
-    process_kill_all_ha_utils (conn);
+    {
+      process_kill_all_ha_utils (conn);
+    }
+
   if (commdb_Arg_is_registered)
-    return process_is_registered_proc (conn, commdb_Arg_is_registered_id);
-  if (commdb_Arg_dereg_ha_process)
-    process_dereg_ha_process (conn, (char *) commdb_Arg_dereg_ha_process_pid);
+    {
+      return process_is_registered_proc (conn, commdb_Arg_is_registered_id);
+    }
+
+  if (commdb_Arg_ha_deregister_by_pid)
+    {
+      process_ha_deregister_by_pid (conn,
+				    (char *) commdb_Arg_ha_deregister_pid);
+    }
+
+  if (commdb_Arg_ha_deregister_by_args)
+    {
+      process_ha_deregister_by_args (conn,
+				     (char *) commdb_Arg_ha_deregister_args);
+    }
+
   if (commdb_Arg_reconfig_heartbeat)
-    process_reconfig_heartbeat (conn);
+    {
+      process_reconfig_heartbeat (conn);
+    }
+
   if (commdb_Arg_deactivate_heartbeat)
-    process_deactivate_heartbeat (conn);
+    {
+      process_deactivate_heartbeat (conn);
+    }
+
   if (commdb_Arg_activate_heartbeat)
-    process_activate_heartbeat (conn);
+    {
+      process_activate_heartbeat (conn);
+    }
 
   return NO_ERROR;
 }
@@ -860,7 +945,8 @@ main (int argc, char **argv)
     {COMMDB_SERVER_MODE_L, 1, 0, COMMDB_SERVER_MODE_S},
     {COMMDB_HA_NODE_LIST_L, 0, 0, COMMDB_HA_NODE_LIST_S},
     {COMMDB_HA_PROCESS_LIST_L, 0, 0, COMMDB_HA_PROCESS_LIST_S},
-    {COMMDB_DEREG_HA_PROCESS_L, 1, 0, COMMDB_DEREG_HA_PROCESS_S},
+    {COMMDB_DEREG_HA_BY_PID_L, 1, 0, COMMDB_DEREG_HA_BY_PID_S},
+    {COMMDB_DEREG_HA_BY_ARGS_L, 1, 0, COMMDB_DEREG_HA_BY_ARGS_S},
     {COMMDB_KILL_ALL_HA_PROCESS_L, 0, 0, COMMDB_KILL_ALL_HA_PROCESS_S},
     {COMMDB_IS_REGISTERED_PROC_L, 1, 0, COMMDB_IS_REGISTERED_PROC_S},
     {COMMDB_RECONFIG_HEARTBEAT_L, 0, 0, COMMDB_RECONFIG_HEARTBEAT_S},
@@ -923,14 +1009,14 @@ main (int argc, char **argv)
 	case 'S':
 	  if (commdb_Arg_server_name != NULL)
 	    {
-	      free (commdb_Arg_server_name);
+	      free_and_init (commdb_Arg_server_name);
 	    }
 	  commdb_Arg_server_name = strdup (optarg);
 	  break;
 	case 'c':
 	  if (commdb_Arg_ha_mode_server_name != NULL)
 	    {
-	      free (commdb_Arg_ha_mode_server_name);
+	      free_and_init (commdb_Arg_ha_mode_server_name);
 	    }
 	  commdb_Arg_ha_mode_server_name = strdup (optarg);
 	  commdb_Arg_ha_mode_server_info = true;
@@ -942,12 +1028,20 @@ main (int argc, char **argv)
 	  commdb_Arg_print_ha_process_info = true;
 	  break;
 	case 'D':
-	  if (commdb_Arg_dereg_ha_process_pid != NULL)
+	  if (commdb_Arg_ha_deregister_pid != NULL)
 	    {
-	      free (commdb_Arg_dereg_ha_process_pid);
+	      free_and_init (commdb_Arg_ha_deregister_pid);
 	    }
-	  commdb_Arg_dereg_ha_process_pid = strdup (optarg);
-	  commdb_Arg_dereg_ha_process = true;
+	  commdb_Arg_ha_deregister_pid = strdup (optarg);
+	  commdb_Arg_ha_deregister_by_pid = true;
+	  break;
+	case 'R':
+	  if (commdb_Arg_ha_deregister_args != NULL)
+	    {
+	      free_and_init (commdb_Arg_ha_deregister_args);
+	    }
+	  commdb_Arg_ha_deregister_args = strdup (optarg);
+	  commdb_Arg_ha_deregister_by_args = true;
 	  break;
 	case 'd':
 	  commdb_Arg_kill_all_ha_utils = true;
@@ -955,7 +1049,7 @@ main (int argc, char **argv)
 	case 'C':
 	  if (commdb_Arg_is_registered_id != NULL)
 	    {
-	      free (commdb_Arg_is_registered_id);
+	      free_and_init (commdb_Arg_is_registered_id);
 	    }
 	  commdb_Arg_is_registered_id = strdup (optarg);
 	  commdb_Arg_is_registered = true;
@@ -1020,9 +1114,22 @@ end:
     {
       free_and_init (commdb_Arg_server_name);
     }
-  if (commdb_Arg_dereg_ha_process_pid != NULL)
+  if (commdb_Arg_ha_mode_server_name != NULL)
     {
-      free_and_init (commdb_Arg_dereg_ha_process_pid);
+      free_and_init (commdb_Arg_ha_mode_server_name);
     }
+  if (commdb_Arg_ha_deregister_pid != NULL)
+    {
+      free_and_init (commdb_Arg_ha_deregister_pid);
+    }
+  if (commdb_Arg_ha_deregister_args != NULL)
+    {
+      free_and_init (commdb_Arg_ha_deregister_args);
+    }
+  if (commdb_Arg_is_registered_id != NULL)
+    {
+      free_and_init (commdb_Arg_is_registered_id);
+    }
+
   return status;
 }

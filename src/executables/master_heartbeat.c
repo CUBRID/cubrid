@@ -142,6 +142,8 @@ static HB_PROC_ENTRY *hb_return_proc_by_args (char *args);
 static HB_PROC_ENTRY *hb_return_proc_by_pid (int pid);
 static HB_PROC_ENTRY *hb_return_proc_by_fd (int sfd);
 static void hb_proc_make_arg (char **arg, char *argv);
+static HB_JOB_ARG *hb_deregister_process (HB_PROC_ENTRY * proc);
+static void hb_deregister_nodes (char *node_to_dereg);
 
 /* resource process connection */
 static int hb_resource_send_changemode (HB_PROC_ENTRY * proc);
@@ -675,7 +677,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	  free_and_init (arg);
 	}
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	      "More than one master detected and local "
 	      "processes and cub_master will be terminated");
 
@@ -927,7 +929,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   if (hb_Cluster->master && hb_Cluster->myself
       && hb_Cluster->master->priority == hb_Cluster->myself->priority)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	      "Failover completed");
       hb_Cluster->state = HB_NSTATE_MASTER;
       hb_Resource->state = HB_NSTATE_MASTER;
@@ -2580,22 +2582,18 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
  *
  *   conn(in):
  */
-int
-hb_is_registered_process (CSS_CONN_ENTRY * conn, void *buffer)
+bool
+hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args)
 {
   int rv;
   HB_PROC_ENTRY *proc;
-  HBP_PROC_REGISTER *hbp_proc_register = NULL;
 
   if (hb_Resource == NULL)
     {
       return false;
     }
 
-  hbp_proc_register = (HBP_PROC_REGISTER *) buffer;
-
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-
+  (void) pthread_mutex_lock (&hb_Resource->lock);
   if (hb_Resource->shutdown)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
@@ -2603,17 +2601,15 @@ hb_is_registered_process (CSS_CONN_ENTRY * conn, void *buffer)
       return false;
     }
 
-  proc = hb_return_proc_by_args (hbp_proc_register->args);
-  pthread_mutex_unlock (&hb_Resource->lock);
+  proc = hb_return_proc_by_args (args);
+  (void) pthread_mutex_unlock (&hb_Resource->lock);
 
   if (proc == NULL)
     {
       return false;
     }
-  else
-    {
-      return true;
-    }
+
+  return true;
 }
 
 /*
@@ -3730,6 +3726,7 @@ hb_reload_config (void)
   HB_NODE_ENTRY *old_nodes;
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
   HB_NODE_ENTRY **old_node_pp, **first_node_pp;
+  char node_to_dereg[MAXHOSTNAMELEN * 16], *p, *last;
 
   if (hb_Cluster == NULL)
     {
@@ -3816,15 +3813,91 @@ hb_reload_config (void)
 	    old_node->last_recv_hbtime.tv_sec;
 	  new_node->last_recv_hbtime.tv_usec =
 	    old_node->last_recv_hbtime.tv_usec;
+
+	  /* mark node wouldn't deregister */
+	  old_node->host_name[0] = '\0';
 	}
     }
+
+  /* find node to deregister */
+  node_to_dereg[0] = '\0';
+  p = node_to_dereg;
+  last = (char *) (p + sizeof (node_to_dereg));
+  for (old_node = old_nodes; old_node; old_node = old_node->next)
+    {
+      if (old_node->state != HB_NSTATE_REPLICA
+	  && old_node->host_name[0] != '\0')
+	{
+	  if (p != node_to_dereg)
+	    {
+	      p += snprintf (p, (last - p), ":");
+	    }
+	  p += snprintf (p, (last - p), "%s", old_node->host_name);
+	}
+    }
+
   if (old_nodes)
     {
       hb_cluster_remove_all_nodes (old_nodes);
     }
-
   pthread_mutex_unlock (&hb_Cluster->lock);
+
+  /* deregister copylogdb/applylogdb if exists */
+  hb_deregister_nodes (node_to_dereg);
+
   return NO_ERROR;
+}
+
+static void
+hb_deregister_nodes (char *node_to_dereg)
+{
+  const char *delim = ":";
+  int error;
+  HB_PROC_ENTRY *proc;
+  HB_JOB_ARG *job_arg;
+  char *p, *savep;
+  char *node_name;
+  char *log_path;
+
+  for (p = strtok_r (node_to_dereg, delim, &savep); p;
+       p = strtok_r (NULL, delim, &savep))
+    {
+
+      (void) pthread_mutex_lock (&hb_Resource->lock);
+      for (proc = hb_Resource->procs; proc; proc = proc->next)
+	{
+	  if (proc->type == HB_PTYPE_SERVER)
+	    {
+	      continue;
+	    }
+
+	  job_arg = NULL;
+
+	  log_path = proc->argv[3];
+	  node_name = strrchr (log_path, '_');
+	  if (node_name)
+	    {
+	      node_name++;
+	      if (strncmp (node_name, p, strlen (p)) == 0)
+		{
+		  job_arg = hb_deregister_process (proc);
+		}
+	    }
+	  if (job_arg)
+	    {
+	      error = hb_resource_job_queue (HB_RJOB_PROC_DEREG, job_arg,
+					     HB_JOB_TIMER_IMMEDIATELY);
+	      if (error != NO_ERROR)
+		{
+		  assert (false);
+		  free_and_init (job_arg);
+		}
+	    }
+	}
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
+    }
+
+  return;
 }
 
 /*
@@ -4096,63 +4169,143 @@ hb_kill_all_heartbeat_process (char **str)
 
   for (i = 0; i < count; i++)
     {
-      hb_dereg_process (pids[i], str);
+      hb_deregister_by_pid (pids[i]);
     }
 
   free (pids);
 }
 
 /*
- * hb_dereg_process -
+ * hb_deregister_by_pid -
  *   return: none
  *
  *   pid(in):
  *   str(out):
  */
 void
-hb_dereg_process (pid_t pid, char **str)
+hb_deregister_by_pid (pid_t pid)
 {
+  int error = NO_ERROR;
   HB_PROC_ENTRY *proc;
   HB_JOB_ARG *job_arg;
-  HB_RESOURCE_JOB_ARG *proc_arg;
-  int rv, error;
   char error_string[LINE_MAX] = "";
-  char *p, *last;
 
   if (hb_Resource == NULL)
     {
       return;
     }
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
+  (void) pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_pid (pid);
   if (proc == NULL)
     {
-      pthread_mutex_unlock (&hb_Resource->lock);
-
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
       snprintf (error_string, LINE_MAX,
 		"%s. (cannot find process to deregister, pid:%d)",
 		HB_RESULT_FAILURE_STR, pid);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
 	      error_string);
-
       return;
     }
+
+  job_arg = hb_deregister_process (proc);
+  (void) pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (job_arg)
+    {
+      error = hb_resource_job_queue (HB_RJOB_PROC_DEREG, job_arg,
+				     HB_JOB_TIMER_IMMEDIATELY);
+      if (error != NO_ERROR)
+	{
+	  assert (false);
+	  free_and_init (job_arg);
+	}
+    }
+
+  snprintf (error_string, LINE_MAX, "%s. (pid:%d)", HB_RESULT_SUCCESS_STR,
+	    pid);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+	  HB_CMD_DEREGISTER_STR, error_string);
+
+  return;
+}
+
+/*
+ * hb_deregister_by_args -
+ *   return: none
+ *
+ *   args(in):
+ *   str(out):
+ */
+void
+hb_deregister_by_args (char *args)
+{
+  int error = NO_ERROR;
+  HB_PROC_ENTRY *proc;
+  HB_JOB_ARG *job_arg;
+  char error_string[LINE_MAX] = "";
+
+  if (hb_Resource == NULL)
+    {
+      return;
+    }
+
+  (void) pthread_mutex_lock (&hb_Resource->lock);
+  proc = hb_return_proc_by_args (args);
+  if (proc == NULL)
+    {
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
+      snprintf (error_string, LINE_MAX,
+		"%s. (cannot find process to deregister, args:%s)",
+		HB_RESULT_FAILURE_STR, args);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
+	      error_string);
+      return;
+    }
+
+  job_arg = hb_deregister_process (proc);
+  (void) pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (job_arg)
+    {
+      error = hb_resource_job_queue (HB_RJOB_PROC_DEREG, job_arg,
+				     HB_JOB_TIMER_IMMEDIATELY);
+      if (error != NO_ERROR)
+	{
+	  assert (false);
+	  free_and_init (job_arg);
+	}
+    }
+
+  snprintf (error_string, LINE_MAX, "%s. (args:%s)", HB_RESULT_SUCCESS_STR,
+	    args);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+	  HB_CMD_DEREGISTER_STR, error_string);
+
+  return;
+}
+
+static HB_JOB_ARG *
+hb_deregister_process (HB_PROC_ENTRY * proc)
+{
+  HB_JOB_ARG *job_arg;
+  HB_RESOURCE_JOB_ARG *proc_arg;
+  int rv, error;
+  char error_string[LINE_MAX] = "";
+  char *p, *last;
 
   if ((proc->state < HB_PSTATE_NOT_REGISTERED)
       || (proc->state >= HB_PSTATE_MAX) || (proc->pid < 0))
     {
-      pthread_mutex_unlock (&hb_Resource->lock);
-
       snprintf (error_string, LINE_MAX,
 		"%s. (unexpected process status or invalid pid, status:%d, pid:%d)",
-		HB_RESULT_FAILURE_STR, proc->state, pid);
+		HB_RESULT_FAILURE_STR, proc->state, proc->pid);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
 	      error_string);
-
-      return;
+      return NULL;
     }
 
   gettimeofday (&proc->dtime, NULL);
@@ -4160,10 +4313,9 @@ hb_dereg_process (pid_t pid, char **str)
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
     {
-      pthread_mutex_unlock (&hb_Resource->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (HB_JOB_ARG));
-      return;
+      return NULL;
     }
 
   proc_arg = &(job_arg->resource_job_arg);
@@ -4176,20 +4328,7 @@ hb_dereg_process (pid_t pid, char **str)
 
   proc->state = HB_PSTATE_DEREGISTERED;
 
-  pthread_mutex_unlock (&hb_Resource->lock);
-
-  error = hb_resource_job_queue (HB_RJOB_PROC_DEREG, job_arg,
-				 HB_JOB_TIMER_IMMEDIATELY);
-  assert (error == NO_ERROR);
-
-  hb_get_process_info_string (str, false);
-
-  snprintf (error_string, LINE_MAX, "%s. (pid:%d)", HB_RESULT_SUCCESS_STR,
-	    pid);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-	  HB_CMD_DEREGISTER_STR, error_string);
-
-  return;
+  return job_arg;
 }
 
 /*

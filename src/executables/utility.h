@@ -104,7 +104,10 @@ typedef enum
   MSGCAT_UTIL_GENERIC_DEPRECATED = 33,
   MSGCAT_UTIL_GENERIC_INVALID_PARAMETER = 34,
   MSGCAT_UTIL_GENERIC_NO_MEM = 35,
-  MSGCAT_UTIL_GENERIC_NOT_HA_MODE = 36
+  MSGCAT_UTIL_GENERIC_NOT_HA_MODE = 36,
+  MSGCAT_UTIL_GENERIC_HA_MODE = 37,
+  MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB = 38,
+  MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE = 39
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -628,19 +631,14 @@ typedef struct _node_config
   char *node_name;
   char *copy_log_base;
   char *copy_sync_mode;
-  int apply_max_mem;
+  int apply_max_mem_size;
 } HA_NODE_CONF;
 
 typedef struct _ha_config
 {
-  int ha_port_id;
-  int ha_apply_max_mem;
-  char **node_names;
-  char **node_syncs;
   char **db_names;
-  char *ha_node_list;
-  char *ha_db_list;
-  char *ha_copy_log_base;
+
+  int num_node_conf;
   HA_NODE_CONF *node_conf;
 } HA_CONF;
 
@@ -696,12 +694,12 @@ typedef struct _ha_config
 #define PRINT_CMD_START         "start"
 #define PRINT_CMD_STOP          "stop"
 #define PRINT_CMD_STATUS        "status"
-#define PRINT_CMD_DEACTIVATE    "deact"
-#define PRINT_CMD_ACTIVATE      "act"
 #define PRINT_CMD_DEREG         "deregister"
 #define PRINT_CMD_LIST          "list"
 #define PRINT_CMD_RELOAD        "reload"
 #define PRINT_CMD_ACL           "acl"
+#define PRINT_CMD_COPYLOGDB     "copylogdb"
+#define PRINT_CMD_APPLYLOGDB    "applylogdb"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
@@ -713,7 +711,8 @@ typedef struct _ha_config
 #define COMMDB_SERVER_STATUS    "-P"
 #define COMMDB_ALL_STATUS       "-O"
 #define COMMDB_ALL_STOP         "-A"
-#define COMMDB_HA_DEREG         "-D"
+#define COMMDB_HA_DEREG_BY_PID  "-D"
+#define COMMDB_HA_DEREG_BY_ARGS "-R"
 #define COMMDB_HA_ALL_STOP      "-d"
 #define COMMDB_IS_REG           "-C"
 #define COMMDB_HA_NODE_LIST     "-N"
@@ -1109,8 +1108,10 @@ typedef struct _ha_config
 #define COMMDB_HA_NODE_LIST_L                   "node-list"
 #define COMMDB_HA_PROCESS_LIST_S                'L'
 #define COMMDB_HA_PROCESS_LIST_L                "process-list"
-#define COMMDB_DEREG_HA_PROCESS_S               'D'
-#define COMMDB_DEREG_HA_PROCESS_L               "dereg-process"
+#define COMMDB_DEREG_HA_BY_PID_S                'D'
+#define COMMDB_DEREG_HA_BY_PID_L                "dereg-process"
+#define COMMDB_DEREG_HA_BY_ARGS_S               'R'
+#define COMMDB_DEREG_HA_BY_ARGS_L               "dereg-args"
 #define COMMDB_KILL_ALL_HA_PROCESS_S            'd'
 #define COMMDB_KILL_ALL_HA_PROCESS_L            "kill-all-ha-process"
 #define COMMDB_IS_REGISTERED_PROC_S             'C'

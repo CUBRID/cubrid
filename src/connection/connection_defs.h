@@ -107,12 +107,13 @@ enum css_client_request
   GET_HA_NODE_LIST_VERBOSE = 27,	/* HA: get ha node list verbose */
   GET_HA_PROCESS_LIST = 28,	/* HA: get ha process list */
   GET_HA_PROCESS_LIST_VERBOSE = 29,	/* HA: get ha process list verbose */
-  DEREGISTER_HA_PROCESS = 30,	/* HA: deregister ha process */
+  DEREGISTER_HA_PROCESS_BY_PID = 30,	/* HA: deregister ha process by pid */
   RECONFIG_HEARTBEAT = 31,	/* HA: reconfigure ha node */
   DEACTIVATE_HEARTBEAT = 32,	/* HA: deactivate */
   ACTIVATE_HEARTBEAT = 33,	/* HA: activate */
   KILL_ALL_HA_PROCESS = 34,	/* HA: kill all ha processes */
-  IS_REGISTERED_HA_PROC = 35	/* HA: check registered ha process */
+  IS_REGISTERED_HA_PROC = 35,	/* HA: check registered ha process */
+  DEREGISTER_HA_PROCESS_BY_ARGS = 36,	/* HA: deregister ha process by args */
 };
 
 /*

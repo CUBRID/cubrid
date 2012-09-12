@@ -50,6 +50,15 @@ typedef enum
 static int utility_get_option_index (UTIL_ARG_MAP * arg_map, int arg_ch);
 static int check_database_name_local (const char *name,
 				      int existing_or_new_db);
+static char **util_split_ha_node (const char *str);
+static char **util_split_ha_db (const char *str);
+static char **util_split_ha_sync (const char *str);
+static int util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
+				   char **ha_sync_mode_p,
+				   char **ha_copy_log_base_p,
+				   int *ha_max_mem_size_p);
+static bool util_is_replica_node (void);
+static int util_size_to_byte (double *pre, char post);
 
 /*
  * utility_initialize() - initialize cubrid library
@@ -473,6 +482,82 @@ changemode_keyword (int *keyval_p, char **keystr_p)
   return utility_keyword_search (keywords, keyval_p, keystr_p);
 }
 
+static int
+util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
+			char **ha_sync_mode_p, char **ha_copy_log_base_p,
+			int *ha_max_mem_size_p)
+{
+  int error = NO_ERROR;
+
+  *(ha_db_list_p) = prm_get_string_value (PRM_ID_HA_DB_LIST);
+  if (*(ha_db_list_p) == NULL || **(ha_db_list_p) == '\0')
+    {
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+      fprintf (stderr, message, prm_get_name (PRM_ID_HA_DB_LIST), "");
+      return ER_GENERIC_ERROR;
+    }
+
+  *(ha_node_list_p) = prm_get_string_value (PRM_ID_HA_NODE_LIST);
+  if (*(ha_node_list_p) == NULL || **(ha_node_list_p) == '\0')
+    {
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+      fprintf (stderr, message, prm_get_name (PRM_ID_HA_NODE_LIST), "");
+      return ER_GENERIC_ERROR;
+    }
+
+  *(ha_sync_mode_p) = prm_get_string_value (PRM_ID_HA_COPY_SYNC_MODE);
+  *(ha_max_mem_size_p) = prm_get_integer_value (PRM_ID_HA_APPLY_MAX_MEM_SIZE);
+
+  *(ha_copy_log_base_p) = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
+  if (*(ha_copy_log_base_p) == NULL || **(ha_copy_log_base_p) == '\0')
+    {
+      *(ha_copy_log_base_p) = envvar_get ("DATABASES");
+      if (*(ha_copy_log_base_p) == NULL)
+	{
+	  *(ha_copy_log_base_p) = ".";
+	}
+    }
+
+  return error;
+}
+
+static bool
+util_is_replica_node (void)
+{
+  bool is_replica_node = false;
+  int i;
+  char local_host_name[MAXHOSTNAMELEN];
+  char *ha_replica_list_p, **ha_replica_list_pp = NULL;
+
+  ha_replica_list_p = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);
+  if (ha_replica_list_p != NULL && *(ha_replica_list_p) != '\0')
+    {
+      ha_replica_list_pp = util_split_ha_node (ha_replica_list_p);
+      if (ha_replica_list_pp != NULL
+	  && (GETHOSTNAME (local_host_name, sizeof (local_host_name)) == 0))
+	{
+	  for (i = 0; ha_replica_list_pp[i] != NULL; i++)
+	    {
+	      if (strcmp (ha_replica_list_pp[i], local_host_name) == 0)
+		{
+		  is_replica_node = true;
+		  break;
+		}
+	    }
+
+	}
+    }
+
+  if (ha_replica_list_pp)
+    {
+      util_free_string_array (ha_replica_list_pp);
+    }
+
+  return is_replica_node;
+}
+
 /*
  * util_free_ha_conf -
  *
@@ -484,21 +569,36 @@ void
 util_free_ha_conf (HA_CONF * ha_conf)
 {
   int i;
-  HA_NODE_CONF *nc = ha_conf->node_conf;
+  HA_NODE_CONF *nc;
 
-  for (i = 0; ha_conf->node_names[i] != NULL; i++)
+  for (i = 0, nc = ha_conf->node_conf; i < ha_conf->num_node_conf; i++)
     {
-      free (nc[i].node_name);
-      free (nc[i].copy_log_base);
-      free (nc[i].copy_sync_mode);
-    }
-  free (ha_conf->node_conf);
+      if (nc[i].node_name)
+	{
+	  free_and_init (nc[i].node_name);
+	}
 
-  util_free_string_array (ha_conf->node_names);
-  util_free_string_array (ha_conf->node_syncs);
-  util_free_string_array (ha_conf->db_names);
-  free (ha_conf->ha_node_list);
-  free (ha_conf->ha_copy_log_base);
+      if (nc[i].copy_log_base)
+	{
+	  free_and_init (nc[i].copy_log_base);
+	}
+
+      if (nc[i].copy_sync_mode)
+	{
+	  free_and_init (nc[i].copy_sync_mode);
+	}
+    }
+  free_and_init (ha_conf->node_conf);
+  ha_conf->num_node_conf = 0;
+  ha_conf->node_conf = NULL;
+
+  if (ha_conf->db_names)
+    {
+      util_free_string_array (ha_conf->db_names);
+      ha_conf->db_names = NULL;
+    }
+
+  return;
 }
 
 /*
@@ -511,185 +611,189 @@ util_free_ha_conf (HA_CONF * ha_conf)
 int
 util_make_ha_conf (HA_CONF * ha_conf)
 {
-  char **nodes;
-  int i;
+  int error = NO_ERROR;
+  int i, num_ha_nodes;
+  char *ha_db_list_p = NULL;
+  char *ha_node_list_p = NULL, **ha_node_list_pp = NULL;
+  char *ha_sync_mode_p = NULL, **ha_sync_mode_pp = NULL;
+  char *ha_copy_log_base_p;
+  int ha_max_mem_size;
+  bool is_replica_node;
 
-  int ha_port_id, ha_apply_max_mem;
-  const char *ha_node_list, *ha_db_list;
-  const char *ha_copy_log_base, *ha_copy_sync_mode;
-
-  /* variables for change copylogdb default mode to async */
-  bool is_replica_node = false;
-  char local_host_name[MAXHOSTNAMELEN];
-  const char *ha_replica_list;
-  char **replica_names;
-
-  HA_NODE_CONF *nc = NULL;
-
-  ha_port_id = prm_get_integer_value (PRM_ID_HA_PORT_ID);
-  ha_node_list = prm_get_string_value (PRM_ID_HA_NODE_LIST);
-  ha_db_list = prm_get_string_value (PRM_ID_HA_DB_LIST);
-  ha_copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
-  if (ha_copy_log_base == NULL || ha_copy_log_base[0] == 0)
+  error =
+    util_get_ha_parameters (&ha_node_list_p, &ha_db_list_p, &ha_sync_mode_p,
+			    &ha_copy_log_base_p, &ha_max_mem_size);
+  if (error != NO_ERROR)
     {
-      ha_copy_log_base = envvar_get ("DATABASES");
-      if (ha_copy_log_base == NULL)
-	{
-	  ha_copy_log_base = ".";
-	}
-    }
-  ha_copy_sync_mode = prm_get_string_value (PRM_ID_HA_COPY_SYNC_MODE);
-  ha_apply_max_mem = prm_get_integer_value (PRM_ID_HA_APPLY_MAX_MEM_SIZE);
-
-  if (ha_db_list == NULL || ha_db_list[0] == 0)
-    {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
-      fprintf (stderr, message, prm_get_name (PRM_ID_HA_DB_LIST), "");
-      return false;
+      return error;
     }
 
-  ha_conf->ha_port_id = ha_port_id;
-  ha_conf->node_names = util_split_ha_node (ha_node_list);
-  if (ha_conf->node_names == NULL)
-    {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
-      fprintf (stderr, message, prm_get_name (PRM_ID_HA_NODE_LIST), "");
-      return false;
-    }
-
-  ha_replica_list = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);
-  if (ha_replica_list != NULL && ha_replica_list[0] != 0)
-    {
-      replica_names = util_split_ha_node (ha_replica_list);
-      if (replica_names != NULL &&
-	  (GETHOSTNAME (local_host_name, sizeof (local_host_name)) == 0))
-	{
-	  for (i = 0; replica_names[i] != NULL; i++)
-	    {
-	      if (strcmp (replica_names[i], local_host_name) == 0)
-		{
-		  is_replica_node = true;
-		  break;
-		}
-	    }
-	}
-      if (replica_names)
-	{
-	  util_free_string_array (replica_names);
-	}
-    }
-
-  ha_conf->node_syncs = NULL;
-  if (is_replica_node)
-    {
-      for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
-	{
-	  ha_conf->node_syncs = (char **) realloc (ha_conf->node_syncs,
-						   sizeof (char *) * (i + 2));
-	  if (ha_conf->node_syncs == NULL)
-	    {
-	      const char *message =
-		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      fprintf (stderr, message);
-	      return false;
-	    }
-	  ha_conf->node_syncs[i] = strdup ("async");
-	  if (ha_conf->node_syncs[i] == NULL)
-	    {
-	      const char *message =
-		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      fprintf (stderr, message);
-	      return false;
-	    }
-	  ha_conf->node_syncs[i + 1] = NULL;
-	}
-    }
-  else if (ha_copy_sync_mode == NULL || ha_copy_sync_mode[0] == 0)
-    {
-      for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
-	{
-	  ha_conf->node_syncs = (char **) realloc (ha_conf->node_syncs,
-						   sizeof (char *) * (i + 2));
-	  if (ha_conf->node_syncs == NULL)
-	    {
-	      const char *message =
-		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      fprintf (stderr, message);
-	      return false;
-	    }
-	  ha_conf->node_syncs[i] = strdup ("sync");
-	  if (ha_conf->node_syncs[i] == NULL)
-	    {
-	      const char *message =
-		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      fprintf (stderr, message);
-	      return false;
-	    }
-	  ha_conf->node_syncs[i + 1] = NULL;
-	}
-    }
-  else
-    {
-      ha_conf->node_syncs = util_split_ha_sync (ha_copy_sync_mode);
-      for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
-	{
-	  int mode = -1;
-	  if (ha_conf->node_syncs[i] == NULL
-	      || copylogdb_keyword (&mode, &ha_conf->node_syncs[i]) == -1)
-	    {
-	      const char *message =
-		utility_get_generic_message
-		(MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
-
-	      fprintf (stderr, message,
-		       prm_get_name (PRM_ID_HA_COPY_SYNC_MODE),
-		       ha_conf->node_syncs[i]);
-	      return false;
-	    }
-	}
-    }
-  ha_conf->ha_copy_log_base = strdup (ha_copy_log_base);
-  ha_conf->db_names = util_split_ha_db (ha_db_list);
-  ha_conf->ha_node_list = strdup (ha_node_list);
-  ha_conf->ha_db_list = strdup (ha_db_list);
-  ha_conf->ha_apply_max_mem = ha_apply_max_mem;
-  if (ha_conf->ha_copy_log_base == NULL || ha_conf->db_names == NULL
-      || ha_conf->ha_node_list == NULL || ha_conf->ha_db_list == NULL)
+  ha_conf->db_names = util_split_ha_db (ha_db_list_p);
+  if (ha_conf->db_names == NULL)
     {
       const char *message =
 	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
       fprintf (stderr, message);
-      return false;
+
+      error = ER_GENERIC_ERROR;
+      goto ret;
     }
 
-  for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
+  ha_node_list_pp = util_split_ha_node (ha_node_list_p);
+  if (ha_node_list_pp == NULL)
     {
-      nc = (HA_NODE_CONF *) realloc (nc, sizeof (HA_NODE_CONF) * (i + 1));
-      if (nc == NULL)
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      fprintf (stderr, message);
+
+      error = ER_GENERIC_ERROR;
+      goto ret;
+    }
+
+  for (i = 0; ha_node_list_pp[i] != NULL;)
+    {
+      i++;
+    }
+  num_ha_nodes = i;
+
+  ha_conf->node_conf =
+    (HA_NODE_CONF *) malloc (sizeof (HA_NODE_CONF) * num_ha_nodes);
+  if (ha_conf->node_conf == NULL)
+    {
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      fprintf (stderr, message);
+
+      error = ER_GENERIC_ERROR;
+      goto ret;
+    }
+  memset ((void *) ha_conf->node_conf, 0,
+	  sizeof (HA_NODE_CONF) * num_ha_nodes);
+  ha_conf->num_node_conf = num_ha_nodes;
+
+  /* set ha_sync_mode */
+  is_replica_node = util_is_replica_node ();
+  if (is_replica_node == true)
+    {
+      for (i = 0; i < num_ha_nodes; i++)
 	{
-	  const char *message =
-	    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  fprintf (stderr, message);
-	  return false;
-	}
-      nc[i].node_name = strdup (nodes[i]);
-      nc[i].copy_log_base = strdup (ha_conf->ha_copy_log_base);
-      nc[i].copy_sync_mode = strdup (ha_conf->node_syncs[i]);
-      nc[i].apply_max_mem = ha_conf->ha_apply_max_mem;
-      if (nc[i].node_name == NULL || nc[i].copy_log_base == NULL
-	  || nc[i].copy_sync_mode == NULL)
-	{
-	  const char *message =
-	    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  fprintf (stderr, message);
-	  return false;
+	  ha_conf->node_conf[i].copy_sync_mode = strdup ("async");
+	  if (ha_conf->node_conf[i].copy_sync_mode == NULL)
+	    {
+	      const char *message =
+		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      fprintf (stderr, message);
+
+	      error = ER_GENERIC_ERROR;
+	      goto ret;
+	    }
 	}
     }
-  ha_conf->node_conf = nc;
+  else
+    {
+      if (ha_sync_mode_p == NULL || *(ha_sync_mode_p) == '\0')
+	{
+	  for (i = 0; i < num_ha_nodes; i++)
+	    {
+	      ha_conf->node_conf[i].copy_sync_mode = strdup ("sync");
+	      if (ha_conf->node_conf[i].copy_sync_mode == NULL)
+		{
+		  const char *message =
+		    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+		  fprintf (stderr, message);
 
-  return true;
+		  error = ER_GENERIC_ERROR;
+		  goto ret;
+		}
+	    }
+	}
+      else
+	{
+	  int mode;
+
+	  ha_sync_mode_pp = util_split_ha_sync (ha_sync_mode_p);
+	  if (ha_sync_mode_pp == NULL)
+	    {
+	      const char *message =
+		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      fprintf (stderr, message);
+
+	      error = ER_GENERIC_ERROR;
+	      goto ret;
+	    }
+
+	  for (i = 0; i < num_ha_nodes; i++)
+	    {
+	      mode = -1;
+	      if (ha_sync_mode_pp[i] == NULL ||
+		  copylogdb_keyword (&mode, &ha_sync_mode_pp[i]) == -1)
+		{
+		  const char *message =
+		    utility_get_generic_message
+		    (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+
+		  fprintf (stderr, message,
+			   prm_get_name (PRM_ID_HA_COPY_SYNC_MODE),
+			   (ha_sync_mode_pp[i]) ? ha_sync_mode_pp[i] : "");
+
+		  error = ER_GENERIC_ERROR;
+		  goto ret;
+		}
+
+	      ha_conf->node_conf[i].copy_sync_mode =
+		strdup (ha_sync_mode_pp[i]);
+	      if (ha_conf->node_conf[i].copy_sync_mode == NULL)
+		{
+		  const char *message =
+		    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+		  fprintf (stderr, message);
+
+		  error = ER_GENERIC_ERROR;
+		  goto ret;
+		}
+	    }
+	}
+    }
+
+  for (i = 0; i < num_ha_nodes; i++)
+    {
+      assert_release (ha_node_list_pp[i] != NULL);
+
+      ha_conf->node_conf[i].node_name = strdup (ha_node_list_pp[i]);
+      ha_conf->node_conf[i].copy_log_base = strdup (ha_copy_log_base_p);
+      ha_conf->node_conf[i].apply_max_mem_size = ha_max_mem_size;
+
+      if (ha_conf->node_conf[i].node_name == NULL
+	  || ha_conf->node_conf[i].copy_log_base == NULL)
+	{
+	  const char *message =
+	    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  fprintf (stderr, message);
+
+	  error = ER_GENERIC_ERROR;
+	  goto ret;
+	}
+    }
+
+ret:
+  if (ha_node_list_pp)
+    {
+      util_free_string_array (ha_node_list_pp);
+      ha_node_list_pp = NULL;
+    }
+
+  if (ha_sync_mode_pp)
+    {
+      util_free_string_array (ha_sync_mode_pp);
+      ha_sync_mode_pp = NULL;
+    }
+
+  if (error != NO_ERROR)
+    {
+      util_free_ha_conf (ha_conf);
+    }
+
+  return error;
 }
 
 /*
