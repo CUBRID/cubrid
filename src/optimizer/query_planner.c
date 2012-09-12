@@ -6479,7 +6479,7 @@ planner_visit_node (QO_PLANNER * planner,
 
 		  break;	/* exit for-loop */
 		}
-	    }			/* for (i = ...) */
+	    }
 	}
       else
 	{			/* already assign path connected nodes */
@@ -6837,8 +6837,7 @@ planner_visit_node (QO_PLANNER * planner,
 	  {
 	    bitset_add (&sarged_terms, i);	/* add to sarged term */
 	  }
-
-      }				/* for (i = ...) */
+      }
 
     /* currently, do not permit cross join plan. for future work,
      *                  NEED MORE CONSIDERAION
@@ -6885,10 +6884,9 @@ planner_visit_node (QO_PLANNER * planner,
 	  {
 	    bitset_add (&pinned_subqueries, i);
 	  }
-      }				/* for (i = ...) */
+      }
 
-    /* extract pinned subqueries
-     */
+    /* extract pinned subqueries */
     bitset_difference (remaining_subqueries, &pinned_subqueries);
   }
 
@@ -6981,8 +6979,8 @@ planner_visit_node (QO_PLANNER * planner,
     /* for path-term, if join order is correct, we can use follow.
      */
     if (follow_term
-	&& QO_NODE_IDX (QO_TERM_TAIL (follow_term)) ==
-	QO_NODE_IDX (tail_node))
+	&& (QO_NODE_IDX (QO_TERM_TAIL (follow_term))
+	    == QO_NODE_IDX (tail_node)))
       {
 	/* STEP 5-1: examine follow
 	 */
@@ -7130,8 +7128,8 @@ go_ahead_subvisit:
 	    {
 	      break;
 	    }
-	}			/* for (i = ...) */
-    }				/* else */
+	}
+    }
 
 wrapup:
 
@@ -7231,8 +7229,7 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
 	      total_cost += pages * 2.0;
 	    }
 	}
-
-    }				/* for (i = ...) */
+    }
 
   return total_cost;
 }
@@ -7381,8 +7378,7 @@ planner_permutate (QO_PLANNER * planner,
 		{
 		  break;
 		}
-
-	    }			/* for (j = ...) */
+	    }
 
 	  /* recover to original
 	   */
@@ -7450,8 +7446,7 @@ planner_permutate (QO_PLANNER * planner,
 	{
 	  break;
 	}
-
-    }				/* for (i = ...) */
+    }
 
   if (node_idxp)
     {				/* is partial node visit */
@@ -7787,7 +7782,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
 	      break;
 	    }
-	}			/* for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++) */
+	}
 
       if (nsegs == 0)
 	{
@@ -7796,10 +7791,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	   *  - we have key filter terms and the index cover all segments
 	   *  - we have filter predicate and force index is used
 	   */
-	  if ((bitset_cardinality (&(index_entryp->key_filter_terms)) &&
-	       index_entryp->cover_segments) ||
-	      (index_entryp->constraints->filter_predicate
-	       && index_entryp->force))
+	  if ((bitset_cardinality (&(index_entryp->key_filter_terms))
+	       && index_entryp->cover_segments)
+	      || (index_entryp->constraints->filter_predicate
+		  && index_entryp->force))
 	    {
 	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
 	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
@@ -7829,9 +7824,8 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	}
 
       /* for each terms associated with the last segment */
-      for (t =
-	   bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]),
-			   &iter); t != -1; t = bitset_next_member (&iter))
+      t = bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]), &iter);
+      for (; t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
 	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
@@ -7943,11 +7937,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
 	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	  bitset_remove (&range_terms, t);
-	}			/* for (t = ... ) */
-
+	}
     }
   else
-    {				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+    {
       /* for all segments covered by this index and found in
          'find_node_indexes()' */
       for (i = 0; i < index_entryp->nsegs; i++)
@@ -8062,9 +8055,8 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
 	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	      bitset_remove (&range_terms, t);
-	    }			/* for (t = ... ) */
-
-	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
+	    }
+	}
 
       /* We have single column index. Use index if one of the following
        * two situations is true:
@@ -8082,7 +8074,6 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	   * For example (select * from T where col is not null order by col)
 	   */
 
-
 	  bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
 
 	  planp = qo_index_scan_new (infop, nodep, ni_entryp,
@@ -8098,9 +8089,8 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 		  normal_index_plan_n++;
 		}
 	    }
-
 	}
-    }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+    }
 
 end:
   bitset_delset (&seg_other_terms);
@@ -8124,7 +8114,6 @@ qo_has_is_not_null_term (QO_NODE * node)
   PT_NODE *expr;
   int i;
   bool found;
-
 
   assert (node != NULL && node->env != NULL);
   if (node == NULL || node->env == NULL)
@@ -8916,7 +8905,7 @@ qo_search_partition_join (QO_PLANNER * planner,
 
       planner->join_unit++;	/* increase join unit level */
 
-    }				/* while (1) */
+    }
 
   bitset_delset (&visited_rel_nodes);
   bitset_delset (&visited_nodes);
@@ -8970,11 +8959,16 @@ qo_search_partition (QO_PLANNER * planner,
       qo_dump_planner_info (planner, partition, stdout);
     }
 
-  QO_PARTITION_PLAN (partition) =
-    planner->best_info
-    ?
-    qo_plan_finalize (qo_find_best_plan_on_info
-		      (planner->best_info, order, 1.0)) : NULL;
+  if (planner->best_info)
+    {
+      QO_PARTITION_PLAN (partition) =
+	qo_plan_finalize (qo_find_best_plan_on_info (planner->best_info,
+						     order, 1.0));
+    }
+  else
+    {
+      QO_PARTITION_PLAN (partition) = NULL;
+    }
 
   /* Now clean up after ourselves.  Free all of the plans that aren't
    * part of the winner for this partition, but retain the nodes:
@@ -8987,8 +8981,8 @@ qo_search_partition (QO_PLANNER * planner,
 
       for (info = planner->info_list; info; info = info->next)
 	{
-	  if (bitset_subset
-	      (&(QO_PARTITION_NODES (partition)), &(info->nodes)))
+	  if (bitset_subset (&(QO_PARTITION_NODES (partition)),
+			     &(info->nodes)))
 	    {
 	      qo_detach_info (info);
 	    }
@@ -9039,7 +9033,6 @@ sort_partitions (QO_PLANNER * planner)
 	    }
 	}
     }
-
 }
 
 /*
@@ -9145,7 +9138,9 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
       if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i]))))
-	bitset_add (&sarged_terms, i);
+	{
+	  bitset_add (&sarged_terms, i);
+	}
     }
 
   /* skip empty sort plan */
@@ -9188,21 +9183,19 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 double
 qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  double lhs_selectivity, rhs_selectivity, selectivity =
-    0.0, total_selectivity;
+  double lhs_selectivity, rhs_selectivity, selectivity, total_selectivity;
   PT_NODE *node;
 
   QO_ASSERT (env, pt_expr != NULL && pt_expr->node_type == PT_EXPR);
 
+  selectivity = 0.0;
   total_selectivity = 0.0;
 
   /* traverse OR list */
   for (node = pt_expr; node; node = node->or_next)
     {
-
       switch (node->info.expr.op)
 	{
-
 	case PT_OR:
 	  lhs_selectivity = qo_expr_selectivity (env, node->info.expr.arg1);
 	  rhs_selectivity = qo_expr_selectivity (env, node->info.expr.arg2);
@@ -9260,6 +9253,7 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity =
 	    (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	  break;
+
 	case PT_SETNEQ:
 	case PT_SETEQ:
 	case PT_SUPERSETEQ:
@@ -9334,9 +9328,12 @@ static double
 qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
 {
   double result;
+
   QO_ASSERT (env, lhs_sel >= 0.0 && lhs_sel <= 1.0);
   QO_ASSERT (env, rhs_sel >= 0.0 && rhs_sel <= 1.0);
+
   result = lhs_sel + rhs_sel - (lhs_sel * rhs_sel);
+
   return result;
 }
 
@@ -9351,9 +9348,12 @@ static double
 qo_and_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
 {
   double result;
+
   QO_ASSERT (env, lhs_sel >= 0.0 && lhs_sel <= 1.0);
   QO_ASSERT (env, rhs_sel >= 0.0 && rhs_sel <= 1.0);
+
   result = lhs_sel * rhs_sel;
+
   return result;
 }
 
@@ -9367,6 +9367,7 @@ static double
 qo_not_selectivity (QO_ENV * env, double sel)
 {
   QO_ASSERT (env, sel >= 0.0 && sel <= 1.0);
+
   return 1.0 - sel;
 }
 
@@ -9384,8 +9385,8 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PT_NODE *lhs, *rhs;
   PRED_CLASS pc_lhs, pc_rhs;
   int lhs_icard, rhs_icard, icard;
-  double selectivity,
-    lhs_high_value, lhs_low_value, rhs_high_value, rhs_low_value, const_val;
+  double selectivity, lhs_high_value, lhs_low_value;
+  double rhs_high_value, rhs_low_value, const_val;
   int rc1, rc2;
 
   lhs = pt_expr->info.expr.arg1;
@@ -9410,10 +9411,15 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  lhs_icard = qo_index_cardinality (env, lhs);
 	  rhs_icard = qo_index_cardinality (env, rhs);
 
-	  if ((icard = MAX (lhs_icard, rhs_icard)) != 0)
-	    selectivity = (1.0 / icard);
+	  icard = MAX (lhs_icard, rhs_icard);
+	  if (icard != 0)
+	    {
+	      selectivity = (1.0 / icard);
+	    }
 	  else
-	    selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
+	    {
+	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
+	    }
 
 	  /* special case */
 	  if (qo_is_arithmetic_type (lhs) && qo_is_arithmetic_type (rhs))
@@ -9423,12 +9429,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      rc2 = qo_get_range (env, rhs, &rhs_low_value, &rhs_high_value);
 	      if (rc1 || rc2)
 		{
-		  if ((lhs_icard == 0 && rhs_low_value == rhs_high_value) ||
-		      (rhs_icard == 0 && lhs_low_value == lhs_high_value))
-		    selectivity = 1.0;
-		  if (lhs_low_value > rhs_high_value ||
-		      rhs_low_value > lhs_high_value)
-		    selectivity = 0.0;
+		  if ((lhs_icard == 0 && rhs_low_value == rhs_high_value)
+		      || (rhs_icard == 0 && lhs_low_value == lhs_high_value))
+		    {
+		      selectivity = 1.0;
+		    }
+		  if (lhs_low_value > rhs_high_value
+		      || rhs_low_value > lhs_high_value)
+		    {
+		      selectivity = 0.0;
+		    }
 		}
 	    }
 
@@ -9445,9 +9455,13 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	     predicate, we treat subqueries as constants. */
 	  lhs_icard = qo_index_cardinality (env, lhs);
 	  if (lhs_icard != 0)
-	    selectivity = (1.0 / lhs_icard);
+	    {
+	      selectivity = (1.0 / lhs_icard);
+	    }
 	  else
-	    selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
 
 	  /* special case */
 	  if (pc_rhs == PC_CONST && qo_is_arithmetic_type (lhs))
@@ -9475,7 +9489,9 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 		      diff = lhs_high_value - lhs_low_value + 1.0;
 		      if ((int) diff > 0)
-			selectivity = 1.0 / diff;
+			{
+			  selectivity = 1.0 / diff;
+			}
 		    }
 		}
 	    }
@@ -9500,9 +9516,13 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	     predicate, we treat subqueries as constants. */
 	  rhs_icard = qo_index_cardinality (env, rhs);
 	  if (rhs_icard != 0)
-	    selectivity = (1.0 / rhs_icard);
+	    {
+	      selectivity = (1.0 / rhs_icard);
+	    }
 	  else
-	    selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
 
 	  /* special case */
 	  if (pc_lhs == PC_CONST && qo_is_arithmetic_type (rhs))
@@ -9530,7 +9550,9 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 		      diff = rhs_high_value - rhs_low_value + 1.0;
 		      if ((int) diff > 0)
-			selectivity = 1.0 / diff;
+			{
+			  selectivity = 1.0 / diff;
+			}
 		    }
 		}
 	    }
@@ -9545,7 +9567,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  /* const = const */
 
 	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
-
 	  break;
 	}
 
@@ -9578,24 +9599,29 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   /* The only interesting cases are when one side is an attribute and the
    * other is a constant.
    */
-  if ((pc_lhs == PC_ATTR && pc_rhs == PC_CONST) ||
-      (pc_rhs == PC_ATTR && pc_lhs == PC_CONST))
+  if ((pc_lhs == PC_ATTR && pc_rhs == PC_CONST)
+      || (pc_rhs == PC_ATTR && pc_lhs == PC_CONST))
     {
-
       /* bail out if the datatype is not arithmetic */
       if ((pc_lhs == PC_ATTR
 	   && !qo_is_arithmetic_type (pt_expr->info.expr.arg1))
 	  || (pc_rhs == PC_ATTR
 	      && !qo_is_arithmetic_type (pt_expr->info.expr.arg2)))
-	return DEFAULT_COMP_SELECTIVITY;
+	{
+	  return DEFAULT_COMP_SELECTIVITY;
+	}
 
       /* get high and low values for the class of the attribute. */
       if (pc_lhs == PC_ATTR)
-	rc = qo_get_range (env, pt_expr->info.expr.arg1,
-			   &low_value, &high_value);
+	{
+	  rc = qo_get_range (env, pt_expr->info.expr.arg1,
+			     &low_value, &high_value);
+	}
       else
-	rc = qo_get_range (env, pt_expr->info.expr.arg2,
-			   &low_value, &high_value);
+	{
+	  rc = qo_get_range (env, pt_expr->info.expr.arg2,
+			     &low_value, &high_value);
+	}
 
       if (!rc)
 	{
@@ -9605,13 +9631,19 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       /* bail out if they are equal by chance */
       if (low_value == high_value)
-	return DEFAULT_COMP_SELECTIVITY;
+	{
+	  return DEFAULT_COMP_SELECTIVITY;
+	}
 
       /* get the constant value */
       if (pc_lhs == PC_CONST)
-	const_value = get_const_value (env, pt_expr->info.expr.arg1);
+	{
+	  const_value = get_const_value (env, pt_expr->info.expr.arg1);
+	}
       else
-	const_value = get_const_value (env, pt_expr->info.expr.arg2);
+	{
+	  const_value = get_const_value (env, pt_expr->info.expr.arg2);
+	}
 
       /* finally, interpolate selectivity, based on the operator
        * NOTE: if the interpolation yields a negative result, the user
@@ -9620,26 +9652,26 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       switch (pt_expr->info.expr.op)
 	{
 	case PT_GE:
-	  comp_sel = (high_value - const_value + 1.0) /
-	    (high_value - low_value + 1.0);
+	  comp_sel = ((high_value - const_value + 1.0)
+		      / (high_value - low_value + 1.0));
 	  break;
 	case PT_GT:
-	  comp_sel = (high_value - const_value) /
-	    (high_value - low_value + 1.0);
+	  comp_sel = ((high_value - const_value)
+		      / (high_value - low_value + 1.0));
 	  break;
 	case PT_LT:
-	  comp_sel = (const_value - low_value) /
-	    (high_value - low_value + 1.0);
+	  comp_sel = ((const_value - low_value)
+		      / (high_value - low_value + 1.0));
 	  break;
 	case PT_LE:
-	  comp_sel = (const_value - low_value + 1.0) /
-	    (high_value - low_value + 1.0);
+	  comp_sel = ((const_value - low_value + 1.0)
+		      / (high_value - low_value + 1.0));
 	  break;
 	default:
 	  /* can't get here, but so the compiler doesn't whine... */
 	  return DEFAULT_COMP_SELECTIVITY;
 	}
-      return comp_sel < 0.0 ? 0.0 : comp_sel > 1.0 ? 1.0 : comp_sel;
+      return (comp_sel < 0.0) ? 0.0 : ((comp_sel > 1.0) ? 1.0 : comp_sel);
     }
 
   return DEFAULT_COMP_SELECTIVITY;
@@ -9657,8 +9689,8 @@ static double
 qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PRED_CLASS pc1, pc2, pc3;
-  double low_value = 0.0, high_value = 0.0, lhs_const_val =
-    0.0, rhs_const_val = 0.0;
+  double low_value = 0.0, high_value = 0.0;
+  double lhs_const_val = 0.0, rhs_const_val = 0.0;
   PT_NODE *and_node = pt_expr->info.expr.arg2;
   int rc;
 
@@ -9673,17 +9705,17 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   /* The only interesting case is: attr BETWEEN const1 AND const2 */
   if (pc1 == PC_ATTR && pc2 == PC_CONST && pc3 == PC_CONST)
     {
-
       /* bail out if the datatypes are not arithmetic */
-      if (!qo_is_arithmetic_type (and_node->info.expr.arg1) ||
-	  !qo_is_arithmetic_type (and_node->info.expr.arg2))
-	return DEFAULT_BETWEEN_SELECTIVITY;
+      if (!qo_is_arithmetic_type (and_node->info.expr.arg1)
+	  || !qo_is_arithmetic_type (and_node->info.expr.arg2))
+	{
+	  return DEFAULT_BETWEEN_SELECTIVITY;
+	}
 
       /* get the range and data value coerced into doubles */
-      rc =
-	qo_get_range (env, pt_expr->info.expr.arg1, &low_value, &high_value);
-
-      if (!rc)
+      rc = qo_get_range (env, pt_expr->info.expr.arg1, &low_value,
+			 &high_value);
+      if (rc == 0)
 	{
 	  /* bail out if fails to get range */
 	  return DEFAULT_BETWEEN_SELECTIVITY;
@@ -9691,7 +9723,9 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       /* bail out if they are equal by chance */
       if (low_value == high_value)
-	return DEFAULT_BETWEEN_SELECTIVITY;
+	{
+	  return DEFAULT_BETWEEN_SELECTIVITY;
+	}
 
       /* get the constant values */
       lhs_const_val = get_const_value (env, and_node->info.expr.arg1);
@@ -9699,17 +9733,23 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       /* choose the class's bounds if it restricts the range */
       if (rhs_const_val > high_value)
-	rhs_const_val = high_value;
+	{
+	  rhs_const_val = high_value;
+	}
       if (lhs_const_val < low_value)
-	lhs_const_val = low_value;
+	{
+	  lhs_const_val = low_value;
+	}
 
       /* Check if the range is trivially empty */
       if (lhs_const_val > rhs_const_val)
-	return 0.0;
+	{
+	  return 0.0;
+	}
 
       /* finally, calculate the selectivity */
-      return (rhs_const_val - lhs_const_val + 1.0) /
-	(high_value - low_value + 1.0);
+      return ((rhs_const_val - lhs_const_val + 1.0)
+	      / (high_value - low_value + 1.0));
     }
 
   return DEFAULT_BETWEEN_SELECTIVITY;
@@ -9726,8 +9766,9 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PT_NODE *lhs, *arg1, *arg2;
   PRED_CLASS pc1, pc2;
-  double total_selectivity, selectivity,
-    high_value1, low_value1, high_value2, low_value2, const1, const2;
+  double total_selectivity, selectivity;
+  double high_value1, low_value1, high_value2, low_value2;
+  double const1, const2;
   int lhs_icard, rhs_icard, icard;
   PT_NODE *range_node;
   PT_OP_TYPE op_type;
@@ -9737,7 +9778,9 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
   /* the only interesting case is 'attr RANGE {...}' */
   if (qo_classify (lhs) != PC_ATTR)
-    return DEFAULT_RANGE_SELECTIVITY;
+    {
+      return DEFAULT_RANGE_SELECTIVITY;
+    }
 
   /* check for non-null RANGE sarg term only used for index scan;
    * 'attr RANGE ( Min ge_inf )'
@@ -9756,8 +9799,9 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
        range_node = range_node->or_next)
     {
       QO_ASSERT (env, range_node->node_type == PT_EXPR);
-      QO_ASSERT (env,
-		 pt_is_between_range_op (op_type = range_node->info.expr.op));
+
+      op_type = range_node->info.expr.op;
+      QO_ASSERT (env, pt_is_between_range_op (op_type));
 
       arg1 = range_node->info.expr.arg1;
       arg2 = range_node->info.expr.arg2;
@@ -9775,7 +9819,6 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      /* bail out if the datatypes are not arithmetic */
 	      && qo_is_arithmetic_type (arg1) && qo_is_arithmetic_type (arg2))
 	    {
-
 	      /* get the range and data value coerced into doubles */
 	      rc1 = qo_get_range (env, lhs, &low_value1, &high_value1);
 
@@ -9861,7 +9904,8 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      /* attr1 range (attr2 = ) */
 	      rhs_icard = qo_index_cardinality (env, arg1);
 
-	      if ((icard = MAX (lhs_icard, rhs_icard)) != 0)
+	      icard = MAX (lhs_icard, rhs_icard);
+	      if (icard != 0)
 		{
 		  selectivity = (1.0 / icard);
 		}
@@ -10020,9 +10064,13 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
 
       if (icard != 0)
-	equal_selectivity = (1.0 / icard);
+	{
+	  equal_selectivity = (1.0 / icard);
+	}
       else
-	equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	{
+	  equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	}
 
       /* determine cardinality of set or subquery */
       if (pc_rhs == PC_SET)
@@ -10067,14 +10115,18 @@ qo_classify (PT_NODE * attr)
       return PC_ATTR;
 
     case PT_VALUE:
-      if ((attr->type_enum == PT_TYPE_SET) ||
-	  (attr->type_enum == PT_TYPE_MULTISET) ||
-	  (attr->type_enum == PT_TYPE_SEQUENCE))
-	return PC_SET;
+      if (PT_IS_SET_TYPE (attr))
+	{
+	  return PC_SET;
+	}
       else if (attr->type_enum == PT_TYPE_NULL)
-	return PC_OTHER;
+	{
+	  return PC_OTHER;
+	}
       else
-	return PC_CONST;
+	{
+	  return PC_CONST;
+	}
 
     case PT_HOST_VAR:
       return PC_HOST_VAR;
@@ -10259,20 +10311,35 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
   int rc = 0;
 
   if (attr->node_type == PT_DOT_)
-    attr = attr->info.dot.arg2;
+    {
+      attr = attr->info.dot.arg2;
+    }
 
   QO_ASSERT (env, attr->node_type == PT_NAME);
 
   *low_value = *high_value = 0.0;
 
-  if ((nodep = lookup_node (attr, env, &dummy)) == NULL)
-    return rc;
-  if ((segp = lookup_seg (nodep, attr, env)) == NULL)
-    return rc;
+  nodep = lookup_node (attr, env, &dummy);
+  if (nodep == NULL)
+    {
+      return rc;
+    }
+
+  segp = lookup_seg (nodep, attr, env);
+  if (segp == NULL)
+    {
+      return rc;
+    }
+
   if (QO_SEG_INFO (segp) == NULL)
-    return rc;
+    {
+      return rc;
+    }
+
   if (!QO_SEG_INFO (segp)->cum_stats.valid_limits)
-    return rc;
+    {
+      return rc;
+    }
 
   cum_statsp = &(QO_SEG_INFO (segp)->cum_stats);
   switch (cum_statsp->type)
@@ -10282,31 +10349,37 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
       *high_value = (double) cum_statsp->max_value.i;
       rc = 1;
       break;
+
     case DB_TYPE_BIGINT:
       *low_value = (double) cum_statsp->min_value.bigint;
       *high_value = (double) cum_statsp->max_value.bigint;
       rc = 1;
       break;
+
     case DB_TYPE_FLOAT:
       *low_value = (double) cum_statsp->min_value.f;
       *high_value = (double) cum_statsp->max_value.f;
       rc = 1;
       break;
+
     case DB_TYPE_DOUBLE:
       *low_value = (double) cum_statsp->min_value.d;
       *high_value = (double) cum_statsp->max_value.d;
       rc = 1;
       break;
+
     case DB_TYPE_TIME:
       *low_value = (double) cum_statsp->min_value.time;
       *high_value = (double) cum_statsp->max_value.time;
       rc = 1;
       break;
+
     case DB_TYPE_UTIME:
       *low_value = (double) cum_statsp->min_value.utime;
       *high_value = (double) cum_statsp->max_value.utime;
       rc = 1;
       break;
+
     case DB_TYPE_DATETIME:
       {
 	DB_BIGINT bi;
@@ -10323,21 +10396,25 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
 	rc = 1;
       }
       break;
+
     case DB_TYPE_DATE:
       *low_value = (double) cum_statsp->min_value.date;
       *high_value = (double) cum_statsp->max_value.date;
       rc = 1;
       break;
+
     case DB_TYPE_MONETARY:
       *low_value = (double) cum_statsp->min_value.money.amount;
       *high_value = (double) cum_statsp->max_value.money.amount;
       rc = 1;
       break;
+
     case DB_TYPE_SHORT:
       *low_value = (double) cum_statsp->min_value.sh;
       *high_value = (double) cum_statsp->max_value.sh;
       rc = 1;
       break;
+
     default:
       *low_value = *high_value = 0.0;
       break;
@@ -10426,7 +10503,9 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
   for (t = 0; t < index_entryp->nsegs; t++)
     {
       if ((index_entryp->seg_idxs[t]) != -1)
-	bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+	{
+	  bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+	}
     }
 
   /* for each sarged terms */
@@ -10640,15 +10719,13 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
       for (i = start_column; i < nsegs - 1; i++)
 	{
 	  bitset_add (&range_terms,
-		      bitset_first_member (&
-					   (index_entryp->
-					    seg_equal_terms[i])));
+		      bitset_first_member (&(index_entryp->
+					     seg_equal_terms[i])));
 	}
 
       /* for each terms associated with the last segment */
-      for (t =
-	   bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]),
-			   &iter); t != -1; t = bitset_next_member (&iter))
+      t = bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]), &iter);
+      for (; t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
 	  if (clear_kf_terms == false)
@@ -10670,11 +10747,10 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 
 	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	  bitset_remove (&range_terms, t);
-	}			/* for (t = ... ) */
+	}
 
-      for (t =
-	   bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]),
-			   &iter); t != -1; t = bitset_next_member (&iter))
+      t = bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]), &iter);
+      for (; t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
 	  if (clear_kf_terms == false)
@@ -10696,18 +10772,16 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 
 	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	  bitset_remove (&range_terms, t);
-	}			/* for (t = ... ) */
-
+	}
     }
   else
-    {				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+    {
       bool plan_created = false;
 
       /* for all segments covered by this index and found in
          'find_node_indexes()' */
       for (i = 0; i < index_entryp->nsegs; i++)
 	{
-
 	  /* for each terms associated with the segment */
 	  for (t = bitset_iterate (&(index_entryp->seg_equal_terms[i]),
 				   &iter);
@@ -10769,9 +10843,8 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 
 	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	      bitset_remove (&range_terms, t);
-	    }			/* for (t = ... ) */
-
-	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
+	    }
+	}
 
       /* Case #1: we reach this if we have only key filter terms and single
        * column index
@@ -10819,7 +10892,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	      plan_created = true;
 	    }
 	}
-    }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+    }
 
 end:
   bitset_delset (&kf_terms);
@@ -11059,10 +11132,10 @@ search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
       if (bitset_intersects (&expr_segments, &key_segment))
 	{
 	  /* this expr contains the key segment */
-	  if (tree->info.expr.op == PT_IS_NULL ||
-	      tree->info.expr.op == PT_IS_NOT_NULL ||
-	      tree->info.expr.op == PT_IFNULL ||
-	      tree->info.expr.op == PT_NULLSAFE_EQ)
+	  if (tree->info.expr.op == PT_IS_NULL
+	      || tree->info.expr.op == PT_IS_NOT_NULL
+	      || tree->info.expr.op == PT_IFNULL
+	      || tree->info.expr.op == PT_NULLSAFE_EQ)
 	    {
 	      /* 0 all the way, suppress other terms found */
 	      env->bail_out = 0;
@@ -11104,8 +11177,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_UNK;
     }
 
-  /* index entry of spec 'a'
-   */
+  /* index entry of spec 'a' */
   a_ni = a->plan_un.scan.index;
   a_ent = (a_ni)->head;
   a_cum = &(a_ni)->cum_stats;
@@ -11121,8 +11193,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
   /* index filter terms */
   a_filter = bitset_cardinality (&(a->plan_un.scan.kf_terms));
 
-  /* index entry of spec 'b'
-   */
+  /* index entry of spec 'b' */
   b_ni = b->plan_un.scan.index;
   b_ent = (b_ni)->head;
   b_cum = &(b_ni)->cum_stats;
@@ -11155,8 +11226,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_GT;
 	}
 
-      /* both have the same range terms and same number of filters
-       */
+      /* both have the same range terms and same number of filters */
       if (a_cum && b_cum)
 	{
 	  /* take the smaller index pages */
@@ -11180,8 +11250,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	    }
 	}
 
-      /* both have the same number of index pages and key_size
-       */
+      /* both have the same number of index pages and key_size */
       return PLAN_COMP_EQ;
     }
   else if (bitset_subset (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
@@ -11458,7 +11527,7 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 
 	      break;
 	    }
-	}			/* for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++) */
+	}
 
       if (nsegs == 0)
 	{
@@ -11506,15 +11575,13 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
       for (i = start_column; i < nsegs - 1; i++)
 	{
 	  bitset_add (&range_terms,
-		      bitset_first_member (&
-					   (index_entryp->
-					    seg_equal_terms[i])));
+		      bitset_first_member (&(index_entryp->
+					     seg_equal_terms[i])));
 	}
 
       /* for each terms associated with the last segment */
-      for (t =
-	   bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]),
-			   &iter); t != -1; t = bitset_next_member (&iter))
+      t = bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]), &iter);
+      for (; t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
 	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
@@ -11529,11 +11596,10 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 
 	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	  bitset_remove (&range_terms, t);
-	}			/* for (t = ... ) */
+	}
 
-      for (t =
-	   bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]),
-			   &iter); t != -1; t = bitset_next_member (&iter))
+      t = bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]), &iter);
+      for (; t != -1; t = bitset_next_member (&iter))
 	{
 	  bitset_add (&range_terms, t);
 	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
@@ -11548,11 +11614,10 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 
 	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	  bitset_remove (&range_terms, t);
-	}			/* for (t = ... ) */
-
+	}
     }
   else
-    {				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+    {
       bool plan_created = false;
 
       /* for all segments covered by this index and found in
@@ -11583,7 +11648,7 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 
 	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	      bitset_remove (&range_terms, t);
-	    }			/* for (t = ... ) */
+	    }
 
 	  for (t = bitset_iterate (&(index_entryp->seg_other_terms[i]),
 				   &iter);
@@ -11607,9 +11672,8 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 
 	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
 	      bitset_remove (&range_terms, t);
-	    }			/* for (t = ... ) */
-
-	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
+	    }
+	}
 
       /* Case #1: we reach this if we have only key filter terms and single
        * column index
@@ -11656,7 +11720,7 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 	      plan_created = true;
 	    }
 	}
-    }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+    }
 
 end:
   bitset_delset (&kf_terms);
@@ -11745,7 +11809,9 @@ qo_index_scan_group_by_new (QO_INFO * info, QO_NODE * node,
   for (t = 0; t < index_entryp->nsegs; t++)
     {
       if ((index_entryp->seg_idxs[t]) != -1)
-	bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+	{
+	  bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+	}
     }
 
   /* for each sarged terms */
@@ -11784,7 +11850,7 @@ qo_index_scan_group_by_new (QO_INFO * info, QO_NODE * node,
 	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
 	    }
 	}
-    }				/* for (t = ... ) */
+    }
 
   /* exclude key filter terms from sargs terms */
   bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
@@ -11856,8 +11922,9 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   QO_SEGMENT *segm = NULL;
 
   have_groupby_index = 0;
-  if (!QO_ENV_PT_TREE (env) ||
-      !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
+
+  if (!QO_ENV_PT_TREE (env)
+      || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
     {
       goto end;
     }
@@ -11924,7 +11991,7 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
 	  break;
 	}
-    }				/* end for */
+    }
 
   if (i == index_class->smclass->att_count)
     {
@@ -12128,10 +12195,10 @@ search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
       if (bitset_intersects (&expr_segments, &key_segment))
 	{
 	  /* this expr contains the key segment */
-	  if (tree->info.expr.op == PT_IS_NULL ||
-	      tree->info.expr.op == PT_IS_NOT_NULL ||
-	      tree->info.expr.op == PT_IFNULL ||
-	      tree->info.expr.op == PT_NULLSAFE_EQ)
+	  if (tree->info.expr.op == PT_IS_NULL
+	      || tree->info.expr.op == PT_IS_NOT_NULL
+	      || tree->info.expr.op == PT_IFNULL
+	      || tree->info.expr.op == PT_NULLSAFE_EQ)
 	    {
 	      /* 0 all the way, suppress other terms found */
 	      env->bail_out = 0;
@@ -12300,9 +12367,9 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
 	   j = bitset_next_member (&bi))
 	{
 	  expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
-	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ) &&
-	      (PT_IS_CONST (expr->info.expr.arg1) ||
-	       PT_IS_CONST (expr->info.expr.arg2)))
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
+	      && (PT_IS_CONST (expr->info.expr.arg1)
+		  || PT_IS_CONST (expr->info.expr.arg2)))
 	    {
 	      is_const_eq_term = true;
 	    }
