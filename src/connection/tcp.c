@@ -1463,6 +1463,7 @@ css_peer_alive (SOCKET sd, int timeout)
 	  return false;
 	}
 
+    retry:
       po[0].fd = nsd;
       po[0].events = POLLOUT;
       n = poll (po, 1, timeout);
@@ -1485,6 +1486,10 @@ css_peer_alive (SOCKET sd, int timeout)
       if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
 	{
 	  n = errno;
+	}
+      if (n == EINPROGRESS)
+	{
+	  goto retry;
 	}
       if (n == 0 || n == ECONNREFUSED)
 	{
