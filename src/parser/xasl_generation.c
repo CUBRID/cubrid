@@ -11236,7 +11236,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
     }
 
   /* if there is an orderby_num pred, meaning order by was not skipped */
-  if (xasl->ordbynum_pred)
+  if (xasl->ordbynum_pred || xasl->if_pred || xasl->after_join_pred)
     {
       /* can't optimize */
       return NO_ERROR;
