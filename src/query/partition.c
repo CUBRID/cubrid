@@ -1113,7 +1113,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 		      const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
   OR_PARTITION *part;
-  int size = 0, i = 0;
+  int size = 0, i = 0, j;
   DB_SEQ *part_collection = NULL;
   DB_COLLECTION *val_collection = NULL;
   MATCH_STATUS status = MATCH_NOT_FOUND;
@@ -1146,9 +1146,9 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	      }
 
 	    val_collection = DB_GET_COLLECTION (val);
-	    for (i = 0; i < size; i++)
+	    for (j = 0; j < size; j++)
 	      {
-		db_set_get (part_collection, i, &col);
+		db_set_get (part_collection, j, &col);
 		if (db_set_ismember (val_collection, &col))
 		  {
 		    pr_clear_value (&col);
@@ -1183,9 +1183,9 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	      }
 
 	    val_collection = DB_GET_COLLECTION (val);
-	    for (i = 0; i < size; i++)
+	    for (j = 0; j < size; j++)
 	      {
-		db_set_get (part_collection, i, &col);
+		db_set_get (part_collection, j, &col);
 		if (db_set_ismember (val_collection, &col))
 		  {
 		    pr_clear_value (&col);
