@@ -3683,9 +3683,8 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
   between_and->type_enum = PT_TYPE_LOGICAL;
   between_and->info.expr.location = like->info.expr.location;
 
-  lower =
-    qo_allocate_like_bound_for_index_scan (parser, like, pattern, escape,
-					   true);
+  lower = qo_allocate_like_bound_for_index_scan (parser, like, pattern,
+						 escape, true);
   if (lower == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -3694,9 +3693,8 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
 
   between_and->info.expr.arg1 = lower;
 
-  upper =
-    qo_allocate_like_bound_for_index_scan (parser, like, pattern, escape,
-					   false);
+  upper = qo_allocate_like_bound_for_index_scan (parser, like, pattern,
+						 escape, false);
   if (upper == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -3709,7 +3707,12 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
   like->next = between;
 
   /* fold range bounds : this will allow auto-parametrization */
-  pt_semantic_type (parser, like, NULL);
+  if (pt_semantic_type (parser, like, NULL) == NULL)
+    {
+      like->next = between->next;
+      between->next = NULL;
+      goto error;
+    }
 
   return;
 

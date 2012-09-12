@@ -20642,6 +20642,10 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 		     const int args_w_coll, bool op_has_3_args,
 		     int *common_coll, INTL_CODESET * common_cs)
 {
+  PT_COLL_COERC_LEV orig_arg1_coerc_level = arg1_coerc_level;
+  PT_COLL_COERC_LEV orig_arg2_coerc_level = arg2_coerc_level;
+  PT_COLL_COERC_LEV orig_arg3_coerc_level = arg3_coerc_level;
+
   assert (common_coll != NULL);
   assert (common_cs != NULL);
 
@@ -20725,7 +20729,34 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       /* check arg3 */
       if (op_has_3_args && arg3_coll != *common_coll)
 	{
+	  bool set_arg3 = false;
+
 	  if (arg2_coerc_level > arg3_coerc_level)
+	    {
+	      set_arg3 = true;
+	    }
+	  else if (arg2_coerc_level < arg3_coerc_level)
+	    {
+	      set_arg3 = false;
+	    }
+	  else
+	    {
+	      assert (arg2_coerc_level == arg3_coerc_level);
+	      if (orig_arg2_coerc_level > orig_arg3_coerc_level)
+		{
+		  set_arg3 = true;
+		}
+	      else if (orig_arg2_coerc_level < orig_arg3_coerc_level)
+		{
+		  set_arg3 = false;
+		}
+	      else
+		{
+		  goto error;
+		}
+	    }
+
+	  if (set_arg3)
 	    {
 	      /* coerce arg2 collation */
 	      if (arg2_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg2_coll))
@@ -20736,7 +20767,7 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	      *common_coll = arg3_coll;
 	      *common_cs = arg3_cs;
 	    }
-	  else if (arg2_coerc_level < arg3_coerc_level)
+	  else
 	    {
 	      /* coerce arg3 collation */
 	      if (arg2_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg3_coll))
@@ -20746,11 +20777,6 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 
 	      assert (*common_coll == arg2_coll);
 	      assert (*common_cs == arg2_cs);
-	    }
-	  else
-	    {
-	      assert (arg2_coerc_level == arg3_coerc_level);
-	      goto error;
 	    }
 	}
     }
@@ -20772,7 +20798,33 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       /* check arg3 */
       if (op_has_3_args && arg3_coll != *common_coll)
 	{
+	  bool set_arg3 = false;
 	  if (arg1_coerc_level > arg3_coerc_level)
+	    {
+	      set_arg3 = true;
+	    }
+	  else if (arg1_coerc_level < arg3_coerc_level)
+	    {
+	      set_arg3 = false;
+	    }
+	  else
+	    {
+	      assert (arg1_coerc_level == arg3_coerc_level);
+	      if (orig_arg1_coerc_level > orig_arg3_coerc_level)
+		{
+		  set_arg3 = true;
+		}
+	      else if (orig_arg1_coerc_level < orig_arg3_coerc_level)
+		{
+		  set_arg3 = false;
+		}
+	      else
+		{
+		  goto error;
+		}
+	    }
+
+	  if (set_arg3)
 	    {
 	      /* coerce arg1 collation */
 	      if (arg1_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg1_coll))
@@ -20783,7 +20835,7 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	      *common_coll = arg3_coll;
 	      *common_cs = arg3_cs;
 	    }
-	  else if (arg1_coerc_level < arg3_coerc_level)
+	  else
 	    {
 	      /* coerce arg3 collation */
 	      if (arg1_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg3_coll))
@@ -20793,11 +20845,6 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 
 	      assert (*common_coll == arg1_coll);
 	      assert (*common_cs == arg1_cs);
-	    }
-	  else
-	    {
-	      assert (arg1_coerc_level == arg3_coerc_level);
-	      goto error;
 	    }
 	}
     }
