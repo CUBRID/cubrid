@@ -7291,7 +7291,8 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
     }
 
   input_size += sizeof (ld->unicode_normalization.is_enabled);
-  if (ld->unicode_normalization.is_enabled)
+  if (ld->unicode_normalization.is_enabled
+      && !(ld->unicode_normalization.do_not_save))
     {
       UNICODE_NORMALIZATION *un = &(ld->unicode_normalization);
 
@@ -7425,7 +7426,8 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   memcpy (buf_pos, &(ld->unicode_normalization.is_enabled),
 	  sizeof (ld->unicode_normalization.is_enabled));
   buf_pos += sizeof (ld->unicode_normalization.is_enabled);
-  if (ld->unicode_normalization.is_enabled)
+  if (ld->unicode_normalization.is_enabled
+      && !(ld->unicode_normalization.do_not_save))
     {
       UNICODE_NORMALIZATION *un = &(ld->unicode_normalization);
 
