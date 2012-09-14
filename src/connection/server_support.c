@@ -1226,7 +1226,7 @@ static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
   CSS_JOB_ENTRY *job;
-  int n, type, rv, status;
+  int n, type, rv, status, timeout;
   SOCKET fd;
   struct pollfd po[1] = { {0, 0, 0} };
 
@@ -1254,9 +1254,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
       po[0].fd = fd;
       po[0].events = POLLIN;
-      n = poll (po, 1,
-		(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		 1000));
+      timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
+      n = poll (po, 1, timeout);
 #if 0
       if (n > 0 && !FD_ISSET (fd, &rfds) && !FD_ISSET (fd, &efds))
 	{
@@ -1271,9 +1270,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	   * 0 means it timed out and no fd is changed.
 	   * Check if the peer is alive or not.
 	   */
-	  if (!css_peer_alive (fd,
-			       (prm_get_integer_value
-				(PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000)))
+	  if (!css_peer_alive (fd, timeout))
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "css_connection_handler_thread: "
@@ -1295,7 +1292,13 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	}
       if (n < 0)
 	{
-	  if (errno == EINTR)
+#if defined(WINDOWS)
+	  int last_error = WSAGetLastError ();
+	  if (errno == EINTR || last_error == WSAEWOULDBLOCK
+	      || last_error == WSAEINPROGRESS)
+#else /* WINDOWS */
+	  if (errno == EINTR || errno == EWOULDBLOCK || errno == EINPROGRESS)
+#endif /* WINDOWS */
 	    {
 	      continue;
 	    }

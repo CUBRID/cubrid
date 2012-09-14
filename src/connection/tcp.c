@@ -1467,8 +1467,12 @@ css_peer_alive (SOCKET sd, int timeout)
       po[0].fd = nsd;
       po[0].events = POLLOUT;
       n = poll (po, 1, timeout);
-      if (n < 0 && errno != EINTR)
+      if (n < 0)
 	{
+	  if (errno == EINTR || errno == EWOULDBLOCK || errno == EINPROGRESS)
+	    {
+	      goto retry;
+	    }
 	  er_log_debug (ARG_FILE_LINE,
 			"css_peer_alive: errno %d from select()\n", errno);
 	  close (nsd);
@@ -1487,7 +1491,7 @@ css_peer_alive (SOCKET sd, int timeout)
 	{
 	  n = errno;
 	}
-      if (n == EINPROGRESS)
+      if (n == EINTR || n == EWOULDBLOCK || n == EINPROGRESS)
 	{
 	  goto retry;
 	}
