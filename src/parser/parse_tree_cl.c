@@ -6800,9 +6800,14 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   if (p->info.create_entity.as_query_list)
     {
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_PRINT_ALIAS;
+
       r1 = pt_print_bytes_l (parser, p->info.create_entity.as_query_list);
       q = pt_append_nulstring (parser, q, " as ");
       q = pt_append_varchar (parser, q, r1);
+
+      parser->custom_print = save_custom;
     }
 
   view_check_option = p->info.create_entity.with_check_option;
@@ -9302,7 +9307,7 @@ pt_init_expr (PT_NODE * p)
 
 static void
 pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t,
-	     PARSER_VARCHAR * lhs)
+		   PARSER_VARCHAR * lhs)
 {
   const char *op1 = NULL, *op2 = NULL;
   PARSER_VARCHAR *rhs1 = NULL, *rhs2 = NULL;
@@ -9342,7 +9347,7 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t,
       break;
 
     default:
-      assert(false);
+      assert (false);
       return;
     }
 
