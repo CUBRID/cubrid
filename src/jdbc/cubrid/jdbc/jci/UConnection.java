@@ -907,11 +907,13 @@ public class UConnection {
 	    errorHandler.setStackTrace(e.getStackTrace());
 	}
 
+	if (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+	    clientSocketClose();
+	}
+
 	// second
 	try {
-	    if (!isActive() && isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-		clientSocketClose();
-	    } else {
+	    if (isActive()) {
 		return null;
 	    }
 

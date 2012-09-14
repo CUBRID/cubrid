@@ -797,21 +797,21 @@ public class UStatement {
 	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 	}
 
-	if (relatedConnection.isActive()) {
-	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-		relatedConnection.clientSocketClose();
-	    }
-	} else if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-	    try {
-		reset();
-		executeInternal(maxRow, maxField, isScrollable, queryTimeout);
-		return;
-	    } catch (UJciException e) {
-		relatedConnection.logException(e);
-		e.toUError(errorHandler);
-	    } catch (IOException e) {
-		relatedConnection.logException(e);
-		errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+	if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+	    relatedConnection.clientSocketClose();
+
+	    if (!relatedConnection.isActive()) {
+		try {
+		    reset();
+		    executeInternal(maxRow, maxField, isScrollable, queryTimeout);
+		    return;
+		} catch (UJciException e) {
+		    relatedConnection.logException(e);
+		    e.toUError(errorHandler);
+		} catch (IOException e) {
+		    relatedConnection.logException(e);
+		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		}
 	    }
 	}
 
