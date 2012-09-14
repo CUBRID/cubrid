@@ -3701,6 +3701,7 @@ regu_dbvallist_init (QPROC_DB_VALUE_LIST ptr)
 {
   ptr->next = NULL;
   ptr->val = NULL;
+  ptr->dom = NULL;
 }
 
 /*

@@ -47,6 +47,7 @@ struct qproc_db_value_list
 {
   QPROC_DB_VALUE_LIST next;
   DB_VALUE *val;
+  TP_DOMAIN *dom;
 };
 
 typedef struct val_list_node VAL_LIST;	/* value list */

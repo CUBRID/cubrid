@@ -678,7 +678,8 @@ static int *pt_make_identity_offsets (PT_NODE * attr_list);
 static void pt_to_pred_terms (PARSER_CONTEXT * parser,
 			      PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred);
 
-static VAL_LIST *pt_make_val_list (PT_NODE * attribute_list);
+static VAL_LIST *pt_make_val_list (PARSER_CONTEXT * parser,
+				   PT_NODE * attribute_list);
 
 static TABLE_INFO *pt_make_table_info (PARSER_CONTEXT * parser,
 				       PT_NODE * table_spec);
@@ -959,6 +960,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		}
 
 	      dblist2->val = dblist1->val;
+	      dblist2->dom = dblist1->dom;
 	      xasl->val_list->val_cnt++;
 	    }
 	}
@@ -3949,7 +3951,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser,
  *   attribute_list(in):
  */
 static VAL_LIST *
-pt_make_val_list (PT_NODE * attribute_list)
+pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 {
   VAL_LIST *value_list = NULL;
   QPROC_DB_VALUE_LIST dbval_list;
@@ -3973,6 +3975,8 @@ pt_make_val_list (PT_NODE * attribute_list)
 				       pt_node_to_db_type (attribute)))
 	    {
 	      pt_init_precision_and_scale (dbval_list->val, attribute);
+	      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
+
 	      value_list->val_cnt++;
 	      (*dbval_list_tail) = dbval_list;
 	      dbval_list_tail = &dbval_list->next;
@@ -4022,6 +4026,8 @@ pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 	  if (dbval_list && regu)
 	    {
 	      dbval_list->val = pt_regu_to_dbvalue (parser, regu);
+	      dbval_list->dom = regu->domain;
+
 	      value_list->val_cnt++;
 	      (*dbval_list_tail) = dbval_list;
 	      dbval_list_tail = &dbval_list->next;
@@ -4289,7 +4295,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	      attr_offsets =
 		pt_make_identity_offsets (tree->info.function.arg_list);
-	      value_list = pt_make_val_list (tree->info.function.arg_list);
+	      value_list = pt_make_val_list (parser,
+					     tree->info.function.arg_list);
 	      regu_list = pt_to_position_regu_variable_list
 		(parser, tree->info.function.arg_list,
 		 value_list, attr_offsets);
@@ -4445,7 +4452,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  info->out_names = parser_append_node (pointer, info->out_names);
 
 	  attr_offsets = pt_make_identity_offsets (pointer);
-	  value_list = pt_make_val_list (pointer);
+	  value_list = pt_make_val_list (parser, pointer);
 	  regu_list = pt_to_position_regu_variable_list
 	    (parser, pointer, value_list, attr_offsets);
 	  free_and_init (attr_offsets);
@@ -4705,7 +4712,8 @@ pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
     ? table_spec->info.spec.referenced_attrs
     : table_spec->info.spec.as_attr_list;
 
-  table_info->value_list = pt_make_val_list (table_info->attribute_list);
+  table_info->value_list = pt_make_val_list (parser,
+					     table_info->attribute_list);
 
   if (!table_info->value_list)
     {
@@ -6739,7 +6747,7 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	{
 	  if (!xasl->single_tuple)
 	    {
-	      xasl->single_tuple = pt_make_val_list ((PT_NODE *) node);
+	      xasl->single_tuple = pt_make_val_list (parser, (PT_NODE *) node);
 	    }
 
 	  if (xasl->single_tuple)
@@ -13084,7 +13092,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 		  col = pt_get_select_list (parser, node);
 		  if (!xasl->single_tuple)
 		    {
-		      xasl->single_tuple = pt_make_val_list (col);
+		      xasl->single_tuple = pt_make_val_list (parser, col);
 		      if (xasl->single_tuple == NULL)
 			{
 			  PT_ERRORm (parser, col, MSGCAT_SET_PARSER_SEMANTIC,
@@ -14477,7 +14485,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  goto exit_on_error;
 	}
 
-      buildlist->g_val_list = pt_make_val_list (group_out_list);
+      buildlist->g_val_list = pt_make_val_list (parser, group_out_list);
 
       if (buildlist->g_val_list == NULL)
 	{
@@ -14702,7 +14710,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	    }
 
 	  /* generate buffer value list */
-	  buildlist->a_val_list = pt_make_val_list (select_list_ex);
+	  buildlist->a_val_list = pt_make_val_list (parser, select_list_ex);
 	  if (buildlist->a_val_list == NULL)
 	    {
 	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC,
@@ -16281,7 +16289,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	      aptr->next = (XASL_NODE *) 0;
 	      xasl->aptr_list = aptr;
-	      xasl->val_list = pt_make_val_list (namelist);
+	      xasl->val_list = pt_make_val_list (parser, namelist);
 	      if (xasl->val_list)
 		{
 		  int *attr_offsets;
@@ -16341,7 +16349,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node,
 	      goto exit_on_error;
 	    }
 
-	  xasl->val_list = pt_make_val_list (node);
+	  xasl->val_list = pt_make_val_list (parser, node);
 	  if (xasl->val_list == NULL)
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -18916,7 +18924,7 @@ pt_make_outlist_from_vallist (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
 
       regu_list->next = NULL;
       regu_list->value.type = TYPE_CONSTANT;
-      regu_list->value.domain = tp_domain_resolve_value (vallist->val, NULL);
+      regu_list->value.domain = vallist->dom;
       regu_list->value.value.dbvalptr = vallist->val;
 
       if (regulist != regu_list)
@@ -18953,11 +18961,7 @@ pt_make_pos_regu_list (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
     {
       (*tail) = regu_varlist_alloc ();
 
-      regu =
-	pt_make_pos_regu_var_from_scratch (tp_domain_resolve_value (valp->val,
-								    NULL),
-					   valp->val, i);
-
+      regu = pt_make_pos_regu_var_from_scratch (valp->dom, valp->val, i);
       i++;
 
       if (regu && *tail)
@@ -19016,6 +19020,7 @@ pt_copy_val_list (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
 	}
 
       dblist2->val = db_value_copy (dblist1->val);
+      dblist2->dom = dblist1->dom;
       new_val_list->val_cnt++;
     }
 
@@ -23537,19 +23542,20 @@ pt_name_to_derived_path_pre (PARSER_CONTEXT * parser, PT_NODE * node,
  * arg(in/out):
  * continue_walk(in):
  */
-static PT_NODE *pt_is_spec_in_list_pre (PARSER_CONTEXT * parser,
-					PT_NODE * node, void *arg,
-					int *continue_walk)
+static PT_NODE *
+pt_is_spec_in_list_pre (PARSER_CONTEXT * parser,
+			PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_IS_SPEC_IN_LIST_INFO * info = (PT_IS_SPEC_IN_LIST_INFO *) arg;
+  PT_IS_SPEC_IN_LIST_INFO *info = (PT_IS_SPEC_IN_LIST_INFO *) arg;
 
   if (node && node->node_type == PT_SPEC)
     {
       if (info->spec->info.spec.flat_entity_list
 	  && node->info.spec.flat_entity_list
-	  && !intl_identifier_casecmp (info->spec->info.spec.flat_entity_list->
-				       info.name.original, node->info.spec.
-				       flat_entity_list->info.name.original))
+	  && !intl_identifier_casecmp (info->spec->info.spec.
+				       flat_entity_list->info.name.original,
+				       node->info.spec.flat_entity_list->info.
+				       name.original))
 	{
 	  info->found = true;
 	  *continue_walk = PT_STOP_WALK;
