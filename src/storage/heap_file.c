@@ -6558,10 +6558,10 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 #endif
 
-  /* The class object was already IX-locked during compile time 
-   * under normal situation. 
-   * However, with prepare-execute-commit-execute-... scenario, 
-   * the class object is not properly IX-locked since the previous commit 
+  /* The class object was already IX-locked during compile time
+   * under normal situation.
+   * However, with prepare-execute-commit-execute-... scenario,
+   * the class object is not properly IX-locked since the previous commit
    * released the entire acquired locks including IX-lock.
    * So we have to make it sure the class object is IX-locked at this moment.
    */
@@ -16525,11 +16525,19 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	  && (index->func_index_info->attr_index_start + 1) > 1))
     {
       DB_MIDXKEY midxkey;
+      int midxkey_size = recdes->length;
+
+      if (index->func_index_info != NULL)
+        {
+          /* this will allocate more than it is needed to store the key, but
+             there is no decent way to calculate the correct size */
+          midxkey_size += OR_VALUE_ALIGNED_SIZE (fi_res);
+        }
 
       /* Allocate storage for the buf of midxkey */
-      if (recdes->length > DBVAL_BUFSIZE)
+      if (midxkey_size > DBVAL_BUFSIZE)
 	{
-	  midxkey.buf = db_private_alloc (thread_p, recdes->length);
+	  midxkey.buf = db_private_alloc (thread_p, midxkey_size);
 	  if (midxkey.buf == NULL)
 	    {
 	      return NULL;
@@ -16548,7 +16556,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 
       DB_MAKE_MIDXKEY (db_value, &midxkey);
 
-      if (recdes->length > DBVAL_BUFSIZE)
+      if (midxkey_size > DBVAL_BUFSIZE)
 	{
 	  db_value->need_clear = true;
 	}
