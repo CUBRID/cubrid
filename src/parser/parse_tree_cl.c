@@ -7751,18 +7751,15 @@ pt_print_create_serial (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " nocycle ");
     }
 
-  if (p->info.serial.cached_num_val)
+  if (p->info.serial.cached_num_val && p->info.serial.no_cache != 1)
     {
-      if (p->info.serial.no_cache != 1)
-	{
-	  r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
-	  q = pt_append_nulstring (parser, q, " cache ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, " nocache ");
-	}
+      r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
+      q = pt_append_nulstring (parser, q, " cache ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+  else if (p->info.serial.no_cache != 0)
+    {
+      q = pt_append_nulstring (parser, q, " nocache ");
     }
 
   return q;
@@ -7828,21 +7825,18 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " nocycle ");
     }
 
-  if (p->info.serial.cached_num_val)
+  if (p->info.serial.cached_num_val && p->info.serial.no_cache != 1)
     {
-      if (p->info.serial.no_cache != 1)
-	{
-	  r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
-	  q = pt_append_nulstring (parser, q, " cache ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, " nocache ");
-	}
+      r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
+      q = pt_append_nulstring (parser, q, " cache ");
+      q = pt_append_varchar (parser, q, r1);
     }
-  return q;
+  else if (p->info.serial.no_cache != 0)
+    {
+      q = pt_append_nulstring (parser, q, " nocache ");
+    }
 
+  return q;
 }
 
 /*
