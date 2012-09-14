@@ -444,34 +444,31 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #endif /* !WINDOWS */
     read_again:
       n = recv (fd, ptr, nleft, 0);
-      if (n <= 0)
+
+      if (n == 0)
+	{
+	  break;
+	}
+
+      if (n < 0)
 	{
 #if !defined(WINDOWS)
-	  if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINPROGRESS)
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
 	    {
 	      continue;
 	    }
-#endif
-	  if (n == 0)
+	  if (errno == EINTR)
 	    {
-	      break;
+	      goto read_again;
 	    }
-	  else
-	    {
-#if !defined(WINDOWS)
-	      if (errno == EINTR)
-		{
-		  goto read_again;
-		}
 #else
-	      winsock_error = WSAGetLastError ();
-	      if (winsock_error == WSAEINTR)
-		{
-		  goto read_again;
-		}
+	  winsock_error = WSAGetLastError ();
+	  if (winsock_error == WSAEINTR)
+	    {
+	      goto read_again;
+	    }
 
 #endif
-	    }
 
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
@@ -969,7 +966,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 	    {
 	      goto write_again;
 	    }
-	  if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINPROGRESS)
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
 	    {
 	      continue;
 	    }
