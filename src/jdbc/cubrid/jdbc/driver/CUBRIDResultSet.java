@@ -263,6 +263,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 						streams = null;
 						stmt = null;
+						u_stmt.closeResult();
 						if (!u_stmt.isReturnable()) {
 							u_stmt = null;
 						}

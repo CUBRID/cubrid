@@ -1850,6 +1850,11 @@ public class UStatement {
 			}
 			bindParameter = null;
 		}
+		
+		closeResult();
+	}
+	
+	public void closeResult() {
 		if (tuples != null) {
 			synchronized (tuples) {
 				for (int i = 0; i < tuples.length; i++) {
