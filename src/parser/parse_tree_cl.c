@@ -8007,7 +8007,18 @@ pt_print_data_default (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   r1 = pt_print_bytes (parser, p->info.data_default.default_value);
-  q = pt_append_varchar (parser, q, r1);
+  if (p->info.data_default.default_value
+      && PT_IS_QUERY_NODE_TYPE (p->info.data_default.default_value->
+				node_type))
+    {
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   return q;
 }
@@ -8389,6 +8400,13 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.for_update);
       q = pt_append_nulstring (parser, q, " for update of ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (p->info.query.limit && p->info.query.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.limit);
+      q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
   return q;
@@ -12189,6 +12207,12 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for update of ");
       q = pt_append_varchar (parser, q, r1);
     }
+  if (p->info.query.limit && p->info.query.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.limit);
+      q = pt_append_nulstring (parser, q, " limit ");
+      q = pt_append_varchar (parser, q, r1);
+    }
   return q;
 }
 
@@ -14500,6 +14524,12 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.for_update);
       q = pt_append_nulstring (parser, q, " for update of ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+  if (p->info.query.limit && p->info.query.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.limit);
+      q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
 
