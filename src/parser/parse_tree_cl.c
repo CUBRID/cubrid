@@ -2343,7 +2343,11 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	}
     }
 
-  q = pt_append_nulstring (parser, q, sb.body);
+  if (sb.length > 0)
+    {
+      q = pt_append_nulstring (parser, q, sb.body);
+    }
+
   free (sb.body);
 
   return q;
