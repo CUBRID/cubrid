@@ -11085,7 +11085,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *flat_constraints, *con, *new_con, *prev, *next;
   SM_ATTRIBUTE *attr = NULL;
+  int num_pk;
   bool is_partitioned;
+
   /* Get the cached constraint info for the flattened template.
    * Sigh, convert the template property list to a transient constraint
    * cache so we have a prayer of dealing with it.
@@ -11284,12 +11286,25 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       classobj_drop_prop (flat->properties, SM_PROPERTY_PRIMARY_KEY);
       classobj_drop_prop (flat->properties, SM_PROPERTY_FOREIGN_KEY);
 
+      num_pk = 0;
       for (con = flat_constraints;
 	   ((con != NULL) && (error == NO_ERROR)); con = con->next)
 	{
 	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
 	      || con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
+	      if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
+		{
+		  if (num_pk != 0)
+		    {
+		      error = ER_SM_PRIMARY_KEY_EXISTS;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      error, 2, class_->header.name, con->name);
+		      break;
+		    }
+		  ++num_pk;
+		}
+
 	      error = classobj_put_index_id (&(flat->properties), con->type,
 					     con->name, con->attributes,
 					     con->asc_desc,
@@ -11586,10 +11601,9 @@ install_new_representation (MOP classop, SM_CLASS * class_,
   newrep = 0;
   if (needrep)
     {
-
-      /* NEW: 12/5/92, check for error on each of the locator functions, an error
-         can happen if we run out of space during flushing. */
-
+      /* check for error on each of the locator functions,
+       * an error can happen if we run out of space during flushing. 
+       */
       if (!classop->no_objects)
 	{
 	  switch (class_->class_type)
@@ -11645,7 +11659,6 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 
 	  /* this used to be outside, think about why */
 	  WS_SET_NO_OBJECTS (classop);
-
 	}
       else
 	{
@@ -11654,6 +11667,10 @@ install_new_representation (MOP classop, SM_CLASS * class_,
     }
 
   error = transfer_disk_structures (classop, class_, flat);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   /* Delete the trigger caches associated with attributes that are no longer
    * part of the class.  This will also mark the triggers as invalid
@@ -11667,7 +11684,8 @@ install_new_representation (MOP classop, SM_CLASS * class_,
   sm_reset_descriptors (classop);
 
   /* install the template, the dirty bit must be on at this point */
-  if ((error = classobj_install_template (class_, flat, newrep)) != NO_ERROR)
+  error = classobj_install_template (class_, flat, newrep);
+  if (error != NO_ERROR)
     {
       return error;
     }
@@ -12482,7 +12500,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
     {
       classobj_free_template (flat);
       abort_subclasses (newsubs);
-      if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID)
+      if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID
+	  || error == ER_SM_PRIMARY_KEY_EXISTS)
 	{
 	  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
 	}
