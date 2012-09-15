@@ -5230,7 +5230,7 @@ qmgr_set_query_timeout_to_tdes (int tran_index, int query_timeout)
 #else /* HAVE_ATOMIC_BUILTINS */
 	  gettimeofday (&tv, NULL);
 	  tdes_p->query_timeout =
-	    (tv.tv_sec * 1000) + (tv.tv_usec / 1000) + query_timeout;
+	    (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL) + query_timeout;
 #endif /* HAVE_ATOMIC_BUILTINS */
 	}
       else if (query_timeout == 0)
