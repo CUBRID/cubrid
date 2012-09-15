@@ -5417,13 +5417,35 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        */
       if (old_classname != NULL && old_classname != classname)
 	{
-	  /*
-	   * Different names, the class was renamed.
-	   */
+	  /* Different names, the class was renamed. */
+	  OID existing_oid;
+
+	  /* Make it sure there's no existing class which has new class name */
+	  error_code = ehash_search (thread_p, locator_Eht_classnames,
+				     classname, &existing_oid);
+	  if (error_code != EH_KEY_NOTFOUND)
+	    {
+	      if (error_code == EH_KEY_FOUND)
+		{
+		  error_code = ER_LC_CLASSNAME_EXIST;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code,
+			  1, classname);
+		}
+	      else
+		{
+		  error_code = er_errid ();
+		  error_code = ((error_code == NO_ERROR)
+				? ER_FAILED : error_code);
+		}
+	      free_and_init (old_classname);
+	      goto error;
+	    }
+
+	  error_code = NO_ERROR;
 	  if (ehash_insert (thread_p, locator_Eht_classnames,
-			    (void *) classname, oid) == NULL
+			    classname, oid) == NULL
 	      || ehash_delete (thread_p, locator_Eht_classnames,
-			       (void *) old_classname) == NULL)
+			       old_classname) == NULL)
 	    {
 	      /*
 	       * Problems inserting/deleting the new name to the classname to

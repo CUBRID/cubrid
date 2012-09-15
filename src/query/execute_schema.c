@@ -60,7 +60,7 @@
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
-#define UNIQUE_SAVEPOINT_MULTIPLE_RENAME "mULTIPLErENAME"
+#define UNIQUE_SAVEPOINT_RENAME "rENAME"
 #define UNIQUE_SAVEPOINT_MULTIPLE_ALTER "mULTIPLEaLTER"
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
 #define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
@@ -2421,32 +2421,28 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
   const PT_NODE *current_rename = NULL;
-  bool do_rollback = false;
 
   CHECK_MODIFICATION_ERROR ();
 
   if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      error = ER_BLOCK_DDL_STMT;
-      goto error_exit;
+      return ER_BLOCK_DDL_STMT;
+    }
+
+  /* Renaming operations in a single statement need to be atomic. */
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   if (statement->next != NULL)
     {
-      /* Multiple renaming operations in a single statement need to be
-         atomic. */
-      error = tran_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-      do_rollback = true;
-
       error = acquire_locks_for_multiple_rename (statement);
       if (error != NO_ERROR)
 	{
-	  goto error_exit;
+	  return error;
 	}
     }
 
@@ -2474,9 +2470,9 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   return error;
 
 error_exit:
-  if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+  if (error != ER_LK_UNILATERALLY_ABORTED)
     {
-      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_RENAME);
     }
 
   return error;
