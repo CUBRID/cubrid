@@ -910,6 +910,9 @@ public class UConnection {
 	if (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 	    clientSocketClose();
 	}
+	else {
+	    return null;
+	}
 
 	// second
 	try {
