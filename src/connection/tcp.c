@@ -487,45 +487,60 @@ again_eintr:
       close (sd);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "connection failed with errno %d", errno);
+		    "connect failed with errno %d", errno);
 #endif /* CUBRID_DEBUG */
       return INVALID_SOCKET;
     }
 
+retry_poll:
   po[0].fd = sd;
   po[0].events = POLLOUT;
+  po[0].revents = 0;
   n = poll (po, 1, timeout);
-  if (n == 0)
+  if (n < 0)
+    {
+      if (errno == EINTR)
+	{
+	  goto retry_poll;
+	}
+
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
+		    "poll failed errno %d", errno);
+#endif /* CUBRID_DEBUG */
+      close (sd);
+      return INVALID_SOCKET;
+    }
+  else if (n == 0)
     {
       /* 0 means it timed out and no fd is changed */
       errno = ETIMEDOUT;
       close (sd);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "connection failed with timeout %d", timeout);
+		    "poll failed with timeout %d", timeout);
 #endif /* CUBRID_DEBUG */
       return INVALID_SOCKET;
     }
+
   /* has connection been established? */
-  if (n > 0)
+  slen = sizeof (n);
+  if (getsockopt (sd, SOL_SOCKET, SO_ERROR, (void *) &n, &slen) < 0)
     {
-      slen = sizeof (n);
-      getsockopt (sd, SOL_SOCKET, SO_ERROR, (void *) &n, &slen);
-      /* error status 0 means success, otherwise it contains the errno */
-      if (n != 0)
-	{
-	  errno = n;
-	  n = -1;
-	}
-    }
-  /* any error was in there? */
-  if (n < 0)
-    {
-      close (sd);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "connection failed errno %d", errno);
+		    "getsockopt failed errno %d", errno);
 #endif /* CUBRID_DEBUG */
+      close (sd);
+      return INVALID_SOCKET;
+    }
+  if (n != 0)
+    {
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
+		    "connection failed errno %d", n);
+#endif /* CUBRID_DEBUG */
+      close (sd);
       return INVALID_SOCKET;
     }
 
