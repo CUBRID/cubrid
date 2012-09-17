@@ -17634,9 +17634,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
   if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE
       || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
-      || op == PT_BLOB_FROM_FILE || op == PT_BLOB_TO_BIT
-      || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB
-      || op == PT_CLOB_FROM_FILE || op == PT_CLOB_TO_CHAR
+      || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
+      || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
       || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS)
     {
       goto end;

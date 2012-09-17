@@ -14973,13 +14973,8 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_DEFAULTF:
 	case PT_LIKE_LOWER_BOUND:
 	case PT_LIKE_UPPER_BOUND:
-	case PT_BIT_TO_BLOB:
-	case PT_BLOB_FROM_FILE:
 	case PT_BLOB_LENGTH:
 	case PT_BLOB_TO_BIT:
-	case PT_CHAR_TO_BLOB:
-	case PT_CHAR_TO_CLOB:
-	case PT_CLOB_FROM_FILE:
 	case PT_CLOB_LENGTH:
 	case PT_CLOB_TO_CHAR:
 	case PT_RLIKE:
