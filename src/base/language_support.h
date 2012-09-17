@@ -82,15 +82,19 @@
       }					      \
   } while (0)
 
-#define LANG_COLL_ISO_BINARY	0
-#define LANG_COLL_UTF8_BINARY	1
-#define LANG_COLL_ISO_EN_CS	2
-#define LANG_COLL_ISO_EN_CI	3
-#define LANG_COLL_UTF8_EN_CS	4
-#define LANG_COLL_UTF8_EN_CI	5
-#define LANG_COLL_UTF8_TR_CS	6
-#define LANG_COLL_UTF8_KO_CS	7
-#define LANG_COLL_EUCKR_BINARY	8
+enum
+{
+  LANG_COLL_ISO_BINARY = 0,
+  LANG_COLL_UTF8_BINARY = 1,
+  LANG_COLL_ISO_EN_CS = 2,
+  LANG_COLL_ISO_EN_CI = 3,
+  LANG_COLL_UTF8_EN_CS = 4,
+  LANG_COLL_UTF8_EN_CI = 5,
+  LANG_COLL_UTF8_TR_CS = 6,
+  LANG_COLL_UTF8_KO_CS = 7,
+  LANG_COLL_EUCKR_BINARY = 8
+};
+
 /*
  * message for fundamental error that occur before any messages catalogs
  * can be accessed or opened.
