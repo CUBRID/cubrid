@@ -4437,6 +4437,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
        * Do not proceed down the leaves. */
       *continue_walk = PT_LIST_WALK;
     }
+  else if (tree->node_type == PT_EXPR
+	   && (tree->info.expr.op == PT_CURRENT_VALUE
+	       || tree->info.expr.op == PT_NEXT_VALUE))
+    {
+      /* Do not proceed down the leaves. */
+      *continue_walk = PT_LIST_WALK;
+    }
 
   if (tree->node_type == PT_NAME)
     {
@@ -6747,7 +6754,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	{
 	  if (!xasl->single_tuple)
 	    {
-	      xasl->single_tuple = pt_make_val_list (parser, (PT_NODE *) node);
+	      xasl->single_tuple =
+		pt_make_val_list (parser, (PT_NODE *) node);
 	    }
 
 	  if (xasl->single_tuple)
