@@ -20072,6 +20072,18 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_IFNULL:
     case PT_IS_IN:
     case PT_IS_NOT_IN:
+    case PT_EQ_SOME:
+    case PT_NE_SOME:
+    case PT_GE_SOME:
+    case PT_GT_SOME:
+    case PT_LT_SOME:
+    case PT_LE_SOME:
+    case PT_EQ_ALL:
+    case PT_NE_ALL:
+    case PT_GE_ALL:
+    case PT_GT_ALL:
+    case PT_LT_ALL:
+    case PT_LE_ALL:
       has_collation = true;
     case PT_LOCATE:
     case PT_POSITION:
