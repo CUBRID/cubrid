@@ -11232,7 +11232,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
   else
     {
       int p = 0, s = 0;
-      SEMAN_COMPATIBLE_INFO sci = { 0 };
+      SEMAN_COMPATIBLE_INFO sci = {
+	0, PT_TYPE_NONE, 0, 0, 0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC
+      };
       bool is_cast_allowed = true;
 
       sci.type_enum = lhs->type_enum;
@@ -14121,7 +14123,13 @@ pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec,
       return NULL;
     }
 
-  if (expr->node_type != PT_VALUE)
+  if (expr->node_type == PT_EXPR && expr->info.expr.op == PT_UNARY_MINUS)
+    {
+      PT_ERRORm (parser, sort_spec, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+      return NULL;
+    }
+  else if (expr->node_type != PT_VALUE)
     {
       return expr;
     }
