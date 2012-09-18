@@ -1377,7 +1377,11 @@
 #define ER_BLOCK_NOWHERE_STMT                       -1100
 
 #define ER_CANNOT_GET_KEY_LOCK                      -1101
-#define ER_LAST_ERROR                               -1102
+
+#define ER_PRM_BAD_VALUE_NO_DATA                    -1102
+#define ER_PRM_CANNOT_CHANGE_NO_DATA                -1103
+
+#define ER_LAST_ERROR                               -1104
 
 /*
  * CAUTION!

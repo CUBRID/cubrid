@@ -6962,11 +6962,15 @@ sysprm_pack_session_parameters (char *ptr, SESSION_PARAM * session_params)
   SESSION_PARAM *prm;
   int count = 0;
 
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
-  ptr += OR_INT_SIZE;		/* skip one int
-				 * the number of session parameters will be put later
-				 */
+  /* skip one int, the number of session parameters will be put later */
+  ptr += OR_INT_SIZE;
 
   for (prm = session_params; prm; prm = prm->next)
     {
@@ -7103,12 +7107,10 @@ char *
 sysprm_unpack_session_parameters (char *ptr,
 				  SESSION_PARAM ** session_params_ptr)
 {
-  SESSION_PARAM *prm, *session_params;
+  SESSION_PARAM *prm, *session_params = NULL;
   int count, i;
 
   assert (session_params_ptr != NULL);
-
-  session_params = *session_params_ptr;
 
   ptr = or_unpack_int (ptr, &count);
 
@@ -8123,3 +8125,68 @@ prm_init_intl_param (void)
     }
 }
 #endif
+
+/*
+ * sysprm_set_error () - sets an error for system parameter errors
+ *
+ * return    : error code
+ * rc (in)   : SYSPRM_ERR error
+ * data (in) : data to be printed with error
+ */
+int
+sysprm_set_error (SYSPRM_ERR rc, char *data)
+{
+  int error = NO_ERROR;
+
+  if (rc != NO_ERROR)
+    {
+      switch (rc)
+	{
+	case PRM_ERR_UNKNOWN_PARAM:
+	case PRM_ERR_BAD_VALUE:
+	case PRM_ERR_BAD_STRING:
+	case PRM_ERR_BAD_RANGE:
+	  if (data)
+	    {
+	      error = ER_PRM_BAD_VALUE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
+	    }
+	  else
+	    {
+	      error = ER_PRM_BAD_VALUE_NO_DATA;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  break;
+	case PRM_ERR_CANNOT_CHANGE:
+	case PRM_ERR_NOT_FOR_CLIENT:
+	case PRM_ERR_NOT_FOR_SERVER:
+	  if (data)
+	    {
+	      error = ER_PRM_CANNOT_CHANGE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
+	    }
+	  else
+	    {
+	      error = ER_PRM_CANNOT_CHANGE_NO_DATA;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  break;
+	case PRM_ERR_NOT_SOLE_TRAN:
+	  error = ER_NOT_SOLE_TRAN;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  break;
+	case PRM_ERR_COMM_ERR:
+	  error = ER_NET_SERVER_COMM_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  "db_set_system_parameters");
+	  break;
+	case PRM_ERR_NO_MEM_FOR_PRM:
+	default:
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  break;
+	}
+    }
+
+  return error;
+}

@@ -8789,23 +8789,28 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   int err = NO_ERROR;
   SESSION_KEY key = { DB_EMPTY_SESSION, INVALID_SOCKET };
-  int row_count = -1;
+  int row_count = -1, area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr = NULL;
+  char *ptr = NULL, *area = NULL;
+  SESSION_PARAM *session_params = NULL;
+  int error;
 
-  (void) or_unpack_int (request, &key.id);
+  ptr = or_unpack_int (request, &key.id);
+  ptr = sysprm_unpack_session_parameters (ptr, &session_params);
 
   if (xsession_check_session (thread_p, &key) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
       /* create new session */
-      if (xsession_create_new (thread_p, &key) != NO_ERROR)
+      error = xsession_create_new (thread_p, &key);
+      if (error != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
 	}
     }
+
   /* update session_id for this connection */
   assert (thread_p != NULL);
   assert (thread_p->conn_entry != NULL);
@@ -8817,11 +8822,52 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
   /* get row count */
   xsession_get_row_count (thread_p, &row_count);
 
-  ptr = or_pack_int (reply, key.id);
-  or_pack_int (ptr, row_count);
+  if (error == NO_ERROR)
+    {
+      error = sysprm_session_init_session_parameters (&session_params);
+      if (error != NO_ERROR)
+	{
+	  error = sysprm_set_error (error, NULL);
+	  return_error_to_client (thread_p, rid);
+	}
+    }
 
-  css_send_data_to_client (thread_p->conn_entry, rid, reply,
-			   OR_ALIGNED_BUF_SIZE (a_reply));
+  area_size = 0;
+  if (error == NO_ERROR)
+    {
+      /* key.id */
+      area_size = OR_INT_SIZE;
+
+      /* row_count */
+      area_size += OR_INT_SIZE;
+
+      /* session params */
+      area_size += sysprm_packed_session_parameters_length (session_params);
+
+      area = (char *) malloc (area_size);
+      if (area != NULL)
+	{
+	  ptr = or_pack_int (area, key.id);
+	  ptr = or_pack_int (ptr, row_count);
+	  ptr = sysprm_pack_session_parameters (ptr, session_params);
+	}
+      else
+	{
+	  error = er_errid ();
+	  area_size = 0;
+	  return_error_to_client (thread_p, rid);
+	}
+    }
+
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, error);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+				     OR_ALIGNED_BUF_SIZE (a_reply), area,
+				     area_size);
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
 }
 
 /*

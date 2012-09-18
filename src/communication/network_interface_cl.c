@@ -4595,26 +4595,59 @@ csession_check_session (SESSION_ID * session_id, int *row_count)
 #if defined (CS_MODE)
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
-  char *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
+  char *reply = NULL;
+  char *request = NULL, *area = NULL;
   char *ptr;
+  int request_size, area_size;
+  SESSION_PARAM *session_params = NULL;
+  int error = NO_ERROR;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  request = OR_ALIGNED_BUF_START (a_request);
+  request_size = OR_INT_SIZE	/* *session_id */
+    + sysprm_packed_local_session_parameters_length ();	/* session_params */
 
-  ptr = or_pack_int (request, ((int) *session_id));
+  reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error = net_client_request (NET_SERVER_SES_CHECK_SESSION,
-				  request, OR_ALIGNED_BUF_SIZE (a_request),
-				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				  NULL, 0, NULL, 0);
-  if (req_error != NO_ERROR)
+  request = (char *) malloc (request_size);
+  if (request != NULL)
     {
+      ptr = or_pack_int (request, ((int) *session_id));
+      ptr = sysprm_pack_local_session_parameters (ptr);
+
+      req_error = net_client_request2 (NET_SERVER_SES_CHECK_SESSION,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, &area, &area_size);
+
+      if (req_error == NO_ERROR)
+	{
+	  ptr = or_unpack_int (reply, &error);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (request);
+	      return error;
+	    }
+	  ptr = or_unpack_int (ptr, &area_size);
+	  if (area_size > 0)
+	    {
+	      ptr = or_unpack_int (area, (int *) session_id);
+	      ptr = or_unpack_int (ptr, row_count);
+	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+
+	      free_and_init (area);
+	    }
+	  sysprm_update_client_session_parameters (session_params);
+	  sysprm_free_session_parameters (&session_params);
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      request_size);
       return ER_FAILED;
     }
-  ptr = or_unpack_int (reply, (int *) session_id);
-  or_unpack_int (ptr, row_count);
+
   return NO_ERROR;
 #else
   int result = NO_ERROR;

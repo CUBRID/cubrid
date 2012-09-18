@@ -405,4 +405,5 @@ extern SYSPRM_ERR prm_set_session_parameter_default (SESSION_PARAM *
 						     session_params,
 						     int prm_id,
 						     bool verify_different);
+extern int sysprm_set_error (SYSPRM_ERR rc, char *data);
 #endif /* _SYSTEM_PARAMETER_H_ */
