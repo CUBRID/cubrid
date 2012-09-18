@@ -24,112 +24,112 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
-4 [options] 
-5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+1 "%s"はインテェジャーアーギュメントではありません。\n
+2 "%s"はフロートアーギュメントではありません。\n
+3 アーギュメント %s が抜いています。\n
+4 [オプション] 
+5 オプション: \n
+6 キー %s に対するアーギュメントが抜いています。\n
+7 わからないオプション　"%s"。\n
+8 期待されてないポジショナルアーギュメント　"%s"。\n
 
 $set 2
-1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+1 カーソル "%s"が再正義されています。
+2  *\t : %s \n
+3  *\n * カーソルテーブル:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (set_class_bitのインターナルエラー): 正しくないストレージクラス (%d)
+2 (add_spec_to_decl()のインターナルエラー): 正しくないチェーン (no specifier)
+3 現在の文脈でストレージクラスの明細は許可されていません。
+4 正しくないストレージクラスの組み合い
+5 正しくないタイプ組み合い 
+6 正しくないモディファイやーの組み合い
+7 (pp_add_type_spec()のインターナルエラー): 予測されてないケース(%d)
+8 (pp_add_type_adj()のインターナルエラー): 予測されてないケース(%d)
+9 %s : 正しくない宣言
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: ディレクトリーではありません。\n
+3 %s: 正しくない設置ルート\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 正しいトークンか確認してください。
+3 static カーソル "%s"にUSING説が使えません。
+4 カーソル \"%s\" は正義されていません。
+5 デスクリプターのポインータ
+6 DB_OBJECTのポインータ
+7 ストリング
+8 "%s" のための指示バリアブルは許可されていません。
+9 "%s" は BEGIN DECLARE sectionで宣言されていません。
+52 %s ( "%s" )
+53 Lexical エラー
+54 "%s"でブンポエラー : %sが%sにありません。
+55 "%s"でブンポエラー : %sがありません。
 
 $set 6
-1 suppress-line-directive
-2 output-file
-3 include-file
-4 dump-scope-info
-5 dump-malloc-info
-6 announce-version
-7 enable-uci-trace
-8 disable-varchar-length
-9 varchar2-style
-10 unsafe-null
-11 internal-indicator
-12 input-file
+1 サプレスーラインーディレクティブー
+2 アウトレットーファイル
+3 インクルードーファイル
+4 ダンプースコープーインフォ
+5 ダンプーmallocーインフォ
+6 アナウンスーバージョン
+7 イネイブルーuciートレース
+8 ディスエイブルーvarcharーレングス
+9 varchar2ースタイル
+10 アンセーフーnull
+11 インターナルーインディケータ
+12 インプットーファイル
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 出力ファイルに「#line」コマンドが見えないようにする。デフォルトは「off」
+2 出力ファイル名。デフォルトは「<input-file>.c」または「stdout」
+3 uci_プロトタイプを含めたincludeファイル。デフォルトは"esqlx.h"
+4 スコープデバッギング情報を出力。デフォルトは「off」
+5 最終mallocデバッギング情報を出力。デフォルトは「off」
+6 バージョン情報を出力。デフォルトは「off」
+7 uci_メソッドの実行情報の出力。デフォルトは「off」
+8 VARCHARホストバリアブルのレングスが初期化されてない。デフォルトは「off」
+9 違うVARCHARスタイルを使う。デフォルトは「off」
+10 ignore -462(null indicator needed)エラー。デフォルトは「off」
+11 -462(null indicator needed)エラーを防止するためにインターナルNULLインジケーターを使用。デフォルトは「off」
+12 入力ファイル名。デフォルトは「stdin」
 
 $set 8
-1 REPEATED option ignored
-2 %s version %s\n
+1 REPEATEDオプションが無効になります。
+2 %s バージョン %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 (yy_pop_mode)インターナルエラー : 空のスタック
+2 "%s"はこの文脈で許可されていません。
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 %sのインターナルエラー: %s\n
+2 テーブルオーバーフロー
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 インジケーターバリアブル"%s"はshort intタイプしか使えません。
+2 ストラクチャーと共にインジケータバリアブルを使うことはできません。
+3 不完全はストラクチャディフィニション"%s"
+4 "%s"は有効は%sしか使えません。
+5 %sは"%s"のために有効なタイプではありません。
+6 予測されていないホストバリアブルタイプ: %s
+7 (pp_addr_expr): NULLバリアブルのアドレス接近トライ
+8 "%s"はポインタではありません。
+9 "%s"はストラクチャーを示していない。
+10 "%s"はストラクチャではありません。
+11 %sはフィールド"%s"を持っていません。
+12 "%s"は"%s"に逆リファレンスされる事はできません。
 
 $set 12
-1 out of memory
+1 メモリ不足
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 メソッドの配列が正しくありません。
+2 (pp_the_same_type)しらないルンククラス
+3 (pp_get_sizeof): わからない名詞 (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (%sのインターナルエラー): インポッシブルケース

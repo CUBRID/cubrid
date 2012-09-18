@@ -5,7 +5,7 @@ $
 $   This program is free software; you can redistribute it and/or modify 
 $   it under the terms of the GNU General Public License as published by 
 $   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version. 
+$   (at your option) any later version.
 $
 $  This program is distributed in the hope that it will be useful, 
 $  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -25,165 +25,165 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+インタラクティブSQLユーティリティー、バージョン %s\n\
+使い方: %s [オプション] データベース名[@ホスト]\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                standalone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-  -u, --user=ARG               alternate user name\n\
-  -p, --password=ARG           password string, give "" for none\n\
-  -e, --error-continue         don't exit on statement error\n\
-  -i, --input-file=ARG         input-file-name\n\
-  -o, --output-file=ARG        output-file-name\n\
-  -s, --single-line            single line oriented execution\n\
-  -c, --command=ARG            CSQL-commands\n\
-  -l, --line-output            display each value in a line\n\
-  -r, --read-only              read-only mode\n\
-      --no-auto-commit         disable auto commit mode execution\n\
-      --no-pager               do not use pager\n\
-      --no-single-line         turn off single line oriented execution\n\
+有効なオプション:\n\
+  -S, --SA-mode                独立モードで実行\n\
+  -C, --CS-mode                クライアントーサーバーモードで実行\n\
+  -u, --user=ARG               ユーザー名\n\
+  -p, --password=ARG           パスワード、パスワードがなければ「""」\n\
+  -e, --error-continue         実行中にエラーを無視\n\
+  -i, --input-file=ARG         入力ファイル名\n\
+  -o, --output-file=ARG        出力ファイル名\n\
+  -s, --single-line            シングルライン実行\n\
+  -c, --command=ARG            CSQLコマンド\n\
+  -l, --line-output            一つのラインでバリューを表示\n\
+  -r, --read-only              リードオンリーモード\n\
+      --no-auto-commit         自動コミットしない\n\
+      --no-pager               ページ単位で表示しない\n\
+      --no-single-line         シングルラインで実行しない\n\
 \n\
-For additional information, see http://www.cubrid.com\n
-41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
-42 %s: too many arguments given. maximum is %d.\n
-43 %s: The root directory environment variable ($CUBRID) should be set.\n
-44 %s: the attempt to execute "%s" has failed.\n
-45 %s: cannot use -sa and -cs options simultaneously.\n
-46 %d command(s) successfully processed.
-47 In the command from line %d,
-48 In line %d, column %d,
-49 Type `;help' for help messages.
-50 ERROR: 
-51 CUBRID SQL Interpreter
-52 There have been updates. Do you want to commit ? (`Y' or `N') 
-53 Enter `Y' to commit, `N' to abort. 
-54 Current transaction has been committed.
-55 Current transaction has been rolled back.
-56 Command buffer has been saved.
-57 The file has been read into the command buffer.
-58 Command buffer has been sent to the printer.
-59 Current directory changed to 
-61 Enter Password : 
-62 <Result of %s Command in Line %d>
-63 There are no results.
-64 Checkpoint has been issued.
-65 The database has been restarted.
-66 Tran index      User name      Host name      Process id      Program name\n
+追加情報は「http://www.cubrid.com」で得られます。\n
+41 %s: 正しくない環境バリアブル「%s_MODE」 \n%s、または%sしかできません。\n
+42 %s: 多すぎるパラメーター。最大%dです。\n
+43 %s: 環境バリアブル($CUBRID)が必要です。\n
+44 %s: "%s"実行失敗。\n
+45 %s: 「-S」と「-C」オプションは同時に使えません。\n
+46 %d個のコマンドを実行しました。
+47 ライン %d,
+48 ライン %d, カラム %d,
+49 ヘルプメッセージは';help'コマンドを入力してください。
+50 エラー: 
+51 CUBRID SQL　インタープリター
+52 データベースが変更されました。コミットしますか？('Y' or 'N') 
+53 コミットは「Y」、ロールバックは「N」を入力。 
+54 進行中のトランザクションがコミットされました。
+55 進行中のトランザクションがロールバックされました。
+56 コマンドバッファーがセーブされました。
+57 コマンドバッファーにファイルを読み込みました。
+58 コマンドバッファーの内容をプリンターに出力しました。
+59 現在ディレクトリー変更
+61 パスワード入力 : 
+62 <%sの結果、コマンドラーイン %d>
+63 結果なし。
+64 チェックポイントが実行されました。
+65 データベースが新たに始まりました。
+66 トランザクションインデックス　　　　ユーザー名　　　　ホスト名ー　　　　プロセスID　　　　プログラム名\n
 67 %7d(%1c) %14s %14s %15d %17s\n
-68 The specified transaction has been killed.
-69 Killing of the specified transaction has failed.
-70 %d rows %s.
-71 %d row %s.
+68 指定されたトランザクションが終了されました。
+69 指定されたトランザクションの終了が失敗しました。
+70 %d個のロー%s.
+71 %d個のロー%s.
 $ These 3 should be blank
-75 Automated API tester
-76 Invalid Automated API tester
+75 自動化されたAPIテスト機
+76 正しくない自動化APIテスト機
 79 csql>
 80 csql
 81 sysadm>
 
-145 <Help: Schema of a Class>
-146 none
-147 <Help: All Triggers>
-148 <Help: No Triggers Defined>
-150 <Help: Trigger Definition>
-151 <Help: Command Syntax>
-152 <Help: Session Command Summary>
-178 A file name is required.
-179 Cannot execute the pager.
-180 There is not enough memory allocated.
-184 The line being entered is too long.
-185 Too many lines have been entered.
-188 Too many file names have been entered.
-190 No such session command. Type `;help' for help messages.
-191 More than one session command matched. Please specify more.
-193 More than one command matched. Please specify more.
-194 Invalid combination of command line arguments (options).
-196 An undefined error has occurred.
-197 ';edit' is not allowed when output has been redirected.
+145 <ヘルプ: クラススキーマ>
+146 なし
+147 <ヘルプ: すべてのトリガー>
+148 <ヘルプ: 正義されたトリガーなし>
+150 <ヘルプ: トリガー正義>
+151 <ヘルプ: コマンドシンタックス>
+152 <ヘルプ: セッションコマンドの予約>
+178 ファイル名が必要です。
+179 ページャーが実行できません。
+180 メモリー不足。
+184 入力したラーインが長過ぎます。
+185 多すぎるラインが入力されました。
+188 多すぎるファイル名が入力されました。
+190 存在しないセッションコマンドです。ヘルプメッセージは「;help」を入力したください。
+191 セッションコマンドがあいまいです。もっと詳しく入力してください。
+193 コマンドがあいまいです。もっと詳しく入力してください。
+194 コマンドオプションが正しくありません。
+196 正義されていないエラー発生。
+197 出力が再指定された場合、「;edit」コマンドは使えません。
 
 203 <%s> 
-204 <Super Classes> 
-205 <Sub Classes> 
-206 <Attributes> 
-207 <Class Attributes> 
-208 <Methods> 
-209 <Class Methods> 
-210 <Resolutions> 
-211 <Method files> 
-212 <Query_specifications> 
-213 <Triggers> 
-214 <Name> 
-215 <Event> 
-216 <Condition Time> 
-217 <Condition> 
-218 <Action Time> 
-219 <Action> 
-220 <Status> 
-221 <Priority> 
-222 <Name> 
-223 <Description> 
-224 <Syntax> 
-225 <Example> 
+204 <上位クラス> 
+205 <下位クラス> 
+206 <アトリビュート> 
+207 <クラスアトリビュート> 
+208 <メソード> 
+209 <クラスメソード> 
+210 <レゾリューション>
+211 <メソードファイル> 
+212 <クエリースペシフィケーション> 
+213 <トリガー> 
+214 <ネーム> 
+215 <イベント> 
+216 <コンディション時間> 
+217 <コンディション> 
+218 <アクション時間> 
+219 <アクション> 
+220 <ステータス> 
+221 <プライオリティー> 
+222 <ネーム> 
+223 <説明> 
+224 <シンタックス> 
+225 <エグザンプル> 
 
 $ csql help messages
 231 \
 \n\
-   All session commands should be prefixed by `;' and only blanks/tabs\n\
-   can precede the prefix. Capitalized characters represent the minimum\n\
-   abbreviation that you need to enter to execute the specified command.\n\
+   すべてのセッションコマンドは「；」で始めて、この先には空白やタブ以外は許可されません。\n\
+   キャピタルレターで表示された部分はそのコマンドを実行するために\n\
+   必要な最小の略語です。\n\
 \n\
-   ;REAd   [<file-name>]       - read a file into command buffer.\n\
-   ;Write  [<file-name>]       - (over)write command buffer into a file.\n\
-   ;APpend [<file-name>]       - append command buffer into a file.\n\
-   ;PRINT                      - print command buffer.\n\
-   ;SHELL                      - invoke shell.\n\
-   ;CD                         - change current working directory.\n\
-   ;EXit                       - exit program.\n\
+   ;REAd   [<file-name>]       - コマンドバッファーにファイルの内容を読み込む。\n\
+   ;Write  [<file-name>]       - コマンドバッファーの内容をファイルにセーブする。\n\
+   ;APpend [<file-name>]       - コマンドバッファーの内容をファイルにアペンドする。\n\
+   ;PRINT                      - コマンドバッファーの内容を出力。\n\
+   ;SHELL                      - シェル実行。\n\
+   ;CD                         - 現在作業ディレクトリー変更。\n\
+   ;EXit                       - 終了。\n\
 \n\
-   ;CLear                      - clear command buffer.\n\
-   ;EDIT                       - invoke system editor with command buffer.\n\
-   ;List                       - display the content of command buffer.\n\
+   ;CLear                      - コマンドバッファーの内容を消す。\n\
+   ;EDIT                       - コマンドバッファーを編集。\n\
+   ;List                       - コマンドバッファーの内容を出力。\n\
 \n\
-   ;RUn                        - execute sql in command buffer.\n\
-   ;Xrun                       - execute sql in command buffer,\n\
-                                 and clear the command buffer.\n\
-   ;COmmit                     - commit the current transaction.\n\
-   ;ROllback                   - roll back the current transaction.\n\
-   ;AUtocommit [ON|OFF]        - enable/disable auto commit mode.\n\
-   ;REStart                    - restart database.\n\
+   ;RUn                        - コマンドバッファーを実行。\n\
+   ;Xrun                       - コマンドバッファーを実行して、\n\
+                                 バッファーの内容を消す。\n\
+   ;COmmit                     - 進行中のトランザクションをコミット。\n\
+   ;ROllback                   - 進行中のトランザクションをロールバック。\n\
+   ;AUtocommit [ON|OFF]        - 自動コミットモードを設定。／解除。\n\
+   ;REStart                    - データベースリスタート。\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd [editor-cmd]      command to new one, or display the current\n\
-   ;PRINT_Cmd  [print-cmd]       one, respectively.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd  [shell-cmd]     - 既存に設定したシェルを設定／表示する。\n\
+   ;EDITOR_Cmd [editor-cmd]    - 既存に設定したエディターを設定／表示する。\n\
+   ;PRINT_Cmd  [print-cmd]     - 既存に設定したプリントを設定／表示する。\n\
+   ;PAger_cmd  [pager-cmd]     - 既存に設定したページャーを設定／表示する。\n\
 \n\
-   ;DATE                       - display the local time, date.\n\
-   ;DATAbase                   - display the name of database being accessed.\n\
-   ;SChema class-name          - display schema information of a class.\n\
-   ;TRigger [`*'|trigger-name] - display trigger definition.\n\
-   ;Get system_parameter       - get the value of a system parameter.\n\
-   ;SEt system_parameter=value - set the value of a system parameter.\n\
-   ;PLan [simple/detail/off]   - show query execution plan.\n\
-   ;Info <command>             - display internal information.\n\
-   ;TIme [ON/OFF]              - enable/disable to display the query\n\
-                                 execution time.\n\
-   ;HISTORYList                - display list of the executed queries.\n\
-   ;HISTORYRead <history_num>  - read entry on the history number into command buffer.\n\
-   ;HElp                       - display this help message.\n\n
+   ;DATE                       - 地域の日付、時間を出力。\n\
+   ;DATAbase                   - アクセスしているデータベース名を出力。\n\
+   ;SChema class-name          - クラスのスキーマ情報を出力。\n\
+   ;TRigger [`*'|trigger-name] - トリガー正義を出力。\n\
+   ;Get system_parameter       - システムパラメーターを表示。\n\
+   ;SEt system_parameter=value - システムパラメーターを設定。\n\
+   ;PLan [simple|detail|off]   - クエリプランの表示を設定。\n\
+   ;Info <command>             - インターナル情報を出力。\n\
+   ;TIme [ON/OFF]              - クエリー実行時間の\n\
+                                 表示の設定／解除\n\
+   ;HISTORYList                - 実行したクエリリスト表示。\n\
+   ;HISTORYRead <history_num>  - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
+   ;HElp                       - ヘルプメッセージ出力。\n\n
 
-232 <Constraints> 
+232 <制約事項> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - schema information\n\
-\ttrigger [trigger-name] - trigger information\n\
-\tdeferred               - deferred trigger information\n\
-\tworkspace              - workspace information\n\
-\tlock                   - lock information (client-server mode)\n\
-\tstats class-name       - class statistics information\n\
-\ttrantable              - transaction information\n\
-\tlogstat                - log information\n\
-\tcsstat                 - critical section information\n\
-\tplan                   - plan cache information\n\
-\tqcache                 - query cache information\n
-235 <Partitions>
-236 A class name is required.
+\tschema [class-name]    - スキーマ情報\n\
+\ttrigger [trigger-name] - トリガー情報\n\
+\tdeferred               - 遅延トリガー情報\n\
+\tworkspace              - ワークスペース情報\n\
+\tlock                   - ロック情報(client-server mode)\n\
+\tstats class-name       - クラス統計情報。\n\
+\ttrantable              - トランザクション情報\n\
+\tlogstat                - ログ情報\n\
+\tcsstat                 - クリティカルセクション情報\n\
+\tplan                   - プランキャッシュ情報\n\
+\tqcache                 - クエリキャッシュ情報\n
+235 <パーティション>
+236 クラス名が必要です。
