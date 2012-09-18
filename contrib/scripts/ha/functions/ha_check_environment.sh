@@ -13,6 +13,7 @@ output_file=
 cubrid_path=
 cubrid_db_path=
 repl_log_path=
+cubrid_lang=
 
 #################################################################################
 # program function
@@ -27,6 +28,7 @@ function print_usage()
 	echo "    -c [cubrid_path]"
 	echo "    -d [cubrid_db_path]"
 	echo "    -r [repl_log_path]"
+	echo "    -l [cubrid_lang]"
 	echo ""
 }
 
@@ -47,6 +49,9 @@ function check_args()
 	elif [ -z $repl_log_path ]; then
 		print_usage
 		error "Invalid repl_log_path."
+	elif [ -z $cubrid_lang ]; then
+		print_usage
+		error "Invalid cubrid_lang."		
 	fi
 	
 	expect_home=$ha_temp_home/expect
@@ -55,7 +60,7 @@ function check_args()
 #################################################################################
 # main function
 #################################################################################
-while getopts "t:o:c:d:r:" option
+while getopts "t:o:c:d:r:l:" option
 do
 	case "$option" in
 		"t") ha_temp_home="${OPTARG}";;
@@ -63,6 +68,7 @@ do
 		"c") cubrid_path="${OPTARG}";;
 		"d") cubrid_db_path="${OPTARG}";;
 		"r") repl_log_path="${OPTARG}";;
+		"l") cubrid_lang="${OPTARG}";;
 		"?") print_usage;;
 		":") print_usage;;
 		*) print_usage;;
@@ -78,6 +84,9 @@ if [ "$CUBRID_DATABASES" != "$cubrid_db_path" ]; then
 	exit 1
 fi
 if [ ! -d $repl_log_path ]; then
+	exit 1
+fi
+if [ "$CUBRID_LANG" != "$cubrid_lang" ]; then
 	exit 1
 fi
 

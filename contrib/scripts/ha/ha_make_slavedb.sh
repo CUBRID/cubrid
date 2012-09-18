@@ -139,7 +139,7 @@ function ssh_cubrid()
 	if $verbose; then
 		echo "[$cubrid_user@$host]$ $command"
 	fi
-	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
+	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; export CUBRID_LANG=$CUBRID_LANG; $command"
 }
 
 function ssh_expect()
@@ -637,6 +637,7 @@ function check_environment()
 	echo '#   - test $CUBRID == '"$CUBRID"
 	echo '#   - test $CUBRID_DATABASES == '"$CUBRID_DATABASES"
 	echo "#   - test -d $repl_log_home/$db_name"
+	echo '#   - test $CUBRID_LANG == '"$CUBRID_LANG"
 	echo "#"
 	echo "################################################################################"
 	get_yesno
@@ -648,10 +649,10 @@ function check_environment()
 	mkdir $env_output
 	for host in $master_host $slave_host ${replica_hosts[@]}; do
 		if [ "$current_host" == "$host" ]; then
-			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home"			
-			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home
+			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG"			
+			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG
 		else
-			ssh_expect $cubrid_user "$server_password" "$host" "sh $function_home/ha_check_environment.sh -t $ha_temp_home -o $env_output -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home"
+			ssh_expect $cubrid_user "$server_password" "$host" "sh $function_home/ha_check_environment.sh -t $ha_temp_home -o $env_output -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG"
 			scp_from_expect $cubrid_user "$server_password" $env_output $host $env_output/$host
 		fi
 	done
