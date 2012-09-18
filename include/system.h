@@ -167,6 +167,8 @@ typedef intptr_t INTPTR;
 typedef int INTPTR;
 # elif SIZEOF_VOID_P == SIZEOF_LONG
 typedef long INTPTR;
+# elif SIZEOF_VOID_P == SIZEOF_LONG_LONG
+typedef long long INTPTR;
 # else
 #  error "Error: UINTPTR"
 # endif
@@ -214,6 +216,8 @@ typedef uintptr_t UINTPTR;
 typedef unsigned int UINTPTR;
 # elif SIZEOF_VOID_P == SIZEOF_LONG
 typedef unsigned long UINTPTR;
+# elif SIZEOF_VOID_P == SIZEOF_LONG_LONG
+typedef unsigned long long UINTPTR;
 # else
 #  error "Error: UINTPTR"
 # endif

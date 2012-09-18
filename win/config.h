@@ -223,7 +223,11 @@
 #define SIZEOF_SHORT 2
 
 /* The size of a `void *', as computed by sizeof. */
+#if defined(_WIN64)
+#define SIZEOF_VOID_P 8
+#else
 #define SIZEOF_VOID_P 4
+#endif
 
 /* Define to 1 if the `S_IS*' macros in <sys/stat.h> do not work properly. */
 /* #undef STAT_MACROS_BROKEN */
@@ -259,4 +263,3 @@
 #include "version.h"
 #include "system.h"
 #endif /* _CONFIG_H_ */
-
