@@ -435,7 +435,7 @@ conn_retry:
 #endif
 
   /* TODO: SHARD support only 8.4.0 above */
-  req_info.client_version = CAS_MAKE_VER (8, 4, 0);
+  req_info.client_version = CAS_PROTO_CURRENT_VER;
 
   set_cas_info_size ();
 

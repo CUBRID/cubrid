@@ -52,7 +52,7 @@
 	<summary>
 		<codepage>1252</codepage>
 		<title>Installation Database</title>
-		<subject>CUBRID 2008</subject>
+		<subject>CUBRID</subject>
 		<author>CUBRID</author>
 		<keywords>Installer,MSI,Database</keywords>
 		<comments>Contact:  Your local administrator</comments>
@@ -1200,10 +1200,10 @@
 		<row><td>IFX_COMPANY _NAME</td><td>1042</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
 		<row><td>IFX_PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td/><td>-1323326126</td></row>
 		<row><td>IFX_PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td/><td>-1323326126</td></row>
-		<row><td>IFX_PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R4.9</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
-		<row><td>IFX_PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R4.9</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
-		<row><td>IFX_PRODUCT_VERSION</td><td>1033</td><td>2008 R4.9</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
-		<row><td>IFX_PRODUCT_VERSION</td><td>1042</td><td>2008 R4.9</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_NAME</td><td>1033</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_NAME</td><td>1042</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_VERSION</td><td>1033</td><td>9.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_VERSION</td><td>1042</td><td>9.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
 		<row><td>IFX_SETUP_TITLE</td><td>1033</td><td>CUBRID Installation</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323342357</td></row>
 		<row><td>IFX_SETUP_TITLE</td><td>1042</td><td>CUBRID 설치</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0001</td><td>1033</td><td>CUBRID has already been installed in your system. Use Add/Remove Programs in Cotrol Panel to remove the old version of CUBRID and then retry it.</td><td>0</td><td/><td>-1323342357</td></row>
@@ -1214,8 +1214,8 @@
 		<row><td>SCRIPT_STR_0003</td><td>1042</td><td>데이터베이스 삭제 확인</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0004</td><td>1033</td><td>Completed deleting.</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0004</td><td>1042</td><td>삭제가 완료되었습니다.</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0005</td><td>1033</td><td>This wizard will help you install CUBRID on your system.\n Remember that the database volumes created by previous versions of CUBRID are incompatible with CUBRID 2008 R4.9. If you want to use CUBRID 2008 R4.9, migrate your data from previous version.</td><td>0</td><td/><td>-1054896374</td></row>
-		<row><td>SCRIPT_STR_0005</td><td>1042</td><td>본 설치 프로그램은 컴퓨터에 CUBRID를 설치할 것입니다.\n\nCUBRID 2008 R4.9 이전 버전에서 생성된 CUBRID 데이터베이스는 CUBRID TOKEN 와 호환되지 않습니다. CUBRID TOKEN 에서 사용하려면 마이그레이션이 필요합니다.</td><td>0</td><td/><td>-1323333969</td></row>
+		<row><td>SCRIPT_STR_0005</td><td>1033</td><td>This wizard will help you install CUBRID on your system.\n Remember that the database volumes created by previous versions of CUBRID are incompatible with CUBRID TOKEN. If you want to use CUBRID TOKEN, migrate your data from previous version.</td><td>0</td><td/><td>-1054896374</td></row>
+		<row><td>SCRIPT_STR_0005</td><td>1042</td><td>본 설치 프로그램은 컴퓨터에 CUBRID를 설치할 것입니다.\n\n이전 버전에서 생성된 CUBRID 데이터베이스는 CUBRID TOKEN 와 호환되지 않습니다. CUBRID TOKEN 에서 사용하려면 마이그레이션이 필요합니다.</td><td>0</td><td/><td>-1323333969</td></row>
 		<row><td>SCRIPT_STR_0006</td><td>1033</td><td>Enter a destination directory</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0006</td><td>1042</td><td>설치 디렉토리 입력</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0007</td><td>1033</td><td>Please enter a destination directory to install CUBRID.</td><td>0</td><td/><td>-1323342357</td></row>
@@ -1247,7 +1247,7 @@
 		<row><td>SCRIPT_STR_0020</td><td>1033</td><td>Setup Type : CUBRID Client Components</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0020</td><td>1042</td><td>설치유형: CUBRID 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>In case a different version of the CUBRID product is being used in other machines,\nplease note that the CUBRID TOKEN servers are only compatible with the CUBRID TOKEN clients and vice versa.\nDo you want to continue?</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>다른 버전의 CUBRID가 각각 다른 기기에서 이용될 경우, \nCUBRID 서버 TOKEN 은 CUBRID 클라이언트 TOKEN 이상에서만 호환됩니다.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1914636370</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>다른 버전의 CUBRID가 각각 다른 기기에서 이용될 경우, \nCUBRID TOKEN 서버는 CUBRID TOKEN 클라이언트 이상에서만 호환됩니다.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1914636370</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1033</td><td>Compatibility information</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1042</td><td>호환성 정보</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0028</td><td>1033</td><td>Setup is starting</td><td>0</td><td/><td>-1323342357</td></row>
@@ -1262,8 +1262,8 @@
 		<row><td>SCRIPT_STR_0033</td><td>1042</td><td/><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0034</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0034</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 가능 패키지</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0035</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package is not installed in this machine.\nIf you continue installing, one or more components of CUBRID 2008 may no longer work correctly.\n(CUBRID download web page may provide further details.)\nDo you want to quit Setup now? </td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0035</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\n계속 설치를 진행할 경우 CUBRID 2008의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\n(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\nCUBRID 2008 설치를 중단 하시겠습니까?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0035</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package is not installed in this machine.\nIf you continue installing, one or more components of CUBRID may no longer work correctly.\n(CUBRID download web page may provide further details.)\nDo you want to quit Setup now? </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0035</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\n계속 설치를 진행할 경우 CUBRID의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\n(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\nCUBRID 설치를 중단 하시겠습니까?</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0036</td><td>1033</td><td>CUBRID Manager is available only on JAVA environments. \nJRE or JDK  is  required in this machine to run CUBRID normally after installing CUBRID.</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0036</td><td>1042</td><td>JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\nCUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\n</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0037</td><td>1033</td><td>Configuration files(.conf or .pass) already exist. \nDo you want to keep the existing files? </td><td>0</td><td/><td>-1323342357</td></row>
@@ -1514,7 +1514,7 @@ QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 		<row><td>ProObjUseDefaultSettings</td><td>##IDS_PROOBJ_USEDEFAULTSETTINGS##</td><td/></row>
 		<row><td>ProductCode</td><td>{F9D3936B-33BA-4A5C-BF34-B41F08F942E5}</td><td/></row>
 		<row><td>ProductName</td><td>CUBRID</td><td/></row>
-		<row><td>ProductVersion</td><td>8.4.9</td><td/></row>
+		<row><td>ProductVersion</td><td>9.0.0.0453</td><td/></row>
 		<row><td>Property</td><td>***DO_NOT_BUILD***</td><td/></row>
 		<row><td>Typical</td><td>***DO_NOT_BUILD***</td><td/></row>
 	</table>

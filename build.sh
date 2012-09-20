@@ -145,22 +145,22 @@ function build_increase_version ()
     # win version
     win_version_h="$source_dir/win/version.h"
     echo "#define RELEASE_STRING ${major}.${minor}.${maintanance}" > ${win_version_h}
-    echo "#define MAJOR_RELEASE_STRING ${major}" >> ${win_version_h}
+    echo "#define MAJOR_RELEASE_STRING ${major}.${minor}" >> ${win_version_h}
     echo "#define BUILD_NUMBER ${build_number}" >> ${win_version_h}
     echo "#define MAJOR_VERSION ${major}" >> ${win_version_h}
     echo "#define MINOR_VERSION ${minor}" >> ${win_version_h}
     echo "#define PATCH_VERSION ${maintanance}" >> ${win_version_h}
     echo "#define BUILD_SERIAL_NUMBER ${serial_num}" >> ${win_version_h}
     echo "#define VERSION_STRING \"${build_number}\"" >> ${win_version_h}
-    echo "#define PRODUCT_STRING \"2008 R${minor}.${maintanance}\"" >> ${win_version_h}
-    echo "#define PACKAGE_STRING \"CUBRID 2008 R${minor}.${maintanance}\"" >> ${win_version_h}
+    echo "#define PRODUCT_STRING \"${major}.${minor}\"" >> ${win_version_h}
+    echo "#define PACKAGE_STRING \"CUBRID ${major}.${minor}\"" >> ${win_version_h}
     echo "" >> ${win_version_h}
 
     # Install-Shield's release number
-    sed --in-place -r "s/2008 R[0-9]+\.[0-9]+/2008 R${minor}.${maintanance}/g" $source_dir/win/install/Installshield/CUBRID.ism
-    sed --in-place -r "s/2008 R[0-9]+\.[0-9]+/2008 R${minor}.${maintanance}/g" $source_dir/win/install/Installshield/CUBRID_x64.ism
-    sed --in-place -r "s/8\.[0-9]+\.[0-9]+/8.${minor}.${maintanance}/g" $source_dir/win/install/Installshield/CUBRID.ism
-    sed --in-place -r "s/8\.[0-9]+\.[0-9]+/8.${minor}.${maintanance}/g" $source_dir/win/install/Installshield/CUBRID_x64.ism
+    sed --in-place -r "s|<td>[0-9]+\.[0-9]+</td>|<td>${major}.${minor}</td>|g" $source_dir/win/install/Installshield/CUBRID.ism
+    sed --in-place -r "s|<td>ProductVersion</td><td>.*</td><td/>|<td>ProductVersion</td><td>${build_number}</td><td/>|g" $source_dir/win/install/Installshield/CUBRID.ism
+    sed --in-place -r "s|<td>[0-9]+\.[0-9]+</td>|<td>${major}.${minor}</td>|g" $source_dir/win/install/Installshield/CUBRID_x64.ism
+    sed --in-place -r "s|<td>ProductVersion</td><td>.*</td><td/>|<td>ProductVersion</td><td>${build_number}</td><td/>|g" $source_dir/win/install/Installshield/CUBRID_x64.ism
 
     # php's release number
     sed --in-place -r "s/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/${build_number}/g" $source_dir/contrib/php4/src/php_cubrid_version.h
@@ -669,7 +669,7 @@ function build_bin_pack ()
     print_fatal "Check_glibc_version build error"
   fi
 
-  echo "version=\"2008 R$major.$minor\"" > $install_dir/version.sh
+  echo "version=\"$major.$minor\"" > $install_dir/version.sh
   echo "BuildNumber=$build_number" >> $install_dir/version.sh
 
   conf_files=$(ls $archive_dir/conf/*.conf $archive_dir/conf/*.pass $archive_dir/conf/*.txt 2> /dev/null)
