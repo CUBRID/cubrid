@@ -660,6 +660,8 @@ public class UStatement {
 
     private void writeExecuteRequest(int maxField, boolean isScrollable, int queryTimeout)
     	    throws IOException, UJciException {
+	byte is_auto_commit = (byte) 0, is_forward_only = (byte) 0;
+
 	outBuffer.newRequest(UFunctionCode.EXECUTE);
 	outBuffer.addInt(serverHandler);
 	outBuffer.addByte(executeFlag);
@@ -672,8 +674,14 @@ public class UStatement {
 	    outBuffer.addNull();
 	}
 	outBuffer.addByte((byte) 0); // fetch flag is unused
-	outBuffer.addByte((byte) (relatedConnection.getAutoCommit() && !isGeneratedKeys ? 1 : 0));
-	outBuffer.addByte((byte) (isScrollable ? 1 : 0));
+	if(relatedConnection.getAutoCommit() && !isGeneratedKeys) {
+		is_auto_commit = (byte) 1;
+	}
+	outBuffer.addByte(is_auto_commit);
+	if (isScrollable == false) {
+		is_forward_only = (byte) 1;
+	}
+	outBuffer.addByte(is_forward_only);
 	outBuffer.addCacheTime(null);
 
 	// query timeout support only if protocol version 1 or above
