@@ -4621,13 +4621,14 @@ csession_check_session (SESSION_ID * session_id, int *row_count)
 
       if (req_error == NO_ERROR)
 	{
-	  ptr = or_unpack_int (reply, &error);
+	  ptr = or_unpack_int (reply, &area_size);
+	  ptr = or_unpack_int (ptr, &error);
 	  if (error != NO_ERROR)
 	    {
 	      free_and_init (request);
 	      return error;
 	    }
-	  ptr = or_unpack_int (ptr, &area_size);
+
 	  if (area_size > 0)
 	    {
 	      ptr = or_unpack_int (area, (int *) session_id);
