@@ -43,10 +43,9 @@
 #endif
 #define NO_ERROR                                       0
 #define ER_FAILED                                     -1
-#define ER_GENERIC_ERROR                              -1
 
-#define ER_OUT_OF_VIRTUAL_MEMORY                      -2
-#define ER_INVALID_ENV                                -3
+#define ER_GENERIC_ERROR                              -2
+#define ER_OUT_OF_VIRTUAL_MEMORY                      -3
 #define ER_INTERRUPTED                                -4
 
 #define ER_MHT_NOTFOUND                               -5
@@ -1046,7 +1045,8 @@
 
 #define ER_PRM_BAD_VALUE                            -839
 #define ER_PRM_CANNOT_CHANGE                        -840
-#define ER_PRM_NOT_SOLE_TRAN                        -841
+
+#define ER_NOT_SOLE_TRAN                            -841
 
 #define ER_LC_LOCK_CACHE_ERROR                      -842
 
@@ -1239,7 +1239,6 @@
 
 #define ER_LOG_FLUSH_VICTIM_STARTED                 -991
 #define ER_LOG_FLUSH_VICTIM_FINISHED                -992
-
 #define ER_QPROC_OVERFLOW_BITOP                     -993
 #define ER_IT_IS_DISALLOWED_AS_PREPARED             -994
 #define ER_IT_PREPARED_NAME_NOT_FOUND               -995
@@ -1254,7 +1253,7 @@
 #define ER_CANNOT_GET_LOCK                          -1002
 #define ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE         -1003
 #define ER_SM_FK_MYSQL_DIFFERENT                    -1004
-#define ER_SM_INDEX_PREFIX_LENGTH_ON_UNIQUE_REVERSE -1007
+#define ER_SM_INDEX_PREFIX_LENGTH_ON_UNIQUE_FOREIGN -1007
 #define ER_SM_INDEX_PREFIX_LENGTH_ON_PARTITIONED_CLASS -1008
 
 #define ER_COMPACTDB_ALREADY_STARTED		    -1009
@@ -1262,8 +1261,8 @@
 #define ER_FK_CANT_ON_SHARED_ATTRIBUTE              -1011
 #define ER_CREATE_AS_SELECT_NULL_TYPE		    -1012
 
-#define ER_SM_NOT_NULL_ON_LOB_ATTR		    -1013
-#define ER_SM_UNIQUE_ON_LOB_ATTR		    -1014
+#define ER_SM_DEFAULT_NOT_ALLOWED		    -1013
+#define ER_SM_NOT_NULL_NOT_ALLOWED		    -1014
 
 #define ER_BO_DIRECTORY_DOESNOT_EXIST               -1015
 
@@ -1272,11 +1271,12 @@
 #define ER_ES_COPY_TO_DIFFERENT_TYPE                -1018
 #define ER_ES_NO_LOB_PATH			    -1019
 #define ER_ES_FILE_NOT_FOUND                        -1020
-
 #define ER_LK_DEADLOCK_CYCLE_DETECTED               -1021
 
 #define ER_SM_INVALID_PREFIX_LENGTH                 -1022
+
 /* Please note that error codes from -1023 to -1026 are reserved for HA */
+
 #define ER_HA_LA_FAILED_TO_CHANGE_STATE             -1027
 #define ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG      -1028
 #define ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET     -1029
@@ -1333,7 +1333,6 @@
 
 #define ER_SES_VARIABLE_NOT_FOUND		    -1070
 #define ER_SES_TOO_MANY_VARIABLES		    -1071
-
 #define ER_INACCESSIBLE_IP			    -1072
 #define ER_INVALID_ACCESS_IP_CONTROL_FILE_FORMAT    -1073
 #define ER_OPEN_ACCESS_LIST_FILE		    -1074
@@ -1363,14 +1362,15 @@
 #define ER_LOC_GEN				    -1088
 #define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1089
 
-#define ER_LOG_BACKUP_CS_ENTER                      -1090
-#define ER_LOG_BACKUP_CS_EXIT                       -1091
+#define ER_OPFUNC_INET_ATON_ARG                     -1090
+#define ER_OPFUNC_INET_NTOA_ARG                     -1091
 
-#define ER_USER_NAME_TOO_LONG			    -1092
+#define ER_LOG_BACKUP_CS_ENTER                      -1092
+#define ER_LOG_BACKUP_CS_EXIT                       -1093
 
-#define ER_HF_MAX_BESTSPACE_ENTRIES                 -1093
-#define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1094
-#define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1095
+#define ER_USER_NAME_TOO_LONG			    -1094
+
+#define ER_HF_MAX_BESTSPACE_ENTRIES                 -1095
 #define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
 #define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
 
@@ -1380,10 +1380,12 @@
 #define ER_BLOCK_NOWHERE_STMT                       -1100
 
 #define ER_CANNOT_GET_KEY_LOCK                      -1101
+
 #define ER_PRM_BAD_VALUE_NO_DATA                    -1102
 #define ER_PRM_CANNOT_CHANGE_NO_DATA                -1103
 
 #define ER_LAST_ERROR                               -1104
+
 
 #define DB_TRUE 1
 #define DB_FALSE 0
