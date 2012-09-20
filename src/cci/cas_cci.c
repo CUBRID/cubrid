@@ -1526,6 +1526,37 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
   err_code = qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
 				     max_col_size, err_buf);
 
+  if (err_code < 0)
+    {
+      if (IS_OUT_TRAN (con_handle))
+	{
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+	    {
+	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
+		{
+		  goto prepare_execute_error;
+		}
+	      err_code =
+		qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
+					max_col_size, err_buf);
+	      if (err_code < 0)
+		{
+		  goto prepare_execute_error;
+		}
+
+	    }
+	}
+      else
+	{
+	  if (IS_ER_TO_RECONNECT (err_code, err_buf->err_code))
+	    {
+	      /* reconnect for the next executing */
+	      reset_connect (con_handle, req_handle);
+	      goto prepare_execute_error;
+	    }
+	}
+    }
+
   if (exec_retval != NULL)
     {
       *exec_retval = err_code;
