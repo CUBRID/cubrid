@@ -27,7 +27,9 @@ dist_rpm_SCRIPTS = rpm/cubrid.csh rpm/cubrid.sh
 dist_rpm_DATA = rpm/cubrid.spec
 
 scriptsdir = ${datadir}/scripts
-dist_scripts_SCRIPTS = scripts/check_reserved.sql
+dist_scripts_SCRIPTS = \
+	scripts/check_reserved.sql \
+	scripts/broker_log_top.py
 
 hascriptsdir = ${datadir}/scripts/ha
 dist_hascripts_SCRIPTS = scripts/ha/ha_make_slavedb.sh
