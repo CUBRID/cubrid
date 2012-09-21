@@ -23309,6 +23309,7 @@ pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   int no_subclasses = 0, cl;
   int error = NO_ERROR;
+  int save_cost;
   PT_NODE *hint_arg, *flat = NULL;
   PT_MERGE_INFO *info = &statement->info.merge;
 
@@ -23347,7 +23348,15 @@ pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   /* specs already checked at update subquery */
 
+  /* set follow plan cost to zero */
+  save_cost = qo_plan_get_cost_fn ("follow");
+  (void) qo_plan_set_cost_fn ("follow", 0);
+
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
+
+  /* restore follow plan cost */
+  (void) qo_plan_set_cost_fn ("follow", save_cost);
+
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       error = er_errid ();

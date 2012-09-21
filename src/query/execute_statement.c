@@ -14410,6 +14410,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   int result = 0;
   bool insert_only = false;
+  int save_cost;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -14750,9 +14751,18 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* enable authorization checking during methods in queries */
 	  save_query_id = parser->query_id;
 	  parser->query_id = -1;
+
+	  /* set follow plan cost to zero */
+	  save_cost = qo_plan_get_cost_fn ("follow");
+	  (void) qo_plan_set_cost_fn ("follow", 0);
+
 	  AU_ENABLE (parser->au_save);
 	  err = do_select (parser, del_select_stmt);
 	  AU_DISABLE (parser->au_save);
+
+	  /* restore follow plan cost */
+	  (void) qo_plan_set_cost_fn ("follow", save_cost);
+
 	  /* free list file resulted from update */
 	  if (list_id)
 	    {
@@ -15336,6 +15346,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_ID save_query_id;
   bool insert_only =
     (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+  int save_cost;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -15597,11 +15608,19 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      /* specs already checked at update subquery */
 
-	      AU_SAVE_AND_ENABLE (au_save);
 	      save_query_id = parser->query_id;
 	      parser->query_id = -1;
+
+	      /* set follow plan cost to zero */
+	      save_cost = qo_plan_get_cost_fn ("follow");
+	      (void) qo_plan_set_cost_fn ("follow", 0);
+
+	      AU_SAVE_AND_ENABLE (au_save);
 	      err = do_select (parser, del_select_stmt);
 	      AU_RESTORE (au_save);
+
+	      /* restore follow plan cost */
+	      (void) qo_plan_set_cost_fn ("follow", save_cost);
 
 	      if (err >= NO_ERROR)
 		{
