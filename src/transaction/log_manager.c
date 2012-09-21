@@ -3105,7 +3105,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  && (crash_lsa = log_get_crash_point_lsa ()) != NULL
 	  && LSA_LE (&tdes->tail_lsa, crash_lsa)))
     {
-      log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE);
+      log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE, addr);
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_POSTPONE,
@@ -3369,9 +3369,11 @@ log_append_logical_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
  * return: nothing
  */
 void
-log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type)
+log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type,
+			 LOG_DATA_ADDR * addr)
 {
   int tran_index;
+  bool skip = false;
   LOG_TDES *tdes;
   LOG_PRIOR_NODE *node;
 
@@ -3380,6 +3382,15 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type)
   if (tdes == NULL)
     {
       return;
+    }
+
+  if (addr != NULL)
+    {
+      skip = log_can_skip_redo_logging (RV_NOT_DEFINED, tdes, addr);
+      if (skip == true)
+	{
+	  return;
+	}
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, logrec_type,

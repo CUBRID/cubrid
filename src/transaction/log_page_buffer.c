@@ -12529,7 +12529,7 @@ logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  log_append_empty_record (thread_p, LOG_DUMMY_FILLPAGE_FORARCHIVE);
+  log_append_empty_record (thread_p, LOG_DUMMY_FILLPAGE_FORARCHIVE, NULL);
 
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
 

@@ -284,7 +284,7 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	    }
 
 	  /* notify the first part of overflow recdes */
-	  log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD);
+	  log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD, &addr);
 	}
       else
 	{
@@ -558,7 +558,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	  first_part->length = length;
 
 	  /* notify the first part of overflow recdes */
-	  log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD);
+	  log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD, &addr);
 	}
       else
 	{

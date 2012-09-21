@@ -184,7 +184,8 @@ extern void log_append_logical_compensate (THREAD_ENTRY * thread_p,
 					   LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p,
-				     LOG_RECTYPE logrec_type);
+				     LOG_RECTYPE logrec_type,
+				     LOG_DATA_ADDR * addr);
 extern void log_skip_tailsa_logging (THREAD_ENTRY * thread_p,
 				     LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p,

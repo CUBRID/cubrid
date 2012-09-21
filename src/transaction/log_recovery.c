@@ -756,7 +756,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
 #endif /* SERVER_MODE */
 
-  log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY);
+  log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
 
   /*
    * Save the crash point lsa for use during the remaining recovery
