@@ -28,13 +28,9 @@
 #ident "$Id$"
 
 #include "dbi.h"
+#include "dbval.h"
 /*#include "db.h"*/
 extern int db_Connect_status;
-
-#if !defined(WINDOWS)
-/* this must be the last header file included!!! */
-#include "dbval.h"
-#endif
 
 #define CUBRID_VERSION(X, Y)	(((X) << 8) | (Y))
 #define CUR_CUBRID_VERSION	\
