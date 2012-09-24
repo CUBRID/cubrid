@@ -661,7 +661,7 @@ set_lang_from_env (void)
 
   /*
    * Determine the locale by examining environment variables.
-   * First we check our internal variable CUBRID_LANG to allow CUBRID
+   * We check only our internal variable CUBRID_LANG to allow CUBRID
    * to operate in a different locale than is set with LANG.  This is
    * necessary when lang must be set to something other than one of the
    * recognized settings used to select message catalogs in
@@ -675,15 +675,9 @@ set_lang_from_env (void)
     }
   else
     {
-      env = getenv ("LANG");
-      if (env != NULL)
-	{
-	  strncpy (lang_Loc_name, env, sizeof (lang_Loc_name));
-	}
-      else
-	{
-	  strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
-	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	      "CUBRID_LANG environment variable is not set");
+      return ER_LOC_INIT;
     }
 
   strcpy (lang_user_Loc_name, lang_Loc_name);
@@ -699,15 +693,19 @@ set_lang_from_env (void)
       lang_Lang_name[charset - lang_Loc_name] = '\0';
 
       charset++;
-      if (strcasecmp (charset, LANG_CHARSET_EUCKR) == 0)
+      if (strcasecmp (charset, LANG_CHARSET_EUCKR) == 0
+	  || strcasecmp (charset, LANG_CHARSET_EUCKR_ALIAS1) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_KSC5601_EUC;
 	}
-      else if (strcasecmp (charset, LANG_CHARSET_UTF8) == 0)
+      else if (strcasecmp (charset, LANG_CHARSET_UTF8) == 0
+	       || strcasecmp (charset, LANG_CHARSET_UTF8_ALIAS1) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_UTF8;
 	}
-      else if (strcasecmp (charset, LANG_CHARSET_ISO88591) == 0)
+      else if (strcasecmp (charset, LANG_CHARSET_ISO88591) == 0
+	       || strcasecmp (charset, LANG_CHARSET_ISO88591_ALIAS1) == 0
+	       || strcasecmp (charset, LANG_CHARSET_ISO88591_ALIAS2) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_ISO88591;
 	}
