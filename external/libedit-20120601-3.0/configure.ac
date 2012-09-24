@@ -43,19 +43,11 @@ AC_PROG_AWK
 EL_MANTYPE
 
 
-AC_CHECK_LIB(tinfo, tgetent,,
-  [AC_CHECK_LIB(terminfo, tgetent,,
-    [AC_CHECK_LIB(termcap, tgetent,,
-       [AC_CHECK_LIB(termlib, tgetent,,
-           [AC_CHECK_LIB(curses, tgetent,,
-               [AC_CHECK_LIB(ncurses, tgetent,,
-                   [AC_MSG_ERROR([libcurses or libncurses are required!])]
-               )]
-           )]
-       )]
-    )]
-  )]
-)
+[AC_CHECK_LIB(curses, tgetent,,
+   [AC_CHECK_LIB(ncurses, tgetent,,
+       [AC_MSG_ERROR([libcurses or libncurses are required!])]
+   )]
+)]
 
 
 ### use option --enable-widec to turn on use of wide-character support
