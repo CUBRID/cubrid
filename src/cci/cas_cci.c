@@ -110,8 +110,6 @@ int wsa_initialize ();
         (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) || \
          ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
 
-#define IS_STMT_POOL(c) \
-  ((c)->datasource && (c)->datasource->pool_prepared_statement)
 #define IS_BROKER_STMT_POOL(c) \
   ((c)->broker_info[BROKER_INFO_STATEMENT_POOLING] == CAS_STATEMENT_POOLING_ON)
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
@@ -136,6 +134,7 @@ int wsa_initialize ();
 #define CCI_DS_POOL_SIZE_DEFAULT 			10
 #define CCI_DS_MAX_WAIT_DEFAULT 			1000
 #define CCI_DS_POOL_PREPARED_STATEMENT_DEFAULT 		false
+#define CCI_DS_MAX_OPEN_PREPARED_STATEMENT_DEFAULT	1000
 #define CCI_DS_DISCONNECT_ON_QUERY_TIMEOUT_DEFAULT	false
 #define CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT 		-1
 #define CCI_DS_DEFAULT_ISOLATION_DEFAULT 		TRAN_UNKNOWN_ISOLATION
@@ -226,6 +225,7 @@ static const char *datasource_key[] = {
   CCI_DS_PROPERTY_POOL_SIZE,
   CCI_DS_PROPERTY_MAX_WAIT,
   CCI_DS_PROPERTY_POOL_PREPARED_STATEMENT,
+  CCI_DS_PROPERTY_MAX_OPEN_PREPARED_STATEMENT,
   CCI_DS_PROPERTY_LOGIN_TIMEOUT,
   CCI_DS_PROPERTY_QUERY_TIMEOUT,
   CCI_DS_PROPERTY_DISCONNECT_ON_QUERY_TIMEOUT,
@@ -891,7 +891,7 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       CCI_LOGF_DEBUG (con_handle->logger, "FLAG[%d],SQL[%s]", flag, sql_stmt);
     }
 
-  if (IS_STMT_POOL (con_handle))
+  if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
     {
       req_handle_id = hm_req_get_from_pool (con_handle, sql_stmt);
       if (req_handle_id != CCI_ER_REQ_HANDLE)
@@ -940,15 +940,6 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       goto prepare_error;
     }
 
-  if (IS_STMT_POOL (con_handle))
-    {
-      err_code = hm_req_add_to_pool (con_handle, sql_stmt, req_handle_id);
-      if (err_code != CCI_ER_NO_ERROR)
-	{
-	  goto prepare_error;
-	}
-    }
-
 prepare_end:
   RESET_START_TIME (con_handle);
   con_handle->ref_count = 0;
@@ -966,7 +957,7 @@ prepare_error:
 
   if (req_handle)
     {
-      hm_req_handle_free (con_handle, req_handle_id, req_handle);
+      hm_req_handle_free (con_handle, req_handle);
     }
   con_handle->ref_count = 0;
 
@@ -1591,7 +1582,7 @@ prepare_execute_error:
 
   if (req_handle)
     {
-      hm_req_handle_free (con_handle, req_handle_id, req_handle);
+      hm_req_handle_free (con_handle, req_handle);
     }
 
   con_handle->ref_count = 0;
@@ -2087,7 +2078,7 @@ cci_close_req_handle (int req_h_id)
 
   API_SLOG (con_handle);
 
-  if (IS_STMT_POOL (con_handle))
+  if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
     {
       if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE &&
 	  con_handle->con_status != CCI_CON_STATUS_OUT_TRAN)
@@ -2096,8 +2087,13 @@ cci_close_req_handle (int req_h_id)
 	  qe_end_tran (con_handle, CCI_TRAN_ROLLBACK, &err_buf);
 	}
 
-      con_handle->ref_count = 0;
-      return err_code;
+      err_code = hm_req_add_to_pool (con_handle, req_handle->sql_text,
+				     req_h_id);
+      if (err_code == CCI_ER_NO_ERROR)
+	{
+	  con_handle->ref_count = 0;
+	  return err_code;
+	}
     }
 
   if (req_handle->handle_type == HANDLE_PREPARE
@@ -2105,7 +2101,11 @@ cci_close_req_handle (int req_h_id)
     {
       err_code = qe_close_req_handle (req_handle, con_handle);
     }
-  hm_req_handle_free (con_handle, req_h_id, req_handle);
+  else
+    {
+      err_code = CCI_ER_NO_ERROR;
+    }
+  hm_req_handle_free (con_handle, req_handle);
 
   con_handle->ref_count = 0;
 
@@ -2327,7 +2327,7 @@ cci_schema_info (int con_h_id, T_CCI_SCH_TYPE type, char *arg1,
 				     (int) type, arg1, arg2, flag, err_buf);
 	  if (err_code < 0)
 	    {
-	      hm_req_handle_free (con_handle, req_handle_id, req_handle);
+	      hm_req_handle_free (con_handle, req_handle);
 	    }
 	}
     }
@@ -2449,7 +2449,7 @@ cci_oid_get (int con_h_id, char *oid_str, char **attr_name,
 				 oid_str, attr_name, err_buf);
 	  if (err_code < 0)
 	    {
-	      hm_req_handle_free (con_handle, req_handle_id, req_handle);
+	      hm_req_handle_free (con_handle, req_handle);
 	    }
 	}
     }
@@ -3070,7 +3070,7 @@ cci_col_get (int con_h_id, char *oid_str, char *col_attr, int *col_size,
 			     col_attr, col_size, col_type, err_buf);
       if (err_code < 0)
 	{
-	  hm_req_handle_free (con_handle, req_handle_id, req_handle);
+	  hm_req_handle_free (con_handle, req_handle);
 	  goto error;
 	}
     }
@@ -4494,7 +4494,7 @@ cci_row_count (int con_h_id, int *row_count, T_CCI_ERROR * err_buf)
 	{
 	  err_code = qe_get_row_count (req_handle, con_handle,
 				       row_count, err_buf);
-	  hm_req_handle_free (con_handle, req_handle_id, req_handle);
+	  hm_req_handle_free (con_handle, req_handle);
 	}
     }
 
@@ -4563,7 +4563,7 @@ cci_last_insert_id (int con_h_id, void *value, T_CCI_ERROR * err_buf)
 	{
 	  err_code = qe_get_last_insert_id (req_handle, con_handle, value,
 					    err_buf);
-	  hm_req_handle_free (con_handle, req_handle_id, req_handle);
+	  hm_req_handle_free (con_handle, req_handle);
 	}
     }
 
@@ -5777,7 +5777,7 @@ cci_strtol (long *val, char *str, int base)
 
 static bool
 cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
-		      int *out_value, int default_value,
+		      int *out_value, int default_value, int min, int max,
 		      T_CCI_ERROR * err_buf)
 {
   char *tmp;
@@ -5804,6 +5804,15 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
 	  snprintf (err_buf->err_msg, 1023, "strtol: %s", strerror (errno));
 	  return false;
 	}
+    }
+
+  if (*out_value < min || *out_value > max)
+    {
+      err_buf->err_code = CCI_ER_PROPERTY_TYPE;
+      snprintf (err_buf->err_msg, 1023,
+		"The %d is out of range (%s, %d to %d).",
+		*out_value, datasource_key[key], min, max);
+      return false;
     }
 
   return true;
@@ -6038,7 +6047,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT, &login_timeout,
-			     login_timeout, err_buf))
+			     login_timeout, -1, INT_MAX, err_buf))
     {
       return false;
     }
@@ -6058,7 +6067,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_QUERY_TIMEOUT, &query_timeout,
-			     query_timeout, err_buf))
+			     query_timeout, -1, INT_MAX, err_buf))
     {
       return false;
     }
@@ -6154,13 +6163,13 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_POOL_SIZE, &ds->pool_size,
-			     CCI_DS_POOL_SIZE_DEFAULT, err_buf))
+			     CCI_DS_POOL_SIZE_DEFAULT, 1, INT_MAX, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &ds->max_wait,
-			     CCI_DS_MAX_WAIT_DEFAULT, err_buf))
+			     CCI_DS_MAX_WAIT_DEFAULT, 1, INT_MAX, err_buf))
     {
       goto create_datasource_error;
     }
@@ -6169,6 +6178,14 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 			      &ds->pool_prepared_statement,
 			      CCI_DS_POOL_PREPARED_STATEMENT_DEFAULT,
 			      err_buf))
+    {
+      goto create_datasource_error;
+    }
+
+  if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_OPEN_PREPARED_STATEMENT,
+			     &ds->max_open_prepared_statement,
+			     CCI_DS_MAX_OPEN_PREPARED_STATEMENT_DEFAULT,
+			     1, INT_MAX, err_buf))
     {
       goto create_datasource_error;
     }
@@ -6190,7 +6207,9 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT,
 			     &ds->default_lock_timeout,
-			     CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT, err_buf))
+			     CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT,
+			     CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT, INT_MAX,
+			     err_buf))
     {
       goto create_datasource_error;
     }

@@ -75,6 +75,10 @@
 #define GET_REQ_ID(H) ((H) % CON_HANDLE_ID_FACTOR)
 #define MAKE_REQ_ID(C,R) ((C) * CON_HANDLE_ID_FACTOR + (R))
 
+#define DOES_CONNECTION_HAVE_STMT_POOL(c) \
+  ((c)->datasource && (c)->datasource->pool_prepared_statement)
+#define HAS_REACHED_LIMIT_OPEN_STATEMENT(c) \
+  ((c)->open_prepared_statement_count >= (c)->datasource->max_open_prepared_statement)
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
@@ -130,6 +134,7 @@ typedef struct
 
 typedef struct
 {
+  int req_handle_index;
   char prepare_flag;
   char execute_flag;
   char handle_type;
@@ -159,6 +164,8 @@ typedef struct
   int query_timeout;
   int is_closed;
   int is_from_current_transaction;
+  void *prev;
+  void *next;
 } T_REQ_HANDLE;
 
 typedef struct
@@ -196,6 +203,7 @@ typedef struct
   T_EXEC_THR_ARG thr_arg;
   T_REQ_HANDLE **req_handle_table;
   int req_handle_count;
+  int open_prepared_statement_count;
   int cas_pid;
   char broker_info[BROKER_INFO_SIZE];
   char cas_info[CAS_INFO_SIZE];
@@ -215,6 +223,8 @@ typedef struct
   /* connection properties */
   T_ALTER_HOST alter_hosts[ALTER_HOST_MAX_SIZE];
   int rc_time;			/* failback try duration */
+  T_REQ_HANDLE *pool_lru_head;
+  T_REQ_HANDLE *pool_lru_tail;
   int login_timeout;
   int query_timeout;
   char disconnect_on_query_timeout;
@@ -247,7 +257,7 @@ extern int hm_con_handle_alloc (char *ip_str,
 				char *db_user, char *db_passwd);
 extern int hm_req_handle_alloc (int con_id, T_REQ_HANDLE **);
 extern void hm_req_handle_free (T_CON_HANDLE * con_handle,
-				int req_h_id, T_REQ_HANDLE * req_handle);
+				T_REQ_HANDLE * req_handle);
 extern void hm_req_handle_free_all (T_CON_HANDLE * con_handle);
 extern void hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle);
 extern void hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle);

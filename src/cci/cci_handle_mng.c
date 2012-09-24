@@ -267,6 +267,94 @@ hm_con_handle_free (int con_id)
   return 0;
 }
 
+static int
+hm_pool_add_node_to_lru (T_CON_HANDLE * connection, int statement_id)
+{
+  T_REQ_HANDLE *target;
+
+  statement_id = statement_id % CON_HANDLE_ID_FACTOR;
+  target = connection->req_handle_table[statement_id - 1];
+  assert (target != NULL);
+
+  target->next = NULL;
+  if (connection->pool_lru_tail == NULL)
+    {
+      target->prev = NULL;
+      connection->pool_lru_head = target;
+    }
+  else
+    {
+      target->prev = connection->pool_lru_tail;
+      connection->pool_lru_tail->next = target;
+    }
+  connection->pool_lru_tail = target;
+
+  connection->open_prepared_statement_count++;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static T_REQ_HANDLE *
+hm_pool_victimize_last_node_from_lru (T_CON_HANDLE * connection)
+{
+  T_REQ_HANDLE *victim;
+
+  if (connection->pool_lru_head == NULL)
+    {
+      return NULL;
+    }
+
+  victim = connection->pool_lru_head;
+  connection->pool_lru_head = victim->next;
+  if (connection->pool_lru_head == NULL)
+    {
+      /* all nodes are dropped */
+      connection->pool_lru_tail = NULL;
+    }
+  else
+    {
+      connection->pool_lru_head->prev = NULL;
+    }
+
+  connection->open_prepared_statement_count--;
+
+  return victim;
+}
+
+static int
+hm_pool_drop_node_from_lru (T_CON_HANDLE * connection, int statement_id)
+{
+  T_REQ_HANDLE *target, *next_target, *prev_target;
+
+  statement_id = statement_id % CON_HANDLE_ID_FACTOR;
+  target = connection->req_handle_table[statement_id - 1];
+
+  /* cut a node */
+  prev_target = target->prev;
+  next_target = target->next;
+  if (prev_target != NULL)
+    {
+      prev_target->next = next_target;
+    }
+  if (next_target != NULL)
+    {
+      next_target->prev = prev_target;
+    }
+
+  if (target == connection->pool_lru_head)
+    {
+      connection->pool_lru_head = next_target;
+    }
+  if (target == connection->pool_lru_tail)
+    {
+      connection->pool_lru_tail = prev_target;
+    }
+
+  connection->open_prepared_statement_count--;
+
+  return CCI_ER_NO_ERROR;
+}
+
 int
 hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
 {
@@ -297,6 +385,7 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
     }
 
   memset (req_handle, 0, sizeof (T_REQ_HANDLE));
+  req_handle->req_handle_index = req_handle_id;
   req_handle->fetch_size = 100;
   req_handle->query_timeout = con_handle->query_timeout;
 
@@ -312,6 +401,29 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
 {
   char *key;
   int *data;
+  int error;
+
+  data = mht_get (con->stmt_pool, sql);
+  if (data != NULL)
+    {
+      return CCI_ER_REQ_HANDLE;
+    }
+
+  if (HAS_REACHED_LIMIT_OPEN_STATEMENT (con))
+    {
+      T_REQ_HANDLE *victim = hm_pool_victimize_last_node_from_lru (con);
+
+      if (victim->handle_type == HANDLE_PREPARE
+	  || victim->handle_type == HANDLE_SCHEMA_INFO)
+	{
+	  /* because the statement will be terminated by restarting cas
+	   * all errors of qe_close_req_handle() are ignored
+	   */
+	  qe_close_req_handle (victim, con);
+	}
+      mht_rem (con->stmt_pool, victim->sql_text, true, true);
+      hm_req_handle_free (con, victim);
+    }
 
   key = strdup (sql);
   if (key == NULL)
@@ -332,20 +444,27 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
       FREE (data);
       return CCI_ER_NO_MORE_MEMORY;
     }
+
+  hm_pool_add_node_to_lru (con, req_id);
+
   return CCI_ER_NO_ERROR;
 }
 
 int
 hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
 {
-  int req_id;
-  void *data = mht_get (con->stmt_pool, sql);
+  int req_id, error;
+  void *data;
 
+  data = mht_rem (con->stmt_pool, sql, true, false);
   if (data == NULL)
     {
       return CCI_ER_REQ_HANDLE;
     }
   req_id = *((int *) data);
+  FREE_MEM (data);
+
+  hm_pool_drop_node_from_lru (con, req_id);
 
   return req_id;
 }
@@ -407,13 +526,13 @@ hm_find_req_handle (int req_handle_id, T_CON_HANDLE ** ret_con_h)
 }
 
 void
-hm_req_handle_free (T_CON_HANDLE * con_handle, int req_h_id,
-		    T_REQ_HANDLE * req_handle)
+hm_req_handle_free (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
 {
+  con_handle->req_handle_table[req_handle->req_handle_index - 1] = NULL;
+  --(con_handle->req_handle_count);
+
   req_handle_content_free (req_handle, 0);
   FREE_MEM (req_handle);
-  con_handle->req_handle_table[GET_REQ_ID (req_h_id) - 1] = NULL;
-  --(con_handle->req_handle_count);
 }
 
 void
@@ -571,7 +690,9 @@ hm_invalidate_all_req_handle (T_CON_HANDLE * con_handle)
 
       curr_req_handle = con_handle->req_handle_table[i];
       if (curr_req_handle == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       curr_req_handle->valid = 0;
       ++count;
@@ -800,7 +921,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  con_handle->stmt_pool = mht_create (0, 100, mht_5strhash, mht_strcasecmpeq);
+  con_handle->stmt_pool = mht_create (0, 1000, mht_5strhash,
+				      mht_strcasecmpeq);
   if (con_handle->stmt_pool == NULL)
     {
       FREE_MEM (con_handle->db_name);
@@ -813,6 +935,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   memset (con_handle->req_handle_table,
 	  0, sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
   con_handle->req_handle_count = 0;
+  con_handle->open_prepared_statement_count = 0;
   memset (con_handle->broker_info, 0, BROKER_INFO_SIZE);
 
   con_handle->cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;

@@ -198,6 +198,8 @@ extern "C"
 #define CCI_DS_PROPERTY_MAX_WAIT			"max_wait"
 /* enable prepared statement pooling */
 #define CCI_DS_PROPERTY_POOL_PREPARED_STATEMENT		"pool_prepared_statement"
+/* max size of the prepared statement pool */
+#define CCI_DS_PROPERTY_MAX_OPEN_PREPARED_STATEMENT     "max_open_prepared_statement"
 /* timeout in msec for datebase login or -1 to wait indefinitely */
 #define CCI_DS_PROPERTY_LOGIN_TIMEOUT			"login_timeout"
 /* timeout in msec for slow query or -1 to wait indefinitely */
@@ -607,6 +609,7 @@ extern "C"
     CCI_DS_KEY_POOL_SIZE,
     CCI_DS_KEY_MAX_WAIT,
     CCI_DS_KEY_POOL_PREPARED_STATEMENT,
+    CCI_DS_KEY_MAX_OPEN_PREPARED_STATEMENT,
     CCI_DS_KEY_LOGIN_TIMEOUT,
     CCI_DS_KEY_QUERY_TIMEOUT,
     CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,

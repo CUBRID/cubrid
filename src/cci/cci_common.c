@@ -460,8 +460,114 @@ mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data)
 	}
     }
 
+  while (ht->nprealloc_entries > 0)
+    {
+      hentry = ht->prealloc_entries;
+      ht->prealloc_entries = ht->prealloc_entries->next;
+      FREE_MEM (hentry);
+      ht->nprealloc_entries--;
+    }
+
   FREE_MEM (ht->table);
   FREE_MEM (ht);
+}
+
+/*
+ * mht_rem - remove a hash entry
+ *   return: removed data
+ *   ht(in): hash table
+ *   key(in): hashing key
+ *   free_key(in): flag to free key memory
+ *   free_data(in): flag to free data memory
+ *
+ * Note: For each entry in hash table
+ */
+void *
+mht_rem (MHT_TABLE * ht, void *key, bool free_key, bool free_data)
+{
+  unsigned int hash;
+  HENTRY_PTR prev_hentry;
+  HENTRY_PTR hentry;
+  int error_code = CCI_ER_NO_ERROR;
+  void *data = NULL;
+
+  assert (ht != NULL && key != NULL);
+
+  /*
+   * Hash the key and make sure that the return value is between 0 and size
+   * of hash table
+   */
+  hash = (*ht->hash_func) (key, ht->size);
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+
+  /* Now search the linked list.. Is there any entry with the given key ? */
+  for (hentry = ht->table[hash], prev_hentry = NULL;
+       hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
+    {
+      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+	{
+	  data = hentry->data;
+
+	  /* Remove from double link list of active entries */
+	  if (ht->act_head == ht->act_tail)
+	    {
+	      /* Single active element */
+	      ht->act_head = ht->act_tail = NULL;
+	    }
+	  else if (ht->act_head == hentry)
+	    {
+	      /* Deleting from the head */
+	      ht->act_head = hentry->act_next;
+	      hentry->act_next->act_prev = NULL;
+	    }
+	  else if (ht->act_tail == hentry)
+	    {
+	      /* Deleting from the tail */
+	      ht->act_tail = hentry->act_prev;
+	      hentry->act_prev->act_next = NULL;
+	    }
+	  else
+	    {
+	      /* Deleting from the middle */
+	      hentry->act_prev->act_next = hentry->act_next;
+	      hentry->act_next->act_prev = hentry->act_prev;
+	    }
+
+	  /* Remove from the hash */
+	  if (prev_hentry != NULL)
+	    {
+	      prev_hentry->next = hentry->next;
+	      ht->ncollisions--;
+	    }
+	  else if ((ht->table[hash] = hentry->next) != NULL)
+	    {
+	      ht->ncollisions--;
+	    }
+	  ht->nentries--;
+	  /* Save the entry for future insertions */
+	  ht->nprealloc_entries++;
+	  hentry->next = ht->prealloc_entries;
+	  ht->prealloc_entries = hentry;
+
+	  if (free_key)
+	    {
+	      FREE_MEM (hentry->key);
+	    }
+
+	  if (free_data)
+	    {
+	      FREE_MEM (hentry->data);
+	      return NULL;
+	    }
+
+	  return data;
+	}
+    }
+
+  return NULL;
 }
 
 /*

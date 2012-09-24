@@ -284,6 +284,7 @@ extern "C"
     int pool_size;
     int max_wait;
     bool pool_prepared_statement;
+    int max_open_prepared_statement;
     int default_autocommit;
     T_CCI_TRAN_ISOLATION default_isolation;
     int default_lock_timeout;
@@ -348,6 +349,8 @@ extern "C"
   extern MHT_TABLE *mht_create (char *name, int est_size, HASH_FUNC hash_func,
 				CMP_FUNC cmp_func);
   extern void mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data);
+  extern void *mht_rem (MHT_TABLE * ht, void *key, bool free_key,
+		        bool free_data);
   extern void *mht_get (MHT_TABLE * ht, void *key);
   extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
   extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
