@@ -1505,7 +1505,10 @@ process_broker (int command_type, int argc, const char **argv,
 	  return status;
 
 	case 2:		/* no conf file */
-	  fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	  fprintf (stderr,
+		   "Error: error while reading cubrid_broker.conf.\n"
+		   "       The file is not found or there is invalid "
+		   "parameter or value.\n");
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:
@@ -1547,7 +1550,10 @@ process_broker (int command_type, int argc, const char **argv,
 			 PRINT_BROKER_NAME);
 	  return NO_ERROR;
 	case 2:		/* no conf file */
-	  fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	  fprintf (stderr,
+		   "Error: error while reading cubrid_broker.conf.\n"
+		   "       The file is not found or there is invalid "
+		   "parameter or value.\n");
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:		/* other error */
@@ -1596,7 +1602,10 @@ process_broker (int command_type, int argc, const char **argv,
 	    return NO_ERROR;
 
 	  case 2:		/* no conf file */
-	    fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	    fprintf (stderr,
+		     "Error: error while reading cubrid_broker.conf.\n"
+		     "       The file is not found or there is invalid "
+		     "parameter or value.\n");
 	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
@@ -1786,7 +1795,10 @@ process_shard (int command_type, int argc, const char **argv,
 	  print_result (PRINT_SHARD_NAME, status, command_type);
 	  return status;
 	case 2:		/* no conf file */
-	  fprintf (stderr, "Error: can't find shard.conf\n");
+	  fprintf (stderr,
+		   "Error: error while reading shard.conf.\n"
+		   "       The file is not found or there is invalid "
+		   "parameter or value.\n");
 	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:
@@ -1828,7 +1840,10 @@ process_shard (int command_type, int argc, const char **argv,
 			 PRINT_SHARD_NAME);
 	  return NO_ERROR;
 	case 2:		/* no conf file */
-	  fprintf (stderr, "Error: can't find shard_broker.conf\n");
+	  fprintf (stderr,
+		   "Error: error while reading shard.conf.\n"
+		   "       The file is not found or there is invalid "
+		   "parameter or value.\n");
 	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:		/* other error */
@@ -1875,7 +1890,10 @@ process_shard (int command_type, int argc, const char **argv,
 			   PRINT_SHARD_NAME);
 	    return NO_ERROR;
 	  case 2:		/* no conf file */
-	    fprintf (stderr, "Error: can't find cubrid_broker.conf\n");
+	    fprintf (stderr,
+		     "Error: error while reading shard.conf.\n"
+		     "       The file is not found or there is invalid "
+		     "parameter or value.\n");
 	    print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
 	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
