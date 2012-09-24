@@ -268,7 +268,7 @@ DllMain (HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 int
 get_elapsed_time (struct timeval *start_time)
 {
-  long start_time_milli, end_time_milli;
+  INT64 start_time_milli, end_time_milli;
   struct timeval end_time;
 
   assert (start_time);
@@ -280,8 +280,9 @@ get_elapsed_time (struct timeval *start_time)
 
   gettimeofday (&end_time, NULL);
 
-  start_time_milli = start_time->tv_sec * 1000 + start_time->tv_usec / 1000;
-  end_time_milli = end_time.tv_sec * 1000 + end_time.tv_usec / 1000;
+  start_time_milli =
+    start_time->tv_sec * 1000LL + start_time->tv_usec / 1000LL;
+  end_time_milli = end_time.tv_sec * 1000LL + end_time.tv_usec / 1000LL;
 
   return (int) (end_time_milli - start_time_milli);
 }

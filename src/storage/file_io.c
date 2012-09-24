@@ -846,7 +846,7 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
  * Note:
  */
 int
-fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
+fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec,
 				 int *token_gen, int *token_consumed)
 {
 #if !defined(SERVER_MODE)

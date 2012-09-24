@@ -2672,12 +2672,12 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   entry_ptr->thrd_entry->lockwait = (void *) entry_ptr;
   gettimeofday (&tv, NULL);
   entry_ptr->thrd_entry->lockwait_stime =
-    ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
+    (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
   entry_ptr->thrd_entry->lockwait_msecs = wait_msecs;
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime =
-    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
+    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
 
   /* wakeup the dealock detect thread */
   thread_wakeup_deadlock_detect_thread ();
@@ -6559,7 +6559,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  if (entry_ptr->blocked_mode != NULL_LOCK)
 	    {
 	      time_t stime =
-		(time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
+		(time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
 #if defined(WINDOWS)
 	      strcpy (time_val, ctime (&stime));
 #else /* WINDOWS */
@@ -6615,7 +6615,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       while (entry_ptr != (LK_ENTRY *) NULL)
 	{
 	  time_t stime =
-	    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
+	    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
 #if defined(WINDOWS)
 	  strcpy (time_val, ctime (&stime));
 #else /* WINDOWS */
@@ -9619,9 +9619,9 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
       if (LK_IS_LOCKWAIT_THREAD (thrd))
 	{
 	  struct timeval tv;
-	  double etime;
+	  INT64 etime;
 	  (void) gettimeofday (&tv, NULL);
-	  etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
+	  etime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
 	  if (LK_CAN_TIMEOUT (thrd->lockwait_msecs)
 	      && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 	    {
@@ -9669,9 +9669,9 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	  if (LK_IS_LOCKWAIT_THREAD (thrd))
 	    {
 	      struct timeval tv;
-	      double etime;
+	      INT64 etime;
 	      (void) gettimeofday (&tv, NULL);
-	      etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
+	      etime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
 	      if ((LK_CAN_TIMEOUT (thrd->lockwait_msecs)
 		   && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 		  || logtb_is_interrupted_tran (NULL, true, &ignore,
@@ -9994,7 +9994,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 						hi->tran_index, true,
 						(time_t) (hj->thrd_entry->
 							  lockwait_stime /
-							  1000));
+							  1000LL));
 		    }
 
 		  compat1 = lock_Comp[hi->blocked_mode][hj->granted_mode];
@@ -10006,7 +10006,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 						hj->tran_index, true,
 						(time_t) (hi->thrd_entry->
 							  lockwait_stime /
-							  1000));
+							  1000LL));
 		    }
 		}
 	    }
@@ -10031,7 +10031,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 						hi->tran_index, true,
 						(time_t) (hj->thrd_entry->
 							  lockwait_stime /
-							  1000));
+							  1000LL));
 		    }
 		}
 	    }
@@ -10053,7 +10053,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 						hi->tran_index, false,
 						(time_t) (hj->thrd_entry->
 							  lockwait_stime /
-							  1000));
+							  1000LL));
 		    }
 		}
 	    }

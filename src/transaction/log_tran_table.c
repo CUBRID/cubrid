@@ -2470,7 +2470,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			   bool clear, bool * continue_checking)
 {
   int interrupt;
-  UINT64 now;
+  INT64 now;
 #if !defined(HAVE_ATOMIC_BUILTINS)
   struct timeval tv;
 #endif /* !HAVE_ATOMIC_BUILTINS */
@@ -2515,15 +2515,14 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       now = log_Clock_msec;
 #else /* HAVE_ATOMIC_BUILTINS */
       gettimeofday (&tv, NULL);
-      now = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+      now = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
 #endif /* HAVE_ATOMIC_BUILTINS */
       if (tdes->query_timeout < now)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"logtb_is_interrupted_tdes: timeout %d milliseconds "
-			"delayed (expected=%d, now=%d)",
-			(now - tdes->query_timeout), tdes->query_timeout,
-			now);
+			"logtb_is_interrupted_tdes: timeout %lld milliseconds "
+			"delayed (expected=%lld, now=%lld)",
+			now - tdes->query_timeout, tdes->query_timeout, now);
 	  interrupt = true;
 	}
     }

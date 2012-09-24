@@ -98,8 +98,8 @@ static struct net_request_buffer net_Req_buffer[NET_SERVER_REQUEST_END];
 static int net_Histo_setup = 0;
 static int net_Histo_setup_mnt = 0;
 static int net_Histo_call_count = 0;
-static int net_Histo_last_call_time = 0;
-static int net_Histo_total_server_time = 0;
+static INT64 net_Histo_last_call_time = 0;
+static INT64 net_Histo_total_server_time = 0;
 
 #if defined(CS_MODE)
 unsigned short method_request_id;
@@ -936,7 +936,7 @@ net_histo_add_entry (int request, int data_sent)
 #if !defined(WINDOWS)
   if (gettimeofday (&tp, NULL) == 0)
     {
-      net_Histo_last_call_time = tp.tv_sec * 1000000 + tp.tv_usec;
+      net_Histo_last_call_time = tp.tv_sec * 1000000LL + tp.tv_usec;
     }
 #endif /* !WINDOWS */
   net_Histo_call_count++;
@@ -957,7 +957,7 @@ net_histo_request_finished (int request, int data_received)
 {
 #if !defined(WINDOWS)
   struct timeval tp;
-  int current_time;
+  INT64 current_time;
 #endif /* !WINDOWS */
 
   net_Req_buffer[request].total_size_received += data_received;
@@ -965,10 +965,9 @@ net_histo_request_finished (int request, int data_received)
 #if !defined(WINDOWS)
   if (gettimeofday (&tp, NULL) == 0)
     {
-      current_time = tp.tv_sec * 1000000 + tp.tv_usec;
-      net_Req_buffer[request].elapsed_time +=
-	(current_time - net_Histo_last_call_time);
-      net_Histo_total_server_time = (current_time - net_Histo_last_call_time);
+      current_time = tp.tv_sec * 1000000LL + tp.tv_usec;
+      net_Histo_total_server_time = current_time - net_Histo_last_call_time;
+      net_Req_buffer[request].elapsed_time += net_Histo_total_server_time;
     }
 #endif /* !WINDOWS */
 }

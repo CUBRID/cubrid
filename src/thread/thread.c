@@ -2961,7 +2961,7 @@ thread_flush_control_thread (void *arg_p)
   };
 
   struct timeval begin_tv, end_tv, diff_tv;
-  int diff_usec;
+  INT64 diff_usec;
   int wakeup_interval_in_msec = 50;	/* 1 msec */
 
   int elapsed_usec = 0;
@@ -2995,13 +2995,15 @@ thread_flush_control_thread (void *arg_p)
 
   while (!tsd_ptr->shutdown)
     {
-      int tmp_usec;
+      INT64 tmp_usec;
 
       (void) gettimeofday (&begin_tv, NULL);
       er_clear ();
 
-      wakeup_time.tv_sec = begin_tv.tv_sec + (wakeup_interval_in_msec / 1000);
-      tmp_usec = begin_tv.tv_usec + (wakeup_interval_in_msec % 1000) * 1000;
+      wakeup_time.tv_sec =
+	begin_tv.tv_sec + (wakeup_interval_in_msec / 1000LL);
+      tmp_usec =
+	begin_tv.tv_usec + (wakeup_interval_in_msec % 1000LL) * 1000LL;
       if (tmp_usec >= 1000000)
 	{
 	  wakeup_time.tv_sec += 1;
@@ -3027,7 +3029,7 @@ thread_flush_control_thread (void *arg_p)
 
       (void) gettimeofday (&end_tv, NULL);
       DIFF_TIMEVAL (begin_tv, end_tv, diff_tv);
-      diff_usec = diff_tv.tv_sec * 1000000 + diff_tv.tv_usec;
+      diff_usec = diff_tv.tv_sec * 1000000LL + diff_tv.tv_usec;
 
       /* Do it's job */
       (void) fileio_flush_control_add_tokens (tsd_ptr, diff_usec, &token_gen,
@@ -3372,7 +3374,7 @@ thread_log_clock_thread (void *arg_p)
 
       /* set time for every 200 ms */
       gettimeofday (&now, NULL);
-      clock_milli_sec = (now.tv_sec * 1000) + (now.tv_usec / 1000);
+      clock_milli_sec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
       ATOMIC_TAS_64 (&log_Clock_msec, clock_milli_sec);
       thread_sleep (0, 200000);
 

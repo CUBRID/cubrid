@@ -594,6 +594,6 @@ extern void fileio_flush_control_finalize (void);
 
 /* flush token management */
 extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p,
-					    int diff_usec, int *token_gen,
+					    INT64 diff_usec, int *token_gen,
 					    int *token_consumed);
 #endif /* _FILE_IO_H_ */

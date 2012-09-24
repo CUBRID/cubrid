@@ -140,7 +140,7 @@ struct thread_entry
   struct thread_entry *next_wait_thrd;
 
   void *lockwait;
-  double lockwait_stime;	/* time in milliseconds */
+  INT64 lockwait_stime;		/* time in milliseconds */
   int lockwait_msecs;		/* time in milliseconds */
   int lockwait_state;
   void *query_entry;

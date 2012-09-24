@@ -1421,8 +1421,8 @@ query_cancel (int signo)
   as_info->num_interrupts++;
 
   clock_gettime (CLOCK_REALTIME, &ts);
-  query_cancel_time = ts.tv_sec * 1000L;
-  query_cancel_time += (ts.tv_nsec / 1000000L);
+  query_cancel_time = ts.tv_sec * 1000LL;
+  query_cancel_time += (ts.tv_nsec / 1000000LL);
   query_cancel_flag = 1;
 #else
   assert (0);
