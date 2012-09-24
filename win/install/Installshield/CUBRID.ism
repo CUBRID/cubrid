@@ -1203,8 +1203,8 @@
 		<row><td>IFX_PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td/><td>-1323326126</td></row>
 		<row><td>IFX_PRODUCT_NAME</td><td>1033</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
 		<row><td>IFX_PRODUCT_NAME</td><td>1042</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
-		<row><td>IFX_PRODUCT_VERSION</td><td>1033</td><td>9.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
-		<row><td>IFX_PRODUCT_VERSION</td><td>1042</td><td>9.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_VERSION</td><td>1033</td><td>9.1</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_VERSION</td><td>1042</td><td>9.1</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
 		<row><td>IFX_SETUP_TITLE</td><td>1033</td><td>CUBRID Installation</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323342357</td></row>
 		<row><td>IFX_SETUP_TITLE</td><td>1042</td><td>CUBRID 설치</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0001</td><td>1033</td><td>CUBRID has already been installed in your system. Use Add/Remove Programs in Cotrol Panel to remove the old version of CUBRID and then retry it.</td><td>0</td><td/><td>-1323342357</td></row>
@@ -1515,7 +1515,7 @@ QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 		<row><td>ProObjUseDefaultSettings</td><td>##IDS_PROOBJ_USEDEFAULTSETTINGS##</td><td/></row>
 		<row><td>ProductCode</td><td>{F9D3936B-33BA-4A5C-BF34-B41F08F942E5}</td><td/></row>
 		<row><td>ProductName</td><td>CUBRID</td><td/></row>
-		<row><td>ProductVersion</td><td>9.0.0.0457</td><td/></row>
+		<row><td>ProductVersion</td><td>9.1.0.0001</td><td/></row>
 		<row><td>Property</td><td>***DO_NOT_BUILD***</td><td/></row>
 		<row><td>Typical</td><td>***DO_NOT_BUILD***</td><td/></row>
 	</table>
