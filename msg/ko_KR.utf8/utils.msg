@@ -917,7 +917,7 @@ usage: %s applyinfo [OPTION] database-name\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      remote host name; display remote node's active log information \n\
-  -a, --applied-info          display applied infomation \n\
+  -a, --applied-info          display applied information \n\
   -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
   -p, --pageid=ID             page id; default : 0(active page)\n\
   -v, --verbose               enable verbose status messages; default : disable\n
