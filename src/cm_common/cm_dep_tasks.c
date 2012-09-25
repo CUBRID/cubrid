@@ -2279,7 +2279,6 @@ _op_get_value_string (DB_VALUE * value)
   DB_DATE *date_v;
   DB_TIME *time_v;
   DB_TIMESTAMP *timestamp_v;
-  DB_DATETIME *datetime_v;
   DB_MONETARY *money;
   DB_SET *set;
   DB_VALUE val;
@@ -2308,28 +2307,6 @@ _op_get_value_string (DB_VALUE * value)
 	{
 	  snprintf (result, result_size, "%s", db_string_p);
 	}
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      db_string_p = db_get_nchar (value, &size);
-      if (db_string_p != NULL)
-	{
-	  snprintf (result, result_size, "N'%s'", db_string_p);
-	}
-      break;
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-      size = ((db_get_string_length (value) + 3) / 4) + 4;
-      db_string_p = (char *) malloc (size);
-      if (db_string_p == NULL)
-	{
-	  break;
-	}
-      if (db_bit_string (value, "%X", db_string_p, size) == 0)
-	{
-	  snprintf (result, result_size, "X'%s'", db_string_p);
-	}
-      free (db_string_p);
       break;
     case DB_TYPE_DOUBLE:
       dv = db_get_double (value);
@@ -2404,10 +2381,6 @@ _op_get_value_string (DB_VALUE * value)
     case DB_TYPE_TIMESTAMP:
       timestamp_v = db_get_timestamp (value);
       db_timestamp_to_string (result, 256, timestamp_v);
-      break;
-    case DB_TYPE_DATETIME:
-      datetime_v = db_get_datetime (value);
-      db_datetime_to_string (result, 256, datetime_v);
       break;
     default:
       result[0] = '\0';

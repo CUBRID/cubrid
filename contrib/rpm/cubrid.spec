@@ -107,7 +107,6 @@ rm -rf %{buildroot}
 /opt/cubrid/share
 /opt/cubrid/tmp
 /opt/cubrid/var
-/opt/cubrid/webmanager
 %config(noreplace) /opt/cubrid/conf
 
 

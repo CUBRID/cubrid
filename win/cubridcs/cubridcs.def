@@ -72,7 +72,6 @@ EXPORTS
     db_attribute_name
     db_attribute_next
     db_attribute_order
-    db_bit_string
     db_change_method_implementation
     db_change_query_spec
     db_check_authorization
@@ -97,7 +96,6 @@ EXPORTS
     db_date_to_string
     db_datetime_decode
     db_datetime_encode
-    db_datetime_to_string
     db_disable_modification
     db_domain_class
     db_domain_next
@@ -182,7 +180,6 @@ EXPORTS
     db_get_short
     db_get_statement_type
     db_get_string
-    db_get_string_length
     db_get_subclasses
     db_get_superclasses
     db_get_system_parameters

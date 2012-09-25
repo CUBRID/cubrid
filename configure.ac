@@ -595,11 +595,7 @@ case "$with_cmserver" in
 		  fi
 		    cm_common_libdir=`readlink -f $PWD/cm_common`
 		    cm_common_includedir=`readlink -f $srcdir/src/cm_common`
-		    cci_includedir=`readlink -f $srcdir/src/cci`
-		    cci_libdir=`readlink -f $PWD/cci`
-		    cs_libdir=`readlink -f $PWD/cs`
-		    broker_includedir=`readlink -f $srcdir/src/broker`
-		    ac_configure_args="$ac_configure_args --prefix='$prefix' CXXFLAGS='$CXXFLAGS -I$cci_includedir -I$broker_includedir' LDFLAGS='-L$cci_libdir -L$cs_libdir' --with-cubrid-libdir=$cm_common_libdir --with-cubrid-includedir=$cm_common_includedir" AC_CONFIG_SUBDIRS([cubridmanager/server])
+		    ac_configure_args="$ac_configure_args --with-cubrid-libdir=$cm_common_libdir --with-cubrid-includedir=$cm_common_includedir" AC_CONFIG_SUBDIRS([cubridmanager/server])
 		    OPTIONAL_DIR="$OPTIONAL_DIR cubridmanager/server"
 		    with_cmserver=builtin
 		else
